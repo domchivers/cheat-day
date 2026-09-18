@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=8">
-  <link rel="icon" href="icons/icon-192.png?v=8">
-  <link rel="stylesheet" href="styles.css?v=8">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=9">
+  <link rel="icon" href="icons/icon-192.png?v=9">
+  <link rel="stylesheet" href="styles.css?v=9">
 </head>
 <body>
 
@@ -22,6 +22,7 @@
   <symbol id="i-barcode" viewBox="0 0 24 24"><path fill="currentColor" d="M3 5h2v14H3zm4 0h1v14H7zm3 0h2v14h-2zm4 0h1v14h-1zm3 0h3v14h-3z"/></symbol>
   <symbol id="i-camera" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.2" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
   <symbol id="i-pen" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M4 20h4l10-10-4-4L4 16zM13 7l4 4"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M16 16l4.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
   <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
@@ -52,10 +53,16 @@
     <button class="card action tint-green" data-go="scan">
       <span class="circle green"><svg><use href="#i-camera"/></svg></span>
       <b>Scan</b>
-      <small>Barcode or nutrition label, one camera</small>
+      <small>Barcode or nutrition label</small>
       <svg class="chev"><use href="#i-chev"/></svg>
     </button>
-    <button class="card action tint-peach" data-go="manual">
+    <button class="card action tint-coral" data-go="search">
+      <span class="circle coral"><svg><use href="#i-search"/></svg></span>
+      <b>Search</b>
+      <small>Chicken thigh, eggs, a glass of wine…</small>
+      <svg class="chev"><use href="#i-chev"/></svg>
+    </button>
+    <button class="card action tint-peach wide" data-go="manual">
       <span class="circle peach"><svg><use href="#i-pen"/></svg></span>
       <b>Type it in</b>
       <small>You already know the numbers</small>
@@ -144,6 +151,20 @@
   <input type="file" accept="image/*" capture="environment" id="file-scan" hidden>
 </section>
 
+<!-- ===================== SEARCH ===================== -->
+<section class="view hidden" id="view-search">
+  <header class="sub-head">
+    <button class="icon-btn" data-back aria-label="Back"><svg><use href="#i-back"/></svg></button>
+    <h1>Search</h1><span></span>
+  </header>
+  <input type="search" id="q" placeholder="e.g. chicken thigh, eggs, banana" autocomplete="off" autocorrect="off" autocapitalize="off" enterkeyhint="search">
+  <p class="muted tiny" id="search-hint">Everyday foods answer straight away. Branded products come from Open Food Facts a moment later.</p>
+  <ul class="list" id="search-local"></ul>
+  <p class="muted tiny hidden" id="search-status"></p>
+  <ul class="list" id="search-off"></ul>
+  <button class="btn mint hidden" id="search-claude">Ask Claude about it</button>
+</section>
+
 <!-- ===================== PRODUCT DETAILS ===================== -->
 <section class="view hidden" id="view-details">
   <header class="sub-head">
@@ -227,9 +248,10 @@
 <div class="toast hidden" id="toast"></div>
 
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=8"></script>
-<script src="supabase-config.js?v=8"></script>
-<script src="cloud.js?v=8"></script>
-<script src="app.js?v=8"></script>
+<script src="presets.js?v=9"></script>
+<script src="foods.js?v=9"></script>
+<script src="supabase-config.js?v=9"></script>
+<script src="cloud.js?v=9"></script>
+<script src="app.js?v=9"></script>
 </body>
 </html>

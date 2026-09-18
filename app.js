@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "8";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "9";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -85,7 +85,7 @@ function basisOf(obj) {
 
 // ---------------------------------------------------------------- router
 
-const VIEWS = ["home", "settings", "scan", "details", "share"];
+const VIEWS = ["home", "settings", "scan", "search", "details", "share"];
 let stack = ["home"];
 function show(view) {
   for (const v of VIEWS) $(`#view-${v}`).classList.toggle("hidden", v !== view);
@@ -94,6 +94,7 @@ function show(view) {
   if (view === "home") renderHome();
   if (view === "settings") renderSettings();
   if (view === "scan") startCamera();
+  if (view === "search") openSearch();
 }
 function go(view) { stack.push(view); show(view); }
 function back() { stack.pop(); if (!stack.length) stack = ["home"]; show(stack[stack.length - 1]); }
@@ -120,7 +121,7 @@ function renderHome() {
   renderQuick();
 }
 function iconFor(source) {
-  return { barcode: "barcode", label: "camera", quick: "plus" }[source] || "pen";
+  return { barcode: "barcode", label: "camera", quick: "plus", search: "search", claude: "search" }[source] || "pen";
 }
 function itemRow(it) {
   const li = document.createElement("li");
@@ -413,6 +414,30 @@ function drawScaled(img, maxW, rot = 0) {
 }
 // ---------------------------------------------------------------- Open Food Facts
 
+/** Turn an Open Food Facts product into one of our items. */
+function itemFromProduct(p) {
+  const n = p.nutriments || {};
+  const item = blankItem("barcode");
+  const energy = energyFrom(n);
+  item.name = p.product_name_en || p.product_name || "";
+  item.brand = Array.isArray(p.brands) ? p.brands.join(", ") : (p.brands || "");
+  item.image = p.image_front_small_url || null;
+  const q = ((p.product_quantity_unit || "") + " " + (p.quantity || "")).toLowerCase();
+  item.unit = /\bml\b|\bl\b|litre|liter/.test(q) ? "ml" : "g";
+  item.kcalPer100 = energy.per100 ? Math.round(energy.per100) : null;
+  item.servingSize = num(p.serving_quantity) || num((p.serving_size || "").match(/(\d+(?:[.,]\d+)?)\s*(g|ml)/i)?.[1]?.replace(",", "."));
+  item.kcalPerServing = energy.perServing ? Math.round(energy.perServing) : null;
+  // A per-serving figure that doesn't match per-100 x serving size is usually kJ typed into the kcal box.
+  if (item.kcalPerServing && item.kcalPer100 && item.servingSize) {
+    const expected = item.kcalPer100 * item.servingSize / 100;
+    if (item.kcalPerServing > expected * 2 && Math.abs(item.kcalPerServing / 4.184 - expected) / expected < 0.25) { item.kcalPerServing = Math.round(item.kcalPerServing / 4.184); energy.fixed = true; }
+  }
+  item.packSize = num(p.product_quantity);
+  if (!item.kcalPer100 && !item.kcalPerServing) item.note = "Open Food Facts has this product but no calorie data. Fill it in from the pack.";
+  else if (energy.fixed) item.note = "Open Food Facts had kJ in the kcal box for this one; I've converted it. Worth a glance at the pack.";
+  return item;
+}
+
 /** kcal per 100 and per serving, trusting kJ when the kcal field looks like kJ (a common data-entry slip,
  *  especially on Australian labels which print kJ first). Nothing edible exceeds ~900 kcal per 100 g. */
 function energyFrom(n) {
@@ -447,28 +472,129 @@ async function lookupBarcode(code) {
     toast(`Barcode ${code} isn't on Open Food Facts yet.`, 4000);
     draft = blankItem("manual"); draft.note = `Barcode ${code} not found. Fill in from the pack, or go back and read the label.`; openDetails("Enter the details"); return;
   }
-  const p = data.product, n = p.nutriments || {};
-  const item = blankItem("barcode");
-  const energy = energyFrom(n);
-  item.name = p.product_name_en || p.product_name || "";
-  item.brand = p.brands || "";
-  item.image = p.image_front_small_url || null;
-  const q = ((p.product_quantity_unit || "") + " " + (p.quantity || "")).toLowerCase();
-  item.unit = /\bml\b|\bl\b|litre|liter/.test(q) ? "ml" : "g";
-  item.kcalPer100 = energy.per100 ? Math.round(energy.per100) : null;
-  item.servingSize = num(p.serving_quantity) || num((p.serving_size || "").match(/(\d+(?:[.,]\d+)?)\s*(g|ml)/i)?.[1]?.replace(",", "."));
-  item.kcalPerServing = energy.perServing ? Math.round(energy.perServing) : null;
-  // A per-serving figure that doesn't match per-100 x serving size is usually kJ typed into the kcal box.
-  if (item.kcalPerServing && item.kcalPer100 && item.servingSize) {
-    const expected = item.kcalPer100 * item.servingSize / 100;
-    if (item.kcalPerServing > expected * 2 && Math.abs(item.kcalPerServing / 4.184 - expected) / expected < 0.25) { item.kcalPerServing = Math.round(item.kcalPerServing / 4.184); energy.fixed = true; }
-  }
-  item.packSize = num(p.product_quantity);
-  if (!item.kcalPer100 && !item.kcalPerServing) item.note = "Open Food Facts has this product but no calorie data. Fill it in from the pack.";
-  else if (energy.fixed) item.note = "Open Food Facts had kJ in the kcal box for this one; I've converted it. Worth a glance at the pack.";
+  draft = itemFromProduct(data.product);
   draft = item;
   openDetails("Product details");
 }
+
+
+// ---------------------------------------------------------------- search: everyday foods (bundled), Open Food Facts, Claude
+
+let searchTimer = null, searchAbort = null, lastQuery = "";
+function openSearch() {
+  const q = $("#q");
+  setTimeout(() => q.focus(), 50);
+  if (!q.value) { $("#search-local").innerHTML = ""; $("#search-off").innerHTML = ""; $("#search-status").classList.add("hidden"); $("#search-claude").classList.add("hidden"); }
+}
+function foodItem(row) {
+  const [name, kcal, serving, label, unit, tags] = row;
+  const item = blankItem("search");
+  item.name = name; item.unit = unit || "g"; item.kcalPer100 = kcal;
+  item.servingSize = serving || null; item.unitLabel = label || null;
+  item.kcalPerServing = serving ? Math.round(kcal * serving / 100) : null;
+  return item;
+}
+function searchLocal(query) {
+  const STOP = new Set(["a", "an", "of", "the", "and", "with", "some", "my", "one"]);
+  const words = query.toLowerCase().split(/[\s,]+/).filter((w) => w && !STOP.has(w));
+  if (!words.length) return [];
+  const scored = [];
+  for (const row of (typeof FOODS !== "undefined" ? FOODS : [])) {
+    const name = row[0].toLowerCase(), hay = name + " " + (row[3] || "") + " " + (row[5] || "").toLowerCase();
+    let score = 0, ok = true;
+    for (const w of words) {
+      if (name.startsWith(w)) score += 3;
+      else if (new RegExp("\\b" + w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).test(hay)) score += 2;
+      else if (hay.includes(w)) score += 1;
+      else { ok = false; break; }
+    }
+    if (ok) scored.push([score - name.length / 100, row]);
+  }
+  return scored.sort((a, b) => b[0] - a[0]).slice(0, 12).map((x) => x[1]);
+}
+function resultRow(item, tone) {
+  const li = document.createElement("li");
+  const perServing = item.kcalPerServing && item.servingSize;
+  const detail = [`${fmt(item.kcalPer100)} kcal / 100 ${item.unit}`];
+  if (perServing) detail.push(`${fmt1(item.servingSize)} ${item.unit} ${item.unitLabel || "serving"} = ${fmt(item.kcalPerServing)}`);
+  else if (item.kcalPerServing) detail.push(`${fmt(item.kcalPerServing)} per serving`);
+  if (item.brand) detail.unshift(item.brand);
+  const thumb = item.image ? `<img class="thumb-sm" src="${esc(item.image)}" alt="">` : `<span class="thumb-sm ${tone || ""}"><svg><use href="#i-${iconFor(item.source)}"/></svg></span>`;
+  li.innerHTML = `${thumb}<div class="body"><div class="name">${esc(item.name)}</div><div class="detail">${esc(detail.join(" · "))}</div></div>
+    <div class="kcal">${fmt(perServing ? item.kcalPerServing : item.kcalPer100)}</div>`;
+  li.onclick = () => { draft = { ...item }; openDetails(item.source === "barcode" ? "Product details" : "Food details"); };
+  return li;
+}
+$("#q").addEventListener("input", (e) => {
+  const query = e.target.value.trim();
+  clearTimeout(searchTimer);
+  const local = $("#search-local"); local.innerHTML = "";
+  for (const row of searchLocal(query)) local.appendChild(resultRow(foodItem(row), "tone-coral"));
+  $("#search-off").innerHTML = "";
+  $("#search-status").classList.add("hidden");
+  $("#search-claude").classList.toggle("hidden", !(query.length >= 2 && state.apiKey));
+  $("#search-claude").textContent = `Ask Claude about "${query}"`;
+  if (searchAbort) { searchAbort.abort(); searchAbort = null; }
+  if (query.length < 3) return;
+  searchTimer = setTimeout(() => searchOpenFoodFacts(query), 450);
+});
+$("#q").addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
+async function searchOpenFoodFacts(query) {
+  lastQuery = query;
+  const status = $("#search-status"), list = $("#search-off");
+  status.textContent = "Looking on Open Food Facts…"; status.classList.remove("hidden");
+  const ctrl = new AbortController(); searchAbort = ctrl;
+  const timeout = setTimeout(() => ctrl.abort(), 8000);
+  const fields = "code,product_name,product_name_en,brands,quantity,product_quantity,product_quantity_unit,serving_size,serving_quantity,nutriments,image_front_small_url";
+  try {
+    const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=10&fields=${fields}`;
+    let r = await fetch(url, { signal: ctrl.signal });
+    if (r.status === 503) { await new Promise((res) => setTimeout(res, 1500)); r = await fetch(url, { signal: ctrl.signal }); }   // it's often busy; one retry
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    if (lastQuery !== query) return;
+    const items = (data.products || []).map(itemFromProduct).filter((it) => it.name && (it.kcalPer100 || it.kcalPerServing));
+    list.innerHTML = "";
+    for (const it of items) list.appendChild(resultRow(it));
+    status.textContent = items.length ? "From Open Food Facts:" : "Nothing on Open Food Facts for that.";
+  } catch (err) {
+    if (ctrl.signal.aborted && lastQuery !== query) return;
+    status.textContent = "Open Food Facts is busy right now. Try again in a moment, or ask Claude.";
+  } finally { clearTimeout(timeout); if (searchAbort === ctrl) searchAbort = null; }
+}
+
+// Claude estimates a food that neither list knows
+const FOOD_SCHEMA = {
+  type: "object",
+  properties: {
+    name: { type: "string", description: "The food, tidied up, e.g. 'Chicken thigh, roasted, skin on'" },
+    unit: { type: "string", enum: ["g", "ml"] },
+    kcal_per_100: { type: "number", description: "Typical kcal per 100 g or 100 ml as eaten" },
+    serving_size: { type: ["number", "null"], description: "A typical single serving in g or ml" },
+    serving_label: { type: ["string", "null"], description: "What one serving is called: egg, slice, glass, portion…" },
+    notes: { type: "string", description: "Assumptions made, e.g. 'assumed cooked without oil', in one short sentence" }
+  },
+  required: ["name", "unit", "kcal_per_100", "serving_size", "serving_label", "notes"],
+  additionalProperties: false
+};
+$("#search-claude").onclick = async () => {
+  const query = $("#q").value.trim();
+  if (!query) return;
+  if (!state.apiKey) { toast("Add your Anthropic API key in Settings first"); go("settings"); return; }
+  busy(`Asking Claude about ${query}…`);
+  try {
+    const parsed = await askClaude(FOOD_SCHEMA, [{ type: "text", text: `Give typical nutrition for this food as commonly eaten: "${query}". If it's ambiguous, pick the most common preparation and say so in notes. Use standard reference values (USDA / McCance & Widdowson), not guesses.` }]);
+    busy(false);
+    const item = blankItem("claude");
+    item.name = parsed.name || query; item.unit = parsed.unit === "ml" ? "ml" : "g";
+    item.kcalPer100 = num(parsed.kcal_per_100) ? Math.round(parsed.kcal_per_100) : null;
+    item.servingSize = num(parsed.serving_size); item.unitLabel = parsed.serving_label || null;
+    item.kcalPerServing = item.kcalPer100 && item.servingSize ? Math.round(item.kcalPer100 * item.servingSize / 100) : null;
+    item.note = "Claude's estimate, not a label. " + (parsed.notes || "");
+    draft = item;
+    openDetails("Food details");
+  } catch (err) { busy(false); toast(err.message || "Claude couldn't help with that", 5000); }
+};
 
 // ---------------------------------------------------------------- Claude reads a label
 
@@ -503,19 +629,14 @@ const LABEL_PROMPT = `This is a photo of a food or drink product, its nutrition 
 Report only numbers you can actually read on the label; use null for anything not visible rather than guessing.
 If energy is given in kJ only, convert to kcal (kcal = kJ / 4.184). If values are per portion only, fill kcal_per_serving and serving_size and leave kcal_per_100 null.`;
 
-async function readLabelWithClaude(file) {
-  const img = await loadImage(file);
-  const dataUrl = drawScaled(img, 1280).toDataURL("image/jpeg", 0.85);
-  const b64 = dataUrl.split(",")[1];
+/** One structured-output request to Claude; returns the parsed JSON. */
+async function askClaude(schema, content, effort = "medium") {
   const body = {
     model: CLAUDE_MODEL,
     max_tokens: 2048,
     fallbacks: "default",
-    output_config: { effort: "medium", format: { type: "json_schema", schema: LABEL_SCHEMA } },
-    messages: [{ role: "user", content: [
-      { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } },
-      { type: "text", text: LABEL_PROMPT }
-    ] }]
+    output_config: { effort, format: { type: "json_schema", schema } },
+    messages: [{ role: "user", content }]
   };
   let resp;
   try {
@@ -536,12 +657,20 @@ async function readLabelWithClaude(file) {
     if (resp.status === 401) throw new Error("API key rejected. Check it in Settings.");
     throw new Error(`Claude error: ${json?.error?.message || `HTTP ${resp.status}`}`);
   }
-  if (json.stop_reason === "refusal") throw new Error("Claude declined to read that image");
+  if (json.stop_reason === "refusal") throw new Error("Claude declined that request");
   if (json.stop_reason === "max_tokens") throw new Error("Claude's answer was cut off. Try again.");
   const text = (json.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
-  let parsed;
-  try { parsed = JSON.parse(text); } catch (e) { throw new Error("Couldn't understand Claude's answer. Try a clearer photo."); }
+  try { return JSON.parse(text); } catch (e) { throw new Error("Couldn't understand Claude's answer. Try again."); }
+}
 
+async function readLabelWithClaude(file) {
+  const img = await loadImage(file);
+  const dataUrl = drawScaled(img, 1280).toDataURL("image/jpeg", 0.85);
+  const b64 = dataUrl.split(",")[1];
+  const parsed = await askClaude(LABEL_SCHEMA, [
+    { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } },
+    { type: "text", text: LABEL_PROMPT }
+  ]);
   const item = blankItem("label");
   item.name = parsed.name || ""; item.brand = parsed.brand || "";
   item.unit = parsed.unit === "ml" ? "ml" : "g";

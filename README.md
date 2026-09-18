@@ -56,6 +56,19 @@ Sync is local-first and last-write-wins: the newest copy replaces the older one
 whole, so removing an item on one phone stays removed. The Anthropic API key
 deliberately stays on each device.
 
+## Search
+
+The **Search** card finds food three ways, in this order:
+
+1. **Everyday foods** from `foods.js`, a bundled list of a few hundred common
+   things (chicken thigh, eggs, rice, a glass of wine, a doner kebab…) with
+   typical kcal per 100 g and a sensible serving. Instant and offline. Add your
+   own rows at the bottom of that file.
+2. **Open Food Facts** text search for branded products, a moment later. Their
+   search service is often busy, so this one is best-effort.
+3. **Ask Claude** (needs the API key) for anything else. It's an estimate from
+   standard reference values, and the details page says so.
+
 ## Quick add
 
 The **Quick add** list on the home screen holds things you have often, added to
@@ -79,6 +92,7 @@ Both routes are automatic; you'll just see one button or the other.
 
 - `index.html`, `styles.css`, `app.js` — the whole app
 - `presets.js` — the Quick add list
+- `foods.js` — everyday foods for Search
 - `cloud.js`, `supabase-config.js` — accounts + sync (Supabase, shared with the Chinese app)
 - `vendor/zxing.min.js` — barcode decoding ([@zxing/library](https://github.com/zxing-js/library) 0.21.3, UMD build)
 - `sw.js`, `manifest.webmanifest`, `icons/` — install-to-home-screen and offline cache

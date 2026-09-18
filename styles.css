@@ -169,6 +169,12 @@ label small { display: block; font-size: 12px; margin-top: 2px; }
 .camera-fallback .btn { width: auto; padding: 12px 20px; }
 .camera-fallback small { color: rgba(255,255,255,.75); }
 
+/* Search */
+#q { font-size: 17px; padding: 14px 16px; margin-bottom: 8px; -webkit-appearance: none; }
+#search-hint { margin-bottom: 12px; }
+#search-status { margin: 6px 0 8px; }
+.list .thumb-sm.tone-coral { background: var(--coral-bg); color: var(--coral); }
+
 /* Details */
 .product { display: flex; gap: 14px; align-items: center; }
 .thumb { width: 84px; height: 84px; border-radius: 12px; background: var(--mint-2); display: grid; place-items: center; color: var(--green-2); overflow: hidden; flex: none; }
