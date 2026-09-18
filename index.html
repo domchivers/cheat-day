@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/icon-180.png?v=2">
   <link rel="icon" href="icons/icon-192.png?v=2">
-  <link rel="stylesheet" href="styles.css?v=4">
+  <link rel="stylesheet" href="styles.css?v=5">
 </head>
 <body>
 
@@ -87,6 +87,21 @@
       <input type="password" id="s-apikey" placeholder="sk-ant-…" autocomplete="off">
     </label>
     <button class="btn primary" id="settings-save">Save</button>
+  </div>
+  <div class="card form-card hidden" id="account-card">
+    <h3>Account</h3>
+    <div id="acct-out">
+      <p class="muted">Sign in and your days, past days and Quick add list follow you to every device.</p>
+      <label>Email <input type="email" id="acct-email" autocomplete="email" inputmode="email"></label>
+      <label>Password <input type="password" id="acct-pass" autocomplete="current-password"></label>
+      <button class="btn primary" id="acct-signin">Sign in</button>
+      <button class="btn mint" id="acct-signup">Create an account</button>
+      <button class="btn link-btn" id="acct-forgot">Forgot password?</button>
+    </div>
+    <div id="acct-in" class="hidden">
+      <p>Signed in as <b id="acct-who"></b>. Everything syncs automatically.</p>
+      <button class="btn mint" id="acct-signout">Sign out</button>
+    </div>
   </div>
   <div class="card form-card">
     <b id="s-day">Today</b>
@@ -207,7 +222,9 @@
 <div class="toast hidden" id="toast"></div>
 
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=4"></script>
-<script src="app.js?v=4"></script>
+<script src="presets.js?v=5"></script>
+<script src="firebase-config.js?v=5"></script>
+<script src="app.js?v=5"></script>
+<script type="module" src="cloud.js?v=5"></script>
 </body>
 </html>

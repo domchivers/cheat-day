@@ -22,8 +22,9 @@ function load() {
   if (!Array.isArray(base.recent)) base.recent = [];
   return base;
 }
-function save() {
+function save(sync = true) {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { toast("Couldn't save (storage blocked?)"); }
+  if (sync) schedulePush();
 }
 const state = load();
 const usedKcal = () => state.day.items.reduce((s, it) => s + it.kcal, 0);
@@ -185,6 +186,7 @@ function addToDay(basis, kcal, shareLabel) {
 function renderSettings() {
   $("#s-budget").value = state.budget;
   $("#s-apikey").value = state.apiKey;
+  renderAccount();
   const d = state.day.date;
   $("#s-day").textContent = d === localDate() ? "Today" : new Date(d + "T12:00").toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "short" });
   const h = $("#pastdays-list"); h.innerHTML = "";
@@ -538,6 +540,63 @@ $("#share-add").onclick = () => {
   toast(`Added ${draft.name} · ${fmt(kcal)} kcal`);
   home();
 };
+
+// ---------------------------------------------------------------- account + sync (optional, see cloud.js)
+
+const SYNC_KEYS = ["budget", "day", "history", "recent"];   // the API key stays on the device
+let pushTimer = null;
+function schedulePush() {
+  if (!window.cloud || !window.cloud.user) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(() => {
+    const data = {}; for (const k of SYNC_KEYS) data[k] = state[k];
+    window.cloud.push(data).catch((err) => toast("Couldn't sync: " + window.cloud.explain(err), 4000));
+  }, 600);
+}
+function applyRemote(data) {
+  if (data === null) { schedulePush(); return; }            // first sign-in on a fresh account: upload what we have
+  for (const k of SYNC_KEYS) if (data[k] != null) state[k] = data[k];
+  save(false);
+  const current = stack[stack.length - 1];
+  if (current === "home") renderHome();
+  if (current === "settings") renderSettings();
+}
+function renderAccount() {
+  const c = window.cloud;
+  $("#account-card").classList.toggle("hidden", !c);
+  if (!c) return;
+  $("#acct-out").classList.toggle("hidden", !!c.user);
+  $("#acct-in").classList.toggle("hidden", !c.user);
+  if (c.user) $("#acct-who").textContent = c.user.email || "";
+}
+function cloudInit() {
+  const c = window.cloud;
+  renderAccount();
+  if (!c) return;
+  c.onAuth(() => { renderAccount(); });
+  c.onData(applyRemote);
+}
+window.addEventListener("cloud-ready", cloudInit);
+async function acct(action) {
+  const c = window.cloud; if (!c) return;
+  const email = $("#acct-email").value.trim(), pass = $("#acct-pass").value;
+  try {
+    if (action === "forgot") {
+      if (!email) { toast("Type your email first"); return; }
+      await c.resetPassword(email); toast("Password reset email sent"); return;
+    }
+    if (!email || !pass) { toast("Email and password, please"); return; }
+    busy(action === "signup" ? "Creating your account…" : "Signing in…");
+    await (action === "signup" ? c.signUp(email, pass) : c.signIn(email, pass));
+    busy(false); $("#acct-pass").value = "";
+    toast(action === "signup" ? "Account created. You're signed in." : "Signed in");
+  } catch (err) { busy(false); toast(c.explain(err), 4500); }
+}
+$("#acct-signin").onclick = () => acct("signin");
+$("#acct-signup").onclick = () => acct("signup");
+$("#acct-forgot").onclick = () => acct("forgot");
+$("#acct-signout").onclick = async () => { try { await window.cloud.signOut(); toast("Signed out. This device keeps its own copy."); } catch (e) {} };
+$("#acct-pass").addEventListener("keydown", (e) => { if (e.key === "Enter") acct("signin"); });
 
 // ---------------------------------------------------------------- boot
 

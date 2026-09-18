@@ -31,6 +31,36 @@ Keep the black window open while you use it.
 Whatever the source, you land on an editable "check the details" form before
 choosing your share, so a wrong reading is a quick fix rather than a wrong day.
 
+## Accounts and sync (optional)
+
+Out of the box everything lives in the browser on one device. To let people sign
+in and keep their days everywhere, the app can use Firebase (free tier is plenty).
+One-off setup, about ten minutes:
+
+1. Go to [console.firebase.google.com](https://console.firebase.google.com), **Add project**, name it (e.g. `cheat-days`), Analytics off.
+2. **Build → Authentication → Get started → Email/Password → Enable → Save.**
+   Then **Authentication → Settings → Authorized domains → Add domain**: `domchivers.github.io`.
+3. **Build → Firestore Database → Create database** (production mode, any location).
+   Open the **Rules** tab, replace everything with this, and **Publish**:
+
+   ```
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /users/{uid} {
+         allow read, write: if request.auth != null && request.auth.uid == uid;
+       }
+     }
+   }
+   ```
+4. **Project settings (gear) → Your apps → Web (</>) → register the app** (no hosting).
+   Copy the `firebaseConfig` object it shows into `firebase-config.js` as
+   `window.FIREBASE_CONFIG = { ... };` and push.
+
+An **Account** card then appears in Settings with Sign in / Create an account.
+Each person makes their own account. Budget, today's list, past days and the
+Quick add list sync; the Anthropic API key deliberately stays on each device.
+
 ## Quick add
 
 The **Quick add** list on the home screen holds things you have often, added to
@@ -54,6 +84,7 @@ Both routes are automatic; you'll just see one button or the other.
 
 - `index.html`, `styles.css`, `app.js` — the whole app
 - `presets.js` — the Quick add list
+- `cloud.js`, `firebase-config.js` — optional accounts + sync
 - `vendor/zxing.min.js` — barcode decoding ([@zxing/library](https://github.com/zxing-js/library) 0.21.3, UMD build)
 - `sw.js`, `manifest.webmanifest`, `icons/` — install-to-home-screen and offline cache
 - `make_icons.py` — regenerates the icons (needs Pillow)
