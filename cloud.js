@@ -92,7 +92,8 @@
     async rest(path, opts = {}) {
       const r = await sbAuthed(path, opts);
       if (!r.ok) throw await authError(r, `Cloud request failed (${r.status})`);
-      return r.status === 204 ? null : r.json();
+      const text = await r.text();            // a successful insert comes back empty; don't try to parse nothing
+      return text.trim() ? JSON.parse(text) : null;
     },
     async myProfile() { const rows = await this.rest(`/rest/v1/profiles?user_id=eq.${this.uid}&select=*`); return rows[0] || null; },
     async saveProfile(displayName, friendCode) {
