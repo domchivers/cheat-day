@@ -1,4 +1,4 @@
-# Cheat Day
+# Cheat Days
 
 Spend your cheat-day calories on purpose. Set a budget (say 1,600 kcal), scan
 what you're about to eat, say how big a slice of the day it should be ("10%",
