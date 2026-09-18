@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "10";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "11";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -293,29 +293,42 @@ function zxingDecodeCanvas(canvas) {
     return res ? res.getText() : null;
   } catch (e) { return null; }
 }
+let camToken = 0;
+const onScanView = () => stack[stack.length - 1] === "scan";
+const busyShown = () => !$("#busy").classList.contains("hidden");
 async function startCamera() {
+  const token = ++camToken;
+  stopCamera();
   $("#scan-fallback").classList.add("hidden");
   $("#barcode-manual").classList.add("hidden");
+  $("#scan-hint").textContent = "Point at a barcode. For a nutrition table, tap Read the label.";
   if (!cameraPossible()) { $("#scan-fallback").classList.remove("hidden"); return; }
   const video = $("#video");
+  let stream;
   try {
-    scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
-    video.srcObject = scanStream;
-    await video.play().catch(() => {});
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
   } catch (err) {
     console.warn("camera", err);
-    $("#scan-fallback").classList.remove("hidden");
+    if (token === camToken) $("#scan-fallback").classList.remove("hidden");
     return;
   }
+  // The user may have gone back while the camera was opening: don't leave a hidden stream running.
+  if (token !== camToken || !onScanView()) { stream.getTracks().forEach((t) => t.stop()); return; }
+  scanStream = stream;
+  video.srcObject = stream;
+  await video.play().catch(() => {});
+  // iOS ends the stream when the app is backgrounded or another app takes the camera: bring it back.
+  const track = stream.getVideoTracks()[0];
+  if (track) track.addEventListener("ended", () => { if (token === camToken && onScanView() && !busyShown()) startCamera(); });
   if (!nativeDetector && "BarcodeDetector" in window) { try { nativeDetector = new BarcodeDetector({ formats: NATIVE_FORMATS }); } catch (e) {} }
   scanning = true;
-  scanLoop(video);
+  scanLoop(video, token);
 }
-async function scanLoop(video) {
+async function scanLoop(video, token) {
   let frame = 0;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  while (scanning) {
-    if (video.readyState >= 2 && video.videoWidth) {
+  while (scanning && token === camToken) {
+    if (video.readyState >= 2 && video.videoWidth && !busyShown()) {
       let code = null;
       if (nativeDetector) {
         try { const found = await nativeDetector.detect(video); if (found.length) code = found[0].rawValue; } catch (e) {}
@@ -327,7 +340,12 @@ async function scanLoop(video) {
         const zoom = frame % 3 === 2;
         code = zxingDecodeCanvas(frameCanvas(video, 1280, rot, zoom));
       }
-      if (code) { stopCamera(); lookupBarcode(code); return; }
+      if (code && token === camToken) {
+        $("#scan-hint").textContent = `Found ${code}, looking it up…`;
+        stopCamera();
+        lookupBarcode(code);
+        return;
+      }
       frame++;
     }
     await sleep(120);
@@ -350,6 +368,10 @@ function stopCamera() {
   if (scanStream) { try { scanStream.getTracks().forEach((t) => t.stop()); } catch (e) {} scanStream = null; }
   const v = $("#video"); if (v.srcObject) v.srcObject = null;
 }
+// Coming back to the app on the scan screen: the camera needs reopening.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && onScanView() && !busyShown()) startCamera();
+});
 
 $("#scan-photo").onclick = () => { photoMode = "auto"; $("#file-scan").click(); };
 $("#scan-label").onclick = () => {
@@ -459,21 +481,29 @@ function energyFrom(n) {
 async function lookupBarcode(code) {
   busy(`Looking up ${code}…`);
   const fields = "product_name,product_name_en,brands,quantity,product_quantity,product_quantity_unit,serving_size,serving_quantity,nutriments,image_front_small_url";
-  let data;
-  try {
-    const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=${fields}`);
-    data = await r.json();
-  } catch (e) {
-    busy(false); toast("Couldn't reach Open Food Facts. Type the numbers in instead.");
-    draft = blankItem("manual"); openDetails("Enter the details"); return;
+  const url = `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=${fields}`;
+  let data = null, failure = null;
+  for (let attempt = 0; attempt < 2 && !data; attempt++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 10000);
+    try {
+      const r = await fetch(url, { signal: ctrl.signal });
+      if (r.status === 503 || r.status === 429) { failure = "busy"; await new Promise((res) => setTimeout(res, 1500)); continue; }
+      data = await r.json();
+    } catch (e) {
+      failure = ctrl.signal.aborted ? "slow" : "offline";
+    } finally { clearTimeout(timer); }
   }
   busy(false);
-  if (!data || data.status !== 1 || !data.product) {
+  if (!data) {
+    toast(failure === "offline" ? "No connection to Open Food Facts. Type the numbers in instead." : "Open Food Facts is slow right now. Try the scan again in a moment, or type the numbers in.", 5000);
+    draft = blankItem("manual"); draft.note = `Barcode ${code}. Open Food Facts didn't answer; fill in from the pack or go back and try again.`; openDetails("Enter the details"); return;
+  }
+  if (data.status !== 1 || !data.product) {
     toast(`Barcode ${code} isn't on Open Food Facts yet.`, 4000);
     draft = blankItem("manual"); draft.note = `Barcode ${code} not found. Fill in from the pack, or go back and read the label.`; openDetails("Enter the details"); return;
   }
   draft = itemFromProduct(data.product);
-  draft = item;
   openDetails("Product details");
 }
 
