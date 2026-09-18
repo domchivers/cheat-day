@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "26";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "27";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -648,13 +648,14 @@ function drawFriends() {
       const over = d.kcal > d.budget, pct = d.budget ? Math.min(100, d.kcal / d.budget * 100) : 0;
       right = `<span class="kcal ${over ? "over" : "ok"}">${fmt(d.kcal)} / ${fmt(d.budget)}</span>`;
       bar = `<span class="bar"><span style="width:${pct}%" class="${over ? "over" : ""}"></span></span>`;
-      const list = d.items || [];
+      const list = Array.isArray(d.items) ? d.items : [];
       if (!list.length) items = `<div class="items">nothing eaten yet</div>`;
-      else if (frOpen.has(f.uid)) items = `<ul class="ate">${list.map((it) => `<li><span>${esc(it.name)}</span><b>${fmt(it.kcal)}</b></li>`).join("")}</ul><div class="items">tap to close</div>`;
-      else items = `<div class="items">${esc(list.map((it) => it.name).slice(0, 4).join(", "))}${list.length > 4 ? ` and ${list.length - 4} more` : ""} · <u>tap to see all</u></div>`;
+      else if (frOpen.has(f.uid)) items = `<ul class="ate">${list.map((it) => `<li><span>${esc(it.name)}</span><b>${fmt(it.kcal)}</b></li>`).join("")}</ul><button class="btn mint ate-btn" data-act="toggle">Hide</button>`;
+      else items = `<div class="items">${esc(list.map((it) => it.name).slice(0, 3).join(", "))}${list.length > 3 ? ` and ${list.length - 3} more` : ""}</div><button class="btn mint ate-btn" data-act="toggle">What they ate (${list.length}) ▾</button>`;
     }
     card.innerHTML = `${avatar(f.uid, personName(f.uid))}<div class="body"><div class="name"><span>${esc(personName(f.uid))}</span>${right}</div>${bar}${items}</div><button class="del" aria-label="Remove friend">✕</button>`;
-    card.querySelector(".body").onclick = () => { if (frOpen.has(f.uid)) frOpen.delete(f.uid); else frOpen.add(f.uid); drawFriends(); };
+    const tog = card.querySelector("[data-act=toggle]");
+    if (tog) tog.onclick = (e) => { e.stopPropagation(); if (frOpen.has(f.uid)) frOpen.delete(f.uid); else frOpen.add(f.uid); drawFriends(); };
     card.querySelector(".del").onclick = async () => { if (!confirm(`Remove ${personName(f.uid)} as a friend?`)) return; try { await c.removeFriend(f.id); renderFriends(); } catch (e) { toast(c.explain(e)); } };
     fl.appendChild(card);
   }
