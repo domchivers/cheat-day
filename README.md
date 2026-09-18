@@ -158,6 +158,12 @@ create policy "days read" on public.days for select to authenticated using (user
 create policy "days own" on public.days for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 ```
 
+## Days and History
+
+The day turns over by itself at midnight: what you logged goes into **History**
+(the link beside Today, or Settings → See history) with its items and macros,
+and Today starts empty. "Start a new day now" in Settings does the same early.
+
 ## Macros
 
 Everything carries protein, carbs and fat where they're known: the built-in food

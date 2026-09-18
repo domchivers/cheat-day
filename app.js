@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "28";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "29";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -110,7 +110,7 @@ function basisOf(obj) {
 
 // ---------------------------------------------------------------- router
 
-const VIEWS = ["home", "budget", "settings", "friends", "scan", "search", "meals", "meal", "details", "share"];
+const VIEWS = ["home", "budget", "settings", "history", "friends", "scan", "search", "meals", "meal", "details", "share"];
 let stack = ["home"];
 function show(view) {
   for (const v of VIEWS) $(`#view-${v}`).classList.toggle("hidden", v !== view);
@@ -124,6 +124,7 @@ function show(view) {
   if (view === "search") openSearch();
   if (view === "meals") renderMeals();
   if (view === "friends") renderFriends();
+  if (view === "history") renderHistory();
   if (view === "meal") renderMeal();
 }
 function go(view) { stack.push(view); show(view); }
@@ -137,7 +138,23 @@ document.addEventListener("click", (e) => {
 
 // ---------------------------------------------------------------- home
 
+/** A new calendar day: file today under History and start clean. Runs on open, on return, and on every home render. */
+function archiveDay() {
+  if (!state.day.items.length) return;
+  const m = sumMacros(state.day.items);
+  state.history.unshift({ date: state.day.date, budget: state.budget, kcal: usedKcal(), items: state.day.items.map((it) => ({ ...basisOf(it), kcal: it.kcal, shareLabel: it.shareLabel })),
+    p: Math.round(m.p), c: Math.round(m.c), f: Math.round(m.f) });
+  state.history = state.history.slice(0, 120);
+}
+function rollDay() {
+  if (state.day.date === localDate()) return false;
+  archiveDay();
+  state.day = { date: localDate(), items: [] };
+  save();
+  return true;
+}
 function renderHome() {
+  rollDay();
   const used = usedKcal(), left = state.budget - used;
   $("#home-used").textContent = fmt(used);
   $("#home-budget").textContent = fmt(state.budget);
@@ -503,6 +520,36 @@ function ingredientFromText(line) {
   return { id: uid(), ...basisOf(food), kcal: Math.round(grams * food.kcalPer100 / 100), grams: Math.round(grams * 10) / 10, fromText: line };
 }
 
+// ---------------------------------------------------------------- history
+
+const histOpen = new Set();
+function renderHistory() {
+  const list = $("#history-list"); list.innerHTML = "";
+  const days = state.history.slice().sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  $("#history-empty").classList.toggle("hidden", days.length > 0);
+  const today = localDate();
+  for (const d of days) {
+    const card = document.createElement("div");
+    card.className = "card day-card";
+    const label = d.date === dateMinus(1) ? "Yesterday" : new Date(d.date + "T12:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+    const over = d.kcal > d.budget, pct = d.budget ? Math.min(100, d.kcal / d.budget * 100) : 0;
+    const items = Array.isArray(d.items) ? d.items : [];
+    const count = typeof d.items === "number" ? d.items : items.length;
+    let body = "";
+    if (items.length) {
+      body = histOpen.has(d.date)
+        ? `<ul class="ate">${items.map((it) => `<li><span>${esc(it.name)}</span><b>${fmt(it.kcal)}</b></li>`).join("")}</ul><button class="btn mint ate-btn" data-act="toggle">Hide</button>`
+        : `<div class="items muted tiny">${esc(items.map((it) => it.name).slice(0, 3).join(", "))}${items.length > 3 ? ` and ${items.length - 3} more` : ""}</div><button class="btn mint ate-btn" data-act="toggle">What I had (${items.length}) ▾</button>`;
+    } else if (count) body = `<div class="muted tiny">${count} item${count === 1 ? "" : "s"} (logged before history kept the details)</div>`;
+    card.innerHTML = `<div class="top"><b>${esc(label)}</b><span class="kcal ${over ? "over" : "ok"}">${fmt(d.kcal)} / ${fmt(d.budget)} kcal</span></div>
+      <span class="bar"><span style="width:${pct}%" class="${over ? "over" : ""}"></span></span>
+      ${d.p != null ? `<div class="macros">${macroText({ p: d.p, c: d.c, f: d.f }, true)}</div>` : ""}${body}`;
+    const tog = card.querySelector("[data-act=toggle]");
+    if (tog) tog.onclick = () => { if (histOpen.has(d.date)) histOpen.delete(d.date); else histOpen.add(d.date); renderHistory(); };
+    list.appendChild(card);
+  }
+}
+
 // ---------------------------------------------------------------- budget
 
 $("#budget-chips").addEventListener("click", (e) => {
@@ -526,13 +573,6 @@ function renderSettings() {
   renderAccount();
   const d = state.day.date;
   $("#s-day").textContent = d === localDate() ? "Today" : new Date(d + "T12:00").toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "short" });
-  const h = $("#pastdays-list"); h.innerHTML = "";
-  if (!state.history.length) h.innerHTML = `<li class="muted">No past days yet.</li>`;
-  for (const p of state.history) {
-    const li = document.createElement("li");
-    li.innerHTML = `<div class="body"><div class="name">${esc(p.date)}</div><div class="detail">${p.items} item${p.items === 1 ? "" : "s"} · budget ${fmt(p.budget)}</div></div><div class="kcal">${fmt(p.kcal)}</div>`;
-    h.appendChild(li);
-  }
 }
 $("#settings-save").onclick = () => {
   const b = num($("#s-budget").value);
@@ -556,11 +596,8 @@ $("#btn-update").onclick = async () => {
   location.replace(location.pathname + "?fresh=" + Date.now());   // bypasses any lingering HTTP cache too
 };
 $("#btn-new-day").onclick = () => {
-  if (state.day.items.length && !confirm("Start a fresh day? Today's list moves to past days.")) return;
-  if (state.day.items.length) {
-    state.history.unshift({ date: state.day.date, budget: state.budget, kcal: usedKcal(), items: state.day.items.length });
-    state.history = state.history.slice(0, 60);
-  }
+  if (state.day.items.length && !confirm("Start a fresh day now? Today's list goes into History.")) return;
+  archiveDay();
   state.day = { date: localDate(), items: [] };
   save(); toast("New day started"); home();
 };
@@ -898,7 +935,9 @@ function stopCamera() {
 }
 // Coming back to the app on the scan screen: the camera needs reopening.
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible" && onScanView() && !busyShown()) startCamera();
+  if (document.visibilityState !== "visible") return;
+  if (rollDay() && stack[stack.length - 1] === "home") renderHome();
+  if (onScanView() && !busyShown()) startCamera();
 });
 
 $("#scan-photo").onclick = () => { photoMode = "auto"; $("#file-scan").click(); };

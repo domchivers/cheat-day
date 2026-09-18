@@ -314,3 +314,15 @@ textarea:focus { outline: 2px solid var(--green-2); border-color: transparent; }
 .ate li { display: flex; justify-content: space-between; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 14px; background: none; border-radius: 0; margin: 0; }
 .ate li:last-child { border-bottom: 0; }
 .ate li b { color: var(--green); }
+
+/* History */
+.section-head { display: flex; align-items: baseline; justify-content: space-between; }
+.section-head .link { font-size: 14px; }
+.day-card { padding: 14px; }
+.day-card .top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.day-card .top b { font-size: 16px; }
+.day-card .top .kcal { font-weight: 700; white-space: nowrap; }
+.day-card .bar { margin-top: 8px; }
+.day-card .macros { margin-top: 6px; }
+.day-card .ate { margin-top: 8px; }
+.day-card .ate-btn { margin-top: 10px; width: auto; padding: 8px 14px; font-size: 14px; }
