@@ -24,8 +24,7 @@ Keep the black window open while you use it.
 
 | Source | What happens |
 | --- | --- |
-| **Scan a barcode** | Reads the barcode (live camera, or a photo of it) and looks the product up on [Open Food Facts](https://world.openfoodfacts.org). Free, no key needed. Not every product is there — you can always type the number or fill in the pack yourself. |
-| **Photo of the label** | Sends the photo to Claude, which reads the nutrition table (kcal per 100 g, serving size, pack size, pieces). Needs an Anthropic API key entered once in Settings; the key stays in the browser's local storage on that device. |
+| **Scan** | One camera for both. A barcode (held any way up) is looked up on [Open Food Facts](https://world.openfoodfacts.org), free, no key needed. If no barcode turns up for a few seconds and the API key is set, the app sends a frame to Claude to see whether it's looking at a nutrition table, and creates the product from it if so (at most twice per scan). "Read the label" does the same on demand. Things eaten by the piece, like sliced bread, biscuits, bars or sausages, come through with a piece name and weight so you can just say how many. |
 | **Type it in** | You enter kcal per 100 g (or per serving) and whatever else you know. |
 
 Whatever the source, you land on an editable "check the details" form before

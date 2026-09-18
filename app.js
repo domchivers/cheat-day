@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "14";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "15";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -91,6 +91,7 @@ const VIEWS = ["home", "settings", "scan", "search", "meals", "meal", "details",
 let stack = ["home"];
 function show(view) {
   for (const v of VIEWS) $(`#view-${v}`).classList.toggle("hidden", v !== view);
+  document.body.dataset.view = view;
   window.scrollTo(0, 0);
   if (view !== "scan") stopCamera();
   if (view === "home") renderHome();
@@ -444,6 +445,7 @@ function openDetails(title) {
   $("#f-unit").value = d.unit || "g";
   $("#f-kcal100").value = d.kcalPer100 ?? ""; $("#f-serving").value = d.servingSize ?? "";
   $("#f-kcalserving").value = d.kcalPerServing ?? ""; $("#f-pack").value = d.packSize ?? ""; $("#f-pieces").value = d.piecesPerPack ?? "";
+  $("#f-piece").value = d.unitLabel || "";
   $("#d-thumb").innerHTML = d.image ? `<img src="${esc(d.image)}" alt="">` : `<svg><use href="#i-image"/></svg>`;
   $("#d-badge").classList.toggle("hidden", d.source !== "barcode");
   const note = $("#d-note"); note.textContent = d.note || ""; note.classList.toggle("hidden", !d.note);
@@ -455,6 +457,7 @@ function readDetails() {
   d.name = $("#f-name").value.trim(); d.brand = $("#f-brand").value.trim(); d.unit = $("#f-unit").value;
   d.kcalPer100 = num($("#f-kcal100").value); d.servingSize = num($("#f-serving").value);
   d.kcalPerServing = num($("#f-kcalserving").value); d.packSize = num($("#f-pack").value); d.piecesPerPack = num($("#f-pieces").value);
+  d.unitLabel = $("#f-piece").value.trim().toLowerCase().replace(/s$/, "") || null;
   return d;
 }
 function syncUnitEcho() { $$(".unit-echo").forEach((el) => el.textContent = $("#f-unit").value); }
@@ -523,7 +526,7 @@ async function startCamera() {
   scanLoop(video, token);
 }
 async function scanLoop(video, token) {
-  let frame = 0;
+  let frame = 0, autoReads = 0, quietSince = Date.now();
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   while (scanning && token === camToken) {
     if (video.readyState >= 2 && video.videoWidth && !busyShown()) {
@@ -532,11 +535,9 @@ async function scanLoop(video, token) {
         try { const found = await nativeDetector.detect(video); if (found.length) code = found[0].rawValue; } catch (e) {}
       }
       if (!code) {
-        // Alternate upright and rotated frames, so a barcode held sideways reads just as well.
-        // Every third pass zooms on the middle, which helps with small barcodes held far away.
-        const rot = frame % 2 ? 90 : 0;
+        // Upright and sideways every frame; every third pass also zooms on the middle for small barcodes.
         const zoom = frame % 3 === 2;
-        code = zxingDecodeCanvas(frameCanvas(video, 1280, rot, zoom));
+        code = zxingDecodeCanvas(frameCanvas(video, 1280, 0, zoom)) || zxingDecodeCanvas(frameCanvas(video, 1280, 90, zoom));
       }
       if (code && token === camToken) {
         $("#scan-hint").textContent = `Found ${code}, looking it up…`;
@@ -545,9 +546,36 @@ async function scanLoop(video, token) {
         return;
       }
       frame++;
+      // No barcode for a while: maybe it's a nutrition table. Let Claude look, at most twice.
+      const quiet = Date.now() - quietSince;
+      if (quiet > 4500 && autoReads < 2 && state.apiKey) {
+        autoReads++; quietSince = Date.now();
+        $("#scan-hint").textContent = "No barcode yet, checking for a nutrition table…";
+        const found = await autoReadLabel(video, token);
+        if (found || token !== camToken) return;
+        $("#scan-hint").textContent = autoReads < 2 ? "Not a nutrition table yet. Get closer, or keep looking for the barcode." : "Point at the barcode, or tap Read the label when the table is in view.";
+      } else if (quiet > 4500 && !state.apiKey && autoReads === 0) {
+        autoReads = 1;
+        $("#scan-hint").textContent = "No barcode? Tap Read the label for a nutrition table (needs the API key in Settings).";
+      }
     }
     await sleep(120);
   }
+}
+/** Sends the current frame to Claude; true if it was a nutrition table and the product page opened. */
+async function autoReadLabel(video, token) {
+  const blob = await new Promise((res) => drawScaled(video, 1600).toBlob(res, "image/jpeg", 0.9));
+  busy("Checking for a nutrition table…");
+  try {
+    const item = await readLabelWithClaude(blob, true);
+    busy(false);
+    if (!item) return false;
+    if (token !== camToken) return true;
+    stopCamera();
+    draft = item;
+    openDetails("Nutrition (from photo)");
+    return true;
+  } catch (err) { busy(false); console.warn("auto label", err); return false; }
 }
 function frameCanvas(video, maxW, rot, zoom) {
   const vw = video.videoWidth, vh = video.videoHeight;
@@ -634,6 +662,30 @@ function drawScaled(img, maxW, rot = 0) {
 }
 // ---------------------------------------------------------------- Open Food Facts
 
+/** "1 slice (44 g)", "2 biscuits (33g)", "per bar" -> what one piece is and weighs. */
+function pieceFromServing(text) {
+  const t = String(text || "").toLowerCase();
+  const m = t.match(/(\d+(?:[.,]\d+)?)?\s*(slices?|biscuits?|cookies?|bars?|pieces?|eggs?|sausages?|nuggets?|wraps?|rolls?|crackers?|squares?|sweets?|cans?|bottles?|pots?|scoops?|buns?|pancakes?|waffles?|muffins?|crumpets?|bagels?|fingers?|sticks?|cubes?|balls?|tablets?)\b/);
+  if (!m) return null;
+  const count = m[1] ? parseFloat(m[1].replace(",", ".")) : 1;
+  const g = t.match(/(\d+(?:[.,]\d+)?)\s*(g|ml)\b/);
+  return { count: count || 1, word: m[2].replace(/s$/, ""), grams: g ? parseFloat(g[1].replace(",", ".")) : null };
+}
+const CATEGORY_PIECES = [
+  [/sliced-bread|\bbreads?\b|loaf|loaves|toast/, "slice", 40], [/bread-rolls|\bbuns\b|baps|burger-buns|brioche/, "roll", 60],
+  [/crumpets/, "crumpet", 45], [/bagels/, "bagel", 85], [/tortillas|wraps/, "wrap", 60], [/pancakes/, "pancake", 40],
+  [/biscuits|cookies|shortbread|digestives/, "biscuit", 12], [/crackers|crispbreads|rice-cakes/, "cracker", 8], [/wafers/, "wafer", 10],
+  [/cereal-bars|protein-bars|chocolate-bars|candy-bars|snack-bars|granola-bars/, "bar", null], [/sausages|frankfurters|hot-dogs/, "sausage", 60],
+  [/\beggs\b/, "egg", 55], [/fish-fingers/, "finger", 28], [/chicken-nuggets/, "nugget", 18], [/cheese-slices|sliced-cheeses/, "slice", 20],
+  [/sliced-hams|\bhams\b|cooked-meats|charcuterie/, "slice", 25], [/muffins/, "muffin", 100], [/croissants/, "croissant", 60], [/doughnuts|donuts/, "doughnut", 60],
+  [/ice-cream-bars|ice-lollies|ice-pops/, "lolly", 70], [/yogurts|desserts/, "pot", null], [/beverages|drinks|sodas|beers|ciders|wines/, "can", null]
+];
+function pieceFromCategories(tags) {
+  const t = (Array.isArray(tags) ? tags : []).join(" ").toLowerCase();
+  for (const [re, word, g] of CATEGORY_PIECES) if (re.test(t)) return { word, defaultG: g };
+  return null;
+}
+
 /** Turn an Open Food Facts product into one of our items. */
 function itemFromProduct(p) {
   const n = p.nutriments || {};
@@ -653,8 +705,22 @@ function itemFromProduct(p) {
     if (item.kcalPerServing > expected * 2 && Math.abs(item.kcalPerServing / 4.184 - expected) / expected < 0.25) { item.kcalPerServing = Math.round(item.kcalPerServing / 4.184); energy.fixed = true; }
   }
   item.packSize = num(p.product_quantity);
-  if (!item.kcalPer100 && !item.kcalPerServing) item.note = "Open Food Facts has this product but no calorie data. Fill it in from the pack.";
-  else if (energy.fixed) item.note = "Open Food Facts had kJ in the kcal box for this one; I've converted it. Worth a glance at the pack.";
+  const notes = [];
+  if (!item.kcalPer100 && !item.kcalPerServing) notes.push("Open Food Facts has this product but no calorie data. Fill it in from the pack.");
+  else if (energy.fixed) notes.push("Open Food Facts had kJ in the kcal box for this one; I've converted it. Worth a glance at the pack.");
+  // Things eaten by the piece: bread by the slice, biscuits, bars, sausages...
+  const fromText = pieceFromServing(p.serving_size), fromCat = pieceFromCategories(p.categories_tags);
+  if (fromText || fromCat) {
+    item.unitLabel = (fromText && fromText.word) || fromCat.word;
+    if (fromText && fromText.grams) item.servingSize = fromText.grams / fromText.count;
+    if (fromText && fromText.count > 1 && item.kcalPerServing) item.kcalPerServing = Math.round(item.kcalPerServing / fromText.count);
+    if (!item.servingSize && !(item.packSize && item.piecesPerPack) && fromCat && fromCat.defaultG) {
+      item.servingSize = fromCat.defaultG; item.kcalPerServing = null;
+      notes.push(`I've assumed ${fromCat.defaultG} g per ${item.unitLabel}; the pack will say.`);
+    }
+    if (item.packSize && item.servingSize && !item.piecesPerPack) item.piecesPerPack = Math.round(item.packSize / item.servingSize);
+  }
+  item.note = notes.join(" ");
   return item;
 }
 
@@ -678,7 +744,7 @@ function energyFrom(n) {
 
 async function lookupBarcode(code) {
   busy(`Looking up ${code}…`);
-  const fields = "product_name,product_name_en,brands,quantity,product_quantity,product_quantity_unit,serving_size,serving_quantity,nutriments,image_front_small_url";
+  const fields = "product_name,product_name_en,brands,quantity,product_quantity,product_quantity_unit,serving_size,serving_quantity,nutriments,image_front_small_url,categories_tags";
   const url = `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=${fields}`;
   let data = null, failure = null;
   for (let attempt = 0; attempt < 2 && !data; attempt++) {
@@ -781,7 +847,7 @@ async function searchOpenFoodFacts(query) {
   status.textContent = "Looking on Open Food Facts…"; status.classList.remove("hidden");
   const ctrl = new AbortController(); searchAbort = ctrl;
   const timeout = setTimeout(() => ctrl.abort(), 8000);
-  const fields = "code,product_name,product_name_en,brands,quantity,product_quantity,product_quantity_unit,serving_size,serving_quantity,nutriments,image_front_small_url";
+  const fields = "code,product_name,product_name_en,brands,quantity,product_quantity,product_quantity_unit,serving_size,serving_quantity,nutriments,image_front_small_url,categories_tags";
   try {
     const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=10&fields=${fields}`;
     let r = await fetch(url, { signal: ctrl.signal });
@@ -855,15 +921,18 @@ const LABEL_SCHEMA = {
     kcal_per_serving: { type: ["number", "null"], description: "kcal per serving/portion, if stated" },
     pack_size: { type: ["number", "null"], description: "Total pack net weight/volume in g or ml, if visible" },
     pieces_per_pack: { type: ["number", "null"], description: "Number of pieces/bars/biscuits per pack, if stated" },
+    piece_name: { type: ["string", "null"], description: "If it's eaten by the piece, what one is called: slice, biscuit, bar, sausage… else null" },
+    is_nutrition_label: { type: "boolean", description: "true only if a nutrition table or energy figures are actually visible" },
     confidence: { type: "string", enum: ["high", "medium", "low"] },
     notes: { type: "string", description: "Anything unclear, e.g. 'values are per 30g portion; per-100 not shown'" }
   },
-  required: ["name", "brand", "unit", "kcal_per_100", "serving_size", "kcal_per_serving", "pack_size", "pieces_per_pack", "confidence", "notes"],
+  required: ["name", "brand", "unit", "kcal_per_100", "serving_size", "kcal_per_serving", "pack_size", "pieces_per_pack", "piece_name", "is_nutrition_label", "confidence", "notes"],
   additionalProperties: false
 };
 const LABEL_PROMPT = `This is a photo of a food or drink product, its nutrition table, or both. Read the energy information off it.
 Report only numbers you can actually read on the label; use null for anything not visible rather than guessing.
-If energy is given in kJ only, convert to kcal (kcal = kJ / 4.184). If values are per portion only, fill kcal_per_serving and serving_size and leave kcal_per_100 null.`;
+If energy is given in kJ only, convert to kcal (kcal = kJ / 4.184). If values are per portion only, fill kcal_per_serving and serving_size and leave kcal_per_100 null.
+If no nutrition table or energy figure is visible at all, set is_nutrition_label to false and leave the numbers null.`;
 
 /** One structured-output request to Claude; returns the parsed JSON. */
 async function askClaude(schema, content, effort = "medium") {
@@ -899,7 +968,7 @@ async function askClaude(schema, content, effort = "medium") {
   try { return JSON.parse(text); } catch (e) { throw new Error("Couldn't understand Claude's answer. Try again."); }
 }
 
-async function readLabelWithClaude(file) {
+async function readLabelWithClaude(file, quiet = false) {
   const img = await loadImage(file);
   const dataUrl = drawScaled(img, 1280).toDataURL("image/jpeg", 0.85);
   const b64 = dataUrl.split(",")[1];
@@ -907,8 +976,13 @@ async function readLabelWithClaude(file) {
     { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } },
     { type: "text", text: LABEL_PROMPT }
   ]);
+  if (parsed.is_nutrition_label === false || (!num(parsed.kcal_per_100) && !num(parsed.kcal_per_serving))) {
+    if (quiet) return null;
+    throw new Error("Can't see a nutrition table in that photo. Get closer and try again.");
+  }
   const item = blankItem("label");
   item.name = parsed.name || ""; item.brand = parsed.brand || "";
+  item.unitLabel = parsed.piece_name ? String(parsed.piece_name).toLowerCase().replace(/s$/, "") : null;
   item.unit = parsed.unit === "ml" ? "ml" : "g";
   item.kcalPer100 = num(parsed.kcal_per_100) ? Math.round(parsed.kcal_per_100) : null;
   item.servingSize = num(parsed.serving_size);
@@ -929,7 +1003,7 @@ let amountKcal = null;   // the amount currently on the How much? screen
 function conv(item) {
   const kcalPer100 = item.kcalPer100 || (item.kcalPerServing && item.servingSize ? item.kcalPerServing / item.servingSize * 100 : null);
   let countKcal = null, countLabel = null;
-  if (item.piecesPerPack && item.packSize && kcalPer100) { countKcal = item.packSize / item.piecesPerPack * kcalPer100 / 100; countLabel = "piece"; }
+  if (item.piecesPerPack && item.packSize && kcalPer100) { countKcal = item.packSize / item.piecesPerPack * kcalPer100 / 100; countLabel = item.unitLabel || "piece"; }
   else if (item.kcalPerServing) { countKcal = item.kcalPerServing; countLabel = item.unitLabel || "serving"; }
   else if (item.servingSize && kcalPer100) { countKcal = item.servingSize * kcalPer100 / 100; countLabel = "serving"; }
   return { kcalPer100, countKcal, countLabel };

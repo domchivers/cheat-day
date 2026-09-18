@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=14">
-  <link rel="icon" href="icons/icon-192.png?v=14">
-  <link rel="stylesheet" href="styles.css?v=14">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=15">
+  <link rel="icon" href="icons/icon-192.png?v=15">
+  <link rel="stylesheet" href="styles.css?v=15">
 </head>
 <body>
 
@@ -148,7 +148,7 @@
       <button class="btn light" id="scan-photo">Take a photo</button>
       <small>of the barcode or the nutrition table</small>
     </div>
-    <div class="pill"><svg><use href="#i-barcode"/></svg><span id="scan-hint">Point at a barcode. For a nutrition table, tap Read the label.</span></div>
+    <div class="pill"><svg><use href="#i-barcode"/></svg><span id="scan-hint">Point at a barcode, or hold the nutrition table in view and it reads itself.</span></div>
   </div>
   <div class="pad">
     <button class="btn primary" id="scan-label">Read the label</button>
@@ -264,6 +264,10 @@
       <label>Pieces in pack
         <input type="number" inputmode="numeric" id="f-pieces" placeholder="e.g. 12">
       </label>
+      <label class="span2">Sold in pieces? What's one called
+        <input type="text" id="f-piece" placeholder="e.g. slice, biscuit, bar" autocapitalize="off">
+        <small>Then you can just say how many. Serving size above is the weight of one.</small>
+      </label>
     </div>
   </div>
   <div class="pad">
@@ -315,10 +319,10 @@
 <div class="toast hidden" id="toast"></div>
 
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=14"></script>
-<script src="foods.js?v=14"></script>
-<script src="supabase-config.js?v=14"></script>
-<script src="cloud.js?v=14"></script>
-<script src="app.js?v=14"></script>
+<script src="presets.js?v=15"></script>
+<script src="foods.js?v=15"></script>
+<script src="supabase-config.js?v=15"></script>
+<script src="cloud.js?v=15"></script>
+<script src="app.js?v=15"></script>
 </body>
 </html>
