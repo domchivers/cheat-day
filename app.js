@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "19";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "20";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -18,11 +18,13 @@ function localDate(d = new Date()) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 function load() {
-  const base = { budget: 1600, apiKey: "", day: { date: localDate(), items: [] }, history: [], recent: [], meals: [], presetUses: {}, mealDraft: null };
+  const base = { budget: 1600, apiKey: "", day: { date: localDate(), items: [] }, history: [], recent: [], meals: [], presetUses: {}, mealDraft: null, shareDay: true, sharedMealIds: [] };
   try { const raw = localStorage.getItem(STORE_KEY); if (raw) Object.assign(base, JSON.parse(raw)); } catch (e) {}
   if (!Array.isArray(base.recent)) base.recent = [];
   if (!Array.isArray(base.meals)) base.meals = [];
   if (!base.presetUses || typeof base.presetUses !== "object") base.presetUses = {};
+  if (!Array.isArray(base.sharedMealIds)) base.sharedMealIds = [];
+  if (base.shareDay == null) base.shareDay = true;
   return base;
 }
 function save(sync = true) {
@@ -108,7 +110,7 @@ function basisOf(obj) {
 
 // ---------------------------------------------------------------- router
 
-const VIEWS = ["home", "budget", "settings", "scan", "search", "meals", "meal", "details", "share"];
+const VIEWS = ["home", "budget", "settings", "friends", "scan", "search", "meals", "meal", "details", "share"];
 let stack = ["home"];
 function show(view) {
   for (const v of VIEWS) $(`#view-${v}`).classList.toggle("hidden", v !== view);
@@ -121,6 +123,7 @@ function show(view) {
   if (view === "scan") startCamera();
   if (view === "search") openSearch();
   if (view === "meals") renderMeals();
+  if (view === "friends") renderFriends();
   if (view === "meal") renderMeal();
 }
 function go(view) { stack.push(view); show(view); }
@@ -338,6 +341,9 @@ function renderMeal() {
   $("#m-macros").innerHTML = m.items.length ? `Per portion: ${macroText({ p: t.p / portions, c: t.c / portions, f: t.f / portions }, true)}${t.macroMissing ? ` <span class="tiny">(${t.macroMissing} ingredient${t.macroMissing === 1 ? "" : "s"} without macros)</span>` : ""}` : "";
   $("#m-use").classList.toggle("hidden", !m.saved);
   $("#m-share").classList.toggle("hidden", !m.saved);
+  const canFriends = m.saved && window.cloud && window.cloud.user;
+  $("#m-share-friends").classList.toggle("hidden", !canFriends);
+  $("#m-share-friends").textContent = state.sharedMealIds.includes(m.id) ? "Stop sharing with friends" : "Share with friends";
   $("#m-save").textContent = m.saved ? "Save changes" : "Save meal";
 }
 $("#m-name").addEventListener("input", (e) => { mealDraft.name = e.target.value; state.mealDraft = mealDraft; save(false); });
@@ -422,6 +428,22 @@ async function importMealFromLink() {
   state.meals.unshift({ id: uid(), name: m.name, portions, items: m.items.map((it) => ({ ...it, id: uid() })), saved: true, shared: true, updatedAt: new Date().toISOString() });
   save(); toast(`Added ${m.name}`); stack = ["home", "meals"]; show("meals");
 }
+$("#m-share-friends").onclick = async () => {
+  const c = window.cloud; if (!c || !c.user) return;
+  const m = state.meals.find((x) => x.id === mealDraft.id) || mealDraft;
+  busy("Talking to the cloud…");
+  try {
+    if (state.sharedMealIds.includes(m.id)) {
+      await c.unshareMeal(m.id); state.sharedMealIds = state.sharedMealIds.filter((x) => x !== m.id); toast("No longer shared");
+    } else {
+      const t = mealTotals(m), portions = num(m.portions) || 1;
+      await c.shareMeal({ id: m.id, name: m.name, portions, kcalPerPortion: Math.round(t.kcal / portions), items: m.items.map((it) => ({ ...basisOf(it), kcal: it.kcal, grams: it.grams })) });
+      state.sharedMealIds.push(m.id); toast("Shared. Friends will see it under From friends.");
+    }
+    save(); renderMeal();
+  } catch (err) { toast("Couldn't share: " + c.explain(err), 5000); }
+  busy(false);
+};
 $("#m-use").onclick = () => { const m = state.meals.find((x) => x.id === mealDraft.id) || mealDraft; draft = { ...mealBasis(m), note: "" }; openShare(); };
 function deleteMeal(m) {
   if (!confirm(`Delete "${m.name}"?
@@ -539,6 +561,149 @@ $("#btn-new-day").onclick = () => {
   state.day = { date: localDate(), items: [] };
   save(); toast("New day started"); home();
 };
+
+
+// ---------------------------------------------------------------- friends: codes, requests, each other's day, the week, shared meals
+
+let fr = { profile: null, friendships: [], people: {}, days: [], meals: [] };
+const dateMinus = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return localDate(d); };
+function makeFriendCode(name) {
+  const letters = (name || "").replace(/[^a-z]/gi, "").slice(0, 3).toUpperCase().padEnd(3, "X");
+  return `${letters}-${1000 + Math.floor(Math.random() * 9000)}`;
+}
+async function ensureProfile() {
+  const c = window.cloud;
+  let prof = await c.myProfile();
+  if (!prof) {
+    const name = (c.user.email || "").split("@")[0];
+    for (let i = 0; i < 3 && !prof; i++) {
+      try { prof = (await c.saveProfile(name, makeFriendCode(name)))[0]; } catch (e) { if (i === 2) throw e; }
+    }
+  }
+  fr.profile = prof;
+}
+async function renderFriends() {
+  const c = window.cloud, signed = !!(c && c.user);
+  $("#fr-signin").classList.toggle("hidden", signed);
+  $("#fr-body").classList.toggle("hidden", !signed);
+  if (!signed) return;
+  $("#fr-share-day").checked = !!state.shareDay;
+  busy("Fetching your friends…");
+  try {
+    await ensureProfile();
+    fr.friendships = await c.friendships();
+    const ids = new Set();
+    for (const f of fr.friendships) { ids.add(f.requester); ids.add(f.addressee); }
+    ids.delete(c.uid);
+    const people = await c.profiles([...ids]);
+    fr.people = {}; for (const p of people) fr.people[p.user_id] = p;
+    fr.days = await c.days(dateMinus(6));
+    fr.meals = await c.sharedMeals();
+  } catch (err) { busy(false); toast("Friends aren't set up yet: " + c.explain(err), 6000); return; }
+  busy(false);
+  drawFriends();
+}
+const personName = (id) => (fr.people[id] && fr.people[id].display_name) || "Someone";
+function drawFriends() {
+  const c = window.cloud, me = c.uid;
+  if (document.activeElement !== $("#fr-name")) $("#fr-name").value = fr.profile.display_name || "";
+  $("#fr-code").textContent = fr.profile.friend_code;
+  // requests waiting for me
+  const pending = fr.friendships.filter((f) => f.status === "pending" && f.addressee === me);
+  const sent = fr.friendships.filter((f) => f.status === "pending" && f.requester === me);
+  const pl = $("#fr-pending"); pl.innerHTML = "";
+  $("#fr-pending-title").classList.toggle("hidden", !pending.length && !sent.length);
+  for (const f of pending) {
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="thumb-sm"><svg><use href="#i-friends"/></svg></span><div class="body"><div class="name">${esc(personName(f.requester))}</div><div class="detail">wants to be friends</div></div>
+      <button class="add" aria-label="Accept"><svg><use href="#i-plus"/></svg></button><button class="del" aria-label="Decline">✕</button>`;
+    li.querySelector(".add").onclick = async () => { try { await c.acceptFriend(f.id); toast(`You and ${personName(f.requester)} are friends`); renderFriends(); } catch (e) { toast(c.explain(e)); } };
+    li.querySelector(".del").onclick = async () => { try { await c.removeFriend(f.id); renderFriends(); } catch (e) { toast(c.explain(e)); } };
+    pl.appendChild(li);
+  }
+  for (const f of sent) {
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="thumb-sm"><svg><use href="#i-friends"/></svg></span><div class="body"><div class="name">${esc(personName(f.addressee))}</div><div class="detail">request sent, waiting for them</div></div><button class="del" aria-label="Cancel">✕</button>`;
+    li.querySelector(".del").onclick = async () => { try { await c.removeFriend(f.id); renderFriends(); } catch (e) { toast(c.explain(e)); } };
+    pl.appendChild(li);
+  }
+  // friends and their day
+  const friends = fr.friendships.filter((f) => f.status === "accepted").map((f) => ({ id: f.id, uid: f.requester === me ? f.addressee : f.requester }));
+  const today = localDate();
+  const fl = $("#fr-list"); fl.innerHTML = "";
+  for (const f of friends) {
+    const d = fr.days.find((x) => x.user_id === f.uid && x.day === today);
+    const li = document.createElement("li");
+    let detail = "hasn't shared today";
+    if (d) {
+      const names = (d.items || []).map((it) => it.name).slice(0, 4).join(", ");
+      const over = d.kcal > d.budget;
+      detail = `<span class="${over ? "over" : "ok"}">${fmt(d.kcal)} / ${fmt(d.budget)} kcal</span> today${names ? ` · ${esc(names)}${(d.items || []).length > 4 ? "…" : ""}` : ""}
+        <span class="bar"><span style="width:${Math.min(100, d.budget ? d.kcal / d.budget * 100 : 0)}%" class="${over ? "over" : ""}"></span></span>`;
+    }
+    li.innerHTML = `<span class="thumb-sm"><svg><use href="#i-friends"/></svg></span><div class="body"><div class="name">${esc(personName(f.uid))}</div><div class="detail">${detail}</div></div><button class="del" aria-label="Remove friend">✕</button>`;
+    li.querySelector(".del").onclick = async () => { if (!confirm(`Remove ${personName(f.uid)} as a friend?`)) return; try { await c.removeFriend(f.id); renderFriends(); } catch (e) { toast(c.explain(e)); } };
+    fl.appendChild(li);
+  }
+  $("#fr-empty").classList.toggle("hidden", friends.length > 0);
+  // the week: everyone with days in the last 7, me included
+  const byUser = {};
+  for (const d of fr.days) { (byUser[d.user_id] = byUser[d.user_id] || []).push(d); }
+  if (!byUser[me] && state.shareDay) byUser[me] = [{ user_id: me, day: today, budget: state.budget, kcal: usedKcal() }];
+  const rows = Object.entries(byUser).map(([uid, ds]) => {
+    const onBudget = ds.filter((d) => d.kcal <= d.budget).length;
+    const pct = ds.reduce((a, d) => a + (d.budget ? d.kcal / d.budget : 0), 0) / ds.length * 100;
+    return { uid, name: uid === me ? "You" : personName(uid), days: ds.length, onBudget, pct };
+  }).sort((a, b) => (b.onBudget - a.onBudget) || (a.pct - b.pct));
+  const wl = $("#fr-week"); wl.innerHTML = "";
+  rows.forEach((r, i) => {
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="rank">${i + 1}</span><div class="body"><div class="name">${esc(r.name)}</div><div class="detail">${r.onBudget} of ${r.days} day${r.days === 1 ? "" : "s"} on budget · ${fmt(r.pct)}% of budget used on average</div></div>`;
+    wl.appendChild(li);
+  });
+  if (!rows.length) wl.innerHTML = `<li class="muted">Nobody has shared a day yet this week.</li>`;
+  // meals from friends
+  const ml = $("#fr-meals"); ml.innerHTML = "";
+  const theirs = fr.meals.filter((m) => m.owner !== me);
+  for (const m of theirs) {
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="thumb-sm tone-peach"><svg><use href="#i-meal"/></svg></span><div class="body"><div class="name">${esc(m.name)}</div><div class="detail">${esc(personName(m.owner))} · ${m.portions} portion${m.portions == 1 ? "" : "s"} · ${fmt(m.kcal_per_portion)} kcal each · ${(m.items || []).length} ingredients</div></div><button class="add" aria-label="Copy to my meals"><svg><use href="#i-plus"/></svg></button>`;
+    li.querySelector(".add").onclick = () => {
+      if (state.meals.some((x) => x.copiedFrom === m.id) && !confirm(`You already have "${m.name}". Add another copy?`)) return;
+      state.meals.unshift({ id: uid(), name: m.name, portions: +m.portions || 1, items: (m.items || []).map((it) => ({ ...it, id: uid() })), saved: true, copiedFrom: m.id, updatedAt: new Date().toISOString() });
+      save(); toast(`${m.name} is in your meals`);
+    };
+    ml.appendChild(li);
+  }
+  $("#fr-meals-empty").classList.toggle("hidden", theirs.length > 0);
+}
+$("#fr-save-name").onclick = async () => {
+  const c = window.cloud, name = $("#fr-name").value.trim();
+  if (!name) { toast("Type a name first"); return; }
+  try { fr.profile = (await c.saveProfile(name, fr.profile.friend_code))[0]; toast("Saved"); drawFriends(); } catch (e) { toast(c.explain(e)); }
+};
+$("#fr-share-code").onclick = async () => {
+  const code = fr.profile.friend_code, text = `Add me on Cheat Days: my friend code is ${code}. ${location.origin}${location.pathname}`;
+  try { if (navigator.share) await navigator.share({ text }); else { await navigator.clipboard.writeText(text); toast("Copied. Send it to a friend."); } } catch (e) {}
+};
+$("#fr-share-day").addEventListener("change", (e) => {
+  state.shareDay = e.target.checked; save();
+  if (!state.shareDay && window.cloud) window.cloud.unpublishDays().catch(() => {});
+  toast(state.shareDay ? "Friends can see your day" : "Your day is private again");
+});
+$("#fr-add-go").onclick = async () => {
+  const c = window.cloud, code = $("#fr-add").value.trim().toUpperCase().replace(/\s+/g, "");
+  if (!code) return;
+  busy("Looking for that code…");
+  try {
+    const p = await c.findByCode(code);
+    if (!p) { busy(false); toast("No one has that code. Check it with them."); return; }
+    if (p.user_id === c.uid) { busy(false); toast("That's your own code"); return; }
+    await c.requestFriend(p.user_id);
+    busy(false); $("#fr-add").value = ""; toast(`Request sent to ${p.display_name || "them"}`); renderFriends();
+  } catch (err) { busy(false); toast(c.explain(err), 5000); }
+};
+$("#fr-add").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#fr-add-go").click(); });
 
 // ---------------------------------------------------------------- item details
 
@@ -1209,7 +1374,7 @@ $("#share-add").onclick = () => {
 
 // ---------------------------------------------------------------- account + sync (optional, see cloud.js)
 
-const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "updatedAt"];   // the API key stays on the device
+const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "updatedAt"];   // the API key stays on the device
 let pushTimer = null;
 function schedulePush() {
   if (!window.cloud || !window.cloud.user) return;
@@ -1217,7 +1382,13 @@ function schedulePush() {
   pushTimer = setTimeout(() => {
     const data = {}; for (const k of SYNC_KEYS) data[k] = state[k];
     window.cloud.push(data).catch((err) => syncProblem(err));
+    publishDay();
   }, 600);
+}
+function publishDay() {
+  const c = window.cloud; if (!c || !c.user || !state.shareDay) return;
+  const items = state.day.items.map((it) => ({ name: it.name, kcal: it.kcal }));
+  c.publishDay({ date: state.day.date, budget: state.budget, kcal: usedKcal(), items }).catch(() => {});
 }
 let syncWarned = false;
 function syncProblem(err) {
@@ -1259,7 +1430,7 @@ function cloudInit() {
   renderAccount();
   if (!c) return;
   c.onAuth((u) => { renderAccount(); if (u) pull(); });
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") pull(); });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { pull(); if (stack[stack.length - 1] === "friends") renderFriends(); } });
   if (c.user) pull();
 }
 async function acct(action) {

@@ -87,6 +87,36 @@
       });
       if (!r.ok) throw await authError(r, `Couldn't save to the cloud (${r.status})`);
     },
+    // ---- friends: profiles with a friend code, requests, accepted friendships
+    get uid() { return signedIn() ? session.user.id : null; },
+    async rest(path, opts = {}) {
+      const r = await sbAuthed(path, opts);
+      if (!r.ok) throw await authError(r, `Cloud request failed (${r.status})`);
+      return r.status === 204 ? null : r.json();
+    },
+    async myProfile() { const rows = await this.rest(`/rest/v1/profiles?user_id=eq.${this.uid}&select=*`); return rows[0] || null; },
+    async saveProfile(displayName, friendCode) {
+      return this.rest(`/rest/v1/profiles`, { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+        body: JSON.stringify([{ user_id: this.uid, display_name: displayName, friend_code: friendCode, updated_at: new Date().toISOString() }]) });
+    },
+    async findByCode(code) { const rows = await this.rest(`/rest/v1/profiles?friend_code=eq.${encodeURIComponent(code)}&select=user_id,display_name,friend_code`); return rows[0] || null; },
+    async profiles(ids) { if (!ids.length) return []; return this.rest(`/rest/v1/profiles?user_id=in.(${ids.join(",")})&select=user_id,display_name,friend_code`); },
+    async friendships() { return this.rest(`/rest/v1/friendships?select=*&order=created_at.desc`); },
+    async requestFriend(otherId) { return this.rest(`/rest/v1/friendships`, { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify([{ requester: this.uid, addressee: otherId }]) }); },
+    async acceptFriend(id) { return this.rest(`/rest/v1/friendships?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ status: "accepted" }) }); },
+    async removeFriend(id) { return this.rest(`/rest/v1/friendships?id=eq.${id}`, { method: "DELETE" }); },
+    async sharedMeals() { return this.rest(`/rest/v1/shared_meals?select=*&order=updated_at.desc`); },
+    async shareMeal(m) {
+      return this.rest(`/rest/v1/shared_meals?on_conflict=owner,meal_id`, { method: "POST", headers: { Prefer: "resolution=merge-duplicates" },
+        body: JSON.stringify([{ owner: this.uid, meal_id: m.id, name: m.name, portions: m.portions, kcal_per_portion: m.kcalPerPortion, items: m.items, updated_at: new Date().toISOString() }]) });
+    },
+    async unshareMeal(mealId) { return this.rest(`/rest/v1/shared_meals?owner=eq.${this.uid}&meal_id=eq.${encodeURIComponent(mealId)}`, { method: "DELETE" }); },
+    async publishDay(day) {
+      return this.rest(`/rest/v1/days`, { method: "POST", headers: { Prefer: "resolution=merge-duplicates" },
+        body: JSON.stringify([{ user_id: this.uid, day: day.date, budget: day.budget, kcal: day.kcal, items: day.items, updated_at: new Date().toISOString() }]) });
+    },
+    async unpublishDays() { return this.rest(`/rest/v1/days?user_id=eq.${this.uid}`, { method: "DELETE" }); },
+    async days(sinceDate) { return this.rest(`/rest/v1/days?day=gte.${sinceDate}&select=*&order=day.desc`); },
     explain(err) {
       const m = String((err && err.message) || err || "").toLowerCase();
       if (m.includes("invalid login") || m.includes("invalid credentials")) return "Email or password isn't right.";
@@ -95,7 +125,9 @@
       if (m.includes("valid email") || m.includes("invalid email")) return "That email address doesn't look right.";
       if (m.includes("failed to fetch") || m.includes("network")) return "No connection. Try again when you're online.";
       if (m.includes("rate limit") || m.includes("too many")) return "Too many tries. Wait a minute and try again.";
-      if (m.includes("schema cache") || (m.includes("relation") && m.includes("does not exist"))) return "The cheatday table isn't in Supabase yet. See the README.";
+      if (m.includes("schema cache") || (m.includes("relation") && m.includes("does not exist"))) return "A table is missing in Supabase. Run the SQL from the README.";
+      if (m.includes("duplicate key") && m.includes("friendships")) return "You've already sent that person a request.";
+      if (m.includes("duplicate key") && m.includes("friend_code")) return "That code clashed; try saving again.";
       return (err && err.message) || "Something went wrong.";
     }
   };

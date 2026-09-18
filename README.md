@@ -85,6 +85,79 @@ A saved meal behaves like any food: add one portion or three to a day, find it
 in Search, and it appears in Quick add. Editing a meal later doesn't change days
 it was already added to.
 
+## Friends
+
+The **Friends** card needs an account (Settings → Account). Everyone gets a
+friend code like `DOM-4821`; add a friend by typing theirs, they accept, done.
+Friends then see each other's day (today's total and what was eaten, switchable
+off), a **This week** table sorted by days on budget, and a **From friends**
+list of meals shared with "Share with friends" in the meal editor.
+
+One-off setup in the Supabase SQL Editor, in addition to the `cheatday` table:
+
+```sql
+create table if not exists public.profiles (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  display_name text not null default '',
+  friend_code text unique not null,
+  updated_at timestamptz not null default now()
+);
+alter table public.profiles enable row level security;
+create policy "profiles read" on public.profiles for select to authenticated using (true);
+create policy "profiles insert" on public.profiles for insert to authenticated with check (auth.uid() = user_id);
+create policy "profiles update" on public.profiles for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create table if not exists public.friendships (
+  id uuid primary key default gen_random_uuid(),
+  requester uuid not null references auth.users(id) on delete cascade,
+  addressee uuid not null references auth.users(id) on delete cascade,
+  status text not null default 'pending' check (status in ('pending','accepted')),
+  created_at timestamptz not null default now(),
+  unique (requester, addressee)
+);
+alter table public.friendships enable row level security;
+create policy "friendships see" on public.friendships for select to authenticated using (auth.uid() = requester or auth.uid() = addressee);
+create policy "friendships request" on public.friendships for insert to authenticated with check (auth.uid() = requester and requester <> addressee);
+create policy "friendships accept" on public.friendships for update to authenticated using (auth.uid() = addressee) with check (auth.uid() = addressee);
+create policy "friendships remove" on public.friendships for delete to authenticated using (auth.uid() = requester or auth.uid() = addressee);
+
+create or replace function public.is_friend(other uuid) returns boolean
+language sql security definer stable as $$
+  select exists (
+    select 1 from public.friendships f where f.status = 'accepted'
+      and ((f.requester = auth.uid() and f.addressee = other) or (f.addressee = auth.uid() and f.requester = other))
+  );
+$$;
+
+create table if not exists public.shared_meals (
+  id uuid primary key default gen_random_uuid(),
+  owner uuid not null references auth.users(id) on delete cascade,
+  meal_id text not null,
+  name text not null,
+  portions numeric not null default 1,
+  kcal_per_portion numeric not null default 0,
+  items jsonb not null default '[]'::jsonb,
+  updated_at timestamptz not null default now(),
+  unique (owner, meal_id)
+);
+alter table public.shared_meals enable row level security;
+create policy "shared meals read" on public.shared_meals for select to authenticated using (owner = auth.uid() or public.is_friend(owner));
+create policy "shared meals own" on public.shared_meals for all to authenticated using (owner = auth.uid()) with check (owner = auth.uid());
+
+create table if not exists public.days (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  day date not null,
+  budget integer not null default 0,
+  kcal integer not null default 0,
+  items jsonb not null default '[]'::jsonb,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, day)
+);
+alter table public.days enable row level security;
+create policy "days read" on public.days for select to authenticated using (user_id = auth.uid() or public.is_friend(user_id));
+create policy "days own" on public.days for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+```
+
 ## Macros
 
 Everything carries protein, carbs and fat where they're known: the built-in food

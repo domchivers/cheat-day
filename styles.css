@@ -109,6 +109,12 @@ label small { display: block; font-size: 12px; margin-top: 2px; }
 .macros:empty { display: none; }
 .result .macros { margin-top: 10px; }
 #budget-chips { justify-content: flex-start; margin: 4px 0 8px; }
+label.check { display: flex; align-items: center; gap: 10px; color: var(--text); font-size: 15px; margin-top: 14px; }
+label.check input { width: 22px; height: 22px; margin: 0; accent-color: var(--green); }
+.list .rank { width: 28px; font-weight: 800; color: var(--green); text-align: center; flex: none; }
+.list .body .detail .bar { height: 6px; margin-top: 6px; }
+.list .ok { color: var(--green-2); font-weight: 600; }
+.list .over { color: var(--bad); font-weight: 600; }
 
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .grid2.tight { gap: 0 12px; }
