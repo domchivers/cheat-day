@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "11";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "12";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -521,7 +521,7 @@ function foodItem(row) {
   const item = blankItem("search");
   item.name = name; item.unit = unit || "g"; item.kcalPer100 = kcal;
   item.servingSize = serving || null; item.unitLabel = label || null;
-  item.kcalPerServing = serving ? Math.round(kcal * serving / 100) : null;
+  item.kcalPerServing = serving ? Math.round(kcal * serving / 10) / 10 : null;   // one decimal, so 2 eggs is exactly 2
   return item;
 }
 function searchLocal(query) {
@@ -738,6 +738,7 @@ function openShare(prefillKcal) {
   amountKcal = null;
   fillAmounts(null);
   if (prefillKcal) setAmount(prefillKcal, "kcal");
+  else if (c.countKcal) { $("#a-count").value = "1"; setAmount(1, "count"); }   // "an egg", "a slice": start at one and let them tap 2 or 3
   go("share");
 }
 const tidy = (n) => n == null ? "" : (Math.abs(n) >= 10 ? Math.round(n) : Math.round(n * 10) / 10);
@@ -746,8 +747,15 @@ function fillAmounts(except) {
   if (except !== "kcal") $("#a-kcal").value = k == null ? "" : Math.round(k);
   if (except !== "grams") $("#a-grams").value = (k == null || !c.kcalPer100) ? "" : tidy(k / c.kcalPer100 * 100);
   if (except !== "count") $("#a-count").value = (k == null || !c.countKcal) ? "" : tidy(k / c.countKcal);
+  const count = (k != null && c.countKcal) ? k / c.countKcal : null;
+  $$("#count-chips button").forEach((b) => b.classList.toggle("on", count != null && Math.abs(count - +b.dataset.n) < 0.05));
   updateResult();
 }
+$("#count-chips").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  $("#a-count").value = b.dataset.n;
+  setAmount(+b.dataset.n, "count");
+});
 function setAmount(value, field) {
   const c = conv(draft), v = num(value);
   if (v == null) { amountKcal = null; fillAmounts(field); return; }

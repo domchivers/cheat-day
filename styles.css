@@ -195,6 +195,9 @@ label small { display: block; font-size: 12px; margin-top: 2px; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 12px; }
 .chips button { padding: 10px 14px; border-radius: 999px; background: var(--card); border: 1px solid var(--line); font-weight: 600; }
 .chips button.on { background: var(--green); color: #fff; border-color: var(--green); }
+.chips.count { justify-content: flex-start; gap: 6px; margin: 8px 0 6px; }
+.chips.count { flex-wrap: nowrap; }
+.chips.count button { flex: 1; min-width: 0; padding: 9px 0; font-size: 16px; }
 .result { text-align: center; background: var(--mint-2); border-color: transparent; padding: 20px; margin-top: 16px; }
 .result-big { font-size: 40px; font-weight: 800; color: var(--green); line-height: 1.1; }
 .result-big small { font-size: 16px; font-weight: 600; color: var(--muted); }

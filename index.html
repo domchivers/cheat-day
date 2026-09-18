@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=11">
-  <link rel="icon" href="icons/icon-192.png?v=11">
-  <link rel="stylesheet" href="styles.css?v=11">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=12">
+  <link rel="icon" href="icons/icon-192.png?v=12">
+  <link rel="stylesheet" href="styles.css?v=12">
 </head>
 <body>
 
@@ -218,14 +218,19 @@
   <div class="pad">
     <p class="question"><b id="share-name">it</b></p>
     <div class="card form-card">
-      <label>Calories (kcal)
-        <input type="number" inputmode="decimal" id="a-kcal" placeholder="e.g. 250">
-      </label>
+      <div id="a-count-wrap">
+        <label><span id="a-count-label">Pieces</span>
+          <div class="chips count" id="count-chips">
+            <button data-n="0.5">½</button><button data-n="1">1</button><button data-n="2">2</button><button data-n="3">3</button><button data-n="4">4</button><button data-n="5">5</button><button data-n="6">6</button>
+          </div>
+          <input type="number" inputmode="decimal" id="a-count" placeholder="or type a number">
+        </label>
+      </div>
       <label id="a-grams-wrap">Amount (<span id="a-unit">g</span>)
         <input type="number" inputmode="decimal" id="a-grams" placeholder="e.g. 50">
       </label>
-      <label id="a-count-wrap"><span id="a-count-label">Pieces</span>
-        <input type="number" inputmode="decimal" id="a-count" placeholder="e.g. 3">
+      <label>Calories (kcal)
+        <input type="number" inputmode="decimal" id="a-kcal" placeholder="e.g. 250">
       </label>
       <button class="btn mint" id="share-rest">Use what's left of my day</button>
     </div>
@@ -248,10 +253,10 @@
 <div class="toast hidden" id="toast"></div>
 
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=11"></script>
-<script src="foods.js?v=11"></script>
-<script src="supabase-config.js?v=11"></script>
-<script src="cloud.js?v=11"></script>
-<script src="app.js?v=11"></script>
+<script src="presets.js?v=12"></script>
+<script src="foods.js?v=12"></script>
+<script src="supabase-config.js?v=12"></script>
+<script src="cloud.js?v=12"></script>
+<script src="app.js?v=12"></script>
 </body>
 </html>
