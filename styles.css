@@ -145,6 +145,7 @@ label.check input { width: 22px; height: 22px; margin: 0; accent-color: var(--gr
 
 /* Quick add row */
 .quick-toggle { display: flex; align-items: center; gap: 14px; margin-top: 12px; }
+#friends-card { margin-top: 12px; }
 .quick-text { flex: 1; display: flex; flex-direction: column; }
 .quick-text small { color: var(--muted); font-size: 13px; }
 .quick-toggle .chev { transition: transform .2s; }
