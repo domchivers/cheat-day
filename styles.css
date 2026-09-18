@@ -120,6 +120,11 @@ label small { display: block; font-size: 12px; margin-top: 2px; }
 .list .detail { font-size: 13px; color: var(--muted); }
 .list .kcal { font-weight: 700; color: var(--green); white-space: nowrap; }
 .list .del { color: var(--muted); padding: 6px; font-size: 18px; line-height: 1; }
+.quick li { cursor: pointer; }
+.quick .name { white-space: normal; }
+.quick li:active { background: var(--mint-2); }
+.quick .add { width: 36px; height: 36px; border-radius: 50%; background: var(--green); color: #fff; display: grid; place-items: center; flex: none; }
+.quick .add svg { width: 18px; height: 18px; }
 
 /* Buttons */
 .btn { display: block; width: 100%; padding: 15px; border-radius: 999px; font-weight: 700; text-align: center; margin-top: 10px; }

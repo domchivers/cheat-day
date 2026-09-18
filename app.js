@@ -85,6 +85,7 @@ function describeAmounts(a) {
   return lines;
 }
 function shortAmounts(item) {
+  if (item.unitLabel) return `1 ${item.unitLabel} · ${item.shareLabel}`;
   const a = amountsFor(item, item.kcal), parts = [];
   if (a.grams != null) parts.push(`${fmt1(a.grams)} ${a.unit}`);
   if (a.pieces != null) parts.push(`${fmt1(a.pieces)} pcs`);
@@ -129,10 +130,35 @@ function renderHome() {
   const list = $("#home-list"); list.innerHTML = "";
   for (const it of state.day.items) list.appendChild(itemRow(it));
   $("#home-empty").classList.toggle("hidden", state.day.items.length > 0);
+  renderQuick();
+}
+function renderQuick() {
+  const list = $("#quick-list"); list.innerHTML = "";
+  const presets = typeof PRESETS !== "undefined" ? PRESETS : [];
+  presets.forEach((p, i) => {
+    const li = document.createElement("li");
+    li.innerHTML = `<div class="body"><div class="name">${esc(p.name)}</div><div class="detail">${esc(p.detail || "")}</div></div>
+      <div class="kcal">${fmt(p.kcal)}</div><span class="add"><svg><use href="#i-plus"/></svg></span>`;
+    li.onclick = () => addPreset(p);
+    list.appendChild(li);
+  });
+  list.previousElementSibling.classList.toggle("hidden", presets.length === 0);
+}
+function addPreset(p) {
+  const kcal = Math.round(p.kcal);
+  state.day.items.push({
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    source: "quick", name: p.name, unitLabel: p.unit || "serving",
+    kcalPerServing: kcal, kcal,
+    shareLabel: `${fmt(kcal / state.budget * 100, 1)}% of the day`,
+    addedAt: new Date().toISOString()
+  });
+  save(); renderHome();
+  toast(`Added ${p.name} · ${fmt(kcal)} kcal`);
 }
 function itemRow(it) {
   const li = document.createElement("li");
-  const thumb = it.image ? `<img class="thumb-sm" src="${esc(it.image)}" alt="">` : `<span class="thumb-sm"><svg><use href="#i-${it.source === "barcode" ? "barcode" : it.source === "label" ? "camera" : "pen"}"/></svg></span>`;
+  const thumb = it.image ? `<img class="thumb-sm" src="${esc(it.image)}" alt="">` : `<span class="thumb-sm"><svg><use href="#i-${it.source === "barcode" ? "barcode" : it.source === "label" ? "camera" : it.source === "quick" ? "plus" : "pen"}"/></svg></span>`;
   li.innerHTML = `${thumb}
     <div class="body"><div class="name">${esc(it.name || "Unnamed")}</div><div class="detail">${esc(shortAmounts(it))}</div></div>
     <div class="kcal">${fmt(it.kcal)}</div>

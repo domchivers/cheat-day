@@ -31,6 +31,13 @@ Keep the black window open while you use it.
 Whatever the source, you land on an editable "check the details" form before
 choosing your share, so a wrong reading is a quick fix rather than a wrong day.
 
+## Quick add
+
+The **Quick add** list on the home screen holds things you have often, added to
+the day in one tap. They live in `presets.js`: one entry per item with a name, a
+short description, the kcal for one of it, and a word for the unit ("drink",
+"slice"). Add more entries to that list and push.
+
 ## Shares you can type
 
 `10%` · `1/6` · `0.15` · `15` (means 15%) · `250 kcal` · or tap **What's left**
@@ -46,6 +53,7 @@ Both routes are automatic; you'll just see one button or the other.
 ## Files
 
 - `index.html`, `styles.css`, `app.js` — the whole app
+- `presets.js` — the Quick add list
 - `vendor/zxing.min.js` — barcode decoding ([@zxing/library](https://github.com/zxing-js/library) 0.21.3, UMD build)
 - `sw.js`, `manifest.webmanifest`, `icons/` — install-to-home-screen and offline cache
 - `make_icons.py` — regenerates the icons (needs Pillow)
