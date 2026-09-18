@@ -4,6 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
+const APP_VERSION = "6";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -186,6 +187,7 @@ function addToDay(basis, kcal, shareLabel) {
 function renderSettings() {
   $("#s-budget").value = state.budget;
   $("#s-apikey").value = state.apiKey;
+  $("#s-version").textContent = APP_VERSION;
   renderAccount();
   const d = state.day.date;
   $("#s-day").textContent = d === localDate() ? "Today" : new Date(d + "T12:00").toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "short" });
@@ -203,6 +205,20 @@ $("#settings-save").onclick = () => {
   state.budget = Math.round(b);
   state.apiKey = $("#s-apikey").value.trim();
   save(); toast("Saved"); home();
+};
+$("#btn-update").onclick = async () => {
+  busy("Fetching the latest version…");
+  try {
+    if ("serviceWorker" in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister()));
+    }
+    if (window.caches) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    }
+  } catch (e) { console.warn("update", e); }
+  location.replace(location.pathname + "?fresh=" + Date.now());   // bypasses any lingering HTTP cache too
 };
 $("#btn-new-day").onclick = () => {
   if (state.day.items.length && !confirm("Start a fresh day? Today's list moves to past days.")) return;
