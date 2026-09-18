@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=22">
-  <link rel="icon" href="icons/icon-192.png?v=22">
-  <link rel="stylesheet" href="styles.css?v=22">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=23">
+  <link rel="icon" href="icons/icon-192.png?v=23">
+  <link rel="stylesheet" href="styles.css?v=23">
 </head>
 <body>
 
@@ -166,42 +166,53 @@
 <section class="view hidden" id="view-friends">
   <header class="sub-head">
     <button class="icon-btn" data-back aria-label="Back"><svg><use href="#i-back"/></svg></button>
-    <h1>Friends</h1><span></span>
+    <h1>Friends</h1>
+    <button class="icon-btn" id="fr-refresh" aria-label="Refresh"><svg><use href="#i-history"/></svg></button>
   </header>
   <div class="card form-card" id="fr-signin">
     <p class="muted">Friends need an account, so both of you can find each other. Sign in from Settings (the gear on the home screen), then come back here.</p>
     <button class="btn primary" data-go="settings">Go to Settings</button>
   </div>
   <div id="fr-body" class="hidden">
-    <div class="card form-card">
-      <label>Your name, as friends see it
-        <input type="text" id="fr-name" placeholder="e.g. Dom" autocapitalize="words">
-      </label>
-      <p class="muted">Your friend code: <b id="fr-code">…</b></p>
-      <div class="btn-row">
-        <button class="btn mint" id="fr-save-name">Save name</button>
-        <button class="btn mint" id="fr-share-code">Send my code</button>
+
+    <div class="card me-card">
+      <div class="me-row">
+        <span class="avatar big" id="fr-avatar">?</span>
+        <div class="me-text">
+          <input type="text" id="fr-name" class="inline-input name" placeholder="Your name" autocapitalize="words">
+          <div class="muted tiny">Tap your name to change it</div>
+        </div>
       </div>
-      <label class="check"><input type="checkbox" id="fr-share-day"> Let friends see my day (today's total and what I've had)</label>
+      <div class="code-box">
+        <div><small>Your friend code</small><b id="fr-code">…</b></div>
+        <button class="btn mint slim" id="fr-share-code">Send</button>
+      </div>
+      <label class="check"><input type="checkbox" id="fr-share-day"> Friends can see my day</label>
     </div>
-    <div class="card form-card">
-      <label>Add a friend by their code
+
+    <button class="btn primary" id="fr-add-toggle">＋ Add a friend</button>
+    <div class="card form-card hidden" id="fr-add-wrap">
+      <label>Their friend code
         <input type="text" id="fr-add" placeholder="e.g. MUM-4821" autocapitalize="characters" autocorrect="off">
       </label>
       <button class="btn primary" id="fr-add-go">Send request</button>
     </div>
-    <h2 class="section-title hidden" id="fr-pending-title">Requests</h2>
-    <ul class="list" id="fr-pending"></ul>
-    <h2 class="section-title">Your friends</h2>
-    <ul class="list" id="fr-list"></ul>
+
+    <div id="fr-pending-wrap" class="hidden">
+      <h2 class="section-title">Requests</h2>
+      <ul class="list" id="fr-pending"></ul>
+    </div>
+
+    <h2 class="section-title">Today</h2>
+    <div id="fr-list"></div>
     <p class="empty" id="fr-empty">No friends yet. Swap codes to get started.</p>
+
     <h2 class="section-title">This week</h2>
-    <p class="muted tiny">Last 7 days, everyone who shares their day. Sorted by days on budget, then by how much of the budget was used.</p>
-    <ul class="list" id="fr-week"></ul>
-    <h2 class="section-title">From friends</h2>
-    <p class="muted tiny">Meals your friends have shared. Tap ＋ to copy one into your meals.</p>
-    <ul class="list" id="fr-meals"></ul>
-    <p class="empty" id="fr-meals-empty">Nothing shared yet.</p>
+    <div class="card board" id="fr-week"></div>
+
+    <h2 class="section-title">Meals from friends</h2>
+    <div id="fr-meals"></div>
+    <p class="empty" id="fr-meals-empty">Nothing shared yet. Friends share from their meal editor.</p>
   </div>
 </section>
 
@@ -408,10 +419,10 @@
 <div class="toast hidden" id="toast"></div>
 
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=22"></script>
-<script src="foods.js?v=22"></script>
-<script src="supabase-config.js?v=22"></script>
-<script src="cloud.js?v=22"></script>
-<script src="app.js?v=22"></script>
+<script src="presets.js?v=23"></script>
+<script src="foods.js?v=23"></script>
+<script src="supabase-config.js?v=23"></script>
+<script src="cloud.js?v=23"></script>
+<script src="app.js?v=23"></script>
 </body>
 </html>

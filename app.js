@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "22";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "23";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -569,6 +569,7 @@ $("#btn-new-day").onclick = () => {
 // ---------------------------------------------------------------- friends: codes, requests, each other's day, the week, shared meals
 
 let fr = { profile: null, friendships: [], people: {}, days: [], meals: [] };
+const frOpen = new Set();   // friends whose full day is unfolded
 const dateMinus = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return localDate(d); };
 function makeFriendCode(name) {
   const letters = (name || "").replace(/[^a-z]/gi, "").slice(0, 3).toUpperCase().padEnd(3, "X");
@@ -607,18 +608,21 @@ async function renderFriends() {
   drawFriends();
 }
 const personName = (id) => (fr.people[id] && fr.people[id].display_name) || "Someone";
+const initials = (name) => (name || "?").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+const avatar = (id, name, big = false) => { let h = 0; for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return `<span class="avatar a${(h % 6) + 1}${big ? " big" : ""}">${esc(initials(name))}</span>`; };
 function drawFriends() {
   const c = window.cloud, me = c.uid;
   if (document.activeElement !== $("#fr-name")) $("#fr-name").value = fr.profile.display_name || "";
+  $("#fr-avatar").outerHTML = avatar(me, fr.profile.display_name, true).replace('class="', 'id="fr-avatar" class="');
   $("#fr-code").textContent = fr.profile.friend_code;
-  // requests waiting for me
+  // requests
   const pending = fr.friendships.filter((f) => f.status === "pending" && f.addressee === me);
   const sent = fr.friendships.filter((f) => f.status === "pending" && f.requester === me);
   const pl = $("#fr-pending"); pl.innerHTML = "";
-  $("#fr-pending-title").classList.toggle("hidden", !pending.length && !sent.length);
+  $("#fr-pending-wrap").classList.toggle("hidden", !pending.length && !sent.length);
   for (const f of pending) {
     const li = document.createElement("li");
-    li.innerHTML = `<span class="thumb-sm"><svg><use href="#i-friends"/></svg></span><div class="body"><div class="name">${esc(personName(f.requester))}</div><div class="detail">wants to be friends</div></div>
+    li.innerHTML = `${avatar(f.requester, personName(f.requester))}<div class="body"><div class="name">${esc(personName(f.requester))}</div><div class="detail">wants to be friends</div></div>
       <button class="add" aria-label="Accept"><svg><use href="#i-plus"/></svg></button><button class="del" aria-label="Decline">✕</button>`;
     li.querySelector(".add").onclick = async () => { try { await c.acceptFriend(f.id); toast(`You and ${personName(f.requester)} are friends`); renderFriends(); } catch (e) { toast(c.explain(e)); } };
     li.querySelector(".del").onclick = async () => { try { await c.removeFriend(f.id); renderFriends(); } catch (e) { toast(c.explain(e)); } };
@@ -626,30 +630,35 @@ function drawFriends() {
   }
   for (const f of sent) {
     const li = document.createElement("li");
-    li.innerHTML = `<span class="thumb-sm"><svg><use href="#i-friends"/></svg></span><div class="body"><div class="name">${esc(personName(f.addressee))}</div><div class="detail">request sent, waiting for them</div></div><button class="del" aria-label="Cancel">✕</button>`;
+    li.innerHTML = `${avatar(f.addressee, personName(f.addressee))}<div class="body"><div class="name">${esc(personName(f.addressee))}</div><div class="detail">request sent · waiting for them</div></div><button class="del" aria-label="Cancel">✕</button>`;
     li.querySelector(".del").onclick = async () => { try { await c.removeFriend(f.id); renderFriends(); } catch (e) { toast(c.explain(e)); } };
     pl.appendChild(li);
   }
-  // friends and their day
+  // friends today
   const friends = fr.friendships.filter((f) => f.status === "accepted").map((f) => ({ id: f.id, uid: f.requester === me ? f.addressee : f.requester }));
   const today = localDate();
   const fl = $("#fr-list"); fl.innerHTML = "";
   for (const f of friends) {
     const d = fr.days.find((x) => x.user_id === f.uid && x.day === today);
-    const li = document.createElement("li");
-    let detail = "hasn't shared today";
+    const card = document.createElement("div");
+    card.className = "card friend-card";
+    let right = `<span class="kcal muted">nothing shared today</span>`, bar = "", items = "";
     if (d) {
-      const names = (d.items || []).map((it) => it.name).slice(0, 4).join(", ");
-      const over = d.kcal > d.budget;
-      detail = `<span class="${over ? "over" : "ok"}">${fmt(d.kcal)} / ${fmt(d.budget)} kcal</span> today${names ? ` · ${esc(names)}${(d.items || []).length > 4 ? "…" : ""}` : ""}
-        <span class="bar"><span style="width:${Math.min(100, d.budget ? d.kcal / d.budget * 100 : 0)}%" class="${over ? "over" : ""}"></span></span>`;
+      const over = d.kcal > d.budget, pct = d.budget ? Math.min(100, d.kcal / d.budget * 100) : 0;
+      right = `<span class="kcal ${over ? "over" : "ok"}">${fmt(d.kcal)} / ${fmt(d.budget)}</span>`;
+      bar = `<span class="bar"><span style="width:${pct}%" class="${over ? "over" : ""}"></span></span>`;
+      const list = d.items || [];
+      if (!list.length) items = `<div class="items">nothing eaten yet</div>`;
+      else if (frOpen.has(f.uid)) items = `<ul class="ate">${list.map((it) => `<li><span>${esc(it.name)}</span><b>${fmt(it.kcal)}</b></li>`).join("")}</ul><div class="items">tap to close</div>`;
+      else items = `<div class="items">${esc(list.map((it) => it.name).slice(0, 4).join(", "))}${list.length > 4 ? ` and ${list.length - 4} more` : ""} · <u>tap to see all</u></div>`;
     }
-    li.innerHTML = `<span class="thumb-sm"><svg><use href="#i-friends"/></svg></span><div class="body"><div class="name">${esc(personName(f.uid))}</div><div class="detail">${detail}</div></div><button class="del" aria-label="Remove friend">✕</button>`;
-    li.querySelector(".del").onclick = async () => { if (!confirm(`Remove ${personName(f.uid)} as a friend?`)) return; try { await c.removeFriend(f.id); renderFriends(); } catch (e) { toast(c.explain(e)); } };
-    fl.appendChild(li);
+    card.innerHTML = `${avatar(f.uid, personName(f.uid))}<div class="body"><div class="name"><span>${esc(personName(f.uid))}</span>${right}</div>${bar}${items}</div><button class="del" aria-label="Remove friend">✕</button>`;
+    card.querySelector(".body").onclick = () => { if (frOpen.has(f.uid)) frOpen.delete(f.uid); else frOpen.add(f.uid); drawFriends(); };
+    card.querySelector(".del").onclick = async () => { if (!confirm(`Remove ${personName(f.uid)} as a friend?`)) return; try { await c.removeFriend(f.id); renderFriends(); } catch (e) { toast(c.explain(e)); } };
+    fl.appendChild(card);
   }
   $("#fr-empty").classList.toggle("hidden", friends.length > 0);
-  // the week: everyone with days in the last 7, me included
+  // the week
   const byUser = {};
   for (const d of fr.days) { (byUser[d.user_id] = byUser[d.user_id] || []).push(d); }
   if (!byUser[me] && state.shareDay) byUser[me] = [{ user_id: me, day: today, budget: state.budget, kcal: usedKcal() }];
@@ -660,31 +669,37 @@ function drawFriends() {
   }).sort((a, b) => (b.onBudget - a.onBudget) || (a.pct - b.pct));
   const wl = $("#fr-week"); wl.innerHTML = "";
   rows.forEach((r, i) => {
-    const li = document.createElement("li");
-    li.innerHTML = `<span class="rank">${i + 1}</span><div class="body"><div class="name">${esc(r.name)}</div><div class="detail">${r.onBudget} of ${r.days} day${r.days === 1 ? "" : "s"} on budget · ${fmt(r.pct)}% of budget used on average</div></div>`;
-    wl.appendChild(li);
+    const row = document.createElement("div");
+    row.className = "row";
+    row.innerHTML = `<span class="medal m${i + 1}">${i + 1}</span>${avatar(r.uid, r.uid === me ? fr.profile.display_name : r.name)}
+      <div class="who"><b>${esc(r.name)}</b><small>${r.onBudget} of ${r.days} day${r.days === 1 ? "" : "s"} on budget</small></div>
+      <div class="score"><b>${fmt(r.pct)}%</b><small>of budget used</small></div>`;
+    wl.appendChild(row);
   });
-  if (!rows.length) wl.innerHTML = `<li class="muted">Nobody has shared a day yet this week.</li>`;
+  if (!rows.length) wl.innerHTML = `<div class="row muted">Nobody has shared a day yet this week.</div>`;
   // meals from friends
   const ml = $("#fr-meals"); ml.innerHTML = "";
   const theirs = fr.meals.filter((m) => m.owner !== me);
   for (const m of theirs) {
-    const li = document.createElement("li");
-    li.innerHTML = `<span class="thumb-sm tone-peach"><svg><use href="#i-meal"/></svg></span><div class="body"><div class="name">${esc(m.name)}</div><div class="detail">${esc(personName(m.owner))} · ${m.portions} portion${m.portions == 1 ? "" : "s"} · ${fmt(m.kcal_per_portion)} kcal each · ${(m.items || []).length} ingredients</div></div><button class="add" aria-label="Copy to my meals"><svg><use href="#i-plus"/></svg></button>`;
-    li.querySelector(".add").onclick = () => {
+    const card = document.createElement("div");
+    card.className = "card meal-card";
+    card.innerHTML = `<span class="thumb-sm tone-peach"><svg><use href="#i-meal"/></svg></span><div class="body"><div class="name">${esc(m.name)}</div><div class="detail">${m.portions} portion${m.portions == 1 ? "" : "s"} · ${fmt(m.kcal_per_portion)} kcal each · ${(m.items || []).length} ingredients</div><div class="by">${avatar(m.owner, personName(m.owner))} ${esc(personName(m.owner))}</div></div><button class="add" aria-label="Copy to my meals"><svg><use href="#i-plus"/></svg></button>`;
+    card.querySelector(".add").onclick = () => {
       if (state.meals.some((x) => x.copiedFrom === m.id) && !confirm(`You already have "${m.name}". Add another copy?`)) return;
       state.meals.unshift({ id: uid(), name: m.name, portions: +m.portions || 1, items: (m.items || []).map((it) => ({ ...it, id: uid() })), saved: true, copiedFrom: m.id, updatedAt: new Date().toISOString() });
       save(); toast(`${m.name} is in your meals`);
     };
-    ml.appendChild(li);
+    ml.appendChild(card);
   }
   $("#fr-meals-empty").classList.toggle("hidden", theirs.length > 0);
 }
-$("#fr-save-name").onclick = async () => {
+$("#fr-refresh").onclick = () => renderFriends();
+$("#fr-add-toggle").onclick = () => { $("#fr-add-wrap").classList.toggle("hidden"); $("#fr-add").focus(); };
+$("#fr-name").addEventListener("change", async () => {
   const c = window.cloud, name = $("#fr-name").value.trim();
-  if (!name) { toast("Type a name first"); return; }
-  try { fr.profile = (await c.saveProfile(name, fr.profile.friend_code))[0]; toast("Saved"); drawFriends(); } catch (e) { toast(c.explain(e)); }
-};
+  if (!name || !fr.profile) return;
+  try { fr.profile = (await c.saveProfile(name, fr.profile.friend_code))[0]; toast("Name saved"); drawFriends(); } catch (e) { toast(c.explain(e)); }
+});
 $("#fr-share-code").onclick = async () => {
   const code = fr.profile.friend_code, text = `Add me on Cheat Days: my friend code is ${code}. ${location.origin}${location.pathname}`;
   try { if (navigator.share) await navigator.share({ text }); else { await navigator.clipboard.writeText(text); toast("Copied. Send it to a friend."); } } catch (e) {}
@@ -703,7 +718,7 @@ $("#fr-add-go").onclick = async () => {
     if (!p) { busy(false); toast("No one has that code. Check it with them."); return; }
     if (p.user_id === c.uid) { busy(false); toast("That's your own code"); return; }
     await c.requestFriend(p.user_id);
-    busy(false); $("#fr-add").value = ""; toast(`Request sent to ${p.display_name || "them"}`); renderFriends();
+    busy(false); $("#fr-add").value = ""; $("#fr-add-wrap").classList.add("hidden"); toast(`Request sent to ${p.display_name || "them"}`); renderFriends();
   } catch (err) { busy(false); toast(c.explain(err), 5000); }
 };
 $("#fr-add").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#fr-add-go").click(); });
