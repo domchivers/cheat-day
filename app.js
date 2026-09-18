@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "20";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "21";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -145,7 +145,10 @@ function renderHome() {
   bar.style.width = `${Math.min(100, state.budget > 0 ? used / state.budget * 100 : 0)}%`;
   bar.classList.toggle("over", left < 0);
   const mac = sumMacros(state.day.items);
-  $("#home-macros").innerHTML = state.day.items.length ? macroText(mac, true) + (mac.missing ? ` <span class="tiny">(${mac.missing} without)</span>` : "") : "";
+  const tile = (label, v) => `<span class="tile"><b>${Math.round(v)} g</b><small>${label}</small></span>`;
+  $("#home-macros").innerHTML = state.day.items.length
+    ? tile("Protein", mac.p) + tile("Carbs", mac.c) + tile("Fat", mac.f) + (mac.missing ? `<span class="note">${mac.missing} item${mac.missing === 1 ? " has" : "s have"} no macros (added before macros existed, or none on the pack).</span>` : "")
+    : "";
 
   const list = $("#home-list"); list.innerHTML = "";
   for (const it of state.day.items) list.appendChild(itemRow(it));

@@ -95,7 +95,7 @@ label small { display: block; font-size: 12px; margin-top: 2px; }
 .circle.peach { background: var(--peach-ic); color: var(--peach); }
 .chev { color: var(--muted); width: 20px; height: 20px; }
 
-.budget-card { display: flex; align-items: center; gap: 14px; }
+.budget-card { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .budget-body { flex: 1; display: flex; flex-direction: column; }
 .budget-body .label { font-size: 14px; color: var(--muted); }
 .budget-body .big { font-size: 30px; font-weight: 800; line-height: 1.15; }
@@ -105,6 +105,12 @@ label small { display: block; font-size: 12px; margin-top: 2px; }
 .bar span { display: block; height: 100%; width: 0; background: var(--green-2); border-radius: 99px; transition: width .4s ease; }
 .bar span.over { background: var(--bad); }
 .macros { display: block; font-size: 13px; color: var(--muted); margin-top: 8px; }
+.macro-tiles { flex-basis: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 4px; }
+.macro-tiles:empty { display: none; }
+.macro-tiles .tile { background: var(--mint-2); border-radius: 12px; padding: 10px 8px; text-align: center; }
+.macro-tiles .tile b { display: block; font-size: 18px; color: var(--green); }
+.macro-tiles .tile small { color: var(--muted); font-size: 12px; }
+.macro-tiles .note { grid-column: 1 / -1; font-size: 12px; color: var(--muted); text-align: center; }
 .macros b { color: var(--text); font-weight: 600; }
 .macros:empty { display: none; }
 .result .macros { margin-top: 10px; }
