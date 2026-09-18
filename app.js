@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "15";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "16";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -102,8 +102,8 @@ function show(view) {
   if (view === "meal") renderMeal();
 }
 function go(view) { stack.push(view); show(view); }
-function back() { stack.pop(); if (!stack.length) stack = ["home"]; show(stack[stack.length - 1]); }
-function home() { pick = null; stack = ["home"]; show("home"); }
+function back() { if (stack[stack.length - 1] === "share") editId = null; stack.pop(); if (!stack.length) stack = ["home"]; show(stack[stack.length - 1]); }
+function home() { pick = null; editId = null; stack = ["home"]; show("home"); }
 
 document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-go]"); if (b) { const v = b.dataset.go; v === "manual" ? openManual() : go(v); return; }
@@ -135,7 +135,9 @@ function itemRow(it) {
     <div class="body"><div class="name">${esc(it.name || "Unnamed")}</div><div class="detail">${esc(shortAmounts(it))}</div></div>
     <div class="kcal">${fmt(it.kcal)}</div>
     <button class="del" aria-label="Remove">✕</button>`;
-  li.querySelector(".del").onclick = () => { state.day.items = state.day.items.filter((x) => x.id !== it.id); save(); renderHome(); };
+  li.querySelector(".del").onclick = (e) => { e.stopPropagation(); state.day.items = state.day.items.filter((x) => x.id !== it.id); save(); renderHome(); };
+  li.querySelector(".body").onclick = () => { editId = it.id; draft = { ...basisOf(it), note: "" }; openShare(it.kcal); };
+  li.style.cursor = "pointer";
   return li;
 }
 
@@ -212,6 +214,7 @@ function addToDay(basis, kcal, shareLabel) {
 
 let mealDraft = null;   // the meal on the editor screen
 let pick = null;        // set while choosing an ingredient: { replaceId } (null: adding to the day as usual)
+let editId = null;      // set while changing something already on today's list
 let openRow = null;
 
 function mealTotals(meal) {
@@ -523,6 +526,7 @@ async function startCamera() {
   if (track) track.addEventListener("ended", () => { if (token === camToken && onScanView() && !busyShown()) startCamera(); });
   if (!nativeDetector && "BarcodeDetector" in window) { try { nativeDetector = new BarcodeDetector({ formats: NATIVE_FORMATS }); } catch (e) {} }
   scanning = true;
+  fitVideo();
   scanLoop(video, token);
 }
 async function scanLoop(video, token) {
@@ -1011,14 +1015,14 @@ function conv(item) {
 function openShare(prefillKcal) {
   const c = conv(draft);
   $("#share-name").textContent = draft.name;
-  $("#share-add").textContent = pick ? "Add to the meal" : "Add to today";
+  $("#share-add").textContent = pick ? "Add to the meal" : editId ? "Save changes" : "Add to today";
   $("#a-unit").textContent = draft.unit || "g";
   $("#a-grams-wrap").classList.toggle("hidden", !c.kcalPer100);
   $("#a-count-wrap").classList.toggle("hidden", !c.countKcal);
   if (c.countLabel) $("#a-count-label").textContent = c.countLabel.charAt(0).toUpperCase() + c.countLabel.slice(1) + "s";
   amountKcal = null;
   fillAmounts(null);
-  if (prefillKcal) setAmount(prefillKcal, "kcal");
+  if (prefillKcal) { setAmount(prefillKcal, "kcal"); $("#a-kcal").value = Math.round(prefillKcal); }
   else if (c.countKcal) { $("#a-count").value = "1"; setAmount(1, "count"); }   // "an egg", "a slice": start at one and let them tap 2 or 3
   go("share");
 }
@@ -1070,6 +1074,11 @@ $("#share-add").onclick = () => {
   if (!amountKcal || !draft) return;
   const kcal = Math.round(amountKcal);
   if (pick) { mealTakeIngredient(draft, kcal); toast(`${draft.name} is in the meal`); return; }
+  if (editId) {
+    const it = state.day.items.find((x) => x.id === editId);
+    if (it) { it.kcal = kcal; it.shareLabel = `${fmt(kcal / state.budget * 100, 1)}% of the day`; save(); }
+    editId = null; toast(`Updated ${draft.name} · ${fmt(kcal)} kcal`); home(); return;
+  }
   addToDay(draft, kcal, `${fmt(kcal / state.budget * 100, 1)}% of the day`);
   toast(`Added ${draft.name} · ${fmt(kcal)} kcal`);
   home();
@@ -1145,8 +1154,27 @@ $("#acct-pass").addEventListener("keydown", (e) => { if (e.key === "Enter") acct
 
 show("home");
 cloudInit();
-// Portrait only where the browser lets us ask (Android installed app); iOS shows the CSS overlay instead.
+// Portrait only. Android installed apps can be locked for real; everywhere else the CSS counter-rotates
+// the whole app when the phone is turned, so it always looks upright. The scanner reads barcodes any way up.
 try { if (screen.orientation && screen.orientation.lock) screen.orientation.lock("portrait").catch(() => {}); } catch (e) {}
+function orientApp() {
+  let o = typeof window.orientation === "number" ? window.orientation : ((screen.orientation && screen.orientation.angle) || 0);
+  if (o === 270) o = -90;
+  document.documentElement.dataset.orient = String(o);
+  fitVideo();
+}
+function fitVideo() {
+  const v = $("#video"), box = v.parentElement;
+  const o = +document.documentElement.dataset.orient || 0;
+  if (o === 90 || o === -90) {
+    v.style.width = box.clientHeight + "px"; v.style.height = box.clientWidth + "px";
+    v.style.left = "50%"; v.style.top = "50%";
+    v.style.transform = `translate(-50%, -50%) rotate(${o === 90 ? 90 : -90}deg)`;
+  } else { v.style.width = ""; v.style.height = ""; v.style.left = ""; v.style.top = ""; v.style.transform = ""; }
+}
+window.addEventListener("orientationchange", () => setTimeout(orientApp, 150));
+window.addEventListener("resize", () => setTimeout(orientApp, 50));
+orientApp();
 // No pinch-zoom on iOS Safari, which ignores user-scalable=no.
 document.addEventListener("gesturestart", (e) => e.preventDefault());
 document.addEventListener("touchmove", (e) => { if (e.scale && e.scale !== 1) e.preventDefault(); }, { passive: false });
