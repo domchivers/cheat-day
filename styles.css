@@ -167,6 +167,8 @@ textarea:focus { outline: 2px solid var(--green-2); border-color: transparent; }
 .btn.mint { background: var(--mint); color: var(--green); }
 .btn.light { background: #fff; color: var(--green); }
 .btn.ghost { color: var(--muted); font-weight: 600; }
+.btn.danger { background: var(--coral-bg); color: var(--coral); }
+#meals-new { margin-bottom: 14px; }
 .btn.link-btn { color: var(--green); text-decoration: underline; font-weight: 600; padding: 10px; }
 .link { color: var(--green); font-weight: 600; text-decoration: underline; }
 .btn-row { display: flex; gap: 8px; }

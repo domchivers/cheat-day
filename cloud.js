@@ -95,7 +95,7 @@
       if (m.includes("valid email") || m.includes("invalid email")) return "That email address doesn't look right.";
       if (m.includes("failed to fetch") || m.includes("network")) return "No connection. Try again when you're online.";
       if (m.includes("rate limit") || m.includes("too many")) return "Too many tries. Wait a minute and try again.";
-      if (m.includes("relation") && m.includes("does not exist")) return "The cheatday table isn't in Supabase yet. See the README.";
+      if (m.includes("schema cache") || (m.includes("relation") && m.includes("does not exist"))) return "The cheatday table isn't in Supabase yet. See the README.";
       return (err && err.message) || "Something went wrong.";
     }
   };

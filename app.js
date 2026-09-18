@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "17";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "18";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -243,8 +243,9 @@ function renderMeals() {
   if (state.mealDraft && !state.mealDraft.saved && (state.mealDraft.items.length || state.mealDraft.name)) {
     const li = document.createElement("li");
     li.className = "warn";
-    li.innerHTML = `<span class="thumb-sm tone-peach"><svg><use href="#i-meal"/></svg></span><div class="body"><div class="name">${esc(state.mealDraft.name || "Unsaved meal")}</div><div class="detail">Not saved yet · tap to carry on</div></div>`;
-    li.onclick = () => { mealDraft = state.mealDraft; go("meal"); };
+    li.innerHTML = `<span class="thumb-sm tone-peach"><svg><use href="#i-meal"/></svg></span><div class="body"><div class="name">${esc(state.mealDraft.name || "Unsaved meal")}</div><div class="detail">Not saved yet · tap to carry on</div></div><button class="del" aria-label="Discard">✕</button>`;
+    li.querySelector(".body").onclick = () => { mealDraft = state.mealDraft; go("meal"); };
+    li.querySelector(".del").onclick = (e) => { e.stopPropagation(); if (confirm(`Discard the unsaved "${state.mealDraft.name || "meal"}"?`)) { state.mealDraft = null; mealDraft = null; save(false); renderMeals(); } };
     list.appendChild(li);
   }
   for (const m of state.meals) {
@@ -252,8 +253,10 @@ function renderMeals() {
     const li = document.createElement("li");
     li.innerHTML = `<span class="thumb-sm tone-peach"><svg><use href="#i-meal"/></svg></span>
       <div class="body"><div class="name">${esc(m.name)}</div><div class="detail">${portions} portion${portions === 1 ? "" : "s"} · ${fmt(t.kcal / portions)} kcal each · ${m.items.length} ingredient${m.items.length === 1 ? "" : "s"}</div></div>
-      <button class="add" aria-label="Add a portion to today"><svg><use href="#i-plus"/></svg></button>`;
+      <button class="add" aria-label="Add a portion to today"><svg><use href="#i-plus"/></svg></button>
+      <button class="del" aria-label="Delete meal">✕</button>`;
     li.querySelector(".add").onclick = (e) => { e.stopPropagation(); draft = { ...mealBasis(m), note: "" }; openShare(); };
+    li.querySelector(".del").onclick = (e) => { e.stopPropagation(); deleteMeal(m); };
     li.querySelector(".body").onclick = () => { mealDraft = JSON.parse(JSON.stringify(m)); mealDraft.saved = true; go("meal"); };
     list.appendChild(li);
   }
@@ -348,11 +351,15 @@ $("#m-save").onclick = () => {
   save(); toast(`Saved ${m.name}`); renderMeal();
 };
 $("#m-use").onclick = () => { const m = state.meals.find((x) => x.id === mealDraft.id) || mealDraft; draft = { ...mealBasis(m), note: "" }; openShare(); };
-$("#meal-delete").onclick = () => {
-  if (!confirm(`Delete "${mealDraft.name}"? Days it was added to keep their numbers.`)) return;
-  state.meals = state.meals.filter((x) => x.id !== mealDraft.id);
-  state.mealDraft = null; mealDraft = null; save(); back();
-};
+function deleteMeal(m) {
+  if (!confirm(`Delete "${m.name}"?
+
+Days it was already added to keep their numbers.`)) return false;
+  state.meals = state.meals.filter((x) => x.id !== m.id);
+  if (mealDraft && mealDraft.id === m.id) { mealDraft = null; state.mealDraft = null; }
+  save(); toast(`Deleted ${m.name}`); return true;
+}
+$("#meal-delete").onclick = () => { if (deleteMeal(mealDraft)) { stack = ["home", "meals"]; show("meals"); } };
 /** Where a chosen ingredient goes, then back to the editor. */
 function mealTakeIngredient(basis, kcal) {
   const m = mealDraft || state.mealDraft || newMeal(); mealDraft = m;
@@ -1106,14 +1113,25 @@ function schedulePush() {
   clearTimeout(pushTimer);
   pushTimer = setTimeout(() => {
     const data = {}; for (const k of SYNC_KEYS) data[k] = state[k];
-    window.cloud.push(data).catch((err) => toast("Couldn't sync: " + window.cloud.explain(err), 4000));
+    window.cloud.push(data).catch((err) => syncProblem(err));
   }, 600);
+}
+let syncWarned = false;
+function syncProblem(err) {
+  const m = String((err && err.message) || "").toLowerCase();
+  if (m.includes("schema cache") || (m.includes("relation") && m.includes("exist"))) {
+    if (syncWarned) return;
+    syncWarned = true;
+    toast("Signed in, but the cheatday table hasn't been created in Supabase yet. Run the SQL from the README once and sync will start. Everything is safe on this phone meanwhile.", 8000);
+    return;
+  }
+  toast("Couldn't sync: " + window.cloud.explain(err), 4000);
 }
 /** Newest copy wins, whole. One person, one device at a time, so this keeps deletions deleted. */
 async function pull() {
   const c = window.cloud; if (!c || !c.user) return;
   let remote;
-  try { remote = await c.pull(); } catch (err) { toast("Couldn't sync: " + c.explain(err), 4000); return; }
+  try { remote = await c.pull(); } catch (err) { syncProblem(err); return; }
   if (remote === null) { schedulePush(); return; }                       // fresh account: upload what we have
   if ((remote.updatedAt || 0) > (state.updatedAt || 0)) {
     for (const k of SYNC_KEYS) if (remote[k] != null) state[k] = remote[k];
