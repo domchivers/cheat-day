@@ -210,5 +210,6 @@ Both routes are automatic; you'll just see one button or the other.
 - `make_icons.py` — regenerates the icons (needs Pillow)
 - `start.bat` — local server on port 8010
 
-When you change app files, bump the `?v=` numbers in `index.html` and
-`CACHE` in `sw.js` so installed copies pick up the new version.
+When you change app files, bump `APP_VERSION` in `app.js`, the `?v=` numbers in
+`index.html`, `CACHE` in `sw.js`, and `version.json`. Phones check `version.json`
+on opening and update themselves when it's newer.

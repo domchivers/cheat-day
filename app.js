@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "29";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "30";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -170,6 +170,16 @@ function renderHome() {
   const list = $("#home-list"); list.innerHTML = "";
   for (const it of state.day.items) list.appendChild(itemRow(it));
   $("#home-empty").classList.toggle("hidden", state.day.items.length > 0);
+  // Nothing yet today: show yesterday as a reminder of where you left off
+  const y = !state.day.items.length && state.history.find((h) => h.date === dateMinus(1));
+  const yc = $("#home-yesterday");
+  if (y) {
+    const items = Array.isArray(y.items) ? y.items : [];
+    yc.innerHTML = `<div class="top"><b>Yesterday</b><span class="kcal ${y.kcal > y.budget ? "over" : "ok"}">${fmt(y.kcal)} / ${fmt(y.budget)} kcal</span></div>
+      <span class="bar"><span style="width:${y.budget ? Math.min(100, y.kcal / y.budget * 100) : 0}%" class="${y.kcal > y.budget ? "over" : ""}"></span></span>
+      <div class="muted tiny" style="margin-top:6px">${items.length ? esc(items.map((it) => it.name).slice(0, 4).join(", ")) + (items.length > 4 ? ` and ${items.length - 4} more` : "") : ""} · <u>see history</u></div>`;
+    yc.classList.remove("hidden");
+  } else { yc.classList.add("hidden"); yc.innerHTML = ""; }
   renderQuick();
 }
 function iconFor(source) {
@@ -1521,6 +1531,27 @@ $("#acct-pass").addEventListener("keydown", (e) => { if (e.key === "Enter") acct
 
 show("home");
 cloudInit();
+// Keep everyone current: if the server has a newer version, fetch it and reload. Checked on open and on return, at most every 5 minutes.
+let lastUpdateCheck = 0;
+async function checkForUpdate() {
+  if (!navigator.onLine || Date.now() - lastUpdateCheck < 5 * 60 * 1000 || busyShown()) return;
+  lastUpdateCheck = Date.now();
+  try {
+    const r = await fetch("version.json?t=" + Date.now(), { cache: "no-store" });
+    if (!r.ok) return;
+    const { v } = await r.json();
+    if (!v || v === APP_VERSION) return;
+    let tried = ""; try { tried = localStorage.getItem("cheatday.autoUpdated") || ""; } catch (e) {}
+    if (tried === v) return;                       // already tried this one; don't loop
+    try { localStorage.setItem("cheatday.autoUpdated", v); } catch (e) {}
+    toast(`Updating to version ${v}…`, 3000);
+    if ("serviceWorker" in navigator) { const regs = await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map((x) => x.unregister())); }
+    if (window.caches) { const keys = await caches.keys(); await Promise.all(keys.map((k) => caches.delete(k))); }
+    setTimeout(() => location.replace(location.pathname + "?fresh=" + Date.now()), 600);
+  } catch (e) { /* offline or blocked: try again later */ }
+}
+checkForUpdate();
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkForUpdate(); });
 importMealFromLink();
 // Portrait only. Android installed apps can be locked for real; everywhere else the CSS counter-rotates
 // the whole app when the phone is turned, so it always looks upright. The scanner reads barcodes any way up.
