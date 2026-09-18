@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "6";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "7";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -24,6 +24,7 @@ function load() {
   return base;
 }
 function save(sync = true) {
+  if (sync) state.updatedAt = Date.now();
   try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { toast("Couldn't save (storage blocked?)"); }
   if (sync) schedulePush();
 }
@@ -559,7 +560,7 @@ $("#share-add").onclick = () => {
 
 // ---------------------------------------------------------------- account + sync (optional, see cloud.js)
 
-const SYNC_KEYS = ["budget", "day", "history", "recent"];   // the API key stays on the device
+const SYNC_KEYS = ["budget", "day", "history", "recent", "updatedAt"];   // the API key stays on the device
 let pushTimer = null;
 function schedulePush() {
   if (!window.cloud || !window.cloud.user) return;
@@ -569,13 +570,21 @@ function schedulePush() {
     window.cloud.push(data).catch((err) => toast("Couldn't sync: " + window.cloud.explain(err), 4000));
   }, 600);
 }
-function applyRemote(data) {
-  if (data === null) { schedulePush(); return; }            // first sign-in on a fresh account: upload what we have
-  for (const k of SYNC_KEYS) if (data[k] != null) state[k] = data[k];
-  save(false);
-  const current = stack[stack.length - 1];
-  if (current === "home") renderHome();
-  if (current === "settings") renderSettings();
+/** Newest copy wins, whole. One person, one device at a time, so this keeps deletions deleted. */
+async function pull() {
+  const c = window.cloud; if (!c || !c.user) return;
+  let remote;
+  try { remote = await c.pull(); } catch (err) { toast("Couldn't sync: " + c.explain(err), 4000); return; }
+  if (remote === null) { schedulePush(); return; }                       // fresh account: upload what we have
+  if ((remote.updatedAt || 0) > (state.updatedAt || 0)) {
+    for (const k of SYNC_KEYS) if (remote[k] != null) state[k] = remote[k];
+    save(false);
+    const current = stack[stack.length - 1];
+    if (current === "home") renderHome();
+    if (current === "settings") renderSettings();
+  } else if ((state.updatedAt || 0) > (remote.updatedAt || 0)) {
+    schedulePush();
+  }
 }
 function renderAccount() {
   const c = window.cloud;
@@ -589,10 +598,10 @@ function cloudInit() {
   const c = window.cloud;
   renderAccount();
   if (!c) return;
-  c.onAuth(() => { renderAccount(); });
-  c.onData(applyRemote);
+  c.onAuth((u) => { renderAccount(); if (u) pull(); });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") pull(); });
+  if (c.user) pull();
 }
-window.addEventListener("cloud-ready", cloudInit);
 async function acct(action) {
   const c = window.cloud; if (!c) return;
   const email = $("#acct-email").value.trim(), pass = $("#acct-pass").value;
@@ -603,8 +612,9 @@ async function acct(action) {
     }
     if (!email || !pass) { toast("Email and password, please"); return; }
     busy(action === "signup" ? "Creating your account…" : "Signing in…");
-    await (action === "signup" ? c.signUp(email, pass) : c.signIn(email, pass));
+    const done = await (action === "signup" ? c.signUp(email, pass) : c.signIn(email, pass));
     busy(false); $("#acct-pass").value = "";
+    if (action === "signup" && done === false) { toast("Check your email for a confirmation link, then sign in.", 6000); return; }
     toast(action === "signup" ? "Account created. You're signed in." : "Signed in");
   } catch (err) { busy(false); toast(c.explain(err), 4500); }
 }
@@ -617,6 +627,7 @@ $("#acct-pass").addEventListener("keydown", (e) => { if (e.key === "Enter") acct
 // ---------------------------------------------------------------- boot
 
 show("home");
+cloudInit();
 // Portrait only where the browser lets us ask (Android installed app); iOS shows the CSS overlay instead.
 try { if (screen.orientation && screen.orientation.lock) screen.orientation.lock("portrait").catch(() => {}); } catch (e) {}
 // No pinch-zoom on iOS Safari, which ignores user-scalable=no.

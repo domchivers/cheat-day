@@ -31,35 +31,30 @@ Keep the black window open while you use it.
 Whatever the source, you land on an editable "check the details" form before
 choosing your share, so a wrong reading is a quick fix rather than a wrong day.
 
-## Accounts and sync (optional)
+## Accounts and sync
 
-Out of the box everything lives in the browser on one device. To let people sign
-in and keep their days everywhere, the app can use Firebase (free tier is plenty).
-One-off setup, about ten minutes:
+Out of the box everything lives in the browser on one device. Signing in (Settings →
+Account) adds a cloud copy so days, past days and the Quick add list follow you to
+every device. It uses the **same Supabase project as the Chinese app**, so the same
+email and password work in both; `supabase-config.js` holds the project URL and the
+public anon key (safe in a public repo; row-level security protects the data).
 
-1. Go to [console.firebase.google.com](https://console.firebase.google.com), **Add project**, name it (e.g. `cheat-days`), Analytics off.
-2. **Build → Authentication → Get started → Email/Password → Enable → Save.**
-   Then **Authentication → Settings → Authorized domains → Add domain**: `domchivers.github.io`.
-3. **Build → Firestore Database → Create database** (production mode, any location).
-   Open the **Rules** tab, replace everything with this, and **Publish**:
+One-off setup, once: in the Supabase dashboard open **SQL Editor**, paste this and Run.
 
-   ```
-   rules_version = '2';
-   service cloud.firestore {
-     match /databases/{database}/documents {
-       match /users/{uid} {
-         allow read, write: if request.auth != null && request.auth.uid == uid;
-       }
-     }
-   }
-   ```
-4. **Project settings (gear) → Your apps → Web (</>) → register the app** (no hosting).
-   Copy the `firebaseConfig` object it shows into `firebase-config.js` as
-   `window.FIREBASE_CONFIG = { ... };` and push.
+```sql
+create table if not exists public.cheatday (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+alter table public.cheatday enable row level security;
+create policy "own cheatday" on public.cheatday
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+```
 
-An **Account** card then appears in Settings with Sign in / Create an account.
-Each person makes their own account. Budget, today's list, past days and the
-Quick add list sync; the Anthropic API key deliberately stays on each device.
+Sync is local-first and last-write-wins: the newest copy replaces the older one
+whole, so removing an item on one phone stays removed. The Anthropic API key
+deliberately stays on each device.
 
 ## Quick add
 
@@ -84,7 +79,7 @@ Both routes are automatic; you'll just see one button or the other.
 
 - `index.html`, `styles.css`, `app.js` — the whole app
 - `presets.js` — the Quick add list
-- `cloud.js`, `firebase-config.js` — optional accounts + sync
+- `cloud.js`, `supabase-config.js` — accounts + sync (Supabase, shared with the Chinese app)
 - `vendor/zxing.min.js` — barcode decoding ([@zxing/library](https://github.com/zxing-js/library) 0.21.3, UMD build)
 - `sw.js`, `manifest.webmanifest`, `icons/` — install-to-home-screen and offline cache
 - `make_icons.py` — regenerates the icons (needs Pillow)
