@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "27";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "28";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -639,14 +639,17 @@ function drawFriends() {
   const friends = fr.friendships.filter((f) => f.status === "accepted").map((f) => ({ id: f.id, uid: f.requester === me ? f.addressee : f.requester }));
   const today = localDate();
   const fl = $("#fr-list"); fl.innerHTML = "";
+  
+  const dayLabel = (day) => day === today ? "today" : day === dateMinus(1) ? "yesterday" : new Date(day + "T12:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
   for (const f of friends) {
-    const d = fr.days.find((x) => x.user_id === f.uid && x.day === today);
+    // Their most recent shared day: people don't tap "New day" at midnight, so "today" is whatever they last shared.
+    const d = fr.days.filter((x) => x.user_id === f.uid).sort((a, b) => String(b.day).localeCompare(String(a.day)))[0];
     const card = document.createElement("div");
     card.className = "card friend-card";
-    let right = `<span class="kcal muted">nothing shared today</span>`, bar = "", items = "";
+    let right = `<span class="kcal muted">nothing shared this week</span>`, bar = "", items = "";
     if (d) {
       const over = d.kcal > d.budget, pct = d.budget ? Math.min(100, d.kcal / d.budget * 100) : 0;
-      right = `<span class="kcal ${over ? "over" : "ok"}">${fmt(d.kcal)} / ${fmt(d.budget)}</span>`;
+      right = `<span class="kcal ${over ? "over" : "ok"}">${fmt(d.kcal)} / ${fmt(d.budget)}</span><span class="when">${dayLabel(String(d.day))}</span>`;
       bar = `<span class="bar"><span style="width:${pct}%" class="${over ? "over" : ""}"></span></span>`;
       const list = Array.isArray(d.items) ? d.items : [];
       if (!list.length) items = `<div class="items">nothing eaten yet</div>`;
