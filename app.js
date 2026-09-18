@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "7";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "8";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -269,39 +269,92 @@ $("#details-next").onclick = () => {
 
 // ---------------------------------------------------------------- one scanner: barcodes live, labels on demand
 
-let reader = null;
+let scanStream = null, scanning = false, zxReader = null, nativeDetector = null;
 let photoMode = "auto";   // what a fallback photo is for: "auto" (barcode, then label) or "label"
 const cameraPossible = () => !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.isSecureContext);
+const NATIVE_FORMATS = ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "itf", "qr_code"];
 function zxingHints() {
   const F = ZXing.BarcodeFormat, h = new Map();
   h.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128, F.CODE_39, F.ITF, F.QR_CODE]);
   h.set(ZXing.DecodeHintType.TRY_HARDER, true);
   return h;
 }
+function zxingReader() {
+  if (!zxReader) { zxReader = new ZXing.MultiFormatReader(); zxReader.setHints(zxingHints()); }
+  return zxReader;
+}
+/** Decode one canvas with ZXing; null when nothing is there. */
+function zxingDecodeCanvas(canvas) {
+  try {
+    const source = new ZXing.HTMLCanvasElementLuminanceSource(canvas);
+    const bitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(source));
+    const res = zxingReader().decodeWithState(bitmap);
+    return res ? res.getText() : null;
+  } catch (e) { return null; }
+}
 async function startCamera() {
   $("#scan-fallback").classList.add("hidden");
   $("#barcode-manual").classList.add("hidden");
   if (!cameraPossible()) { $("#scan-fallback").classList.remove("hidden"); return; }
+  const video = $("#video");
   try {
-    reader = new ZXing.BrowserMultiFormatReader(zxingHints(), 300);
-    await reader.decodeFromConstraints({ video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } } }, $("#video"), (result) => {
-      if (result) { const code = result.getText(); stopCamera(); lookupBarcode(code); }
-    });
+    scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+    video.srcObject = scanStream;
+    await video.play().catch(() => {});
   } catch (err) {
     console.warn("camera", err);
     $("#scan-fallback").classList.remove("hidden");
+    return;
+  }
+  if (!nativeDetector && "BarcodeDetector" in window) { try { nativeDetector = new BarcodeDetector({ formats: NATIVE_FORMATS }); } catch (e) {} }
+  scanning = true;
+  scanLoop(video);
+}
+async function scanLoop(video) {
+  let frame = 0;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  while (scanning) {
+    if (video.readyState >= 2 && video.videoWidth) {
+      let code = null;
+      if (nativeDetector) {
+        try { const found = await nativeDetector.detect(video); if (found.length) code = found[0].rawValue; } catch (e) {}
+      }
+      if (!code) {
+        // Alternate upright and rotated frames, so a barcode held sideways reads just as well.
+        // Every third pass zooms on the middle, which helps with small barcodes held far away.
+        const rot = frame % 2 ? 90 : 0;
+        const zoom = frame % 3 === 2;
+        code = zxingDecodeCanvas(frameCanvas(video, 1280, rot, zoom));
+      }
+      if (code) { stopCamera(); lookupBarcode(code); return; }
+      frame++;
+    }
+    await sleep(120);
   }
 }
+function frameCanvas(video, maxW, rot, zoom) {
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const sx = zoom ? vw * 0.2 : 0, sy = zoom ? vh * 0.2 : 0, sw = zoom ? vw * 0.6 : vw, sh = zoom ? vh * 0.6 : vh;
+  const scale = Math.min(1, maxW / Math.max(sw, sh));
+  const w = Math.round(sw * scale), h = Math.round(sh * scale);
+  const c = document.createElement("canvas");
+  if (rot === 90) { c.width = h; c.height = w; } else { c.width = w; c.height = h; }
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  ctx.translate(c.width / 2, c.height / 2); ctx.rotate(rot * Math.PI / 180);
+  ctx.drawImage(video, sx, sy, sw, sh, -w / 2, -h / 2, w, h);
+  return c;
+}
 function stopCamera() {
-  if (reader) { try { reader.reset(); } catch (e) {} reader = null; }
-  const v = $("#video"); if (v.srcObject) { try { v.srcObject.getTracks().forEach((t) => t.stop()); } catch (e) {} v.srcObject = null; }
+  scanning = false;
+  if (scanStream) { try { scanStream.getTracks().forEach((t) => t.stop()); } catch (e) {} scanStream = null; }
+  const v = $("#video"); if (v.srcObject) v.srcObject = null;
 }
 
 $("#scan-photo").onclick = () => { photoMode = "auto"; $("#file-scan").click(); };
 $("#scan-label").onclick = () => {
   if (!state.apiKey) { toast("Add your Anthropic API key in Settings first"); go("settings"); return; }
   const video = $("#video");
-  if (reader && video.videoWidth) {
+  if (scanStream && video.videoWidth) {
     drawScaled(video, 1600).toBlob((blob) => readLabel(blob), "image/jpeg", 0.9);
   } else {
     photoMode = "label"; $("#file-scan").click();
@@ -334,14 +387,10 @@ async function decodeBarcodeFromFile(file) {
       if (found.length) return found[0].rawValue;
     } catch (e) {}
   }
-  const zx = new ZXing.BrowserMultiFormatReader(zxingHints());
   for (const width of [1400, 1000, 700]) {
     for (const rot of [0, 90]) {
-      try {
-        const el = await canvasToImage(drawScaled(img, width, rot));
-        const res = await zx.decodeFromImageElement(el);
-        if (res) return res.getText();
-      } catch (e) {}
+      const code = zxingDecodeCanvas(drawScaled(img, width, rot));
+      if (code) return code;
     }
   }
   return null;
@@ -357,17 +406,30 @@ function drawScaled(img, maxW, rot = 0) {
   const w = Math.round(iw * scale), h = Math.round(ih * scale);
   const c = document.createElement("canvas");
   if (rot === 90) { c.width = h; c.height = w; } else { c.width = w; c.height = h; }
-  const ctx = c.getContext("2d");
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);   // transparent PNGs would otherwise read as black
   ctx.translate(c.width / 2, c.height / 2); ctx.rotate(rot * Math.PI / 180); ctx.drawImage(img, -w / 2, -h / 2, w, h);
   return c;
 }
-function canvasToImage(canvas) {
-  return new Promise((resolve, reject) => {
-    const el = new Image(); el.onload = () => resolve(el); el.onerror = reject; el.src = canvas.toDataURL("image/png");
-  });
-}
-
 // ---------------------------------------------------------------- Open Food Facts
+
+/** kcal per 100 and per serving, trusting kJ when the kcal field looks like kJ (a common data-entry slip,
+ *  especially on Australian labels which print kJ first). Nothing edible exceeds ~900 kcal per 100 g. */
+function energyFrom(n) {
+  const pick = (suffix, cap) => {
+    const kcal = num(n["energy-kcal" + suffix]);
+    const kj = num(n["energy-kj" + suffix]) || num(n["energy" + suffix]);   // energy_* is always kJ on OFF
+    let fixed = false, out = null;
+    if (kcal && kj) {
+      if (Math.abs(kcal * 4.184 - kj) / kj < 0.2) out = kcal;              // the two agree
+      else { out = kj / 4.184; fixed = Math.abs(kcal - kj) / kj < 0.2; }    // kcal box holds the kJ number
+    } else if (kcal) { if (cap && kcal > cap) { out = kcal / 4.184; fixed = true; } else out = kcal; }
+    else if (kj) out = kj / 4.184;
+    return { value: out, fixed };
+  };
+  const a = pick("_100g", 950), b = pick("_serving", null);
+  return { per100: a.value, perServing: b.value, fixed: a.fixed || b.fixed };
+}
 
 async function lookupBarcode(code) {
   busy(`Looking up ${code}…`);
@@ -387,17 +449,23 @@ async function lookupBarcode(code) {
   }
   const p = data.product, n = p.nutriments || {};
   const item = blankItem("barcode");
+  const energy = energyFrom(n);
   item.name = p.product_name_en || p.product_name || "";
   item.brand = p.brands || "";
   item.image = p.image_front_small_url || null;
   const q = ((p.product_quantity_unit || "") + " " + (p.quantity || "")).toLowerCase();
   item.unit = /\bml\b|\bl\b|litre|liter/.test(q) ? "ml" : "g";
-  item.kcalPer100 = num(n["energy-kcal_100g"]) || (num(n["energy_100g"]) ? n["energy_100g"] / 4.184 : null);
-  if (item.kcalPer100) item.kcalPer100 = Math.round(item.kcalPer100);
+  item.kcalPer100 = energy.per100 ? Math.round(energy.per100) : null;
   item.servingSize = num(p.serving_quantity) || num((p.serving_size || "").match(/(\d+(?:[.,]\d+)?)\s*(g|ml)/i)?.[1]?.replace(",", "."));
-  item.kcalPerServing = num(n["energy-kcal_serving"]) ? Math.round(n["energy-kcal_serving"]) : null;
+  item.kcalPerServing = energy.perServing ? Math.round(energy.perServing) : null;
+  // A per-serving figure that doesn't match per-100 x serving size is usually kJ typed into the kcal box.
+  if (item.kcalPerServing && item.kcalPer100 && item.servingSize) {
+    const expected = item.kcalPer100 * item.servingSize / 100;
+    if (item.kcalPerServing > expected * 2 && Math.abs(item.kcalPerServing / 4.184 - expected) / expected < 0.25) { item.kcalPerServing = Math.round(item.kcalPerServing / 4.184); energy.fixed = true; }
+  }
   item.packSize = num(p.product_quantity);
   if (!item.kcalPer100 && !item.kcalPerServing) item.note = "Open Food Facts has this product but no calorie data. Fill it in from the pack.";
+  else if (energy.fixed) item.note = "Open Food Facts had kJ in the kcal box for this one; I've converted it. Worth a glance at the pack.";
   draft = item;
   openDetails("Product details");
 }

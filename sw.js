@@ -1,7 +1,7 @@
 /* Service worker: caches the app so it opens offline once installed.
  * Only registers over HTTPS or localhost. Bump CACHE when app files change. */
-const CACHE = "cheatday-v7";
-const ASSETS = ["./", "./index.html", "./styles.css?v=7", "./presets.js?v=7", "./supabase-config.js?v=7", "./cloud.js?v=7", "./app.js?v=7", "./vendor/zxing.min.js", "./manifest.webmanifest", "./icons/icon-192.png?v=7", "./icons/icon-512.png?v=7"];
+const CACHE = "cheatday-v8";
+const ASSETS = ["./", "./index.html", "./styles.css?v=8", "./presets.js?v=8", "./supabase-config.js?v=8", "./cloud.js?v=8", "./app.js?v=8", "./vendor/zxing.min.js", "./manifest.webmanifest", "./icons/icon-192.png?v=8", "./icons/icon-512.png?v=8"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
