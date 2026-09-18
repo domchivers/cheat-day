@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "23";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "24";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -592,6 +592,7 @@ async function renderFriends() {
   $("#fr-body").classList.toggle("hidden", !signed);
   if (!signed) return;
   $("#fr-share-day").checked = !!state.shareDay;
+  publishDay();
   busy("Fetching your friends…");
   try {
     await ensureProfile();
@@ -1406,7 +1407,7 @@ function schedulePush() {
 function publishDay() {
   const c = window.cloud; if (!c || !c.user || !state.shareDay) return;
   const items = state.day.items.map((it) => ({ name: it.name, kcal: it.kcal }));
-  c.publishDay({ date: state.day.date, budget: state.budget, kcal: usedKcal(), items }).catch(() => {});
+  c.publishDay({ date: state.day.date, budget: state.budget, kcal: usedKcal(), items }).catch((err) => { if (!publishDay.warned) { publishDay.warned = true; toast("Couldn't share your day: " + c.explain(err), 5000); } });
 }
 let syncWarned = false;
 function syncProblem(err) {
@@ -1447,9 +1448,9 @@ function cloudInit() {
   const c = window.cloud;
   renderAccount();
   if (!c) return;
-  c.onAuth((u) => { renderAccount(); if (u) pull(); });
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { pull(); if (stack[stack.length - 1] === "friends") renderFriends(); } });
-  if (c.user) pull();
+  c.onAuth((u) => { renderAccount(); if (u) { pull(); publishDay(); } });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { pull(); publishDay(); if (stack[stack.length - 1] === "friends") renderFriends(); } });
+  if (c.user) { pull(); publishDay(); }
 }
 async function acct(action) {
   const c = window.cloud; if (!c) return;
