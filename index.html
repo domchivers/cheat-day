@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=12">
-  <link rel="icon" href="icons/icon-192.png?v=12">
-  <link rel="stylesheet" href="styles.css?v=12">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=14">
+  <link rel="icon" href="icons/icon-192.png?v=14">
+  <link rel="stylesheet" href="styles.css?v=14">
 </head>
 <body>
 
@@ -23,6 +23,7 @@
   <symbol id="i-camera" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.2" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
   <symbol id="i-pen" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M4 20h4l10-10-4-4L4 16zM13 7l4 4"/></symbol>
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M16 16l4.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-meal" viewBox="0 0 24 24"><path d="M4 11h16a8 8 0 0 1-16 0z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/><path d="M9 11V7M12 11V5M15 11V7M7 19h10" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
   <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
@@ -62,21 +63,31 @@
       <small>Chicken thigh, eggs, a glass of wine…</small>
       <svg class="chev"><use href="#i-chev"/></svg>
     </button>
-    <button class="card action tint-peach wide" data-go="manual">
-      <span class="circle peach"><svg><use href="#i-pen"/></svg></span>
+    <button class="card action tint-peach" data-go="meals">
+      <span class="circle peach"><svg><use href="#i-meal"/></svg></span>
+      <b>Meals</b>
+      <small>A cake, a curry: add it as one thing</small>
+      <svg class="chev"><use href="#i-chev"/></svg>
+    </button>
+    <button class="card action tint-sand" data-go="manual">
+      <span class="circle sand"><svg><use href="#i-pen"/></svg></span>
       <b>Type it in</b>
       <small>You already know the numbers</small>
       <svg class="chev"><use href="#i-chev"/></svg>
     </button>
   </div>
 
-  <h2 class="section-title">Quick add</h2>
-  <ul class="list quick" id="quick-list"></ul>
+  <button class="card quick-toggle" id="quick-toggle">
+    <span class="circle green"><svg><use href="#i-plus"/></svg></span>
+    <span class="quick-text"><b>Quick add</b><small id="quick-sub">Things you have often</small></span>
+    <svg class="chev" id="quick-chev"><use href="#i-chev"/></svg>
+  </button>
+  <ul class="list quick hidden" id="quick-list"></ul>
+  <p class="muted tiny hidden" id="quick-hint">Tap ＋ to add one like last time, tap the name to change the amount, hold to remove. Most-used first.</p>
 
   <h2 class="section-title">Today</h2>
   <ul class="list" id="home-list"></ul>
   <p class="empty" id="home-empty">Nothing logged yet. Scan something delicious.</p>
-  <p class="muted tiny" id="quick-hint">Tap ＋ to add one like last time, tap the name to pick a different amount, hold to remove.</p>
 </section>
 
 <!-- ===================== SETTINGS ===================== -->
@@ -149,6 +160,57 @@
     <button class="btn link-btn" data-go="manual">Type it in instead</button>
   </div>
   <input type="file" accept="image/*" capture="environment" id="file-scan" hidden>
+</section>
+
+<!-- ===================== MEALS ===================== -->
+<section class="view hidden" id="view-meals">
+  <header class="sub-head">
+    <button class="icon-btn" data-back aria-label="Back"><svg><use href="#i-back"/></svg></button>
+    <h1>Meals</h1><span></span>
+  </header>
+  <p class="muted" id="meals-intro">Build something once, from its ingredients, then add a portion of it to any day.</p>
+  <button class="btn primary" id="meals-new">New meal</button>
+  <ul class="list" id="meals-list"></ul>
+</section>
+
+<section class="view hidden" id="view-meal">
+  <header class="sub-head">
+    <button class="icon-btn" data-back aria-label="Back"><svg><use href="#i-back"/></svg></button>
+    <h1 id="meal-title">New meal</h1>
+    <button class="icon-btn hidden" id="meal-delete" aria-label="Delete meal">🗑</button>
+  </header>
+  <div class="card form-card">
+    <label>What is it?
+      <input type="text" id="m-name" placeholder="e.g. Carrot cake" autocapitalize="sentences">
+    </label>
+    <label>How many portions does it make?
+      <input type="number" inputmode="numeric" id="m-portions" placeholder="e.g. 8">
+    </label>
+  </div>
+
+  <h2 class="section-title">Ingredients</h2>
+  <ul class="list" id="m-items"></ul>
+  <p class="empty" id="m-empty">Nothing in it yet.</p>
+  <div class="row">
+    <button class="secondary" id="m-add-search">Search</button>
+    <button class="secondary" id="m-add-scan">Scan</button>
+    <button class="secondary" id="m-paste-toggle">Paste a list</button>
+  </div>
+  <div class="card form-card hidden" id="m-paste-wrap">
+    <label>One ingredient per line, e.g. "200g plain flour", "3 eggs", "1 tbsp honey"
+      <textarea id="m-paste" rows="6" placeholder="200g plain flour&#10;3 eggs&#10;150g butter&#10;1 tbsp honey"></textarea>
+    </label>
+    <button class="btn primary" id="m-paste-go">Match the ingredients</button>
+  </div>
+
+  <div class="card result" id="m-totals">
+    <div class="muted">Whole thing</div>
+    <div class="result-big"><span id="m-total-kcal">0</span><small> kcal</small></div>
+    <div class="muted" id="m-total-sub">0 g</div>
+    <div class="result-lines" id="m-per-portion"></div>
+  </div>
+  <button class="btn primary" id="m-save">Save meal</button>
+  <button class="btn mint hidden" id="m-use">Add a portion to today</button>
 </section>
 
 <!-- ===================== SEARCH ===================== -->
@@ -253,10 +315,10 @@
 <div class="toast hidden" id="toast"></div>
 
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=12"></script>
-<script src="foods.js?v=12"></script>
-<script src="supabase-config.js?v=12"></script>
-<script src="cloud.js?v=12"></script>
-<script src="app.js?v=12"></script>
+<script src="presets.js?v=14"></script>
+<script src="foods.js?v=14"></script>
+<script src="supabase-config.js?v=14"></script>
+<script src="cloud.js?v=14"></script>
+<script src="app.js?v=14"></script>
 </body>
 </html>

@@ -70,10 +70,28 @@ The **Search** card finds food three ways, in this order:
 3. **Ask Claude** (needs the API key) for anything else. It's an estimate from
    standard reference values, and the details page says so.
 
+## Meals
+
+The **Meals** card is for a cake, a curry, anything made from several
+ingredients that you want to add as one thing. In the editor:
+
+- **Search** or **Scan** an ingredient, say how much went in, and it's added.
+- **Paste a list** takes one ingredient per line ("200g plain flour", "3 eggs",
+  "1 tbsp honey", "zest of a lemon") and matches each to the food list. Lines it
+  can't place are highlighted: tap one and pick what it is. Tap any matched
+  line to change the amount, swap it for a scanned brand, or remove it.
+- Set how many portions it makes, then **Save meal**.
+
+A saved meal behaves like any food: add one portion or three to a day, find it
+in Search, and it appears in Quick add. Editing a meal later doesn't change days
+it was already added to.
+
 ## Quick add
 
-The **Quick add** list on the home screen holds things you have often, added to
-the day in one tap. They live in `presets.js`: one entry per item with a name, a
+
+**Quick add** on the home screen is a row you tap open. It holds things you have
+often, most-used first, added to the day in one tap: your saved meals, anything
+you've added before, and the presets below. They live in `presets.js`: one entry per item with a name, a
 short description, the kcal for one of it, and a word for the unit ("drink",
 "slice"). Add more entries to that list and push.
 

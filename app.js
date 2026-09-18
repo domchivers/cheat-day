@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "12";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "14";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -18,9 +18,11 @@ function localDate(d = new Date()) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 function load() {
-  const base = { budget: 1600, apiKey: "", day: { date: localDate(), items: [] }, history: [], recent: [] };
+  const base = { budget: 1600, apiKey: "", day: { date: localDate(), items: [] }, history: [], recent: [], meals: [], presetUses: {}, mealDraft: null };
   try { const raw = localStorage.getItem(STORE_KEY); if (raw) Object.assign(base, JSON.parse(raw)); } catch (e) {}
   if (!Array.isArray(base.recent)) base.recent = [];
+  if (!Array.isArray(base.meals)) base.meals = [];
+  if (!base.presetUses || typeof base.presetUses !== "object") base.presetUses = {};
   return base;
 }
 function save(sync = true) {
@@ -75,7 +77,7 @@ function shortAmounts(item) {
   parts.push(item.shareLabel);
   return parts.join(" · ");
 }
-const BASIS_KEYS = ["name", "brand", "source", "unit", "unitLabel", "kcalPer100", "servingSize", "kcalPerServing", "packSize", "piecesPerPack", "image"];
+const BASIS_KEYS = ["name", "brand", "source", "unit", "unitLabel", "kcalPer100", "servingSize", "kcalPerServing", "packSize", "piecesPerPack", "image", "mealId"];
 function basisOf(obj) {
   const b = {};
   for (const k of BASIS_KEYS) if (obj[k] != null && obj[k] !== "") b[k] = obj[k];
@@ -85,7 +87,7 @@ function basisOf(obj) {
 
 // ---------------------------------------------------------------- router
 
-const VIEWS = ["home", "settings", "scan", "search", "details", "share"];
+const VIEWS = ["home", "settings", "scan", "search", "meals", "meal", "details", "share"];
 let stack = ["home"];
 function show(view) {
   for (const v of VIEWS) $(`#view-${v}`).classList.toggle("hidden", v !== view);
@@ -95,10 +97,12 @@ function show(view) {
   if (view === "settings") renderSettings();
   if (view === "scan") startCamera();
   if (view === "search") openSearch();
+  if (view === "meals") renderMeals();
+  if (view === "meal") renderMeal();
 }
 function go(view) { stack.push(view); show(view); }
 function back() { stack.pop(); if (!stack.length) stack = ["home"]; show(stack[stack.length - 1]); }
-function home() { stack = ["home"]; show("home"); }
+function home() { pick = null; stack = ["home"]; show("home"); }
 
 document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-go]"); if (b) { const v = b.dataset.go; v === "manual" ? openManual() : go(v); return; }
@@ -121,7 +125,7 @@ function renderHome() {
   renderQuick();
 }
 function iconFor(source) {
-  return { barcode: "barcode", label: "camera", quick: "plus", search: "search", claude: "search" }[source] || "pen";
+  return { barcode: "barcode", label: "camera", quick: "plus", search: "search", claude: "search", meal: "meal" }[source] || "pen";
 }
 function itemRow(it) {
   const li = document.createElement("li");
@@ -134,35 +138,51 @@ function itemRow(it) {
   return li;
 }
 
-// --- quick add: presets from presets.js + everything you've added before
+// --- quick add: presets from presets.js, saved meals, and everything you've added before; most-used first
+const LS_QUICK_OPEN = "cheatday.quickOpen";
 function quickEntries() {
   const presets = (typeof PRESETS !== "undefined" ? PRESETS : []).map((p) => ({
-    key: "preset:" + p.name, preset: true,
+    key: "preset:" + p.name, preset: true, uses: state.presetUses[p.name] || 0, lastUsed: "",
     basis: { name: p.name, source: "quick", unit: "ml", unitLabel: p.unit || "serving", kcalPerServing: Math.round(p.kcal) },
     detail: p.detail || "", lastKcal: Math.round(p.kcal), lastShareLabel: `${fmt(Math.round(p.kcal) / state.budget * 100, 1)}% of the day`
   }));
-  return presets.concat(state.recent);
+  const meals = state.meals.map((m) => {
+    const b = mealBasis(m), kcal = Math.round(b.kcalPerServing || 0);
+    return { key: "meal:" + m.id, meal: true, uses: m.uses || 0, lastUsed: m.lastUsed || "", basis: b,
+      detail: `1 portion of ${m.portions || 1} · ${fmt(kcal)} kcal`, lastKcal: kcal, lastShareLabel: `${fmt(kcal / state.budget * 100, 1)}% of the day` };
+  });
+  return presets.concat(meals, state.recent.map((r) => ({ ...r, uses: r.uses || 0 })))
+    .sort((a, b) => (b.uses - a.uses) || String(b.lastUsed || "").localeCompare(String(a.lastUsed || "")));
 }
 function renderQuick() {
   const list = $("#quick-list"); list.innerHTML = "";
   const entries = quickEntries();
-  $("#quick-hint").classList.toggle("hidden", entries.length === 0);
+  let open = false; try { open = localStorage.getItem(LS_QUICK_OPEN) === "1"; } catch (e) {}
+  $("#quick-toggle").classList.toggle("open", open);
+  list.classList.toggle("hidden", !open);
+  $("#quick-hint").classList.toggle("hidden", !open || entries.length === 0);
+  $("#quick-sub").textContent = entries.length ? `${entries.length} thing${entries.length === 1 ? "" : "s"} you have often` : "Things you add come back here";
   for (const q of entries) {
     const li = document.createElement("li");
     const b = q.basis;
     const detail = q.detail || shortAmounts({ ...b, kcal: q.lastKcal, shareLabel: q.lastShareLabel });
-    const thumb = b.image ? `<img class="thumb-sm" src="${esc(b.image)}" alt="">` : `<span class="thumb-sm"><svg><use href="#i-${iconFor(b.source)}"/></svg></span>`;
+    const thumb = b.image ? `<img class="thumb-sm" src="${esc(b.image)}" alt="">` : `<span class="thumb-sm ${q.meal ? "tone-peach" : ""}"><svg><use href="#i-${iconFor(b.source)}"/></svg></span>`;
     li.innerHTML = `${thumb}
       <div class="body"><div class="name">${esc(b.name)}</div><div class="detail">${esc(detail)}</div></div>
       <div class="kcal">${fmt(q.lastKcal)}</div><button class="add" aria-label="Add"><svg><use href="#i-plus"/></svg></button>`;
     li.querySelector(".add").onclick = (e) => { e.stopPropagation(); addToDay(b, q.lastKcal, q.lastShareLabel); toast(`Added ${b.name} · ${fmt(q.lastKcal)} kcal`); };
     li.querySelector(".body").onclick = () => { draft = { ...b, note: "" }; openShare(q.lastKcal); };
-    if (!q.preset) longPress(li, () => {
+    if (!q.preset && !q.meal) longPress(li, () => {
       if (confirm(`Remove "${b.name}" from Quick add?`)) { state.recent = state.recent.filter((r) => r.key !== q.key); save(); renderQuick(); }
     });
     list.appendChild(li);
   }
 }
+$("#quick-toggle").onclick = () => {
+  const open = $("#quick-list").classList.contains("hidden");
+  try { localStorage.setItem(LS_QUICK_OPEN, open ? "1" : "0"); } catch (e) {}
+  renderQuick();
+};
 function longPress(el, fn) {
   let t = null;
   const start = () => { t = setTimeout(() => { t = null; fn(); }, 650); };
@@ -173,15 +193,193 @@ function longPress(el, fn) {
 }
 function rememberRecent(basis, kcal, shareLabel) {
   const key = (basis.name + "|" + (basis.brand || "")).toLowerCase();
+  const old = state.recent.find((r) => r.key === key);
   state.recent = state.recent.filter((r) => r.key !== key);
-  state.recent.unshift({ key, basis, lastKcal: kcal, lastShareLabel: shareLabel, lastUsed: new Date().toISOString() });
+  state.recent.unshift({ key, basis, lastKcal: kcal, lastShareLabel: shareLabel, lastUsed: new Date().toISOString(), uses: ((old && old.uses) || 0) + 1 });
   state.recent = state.recent.slice(0, RECENT_MAX);
 }
 function addToDay(basis, kcal, shareLabel) {
   kcal = Math.round(kcal);
   state.day.items.push({ id: uid(), ...basisOf(basis), kcal, shareLabel, addedAt: new Date().toISOString() });
-  if (basis.source !== "quick") rememberRecent(basisOf(basis), kcal, shareLabel);
+  if (basis.source === "quick") state.presetUses[basis.name] = (state.presetUses[basis.name] || 0) + 1;
+  else if (basis.source === "meal") { const m = state.meals.find((x) => x.id === basis.mealId); if (m) { m.uses = (m.uses || 0) + 1; m.lastUsed = new Date().toISOString(); } }
+  else rememberRecent(basisOf(basis), kcal, shareLabel);
   save(); renderHome();
+}
+
+// ---------------------------------------------------------------- meals: a cake or a curry as one thing
+
+let mealDraft = null;   // the meal on the editor screen
+let pick = null;        // set while choosing an ingredient: { replaceId } (null: adding to the day as usual)
+let openRow = null;
+
+function mealTotals(meal) {
+  let kcal = 0, grams = 0, allWeighed = true;
+  for (const it of meal.items || []) {
+    kcal += it.kcal || 0;
+    const g = it.grams != null ? it.grams : amountsFor(it, it.kcal || 0).grams;
+    if (g != null) grams += g; else allWeighed = false;
+  }
+  return { kcal, grams, allWeighed };
+}
+function mealBasis(meal) {
+  const t = mealTotals(meal), portions = num(meal.portions) || 1;
+  return {
+    name: meal.name || "Meal", source: "meal", mealId: meal.id, unit: "g",
+    kcalPer100: t.grams ? t.kcal / t.grams * 100 : null,
+    servingSize: t.grams ? t.grams / portions : null,
+    kcalPerServing: t.kcal / portions, unitLabel: "portion"
+  };
+}
+function newMeal() { return { id: uid(), name: "", portions: 4, items: [], saved: false }; }
+function mealChanged() { state.mealDraft = mealDraft; save(false); renderMeal(); }
+
+function renderMeals() {
+  const list = $("#meals-list"); list.innerHTML = "";
+  if (state.mealDraft && !state.mealDraft.saved && (state.mealDraft.items.length || state.mealDraft.name)) {
+    const li = document.createElement("li");
+    li.className = "warn";
+    li.innerHTML = `<span class="thumb-sm tone-peach"><svg><use href="#i-meal"/></svg></span><div class="body"><div class="name">${esc(state.mealDraft.name || "Unsaved meal")}</div><div class="detail">Not saved yet · tap to carry on</div></div>`;
+    li.onclick = () => { mealDraft = state.mealDraft; go("meal"); };
+    list.appendChild(li);
+  }
+  for (const m of state.meals) {
+    const t = mealTotals(m), portions = num(m.portions) || 1;
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="thumb-sm tone-peach"><svg><use href="#i-meal"/></svg></span>
+      <div class="body"><div class="name">${esc(m.name)}</div><div class="detail">${portions} portion${portions === 1 ? "" : "s"} · ${fmt(t.kcal / portions)} kcal each · ${m.items.length} ingredient${m.items.length === 1 ? "" : "s"}</div></div>
+      <button class="add" aria-label="Add a portion to today"><svg><use href="#i-plus"/></svg></button>`;
+    li.querySelector(".add").onclick = (e) => { e.stopPropagation(); draft = { ...mealBasis(m), note: "" }; openShare(); };
+    li.querySelector(".body").onclick = () => { mealDraft = JSON.parse(JSON.stringify(m)); mealDraft.saved = true; go("meal"); };
+    list.appendChild(li);
+  }
+  $("#meals-intro").classList.toggle("hidden", state.meals.length > 0);
+}
+$("#meals-new").onclick = () => { mealDraft = newMeal(); state.mealDraft = mealDraft; save(false); go("meal"); };
+
+function renderMeal() {
+  if (!mealDraft) mealDraft = state.mealDraft || newMeal();
+  const m = mealDraft;
+  $("#meal-title").textContent = m.saved ? "Edit meal" : "New meal";
+  $("#meal-delete").classList.toggle("hidden", !m.saved);
+  if (document.activeElement !== $("#m-name")) $("#m-name").value = m.name || "";
+  if (document.activeElement !== $("#m-portions")) $("#m-portions").value = m.portions || "";
+  const list = $("#m-items"); list.innerHTML = "";
+  for (const it of m.items) {
+    const li = document.createElement("li");
+    li.className = "ingredient" + (it.unresolved ? " warn" : "");
+    const g = it.grams != null ? it.grams : amountsFor(it, it.kcal || 0).grams;
+    const bits = [];
+    if (g != null) bits.push(`${fmt1(g)} ${it.unit || "g"}`);
+    if (it.fromText) bits.push(`from "${it.fromText}"`);
+    if (it.unresolved) bits.push("tap to pick what this is");
+    if (it.brand) bits.unshift(it.brand);
+    const thumb = it.image ? `<img class="thumb-sm" src="${esc(it.image)}" alt="">` : `<span class="thumb-sm"><svg><use href="#i-${iconFor(it.source)}"/></svg></span>`;
+    li.innerHTML = `${thumb}<div class="body"><div class="name">${esc(it.name)}</div><div class="detail">${esc(bits.join(" · "))}</div></div><div class="kcal">${fmt(it.kcal || 0)}</div>`;
+    if (openRow === it.id) {
+      const actions = document.createElement("div");
+      actions.className = "row-actions";
+      actions.innerHTML = `<button data-act="amount" ${it.unresolved ? "disabled" : ""}>Amount</button><button data-act="swap">${it.unresolved ? "Pick it" : "Swap product"}</button><button data-act="remove" class="danger">Remove</button>`;
+      li.appendChild(actions);
+    }
+    li.onclick = (e) => {
+      const act = e.target.closest("[data-act]");
+      if (act) {
+        e.stopPropagation();
+        if (act.dataset.act === "remove") { m.items = m.items.filter((x) => x.id !== it.id); openRow = null; mealChanged(); }
+        if (act.dataset.act === "amount") { pick = { replaceId: it.id }; draft = { ...basisOf(it), note: "" }; openShare(it.kcal); }
+        if (act.dataset.act === "swap") { pick = { replaceId: it.id, prefill: it.fromText || it.name }; go("search"); }
+        return;
+      }
+      openRow = openRow === it.id ? null : it.id; renderMeal();
+    };
+    list.appendChild(li);
+  }
+  $("#m-empty").classList.toggle("hidden", m.items.length > 0);
+  const t = mealTotals(m), portions = num(m.portions) || 1;
+  $("#m-total-kcal").textContent = fmt(t.kcal);
+  $("#m-total-sub").textContent = t.grams ? `about ${fmt(t.grams)} g` : "";
+  $("#m-per-portion").innerHTML = m.items.length ? `<div>each of <b>${portions}</b> portion${portions === 1 ? "" : "s"}: <b>${fmt(t.kcal / portions)}</b> kcal${t.grams ? ` (${fmt(t.grams / portions)} g)` : ""}</div>` : "";
+  $("#m-use").classList.toggle("hidden", !m.saved);
+  $("#m-save").textContent = m.saved ? "Save changes" : "Save meal";
+}
+$("#m-name").addEventListener("input", (e) => { mealDraft.name = e.target.value; state.mealDraft = mealDraft; save(false); });
+$("#m-portions").addEventListener("input", (e) => { mealDraft.portions = num(e.target.value) || mealDraft.portions; state.mealDraft = mealDraft; save(false); renderMeal(); });
+$("#m-add-search").onclick = () => { pick = { replaceId: null }; go("search"); };
+$("#m-add-scan").onclick = () => { pick = { replaceId: null }; go("scan"); };
+$("#m-paste-toggle").onclick = () => { $("#m-paste-wrap").classList.toggle("hidden"); $("#m-paste").focus(); };
+$("#m-paste-go").onclick = () => {
+  const lines = $("#m-paste").value.split(/\n+/).map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) return;
+  let matched = 0;
+  for (const line of lines) { const it = ingredientFromText(line); if (!it.unresolved) matched++; mealDraft.items.push(it); }
+  $("#m-paste").value = ""; $("#m-paste-wrap").classList.add("hidden");
+  mealChanged();
+  toast(matched === lines.length ? `Matched all ${lines.length}. Tap any to swap for a brand.` : `Matched ${matched} of ${lines.length}. Tap the highlighted ones to pick what they are.`, 5000);
+};
+$("#m-save").onclick = () => {
+  const m = mealDraft;
+  m.name = $("#m-name").value.trim();
+  if (!m.name) { toast("Give the meal a name first"); $("#m-name").focus(); return; }
+  if (!m.items.length) { toast("Add at least one ingredient"); return; }
+  if (m.items.some((it) => it.unresolved)) { toast("Pick what the highlighted ingredients are first"); return; }
+  m.portions = num($("#m-portions").value) || 1;
+  m.saved = true; m.updatedAt = new Date().toISOString();
+  const i = state.meals.findIndex((x) => x.id === m.id);
+  if (i >= 0) state.meals[i] = m; else state.meals.unshift(m);
+  state.mealDraft = null;
+  save(); toast(`Saved ${m.name}`); renderMeal();
+};
+$("#m-use").onclick = () => { const m = state.meals.find((x) => x.id === mealDraft.id) || mealDraft; draft = { ...mealBasis(m), note: "" }; openShare(); };
+$("#meal-delete").onclick = () => {
+  if (!confirm(`Delete "${mealDraft.name}"? Days it was added to keep their numbers.`)) return;
+  state.meals = state.meals.filter((x) => x.id !== mealDraft.id);
+  state.mealDraft = null; mealDraft = null; save(); back();
+};
+/** Where a chosen ingredient goes, then back to the editor. */
+function mealTakeIngredient(basis, kcal) {
+  const m = mealDraft || state.mealDraft || newMeal(); mealDraft = m;
+  const a = amountsFor(basis, kcal);
+  const it = { id: uid(), ...basisOf(basis), kcal: Math.round(kcal), grams: a.grams != null ? Math.round(a.grams * 10) / 10 : null };
+  const i = pick && pick.replaceId ? m.items.findIndex((x) => x.id === pick.replaceId) : -1;
+  if (i >= 0) { it.fromText = m.items[i].fromText; m.items[i] = it; } else m.items.push(it);
+  pick = null; openRow = null;
+  state.mealDraft = m; save(false);
+  stack = ["home", "meals", "meal"]; show("meal");
+}
+function returnToMeal() { pick = null; stack = ["home", "meals", "meal"]; show("meal"); }
+
+// "200g plain flour", "3 eggs", "plain flour 200 g", "1 tbsp honey" -> an ingredient matched to the food list
+const UNIT_G = { g: 1, gram: 1, grams: 1, kg: 1000, ml: 1, l: 1000, litre: 1000, litres: 1000, liter: 1000, liters: 1000, tbsp: 15, tablespoon: 15, tablespoons: 15, tsp: 5, teaspoon: 5, teaspoons: 5, cup: 240, cups: 240, oz: 28.35, lb: 453.6, lbs: 453.6 };
+const FILLER = /\b(large|medium|small|fresh|chopped|diced|sliced|grated|plain|self[- ]raising|caster|granulated|unsalted|salted|softened|melted|ripe|light|dark|brown|ground|crushed|finely|roughly|of|a|an|the|some|x)\b/gi;
+function parseIngredient(line) {
+  let t = line.replace(/^\s*(?:[-*\u2022]|\d+[.)])\s+/, "").trim();
+  const frac = (x) => { x = x.replace(",", ".").replace(/\s/g, ""); const u = { "½": 0.5, "¼": 0.25, "¾": 0.75, "⅓": 1 / 3, "⅔": 2 / 3 }[x]; if (u) return u; if (x.includes("/")) { const [a, b] = x.split("/"); return +a / +b; } return +x; };
+  const numRe = "(\\d+(?:[.,]\\d+)?(?:\\s*/\\s*\\d+)?|[½¼¾⅓⅔])", unitRe = "(kg|g|grams?|ml|l|litres?|liters?|tbsp|tablespoons?|tsp|teaspoons?|cups?|oz|lbs?)";
+  let m;
+  if ((m = t.match(new RegExp(`^${numRe}\\s*(?:${unitRe}\\b\\.?)?\\s*(?:of\\s+)?(.+)$`, "i")))) return { qty: frac(m[1]), unit: (m[2] || "").toLowerCase(), name: m[3].trim() };
+  if ((m = t.match(new RegExp(`^(.+?)\\s*[,:x×-]?\\s*${numRe}\\s*(?:${unitRe})?\\.?$`, "i")))) return { qty: frac(m[2]), unit: (m[3] || "").toLowerCase(), name: m[1].trim() };
+  return { qty: null, unit: "", name: t };
+}
+function matchFood(name) {
+  const tries = [name, name.replace(FILLER, " ").replace(/\s+/g, " ").trim()];
+  const words = tries[1].split(" ").filter(Boolean);
+  for (let i = 1; i < words.length; i++) tries.push(words.slice(i).join(" "));            // drop leading words: "free range eggs" -> "eggs"
+  for (let i = words.length - 1; i > 0; i--) tries.push(words.slice(0, i).join(" "));     // drop trailing words: "butter softened" -> "butter"
+  for (const t of tries) { if (!t) continue; const hit = searchLocal(t)[0]; if (hit) return hit; }
+  return null;
+}
+function ingredientFromText(line) {
+  const parsed = parseIngredient(line);
+  const hit = matchFood(parsed.name);
+  if (!hit) return { id: uid(), name: parsed.name || line, source: "manual", unit: "g", kcal: 0, grams: null, fromText: line, unresolved: true };
+  const food = foodItem(hit);
+  let grams;
+  if (parsed.qty && UNIT_G[parsed.unit]) grams = parsed.qty * UNIT_G[parsed.unit];
+  else if (parsed.qty && food.servingSize) grams = parsed.qty * food.servingSize;   // "3 eggs"
+  else if (food.servingSize) grams = food.servingSize;
+  else grams = 100;
+  return { id: uid(), ...basisOf(food), kcal: Math.round(grams * food.kcalPer100 / 100), grams: Math.round(grams * 10) / 10, fromText: line };
 }
 
 // ---------------------------------------------------------------- settings
@@ -514,6 +712,7 @@ let searchTimer = null, searchAbort = null, lastQuery = "";
 function openSearch() {
   const q = $("#q");
   setTimeout(() => q.focus(), 50);
+  if (pick && pick.prefill) { q.value = pick.prefill; pick.prefill = null; q.dispatchEvent(new Event("input")); return; }
   if (!q.value) { $("#search-local").innerHTML = ""; $("#search-off").innerHTML = ""; $("#search-status").classList.add("hidden"); $("#search-claude").classList.add("hidden"); }
 }
 function foodItem(row) {
@@ -532,11 +731,16 @@ function searchLocal(query) {
   for (const row of (typeof FOODS !== "undefined" ? FOODS : [])) {
     const name = row[0].toLowerCase(), hay = name + " " + (row[3] || "") + " " + (row[5] || "").toLowerCase();
     let score = 0, ok = true;
-    for (const w of words) {
-      if (name.startsWith(w)) score += 3;
-      else if (new RegExp("\\b" + w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).test(hay)) score += 2;
-      else if (hay.includes(w)) score += 1;
-      else { ok = false; break; }
+    for (const raw of words) {
+      let best = 0;
+      for (const w of new Set([raw, raw.replace(/(ies|es|s)$/, ""), raw.replace(/ies$/, "y")])) {   // carrots -> carrot, tomatoes -> tomato
+        if (w.length < 2) continue;
+        const safe = w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const sc = name.startsWith(w) ? 3 : new RegExp("\\b" + safe).test(hay) ? 2 : hay.includes(w) ? 1 : 0;
+        if (sc > best) best = sc;
+      }
+      if (!best) { ok = false; break; }
+      score += best;
     }
     if (ok) scored.push([score - name.length / 100, row]);
   }
@@ -552,13 +756,15 @@ function resultRow(item, tone) {
   const thumb = item.image ? `<img class="thumb-sm" src="${esc(item.image)}" alt="">` : `<span class="thumb-sm ${tone || ""}"><svg><use href="#i-${iconFor(item.source)}"/></svg></span>`;
   li.innerHTML = `${thumb}<div class="body"><div class="name">${esc(item.name)}</div><div class="detail">${esc(detail.join(" · "))}</div></div>
     <div class="kcal">${fmt(perServing ? item.kcalPerServing : item.kcalPer100)}</div>`;
-  li.onclick = () => { draft = { ...item }; openDetails(item.source === "barcode" ? "Product details" : "Food details"); };
+  li.onclick = () => { draft = { ...item }; if (item.source === "meal") openShare(); else openDetails(item.source === "barcode" ? "Product details" : "Food details"); };
   return li;
 }
 $("#q").addEventListener("input", (e) => {
   const query = e.target.value.trim();
   clearTimeout(searchTimer);
   const local = $("#search-local"); local.innerHTML = "";
+  const ql = query.toLowerCase();
+  if (ql.length >= 2 && !pick) for (const m of state.meals.filter((x) => x.name.toLowerCase().includes(ql))) local.appendChild(resultRow({ ...mealBasis(m), image: null }, "tone-peach"));
   for (const row of searchLocal(query)) local.appendChild(resultRow(foodItem(row), "tone-coral"));
   $("#search-off").innerHTML = "";
   $("#search-status").classList.add("hidden");
@@ -731,6 +937,7 @@ function conv(item) {
 function openShare(prefillKcal) {
   const c = conv(draft);
   $("#share-name").textContent = draft.name;
+  $("#share-add").textContent = pick ? "Add to the meal" : "Add to today";
   $("#a-unit").textContent = draft.unit || "g";
   $("#a-grams-wrap").classList.toggle("hidden", !c.kcalPer100);
   $("#a-count-wrap").classList.toggle("hidden", !c.countKcal);
@@ -788,6 +995,7 @@ function updateResult() {
 $("#share-add").onclick = () => {
   if (!amountKcal || !draft) return;
   const kcal = Math.round(amountKcal);
+  if (pick) { mealTakeIngredient(draft, kcal); toast(`${draft.name} is in the meal`); return; }
   addToDay(draft, kcal, `${fmt(kcal / state.budget * 100, 1)}% of the day`);
   toast(`Added ${draft.name} · ${fmt(kcal)} kcal`);
   home();
@@ -795,7 +1003,7 @@ $("#share-add").onclick = () => {
 
 // ---------------------------------------------------------------- account + sync (optional, see cloud.js)
 
-const SYNC_KEYS = ["budget", "day", "history", "recent", "updatedAt"];   // the API key stays on the device
+const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "updatedAt"];   // the API key stays on the device
 let pushTimer = null;
 function schedulePush() {
   if (!window.cloud || !window.cloud.user) return;

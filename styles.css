@@ -117,6 +117,25 @@ label small { display: block; font-size: 12px; margin-top: 2px; }
 .tint-coral { background: var(--coral-bg); }
 .tint-green { background: var(--mint-2); }
 .tint-peach { background: var(--peach-bg); }
+.tint-sand { background: #f6f1de; }
+.circle.sand { background: #ece2b8; color: #8a6d12; }
+
+/* Quick add row */
+.quick-toggle { display: flex; align-items: center; gap: 14px; margin-top: 12px; }
+.quick-text { flex: 1; display: flex; flex-direction: column; }
+.quick-text small { color: var(--muted); font-size: 13px; }
+.quick-toggle .chev { transition: transform .2s; }
+.quick-toggle.open .chev { transform: rotate(90deg); }
+
+/* Meal editor */
+textarea { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; width: 100%; margin-top: 6px; resize: vertical; }
+textarea:focus { outline: 2px solid var(--green-2); border-color: transparent; }
+.list li.warn { border-color: var(--coral); background: var(--coral-bg); }
+.list li.ingredient { flex-wrap: wrap; cursor: pointer; }
+.row-actions { flex-basis: 100%; display: flex; gap: 8px; margin-top: 10px; }
+.row-actions button { flex: 1; padding: 9px; border-radius: 10px; background: var(--mint-2); color: var(--green); font-weight: 600; font-size: 14px; }
+.row-actions button.danger { background: var(--coral-bg); color: var(--coral); }
+.list .thumb-sm.tone-peach { background: var(--peach-bg); color: var(--peach); }
 
 /* Lists */
 .list { list-style: none; margin: 0; padding: 0; }
