@@ -169,6 +169,10 @@ textarea:focus { outline: 2px solid var(--green-2); border-color: transparent; }
 .btn.ghost { color: var(--muted); font-weight: 600; }
 .btn.link-btn { color: var(--green); text-decoration: underline; font-weight: 600; padding: 10px; }
 .link { color: var(--green); font-weight: 600; text-decoration: underline; }
+.btn-row { display: flex; gap: 8px; }
+.btn-row .btn { margin-top: 8px; padding: 13px; }
+#m-results:empty { display: none; }
+#m-results { margin-top: 4px; }
 
 /* Camera */
 .camera { position: relative; width: 100%; height: 58vh; max-height: 640px; background: #0d1b15; overflow: hidden; }

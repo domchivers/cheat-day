@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=16">
-  <link rel="icon" href="icons/icon-192.png?v=16">
-  <link rel="stylesheet" href="styles.css?v=16">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=17">
+  <link rel="icon" href="icons/icon-192.png?v=17">
+  <link rel="stylesheet" href="styles.css?v=17">
 </head>
 <body>
 
@@ -191,10 +191,16 @@
   <h2 class="section-title">Ingredients</h2>
   <ul class="list" id="m-items"></ul>
   <p class="empty" id="m-empty">Nothing in it yet.</p>
-  <div class="row">
-    <button class="secondary" id="m-add-search">Search</button>
-    <button class="secondary" id="m-add-scan">Scan</button>
-    <button class="secondary" id="m-paste-toggle">Paste a list</button>
+  <div class="card form-card">
+    <label>Add an ingredient
+      <input type="search" id="m-q" placeholder="Type to search: flour, eggs, butter…" autocomplete="off" autocorrect="off" autocapitalize="off" enterkeyhint="search">
+    </label>
+    <ul class="list" id="m-results"></ul>
+    <p class="muted tiny hidden" id="m-noresult">Nothing by that name. <button class="link" id="m-type">Type it in</button> instead.</p>
+    <div class="btn-row">
+      <button class="btn mint" id="m-add-scan">Scan a barcode</button>
+      <button class="btn mint" id="m-paste-toggle">Paste a list</button>
+    </div>
   </div>
   <div class="card form-card hidden" id="m-paste-wrap">
     <label>One ingredient per line, e.g. "200g plain flour", "3 eggs", "1 tbsp honey"
@@ -318,10 +324,10 @@
 <div class="toast hidden" id="toast"></div>
 
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=16"></script>
-<script src="foods.js?v=16"></script>
-<script src="supabase-config.js?v=16"></script>
-<script src="cloud.js?v=16"></script>
-<script src="app.js?v=16"></script>
+<script src="presets.js?v=17"></script>
+<script src="foods.js?v=17"></script>
+<script src="supabase-config.js?v=17"></script>
+<script src="cloud.js?v=17"></script>
+<script src="app.js?v=17"></script>
 </body>
 </html>

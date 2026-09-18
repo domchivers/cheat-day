@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "16";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "17";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -264,6 +264,7 @@ $("#meals-new").onclick = () => { mealDraft = newMeal(); state.mealDraft = mealD
 function renderMeal() {
   if (!mealDraft) mealDraft = state.mealDraft || newMeal();
   const m = mealDraft;
+  if (document.activeElement !== $("#m-q")) { $("#m-q").value = ""; $("#m-results").innerHTML = ""; $("#m-noresult").classList.add("hidden"); }
   $("#meal-title").textContent = m.saved ? "Edit meal" : "New meal";
   $("#meal-delete").classList.toggle("hidden", !m.saved);
   if (document.activeElement !== $("#m-name")) $("#m-name").value = m.name || "";
@@ -309,8 +310,20 @@ function renderMeal() {
 }
 $("#m-name").addEventListener("input", (e) => { mealDraft.name = e.target.value; state.mealDraft = mealDraft; save(false); });
 $("#m-portions").addEventListener("input", (e) => { mealDraft.portions = num(e.target.value) || mealDraft.portions; state.mealDraft = mealDraft; save(false); renderMeal(); });
-$("#m-add-search").onclick = () => { pick = { replaceId: null }; go("search"); };
 $("#m-add-scan").onclick = () => { pick = { replaceId: null }; go("scan"); };
+$("#m-type").onclick = () => { pick = { replaceId: null }; openManual(); };
+// Ingredient search right on the editor: type, tap a result, say how much, and you're back here.
+$("#m-q").addEventListener("input", (e) => {
+  const query = e.target.value.trim(), list = $("#m-results"); list.innerHTML = "";
+  const rows = query ? searchLocal(query).slice(0, 8) : [];
+  $("#m-noresult").classList.toggle("hidden", !(query.length >= 2 && rows.length === 0));
+  for (const row of rows) {
+    const item = foodItem(row), li = resultRow(item, "tone-coral");
+    li.onclick = () => { pick = { replaceId: null }; draft = { ...item }; openShare(); };
+    list.appendChild(li);
+  }
+});
+$("#m-q").addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
 $("#m-paste-toggle").onclick = () => { $("#m-paste-wrap").classList.toggle("hidden"); $("#m-paste").focus(); };
 $("#m-paste-go").onclick = () => {
   const lines = $("#m-paste").value.split(/\n+/).map((l) => l.trim()).filter(Boolean);
