@@ -1,6 +1,7 @@
 /* Everyday foods for Search: answers instantly and offline. Typical values per 100 g (or 100 ml),
  * mostly from USDA / McCance & Widdowson, cooked unless the name says otherwise.
  * Each row: [name, kcal per 100, typical serving, what one serving is called, unit ("g" unless "ml"), extra search words]
+ * Meat, fish and grains come in cooked and raw versions: type "raw" or "dry" to get the uncooked weight.
  * Add your own rows at the bottom; keep the shape and push. */
 const FOODS = [
   // --- poultry & meat
@@ -28,6 +29,42 @@ const FOODS = [
   ["Chorizo", 455, 30, "portion", "g", ""],
   ["Pepperoni", 500, 15, "portion", "g", ""],
   ["Black pudding, fried", 297, 60, "slice", "g", ""],
+  // --- raw / uncooked weights (for when you weigh before cooking; no oil counted)
+  ["Chicken breast, raw, skinless", 120, 150, "breast", "g", "uncooked"],
+  ["Chicken thigh, raw, skinless", 121, 100, "thigh", "g", "uncooked boneless"],
+  ["Chicken thigh, raw, with skin", 211, 110, "thigh", "g", "uncooked"],
+  ["Chicken drumstick, raw, with skin", 161, 90, "drumstick", "g", "uncooked leg"],
+  ["Chicken wing, raw, with skin", 191, 45, "wing", "g", "uncooked wings"],
+  ["Whole chicken, raw", 215, 250, "portion", "g", "uncooked"],
+  ["Turkey breast, raw", 114, 150, "portion", "g", "uncooked"],
+  ["Turkey mince, raw", 150, 125, "portion", "g", "uncooked ground turkey"],
+  ["Beef mince 5% fat, raw", 137, 125, "portion", "g", "uncooked lean ground beef"],
+  ["Beef mince 20% fat, raw", 254, 125, "portion", "g", "uncooked ground beef"],
+  ["Beef steak, raw", 170, 225, "steak", "g", "uncooked sirloin rump ribeye"],
+  ["Pork chop, raw", 190, 175, "chop", "g", "uncooked"],
+  ["Pork loin, raw, lean", 140, 150, "portion", "g", "uncooked"],
+  ["Pork mince, raw", 260, 125, "portion", "g", "uncooked ground pork"],
+  ["Sausage, pork, raw", 290, 65, "sausage", "g", "uncooked banger"],
+  ["Bacon, streaky, raw", 300, 30, "rasher", "g", "uncooked"],
+  ["Bacon, back, raw", 220, 40, "rasher", "g", "uncooked"],
+  ["Lamb chop, raw", 280, 120, "chop", "g", "uncooked"],
+  ["Lamb leg, raw", 200, 150, "portion", "g", "uncooked"],
+  ["Lamb mince, raw", 280, 125, "portion", "g", "uncooked ground lamb"],
+  ["Salmon fillet, raw", 200, 150, "fillet", "g", "uncooked"],
+  ["Cod fillet, raw", 82, 150, "fillet", "g", "uncooked white fish"],
+  ["Haddock, raw", 74, 150, "fillet", "g", "uncooked"],
+  ["Tuna steak, raw", 109, 150, "steak", "g", "uncooked"],
+  ["Prawns, raw", 85, 100, "portion", "g", "uncooked shrimp"],
+  ["Mackerel, raw", 205, 120, "fillet", "g", "uncooked"],
+  ["Egg, raw", 143, 50, "egg", "g", "uncooked eggs"],
+  ["Rice, dry", 365, 75, "portion", "g", "uncooked basmati jasmine"],
+  ["Pasta, dry", 371, 75, "portion", "g", "uncooked spaghetti penne fusilli"],
+  ["Egg noodles, dry", 384, 65, "nest", "g", "uncooked"],
+  ["Couscous, dry", 376, 60, "portion", "g", "uncooked"],
+  ["Quinoa, dry", 368, 60, "portion", "g", "uncooked"],
+  ["Lentils, dry", 353, 60, "portion", "g", "uncooked"],
+  ["Potato, raw", 77, 175, "potato", "g", "uncooked"],
+  ["Sweet potato, raw", 86, 150, "portion", "g", "uncooked"],
   // --- fish & seafood
   ["Salmon fillet, cooked", 208, 150, "fillet", "g", "baked grilled"],
   ["Smoked salmon", 117, 50, "portion", "g", "lox"],

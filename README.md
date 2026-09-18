@@ -62,7 +62,8 @@ The **Search** card finds food three ways, in this order:
 
 1. **Everyday foods** from `foods.js`, a bundled list of a few hundred common
    things (chicken thigh, eggs, rice, a glass of wine, a doner kebab…) with
-   typical kcal per 100 g and a sensible serving. Instant and offline. Add your
+   typical kcal per 100 g and a sensible serving. Meat, fish and grains come cooked
+   and raw, so you can weigh before or after cooking. Instant and offline. Add your
    own rows at the bottom of that file.
 2. **Open Food Facts** text search for branded products, a moment later. Their
    search service is often busy, so this one is best-effort.
