@@ -85,6 +85,20 @@ A saved meal behaves like any food: add one portion or three to a day, find it
 in Search, and it appears in Quick add. Editing a meal later doesn't change days
 it was already added to.
 
+## Macros
+
+Everything carries protein, carbs and fat where they're known: the built-in food
+list has them, barcodes bring them from Open Food Facts, label photos read them,
+and the details page lets you type them. The budget card on the home screen
+totals them for the day, each item shows its share, and meals show per portion.
+
+## Sharing a meal
+
+A saved meal has **Share this meal**. The whole recipe is packed into the link
+itself, so there's nothing to host: whoever opens it in Cheat Days is asked
+whether to add it to their meals. The daily budget is now edited by tapping the
+budget card; the gear is for account, API key and updates.
+
 ## Quick add
 
 

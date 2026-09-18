@@ -104,6 +104,11 @@ label small { display: block; font-size: 12px; margin-top: 2px; }
 .bar { display: block; height: 8px; background: #e6e9e1; border-radius: 99px; overflow: hidden; margin-top: 10px; }
 .bar span { display: block; height: 100%; width: 0; background: var(--green-2); border-radius: 99px; transition: width .4s ease; }
 .bar span.over { background: var(--bad); }
+.macros { display: block; font-size: 13px; color: var(--muted); margin-top: 8px; }
+.macros b { color: var(--text); font-weight: 600; }
+.macros:empty { display: none; }
+.result .macros { margin-top: 10px; }
+#budget-chips { justify-content: flex-start; margin: 4px 0 8px; }
 
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .grid2.tight { gap: 0 12px; }

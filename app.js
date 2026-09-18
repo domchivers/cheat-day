@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "18";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "19";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -48,6 +48,7 @@ function busy(text) {
 const fmt = (n, dp = 0) => (n == null || !isFinite(n)) ? "–" : Number(n.toFixed(dp)).toLocaleString();
 const fmt1 = (n) => (n == null || !isFinite(n)) ? "–" : String(Math.abs(n) >= 10 ? Math.round(n) : Math.round(n * 10) / 10);
 const num = (v) => { const n = parseFloat(v); return isFinite(n) && n > 0 ? n : null; };
+const nz = (v) => { const n = parseFloat(v); return isFinite(n) && n >= 0 ? n : null; };   // like num, but 0 counts
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const plural = (n, word) => `${word}${n >= 1.95 ? "s" : ""}`;
@@ -66,6 +67,24 @@ function amountsFor(item, kcal) {
   }
   return out;
 }
+/** Protein / carbs / fat for this amount of the item, or nulls when the item doesn't carry them. */
+function macrosFor(item, kcal) {
+  const a = amountsFor(item, kcal);
+  const g = a.grams, sv = a.servings;
+  if (g != null && item.p100 != null) return { p: g * item.p100 / 100, c: g * (item.c100 || 0) / 100, f: g * (item.f100 || 0) / 100 };
+  if (sv != null && item.pServ != null) return { p: sv * item.pServ, c: sv * (item.cServ || 0), f: sv * (item.fServ || 0) };
+  return { p: null, c: null, f: null };
+}
+function macroText(m, long = false) {
+  if (!m || m.p == null) return "";
+  const r = (n) => Math.round(n);
+  return long ? `Protein <b>${r(m.p)} g</b> · Carbs <b>${r(m.c)} g</b> · Fat <b>${r(m.f)} g</b>` : `P ${r(m.p)} · C ${r(m.c)} · F ${r(m.f)}`;
+}
+function sumMacros(items) {
+  const t = { p: 0, c: 0, f: 0 }; let missing = 0;
+  for (const it of items) { const m = macrosFor(it, it.kcal || 0); if (m.p == null) missing++; else { t.p += m.p; t.c += m.c; t.f += m.f; } }
+  return { ...t, missing };
+}
 function shortAmounts(item) {
   const a = amountsFor(item, item.kcal), parts = [];
   if (item.unitLabel && a.servings != null) parts.push(`${fmt1(a.servings)} ${plural(a.servings, item.unitLabel)}`);
@@ -75,9 +94,11 @@ function shortAmounts(item) {
     else if (a.servings != null) parts.push(`${fmt1(a.servings)} serv`);
   }
   parts.push(item.shareLabel);
+  const mt = macroText(macrosFor(item, item.kcal));
+  if (mt) parts.push(mt);
   return parts.join(" · ");
 }
-const BASIS_KEYS = ["name", "brand", "source", "unit", "unitLabel", "kcalPer100", "servingSize", "kcalPerServing", "packSize", "piecesPerPack", "image", "mealId"];
+const BASIS_KEYS = ["name", "brand", "source", "unit", "unitLabel", "kcalPer100", "servingSize", "kcalPerServing", "packSize", "piecesPerPack", "image", "mealId", "p100", "c100", "f100", "pServ", "cServ", "fServ"];
 function basisOf(obj) {
   const b = {};
   for (const k of BASIS_KEYS) if (obj[k] != null && obj[k] !== "") b[k] = obj[k];
@@ -87,7 +108,7 @@ function basisOf(obj) {
 
 // ---------------------------------------------------------------- router
 
-const VIEWS = ["home", "settings", "scan", "search", "meals", "meal", "details", "share"];
+const VIEWS = ["home", "budget", "settings", "scan", "search", "meals", "meal", "details", "share"];
 let stack = ["home"];
 function show(view) {
   for (const v of VIEWS) $(`#view-${v}`).classList.toggle("hidden", v !== view);
@@ -96,6 +117,7 @@ function show(view) {
   if (view !== "scan") stopCamera();
   if (view === "home") renderHome();
   if (view === "settings") renderSettings();
+  if (view === "budget") { $("#b-budget").value = state.budget; $$("#budget-chips button").forEach((b) => b.classList.toggle("on", +b.dataset.b === state.budget)); }
   if (view === "scan") startCamera();
   if (view === "search") openSearch();
   if (view === "meals") renderMeals();
@@ -119,6 +141,8 @@ function renderHome() {
   const bar = $("#home-bar");
   bar.style.width = `${Math.min(100, state.budget > 0 ? used / state.budget * 100 : 0)}%`;
   bar.classList.toggle("over", left < 0);
+  const mac = sumMacros(state.day.items);
+  $("#home-macros").innerHTML = state.day.items.length ? macroText(mac, true) + (mac.missing ? ` <span class="tiny">(${mac.missing} without)</span>` : "") : "";
 
   const list = $("#home-list"); list.innerHTML = "";
   for (const it of state.day.items) list.appendChild(itemRow(it));
@@ -146,7 +170,7 @@ const LS_QUICK_OPEN = "cheatday.quickOpen";
 function quickEntries() {
   const presets = (typeof PRESETS !== "undefined" ? PRESETS : []).map((p) => ({
     key: "preset:" + p.name, preset: true, uses: state.presetUses[p.name] || 0, lastUsed: "",
-    basis: { name: p.name, source: "quick", unit: "ml", unitLabel: p.unit || "serving", kcalPerServing: Math.round(p.kcal) },
+    basis: { name: p.name, source: "quick", unit: "ml", unitLabel: p.unit || "serving", kcalPerServing: Math.round(p.kcal), pServ: nz(p.protein), cServ: nz(p.carbs), fServ: nz(p.fat) },
     detail: p.detail || "", lastKcal: Math.round(p.kcal), lastShareLabel: `${fmt(Math.round(p.kcal) / state.budget * 100, 1)}% of the day`
   }));
   const meals = state.meals.map((m) => {
@@ -224,7 +248,8 @@ function mealTotals(meal) {
     const g = it.grams != null ? it.grams : amountsFor(it, it.kcal || 0).grams;
     if (g != null) grams += g; else allWeighed = false;
   }
-  return { kcal, grams, allWeighed };
+  const m = sumMacros(meal.items || []);
+  return { kcal, grams, allWeighed, p: m.p, c: m.c, f: m.f, macroMissing: m.missing };
 }
 function mealBasis(meal) {
   const t = mealTotals(meal), portions = num(meal.portions) || 1;
@@ -232,7 +257,9 @@ function mealBasis(meal) {
     name: meal.name || "Meal", source: "meal", mealId: meal.id, unit: "g",
     kcalPer100: t.grams ? t.kcal / t.grams * 100 : null,
     servingSize: t.grams ? t.grams / portions : null,
-    kcalPerServing: t.kcal / portions, unitLabel: "portion"
+    kcalPerServing: t.kcal / portions, unitLabel: "portion",
+    p100: t.grams ? t.p / t.grams * 100 : null, c100: t.grams ? t.c / t.grams * 100 : null, f100: t.grams ? t.f / t.grams * 100 : null,
+    pServ: t.p / portions, cServ: t.c / portions, fServ: t.f / portions
   };
 }
 function newMeal() { return { id: uid(), name: "", portions: 4, items: [], saved: false }; }
@@ -308,7 +335,9 @@ function renderMeal() {
   $("#m-total-kcal").textContent = fmt(t.kcal);
   $("#m-total-sub").textContent = t.grams ? `about ${fmt(t.grams)} g` : "";
   $("#m-per-portion").innerHTML = m.items.length ? `<div>each of <b>${portions}</b> portion${portions === 1 ? "" : "s"}: <b>${fmt(t.kcal / portions)}</b> kcal${t.grams ? ` (${fmt(t.grams / portions)} g)` : ""}</div>` : "";
+  $("#m-macros").innerHTML = m.items.length ? `Per portion: ${macroText({ p: t.p / portions, c: t.c / portions, f: t.f / portions }, true)}${t.macroMissing ? ` <span class="tiny">(${t.macroMissing} ingredient${t.macroMissing === 1 ? "" : "s"} without macros)</span>` : ""}` : "";
   $("#m-use").classList.toggle("hidden", !m.saved);
+  $("#m-share").classList.toggle("hidden", !m.saved);
   $("#m-save").textContent = m.saved ? "Save changes" : "Save meal";
 }
 $("#m-name").addEventListener("input", (e) => { mealDraft.name = e.target.value; state.mealDraft = mealDraft; save(false); });
@@ -350,6 +379,49 @@ $("#m-save").onclick = () => {
   state.mealDraft = null;
   save(); toast(`Saved ${m.name}`); renderMeal();
 };
+// Share a meal as a link: the whole recipe travels inside the address, no server needed.
+const b64url = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const unb64url = (str) => Uint8Array.from(atob(str.replace(/-/g, "+").replace(/_/g, "/")), (ch) => ch.charCodeAt(0));
+async function encodeMeal(m) {
+  const items = m.items.map((it) => ({ ...basisOf(it), kcal: it.kcal, grams: it.grams }));
+  const bytes = new TextEncoder().encode(JSON.stringify({ v: 1, name: m.name, portions: m.portions, items }));
+  if (window.CompressionStream) {
+    const cs = new CompressionStream("gzip"); const w = cs.writable.getWriter(); w.write(bytes); w.close();
+    return "g" + b64url(new Uint8Array(await new Response(cs.readable).arrayBuffer()));
+  }
+  return "p" + b64url(bytes);
+}
+async function decodeMeal(code) {
+  let bytes = unb64url(code.slice(1));
+  if (code[0] === "g") {
+    const ds = new DecompressionStream("gzip"); const w = ds.writable.getWriter(); w.write(bytes); w.close();
+    bytes = new Uint8Array(await new Response(ds.readable).arrayBuffer());
+  }
+  const m = JSON.parse(new TextDecoder().decode(bytes));
+  if (!m || !m.name || !Array.isArray(m.items)) throw new Error("bad meal");
+  return m;
+}
+$("#m-share").onclick = async () => {
+  const m = state.meals.find((x) => x.id === mealDraft.id) || mealDraft;
+  const url = `${location.origin}${location.pathname}#meal=${await encodeMeal(m)}`;
+  const t = mealTotals(m), portions = num(m.portions) || 1;
+  const text = `${m.name}: ${portions} portion${portions === 1 ? "" : "s"}, ${fmt(t.kcal / portions)} kcal each. Open in Cheat Days:`;
+  try {
+    if (navigator.share) { await navigator.share({ title: m.name, text, url }); return; }
+    await navigator.clipboard.writeText(url); toast("Link copied. Send it to whoever you like.");
+  } catch (e) { if (e && e.name !== "AbortError") { try { await navigator.clipboard.writeText(url); toast("Link copied."); } catch (e2) { toast("Couldn't share on this browser"); } } }
+};
+async function importMealFromLink() {
+  const h = new URLSearchParams(location.hash.slice(1)), code = h.get("meal");
+  if (!code) return;
+  history.replaceState(null, "", location.pathname);
+  let m;
+  try { m = await decodeMeal(code); } catch (e) { toast("That meal link didn't open"); return; }
+  const t = mealTotals(m), portions = num(m.portions) || 1;
+  if (!confirm(`Add "${m.name}" to your meals?\n\n${m.items.length} ingredients, ${portions} portion${portions === 1 ? "" : "s"}, ${fmt(t.kcal / portions)} kcal each.`)) return;
+  state.meals.unshift({ id: uid(), name: m.name, portions, items: m.items.map((it) => ({ ...it, id: uid() })), saved: true, shared: true, updatedAt: new Date().toISOString() });
+  save(); toast(`Added ${m.name}`); stack = ["home", "meals"]; show("meals");
+}
 $("#m-use").onclick = () => { const m = state.meals.find((x) => x.id === mealDraft.id) || mealDraft; draft = { ...mealBasis(m), note: "" }; openShare(); };
 function deleteMeal(m) {
   if (!confirm(`Delete "${m.name}"?
@@ -405,6 +477,20 @@ function ingredientFromText(line) {
   else grams = 100;
   return { id: uid(), ...basisOf(food), kcal: Math.round(grams * food.kcalPer100 / 100), grams: Math.round(grams * 10) / 10, fromText: line };
 }
+
+// ---------------------------------------------------------------- budget
+
+$("#budget-chips").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  $("#b-budget").value = b.dataset.b;
+  $$("#budget-chips button").forEach((x) => x.classList.toggle("on", x === b));
+});
+$("#b-budget").addEventListener("input", () => $$("#budget-chips button").forEach((x) => x.classList.toggle("on", +x.dataset.b === +$("#b-budget").value)));
+$("#budget-save").onclick = () => {
+  const b = num($("#b-budget").value);
+  if (!b) { toast("Budget needs to be a number of kcal"); return; }
+  state.budget = Math.round(b); save(); toast(`Budget set to ${fmt(state.budget)} kcal`); home();
+};
 
 // ---------------------------------------------------------------- settings
 
@@ -469,6 +555,7 @@ function openDetails(title) {
   $("#f-kcal100").value = d.kcalPer100 ?? ""; $("#f-serving").value = d.servingSize ?? "";
   $("#f-kcalserving").value = d.kcalPerServing ?? ""; $("#f-pack").value = d.packSize ?? ""; $("#f-pieces").value = d.piecesPerPack ?? "";
   $("#f-piece").value = d.unitLabel || "";
+  $("#f-p100").value = d.p100 ?? ""; $("#f-c100").value = d.c100 ?? ""; $("#f-f100").value = d.f100 ?? "";
   $("#d-thumb").innerHTML = d.image ? `<img src="${esc(d.image)}" alt="">` : `<svg><use href="#i-image"/></svg>`;
   $("#d-badge").classList.toggle("hidden", d.source !== "barcode");
   const note = $("#d-note"); note.textContent = d.note || ""; note.classList.toggle("hidden", !d.note);
@@ -481,6 +568,9 @@ function readDetails() {
   d.kcalPer100 = num($("#f-kcal100").value); d.servingSize = num($("#f-serving").value);
   d.kcalPerServing = num($("#f-kcalserving").value); d.packSize = num($("#f-pack").value); d.piecesPerPack = num($("#f-pieces").value);
   d.unitLabel = $("#f-piece").value.trim().toLowerCase().replace(/s$/, "") || null;
+  d.p100 = nz($("#f-p100").value); d.c100 = nz($("#f-c100").value); d.f100 = nz($("#f-f100").value);
+  if (d.p100 == null && d.c100 == null && d.f100 == null) { d.p100 = null; d.c100 = null; d.f100 = null; }
+  else { d.p100 = d.p100 || 0; d.c100 = d.c100 || 0; d.f100 = d.f100 || 0; }
   return d;
 }
 function syncUnitEcho() { $$(".unit-echo").forEach((el) => el.textContent = $("#f-unit").value); }
@@ -729,6 +819,11 @@ function itemFromProduct(p) {
     if (item.kcalPerServing > expected * 2 && Math.abs(item.kcalPerServing / 4.184 - expected) / expected < 0.25) { item.kcalPerServing = Math.round(item.kcalPerServing / 4.184); energy.fixed = true; }
   }
   item.packSize = num(p.product_quantity);
+  item.p100 = nz(n.proteins_100g); item.c100 = nz(n.carbohydrates_100g); item.f100 = nz(n.fat_100g);
+  if (item.p100 == null && item.servingSize && nz(n.proteins_serving) != null) {
+    const k = 100 / item.servingSize;
+    item.p100 = nz(n.proteins_serving) * k; item.c100 = (nz(n.carbohydrates_serving) || 0) * k; item.f100 = (nz(n.fat_serving) || 0) * k;
+  }
   const notes = [];
   if (!item.kcalPer100 && !item.kcalPerServing) notes.push("Open Food Facts has this product but no calorie data. Fill it in from the pack.");
   else if (energy.fixed) notes.push("Open Food Facts had kJ in the kcal box for this one; I've converted it. Worth a glance at the pack.");
@@ -806,9 +901,10 @@ function openSearch() {
   if (!q.value) { $("#search-local").innerHTML = ""; $("#search-off").innerHTML = ""; $("#search-status").classList.add("hidden"); $("#search-claude").classList.add("hidden"); }
 }
 function foodItem(row) {
-  const [name, kcal, serving, label, unit, tags] = row;
+  const [name, kcal, serving, label, unit, tags, p, c, f] = row;
   const item = blankItem("search");
   item.name = name; item.unit = unit || "g"; item.kcalPer100 = kcal;
+  if (p != null) { item.p100 = p; item.c100 = c || 0; item.f100 = f || 0; }
   item.servingSize = serving || null; item.unitLabel = label || null;
   item.kcalPerServing = serving ? Math.round(kcal * serving / 10) / 10 : null;   // one decimal, so 2 eggs is exactly 2
   return item;
@@ -898,9 +994,10 @@ const FOOD_SCHEMA = {
     kcal_per_100: { type: "number", description: "Typical kcal per 100 g or 100 ml as eaten" },
     serving_size: { type: ["number", "null"], description: "A typical single serving in g or ml" },
     serving_label: { type: ["string", "null"], description: "What one serving is called: egg, slice, glass, portion…" },
+    protein_per_100: { type: ["number", "null"] }, carbs_per_100: { type: ["number", "null"] }, fat_per_100: { type: ["number", "null"] },
     notes: { type: "string", description: "Assumptions made, e.g. 'assumed cooked without oil', in one short sentence" }
   },
-  required: ["name", "unit", "kcal_per_100", "serving_size", "serving_label", "notes"],
+  required: ["name", "unit", "kcal_per_100", "serving_size", "serving_label", "protein_per_100", "carbs_per_100", "fat_per_100", "notes"],
   additionalProperties: false
 };
 $("#search-claude").onclick = async () => {
@@ -916,6 +1013,7 @@ $("#search-claude").onclick = async () => {
     item.kcalPer100 = num(parsed.kcal_per_100) ? Math.round(parsed.kcal_per_100) : null;
     item.servingSize = num(parsed.serving_size); item.unitLabel = parsed.serving_label || null;
     item.kcalPerServing = item.kcalPer100 && item.servingSize ? Math.round(item.kcalPer100 * item.servingSize / 100) : null;
+    if (nz(parsed.protein_per_100) != null) { item.p100 = nz(parsed.protein_per_100); item.c100 = nz(parsed.carbs_per_100) || 0; item.f100 = nz(parsed.fat_per_100) || 0; }
     item.note = "Claude's estimate, not a label. " + (parsed.notes || "");
     draft = item;
     openDetails("Food details");
@@ -945,12 +1043,15 @@ const LABEL_SCHEMA = {
     kcal_per_serving: { type: ["number", "null"], description: "kcal per serving/portion, if stated" },
     pack_size: { type: ["number", "null"], description: "Total pack net weight/volume in g or ml, if visible" },
     pieces_per_pack: { type: ["number", "null"], description: "Number of pieces/bars/biscuits per pack, if stated" },
+    protein_per_100: { type: ["number", "null"], description: "Protein g per 100 g/ml, if shown" },
+    carbs_per_100: { type: ["number", "null"], description: "Carbohydrate g per 100 g/ml, if shown" },
+    fat_per_100: { type: ["number", "null"], description: "Fat g per 100 g/ml, if shown" },
     piece_name: { type: ["string", "null"], description: "If it's eaten by the piece, what one is called: slice, biscuit, bar, sausage… else null" },
     is_nutrition_label: { type: "boolean", description: "true only if a nutrition table or energy figures are actually visible" },
     confidence: { type: "string", enum: ["high", "medium", "low"] },
     notes: { type: "string", description: "Anything unclear, e.g. 'values are per 30g portion; per-100 not shown'" }
   },
-  required: ["name", "brand", "unit", "kcal_per_100", "serving_size", "kcal_per_serving", "pack_size", "pieces_per_pack", "piece_name", "is_nutrition_label", "confidence", "notes"],
+  required: ["name", "brand", "unit", "kcal_per_100", "serving_size", "kcal_per_serving", "pack_size", "pieces_per_pack", "protein_per_100", "carbs_per_100", "fat_per_100", "piece_name", "is_nutrition_label", "confidence", "notes"],
   additionalProperties: false
 };
 const LABEL_PROMPT = `This is a photo of a food or drink product, its nutrition table, or both. Read the energy information off it.
@@ -1007,6 +1108,7 @@ async function readLabelWithClaude(file, quiet = false) {
   const item = blankItem("label");
   item.name = parsed.name || ""; item.brand = parsed.brand || "";
   item.unitLabel = parsed.piece_name ? String(parsed.piece_name).toLowerCase().replace(/s$/, "") : null;
+  if (nz(parsed.protein_per_100) != null || nz(parsed.carbs_per_100) != null || nz(parsed.fat_per_100) != null) { item.p100 = nz(parsed.protein_per_100) || 0; item.c100 = nz(parsed.carbs_per_100) || 0; item.f100 = nz(parsed.fat_per_100) || 0; }
   item.unit = parsed.unit === "ml" ? "ml" : "g";
   item.kcalPer100 = num(parsed.kcal_per_100) ? Math.round(parsed.kcal_per_100) : null;
   item.servingSize = num(parsed.serving_size);
@@ -1077,7 +1179,7 @@ $("#share-reset").onclick = () => { amountKcal = null; fillAmounts(null); };
 
 function updateResult() {
   const btn = $("#share-add"), bar = $("#r-bar");
-  if (!amountKcal) { $("#r-kcal").textContent = "0"; $("#r-sub").textContent = "of your day"; bar.style.width = "0"; $("#r-lines").innerHTML = ""; btn.disabled = true; return; }
+  if (!amountKcal) { $("#r-kcal").textContent = "0"; $("#r-sub").textContent = "of your day"; bar.style.width = "0"; $("#r-lines").innerHTML = ""; $("#r-macros").innerHTML = ""; btn.disabled = true; return; }
   const kcal = Math.round(amountKcal);
   const frac = state.budget > 0 ? kcal / state.budget : 0;
   $("#r-kcal").textContent = fmt(kcal);
@@ -1088,6 +1190,7 @@ function updateResult() {
   const leftAfter = state.budget - usedKcal() - kcal;
   lines.push(leftAfter >= 0 ? `leaves <b>${fmt(leftAfter)}</b> kcal for the rest of the day` : `<b style="color:var(--bad)">${fmt(-leftAfter)} kcal over</b> your day`);
   $("#r-lines").innerHTML = lines.map((l) => `<div>${l}</div>`).join("");
+  $("#r-macros").innerHTML = macroText(macrosFor(draft, kcal), true);
   btn.disabled = false;
 }
 $("#share-add").onclick = () => {
@@ -1185,6 +1288,7 @@ $("#acct-pass").addEventListener("keydown", (e) => { if (e.key === "Enter") acct
 
 show("home");
 cloudInit();
+importMealFromLink();
 // Portrait only. Android installed apps can be locked for real; everywhere else the CSS counter-rotates
 // the whole app when the phone is turned, so it always looks upright. The scanner reads barcodes any way up.
 try { if (screen.orientation && screen.orientation.lock) screen.orientation.lock("portrait").catch(() => {}); } catch (e) {}

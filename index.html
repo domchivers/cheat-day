@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=18">
-  <link rel="icon" href="icons/icon-192.png?v=18">
-  <link rel="stylesheet" href="styles.css?v=18">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=19">
+  <link rel="icon" href="icons/icon-192.png?v=19">
+  <link rel="stylesheet" href="styles.css?v=19">
 </head>
 <body>
 
@@ -39,13 +39,14 @@
   </header>
   <p class="tagline">Spend your cheat day<br>on purpose.</p>
 
-  <button class="card budget-card" data-go="settings">
+  <button class="card budget-card" data-go="budget">
     <span class="circle green"><svg><use href="#i-budget"/></svg></span>
     <span class="budget-body">
       <span class="label">Daily budget</span>
       <span class="big"><b id="home-used">0</b> <small>kcal</small></span>
       <span class="sub">of <span id="home-budget">1,600</span> kcal</span>
       <span class="bar"><span id="home-bar"></span></span>
+      <span class="macros" id="home-macros"></span>
     </span>
     <svg class="chev"><use href="#i-chev"/></svg>
   </button>
@@ -88,6 +89,24 @@
   <h2 class="section-title">Today</h2>
   <ul class="list" id="home-list"></ul>
   <p class="empty" id="home-empty">Nothing logged yet. Scan something delicious.</p>
+</section>
+
+<!-- ===================== BUDGET ===================== -->
+<section class="view hidden" id="view-budget">
+  <header class="sub-head">
+    <button class="icon-btn" data-back aria-label="Back"><svg><use href="#i-back"/></svg></button>
+    <h1>Daily budget</h1><span></span>
+  </header>
+  <div class="card form-card">
+    <label>Calories for a cheat day
+      <input type="number" inputmode="numeric" id="b-budget">
+    </label>
+    <div class="chips" id="budget-chips">
+      <button data-b="1200">1,200</button><button data-b="1400">1,400</button><button data-b="1600">1,600</button><button data-b="1800">1,800</button><button data-b="2000">2,000</button><button data-b="2500">2,500</button>
+    </div>
+    <button class="btn primary" id="budget-save">Save</button>
+  </div>
+  <p class="muted tiny">Other settings, like your account and API key, are behind the gear on the home screen.</p>
 </section>
 
 <!-- ===================== SETTINGS ===================== -->
@@ -214,9 +233,11 @@
     <div class="result-big"><span id="m-total-kcal">0</span><small> kcal</small></div>
     <div class="muted" id="m-total-sub">0 g</div>
     <div class="result-lines" id="m-per-portion"></div>
+    <div class="macros" id="m-macros"></div>
   </div>
   <button class="btn primary" id="m-save">Save meal</button>
   <button class="btn mint hidden" id="m-use">Add a portion to today</button>
+  <button class="btn mint hidden" id="m-share">Share this meal</button>
   <button class="btn danger hidden" id="meal-delete">Delete this meal</button>
 </section>
 
@@ -271,6 +292,15 @@
       <label>Pieces in pack
         <input type="number" inputmode="numeric" id="f-pieces" placeholder="e.g. 12">
       </label>
+      <label>Protein per 100<span class="unit-echo">g</span>
+        <input type="number" inputmode="decimal" id="f-p100" placeholder="g">
+      </label>
+      <label>Carbs per 100<span class="unit-echo">g</span>
+        <input type="number" inputmode="decimal" id="f-c100" placeholder="g">
+      </label>
+      <label>Fat per 100<span class="unit-echo">g</span>
+        <input type="number" inputmode="decimal" id="f-f100" placeholder="g">
+      </label>
       <label class="span2">Sold in pieces? What's one called
         <input type="text" id="f-piece" placeholder="e.g. slice, biscuit, bar" autocapitalize="off">
         <small>Then you can just say how many. Serving size above is the weight of one.</small>
@@ -314,6 +344,7 @@
       <div class="muted" id="r-sub">of your day</div>
       <span class="bar"><span id="r-bar"></span></span>
       <div class="result-lines" id="r-lines"></div>
+      <div class="macros" id="r-macros"></div>
     </div>
 
     <button class="btn primary" id="share-add" disabled>Add to today</button>
@@ -325,10 +356,10 @@
 <div class="toast hidden" id="toast"></div>
 
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=18"></script>
-<script src="foods.js?v=18"></script>
-<script src="supabase-config.js?v=18"></script>
-<script src="cloud.js?v=18"></script>
-<script src="app.js?v=18"></script>
+<script src="presets.js?v=19"></script>
+<script src="foods.js?v=19"></script>
+<script src="supabase-config.js?v=19"></script>
+<script src="cloud.js?v=19"></script>
+<script src="app.js?v=19"></script>
 </body>
 </html>
