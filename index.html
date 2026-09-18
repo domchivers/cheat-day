@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#16151c">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Cheat Day">
+  <title>Cheat Day</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css?v=1">
+</head>
+<body>
+
+<header class="top">
+  <button class="ghost" id="btn-settings" aria-label="Settings">⚙︎</button>
+  <div class="day-label" id="day-label">Today</div>
+  <button class="ghost" id="btn-new-day">New day</button>
+</header>
+
+<main>
+  <section class="budget" id="budget-card">
+    <svg class="ring" viewBox="0 0 120 120" aria-hidden="true">
+      <circle class="ring-track" cx="60" cy="60" r="52"/>
+      <circle class="ring-fill" id="ring-fill" cx="60" cy="60" r="52"/>
+    </svg>
+    <div class="budget-text">
+      <div class="big"><span id="kcal-left">1600</span><small> kcal left</small></div>
+      <div class="sub"><span id="kcal-used">0</span> of <button class="link" id="btn-budget">1600</button> used</div>
+    </div>
+  </section>
+
+  <section class="items">
+    <h2>Today's treats</h2>
+    <ul id="item-list" class="item-list"></ul>
+    <p class="empty" id="empty">Nothing yet. Scan something delicious.</p>
+  </section>
+</main>
+
+<button class="fab" id="btn-add">＋ Add an item</button>
+
+<!-- Add-item sheet -->
+<div class="sheet-backdrop hidden" id="sheet">
+  <div class="sheet" role="dialog" aria-modal="true">
+    <div class="sheet-head">
+      <button class="ghost" id="sheet-back">‹ Back</button>
+      <div class="sheet-title" id="sheet-title">Add an item</div>
+      <button class="ghost" id="sheet-close">✕</button>
+    </div>
+
+    <!-- Step: choose source -->
+    <div class="step" id="step-source">
+      <button class="choice" id="src-barcode">
+        <span class="icon">▥</span>
+        <span><b>Scan a barcode</b><br><small>Looks it up on Open Food Facts</small></span>
+      </button>
+      <button class="choice" id="src-label">
+        <span class="icon">📷</span>
+        <span><b>Photo of the label</b><br><small>Reads the nutrition table with Claude</small></span>
+      </button>
+      <button class="choice" id="src-manual">
+        <span class="icon">✎</span>
+        <span><b>Type it in</b><br><small>You know the numbers</small></span>
+      </button>
+      <input type="file" accept="image/*" capture="environment" id="file-barcode" hidden>
+      <input type="file" accept="image/*" capture="environment" id="file-label" hidden>
+    </div>
+
+    <!-- Step: live camera scan -->
+    <div class="step hidden" id="step-scan">
+      <div class="video-wrap">
+        <video id="video" playsinline muted autoplay></video>
+        <div class="scan-line"></div>
+      </div>
+      <p class="hint" id="scan-hint">Point the camera at the barcode.</p>
+      <div class="row">
+        <button class="secondary" id="scan-photo">Take a photo instead</button>
+        <button class="secondary" id="scan-type">Type the number</button>
+      </div>
+    </div>
+
+    <!-- Step: type barcode -->
+    <div class="step hidden" id="step-code">
+      <label>Barcode number
+        <input type="text" inputmode="numeric" id="code-input" placeholder="e.g. 5000159484695">
+      </label>
+      <button class="primary" id="code-go">Look it up</button>
+    </div>
+
+    <!-- Step: busy -->
+    <div class="step hidden" id="step-busy">
+      <div class="spinner"></div>
+      <p class="hint" id="busy-text">Working…</p>
+    </div>
+
+    <!-- Step: item details (editable) -->
+    <div class="step hidden" id="step-item">
+      <div class="product">
+        <img id="item-image" alt="" hidden>
+        <div>
+          <label>Name <input type="text" id="f-name" placeholder="What is it?"></label>
+          <label>Brand <input type="text" id="f-brand" placeholder="Optional"></label>
+        </div>
+      </div>
+      <p class="note" id="item-note" hidden></p>
+      <div class="grid">
+        <label>Unit
+          <select id="f-unit"><option value="g">grams</option><option value="ml">ml</option></select>
+        </label>
+        <label>kcal per 100<span class="unit-echo">g</span>
+          <input type="number" inputmode="decimal" id="f-kcal100" placeholder="e.g. 520">
+        </label>
+        <label>Serving size (<span class="unit-echo">g</span>)
+          <input type="number" inputmode="decimal" id="f-serving" placeholder="e.g. 30">
+        </label>
+        <label>kcal per serving
+          <input type="number" inputmode="decimal" id="f-kcalserving" placeholder="auto">
+        </label>
+        <label>Pack size (<span class="unit-echo">g</span>)
+          <input type="number" inputmode="decimal" id="f-pack" placeholder="e.g. 200">
+        </label>
+        <label>Pieces in pack
+          <input type="number" inputmode="numeric" id="f-pieces" placeholder="e.g. 12">
+        </label>
+      </div>
+      <button class="primary" id="item-next">Next: how much of my day?</button>
+    </div>
+
+    <!-- Step: share of the day -->
+    <div class="step hidden" id="step-share">
+      <p class="hint">How much of your <b id="share-budget">1600</b> kcal day should <b id="share-name">this</b> be?</p>
+      <div class="chips" id="chips">
+        <button data-f="0.05">5%</button>
+        <button data-f="0.1">10%</button>
+        <button data-f="1/8">⅛</button>
+        <button data-f="1/6">⅙</button>
+        <button data-f="0.2">20%</button>
+        <button data-f="1/4">¼</button>
+        <button data-f="1/3">⅓</button>
+        <button data-f="1/2">½</button>
+        <button data-f="rest">What's left</button>
+      </div>
+      <label>Or type a share
+        <input type="text" id="share-input" placeholder="10%, 1/6, 0.15 or 250 kcal">
+      </label>
+      <div class="result" id="result">
+        <div class="result-kcal"><span id="r-kcal">–</span> kcal</div>
+        <div class="result-lines" id="r-lines"></div>
+      </div>
+      <button class="primary" id="share-add" disabled>Add to my day</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings sheet -->
+<div class="sheet-backdrop hidden" id="settings">
+  <div class="sheet" role="dialog" aria-modal="true">
+    <div class="sheet-head">
+      <span></span>
+      <div class="sheet-title">Settings</div>
+      <button class="ghost" id="settings-close">✕</button>
+    </div>
+    <div class="step">
+      <label>Cheat-day budget (kcal)
+        <input type="number" inputmode="numeric" id="s-budget">
+      </label>
+      <label>Anthropic API key <small>(only needed for label photos; stays on this device)</small>
+        <input type="password" id="s-apikey" placeholder="sk-ant-…" autocomplete="off">
+      </label>
+      <button class="primary" id="settings-save">Save</button>
+      <h3>Past days</h3>
+      <ul class="history" id="history"></ul>
+    </div>
+  </div>
+</div>
+
+<div class="toast hidden" id="toast"></div>
+
+<script src="vendor/zxing.min.js"></script>
+<script src="app.js?v=1"></script>
+</body>
+</html>
