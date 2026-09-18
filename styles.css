@@ -21,11 +21,21 @@
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; background: var(--bg); color: var(--text); }
+html, body { margin: 0; background: var(--bg); color: var(--text); overflow-x: hidden; overscroll-behavior: none; }
+html { touch-action: pan-y; -webkit-text-size-adjust: 100%; }
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   font-size: 16px; line-height: 1.4;
   -webkit-tap-highlight-color: transparent;
+  touch-action: pan-y;
+}
+button, .card, .list li { touch-action: manipulation; }
+img { -webkit-user-drag: none; }
+
+/* Portrait only: phones that ignore the manifest's orientation lock get a polite overlay instead. */
+.rotate { display: none; }
+@media screen and (orientation: landscape) and (max-height: 500px) {
+  .rotate { display: grid; place-items: center; position: fixed; inset: 0; z-index: 100; background: var(--green); color: #fff; text-align: center; padding: 24px; font-size: 18px; }
 }
 h1, h2, h3 { margin: 0; font-weight: 700; }
 h3 { font-size: 15px; margin-bottom: 8px; }
@@ -120,7 +130,7 @@ label small { display: block; font-size: 12px; margin-top: 2px; }
 .list .detail { font-size: 13px; color: var(--muted); }
 .list .kcal { font-weight: 700; color: var(--green); white-space: nowrap; }
 .list .del { color: var(--muted); padding: 6px; font-size: 18px; line-height: 1; }
-.quick li { cursor: pointer; }
+.quick li { cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .quick .name { white-space: normal; }
 .quick li:active { background: var(--mint-2); }
 .quick .add { width: 36px; height: 36px; border-radius: 50%; background: var(--green); color: #fff; display: grid; place-items: center; flex: none; }
@@ -136,8 +146,8 @@ label small { display: block; font-size: 12px; margin-top: 2px; }
 .link { color: var(--green); font-weight: 600; text-decoration: underline; }
 
 /* Camera */
-.camera { position: relative; background: #0d1b15; aspect-ratio: 3 / 4; max-height: 62vh; overflow: hidden; }
-.camera video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.camera { position: relative; width: 100%; height: 58vh; max-height: 640px; background: #0d1b15; overflow: hidden; }
+.camera video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center center; display: block; }
 .brackets {
   position: absolute; inset: 14% 12%; pointer-events: none;
   --c: linear-gradient(#fff, #fff); --l: 32px; --w: 4px;
@@ -157,6 +167,7 @@ label small { display: block; font-size: 12px; margin-top: 2px; }
   padding: 24px; text-align: center; color: #fff; background: rgba(13,27,21,.7);
 }
 .camera-fallback .btn { width: auto; padding: 12px 20px; }
+.camera-fallback small { color: rgba(255,255,255,.75); }
 
 /* Details */
 .product { display: flex; gap: 14px; align-items: center; }

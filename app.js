@@ -6,6 +6,7 @@
 
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
+const RECENT_MAX = 15;
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
@@ -16,8 +17,9 @@ function localDate(d = new Date()) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 function load() {
-  const base = { budget: 1600, apiKey: "", day: { date: localDate(), items: [] }, history: [] };
+  const base = { budget: 1600, apiKey: "", day: { date: localDate(), items: [] }, history: [], recent: [] };
   try { const raw = localStorage.getItem(STORE_KEY); if (raw) Object.assign(base, JSON.parse(raw)); } catch (e) {}
+  if (!Array.isArray(base.recent)) base.recent = [];
   return base;
 }
 function save() {
@@ -39,28 +41,11 @@ function busy(text) {
   $("#busy-text").textContent = text; b.classList.remove("hidden");
 }
 const fmt = (n, dp = 0) => (n == null || !isFinite(n)) ? "–" : Number(n.toFixed(dp)).toLocaleString();
-const fmt1 = (n) => (n == null || !isFinite(n)) ? "–" : (Math.abs(n) >= 10 ? n.toFixed(0) : n.toFixed(1));
+const fmt1 = (n) => (n == null || !isFinite(n)) ? "–" : String(Math.abs(n) >= 10 ? Math.round(n) : Math.round(n * 10) / 10);
 const num = (v) => { const n = parseFloat(v); return isFinite(n) && n > 0 ? n : null; };
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-
-/** "10%", "1/6", "0.15", "15" (→15%) or "250 kcal" → {fraction} or {kcal}. */
-function parseShare(text) {
-  const s = String(text).trim().toLowerCase().replace(/\s+/g, "");
-  if (!s) return null;
-  if (s === "rest") return { kcal: Math.max(0, state.budget - usedKcal()), label: "what's left" };
-  let m;
-  if ((m = s.match(/^(\d+(?:\.\d+)?)(?:kcal|cal|k)$/))) return { kcal: +m[1], label: `${m[1]} kcal` };
-  if ((m = s.match(/^(\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)$/))) {
-    const f = +m[1] / +m[2];
-    return isFinite(f) && f > 0 ? { fraction: f, label: `${m[1]}/${m[2]} of the day` } : null;
-  }
-  if ((m = s.match(/^(\d+(?:\.\d+)?)%$/))) return { fraction: +m[1] / 100, label: `${m[1]}% of the day` };
-  if ((m = s.match(/^(\d+(?:\.\d+)?)$/))) {
-    const v = +m[1]; if (v <= 0) return null;
-    return v <= 1 ? { fraction: v, label: `${Math.round(v * 1000) / 10}% of the day` } : { fraction: v / 100, label: `${v}% of the day` };
-  }
-  return null;
-}
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const plural = (n, word) => `${word}${n >= 1.95 ? "s" : ""}`;
 
 /** Target kcal → grams / servings / pieces for an item. */
 function amountsFor(item, kcal) {
@@ -76,37 +61,36 @@ function amountsFor(item, kcal) {
   }
   return out;
 }
-function describeAmounts(a) {
-  const lines = [];
-  if (a.grams != null) lines.push(`<b>${fmt1(a.grams)} ${a.unit}</b>`);
-  if (a.servings != null) lines.push(`<b>${fmt1(a.servings)}</b> serving${a.servings >= 1.95 ? "s" : ""}`);
-  if (a.pieces != null) lines.push(`<b>${fmt1(a.pieces)}</b> piece${a.pieces >= 1.95 ? "s" : ""}`);
-  if (a.packFraction != null) lines.push(`<b>${fmt(a.packFraction * 100)}%</b> of the pack`);
-  return lines;
-}
 function shortAmounts(item) {
-  if (item.unitLabel) return `1 ${item.unitLabel} · ${item.shareLabel}`;
   const a = amountsFor(item, item.kcal), parts = [];
-  if (a.grams != null) parts.push(`${fmt1(a.grams)} ${a.unit}`);
-  if (a.pieces != null) parts.push(`${fmt1(a.pieces)} pcs`);
-  else if (a.servings != null) parts.push(`${fmt1(a.servings)} serv`);
+  if (item.unitLabel && a.servings != null) parts.push(`${fmt1(a.servings)} ${plural(a.servings, item.unitLabel)}`);
+  else {
+    if (a.grams != null) parts.push(`${fmt1(a.grams)} ${a.unit}`);
+    if (a.pieces != null) parts.push(`${fmt1(a.pieces)} pcs`);
+    else if (a.servings != null) parts.push(`${fmt1(a.servings)} serv`);
+  }
   parts.push(item.shareLabel);
   return parts.join(" · ");
+}
+const BASIS_KEYS = ["name", "brand", "source", "unit", "unitLabel", "kcalPer100", "servingSize", "kcalPerServing", "packSize", "piecesPerPack", "image"];
+function basisOf(obj) {
+  const b = {};
+  for (const k of BASIS_KEYS) if (obj[k] != null && obj[k] !== "") b[k] = obj[k];
+  if (b.image && String(b.image).startsWith("data:")) delete b.image;   // never store photos
+  return b;
 }
 
 // ---------------------------------------------------------------- router
 
-const VIEWS = ["home", "settings", "scan-barcode", "scan-label", "details", "share"];
+const VIEWS = ["home", "settings", "scan", "details", "share"];
 let stack = ["home"];
 function show(view) {
   for (const v of VIEWS) $(`#view-${v}`).classList.toggle("hidden", v !== view);
   window.scrollTo(0, 0);
-  if (view !== "scan-barcode") stopBarcodeCamera();
-  if (view !== "scan-label") stopLabelCamera();
+  if (view !== "scan") stopCamera();
   if (view === "home") renderHome();
   if (view === "settings") renderSettings();
-  if (view === "scan-barcode") startBarcodeCamera();
-  if (view === "scan-label") startLabelCamera();
+  if (view === "scan") startCamera();
 }
 function go(view) { stack.push(view); show(view); }
 function back() { stack.pop(); if (!stack.length) stack = ["home"]; show(stack[stack.length - 1]); }
@@ -132,39 +116,68 @@ function renderHome() {
   $("#home-empty").classList.toggle("hidden", state.day.items.length > 0);
   renderQuick();
 }
-function renderQuick() {
-  const list = $("#quick-list"); list.innerHTML = "";
-  const presets = typeof PRESETS !== "undefined" ? PRESETS : [];
-  presets.forEach((p, i) => {
-    const li = document.createElement("li");
-    li.innerHTML = `<div class="body"><div class="name">${esc(p.name)}</div><div class="detail">${esc(p.detail || "")}</div></div>
-      <div class="kcal">${fmt(p.kcal)}</div><span class="add"><svg><use href="#i-plus"/></svg></span>`;
-    li.onclick = () => addPreset(p);
-    list.appendChild(li);
-  });
-  list.previousElementSibling.classList.toggle("hidden", presets.length === 0);
-}
-function addPreset(p) {
-  const kcal = Math.round(p.kcal);
-  state.day.items.push({
-    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-    source: "quick", name: p.name, unitLabel: p.unit || "serving",
-    kcalPerServing: kcal, kcal,
-    shareLabel: `${fmt(kcal / state.budget * 100, 1)}% of the day`,
-    addedAt: new Date().toISOString()
-  });
-  save(); renderHome();
-  toast(`Added ${p.name} · ${fmt(kcal)} kcal`);
+function iconFor(source) {
+  return { barcode: "barcode", label: "camera", quick: "plus" }[source] || "pen";
 }
 function itemRow(it) {
   const li = document.createElement("li");
-  const thumb = it.image ? `<img class="thumb-sm" src="${esc(it.image)}" alt="">` : `<span class="thumb-sm"><svg><use href="#i-${it.source === "barcode" ? "barcode" : it.source === "label" ? "camera" : it.source === "quick" ? "plus" : "pen"}"/></svg></span>`;
+  const thumb = it.image ? `<img class="thumb-sm" src="${esc(it.image)}" alt="">` : `<span class="thumb-sm"><svg><use href="#i-${iconFor(it.source)}"/></svg></span>`;
   li.innerHTML = `${thumb}
     <div class="body"><div class="name">${esc(it.name || "Unnamed")}</div><div class="detail">${esc(shortAmounts(it))}</div></div>
     <div class="kcal">${fmt(it.kcal)}</div>
     <button class="del" aria-label="Remove">✕</button>`;
   li.querySelector(".del").onclick = () => { state.day.items = state.day.items.filter((x) => x.id !== it.id); save(); renderHome(); };
   return li;
+}
+
+// --- quick add: presets from presets.js + everything you've added before
+function quickEntries() {
+  const presets = (typeof PRESETS !== "undefined" ? PRESETS : []).map((p) => ({
+    key: "preset:" + p.name, preset: true,
+    basis: { name: p.name, source: "quick", unit: "ml", unitLabel: p.unit || "serving", kcalPerServing: Math.round(p.kcal) },
+    detail: p.detail || "", lastKcal: Math.round(p.kcal), lastShareLabel: `${fmt(Math.round(p.kcal) / state.budget * 100, 1)}% of the day`
+  }));
+  return presets.concat(state.recent);
+}
+function renderQuick() {
+  const list = $("#quick-list"); list.innerHTML = "";
+  const entries = quickEntries();
+  $("#quick-hint").classList.toggle("hidden", entries.length === 0);
+  for (const q of entries) {
+    const li = document.createElement("li");
+    const b = q.basis;
+    const detail = q.detail || shortAmounts({ ...b, kcal: q.lastKcal, shareLabel: q.lastShareLabel });
+    const thumb = b.image ? `<img class="thumb-sm" src="${esc(b.image)}" alt="">` : `<span class="thumb-sm"><svg><use href="#i-${iconFor(b.source)}"/></svg></span>`;
+    li.innerHTML = `${thumb}
+      <div class="body"><div class="name">${esc(b.name)}</div><div class="detail">${esc(detail)}</div></div>
+      <div class="kcal">${fmt(q.lastKcal)}</div><button class="add" aria-label="Add"><svg><use href="#i-plus"/></svg></button>`;
+    li.querySelector(".add").onclick = (e) => { e.stopPropagation(); addToDay(b, q.lastKcal, q.lastShareLabel); toast(`Added ${b.name} · ${fmt(q.lastKcal)} kcal`); };
+    li.querySelector(".body").onclick = () => { draft = { ...b, note: "" }; openShare(q.lastKcal); };
+    if (!q.preset) longPress(li, () => {
+      if (confirm(`Remove "${b.name}" from Quick add?`)) { state.recent = state.recent.filter((r) => r.key !== q.key); save(); renderQuick(); }
+    });
+    list.appendChild(li);
+  }
+}
+function longPress(el, fn) {
+  let t = null;
+  const start = () => { t = setTimeout(() => { t = null; fn(); }, 650); };
+  const cancel = () => { if (t) clearTimeout(t); t = null; };
+  el.addEventListener("pointerdown", start);
+  for (const ev of ["pointerup", "pointerleave", "pointercancel", "pointermove"]) el.addEventListener(ev, cancel);
+  el.addEventListener("contextmenu", (e) => e.preventDefault());
+}
+function rememberRecent(basis, kcal, shareLabel) {
+  const key = (basis.name + "|" + (basis.brand || "")).toLowerCase();
+  state.recent = state.recent.filter((r) => r.key !== key);
+  state.recent.unshift({ key, basis, lastKcal: kcal, lastShareLabel: shareLabel, lastUsed: new Date().toISOString() });
+  state.recent = state.recent.slice(0, RECENT_MAX);
+}
+function addToDay(basis, kcal, shareLabel) {
+  kcal = Math.round(kcal);
+  state.day.items.push({ id: uid(), ...basisOf(basis), kcal, shareLabel, addedAt: new Date().toISOString() });
+  if (basis.source !== "quick") rememberRecent(basisOf(basis), kcal, shareLabel);
+  save(); renderHome();
 }
 
 // ---------------------------------------------------------------- settings
@@ -199,7 +212,7 @@ $("#btn-new-day").onclick = () => {
   save(); toast("New day started"); home();
 };
 
-// ---------------------------------------------------------------- items
+// ---------------------------------------------------------------- item details
 
 let draft = null;
 function blankItem(source) {
@@ -232,56 +245,65 @@ $("#details-next").onclick = () => {
   const d = readDetails();
   if (!d.kcalPer100 && !d.kcalPerServing) { toast("I need kcal per 100 or kcal per serving"); return; }
   if (!d.name) d.name = d.brand || "Something tasty";
-  $("#share-name").textContent = d.name;
-  resetShare();
-  go("share");
+  openShare();
 };
 
-// ---------------------------------------------------------------- barcode camera + decode
+// ---------------------------------------------------------------- one scanner: barcodes live, labels on demand
 
-let barcodeReader = null;
-function barcodeFormats() {
-  const F = ZXing.BarcodeFormat;
-  return [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128, F.CODE_39, F.ITF, F.QR_CODE];
-}
+let reader = null;
+let photoMode = "auto";   // what a fallback photo is for: "auto" (barcode, then label) or "label"
+const cameraPossible = () => !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.isSecureContext);
 function zxingHints() {
-  const h = new Map();
-  h.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, barcodeFormats());
+  const F = ZXing.BarcodeFormat, h = new Map();
+  h.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128, F.CODE_39, F.ITF, F.QR_CODE]);
   h.set(ZXing.DecodeHintType.TRY_HARDER, true);
   return h;
 }
-const cameraPossible = () => !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.isSecureContext);
-
-async function startBarcodeCamera() {
-  $("#barcode-fallback").classList.add("hidden");
+async function startCamera() {
+  $("#scan-fallback").classList.add("hidden");
   $("#barcode-manual").classList.add("hidden");
-  if (!cameraPossible()) { $("#barcode-fallback").classList.remove("hidden"); return; }
+  if (!cameraPossible()) { $("#scan-fallback").classList.remove("hidden"); return; }
   try {
-    barcodeReader = new ZXing.BrowserMultiFormatReader(zxingHints(), 300);
-    await barcodeReader.decodeFromConstraints({ video: { facingMode: "environment" } }, $("#video-barcode"), (result) => {
-      if (result) { const code = result.getText(); stopBarcodeCamera(); lookupBarcode(code); }
+    reader = new ZXing.BrowserMultiFormatReader(zxingHints(), 300);
+    await reader.decodeFromConstraints({ video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } } }, $("#video"), (result) => {
+      if (result) { const code = result.getText(); stopCamera(); lookupBarcode(code); }
     });
   } catch (err) {
     console.warn("camera", err);
-    $("#barcode-fallback").classList.remove("hidden");
+    $("#scan-fallback").classList.remove("hidden");
   }
 }
-function stopBarcodeCamera() { if (barcodeReader) { try { barcodeReader.reset(); } catch (e) {} barcodeReader = null; } }
+function stopCamera() {
+  if (reader) { try { reader.reset(); } catch (e) {} reader = null; }
+  const v = $("#video"); if (v.srcObject) { try { v.srcObject.getTracks().forEach((t) => t.stop()); } catch (e) {} v.srcObject = null; }
+}
 
-$("#barcode-photo").onclick = () => $("#file-barcode").click();
+$("#scan-photo").onclick = () => { photoMode = "auto"; $("#file-scan").click(); };
+$("#scan-label").onclick = () => {
+  if (!state.apiKey) { toast("Add your Anthropic API key in Settings first"); go("settings"); return; }
+  const video = $("#video");
+  if (reader && video.videoWidth) {
+    drawScaled(video, 1600).toBlob((blob) => readLabel(blob), "image/jpeg", 0.9);
+  } else {
+    photoMode = "label"; $("#file-scan").click();
+  }
+};
 $("#barcode-manual-toggle").onclick = () => { $("#barcode-manual").classList.toggle("hidden"); $("#code-input").focus(); };
 $("#code-go").onclick = () => { const c = $("#code-input").value.replace(/\D/g, ""); if (c) lookupBarcode(c); };
 $("#code-input").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#code-go").click(); });
-$("#file-barcode").addEventListener("change", async (e) => {
+
+$("#file-scan").addEventListener("change", async (e) => {
   const file = e.target.files[0]; e.target.value = "";
   if (!file) return;
-  busy("Reading the barcode…");
-  try {
-    const code = await decodeBarcodeFromFile(file);
-    busy(false);
-    if (!code) { toast("No barcode found. Try closer and flatter, or type the number."); $("#barcode-manual").classList.remove("hidden"); return; }
-    lookupBarcode(code);
-  } catch (err) { busy(false); console.error(err); toast("Couldn't read that photo"); }
+  if (photoMode === "label") { readLabel(file); return; }
+  busy("Looking for a barcode…");
+  let code = null;
+  try { code = await decodeBarcodeFromFile(file); } catch (err) { console.error(err); }
+  busy(false);
+  if (code) { lookupBarcode(code); return; }
+  if (state.apiKey) { toast("No barcode found, reading it as a label instead"); readLabel(file); return; }
+  toast("No barcode found. Try closer and flatter, or type the number.", 4000);
+  $("#barcode-manual").classList.remove("hidden");
 });
 
 async function decodeBarcodeFromFile(file) {
@@ -342,7 +364,7 @@ async function lookupBarcode(code) {
   busy(false);
   if (!data || data.status !== 1 || !data.product) {
     toast(`Barcode ${code} isn't on Open Food Facts yet.`, 4000);
-    draft = blankItem("manual"); draft.note = `Barcode ${code} not found. Fill in from the pack, or try a label photo.`; openDetails("Enter the details"); return;
+    draft = blankItem("manual"); draft.note = `Barcode ${code} not found. Fill in from the pack, or go back and read the label.`; openDetails("Enter the details"); return;
   }
   const p = data.product, n = p.nutriments || {};
   const item = blankItem("barcode");
@@ -361,35 +383,8 @@ async function lookupBarcode(code) {
   openDetails("Product details");
 }
 
-// ---------------------------------------------------------------- label camera + Claude
+// ---------------------------------------------------------------- Claude reads a label
 
-let labelStream = null;
-async function startLabelCamera() {
-  const video = $("#video-label");
-  if (!cameraPossible()) return;
-  try {
-    labelStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1920 } }, audio: false });
-    video.srcObject = labelStream;
-  } catch (err) { console.warn("camera", err); labelStream = null; }
-}
-function stopLabelCamera() {
-  if (labelStream) { labelStream.getTracks().forEach((t) => t.stop()); labelStream = null; }
-  $("#video-label").srcObject = null;
-}
-$("#label-capture").onclick = async () => {
-  if (!state.apiKey) { toast("Add your Anthropic API key in Settings first"); go("settings"); return; }
-  const video = $("#video-label");
-  if (labelStream && video.videoWidth) {
-    const canvas = drawScaled(video, 1600);
-    canvas.toBlob((blob) => readLabel(blob), "image/jpeg", 0.9);
-  } else {
-    $("#file-label").click();
-  }
-};
-$("#file-label").addEventListener("change", (e) => {
-  const file = e.target.files[0]; e.target.value = "";
-  if (file) readLabel(file);
-});
 async function readLabel(file) {
   if (!state.apiKey) { toast("Add your Anthropic API key in Settings first"); go("settings"); return; }
   busy("Reading the label with Claude…");
@@ -475,57 +470,71 @@ async function readLabelWithClaude(file) {
   return item;
 }
 
-// ---------------------------------------------------------------- fraction of day
+// ---------------------------------------------------------------- how much? (kcal <-> grams <-> pieces)
 
-let currentShare = null;
-function resetShare() {
-  currentShare = null;
-  $("#share-input").value = "";
-  $$("#chips button").forEach((b) => b.classList.remove("on"));
+let amountKcal = null;   // the amount currently on the How much? screen
+/** What we can convert for this item: kcal per 100, and kcal per "count" (piece / serving / drink). */
+function conv(item) {
+  const kcalPer100 = item.kcalPer100 || (item.kcalPerServing && item.servingSize ? item.kcalPerServing / item.servingSize * 100 : null);
+  let countKcal = null, countLabel = null;
+  if (item.piecesPerPack && item.packSize && kcalPer100) { countKcal = item.packSize / item.piecesPerPack * kcalPer100 / 100; countLabel = "piece"; }
+  else if (item.kcalPerServing) { countKcal = item.kcalPerServing; countLabel = item.unitLabel || "serving"; }
+  else if (item.servingSize && kcalPer100) { countKcal = item.servingSize * kcalPer100 / 100; countLabel = "serving"; }
+  return { kcalPer100, countKcal, countLabel };
+}
+function openShare(prefillKcal) {
+  const c = conv(draft);
+  $("#share-name").textContent = draft.name;
+  $("#a-unit").textContent = draft.unit || "g";
+  $("#a-grams-wrap").classList.toggle("hidden", !c.kcalPer100);
+  $("#a-count-wrap").classList.toggle("hidden", !c.countKcal);
+  if (c.countLabel) $("#a-count-label").textContent = c.countLabel.charAt(0).toUpperCase() + c.countLabel.slice(1) + "s";
+  amountKcal = null;
+  fillAmounts(null);
+  if (prefillKcal) setAmount(prefillKcal, "kcal");
+  go("share");
+}
+const tidy = (n) => n == null ? "" : (Math.abs(n) >= 10 ? Math.round(n) : Math.round(n * 10) / 10);
+function fillAmounts(except) {
+  const c = conv(draft), k = amountKcal;
+  if (except !== "kcal") $("#a-kcal").value = k == null ? "" : Math.round(k);
+  if (except !== "grams") $("#a-grams").value = (k == null || !c.kcalPer100) ? "" : tidy(k / c.kcalPer100 * 100);
+  if (except !== "count") $("#a-count").value = (k == null || !c.countKcal) ? "" : tidy(k / c.countKcal);
   updateResult();
 }
-$("#chips").addEventListener("click", (e) => {
-  const b = e.target.closest("button"); if (!b) return;
-  $$("#chips button").forEach((x) => x.classList.toggle("on", x === b));
-  $("#share-input").value = "";
-  currentShare = parseShare(b.dataset.f);
-  updateResult();
-});
-$("#share-input").addEventListener("input", (e) => {
-  $$("#chips button").forEach((x) => x.classList.remove("on"));
-  currentShare = parseShare(e.target.value);
-  updateResult();
-});
-$("#share-reset").onclick = resetShare;
+function setAmount(value, field) {
+  const c = conv(draft), v = num(value);
+  if (v == null) { amountKcal = null; fillAmounts(field); return; }
+  if (field === "kcal") amountKcal = v;
+  else if (field === "grams") amountKcal = v * c.kcalPer100 / 100;
+  else if (field === "count") amountKcal = v * c.countKcal;
+  fillAmounts(field);
+}
+$("#a-kcal").addEventListener("input", (e) => setAmount(e.target.value, "kcal"));
+$("#a-grams").addEventListener("input", (e) => setAmount(e.target.value, "grams"));
+$("#a-count").addEventListener("input", (e) => setAmount(e.target.value, "count"));
+$("#share-rest").onclick = () => setAmount(Math.max(0, state.budget - usedKcal()), "kcal");
+$("#share-reset").onclick = () => { amountKcal = null; fillAmounts(null); };
 
-function shareKcal() { return Math.round(currentShare.kcal != null ? currentShare.kcal : state.budget * currentShare.fraction); }
 function updateResult() {
   const btn = $("#share-add"), bar = $("#r-bar");
-  if (!currentShare) { $("#r-kcal").textContent = "0"; $("#r-sub").textContent = "of your day"; bar.style.width = "0"; $("#r-lines").innerHTML = ""; btn.disabled = true; return; }
-  const kcal = shareKcal();
+  if (!amountKcal) { $("#r-kcal").textContent = "0"; $("#r-sub").textContent = "of your day"; bar.style.width = "0"; $("#r-lines").innerHTML = ""; btn.disabled = true; return; }
+  const kcal = Math.round(amountKcal);
   const frac = state.budget > 0 ? kcal / state.budget : 0;
   $("#r-kcal").textContent = fmt(kcal);
   $("#r-sub").textContent = `≈ ${fmt(frac * 100, 1)}% of your day`;
   bar.style.width = `${Math.min(100, frac * 100)}%`;
-  const lines = describeAmounts(amountsFor(draft, kcal));
+  const a = amountsFor(draft, kcal), lines = [];
+  if (a.packFraction != null) lines.push(`<b>${fmt(a.packFraction * 100)}%</b> of the pack`);
   const leftAfter = state.budget - usedKcal() - kcal;
   lines.push(leftAfter >= 0 ? `leaves <b>${fmt(leftAfter)}</b> kcal for the rest of the day` : `<b style="color:var(--bad)">${fmt(-leftAfter)} kcal over</b> your day`);
   $("#r-lines").innerHTML = lines.map((l) => `<div>${l}</div>`).join("");
   btn.disabled = false;
 }
 $("#share-add").onclick = () => {
-  if (!currentShare || !draft) return;
-  const kcal = shareKcal();
-  const { image, note, ...basis } = draft;
-  state.day.items.push({
-    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-    ...basis,
-    image: image && !image.startsWith("data:") ? image : null,   // keep OFF thumbnails, not photos
-    kcal: Math.round(kcal),
-    shareLabel: currentShare.label,
-    addedAt: new Date().toISOString()
-  });
-  save();
+  if (!amountKcal || !draft) return;
+  const kcal = Math.round(amountKcal);
+  addToDay(draft, kcal, `${fmt(kcal / state.budget * 100, 1)}% of the day`);
   toast(`Added ${draft.name} · ${fmt(kcal)} kcal`);
   home();
 };
@@ -533,4 +542,9 @@ $("#share-add").onclick = () => {
 // ---------------------------------------------------------------- boot
 
 show("home");
+// Portrait only where the browser lets us ask (Android installed app); iOS shows the CSS overlay instead.
+try { if (screen.orientation && screen.orientation.lock) screen.orientation.lock("portrait").catch(() => {}); } catch (e) {}
+// No pinch-zoom on iOS Safari, which ignores user-scalable=no.
+document.addEventListener("gesturestart", (e) => e.preventDefault());
+document.addEventListener("touchmove", (e) => { if (e.scale && e.scale !== 1) e.preventDefault(); }, { passive: false });
 if ("serviceWorker" in navigator && window.isSecureContext) navigator.serviceWorker.register("sw.js").catch(() => {});
