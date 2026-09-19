@@ -326,3 +326,13 @@ textarea:focus { outline: 2px solid var(--green-2); border-color: transparent; }
 .day-card .macros { margin-top: 6px; }
 .day-card .ate { margin-top: 8px; }
 .day-card .ate-btn { margin-top: 10px; width: auto; padding: 8px 14px; font-size: 14px; }
+
+/* Macro goals + planning */
+.macro-tiles .tile .goal { display: block; font-size: 11px; color: var(--muted); }
+.macro-tiles .tile .bar { height: 5px; margin-top: 6px; background: #d2dfd3; }
+.left-box { background: var(--mint-2); border-radius: 12px; padding: 12px 14px; margin: 8px 0 10px; }
+.left-box .big { font-size: 24px; font-weight: 800; color: var(--green); }
+.left-box .gaps { font-size: 13px; color: var(--muted); margin-top: 4px; }
+.plan-card { background: var(--mint-2); border-radius: 12px; padding: 12px 14px; margin-top: 10px; }
+.plan-card p { margin-bottom: 8px; }
+.plan-card .list li { background: #fff; }

@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "30";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "31";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -18,13 +18,14 @@ function localDate(d = new Date()) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 function load() {
-  const base = { budget: 1600, apiKey: "", day: { date: localDate(), items: [] }, history: [], recent: [], meals: [], presetUses: {}, mealDraft: null, shareDay: true, sharedMealIds: [] };
+  const base = { budget: 1600, apiKey: "", day: { date: localDate(), items: [] }, history: [], recent: [], meals: [], presetUses: {}, mealDraft: null, shareDay: true, sharedMealIds: [], goals: { p: null, c: null, f: null } };
   try { const raw = localStorage.getItem(STORE_KEY); if (raw) Object.assign(base, JSON.parse(raw)); } catch (e) {}
   if (!Array.isArray(base.recent)) base.recent = [];
   if (!Array.isArray(base.meals)) base.meals = [];
   if (!base.presetUses || typeof base.presetUses !== "object") base.presetUses = {};
   if (!Array.isArray(base.sharedMealIds)) base.sharedMealIds = [];
   if (base.shareDay == null) base.shareDay = true;
+  if (!base.goals || typeof base.goals !== "object") base.goals = { p: null, c: null, f: null };
   return base;
 }
 function save(sync = true) {
@@ -110,7 +111,7 @@ function basisOf(obj) {
 
 // ---------------------------------------------------------------- router
 
-const VIEWS = ["home", "budget", "settings", "history", "friends", "scan", "search", "meals", "meal", "details", "share"];
+const VIEWS = ["home", "budget", "settings", "history", "friends", "ask", "scan", "search", "meals", "meal", "details", "share"];
 let stack = ["home"];
 function show(view) {
   for (const v of VIEWS) $(`#view-${v}`).classList.toggle("hidden", v !== view);
@@ -119,12 +120,13 @@ function show(view) {
   if (view !== "scan") stopCamera();
   if (view === "home") renderHome();
   if (view === "settings") renderSettings();
-  if (view === "budget") { $("#b-budget").value = state.budget; $$("#budget-chips button").forEach((b) => b.classList.toggle("on", +b.dataset.b === state.budget)); }
+  if (view === "budget") { $("#b-budget").value = state.budget; $$("#budget-chips button").forEach((b) => b.classList.toggle("on", +b.dataset.b === state.budget)); const g = state.goals || {}; $("#b-p").value = g.p ?? ""; $("#b-c").value = g.c ?? ""; $("#b-f").value = g.f ?? ""; }
   if (view === "scan") startCamera();
   if (view === "search") openSearch();
   if (view === "meals") renderMeals();
   if (view === "friends") renderFriends();
   if (view === "history") renderHistory();
+  if (view === "ask") renderAsk();
   if (view === "meal") renderMeal();
 }
 function go(view) { stack.push(view); show(view); }
@@ -162,9 +164,11 @@ function renderHome() {
   bar.style.width = `${Math.min(100, state.budget > 0 ? used / state.budget * 100 : 0)}%`;
   bar.classList.toggle("over", left < 0);
   const mac = sumMacros(state.day.items);
-  const tile = (label, v) => `<span class="tile"><b>${Math.round(v)} g</b><small>${label}</small></span>`;
-  $("#home-macros").innerHTML = state.day.items.length
-    ? tile("Protein", mac.p) + tile("Carbs", mac.c) + tile("Fat", mac.f) + (mac.missing ? `<span class="note">${mac.missing} item${mac.missing === 1 ? " has" : "s have"} no macros (added before macros existed, or none on the pack).</span>` : "")
+  const g = state.goals || {};
+  const tile = (label, v, goal) => `<span class="tile"><b>${Math.round(v)} g</b><small>${label}</small>${goal ? `<span class="goal">of ${goal} g</span><span class="bar"><span style="width:${Math.min(100, v / goal * 100)}%" class="${v > goal * 1.1 ? "over" : ""}"></span></span>` : ""}</span>`;
+  const anyGoal = g.p || g.c || g.f;
+  $("#home-macros").innerHTML = (state.day.items.length || anyGoal)
+    ? tile("Protein", mac.p, g.p) + tile("Carbs", mac.c, g.c) + tile("Fat", mac.f, g.f) + (mac.missing ? `<span class="note">${mac.missing} item${mac.missing === 1 ? " has" : "s have"} no macros (added before macros existed, or none on the pack).</span>` : "")
     : "";
 
   const list = $("#home-list"); list.innerHTML = "";
@@ -328,6 +332,8 @@ function renderMeal() {
   if (!mealDraft) mealDraft = state.mealDraft || newMeal();
   const m = mealDraft;
   if (document.activeElement !== $("#m-q")) { $("#m-q").value = ""; $("#m-results").innerHTML = ""; $("#m-noresult").classList.add("hidden"); }
+  if (!renderMeal.lastId || renderMeal.lastId !== m.id) $("#m-lighter-out").innerHTML = "";
+  renderMeal.lastId = m.id;
   $("#meal-title").textContent = m.saved ? "Edit meal" : "New meal";
   $("#meal-delete").classList.toggle("hidden", !m.saved);
   if (document.activeElement !== $("#m-name")) $("#m-name").value = m.name || "";
@@ -371,6 +377,7 @@ function renderMeal() {
   $("#m-macros").innerHTML = m.items.length ? `Per portion: ${macroText({ p: t.p / portions, c: t.c / portions, f: t.f / portions }, true)}${t.macroMissing ? ` <span class="tiny">(${t.macroMissing} ingredient${t.macroMissing === 1 ? "" : "s"} without macros)</span>` : ""}` : "";
   $("#m-use").classList.toggle("hidden", !m.saved);
   $("#m-share").classList.toggle("hidden", !m.saved);
+  $("#m-lighter").classList.toggle("hidden", !m.items.length);
   const canFriends = m.saved && window.cloud && window.cloud.user;
   $("#m-share-friends").classList.toggle("hidden", !canFriends);
   $("#m-share-friends").textContent = state.sharedMealIds.includes(m.id) ? "Stop sharing with friends" : "Share with friends";
@@ -474,6 +481,55 @@ $("#m-share-friends").onclick = async () => {
   } catch (err) { toast("Couldn't share: " + c.explain(err), 5000); }
   busy(false);
 };
+
+// Make a meal lighter: Claude proposes swaps and smaller amounts, and it can be saved as a new meal
+const LIGHTER_SCHEMA = {
+  type: "object",
+  properties: {
+    summary: { type: "string", description: "Two or three sentences: what changed and what it does to the taste" },
+    new_name: { type: "string", description: "Name for the lighter version, e.g. 'Carrot cake (lighter)'" },
+    ingredients: { type: "array", items: { type: "object", properties: {
+      name: { type: "string" }, grams: { type: "number", description: "amount in g (ml for liquids)" },
+      kcal: { type: "number" }, protein_g: { type: "number" }, carbs_g: { type: "number" }, fat_g: { type: "number" },
+      change: { type: "string", description: "'kept', 'less', 'swapped for X', or 'removed'" }
+    }, required: ["name", "grams", "kcal", "protein_g", "carbs_g", "fat_g", "change"], additionalProperties: false } }
+  },
+  required: ["summary", "new_name", "ingredients"],
+  additionalProperties: false
+};
+$("#m-lighter").onclick = async () => {
+  if (!state.apiKey) { toast("Add your Anthropic API key in Settings first"); go("settings"); return; }
+  const m = mealDraft, t = mealTotals(m), portions = num(m.portions) || 1;
+  const lines = m.items.map((it) => { const g = it.grams != null ? it.grams : amountsFor(it, it.kcal || 0).grams; return `${it.name}: ${g != null ? Math.round(g) + " g" : "?"}, ${it.kcal} kcal`; }).join("\n");
+  const prompt = `Here is a recipe called "${m.name || "meal"}" making ${portions} portions, ${fmt(t.kcal)} kcal in total (${fmt(t.kcal / portions)} per portion):
+${lines}
+
+Make it noticeably lower in calories while keeping it recognisably the same dish and still enjoyable. Prefer swaps people actually have (lighter dairy, less oil or butter, leaner cuts, less sugar, more veg, smaller amounts of the richest items) over exotic ingredients. Return the full new ingredient list with realistic amounts and honest kcal and macro figures per ingredient, marking each as kept, less, swapped or removed. Aim for at least 20% fewer calories if that's achievable without ruining it; say so in the summary if it isn't.`;
+  busy("Claude is lightening it…");
+  try {
+    const r = await askClaude(LIGHTER_SCHEMA, [{ type: "text", text: prompt }]);
+    busy(false);
+    const items = (r.ingredients || []).filter((x) => /removed/i.test(x.change) === false).map((x) => {
+      const grams = num(x.grams) || 100, kcal = Math.round(nz(x.kcal) || 0);
+      const hit = searchLocal(x.name)[0];
+      const base = hit ? { ...basisOf(foodItem(hit)) } : { name: x.name, source: "claude", unit: "g" };
+      base.name = x.name;
+      base.kcalPer100 = grams ? Math.round(kcal / grams * 100) : null;
+      base.p100 = Math.round((nz(x.protein_g) || 0) / grams * 1000) / 10; base.c100 = Math.round((nz(x.carbs_g) || 0) / grams * 1000) / 10; base.f100 = Math.round((nz(x.fat_g) || 0) / grams * 1000) / 10;
+      return { id: uid(), ...base, kcal, grams, fromText: x.change };
+    });
+    const after = items.reduce((a, it) => a + it.kcal, 0);
+    const out = $("#m-lighter-out");
+    out.innerHTML = `<div class="plan-card"><p><b>${fmt(t.kcal / portions)} → ${fmt(after / portions)} kcal a portion</b> (${fmt((1 - after / t.kcal) * 100)}% less)</p><p>${esc(r.summary)}</p>
+      <ul class="list">${(r.ingredients || []).map((x) => `<li><div class="body"><div class="name">${esc(x.name)}</div><div class="detail">${fmt(x.grams)} g · ${fmt(x.kcal)} kcal · ${esc(x.change)}</div></div></li>`).join("")}</ul>
+      <button class="btn primary" id="m-lighter-save">Save as "${esc(r.new_name || (m.name + " (lighter)"))}"</button></div>`;
+    out.querySelector("#m-lighter-save").onclick = () => {
+      state.meals.unshift({ id: uid(), name: r.new_name || `${m.name} (lighter)`, portions, items, saved: true, updatedAt: new Date().toISOString(), lighterOf: m.id });
+      save(); toast("Saved as a new meal"); stack = ["home", "meals"]; show("meals");
+    };
+  } catch (err) { busy(false); toast(err.message || "Claude couldn't lighten that", 5000); }
+};
+
 $("#m-use").onclick = () => { const m = state.meals.find((x) => x.id === mealDraft.id) || mealDraft; draft = { ...mealBasis(m), note: "" }; openShare(); };
 function deleteMeal(m) {
   if (!confirm(`Delete "${m.name}"?
@@ -568,10 +624,16 @@ $("#budget-chips").addEventListener("click", (e) => {
   $$("#budget-chips button").forEach((x) => x.classList.toggle("on", x === b));
 });
 $("#b-budget").addEventListener("input", () => $$("#budget-chips button").forEach((x) => x.classList.toggle("on", +x.dataset.b === +$("#b-budget").value)));
+$("#budget-suggest").onclick = () => {
+  const b = num($("#b-budget").value) || state.budget;
+  $("#b-p").value = Math.round(b * 0.30 / 4); $("#b-c").value = Math.round(b * 0.40 / 4); $("#b-f").value = Math.round(b * 0.30 / 9);
+};
 $("#budget-save").onclick = () => {
   const b = num($("#b-budget").value);
   if (!b) { toast("Budget needs to be a number of kcal"); return; }
-  state.budget = Math.round(b); save(); toast(`Budget set to ${fmt(state.budget)} kcal`); home();
+  state.budget = Math.round(b);
+  state.goals = { p: num($("#b-p").value) ? Math.round(num($("#b-p").value)) : null, c: num($("#b-c").value) ? Math.round(num($("#b-c").value)) : null, f: num($("#b-f").value) ? Math.round(num($("#b-f").value)) : null };
+  save(); toast(`Budget set to ${fmt(state.budget)} kcal`); home();
 };
 
 // ---------------------------------------------------------------- settings
@@ -774,6 +836,155 @@ $("#fr-add-go").onclick = async () => {
   } catch (err) { busy(false); toast(c.explain(err), 5000); }
 };
 $("#fr-add").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#fr-add-go").click(); });
+
+
+// ---------------------------------------------------------------- Ask Claude: guess a food, plan the rest of the day
+
+const GUESS_SCHEMA = {
+  type: "object",
+  properties: {
+    name: { type: "string", description: "What the food is, short, e.g. 'Chicken katsu curry with rice'" },
+    portion_g: { type: "number", description: "Estimated weight of the portion shown or described, in grams (ml for drinks)" },
+    unit: { type: "string", enum: ["g", "ml"] },
+    kcal_total: { type: "number", description: "Estimated kcal for that whole portion" },
+    protein_g: { type: "number" }, carbs_g: { type: "number" }, fat_g: { type: "number" },
+    confidence: { type: "string", enum: ["high", "medium", "low"] },
+    notes: { type: "string", description: "One short sentence on the assumptions, e.g. 'assumed a restaurant-sized portion with sauce'" }
+  },
+  required: ["name", "portion_g", "unit", "kcal_total", "protein_g", "carbs_g", "fat_g", "confidence", "notes"],
+  additionalProperties: false
+};
+const GUESS_PROMPT = `Estimate the nutrition of this food as a whole portion, the way it would be eaten. Use typical reference values and realistic portion sizes. If a description is given, trust it over the photo for what the food is; use the photo for portion size. Be honest about confidence.`;
+function renderAsk() {
+  $("#ask-nokey").classList.toggle("hidden", !!state.apiKey);
+  $("#plan-go").disabled = !state.apiKey;
+  $("#plan-out").innerHTML = "";
+  renderPlanLeft();
+  renderFits();
+}
+async function guessFood(file) {
+  const text = $("#ask-text").value.trim();
+  if (!file && !text) { toast("Describe it or take a photo"); return; }
+  if (!state.apiKey) { toast("Add your Anthropic API key in Settings first"); go("settings"); return; }
+  busy("Asking Claude…");
+  try {
+    const content = [];
+    let image = null;
+    if (file) {
+      const img = await loadImage(file);
+      image = drawScaled(img, 1280).toDataURL("image/jpeg", 0.85);
+      content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: image.split(",")[1] } });
+    }
+    content.push({ type: "text", text: GUESS_PROMPT + (text ? `\nDescription: "${text}"` : "") });
+    const g = await askClaude(GUESS_SCHEMA, content);
+    busy(false);
+    const item = blankItem("claude");
+    const portion = num(g.portion_g) || 100;
+    item.name = g.name || text || "Something"; item.unit = g.unit === "ml" ? "ml" : "g";
+    item.kcalPer100 = Math.round((num(g.kcal_total) || 0) / portion * 100);
+    item.servingSize = Math.round(portion); item.unitLabel = "portion";
+    item.kcalPerServing = Math.round(num(g.kcal_total) || 0);
+    item.p100 = Math.round((nz(g.protein_g) || 0) / portion * 1000) / 10; item.c100 = Math.round((nz(g.carbs_g) || 0) / portion * 1000) / 10; item.f100 = Math.round((nz(g.fat_g) || 0) / portion * 1000) / 10;
+    item.image = image;
+    item.note = `Claude's estimate (${g.confidence || "medium"} confidence), not a label. ${g.notes || ""}`;
+    draft = item; $("#ask-text").value = "";
+    openDetails("Claude's estimate");
+  } catch (err) { busy(false); toast(err.message || "Claude couldn't help with that", 5000); }
+}
+$("#ask-photo").onclick = () => { if (!state.apiKey) { toast("Add your Anthropic API key in Settings first"); go("settings"); return; } $("#file-ask").click(); };
+$("#file-ask").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) guessFood(f); });
+$("#ask-words").onclick = () => guessFood(null);
+$("#ask-text").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.target.blur(); guessFood(null); } });
+
+// what's left, and what's short
+function dayGaps() {
+  const mac = sumMacros(state.day.items), g = state.goals || {};
+  return { left: state.budget - usedKcal(), p: g.p ? Math.max(0, g.p - mac.p) : null, c: g.c ? Math.max(0, g.c - mac.c) : null, f: g.f ? Math.max(0, g.f - mac.f) : null, mac };
+}
+function renderPlanLeft() {
+  const d = dayGaps();
+  const gaps = [];
+  if (d.p != null) gaps.push(`protein ${d.p ? `<b>${Math.round(d.p)} g</b> to go` : "done"}`);
+  if (d.c != null) gaps.push(`carbs ${d.c ? `<b>${Math.round(d.c)} g</b> to go` : "done"}`);
+  if (d.f != null) gaps.push(`fat ${d.f ? `<b>${Math.round(d.f)} g</b> to go` : "done"}`);
+  $("#plan-left").innerHTML = `<div class="left-box"><div class="big">${d.left >= 0 ? fmt(d.left) + " kcal left" : fmt(-d.left) + " kcal over"}</div><div class="gaps">${gaps.length ? gaps.join(" · ") : "Set macro goals on the Daily budget screen to see what you're short on."}</div></div>`;
+}
+/** Foods from the list that fit the remaining calories, favouring whatever you're short on. */
+function renderFits() {
+  const d = dayGaps(), list = $("#plan-fits"); list.innerHTML = "";
+  if (d.left <= 50) { list.innerHTML = `<li class="muted">Nothing fits: you're at your budget for today.</li>`; return; }
+  const scored = [];
+  for (const row of (typeof FOODS !== "undefined" ? FOODS : [])) {
+    const it = foodItem(row);
+    if (!it.servingSize || it.p100 == null) continue;
+    const serves = it.servingSize, kcal = it.kcalPer100 * serves / 100;
+    if (kcal < 40 || kcal > d.left * 0.45) continue;                          // single foods, not a whole day in one go
+    const gp = serves * it.p100 / 100, gc = serves * it.c100 / 100, gf = serves * it.f100 / 100;
+    let score = 0;
+    if (d.p != null && d.p > 0) score += Math.min(gp, d.p) / d.p * 3;
+    if (d.c != null && d.c > 0) score += Math.min(gc, d.c) / d.c;
+    if (d.f != null && d.f > 0) score += Math.min(gf, d.f) / d.f;
+    if (d.p == null && d.c == null && d.f == null) score = gp / kcal * 10;     // no goals: lean towards protein-dense
+    score -= 1.5 * (kcal / d.left);                                              // cheaper in calories wins, all else equal
+    scored.push({ it, kcal, score, key: row[0].split(",")[0].toLowerCase() });
+  }
+  scored.sort((a, b) => b.score - a.score);
+  const seen = new Set(), picks = [];
+  for (const x of scored) { if (seen.has(x.key)) continue; seen.add(x.key); picks.push(x); if (picks.length >= 8) break; }
+  for (const x of picks) {
+    const li = resultRow(x.it, "tone-coral");
+    li.querySelector(".detail").textContent = `${fmt1(x.it.servingSize)} ${x.it.unit} ${x.it.unitLabel || "serving"} · ${fmt(x.kcal)} kcal · ${macroText(macrosFor(x.it, x.kcal))}`;
+    li.onclick = () => { draft = { ...x.it }; openShare(Math.round(x.kcal)); };
+    list.appendChild(li);
+  }
+  if (!picks.length) list.innerHTML = `<li class="muted">Nothing in the list fits in ${fmt(d.left)} kcal.</li>`;
+}
+const PLAN_SCHEMA = {
+  type: "object",
+  properties: {
+    summary: { type: "string", description: "Two or three friendly sentences: how the day is going and the idea behind the plan" },
+    suggestions: { type: "array", items: { type: "object", properties: {
+      name: { type: "string" }, amount: { type: "string", description: "e.g. '150 g', '2 eggs', '1 small bar'" },
+      kcal: { type: "number" }, protein_g: { type: "number" }, carbs_g: { type: "number" }, fat_g: { type: "number" },
+      why: { type: "string", description: "A few words, e.g. 'covers most of the protein gap'" }
+    }, required: ["name", "amount", "kcal", "protein_g", "carbs_g", "fat_g", "why"], additionalProperties: false } }
+  },
+  required: ["summary", "suggestions"],
+  additionalProperties: false
+};
+$("#plan-go").onclick = async () => {
+  if (!state.apiKey) { toast("Add your Anthropic API key in Settings first"); go("settings"); return; }
+  const d = dayGaps(), g = state.goals || {};
+  const eaten = state.day.items.map((it) => `${it.name} (${it.kcal} kcal)`).join(", ") || "nothing yet";
+  const quick = quickEntries().slice(0, 8).map((q) => q.basis.name).join(", ");
+  const prompt = `You're helping someone enjoy a cheat day while still landing near their targets.
+Budget ${state.budget} kcal, eaten so far ${usedKcal()} kcal: ${eaten}. Left: ${d.left} kcal.
+Macro goals: protein ${g.p || "none"} g, carbs ${g.c || "none"} g, fat ${g.f || "none"} g. So far: protein ${Math.round(d.mac.p)} g, carbs ${Math.round(d.mac.c)} g, fat ${Math.round(d.mac.f)} g.
+Things they often have: ${quick || "unknown"}.
+Suggest 3 to 5 things for the rest of the day that together fit in the calories left, close the macro gaps as far as sensible, and deliberately leave room for one treat or a drink. Give realistic amounts and honest kcal/macro estimates. Keep it warm and short.`;
+  busy("Claude is planning…");
+  try {
+    const plan = await askClaude(PLAN_SCHEMA, [{ type: "text", text: prompt }]);
+    busy(false);
+    const out = $("#plan-out");
+    out.innerHTML = `<div class="plan-card"><p>${esc(plan.summary)}</p><ul class="list" id="plan-list"></ul><p class="muted tiny">Tap one to add it with Claude's numbers.</p></div>`;
+    const ul = out.querySelector("#plan-list");
+    for (const sg of plan.suggestions || []) {
+      const li = document.createElement("li");
+      li.innerHTML = `<span class="thumb-sm"><svg><use href="#i-spark"/></svg></span><div class="body"><div class="name">${esc(sg.name)}</div><div class="detail">${esc(sg.amount)} · ${fmt(sg.kcal)} kcal · P ${Math.round(sg.protein_g)} · C ${Math.round(sg.carbs_g)} · F ${Math.round(sg.fat_g)} · ${esc(sg.why)}</div></div><div class="kcal">${fmt(sg.kcal)}</div>`;
+      li.style.cursor = "pointer";
+      li.onclick = () => {
+        const hit = searchLocal(sg.name)[0];
+        if (hit) { draft = { ...foodItem(hit) }; openShare(Math.round(sg.kcal)); return; }
+        const item = blankItem("claude");
+        item.name = `${sg.name} (${sg.amount})`; item.kcalPerServing = Math.round(sg.kcal); item.unitLabel = "portion";
+        item.pServ = nz(sg.protein_g) || 0; item.cServ = nz(sg.carbs_g) || 0; item.fServ = nz(sg.fat_g) || 0;
+        draft = item; openShare(Math.round(sg.kcal));
+      };
+      ul.appendChild(li);
+    }
+  } catch (err) { busy(false); toast(err.message || "Claude couldn't plan that", 5000); }
+};
 
 // ---------------------------------------------------------------- item details
 
@@ -1446,7 +1657,7 @@ $("#share-add").onclick = () => {
 
 // ---------------------------------------------------------------- account + sync (optional, see cloud.js)
 
-const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "updatedAt"];   // the API key stays on the device
+const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "updatedAt"];   // the API key stays on the device
 let pushTimer = null;
 function schedulePush() {
   if (!window.cloud || !window.cloud.user) return;

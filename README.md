@@ -158,6 +158,17 @@ create policy "days read" on public.days for select to authenticated using (user
 create policy "days own" on public.days for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 ```
 
+## Macro goals, Ask Claude, and the rest of the day
+
+The Daily budget screen also takes protein, carbs and fat goals in grams (or
+"Suggest from my calories" for a 30/40/30 split); the home tiles then show
+progress against them. The **Ask Claude** card does three things with the API
+key: estimate a plate from a photo or a description, plan the rest of the day
+so the gaps close while leaving room for a treat, and (from a meal's editor)
+**Make it lighter** with swaps and smaller amounts, saved as a new meal. The
+"Fits what's left" list on that screen needs no key: it picks foods from the
+built-in list that fit the remaining calories, favouring what you're short on.
+
 ## Days and History
 
 The day turns over by itself at midnight: what you logged goes into **History**
