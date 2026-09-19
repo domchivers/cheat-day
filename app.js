@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "35";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "36";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1596,22 +1596,29 @@ function geminiSchema(node) {
 }
 async function askGemini(schema, content, key) {
   const parts = content.map((b) => b.type === "image" ? { inline_data: { mime_type: b.source.media_type, data: b.source.data } } : { text: b.text });
-  const body = JSON.stringify({ contents: [{ parts }], generationConfig: { responseMimeType: "application/json", responseSchema: geminiSchema(schema), temperature: 0.2 } });
-  let resp;
-  try {
-    for (const model of GEMINI_MODELS) {           // newest first; fall through on "no longer available" or "high demand"
-      if (key) {
-        resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, { method: "POST", headers: { "Content-Type": "application/json", "X-goog-api-key": key }, body });
-      } else {
-        const cfg = window.SUPABASE_CONFIG;
-        resp = await window.cloud.rawFetch(`${cfg.url}/functions/v1/ai?model=${model}`, { method: "POST", headers: { "Content-Type": "application/json", apikey: cfg.anonKey }, body });
-        if (resp.status === 404) { const e = new Error("shared AI not set up"); e.proxyMissing = true; throw e; }
-        if (resp.ok) aiProxyState = "yes";
-      }
-      if (resp.status !== 503 && resp.status !== 429 && !(resp.status === 404 && key)) break;
-      await new Promise((r) => setTimeout(r, 400));     // a breath, then the next model
+  const bodyFor = (model) => {
+    const generationConfig = { responseMimeType: "application/json", responseSchema: geminiSchema(schema), temperature: 0.2 };
+    if (/^gemini-3/.test(model)) generationConfig.thinkingConfig = { thinkingLevel: "low" };   // quick answers; these are lookups, not puzzles
+    return JSON.stringify({ contents: [{ parts }], generationConfig });
+  };
+  const send = async (model) => {
+    if (key) return fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, { method: "POST", headers: { "Content-Type": "application/json", "X-goog-api-key": key }, body: bodyFor(model) });
+    const cfg = window.SUPABASE_CONFIG;
+    return window.cloud.rawFetch(`${cfg.url}/functions/v1/ai?model=${model}`, { method: "POST", headers: { "Content-Type": "application/json", apikey: cfg.anonKey }, body: bodyFor(model) });
+  };
+  let resp, lastNet = null;
+  for (const model of GEMINI_MODELS) {             // newest first; fall through on "no longer available", "high demand", or a dropped connection
+    resp = null;
+    for (let attempt = 0; attempt < 2 && !resp; attempt++) {
+      try { resp = await send(model); } catch (e) { lastNet = e; await new Promise((r) => setTimeout(r, 600)); }
     }
-  } catch (e) { if (e.proxyMissing) throw e; throw new Error("Couldn't reach the AI service (offline?)"); }
+    if (!resp) continue;
+    if (!key && resp.status === 404) { const e = new Error("shared AI not set up"); e.proxyMissing = true; throw e; }
+    if (!key && resp.ok) aiProxyState = "yes";
+    if (resp.status !== 503 && resp.status !== 429 && !(resp.status === 404 && key)) break;
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  if (!resp) throw new Error(`Couldn't reach the AI service (${(lastNet && lastNet.message) || "no connection"}). Check the signal and try again.`);
   if (resp.status === 503 || resp.status === 429) throw new Error("Every free AI model is busy right now. Try again in a minute.");
   const json = await resp.json().catch(() => ({}));
   if (resp.status === 401 && !key) { aiProxyState = "no"; const e = new Error("shared AI not available"); e.proxyMissing = true; throw e; }
