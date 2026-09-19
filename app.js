@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "31";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "32";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1005,6 +1005,7 @@ function openDetails(title) {
   $("#d-thumb").innerHTML = d.image ? `<img src="${esc(d.image)}" alt="">` : `<svg><use href="#i-image"/></svg>`;
   $("#d-badge").classList.toggle("hidden", d.source !== "barcode");
   const note = $("#d-note"); note.textContent = d.note || ""; note.classList.toggle("hidden", !d.note);
+  $("#details-lighter-out").innerHTML = "";
   syncUnitEcho();
   go("details");
 }
@@ -1026,6 +1027,51 @@ $("#details-next").onclick = () => {
   if (!d.kcalPer100 && !d.kcalPerServing) { toast("I need kcal per 100 or kcal per serving"); return; }
   if (!d.name) d.name = d.brand || "Something tasty";
   openShare();
+};
+
+
+// A single product made lighter: how to prepare or eat it with fewer calories (half the sachet, drain the oil, add veg...)
+const PRODUCT_LIGHTER_SCHEMA = {
+  type: "object",
+  properties: {
+    summary: { type: "string", description: "One or two sentences on the approach" },
+    tips: { type: "array", items: { type: "string" }, description: "3 to 5 concrete, short tips in order of impact" },
+    lighter_name: { type: "string", description: "e.g. 'Shin Ramyun, lighter (half seasoning, extra veg)'" },
+    serving_size: { type: "number", description: "the lighter serving in g or ml as eaten" },
+    kcal_per_serving: { type: "number" }, protein_g: { type: "number" }, carbs_g: { type: "number" }, fat_g: { type: "number" },
+    notes: { type: "string", description: "assumptions in one short sentence" }
+  },
+  required: ["summary", "tips", "lighter_name", "serving_size", "kcal_per_serving", "protein_g", "carbs_g", "fat_g", "notes"],
+  additionalProperties: false
+};
+$("#details-lighter").onclick = async () => {
+  if (!state.apiKey) { toast("Add your Anthropic API key in Settings first"); go("settings"); return; }
+  const d = readDetails();
+  const facts = [`kcal per 100 ${d.unit}: ${d.kcalPer100 ?? "unknown"}`, d.servingSize ? `serving ${d.servingSize} ${d.unit}` : null, d.kcalPerServing ? `${d.kcalPerServing} kcal per serving` : null,
+    d.p100 != null ? `per 100: protein ${d.p100} g, carbs ${d.c100} g, fat ${d.f100} g` : null, d.packSize ? `pack ${d.packSize} ${d.unit}` : null].filter(Boolean).join("; ");
+  const prompt = `Product: "${d.name}"${d.brand ? ` by ${d.brand}` : ""}. Label facts: ${facts || "none"}.
+Someone wants to eat this but lighter. Suggest realistic ways to prepare or eat it with fewer calories while keeping it enjoyable: for example using part of a seasoning or oil sachet, draining, smaller portion, bulking with vegetables or protein, lighter accompaniments. Then estimate the lighter version as one serving: its weight as eaten, kcal and macros. Be honest that these are estimates.`;
+  busy("Claude is lightening it…");
+  try {
+    const r = await askClaude(PRODUCT_LIGHTER_SCHEMA, [{ type: "text", text: prompt }]);
+    busy(false);
+    const before = d.kcalPerServing || (d.kcalPer100 && d.servingSize ? Math.round(d.kcalPer100 * d.servingSize / 100) : null);
+    const out = $("#details-lighter-out");
+    out.innerHTML = `<div class="plan-card"><p><b>${before ? `${fmt(before)} → ` : ""}${fmt(r.kcal_per_serving)} kcal a serving</b></p><p>${esc(r.summary)}</p>
+      <ul class="tips">${(r.tips || []).map((t) => `<li>${esc(t)}</li>`).join("")}</ul>
+      <p class="muted tiny">${esc(r.notes || "")}</p>
+      <button class="btn primary" id="details-lighter-use">Use the lighter version</button></div>`;
+    out.querySelector("#details-lighter-use").onclick = () => {
+      const serving = num(r.serving_size) || d.servingSize || 100, kcal = Math.round(num(r.kcal_per_serving) || 0);
+      const item = blankItem("claude");
+      item.name = r.lighter_name || `${d.name} (lighter)`; item.brand = d.brand; item.unit = d.unit; item.image = d.image;
+      item.servingSize = Math.round(serving); item.unitLabel = "serving"; item.kcalPerServing = kcal;
+      item.kcalPer100 = Math.round(kcal / serving * 100);
+      item.p100 = Math.round((nz(r.protein_g) || 0) / serving * 1000) / 10; item.c100 = Math.round((nz(r.carbs_g) || 0) / serving * 1000) / 10; item.f100 = Math.round((nz(r.fat_g) || 0) / serving * 1000) / 10;
+      item.note = "Claude's lighter version, an estimate. " + (r.tips || []).slice(0, 2).join(" ");
+      draft = item; openShare();
+    };
+  } catch (err) { busy(false); toast(err.message || "Claude couldn't lighten that", 5000); }
 };
 
 // ---------------------------------------------------------------- one scanner: barcodes live, labels on demand
