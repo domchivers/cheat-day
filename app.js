@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "36";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "37";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -196,7 +196,7 @@ function itemRow(it) {
     <div class="body"><div class="name">${esc(it.name || "Unnamed")}</div><div class="detail">${esc(shortAmounts(it))}</div></div>
     <div class="kcal">${fmt(it.kcal)}</div>
     <button class="del" aria-label="Remove">✕</button>`;
-  li.querySelector(".del").onclick = (e) => { e.stopPropagation(); state.day.items = state.day.items.filter((x) => x.id !== it.id); save(); renderHome(); };
+  li.querySelector(".del").onclick = (e) => { e.stopPropagation(); if (!confirm(`Remove "${it.name}" from today?`)) return; state.day.items = state.day.items.filter((x) => x.id !== it.id); save(); renderHome(); };
   li.querySelector(".body").onclick = () => { editId = it.id; draft = { ...basisOf(it), note: "" }; openShare(it.kcal); };
   li.style.cursor = "pointer";
   return li;
@@ -360,7 +360,7 @@ function renderMeal() {
       const act = e.target.closest("[data-act]");
       if (act) {
         e.stopPropagation();
-        if (act.dataset.act === "remove") { m.items = m.items.filter((x) => x.id !== it.id); openRow = null; mealChanged(); }
+        if (act.dataset.act === "remove") { if (!confirm(`Remove "${it.name}" from this meal?`)) return; m.items = m.items.filter((x) => x.id !== it.id); openRow = null; mealChanged(); }
         if (act.dataset.act === "amount") { pick = { replaceId: it.id }; draft = { ...basisOf(it), note: "" }; openShare(it.kcal); }
         if (act.dataset.act === "swap") { pick = { replaceId: it.id, prefill: it.fromText || it.name }; go("search"); }
         return;
@@ -497,6 +497,28 @@ const LIGHTER_SCHEMA = {
   required: ["summary", "new_name", "ingredients"],
   additionalProperties: false
 };
+function renderMealLighter(m, t, portions, r) {
+  const items = (r.ingredients || []).filter((x) => /removed/i.test(x.change) === false).map((x) => {
+    const grams = num(x.grams) || 100, kcal = Math.round(nz(x.kcal) || 0);
+    const hit = searchLocal(x.name)[0];
+    const base = hit ? { ...basisOf(foodItem(hit)) } : { name: x.name, source: "claude", unit: "g" };
+    base.name = x.name;
+    base.kcalPer100 = grams ? Math.round(kcal / grams * 100) : null;
+    base.p100 = Math.round((nz(x.protein_g) || 0) / grams * 1000) / 10; base.c100 = Math.round((nz(x.carbs_g) || 0) / grams * 1000) / 10; base.f100 = Math.round((nz(x.fat_g) || 0) / grams * 1000) / 10;
+    return { id: uid(), ...base, kcal, grams, fromText: x.change };
+  });
+  const after = items.reduce((a, it) => a + it.kcal, 0);
+  const out = $("#m-lighter-out");
+  out.innerHTML = `<div class="plan-card"><p><b>${fmt(t.kcal / portions)} → ${fmt(after / portions)} kcal a portion</b> (${fmt((1 - after / t.kcal) * 100)}% less)</p><p>${esc(r.summary)}</p>
+    <ul class="list">${(r.ingredients || []).map((x) => `<li><div class="body"><div class="name">${esc(x.name)}</div><div class="detail">${fmt(x.grams)} g · ${fmt(x.kcal)} kcal · ${esc(x.change)}</div></div></li>`).join("")}</ul>
+    ${chatBox("mlight", "Change something? e.g. keep the butter, drop the walnuts")}
+    <button class="btn primary" id="m-lighter-save">Save as "${esc(r.new_name || (m.name + " (lighter)"))}"</button></div>`;
+  wireChat(out, "mlight", (answer) => renderMealLighter(m, t, portions, answer));
+  out.querySelector("#m-lighter-save").onclick = () => {
+    state.meals.unshift({ id: uid(), name: r.new_name || `${m.name} (lighter)`, portions, items, saved: true, updatedAt: new Date().toISOString(), lighterOf: m.id });
+    save(); toast("Saved as a new meal"); stack = ["home", "meals"]; show("meals");
+  };
+}
 $("#m-lighter").onclick = async () => {
   if (!aiAvailable()) { aiHelp(); return; }
   const m = mealDraft, t = mealTotals(m), portions = num(m.portions) || 1;
@@ -505,28 +527,12 @@ $("#m-lighter").onclick = async () => {
 ${lines}
 
 Make it noticeably lower in calories while keeping it recognisably the same dish and still enjoyable. Prefer swaps people actually have (lighter dairy, less oil or butter, leaner cuts, less sugar, more veg, smaller amounts of the richest items) over exotic ingredients. Return the full new ingredient list with realistic amounts and honest kcal and macro figures per ingredient, marking each as kept, less, swapped or removed. Aim for at least 20% fewer calories if that's achievable without ruining it; say so in the summary if it isn't.`;
-  busy("Claude is lightening it…");
+  busy("Lightening it…");
   try {
     const r = await askAI(LIGHTER_SCHEMA, [{ type: "text", text: prompt }]);
     busy(false);
-    const items = (r.ingredients || []).filter((x) => /removed/i.test(x.change) === false).map((x) => {
-      const grams = num(x.grams) || 100, kcal = Math.round(nz(x.kcal) || 0);
-      const hit = searchLocal(x.name)[0];
-      const base = hit ? { ...basisOf(foodItem(hit)) } : { name: x.name, source: "claude", unit: "g" };
-      base.name = x.name;
-      base.kcalPer100 = grams ? Math.round(kcal / grams * 100) : null;
-      base.p100 = Math.round((nz(x.protein_g) || 0) / grams * 1000) / 10; base.c100 = Math.round((nz(x.carbs_g) || 0) / grams * 1000) / 10; base.f100 = Math.round((nz(x.fat_g) || 0) / grams * 1000) / 10;
-      return { id: uid(), ...base, kcal, grams, fromText: x.change };
-    });
-    const after = items.reduce((a, it) => a + it.kcal, 0);
-    const out = $("#m-lighter-out");
-    out.innerHTML = `<div class="plan-card"><p><b>${fmt(t.kcal / portions)} → ${fmt(after / portions)} kcal a portion</b> (${fmt((1 - after / t.kcal) * 100)}% less)</p><p>${esc(r.summary)}</p>
-      <ul class="list">${(r.ingredients || []).map((x) => `<li><div class="body"><div class="name">${esc(x.name)}</div><div class="detail">${fmt(x.grams)} g · ${fmt(x.kcal)} kcal · ${esc(x.change)}</div></div></li>`).join("")}</ul>
-      <button class="btn primary" id="m-lighter-save">Save as "${esc(r.new_name || (m.name + " (lighter)"))}"</button></div>`;
-    out.querySelector("#m-lighter-save").onclick = () => {
-      state.meals.unshift({ id: uid(), name: r.new_name || `${m.name} (lighter)`, portions, items, saved: true, updatedAt: new Date().toISOString(), lighterOf: m.id });
-      save(); toast("Saved as a new meal"); stack = ["home", "meals"]; show("meals");
-    };
+    chats.mlight = { schema: LIGHTER_SCHEMA, basePrompt: prompt, turns: [{ ask: "(first version)", answer: r }] };
+    renderMealLighter(m, t, portions, r);
   } catch (err) { busy(false); toast(err.message || "Claude couldn't lighten that", 5000); }
 };
 
@@ -738,13 +744,13 @@ function drawFriends() {
     li.innerHTML = `${avatar(f.requester, personName(f.requester))}<div class="body"><div class="name">${esc(personName(f.requester))}</div><div class="detail">wants to be friends</div></div>
       <button class="add" aria-label="Accept"><svg><use href="#i-plus"/></svg></button><button class="del" aria-label="Decline">✕</button>`;
     li.querySelector(".add").onclick = async () => { try { await c.acceptFriend(f.id); toast(`You and ${personName(f.requester)} are friends`); renderFriends(); } catch (e) { toast(c.explain(e)); } };
-    li.querySelector(".del").onclick = async () => { try { await c.removeFriend(f.id); renderFriends(); } catch (e) { toast(c.explain(e)); } };
+    li.querySelector(".del").onclick = async () => { if (!confirm(`Decline ${personName(f.requester)}'s request?`)) return; try { await c.removeFriend(f.id); renderFriends(); } catch (e) { toast(c.explain(e)); } };
     pl.appendChild(li);
   }
   for (const f of sent) {
     const li = document.createElement("li");
     li.innerHTML = `${avatar(f.addressee, personName(f.addressee))}<div class="body"><div class="name">${esc(personName(f.addressee))}</div><div class="detail">request sent · waiting for them</div></div><button class="del" aria-label="Cancel">✕</button>`;
-    li.querySelector(".del").onclick = async () => { try { await c.removeFriend(f.id); renderFriends(); } catch (e) { toast(c.explain(e)); } };
+    li.querySelector(".del").onclick = async () => { if (!confirm(`Cancel the request to ${personName(f.addressee)}?`)) return; try { await c.removeFriend(f.id); renderFriends(); } catch (e) { toast(c.explain(e)); } };
     pl.appendChild(li);
   }
   // friends today
@@ -840,6 +846,31 @@ $("#fr-add-go").onclick = async () => {
 };
 $("#fr-add").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#fr-add-go").click(); });
 
+
+
+// ---------------------------------------------------------------- follow-up chat under an AI result ("no egg", "cut it further")
+const chats = {};   // key -> { schema, basePrompt, turns: [{ask, answer}] }
+function chatBox(key, placeholder) {
+  return `<div class="chat"><input type="text" id="chat-${key}" placeholder="${esc(placeholder)}" autocapitalize="sentences"><button class="btn primary slim" data-chat="${key}">Send</button></div>`;
+}
+function wireChat(container, key, onAnswer) {
+  const input = container.querySelector(`#chat-${key}`), btn = container.querySelector(`[data-chat="${key}"]`);
+  const send = async () => {
+    const ask = input.value.trim(); if (!ask) return;
+    const c = chats[key]; if (!c) return;
+    const history = c.turns.map((t, i) => `Your answer ${i + 1}: ${JSON.stringify(t.answer)}\nThey said: "${t.ask}"`).join("\n\n");
+    const prompt = `${c.basePrompt}\n\n${history ? history + "\n\n" : ""}Now they say: "${ask}"\nRevise your previous answer to do what they ask, keep everything else consistent, and return the complete updated answer in the same format.`;
+    busy("Revising…");
+    try {
+      const answer = await askAI(c.schema, [{ type: "text", text: prompt }]);
+      busy(false);
+      c.turns.push({ ask, answer });
+      onAnswer(answer);
+    } catch (err) { busy(false); toast(err.message || "Couldn't revise that", 5000); }
+  };
+  btn.onclick = send;
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.target.blur(); send(); } });
+}
 
 // ---------------------------------------------------------------- Ask Claude: guess a food, plan the rest of the day
 
@@ -964,6 +995,26 @@ const PLAN_SCHEMA = {
   required: ["summary", "suggestions"],
   additionalProperties: false
 };
+function renderPlan(plan) {
+  const out = $("#plan-out");
+  out.innerHTML = `<div class="plan-card"><p>${esc(plan.summary)}</p><ul class="list" id="plan-list"></ul><p class="muted tiny">Tap one to add it with these numbers.</p>${chatBox("plan", "Change something? e.g. no dairy, more protein, swap the treat")}</div>`;
+  const ul = out.querySelector("#plan-list");
+  for (const sg of plan.suggestions || []) {
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="thumb-sm"><svg><use href="#i-spark"/></svg></span><div class="body"><div class="name">${esc(sg.name)}</div><div class="detail">${esc(sg.amount)} · ${fmt(sg.kcal)} kcal · P ${Math.round(sg.protein_g)} · C ${Math.round(sg.carbs_g)} · F ${Math.round(sg.fat_g)} · ${esc(sg.why)}</div></div><div class="kcal">${fmt(sg.kcal)}</div>`;
+    li.style.cursor = "pointer";
+    li.onclick = () => {
+      const hit = searchLocal(sg.name)[0];
+      if (hit) { draft = { ...foodItem(hit) }; openShare(Math.round(sg.kcal)); return; }
+      const item = blankItem("claude");
+      item.name = `${sg.name} (${sg.amount})`; item.kcalPerServing = Math.round(sg.kcal); item.unitLabel = "portion";
+      item.pServ = nz(sg.protein_g) || 0; item.cServ = nz(sg.carbs_g) || 0; item.fServ = nz(sg.fat_g) || 0;
+      draft = item; openShare(Math.round(sg.kcal));
+    };
+    ul.appendChild(li);
+  }
+  wireChat(out, "plan", (answer) => renderPlan(answer));
+}
 $("#plan-go").onclick = async () => {
   if (!aiAvailable()) { aiHelp(); return; }
   const d = dayGaps(), g = state.goals || {};
@@ -974,27 +1025,12 @@ Budget ${state.budget} kcal, eaten so far ${usedKcal()} kcal: ${eaten}. Left: ${
 Macro goals: protein ${g.p || "none"} g, carbs ${g.c || "none"} g, fat ${g.f || "none"} g. So far: protein ${Math.round(d.mac.p)} g, carbs ${Math.round(d.mac.c)} g, fat ${Math.round(d.mac.f)} g.
 Things they often have: ${quick || "unknown"}.
 Suggest 3 to 5 things for the rest of the day that together fit in the calories left, close the macro gaps as far as sensible, and deliberately leave room for one treat or a drink. Give realistic amounts and honest kcal/macro estimates. Keep it warm and short.`;
-  busy("Claude is planning…");
+  busy("Planning…");
   try {
     const plan = await askAI(PLAN_SCHEMA, [{ type: "text", text: prompt }]);
     busy(false);
-    const out = $("#plan-out");
-    out.innerHTML = `<div class="plan-card"><p>${esc(plan.summary)}</p><ul class="list" id="plan-list"></ul><p class="muted tiny">Tap one to add it with Claude's numbers.</p></div>`;
-    const ul = out.querySelector("#plan-list");
-    for (const sg of plan.suggestions || []) {
-      const li = document.createElement("li");
-      li.innerHTML = `<span class="thumb-sm"><svg><use href="#i-spark"/></svg></span><div class="body"><div class="name">${esc(sg.name)}</div><div class="detail">${esc(sg.amount)} · ${fmt(sg.kcal)} kcal · P ${Math.round(sg.protein_g)} · C ${Math.round(sg.carbs_g)} · F ${Math.round(sg.fat_g)} · ${esc(sg.why)}</div></div><div class="kcal">${fmt(sg.kcal)}</div>`;
-      li.style.cursor = "pointer";
-      li.onclick = () => {
-        const hit = searchLocal(sg.name)[0];
-        if (hit) { draft = { ...foodItem(hit) }; openShare(Math.round(sg.kcal)); return; }
-        const item = blankItem("claude");
-        item.name = `${sg.name} (${sg.amount})`; item.kcalPerServing = Math.round(sg.kcal); item.unitLabel = "portion";
-        item.pServ = nz(sg.protein_g) || 0; item.cServ = nz(sg.carbs_g) || 0; item.fServ = nz(sg.fat_g) || 0;
-        draft = item; openShare(Math.round(sg.kcal));
-      };
-      ul.appendChild(li);
-    }
+    chats.plan = { schema: PLAN_SCHEMA, basePrompt: prompt, turns: [{ ask: "(first version)", answer: plan }] };
+    renderPlan(plan);
   } catch (err) { busy(false); toast(err.message || "Claude couldn't plan that", 5000); }
 };
 
@@ -1056,6 +1092,26 @@ const PRODUCT_LIGHTER_SCHEMA = {
   required: ["summary", "tips", "lighter_name", "serving_size", "kcal_per_serving", "protein_g", "carbs_g", "fat_g", "notes"],
   additionalProperties: false
 };
+function renderProductLighter(d, r) {
+  const before = d.kcalPerServing || (d.kcalPer100 && d.servingSize ? Math.round(d.kcalPer100 * d.servingSize / 100) : null);
+  const out = $("#details-lighter-out");
+  out.innerHTML = `<div class="plan-card"><p><b>${before ? `${fmt(before)} → ` : ""}${fmt(r.kcal_per_serving)} kcal a serving</b></p><p>${esc(r.summary)}</p>
+    <ul class="tips">${(r.tips || []).map((t) => `<li>${esc(t)}</li>`).join("")}</ul>
+    <p class="muted tiny">${esc(r.notes || "")}</p>
+    ${chatBox("plight", "Change something? e.g. no egg, or cut it further")}
+    <button class="btn primary" id="details-lighter-use">Use the lighter version</button></div>`;
+  wireChat(out, "plight", (answer) => renderProductLighter(d, answer));
+  out.querySelector("#details-lighter-use").onclick = () => {
+    const serving = num(r.serving_size) || d.servingSize || 100, kcal = Math.round(num(r.kcal_per_serving) || 0);
+    const item = blankItem("claude");
+    item.name = r.lighter_name || `${d.name} (lighter)`; item.brand = d.brand; item.unit = d.unit; item.image = d.image;
+    item.servingSize = Math.round(serving); item.unitLabel = "serving"; item.kcalPerServing = kcal;
+    item.kcalPer100 = Math.round(kcal / serving * 100);
+    item.p100 = Math.round((nz(r.protein_g) || 0) / serving * 1000) / 10; item.c100 = Math.round((nz(r.carbs_g) || 0) / serving * 1000) / 10; item.f100 = Math.round((nz(r.fat_g) || 0) / serving * 1000) / 10;
+    item.note = "AI's lighter version, an estimate. " + (r.tips || []).slice(0, 2).join(" ");
+    draft = item; openShare();
+  };
+}
 $("#details-lighter").onclick = async () => {
   if (!aiAvailable()) { aiHelp(); return; }
   const d = readDetails();
@@ -1063,26 +1119,12 @@ $("#details-lighter").onclick = async () => {
     d.p100 != null ? `per 100: protein ${d.p100} g, carbs ${d.c100} g, fat ${d.f100} g` : null, d.packSize ? `pack ${d.packSize} ${d.unit}` : null].filter(Boolean).join("; ");
   const prompt = `Product: "${d.name}"${d.brand ? ` by ${d.brand}` : ""}. Label facts: ${facts || "none"}.
 Someone wants to eat this but lighter. Suggest realistic ways to prepare or eat it with fewer calories while keeping it enjoyable: for example using part of a seasoning or oil sachet, draining, smaller portion, bulking with vegetables or protein, lighter accompaniments. Then estimate the lighter version as one serving: its weight as eaten, kcal and macros. Be honest that these are estimates.`;
-  busy("Claude is lightening it…");
+  busy("Lightening it…");
   try {
     const r = await askAI(PRODUCT_LIGHTER_SCHEMA, [{ type: "text", text: prompt }]);
     busy(false);
-    const before = d.kcalPerServing || (d.kcalPer100 && d.servingSize ? Math.round(d.kcalPer100 * d.servingSize / 100) : null);
-    const out = $("#details-lighter-out");
-    out.innerHTML = `<div class="plan-card"><p><b>${before ? `${fmt(before)} → ` : ""}${fmt(r.kcal_per_serving)} kcal a serving</b></p><p>${esc(r.summary)}</p>
-      <ul class="tips">${(r.tips || []).map((t) => `<li>${esc(t)}</li>`).join("")}</ul>
-      <p class="muted tiny">${esc(r.notes || "")}</p>
-      <button class="btn primary" id="details-lighter-use">Use the lighter version</button></div>`;
-    out.querySelector("#details-lighter-use").onclick = () => {
-      const serving = num(r.serving_size) || d.servingSize || 100, kcal = Math.round(num(r.kcal_per_serving) || 0);
-      const item = blankItem("claude");
-      item.name = r.lighter_name || `${d.name} (lighter)`; item.brand = d.brand; item.unit = d.unit; item.image = d.image;
-      item.servingSize = Math.round(serving); item.unitLabel = "serving"; item.kcalPerServing = kcal;
-      item.kcalPer100 = Math.round(kcal / serving * 100);
-      item.p100 = Math.round((nz(r.protein_g) || 0) / serving * 1000) / 10; item.c100 = Math.round((nz(r.carbs_g) || 0) / serving * 1000) / 10; item.f100 = Math.round((nz(r.fat_g) || 0) / serving * 1000) / 10;
-      item.note = "Claude's lighter version, an estimate. " + (r.tips || []).slice(0, 2).join(" ");
-      draft = item; openShare();
-    };
+    chats.plight = { schema: PRODUCT_LIGHTER_SCHEMA, basePrompt: prompt, turns: [{ ask: "(first version)", answer: r }] };
+    renderProductLighter(d, r);
   } catch (err) { busy(false); toast(err.message || "Claude couldn't lighten that", 5000); }
 };
 

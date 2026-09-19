@@ -340,3 +340,6 @@ textarea:focus { outline: 2px solid var(--green-2); border-color: transparent; }
 .tips li { margin: 4px 0; }
 .photo-preview { display: flex; align-items: center; gap: 12px; margin: 4px 0 8px; }
 .photo-preview img { width: 96px; height: 96px; object-fit: cover; border-radius: 12px; background: var(--mint-2); }
+.chat { display: flex; gap: 8px; margin: 10px 0 4px; }
+.chat input { flex: 1; min-width: 0; }
+.chat .btn.slim { margin-top: 0; }
