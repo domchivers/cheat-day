@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "33";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "34";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1557,7 +1557,7 @@ If energy is given in kJ only, convert to kcal (kcal = kJ / 4.184). If values ar
 If no nutrition table or energy figure is visible at all, set is_nutrition_label to false and leave the numbers null.`;
 
 // ---- Which AI can we use? Shared key on the server (signed in), a free Gemini key on this phone, or a Claude key.
-const GEMINI_MODELS = ["gemini-3.6-flash", "gemini-flash-latest"];
+const GEMINI_MODELS = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-flash-lite-latest"];
 let aiProxyState = "unknown";   // "unknown" | "yes" | "no": whether the Supabase "ai" function is deployed
 const aiAvailable = () => !!(state.geminiKey || state.apiKey || (window.cloud && window.cloud.user && aiProxyState !== "no"));
 function aiHelp() { toast("AI features need a key: a free Google Gemini key or an Anthropic key, in Settings. Or ask whoever set the app up to switch on the shared one.", 6000); go("settings"); }
@@ -1599,10 +1599,11 @@ async function askGemini(schema, content, key) {
         if (resp.status === 404) { const e = new Error("shared AI not set up"); e.proxyMissing = true; throw e; }
         if (resp.ok) aiProxyState = "yes";
       }
-      if (resp.status !== 503 && !(resp.status === 404 && key)) break;
+      if (resp.status !== 503 && resp.status !== 429 && !(resp.status === 404 && key)) break;
+      await new Promise((r) => setTimeout(r, 400));     // a breath, then the next model
     }
   } catch (e) { if (e.proxyMissing) throw e; throw new Error("Couldn't reach the AI service (offline?)"); }
-  if (resp.status === 503) throw new Error("The free AI is busy right now. Try again in a minute.");
+  if (resp.status === 503 || resp.status === 429) throw new Error("Every free AI model is busy right now. Try again in a minute.");
   const json = await resp.json().catch(() => ({}));
   if (resp.status === 401 && !key) { aiProxyState = "no"; const e = new Error("shared AI not available"); e.proxyMissing = true; throw e; }
   if (resp.status === 500 && !key && /GEMINI_API_KEY/.test(JSON.stringify(json))) { aiProxyState = "no"; const e = new Error("shared AI has no key yet"); e.proxyMissing = true; throw e; }

@@ -24,8 +24,8 @@ Deno.serve(async (req) => {
   if (!key) return new Response(JSON.stringify({ error: "GEMINI_API_KEY secret not set" }), { status: 500, headers: { ...cors, "Content-Type": "application/json" } });
 
   const body = await req.text();   // the app sends a ready-made Gemini generateContent request
-  const wanted = new URL(req.url).searchParams.get("model") || "gemini-3.6-flash";
-  const model = /^[a-z0-9.-]+$/.test(wanted) ? wanted : "gemini-3.6-flash";
+  const wanted = new URL(req.url).searchParams.get("model") || "gemini-3.8-flash";
+  const model = /^[a-z0-9.-]+$/.test(wanted) ? wanted : "gemini-3.8-flash";
   const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-goog-api-key": key },
