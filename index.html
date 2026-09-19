@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=38">
-  <link rel="icon" href="icons/icon-192.png?v=38">
-  <link rel="stylesheet" href="styles.css?v=38">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=39">
+  <link rel="icon" href="icons/icon-192.png?v=39">
+  <link rel="stylesheet" href="styles.css?v=39">
 </head>
 <body>
 
@@ -82,8 +82,8 @@
 
   <button class="card action tint-sand wide" data-go="ask" id="ask-card">
     <span class="circle sand"><svg><use href="#i-spark"/></svg></span>
-    <b>Ask Claude</b>
-    <small>Photo a plate or describe it for an estimate, or plan the rest of your day</small>
+    <b>Assistant</b>
+    <small>Guess a plate, plan the day, make a recipe, fix what you logged: just ask</small>
     <svg class="chev"><use href="#i-chev"/></svg>
   </button>
   <button class="card action tint-green wide" data-go="friends" id="friends-card">
@@ -249,38 +249,30 @@
   </div>
 </section>
 
-<!-- ===================== ASK CLAUDE ===================== -->
-<section class="view hidden" id="view-ask">
+<!-- ===================== ASSISTANT ===================== -->
+<section class="view ask hidden" id="view-ask">
   <header class="sub-head">
     <button class="icon-btn" data-back aria-label="Back"><svg><use href="#i-back"/></svg></button>
-    <h1>Ask Claude</h1><span></span>
+    <h1>Assistant</h1>
+    <button class="icon-btn" id="ask-clear" aria-label="Start again">✕</button>
   </header>
-  <p class="muted tiny hidden" id="ask-nokey">Needs your Anthropic API key in Settings. The "fits what's left" list below works without it.</p>
-
-  <div class="card form-card">
-    <h3>Guess a food</h3>
-    <p class="muted">A plate, a takeaway, a slice of something: photograph it or describe it and Claude estimates the calories and macros. Estimates, not labels.</p>
-    <div class="photo-preview hidden" id="ask-preview"><img id="ask-img" alt=""><button class="btn mint slim" id="ask-retake">Retake</button></div>
-    <label><span id="ask-text-label">Describe it</span>
-      <input type="text" id="ask-text" placeholder="e.g. A5 wagyu nigiri, 2 pieces">
-      <small>Say what it is and roughly how much; the photo is used for the portion size. Names help a lot with things that look alike.</small>
-    </label>
-    <div class="btn-row">
-      <button class="btn primary" id="ask-photo">Take a photo</button>
-      <button class="btn mint" id="ask-words">Estimate</button>
-    </div>
-    <input type="file" accept="image/*" capture="environment" id="file-ask" hidden>
+  <p class="muted tiny hidden" id="ask-nokey">Needs an AI key (Settings), or the shared one from whoever set the app up. "What fits what's left" works without.</p>
+  <div id="ask-thread" class="thread">
+    <div class="bubble bot"><b>Ask me anything about your day.</b><br>Photograph a plate and tell me what it is. Ask for a plan for the rest of today, a recipe that fits, a lighter version of something, or tell me what you actually ate and I'll fix the list.</div>
   </div>
-
-  <div class="card form-card">
-    <h3>Rest of my day</h3>
-    <div id="plan-left"></div>
-    <button class="btn primary" id="plan-go">Ask Claude for a plan</button>
-    <div id="plan-out"></div>
-    <h3 style="margin-top:14px">Fits what's left</h3>
-    <p class="muted tiny">From the everyday food list, favouring whatever you're short on. Tap one to add it.</p>
-    <ul class="list" id="plan-fits"></ul>
+  <div class="chips ask-chips" id="ask-chips">
+    <button data-ask="Plan the rest of my day">Plan my day</button>
+    <button data-ask="fits">What fits what's left</button>
+    <button data-ask="photo">Guess from a photo</button>
+    <button data-ask="Make me a recipe that fits what I have left today, high in protein">Make me a recipe</button>
   </div>
+  <div class="photo-preview hidden" id="ask-preview"><img id="ask-img" alt=""><button class="btn mint slim" id="ask-retake">Remove photo</button></div>
+  <div class="chat ask-input">
+    <button class="icon-btn" id="ask-photo" aria-label="Add a photo"><svg><use href="#i-camera"/></svg></button>
+    <input type="text" id="ask-text" placeholder="e.g. A5 wagyu nigiri, 2 pieces" autocapitalize="sentences">
+    <button class="btn primary slim" id="ask-send">Send</button>
+  </div>
+  <input type="file" accept="image/*" capture="environment" id="file-ask" hidden>
 </section>
 
 <!-- ===================== SCAN ===================== -->
@@ -336,6 +328,7 @@
     </label>
   </div>
 
+  <div class="card form-card hidden" id="m-method-card"><h3>Method</h3><ol class="method" id="m-method"></ol></div>
   <h2 class="section-title">Ingredients</h2>
   <ul class="list" id="m-items"></ul>
   <p class="empty" id="m-empty">Nothing in it yet.</p>
@@ -366,7 +359,8 @@
   </div>
   <button class="btn primary" id="m-save">Save meal</button>
   <button class="btn mint hidden" id="m-use">Add a portion to today</button>
-  <button class="btn mint hidden" id="m-lighter">Make it lighter (Claude)</button>
+  <button class="btn mint hidden" id="m-lighter">Make it lighter</button>
+  <div class="chat hidden" id="m-ask-row"><input type="text" id="m-ask" placeholder="Or ask anything: more protein, swap the rice, double it…" autocapitalize="sentences"><button class="btn primary slim" id="m-ask-go">Send</button></div>
   <div id="m-lighter-out"></div>
   <button class="btn mint hidden" id="m-share">Share as a link</button>
   <button class="btn mint hidden" id="m-share-friends">Share with friends</button>
@@ -446,7 +440,8 @@
   </div>
   <div class="pad">
     <button class="btn primary" id="details-next">How much of my day?</button>
-    <button class="btn mint" id="details-lighter">Make it lighter (Claude)</button>
+    <button class="btn mint" id="details-lighter">Make it lighter</button>
+    <div class="chat"><input type="text" id="details-ask" placeholder="Or ask anything: more protein, add cheese, half of it…" autocapitalize="sentences"><button class="btn primary slim" id="details-ask-go">Send</button></div>
     <div id="details-lighter-out"></div>
   </div>
 </section>
@@ -500,10 +495,10 @@
 <div class="toast hidden" id="toast"></div>
 
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=38"></script>
-<script src="foods.js?v=38"></script>
-<script src="supabase-config.js?v=38"></script>
-<script src="cloud.js?v=38"></script>
-<script src="app.js?v=38"></script>
+<script src="presets.js?v=39"></script>
+<script src="foods.js?v=39"></script>
+<script src="supabase-config.js?v=39"></script>
+<script src="cloud.js?v=39"></script>
+<script src="app.js?v=39"></script>
 </body>
 </html>

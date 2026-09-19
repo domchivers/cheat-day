@@ -348,3 +348,22 @@ textarea:focus { outline: 2px solid var(--green-2); border-color: transparent; }
 .talk-card { background: var(--mint-2); border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; }
 .talk-card ul { margin: 8px 0; padding-left: 18px; font-size: 14px; }
 .talk-card .btn-row .btn { margin-top: 8px; }
+
+/* Assistant */
+.view.ask { display: flex; flex-direction: column; min-height: 100vh; }
+.thread { flex: 1; display: flex; flex-direction: column; gap: 10px; padding: 4px 0 12px; }
+.bubble { max-width: 92%; padding: 12px 14px; border-radius: 16px; font-size: 15px; line-height: 1.4; }
+.bubble.bot { background: var(--card); border: 1px solid var(--line); align-self: flex-start; border-bottom-left-radius: 6px; }
+.bubble.me { background: var(--green); color: #fff; align-self: flex-end; border-bottom-right-radius: 6px; }
+.bubble.me img { display: block; max-width: 160px; border-radius: 10px; margin-bottom: 6px; }
+.bubble .card { margin: 10px 0 0; }
+.bubble .list li { background: var(--mint-2); border-color: transparent; }
+.bubble .btn { margin-top: 8px; }
+.bubble .stat { display: inline-block; background: var(--mint-2); border-radius: 10px; padding: 6px 10px; margin: 6px 6px 0 0; font-size: 14px; }
+.bubble .stat b { color: var(--green); }
+.ask-chips { justify-content: flex-start; margin: 0 0 8px; }
+.ask-chips button { font-size: 13px; padding: 8px 12px; }
+.ask-input { position: sticky; bottom: calc(8px + var(--safe-bottom)); background: var(--bg); padding: 6px 0; margin: 0; }
+.ask-input .icon-btn { flex: none; }
+.method { margin: 4px 0 0 18px; padding: 0; font-size: 14px; }
+.method li { margin: 6px 0; }

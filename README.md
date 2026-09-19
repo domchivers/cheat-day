@@ -185,16 +185,20 @@ screen has the same for one item ("added extra beef rolls, didn't drink the
 soup"), and the lighter and plan results take follow-ups too ("no egg, cut it
 further"). All of these use the AI key.
 
-## Macro goals, Ask Claude, and the rest of the day
+## Macro goals, the Assistant, and the rest of the day
 
 The Daily budget screen also takes protein, carbs and fat goals in grams (or
 "Suggest from my calories" for a 30/40/30 split); the home tiles then show
-progress against them. The **Ask Claude** card does three things with the API
-key: estimate a plate from a photo or a description, plan the rest of the day
-so the gaps close while leaving room for a treat, and (from a meal's editor)
-**Make it lighter** with swaps and smaller amounts, saved as a new meal. The
-"Fits what's left" list on that screen needs no key: it picks foods from the
-built-in list that fit the remaining calories, favouring what you're short on.
+progress against them. The **Assistant** card is one conversation for
+everything AI: photograph a plate and say what it is for an estimate, ask for a
+plan for the rest of the day, ask for a recipe ("high-protein chicken curry for
+4 under 500 kcal a portion", saved straight into Meals with its method), ask for
+a lighter way to have something, or tell it what you actually ate and it fixes
+today's list. Each answer is a card with a button to act on it, and you can
+keep talking to refine it. "What fits what's left" needs no key: it picks foods
+from the built-in list that fit the remaining calories, favouring what you're
+short on. Product pages and meal editors also have **Make it lighter** and a box
+to ask anything about that item ("more protein", "swap the rice", "add cheese").
 
 ## Days and History
 

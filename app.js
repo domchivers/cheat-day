@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "38";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "39";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -370,6 +370,9 @@ function renderMeal() {
     list.appendChild(li);
   }
   $("#m-empty").classList.toggle("hidden", m.items.length > 0);
+  const steps = Array.isArray(m.steps) ? m.steps : [];
+  $("#m-method-card").classList.toggle("hidden", !steps.length);
+  $("#m-method").innerHTML = steps.map((st) => `<li>${esc(st)}</li>`).join("");
   const t = mealTotals(m), portions = num(m.portions) || 1;
   $("#m-total-kcal").textContent = fmt(t.kcal);
   $("#m-total-sub").textContent = t.grams ? `about ${fmt(t.grams)} g` : "";
@@ -378,6 +381,7 @@ function renderMeal() {
   $("#m-use").classList.toggle("hidden", !m.saved);
   $("#m-share").classList.toggle("hidden", !m.saved);
   $("#m-lighter").classList.toggle("hidden", !m.items.length);
+  $("#m-ask-row").classList.toggle("hidden", !m.items.length);
   const canFriends = m.saved && window.cloud && window.cloud.user;
   $("#m-share-friends").classList.toggle("hidden", !canFriends);
   $("#m-share-friends").textContent = state.sharedMealIds.includes(m.id) ? "Stop sharing with friends" : "Share with friends";
@@ -427,7 +431,7 @@ const b64url = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-"
 const unb64url = (str) => Uint8Array.from(atob(str.replace(/-/g, "+").replace(/_/g, "/")), (ch) => ch.charCodeAt(0));
 async function encodeMeal(m) {
   const items = m.items.map((it) => ({ ...basisOf(it), kcal: it.kcal, grams: it.grams }));
-  const bytes = new TextEncoder().encode(JSON.stringify({ v: 1, name: m.name, portions: m.portions, items }));
+  const bytes = new TextEncoder().encode(JSON.stringify({ v: 1, name: m.name, portions: m.portions, items, steps: m.steps || [] }));
   if (window.CompressionStream) {
     const cs = new CompressionStream("gzip"); const w = cs.writable.getWriter(); w.write(bytes); w.close();
     return "g" + b64url(new Uint8Array(await new Response(cs.readable).arrayBuffer()));
@@ -462,7 +466,7 @@ async function importMealFromLink() {
   try { m = await decodeMeal(code); } catch (e) { toast("That meal link didn't open"); return; }
   const t = mealTotals(m), portions = num(m.portions) || 1;
   if (!confirm(`Add "${m.name}" to your meals?\n\n${m.items.length} ingredients, ${portions} portion${portions === 1 ? "" : "s"}, ${fmt(t.kcal / portions)} kcal each.`)) return;
-  state.meals.unshift({ id: uid(), name: m.name, portions, items: m.items.map((it) => ({ ...it, id: uid() })), saved: true, shared: true, updatedAt: new Date().toISOString() });
+  state.meals.unshift({ id: uid(), name: m.name, portions, items: m.items.map((it) => ({ ...it, id: uid() })), steps: m.steps || [], saved: true, shared: true, updatedAt: new Date().toISOString() });
   save(); toast(`Added ${m.name}`); stack = ["home", "meals"]; show("meals");
 }
 $("#m-share-friends").onclick = async () => {
@@ -498,7 +502,7 @@ const LIGHTER_SCHEMA = {
   additionalProperties: false
 };
 function renderMealLighter(m, t, portions, r) {
-  const items = (r.ingredients || []).filter((x) => /removed/i.test(x.change) === false).map((x) => {
+  const items = (r.ingredients || []).filter((x) => !/removed/i.test(x.change)).map((x) => {
     const grams = num(x.grams) || 100, kcal = Math.round(nz(x.kcal) || 0);
     const hit = searchLocal(x.name)[0];
     const base = hit ? { ...basisOf(foodItem(hit)) } : { name: x.name, source: "claude", unit: "g" };
@@ -509,7 +513,8 @@ function renderMealLighter(m, t, portions, r) {
   });
   const after = items.reduce((a, it) => a + it.kcal, 0);
   const out = $("#m-lighter-out");
-  out.innerHTML = `<div class="plan-card"><p><b>${fmt(t.kcal / portions)} → ${fmt(after / portions)} kcal a portion</b> (${fmt((1 - after / t.kcal) * 100)}% less)</p><p>${esc(r.summary)}</p>
+  const diff = (1 - after / t.kcal) * 100;
+  out.innerHTML = `<div class="plan-card"><p><b>${fmt(t.kcal / portions)} → ${fmt(after / portions)} kcal a portion</b> (${Math.abs(diff) < 1 ? "about the same" : diff > 0 ? fmt(diff) + "% less" : fmt(-diff) + "% more"})</p><p>${esc(r.summary)}</p>
     <ul class="list">${(r.ingredients || []).map((x) => `<li><div class="body"><div class="name">${esc(x.name)}</div><div class="detail">${fmt(x.grams)} g · ${fmt(x.kcal)} kcal · ${esc(x.change)}</div></div></li>`).join("")}</ul>
     ${chatBox("mlight", "Change something? e.g. keep the butter, drop the walnuts")}
     <button class="btn primary" id="m-lighter-save">Save as "${esc(r.new_name || (m.name + " (lighter)"))}"</button></div>`;
@@ -519,15 +524,19 @@ function renderMealLighter(m, t, portions, r) {
     save(); toast("Saved as a new meal"); stack = ["home", "meals"]; show("meals");
   };
 }
-$("#m-lighter").onclick = async () => {
+$("#m-lighter").onclick = () => mealAsk("Make it noticeably lower in calories while keeping it recognisably the same dish and still enjoyable. Prefer swaps people actually have (lighter dairy, less oil or butter, leaner cuts, less sugar, more veg, smaller amounts of the richest items). Aim for at least 20% fewer calories if achievable without ruining it.");
+$("#m-ask-go").onclick = () => { const t = $("#m-ask").value.trim(); if (t) { $("#m-ask").value = ""; mealAsk(t); } };
+$("#m-ask").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.target.blur(); $("#m-ask-go").click(); } });
+async function mealAsk(instruction) {
   if (!aiAvailable()) { aiHelp(); return; }
   const m = mealDraft, t = mealTotals(m), portions = num(m.portions) || 1;
   const lines = m.items.map((it) => { const g = it.grams != null ? it.grams : amountsFor(it, it.kcal || 0).grams; return `${it.name}: ${g != null ? Math.round(g) + " g" : "?"}, ${it.kcal} kcal`; }).join("\n");
   const prompt = `Here is a recipe called "${m.name || "meal"}" making ${portions} portions, ${fmt(t.kcal)} kcal in total (${fmt(t.kcal / portions)} per portion):
 ${lines}
 
-Make it noticeably lower in calories while keeping it recognisably the same dish and still enjoyable. Prefer swaps people actually have (lighter dairy, less oil or butter, leaner cuts, less sugar, more veg, smaller amounts of the richest items) over exotic ingredients. Return the full new ingredient list with realistic amounts and honest kcal and macro figures per ingredient, marking each as kept, less, swapped or removed. Aim for at least 20% fewer calories if that's achievable without ruining it; say so in the summary if it isn't.`;
-  busy("Lightening it…");
+The person asks: "${instruction}"
+Return the full new ingredient list with realistic amounts and honest kcal and macro figures per ingredient, marking each as kept, less, more, swapped or removed, and a name for the new version (new_name). Say in the summary what changed and what it does to the taste.`;
+  busy("Thinking…");
   try {
     const r = await askAI(LIGHTER_SCHEMA, [{ type: "text", text: prompt }]);
     busy(false);
@@ -1001,167 +1010,242 @@ async function itemTalk() {
   } catch (err) { busy(false); toast(err.message || "Couldn't revise that", 5000); }
 }
 
-// ---------------------------------------------------------------- Ask Claude: guess a food, plan the rest of the day
+// ---------------------------------------------------------------- Assistant: one conversation for everything
 
-const GUESS_SCHEMA = {
+const ASSIST_SCHEMA = {
   type: "object",
   properties: {
-    name: { type: "string", description: "What the food is, short, e.g. 'Chicken katsu curry with rice'" },
-    portion_g: { type: "number", description: "Estimated weight of the portion shown or described, in grams (ml for drinks)" },
-    unit: { type: "string", enum: ["g", "ml"] },
-    kcal_total: { type: "number", description: "Estimated kcal for that whole portion" },
-    protein_g: { type: "number" }, carbs_g: { type: "number" }, fat_g: { type: "number" },
-    confidence: { type: "string", enum: ["high", "medium", "low"] },
-    notes: { type: "string", description: "One short sentence on the assumptions, e.g. 'assumed a restaurant-sized portion with sauce'" }
+    reply: { type: "string", description: "What you'd say back, warm and short (one to three sentences). Always filled." },
+    kind: { type: "string", enum: ["answer", "estimate", "plan", "edit", "recipe", "lighter"], description: "What the person wants" },
+    estimate: { type: ["object", "null"], description: "kind=estimate: a food or plate as one portion", properties: {
+      name: { type: "string" }, portion_g: { type: "number" }, unit: { type: "string", enum: ["g", "ml"] },
+      kcal_total: { type: "number" }, protein_g: { type: "number" }, carbs_g: { type: "number" }, fat_g: { type: "number" },
+      confidence: { type: "string", enum: ["high", "medium", "low"] }, notes: { type: "string" }
+    }, required: ["name", "portion_g", "unit", "kcal_total", "protein_g", "carbs_g", "fat_g", "confidence", "notes"], additionalProperties: false },
+    plan: { type: ["object", "null"], description: "kind=plan: things for the rest of the day", properties: {
+      suggestions: { type: "array", items: { type: "object", properties: {
+        name: { type: "string" }, amount: { type: "string" }, kcal: { type: "number" }, protein_g: { type: "number" }, carbs_g: { type: "number" }, fat_g: { type: "number" }, why: { type: "string" }
+      }, required: ["name", "amount", "kcal", "protein_g", "carbs_g", "fat_g", "why"], additionalProperties: false } }
+    }, required: ["suggestions"], additionalProperties: false },
+    edit: { type: ["object", "null"], description: "kind=edit: changes to today's list", properties: {
+      actions: { type: "array", items: { type: "object", properties: {
+        action: { type: "string", enum: ["add", "remove", "update", "set_budget"] },
+        target: { type: ["string", "null"] }, name: { type: ["string", "null"] }, grams: { type: ["number", "null"] }, count: { type: ["number", "null"] },
+        kcal: { type: ["number", "null"] }, protein_g: { type: ["number", "null"] }, carbs_g: { type: ["number", "null"] }, fat_g: { type: ["number", "null"] }, budget: { type: ["number", "null"] }
+      }, required: ["action", "target", "name", "grams", "count", "kcal", "protein_g", "carbs_g", "fat_g", "budget"], additionalProperties: false } }
+    }, required: ["actions"], additionalProperties: false },
+    recipe: { type: ["object", "null"], description: "kind=recipe: a dish they can cook and save as a meal", properties: {
+      name: { type: "string" }, portions: { type: "number" },
+      ingredients: { type: "array", items: { type: "object", properties: {
+        name: { type: "string" }, grams: { type: "number", description: "g, or ml for liquids" }, kcal: { type: "number" }, protein_g: { type: "number" }, carbs_g: { type: "number" }, fat_g: { type: "number" }
+      }, required: ["name", "grams", "kcal", "protein_g", "carbs_g", "fat_g"], additionalProperties: false } },
+      steps: { type: "array", items: { type: "string" }, description: "short numbered method steps" },
+      notes: { type: "string" }
+    }, required: ["name", "portions", "ingredients", "steps", "notes"], additionalProperties: false },
+    lighter: { type: ["object", "null"], description: "kind=lighter: a lighter way to have a named thing", properties: {
+      name: { type: "string" }, tips: { type: "array", items: { type: "string" } }, serving_size: { type: "number" },
+      kcal_per_serving: { type: "number" }, protein_g: { type: "number" }, carbs_g: { type: "number" }, fat_g: { type: "number" }
+    }, required: ["name", "tips", "serving_size", "kcal_per_serving", "protein_g", "carbs_g", "fat_g"], additionalProperties: false }
   },
-  required: ["name", "portion_g", "unit", "kcal_total", "protein_g", "carbs_g", "fat_g", "confidence", "notes"],
+  required: ["reply", "kind", "estimate", "plan", "edit", "recipe", "lighter"],
   additionalProperties: false
 };
-const GUESS_PROMPT = `Estimate the nutrition of this food as a whole portion, the way it would be eaten. Use typical reference values and realistic portion sizes. If a description is given, trust it over the photo for what the food is; use the photo for portion size. Be honest about confidence.`;
-function renderAsk() {
-  showAskPreview();
-  $("#ask-nokey").classList.toggle("hidden", aiAvailable());
-  $("#plan-go").disabled = !aiAvailable();
-  $("#plan-out").innerHTML = "";
-  renderPlanLeft();
-  renderFits();
-}
-async function guessFood(file) {
-  const text = $("#ask-text").value.trim();
-  if (!file && !text) { toast("Describe it or take a photo"); return; }
-  if (!aiAvailable()) { aiHelp(); return; }
-  busy("Thinking…");
-  try {
-    const content = [];
-    let image = null;
-    if (file) {
-      const img = await loadImage(file);
-      image = drawScaled(img, 1280).toDataURL("image/jpeg", 0.85);
-      content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: image.split(",")[1] } });
-    }
-    content.push({ type: "text", text: GUESS_PROMPT + (text ? `\nDescription: "${text}"` : "") });
-    const g = await askAI(GUESS_SCHEMA, content);
-    busy(false);
-    const item = blankItem("claude");
-    const portion = num(g.portion_g) || 100;
-    item.name = g.name || text || "Something"; item.unit = g.unit === "ml" ? "ml" : "g";
-    item.kcalPer100 = Math.round((num(g.kcal_total) || 0) / portion * 100);
-    item.servingSize = Math.round(portion); item.unitLabel = "portion";
-    item.kcalPerServing = Math.round(num(g.kcal_total) || 0);
-    item.p100 = Math.round((nz(g.protein_g) || 0) / portion * 1000) / 10; item.c100 = Math.round((nz(g.carbs_g) || 0) / portion * 1000) / 10; item.f100 = Math.round((nz(g.fat_g) || 0) / portion * 1000) / 10;
-    item.image = image;
-    item.note = `Claude's estimate (${g.confidence || "medium"} confidence), not a label. ${g.notes || ""}`;
-    draft = item; $("#ask-text").value = ""; askFile = null; showAskPreview();
-    openDetails("Claude's estimate");
-  } catch (err) { busy(false); toast(err.message || "Claude couldn't help with that", 5000); }
-}
-// Photo first, then a chance to say what it is (A5 wagyu nigiri looks like a lot of things), then Estimate.
+let askTurns = [];       // {role: "me"|"bot", text, kind}
 let askFile = null;
+
+function renderAsk() {
+  $("#ask-nokey").classList.toggle("hidden", aiAvailable());
+  showAskPreview();
+  setTimeout(() => $("#ask-text").focus(), 80);
+}
 function showAskPreview() {
   const wrap = $("#ask-preview");
-  if (askFile) { $("#ask-img").src = URL.createObjectURL(askFile); wrap.classList.remove("hidden"); $("#ask-text-label").textContent = "What is it?"; $("#ask-words").textContent = "Estimate from photo"; }
-  else { wrap.classList.add("hidden"); $("#ask-img").removeAttribute("src"); $("#ask-text-label").textContent = "Describe it"; $("#ask-words").textContent = "Estimate"; }
+  if (askFile) { $("#ask-img").src = URL.createObjectURL(askFile); wrap.classList.remove("hidden"); $("#ask-text").placeholder = "What is it, and how much?"; }
+  else { wrap.classList.add("hidden"); $("#ask-img").removeAttribute("src"); $("#ask-text").placeholder = "e.g. A5 wagyu nigiri, 2 pieces"; }
 }
+function bubble(role, html) {
+  const el = document.createElement("div");
+  el.className = `bubble ${role}`; el.innerHTML = html;
+  $("#ask-thread").appendChild(el);
+  el.scrollIntoView({ block: "end", behavior: "smooth" });
+  return el;
+}
+$("#ask-clear").onclick = () => { askTurns = []; askFile = null; showAskPreview(); $("#ask-thread").innerHTML = `<div class="bubble bot">Fresh start. What can I do?</div>`; };
 $("#ask-photo").onclick = () => { if (!aiAvailable()) { aiHelp(); return; } $("#file-ask").click(); };
 $("#file-ask").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) { askFile = f; showAskPreview(); setTimeout(() => $("#ask-text").focus(), 100); } });
-$("#ask-retake").onclick = () => { askFile = null; showAskPreview(); $("#file-ask").click(); };
-$("#ask-words").onclick = () => { const f = askFile; guessFood(f); };
-$("#ask-text").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.target.blur(); guessFood(askFile); } });
+$("#ask-retake").onclick = () => { askFile = null; showAskPreview(); };
+$("#ask-send").onclick = () => sendAsk();
+$("#ask-text").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.target.blur(); sendAsk(); } });
+$("#ask-chips").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  const q = b.dataset.ask;
+  if (q === "photo") { $("#ask-photo").click(); return; }
+  if (q === "fits") { showFits(); return; }
+  $("#ask-text").value = q; sendAsk();
+});
 
-// what's left, and what's short
+function dayContext() {
+  const d = dayGaps(), g = state.goals || {};
+  const eaten = state.day.items.map((it) => `"${it.name}" ${it.kcal} kcal`).join(", ") || "nothing yet";
+  return `Today: budget ${state.budget} kcal, eaten ${usedKcal()} kcal (${eaten}), ${d.left} kcal left. Macro goals: protein ${g.p || "none"} g, carbs ${g.c || "none"} g, fat ${g.f || "none"} g; so far protein ${Math.round(d.mac.p)} g, carbs ${Math.round(d.mac.c)} g, fat ${Math.round(d.mac.f)} g. Things they often have: ${quickEntries().slice(0, 8).map((q) => q.basis.name).join(", ") || "unknown"}. Saved meals: ${state.meals.map((m) => m.name).join(", ") || "none"}.`;
+}
+async function sendAsk() {
+  const text = $("#ask-text").value.trim(), file = askFile;
+  if (!text && !file) return;
+  if (!aiAvailable()) { aiHelp(); return; }
+  let image = null;
+  if (file) { const img = await loadImage(file); image = drawScaled(img, 1280).toDataURL("image/jpeg", 0.85); }
+  bubble("me", `${image ? `<img src="${image}" alt="">` : ""}${esc(text || "(photo)")}`);
+  askTurns.push({ role: "me", text: text || "(photo)" });
+  $("#ask-text").value = ""; askFile = null; showAskPreview();
+  const history = askTurns.slice(-8, -1).map((t) => `${t.role === "me" ? "They" : "You"}: ${t.text}`).join("\n");
+  const prompt = `You are the assistant inside a cheat-day food diary app. ${dayContext()}
+${history ? `Recent conversation:\n${history}\n` : ""}They now say: "${text || "(a photo, no words)"}"${image ? " (a photo is attached; use it for what the food is and the portion size, but trust their words over the photo for the name)" : ""}.
+
+Decide what they want and fill exactly one of estimate / plan / edit / recipe / lighter (leave the others null), or kind=answer for a plain question:
+- estimate: a food or plate to log, as one portion with honest kcal and macros.
+- plan: 3 to 5 things for the rest of today that fit the calories left, close the macro gaps as far as sensible, and leave room for one treat.
+- edit: they're correcting today's list ("I only had 2 eggs", "remove the toast", "add a banana"); match targets to the exact names given above.
+- recipe: a dish to cook, with realistic ingredient amounts, kcal and macros per ingredient, and short method steps; respect any calorie or protein target they give and the calories they have left if they mention it.
+- lighter: a lighter way to have something, with tips and the lighter serving's numbers.
+Estimates use standard reference values. Keep reply short and friendly.`;
+  const content = [];
+  if (image) content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: image.split(",")[1] } });
+  content.push({ type: "text", text: prompt });
+  const thinking = bubble("bot", `<span class="muted">Thinking…</span>`);
+  try {
+    const r = await askAI(ASSIST_SCHEMA, content);
+    thinking.remove();
+    askTurns.push({ role: "bot", text: r.reply, kind: r.kind });
+    renderAssistant(r, image);
+  } catch (err) { thinking.innerHTML = `<span class="over">${esc(err.message || "Something went wrong")}</span>`; }
+}
+function statRow(kcal, p, c, f) { return `<div><span class="stat"><b>${fmt(kcal)}</b> kcal</span><span class="stat">P <b>${Math.round(p)}</b></span><span class="stat">C <b>${Math.round(c)}</b></span><span class="stat">F <b>${Math.round(f)}</b></span></div>`; }
+function renderAssistant(r, image) {
+  let html = esc(r.reply || "");
+  const el = bubble("bot", html);
+  if (r.kind === "estimate" && r.estimate) {
+    const g = r.estimate, portion = num(g.portion_g) || 100;
+    el.insertAdjacentHTML("beforeend", `<div class="card"><b>${esc(g.name)}</b> · ${fmt(portion)} ${g.unit || "g"}${statRow(g.kcal_total, g.protein_g, g.carbs_g, g.fat_g)}<p class="muted tiny">${esc(g.notes || "")} (${g.confidence} confidence)</p><button class="btn primary" data-act="add">Add to today</button><button class="btn mint" data-act="details">See the details first</button></div>`);
+    const item = estimateToItem(g, image);
+    el.querySelector("[data-act=add]").onclick = () => { draft = { ...item }; openShare(); };
+    el.querySelector("[data-act=details]").onclick = () => { draft = { ...item }; openDetails("Estimate"); };
+  }
+  if (r.kind === "plan" && r.plan) {
+    const ul = document.createElement("ul"); ul.className = "list";
+    for (const sg of r.plan.suggestions || []) {
+      const li = document.createElement("li");
+      li.innerHTML = `<div class="body"><div class="name">${esc(sg.name)}</div><div class="detail">${esc(sg.amount)} · ${fmt(sg.kcal)} kcal · P ${Math.round(sg.protein_g)} · C ${Math.round(sg.carbs_g)} · F ${Math.round(sg.fat_g)} · ${esc(sg.why)}</div></div><button class="add" aria-label="Add"><svg><use href="#i-plus"/></svg></button>`;
+      li.querySelector(".add").onclick = () => { const it = suggestionToItem(sg); draft = it.basis; openShare(it.kcal); };
+      ul.appendChild(li);
+    }
+    el.appendChild(ul);
+    el.insertAdjacentHTML("beforeend", `<p class="muted tiny">Tap ＋ to add one. Say "swap the treat" or "no dairy" to change it.</p>`);
+  }
+  if (r.kind === "edit" && r.edit) {
+    const acts = (r.edit.actions || []).map(planTalkAction).filter(Boolean);
+    if (acts.length) {
+      el.insertAdjacentHTML("beforeend", `<ul class="method">${acts.map((a) => `<li>${esc(a.label)}</li>`).join("")}</ul><button class="btn primary" data-act="apply">Apply these changes</button>`);
+      el.querySelector("[data-act=apply]").onclick = (e) => { for (const a of acts) a.run(); save(); e.target.textContent = "Done"; e.target.disabled = true; toast("Today updated"); };
+    }
+  }
+  if (r.kind === "recipe" && r.recipe) {
+    const rc = r.recipe, portions = num(rc.portions) || 1;
+    const items = (rc.ingredients || []).map(recipeIngredientToItem);
+    const total = items.reduce((a, it) => a + it.kcal, 0), mac = sumMacros(items);
+    el.insertAdjacentHTML("beforeend", `<div class="card"><b>${esc(rc.name)}</b> · ${portions} portion${portions === 1 ? "" : "s"}${statRow(total / portions, mac.p / portions, mac.c / portions, mac.f / portions)}<p class="muted tiny">per portion</p>
+      <ul class="list">${items.map((it) => `<li><div class="body"><div class="name">${esc(it.name)}</div><div class="detail">${fmt(it.grams)} ${it.unit || "g"} · ${fmt(it.kcal)} kcal</div></div></li>`).join("")}</ul>
+      <ol class="method">${(rc.steps || []).map((st) => `<li>${esc(st)}</li>`).join("")}</ol>
+      <p class="muted tiny">${esc(rc.notes || "")}</p><button class="btn primary" data-act="save">Save as a meal</button></div>`);
+    el.querySelector("[data-act=save]").onclick = (e) => {
+      state.meals.unshift({ id: uid(), name: rc.name, portions, items, steps: rc.steps || [], saved: true, updatedAt: new Date().toISOString() });
+      save(); e.target.textContent = "Saved to Meals"; e.target.disabled = true; toast(`${rc.name} is in your meals`);
+    };
+  }
+  if (r.kind === "lighter" && r.lighter) {
+    const l = r.lighter;
+    el.insertAdjacentHTML("beforeend", `<div class="card"><b>${esc(l.name)}</b>${statRow(l.kcal_per_serving, l.protein_g, l.carbs_g, l.fat_g)}<ul class="tips">${(l.tips || []).map((t) => `<li>${esc(t)}</li>`).join("")}</ul><button class="btn primary" data-act="use">Add the lighter version</button></div>`);
+    el.querySelector("[data-act=use]").onclick = () => {
+      const serving = num(l.serving_size) || 100, kcal = Math.round(num(l.kcal_per_serving) || 0);
+      const item = blankItem("claude"); item.name = l.name; item.unit = "g"; item.servingSize = Math.round(serving); item.unitLabel = "serving"; item.kcalPerServing = kcal; item.kcalPer100 = Math.round(kcal / serving * 100);
+      item.p100 = Math.round((nz(l.protein_g) || 0) / serving * 1000) / 10; item.c100 = Math.round((nz(l.carbs_g) || 0) / serving * 1000) / 10; item.f100 = Math.round((nz(l.fat_g) || 0) / serving * 1000) / 10;
+      draft = item; openShare();
+    };
+  }
+  el.scrollIntoView({ block: "end", behavior: "smooth" });
+}
+function estimateToItem(g, image) {
+  const item = blankItem("claude"), portion = num(g.portion_g) || 100;
+  item.name = g.name || "Something"; item.unit = g.unit === "ml" ? "ml" : "g";
+  item.kcalPer100 = Math.round((num(g.kcal_total) || 0) / portion * 100);
+  item.servingSize = Math.round(portion); item.unitLabel = "portion"; item.kcalPerServing = Math.round(num(g.kcal_total) || 0);
+  item.p100 = Math.round((nz(g.protein_g) || 0) / portion * 1000) / 10; item.c100 = Math.round((nz(g.carbs_g) || 0) / portion * 1000) / 10; item.f100 = Math.round((nz(g.fat_g) || 0) / portion * 1000) / 10;
+  item.image = image || null;
+  item.note = `AI estimate (${g.confidence || "medium"} confidence), not a label. ${g.notes || ""}`;
+  return item;
+}
+function suggestionToItem(sg) {
+  const hit = searchLocal(sg.name)[0];
+  if (hit) return { basis: { ...foodItem(hit) }, kcal: Math.round(sg.kcal) };
+  const item = blankItem("claude");
+  item.name = `${sg.name} (${sg.amount})`; item.kcalPerServing = Math.round(sg.kcal); item.unitLabel = "portion";
+  item.pServ = nz(sg.protein_g) || 0; item.cServ = nz(sg.carbs_g) || 0; item.fServ = nz(sg.fat_g) || 0;
+  return { basis: item, kcal: Math.round(sg.kcal) };
+}
+/** A recipe ingredient becomes a meal item: our numbers where the food list knows it, the model's otherwise. */
+function recipeIngredientToItem(x) {
+  const grams = num(x.grams) || 100;
+  const hit = searchLocal(x.name)[0];
+  if (hit) {
+    const f = foodItem(hit);
+    return { id: uid(), ...basisOf(f), kcal: Math.round(grams * f.kcalPer100 / 100), grams: Math.round(grams * 10) / 10 };
+  }
+  const base = { name: x.name, source: "claude", unit: "g", kcalPer100: Math.round((nz(x.kcal) || 0) / grams * 100),
+    p100: Math.round((nz(x.protein_g) || 0) / grams * 1000) / 10, c100: Math.round((nz(x.carbs_g) || 0) / grams * 1000) / 10, f100: Math.round((nz(x.fat_g) || 0) / grams * 1000) / 10 };
+  return { id: uid(), ...base, kcal: Math.round(nz(x.kcal) || 0), grams: Math.round(grams * 10) / 10 };
+}
+
+// what's left, and what's short (no key needed)
 function dayGaps() {
   const mac = sumMacros(state.day.items), g = state.goals || {};
   return { left: state.budget - usedKcal(), p: g.p ? Math.max(0, g.p - mac.p) : null, c: g.c ? Math.max(0, g.c - mac.c) : null, f: g.f ? Math.max(0, g.f - mac.f) : null, mac };
 }
-function renderPlanLeft() {
+function showFits() {
   const d = dayGaps();
   const gaps = [];
-  if (d.p != null) gaps.push(`protein ${d.p ? `<b>${Math.round(d.p)} g</b> to go` : "done"}`);
-  if (d.c != null) gaps.push(`carbs ${d.c ? `<b>${Math.round(d.c)} g</b> to go` : "done"}`);
-  if (d.f != null) gaps.push(`fat ${d.f ? `<b>${Math.round(d.f)} g</b> to go` : "done"}`);
-  $("#plan-left").innerHTML = `<div class="left-box"><div class="big">${d.left >= 0 ? fmt(d.left) + " kcal left" : fmt(-d.left) + " kcal over"}</div><div class="gaps">${gaps.length ? gaps.join(" · ") : "Set macro goals on the Daily budget screen to see what you're short on."}</div></div>`;
-}
-/** Foods from the list that fit the remaining calories, favouring whatever you're short on. */
-function renderFits() {
-  const d = dayGaps(), list = $("#plan-fits"); list.innerHTML = "";
-  if (d.left <= 50) { list.innerHTML = `<li class="muted">Nothing fits: you're at your budget for today.</li>`; return; }
+  if (d.p != null) gaps.push(`protein ${d.p ? `${Math.round(d.p)} g to go` : "done"}`);
+  if (d.c != null) gaps.push(`carbs ${d.c ? `${Math.round(d.c)} g to go` : "done"}`);
+  if (d.f != null) gaps.push(`fat ${d.f ? `${Math.round(d.f)} g to go` : "done"}`);
+  const el = bubble("bot", `<b>${d.left >= 0 ? fmt(d.left) + " kcal left" : fmt(-d.left) + " kcal over"}</b>${gaps.length ? ` · ${gaps.join(" · ")}` : ""}<br><span class="muted tiny">From the everyday food list, favouring what you're short on. Tap ＋ to add one.</span>`);
+  if (d.left <= 50) { el.insertAdjacentHTML("beforeend", `<p class="muted">You're at your budget for today.</p>`); return; }
   const scored = [];
   for (const row of (typeof FOODS !== "undefined" ? FOODS : [])) {
     const it = foodItem(row);
     if (!it.servingSize || it.p100 == null) continue;
     const serves = it.servingSize, kcal = it.kcalPer100 * serves / 100;
-    if (kcal < 40 || kcal > d.left * 0.45) continue;                          // single foods, not a whole day in one go
+    if (kcal < 40 || kcal > d.left * 0.45) continue;
     const gp = serves * it.p100 / 100, gc = serves * it.c100 / 100, gf = serves * it.f100 / 100;
     let score = 0;
     if (d.p != null && d.p > 0) score += Math.min(gp, d.p) / d.p * 3;
     if (d.c != null && d.c > 0) score += Math.min(gc, d.c) / d.c;
     if (d.f != null && d.f > 0) score += Math.min(gf, d.f) / d.f;
-    if (d.p == null && d.c == null && d.f == null) score = gp / kcal * 10;     // no goals: lean towards protein-dense
-    score -= 1.5 * (kcal / d.left);                                              // cheaper in calories wins, all else equal
+    if (d.p == null && d.c == null && d.f == null) score = gp / kcal * 10;
+    score -= 1.5 * (kcal / d.left);
     scored.push({ it, kcal, score, key: row[0].split(",")[0].toLowerCase() });
   }
   scored.sort((a, b) => b.score - a.score);
   const seen = new Set(), picks = [];
   for (const x of scored) { if (seen.has(x.key)) continue; seen.add(x.key); picks.push(x); if (picks.length >= 8) break; }
+  const ul = document.createElement("ul"); ul.className = "list";
   for (const x of picks) {
-    const li = resultRow(x.it, "tone-coral");
-    li.querySelector(".detail").textContent = `${fmt1(x.it.servingSize)} ${x.it.unit} ${x.it.unitLabel || "serving"} · ${fmt(x.kcal)} kcal · ${macroText(macrosFor(x.it, x.kcal))}`;
-    li.onclick = () => { draft = { ...x.it }; openShare(Math.round(x.kcal)); };
-    list.appendChild(li);
-  }
-  if (!picks.length) list.innerHTML = `<li class="muted">Nothing in the list fits in ${fmt(d.left)} kcal.</li>`;
-}
-const PLAN_SCHEMA = {
-  type: "object",
-  properties: {
-    summary: { type: "string", description: "Two or three friendly sentences: how the day is going and the idea behind the plan" },
-    suggestions: { type: "array", items: { type: "object", properties: {
-      name: { type: "string" }, amount: { type: "string", description: "e.g. '150 g', '2 eggs', '1 small bar'" },
-      kcal: { type: "number" }, protein_g: { type: "number" }, carbs_g: { type: "number" }, fat_g: { type: "number" },
-      why: { type: "string", description: "A few words, e.g. 'covers most of the protein gap'" }
-    }, required: ["name", "amount", "kcal", "protein_g", "carbs_g", "fat_g", "why"], additionalProperties: false } }
-  },
-  required: ["summary", "suggestions"],
-  additionalProperties: false
-};
-function renderPlan(plan) {
-  const out = $("#plan-out");
-  out.innerHTML = `<div class="plan-card"><p>${esc(plan.summary)}</p><ul class="list" id="plan-list"></ul><p class="muted tiny">Tap one to add it with these numbers.</p>${chatBox("plan", "Change something? e.g. no dairy, more protein, swap the treat")}</div>`;
-  const ul = out.querySelector("#plan-list");
-  for (const sg of plan.suggestions || []) {
     const li = document.createElement("li");
-    li.innerHTML = `<span class="thumb-sm"><svg><use href="#i-spark"/></svg></span><div class="body"><div class="name">${esc(sg.name)}</div><div class="detail">${esc(sg.amount)} · ${fmt(sg.kcal)} kcal · P ${Math.round(sg.protein_g)} · C ${Math.round(sg.carbs_g)} · F ${Math.round(sg.fat_g)} · ${esc(sg.why)}</div></div><div class="kcal">${fmt(sg.kcal)}</div>`;
-    li.style.cursor = "pointer";
-    li.onclick = () => {
-      const hit = searchLocal(sg.name)[0];
-      if (hit) { draft = { ...foodItem(hit) }; openShare(Math.round(sg.kcal)); return; }
-      const item = blankItem("claude");
-      item.name = `${sg.name} (${sg.amount})`; item.kcalPerServing = Math.round(sg.kcal); item.unitLabel = "portion";
-      item.pServ = nz(sg.protein_g) || 0; item.cServ = nz(sg.carbs_g) || 0; item.fServ = nz(sg.fat_g) || 0;
-      draft = item; openShare(Math.round(sg.kcal));
-    };
+    li.innerHTML = `<div class="body"><div class="name">${esc(x.it.name)}</div><div class="detail">${fmt1(x.it.servingSize)} ${x.it.unit} ${esc(x.it.unitLabel || "serving")} · ${fmt(x.kcal)} kcal · ${macroText(macrosFor(x.it, x.kcal))}</div></div><button class="add" aria-label="Add"><svg><use href="#i-plus"/></svg></button>`;
+    li.querySelector(".add").onclick = () => { draft = { ...x.it }; openShare(Math.round(x.kcal)); };
     ul.appendChild(li);
   }
-  wireChat(out, "plan", (answer) => renderPlan(answer));
+  if (!picks.length) ul.innerHTML = `<li class="muted">Nothing in the list fits in ${fmt(d.left)} kcal.</li>`;
+  el.appendChild(ul); el.scrollIntoView({ block: "end", behavior: "smooth" });
 }
-$("#plan-go").onclick = async () => {
-  if (!aiAvailable()) { aiHelp(); return; }
-  const d = dayGaps(), g = state.goals || {};
-  const eaten = state.day.items.map((it) => `${it.name} (${it.kcal} kcal)`).join(", ") || "nothing yet";
-  const quick = quickEntries().slice(0, 8).map((q) => q.basis.name).join(", ");
-  const prompt = `You're helping someone enjoy a cheat day while still landing near their targets.
-Budget ${state.budget} kcal, eaten so far ${usedKcal()} kcal: ${eaten}. Left: ${d.left} kcal.
-Macro goals: protein ${g.p || "none"} g, carbs ${g.c || "none"} g, fat ${g.f || "none"} g. So far: protein ${Math.round(d.mac.p)} g, carbs ${Math.round(d.mac.c)} g, fat ${Math.round(d.mac.f)} g.
-Things they often have: ${quick || "unknown"}.
-Suggest 3 to 5 things for the rest of the day that together fit in the calories left, close the macro gaps as far as sensible, and deliberately leave room for one treat or a drink. Give realistic amounts and honest kcal/macro estimates. Keep it warm and short.`;
-  busy("Planning…");
-  try {
-    const plan = await askAI(PLAN_SCHEMA, [{ type: "text", text: prompt }]);
-    busy(false);
-    chats.plan = { schema: PLAN_SCHEMA, basePrompt: prompt, turns: [{ ask: "(first version)", answer: plan }] };
-    renderPlan(plan);
-  } catch (err) { busy(false); toast(err.message || "Claude couldn't plan that", 5000); }
-};
 
 // ---------------------------------------------------------------- item details
 
@@ -1228,7 +1312,7 @@ function renderProductLighter(d, r) {
     <ul class="tips">${(r.tips || []).map((t) => `<li>${esc(t)}</li>`).join("")}</ul>
     <p class="muted tiny">${esc(r.notes || "")}</p>
     ${chatBox("plight", "Change something? e.g. no egg, or cut it further")}
-    <button class="btn primary" id="details-lighter-use">Use the lighter version</button></div>`;
+    <button class="btn primary" id="details-lighter-use">Use this version</button></div>`;
   wireChat(out, "plight", (answer) => renderProductLighter(d, answer));
   out.querySelector("#details-lighter-use").onclick = () => {
     const serving = num(r.serving_size) || d.servingSize || 100, kcal = Math.round(num(r.kcal_per_serving) || 0);
@@ -1241,14 +1325,18 @@ function renderProductLighter(d, r) {
     draft = item; openShare();
   };
 }
-$("#details-lighter").onclick = async () => {
+$("#details-lighter").onclick = () => productAsk("Make it lighter: suggest realistic ways to prepare or eat it with fewer calories while keeping it enjoyable (part of a seasoning or oil sachet, draining, smaller portion, bulking with vegetables or protein, lighter accompaniments).");
+$("#details-ask-go").onclick = () => { const t = $("#details-ask").value.trim(); if (t) { $("#details-ask").value = ""; productAsk(t); } };
+$("#details-ask").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.target.blur(); $("#details-ask-go").click(); } });
+async function productAsk(instruction) {
   if (!aiAvailable()) { aiHelp(); return; }
   const d = readDetails();
   const facts = [`kcal per 100 ${d.unit}: ${d.kcalPer100 ?? "unknown"}`, d.servingSize ? `serving ${d.servingSize} ${d.unit}` : null, d.kcalPerServing ? `${d.kcalPerServing} kcal per serving` : null,
     d.p100 != null ? `per 100: protein ${d.p100} g, carbs ${d.c100} g, fat ${d.f100} g` : null, d.packSize ? `pack ${d.packSize} ${d.unit}` : null].filter(Boolean).join("; ");
   const prompt = `Product: "${d.name}"${d.brand ? ` by ${d.brand}` : ""}. Label facts: ${facts || "none"}.
-Someone wants to eat this but lighter. Suggest realistic ways to prepare or eat it with fewer calories while keeping it enjoyable: for example using part of a seasoning or oil sachet, draining, smaller portion, bulking with vegetables or protein, lighter accompaniments. Then estimate the lighter version as one serving: its weight as eaten, kcal and macros. Be honest that these are estimates.`;
-  busy("Lightening it…");
+The person asks: "${instruction}"
+Answer that with concrete tips (3 to 5, most useful first), then estimate the resulting version as one serving: its weight as eaten, kcal and macros; name it to reflect the change (lighter_name). If their request doesn't change the food, keep the numbers and say so in the summary. Estimates, honestly labelled.`;
+  busy("Thinking…");
   try {
     const r = await askAI(PRODUCT_LIGHTER_SCHEMA, [{ type: "text", text: prompt }]);
     busy(false);
