@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=32">
-  <link rel="icon" href="icons/icon-192.png?v=32">
-  <link rel="stylesheet" href="styles.css?v=32">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=33">
+  <link rel="icon" href="icons/icon-192.png?v=33">
+  <link rel="stylesheet" href="styles.css?v=33">
 </head>
 <body>
 
@@ -142,8 +142,12 @@
     <label>Cheat-day budget (kcal)
       <input type="number" inputmode="numeric" id="s-budget">
     </label>
-    <label>Anthropic API key
-      <small>Only needed for label photos. Stays on this device.</small>
+    <div class="field-title">AI features (label photos, guessing a plate, planning, making things lighter)</div>
+    <p class="muted tiny" id="s-ai-status"></p>
+    <label>Google Gemini key <small>Free tier, no card. Stays on this device.</small>
+      <input type="password" id="s-geminikey" placeholder="AIza…" autocomplete="off">
+    </label>
+    <label>Anthropic API key <small>Paid. Used only if there's no Gemini key.</small>
       <input type="password" id="s-apikey" placeholder="sk-ant-…" autocomplete="off">
     </label>
     <button class="btn primary" id="settings-save">Save</button>
@@ -484,10 +488,10 @@
 <div class="toast hidden" id="toast"></div>
 
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=32"></script>
-<script src="foods.js?v=32"></script>
-<script src="supabase-config.js?v=32"></script>
-<script src="cloud.js?v=32"></script>
-<script src="app.js?v=32"></script>
+<script src="presets.js?v=33"></script>
+<script src="foods.js?v=33"></script>
+<script src="supabase-config.js?v=33"></script>
+<script src="cloud.js?v=33"></script>
+<script src="app.js?v=33"></script>
 </body>
 </html>

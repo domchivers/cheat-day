@@ -158,6 +158,24 @@ create policy "days read" on public.days for select to authenticated using (user
 create policy "days own" on public.days for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 ```
 
+## AI for free: Gemini, and one shared key
+
+The AI features (label photos, guessing a plate, planning the rest of the day,
+making meals and products lighter) can run on Google Gemini's free tier instead
+of a paid Anthropic key. Two ways to set it up:
+
+1. **On each phone**: get a free key at [aistudio.google.com](https://aistudio.google.com)
+   (Google account, no card) and paste it into Settings → Google Gemini key.
+2. **Once, for everyone (recommended)**: keep the key on the app's own server so
+   friends never paste anything. In the Supabase dashboard: **Edge Functions →
+   Deploy a new function → via editor**, name it `ai`, paste the contents of
+   `supabase/functions/ai/index.ts`, Deploy. Then **Edge Functions → Secrets →
+   Add**: name `GEMINI_API_KEY`, value your Gemini key. Signed-in users then use
+   it automatically; the app falls back to a key on the phone if the function
+   isn't there.
+
+An Anthropic key still works and is used only when there's no Gemini route.
+
 ## Macro goals, Ask Claude, and the rest of the day
 
 The Daily budget screen also takes protein, carbs and fat goals in grams (or

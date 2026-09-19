@@ -89,6 +89,16 @@
     },
     // ---- friends: profiles with a friend code, requests, accepted friendships
     get uid() { return signedIn() ? session.user.id : null; },
+    /** A fetch that carries the user's token and refreshes it if needed; for the app's own Edge Functions. */
+    async rawFetch(url, opts = {}) {
+      const go = () => fetch(url, Object.assign({}, opts, { headers: Object.assign({}, opts.headers || {}, signedIn() ? { Authorization: `Bearer ${session.access_token}` } : {}) }));
+      let r = await go();
+      if (r.status === 401 && session && session.refresh_token) {
+        const rr = await sb("/auth/v1/token?grant_type=refresh_token", { method: "POST", body: JSON.stringify({ refresh_token: session.refresh_token }) }, false);
+        if (rr.ok) { setSession(await rr.json()); r = await go(); }
+      }
+      return r;
+    },
     async rest(path, opts = {}) {
       const r = await sbAuthed(path, opts);
       if (!r.ok) throw await authError(r, `Cloud request failed (${r.status})`);

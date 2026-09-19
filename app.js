@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "32";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "33";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -18,7 +18,7 @@ function localDate(d = new Date()) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 function load() {
-  const base = { budget: 1600, apiKey: "", day: { date: localDate(), items: [] }, history: [], recent: [], meals: [], presetUses: {}, mealDraft: null, shareDay: true, sharedMealIds: [], goals: { p: null, c: null, f: null } };
+  const base = { budget: 1600, apiKey: "", geminiKey: "", day: { date: localDate(), items: [] }, history: [], recent: [], meals: [], presetUses: {}, mealDraft: null, shareDay: true, sharedMealIds: [], goals: { p: null, c: null, f: null } };
   try { const raw = localStorage.getItem(STORE_KEY); if (raw) Object.assign(base, JSON.parse(raw)); } catch (e) {}
   if (!Array.isArray(base.recent)) base.recent = [];
   if (!Array.isArray(base.meals)) base.meals = [];
@@ -498,7 +498,7 @@ const LIGHTER_SCHEMA = {
   additionalProperties: false
 };
 $("#m-lighter").onclick = async () => {
-  if (!state.apiKey) { toast("Add your Anthropic API key in Settings first"); go("settings"); return; }
+  if (!aiAvailable()) { aiHelp(); return; }
   const m = mealDraft, t = mealTotals(m), portions = num(m.portions) || 1;
   const lines = m.items.map((it) => { const g = it.grams != null ? it.grams : amountsFor(it, it.kcal || 0).grams; return `${it.name}: ${g != null ? Math.round(g) + " g" : "?"}, ${it.kcal} kcal`; }).join("\n");
   const prompt = `Here is a recipe called "${m.name || "meal"}" making ${portions} portions, ${fmt(t.kcal)} kcal in total (${fmt(t.kcal / portions)} per portion):
@@ -507,7 +507,7 @@ ${lines}
 Make it noticeably lower in calories while keeping it recognisably the same dish and still enjoyable. Prefer swaps people actually have (lighter dairy, less oil or butter, leaner cuts, less sugar, more veg, smaller amounts of the richest items) over exotic ingredients. Return the full new ingredient list with realistic amounts and honest kcal and macro figures per ingredient, marking each as kept, less, swapped or removed. Aim for at least 20% fewer calories if that's achievable without ruining it; say so in the summary if it isn't.`;
   busy("Claude is lightening it…");
   try {
-    const r = await askClaude(LIGHTER_SCHEMA, [{ type: "text", text: prompt }]);
+    const r = await askAI(LIGHTER_SCHEMA, [{ type: "text", text: prompt }]);
     busy(false);
     const items = (r.ingredients || []).filter((x) => /removed/i.test(x.change) === false).map((x) => {
       const grams = num(x.grams) || 100, kcal = Math.round(nz(x.kcal) || 0);
@@ -641,6 +641,8 @@ $("#budget-save").onclick = () => {
 function renderSettings() {
   $("#s-budget").value = state.budget;
   $("#s-apikey").value = state.apiKey;
+  $("#s-geminikey").value = state.geminiKey || "";
+  $("#s-ai-status").textContent = (window.cloud && window.cloud.user && aiProxyState === "yes") ? "Using the shared key from the app's server: nothing to add here." : state.geminiKey ? "Using your Gemini key (free)." : state.apiKey ? "Using your Anthropic key." : "No key yet. A free Google Gemini key from aistudio.google.com is enough.";
   $("#s-version").textContent = APP_VERSION;
   renderAccount();
   const d = state.day.date;
@@ -651,6 +653,7 @@ $("#settings-save").onclick = () => {
   if (!b) { toast("Budget needs to be a number of kcal"); return; }
   state.budget = Math.round(b);
   state.apiKey = $("#s-apikey").value.trim();
+  state.geminiKey = $("#s-geminikey").value.trim();
   save(); toast("Saved"); home();
 };
 $("#btn-update").onclick = async () => {
@@ -856,8 +859,8 @@ const GUESS_SCHEMA = {
 };
 const GUESS_PROMPT = `Estimate the nutrition of this food as a whole portion, the way it would be eaten. Use typical reference values and realistic portion sizes. If a description is given, trust it over the photo for what the food is; use the photo for portion size. Be honest about confidence.`;
 function renderAsk() {
-  $("#ask-nokey").classList.toggle("hidden", !!state.apiKey);
-  $("#plan-go").disabled = !state.apiKey;
+  $("#ask-nokey").classList.toggle("hidden", aiAvailable());
+  $("#plan-go").disabled = !aiAvailable();
   $("#plan-out").innerHTML = "";
   renderPlanLeft();
   renderFits();
@@ -865,8 +868,8 @@ function renderAsk() {
 async function guessFood(file) {
   const text = $("#ask-text").value.trim();
   if (!file && !text) { toast("Describe it or take a photo"); return; }
-  if (!state.apiKey) { toast("Add your Anthropic API key in Settings first"); go("settings"); return; }
-  busy("Asking Claude…");
+  if (!aiAvailable()) { aiHelp(); return; }
+  busy("Thinking…");
   try {
     const content = [];
     let image = null;
@@ -876,7 +879,7 @@ async function guessFood(file) {
       content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: image.split(",")[1] } });
     }
     content.push({ type: "text", text: GUESS_PROMPT + (text ? `\nDescription: "${text}"` : "") });
-    const g = await askClaude(GUESS_SCHEMA, content);
+    const g = await askAI(GUESS_SCHEMA, content);
     busy(false);
     const item = blankItem("claude");
     const portion = num(g.portion_g) || 100;
@@ -891,7 +894,7 @@ async function guessFood(file) {
     openDetails("Claude's estimate");
   } catch (err) { busy(false); toast(err.message || "Claude couldn't help with that", 5000); }
 }
-$("#ask-photo").onclick = () => { if (!state.apiKey) { toast("Add your Anthropic API key in Settings first"); go("settings"); return; } $("#file-ask").click(); };
+$("#ask-photo").onclick = () => { if (!aiAvailable()) { aiHelp(); return; } $("#file-ask").click(); };
 $("#file-ask").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) guessFood(f); });
 $("#ask-words").onclick = () => guessFood(null);
 $("#ask-text").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.target.blur(); guessFood(null); } });
@@ -953,7 +956,7 @@ const PLAN_SCHEMA = {
   additionalProperties: false
 };
 $("#plan-go").onclick = async () => {
-  if (!state.apiKey) { toast("Add your Anthropic API key in Settings first"); go("settings"); return; }
+  if (!aiAvailable()) { aiHelp(); return; }
   const d = dayGaps(), g = state.goals || {};
   const eaten = state.day.items.map((it) => `${it.name} (${it.kcal} kcal)`).join(", ") || "nothing yet";
   const quick = quickEntries().slice(0, 8).map((q) => q.basis.name).join(", ");
@@ -964,7 +967,7 @@ Things they often have: ${quick || "unknown"}.
 Suggest 3 to 5 things for the rest of the day that together fit in the calories left, close the macro gaps as far as sensible, and deliberately leave room for one treat or a drink. Give realistic amounts and honest kcal/macro estimates. Keep it warm and short.`;
   busy("Claude is planning…");
   try {
-    const plan = await askClaude(PLAN_SCHEMA, [{ type: "text", text: prompt }]);
+    const plan = await askAI(PLAN_SCHEMA, [{ type: "text", text: prompt }]);
     busy(false);
     const out = $("#plan-out");
     out.innerHTML = `<div class="plan-card"><p>${esc(plan.summary)}</p><ul class="list" id="plan-list"></ul><p class="muted tiny">Tap one to add it with Claude's numbers.</p></div>`;
@@ -1045,7 +1048,7 @@ const PRODUCT_LIGHTER_SCHEMA = {
   additionalProperties: false
 };
 $("#details-lighter").onclick = async () => {
-  if (!state.apiKey) { toast("Add your Anthropic API key in Settings first"); go("settings"); return; }
+  if (!aiAvailable()) { aiHelp(); return; }
   const d = readDetails();
   const facts = [`kcal per 100 ${d.unit}: ${d.kcalPer100 ?? "unknown"}`, d.servingSize ? `serving ${d.servingSize} ${d.unit}` : null, d.kcalPerServing ? `${d.kcalPerServing} kcal per serving` : null,
     d.p100 != null ? `per 100: protein ${d.p100} g, carbs ${d.c100} g, fat ${d.f100} g` : null, d.packSize ? `pack ${d.packSize} ${d.unit}` : null].filter(Boolean).join("; ");
@@ -1053,7 +1056,7 @@ $("#details-lighter").onclick = async () => {
 Someone wants to eat this but lighter. Suggest realistic ways to prepare or eat it with fewer calories while keeping it enjoyable: for example using part of a seasoning or oil sachet, draining, smaller portion, bulking with vegetables or protein, lighter accompaniments. Then estimate the lighter version as one serving: its weight as eaten, kcal and macros. Be honest that these are estimates.`;
   busy("Claude is lightening it…");
   try {
-    const r = await askClaude(PRODUCT_LIGHTER_SCHEMA, [{ type: "text", text: prompt }]);
+    const r = await askAI(PRODUCT_LIGHTER_SCHEMA, [{ type: "text", text: prompt }]);
     busy(false);
     const before = d.kcalPerServing || (d.kcalPer100 && d.servingSize ? Math.round(d.kcalPer100 * d.servingSize / 100) : null);
     const out = $("#details-lighter-out");
@@ -1154,15 +1157,15 @@ async function scanLoop(video, token) {
       frame++;
       // No barcode for a while: maybe it's a nutrition table. Let Claude look, at most twice.
       const quiet = Date.now() - quietSince;
-      if (quiet > 4500 && autoReads < 2 && state.apiKey) {
+      if (quiet > 4500 && autoReads < 2 && aiAvailable()) {
         autoReads++; quietSince = Date.now();
         $("#scan-hint").textContent = "No barcode yet, checking for a nutrition table…";
         const found = await autoReadLabel(video, token);
         if (found || token !== camToken) return;
         $("#scan-hint").textContent = autoReads < 2 ? "Not a nutrition table yet. Get closer, or keep looking for the barcode." : "Point at the barcode, or tap Read the label when the table is in view.";
-      } else if (quiet > 4500 && !state.apiKey && autoReads === 0) {
+      } else if (quiet > 4500 && !aiAvailable() && autoReads === 0) {
         autoReads = 1;
-        $("#scan-hint").textContent = "No barcode? Tap Read the label for a nutrition table (needs the API key in Settings).";
+        $("#scan-hint").textContent = "No barcode? A nutrition table can be read too, with a free AI key in Settings.";
       }
     }
     await sleep(120);
@@ -1209,7 +1212,7 @@ document.addEventListener("visibilitychange", () => {
 
 $("#scan-photo").onclick = () => { photoMode = "auto"; $("#file-scan").click(); };
 $("#scan-label").onclick = () => {
-  if (!state.apiKey) { toast("Add your Anthropic API key in Settings first"); go("settings"); return; }
+  if (!aiAvailable()) { aiHelp(); return; }
   const video = $("#video");
   if (scanStream && video.videoWidth) {
     drawScaled(video, 1600).toBlob((blob) => readLabel(blob), "image/jpeg", 0.9);
@@ -1230,7 +1233,7 @@ $("#file-scan").addEventListener("change", async (e) => {
   try { code = await decodeBarcodeFromFile(file); } catch (err) { console.error(err); }
   busy(false);
   if (code) { lookupBarcode(code); return; }
-  if (state.apiKey) { toast("No barcode found, reading it as a label instead"); readLabel(file); return; }
+  if (aiAvailable()) { toast("No barcode found, reading it as a label instead"); readLabel(file); return; }
   toast("No barcode found. Try closer and flatter, or type the number.", 4000);
   $("#barcode-manual").classList.remove("hidden");
 });
@@ -1448,7 +1451,7 @@ $("#q").addEventListener("input", (e) => {
   for (const row of searchLocal(query)) local.appendChild(resultRow(foodItem(row), "tone-coral"));
   $("#search-off").innerHTML = "";
   $("#search-status").classList.add("hidden");
-  $("#search-claude").classList.toggle("hidden", !(query.length >= 2 && state.apiKey));
+  $("#search-claude").classList.toggle("hidden", !(query.length >= 2 && aiAvailable()));
   $("#search-claude").textContent = `Ask Claude about "${query}"`;
   if (searchAbort) { searchAbort.abort(); searchAbort = null; }
   if (query.length < 3) return;
@@ -1497,10 +1500,10 @@ const FOOD_SCHEMA = {
 $("#search-claude").onclick = async () => {
   const query = $("#q").value.trim();
   if (!query) return;
-  if (!state.apiKey) { toast("Add your Anthropic API key in Settings first"); go("settings"); return; }
-  busy(`Asking Claude about ${query}…`);
+  if (!aiAvailable()) { aiHelp(); return; }
+  busy(`Asking about ${query}…`);
   try {
-    const parsed = await askClaude(FOOD_SCHEMA, [{ type: "text", text: `Give typical nutrition for this food as commonly eaten: "${query}". If it's ambiguous, pick the most common preparation and say so in notes. Use standard reference values (USDA / McCance & Widdowson), not guesses.` }]);
+    const parsed = await askAI(FOOD_SCHEMA, [{ type: "text", text: `Give typical nutrition for this food as commonly eaten: "${query}". If it's ambiguous, pick the most common preparation and say so in notes. Use standard reference values (USDA / McCance & Widdowson), not guesses.` }]);
     busy(false);
     const item = blankItem("claude");
     item.name = parsed.name || query; item.unit = parsed.unit === "ml" ? "ml" : "g";
@@ -1517,7 +1520,7 @@ $("#search-claude").onclick = async () => {
 // ---------------------------------------------------------------- Claude reads a label
 
 async function readLabel(file) {
-  if (!state.apiKey) { toast("Add your Anthropic API key in Settings first"); go("settings"); return; }
+  if (!aiAvailable()) { aiHelp(); return; }
   busy("Reading the label with Claude…");
   try {
     draft = await readLabelWithClaude(file);
@@ -1552,6 +1555,62 @@ const LABEL_PROMPT = `This is a photo of a food or drink product, its nutrition 
 Report only numbers you can actually read on the label; use null for anything not visible rather than guessing.
 If energy is given in kJ only, convert to kcal (kcal = kJ / 4.184). If values are per portion only, fill kcal_per_serving and serving_size and leave kcal_per_100 null.
 If no nutrition table or energy figure is visible at all, set is_nutrition_label to false and leave the numbers null.`;
+
+// ---- Which AI can we use? Shared key on the server (signed in), a free Gemini key on this phone, or a Claude key.
+const GEMINI_MODELS = ["gemini-3.6-flash", "gemini-flash-latest"];
+let aiProxyState = "unknown";   // "unknown" | "yes" | "no": whether the Supabase "ai" function is deployed
+const aiAvailable = () => !!(state.geminiKey || state.apiKey || (window.cloud && window.cloud.user && aiProxyState !== "no"));
+function aiHelp() { toast("AI features need a key: a free Google Gemini key or an Anthropic key, in Settings. Or ask whoever set the app up to switch on the shared one.", 6000); go("settings"); }
+async function askAI(schema, content, effort = "medium") {
+  // 1) shared key via the Supabase function
+  if (window.cloud && window.cloud.user && aiProxyState !== "no") {
+    try { return await askGemini(schema, content, null); }
+    catch (err) { if (err.proxyMissing) aiProxyState = "no"; else throw err; }
+  }
+  // 2) a Gemini key on this phone
+  if (state.geminiKey) return askGemini(schema, content, state.geminiKey);
+  // 3) a Claude key on this phone
+  if (state.apiKey) return askClaude(schema, content, effort);
+  throw new Error("No AI key set. Add a free Google Gemini key in Settings.");
+}
+/** Gemini's schema dialect: no type unions, no additionalProperties; nulls become nullable. */
+function geminiSchema(node) {
+  if (Array.isArray(node)) return node.map(geminiSchema);
+  if (!node || typeof node !== "object") return node;
+  const out = {};
+  for (const [k, v] of Object.entries(node)) {
+    if (k === "additionalProperties") continue;
+    if (k === "type" && Array.isArray(v)) { const t = v.filter((x) => x !== "null"); out.type = t[0] || "string"; if (v.includes("null")) out.nullable = true; continue; }
+    out[k] = (k === "properties") ? Object.fromEntries(Object.entries(v).map(([pk, pv]) => [pk, geminiSchema(pv)])) : geminiSchema(v);
+  }
+  return out;
+}
+async function askGemini(schema, content, key) {
+  const parts = content.map((b) => b.type === "image" ? { inline_data: { mime_type: b.source.media_type, data: b.source.data } } : { text: b.text });
+  const body = JSON.stringify({ contents: [{ parts }], generationConfig: { responseMimeType: "application/json", responseSchema: geminiSchema(schema), temperature: 0.2 } });
+  let resp;
+  try {
+    for (const model of GEMINI_MODELS) {           // newest first; fall through on "no longer available" or "high demand"
+      if (key) {
+        resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, { method: "POST", headers: { "Content-Type": "application/json", "X-goog-api-key": key }, body });
+      } else {
+        const cfg = window.SUPABASE_CONFIG;
+        resp = await window.cloud.rawFetch(`${cfg.url}/functions/v1/ai?model=${model}`, { method: "POST", headers: { "Content-Type": "application/json", apikey: cfg.anonKey }, body });
+        if (resp.status === 404) { const e = new Error("shared AI not set up"); e.proxyMissing = true; throw e; }
+        if (resp.ok) aiProxyState = "yes";
+      }
+      if (resp.status !== 503 && !(resp.status === 404 && key)) break;
+    }
+  } catch (e) { if (e.proxyMissing) throw e; throw new Error("Couldn't reach the AI service (offline?)"); }
+  if (resp.status === 503) throw new Error("The free AI is busy right now. Try again in a minute.");
+  const json = await resp.json().catch(() => ({}));
+  if (resp.status === 401 && !key) { aiProxyState = "no"; const e = new Error("shared AI not available"); e.proxyMissing = true; throw e; }
+  if (resp.status === 500 && !key && /GEMINI_API_KEY/.test(JSON.stringify(json))) { aiProxyState = "no"; const e = new Error("shared AI has no key yet"); e.proxyMissing = true; throw e; }
+  if (resp.status === 429) throw new Error("The free AI limit is busy right now. Try again in a minute.");
+  if (!resp.ok) throw new Error((json.error && json.error.message) || `AI error ${resp.status}`);
+  const text = (((json.candidates || [])[0] || {}).content || {}).parts?.map((p) => p.text || "").join("") || "";
+  try { return JSON.parse(text); } catch (e) { throw new Error("Couldn't understand the AI's answer. Try again."); }
+}
 
 /** One structured-output request to Claude; returns the parsed JSON. */
 async function askClaude(schema, content, effort = "medium") {
@@ -1591,7 +1650,7 @@ async function readLabelWithClaude(file, quiet = false) {
   const img = await loadImage(file);
   const dataUrl = drawScaled(img, 1280).toDataURL("image/jpeg", 0.85);
   const b64 = dataUrl.split(",")[1];
-  const parsed = await askClaude(LABEL_SCHEMA, [
+  const parsed = await askAI(LABEL_SCHEMA, [
     { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } },
     { type: "text", text: LABEL_PROMPT }
   ]);
