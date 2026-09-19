@@ -343,3 +343,8 @@ textarea:focus { outline: 2px solid var(--green-2); border-color: transparent; }
 .chat { display: flex; gap: 8px; margin: 10px 0 4px; }
 .chat input { flex: 1; min-width: 0; }
 .chat .btn.slim { margin-top: 0; }
+.home-chat { margin: 0 0 10px; }
+.home-chat input { font-size: 15px; }
+.talk-card { background: var(--mint-2); border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; }
+.talk-card ul { margin: 8px 0; padding-left: 18px; font-size: 14px; }
+.talk-card .btn-row .btn { margin-top: 8px; }

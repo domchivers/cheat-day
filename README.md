@@ -176,6 +176,15 @@ of a paid Anthropic key. Two ways to set it up:
 
 An Anthropic key still works and is used only when there's no Gemini route.
 
+## Just tell it
+
+Under Today on the home screen there's a box you can talk to: "add a banana",
+"I only had two eggs", "remove the toast", "set my budget to 2,000". It shows
+the changes it understood and applies them when you tap Apply. The How much?
+screen has the same for one item ("added extra beef rolls, didn't drink the
+soup"), and the lighter and plan results take follow-ups too ("no egg, cut it
+further"). All of these use the AI key.
+
 ## Macro goals, Ask Claude, and the rest of the day
 
 The Daily budget screen also takes protein, carbs and fat goals in grams (or

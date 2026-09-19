@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=37">
-  <link rel="icon" href="icons/icon-192.png?v=37">
-  <link rel="stylesheet" href="styles.css?v=37">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=38">
+  <link rel="icon" href="icons/icon-192.png?v=38">
+  <link rel="stylesheet" href="styles.css?v=38">
 </head>
 <body>
 
@@ -102,6 +102,11 @@
   <p class="muted tiny hidden" id="quick-hint">Tap ＋ to add one like last time, tap the name to change the amount, hold to remove. Most-used first.</p>
 
   <div class="section-head"><h2 class="section-title">Today</h2><button class="link" data-go="history">History ›</button></div>
+  <div class="chat home-chat">
+    <input type="text" id="talk" placeholder="Just tell it: add a banana, I only had 2 eggs, remove the toast…" autocapitalize="sentences">
+    <button class="btn primary slim" id="talk-go">Send</button>
+  </div>
+  <div id="talk-out"></div>
   <ul class="list" id="home-list"></ul>
   <p class="empty" id="home-empty">Nothing logged yet. Scan something delicious.</p>
   <button class="card day-card hidden" id="home-yesterday" data-go="history"></button>
@@ -481,6 +486,11 @@
       <div class="macros" id="r-macros"></div>
     </div>
 
+    <div class="chat">
+      <input type="text" id="item-talk" placeholder="Tweak it: added extra beef rolls, didn't drink the soup…" autocapitalize="sentences">
+      <button class="btn primary slim" id="item-talk-go">Send</button>
+    </div>
+    <p class="muted tiny hidden" id="item-talk-note"></p>
     <button class="btn primary" id="share-add" disabled>Add to today</button>
     <button class="btn ghost" id="share-reset">Clear</button>
   </div>
@@ -490,10 +500,10 @@
 <div class="toast hidden" id="toast"></div>
 
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=37"></script>
-<script src="foods.js?v=37"></script>
-<script src="supabase-config.js?v=37"></script>
-<script src="cloud.js?v=37"></script>
-<script src="app.js?v=37"></script>
+<script src="presets.js?v=38"></script>
+<script src="foods.js?v=38"></script>
+<script src="supabase-config.js?v=38"></script>
+<script src="cloud.js?v=38"></script>
+<script src="app.js?v=38"></script>
 </body>
 </html>

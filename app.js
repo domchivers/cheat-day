@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "37";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "38";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -870,6 +870,135 @@ function wireChat(container, key, onAnswer) {
   };
   btn.onclick = send;
   input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.target.blur(); send(); } });
+}
+
+
+// ---------------------------------------------------------------- "Just tell it": edit the day in plain words
+
+const TALK_SCHEMA = {
+  type: "object",
+  properties: {
+    reply: { type: "string", description: "One friendly sentence back to the person; if nothing needs changing, say what you understood or answer their question" },
+    actions: { type: "array", items: { type: "object", properties: {
+      action: { type: "string", enum: ["add", "remove", "update", "set_budget"] },
+      target: { type: ["string", "null"], description: "For remove/update: the exact name of the existing item from the list" },
+      name: { type: ["string", "null"], description: "For add: what the food is" },
+      grams: { type: ["number", "null"], description: "amount in g or ml if known" },
+      count: { type: ["number", "null"], description: "how many pieces/servings if that's how they said it" },
+      kcal: { type: ["number", "null"], description: "your best estimate of kcal for the amount (add) or the corrected total (update)" },
+      protein_g: { type: ["number", "null"] }, carbs_g: { type: ["number", "null"] }, fat_g: { type: ["number", "null"] },
+      budget: { type: ["number", "null"], description: "for set_budget" }
+    }, required: ["action", "target", "name", "grams", "count", "kcal", "protein_g", "carbs_g", "fat_g", "budget"], additionalProperties: false } }
+  },
+  required: ["reply", "actions"],
+  additionalProperties: false
+};
+$("#talk-go").onclick = () => talk();
+$("#talk").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.target.blur(); talk(); } });
+async function talk() {
+  const text = $("#talk").value.trim(); if (!text) return;
+  if (!aiAvailable()) { aiHelp(); return; }
+  const list = state.day.items.map((it) => `- "${it.name}": ${it.kcal} kcal${(() => { const a = amountsFor(it, it.kcal); return a.grams != null ? `, ${Math.round(a.grams)} ${it.unit || "g"}` : ""; })()}`).join("\n") || "(nothing yet)";
+  const prompt = `You maintain someone's food diary for today. Budget ${state.budget} kcal, eaten ${usedKcal()} kcal so far. Today's list:\n${list}\n\nThey say: "${text}"\n\nTurn that into actions on the list. Use "update" with the corrected total kcal (and amount) when they say they had more or less of an existing item; "remove" to take one off; "add" for new things with a realistic kcal estimate for the amount; "set_budget" if they change the day's budget. Match targets to the exact names in the list. If they're only asking a question, return no actions and answer in reply.`;
+  busy("Working out what you meant…");
+  let r;
+  try { r = await askAI(TALK_SCHEMA, [{ type: "text", text: prompt }]); busy(false); }
+  catch (err) { busy(false); toast(err.message || "Didn't catch that", 5000); return; }
+  $("#talk").value = "";
+  const acts = (r.actions || []).map(planTalkAction).filter(Boolean);
+  const out = $("#talk-out");
+  if (!acts.length) { out.innerHTML = `<div class="talk-card"><p>${esc(r.reply || "Nothing to change.")}</p></div>`; return; }
+  out.innerHTML = `<div class="talk-card"><p>${esc(r.reply || "Here's what I'll do:")}</p><ul>${acts.map((a) => `<li>${esc(a.label)}</li>`).join("")}</ul>
+    <div class="btn-row"><button class="btn primary" id="talk-apply">Apply</button><button class="btn mint" id="talk-cancel">Cancel</button></div></div>`;
+  out.querySelector("#talk-cancel").onclick = () => { out.innerHTML = ""; };
+  out.querySelector("#talk-apply").onclick = () => { for (const a of acts) a.run(); save(); renderHome(); out.innerHTML = ""; toast("Done"); };
+}
+/** Turn one model action into a label + a function that does it, using our own food data where we have it. */
+function planTalkAction(a) {
+  const findItem = (t) => { if (!t) return null; const tl = t.toLowerCase(); return state.day.items.find((it) => it.name.toLowerCase() === tl) || state.day.items.find((it) => it.name.toLowerCase().includes(tl) || tl.includes(it.name.toLowerCase())); };
+  if (a.action === "set_budget" && num(a.budget)) {
+    const b = Math.round(a.budget);
+    return { label: `Set today's budget to ${fmt(b)} kcal`, run: () => { state.budget = b; } };
+  }
+  if (a.action === "remove") {
+    const it = findItem(a.target); if (!it) return null;
+    return { label: `Remove ${it.name} (${fmt(it.kcal)} kcal)`, run: () => { state.day.items = state.day.items.filter((x) => x.id !== it.id); } };
+  }
+  if (a.action === "update") {
+    const it = findItem(a.target); if (!it) return null;
+    let kcal = null;
+    const c = conv(it);
+    if (num(a.count) && c.countKcal) kcal = a.count * c.countKcal;
+    else if (num(a.grams) && c.kcalPer100) kcal = a.grams * c.kcalPer100 / 100;
+    else if (num(a.kcal)) kcal = a.kcal;
+    if (!kcal) return null;
+    kcal = Math.round(kcal);
+    return { label: `${it.name}: ${fmt(it.kcal)} → ${fmt(kcal)} kcal`, run: () => { it.kcal = kcal; it.shareLabel = `${fmt(kcal / state.budget * 100, 1)}% of the day`; } };
+  }
+  if (a.action === "add" && a.name) {
+    const hit = searchLocal(a.name)[0];
+    let basis, kcal;
+    if (hit) {
+      basis = foodItem(hit); const c = conv(basis);
+      if (num(a.count) && c.countKcal) kcal = a.count * c.countKcal;
+      else if (num(a.grams) && c.kcalPer100) kcal = a.grams * c.kcalPer100 / 100;
+      else if (num(a.kcal)) kcal = a.kcal;
+      else if (c.countKcal) kcal = c.countKcal;
+    } else {
+      basis = blankItem("claude"); basis.name = a.name; basis.unit = "g";
+      basis.kcalPerServing = Math.round(num(a.kcal) || 0); basis.unitLabel = "portion";
+      if (num(a.grams)) { basis.servingSize = Math.round(a.grams); basis.kcalPer100 = Math.round(basis.kcalPerServing / a.grams * 100); }
+      basis.pServ = nz(a.protein_g) || 0; basis.cServ = nz(a.carbs_g) || 0; basis.fServ = nz(a.fat_g) || 0;
+      kcal = basis.kcalPerServing;
+    }
+    if (!kcal) return null;
+    kcal = Math.round(kcal);
+    const amt = num(a.count) ? `${a.count} ${plural(a.count, basis.unitLabel || "serving")}` : num(a.grams) ? `${Math.round(a.grams)} ${basis.unit || "g"}` : "";
+    return { label: `Add ${basis.name}${amt ? `, ${amt}` : ""} (${fmt(kcal)} kcal)`, run: () => addToDay(basis, kcal, `${fmt(kcal / state.budget * 100, 1)}% of the day`) };
+  }
+  return null;
+}
+
+
+// ---------------------------------------------------------------- tweak one item in words, on the How much? screen
+const ITEM_TALK_SCHEMA = {
+  type: "object",
+  properties: {
+    reply: { type: "string", description: "One short sentence on what changed" },
+    name: { type: "string", description: "Updated name if the change deserves it, else the same name" },
+    kcal: { type: "number", description: "Revised kcal for the amount they are having" },
+    protein_g: { type: "number" }, carbs_g: { type: "number" }, fat_g: { type: "number" }
+  },
+  required: ["reply", "name", "kcal", "protein_g", "carbs_g", "fat_g"],
+  additionalProperties: false
+};
+$("#item-talk-go").onclick = () => itemTalk();
+$("#item-talk").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.target.blur(); itemTalk(); } });
+async function itemTalk() {
+  const text = $("#item-talk").value.trim(); if (!text || !draft) return;
+  if (!aiAvailable()) { aiHelp(); return; }
+  const kcal = amountKcal ? Math.round(amountKcal) : (draft.kcalPerServing || 0);
+  const m = macrosFor(draft, kcal), a = amountsFor(draft, kcal);
+  const facts = [`${kcal} kcal`, a.grams != null ? `${Math.round(a.grams)} ${draft.unit || "g"}` : null, m.p != null ? `protein ${Math.round(m.p)} g, carbs ${Math.round(m.c)} g, fat ${Math.round(m.f)} g` : null, draft.note ? `note: ${draft.note}` : null].filter(Boolean).join("; ");
+  const prompt = `Food diary entry: "${draft.name}"${draft.brand ? ` (${draft.brand})` : ""}, currently logged as ${facts}.\nThey say: "${text}"\nRevise the entry for what they actually had: give the new kcal and macros for the amount they are having, with a realistic estimate for anything added or left out. Keep the name unless the change is big enough to deserve a new one.`;
+  busy("Revising…");
+  try {
+    const r = await askAI(ITEM_TALK_SCHEMA, [{ type: "text", text: prompt }]);
+    busy(false);
+    const newKcal = Math.round(num(r.kcal) || kcal);
+    // Re-base the item so grams stay sensible and the macros follow the revised figures
+    const grams = a.grams != null ? a.grams : (draft.servingSize || 100);
+    draft.name = r.name || draft.name;
+    draft.kcalPer100 = Math.round(newKcal / grams * 100);
+    draft.kcalPerServing = draft.servingSize ? Math.round(draft.kcalPer100 * draft.servingSize / 100) : newKcal;
+    draft.p100 = Math.round((nz(r.protein_g) || 0) / grams * 1000) / 10; draft.c100 = Math.round((nz(r.carbs_g) || 0) / grams * 1000) / 10; draft.f100 = Math.round((nz(r.fat_g) || 0) / grams * 1000) / 10;
+    delete draft.pServ; delete draft.cServ; delete draft.fServ;
+    draft.note = ((draft.note || "") + " Tweaked: " + text).trim();
+    $("#share-name").textContent = draft.name;
+    setAmount(newKcal, "kcal"); $("#a-kcal").value = newKcal;
+    $("#item-talk").value = "";
+    const note = $("#item-talk-note"); note.textContent = `${r.reply || "Updated."} (${fmt(kcal)} → ${fmt(newKcal)} kcal)`; note.classList.remove("hidden");
+  } catch (err) { busy(false); toast(err.message || "Couldn't revise that", 5000); }
 }
 
 // ---------------------------------------------------------------- Ask Claude: guess a food, plan the rest of the day
@@ -1750,6 +1879,7 @@ function openShare(prefillKcal) {
   const c = conv(draft);
   $("#share-name").textContent = draft.name;
   $("#share-add").textContent = pick ? "Add to the meal" : editId ? "Save changes" : "Add to today";
+  $("#item-talk").value = ""; $("#item-talk-note").classList.add("hidden");
   $("#a-unit").textContent = draft.unit || "g";
   $("#a-grams-wrap").classList.toggle("hidden", !c.kcalPer100);
   $("#a-count-wrap").classList.toggle("hidden", !c.countKcal);
@@ -1811,7 +1941,7 @@ $("#share-add").onclick = () => {
   if (pick) { mealTakeIngredient(draft, kcal); toast(`${draft.name} is in the meal`); return; }
   if (editId) {
     const it = state.day.items.find((x) => x.id === editId);
-    if (it) { it.kcal = kcal; it.shareLabel = `${fmt(kcal / state.budget * 100, 1)}% of the day`; save(); }
+    if (it) { Object.assign(it, basisOf(draft)); it.kcal = kcal; it.shareLabel = `${fmt(kcal / state.budget * 100, 1)}% of the day`; save(); }
     editId = null; toast(`Updated ${draft.name} · ${fmt(kcal)} kcal`); home(); return;
   }
   addToDay(draft, kcal, `${fmt(kcal / state.budget * 100, 1)}% of the day`);
