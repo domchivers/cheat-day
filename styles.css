@@ -350,8 +350,12 @@ textarea:focus { outline: 2px solid var(--green-2); border-color: transparent; }
 .talk-card .btn-row .btn { margin-top: 8px; }
 
 /* Assistant */
-.view.ask { display: flex; flex-direction: column; min-height: 100vh; }
-.thread { flex: 1; display: flex; flex-direction: column; gap: 10px; padding: 4px 0 12px; }
+.view.ask { display: flex; flex-direction: column; height: 100vh; height: 100dvh; min-height: 0; padding-bottom: calc(6px + var(--safe-bottom)); overflow: hidden; }
+.ask-head { flex: none; grid-template-columns: 40px 1fr auto; }
+.head-actions { display: flex; align-items: center; gap: 4px; }
+.ghost.small { font-size: 14px; padding: 8px 10px; }
+.thread { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; gap: 10px; padding: 4px 2px 12px; overscroll-behavior: contain; }
+.ask-bottom { flex: none; background: var(--bg); padding-top: 6px; }
 .bubble { max-width: 92%; padding: 12px 14px; border-radius: 16px; font-size: 15px; line-height: 1.4; }
 .bubble.bot { background: var(--card); border: 1px solid var(--line); align-self: flex-start; border-bottom-left-radius: 6px; }
 .bubble.me { background: var(--green); color: #fff; align-self: flex-end; border-bottom-right-radius: 6px; }
@@ -361,9 +365,13 @@ textarea:focus { outline: 2px solid var(--green-2); border-color: transparent; }
 .bubble .btn { margin-top: 8px; }
 .bubble .stat { display: inline-block; background: var(--mint-2); border-radius: 10px; padding: 6px 10px; margin: 6px 6px 0 0; font-size: 14px; }
 .bubble .stat b { color: var(--green); }
-.ask-chips { justify-content: flex-start; margin: 0 0 8px; }
+.ask-chips { justify-content: flex-start; margin: 0 0 8px; flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
+.ask-chips button { white-space: nowrap; flex: none; }
 .ask-chips button { font-size: 13px; padding: 8px 12px; }
-.ask-input { position: sticky; bottom: calc(8px + var(--safe-bottom)); background: var(--bg); padding: 6px 0; margin: 0; }
+.ask-input { margin: 0; padding: 4px 0 0; }
 .ask-input .icon-btn { flex: none; }
 .method { margin: 4px 0 0 18px; padding: 0; font-size: 14px; }
 .method li { margin: 6px 0; }
+
+@media screen and (orientation: landscape) and (max-height: 500px) { .view.ask { height: 100vw; } }
+.list .when { font-size: 12px; color: var(--muted); white-space: nowrap; }

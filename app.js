@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "39";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "40";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -18,7 +18,7 @@ function localDate(d = new Date()) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 function load() {
-  const base = { budget: 1600, apiKey: "", geminiKey: "", day: { date: localDate(), items: [] }, history: [], recent: [], meals: [], presetUses: {}, mealDraft: null, shareDay: true, sharedMealIds: [], goals: { p: null, c: null, f: null } };
+  const base = { budget: 1600, apiKey: "", geminiKey: "", day: { date: localDate(), items: [] }, history: [], recent: [], meals: [], presetUses: {}, mealDraft: null, shareDay: true, sharedMealIds: [], goals: { p: null, c: null, f: null }, chats: [] };
   try { const raw = localStorage.getItem(STORE_KEY); if (raw) Object.assign(base, JSON.parse(raw)); } catch (e) {}
   if (!Array.isArray(base.recent)) base.recent = [];
   if (!Array.isArray(base.meals)) base.meals = [];
@@ -26,6 +26,7 @@ function load() {
   if (!Array.isArray(base.sharedMealIds)) base.sharedMealIds = [];
   if (base.shareDay == null) base.shareDay = true;
   if (!base.goals || typeof base.goals !== "object") base.goals = { p: null, c: null, f: null };
+  if (!Array.isArray(base.chats)) base.chats = [];
   return base;
 }
 function save(sync = true) {
@@ -111,7 +112,7 @@ function basisOf(obj) {
 
 // ---------------------------------------------------------------- router
 
-const VIEWS = ["home", "budget", "settings", "history", "friends", "ask", "scan", "search", "meals", "meal", "details", "share"];
+const VIEWS = ["home", "budget", "settings", "history", "friends", "ask", "chats", "scan", "search", "meals", "meal", "details", "share"];
 let stack = ["home"];
 function show(view) {
   for (const v of VIEWS) $(`#view-${v}`).classList.toggle("hidden", v !== view);
@@ -127,6 +128,7 @@ function show(view) {
   if (view === "friends") renderFriends();
   if (view === "history") renderHistory();
   if (view === "ask") renderAsk();
+  if (view === "chats") renderChats();
   if (view === "meal") renderMeal();
 }
 function go(view) { stack.push(view); show(view); }
@@ -1050,14 +1052,53 @@ const ASSIST_SCHEMA = {
   required: ["reply", "kind", "estimate", "plan", "edit", "recipe", "lighter"],
   additionalProperties: false
 };
-let askTurns = [];       // {role: "me"|"bot", text, kind}
+let askTurns = [];       // {role: "me"|"bot", text, kind, result?}
 let askFile = null;
+let chatId = null;       // the saved chat this conversation belongs to
+const WELCOME = `<b>Ask me anything about your day.</b><br>Photograph a plate and tell me what it is. Ask for a plan for the rest of today, a recipe that fits, a lighter version of something, or tell me what you actually ate and I'll fix the list.`;
 
 function renderAsk() {
   $("#ask-nokey").classList.toggle("hidden", aiAvailable());
   showAskPreview();
+  if (!$("#ask-thread").children.length) { $("#ask-thread").innerHTML = `<div class="bubble bot">${WELCOME}</div>`; }
+  scrollThread();
   setTimeout(() => $("#ask-text").focus(), 80);
 }
+function scrollThread() { const t = $("#ask-thread"); const go = () => { t.scrollTop = t.scrollHeight; }; go(); requestAnimationFrame(go); setTimeout(go, 120); setTimeout(go, 400); }
+/** Save this conversation (text only, no photos) so it can be reopened later. */
+function saveChat() {
+  if (!askTurns.length) return;
+  if (!chatId) chatId = uid();
+  const first = askTurns.find((t) => t.role === "me");
+  const rec = { id: chatId, title: (first ? first.text : "Chat").slice(0, 60), when: new Date().toISOString(), turns: askTurns.slice(-40) };
+  const i = state.chats.findIndex((c) => c.id === chatId);
+  if (i >= 0) state.chats[i] = rec; else state.chats.unshift(rec);
+  state.chats = state.chats.slice(0, 30);
+  save();
+}
+function newChat() { askTurns = []; chatId = null; askFile = null; showAskPreview(); $("#ask-thread").innerHTML = `<div class="bubble bot">${WELCOME}</div>`; }
+function openChat(rec) {
+  askTurns = rec.turns.slice(); chatId = rec.id; askFile = null;
+  $("#ask-thread").innerHTML = "";
+  for (const t of askTurns) {
+    if (t.role === "me") bubble("me", esc(t.text));
+    else if (t.result) renderAssistant(t.result, null); else bubble("bot", esc(t.text));
+  }
+  stack = ["home", "ask"]; show("ask");
+}
+function renderChats() {
+  const list = $("#chats-list"); list.innerHTML = "";
+  $("#chats-empty").classList.toggle("hidden", state.chats.length > 0);
+  for (const c of state.chats) {
+    const li = document.createElement("li");
+    const when = new Date(c.when);
+    li.innerHTML = `<span class="thumb-sm"><svg><use href="#i-spark"/></svg></span><div class="body"><div class="name">${esc(c.title)}</div><div class="detail">${c.turns.filter((t) => t.role === "me").length} message${c.turns.length === 1 ? "" : "s"} · ${when.toLocaleDateString(undefined, { day: "numeric", month: "short" })} ${when.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</div></div><button class="del" aria-label="Delete chat">✕</button>`;
+    li.querySelector(".body").onclick = () => openChat(c);
+    li.querySelector(".del").onclick = (e) => { e.stopPropagation(); if (!confirm(`Delete this chat?`)) return; state.chats = state.chats.filter((x) => x.id !== c.id); if (chatId === c.id) newChat(); save(); renderChats(); };
+    list.appendChild(li);
+  }
+}
+$("#ask-chats").onclick = () => go("chats");
 function showAskPreview() {
   const wrap = $("#ask-preview");
   if (askFile) { $("#ask-img").src = URL.createObjectURL(askFile); wrap.classList.remove("hidden"); $("#ask-text").placeholder = "What is it, and how much?"; }
@@ -1067,10 +1108,10 @@ function bubble(role, html) {
   const el = document.createElement("div");
   el.className = `bubble ${role}`; el.innerHTML = html;
   $("#ask-thread").appendChild(el);
-  el.scrollIntoView({ block: "end", behavior: "smooth" });
+  scrollThread();
   return el;
 }
-$("#ask-clear").onclick = () => { askTurns = []; askFile = null; showAskPreview(); $("#ask-thread").innerHTML = `<div class="bubble bot">Fresh start. What can I do?</div>`; };
+$("#ask-clear").onclick = () => { newChat(); toast("New chat"); };
 $("#ask-photo").onclick = () => { if (!aiAvailable()) { aiHelp(); return; } $("#file-ask").click(); };
 $("#file-ask").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) { askFile = f; showAskPreview(); setTimeout(() => $("#ask-text").focus(), 100); } });
 $("#ask-retake").onclick = () => { askFile = null; showAskPreview(); };
@@ -1087,7 +1128,12 @@ $("#ask-chips").addEventListener("click", (e) => {
 function dayContext() {
   const d = dayGaps(), g = state.goals || {};
   const eaten = state.day.items.map((it) => `"${it.name}" ${it.kcal} kcal`).join(", ") || "nothing yet";
-  return `Today: budget ${state.budget} kcal, eaten ${usedKcal()} kcal (${eaten}), ${d.left} kcal left. Macro goals: protein ${g.p || "none"} g, carbs ${g.c || "none"} g, fat ${g.f || "none"} g; so far protein ${Math.round(d.mac.p)} g, carbs ${Math.round(d.mac.c)} g, fat ${Math.round(d.mac.f)} g. Things they often have: ${quickEntries().slice(0, 8).map((q) => q.basis.name).join(", ") || "unknown"}. Saved meals: ${state.meals.map((m) => m.name).join(", ") || "none"}.`;
+  const past = state.history.slice(0, 3).map((h) => `${h.date}: ${h.kcal}/${h.budget} kcal${Array.isArray(h.items) && h.items.length ? ` (${h.items.slice(0, 6).map((it) => it.name).join(", ")}${h.items.length > 6 ? "…" : ""})` : ""}`).join("; ") || "none yet";
+  const meals = state.meals.slice(0, 12).map((m) => { const t = mealTotals(m), n = num(m.portions) || 1; return `"${m.name}" (${n} portions, ${fmt(t.kcal / n)} kcal each: ${(m.items || []).slice(0, 8).map((it) => `${it.name} ${it.grams != null ? Math.round(it.grams) + " g" : ""}`).join(", ")})`; }).join("; ") || "none";
+  return `Today: budget ${state.budget} kcal, eaten ${usedKcal()} kcal (${eaten}), ${d.left} kcal left. Macro goals: protein ${g.p || "none"} g, carbs ${g.c || "none"} g, fat ${g.f || "none"} g; so far protein ${Math.round(d.mac.p)} g, carbs ${Math.round(d.mac.c)} g, fat ${Math.round(d.mac.f)} g.
+Recent days: ${past}.
+Things they often have: ${quickEntries().slice(0, 8).map((q) => q.basis.name).join(", ") || "unknown"}.
+Their saved meals, with ingredients: ${meals}. If they ask to change one of these, return kind=recipe with the SAME name and the full revised ingredient list.`;
 }
 async function sendAsk() {
   const text = $("#ask-text").value.trim(), file = askFile;
@@ -1096,7 +1142,7 @@ async function sendAsk() {
   let image = null;
   if (file) { const img = await loadImage(file); image = drawScaled(img, 1280).toDataURL("image/jpeg", 0.85); }
   bubble("me", `${image ? `<img src="${image}" alt="">` : ""}${esc(text || "(photo)")}`);
-  askTurns.push({ role: "me", text: text || "(photo)" });
+  askTurns.push({ role: "me", text: (text || "") + (image ? " (photo)" : "") });
   $("#ask-text").value = ""; askFile = null; showAskPreview();
   const history = askTurns.slice(-8, -1).map((t) => `${t.role === "me" ? "They" : "You"}: ${t.text}`).join("\n");
   const prompt = `You are the assistant inside a cheat-day food diary app. ${dayContext()}
@@ -1116,8 +1162,9 @@ Estimates use standard reference values. Keep reply short and friendly.`;
   try {
     const r = await askAI(ASSIST_SCHEMA, content);
     thinking.remove();
-    askTurns.push({ role: "bot", text: r.reply, kind: r.kind });
+    askTurns.push({ role: "bot", text: r.reply, kind: r.kind, result: r });
     renderAssistant(r, image);
+    saveChat();
   } catch (err) { thinking.innerHTML = `<span class="over">${esc(err.message || "Something went wrong")}</span>`; }
 }
 function statRow(kcal, p, c, f) { return `<div><span class="stat"><b>${fmt(kcal)}</b> kcal</span><span class="stat">P <b>${Math.round(p)}</b></span><span class="stat">C <b>${Math.round(c)}</b></span><span class="stat">F <b>${Math.round(f)}</b></span></div>`; }
@@ -1157,8 +1204,19 @@ function renderAssistant(r, image) {
       <ul class="list">${items.map((it) => `<li><div class="body"><div class="name">${esc(it.name)}</div><div class="detail">${fmt(it.grams)} ${it.unit || "g"} · ${fmt(it.kcal)} kcal</div></div></li>`).join("")}</ul>
       <ol class="method">${(rc.steps || []).map((st) => `<li>${esc(st)}</li>`).join("")}</ol>
       <p class="muted tiny">${esc(rc.notes || "")}</p><button class="btn primary" data-act="save">Save as a meal</button></div>`);
+    const existing = state.meals.find((m) => m.name.trim().toLowerCase() === String(rc.name || "").trim().toLowerCase());
+    if (existing) {
+      el.querySelector("[data-act=save]").textContent = "Save as a new meal";
+      el.querySelector("[data-act=save]").insertAdjacentHTML("beforebegin", `<button class="btn primary" data-act="update">Update "${esc(existing.name)}"</button>`);
+      el.querySelector("[data-act=update]").onclick = (e) => {
+        if (!confirm(`Replace the ingredients of "${existing.name}" with this version?`)) return;
+        existing.items = items; existing.portions = portions; existing.steps = rc.steps || existing.steps || []; existing.updatedAt = new Date().toISOString();
+        save(); e.target.textContent = "Updated"; e.target.disabled = true; toast(`${existing.name} updated`);
+      };
+      el.querySelector("[data-act=save]").classList.remove("primary"); el.querySelector("[data-act=save]").classList.add("mint");
+    }
     el.querySelector("[data-act=save]").onclick = (e) => {
-      state.meals.unshift({ id: uid(), name: rc.name, portions, items, steps: rc.steps || [], saved: true, updatedAt: new Date().toISOString() });
+      state.meals.unshift({ id: uid(), name: existing ? `${rc.name} (new)` : rc.name, portions, items, steps: rc.steps || [], saved: true, updatedAt: new Date().toISOString() });
       save(); e.target.textContent = "Saved to Meals"; e.target.disabled = true; toast(`${rc.name} is in your meals`);
     };
   }
@@ -1172,7 +1230,7 @@ function renderAssistant(r, image) {
       draft = item; openShare();
     };
   }
-  el.scrollIntoView({ block: "end", behavior: "smooth" });
+  scrollThread();
 }
 function estimateToItem(g, image) {
   const item = blankItem("claude"), portion = num(g.portion_g) || 100;
@@ -1244,7 +1302,7 @@ function showFits() {
     ul.appendChild(li);
   }
   if (!picks.length) ul.innerHTML = `<li class="muted">Nothing in the list fits in ${fmt(d.left)} kcal.</li>`;
-  el.appendChild(ul); el.scrollIntoView({ block: "end", behavior: "smooth" });
+  el.appendChild(ul); scrollThread();
 }
 
 // ---------------------------------------------------------------- item details
@@ -2039,7 +2097,7 @@ $("#share-add").onclick = () => {
 
 // ---------------------------------------------------------------- account + sync (optional, see cloud.js)
 
-const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "updatedAt"];   // the API key stays on the device
+const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "updatedAt"];   // the API key stays on the device
 let pushTimer = null;
 function schedulePush() {
   if (!window.cloud || !window.cloud.user) return;

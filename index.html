@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=39">
-  <link rel="icon" href="icons/icon-192.png?v=39">
-  <link rel="stylesheet" href="styles.css?v=39">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=40">
+  <link rel="icon" href="icons/icon-192.png?v=40">
+  <link rel="stylesheet" href="styles.css?v=40">
 </head>
 <body>
 
@@ -251,15 +251,14 @@
 
 <!-- ===================== ASSISTANT ===================== -->
 <section class="view ask hidden" id="view-ask">
-  <header class="sub-head">
+  <header class="sub-head ask-head">
     <button class="icon-btn" data-back aria-label="Back"><svg><use href="#i-back"/></svg></button>
     <h1>Assistant</h1>
-    <button class="icon-btn" id="ask-clear" aria-label="Start again">✕</button>
+    <div class="head-actions"><button class="ghost small" id="ask-chats">Chats</button><button class="icon-btn" id="ask-clear" aria-label="New chat"><svg><use href="#i-plus"/></svg></button></div>
   </header>
   <p class="muted tiny hidden" id="ask-nokey">Needs an AI key (Settings), or the shared one from whoever set the app up. "What fits what's left" works without.</p>
-  <div id="ask-thread" class="thread">
-    <div class="bubble bot"><b>Ask me anything about your day.</b><br>Photograph a plate and tell me what it is. Ask for a plan for the rest of today, a recipe that fits, a lighter version of something, or tell me what you actually ate and I'll fix the list.</div>
-  </div>
+  <div id="ask-thread" class="thread"></div>
+  <div class="ask-bottom">
   <div class="chips ask-chips" id="ask-chips">
     <button data-ask="Plan the rest of my day">Plan my day</button>
     <button data-ask="fits">What fits what's left</button>
@@ -272,7 +271,18 @@
     <input type="text" id="ask-text" placeholder="e.g. A5 wagyu nigiri, 2 pieces" autocapitalize="sentences">
     <button class="btn primary slim" id="ask-send">Send</button>
   </div>
+  </div>
   <input type="file" accept="image/*" capture="environment" id="file-ask" hidden>
+</section>
+
+<!-- ===================== PREVIOUS CHATS ===================== -->
+<section class="view hidden" id="view-chats">
+  <header class="sub-head">
+    <button class="icon-btn" data-back aria-label="Back"><svg><use href="#i-back"/></svg></button>
+    <h1>Chats</h1><span></span>
+  </header>
+  <ul class="list" id="chats-list"></ul>
+  <p class="empty" id="chats-empty">No chats yet.</p>
 </section>
 
 <!-- ===================== SCAN ===================== -->
@@ -495,10 +505,10 @@
 <div class="toast hidden" id="toast"></div>
 
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=39"></script>
-<script src="foods.js?v=39"></script>
-<script src="supabase-config.js?v=39"></script>
-<script src="cloud.js?v=39"></script>
-<script src="app.js?v=39"></script>
+<script src="presets.js?v=40"></script>
+<script src="foods.js?v=40"></script>
+<script src="supabase-config.js?v=40"></script>
+<script src="cloud.js?v=40"></script>
+<script src="app.js?v=40"></script>
 </body>
 </html>
