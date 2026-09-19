@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=34">
-  <link rel="icon" href="icons/icon-192.png?v=34">
-  <link rel="stylesheet" href="styles.css?v=34">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=35">
+  <link rel="icon" href="icons/icon-192.png?v=35">
+  <link rel="stylesheet" href="styles.css?v=35">
 </head>
 <body>
 
@@ -255,12 +255,14 @@
   <div class="card form-card">
     <h3>Guess a food</h3>
     <p class="muted">A plate, a takeaway, a slice of something: photograph it or describe it and Claude estimates the calories and macros. Estimates, not labels.</p>
-    <label>Describe it (optional with a photo)
-      <input type="text" id="ask-text" placeholder="e.g. chicken katsu curry, large portion">
+    <div class="photo-preview hidden" id="ask-preview"><img id="ask-img" alt=""><button class="btn mint slim" id="ask-retake">Retake</button></div>
+    <label><span id="ask-text-label">Describe it</span>
+      <input type="text" id="ask-text" placeholder="e.g. A5 wagyu nigiri, 2 pieces">
+      <small>Say what it is and roughly how much; the photo is used for the portion size. Names help a lot with things that look alike.</small>
     </label>
     <div class="btn-row">
       <button class="btn primary" id="ask-photo">Take a photo</button>
-      <button class="btn mint" id="ask-words">Just the words</button>
+      <button class="btn mint" id="ask-words">Estimate</button>
     </div>
     <input type="file" accept="image/*" capture="environment" id="file-ask" hidden>
   </div>
@@ -488,10 +490,10 @@
 <div class="toast hidden" id="toast"></div>
 
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=34"></script>
-<script src="foods.js?v=34"></script>
-<script src="supabase-config.js?v=34"></script>
-<script src="cloud.js?v=34"></script>
-<script src="app.js?v=34"></script>
+<script src="presets.js?v=35"></script>
+<script src="foods.js?v=35"></script>
+<script src="supabase-config.js?v=35"></script>
+<script src="cloud.js?v=35"></script>
+<script src="app.js?v=35"></script>
 </body>
 </html>

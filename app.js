@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "34";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "35";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -859,6 +859,7 @@ const GUESS_SCHEMA = {
 };
 const GUESS_PROMPT = `Estimate the nutrition of this food as a whole portion, the way it would be eaten. Use typical reference values and realistic portion sizes. If a description is given, trust it over the photo for what the food is; use the photo for portion size. Be honest about confidence.`;
 function renderAsk() {
+  showAskPreview();
   $("#ask-nokey").classList.toggle("hidden", aiAvailable());
   $("#plan-go").disabled = !aiAvailable();
   $("#plan-out").innerHTML = "";
@@ -890,14 +891,22 @@ async function guessFood(file) {
     item.p100 = Math.round((nz(g.protein_g) || 0) / portion * 1000) / 10; item.c100 = Math.round((nz(g.carbs_g) || 0) / portion * 1000) / 10; item.f100 = Math.round((nz(g.fat_g) || 0) / portion * 1000) / 10;
     item.image = image;
     item.note = `Claude's estimate (${g.confidence || "medium"} confidence), not a label. ${g.notes || ""}`;
-    draft = item; $("#ask-text").value = "";
+    draft = item; $("#ask-text").value = ""; askFile = null; showAskPreview();
     openDetails("Claude's estimate");
   } catch (err) { busy(false); toast(err.message || "Claude couldn't help with that", 5000); }
 }
+// Photo first, then a chance to say what it is (A5 wagyu nigiri looks like a lot of things), then Estimate.
+let askFile = null;
+function showAskPreview() {
+  const wrap = $("#ask-preview");
+  if (askFile) { $("#ask-img").src = URL.createObjectURL(askFile); wrap.classList.remove("hidden"); $("#ask-text-label").textContent = "What is it?"; $("#ask-words").textContent = "Estimate from photo"; }
+  else { wrap.classList.add("hidden"); $("#ask-img").removeAttribute("src"); $("#ask-text-label").textContent = "Describe it"; $("#ask-words").textContent = "Estimate"; }
+}
 $("#ask-photo").onclick = () => { if (!aiAvailable()) { aiHelp(); return; } $("#file-ask").click(); };
-$("#file-ask").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) guessFood(f); });
-$("#ask-words").onclick = () => guessFood(null);
-$("#ask-text").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.target.blur(); guessFood(null); } });
+$("#file-ask").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) { askFile = f; showAskPreview(); setTimeout(() => $("#ask-text").focus(), 100); } });
+$("#ask-retake").onclick = () => { askFile = null; showAskPreview(); $("#file-ask").click(); };
+$("#ask-words").onclick = () => { const f = askFile; guessFood(f); };
+$("#ask-text").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.target.blur(); guessFood(askFile); } });
 
 // what's left, and what's short
 function dayGaps() {
