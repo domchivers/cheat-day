@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=49">
-  <link rel="icon" href="icons/icon-192.png?v=49">
-  <link rel="stylesheet" href="styles.css?v=49">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=50">
+  <link rel="icon" href="icons/icon-192.png?v=50">
+  <link rel="stylesheet" href="styles.css?v=50">
 </head>
 <body>
 
@@ -274,9 +274,17 @@
     <button class="btn primary" data-go="settings">Go to Settings</button>
   </div>
   <div id="feed-body" class="hidden">
-    <p class="muted tiny">Post from the How much? screen ("Add and share it") or from a meal ("Post to the feed"). Friends see it here.</p>
+    <button class="card prompt-card" id="feed-prompt"><span id="feed-me-avatar"></span><span class="prompt-text">Share what you're having…</span><span class="prompt-cam">📷</span></button>
+    <div class="card picker hidden" id="feed-picker">
+      <div class="field-title">From today</div>
+      <ul class="list plain" id="feed-pick-today"></ul>
+      <p class="muted tiny hidden" id="feed-pick-today-empty">Nothing logged yet today. Scan or search something first, or pick a meal.</p>
+      <div class="field-title">Your meals</div>
+      <ul class="list plain" id="feed-pick-meals"></ul>
+      <p class="muted tiny hidden" id="feed-pick-meals-empty">No saved meals yet.</p>
+    </div>
     <div id="feed-list"></div>
-    <p class="empty" id="feed-empty">Nothing yet. Share something you're having.</p>
+    <div class="empty-state hidden" id="feed-empty"><span class="big">🍽️</span><b>Nothing here yet</b><span>Post what you're having and your friends will see it here. Their posts show up too.</span></div>
   </div>
 </section>
 
@@ -284,22 +292,24 @@
 <section class="view hidden" id="view-compose">
   <header class="sub-head">
     <button class="icon-btn" data-back aria-label="Back"><svg><use href="#i-back"/></svg></button>
-    <h1>Share it</h1><span></span>
+    <h1>New post</h1><span></span>
   </header>
-  <div class="card form-card">
-    <div id="compose-what" class="post-what"></div>
-    <div class="photo-row">
-      <img id="compose-photo" alt="" class="hidden big">
+  <div class="card compose">
+    <button class="compose-media" id="compose-media">
+      <img id="compose-photo" alt="" class="hidden">
+      <span class="compose-hint" id="compose-hint"><span class="big">📷</span><b>Add a photo</b><span>Tap to snap one, or choose from your photos below</span></span>
+    </button>
+    <div class="compose-tools">
       <button class="btn mint slim" id="compose-cam">📷 Snap a pic</button>
       <button class="btn mint slim" id="compose-lib">From photos</button>
       <button class="btn ghost slim hidden" id="compose-remove">Remove</button>
     </div>
     <input type="file" accept="image/*" capture="environment" id="file-compose-cam" hidden>
     <input type="file" accept="image/*" id="file-compose-lib" hidden>
-    <label>Caption
-      <input type="text" id="compose-caption" placeholder="e.g. Worth every calorie" autocapitalize="sentences" maxlength="200">
-    </label>
-    <button class="btn primary" id="compose-go">Post</button>
+    <textarea id="compose-caption" rows="2" placeholder="Write a caption…" autocapitalize="sentences" maxlength="220"></textarea>
+    <div id="compose-what"></div>
+    <button class="btn primary" id="compose-go">Post to friends</button>
+    <p class="muted tiny center">Only your friends on Cheat Days can see it.</p>
   </div>
 </section>
 
@@ -670,10 +680,10 @@
   <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=49"></script>
-<script src="foods.js?v=49"></script>
-<script src="supabase-config.js?v=49"></script>
-<script src="cloud.js?v=49"></script>
-<script src="app.js?v=49"></script>
+<script src="presets.js?v=50"></script>
+<script src="foods.js?v=50"></script>
+<script src="supabase-config.js?v=50"></script>
+<script src="cloud.js?v=50"></script>
+<script src="app.js?v=50"></script>
 </body>
 </html>

@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "49";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "50";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1391,19 +1391,25 @@ let composeWhat = null, composePhoto = null;
 let feed = { posts: [], reactions: [], comments: [], people: {} };
 const REACTS = ["👍", "❤️", "🔥", "😋"];
 function openCompose(what, photo) { composeWhat = what; composePhoto = photo; $("#compose-caption").value = ""; go("compose"); }
+function dishCard(w) {
+  const meal = w.kind === "meal", n = w.portions || 1;
+  const amt = meal ? `${n} portion${n === 1 ? "" : "s"} · ${fmt(w.kcal)} kcal each` : (w.grams != null ? `${w.grams} ${w.unit || "g"}` : "1 serving");
+  return `<div class="dish"><span class="thumb-sm ${meal ? "tone-peach" : ""}"><svg><use href="#i-${meal ? "meal" : "search"}"/></svg></span><div class="dish-main"><span class="dish-name">${esc(w.name)}</span><span class="dish-amt">${amt}</span></div><div class="dish-kcal">${fmt(w.kcal)}<small>kcal</small></div></div>`;
+}
 function renderCompose() {
   const w = composeWhat; if (!w) { back(); return; }
-  const mac = w.p != null ? ` · P ${w.p} C ${w.c} F ${w.f}` : "";
-  $("#compose-what").innerHTML = `<span class="thumb-sm ${w.kind === "meal" ? "tone-peach" : ""}"><svg><use href="#i-${w.kind === "meal" ? "meal" : "search"}"/></svg></span><div><div class="name">${esc(w.name)}</div><div class="detail">${w.kind === "meal" ? `${w.portions} portion${w.portions === 1 ? "" : "s"} · ${fmt(w.kcal)} kcal each` : `${w.grams != null ? `${w.grams} ${w.unit} · ` : ""}${fmt(w.kcal)} kcal`}${mac}</div></div>`;
+  $("#compose-what").innerHTML = dishCard(w);
   showComposePhoto();
-  setTimeout(() => $("#compose-caption").focus(), 120);
+  if (!composePhoto) setTimeout(() => $("#compose-caption").focus(), 120);
 }
 function showComposePhoto() {
   const img = $("#compose-photo"), has = !!composePhoto;
   img.classList.toggle("hidden", !has); if (has) img.src = composePhoto;
+  $("#compose-hint").classList.toggle("hidden", has);
   $("#compose-remove").classList.toggle("hidden", !has);
   $("#compose-cam").textContent = has ? "📷 Retake" : "📷 Snap a pic";
 }
+$("#compose-media").onclick = () => $("#file-compose-cam").click();
 async function composeAttach(file) { try { composePhoto = await thumbFromBig(file); showComposePhoto(); } catch (e) { toast("Couldn't read that photo"); } }
 /** Feed photos can be a bit bigger than thumbnails: 640px square, roughly 40 KB. */
 async function thumbFromBig(src) {
@@ -1428,11 +1434,33 @@ $("#compose-go").onclick = async () => {
     stack = ["home", "feed"]; show("feed");
   } catch (err) { busy(false); toast("Couldn't post: " + c.explain(err), 5000); }
 };
+function renderPicker() {
+  const tl = $("#feed-pick-today"); tl.innerHTML = "";
+  for (const it of state.day.items) {
+    const li = document.createElement("li"); const m = macrosFor(it, it.kcal);
+    li.innerHTML = `${it.photo || it.image ? `<img class="thumb-sm" src="${esc(it.photo || it.image)}" alt="">` : `<span class="thumb-sm"><svg><use href="#i-${iconFor(it.source)}"/></svg></span>`}<div class="body"><div class="name">${esc(it.name)}</div><div class="detail">${it.grams != null ? `${Math.round(it.grams)} ${it.unit || "g"} · ` : ""}${fmt(it.kcal)} kcal</div></div><svg class="chev"><use href="#i-chev"/></svg>`;
+    li.onclick = () => openCompose({ kind: "food", name: it.name, kcal: Math.round(it.kcal), grams: it.grams != null ? Math.round(it.grams) : null, unit: it.unit || "g", p: m.p != null ? Math.round(m.p) : null, c: m.c != null ? Math.round(m.c) : null, f: m.f != null ? Math.round(m.f) : null, basis: basisOf(it) }, it.photo || null);
+    tl.appendChild(li);
+  }
+  $("#feed-pick-today-empty").classList.toggle("hidden", state.day.items.length > 0);
+  const ml = $("#feed-pick-meals"); ml.innerHTML = "";
+  const meals = state.meals.filter((m) => m.saved).slice(0, 8);
+  for (const m of meals) {
+    const li = document.createElement("li"); const t = mealTotals(m), n = num(m.portions) || 1, hasMac = (t.p || 0) + (t.c || 0) + (t.f || 0) > 0;
+    li.innerHTML = `${m.photo ? `<img class="thumb-sm" src="${esc(m.photo)}" alt="">` : `<span class="thumb-sm tone-peach"><svg><use href="#i-meal"/></svg></span>`}<div class="body"><div class="name">${esc(m.name)}</div><div class="detail">${n} portion${n === 1 ? "" : "s"} · ${fmt(t.kcal / n)} kcal each</div></div><svg class="chev"><use href="#i-chev"/></svg>`;
+    li.onclick = () => openCompose({ kind: "meal", name: m.name, kcal: Math.round(t.kcal / n), portions: n, p: hasMac ? Math.round(t.p / n) : null, c: hasMac ? Math.round(t.c / n) : null, f: hasMac ? Math.round(t.f / n) : null, meal: { name: m.name, portions: n, items: m.items.map((it) => ({ ...basisOf(it), kcal: it.kcal, grams: it.grams })), steps: m.steps || [] } }, m.photo || null);
+    ml.appendChild(li);
+  }
+  $("#feed-pick-meals-empty").classList.toggle("hidden", meals.length > 0);
+}
+$("#feed-prompt").onclick = () => { const pk = $("#feed-picker"); pk.classList.toggle("hidden"); if (!pk.classList.contains("hidden")) renderPicker(); };
 async function renderFeed() {
   const c = window.cloud, signed = !!(c && c.user);
   $("#feed-signin").classList.toggle("hidden", signed);
   $("#feed-body").classList.toggle("hidden", !signed);
   if (!signed) return;
+  $("#feed-picker").classList.add("hidden");
+  $("#feed-me-avatar").innerHTML = avatar(c.uid, (c.profile && c.profile.display_name) || c.user.email || "Me");
   busy("Loading the feed…");
   try {
     feed.posts = await c.posts();
@@ -1442,37 +1470,45 @@ async function renderFeed() {
     const who = new Set(feed.posts.map((p) => p.owner).concat(feed.comments.map((x) => x.user_id), feed.reactions.map((x) => x.user_id)));
     const people = await c.profiles([...who]);
     feed.people = {}; for (const p of people) feed.people[p.user_id] = p;
+    if (feed.people[c.uid]) $("#feed-me-avatar").innerHTML = avatar(c.uid, feed.people[c.uid].display_name);
   } catch (err) { busy(false); toast("Feed isn't set up yet: " + c.explain(err), 6000); return; }
   busy(false);
   drawFeed();
 }
 const feedName = (id) => (feed.people[id] && feed.people[id].display_name) || "Someone";
 function ago(iso) { const s = (Date.now() - new Date(iso)) / 1000; if (s < 60) return "just now"; if (s < 3600) return `${Math.floor(s / 60)} min ago`; if (s < 86400) return `${Math.floor(s / 3600)} h ago`; const d = Math.floor(s / 86400); return d === 1 ? "yesterday" : `${d} days ago`; }
+const openComments = new Set();
 function drawFeed() {
   const c = window.cloud, me = c.uid, list = $("#feed-list"); list.innerHTML = "";
   $("#feed-empty").classList.toggle("hidden", feed.posts.length > 0);
   for (const p of feed.posts) {
-    const card = document.createElement("div"); card.className = "card post";
-    const mac = p.macros && p.macros.p != null ? ` · P ${p.macros.p} C ${p.macros.c} F ${p.macros.f}` : "";
-    const detail = p.kind === "meal" ? `${(p.extra || {}).portions || 1} portion${((p.extra || {}).portions || 1) === 1 ? "" : "s"} · ${fmt(p.kcal)} kcal each${mac}` : `${(p.extra || {}).grams != null ? `${p.extra.grams} ${p.extra.unit || "g"} · ` : ""}${fmt(p.kcal)} kcal${mac}`;
-    const mine = p.owner === me;
+    const card = document.createElement("article"); card.className = "card post";
+    const meal = p.kind === "meal", ex = p.extra || {}, n = ex.portions || 1;
+    const amt = meal ? `${n} portion${n === 1 ? "" : "s"} · ${fmt(p.kcal)} kcal each` : (ex.grams != null ? `${ex.grams} ${ex.unit || "g"}` : "1 serving");
+    const mine = p.owner === me, who = mine ? "You" : feedName(p.owner);
     const rx = feed.reactions.filter((r) => r.post_id === p.id);
     const cm = feed.comments.filter((x) => x.post_id === p.id);
-    card.innerHTML = `<div class="who">${avatar(p.owner, feedName(p.owner))}<div><div class="name">${esc(mine ? "You" : feedName(p.owner))}</div><div class="when">${ago(p.created_at)}</div></div>${mine ? `<button class="del" aria-label="Delete post">✕</button>` : ""}</div>
-      ${p.photo ? `<img class="pic" src="${esc(p.photo)}" alt="">` : ""}
-      ${p.caption ? `<div class="caption">${esc(p.caption)}</div>` : ""}
-      <div class="what"><span class="thumb-sm ${p.kind === "meal" ? "tone-peach" : ""}"><svg><use href="#i-${p.kind === "meal" ? "meal" : "search"}"/></svg></span><div class="body"><div class="name">${esc(p.name)}</div><div class="detail">${detail}</div></div><button class="btn mint slim" data-act="repost">${p.kind === "meal" ? "Save meal" : "Add to my day"}</button></div>
-      <div class="reacts">${REACTS.map((e) => { const n = rx.filter((r) => r.emoji === e).length, on = rx.some((r) => r.emoji === e && r.user_id === me); return `<button data-emoji="${e}" class="${on ? "on" : ""}">${e}${n ? ` ${n}` : ""}</button>`; }).join("")}</div>
-      <div class="comments">${cm.map((x) => `<div class="comment">${avatar(x.user_id, feedName(x.user_id))}<span><b>${esc(x.user_id === me ? "You" : feedName(x.user_id))}</b>${esc(x.text)}</span>${x.user_id === me ? `<button class="del" data-comment="${x.id}" aria-label="Delete">✕</button>` : ""}</div>`).join("")}
-        <div class="chat"><input type="text" placeholder="Comment…" maxlength="300" autocapitalize="sentences"><button class="btn primary slim" data-act="comment">Send</button></div></div>`;
-    const delBtn = card.querySelector(".who .del");
+    const showAll = openComments.has(p.id) || cm.length <= 2, shown = showAll ? cm : cm.slice(-2);
+    const mac = p.macros && p.macros.p != null ? `<div class="pills"><span>P ${p.macros.p} g</span><span>C ${p.macros.c} g</span><span>F ${p.macros.f} g</span></div>` : "";
+    card.innerHTML = `<div class="who">${avatar(p.owner, feedName(p.owner))}<div><div class="name">${esc(who)}</div><div class="when">${ago(p.created_at)}${meal ? " · shared a meal" : ""}</div></div>${mine ? `<button class="more" aria-label="Delete post">⋯</button>` : ""}</div>
+      ${p.photo ? `<div class="media"><img src="${esc(p.photo)}" alt=""></div>` : `<div class="media none ${meal ? "meal" : ""}"><svg><use href="#i-${meal ? "meal" : "search"}"/></svg>${esc(p.name)}</div>`}
+      <div class="body">
+        ${p.caption ? `<div class="caption"><b>${esc(who)}</b>${esc(p.caption)}</div>` : ""}
+        <div class="dish"><span class="thumb-sm ${meal ? "tone-peach" : ""}"><svg><use href="#i-${meal ? "meal" : "search"}"/></svg></span><div class="dish-main"><span class="dish-name">${esc(p.name)}</span><span class="dish-amt">${amt}</span></div><div class="dish-kcal">${fmt(p.kcal)}<small>kcal</small></div></div>
+        ${mac}
+        <div class="actions"><div class="reacts">${REACTS.map((e) => { const k = rx.filter((r) => r.emoji === e).length, on = rx.some((r) => r.emoji === e && r.user_id === me); return `<button data-emoji="${e}" class="${on ? "on" : ""}" aria-label="React ${e}">${e}${k ? `<small>${k}</small>` : ""}</button>`; }).join("")}</div><button class="repost" data-act="repost">${meal ? "↻ Save meal" : "↻ Add to my day"}</button></div>
+        <div class="comments">${!showAll ? `<button class="view-all">View all ${cm.length} comments</button>` : ""}${shown.map((x) => `<div class="comment">${avatar(x.user_id, feedName(x.user_id))}<span><b>${esc(x.user_id === me ? "You" : feedName(x.user_id))}</b>${esc(x.text)}</span>${x.user_id === me ? `<button class="del" data-comment="${x.id}" aria-label="Delete">✕</button>` : ""}</div>`).join("")}
+          <div class="chat">${avatar(me, feedName(me))}<input type="text" placeholder="Add a comment…" maxlength="300" autocapitalize="sentences"><button class="btn primary slim" data-act="comment">Post</button></div></div>
+      </div>`;
+    const delBtn = card.querySelector(".who .more");
     if (delBtn) delBtn.onclick = async () => { if (!confirm("Delete this post?")) return; try { await c.deletePost(p.id); renderFeed(); } catch (e) { toast(c.explain(e)); } };
+    const va = card.querySelector(".view-all"); if (va) va.onclick = () => { openComments.add(p.id); drawFeed(); };
     card.querySelector("[data-act=repost]").onclick = () => {
-      if (p.kind === "meal") {
+      if (meal) {
         const m = p.payload || {};
-        state.meals.unshift({ id: uid(), name: m.name || p.name, portions: +m.portions || 1, items: (m.items || []).map((it) => ({ ...it, id: uid() })), steps: m.steps || [], photo: p.photo ? null : null, saved: true, copiedFrom: "post:" + p.id, updatedAt: new Date().toISOString() });
+        state.meals.unshift({ id: uid(), name: m.name || p.name, portions: +m.portions || 1, items: (m.items || []).map((it) => ({ ...it, id: uid() })), steps: m.steps || [], saved: true, copiedFrom: "post:" + p.id, updatedAt: new Date().toISOString() });
         save(); toast(`${p.name} saved to your meals`);
-        if (confirm("Share it on to your friends with your own caption?")) openCompose({ kind: "meal", name: p.name, kcal: p.kcal, portions: (p.extra || {}).portions || 1, p: p.macros && p.macros.p, c: p.macros && p.macros.c, f: p.macros && p.macros.f, meal: m }, p.photo || null);
+        if (confirm("Share it on to your friends with your own caption?")) openCompose({ kind: "meal", name: p.name, kcal: p.kcal, portions: n, p: p.macros && p.macros.p, c: p.macros && p.macros.c, f: p.macros && p.macros.f, meal: m }, p.photo || null);
       } else {
         draft = { ...(p.payload || { name: p.name, kcalPerServing: p.kcal, unitLabel: "portion" }), note: "" };
         openShare(p.kcal);
@@ -1485,7 +1521,7 @@ function drawFeed() {
       drawFeed();
     });
     const input = card.querySelector(".chat input"), send = card.querySelector("[data-act=comment]");
-    const doComment = async () => { const t = input.value.trim(); if (!t) return; try { const rows = await c.comment(p.id, t); feed.comments.push((rows && rows[0]) || { id: uid(), post_id: p.id, user_id: me, text: t, created_at: new Date().toISOString() }); drawFeed(); } catch (err) { toast(c.explain(err)); } };
+    const doComment = async () => { const t = input.value.trim(); if (!t) return; try { const rows = await c.comment(p.id, t); feed.comments.push((rows && rows[0]) || { id: uid(), post_id: p.id, user_id: me, text: t, created_at: new Date().toISOString() }); openComments.add(p.id); drawFeed(); } catch (err) { toast(c.explain(err)); } };
     send.onclick = doComment; input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.target.blur(); doComment(); } });
     card.querySelectorAll("[data-comment]").forEach((b) => b.onclick = async () => { if (!confirm("Delete your comment?")) return; try { await c.deleteComment(b.dataset.comment); feed.comments = feed.comments.filter((x) => String(x.id) !== String(b.dataset.comment)); drawFeed(); } catch (err) { toast(c.explain(err)); } });
     list.appendChild(card);
