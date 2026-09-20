@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "40";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "41";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -18,7 +18,7 @@ function localDate(d = new Date()) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 function load() {
-  const base = { budget: 1600, apiKey: "", geminiKey: "", day: { date: localDate(), items: [] }, history: [], recent: [], meals: [], presetUses: {}, mealDraft: null, shareDay: true, sharedMealIds: [], goals: { p: null, c: null, f: null }, chats: [] };
+  const base = { budget: 1600, apiKey: "", geminiKey: "", day: { date: localDate(), items: [] }, history: [], recent: [], meals: [], presetUses: {}, mealDraft: null, shareDay: true, sharedMealIds: [], goals: { p: null, c: null, f: null }, chats: [], notes: "" };
   try { const raw = localStorage.getItem(STORE_KEY); if (raw) Object.assign(base, JSON.parse(raw)); } catch (e) {}
   if (!Array.isArray(base.recent)) base.recent = [];
   if (!Array.isArray(base.meals)) base.meals = [];
@@ -121,7 +121,7 @@ function show(view) {
   if (view !== "scan") stopCamera();
   if (view === "home") renderHome();
   if (view === "settings") renderSettings();
-  if (view === "budget") { $("#b-budget").value = state.budget; $$("#budget-chips button").forEach((b) => b.classList.toggle("on", +b.dataset.b === state.budget)); const g = state.goals || {}; $("#b-p").value = g.p ?? ""; $("#b-c").value = g.c ?? ""; $("#b-f").value = g.f ?? ""; }
+  if (view === "budget") { $("#b-budget").value = state.budget; $$("#budget-chips button").forEach((b) => b.classList.toggle("on", +b.dataset.b === state.budget)); const g = state.goals || {}; $("#b-p").value = g.p ?? ""; $("#b-c").value = g.c ?? ""; $("#b-f").value = g.f ?? ""; $("#b-notes").value = state.notes || ""; }
   if (view === "scan") startCamera();
   if (view === "search") openSearch();
   if (view === "meals") renderMeals();
@@ -533,7 +533,7 @@ async function mealAsk(instruction) {
   if (!aiAvailable()) { aiHelp(); return; }
   const m = mealDraft, t = mealTotals(m), portions = num(m.portions) || 1;
   const lines = m.items.map((it) => { const g = it.grams != null ? it.grams : amountsFor(it, it.kcal || 0).grams; return `${it.name}: ${g != null ? Math.round(g) + " g" : "?"}, ${it.kcal} kcal`; }).join("\n");
-  const prompt = `Here is a recipe called "${m.name || "meal"}" making ${portions} portions, ${fmt(t.kcal)} kcal in total (${fmt(t.kcal / portions)} per portion):
+  const prompt = `${(state.notes || "").trim() ? `About this person: ${state.notes.trim()}\n` : ""}Here is a recipe called "${m.name || "meal"}" making ${portions} portions, ${fmt(t.kcal)} kcal in total (${fmt(t.kcal / portions)} per portion):
 ${lines}
 
 The person asks: "${instruction}"
@@ -650,6 +650,7 @@ $("#budget-save").onclick = () => {
   if (!b) { toast("Budget needs to be a number of kcal"); return; }
   state.budget = Math.round(b);
   state.goals = { p: num($("#b-p").value) ? Math.round(num($("#b-p").value)) : null, c: num($("#b-c").value) ? Math.round(num($("#b-c").value)) : null, f: num($("#b-f").value) ? Math.round(num($("#b-f").value)) : null };
+  state.notes = $("#b-notes").value.trim();
   save(); toast(`Budget set to ${fmt(state.budget)} kcal`); home();
 };
 
@@ -1115,12 +1116,15 @@ $("#ask-clear").onclick = () => { newChat(); toast("New chat"); };
 $("#ask-photo").onclick = () => { if (!aiAvailable()) { aiHelp(); return; } $("#file-ask").click(); };
 $("#file-ask").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) { askFile = f; showAskPreview(); setTimeout(() => $("#ask-text").focus(), 100); } });
 $("#ask-retake").onclick = () => { askFile = null; showAskPreview(); };
+$("#ask-library").onclick = () => { if (!aiAvailable()) { aiHelp(); return; } $("#file-ask-lib").click(); };
+$("#file-ask-lib").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) { askFile = f; showAskPreview(); setTimeout(() => $("#ask-text").focus(), 100); } });
 $("#ask-send").onclick = () => sendAsk();
 $("#ask-text").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.target.blur(); sendAsk(); } });
 $("#ask-chips").addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b) return;
   const q = b.dataset.ask;
   if (q === "photo") { $("#ask-photo").click(); return; }
+  if (q === "library") { $("#ask-library").click(); return; }
   if (q === "fits") { showFits(); return; }
   $("#ask-text").value = q; sendAsk();
 });
@@ -1130,7 +1134,8 @@ function dayContext() {
   const eaten = state.day.items.map((it) => `"${it.name}" ${it.kcal} kcal`).join(", ") || "nothing yet";
   const past = state.history.slice(0, 3).map((h) => `${h.date}: ${h.kcal}/${h.budget} kcal${Array.isArray(h.items) && h.items.length ? ` (${h.items.slice(0, 6).map((it) => it.name).join(", ")}${h.items.length > 6 ? "…" : ""})` : ""}`).join("; ") || "none yet";
   const meals = state.meals.slice(0, 12).map((m) => { const t = mealTotals(m), n = num(m.portions) || 1; return `"${m.name}" (${n} portions, ${fmt(t.kcal / n)} kcal each: ${(m.items || []).slice(0, 8).map((it) => `${it.name} ${it.grams != null ? Math.round(it.grams) + " g" : ""}`).join(", ")})`; }).join("; ") || "none";
-  return `Today: budget ${state.budget} kcal, eaten ${usedKcal()} kcal (${eaten}), ${d.left} kcal left. Macro goals: protein ${g.p || "none"} g, carbs ${g.c || "none"} g, fat ${g.f || "none"} g; so far protein ${Math.round(d.mac.p)} g, carbs ${Math.round(d.mac.c)} g, fat ${Math.round(d.mac.f)} g.
+  const notes = (state.notes || "").trim();
+  return `${notes ? `About this person, in their own words (respect it in every suggestion): ${notes}\n` : ""}Today: budget ${state.budget} kcal, eaten ${usedKcal()} kcal (${eaten}), ${d.left} kcal left. Macro goals: protein ${g.p || "none"} g, carbs ${g.c || "none"} g, fat ${g.f || "none"} g; so far protein ${Math.round(d.mac.p)} g, carbs ${Math.round(d.mac.c)} g, fat ${Math.round(d.mac.f)} g.
 Recent days: ${past}.
 Things they often have: ${quickEntries().slice(0, 8).map((q) => q.basis.name).join(", ") || "unknown"}.
 Their saved meals, with ingredients: ${meals}. If they ask to change one of these, return kind=recipe with the SAME name and the full revised ingredient list.`;
@@ -1391,7 +1396,7 @@ async function productAsk(instruction) {
   const d = readDetails();
   const facts = [`kcal per 100 ${d.unit}: ${d.kcalPer100 ?? "unknown"}`, d.servingSize ? `serving ${d.servingSize} ${d.unit}` : null, d.kcalPerServing ? `${d.kcalPerServing} kcal per serving` : null,
     d.p100 != null ? `per 100: protein ${d.p100} g, carbs ${d.c100} g, fat ${d.f100} g` : null, d.packSize ? `pack ${d.packSize} ${d.unit}` : null].filter(Boolean).join("; ");
-  const prompt = `Product: "${d.name}"${d.brand ? ` by ${d.brand}` : ""}. Label facts: ${facts || "none"}.
+  const prompt = `${(state.notes || "").trim() ? `About this person: ${state.notes.trim()}\n` : ""}Product: "${d.name}"${d.brand ? ` by ${d.brand}` : ""}. Label facts: ${facts || "none"}.
 The person asks: "${instruction}"
 Answer that with concrete tips (3 to 5, most useful first), then estimate the resulting version as one serving: its weight as eaten, kcal and macros; name it to reflect the change (lighter_name). If their request doesn't change the food, keep the numbers and say so in the summary. Estimates, honestly labelled.`;
   busy("Thinking…");
@@ -1537,6 +1542,8 @@ document.addEventListener("visibilitychange", () => {
 });
 
 $("#scan-photo").onclick = () => { photoMode = "auto"; $("#file-scan").click(); };
+$("#scan-library").onclick = () => { photoMode = "auto"; $("#file-scan-lib").click(); };
+$("#file-scan-lib").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) handleScanPhoto(f); });
 $("#scan-label").onclick = () => {
   if (!aiAvailable()) { aiHelp(); return; }
   const video = $("#video");
@@ -1550,9 +1557,8 @@ $("#barcode-manual-toggle").onclick = () => { $("#barcode-manual").classList.tog
 $("#code-go").onclick = () => { const c = $("#code-input").value.replace(/\D/g, ""); if (c) lookupBarcode(c); };
 $("#code-input").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#code-go").click(); });
 
-$("#file-scan").addEventListener("change", async (e) => {
-  const file = e.target.files[0]; e.target.value = "";
-  if (!file) return;
+$("#file-scan").addEventListener("change", (e) => { const file = e.target.files[0]; e.target.value = ""; if (file) handleScanPhoto(file); });
+async function handleScanPhoto(file) {
   if (photoMode === "label") { readLabel(file); return; }
   busy("Looking for a barcode…");
   let code = null;
@@ -1562,7 +1568,7 @@ $("#file-scan").addEventListener("change", async (e) => {
   if (aiAvailable()) { toast("No barcode found, reading it as a label instead"); readLabel(file); return; }
   toast("No barcode found. Try closer and flatter, or type the number.", 4000);
   $("#barcode-manual").classList.remove("hidden");
-});
+}
 
 async function decodeBarcodeFromFile(file) {
   const img = await loadImage(file);
@@ -2097,7 +2103,7 @@ $("#share-add").onclick = () => {
 
 // ---------------------------------------------------------------- account + sync (optional, see cloud.js)
 
-const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "updatedAt"];   // the API key stays on the device
+const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "notes", "updatedAt"];   // the API key stays on the device
 let pushTimer = null;
 function schedulePush() {
   if (!window.cloud || !window.cloud.user) return;

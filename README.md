@@ -176,6 +176,13 @@ of a paid Anthropic key. Two ways to set it up:
 
 An Anthropic key still works and is used only when there's no Gemini route.
 
+## About my eating
+
+On the Daily budget screen there's a free-text box the assistant reads on every
+request: habits ("every meal I have 220 g cooked rice"), rules ("no dairy"),
+usual portions. It shapes plans, recipes and lighter versions. Every photo
+button also offers "from my photos" as well as the camera.
+
 ## Just tell it
 
 Under Today on the home screen there's a box you can talk to: "add a banana",

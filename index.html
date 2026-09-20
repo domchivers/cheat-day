@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=40">
-  <link rel="icon" href="icons/icon-192.png?v=40">
-  <link rel="stylesheet" href="styles.css?v=40">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=41">
+  <link rel="icon" href="icons/icon-192.png?v=41">
+  <link rel="stylesheet" href="styles.css?v=41">
 </head>
 <body>
 
@@ -132,6 +132,9 @@
       <label>Fat <input type="number" inputmode="numeric" id="b-f" placeholder="g"></label>
     </div>
     <button class="btn mint" id="budget-suggest">Suggest from my calories (30 / 40 / 30)</button>
+    <label>About my eating <small>The assistant reads this every time: habits, rules, usual portions.</small>
+      <textarea id="b-notes" rows="4" placeholder="e.g. every meal I have 220 g cooked rice&#10;vegetarian, no dairy&#10;breakfast is always 3 eggs and toast"></textarea>
+    </label>
     <button class="btn primary" id="budget-save">Save</button>
   </div>
   <p class="muted tiny">Other settings, like your account and API key, are behind the gear on the home screen.</p>
@@ -262,17 +265,20 @@
   <div class="chips ask-chips" id="ask-chips">
     <button data-ask="Plan the rest of my day">Plan my day</button>
     <button data-ask="fits">What fits what's left</button>
-    <button data-ask="photo">Guess from a photo</button>
+    <button data-ask="photo">Take a photo</button>
+    <button data-ask="library">From my photos</button>
     <button data-ask="Make me a recipe that fits what I have left today, high in protein">Make me a recipe</button>
   </div>
   <div class="photo-preview hidden" id="ask-preview"><img id="ask-img" alt=""><button class="btn mint slim" id="ask-retake">Remove photo</button></div>
   <div class="chat ask-input">
-    <button class="icon-btn" id="ask-photo" aria-label="Add a photo"><svg><use href="#i-camera"/></svg></button>
+    <button class="icon-btn" id="ask-photo" aria-label="Take a photo"><svg><use href="#i-camera"/></svg></button>
+    <button class="icon-btn" id="ask-library" aria-label="Choose from photos"><svg><use href="#i-image"/></svg></button>
     <input type="text" id="ask-text" placeholder="e.g. A5 wagyu nigiri, 2 pieces" autocapitalize="sentences">
     <button class="btn primary slim" id="ask-send">Send</button>
   </div>
   </div>
   <input type="file" accept="image/*" capture="environment" id="file-ask" hidden>
+  <input type="file" accept="image/*" id="file-ask-lib" hidden>
 </section>
 
 <!-- ===================== PREVIOUS CHATS ===================== -->
@@ -302,6 +308,7 @@
   </div>
   <div class="pad">
     <button class="btn primary" id="scan-label">Read the label</button>
+    <button class="btn mint" id="scan-library">Use a photo from my library</button>
     <button class="btn mint" id="barcode-manual-toggle">Enter barcode manually</button>
     <div class="hidden" id="barcode-manual">
       <input type="text" inputmode="numeric" id="code-input" placeholder="Barcode number, e.g. 5000159484695">
@@ -310,6 +317,7 @@
     <button class="btn link-btn" data-go="manual">Type it in instead</button>
   </div>
   <input type="file" accept="image/*" capture="environment" id="file-scan" hidden>
+  <input type="file" accept="image/*" id="file-scan-lib" hidden>
 </section>
 
 <!-- ===================== MEALS ===================== -->
@@ -505,10 +513,10 @@
 <div class="toast hidden" id="toast"></div>
 
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=40"></script>
-<script src="foods.js?v=40"></script>
-<script src="supabase-config.js?v=40"></script>
-<script src="cloud.js?v=40"></script>
-<script src="app.js?v=40"></script>
+<script src="presets.js?v=41"></script>
+<script src="foods.js?v=41"></script>
+<script src="supabase-config.js?v=41"></script>
+<script src="cloud.js?v=41"></script>
+<script src="app.js?v=41"></script>
 </body>
 </html>
