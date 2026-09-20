@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=42">
-  <link rel="icon" href="icons/icon-192.png?v=42">
-  <link rel="stylesheet" href="styles.css?v=42">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=43">
+  <link rel="icon" href="icons/icon-192.png?v=43">
+  <link rel="stylesheet" href="styles.css?v=43">
 </head>
 <body>
 
@@ -346,7 +346,11 @@
     </label>
   </div>
 
-  <div class="card form-card hidden" id="m-method-card"><h3>Method</h3><ol class="method" id="m-method"></ol></div>
+  <div class="card form-card" id="m-method-card">
+    <label>Method / instructions <small>One step per line. Saved with the meal, and filled in for you when the assistant writes a recipe.</small>
+      <textarea id="m-steps" rows="5" placeholder="1. Preheat the oven to 180C&#10;2. Mix the flour, sugar and eggs&#10;3. Bake for 35 minutes"></textarea>
+    </label>
+  </div>
   <h2 class="section-title">Ingredients</h2>
   <ul class="list" id="m-items"></ul>
   <p class="empty" id="m-empty">Nothing in it yet.</p>
@@ -513,10 +517,10 @@
 <div class="toast hidden" id="toast"></div>
 
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=42"></script>
-<script src="foods.js?v=42"></script>
-<script src="supabase-config.js?v=42"></script>
-<script src="cloud.js?v=42"></script>
-<script src="app.js?v=42"></script>
+<script src="presets.js?v=43"></script>
+<script src="foods.js?v=43"></script>
+<script src="supabase-config.js?v=43"></script>
+<script src="cloud.js?v=43"></script>
+<script src="app.js?v=43"></script>
 </body>
 </html>

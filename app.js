@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "42";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "43";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -372,9 +372,7 @@ function renderMeal() {
     list.appendChild(li);
   }
   $("#m-empty").classList.toggle("hidden", m.items.length > 0);
-  const steps = Array.isArray(m.steps) ? m.steps : [];
-  $("#m-method-card").classList.toggle("hidden", !steps.length);
-  $("#m-method").innerHTML = steps.map((st) => `<li>${esc(st)}</li>`).join("");
+  if (document.activeElement !== $("#m-steps")) $("#m-steps").value = (Array.isArray(m.steps) ? m.steps : []).join("\n");
   const t = mealTotals(m), portions = num(m.portions) || 1;
   $("#m-total-kcal").textContent = fmt(t.kcal);
   $("#m-total-sub").textContent = t.grams ? `about ${fmt(t.grams)} g` : "";
@@ -391,6 +389,8 @@ function renderMeal() {
 }
 $("#m-name").addEventListener("input", (e) => { mealDraft.name = e.target.value; state.mealDraft = mealDraft; save(false); });
 $("#m-portions").addEventListener("input", (e) => { mealDraft.portions = num(e.target.value) || mealDraft.portions; state.mealDraft = mealDraft; save(false); renderMeal(); });
+const stepsFromBox = () => $("#m-steps").value.split(/\n+/).map((l) => l.replace(/^\s*(?:\d+[.)]|[-*])\s*/, "").trim()).filter(Boolean);
+$("#m-steps").addEventListener("input", () => { mealDraft.steps = stepsFromBox(); state.mealDraft = mealDraft; save(false); });
 $("#m-add-scan").onclick = () => { pick = { replaceId: null }; go("scan"); };
 $("#m-type").onclick = () => { pick = { replaceId: null }; openManual(); };
 // Ingredient search right on the editor: type, tap a result, say how much, and you're back here.
@@ -422,6 +422,7 @@ $("#m-save").onclick = () => {
   if (!m.items.length) { toast("Add at least one ingredient"); return; }
   if (m.items.some((it) => it.unresolved)) { toast("Pick what the highlighted ingredients are first"); return; }
   m.portions = num($("#m-portions").value) || 1;
+  m.steps = stepsFromBox();
   m.saved = true; m.updatedAt = new Date().toISOString();
   const i = state.meals.findIndex((x) => x.id === m.id);
   if (i >= 0) state.meals[i] = m; else state.meals.unshift(m);
@@ -480,7 +481,7 @@ $("#m-share-friends").onclick = async () => {
       await c.unshareMeal(m.id); state.sharedMealIds = state.sharedMealIds.filter((x) => x !== m.id); toast("No longer shared");
     } else {
       const t = mealTotals(m), portions = num(m.portions) || 1;
-      await c.shareMeal({ id: m.id, name: m.name, portions, kcalPerPortion: Math.round(t.kcal / portions), items: m.items.map((it) => ({ ...basisOf(it), kcal: it.kcal, grams: it.grams })) });
+      await c.shareMeal({ id: m.id, name: m.name, portions, kcalPerPortion: Math.round(t.kcal / portions), items: m.items.map((it) => ({ ...basisOf(it), kcal: it.kcal, grams: it.grams })).concat(Array.isArray(m.steps) && m.steps.length ? [{ _steps: m.steps }] : []) });
       state.sharedMealIds.push(m.id); toast("Shared. Friends will see it under From friends.");
     }
     save(); renderMeal();
@@ -522,7 +523,7 @@ function renderMealLighter(m, t, portions, r) {
     <button class="btn primary" id="m-lighter-save">Save as "${esc(r.new_name || (m.name + " (lighter)"))}"</button></div>`;
   wireChat(out, "mlight", (answer) => renderMealLighter(m, t, portions, answer));
   out.querySelector("#m-lighter-save").onclick = () => {
-    state.meals.unshift({ id: uid(), name: r.new_name || `${m.name} (lighter)`, portions, items, saved: true, updatedAt: new Date().toISOString(), lighterOf: m.id });
+    state.meals.unshift({ id: uid(), name: r.new_name || `${m.name} (lighter)`, portions, items, steps: Array.isArray(m.steps) ? m.steps.slice() : [], saved: true, updatedAt: new Date().toISOString(), lighterOf: m.id });
     save(); toast("Saved as a new meal"); stack = ["home", "meals"]; show("meals");
   };
 }
@@ -818,10 +819,11 @@ function drawFriends() {
   for (const m of theirs) {
     const card = document.createElement("div");
     card.className = "card meal-card";
-    card.innerHTML = `<span class="thumb-sm tone-peach"><svg><use href="#i-meal"/></svg></span><div class="body"><div class="name">${esc(m.name)}</div><div class="detail">${m.portions} portion${m.portions == 1 ? "" : "s"} · ${fmt(m.kcal_per_portion)} kcal each · ${(m.items || []).length} ingredients</div><div class="by">${avatar(m.owner, personName(m.owner))} ${esc(personName(m.owner))}</div></div><button class="add" aria-label="Copy to my meals"><svg><use href="#i-plus"/></svg></button>`;
+    card.innerHTML = `<span class="thumb-sm tone-peach"><svg><use href="#i-meal"/></svg></span><div class="body"><div class="name">${esc(m.name)}</div><div class="detail">${m.portions} portion${m.portions == 1 ? "" : "s"} · ${fmt(m.kcal_per_portion)} kcal each · ${(m.items || []).filter((it) => it && !it._steps).length} ingredients</div><div class="by">${avatar(m.owner, personName(m.owner))} ${esc(personName(m.owner))}</div></div><button class="add" aria-label="Copy to my meals"><svg><use href="#i-plus"/></svg></button>`;
     card.querySelector(".add").onclick = () => {
       if (state.meals.some((x) => x.copiedFrom === m.id) && !confirm(`You already have "${m.name}". Add another copy?`)) return;
-      state.meals.unshift({ id: uid(), name: m.name, portions: +m.portions || 1, items: (m.items || []).map((it) => ({ ...it, id: uid() })), saved: true, copiedFrom: m.id, updatedAt: new Date().toISOString() });
+      const stepsRow = (m.items || []).find((it) => it && it._steps);
+      state.meals.unshift({ id: uid(), name: m.name, portions: +m.portions || 1, items: (m.items || []).filter((it) => it && !it._steps).map((it) => ({ ...it, id: uid() })), steps: stepsRow ? stepsRow._steps : [], saved: true, copiedFrom: m.id, updatedAt: new Date().toISOString() });
       save(); toast(`${m.name} is in your meals`);
     };
     ml.appendChild(card);
