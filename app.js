@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "48";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "49";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -2565,7 +2565,12 @@ function setAmount(value, field) {
 $("#a-kcal").addEventListener("input", (e) => setAmount(e.target.value, "kcal"));
 $("#a-grams").addEventListener("input", (e) => setAmount(e.target.value, "grams"));
 $("#a-count").addEventListener("input", (e) => setAmount(e.target.value, "count"));
-$("#share-rest").onclick = () => setAmount(Math.max(0, budgetToday() - usedKcal()), "kcal");
+$("#share-rest").onclick = () => {
+  const left = Math.max(0, budgetToday() - usedKcal());
+  if (!left) { toast("Nothing left in today's budget"); return; }
+  if (!confirm(`Set this to ${fmt(left)} kcal, all that's left of today's budget?`)) return;
+  setAmount(left, "kcal");
+};
 $("#share-reset").onclick = () => { amountKcal = null; fillAmounts(null); };
 
 function updateResult() {
