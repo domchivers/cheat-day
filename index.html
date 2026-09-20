@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=44">
-  <link rel="icon" href="icons/icon-192.png?v=44">
-  <link rel="stylesheet" href="styles.css?v=44">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=45">
+  <link rel="icon" href="icons/icon-192.png?v=45">
+  <link rel="stylesheet" href="styles.css?v=45">
 </head>
 <body>
 
@@ -390,6 +390,14 @@
     <span></span>
   </header>
   <div class="card form-card">
+    <div class="photo-row" id="m-photo-row">
+      <img id="m-photo" alt="" class="hidden">
+      <button class="btn mint slim" id="m-photo-cam">📷 Photo</button>
+      <button class="btn mint slim" id="m-photo-lib">From photos</button>
+      <button class="btn ghost slim hidden" id="m-photo-remove">Remove</button>
+    </div>
+    <input type="file" accept="image/*" capture="environment" id="file-meal-cam" hidden>
+    <input type="file" accept="image/*" id="file-meal-lib" hidden>
     <label>What is it?
       <input type="text" id="m-name" placeholder="e.g. Carrot cake" autocapitalize="sentences">
     </label>
@@ -555,6 +563,14 @@
       <div class="macros" id="r-macros"></div>
     </div>
 
+    <div class="photo-row" id="share-photo-row">
+      <img id="share-photo" alt="" class="hidden">
+      <button class="btn mint slim" id="share-photo-cam">📷 Add a photo</button>
+      <button class="btn mint slim" id="share-photo-lib">From photos</button>
+      <button class="btn ghost slim hidden" id="share-photo-remove">Remove</button>
+    </div>
+    <input type="file" accept="image/*" capture="environment" id="file-share-cam" hidden>
+    <input type="file" accept="image/*" id="file-share-lib" hidden>
     <div class="chat">
       <input type="text" id="item-talk" placeholder="Tweak it: added extra beef rolls, didn't drink the soup…" autocapitalize="sentences">
       <button class="btn primary slim" id="item-talk-go">Send</button>
@@ -569,10 +585,10 @@
 <div class="toast hidden" id="toast"></div>
 
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=44"></script>
-<script src="foods.js?v=44"></script>
-<script src="supabase-config.js?v=44"></script>
-<script src="cloud.js?v=44"></script>
-<script src="app.js?v=44"></script>
+<script src="presets.js?v=45"></script>
+<script src="foods.js?v=45"></script>
+<script src="supabase-config.js?v=45"></script>
+<script src="cloud.js?v=45"></script>
+<script src="app.js?v=45"></script>
 </body>
 </html>

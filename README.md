@@ -176,6 +176,14 @@ of a paid Anthropic key. Two ways to set it up:
 
 An Anthropic key still works and is used only when there's no Gemini route.
 
+## Photos on what you log
+
+The How much? screen has "Add a photo" (camera or library); anything you
+photographed for a label read or an estimate is attached automatically. Meals
+take a photo in their editor. Photos show as the thumbnails in Today, History
+and the Meals list, travel in shared links, and are kept small (about 10 KB)
+so they don't weigh down the app or sync. History keeps them for two weeks.
+
 ## Workouts
 
 The **Workouts** card logs activities (walk, run, cycle, swim, gym weights,

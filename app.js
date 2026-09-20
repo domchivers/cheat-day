@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "44";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "45";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -107,7 +107,7 @@ function shortAmounts(item) {
   if (mt) parts.push(mt);
   return parts.join(" · ");
 }
-const BASIS_KEYS = ["name", "brand", "source", "unit", "unitLabel", "kcalPer100", "servingSize", "kcalPerServing", "packSize", "piecesPerPack", "image", "mealId", "p100", "c100", "f100", "pServ", "cServ", "fServ"];
+const BASIS_KEYS = ["name", "brand", "source", "unit", "unitLabel", "kcalPer100", "servingSize", "kcalPerServing", "packSize", "piecesPerPack", "image", "photo", "mealId", "p100", "c100", "f100", "pServ", "cServ", "fServ"];
 function basisOf(obj) {
   const b = {};
   for (const k of BASIS_KEYS) if (obj[k] != null && obj[k] !== "") b[k] = obj[k];
@@ -155,6 +155,7 @@ function archiveDay() {
   state.history.unshift({ date: state.day.date, budget: budgetToday(), kcal: usedKcal(), items: state.day.items.map((it) => ({ ...basisOf(it), kcal: it.kcal, shareLabel: it.shareLabel })),
     p: Math.round(m.p), c: Math.round(m.c), f: Math.round(m.f), burned: burnedKcal(), workouts: (state.day.workouts || []).map((w) => ({ name: w.name, minutes: w.minutes, kcal: w.kcal, lifts: w.lifts || [] })) });
   state.history = state.history.slice(0, 120);
+  state.history.slice(14).forEach((h) => { if (Array.isArray(h.items)) h.items.forEach((it) => { delete it.photo; }); });
 }
 function rollDay() {
   if (state.day.date === localDate()) return false;
@@ -203,7 +204,8 @@ function iconFor(source) {
 }
 function itemRow(it) {
   const li = document.createElement("li");
-  const thumb = it.image ? `<img class="thumb-sm" src="${esc(it.image)}" alt="">` : `<span class="thumb-sm"><svg><use href="#i-${iconFor(it.source)}"/></svg></span>`;
+  const pic = it.photo || it.image;
+  const thumb = pic ? `<img class="thumb-sm" src="${esc(pic)}" alt="">` : `<span class="thumb-sm"><svg><use href="#i-${iconFor(it.source)}"/></svg></span>`;
   li.innerHTML = `${thumb}
     <div class="body"><div class="name">${esc(it.name || "Unnamed")}</div><div class="detail">${esc(shortAmounts(it))}</div></div>
     <div class="kcal">${fmt(it.kcal)}</div>
@@ -242,7 +244,8 @@ function renderQuick() {
     const li = document.createElement("li");
     const b = q.basis;
     const detail = q.detail || shortAmounts({ ...b, kcal: q.lastKcal, shareLabel: q.lastShareLabel });
-    const thumb = b.image ? `<img class="thumb-sm" src="${esc(b.image)}" alt="">` : `<span class="thumb-sm ${q.meal ? "tone-peach" : ""}"><svg><use href="#i-${iconFor(b.source)}"/></svg></span>`;
+    const qp = b.photo || b.image;
+    const thumb = qp ? `<img class="thumb-sm" src="${esc(qp)}" alt="">` : `<span class="thumb-sm ${q.meal ? "tone-peach" : ""}"><svg><use href="#i-${iconFor(b.source)}"/></svg></span>`;
     li.innerHTML = `${thumb}
       <div class="body"><div class="name">${esc(b.name)}</div><div class="detail">${esc(detail)}</div></div>
       <div class="kcal">${fmt(q.lastKcal)}</div><button class="add" aria-label="Add"><svg><use href="#i-plus"/></svg></button>`;
@@ -303,7 +306,7 @@ function mealTotals(meal) {
 function mealBasis(meal) {
   const t = mealTotals(meal), portions = num(meal.portions) || 1;
   return {
-    name: meal.name || "Meal", source: "meal", mealId: meal.id, unit: "g",
+    name: meal.name || "Meal", source: "meal", mealId: meal.id, unit: "g", photo: meal.photo || null,
     kcalPer100: t.grams ? t.kcal / t.grams * 100 : null,
     servingSize: t.grams ? t.grams / portions : null,
     kcalPerServing: t.kcal / portions, unitLabel: "portion",
@@ -327,7 +330,7 @@ function renderMeals() {
   for (const m of state.meals) {
     const t = mealTotals(m), portions = num(m.portions) || 1;
     const li = document.createElement("li");
-    li.innerHTML = `<span class="thumb-sm tone-peach"><svg><use href="#i-meal"/></svg></span>
+    li.innerHTML = `${m.photo ? `<img class="thumb-sm" src="${esc(m.photo)}" alt="">` : `<span class="thumb-sm tone-peach"><svg><use href="#i-meal"/></svg></span>`}
       <div class="body"><div class="name">${esc(m.name)}</div><div class="detail">${portions} portion${portions === 1 ? "" : "s"} · ${fmt(t.kcal / portions)} kcal each · ${m.items.length} ingredient${m.items.length === 1 ? "" : "s"}</div></div>
       <button class="add" aria-label="Add a portion to today"><svg><use href="#i-plus"/></svg></button>
       <button class="del" aria-label="Delete meal">✕</button>`;
@@ -340,9 +343,22 @@ function renderMeals() {
 }
 $("#meals-new").onclick = () => { mealDraft = newMeal(); state.mealDraft = mealDraft; save(false); go("meal"); };
 
+function showMealPhoto() {
+  const m = mealDraft, img = $("#m-photo"), has = !!(m && m.photo);
+  img.classList.toggle("hidden", !has); if (has) img.src = m.photo;
+  $("#m-photo-remove").classList.toggle("hidden", !has);
+  $("#m-photo-cam").textContent = has ? "📷 Retake" : "📷 Photo";
+}
+async function attachMealPhoto(file) { try { mealDraft.photo = await thumbFrom(file); state.mealDraft = mealDraft; save(false); showMealPhoto(); } catch (e) { toast("Couldn't read that photo"); } }
+$("#m-photo-cam").onclick = () => $("#file-meal-cam").click();
+$("#m-photo-lib").onclick = () => $("#file-meal-lib").click();
+$("#file-meal-cam").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) attachMealPhoto(f); });
+$("#file-meal-lib").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) attachMealPhoto(f); });
+$("#m-photo-remove").onclick = () => { delete mealDraft.photo; state.mealDraft = mealDraft; save(false); showMealPhoto(); };
 function renderMeal() {
   if (!mealDraft) mealDraft = state.mealDraft || newMeal();
   const m = mealDraft;
+  showMealPhoto();
   if (document.activeElement !== $("#m-q")) { $("#m-q").value = ""; $("#m-results").innerHTML = ""; $("#m-noresult").classList.add("hidden"); }
   if (!renderMeal.lastId || renderMeal.lastId !== m.id) $("#m-lighter-out").innerHTML = "";
   renderMeal.lastId = m.id;
@@ -444,7 +460,7 @@ const b64url = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-"
 const unb64url = (str) => Uint8Array.from(atob(str.replace(/-/g, "+").replace(/_/g, "/")), (ch) => ch.charCodeAt(0));
 async function encodeMeal(m) {
   const items = m.items.map((it) => ({ ...basisOf(it), kcal: it.kcal, grams: it.grams }));
-  const bytes = new TextEncoder().encode(JSON.stringify({ v: 1, name: m.name, portions: m.portions, items, steps: m.steps || [] }));
+  const bytes = new TextEncoder().encode(JSON.stringify({ v: 1, name: m.name, portions: m.portions, items, steps: m.steps || [], photo: m.photo || null }));
   if (window.CompressionStream) {
     const cs = new CompressionStream("gzip"); const w = cs.writable.getWriter(); w.write(bytes); w.close();
     return "g" + b64url(new Uint8Array(await new Response(cs.readable).arrayBuffer()));
@@ -479,7 +495,7 @@ async function importMealFromLink() {
   try { m = await decodeMeal(code); } catch (e) { toast("That meal link didn't open"); return; }
   const t = mealTotals(m), portions = num(m.portions) || 1;
   if (!confirm(`Add "${m.name}" to your meals?\n\n${m.items.length} ingredients, ${portions} portion${portions === 1 ? "" : "s"}, ${fmt(t.kcal / portions)} kcal each.`)) return;
-  state.meals.unshift({ id: uid(), name: m.name, portions, items: m.items.map((it) => ({ ...it, id: uid() })), steps: m.steps || [], saved: true, shared: true, updatedAt: new Date().toISOString() });
+  state.meals.unshift({ id: uid(), name: m.name, portions, items: m.items.map((it) => ({ ...it, id: uid() })), steps: m.steps || [], photo: m.photo || null, saved: true, shared: true, updatedAt: new Date().toISOString() });
   save(); toast(`Added ${m.name}`); stack = ["home", "meals"]; show("meals");
 }
 $("#m-share-friends").onclick = async () => {
@@ -632,7 +648,7 @@ function renderHistory() {
     let body = "";
     if (items.length) {
       body = histOpen.has(d.date)
-        ? `<ul class="ate">${items.map((it) => `<li><span>${esc(it.name)}</span><b>${fmt(it.kcal)}</b></li>`).join("")}</ul><button class="btn mint ate-btn" data-act="toggle">Hide</button>`
+        ? `<ul class="ate">${items.map((it) => `<li><span>${it.photo ? `<img class="pic" src="${esc(it.photo)}" alt="">` : ""}${esc(it.name)}</span><b>${fmt(it.kcal)}</b></li>`).join("")}</ul><button class="btn mint ate-btn" data-act="toggle">Hide</button>`
         : `<div class="items muted tiny">${esc(items.map((it) => it.name).slice(0, 3).join(", "))}${items.length > 3 ? ` and ${items.length - 3} more` : ""}</div><button class="btn mint ate-btn" data-act="toggle">What I had (${items.length}) ▾</button>`;
     } else if (count) body = `<div class="muted tiny">${count} item${count === 1 ? "" : "s"} (logged before history kept the details)</div>`;
     card.innerHTML = `<div class="top"><b>${esc(label)}</b><span class="kcal ${over ? "over" : "ok"}">${fmt(d.kcal)} / ${fmt(d.budget)} kcal</span></div>${d.burned ? `<div class="burned tiny">Burned ${fmt(d.burned)} kcal: ${esc((d.workouts || []).map((w) => w.name).join(", "))}</div>` : ""}
@@ -1721,6 +1737,14 @@ async function decodeBarcodeFromFile(file) {
   }
   return null;
 }
+/** A small square thumbnail (data URL) from a File or data URL: about 10 KB, fine to keep and sync. */
+async function thumbFrom(src) {
+  const img = await loadImage(src instanceof Blob ? src : await (await fetch(src)).blob());
+  const size = 256, c = document.createElement("canvas"); c.width = size; c.height = size;
+  const iw = img.naturalWidth, ih = img.naturalHeight, m = Math.min(iw, ih);
+  c.getContext("2d").drawImage(img, (iw - m) / 2, (ih - m) / 2, m, m, 0, 0, size, size);
+  return c.toDataURL("image/jpeg", 0.7);
+}
 function loadImage(file) {
   return new Promise((resolve, reject) => {
     const img = new Image(); img.onload = () => resolve(img); img.onerror = reject; img.src = URL.createObjectURL(file);
@@ -2161,8 +2185,23 @@ function conv(item) {
   else if (item.servingSize && kcalPer100) { countKcal = item.servingSize * kcalPer100 / 100; countLabel = "serving"; }
   return { kcalPer100, countKcal, countLabel };
 }
+function showSharePhoto() {
+  const img = $("#share-photo"), has = !!(draft && draft.photo);
+  img.classList.toggle("hidden", !has); if (has) img.src = draft.photo;
+  $("#share-photo-remove").classList.toggle("hidden", !has);
+  $("#share-photo-cam").textContent = has ? "📷 Retake" : "📷 Add a photo";
+}
+async function attachPhoto(file) { try { draft.photo = await thumbFrom(file); showSharePhoto(); } catch (e) { toast("Couldn't read that photo"); } }
+$("#share-photo-cam").onclick = () => $("#file-share-cam").click();
+$("#share-photo-lib").onclick = () => $("#file-share-lib").click();
+$("#file-share-cam").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) attachPhoto(f); });
+$("#file-share-lib").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) attachPhoto(f); });
+$("#share-photo-remove").onclick = () => { delete draft.photo; showSharePhoto(); };
 function openShare(prefillKcal) {
   const c = conv(draft);
+  // A label read or an estimate came with a photo: keep a small copy of it with the entry
+  if (!draft.photo && draft.image && String(draft.image).startsWith("data:")) thumbFrom(draft.image).then((t) => { if (draft) { draft.photo = t; showSharePhoto(); } }).catch(() => {});
+  showSharePhoto();
   $("#share-name").textContent = draft.name;
   $("#share-add").textContent = pick ? "Add to the meal" : editId ? "Save changes" : "Add to today";
   $("#item-talk").value = ""; $("#item-talk-note").classList.add("hidden");
