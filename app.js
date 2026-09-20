@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "43";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "44";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -18,7 +18,7 @@ function localDate(d = new Date()) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 function load() {
-  const base = { budget: 1600, apiKey: "", geminiKey: "", day: { date: localDate(), items: [] }, history: [], recent: [], meals: [], presetUses: {}, mealDraft: null, shareDay: true, sharedMealIds: [], goals: { p: null, c: null, f: null }, chats: [], notes: "" };
+  const base = { budget: 1600, apiKey: "", geminiKey: "", day: { date: localDate(), items: [] }, history: [], recent: [], meals: [], presetUses: {}, mealDraft: null, shareDay: true, sharedMealIds: [], goals: { p: null, c: null, f: null }, chats: [], notes: "", weightKg: null, eatBack: false, recentWorkouts: [], exercises: {} };
   try { const raw = localStorage.getItem(STORE_KEY); if (raw) Object.assign(base, JSON.parse(raw)); } catch (e) {}
   if (!Array.isArray(base.recent)) base.recent = [];
   if (!Array.isArray(base.meals)) base.meals = [];
@@ -27,6 +27,9 @@ function load() {
   if (base.shareDay == null) base.shareDay = true;
   if (!base.goals || typeof base.goals !== "object") base.goals = { p: null, c: null, f: null };
   if (!Array.isArray(base.chats)) base.chats = [];
+  if (!Array.isArray(base.recentWorkouts)) base.recentWorkouts = [];
+  if (!base.exercises || typeof base.exercises !== "object") base.exercises = {};
+  if (!Array.isArray(base.day.workouts)) base.day.workouts = [];
   return base;
 }
 function save(sync = true) {
@@ -36,6 +39,8 @@ function save(sync = true) {
 }
 const state = load();
 const usedKcal = () => state.day.items.reduce((s, it) => s + it.kcal, 0);
+const burnedKcal = () => (state.day.workouts || []).reduce((s, w) => s + (w.kcal || 0), 0);
+const budgetToday = () => state.budget + (state.eatBack ? burnedKcal() : 0);   // the day's allowance, stretched by workouts only if asked
 
 // ---------------------------------------------------------------- helpers
 
@@ -112,7 +117,7 @@ function basisOf(obj) {
 
 // ---------------------------------------------------------------- router
 
-const VIEWS = ["home", "budget", "settings", "history", "friends", "ask", "chats", "scan", "search", "meals", "meal", "details", "share"];
+const VIEWS = ["home", "budget", "settings", "history", "friends", "workouts", "ask", "chats", "scan", "search", "meals", "meal", "details", "share"];
 let stack = ["home"];
 function show(view) {
   for (const v of VIEWS) $(`#view-${v}`).classList.toggle("hidden", v !== view);
@@ -121,13 +126,14 @@ function show(view) {
   if (view !== "scan") stopCamera();
   if (view === "home") renderHome();
   if (view === "settings") renderSettings();
-  if (view === "budget") { $("#b-budget").value = state.budget; $$("#budget-chips button").forEach((b) => b.classList.toggle("on", +b.dataset.b === state.budget)); const g = state.goals || {}; $("#b-p").value = g.p ?? ""; $("#b-c").value = g.c ?? ""; $("#b-f").value = g.f ?? ""; $("#b-notes").value = state.notes || ""; }
+  if (view === "budget") { $("#b-budget").value = state.budget; $$("#budget-chips button").forEach((b) => b.classList.toggle("on", +b.dataset.b === state.budget)); const g = state.goals || {}; $("#b-p").value = g.p ?? ""; $("#b-c").value = g.c ?? ""; $("#b-f").value = g.f ?? ""; $("#b-notes").value = state.notes || ""; $("#b-weight").value = state.weightKg || ""; }
   if (view === "scan") startCamera();
   if (view === "search") openSearch();
   if (view === "meals") renderMeals();
   if (view === "friends") renderFriends();
   if (view === "history") renderHistory();
   if (view === "ask") renderAsk();
+  if (view === "workouts") renderWorkouts();
   if (view === "chats") renderChats();
   if (view === "meal") renderMeal();
 }
@@ -144,27 +150,31 @@ document.addEventListener("click", (e) => {
 
 /** A new calendar day: file today under History and start clean. Runs on open, on return, and on every home render. */
 function archiveDay() {
-  if (!state.day.items.length) return;
+  if (!state.day.items.length && !(state.day.workouts || []).length) return;
   const m = sumMacros(state.day.items);
-  state.history.unshift({ date: state.day.date, budget: state.budget, kcal: usedKcal(), items: state.day.items.map((it) => ({ ...basisOf(it), kcal: it.kcal, shareLabel: it.shareLabel })),
-    p: Math.round(m.p), c: Math.round(m.c), f: Math.round(m.f) });
+  state.history.unshift({ date: state.day.date, budget: budgetToday(), kcal: usedKcal(), items: state.day.items.map((it) => ({ ...basisOf(it), kcal: it.kcal, shareLabel: it.shareLabel })),
+    p: Math.round(m.p), c: Math.round(m.c), f: Math.round(m.f), burned: burnedKcal(), workouts: (state.day.workouts || []).map((w) => ({ name: w.name, minutes: w.minutes, kcal: w.kcal, lifts: w.lifts || [] })) });
   state.history = state.history.slice(0, 120);
 }
 function rollDay() {
   if (state.day.date === localDate()) return false;
   archiveDay();
-  state.day = { date: localDate(), items: [] };
+  state.day = { date: localDate(), items: [], workouts: [] };
   save();
   return true;
 }
 function renderHome() {
   rollDay();
-  const used = usedKcal(), left = state.budget - used;
+  const used = usedKcal(), budget = budgetToday(), left = budget - used, burned = burnedKcal();
   $("#home-used").textContent = fmt(used);
-  $("#home-budget").textContent = fmt(state.budget);
+  $("#home-budget").textContent = state.eatBack && burned ? `${fmt(state.budget)} + ${fmt(burned)}` : fmt(state.budget);
   const bar = $("#home-bar");
-  bar.style.width = `${Math.min(100, state.budget > 0 ? used / state.budget * 100 : 0)}%`;
+  bar.style.width = `${Math.min(100, budget > 0 ? used / budget * 100 : 0)}%`;
   bar.classList.toggle("over", left < 0);
+  const hb = $("#home-burned");
+  hb.classList.toggle("hidden", !burned);
+  hb.textContent = burned ? `Burned ${fmt(burned)} kcal in ${(state.day.workouts || []).length} workout${state.day.workouts.length === 1 ? "" : "s"}${state.eatBack ? ", added to your budget" : ""}` : "";
+  $("#workouts-sub").textContent = burned ? `${(state.day.workouts || []).map((w) => w.name).join(", ")} · ${fmt(burned)} kcal` : "Log a walk, a run or a gym session and see what it burned";
   const mac = sumMacros(state.day.items);
   const g = state.goals || {};
   const tile = (label, v, goal) => `<span class="tile"><b>${Math.round(v)} g</b><small>${label}</small>${goal ? `<span class="goal">of ${goal} g</span><span class="bar"><span style="width:${Math.min(100, v / goal * 100)}%" class="${v > goal * 1.1 ? "over" : ""}"></span></span>` : ""}</span>`;
@@ -625,7 +635,7 @@ function renderHistory() {
         ? `<ul class="ate">${items.map((it) => `<li><span>${esc(it.name)}</span><b>${fmt(it.kcal)}</b></li>`).join("")}</ul><button class="btn mint ate-btn" data-act="toggle">Hide</button>`
         : `<div class="items muted tiny">${esc(items.map((it) => it.name).slice(0, 3).join(", "))}${items.length > 3 ? ` and ${items.length - 3} more` : ""}</div><button class="btn mint ate-btn" data-act="toggle">What I had (${items.length}) ▾</button>`;
     } else if (count) body = `<div class="muted tiny">${count} item${count === 1 ? "" : "s"} (logged before history kept the details)</div>`;
-    card.innerHTML = `<div class="top"><b>${esc(label)}</b><span class="kcal ${over ? "over" : "ok"}">${fmt(d.kcal)} / ${fmt(d.budget)} kcal</span></div>
+    card.innerHTML = `<div class="top"><b>${esc(label)}</b><span class="kcal ${over ? "over" : "ok"}">${fmt(d.kcal)} / ${fmt(d.budget)} kcal</span></div>${d.burned ? `<div class="burned tiny">Burned ${fmt(d.burned)} kcal: ${esc((d.workouts || []).map((w) => w.name).join(", "))}</div>` : ""}
       <span class="bar"><span style="width:${pct}%" class="${over ? "over" : ""}"></span></span>
       ${d.p != null ? `<div class="macros">${macroText({ p: d.p, c: d.c, f: d.f }, true)}</div>` : ""}${body}`;
     const tog = card.querySelector("[data-act=toggle]");
@@ -652,6 +662,7 @@ $("#budget-save").onclick = () => {
   state.budget = Math.round(b);
   state.goals = { p: num($("#b-p").value) ? Math.round(num($("#b-p").value)) : null, c: num($("#b-c").value) ? Math.round(num($("#b-c").value)) : null, f: num($("#b-f").value) ? Math.round(num($("#b-f").value)) : null };
   state.notes = $("#b-notes").value.trim();
+  state.weightKg = num($("#b-weight").value) || null;
   save(); toast(`Budget set to ${fmt(state.budget)} kcal`); home();
 };
 
@@ -663,6 +674,7 @@ function renderSettings() {
   $("#s-geminikey").value = state.geminiKey || "";
   $("#s-ai-status").textContent = (window.cloud && window.cloud.user && aiProxyState === "yes") ? "Using the shared key from the app's server: nothing to add here." : state.geminiKey ? "Using your Gemini key (free)." : state.apiKey ? "Using your Anthropic key." : "No key yet. A free Google Gemini key from aistudio.google.com is enough.";
   $("#s-version").textContent = APP_VERSION;
+  $("#s-eatback").checked = !!state.eatBack;
   renderAccount();
   const d = state.day.date;
   $("#s-day").textContent = d === localDate() ? "Today" : new Date(d + "T12:00").toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "short" });
@@ -675,6 +687,7 @@ $("#settings-save").onclick = () => {
   state.geminiKey = $("#s-geminikey").value.trim();
   save(); toast("Saved"); home();
 };
+$("#s-eatback").addEventListener("change", (e) => { state.eatBack = e.target.checked; save(); toast(state.eatBack ? "Workouts now stretch your budget" : "Budget stays put; workouts still recorded"); });
 $("#btn-update").onclick = async () => {
   busy("Fetching the latest version…");
   try {
@@ -692,7 +705,7 @@ $("#btn-update").onclick = async () => {
 $("#btn-new-day").onclick = () => {
   if (state.day.items.length && !confirm("Start a fresh day now? Today's list goes into History.")) return;
   archiveDay();
-  state.day = { date: localDate(), items: [] };
+  state.day = { date: localDate(), items: [], workouts: [] };
   save(); toast("New day started"); home();
 };
 
@@ -894,15 +907,18 @@ const TALK_SCHEMA = {
   properties: {
     reply: { type: "string", description: "One friendly sentence back to the person; if nothing needs changing, say what you understood or answer their question" },
     actions: { type: "array", items: { type: "object", properties: {
-      action: { type: "string", enum: ["add", "remove", "update", "set_budget"] },
+      action: { type: "string", enum: ["add", "remove", "update", "set_budget", "workout"] },
       target: { type: ["string", "null"], description: "For remove/update: the exact name of the existing item from the list" },
+      minutes: { type: ["number", "null"], description: "For workout: how long" }, effort: { type: ["string", "null"], enum: ["easy", "moderate", "hard", null], description: "For workout" },
+      activity: { type: ["string", "null"], description: "For workout: one of Walk, Run, Cycle, Swim, Gym weights, HIIT, Yoga / stretch, Football, Tennis / padel, Hike, Rowing, Elliptical, Dance, Boxing, Climbing, Other" },
+      lifts: { type: ["array", "null"], description: "For a gym workout: the exercises", items: { type: "object", properties: { exercise: { type: "string" }, sets: { type: "number" }, reps: { type: "number" }, kg: { type: "number" } }, required: ["exercise", "sets", "reps", "kg"], additionalProperties: false } },
       name: { type: ["string", "null"], description: "For add: what the food is" },
       grams: { type: ["number", "null"], description: "amount in g or ml if known" },
       count: { type: ["number", "null"], description: "how many pieces/servings if that's how they said it" },
       kcal: { type: ["number", "null"], description: "your best estimate of kcal for the amount (add) or the corrected total (update)" },
       protein_g: { type: ["number", "null"] }, carbs_g: { type: ["number", "null"] }, fat_g: { type: ["number", "null"] },
       budget: { type: ["number", "null"], description: "for set_budget" }
-    }, required: ["action", "target", "name", "grams", "count", "kcal", "protein_g", "carbs_g", "fat_g", "budget"], additionalProperties: false } }
+    }, required: ["action", "target", "name", "grams", "count", "kcal", "protein_g", "carbs_g", "fat_g", "budget", "minutes", "effort", "activity", "lifts"], additionalProperties: false } }
   },
   required: ["reply", "actions"],
   additionalProperties: false
@@ -913,7 +929,7 @@ async function talk() {
   const text = $("#talk").value.trim(); if (!text) return;
   if (!aiAvailable()) { aiHelp(); return; }
   const list = state.day.items.map((it) => `- "${it.name}": ${it.kcal} kcal${(() => { const a = amountsFor(it, it.kcal); return a.grams != null ? `, ${Math.round(a.grams)} ${it.unit || "g"}` : ""; })()}`).join("\n") || "(nothing yet)";
-  const prompt = `You maintain someone's food diary for today. Budget ${state.budget} kcal, eaten ${usedKcal()} kcal so far. Today's list:\n${list}\n\nThey say: "${text}"\n\nTurn that into actions on the list. Use "update" with the corrected total kcal (and amount) when they say they had more or less of an existing item; "remove" to take one off; "add" for new things with a realistic kcal estimate for the amount; "set_budget" if they change the day's budget. Match targets to the exact names in the list. If they're only asking a question, return no actions and answer in reply.`;
+  const prompt = `You maintain someone's food diary for today. Budget ${state.budget} kcal, eaten ${usedKcal()} kcal so far. Today's list:\n${list}\n\nThey say: "${text}"\n\nTurn that into actions on the list. Use "update" with the corrected total kcal (and amount) when they say they had more or less of an existing item; "remove" to take one off; "add" for new things with a realistic kcal estimate for the amount; "set_budget" if they change the day's budget; "workout" when they did exercise (activity from the list, minutes, effort, and for gym sessions the lifts as sets × reps at kg). Match targets to the exact names in the list. If they're only asking a question, return no actions and answer in reply.`;
   busy("Working out what you meant…");
   let r;
   try { r = await askAI(TALK_SCHEMA, [{ type: "text", text: prompt }]); busy(false); }
@@ -929,6 +945,13 @@ async function talk() {
 }
 /** Turn one model action into a label + a function that does it, using our own food data where we have it. */
 function planTalkAction(a) {
+  if (a.action === "workout") {
+    const type = (ACTIVITIES.find((x) => x[0].toLowerCase() === String(a.activity || "").toLowerCase()) || ["Other"])[0];
+    const minutes = num(a.minutes) || 30, effort = ["easy", "moderate", "hard"].includes(a.effort) ? a.effort : "moderate";
+    const lifts = Array.isArray(a.lifts) ? a.lifts.filter((l) => l && l.exercise).map((l) => ({ exercise: l.exercise, sets: num(l.sets) || 1, reps: num(l.reps) || 1, kg: nz(l.kg) || 0 })) : [];
+    const name = a.name || type;
+    return { label: `Log workout: ${name}, ${minutes} min ${effort} (about ${fmt(burnFor(type, minutes, effort))} kcal)${lifts.length ? `, ${lifts.length} exercise${lifts.length === 1 ? "" : "s"}` : ""}`, run: () => logWorkout({ type, name, minutes, effort, lifts }) };
+  }
   const findItem = (t) => { if (!t) return null; const tl = t.toLowerCase(); return state.day.items.find((it) => it.name.toLowerCase() === tl) || state.day.items.find((it) => it.name.toLowerCase().includes(tl) || tl.includes(it.name.toLowerCase())); };
   if (a.action === "set_budget" && num(a.budget)) {
     const b = Math.round(a.budget);
@@ -1034,10 +1057,12 @@ const ASSIST_SCHEMA = {
     }, required: ["suggestions"], additionalProperties: false },
     edit: { type: ["object", "null"], description: "kind=edit: changes to today's list", properties: {
       actions: { type: "array", items: { type: "object", properties: {
-        action: { type: "string", enum: ["add", "remove", "update", "set_budget"] },
+        action: { type: "string", enum: ["add", "remove", "update", "set_budget", "workout"] },
         target: { type: ["string", "null"] }, name: { type: ["string", "null"] }, grams: { type: ["number", "null"] }, count: { type: ["number", "null"] },
-        kcal: { type: ["number", "null"] }, protein_g: { type: ["number", "null"] }, carbs_g: { type: ["number", "null"] }, fat_g: { type: ["number", "null"] }, budget: { type: ["number", "null"] }
-      }, required: ["action", "target", "name", "grams", "count", "kcal", "protein_g", "carbs_g", "fat_g", "budget"], additionalProperties: false } }
+        kcal: { type: ["number", "null"] }, protein_g: { type: ["number", "null"] }, carbs_g: { type: ["number", "null"] }, fat_g: { type: ["number", "null"] }, budget: { type: ["number", "null"] },
+        minutes: { type: ["number", "null"] }, effort: { type: ["string", "null"], enum: ["easy", "moderate", "hard", null] }, activity: { type: ["string", "null"] },
+        lifts: { type: ["array", "null"], items: { type: "object", properties: { exercise: { type: "string" }, sets: { type: "number" }, reps: { type: "number" }, kg: { type: "number" } }, required: ["exercise", "sets", "reps", "kg"], additionalProperties: false } }
+      }, required: ["action", "target", "name", "grams", "count", "kcal", "protein_g", "carbs_g", "fat_g", "budget", "minutes", "effort", "activity", "lifts"], additionalProperties: false } }
     }, required: ["actions"], additionalProperties: false },
     recipe: { type: ["object", "null"], description: "kind=recipe: a dish they can cook and save as a meal", properties: {
       name: { type: "string" }, portions: { type: "number" },
@@ -1145,7 +1170,8 @@ function dayContext() {
   const past = state.history.slice(0, 3).map((h) => `${h.date}: ${h.kcal}/${h.budget} kcal${Array.isArray(h.items) && h.items.length ? ` (${h.items.slice(0, 6).map((it) => it.name).join(", ")}${h.items.length > 6 ? "…" : ""})` : ""}`).join("; ") || "none yet";
   const meals = state.meals.slice(0, 12).map((m) => { const t = mealTotals(m), n = num(m.portions) || 1; return `"${m.name}" (${n} portions, ${fmt(t.kcal / n)} kcal each: ${(m.items || []).slice(0, 8).map((it) => `${it.name} ${it.grams != null ? Math.round(it.grams) + " g" : ""}`).join(", ")})`; }).join("; ") || "none";
   const notes = (state.notes || "").trim();
-  return `${notes ? `About this person, in their own words (respect it in every suggestion): ${notes}\n` : ""}Today: budget ${state.budget} kcal, eaten ${usedKcal()} kcal (${eaten}), ${d.left} kcal left. Macro goals: protein ${g.p || "none"} g, carbs ${g.c || "none"} g, fat ${g.f || "none"} g; so far protein ${Math.round(d.mac.p)} g, carbs ${Math.round(d.mac.c)} g, fat ${Math.round(d.mac.f)} g.
+  const wk = (state.day.workouts || []).map((w) => `${w.name} ${w.minutes} min (${w.kcal} kcal)`).join(", ") || "none";
+  return `${notes ? `About this person, in their own words (respect it in every suggestion): ${notes}\n` : ""}Today: budget ${budgetToday()} kcal${state.eatBack ? " (includes calories burned)" : ""}, eaten ${usedKcal()} kcal (${eaten}), ${d.left} kcal left. Workouts today: ${wk}; weight ${state.weightKg || "unknown"} kg. Macro goals: protein ${g.p || "none"} g, carbs ${g.c || "none"} g, fat ${g.f || "none"} g; so far protein ${Math.round(d.mac.p)} g, carbs ${Math.round(d.mac.c)} g, fat ${Math.round(d.mac.f)} g.
 Recent days: ${past}.
 Things they often have: ${quickEntries().slice(0, 8).map((q) => q.basis.name).join(", ") || "unknown"}.
 Their saved meals, with ingredients: ${meals}. If they ask to change one of these, return kind=recipe with the SAME name and the full revised ingredient list.`;
@@ -1167,7 +1193,7 @@ ${history ? `Recent conversation:\n${history}\n` : ""}They now say: "${text || "
 Decide what they want and fill exactly one of estimate / plan / edit / recipe / lighter (leave the others null), or kind=answer for a plain question:
 - estimate: a food or plate to log, as one portion with honest kcal and macros.
 - plan: 3 to 5 things for the rest of today that fit the calories left, close the macro gaps as far as sensible, and leave room for one treat.
-- edit: they're correcting today's list ("I only had 2 eggs", "remove the toast", "add a banana"); match targets to the exact names given above.
+- edit: they're correcting today's list ("I only had 2 eggs", "remove the toast", "add a banana") or logging exercise (action "workout": activity from Walk, Run, Cycle, Swim, Gym weights, HIIT, Yoga / stretch, Football, Tennis / padel, Hike, Rowing, Elliptical, Dance, Boxing, Climbing, Other; minutes; effort; for gym sessions the lifts as sets × reps at kg); match targets to the exact names given above.
 - recipe: a dish to cook, with realistic ingredient amounts, kcal and macros per ingredient, and short method steps; respect any calorie or protein target they give and the calories they have left if they mention it.
 - lighter: a lighter way to have something, with tips and the lighter serving's numbers.
 Estimates use standard reference values. Keep reply short and friendly.`;
@@ -1282,7 +1308,7 @@ function recipeIngredientToItem(x) {
 // what's left, and what's short (no key needed)
 function dayGaps() {
   const mac = sumMacros(state.day.items), g = state.goals || {};
-  return { left: state.budget - usedKcal(), p: g.p ? Math.max(0, g.p - mac.p) : null, c: g.c ? Math.max(0, g.c - mac.c) : null, f: g.f ? Math.max(0, g.f - mac.f) : null, mac };
+  return { left: budgetToday() - usedKcal(), p: g.p ? Math.max(0, g.p - mac.p) : null, c: g.c ? Math.max(0, g.c - mac.c) : null, f: g.f ? Math.max(0, g.f - mac.f) : null, mac };
 }
 function showFits() {
   const d = dayGaps();
@@ -1319,6 +1345,103 @@ function showFits() {
   }
   if (!picks.length) ul.innerHTML = `<li class="muted">Nothing in the list fits in ${fmt(d.left)} kcal.</li>`;
   el.appendChild(ul); scrollThread();
+}
+
+
+// ---------------------------------------------------------------- workouts: activities with a burn estimate, and a lifting log
+
+// Typical intensity (MET) per activity; kcal = MET x weight (kg) x hours. Rough by nature, and labelled so.
+const ACTIVITIES = [
+  ["Walk", 3.5], ["Run", 9.8], ["Cycle", 7.5], ["Swim", 7], ["Gym weights", 5, true], ["HIIT", 8], ["Yoga / stretch", 2.8],
+  ["Football", 8], ["Tennis / padel", 7.3], ["Hike", 6], ["Rowing", 7], ["Elliptical", 5], ["Dance", 5.5], ["Boxing", 9], ["Climbing", 7], ["Other", 5]
+];
+const EFFORT = { easy: 0.8, moderate: 1, hard: 1.25 };
+let wType = "Gym weights", wLifts = [];
+function burnFor(type, minutes, effort) {
+  const a = ACTIVITIES.find((x) => x[0] === type) || ["Other", 5];
+  return Math.round(a[1] * EFFORT[effort || "moderate"] * (state.weightKg || 75) * (minutes / 60));
+}
+function renderWorkouts() {
+  const ws = state.day.workouts || [], burned = burnedKcal();
+  $("#w-summary").innerHTML = `<div class="muted">Burned today</div><div class="result-big"><span>${fmt(burned)}</span><small> kcal</small></div><div class="muted tiny">${state.eatBack ? "added to your budget" : "recorded, budget unchanged (switch in Settings)"}${state.weightKg ? "" : " · assuming 75 kg; set your weight on the Daily budget screen"}</div>`;
+  const list = $("#w-list"); list.innerHTML = "";
+  for (const w of ws) {
+    const li = document.createElement("li");
+    const lifts = (w.lifts || []).map((l) => `${l.exercise} ${l.sets}×${l.reps}${l.kg ? ` @ ${l.kg} kg` : ""}`).join(" · ");
+    li.innerHTML = `<span class="thumb-sm tone-coral"><svg><use href="#i-dumbbell"/></svg></span><div class="body"><div class="name">${esc(w.name)}</div><div class="detail">${w.minutes} min · ${w.effort}${lifts ? `<div class="w-lifts">${esc(lifts)}</div>` : ""}</div></div><div class="kcal">${fmt(w.kcal)}</div><button class="del" aria-label="Remove">✕</button>`;
+    li.querySelector(".del").onclick = () => { if (!confirm(`Remove "${w.name}"?`)) return; state.day.workouts = ws.filter((x) => x.id !== w.id); save(); renderWorkouts(); };
+    list.appendChild(li);
+  }
+  $("#w-empty").classList.toggle("hidden", ws.length > 0);
+  const types = $("#w-types"); types.innerHTML = "";
+  for (const [name, , lifting] of ACTIVITIES) { const b = document.createElement("button"); b.textContent = name; b.dataset.type = name; b.classList.toggle("on", name === wType); types.appendChild(b); }
+  $("#w-lifting").classList.toggle("hidden", !(ACTIVITIES.find((x) => x[0] === wType) || [])[2]);
+  renderSets(); updateEstimate();
+  const rl = $("#w-recent"); rl.innerHTML = "";
+  for (const r of state.recentWorkouts) {
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="thumb-sm tone-coral"><svg><use href="#i-dumbbell"/></svg></span><div class="body"><div class="name">${esc(r.name)}</div><div class="detail">${r.minutes} min · ${r.effort}${(r.lifts || []).length ? ` · ${r.lifts.length} exercise${r.lifts.length === 1 ? "" : "s"}` : ""}</div></div><div class="kcal">${fmt(burnFor(r.type, r.minutes, r.effort))}</div><button class="add" aria-label="Log again"><svg><use href="#i-plus"/></svg></button>`;
+    li.querySelector(".add").onclick = (e) => { e.stopPropagation(); logWorkout({ ...r, lifts: (r.lifts || []).map((l) => ({ ...l })) }); toast(`Logged ${r.name}`); };
+    li.querySelector(".body").onclick = () => { wType = r.type; $("#w-min").value = r.minutes; $("#w-effort").value = r.effort; $("#w-name").value = r.name; wLifts = (r.lifts || []).map((l) => ({ ...l })); renderWorkouts(); window.scrollTo({ top: $("#w-types").getBoundingClientRect().top + window.scrollY - 80, behavior: "smooth" }); };
+    rl.appendChild(li);
+  }
+  $("#w-recent-hint").classList.toggle("hidden", state.recentWorkouts.length > 0);
+}
+$("#w-types").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; wType = b.dataset.type; renderWorkouts(); });
+$("#w-min").addEventListener("input", updateEstimate);
+$("#w-effort").addEventListener("change", updateEstimate);
+function updateEstimate() {
+  const min = num($("#w-min").value);
+  $("#w-estimate").textContent = min ? `About ${fmt(burnFor(wType, min, $("#w-effort").value))} kcal for ${min} min of ${wType.toLowerCase()} (${$("#w-effort").value}). An estimate, like every tracker's.` : "";
+}
+function renderSets() {
+  const box = $("#w-sets"); box.innerHTML = "";
+  if (!wLifts.length) { $("#w-volume").textContent = ""; return; }
+  box.innerHTML = `<div class="set-head"><span>Exercise</span><span>Sets</span><span>Reps</span><span>kg</span><span></span></div>`;
+  wLifts.forEach((l, i) => {
+    const row = document.createElement("div"); row.className = "set-row";
+    const known = state.exercises[(l.exercise || "").toLowerCase()];
+    row.innerHTML = `<input type="text" placeholder="e.g. Squat" value="${esc(l.exercise || "")}" list="w-ex-list"><input type="number" inputmode="numeric" placeholder="3" value="${l.sets || ""}"><input type="number" inputmode="numeric" placeholder="8" value="${l.reps || ""}"><input type="number" inputmode="decimal" placeholder="${known ? known.kg : "kg"}" value="${l.kg || ""}"><button class="del" aria-label="Remove">✕</button>`;
+    const [ex, sets, reps, kg] = row.querySelectorAll("input");
+    ex.oninput = () => { l.exercise = ex.value; const k = state.exercises[ex.value.trim().toLowerCase()]; if (k && !sets.value) { sets.value = k.sets; reps.value = k.reps; kg.placeholder = k.kg; l.sets = k.sets; l.reps = k.reps; volume(); } };
+    sets.oninput = () => { l.sets = num(sets.value); volume(); }; reps.oninput = () => { l.reps = num(reps.value); volume(); }; kg.oninput = () => { l.kg = num(kg.value); volume(); };
+    row.querySelector(".del").onclick = () => { wLifts.splice(i, 1); renderSets(); };
+    box.appendChild(row);
+  });
+  if (!$("#w-ex-list")) { const dl = document.createElement("datalist"); dl.id = "w-ex-list"; document.body.appendChild(dl); }
+  $("#w-ex-list").innerHTML = Object.values(state.exercises).map((e) => `<option value="${esc(e.name)}">`).join("");
+  volume();
+}
+function volume() {
+  const v = wLifts.reduce((a, l) => a + (l.sets || 0) * (l.reps || 0) * (l.kg || 0), 0);
+  $("#w-volume").textContent = v ? `Total volume ${fmt(v)} kg` : "";
+}
+$("#w-add-set").onclick = () => { wLifts.push({ exercise: "", sets: null, reps: null, kg: null }); renderSets(); setTimeout(() => { const rows = $$("#w-sets .set-row"); rows[rows.length - 1].querySelector("input").focus(); }, 50); };
+$("#w-save").onclick = () => {
+  const minutes = num($("#w-min").value);
+  if (!minutes) { toast("How many minutes?"); $("#w-min").focus(); return; }
+  const lifts = wLifts.filter((l) => (l.exercise || "").trim()).map((l) => ({ exercise: l.exercise.trim(), sets: l.sets || 1, reps: l.reps || 1, kg: l.kg || 0 }));
+  logWorkout({ type: wType, name: $("#w-name").value.trim() || wType, minutes, effort: $("#w-effort").value, lifts });
+  $("#w-min").value = ""; $("#w-name").value = ""; wLifts = [];
+  toast("Workout logged");
+};
+/** Add a workout to today, remember it for quick add, and update exercise bests. */
+function logWorkout(w) {
+  const kcal = burnFor(w.type, w.minutes, w.effort);
+  const pbs = [];
+  for (const l of w.lifts || []) {
+    const key = l.exercise.toLowerCase(), prev = state.exercises[key];
+    const est1rm = l.kg ? Math.round(l.kg * (1 + l.reps / 30)) : 0;   // Epley estimate, for spotting a best
+    if (prev && est1rm > (prev.best1rm || 0) && l.kg) pbs.push(`${l.exercise} (${l.kg} kg × ${l.reps})`);
+    state.exercises[key] = { name: l.exercise, sets: l.sets, reps: l.reps, kg: l.kg, best1rm: Math.max(est1rm, (prev && prev.best1rm) || 0), lastUsed: new Date().toISOString() };
+  }
+  state.day.workouts = state.day.workouts || [];
+  state.day.workouts.push({ id: uid(), type: w.type, name: w.name, minutes: w.minutes, effort: w.effort, kcal, lifts: w.lifts || [], at: new Date().toISOString() });
+  const key = `${w.type}|${w.name}`.toLowerCase();
+  state.recentWorkouts = [{ key, type: w.type, name: w.name, minutes: w.minutes, effort: w.effort, lifts: w.lifts || [] }].concat(state.recentWorkouts.filter((r) => r.key !== key)).slice(0, 10);
+  save();
+  if (pbs.length) setTimeout(() => toast(`New best: ${pbs.join(", ")}`, 5000), 400);
+  if (stack[stack.length - 1] === "workouts") renderWorkouts();
 }
 
 // ---------------------------------------------------------------- item details
@@ -2079,7 +2202,7 @@ function setAmount(value, field) {
 $("#a-kcal").addEventListener("input", (e) => setAmount(e.target.value, "kcal"));
 $("#a-grams").addEventListener("input", (e) => setAmount(e.target.value, "grams"));
 $("#a-count").addEventListener("input", (e) => setAmount(e.target.value, "count"));
-$("#share-rest").onclick = () => setAmount(Math.max(0, state.budget - usedKcal()), "kcal");
+$("#share-rest").onclick = () => setAmount(Math.max(0, budgetToday() - usedKcal()), "kcal");
 $("#share-reset").onclick = () => { amountKcal = null; fillAmounts(null); };
 
 function updateResult() {
@@ -2092,7 +2215,7 @@ function updateResult() {
   bar.style.width = `${Math.min(100, frac * 100)}%`;
   const a = amountsFor(draft, kcal), lines = [];
   if (a.packFraction != null) lines.push(`<b>${fmt(a.packFraction * 100)}%</b> of the pack`);
-  const leftAfter = state.budget - usedKcal() - kcal;
+  const leftAfter = budgetToday() - usedKcal() - kcal;
   lines.push(leftAfter >= 0 ? `leaves <b>${fmt(leftAfter)}</b> kcal for the rest of the day` : `<b style="color:var(--bad)">${fmt(-leftAfter)} kcal over</b> your day`);
   $("#r-lines").innerHTML = lines.map((l) => `<div>${l}</div>`).join("");
   $("#r-macros").innerHTML = macroText(macrosFor(draft, kcal), true);
@@ -2114,7 +2237,7 @@ $("#share-add").onclick = () => {
 
 // ---------------------------------------------------------------- account + sync (optional, see cloud.js)
 
-const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "notes", "updatedAt"];   // the API key stays on the device
+const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "updatedAt"];   // the API key stays on the device
 let pushTimer = null;
 function schedulePush() {
   if (!window.cloud || !window.cloud.user) return;
@@ -2127,8 +2250,8 @@ function schedulePush() {
 }
 function publishDay() {
   const c = window.cloud; if (!c || !c.user || !state.shareDay) return;
-  const items = state.day.items.map((it) => ({ name: it.name, kcal: it.kcal }));
-  c.publishDay({ date: state.day.date, budget: state.budget, kcal: usedKcal(), items }).catch((err) => { if (!publishDay.warned) { publishDay.warned = true; toast("Couldn't share your day: " + c.explain(err), 5000); } });
+  const items = state.day.items.map((it) => ({ name: it.name, kcal: it.kcal })).concat((state.day.workouts || []).map((w) => ({ name: `Workout: ${w.name}, ${w.minutes} min`, kcal: -Math.round(w.kcal || 0) })));
+  c.publishDay({ date: state.day.date, budget: budgetToday(), kcal: usedKcal(), items }).catch((err) => { if (!publishDay.warned) { publishDay.warned = true; toast("Couldn't share your day: " + c.explain(err), 5000); } });
 }
 let syncWarned = false;
 function syncProblem(err) {

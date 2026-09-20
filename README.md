@@ -176,6 +176,18 @@ of a paid Anthropic key. Two ways to set it up:
 
 An Anthropic key still works and is used only when there's no Gemini route.
 
+## Workouts
+
+The **Workouts** card logs activities (walk, run, cycle, swim, gym weights,
+HIIT and more) with minutes and an effort level, and estimates the calories
+burned from standard intensity figures and your weight (set on the Daily
+budget screen; 75 kg assumed otherwise). Gym sessions can carry a lifting log:
+exercise, sets × reps at kg, remembered from last time, total volume, and a
+"New best" note when you beat your estimated one-rep max. Recent workouts come
+back as one-tap quick adds, and "ran 5k in 28 min" in the Just tell it box or
+the Assistant logs one too. Burned calories are recorded and shown on the home
+card; Settings has a switch to add them to the day's budget, off by default.
+
 ## About my eating
 
 On the Daily budget screen there's a free-text box the assistant reads on every
