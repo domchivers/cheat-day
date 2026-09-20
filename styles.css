@@ -399,13 +399,12 @@ textarea:focus { outline: 2px solid var(--green-2); border-color: transparent; }
 .day-card .ate img, .ate .pic { width: 28px; height: 28px; object-fit: cover; border-radius: 6px; margin-right: 8px; vertical-align: middle; }
 
 /* Feed */
-.tabbar { position: fixed; left: 0; right: 0; bottom: 0; display: none; grid-template-columns: repeat(5, 1fr); background: var(--card); border-top: 1px solid var(--line); padding: 6px 4px calc(6px + var(--safe-bottom)); z-index: 30; }
+.tabbar { position: fixed; left: 0; right: 0; bottom: 0; display: none; grid-template-columns: repeat(4, 1fr); background: var(--card); border-top: 1px solid var(--line); padding: 6px 4px calc(6px + var(--safe-bottom)); z-index: 30; }
 .tabbar button { display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--muted); font-size: 11px; padding: 4px 0; background: none; border: 0; }
-.tabbar button svg { width: 24px; height: 24px; fill: currentColor; }
+.tabbar button svg { width: 26px; height: 26px; fill: none; }
 .tabbar button.on { color: var(--green); font-weight: 700; }
-body[data-view="home"] .tabbar, body[data-view="feed"] .tabbar, body[data-view="ask"] .tabbar, body[data-view="workouts"] .tabbar, body[data-view="friends"] .tabbar { display: grid; }
+body[data-view="home"] .tabbar, body[data-view="feed"] .tabbar, body[data-view="workouts"] .tabbar, body[data-view="friends"] .tabbar { display: grid; }
 body[data-view="home"] .view, body[data-view="feed"] .view, body[data-view="workouts"] .view, body[data-view="friends"] .view { padding-bottom: calc(84px + var(--safe-bottom)); }
-body[data-view="ask"] .view.ask { padding-bottom: calc(64px + var(--safe-bottom)); }
 @media screen and (orientation: landscape) and (max-height: 500px) { .tabbar { position: absolute; } }
 .post { padding: 14px; }
 .post .who { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
@@ -432,3 +431,4 @@ body[data-view="ask"] .view.ask { padding-bottom: calc(64px + var(--safe-bottom)
 .post-what .name { font-weight: 600; }
 .post-what .detail { font-size: 13px; color: var(--muted); }
 .photo-row img.big { width: 120px; height: 120px; }
+#ask-card { margin-top: 12px; }

@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=46">
-  <link rel="icon" href="icons/icon-192.png?v=46">
-  <link rel="stylesheet" href="styles.css?v=46">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=47">
+  <link rel="icon" href="icons/icon-192.png?v=47">
+  <link rel="stylesheet" href="styles.css?v=47">
 </head>
 <body>
 
@@ -27,6 +27,10 @@
   <symbol id="i-friends" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="16.5" cy="9.5" r="2.4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 19c.5-3.5 2.8-5.5 5.5-5.5s5 2 5.5 5.5M14.5 18.5c.3-2.2 1.6-3.6 3.5-3.6 1.4 0 2.5.8 3 2.1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
   <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM18.5 15l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9zM5 3l.7 2 2 .7-2 .7L5 8.5l-.7-2-2-.7 2-.7z" fill="currentColor"/></symbol>
   <symbol id="i-dumbbell" viewBox="0 0 24 24"><path d="M3 10v4M6 8v8M18 8v8M21 10v4M6 12h12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3.5 11.2 12 4l8.5 7.2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.5 10v9.5h4.8v-5.2h3.4v5.2h4.8V10" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+  <symbol id="i-feed" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3.5 15.5l4.6-4.4a1.4 1.4 0 0 1 2 0l3.2 3.2 1.9-1.8a1.4 1.4 0 0 1 2 0l3.3 3.2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="15.5" cy="9" r="1.6" fill="currentColor"/></symbol>
+  <symbol id="i-lift" viewBox="0 0 24 24"><rect x="2" y="9.5" width="2.2" height="5" rx="1" fill="currentColor"/><rect x="5" y="7" width="3" height="10" rx="1.3" fill="currentColor"/><rect x="16" y="7" width="3" height="10" rx="1.3" fill="currentColor"/><rect x="19.8" y="9.5" width="2.2" height="5" rx="1" fill="currentColor"/><rect x="8" y="10.9" width="8" height="2.2" fill="currentColor"/></symbol>
+  <symbol id="i-people" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 19.5c.4-3.8 2.9-6 6-6s5.6 2.2 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M15.5 5.2a3 3 0 0 1 0 5.6M17.3 13.9c2.1.5 3.4 2.3 3.7 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
   <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 4v11M8 8l4-4 4 4M5 13v6h14v-6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
   <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
@@ -83,6 +87,13 @@
     </button>
   </div>
 
+
+  <button class="card action tint-sand wide" data-go="ask" id="ask-card">
+    <span class="circle sand"><svg><use href="#i-spark"/></svg></span>
+    <b>Assistant</b>
+    <small>Guess a plate, plan the day, make a recipe, fix what you logged: just ask</small>
+    <svg class="chev"><use href="#i-chev"/></svg>
+  </button>
 
   <button class="card quick-toggle" id="quick-toggle">
     <span class="circle green"><svg><use href="#i-plus"/></svg></span>
@@ -611,17 +622,16 @@
 <div class="toast hidden" id="toast"></div>
 
 <nav class="tabbar" id="tabbar">
-  <button data-tab="home"><svg><use href="#i-leaf"/></svg><span>Home</span></button>
-  <button data-tab="feed"><svg><use href="#i-share"/></svg><span>Share</span></button>
-  <button data-tab="ask"><svg><use href="#i-spark"/></svg><span>Assistant</span></button>
-  <button data-tab="workouts"><svg><use href="#i-dumbbell"/></svg><span>Workouts</span></button>
-  <button data-tab="friends"><svg><use href="#i-friends"/></svg><span>Friends</span></button>
+  <button data-tab="home"><svg><use href="#i-home"/></svg><span>Home</span></button>
+  <button data-tab="feed"><svg><use href="#i-feed"/></svg><span>Share</span></button>
+  <button data-tab="workouts"><svg><use href="#i-lift"/></svg><span>Workouts</span></button>
+  <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=46"></script>
-<script src="foods.js?v=46"></script>
-<script src="supabase-config.js?v=46"></script>
-<script src="cloud.js?v=46"></script>
-<script src="app.js?v=46"></script>
+<script src="presets.js?v=47"></script>
+<script src="foods.js?v=47"></script>
+<script src="supabase-config.js?v=47"></script>
+<script src="cloud.js?v=47"></script>
+<script src="app.js?v=47"></script>
 </body>
 </html>
