@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "41";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "42";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1054,7 +1054,7 @@ const ASSIST_SCHEMA = {
   additionalProperties: false
 };
 let askTurns = [];       // {role: "me"|"bot", text, kind, result?}
-let askFile = null;
+let askFiles = [];       // photos waiting to go with the next message (dish, menu, leftovers...)
 let chatId = null;       // the saved chat this conversation belongs to
 const WELCOME = `<b>Ask me anything about your day.</b><br>Photograph a plate and tell me what it is. Ask for a plan for the rest of today, a recipe that fits, a lighter version of something, or tell me what you actually ate and I'll fix the list.`;
 
@@ -1077,9 +1077,9 @@ function saveChat() {
   state.chats = state.chats.slice(0, 30);
   save();
 }
-function newChat() { askTurns = []; chatId = null; askFile = null; showAskPreview(); $("#ask-thread").innerHTML = `<div class="bubble bot">${WELCOME}</div>`; }
+function newChat() { askTurns = []; chatId = null; askFiles = []; showAskPreview(); $("#ask-thread").innerHTML = `<div class="bubble bot">${WELCOME}</div>`; }
 function openChat(rec) {
-  askTurns = rec.turns.slice(); chatId = rec.id; askFile = null;
+  askTurns = rec.turns.slice(); chatId = rec.id; askFiles = [];
   $("#ask-thread").innerHTML = "";
   for (const t of askTurns) {
     if (t.role === "me") bubble("me", esc(t.text));
@@ -1101,10 +1101,19 @@ function renderChats() {
 }
 $("#ask-chats").onclick = () => go("chats");
 function showAskPreview() {
-  const wrap = $("#ask-preview");
-  if (askFile) { $("#ask-img").src = URL.createObjectURL(askFile); wrap.classList.remove("hidden"); $("#ask-text").placeholder = "What is it, and how much?"; }
-  else { wrap.classList.add("hidden"); $("#ask-img").removeAttribute("src"); $("#ask-text").placeholder = "e.g. A5 wagyu nigiri, 2 pieces"; }
+  const wrap = $("#ask-preview"); wrap.innerHTML = "";
+  if (!askFiles.length) { wrap.classList.add("hidden"); $("#ask-text").placeholder = "e.g. A5 wagyu nigiri, 2 pieces"; return; }
+  askFiles.forEach((f, i) => {
+    const d = document.createElement("div"); d.className = "shot";
+    d.innerHTML = `<img alt=""><b>${i + 1}</b><button aria-label="Remove">✕</button>`;
+    d.querySelector("img").src = URL.createObjectURL(f);
+    d.querySelector("button").onclick = () => { askFiles.splice(i, 1); showAskPreview(); };
+    wrap.appendChild(d);
+  });
+  wrap.classList.remove("hidden");
+  $("#ask-text").placeholder = askFiles.length > 1 ? "What are they? e.g. the dish, the menu, what I left" : "What is it, and how much?";
 }
+function addAskFiles(list) { for (const f of list) if (askFiles.length < 5) askFiles.push(f); showAskPreview(); setTimeout(() => $("#ask-text").focus(), 100); }
 function bubble(role, html) {
   const el = document.createElement("div");
   el.className = `bubble ${role}`; el.innerHTML = html;
@@ -1114,10 +1123,9 @@ function bubble(role, html) {
 }
 $("#ask-clear").onclick = () => { newChat(); toast("New chat"); };
 $("#ask-photo").onclick = () => { if (!aiAvailable()) { aiHelp(); return; } $("#file-ask").click(); };
-$("#file-ask").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) { askFile = f; showAskPreview(); setTimeout(() => $("#ask-text").focus(), 100); } });
-$("#ask-retake").onclick = () => { askFile = null; showAskPreview(); };
+$("#file-ask").addEventListener("change", (e) => { const fs = Array.from(e.target.files || []); e.target.value = ""; if (fs.length) addAskFiles(fs); });
 $("#ask-library").onclick = () => { if (!aiAvailable()) { aiHelp(); return; } $("#file-ask-lib").click(); };
-$("#file-ask-lib").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) { askFile = f; showAskPreview(); setTimeout(() => $("#ask-text").focus(), 100); } });
+$("#file-ask-lib").addEventListener("change", (e) => { const fs = Array.from(e.target.files || []); e.target.value = ""; if (fs.length) addAskFiles(fs); });
 $("#ask-send").onclick = () => sendAsk();
 $("#ask-text").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.target.blur(); sendAsk(); } });
 $("#ask-chips").addEventListener("click", (e) => {
@@ -1141,17 +1149,18 @@ Things they often have: ${quickEntries().slice(0, 8).map((q) => q.basis.name).jo
 Their saved meals, with ingredients: ${meals}. If they ask to change one of these, return kind=recipe with the SAME name and the full revised ingredient list.`;
 }
 async function sendAsk() {
-  const text = $("#ask-text").value.trim(), file = askFile;
-  if (!text && !file) return;
+  const text = $("#ask-text").value.trim(), files = askFiles.slice();
+  if (!text && !files.length) return;
   if (!aiAvailable()) { aiHelp(); return; }
-  let image = null;
-  if (file) { const img = await loadImage(file); image = drawScaled(img, 1280).toDataURL("image/jpeg", 0.85); }
-  bubble("me", `${image ? `<img src="${image}" alt="">` : ""}${esc(text || "(photo)")}`);
-  askTurns.push({ role: "me", text: (text || "") + (image ? " (photo)" : "") });
-  $("#ask-text").value = ""; askFile = null; showAskPreview();
+  const images = [];
+  for (const f of files) { const img = await loadImage(f); images.push(drawScaled(img, 1280).toDataURL("image/jpeg", 0.85)); }
+  const image = images[0] || null;
+  bubble("me", `${images.length ? `<div class="shots">${images.map((im) => `<img src="${im}" alt="">`).join("")}</div>` : ""}${esc(text || "(photos)")}`);
+  askTurns.push({ role: "me", text: (text || "") + (images.length ? ` (${images.length} photo${images.length === 1 ? "" : "s"})` : "") });
+  $("#ask-text").value = ""; askFiles = []; showAskPreview();
   const history = askTurns.slice(-8, -1).map((t) => `${t.role === "me" ? "They" : "You"}: ${t.text}`).join("\n");
   const prompt = `You are the assistant inside a cheat-day food diary app. ${dayContext()}
-${history ? `Recent conversation:\n${history}\n` : ""}They now say: "${text || "(a photo, no words)"}"${image ? " (a photo is attached; use it for what the food is and the portion size, but trust their words over the photo for the name)" : ""}.
+${history ? `Recent conversation:\n${history}\n` : ""}They now say: "${text || "(photos, no words)"}"${images.length === 1 ? " (a photo is attached; use it for what the food is and the portion size, but trust their words over the photo for the name)" : images.length > 1 ? ` (${images.length} photos are attached, in order. They may show the dish, a menu or label for it, and what was left over at the end. Use the menu or label for names and stated nutrition, the dish photo for the portion, and subtract anything shown left over so the estimate is what was actually eaten.)` : ""}.
 
 Decide what they want and fill exactly one of estimate / plan / edit / recipe / lighter (leave the others null), or kind=answer for a plain question:
 - estimate: a food or plate to log, as one portion with honest kcal and macros.
@@ -1161,7 +1170,7 @@ Decide what they want and fill exactly one of estimate / plan / edit / recipe / 
 - lighter: a lighter way to have something, with tips and the lighter serving's numbers.
 Estimates use standard reference values. Keep reply short and friendly.`;
   const content = [];
-  if (image) content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: image.split(",")[1] } });
+  for (const im of images) content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: im.split(",")[1] } });
   content.push({ type: "text", text: prompt });
   const thinking = bubble("bot", `<span class="muted">Thinking…</span>`);
   try {

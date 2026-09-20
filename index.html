@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=41">
-  <link rel="icon" href="icons/icon-192.png?v=41">
-  <link rel="stylesheet" href="styles.css?v=41">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=42">
+  <link rel="icon" href="icons/icon-192.png?v=42">
+  <link rel="stylesheet" href="styles.css?v=42">
 </head>
 <body>
 
@@ -269,7 +269,7 @@
     <button data-ask="library">From my photos</button>
     <button data-ask="Make me a recipe that fits what I have left today, high in protein">Make me a recipe</button>
   </div>
-  <div class="photo-preview hidden" id="ask-preview"><img id="ask-img" alt=""><button class="btn mint slim" id="ask-retake">Remove photo</button></div>
+  <div class="photo-strip hidden" id="ask-preview"></div>
   <div class="chat ask-input">
     <button class="icon-btn" id="ask-photo" aria-label="Take a photo"><svg><use href="#i-camera"/></svg></button>
     <button class="icon-btn" id="ask-library" aria-label="Choose from photos"><svg><use href="#i-image"/></svg></button>
@@ -278,7 +278,7 @@
   </div>
   </div>
   <input type="file" accept="image/*" capture="environment" id="file-ask" hidden>
-  <input type="file" accept="image/*" id="file-ask-lib" hidden>
+  <input type="file" accept="image/*" id="file-ask-lib" multiple hidden>
 </section>
 
 <!-- ===================== PREVIOUS CHATS ===================== -->
@@ -513,10 +513,10 @@
 <div class="toast hidden" id="toast"></div>
 
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=41"></script>
-<script src="foods.js?v=41"></script>
-<script src="supabase-config.js?v=41"></script>
-<script src="cloud.js?v=41"></script>
-<script src="app.js?v=41"></script>
+<script src="presets.js?v=42"></script>
+<script src="foods.js?v=42"></script>
+<script src="supabase-config.js?v=42"></script>
+<script src="cloud.js?v=42"></script>
+<script src="app.js?v=42"></script>
 </body>
 </html>
