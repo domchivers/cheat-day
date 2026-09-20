@@ -191,6 +191,15 @@ HIIT and more) with minutes and an effort level, and estimates the calories
 burned from standard intensity figures and your weight (set on the Daily
 budget screen; 75 kg assumed otherwise). Gym sessions can carry a lifting log:
 exercise, sets × reps at kg, remembered from last time, total volume, and a
+"New best" note when you beat your estimated one-rep max. The tab leads with a
+week strip (a bar per day, ticks on training days, a streak count) and, if
+eat-back is on, what your budget is now. **Start gym session** runs a live
+session: add exercises (pre-filled from last time), tick sets as you finish
+them, a 90 s rest timer starts on its own, and Finish logs it with the real
+duration and offers to save it as a **routine**. Routines start with one tap
+(hold to remove). **Personal bests** lists each exercise's best set; tap one for
+its stats and a chart of estimated 1RM over the last sessions. Two chips send
+the assistant your lifting history: suggest a workout, how am I progressing.
 "New best" note when you beat your estimated one-rep max. Recent workouts come
 back as one-tap quick adds, and "ran 5k in 28 min" in the Just tell it box or
 the Assistant logs one too. Burned calories are recorded and shown on the home

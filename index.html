@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=47">
-  <link rel="icon" href="icons/icon-192.png?v=47">
-  <link rel="stylesheet" href="styles.css?v=47">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=48">
+  <link rel="icon" href="icons/icon-192.png?v=48">
+  <link rel="stylesheet" href="styles.css?v=48">
 </head>
 <body>
 
@@ -203,6 +203,7 @@
     <button class="icon-btn" data-back aria-label="Back"><svg><use href="#i-back"/></svg></button>
     <h1>History</h1><span></span>
   </header>
+  <div class="card week-totals hidden" id="history-week"></div>
   <div id="history-list"></div>
   <p class="empty" id="history-empty">No past days yet. Each day goes in here at midnight.</p>
 </section>
@@ -309,13 +310,27 @@
     <h1>Workouts</h1><span></span>
   </header>
   <div class="card result" id="w-summary"></div>
+  <div class="card week-card" id="w-week"></div>
 
-  <h2 class="section-title">Today</h2>
-  <ul class="list" id="w-list"></ul>
-  <p class="empty" id="w-empty">Nothing logged yet today.</p>
+  <div class="grid2 tight w-actions">
+    <button class="btn primary" id="w-start-gym">Start gym session</button>
+    <button class="btn mint" id="w-log-toggle">Log a workout</button>
+  </div>
+  <div class="chips left routines" id="w-routines"></div>
 
-  <h2 class="section-title">Log a workout</h2>
-  <div class="card form-card">
+  <div class="card session hidden" id="w-session">
+    <div class="session-top"><input type="text" id="ws-name" placeholder="Gym session" autocapitalize="sentences"><span class="clock" id="ws-clock">0:00</span></div>
+    <div class="rest hidden" id="ws-rest"><span>Rest</span><b id="ws-rest-time">1:30</b><button class="btn ghost slim" id="ws-rest-skip">Skip</button></div>
+    <div id="ws-exercises"></div>
+    <button class="btn mint slim" id="ws-add">＋ Add an exercise</button>
+    <p class="muted tiny" id="ws-volume"></p>
+    <div class="grid2 tight">
+      <button class="btn primary" id="ws-finish">Finish</button>
+      <button class="btn ghost" id="ws-discard">Discard</button>
+    </div>
+  </div>
+
+  <div class="card form-card hidden" id="w-form">
     <div class="chips" id="w-types"></div>
     <div class="grid2 tight">
       <label>Minutes <input type="number" inputmode="numeric" id="w-min" placeholder="e.g. 45"></label>
@@ -328,15 +343,42 @@
       <div class="field-title">Lifting log <span class="muted tiny">(optional: exercise, sets × reps at kg)</span></div>
       <div id="w-sets"></div>
       <button class="btn mint slim" id="w-add-set">＋ Add an exercise</button>
+      <button class="btn ghost slim hidden" id="w-save-routine">Save as a routine</button>
       <p class="muted tiny" id="w-volume"></p>
     </div>
     <p class="muted tiny" id="w-estimate"></p>
     <button class="btn primary" id="w-save">Add to today</button>
   </div>
 
+  <h2 class="section-title">Today</h2>
+  <ul class="list" id="w-list"></ul>
+  <p class="empty" id="w-empty">Nothing logged yet today.</p>
+
+  <h2 class="section-title">Personal bests</h2>
+  <ul class="list" id="w-pbs"></ul>
+  <p class="muted tiny" id="w-pbs-hint">Log some lifts and your best set for each exercise lives here. Tap one for its progress.</p>
+
+  <div class="chips" id="w-ask">
+    <button data-ask="Suggest a workout for me today, based on what I've been doing and what I've eaten">Suggest a workout</button>
+    <button data-ask="How is my lifting progressing? What should I aim for next week?">How am I progressing</button>
+  </div>
+
   <h2 class="section-title">Quick add</h2>
   <ul class="list quick" id="w-recent"></ul>
   <p class="muted tiny" id="w-recent-hint">Workouts you've logged come back here. Tap ＋ for the same again.</p>
+</section>
+
+<!-- ===================== EXERCISE ===================== -->
+<section class="view hidden" id="view-exercise">
+  <header class="sub-head">
+    <button class="icon-btn" data-back aria-label="Back"><svg><use href="#i-back"/></svg></button>
+    <h1 id="ex-title">Exercise</h1><span></span>
+  </header>
+  <div class="card stat-grid" id="ex-stats"></div>
+  <div class="card chart-card"><div class="field-title">Estimated one-rep max, last sessions</div><div id="ex-chart"></div></div>
+  <h2 class="section-title">Sessions</h2>
+  <ul class="list" id="ex-sessions"></ul>
+  <p class="empty hidden" id="ex-empty">No sessions with this exercise yet.</p>
 </section>
 
 <!-- ===================== ASSISTANT ===================== -->
@@ -628,10 +670,10 @@
   <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=47"></script>
-<script src="foods.js?v=47"></script>
-<script src="supabase-config.js?v=47"></script>
-<script src="cloud.js?v=47"></script>
-<script src="app.js?v=47"></script>
+<script src="presets.js?v=48"></script>
+<script src="foods.js?v=48"></script>
+<script src="supabase-config.js?v=48"></script>
+<script src="cloud.js?v=48"></script>
+<script src="app.js?v=48"></script>
 </body>
 </html>

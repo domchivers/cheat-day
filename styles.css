@@ -432,3 +432,50 @@ body[data-view="home"] .view, body[data-view="feed"] .view, body[data-view="work
 .post-what .detail { font-size: 13px; color: var(--muted); }
 .photo-row img.big { width: 120px; height: 120px; }
 #ask-card { margin-top: 12px; }
+
+/* Workouts: week strip, session, routines, exercise stats */
+.result .sub-line { margin-top: 6px; font-size: 14px; color: var(--muted); }
+.result .streak { display: inline-block; margin-top: 8px; background: var(--card); border-radius: 999px; padding: 5px 12px; font-weight: 700; font-size: 13px; color: var(--green); }
+.week-card { margin-top: 12px; padding: 14px 16px 10px; }
+.week-card .bars { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; align-items: end; height: 72px; }
+.week-card .bar { position: relative; background: var(--mint-2); border-radius: 6px 6px 3px 3px; min-height: 4px; }
+.week-card .bar.on { background: var(--green); }
+.week-card .bar.today { outline: 2px solid var(--green-2); outline-offset: 1px; }
+.week-card .days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; text-align: center; font-size: 11px; color: var(--muted); margin-top: 6px; }
+.week-card .days b { color: var(--green); }
+.week-card .days .tick { display: block; font-size: 10px; height: 12px; }
+.week-card .totals { font-size: 13px; color: var(--muted); margin-top: 8px; text-align: center; }
+.w-actions { margin-top: 12px; }
+.w-actions .btn { margin: 0; }
+.chips.left { justify-content: flex-start; margin: 10px 0 0; }
+.chips.routines button { background: var(--peach-bg, #fbeee4); border-color: transparent; }
+.chips.routines button.new { background: var(--card); border-color: var(--line); color: var(--muted); font-weight: 500; }
+.session { margin-top: 12px; padding: 14px; border: 2px solid var(--green); }
+.session-top { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.session-top input { flex: 1; font-weight: 700; font-size: 17px; padding: 8px 10px; }
+.session-top .clock { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--green); font-size: 18px; }
+.rest { display: flex; align-items: center; gap: 12px; background: var(--mint); border-radius: 12px; padding: 8px 12px; margin-bottom: 10px; }
+.rest b { font-size: 22px; font-variant-numeric: tabular-nums; flex: 1; }
+.rest .btn.slim { margin: 0; padding: 6px 12px; }
+.ws-ex { border-top: 1px solid var(--line); padding: 10px 0 6px; }
+.ws-ex .ex-head { display: flex; align-items: center; gap: 8px; }
+.ws-ex .ex-head input { flex: 1; font-weight: 600; padding: 8px 10px; }
+.ws-ex .ex-head .del { padding: 4px 8px; }
+.ws-ex .last { font-size: 12px; color: var(--muted); margin: 4px 0 6px; }
+.ws-set { display: grid; grid-template-columns: 44px 1fr 1fr 44px; gap: 6px; align-items: center; margin-bottom: 6px; font-size: 13px; color: var(--muted); }
+.ws-set input { padding: 9px 8px; font-size: 15px; }
+.ws-set .tick { height: 38px; border-radius: 10px; background: var(--mint-2); color: var(--green); font-size: 18px; }
+.ws-set.done .tick { background: var(--green); color: #fff; }
+.ws-set.done input { opacity: .7; }
+.ws-ex .add-set { font-size: 13px; color: var(--green); font-weight: 600; padding: 4px 0; }
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 14px; margin-top: 4px; }
+.stat-grid div { background: var(--mint-2); border-radius: 12px; padding: 10px 12px; }
+.stat-grid small { display: block; font-size: 12px; color: var(--muted); }
+.stat-grid b { font-size: 20px; }
+.chart-card { margin-top: 12px; padding: 12px 14px 8px; }
+.chart-card svg { width: 100%; height: 150px; display: block; margin-top: 6px; }
+.chart-card .none { color: var(--muted); font-size: 13px; padding: 12px 0; text-align: center; }
+.week-totals { margin-bottom: 12px; padding: 12px 16px; font-size: 14px; }
+.week-totals b { display: block; margin-bottom: 2px; }
+.week-totals span { color: var(--muted); }
+#w-ask { margin-top: 14px; }
