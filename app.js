@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "45";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "46";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -117,7 +117,7 @@ function basisOf(obj) {
 
 // ---------------------------------------------------------------- router
 
-const VIEWS = ["home", "budget", "settings", "history", "friends", "workouts", "ask", "chats", "scan", "search", "meals", "meal", "details", "share"];
+const VIEWS = ["home", "budget", "settings", "history", "friends", "feed", "compose", "workouts", "ask", "chats", "scan", "search", "meals", "meal", "details", "share"];
 let stack = ["home"];
 function show(view) {
   for (const v of VIEWS) $(`#view-${v}`).classList.toggle("hidden", v !== view);
@@ -134,10 +134,14 @@ function show(view) {
   if (view === "history") renderHistory();
   if (view === "ask") renderAsk();
   if (view === "workouts") renderWorkouts();
+  if (view === "feed") renderFeed();
+  if (view === "compose") renderCompose();
+  $$("#tabbar button").forEach((b) => b.classList.toggle("on", b.dataset.tab === view));
   if (view === "chats") renderChats();
   if (view === "meal") renderMeal();
 }
 function go(view) { stack.push(view); show(view); }
+$$("#tabbar button").forEach((b) => b.onclick = () => { const v = b.dataset.tab; if (stack[stack.length - 1] === "share") editId = null; stack = v === "home" ? ["home"] : ["home", v]; show(v); });
 function back() { if (stack[stack.length - 1] === "share") editId = null; stack.pop(); if (!stack.length) stack = ["home"]; show(stack[stack.length - 1]); }
 function home() { pick = null; editId = null; stack = ["home"]; show("home"); }
 
@@ -175,7 +179,7 @@ function renderHome() {
   const hb = $("#home-burned");
   hb.classList.toggle("hidden", !burned);
   hb.textContent = burned ? `Burned ${fmt(burned)} kcal in ${(state.day.workouts || []).length} workout${state.day.workouts.length === 1 ? "" : "s"}${state.eatBack ? ", added to your budget" : ""}` : "";
-  $("#workouts-sub").textContent = burned ? `${(state.day.workouts || []).map((w) => w.name).join(", ")} · ${fmt(burned)} kcal` : "Log a walk, a run or a gym session and see what it burned";
+  if ($("#workouts-sub")) $("#workouts-sub").textContent = burned ? `${(state.day.workouts || []).map((w) => w.name).join(", ")} · ${fmt(burned)} kcal` : "Log a walk, a run or a gym session and see what it burned";
   const mac = sumMacros(state.day.items);
   const g = state.goals || {};
   const tile = (label, v, goal) => `<span class="tile"><b>${Math.round(v)} g</b><small>${label}</small>${goal ? `<span class="goal">of ${goal} g</span><span class="bar"><span style="width:${Math.min(100, v / goal * 100)}%" class="${v > goal * 1.1 ? "over" : ""}"></span></span>` : ""}</span>`;
@@ -406,6 +410,7 @@ function renderMeal() {
   $("#m-macros").innerHTML = m.items.length ? `Per portion: ${macroText({ p: t.p / portions, c: t.c / portions, f: t.f / portions }, true)}${t.macroMissing ? ` <span class="tiny">(${t.macroMissing} ingredient${t.macroMissing === 1 ? "" : "s"} without macros)</span>` : ""}` : "";
   $("#m-use").classList.toggle("hidden", !m.saved);
   $("#m-share").classList.toggle("hidden", !m.saved);
+  $("#m-post").classList.toggle("hidden", !(m.saved && window.cloud && window.cloud.user));
   $("#m-lighter").classList.toggle("hidden", !m.items.length);
   $("#m-ask-row").classList.toggle("hidden", !m.items.length);
   const canFriends = m.saved && window.cloud && window.cloud.user;
@@ -574,6 +579,12 @@ Return the full new ingredient list with realistic amounts and honest kcal and m
   } catch (err) { busy(false); toast(err.message || "Claude couldn't lighten that", 5000); }
 };
 
+$("#m-post").onclick = () => {
+  const m = state.meals.find((x) => x.id === mealDraft.id) || mealDraft, t = mealTotals(m), portions = num(m.portions) || 1;
+  const hasMac = (t.p || 0) + (t.c || 0) + (t.f || 0) > 0;
+  openCompose({ kind: "meal", name: m.name, kcal: Math.round(t.kcal / portions), portions, p: hasMac ? Math.round(t.p / portions) : null, c: hasMac ? Math.round(t.c / portions) : null, f: hasMac ? Math.round(t.f / portions) : null,
+    meal: { name: m.name, portions, items: m.items.map((it) => ({ ...basisOf(it), kcal: it.kcal, grams: it.grams })), steps: m.steps || [] } }, m.photo || null);
+};
 $("#m-use").onclick = () => { const m = state.meals.find((x) => x.id === mealDraft.id) || mealDraft; draft = { ...mealBasis(m), note: "" }; openShare(); };
 function deleteMeal(m) {
   if (!confirm(`Delete "${m.name}"?
@@ -1363,6 +1374,115 @@ function showFits() {
   el.appendChild(ul); scrollThread();
 }
 
+
+
+// ---------------------------------------------------------------- the feed: post what you're having, friends react, comment and repost
+
+let composeWhat = null, composePhoto = null;
+let feed = { posts: [], reactions: [], comments: [], people: {} };
+const REACTS = ["👍", "❤️", "🔥", "😋"];
+function openCompose(what, photo) { composeWhat = what; composePhoto = photo; $("#compose-caption").value = ""; go("compose"); }
+function renderCompose() {
+  const w = composeWhat; if (!w) { back(); return; }
+  const mac = w.p != null ? ` · P ${w.p} C ${w.c} F ${w.f}` : "";
+  $("#compose-what").innerHTML = `<span class="thumb-sm ${w.kind === "meal" ? "tone-peach" : ""}"><svg><use href="#i-${w.kind === "meal" ? "meal" : "search"}"/></svg></span><div><div class="name">${esc(w.name)}</div><div class="detail">${w.kind === "meal" ? `${w.portions} portion${w.portions === 1 ? "" : "s"} · ${fmt(w.kcal)} kcal each` : `${w.grams != null ? `${w.grams} ${w.unit} · ` : ""}${fmt(w.kcal)} kcal`}${mac}</div></div>`;
+  showComposePhoto();
+  setTimeout(() => $("#compose-caption").focus(), 120);
+}
+function showComposePhoto() {
+  const img = $("#compose-photo"), has = !!composePhoto;
+  img.classList.toggle("hidden", !has); if (has) img.src = composePhoto;
+  $("#compose-remove").classList.toggle("hidden", !has);
+  $("#compose-cam").textContent = has ? "📷 Retake" : "📷 Snap a pic";
+}
+async function composeAttach(file) { try { composePhoto = await thumbFromBig(file); showComposePhoto(); } catch (e) { toast("Couldn't read that photo"); } }
+/** Feed photos can be a bit bigger than thumbnails: 640px square, roughly 40 KB. */
+async function thumbFromBig(src) {
+  const img = await loadImage(src instanceof Blob ? src : await (await fetch(src)).blob());
+  const size = 640, c = document.createElement("canvas"); c.width = size; c.height = size;
+  const iw = img.naturalWidth, ih = img.naturalHeight, m = Math.min(iw, ih);
+  c.getContext("2d").drawImage(img, (iw - m) / 2, (ih - m) / 2, m, m, 0, 0, size, size);
+  return c.toDataURL("image/jpeg", 0.72);
+}
+$("#compose-cam").onclick = () => $("#file-compose-cam").click();
+$("#compose-lib").onclick = () => $("#file-compose-lib").click();
+$("#file-compose-cam").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) composeAttach(f); });
+$("#file-compose-lib").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) composeAttach(f); });
+$("#compose-remove").onclick = () => { composePhoto = null; showComposePhoto(); };
+$("#compose-go").onclick = async () => {
+  const c = window.cloud; if (!c || !c.user) { toast("Sign in first"); return; }
+  const w = composeWhat; if (!w) return;
+  busy("Posting…");
+  try {
+    await c.createPost({ kind: w.kind, caption: $("#compose-caption").value.trim(), photo: composePhoto, name: w.name, kcal: w.kcal, macros: { p: w.p, c: w.c, f: w.f }, payload: w.kind === "meal" ? w.meal : w.basis, extra: w.kind === "meal" ? { portions: w.portions } : { grams: w.grams, unit: w.unit } });
+    busy(false); toast("Posted"); composeWhat = null; composePhoto = null;
+    stack = ["home", "feed"]; show("feed");
+  } catch (err) { busy(false); toast("Couldn't post: " + c.explain(err), 5000); }
+};
+async function renderFeed() {
+  const c = window.cloud, signed = !!(c && c.user);
+  $("#feed-signin").classList.toggle("hidden", signed);
+  $("#feed-body").classList.toggle("hidden", !signed);
+  if (!signed) return;
+  busy("Loading the feed…");
+  try {
+    feed.posts = await c.posts();
+    const ids = feed.posts.map((p) => p.id);
+    const [rx, cm] = await Promise.all([c.reactions(ids), c.comments(ids)]);
+    feed.reactions = (rx || []).slice(); feed.comments = (cm || []).slice();
+    const who = new Set(feed.posts.map((p) => p.owner).concat(feed.comments.map((x) => x.user_id), feed.reactions.map((x) => x.user_id)));
+    const people = await c.profiles([...who]);
+    feed.people = {}; for (const p of people) feed.people[p.user_id] = p;
+  } catch (err) { busy(false); toast("Feed isn't set up yet: " + c.explain(err), 6000); return; }
+  busy(false);
+  drawFeed();
+}
+const feedName = (id) => (feed.people[id] && feed.people[id].display_name) || "Someone";
+function ago(iso) { const s = (Date.now() - new Date(iso)) / 1000; if (s < 60) return "just now"; if (s < 3600) return `${Math.floor(s / 60)} min ago`; if (s < 86400) return `${Math.floor(s / 3600)} h ago`; const d = Math.floor(s / 86400); return d === 1 ? "yesterday" : `${d} days ago`; }
+function drawFeed() {
+  const c = window.cloud, me = c.uid, list = $("#feed-list"); list.innerHTML = "";
+  $("#feed-empty").classList.toggle("hidden", feed.posts.length > 0);
+  for (const p of feed.posts) {
+    const card = document.createElement("div"); card.className = "card post";
+    const mac = p.macros && p.macros.p != null ? ` · P ${p.macros.p} C ${p.macros.c} F ${p.macros.f}` : "";
+    const detail = p.kind === "meal" ? `${(p.extra || {}).portions || 1} portion${((p.extra || {}).portions || 1) === 1 ? "" : "s"} · ${fmt(p.kcal)} kcal each${mac}` : `${(p.extra || {}).grams != null ? `${p.extra.grams} ${p.extra.unit || "g"} · ` : ""}${fmt(p.kcal)} kcal${mac}`;
+    const mine = p.owner === me;
+    const rx = feed.reactions.filter((r) => r.post_id === p.id);
+    const cm = feed.comments.filter((x) => x.post_id === p.id);
+    card.innerHTML = `<div class="who">${avatar(p.owner, feedName(p.owner))}<div><div class="name">${esc(mine ? "You" : feedName(p.owner))}</div><div class="when">${ago(p.created_at)}</div></div>${mine ? `<button class="del" aria-label="Delete post">✕</button>` : ""}</div>
+      ${p.photo ? `<img class="pic" src="${esc(p.photo)}" alt="">` : ""}
+      ${p.caption ? `<div class="caption">${esc(p.caption)}</div>` : ""}
+      <div class="what"><span class="thumb-sm ${p.kind === "meal" ? "tone-peach" : ""}"><svg><use href="#i-${p.kind === "meal" ? "meal" : "search"}"/></svg></span><div class="body"><div class="name">${esc(p.name)}</div><div class="detail">${detail}</div></div><button class="btn mint slim" data-act="repost">${p.kind === "meal" ? "Save meal" : "Add to my day"}</button></div>
+      <div class="reacts">${REACTS.map((e) => { const n = rx.filter((r) => r.emoji === e).length, on = rx.some((r) => r.emoji === e && r.user_id === me); return `<button data-emoji="${e}" class="${on ? "on" : ""}">${e}${n ? ` ${n}` : ""}</button>`; }).join("")}</div>
+      <div class="comments">${cm.map((x) => `<div class="comment">${avatar(x.user_id, feedName(x.user_id))}<span><b>${esc(x.user_id === me ? "You" : feedName(x.user_id))}</b>${esc(x.text)}</span>${x.user_id === me ? `<button class="del" data-comment="${x.id}" aria-label="Delete">✕</button>` : ""}</div>`).join("")}
+        <div class="chat"><input type="text" placeholder="Comment…" maxlength="300" autocapitalize="sentences"><button class="btn primary slim" data-act="comment">Send</button></div></div>`;
+    const delBtn = card.querySelector(".who .del");
+    if (delBtn) delBtn.onclick = async () => { if (!confirm("Delete this post?")) return; try { await c.deletePost(p.id); renderFeed(); } catch (e) { toast(c.explain(e)); } };
+    card.querySelector("[data-act=repost]").onclick = () => {
+      if (p.kind === "meal") {
+        const m = p.payload || {};
+        state.meals.unshift({ id: uid(), name: m.name || p.name, portions: +m.portions || 1, items: (m.items || []).map((it) => ({ ...it, id: uid() })), steps: m.steps || [], photo: p.photo ? null : null, saved: true, copiedFrom: "post:" + p.id, updatedAt: new Date().toISOString() });
+        save(); toast(`${p.name} saved to your meals`);
+        if (confirm("Share it on to your friends with your own caption?")) openCompose({ kind: "meal", name: p.name, kcal: p.kcal, portions: (p.extra || {}).portions || 1, p: p.macros && p.macros.p, c: p.macros && p.macros.c, f: p.macros && p.macros.f, meal: m }, p.photo || null);
+      } else {
+        draft = { ...(p.payload || { name: p.name, kcalPerServing: p.kcal, unitLabel: "portion" }), note: "" };
+        openShare(p.kcal);
+      }
+    };
+    card.querySelectorAll("[data-emoji]").forEach((b) => b.onclick = async () => {
+      const e = b.dataset.emoji, on = b.classList.contains("on");
+      try { if (on) await c.unreact(p.id, e); else await c.react(p.id, e); } catch (err) { toast(c.explain(err)); return; }
+      if (on) feed.reactions = feed.reactions.filter((r) => !(r.post_id === p.id && r.user_id === me && r.emoji === e)); else feed.reactions.push({ post_id: p.id, user_id: me, emoji: e });
+      drawFeed();
+    });
+    const input = card.querySelector(".chat input"), send = card.querySelector("[data-act=comment]");
+    const doComment = async () => { const t = input.value.trim(); if (!t) return; try { const rows = await c.comment(p.id, t); feed.comments.push((rows && rows[0]) || { id: uid(), post_id: p.id, user_id: me, text: t, created_at: new Date().toISOString() }); drawFeed(); } catch (err) { toast(c.explain(err)); } };
+    send.onclick = doComment; input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.target.blur(); doComment(); } });
+    card.querySelectorAll("[data-comment]").forEach((b) => b.onclick = async () => { if (!confirm("Delete your comment?")) return; try { await c.deleteComment(b.dataset.comment); feed.comments = feed.comments.filter((x) => String(x.id) !== String(b.dataset.comment)); drawFeed(); } catch (err) { toast(c.explain(err)); } });
+    list.appendChild(card);
+  }
+}
+$("#feed-refresh").onclick = () => renderFeed();
 
 // ---------------------------------------------------------------- workouts: activities with a burn estimate, and a lifting log
 
@@ -2246,6 +2366,7 @@ $("#share-reset").onclick = () => { amountKcal = null; fillAmounts(null); };
 
 function updateResult() {
   const btn = $("#share-add"), bar = $("#r-bar");
+  $("#share-post").disabled = !amountKcal || !!pick;
   if (!amountKcal) { $("#r-kcal").textContent = "0"; $("#r-sub").textContent = "of your day"; bar.style.width = "0"; $("#r-lines").innerHTML = ""; $("#r-macros").innerHTML = ""; btn.disabled = true; return; }
   const kcal = Math.round(amountKcal);
   const frac = state.budget > 0 ? kcal / state.budget : 0;
@@ -2260,6 +2381,15 @@ function updateResult() {
   $("#r-macros").innerHTML = macroText(macrosFor(draft, kcal), true);
   btn.disabled = false;
 }
+$("#share-post").onclick = () => {
+  if (!amountKcal || !draft || pick) return;
+  if (!(window.cloud && window.cloud.user)) { toast("Sharing needs an account: sign in from Settings"); return; }
+  const kcal = Math.round(amountKcal);
+  if (editId) { const it = state.day.items.find((x) => x.id === editId); if (it) { Object.assign(it, basisOf(draft)); it.kcal = kcal; it.shareLabel = `${fmt(kcal / state.budget * 100, 1)}% of the day`; save(); } editId = null; }
+  else addToDay(draft, kcal, `${fmt(kcal / state.budget * 100, 1)}% of the day`);
+  const m = macrosFor(draft, kcal), a = amountsFor(draft, kcal);
+  openCompose({ kind: "food", name: draft.name, kcal, grams: a.grams != null ? Math.round(a.grams) : null, unit: draft.unit || "g", p: m.p != null ? Math.round(m.p) : null, c: m.c != null ? Math.round(m.c) : null, f: m.f != null ? Math.round(m.f) : null, basis: basisOf(draft) }, draft.photo || null);
+};
 $("#share-add").onclick = () => {
   if (!amountKcal || !draft) return;
   const kcal = Math.round(amountKcal);

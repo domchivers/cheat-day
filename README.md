@@ -233,6 +233,60 @@ The day turns over by itself at midnight: what you logged goes into **History**
 (the link beside Today, or Settings → See history) with its items and macros,
 and Today starts empty. "Start a new day now" in Settings does the same early.
 
+## Share (the feed)
+
+The **Share** card is a feed between friends: post what you're having from the
+How much? screen ("Add and share it") or a meal ("Post to the feed"), with a
+photo and a caption. Friends react (👍 ❤️ 🔥 😋), comment, and repost: for a
+food that means "Add to my day", for a meal "Save meal", optionally sharing it
+on with their own caption. One-off setup in the Supabase SQL Editor:
+
+```sql
+create table if not exists public.posts (
+  id uuid primary key default gen_random_uuid(),
+  owner uuid not null references auth.users(id) on delete cascade,
+  kind text not null default 'food',
+  name text not null,
+  caption text not null default '',
+  photo text,
+  kcal integer not null default 0,
+  macros jsonb not null default '{}'::jsonb,
+  payload jsonb not null default '{}'::jsonb,
+  extra jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+alter table public.posts enable row level security;
+create policy "posts read" on public.posts for select to authenticated using (owner = auth.uid() or public.is_friend(owner));
+create policy "posts own" on public.posts for all to authenticated using (owner = auth.uid()) with check (owner = auth.uid());
+
+create or replace function public.can_see_post(p uuid) returns boolean
+language sql security definer stable as $$
+  select exists (select 1 from public.posts x where x.id = p and (x.owner = auth.uid() or public.is_friend(x.owner)));
+$$;
+
+create table if not exists public.reactions (
+  post_id uuid not null references public.posts(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  emoji text not null,
+  created_at timestamptz not null default now(),
+  primary key (post_id, user_id, emoji)
+);
+alter table public.reactions enable row level security;
+create policy "reactions read" on public.reactions for select to authenticated using (public.can_see_post(post_id));
+create policy "reactions own" on public.reactions for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid() and public.can_see_post(post_id));
+
+create table if not exists public.comments (
+  id uuid primary key default gen_random_uuid(),
+  post_id uuid not null references public.posts(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  text text not null,
+  created_at timestamptz not null default now()
+);
+alter table public.comments enable row level security;
+create policy "comments read" on public.comments for select to authenticated using (public.can_see_post(post_id));
+create policy "comments own" on public.comments for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid() and public.can_see_post(post_id));
+```
+
 ## Macros
 
 Everything carries protein, carbs and fat where they're known: the built-in food

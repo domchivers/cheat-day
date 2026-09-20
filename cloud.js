@@ -128,6 +128,16 @@
     },
     async unpublishDays() { return this.rest(`/rest/v1/days?user_id=eq.${this.uid}`, { method: "DELETE" }); },
     async days(sinceDate) { return this.rest(`/rest/v1/days?day=gte.${sinceDate}&select=*&order=day.desc`); },
+    // ---- the feed
+    async posts(limit = 40) { return this.rest(`/rest/v1/posts?select=*&order=created_at.desc&limit=${limit}`); },
+    async createPost(post) { return this.rest(`/rest/v1/posts`, { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify([{ owner: this.uid, ...post }]) }); },
+    async deletePost(id) { return this.rest(`/rest/v1/posts?id=eq.${id}&owner=eq.${this.uid}`, { method: "DELETE" }); },
+    async reactions(postIds) { if (!postIds.length) return []; return this.rest(`/rest/v1/reactions?post_id=in.(${postIds.join(",")})&select=post_id,user_id,emoji`); },
+    async react(postId, emoji) { return this.rest(`/rest/v1/reactions`, { method: "POST", headers: { Prefer: "resolution=ignore-duplicates" }, body: JSON.stringify([{ post_id: postId, user_id: this.uid, emoji }]) }); },
+    async unreact(postId, emoji) { return this.rest(`/rest/v1/reactions?post_id=eq.${postId}&user_id=eq.${this.uid}&emoji=eq.${encodeURIComponent(emoji)}`, { method: "DELETE" }); },
+    async comments(postIds) { if (!postIds.length) return []; return this.rest(`/rest/v1/comments?post_id=in.(${postIds.join(",")})&select=*&order=created_at.asc`); },
+    async comment(postId, text) { return this.rest(`/rest/v1/comments`, { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify([{ post_id: postId, user_id: this.uid, text }]) }); },
+    async deleteComment(id) { return this.rest(`/rest/v1/comments?id=eq.${id}&user_id=eq.${this.uid}`, { method: "DELETE" }); },
     explain(err) {
       const m = String((err && err.message) || err || "").toLowerCase();
       if (m.includes("invalid login") || m.includes("invalid credentials")) return "Email or password isn't right.";
