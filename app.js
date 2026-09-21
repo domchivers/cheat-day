@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "82";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "83";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -742,7 +742,7 @@ function renderCalendar() {
       if (date === today) { home(); return; }
       histOpen.add(date); renderHistory();
       const card = document.querySelector(`#history-list [data-date="${date}"]`);
-      if (card) { card.scrollIntoView({ behavior: "smooth", block: "center" }); card.classList.add("flash"); setTimeout(() => card.classList.remove("flash"), 1400); }
+      if (card) { window.scrollTo(0, card.getBoundingClientRect().top + window.scrollY - innerHeight / 2 + card.offsetHeight / 2); card.classList.add("flash"); setTimeout(() => card.classList.remove("flash"), 1400); }
     };
     else b.disabled = true;
     grid.appendChild(b);
@@ -832,6 +832,7 @@ function renderSettings() {
   $("#s-storage").textContent = `Stored on this phone: ${(bytes / 1048576).toFixed(1)} MB of about 5 MB.${window.cloud && window.cloud.user ? (photoBucketMissing ? " Photos can't go to the cloud yet: the photos bucket isn't set up." : onPhone ? ` ${onPhone} photo${onPhone === 1 ? "" : "s"} still to move to the cloud.` : " Photos are kept in the cloud.") : " Sign in to keep photos in the cloud."}`;
   $("#s-eatback").checked = !!state.eatBack;
   $("#s-simple").checked = !!state.simple;
+  applyTheme();
   renderReminders();
   renderAccount();
   const d = state.day.date;
@@ -1564,9 +1565,9 @@ function lineChart(pts, dp) {
   const W = 320, H = 150, px = 20, py = 22, vals = pts.map((p) => p.v);
   const lo = Math.min(...vals), hi = Math.max(...vals), pad = (hi - lo || Math.abs(hi) * 0.05 || 1) * 0.25;
   const x = (i) => px + i * (W - 2 * px) / (pts.length - 1), y = (v) => H - py - (v - (lo - pad)) / ((hi + pad) - (lo - pad)) * (H - 2 * py);
-  const step = Math.ceil(pts.length / 5), lab = (i) => (pts.length <= 8 || i === 0 || i === pts.length - 1 || (i % step === 0 && pts.length - 1 - i >= step * 0.75)) ? `<text x="${x(i)}" y="${H - 5}" text-anchor="middle" font-size="10" fill="#6b7770">${new Date(pts[i].day + "T12:00").toLocaleDateString(undefined, { day: "numeric", month: "short" })}</text>` : "";
-  const val = (i) => (pts.length <= 8 || i === 0 || i === pts.length - 1 || pts[i].v === hi || pts[i].v === lo) ? `<text x="${x(i)}" y="${y(pts[i].v) - 9}" text-anchor="middle" font-size="11" fill="#2f5d4b" font-weight="700">${fmt(pts[i].v, dp)}</text>` : "";
-  return `<svg viewBox="0 0 ${W} ${H}"><polyline points="${pts.map((p, i) => `${x(i)},${y(p.v)}`).join(" ")}" fill="none" stroke="#2f5d4b" stroke-width="2.5" stroke-linejoin="round"/>${pts.map((p, i) => `<circle cx="${x(i)}" cy="${y(p.v)}" r="${pts.length > 20 ? 2.5 : 4}" fill="#2f5d4b"/>${val(i)}${lab(i)}`).join("")}</svg>`;
+  const step = Math.ceil(pts.length / 5), lab = (i) => (pts.length <= 8 || i === 0 || i === pts.length - 1 || (i % step === 0 && pts.length - 1 - i >= step * 0.75)) ? `<text x="${x(i)}" y="${H - 5}" text-anchor="middle" font-size="10" style="fill:var(--muted)">${new Date(pts[i].day + "T12:00").toLocaleDateString(undefined, { day: "numeric", month: "short" })}</text>` : "";
+  const val = (i) => (pts.length <= 8 || i === 0 || i === pts.length - 1 || pts[i].v === hi || pts[i].v === lo) ? `<text x="${x(i)}" y="${y(pts[i].v) - 9}" text-anchor="middle" font-size="11" style="fill:var(--green)" font-weight="700">${fmt(pts[i].v, dp)}</text>` : "";
+  return `<svg viewBox="0 0 ${W} ${H}"><polyline points="${pts.map((p, i) => `${x(i)},${y(p.v)}`).join(" ")}" fill="none" style="stroke:var(--green)" stroke-width="2.5" stroke-linejoin="round"/>${pts.map((p, i) => `<circle cx="${x(i)}" cy="${y(p.v)}" r="${pts.length > 20 ? 2.5 : 4}" style="fill:var(--green)"/>${val(i)}${lab(i)}`).join("")}</svg>`;
 }
 async function renderBody() {
   $("#bd-date").value = localDate();
@@ -2616,7 +2617,7 @@ function renderExercise() {
   else {
     const W = 320, H = 150, px = 18, py = 22, lo = Math.min(...pts.map((p) => p.est1rm)) * 0.9, hi = Math.max(...pts.map((p) => p.est1rm)) * 1.05;
     const x = (i) => px + i * (W - 2 * px) / (pts.length - 1), y = (v) => H - py - (v - lo) / (hi - lo || 1) * (H - 2 * py);
-    ch.innerHTML = `<svg viewBox="0 0 ${W} ${H}"><polyline points="${pts.map((p, i) => `${x(i)},${y(p.est1rm)}`).join(" ")}" fill="none" stroke="#2f5d4b" stroke-width="2.5" stroke-linejoin="round"/>${pts.map((p, i) => `<circle cx="${x(i)}" cy="${y(p.est1rm)}" r="4" fill="#2f5d4b"/><text x="${x(i)}" y="${y(p.est1rm) - 9}" text-anchor="middle" font-size="11" fill="#2f5d4b" font-weight="700">${p.est1rm}</text><text x="${x(i)}" y="${H - 5}" text-anchor="middle" font-size="10" fill="#6b7770">${new Date(p.date + "T12:00").toLocaleDateString(undefined, { day: "numeric", month: "short" })}</text>`).join("")}</svg>`;
+    ch.innerHTML = `<svg viewBox="0 0 ${W} ${H}"><polyline points="${pts.map((p, i) => `${x(i)},${y(p.est1rm)}`).join(" ")}" fill="none" style="stroke:var(--green)" stroke-width="2.5" stroke-linejoin="round"/>${pts.map((p, i) => `<circle cx="${x(i)}" cy="${y(p.est1rm)}" r="4" style="fill:var(--green)"/><text x="${x(i)}" y="${y(p.est1rm) - 9}" text-anchor="middle" font-size="11" style="fill:var(--green)" font-weight="700">${p.est1rm}</text><text x="${x(i)}" y="${H - 5}" text-anchor="middle" font-size="10" style="fill:var(--muted)">${new Date(p.date + "T12:00").toLocaleDateString(undefined, { day: "numeric", month: "short" })}</text>`).join("")}</svg>`;
   }
   const list = $("#ex-sessions"); list.innerHTML = "";
   for (const s of ses.slice(0, 20)) {
@@ -3721,6 +3722,18 @@ function notifyFriend(to, kind, text, extra = {}) {
   c.pushCall("notify", { to, kind, text, ...extra }).catch(() => {});
 }
 
+// ---------------------------------------------------------------- appearance: match the phone, light or dark (this device only)
+
+const darkQuery = window.matchMedia ? matchMedia("(prefers-color-scheme: dark)") : null;
+function applyTheme() {
+  const t = state.theme || "system", dark = t === "dark" || (t === "system" && darkQuery && darkQuery.matches);
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.content = dark ? "#0f1411" : "#f5f6f1";
+  $$("#s-theme button").forEach((b) => b.classList.toggle("on", b.dataset.t === t));
+}
+if (darkQuery && darkQuery.addEventListener) darkQuery.addEventListener("change", applyTheme);
+$("#s-theme").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; state.theme = b.dataset.t; save(false); applyTheme(); });
+
 // ---------------------------------------------------------------- simple mode and the welcome guide
 
 function applySimple() { document.body.classList.toggle("simple", !!state.simple); }
@@ -3744,7 +3757,7 @@ function needsWelcome() {
 
 // ---------------------------------------------------------------- boot
 
-applySimple();
+applySimple(); applyTheme();
 if (needsWelcome()) { wlStep(1); stack = ["welcome"]; show("welcome"); } else show("home");
 cloudInit();
 // Keep everyone current: if the server has a newer version, fetch it and reload. Checked on open and on return, at most every 5 minutes.
