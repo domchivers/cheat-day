@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "92";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "93";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -188,7 +188,7 @@ function basisOf(obj) {
 
 // ---------------------------------------------------------------- router
 
-const VIEWS = ["home", "budget", "settings", "history", "friends", "feed", "compose", "workouts", "exercise", "goals", "body", "welcome", "plan", "ask", "chats", "scan", "search", "meals", "meal", "details", "share"];
+const VIEWS = ["home", "budget", "settings", "history", "friends", "feed", "compose", "recipe", "workouts", "exercise", "goals", "body", "welcome", "plan", "ask", "chats", "scan", "search", "meals", "meal", "details", "share"];
 let stack = ["home"];
 function show(view) {
   for (const v of VIEWS) $(`#view-${v}`).classList.toggle("hidden", v !== view);
@@ -2626,7 +2626,7 @@ function openCompose(what, photo) { composeWhat = what; composePhoto = photo; $(
 function dishCard(w) {
   const meal = w.kind === "meal", n = w.portions || 1;
   const amt = meal ? `${n} portion${n === 1 ? "" : "s"} · ${fmt(w.kcal)} kcal each` : (w.grams != null ? `${w.grams} ${w.unit || "g"}` : "1 serving");
-  return `<div class="dish"><span class="thumb-sm ${meal ? "tone-peach" : ""}"><svg><use href="#i-${meal ? "meal" : "search"}"/></svg></span><div class="dish-main"><span class="dish-name">${esc(w.name)}</span><span class="dish-amt">${amt}</span></div><div class="dish-kcal">${fmt(w.kcal)}<small>kcal</small></div></div>`;
+  return `<div class="dish"><span class="thumb-sm ${meal ? "tone-peach" : ""}"><svg><use href="#i-${meal ? "meal" : "bowl"}"/></svg></span><div class="dish-main"><span class="dish-name">${esc(w.name)}</span><span class="dish-amt">${amt}</span></div><div class="dish-kcal">${fmt(w.kcal)}<small>kcal</small></div></div>`;
 }
 function renderCompose() {
   const w = composeWhat; if (!w) { back(); return; }
@@ -2725,10 +2725,10 @@ function drawFeed() {
     const showAll = openComments.has(p.id) || cm.length <= 2, shown = showAll ? cm : cm.slice(-2);
     const mac = p.macros && p.macros.p != null ? `<div class="pills"><span>P ${p.macros.p} g</span><span>C ${p.macros.c} g</span><span>F ${p.macros.f} g</span></div>` : "";
     card.innerHTML = `<div class="who">${avatar(p.owner, feedName(p.owner))}<div><div class="name">${esc(who)}</div><div class="when">${ago(p.created_at)}${meal ? " · shared a meal" : ""}</div></div>${mine ? `<button class="more" aria-label="Delete post"><svg><use href="#i-more"/></svg></button>` : ""}</div>
-      ${p.photo ? `<div class="media"><img src="${esc(p.photo)}" alt=""></div>` : `<div class="media none ${meal ? "meal" : ""}"><svg><use href="#i-${meal ? "meal" : "search"}"/></svg>${esc(p.name)}</div>`}
+      ${p.photo ? `<div class="media"><img src="${esc(p.photo)}" alt=""></div>` : `<div class="media none ${meal ? "meal" : ""}"><svg><use href="#i-${meal ? "meal" : "bowl"}"/></svg>${esc(p.name)}</div>`}
       <div class="body">
         ${p.caption ? `<div class="caption"><b>${esc(who)}</b>${esc(p.caption)}</div>` : ""}
-        <div class="dish"><span class="thumb-sm ${meal ? "tone-peach" : ""}"><svg><use href="#i-${meal ? "meal" : "search"}"/></svg></span><div class="dish-main"><span class="dish-name">${esc(p.name)}</span><span class="dish-amt">${amt}</span></div><div class="dish-kcal">${fmt(p.kcal)}<small>kcal</small></div><button class="add" data-act="repost" aria-label="${meal ? "Save meal" : "Add to my day"}" title="${meal ? "Save to my meals" : "Add to my day"}"><svg><use href="#i-plus"/></svg></button></div>
+        <div class="dish"><span class="thumb-sm ${meal ? "tone-peach" : ""}"><svg><use href="#i-${meal ? "meal" : "bowl"}"/></svg></span><div class="dish-main"><span class="dish-name">${esc(p.name)}</span><span class="dish-amt">${amt}</span></div><div class="dish-kcal">${fmt(p.kcal)}<small>kcal</small></div><button class="recipe-btn" data-act="recipe" aria-label="See the recipe"><svg><use href="#i-book"/></svg><span>Recipe</span></button></div>
         ${mac}
         <div class="actions"><div class="reacts">${REACTS.map((e) => { const k = rx.filter((r) => r.emoji === e).length, on = rx.some((r) => r.emoji === e && r.user_id === me); return `<button data-emoji="${e}" class="${on ? "on" : ""}" aria-label="React ${e}">${e}${k ? `<small>${k}</small>` : ""}</button>`; }).join("")}</div></div>
         <div class="comments">${!showAll ? `<button class="view-all">View all ${cm.length} comments</button>` : ""}${shown.map((x) => `<div class="comment">${avatar(x.user_id, feedName(x.user_id))}<span><b>${esc(x.user_id === me ? "You" : feedName(x.user_id))}</b>${esc(x.text)}</span>${x.user_id === me ? `<button class="del" data-comment="${x.id}" aria-label="Delete">✕</button>` : ""}</div>`).join("")}
@@ -2737,17 +2737,7 @@ function drawFeed() {
     const delBtn = card.querySelector(".who .more");
     if (delBtn) delBtn.onclick = async () => { if (!await ask("Delete this post?")) return; try { await c.deletePost(p.id); renderFeed(); } catch (e) { toast(c.explain(e)); } };
     const va = card.querySelector(".view-all"); if (va) va.onclick = () => { openComments.add(p.id); drawFeed(); };
-    card.querySelector("[data-act=repost]").onclick = async () => {
-      if (meal) {
-        const m = p.payload || {};
-        state.meals.unshift({ id: uid(), name: m.name || p.name, portions: +m.portions || 1, items: (m.items || []).map((it) => ({ ...it, id: uid() })), steps: m.steps || [], saved: true, copiedFrom: "post:" + p.id, updatedAt: new Date().toISOString() });
-        save(); toast(`${p.name} saved to your meals`);
-        if (await ask("Share it on to your friends with your own caption?")) openCompose({ kind: "meal", name: p.name, kcal: p.kcal, portions: n, p: p.macros && p.macros.p, c: p.macros && p.macros.c, f: p.macros && p.macros.f, meal: m }, p.photo || null);
-      } else {
-        draft = { ...(p.payload || { name: p.name, kcalPerServing: p.kcal, unitLabel: "portion" }), note: "" };
-        openShare(p.kcal);
-      }
-    };
+    card.querySelector("[data-act=recipe]").onclick = () => { openRecipe(p); go("recipe"); };
     card.querySelectorAll("[data-emoji]").forEach((b) => b.onclick = async () => {
       const e = b.dataset.emoji, on = b.classList.contains("on");
       try { if (on) await c.unreact(p.id, e); else { await c.react(p.id, e); notifyFriend(p.owner, "react", p.name, { emoji: e }); state.reactCount = (state.reactCount || 0) + 1; save(); checkBadges(); } } catch (err) { toast(c.explain(err)); return; }
@@ -2762,6 +2752,34 @@ function drawFeed() {
   }
 }
 $("#feed-refresh").onclick = () => renderFeed();
+/** A friend's post as a recipe: what's in it, how to make it, and save it or have some today. */
+function openRecipe(p) {
+  const box = $("#recipe-body"), meal = p.kind === "meal", m = p.payload || {}, who = p.owner === window.cloud.uid ? "you" : feedName(p.owner);
+  const head = `${p.photo ? `<img class="recipe-photo" src="${esc(p.photo)}" alt="">` : ""}<h2>${esc(p.name)}</h2><p class="muted tiny by">Shared by ${esc(who)}</p>`;
+  const mac = p.macros || {};
+  if (meal && (m.items || []).length) {
+    const n = +m.portions || 1, items = m.items;
+    box.innerHTML = `<div class="card recipe-view">${head}${statRow(p.kcal, mac.p || 0, mac.c || 0, mac.f || 0)}<p class="muted tiny">per portion · makes ${n}</p>
+      <div class="field-title">Ingredients</div>
+      <ul class="list">${items.map((it) => `<li><div class="body"><div class="name">${esc(it.name)}</div><div class="detail">${it.grams != null ? `${fmt(it.grams)} ${it.unit || "g"} · ` : ""}${fmt(it.kcal)} kcal</div></div></li>`).join("")}</ul>
+      ${(m.steps || []).length ? `<div class="field-title">Method</div><ol class="method">${m.steps.map((st) => `<li>${esc(st)}</li>`).join("")}</ol>` : `<p class="muted tiny">No method was shared, just the ingredients.</p>`}
+      <button class="btn primary" id="rc-save">Save to my meals</button><button class="btn mint" id="rc-have">Have a portion today</button></div>`;
+    const copy = () => ({ id: uid(), name: m.name || p.name, portions: n, items: items.map((it) => ({ ...it, id: uid() })), steps: m.steps || [], saved: true, copiedFrom: "post:" + p.id, updatedAt: new Date().toISOString() });
+    $("#rc-save").onclick = (e) => { state.meals.unshift(copy()); save(); e.target.textContent = "Saved to your meals"; e.target.disabled = true; toast(`${p.name} is in your meals`); };
+    $("#rc-have").onclick = () => { draft = { ...mealBasis(copy()), mealId: null, note: "" }; openShare(); };
+  } else {
+    box.innerHTML = `<div class="card recipe-view">${head}${statRow(p.kcal, mac.p || 0, mac.c || 0, mac.f || 0)}
+      <p class="muted">${esc(who === "you" ? "You" : who)} shared this as a food, so there's no recipe with it. The assistant can make you one with about the same calories.</p>
+      <button class="btn primary" id="rc-ai">Make me a recipe like this</button><button class="btn mint" id="rc-have">Add it to today</button></div>`;
+    $("#rc-ai").onclick = () => {
+      if (!aiAvailable()) { aiHelp(); return; }
+      go("ask"); newChat();
+      $("#ask-text").value = `Give me a recipe for ${p.name}, about ${fmt(p.kcal)} kcal a portion${mac.p ? ` with around ${mac.p} g protein` : ""}.`;
+      sendAsk();
+    };
+    $("#rc-have").onclick = () => { draft = { ...(p.payload || { name: p.name, kcalPerServing: p.kcal, unitLabel: "portion" }), note: "" }; openShare(p.kcal); };
+  }
+}
 
 // ---------------------------------------------------------------- workouts: activities with a burn estimate, and a lifting log
 
