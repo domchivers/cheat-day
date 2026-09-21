@@ -127,6 +127,15 @@
         body: JSON.stringify([{ user_id: this.uid, day: day.date, budget: day.budget, kcal: day.kcal, items: day.items, updated_at: new Date().toISOString() }]) });
     },
     async unpublishDays() { return this.rest(`/rest/v1/days?user_id=eq.${this.uid}`, { method: "DELETE" }); },
+    // ---- photos live in the public "photos" bucket, one folder per person, under unguessable names
+    async uploadPhoto(dataUrl) {
+      if (!signedIn()) throw new Error("Not signed in");
+      const blob = await (await fetch(dataUrl)).blob();
+      const path = `${session.user.id}/${crypto.randomUUID ? crypto.randomUUID() : Date.now() + "-" + Math.random().toString(36).slice(2)}.jpg`;
+      const r = await this.rawFetch(`${SUPABASE_URL}/storage/v1/object/photos/${path}`, { method: "POST", headers: { apikey: SUPABASE_ANON_KEY, "Content-Type": blob.type || "image/jpeg", "x-upsert": "false", "cache-control": "31536000" }, body: blob });
+      if (!r.ok) { let m = ""; try { m = (await r.json()).message || ""; } catch (e) {} const err = new Error(m || `Upload failed (${r.status})`); err.status = r.status; throw err; }
+      return `${SUPABASE_URL}/storage/v1/object/public/photos/${path}`;
+    },
     // ---- reminders and notifications, via the "push" edge function
     async pushCall(action, payload = {}) {
       const r = await this.rawFetch(`${SUPABASE_URL}/functions/v1/push`, { method: "POST", headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY }, body: JSON.stringify({ action, ...payload }) });

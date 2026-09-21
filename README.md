@@ -295,6 +295,27 @@ Then deploy `supabase/functions/body-import/index.ts` as an Edge Function named
 `body-import` with **Verify JWT turned off** (the token is the secret). The
 Shortcut steps are on the Body screen under "How to set up the Shortcut".
 
+## Photos and sync
+
+Photos are kept on the phone only until you're signed in; then they move to a
+public Supabase Storage bucket (one folder per person, unguessable file names),
+so the phone's ~5 MB of storage never fills. If it ever does, older photos kept
+on the phone are dropped so saving keeps working. Settings shows how much is
+stored. One-off setup in the SQL Editor:
+
+```sql
+insert into storage.buckets (id, name, public) values ('photos', 'photos', true) on conflict (id) do nothing;
+create policy "photos upload own" on storage.objects for insert to authenticated
+  with check (bucket_id = 'photos' and (storage.foldername(name))[1] = auth.uid()::text);
+create policy "photos delete own" on storage.objects for delete to authenticated
+  using (bucket_id = 'photos' and (storage.foldername(name))[1] = auth.uid()::text);
+```
+
+Sync merges two devices' copies item by item: today's foods, meals, readings,
+routines and chats are joined by id, deletions are remembered for 60 days so
+they stay deleted, and for settings or the same item changed on both, the more
+recently saved copy wins.
+
 ## Reminders
 
 Settings → Reminders turns on notifications for this phone: a 2pm nudge if

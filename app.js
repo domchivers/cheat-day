@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "80";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "81";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -40,12 +40,41 @@ function load() {
   if (base.session && typeof base.session !== "object") base.session = null;
   return base;
 }
+let spaceWarned = false;
+/** Photo fields that hold the picture itself (data: URLs) rather than a link, anywhere in the stored data. */
+function eachPhotoField(fn) {
+  const visit = (o) => { if (!o || typeof o !== "object") return; for (const k of ["photo", "image"]) if (typeof o[k] === "string" && o[k].startsWith("data:")) fn(o, k); };
+  const lists = { history: state.history.flatMap((h) => Array.isArray(h.items) ? h.items : []), recent: state.recent.map((r) => r.basis), meals: state.meals.concat(state.meals.flatMap((m) => m.items || [])), today: state.day.items.concat(state.mealDraft ? [state.mealDraft] : []) };
+  for (const list of Object.values(lists)) for (const o of list) visit(o);
+  return lists;
+}
+/** Storage full: drop pictures stored on the phone, oldest kinds first, until the save fits. */
+function freeSpace() {
+  const lists = eachPhotoField(() => {});
+  for (const where of ["history", "recent", "meals", "today"]) {
+    let dropped = 0;
+    for (const o of lists[where]) { if (!o) continue; for (const k of ["image", "photo"]) if (typeof o[k] === "string" && o[k].startsWith("data:")) { delete o[k]; dropped++; } }
+    if (dropped) { try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); return true; } catch (e) {} }
+  }
+  return false;
+}
 function save(sync = true) {
   if (sync) state.updatedAt = Date.now();
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { toast("Couldn't save (storage blocked?)"); }
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+  catch (e) {
+    if (freeSpace()) { if (!spaceWarned) { spaceWarned = true; toast(window.cloud && window.cloud.user ? "This phone's storage was full, so older photos kept on the phone were removed. New photos go to the cloud." : "This phone's storage was full, so older photos were removed to keep saving. Sign in to keep photos in the cloud.", 7000); } }
+    else toast("Couldn't save (storage blocked or full)");
+  }
   if (sync) schedulePush();
 }
 const state = load();
+/** A deletion to remember for a while, so merging with another device's copy doesn't resurrect it. */
+function tomb(kind, id) {
+  state.tombs = state.tombs && typeof state.tombs === "object" ? state.tombs : {};
+  state.tombs[`${kind}:${id}`] = Date.now();
+  const cutoff = Date.now() - 60 * 864e5;
+  for (const [k, t] of Object.entries(state.tombs)) if (t < cutoff) delete state.tombs[k];
+}
 const usedKcal = () => state.day.items.reduce((s, it) => s + it.kcal, 0);
 const burnedKcal = () => (state.day.workouts || []).reduce((s, w) => s + (w.kcal || 0), 0);
 const budgetToday = () => state.budget + (state.eatBack ? burnedKcal() : 0);   // the day's allowance, stretched by workouts only if asked
@@ -257,7 +286,7 @@ function itemRow(it) {
     <div class="body"><div class="name">${esc(it.name || "Unnamed")}</div><div class="detail">${esc(shortAmounts(it))}</div></div>
     <div class="kcal">${fmt(it.kcal)}</div>
     <button class="del" aria-label="Remove">✕</button>`;
-  li.querySelector(".del").onclick = async (e) => { e.stopPropagation(); if (!await ask(`Remove "${it.name}" from today?`)) return; state.day.items = state.day.items.filter((x) => x.id !== it.id); save(); renderHome(); };
+  li.querySelector(".del").onclick = async (e) => { e.stopPropagation(); if (!await ask(`Remove "${it.name}" from today?`)) return; tomb("item", it.id); state.day.items = state.day.items.filter((x) => x.id !== it.id); save(); renderHome(); };
   li.querySelector(".body").onclick = () => { editId = it.id; draft = { ...basisOf(it), note: "" }; openShare(it.kcal); };
   li.style.cursor = "pointer";
   return li;
@@ -299,7 +328,7 @@ function renderQuick() {
     li.querySelector(".add").onclick = (e) => { e.stopPropagation(); addToDay(b, q.lastKcal, q.lastShareLabel); toast(`Added ${b.name} · ${fmt(q.lastKcal)} kcal`); };
     li.querySelector(".body").onclick = () => { draft = { ...b, note: "" }; openShare(q.lastKcal); };
     if (!q.preset && !q.meal) longPress(li, async () => {
-      if (await ask(`Remove "${b.name}" from Quick add?`)) { state.recent = state.recent.filter((r) => r.key !== q.key); save(); renderQuick(); }
+      if (await ask(`Remove "${b.name}" from Quick add?`)) { tomb("recent", q.key); state.recent = state.recent.filter((r) => r.key !== q.key); save(); renderQuick(); }
     });
     list.appendChild(li);
   }
@@ -633,7 +662,7 @@ async function deleteMeal(m) {
   if (!await ask(`Delete "${m.name}"?
 
 Days it was already added to keep their numbers.`)) return false;
-  state.meals = state.meals.filter((x) => x.id !== m.id);
+  tomb("meal", m.id); state.meals = state.meals.filter((x) => x.id !== m.id);
   if (mealDraft && mealDraft.id === m.id) { mealDraft = null; state.mealDraft = null; }
   save(); toast(`Deleted ${m.name}`); return true;
 }
@@ -749,6 +778,9 @@ function renderSettings() {
   $("#s-geminikey").value = state.geminiKey || "";
   $("#s-ai-status").textContent = (window.cloud && window.cloud.user && aiProxyState === "yes") ? "Using the shared key from the app's server: nothing to add here." : state.geminiKey ? "Using your Gemini key (free)." : state.apiKey ? "Using your Anthropic key." : "No key yet. A free Google Gemini key from aistudio.google.com is enough.";
   $("#s-version").textContent = APP_VERSION;
+  let bytes = 0; try { bytes = (localStorage.getItem(STORE_KEY) || "").length * 2; } catch (e) {}
+  let onPhone = 0; eachPhotoField(() => onPhone++);
+  $("#s-storage").textContent = `Stored on this phone: ${(bytes / 1048576).toFixed(1)} MB of about 5 MB.${window.cloud && window.cloud.user ? (photoBucketMissing ? " Photos can't go to the cloud yet: the photos bucket isn't set up." : onPhone ? ` ${onPhone} photo${onPhone === 1 ? "" : "s"} still to move to the cloud.` : " Photos are kept in the cloud.") : " Sign in to keep photos in the cloud."}`;
   $("#s-eatback").checked = !!state.eatBack;
   $("#s-simple").checked = !!state.simple;
   renderReminders();
@@ -1038,7 +1070,7 @@ function planTalkAction(a) {
   }
   if (a.action === "remove") {
     const it = findItem(a.target); if (!it) return null;
-    return { label: `Remove ${it.name} (${fmt(it.kcal)} kcal)`, run: () => { state.day.items = state.day.items.filter((x) => x.id !== it.id); } };
+    return { label: `Remove ${it.name} (${fmt(it.kcal)} kcal)`, run: () => { tomb("item", it.id); state.day.items = state.day.items.filter((x) => x.id !== it.id); } };
   }
   if (a.action === "update") {
     const it = findItem(a.target); if (!it) return null;
@@ -1201,7 +1233,7 @@ function renderChats() {
     const when = new Date(c.when);
     li.innerHTML = `<span class="thumb-sm"><svg><use href="#i-spark"/></svg></span><div class="body"><div class="name">${esc(c.title)}</div><div class="detail">${c.turns.filter((t) => t.role === "me").length} message${c.turns.length === 1 ? "" : "s"} · ${when.toLocaleDateString(undefined, { day: "numeric", month: "short" })} ${when.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</div></div><button class="del" aria-label="Delete chat">✕</button>`;
     li.querySelector(".body").onclick = () => openChat(c);
-    li.querySelector(".del").onclick = async (e) => { e.stopPropagation(); if (!await ask(`Delete this chat?`)) return; state.chats = state.chats.filter((x) => x.id !== c.id); if (chatId === c.id) newChat(); save(); renderChats(); };
+    li.querySelector(".del").onclick = async (e) => { e.stopPropagation(); if (!await ask(`Delete this chat?`)) return; tomb("chat", c.id); state.chats = state.chats.filter((x) => x.id !== c.id); if (chatId === c.id) newChat(); save(); renderChats(); };
     list.appendChild(li);
   }
 }
@@ -1455,6 +1487,7 @@ const bodySorted = () => state.body.slice().sort((a, b) => String(a.day).localeC
 const latestBody = () => { const rows = bodySorted(); return rows[rows.length - 1] || null; };
 /** Keep one row per day; newer updatedAt wins. Weight flows into the workout burn estimate. */
 function upsertBody(row) {
+  if (state.tombs && state.tombs[`body:${row.day}`]) delete state.tombs[`body:${row.day}`];
   const i = state.body.findIndex((r) => r.day === row.day);
   const merged = { ...(i >= 0 ? state.body[i] : {}), ...row };
   if (i >= 0) state.body[i] = merged; else state.body.push(merged);
@@ -1588,7 +1621,7 @@ function drawBody() {
     const open = bodyOpen === r.day;
     li.innerHTML = `<span class="thumb-sm"><svg><use href="#i-scale"/></svg></span><div class="body"><div class="name">${r.day === localDate() ? "Today" : new Date(r.day + "T12:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}</div><div class="detail">${esc(short.join(" · "))}</div></div>${extra > 0 ? `<svg class="chev more-chev${open ? " up" : ""}"><use href="#i-chev"/></svg>` : ""}<button class="del" aria-label="Remove">✕</button>
       ${open ? `<div class="all">${all.map((x) => `<span>${x.name} <b>${val(x, r[x.key])}</b></span>`).join("")}<button class="btn mint slim edit">Edit this reading</button></div>` : ""}`;
-    li.querySelector(".del").onclick = async (e) => { e.stopPropagation(); if (!await ask(`Remove the reading for ${r.day}?`)) return; state.body = state.body.filter((x) => x.day !== r.day); save(); drawBody(); };
+    li.querySelector(".del").onclick = async (e) => { e.stopPropagation(); if (!await ask(`Remove the reading for ${r.day}?`)) return; tomb("body", r.day); state.body = state.body.filter((x) => x.day !== r.day); save(); drawBody(); };
     li.onclick = (e) => { if (e.target.closest(".edit") || e.target.closest(".del")) return; bodyOpen = open ? null : r.day; drawBody(); };
     const ed = li.querySelector(".edit");
     if (ed) ed.onclick = () => { showBodyForm(true); $("#bd-date").value = r.day; for (const x of BODY_METRICS) { const el = $(`#bd-${x.key}`); if (el) el.value = r[x.key] ?? ""; } window.scrollTo({ top: $("#bd-date").getBoundingClientRect().top + window.scrollY - 90, behavior: "smooth" }); };
@@ -1746,7 +1779,7 @@ $("#file-bd-import").addEventListener("change", async (e) => {
     for (const day of days) {
       const sw = swappedDay(day); if (!sw || byDay[sw]) continue;
       const wrong = state.body.find((r) => r.day === sw && r.weight && byDay[day].weight && Math.abs(r.weight - byDay[day].weight) < 0.05);
-      if (wrong) { state.body = state.body.filter((r) => r !== wrong); fixed++; }
+      if (wrong) { tomb("body", wrong.day); state.body = state.body.filter((r) => r !== wrong); fixed++; }
     }
     for (const day of days) upsertBody({ day, updatedAt: stamp, ...byDay[day] });
     if (fixed) setTimeout(() => toast(`Moved ${fixed} reading${fixed === 1 ? "" : "s"} an earlier import had put on the wrong date`, 5000), 2900);
@@ -2092,7 +2125,8 @@ $("#share-send").onclick = async () => {
       b.disabled = true;
       try {
         notifyFriend(f.id, "send", draft.name); state.sendCount = (state.sendCount || 0) + 1; save(false);
-        await c.sendItem(f.id, { name: draft.name, kcal, grams: a.grams != null ? Math.round(a.grams) : null, unit: draft.unit || "g", photo: draft.photo || null, payload: basisOf(draft) });
+        const sendPhoto = await sharablePhoto(draft.photo);
+        await c.sendItem(f.id, { name: draft.name, kcal, grams: a.grams != null ? Math.round(a.grams) : null, unit: draft.unit || "g", photo: sendPhoto, payload: basisOf(draft) });
         toast(`Sent ${draft.name} to ${f.name}`); sheet.classList.add("hidden");
       } catch (err) { b.disabled = false; toast("Couldn't send: " + c.explain(err), 5000); }
     };
@@ -2169,7 +2203,8 @@ $("#compose-go").onclick = async () => {
   const w = composeWhat; if (!w) return;
   busy("Posting…");
   try {
-    await c.createPost({ kind: w.kind, caption: $("#compose-caption").value.trim(), photo: composePhoto, name: w.name, kcal: w.kcal, macros: { p: w.p, c: w.c, f: w.f }, payload: w.kind === "meal" ? w.meal : w.basis, extra: w.kind === "meal" ? { portions: w.portions } : { grams: w.grams, unit: w.unit } });
+    const postPhoto = await sharablePhoto(composePhoto);
+    await c.createPost({ kind: w.kind, caption: $("#compose-caption").value.trim(), photo: postPhoto, name: w.name, kcal: w.kcal, macros: { p: w.p, c: w.c, f: w.f }, payload: w.kind === "meal" ? w.meal : w.basis, extra: w.kind === "meal" ? { portions: w.portions } : { grams: w.grams, unit: w.unit } });
     busy(false); toast("Posted"); composeWhat = null; composePhoto = null;
     state.postCount = (state.postCount || 0) + 1; save(); checkBadges();
     stack = ["home", "feed"]; show("feed");
@@ -2333,7 +2368,7 @@ function renderWorkouts() {
     const li = document.createElement("li");
     const lifts = (w.lifts || []).map((l) => `${l.exercise} ${l.sets}×${l.reps}${l.kg ? ` @ ${l.kg} kg` : ""}`).join(" · ");
     li.innerHTML = `<span class="thumb-sm tone-coral"><svg><use href="#i-dumbbell"/></svg></span><div class="body"><div class="name">${esc(w.name)}</div><div class="detail">${w.minutes} min · ${w.effort}${lifts ? `<div class="w-lifts">${esc(lifts)}</div>` : ""}</div></div><div class="kcal">${fmt(w.kcal)}</div><button class="del" aria-label="Remove">✕</button>`;
-    li.querySelector(".del").onclick = async () => { if (!await ask(`Remove "${w.name}"?`)) return; state.day.workouts = ws.filter((x) => x.id !== w.id); save(); renderWorkouts(); };
+    li.querySelector(".del").onclick = async () => { if (!await ask(`Remove "${w.name}"?`)) return; tomb("wo", w.id); state.day.workouts = ws.filter((x) => x.id !== w.id); save(); renderWorkouts(); };
     list.appendChild(li);
   }
   $("#w-empty").classList.toggle("hidden", ws.length > 0);
@@ -2341,7 +2376,7 @@ function renderWorkouts() {
   const rl = $("#w-routines"); rl.innerHTML = "";
   for (const r of state.routines) {
     const b = document.createElement("button"); b.textContent = `▶ ${r.name}`; b.title = "Tap to start, hold to remove";
-    let t; b.onpointerdown = () => { t = setTimeout(async () => { t = null; if (await ask(`Remove the routine "${r.name}"?`)) { state.routines = state.routines.filter((x) => x.id !== r.id); save(); renderWorkouts(); } }, 600); };
+    let t; b.onpointerdown = () => { t = setTimeout(async () => { t = null; if (await ask(`Remove the routine "${r.name}"?`)) { tomb("routine", r.id); state.routines = state.routines.filter((x) => x.id !== r.id); save(); renderWorkouts(); } }, 600); };
     const clear = () => { if (t) { clearTimeout(t); t = null; } };
     b.onpointerup = () => { if (t) { clear(); startSession(r); } }; b.onpointerleave = clear; b.onpointercancel = clear; b.oncontextmenu = (e) => e.preventDefault();
     rl.appendChild(b);
@@ -3397,7 +3432,7 @@ $("#share-add").onclick = () => {
 
 // ---------------------------------------------------------------- account + sync (optional, see cloud.js)
 
-const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "weekGoals", "seenBadges", "goalWins", "postCount", "pbCount", "body", "goalWeight", "goalStart", "simple", "onboarded", "reminders", "reactCount", "commentCount", "sendCount", "friendCount", "updatedAt"];   // the API key stays on the device
+const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "weekGoals", "seenBadges", "goalWins", "postCount", "pbCount", "body", "goalWeight", "goalStart", "simple", "onboarded", "reminders", "reactCount", "commentCount", "sendCount", "friendCount", "tombs", "updatedAt"];   // the API key stays on the device
 let pushTimer = null;
 function schedulePush() {
   if (!window.cloud || !window.cloud.user) return;
@@ -3406,6 +3441,7 @@ function schedulePush() {
     const data = {}; for (const k of SYNC_KEYS) data[k] = state[k];
     window.cloud.push(data).catch((err) => syncProblem(err));
     publishDay();
+    offloadPhotos();
   }, 600);
 }
 function publishDay() {
@@ -3424,21 +3460,104 @@ function syncProblem(err) {
   }
   toast("Couldn't sync: " + window.cloud.explain(err), 4000);
 }
-/** Newest copy wins, whole. One person, one device at a time, so this keeps deletions deleted. */
+/** Merge another device's copy into this one, item by item: lists are joined by id, deletions are remembered,
+ *  and for anything both sides changed (settings, the same item edited) the more recently saved copy wins. */
+function mergeState(local, remote) {
+  const lNew = (local.updatedAt || 0) >= (remote.updatedAt || 0), newer = lNew ? local : remote, older = lNew ? remote : local;
+  const tombs = Object.assign({}, remote.tombs || {}, local.tombs || {});
+  for (const [k, t] of Object.entries(remote.tombs || {})) tombs[k] = Math.max(t, tombs[k] || 0);
+  const dead = (kind, id) => !!tombs[`${kind}:${id}`];
+  /** Join two lists by key; the newer side's version of a shared entry wins; dead ones are dropped. */
+  const join = (a, b, key, kind) => {
+    const out = [], seen = new Set();
+    for (const x of (a || []).concat(b || [])) { if (!x) continue; const k = key(x); if (k == null || seen.has(k) || (kind && dead(kind, k))) continue; seen.add(k); out.push(x); }
+    return out;
+  };
+  const m = Object.assign({}, older, newer);   // settings and anything not listed below: newer copy
+  m.tombs = tombs;
+  // today: same day -> join the items; different days -> keep the later day and file the earlier one in history
+  const ld = local.day || { items: [] }, rd = remote.day || { items: [] };
+  const nd = newer.day || { items: [] }, od = older.day || { items: [] };
+  let history = join(newer.history, older.history, (h) => h.date);
+  if (ld.date === rd.date) {
+    m.day = Object.assign({}, od, nd, { items: join(nd.items, od.items, (x) => x.id, "item"), workouts: join(nd.workouts, od.workouts, (x) => x.id, "wo") });
+  } else {
+    const later = String(ld.date) > String(rd.date) ? ld : rd, earlier = later === ld ? rd : ld;
+    m.day = later;
+    if (((earlier.items || []).length || (earlier.workouts || []).length) && !history.some((h) => h.date === earlier.date)) {
+      const mac = sumMacros(earlier.items || []), burned = (earlier.workouts || []).reduce((a, w) => a + (w.kcal || 0), 0);
+      history.push({ date: earlier.date, budget: m.budget + (m.eatBack ? burned : 0), kcal: (earlier.items || []).reduce((a, it) => a + (it.kcal || 0), 0), items: (earlier.items || []).map((it) => ({ ...basisOf(it), kcal: it.kcal, shareLabel: it.shareLabel })), p: Math.round(mac.p), c: Math.round(mac.c), f: Math.round(mac.f), burned, workouts: (earlier.workouts || []).map((w) => ({ name: w.name, minutes: w.minutes, kcal: w.kcal, lifts: w.lifts || [] })) });
+    }
+  }
+  m.history = history.sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 120);
+  m.recent = join(newer.recent, older.recent, (r) => r.key, "recent").sort((a, b) => String(b.lastUsed || "").localeCompare(String(a.lastUsed || ""))).slice(0, RECENT_MAX);
+  m.meals = join(newer.meals, older.meals, (x) => x.id, "meal");
+  m.chats = join(newer.chats, older.chats, (x) => x.id, "chat");
+  m.routines = join(newer.routines, older.routines, (x) => x.id, "routine");
+  m.recentWorkouts = join(newer.recentWorkouts, older.recentWorkouts, (x) => x.key);
+  m.body = join(newer.body, older.body, (x) => x.day, "body").sort((a, b) => String(a.day).localeCompare(String(b.day)));
+  m.exercises = Object.assign({}, older.exercises || {}, newer.exercises || {});
+  for (const [k, e] of Object.entries(older.exercises || {})) { const n = m.exercises[k]; if (n && e && (e.best1rm || 0) > (n.best1rm || 0)) m.exercises[k] = Object.assign({}, n, { best1rm: e.best1rm, bestSet: e.bestSet || n.bestSet }); }
+  m.presetUses = Object.assign({}, older.presetUses || {}); for (const [k, v] of Object.entries(newer.presetUses || {})) m.presetUses[k] = Math.max(v, m.presetUses[k] || 0);
+  for (const k of ["seenBadges", "goalWins", "sharedMealIds"]) m[k] = [...new Set((newer[k] || []).concat(older[k] || []))];
+  for (const k of ["postCount", "pbCount", "reactCount", "commentCount", "sendCount", "friendCount"]) m[k] = Math.max(newer[k] || 0, older[k] || 0);
+  m.updatedAt = Math.max(local.updatedAt || 0, remote.updatedAt || 0);
+  return m;
+}
 async function pull() {
   const c = window.cloud; if (!c || !c.user) return;
   let remote;
   try { remote = await c.pull(); } catch (err) { syncProblem(err); return; }
   if (remote === null) { schedulePush(); return; }                       // fresh account: upload what we have
-  if ((remote.updatedAt || 0) > (state.updatedAt || 0)) {
-    for (const k of SYNC_KEYS) if (remote[k] != null) state[k] = remote[k];
-    save(false);
-    const current = stack[stack.length - 1];
-    if (current === "home") renderHome();
-    if (current === "settings") renderSettings();
-  } else if ((state.updatedAt || 0) > (remote.updatedAt || 0)) {
-    schedulePush();
-  }
+  if ((remote.updatedAt || 0) === (state.updatedAt || 0)) return;          // already the same
+  const local = {}; for (const k of SYNC_KEYS) local[k] = state[k];
+  const merged = mergeState(local, remote);
+  for (const k of SYNC_KEYS) if (merged[k] !== undefined) state[k] = merged[k];
+  save(false);
+  // if this device added anything the cloud didn't have, send the merged copy back
+  const sameAsRemote = JSON.stringify(SYNC_KEYS.map((k) => k === "updatedAt" ? 0 : merged[k])) === JSON.stringify(SYNC_KEYS.map((k) => k === "updatedAt" ? 0 : remote[k]));
+  if (!sameAsRemote) { state.updatedAt = Date.now(); save(); }
+  const current = stack[stack.length - 1];
+  if (current === "home") renderHome();
+  if (current === "settings") renderSettings();
+  if (current === "body") drawBody();
+  offloadPhotos();
+}
+// ---- photos: moved off the phone into Supabase Storage when signed in
+let offloading = false, offloadAt = 0, photoBucketMissing = false;
+async function offloadPhotos(force) {
+  const c = window.cloud; if (!c || !c.user || offloading || photoBucketMissing) return;
+  if (!force && Date.now() - offloadAt < 30000) return;
+  offloading = true; offloadAt = Date.now();
+  try {
+    const fields = [];
+    eachPhotoField((o, k) => fields.push([o, k]));
+    if (!fields.length) return;
+    // a big label picture next to a photo is redundant; on its own it becomes a small photo
+    for (const [o, k] of fields.filter(([o, k]) => k === "image")) {
+      if (o.photo) { delete o.image; continue; }
+      try { o.photo = await thumbFrom(o.image); } catch (e) {}
+      delete o.image;
+    }
+    const want = new Map();
+    for (const [o, k] of fields) { const k2 = k === "image" ? "photo" : k; const v = o[k2]; if (typeof v === "string" && v.startsWith("data:")) { if (!want.has(v)) want.set(v, []); want.get(v).push([o, k2]); } }
+    let done = 0;
+    for (const [dataUrl, refs] of want) {
+      if (done >= 25) break;   // a batch at a time; the rest go next time
+      let url;
+      try { url = await c.uploadPhoto(dataUrl); }
+      catch (e) { if (e.status === 404 || e.status === 400 || /bucket/i.test(e.message)) photoBucketMissing = true; break; }
+      for (const [o, k] of refs) if (o[k] === dataUrl) o[k] = url;
+      done++;
+    }
+    save();
+  } finally { offloading = false; }
+}
+/** A picture that's about to be shared: send a link rather than the picture itself when possible. */
+async function sharablePhoto(p) {
+  const c = window.cloud;
+  if (!p || !String(p).startsWith("data:") || !c || !c.user || photoBucketMissing) return p || null;
+  try { return await c.uploadPhoto(p); } catch (e) { return p; }
 }
 function renderAccount() {
   const c = window.cloud;
