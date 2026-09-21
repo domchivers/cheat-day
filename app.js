@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "57";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "58";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1490,13 +1490,19 @@ function renderGoals() {
   const xp = totalXp(), L = levelFor(xp), prog = weekProgress(), g = state.weekGoals, ls = logStreak(), us = underStreak();
   $("#g-level").innerHTML = `<div class="lv-num">${L.lvl}</div><div class="lv-name">${L.name}</div><div class="muted tiny">${fmt(xp)} XP · ${L.next - xp} more for level ${L.lvl + 1}</div><span class="bar"><span style="width:${Math.round(L.into / L.span * 100)}%"></span></span>
     <div class="streaks">${ls ? `<span>🔥 ${ls} day${ls === 1 ? "" : "s"} logged</span>` : ""}${us ? `<span>🎯 ${us} day${us === 1 ? "" : "s"} under budget</span>` : ""}${!ls && !us ? `<span>Log today to start a streak</span>` : ""}</div>`;
-  const wk = weekDates(); $("#g-week-note").textContent = `Monday to Sunday · ${wk.length} day${wk.length === 1 ? "" : "s"} in so far.`;
+  const wk = weekDates(); $("#g-week-note").textContent = `Monday to Sunday · ${wk.length} day${wk.length === 1 ? "" : "s"} in so far. Tap a goal to change its target.`;
   const box = $("#g-goals"); box.innerHTML = "";
   for (const def of GOAL_DEFS) {
     const target = g[def.key] || 0, have = prog[def.key], off = target === 0, na = def.needs && !def.needs();
     const row = document.createElement("div"); row.className = `card goal-row ${!off && !na && have >= target ? "done" : ""}`;
     row.innerHTML = `<span class="circle ${def.tone}"><svg><use href="#i-${def.icon}"/></svg></span><div class="body"><div class="name">${def.name}</div><div class="prog">${na ? "Set a protein goal on the Daily budget screen first" : off ? "Off" : `${have} of ${target} · ${def.sub(target)}${have >= target ? " · done ✓" : ""}`}</div>${!off && !na ? `<span class="bar"><span style="width:${Math.min(100, have / target * 100)}%"></span></span>` : ""}</div>
-      ${!off && !na ? `<div class="count">${have}<small>/${target}</small></div>` : ""}`;
+      ${!na ? `<div class="count">${off ? "Off" : `${have}<small>/${target}</small>`}</div>` : ""}<svg class="chev"><use href="#i-chev"/></svg>`;
+    if (!na) row.onclick = () => {
+      const v = prompt(`${def.name}: how many ${def.key === "workouts" ? "workouts" : "days"} a week? (1 to ${def.max}, or 0 to switch it off)`, target);
+      if (v == null) return;
+      const n = parseInt(v, 10); if (!isFinite(n) || n < 0 || n > def.max) { toast(`Pick a number from 0 to ${def.max}`); return; }
+      g[def.key] = n; save(); renderGoals();
+    };
     box.appendChild(row);
   }
   const bl = $("#g-badges"); bl.innerHTML = "";

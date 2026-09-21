@@ -562,7 +562,8 @@ body[data-view="home"] .view, body[data-view="feed"] .view, body[data-view="work
 .level-hero .bar span { background: var(--peach); }
 .level-hero .streaks { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .level-hero .streaks span { background: var(--card); border-radius: 999px; padding: 5px 12px; font-size: 13px; font-weight: 700; color: var(--green); }
-.goal-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin-bottom: 10px; }
+.goal-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin-bottom: 10px; cursor: pointer; }
+.goal-row .chev { width: 18px; height: 18px; color: var(--muted); flex: none; margin-left: -4px; }
 .goal-row.done { border-color: var(--green-2); background: var(--mint-2); }
 .goal-row .circle { width: 40px; height: 40px; flex: none; }
 .goal-row .body { flex: 1; min-width: 0; }

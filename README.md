@@ -247,7 +247,7 @@ and Today starts empty. "Start a new day now" in Settings does the same early.
 A small game on top of the tracking. The home page shows your **level** and an
 XP bar; tap it for the Goals screen. **Weekly goals** (Monday to Sunday) are
 days under budget, days hitting protein, workouts, and days logged, each with a
-sensible target (5, 4, 3 and 7). **XP** comes from logging a day, finishing
+target you can change by tapping the goal (0 switches it off). **XP** comes from logging a day, finishing
 a day under budget, hitting protein, workouts, lifting PBs, posts, and finished
 weekly goals; it is worked out from your history, so nothing double counts.
 **Badges** unlock for firsts, streaks, workout and PB counts, and posts, with a
