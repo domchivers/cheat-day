@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=64">
-  <link rel="icon" href="icons/icon-192.png?v=64">
-  <link rel="stylesheet" href="styles.css?v=64">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=63">
+  <link rel="icon" href="icons/icon-192.png?v=63">
+  <link rel="stylesheet" href="styles.css?v=63">
 </head>
 <body>
 
@@ -356,13 +356,6 @@
 
   <h2 class="section-title">Add a reading</h2>
   <div class="card form-card">
-    <p class="muted tiny">Easiest: after you weigh in, screenshot the results screen in the Etekcity app and the AI reads every number off it.</p>
-    <div class="photo-row center-row">
-      <button class="btn mint slim icon-text" id="bd-shot-lib"><svg><use href="#i-image"/></svg><span>Read a screenshot</span></button>
-      <button class="btn mint slim icon-text" id="bd-shot-cam"><svg><use href="#i-camera"/></svg><span>Snap the scale</span></button>
-    </div>
-    <input type="file" accept="image/*" id="file-bd-lib" hidden>
-    <input type="file" accept="image/*" capture="environment" id="file-bd-cam" hidden>
     <div class="grid2 tight">
       <label>Date <input type="date" id="bd-date"></label>
       <label>Weight (kg) <input type="number" inputmode="decimal" step="0.1" id="bd-weight" placeholder="e.g. 78.4"></label>
@@ -377,9 +370,9 @@
     <button class="btn primary" id="bd-save">Save reading</button>
   </div>
 
-  <h2 class="section-title">Automatic sync (optional)</h2>
+  <h2 class="section-title">Connect your scale</h2>
   <div class="card form-card" id="body-connect">
-    <p class="muted">Your scale writes weight, body fat and lean mass to Apple Health. A small iPhone Shortcut can send those here every morning by itself. Two actions to set up, once.</p>
+    <p class="muted">Your Etekcity scale writes to Apple Health. An iPhone Shortcut can send those readings here every morning.</p>
     <button class="btn mint" id="bd-token">Get my link</button>
     <div class="hidden" id="bd-token-box">
       <label>Your private link <input type="text" id="bd-url" readonly></label>
@@ -788,10 +781,10 @@
   <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=64"></script>
-<script src="foods.js?v=64"></script>
-<script src="supabase-config.js?v=64"></script>
-<script src="cloud.js?v=64"></script>
-<script src="app.js?v=64"></script>
+<script src="presets.js?v=63"></script>
+<script src="foods.js?v=63"></script>
+<script src="supabase-config.js?v=63"></script>
+<script src="cloud.js?v=63"></script>
+<script src="app.js?v=63"></script>
 </body>
 </html>

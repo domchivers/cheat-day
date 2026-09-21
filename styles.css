@@ -613,4 +613,3 @@ body[data-view="home"] .view, body[data-view="feed"] .view, body[data-view="work
 .how li { margin-bottom: 6px; line-height: 1.4; }
 .how code { background: var(--bg); padding: 1px 5px; border-radius: 6px; }
 #bd-url, #bd-token-value { font-size: 13px; }
-.photo-row.center-row { justify-content: center; margin: 4px 0 12px; }

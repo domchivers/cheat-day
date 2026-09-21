@@ -250,11 +250,7 @@ chart per metric and 30-day change. The latest weight feeds the workout burn
 estimate. Readings live in your synced data and, when signed in, in a
 `body_metrics` table so a Shortcut can add to them.
 
-**Screenshot the scale app.** "Read a screenshot" on the Body screen sends a
-screenshot of the scale app's results (or a photo of the display) to the AI,
-which fills in every metric it can see; check and Save.
-
-**Connect a scale (iPhone, optional).** Scales like Etekcity write to Apple Health. The
+**Connect a scale (iPhone).** Scales like Etekcity write to Apple Health. The
 Body screen gives you a private link (your token is in it); a two-action iPhone
 Shortcut (Find Health Samples, then Get Contents of URL as POST with the samples
 as the body) runs every morning. The function accepts JSON or text like "78.4 kg". One-off setup:
