@@ -386,6 +386,12 @@ create policy "stats read" on public.stats for select to authenticated using (us
 create policy "stats own" on public.stats for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 ```
 
+## Budgets for different days
+
+The Daily budget screen has a box per weekday; fill one (say Sunday, 2,200) and
+that day uses it, the rest use the everyday budget. The home card then reads
+"Sunday budget", and history, goals and friends all use each day's own number.
+
 ## Simple mode and the welcome guide
 
 New users get a three-step welcome: choose **simple** or **everything**, pick a

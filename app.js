@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "83";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "84";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -77,7 +77,10 @@ function tomb(kind, id) {
 }
 const usedKcal = () => state.day.items.reduce((s, it) => s + it.kcal, 0);
 const burnedKcal = () => (state.day.workouts || []).reduce((s, w) => s + (w.kcal || 0), 0);
-const budgetToday = () => state.budget + (state.eatBack ? burnedKcal() : 0);   // the day's allowance, stretched by workouts only if asked
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+/** The budget for a date: that weekday's own budget if one is set, else the everyday one. */
+const baseBudget = (date = state.day.date) => { const v = state.dayBudgets && state.dayBudgets[new Date(date + "T12:00").getDay()]; return v > 0 ? v : state.budget; };
+const budgetToday = () => baseBudget() + (state.eatBack ? burnedKcal() : 0);   // the day's allowance, stretched by workouts only if asked
 
 // ---------------------------------------------------------------- helpers
 
@@ -191,7 +194,7 @@ function show(view) {
   if (view !== "scan") stopCamera();
   if (view === "home") renderHome();
   if (view === "settings") renderSettings();
-  if (view === "budget") { $("#b-budget").value = state.budget; $$("#budget-chips button").forEach((b) => b.classList.toggle("on", +b.dataset.b === state.budget)); const g = state.goals || {}; $("#b-p").value = g.p ?? ""; $("#b-c").value = g.c ?? ""; $("#b-f").value = g.f ?? ""; $("#b-notes").value = state.notes || ""; $("#b-weight").value = state.weightKg || ""; }
+  if (view === "budget") { renderDayBudgets(); $("#b-budget").value = state.budget; $$("#budget-chips button").forEach((b) => b.classList.toggle("on", +b.dataset.b === state.budget)); const g = state.goals || {}; $("#b-p").value = g.p ?? ""; $("#b-c").value = g.c ?? ""; $("#b-f").value = g.f ?? ""; $("#b-notes").value = state.notes || ""; $("#b-weight").value = state.weightKg || ""; }
   if (view === "scan") startCamera();
   if (view === "search") openSearch();
   if (view === "meals") renderMeals();
@@ -241,7 +244,8 @@ function renderHome() {
   applySimple();
   const used = usedKcal(), budget = budgetToday(), left = budget - used, burned = burnedKcal();
   $("#home-used").textContent = fmt(used);
-  $("#home-budget").textContent = state.eatBack && burned ? `${fmt(state.budget)} + ${fmt(burned)}` : fmt(state.budget);
+  $("#home-budget").textContent = state.eatBack && burned ? `${fmt(baseBudget())} + ${fmt(burned)}` : fmt(baseBudget());
+  $("#home-budget-label").textContent = baseBudget() !== state.budget ? `${WEEKDAYS[new Date(state.day.date + "T12:00").getDay()]} budget` : "Daily budget";
   const bar = $("#home-bar");
   bar.style.width = `${Math.min(100, budget > 0 ? used / budget * 100 : 0)}%`;
   bar.classList.toggle("over", left < 0);
@@ -298,12 +302,12 @@ function quickEntries() {
   const presets = (typeof PRESETS !== "undefined" ? PRESETS : []).map((p) => ({
     key: "preset:" + p.name, preset: true, uses: state.presetUses[p.name] || 0, lastUsed: "",
     basis: { name: p.name, source: "quick", unit: "ml", unitLabel: p.unit || "serving", kcalPerServing: Math.round(p.kcal), pServ: nz(p.protein), cServ: nz(p.carbs), fServ: nz(p.fat) },
-    detail: p.detail || "", lastKcal: Math.round(p.kcal), lastShareLabel: `${fmt(Math.round(p.kcal) / state.budget * 100, 1)}% of the day`
+    detail: p.detail || "", lastKcal: Math.round(p.kcal), lastShareLabel: `${fmt(Math.round(p.kcal) / baseBudget() * 100, 1)}% of the day`
   }));
   const meals = state.meals.map((m) => {
     const b = mealBasis(m), kcal = Math.round(b.kcalPerServing || 0);
     return { key: "meal:" + m.id, meal: true, uses: m.uses || 0, lastUsed: m.lastUsed || "", basis: b,
-      detail: `1 portion of ${m.portions || 1} · ${fmt(kcal)} kcal`, lastKcal: kcal, lastShareLabel: `${fmt(kcal / state.budget * 100, 1)}% of the day` };
+      detail: `1 portion of ${m.portions || 1} · ${fmt(kcal)} kcal`, lastKcal: kcal, lastShareLabel: `${fmt(kcal / baseBudget() * 100, 1)}% of the day` };
   });
   return presets.concat(meals, state.recent.map((r) => ({ ...r, uses: r.uses || 0 })))
     .sort((a, b) => (b.uses - a.uses) || String(b.lastUsed || "").localeCompare(String(a.lastUsed || "")));
@@ -813,14 +817,22 @@ $("#budget-save").onclick = () => {
   const b = num($("#b-budget").value);
   if (!b) { toast("Budget needs to be a number of kcal"); return; }
   state.budget = Math.round(b);
+  const days = {}; $$("#b-days input").forEach((el) => { const v = num(el.value); if (v && v >= 500 && v <= 10000 && Math.round(v) !== state.budget) days[el.dataset.w] = Math.round(v); });
+  state.dayBudgets = days;
   state.goals = { p: num($("#b-p").value) ? Math.round(num($("#b-p").value)) : null, c: num($("#b-c").value) ? Math.round(num($("#b-c").value)) : null, f: num($("#b-f").value) ? Math.round(num($("#b-f").value)) : null };
   state.notes = $("#b-notes").value.trim();
   state.weightKg = num($("#b-weight").value) || null;
-  save(); toast(`Budget set to ${fmt(state.budget)} kcal`); home();
+  const extra = [1, 2, 3, 4, 5, 6, 0].filter((w) => state.dayBudgets[w]).map((w) => `${WEEKDAYS[w].slice(0, 3)} ${fmt(state.dayBudgets[w])}`);
+  save(); toast(`Budget set to ${fmt(state.budget)} kcal${extra.length ? `; ${extra.join(", ")}` : ""}`); home();
 };
 
 // ---------------------------------------------------------------- settings
 
+function renderDayBudgets() {
+  const box = $("#b-days"), today = new Date(state.day.date + "T12:00").getDay(), d = state.dayBudgets || {};
+  box.innerHTML = [1, 2, 3, 4, 5, 6, 0].map((w) => `<label class="${w === today ? "today" : ""}">${WEEKDAYS[w].slice(0, 3)}<input type="number" inputmode="numeric" data-w="${w}" placeholder="${fmt(state.budget)}" value="${d[w] || ""}"></label>`).join("");
+}
+$("#b-budget").addEventListener("input", () => { const v = num($("#b-budget").value); if (v) $$("#b-days input").forEach((el) => el.placeholder = fmt(Math.round(v))); });
 function renderSettings() {
   $("#s-budget").value = state.budget;
   $("#s-apikey").value = state.apiKey;
@@ -971,7 +983,7 @@ function drawFriends() {
   // the week
   const byUser = {};
   for (const d of fr.days) { (byUser[d.user_id] = byUser[d.user_id] || []).push(d); }
-  if (!byUser[me] && state.shareDay) byUser[me] = [{ user_id: me, day: today, budget: state.budget, kcal: usedKcal() }];
+  if (!byUser[me] && state.shareDay) byUser[me] = [{ user_id: me, day: today, budget: budgetToday(), kcal: usedKcal() }];
   const rows = Object.entries(byUser).map(([uid, ds]) => {
     const onBudget = ds.filter((d) => d.kcal <= d.budget).length;
     const pct = ds.reduce((a, d) => a + (d.budget ? d.kcal / d.budget : 0), 0) / ds.length * 100;
@@ -1090,7 +1102,7 @@ async function talk() {
   const text = $("#talk").value.trim(); if (!text) return;
   if (!aiAvailable()) { aiHelp(); return; }
   const list = state.day.items.map((it) => `- "${it.name}": ${it.kcal} kcal${(() => { const a = amountsFor(it, it.kcal); return a.grams != null ? `, ${Math.round(a.grams)} ${it.unit || "g"}` : ""; })()}`).join("\n") || "(nothing yet)";
-  const prompt = `You maintain someone's food diary for today. Budget ${state.budget} kcal, eaten ${usedKcal()} kcal so far. Today's list:\n${list}\n\nThey say: "${text}"\n\nTurn that into actions on the list. Use "update" with the corrected total kcal (and amount) when they say they had more or less of an existing item; "remove" to take one off; "add" for new things with a realistic kcal estimate for the amount; "set_budget" if they change the day's budget; "workout" when they did exercise (activity from the list, minutes, effort, and for gym sessions the lifts as sets × reps at kg). Match targets to the exact names in the list. If they're only asking a question, return no actions and answer in reply.`;
+  const prompt = `You maintain someone's food diary for today. Budget ${budgetToday()} kcal, eaten ${usedKcal()} kcal so far. Today's list:\n${list}\n\nThey say: "${text}"\n\nTurn that into actions on the list. Use "update" with the corrected total kcal (and amount) when they say they had more or less of an existing item; "remove" to take one off; "add" for new things with a realistic kcal estimate for the amount; "set_budget" if they change the day's budget; "workout" when they did exercise (activity from the list, minutes, effort, and for gym sessions the lifts as sets × reps at kg). Match targets to the exact names in the list. If they're only asking a question, return no actions and answer in reply.`;
   busy("Working out what you meant…");
   let r;
   try { r = await askAI(TALK_SCHEMA, [{ type: "text", text: prompt }]); busy(false); }
@@ -1131,7 +1143,7 @@ function planTalkAction(a) {
     else if (num(a.kcal)) kcal = a.kcal;
     if (!kcal) return null;
     kcal = Math.round(kcal);
-    return { label: `${it.name}: ${fmt(it.kcal)} → ${fmt(kcal)} kcal`, run: () => { it.kcal = kcal; it.shareLabel = `${fmt(kcal / state.budget * 100, 1)}% of the day`; } };
+    return { label: `${it.name}: ${fmt(it.kcal)} → ${fmt(kcal)} kcal`, run: () => { it.kcal = kcal; it.shareLabel = `${fmt(kcal / baseBudget() * 100, 1)}% of the day`; } };
   }
   if (a.action === "add" && a.name) {
     const hit = searchLocal(a.name)[0];
@@ -1152,7 +1164,7 @@ function planTalkAction(a) {
     if (!kcal) return null;
     kcal = Math.round(kcal);
     const amt = num(a.count) ? `${a.count} ${plural(a.count, basis.unitLabel || "serving")}` : num(a.grams) ? `${Math.round(a.grams)} ${basis.unit || "g"}` : "";
-    return { label: `Add ${basis.name}${amt ? `, ${amt}` : ""} (${fmt(kcal)} kcal)`, run: () => addToDay(basis, kcal, `${fmt(kcal / state.budget * 100, 1)}% of the day`) };
+    return { label: `Add ${basis.name}${amt ? `, ${amt}` : ""} (${fmt(kcal)} kcal)`, run: () => addToDay(basis, kcal, `${fmt(kcal / baseBudget() * 100, 1)}% of the day`) };
   }
   return null;
 }
@@ -3445,7 +3457,7 @@ function updateResult() {
   $("#share-send").disabled = !amountKcal || !!pick;
   if (!amountKcal) { $("#r-kcal").textContent = "0"; $("#r-sub").textContent = "of your day"; bar.style.width = "0"; $("#r-lines").innerHTML = ""; $("#r-macros").innerHTML = ""; btn.disabled = true; return; }
   const kcal = Math.round(amountKcal);
-  const frac = state.budget > 0 ? kcal / state.budget : 0;
+  const frac = baseBudget() > 0 ? kcal / baseBudget() : 0;
   $("#r-kcal").textContent = fmt(kcal);
   $("#r-sub").textContent = `≈ ${fmt(frac * 100, 1)}% of your day`;
   bar.style.width = `${Math.min(100, frac * 100)}%`;
@@ -3461,8 +3473,8 @@ $("#share-post").onclick = () => {
   if (!amountKcal || !draft || pick) return;
   if (!(window.cloud && window.cloud.user)) { toast("Sharing needs an account: sign in from Settings"); return; }
   const kcal = Math.round(amountKcal);
-  if (editId) { const it = state.day.items.find((x) => x.id === editId); if (it) { Object.assign(it, basisOf(draft)); it.kcal = kcal; it.shareLabel = `${fmt(kcal / state.budget * 100, 1)}% of the day`; save(); } editId = null; }
-  else addToDay(draft, kcal, `${fmt(kcal / state.budget * 100, 1)}% of the day`);
+  if (editId) { const it = state.day.items.find((x) => x.id === editId); if (it) { Object.assign(it, basisOf(draft)); it.kcal = kcal; it.shareLabel = `${fmt(kcal / baseBudget() * 100, 1)}% of the day`; save(); } editId = null; }
+  else addToDay(draft, kcal, `${fmt(kcal / baseBudget() * 100, 1)}% of the day`);
   const m = macrosFor(draft, kcal), a = amountsFor(draft, kcal);
   openCompose({ kind: "food", name: draft.name, kcal, grams: a.grams != null ? Math.round(a.grams) : null, unit: draft.unit || "g", p: m.p != null ? Math.round(m.p) : null, c: m.c != null ? Math.round(m.c) : null, f: m.f != null ? Math.round(m.f) : null, basis: basisOf(draft) }, draft.photo || null);
 };
@@ -3472,17 +3484,17 @@ $("#share-add").onclick = () => {
   if (pick) { mealTakeIngredient(draft, kcal); toast(`${draft.name} is in the meal`); return; }
   if (editId) {
     const it = state.day.items.find((x) => x.id === editId);
-    if (it) { Object.assign(it, basisOf(draft)); it.kcal = kcal; it.shareLabel = `${fmt(kcal / state.budget * 100, 1)}% of the day`; save(); }
+    if (it) { Object.assign(it, basisOf(draft)); it.kcal = kcal; it.shareLabel = `${fmt(kcal / baseBudget() * 100, 1)}% of the day`; save(); }
     editId = null; toast(`Updated ${draft.name} · ${fmt(kcal)} kcal`); home(); return;
   }
-  addToDay(draft, kcal, `${fmt(kcal / state.budget * 100, 1)}% of the day`);
+  addToDay(draft, kcal, `${fmt(kcal / baseBudget() * 100, 1)}% of the day`);
   toast(`Added ${draft.name} · ${fmt(kcal)} kcal`);
   home();
 };
 
 // ---------------------------------------------------------------- account + sync (optional, see cloud.js)
 
-const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "weekGoals", "seenBadges", "goalWins", "postCount", "pbCount", "body", "goalWeight", "goalStart", "simple", "onboarded", "reminders", "reactCount", "commentCount", "sendCount", "friendCount", "tombs", "updatedAt"];   // the API key stays on the device
+const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "weekGoals", "seenBadges", "goalWins", "postCount", "pbCount", "body", "goalWeight", "goalStart", "simple", "onboarded", "reminders", "reactCount", "commentCount", "sendCount", "friendCount", "tombs", "dayBudgets", "updatedAt"];   // the API key stays on the device
 let pushTimer = null;
 function schedulePush() {
   if (!window.cloud || !window.cloud.user) return;
@@ -3536,7 +3548,8 @@ function mergeState(local, remote) {
     m.day = later;
     if (((earlier.items || []).length || (earlier.workouts || []).length) && !history.some((h) => h.date === earlier.date)) {
       const mac = sumMacros(earlier.items || []), burned = (earlier.workouts || []).reduce((a, w) => a + (w.kcal || 0), 0);
-      history.push({ date: earlier.date, budget: m.budget + (m.eatBack ? burned : 0), kcal: (earlier.items || []).reduce((a, it) => a + (it.kcal || 0), 0), items: (earlier.items || []).map((it) => ({ ...basisOf(it), kcal: it.kcal, shareLabel: it.shareLabel })), p: Math.round(mac.p), c: Math.round(mac.c), f: Math.round(mac.f), burned, workouts: (earlier.workouts || []).map((w) => ({ name: w.name, minutes: w.minutes, kcal: w.kcal, lifts: w.lifts || [] })) });
+      const wb = m.dayBudgets && m.dayBudgets[new Date(earlier.date + "T12:00").getDay()];
+      history.push({ date: earlier.date, budget: (wb > 0 ? wb : m.budget) + (m.eatBack ? burned : 0), kcal: (earlier.items || []).reduce((a, it) => a + (it.kcal || 0), 0), items: (earlier.items || []).map((it) => ({ ...basisOf(it), kcal: it.kcal, shareLabel: it.shareLabel })), p: Math.round(mac.p), c: Math.round(mac.c), f: Math.round(mac.f), burned, workouts: (earlier.workouts || []).map((w) => ({ name: w.name, minutes: w.minutes, kcal: w.kcal, lifts: w.lifts || [] })) });
     }
   }
   m.history = history.sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 120);

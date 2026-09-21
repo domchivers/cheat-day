@@ -789,3 +789,9 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 :root[data-theme="dark"] .board .medal.m1 { background: #8c7224; color: #fff3c8; }
 :root[data-theme="dark"] .board .medal.m3 { background: #7a4e2a; color: #ffe0c4; }
 :root[data-theme="dark"] .thumb-sm, :root[data-theme="dark"] img.thumb-sm { background-color: var(--mint-2); }
+/* Budgets per weekday */
+.day-budgets { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 6px 0 4px; }
+.day-budgets label { margin: 0; font-size: 12px; font-weight: 700; color: var(--muted); text-align: center; }
+.day-budgets input { margin-top: 4px; padding: 10px 6px; text-align: center; font-size: 15px; }
+.day-budgets label.today { color: var(--green); }
+.field-title small { font-weight: 400; }
