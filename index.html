@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=66">
-  <link rel="icon" href="icons/icon-192.png?v=66">
-  <link rel="stylesheet" href="styles.css?v=66">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=67">
+  <link rel="icon" href="icons/icon-192.png?v=67">
+  <link rel="stylesheet" href="styles.css?v=67">
 </head>
 <body>
 
@@ -354,7 +354,28 @@
   <div class="chips" id="body-metrics"></div>
   <div class="card chart-card"><div class="field-title" id="body-chart-title">Weight</div><div id="body-chart"></div></div>
 
+  <h2 class="section-title">Your scale</h2>
+  <div class="card form-card" id="vs-card">
+    <div id="vs-form">
+      <p class="muted">Sign in with your VeSync email and password. The password isn't kept, only the session. Every weigh-in that reaches VeSync then shows up here.</p>
+      <label>VeSync email <input type="email" id="vs-email" autocomplete="username" inputmode="email"></label>
+      <label>VeSync password <input type="password" id="vs-pass" autocomplete="current-password"></label>
+      <button class="btn primary" id="vs-connect">Link account</button>
+      <p class="muted tiny">Unofficial: it talks to VeSync the way their app does. If Etekcity ever changes that, readings just stop; nothing else is affected.</p>
+    </div>
+    <div id="vs-linked" class="hidden">
+      <div class="linked-row"><span class="circle green"><svg><use href="#i-scale"/></svg></span><div><b>Linked</b> <span id="vs-device"></span><div class="muted tiny" id="vs-last"></div></div></div>
+      <div class="grid2 tight">
+        <button class="btn primary" id="vs-sync">Sync now</button>
+        <button class="btn ghost" id="vs-unlink">Unlink</button>
+      </div>
+      <details class="how"><summary>What the scale sends</summary><p class="muted tiny" id="vs-keys">Sync once to see.</p></details>
+    </div>
+  </div>
+
   <h2 class="section-title">Add a reading</h2>
+  <button class="card prompt-card hidden" id="bd-form-toggle"><span class="circle sand"><svg><use href="#i-pen"/></svg></span><span class="prompt-text">Type a reading in</span><svg class="chev"><use href="#i-chev"/></svg></button>
+  <div id="bd-form">
   <div class="card form-card">
     <div class="grid2 tight">
       <label>Date <input type="date" id="bd-date"></label>
@@ -370,27 +391,8 @@
     <button class="btn primary" id="bd-save">Save reading</button>
   </div>
 
-  <h2 class="section-title">Link your Etekcity account</h2>
-  <div class="card form-card" id="vs-card">
-    <div id="vs-form">
-      <p class="muted">Sign in with the email and password you use in the VeSync app. Your password isn't kept: the app logs in once and keeps only the session, like the VeSync app does. Then every weigh-in that reaches VeSync shows up here.</p>
-      <label>VeSync email <input type="email" id="vs-email" autocomplete="username" inputmode="email"></label>
-      <label>VeSync password <input type="password" id="vs-pass" autocomplete="current-password"></label>
-      <button class="btn primary" id="vs-connect">Link account</button>
-      <p class="muted tiny">Unofficial: it talks to VeSync the way their app does, so Etekcity could change it without notice. If that ever happens the readings just stop, nothing else is affected.</p>
-    </div>
-    <div id="vs-linked" class="hidden">
-      <p><b>Linked</b> <span id="vs-device"></span></p>
-      <p class="muted tiny" id="vs-last"></p>
-      <div class="grid2 tight">
-        <button class="btn primary" id="vs-sync">Sync now</button>
-        <button class="btn ghost" id="vs-unlink">Unlink</button>
-      </div>
-      <details class="how"><summary>What the scale sends</summary><p class="muted tiny" id="vs-keys">Sync once to see.</p></details>
-    </div>
   </div>
-
-  <h2 class="section-title">Apple Health instead (optional)</h2>
+  <details class="how apple-health"><summary>Or use Apple Health instead</summary>
   <div class="card form-card" id="body-connect">
     <p class="muted">Your Etekcity scale writes to Apple Health. An iPhone Shortcut can send those readings here every morning.</p>
     <button class="btn mint" id="bd-token">Get my link</button>
@@ -409,6 +411,8 @@
       </details>
     </div>
   </div>
+
+  </details>
 
   <h2 class="section-title">Readings</h2>
   <ul class="list" id="body-list"></ul>
@@ -801,10 +805,10 @@
   <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=66"></script>
-<script src="foods.js?v=66"></script>
-<script src="supabase-config.js?v=66"></script>
-<script src="cloud.js?v=66"></script>
-<script src="app.js?v=66"></script>
+<script src="presets.js?v=67"></script>
+<script src="foods.js?v=67"></script>
+<script src="supabase-config.js?v=67"></script>
+<script src="cloud.js?v=67"></script>
+<script src="app.js?v=67"></script>
 </body>
 </html>

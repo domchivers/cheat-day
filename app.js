@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "66";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "67";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1473,7 +1473,8 @@ async function renderBody() {
   if (await pullBody(false)) drawBody();
 }
 // ---- the VeSync link
-let vsSyncAt = 0, vsLinked = null;
+let vsSyncAt = 0, vsLinked = null, bdFormOpen = false;
+$("#bd-form-toggle").onclick = () => { bdFormOpen = !bdFormOpen; $("#bd-form").classList.toggle("hidden", !bdFormOpen); if (bdFormOpen) $("#bd-weight").focus(); };
 function showVesync(st) {
   const signed = !!(window.cloud && window.cloud.user);
   $("#vs-card").classList.toggle("hidden", !signed);
@@ -1481,6 +1482,9 @@ function showVesync(st) {
   vsLinked = !!(st && st.linked);
   $("#vs-form").classList.toggle("hidden", vsLinked);
   $("#vs-linked").classList.toggle("hidden", !vsLinked);
+  // With a scale linked the typed-in form folds away behind a button
+  $("#bd-form-toggle").classList.toggle("hidden", !vsLinked);
+  if (vsLinked && !bdFormOpen) $("#bd-form").classList.add("hidden"); else $("#bd-form").classList.remove("hidden");
   if (!vsLinked) return;
   $("#vs-device").textContent = st.device_name ? `to ${st.device_name}` : "(no scale found on the account yet)";
   $("#vs-last").textContent = st.last_sync ? `Last sync ${ago(st.last_sync)} · ${st.last_count || 0} reading${st.last_count === 1 ? "" : "s"} on VeSync` : "Not synced yet";
