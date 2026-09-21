@@ -532,7 +532,7 @@ body[data-view="home"] .view, body[data-view="feed"] .view, body[data-view="work
 #w-ask { margin-top: 14px; }
 
 /* Sending items to friends */
-.send-sheet { padding: 10px 14px 12px; margin: -4px 0 10px; text-align: center; }
+.send-sheet { padding: 12px 14px 12px; margin: 10px 0 0; text-align: center; }
 .send-sheet .field-title { margin-top: 0; }
 .send-sheet .chips { margin: 8px 0 6px; justify-content: center; }
 .send-sheet .chips button.avatar-chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px 6px 6px; }
