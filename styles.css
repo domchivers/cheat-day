@@ -622,3 +622,8 @@ body[data-view="home"] .view, body[data-view="feed"] .view, body[data-view="work
 #bd-form-toggle { margin-bottom: 12px; }
 #bd-form-toggle .prompt-text { background: transparent; padding: 0; color: var(--text); font-weight: 600; }
 #bd-form-toggle .chev { width: 18px; height: 18px; color: var(--muted); }
+.shot-card { margin-top: 12px; border: 2px solid var(--mint); }
+.shot-card .circle { background: var(--mint); color: var(--green); }
+.shot-card b { font-size: 16px; }
+#bd-import { margin-top: 10px; border-color: var(--line); }
+#bd-import .circle { background: var(--peach-bg); color: var(--peach); }

@@ -250,6 +250,15 @@ chart per metric and 30-day change. The latest weight feeds the workout burn
 estimate. Readings live in your synced data and, when signed in, in a
 `body_metrics` table so a Shortcut can add to them.
 
+**Read my scale screenshot.** The simplest route: weigh in with the scale's own
+app, screenshot the results, tap "Read my scale screenshot" on the Body screen.
+The AI reads every metric it can see and asks once before saving.
+
+**Upload exported data.** Export from the scale app (VeSync: scale → settings →
+export data), then "Upload exported data" on the Body screen takes the CSV or
+Excel file, finds the columns by name (asking the AI if the names are unusual)
+and brings in every day, keeping the last weigh-in of each day.
+
 **Link an Etekcity / VeSync account.** The Body screen's "Link your Etekcity
 account" signs in to VeSync with the app's own (unofficial) protocol via the
 `vesync` Edge Function, keeps only the session token, finds the scale and pulls

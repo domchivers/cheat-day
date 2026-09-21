@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "68";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "69";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1478,6 +1478,7 @@ $("#bd-form-toggle").onclick = () => { bdFormOpen = !bdFormOpen; $("#bd-form").c
 function showVesync(st) {
   const signed = !!(window.cloud && window.cloud.user);
   $("#vs-card").classList.toggle("hidden", !signed);
+  $("#vs-title").classList.toggle("hidden", !signed);
   if (!signed) return;
   vsLinked = !!(st && st.linked);
   $("#vs-form").classList.toggle("hidden", vsLinked);
@@ -1555,6 +1556,136 @@ function drawBody() {
   }
   $("#body-empty").classList.toggle("hidden", rows.length > 0);
 }
+// ---- read a scale app screenshot with the AI: one tap, check, save
+const BODY_SCHEMA = {
+  type: "object",
+  properties: {
+    weight_kg: { type: ["number", "null"], description: "Body weight in kg. Convert from lb (x0.4536) or st/lb if needed" },
+    body_fat_pct: { type: ["number", "null"], description: "Body fat as a percentage, e.g. 17.0" },
+    muscle_kg: { type: ["number", "null"], description: "Muscle mass in kg" },
+    lean_kg: { type: ["number", "null"], description: "Fat-free body weight / lean mass in kg" },
+    water_pct: { type: ["number", "null"], description: "Body water as a percentage" },
+    bone_kg: { type: ["number", "null"], description: "Bone mass in kg" },
+    visceral_fat: { type: ["number", "null"], description: "Visceral fat rating, a small number like 7" },
+    bmr_kcal: { type: ["number", "null"], description: "Basal metabolic rate in kcal" },
+    metabolic_age: { type: ["number", "null"], description: "Metabolic age in years" },
+    bmi: { type: ["number", "null"] },
+    is_body_reading: { type: "boolean", description: "true only if this really shows body weight / composition figures" }
+  },
+  required: ["weight_kg", "body_fat_pct", "muscle_kg", "lean_kg", "water_pct", "bone_kg", "visceral_fat", "bmr_kcal", "metabolic_age", "bmi", "is_body_reading"],
+  additionalProperties: false
+};
+const BODY_PROMPT = `This is a screenshot of a smart-scale app (such as VeSync / Etekcity, Renpho, Withings) or a photo of a scale's display. Read the body measurements off it.
+Report only numbers actually visible; null for anything not shown. Muscle mass is the kg figure labelled Muscle Mass (not Skeletal Muscle %). Lean mass is Fat-Free Body Weight. If it isn't a body reading at all, set is_body_reading to false.`;
+$("#bd-shot").onclick = () => { if (!aiAvailable()) { aiHelp(); return; } $("#file-bd-shot").click(); };
+$("#file-bd-shot").addEventListener("change", async (e) => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  busy("Reading your scale…");
+  let r;
+  try {
+    const img = await loadImage(f);
+    const b64 = drawScaled(img, 1280).toDataURL("image/jpeg", 0.85).split(",")[1];
+    r = await askAI(BODY_SCHEMA, [{ type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } }, { type: "text", text: BODY_PROMPT }]);
+  } catch (err) { busy(false); toast(err.message || "Couldn't read that picture", 5000); return; }
+  busy(false);
+  if (!r || r.is_body_reading === false || (num(r.weight_kg) == null && num(r.body_fat_pct) == null)) { toast("Couldn't see scale readings in that picture. Try a screenshot of the results screen.", 5000); return; }
+  const map = { weight: r.weight_kg, fat: r.body_fat_pct, muscle: r.muscle_kg, lean: r.lean_kg, water: r.water_pct, bone: r.bone_kg, visceral: r.visceral_fat, bmr: r.bmr_kcal, age: r.metabolic_age, bmi: r.bmi };
+  const row = { day: localDate(), updatedAt: new Date().toISOString() };
+  for (const [k, v] of Object.entries(map)) if (num(v) != null) row[k] = Math.round(v * 10) / 10;
+  const lines = BODY_METRICS.filter((m) => row[m.key] != null).map((m) => `${m.name}: ${fmt(row[m.key], m.dp)}${m.unit === "%" ? "%" : m.unit ? ` ${m.unit}` : ""}`);
+  if (!await ask(`Save today's reading?\n\n${lines.join("\n")}`, { ok: "Save" })) return;
+  upsertBody(row); save(); drawBody();
+  toast(`Saved${row.weight ? `: ${row.weight} kg` : ""}`);
+  const c = window.cloud; if (c && c.user) { try { const { day, updatedAt, ...rest } = row; await c.saveBodyRow({ day, ...rest }); } catch (err) {} }
+});
+// ---- upload a scale app's export (CSV or Excel): find the columns, bring in every day
+const IMPORT_COLS = {
+  date: /^(date|time|date ?time|measure(d|ment)? ?(time|date)|record(ed)? ?(time|date)|timestamp|日期|时间)/i,
+  weight: /^(weight|body ?weight|体重)(?!.*(fat|muscle|bone|lean|free))/i,
+  fat: /(body ?fat|fat ?(rate|%|percent))(?!.*(mass|kg|weight|free|subcut|visceral))/i,
+  lean: /(fat[- ]?free|lean)/i,
+  muscle: /^(muscle ?mass|muscle)(?!.*(%|rate|skeletal))/i,
+  water: /(body ?water|water)/i,
+  bone: /(bone)/i,
+  visceral: /(visceral)/i,
+  bmr: /(bmr|basal)/i,
+  age: /(metabolic|body) ?age/i,
+  bmi: /^bmi/i
+};
+function parseCSV(text) {
+  const sep = (text.split("\n")[0].match(/;/g) || []).length > (text.split("\n")[0].match(/,/g) || []).length ? ";" : (text.includes("\t") && !text.includes(",") ? "\t" : ",");
+  const rows = []; let row = [], cell = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) { if (ch === '"' && text[i + 1] === '"') { cell += '"'; i++; } else if (ch === '"') q = false; else cell += ch; continue; }
+    if (ch === '"') q = true; else if (ch === sep) { row.push(cell); cell = ""; } else if (ch === "\n" || ch === "\r") { if (ch === "\r" && text[i + 1] === "\n") i++; row.push(cell); cell = ""; if (row.some((x) => x.trim())) rows.push(row); row = []; } else cell += ch;
+  }
+  row.push(cell); if (row.some((x) => x.trim())) rows.push(row);
+  return rows;
+}
+async function readSheet(file) {
+  if (/\.xlsx?$/i.test(file.name) || /sheet|excel/.test(file.type)) {
+    if (!window.XLSX) await new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"; sc.onload = res; sc.onerror = () => rej(new Error("Couldn't load the Excel reader (offline?)")); document.head.appendChild(sc); });
+    const wb = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+    return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, dateNF: "yyyy-mm-dd hh:mm" }).map((r) => r.map((x) => x == null ? "" : String(x)));
+  }
+  return parseCSV((await file.text()).replace(/^\uFEFF/, ""));
+}
+/** Which column is which: by header name first; if that misses the date or weight, ask the AI to map them. */
+async function mapColumns(header, sample) {
+  const map = {};
+  header.forEach((h, i) => { const name = String(h).trim(); for (const [k, rx] of Object.entries(IMPORT_COLS)) if (map[k] == null && rx.test(name)) { map[k] = i; break; } });
+  let lb = false;   // set by the AI when headers give no unit
+  if ((map.date == null || map.weight == null) && aiAvailable()) {
+    const keys = Object.keys(IMPORT_COLS);
+    const schema = { type: "object", properties: Object.fromEntries(keys.map((k) => [k, { type: ["integer", "null"], description: `0-based column index holding ${k}, or null` }]).concat([["weight_in_lb", { type: "boolean" }]])), required: keys.concat(["weight_in_lb"]), additionalProperties: false };
+    const r = await askAI(schema, [{ type: "text", text: `A body-scale app's export. Header row and two data rows (columns separated by " | "):\n${header.join(" | ")}\n${sample.map((x) => x.join(" | ")).join("\n")}\nSay which column index holds each measurement: date (the date or date-time of the weigh-in), weight, fat (body fat %), lean (fat-free mass kg), muscle (muscle mass kg), water (%), bone (kg), visceral (visceral fat rating), bmr (kcal), age (metabolic age), bmi.` }]);
+    for (const k of keys) if (Number.isInteger(r[k]) && r[k] >= 0 && r[k] < header.length) map[k] = r[k];
+    lb = !!r.weight_in_lb;
+  }
+  return { map, lb };
+}
+function importDay(v) {
+  const s = String(v || "").trim(); if (!s) return null;
+  if (/^\d{9,13}$/.test(s)) { const n = +s; return localDate(new Date(n > 1e12 ? n : n * 1000)); }
+  let m = s.match(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/); if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  m = s.match(/(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})/);
+  if (m) { let [, a, b, y] = m; if (y.length === 2) y = "20" + y; const day = +a > 12 ? a : +b > 12 ? b : a, mon = +a > 12 ? b : +b > 12 ? a : b; return `${y}-${String(mon).padStart(2, "0")}-${String(day).padStart(2, "0")}`; }   // day first unless it can't be
+  const d = new Date(s); return isNaN(d) ? null : localDate(d);
+}
+$("#bd-import").onclick = () => $("#file-bd-import").click();
+$("#file-bd-import").addEventListener("change", async (e) => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  busy("Reading the file…");
+  try {
+    const rows = await readSheet(f);
+    const hi = rows.findIndex((r) => r.filter((x) => String(x).trim()).length >= 2);
+    if (hi < 0 || rows.length < hi + 2) throw new Error("That file looks empty");
+    const header = rows[hi], data = rows.slice(hi + 1);
+    const { map, lb } = await mapColumns(header, data.slice(0, 2));
+    // Mass columns in pounds: each column's own header says so ("Weight(lb)", "Muscle Mass(lb)"), else the AI's guess
+    const MASS = ["weight", "lean", "muscle", "bone"];
+    const inLb = (k) => MASS.includes(k) && (/(lb|lbs|pounds?)|\(lb/i.test(String(header[map[k]] || "")) || (lb && !/kg/i.test(String(header[map[k]] || ""))));
+    if (map.date == null || map.weight == null) throw new Error("Couldn't find the date and weight columns in that file");
+    const byDay = {};
+    for (const r of data) {
+      const day = importDay(r[map.date]); if (!day) continue;
+      const row = {};
+      for (const k of Object.keys(IMPORT_COLS)) { if (k === "date" || map[k] == null) continue; let v = parseFloat(String(r[map[k]] || "").replace(",", ".").replace(/[^0-9.\-]/g, "")); if (!isFinite(v) || v <= 0) continue; if (inLb(k)) v *= 0.45359237; row[k] = Math.round(v * 10) / 10; }
+      if (row.weight || row.fat) byDay[day] = { ...(byDay[day] || {}), ...row };   // later rows in a day win: the last weigh-in
+    }
+    const days = Object.keys(byDay).sort();
+    busy(false);
+    if (!days.length) throw new Error("No readings found in that file");
+    const found = BODY_METRICS.filter((m) => map[m.key] != null).map((m) => m.name.toLowerCase());
+    if (!await ask(`Bring in ${days.length} day${days.length === 1 ? "" : "s"} of readings, ${days[0]} to ${days[days.length - 1]}?\n\nFound: ${found.join(", ")}.\nDays already here are updated.`, { ok: "Import" })) return;
+    const stamp = new Date().toISOString();
+    for (const day of days) upsertBody({ day, updatedAt: stamp, ...byDay[day] });
+    save(); drawBody();
+    toast(`Imported ${days.length} day${days.length === 1 ? "" : "s"}`);
+    const c = window.cloud; if (c && c.user) { for (const day of days) { try { await c.saveBodyRow({ day, ...byDay[day] }); } catch (err) { break; } } }
+  } catch (err) { busy(false); toast(err.message || "Couldn't read that file", 5000); }
+});
 $("#bd-save").onclick = async () => {
   const day = $("#bd-date").value || localDate(), row = { day, updatedAt: new Date().toISOString() };
   let any = false;
