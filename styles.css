@@ -569,10 +569,8 @@ body[data-view="home"] .view, body[data-view="feed"] .view, body[data-view="work
 .goal-row .name { font-weight: 700; }
 .goal-row .prog { font-size: 13px; color: var(--muted); }
 .goal-row .bar { height: 6px; margin-top: 6px; background: #d2dfd3; }
-.goal-row .stepper { display: flex; align-items: center; gap: 4px; flex: none; }
-.goal-row .stepper button { width: 30px; height: 30px; border-radius: 50%; background: var(--mint-2); color: var(--green); font-weight: 800; font-size: 16px; }
-.goal-row .stepper b { min-width: 22px; text-align: center; }
-.goal-row .stepper button:disabled { opacity: .35; }
+.goal-row .count { font-weight: 800; font-size: 22px; color: var(--green); flex: none; }
+.goal-row .count small { font-size: 13px; color: var(--muted); font-weight: 600; }
 .badges { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .badge { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 8px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .badge .ic { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; font-size: 24px; background: var(--peach-ic); }
