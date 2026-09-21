@@ -58,16 +58,24 @@ async function devices(base: string, s: { token: string; accountId: string; term
 }
 const isScale = (d: any) => /scale|esf|fit-?8|efs/i.test(`${d.deviceType || ""} ${d.deviceName || ""} ${d.configModule || ""}`);
 
+/** The readings array, wherever VeSync put it: a known name, else the first array of objects anywhere in the result. */
+function firstArray(res: any): any[] {
+  if (!res || typeof res !== "object") return [];
+  for (const k of ["weightDatas", "weighingDatas", "items", "list", "dataList", "records", "data"]) if (Array.isArray(res[k]) && res[k].length) return res[k];
+  for (const v of Object.values(res)) { if (Array.isArray(v) && v.length && typeof v[0] === "object") return v; if (v && typeof v === "object") { const inner = firstArray(v); if (inner.length) return inner; } }
+  return [];
+}
+const trim = (v: unknown) => { try { const s = JSON.stringify(v); return s.length > 1500 ? JSON.parse(s.slice(0, 1500) + (s.startsWith("[") ? "]" : "}")) : v; } catch { return String(v).slice(0, 1500); } };
 /** Try the two reading endpoints the community has seen; return the raw rows and which endpoint answered. */
 async function readings(base: string, s: { token: string; accountId: string; terminalId: string }, dev: any) {
   const mobileId = String(1_000_000_000_000_000 + Math.floor(Math.random() * 9_000_000_000_000_000));
   const v2 = await post(base, "/cloud/v2/deviceManaged/getWeighingDataV2", { ...session(s), method: "getWeighingDataV2", configModule: dev.configModule, mobileId, pageSize: 100, page: 1, debugMode: false, allData: true }, legacyHeaders(s));
   if (expired(v2)) throw new Error("expired");
-  if (v2.code === 0 && v2.result) { const rows = v2.result.weightDatas || v2.result.items || v2.result.list || []; if (rows.length) return { rows, from: "getWeighingDataV2", raw: v2.result }; }
+  if (v2.code === 0 && v2.result) { const rows = firstArray(v2.result); if (rows.length) return { rows, from: "getWeighingDataV2", raw: v2.result }; }
   const fs = await post(base, "/cloud/v1/deviceManaged/fatScale/getWeighData", { ...session(s), method: "getWeighData", cid: dev.cid, uuid: dev.uuid, configModule: dev.configModule, mobileId }, legacyHeaders(s));
   if (expired(fs)) throw new Error("expired");
-  if (fs.code === 0 && fs.result) { const rows = fs.result.weightDatas || fs.result.items || fs.result.list || []; return { rows, from: "fatScale/getWeighData", raw: fs.result }; }
-  return { rows: [], from: "none", raw: { v2: { code: v2.code, msg: v2.msg }, fatScale: { code: fs.code, msg: fs.msg } } };
+  if (fs.code === 0 && fs.result) { const rows = firstArray(fs.result); if (rows.length) return { rows, from: "fatScale/getWeighData", raw: fs.result }; }
+  return { rows: [], from: "none", raw: { v2: { code: v2.code, msg: v2.msg, result: trim(v2.result) }, fatScale: { code: fs.code, msg: fs.msg, result: trim(fs.result) } } };
 }
 
 const n = (v: unknown) => { const x = Number(v); return isFinite(x) ? x : null; };
