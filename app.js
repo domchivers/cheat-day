@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "74";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "75";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -60,6 +60,7 @@ function ask(text, opts = {}) {
     $("#dlg-text").textContent = String(text);
     $("#dlg-ok").textContent = opts.ok || "OK";
     $("#dlg-cancel").textContent = opts.cancel || "Cancel";
+    $("#dlg-cancel").classList.toggle("hidden", opts.cancel === false);
     $("#dlg-ok").classList.toggle("danger", /^(delete|remove|discard|decline|dismiss)/i.test(String(text)));
     const chips = $("#dlg-choices"); chips.innerHTML = ""; chips.classList.toggle("hidden", !opts.choices);
     $("#dlg-ok").classList.toggle("hidden", !!opts.choices);
@@ -68,7 +69,7 @@ function ask(text, opts = {}) {
     wrap.classList.remove("hidden");
     const done = (v) => { wrap.classList.add("hidden"); $("#dlg-ok").onclick = $("#dlg-cancel").onclick = null; input.onkeydown = null; resolve(v); };
     if (opts.choices) for (const ch of opts.choices) { const b = document.createElement("button"); b.textContent = ch.label; b.classList.toggle("on", ch.value === opts.value); b.onclick = () => done(ch.value); chips.appendChild(b); }
-    $("#dlg-ok").onclick = () => done(opts.input ? input.value : true);
+    $("#dlg-ok").onclick = () => { if (opts.onOk) { try { opts.onOk(); } catch (e) {} } done(opts.input ? input.value : true); };
     $("#dlg-cancel").onclick = () => done(opts.input ? null : false);
     wrap.onclick = (e) => { if (e.target === wrap) done(opts.input ? null : false); };
     // Focus right away, inside the tap that opened the dialog, so the phone's keyboard comes up with it
@@ -242,6 +243,7 @@ function renderHome() {
   } else { yc.classList.add("hidden"); yc.innerHTML = ""; }
   renderQuick();
   refreshInbox(false);
+  setTimeout(maybeAskReminders, 2500);
   renderLevelCard();
 }
 function iconFor(source) {
@@ -3368,10 +3370,11 @@ async function savePrefs() {
   save();
   try { await window.cloud.pushCall("prefs", { prefs: state.reminders, tz: Intl.DateTimeFormat().resolvedOptions().timeZone }); } catch (e) { toast(e.message); }
 }
-$("#rem-on").onclick = async () => {
+$("#rem-on").onclick = () => enableReminders(Notification.requestPermission());   // asked straight from the tap, as iPhone needs
+async function enableReminders(permission) {
   const c = window.cloud; if (!(c && c.user)) { toast("Sign in first"); return; }
   try {
-    const perm = await Notification.requestPermission();   // must come straight from the tap on iPhone
+    const perm = await permission;
     if (perm !== "granted") { toast("Notifications weren't allowed"); renderReminders(); return; }
     busy("Turning on reminders…");
     const reg = await navigator.serviceWorker.ready;
@@ -3381,7 +3384,31 @@ $("#rem-on").onclick = async () => {
     await c.pushCall("subscribe", { subscription: sub.toJSON(), prefs: remPrefs(), tz: Intl.DateTimeFormat().resolvedOptions().timeZone });
     busy(false); toast("Reminders on"); renderReminders();
   } catch (e) { busy(false); toast("Couldn't turn on reminders: " + e.message, 6000); }
-};
+}
+/** Once, on the home screen: ask whether to turn reminders on. "Not now" waits two weeks; a second no stops it. */
+const REM_ASK = "cheatday.remAsk";
+let remAskedThisVisit = false;
+async function maybeAskReminders() {
+  if (remAskedThisVisit || document.body.dataset.view !== "home" || !$("#ask-dialog").classList.contains("hidden")) return;
+  const c = window.cloud; if (!(c && c.user)) return;
+  let rec = {}; try { rec = JSON.parse(localStorage.getItem(REM_ASK) || "{}"); } catch (e) {}
+  if (rec.done || (rec.no || 0) >= 2 || (rec.next && Date.now() < rec.next)) return;
+  const iphone = /iphone|ipad/i.test(navigator.userAgent);
+  const remember = (patch) => { try { localStorage.setItem(REM_ASK, JSON.stringify(Object.assign(rec, patch))); } catch (e) {} };
+  if (!pushSupported() || (iphone && !standalone())) {
+    if (!iphone || rec.tipShown) return;   // other browsers without push: nothing to offer
+    remAskedThisVisit = true; remember({ tipShown: true });
+    await ask("Want reminders to log and weigh in?\n\nOn iPhone they work once Cheat Days is on your home screen: tap the Share button, then Add to Home Screen, and open it from there.", { ok: "Got it", cancel: false });
+    return;
+  }
+  if (Notification.permission === "denied") { remember({ done: true }); return; }
+  if (Notification.permission === "granted" && await currentSub().catch(() => null)) { remember({ done: true }); return; }
+  remAskedThisVisit = true;
+  let permission = null;
+  const yes = await ask("Turn on reminders?\n\nA nudge at 2pm if you haven't logged anything, a morning weigh-in reminder, and a ping when friends react to your posts.", { ok: "Turn on", cancel: "Not now", onOk: () => { permission = Notification.requestPermission(); } });
+  if (yes) { remember({ done: true }); enableReminders(permission || Notification.requestPermission()); }
+  else remember({ no: (rec.no || 0) + 1, next: Date.now() + 14 * 864e5 });
+}
 $("#rem-off").onclick = async () => {
   if (!await ask("Turn off reminders on this phone?")) return;
   try { const sub = await currentSub(); if (sub) { await window.cloud.pushCall("unsubscribe", { endpoint: sub.endpoint }).catch(() => {}); await sub.unsubscribe(); } toast("Reminders off"); } catch (e) { toast(e.message); }
