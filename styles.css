@@ -729,3 +729,11 @@ body.simple[data-view="home"] .view, body.simple[data-view="feed"] .view, body.s
 .badge .prog span { display: block; height: 100%; background: var(--peach); }
 .badge.locked .prog span { background: var(--muted); }
 .level-hero .streaks span.rest { color: var(--muted); font-weight: 600; }
+/* Pills keep their shape with emoji; date fields fit their column */
+.level-hero .streaks span { display: inline-flex; align-items: center; gap: 5px; line-height: 1.25; white-space: nowrap; padding: 6px 12px; }
+.grid2 > * { min-width: 0; }
+input[type="date"], input[type="time"] { -webkit-appearance: none; appearance: none; min-width: 0; max-width: 100%; display: block; }
+input[type="date"]::-webkit-date-and-time-value { text-align: left; }
+.inline-time { display: inline-block !important; width: auto; }
+.level-hero .streaks span { height: 30px; box-sizing: border-box; overflow: visible; }
+.level-hero .streaks .e { font-size: 14px; line-height: 1; display: inline-block; height: 16px; font-style: normal; }

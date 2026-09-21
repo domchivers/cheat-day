@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "79";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "80";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1688,14 +1688,32 @@ async function mapColumns(header, sample) {
   }
   return { map, lb };
 }
-function importDay(v) {
+/** "12/09/2026" is ambiguous. Look at the whole file: a first number over 12 means day-first, a second over 12 means
+ *  month-first; otherwise pick the order that keeps the rows in time order and out of the future. */
+function dateOrder(values) {
+  const pairs = values.map((v) => String(v || "").match(/(?:^|\D)(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})/)).filter(Boolean);
+  if (!pairs.length) return "dmy";
+  if (pairs.some((m) => +m[1] > 12)) return "dmy";
+  if (pairs.some((m) => +m[2] > 12)) return "mdy";
+  const score = (order) => {
+    const days = values.map((v) => importDay(v, order)).filter(Boolean), today = localDate();
+    let inversions = 0, up = 0;
+    for (let i = 1; i < days.length; i++) { if (days[i] < days[i - 1]) inversions++; else if (days[i] > days[i - 1]) up++; }
+    const disorder = Math.min(inversions, up);   // files run newest-first or oldest-first; either is fine
+    return days.filter((d) => d > today).length * 1000 + disorder;
+  };
+  return score("mdy") < score("dmy") ? "mdy" : "dmy";
+}
+function importDay(v, order = "dmy") {
   const s = String(v || "").trim(); if (!s) return null;
   if (/^\d{9,13}$/.test(s)) { const n = +s; return localDate(new Date(n > 1e12 ? n : n * 1000)); }
   let m = s.match(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/); if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
   m = s.match(/(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})/);
-  if (m) { let [, a, b, y] = m; if (y.length === 2) y = "20" + y; const day = +a > 12 ? a : +b > 12 ? b : a, mon = +a > 12 ? b : +b > 12 ? a : b; return `${y}-${String(mon).padStart(2, "0")}-${String(day).padStart(2, "0")}`; }   // day first unless it can't be
+  if (m) { let [, a, b, y] = m; if (y.length === 2) y = "20" + y; const [day, mon] = order === "mdy" ? [b, a] : [a, b]; if (+mon > 12 || +day > 31) return null; return `${y}-${String(mon).padStart(2, "0")}-${String(day).padStart(2, "0")}`; }
   const d = new Date(s); return isNaN(d) ? null : localDate(d);
 }
+/** The same date with day and month swapped, or null if it can't be one. */
+function swappedDay(day) { const [y, m, d] = day.split("-"); return +d <= 12 && d !== m ? `${y}-${d}-${m}` : null; }
 $("#bd-import").onclick = () => $("#file-bd-import").click();
 $("#file-bd-import").addEventListener("change", async (e) => {
   const f = e.target.files[0]; e.target.value = ""; if (!f) return;
@@ -1710,9 +1728,9 @@ $("#file-bd-import").addEventListener("change", async (e) => {
     const MASS = ["weight", "lean", "muscle", "bone"];
     const inLb = (k) => MASS.includes(k) && (/(lb|lbs|pounds?)|\(lb/i.test(String(header[map[k]] || "")) || (lb && !/kg/i.test(String(header[map[k]] || ""))));
     if (map.date == null || map.weight == null) throw new Error("Couldn't find the date and weight columns in that file");
-    const byDay = {};
+    const byDay = {}, order = dateOrder(data.map((r) => r[map.date]));
     for (const r of data) {
-      const day = importDay(r[map.date]); if (!day) continue;
+      const day = importDay(r[map.date], order); if (!day) continue;
       const row = {};
       for (const k of Object.keys(IMPORT_COLS)) { if (k === "date" || map[k] == null) continue; let v = parseFloat(String(r[map[k]] || "").replace(",", ".").replace(/[^0-9.\-]/g, "")); if (!isFinite(v) || v <= 0) continue; if (inLb(k)) v *= 0.45359237; row[k] = Math.round(v * 10) / 10; }
       if (row.weight || row.fat) byDay[day] = { ...(byDay[day] || {}), ...row };   // later rows in a day win: the last weigh-in
@@ -1721,9 +1739,17 @@ $("#file-bd-import").addEventListener("change", async (e) => {
     busy(false);
     if (!days.length) throw new Error("No readings found in that file");
     const found = BODY_METRICS.filter((m) => map[m.key] != null).map((m) => m.name.toLowerCase());
-    if (!await ask(`Bring in ${days.length} day${days.length === 1 ? "" : "s"} of readings, ${days[0]} to ${days[days.length - 1]}?\n\nFound: ${found.join(", ")}.\nDays already here are updated.`, { ok: "Import" })) return;
+    const fmtDay = (d) => new Date(d + "T12:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+    if (!await ask(`Bring in ${days.length} day${days.length === 1 ? "" : "s"} of readings, ${fmtDay(days[0])} to ${fmtDay(days[days.length - 1])}?\n\nFound: ${found.join(", ")}.\nDays already here are updated.`, { ok: "Import" })) return;
     const stamp = new Date().toISOString();
+    let fixed = 0;
+    for (const day of days) {
+      const sw = swappedDay(day); if (!sw || byDay[sw]) continue;
+      const wrong = state.body.find((r) => r.day === sw && r.weight && byDay[day].weight && Math.abs(r.weight - byDay[day].weight) < 0.05);
+      if (wrong) { state.body = state.body.filter((r) => r !== wrong); fixed++; }
+    }
     for (const day of days) upsertBody({ day, updatedAt: stamp, ...byDay[day] });
+    if (fixed) setTimeout(() => toast(`Moved ${fixed} reading${fixed === 1 ? "" : "s"} an earlier import had put on the wrong date`, 5000), 2900);
     save(); drawBody();
     toast(`Imported ${days.length} day${days.length === 1 ? "" : "s"}`);
     const c = window.cloud; if (c && c.user) { for (const day of days) { try { await c.saveBodyRow({ day, ...byDay[day] }); } catch (err) { break; } } }
@@ -1999,7 +2025,7 @@ function renderGoals() {
   if (signed) { publishStats(); renderLeaderboards(false); }
   const xp = totalXp(), L = levelFor(xp), prog = weekProgress(), g = state.weekGoals, ls = logStreak(), us = underStreak();
   $("#g-level").innerHTML = `<div class="lv-num">${L.lvl}</div><div class="lv-name">${L.name}</div><div class="muted tiny">${fmt(xp)} XP · ${L.next - xp} more for level ${L.lvl + 1}</div><span class="bar"><span style="width:${Math.round(L.into / L.span * 100)}%"></span></span>
-    <div class="streaks">${ls ? `<span>🔥 ${ls} day${ls === 1 ? "" : "s"} logged</span>` : ""}${ls ? `<span class="rest">${streakInfo().restThisWeek ? "Rest day used this week" : "1 rest day left this week"}</span>` : ""}${us ? `<span>🎯 ${us} day${us === 1 ? "" : "s"} under budget</span>` : ""}${!ls && !us ? `<span>Log today to start a streak</span>` : ""}</div>`;
+    <div class="streaks">${ls ? `<span><i class="e">🔥</i>${ls} day${ls === 1 ? "" : "s"} logged</span>` : ""}${ls ? `<span class="rest">${streakInfo().restThisWeek ? "Rest day used this week" : "1 rest day left this week"}</span>` : ""}${us ? `<span><i class="e">🎯</i>${us} day${us === 1 ? "" : "s"} under budget</span>` : ""}${!ls && !us ? `<span>Log today to start a streak</span>` : ""}</div>`;
   const wk = weekDates(); $("#g-week-note").textContent = `Monday to Sunday · ${wk.length} day${wk.length === 1 ? "" : "s"} in so far. Tap a goal to change its target.`;
   const box = $("#g-goals"); box.innerHTML = "";
   for (const def of GOAL_DEFS) {
