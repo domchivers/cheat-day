@@ -789,9 +789,17 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 :root[data-theme="dark"] .board .medal.m1 { background: #8c7224; color: #fff3c8; }
 :root[data-theme="dark"] .board .medal.m3 { background: #7a4e2a; color: #ffe0c4; }
 :root[data-theme="dark"] .thumb-sm, :root[data-theme="dark"] img.thumb-sm { background-color: var(--mint-2); }
-/* Budgets per weekday */
-.day-budgets { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 6px 0 4px; }
-.day-budgets label { margin: 0; font-size: 12px; font-weight: 700; color: var(--muted); text-align: center; }
-.day-budgets input { margin-top: 4px; padding: 10px 6px; text-align: center; font-size: 15px; }
-.day-budgets label.today { color: var(--green); }
-.field-title small { font-weight: 400; }
+/* Budgets per weekday: a row of days, one box to edit the chosen one */
+#b-days-wrap { margin: 10px 0 4px; }
+.day-pick { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.day-pick button { border: 1.5px solid var(--line); background: var(--card); border-radius: 12px; padding: 7px 0 6px; display: flex; flex-direction: column; align-items: center; gap: 1px; color: var(--muted); }
+.day-pick button b { font-size: 13px; color: var(--text); }
+.day-pick button small { font-size: 11px; font-weight: 600; }
+.day-pick button.custom { background: var(--mint-2); border-color: var(--mint); }
+.day-pick button.custom small { color: var(--green); font-weight: 800; }
+.day-pick button.sel { border-color: var(--green); box-shadow: 0 0 0 1px var(--green) inset; }
+.day-pick button.today b { color: var(--green); }
+.day-edit { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.day-edit label { margin: 0; font-weight: 700; font-size: 14px; color: var(--text); min-width: 86px; }
+.day-edit input { flex: 1; min-width: 0; margin: 0; }
+.day-edit .btn.slim { width: auto; margin: 0; padding: 10px 12px; font-size: 13px; white-space: nowrap; }

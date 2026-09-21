@@ -10,9 +10,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=84">
-  <link rel="icon" href="icons/icon-192.png?v=84">
-  <link rel="stylesheet" href="styles.css?v=84">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=85">
+  <link rel="icon" href="icons/icon-192.png?v=85">
+  <link rel="stylesheet" href="styles.css?v=85">
 </head>
 <body>
 
@@ -139,8 +139,15 @@
     <div class="chips" id="budget-chips">
       <button data-b="1200">1,200</button><button data-b="1400">1,400</button><button data-b="1600">1,600</button><button data-b="1800">1,800</button><button data-b="2000">2,000</button><button data-b="2500">2,500</button>
     </div>
-    <div class="field-title">A different budget on some days <small>(leave blank to use the one above)</small></div>
-    <div class="day-budgets" id="b-days"></div>
+    <label class="check"><input type="checkbox" id="b-same"> Same budget every day</label>
+    <div id="b-days-wrap" class="hidden">
+      <div class="day-pick" id="b-days"></div>
+      <div class="day-edit">
+        <label id="b-day-label">Sunday</label>
+        <input type="number" inputmode="numeric" id="b-day-val">
+        <button class="btn ghost slim" id="b-day-reset">Use everyday</button>
+      </div>
+    </div>
     <div class="field-title">Macro goals for the day (grams, optional)</div>
     <div class="grid3">
       <label>Protein <input type="number" inputmode="numeric" id="b-p" placeholder="g"></label>
@@ -882,10 +889,10 @@
   <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=84"></script>
-<script src="foods.js?v=84"></script>
-<script src="supabase-config.js?v=84"></script>
-<script src="cloud.js?v=84"></script>
-<script src="app.js?v=84"></script>
+<script src="presets.js?v=85"></script>
+<script src="foods.js?v=85"></script>
+<script src="supabase-config.js?v=85"></script>
+<script src="cloud.js?v=85"></script>
+<script src="app.js?v=85"></script>
 </body>
 </html>

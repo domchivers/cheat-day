@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "84";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "85";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -194,7 +194,7 @@ function show(view) {
   if (view !== "scan") stopCamera();
   if (view === "home") renderHome();
   if (view === "settings") renderSettings();
-  if (view === "budget") { renderDayBudgets(); $("#b-budget").value = state.budget; $$("#budget-chips button").forEach((b) => b.classList.toggle("on", +b.dataset.b === state.budget)); const g = state.goals || {}; $("#b-p").value = g.p ?? ""; $("#b-c").value = g.c ?? ""; $("#b-f").value = g.f ?? ""; $("#b-notes").value = state.notes || ""; $("#b-weight").value = state.weightKg || ""; }
+  if (view === "budget") { renderDayBudgets(true); $("#b-budget").value = state.budget; $$("#budget-chips button").forEach((b) => b.classList.toggle("on", +b.dataset.b === state.budget)); const g = state.goals || {}; $("#b-p").value = g.p ?? ""; $("#b-c").value = g.c ?? ""; $("#b-f").value = g.f ?? ""; $("#b-notes").value = state.notes || ""; $("#b-weight").value = state.weightKg || ""; }
   if (view === "scan") startCamera();
   if (view === "search") openSearch();
   if (view === "meals") renderMeals();
@@ -817,7 +817,8 @@ $("#budget-save").onclick = () => {
   const b = num($("#b-budget").value);
   if (!b) { toast("Budget needs to be a number of kcal"); return; }
   state.budget = Math.round(b);
-  const days = {}; $$("#b-days input").forEach((el) => { const v = num(el.value); if (v && v >= 500 && v <= 10000 && Math.round(v) !== state.budget) days[el.dataset.w] = Math.round(v); });
+  const days = {};
+  if (!$("#b-same").checked) for (const [w, v] of Object.entries(dayDraft)) if (v && v !== state.budget) days[w] = v;
   state.dayBudgets = days;
   state.goals = { p: num($("#b-p").value) ? Math.round(num($("#b-p").value)) : null, c: num($("#b-c").value) ? Math.round(num($("#b-c").value)) : null, f: num($("#b-f").value) ? Math.round(num($("#b-f").value)) : null };
   state.notes = $("#b-notes").value.trim();
@@ -828,11 +829,26 @@ $("#budget-save").onclick = () => {
 
 // ---------------------------------------------------------------- settings
 
-function renderDayBudgets() {
-  const box = $("#b-days"), today = new Date(state.day.date + "T12:00").getDay(), d = state.dayBudgets || {};
-  box.innerHTML = [1, 2, 3, 4, 5, 6, 0].map((w) => `<label class="${w === today ? "today" : ""}">${WEEKDAYS[w].slice(0, 3)}<input type="number" inputmode="numeric" data-w="${w}" placeholder="${fmt(state.budget)}" value="${d[w] || ""}"></label>`).join("");
+// ---- budgets per weekday: edited as a draft, kept on Save
+let dayDraft = {}, daySel = null;
+const kShort = (n) => n >= 1000 ? `${fmt(Math.round(n / 100) / 10, 1)}k` : fmt(n);
+function renderDayBudgets(fresh) {
+  if (fresh) { dayDraft = Object.assign({}, state.dayBudgets || {}); daySel = new Date(state.day.date + "T12:00").getDay(); $("#b-same").checked = !Object.keys(dayDraft).length; }
+  const same = $("#b-same").checked, base = fresh ? state.budget : (num($("#b-budget").value) || state.budget), today = new Date(state.day.date + "T12:00").getDay();
+  $("#b-days-wrap").classList.toggle("hidden", same);
+  if (same) return;
+  $("#b-days").innerHTML = [1, 2, 3, 4, 5, 6, 0].map((w) => { const v = dayDraft[w]; return `<button data-w="${w}" class="${v ? "custom" : ""}${w === daySel ? " sel" : ""}${w === today ? " today" : ""}"><b>${WEEKDAYS[w].slice(0, 2)}</b><small>${kShort(v || base)}</small></button>`; }).join("");
+  $("#b-day-label").textContent = WEEKDAYS[daySel];
+  const input = $("#b-day-val");
+  if (document.activeElement !== input) input.value = dayDraft[daySel] || "";
+  input.placeholder = `${fmt(base)} (everyday)`;
+  $("#b-day-reset").classList.toggle("hidden", !dayDraft[daySel]);
 }
-$("#b-budget").addEventListener("input", () => { const v = num($("#b-budget").value); if (v) $$("#b-days input").forEach((el) => el.placeholder = fmt(Math.round(v))); });
+$("#b-days").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; daySel = +b.dataset.w; $("#b-day-val").value = dayDraft[daySel] || ""; renderDayBudgets(); });
+$("#b-day-val").addEventListener("input", (e) => { const v = num(e.target.value); if (v && v >= 500 && v <= 10000) dayDraft[daySel] = Math.round(v); else delete dayDraft[daySel]; renderDayBudgets(); });
+$("#b-day-reset").onclick = () => { delete dayDraft[daySel]; $("#b-day-val").value = ""; renderDayBudgets(); };
+$("#b-same").addEventListener("change", () => renderDayBudgets());
+$("#b-budget").addEventListener("input", () => renderDayBudgets());
 function renderSettings() {
   $("#s-budget").value = state.budget;
   $("#s-apikey").value = state.apiKey;
