@@ -673,7 +673,7 @@ body[data-view="welcome"] .tabbar { display: none !important; }
 .big-check { font-size: 18px; font-weight: 700; }
 
 /* Simple mode: bigger, fewer things */
-body.simple .tabbar, body.simple #home-level, body.simple #ask-card, body.simple .tagline,
+body.simple .tabbar, body.simple #home-level, body.simple .tagline,
 body.simple .grid2 > [data-go="meals"], body.simple .grid2 > [data-go="manual"],
 body.simple .home-chat, body.simple #talk-out, body.simple #home-macros, body.simple #home-yesterday,
 body.simple #share-photo-row, body.simple #item-talk-row, body.simple #item-talk-note, body.simple #share-post, body.simple #share-send,
@@ -712,3 +712,7 @@ body.simple .dialog-card p { font-size: 18px; }
 #rem-opts .grid2 { margin-top: 6px; }
 #rem-opts .grid2 .btn { margin: 0; }
 .dialog-actions .btn.hidden { display: none; }
+body.simple #ask-card { padding: 18px 46px 18px 18px; }
+body.simple #ask-card b { font-size: 21px; }
+body.simple #ask-card small { font-size: 15px; }
+body.simple #ask-card .circle { width: 56px; height: 56px; }
