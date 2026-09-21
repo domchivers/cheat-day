@@ -370,7 +370,7 @@ create policy "stats own" on public.stats for all to authenticated using (user_i
 New users get a three-step welcome: choose **simple** or **everything**, pick a
 daily budget, and see the three ways to add food. Simple mode (switchable in
 Settings) uses bigger text and buttons and cuts the home screen to the budget,
-Scan, Search, the Assistant, Quick add and Today; the How much? screen drops photos, sharing and
+Scan, Search, the Assistant, Quick add and Today, with Home, Share and Friends tabs; the How much? screen drops photos, sharing and
 the tweak box. Anyone already using the app skips the guide.
 
 ## Goal weight

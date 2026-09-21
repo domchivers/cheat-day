@@ -673,13 +673,12 @@ body[data-view="welcome"] .tabbar { display: none !important; }
 .big-check { font-size: 18px; font-weight: 700; }
 
 /* Simple mode: bigger, fewer things */
-body.simple .tabbar, body.simple #home-level, body.simple .tagline,
+body.simple #tabbar [data-tab="workouts"], body.simple #home-level, body.simple .tagline,
 body.simple .grid2 > [data-go="meals"], body.simple .grid2 > [data-go="manual"],
 body.simple .home-chat, body.simple #talk-out, body.simple #home-macros, body.simple #home-yesterday,
 body.simple #share-photo-row, body.simple #item-talk-row, body.simple #item-talk-note, body.simple #share-post, body.simple #share-send,
 body.simple #send-sheet, body.simple #share-rest { display: none !important; }
 body.simple { font-size: 18px; }
-body.simple .view { padding-bottom: calc(32px + var(--safe-bottom)) !important; }
 body.simple .budget-card .big b { font-size: 46px; }
 body.simple .budget-card .label, body.simple .budget-card .sub { font-size: 17px; }
 body.simple .grid2 .action { min-height: 150px; padding: 18px; }
@@ -716,3 +715,7 @@ body.simple #ask-card { padding: 18px 46px 18px 18px; }
 body.simple #ask-card b { font-size: 21px; }
 body.simple #ask-card small { font-size: 15px; }
 body.simple #ask-card .circle { width: 56px; height: 56px; }
+body.simple .tabbar { grid-template-columns: repeat(3, 1fr); padding-top: 8px; }
+body.simple .tabbar button { font-size: 14px; }
+body.simple .tabbar button svg { width: 30px; height: 30px; }
+body.simple[data-view="home"] .view, body.simple[data-view="feed"] .view, body.simple[data-view="friends"] .view { padding-bottom: calc(96px + var(--safe-bottom)); }
