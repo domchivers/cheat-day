@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "63";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "65";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1469,8 +1469,57 @@ function lineChart(pts, dp) {
 async function renderBody() {
   $("#bd-date").value = localDate();
   drawBody();
+  vesyncStatus().then((linked) => { if (linked && Date.now() - vsSyncAt > 6 * 3600 * 1000) vesyncSync(true); });
   if (await pullBody(false)) drawBody();
 }
+// ---- the VeSync link
+let vsSyncAt = 0, vsLinked = null;
+function showVesync(st) {
+  const signed = !!(window.cloud && window.cloud.user);
+  $("#vs-card").classList.toggle("hidden", !signed);
+  if (!signed) return;
+  vsLinked = !!(st && st.linked);
+  $("#vs-form").classList.toggle("hidden", vsLinked);
+  $("#vs-linked").classList.toggle("hidden", !vsLinked);
+  if (!vsLinked) return;
+  $("#vs-device").textContent = st.device_name ? `to ${st.device_name}` : "(no scale found on the account yet)";
+  $("#vs-last").textContent = st.last_sync ? `Last sync ${ago(st.last_sync)} · ${st.last_count || 0} reading${st.last_count === 1 ? "" : "s"} on VeSync` : "Not synced yet";
+  if (st.last_keys && st.last_keys.length) $("#vs-keys").textContent = st.last_keys.join(", ");
+}
+async function vesyncStatus() {
+  if (!(window.cloud && window.cloud.user)) { showVesync(null); return false; }
+  try { const st = await window.cloud.vesync("status"); showVesync(st); return !!st.linked; }
+  catch (e) { showVesync(null); if (!e.missing) toast(e.message); return false; }
+}
+$("#vs-connect").onclick = async () => {
+  const c = window.cloud, email = $("#vs-email").value.trim(), password = $("#vs-pass").value;
+  if (!email || !password) { toast("Email and password, please"); return; }
+  busy("Signing in to VeSync…");
+  try {
+    const r = await c.vesync("connect", { email, password, country: "AU" });
+    $("#vs-pass").value = "";
+    busy(false);
+    if (r.device) toast(`Linked to ${r.device.name || "your scale"}`, 4000);
+    else toast(`Linked, but no scale on that account yet (${(r.devices || []).length} device${(r.devices || []).length === 1 ? "" : "s"}). Weigh in with the VeSync app, then Sync.`, 7000);
+    await vesyncStatus();
+    if (r.device) vesyncSync(false);
+  } catch (e) { busy(false); toast(e.missing ? "The VeSync link isn't deployed yet" : "Couldn't link: " + e.message, 6000); }
+};
+async function vesyncSync(quiet) {
+  const c = window.cloud; if (!(c && c.user)) return;
+  if (!quiet) busy("Pulling readings from VeSync…");
+  try {
+    const r = await c.vesync("sync");
+    vsSyncAt = Date.now();
+    if (!quiet) busy(false);
+    if (r.keys && r.keys.length) $("#vs-keys").textContent = r.keys.join(", ");
+    if (!r.readings) { if (!quiet) toast(`VeSync has no readings yet (tried ${r.from}). Weigh in with the VeSync app first.`, 6000); return; }
+    const changed = await pullBody(true); drawBody(); await vesyncStatus();
+    if (!quiet || changed) toast(`${r.readings} reading${r.readings === 1 ? "" : "s"} on VeSync · ${r.days} day${r.days === 1 ? "" : "s"}${r.latest && r.latest.weight ? ` · latest ${r.latest.weight} kg` : ""}`, 4500);
+  } catch (e) { if (!quiet) { busy(false); toast("Sync failed: " + e.message, 6000); } if (/connect again|Not linked/.test(e.message)) vesyncStatus(); }
+}
+$("#vs-sync").onclick = () => vesyncSync(false);
+$("#vs-unlink").onclick = async () => { if (!await ask("Unlink your VeSync account? Readings already pulled in stay.")) return; try { await window.cloud.vesync("disconnect"); toast("Unlinked"); vesyncStatus(); } catch (e) { toast(e.message); } };
 function drawBody() {
   const rows = bodySorted(), lb = rows[rows.length - 1] || null;
   const have = BODY_METRICS.filter((m) => rows.some((r) => r[m.key] != null));
@@ -1509,7 +1558,7 @@ $("#bd-save").onclick = async () => {
   toast(`Saved${row.weight ? `: ${row.weight} kg` : ""}`);
   const c = window.cloud; if (c && c.user) { try { const { day: d, updatedAt, ...rest } = row; await c.saveBodyRow({ day: d, ...rest }); } catch (e) {} }
 };
-$("#body-refresh").onclick = async () => { busy("Checking for new readings…"); const ch = await pullBody(true); busy(false); drawBody(); toast(ch ? "New readings pulled in" : "Nothing new"); };
+$("#body-refresh").onclick = async () => { if (vsLinked) { await vesyncSync(false); return; } busy("Checking for new readings…"); const ch = await pullBody(true); busy(false); drawBody(); toast(ch ? "New readings pulled in" : "Nothing new"); };
 const randomToken = () => { const a = new Uint8Array(24); crypto.getRandomValues(a); return btoa(String.fromCharCode(...a)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
 async function showToken(make) {
   const c = window.cloud; if (!(c && c.user)) { toast("Connecting a scale needs an account: sign in from Settings"); return; }

@@ -250,6 +250,32 @@ chart per metric and 30-day change. The latest weight feeds the workout burn
 estimate. Readings live in your synced data and, when signed in, in a
 `body_metrics` table so a Shortcut can add to them.
 
+**Link an Etekcity / VeSync account.** The Body screen's "Link your Etekcity
+account" signs in to VeSync with the app's own (unofficial) protocol via the
+`vesync` Edge Function, keeps only the session token, finds the scale and pulls
+every reading into `body_metrics` on "Sync now" (and quietly when the Body
+screen opens, at most every 6 hours). Unofficial, so it may stop if Etekcity
+changes things. Setup: the SQL below, then deploy
+`supabase/functions/vesync/index.ts` as `vesync` with Verify JWT **on**.
+
+```sql
+create table if not exists public.vesync_links (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  region text not null default 'US',
+  token text not null,
+  account_id text not null,
+  terminal_id text not null,
+  device jsonb,
+  device_name text,
+  last_sync timestamptz,
+  last_count integer,
+  last_keys jsonb,
+  updated_at timestamptz not null default now()
+);
+alter table public.vesync_links enable row level security;
+-- no policies on purpose: only the edge function (service role) reads or writes it
+```
+
 **Connect a scale (iPhone).** Scales like Etekcity write to Apple Health. The
 Body screen gives you a private link (your token is in it); a two-action iPhone
 Shortcut (Find Health Samples, then Get Contents of URL as POST with the samples
