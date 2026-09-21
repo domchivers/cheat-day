@@ -65,7 +65,7 @@ function firstArray(res: any): any[] {
   for (const v of Object.values(res)) { if (Array.isArray(v) && v.length && typeof v[0] === "object") return v; if (v && typeof v === "object") { const inner = firstArray(v); if (inner.length) return inner; } }
   return [];
 }
-const trim = (v: unknown) => { try { const s = JSON.stringify(v); return s.length > 1500 ? JSON.parse(s.slice(0, 1500) + (s.startsWith("[") ? "]" : "}")) : v; } catch { return String(v).slice(0, 1500); } };
+const trim = (v: unknown) => { const s = JSON.stringify(v) || ""; return s.length > 1500 ? s.slice(0, 1500) + "…" : v; };
 /** Try the two reading endpoints the community has seen; return the raw rows and which endpoint answered. */
 async function readings(base: string, s: { token: string; accountId: string; terminalId: string }, dev: any) {
   const mobileId = String(1_000_000_000_000_000 + Math.floor(Math.random() * 9_000_000_000_000_000));
