@@ -386,7 +386,7 @@ towards the goal it says so and suggests a daily budget that would.
 A small game on top of the tracking. The home page shows your **level** and an
 XP bar; tap it for the Goals screen. **Weekly goals** (Monday to Sunday) are
 days under budget, days hitting protein, workouts, and days logged, each with a
-target you can change by tapping the goal (0 switches it off). **XP** comes from logging a day, finishing
+target you can change by tapping the goal (0 switches it off). **XP** comes from each food logged (+2, up to 10 a day), logging a day, finishing
 a day under budget, hitting protein, workouts, lifting PBs, posts, and finished
 weekly goals; it is worked out from your history, so nothing double counts.
 **Badges** unlock for firsts, streaks, workout and PB counts, and posts, with a
@@ -395,7 +395,7 @@ toast when one lands.
 ## Achievements, rest days and cooking from the fridge
 
 About 70 achievements across logging, budget, nutrition, workouts, body, social
-and levels, most in tiers (7, 14, 30, 100 days…). Locked ones show progress.
+and levels, most in tiers (7, 14, 30, 100 days…). Locked ones show progress. Each achievement adds XP by tier (25, 50, 100, 200, 400, 800; one-offs 50).
 The logging streak allows one free **rest day** a week, so a single missed day
 doesn't reset it (two in a row still do). In the Assistant, **Cook from my
 fridge** takes a photo of the fridge or cupboard and suggests a recipe from what

@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "78";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "79";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1757,7 +1757,7 @@ $("#bd-copy").onclick = async () => { try { await navigator.clipboard.writeText(
 
 // ---------------------------------------------------------------- goals, XP, levels and badges: the game layer
 
-const XP = { log: 10, under: 25, protein: 15, workout: 20, pb: 30, post: 5, goal: 50 };
+const XP = { item: 2, itemCap: 10, log: 10, under: 25, protein: 15, workout: 20, pb: 30, post: 5, goal: 50 };
 const LEVEL_NAMES = ["Newbie", "Regular", "Steady", "Committed", "Disciplined", "Machine", "Legend"];
 const GOAL_DEFS = [
   { key: "under", name: "Days under budget", icon: "budget", tone: "green", max: 7, sub: (n) => `${n} day${n === 1 ? "" : "s"} this week` },
@@ -1811,9 +1811,11 @@ function underStreak() {
 /** XP is worked out from what's recorded, so it can't be double counted or lost. Today counts only for logging and workouts until it's over. */
 function totalXp() {
   let xp = 0;
-  for (const h of state.history) { const d = dayFacts(h.date); if (d.logged) xp += XP.log; if (underBudget(d)) xp += XP.under; if (hitProtein(d)) xp += XP.protein; xp += d.workouts * XP.workout; }
-  const t = dayFacts(localDate()); if (t.logged) xp += XP.log; xp += t.workouts * XP.workout;
+  const foodXp = (items) => Math.min(Array.isArray(items) ? items.length : 0, XP.itemCap) * XP.item;   // every food logged counts, up to a daily cap
+  for (const h of state.history) { const d = dayFacts(h.date); if (d.logged) xp += XP.log; if (underBudget(d)) xp += XP.under; if (hitProtein(d)) xp += XP.protein; xp += d.workouts * XP.workout; xp += foodXp(h.items); }
+  const t = dayFacts(localDate()); if (t.logged) xp += XP.log; xp += t.workouts * XP.workout; xp += foodXp(state.day.items);
   xp += (state.pbCount || 0) * XP.pb + (state.postCount || 0) * XP.post + (state.goalWins || []).length * XP.goal;
+  xp += badgeXp();
   return xp;
 }
 function levelFor(xp) {
@@ -1867,8 +1869,11 @@ function badgeStats() {
   return v;
 }
 /** A run of badges on one number: [id, icon, name, target, how] each; progress shown towards the target. */
-const tierSet = (group, stat, list) => list.map(([id, icon, name, target, how]) => ({ id, group, icon, name, how, target, stat, test: () => (badgeStats()[stat] || 0) >= target }));
-const flag = (group, stat, id, icon, name, how) => ({ id, group, icon, name, how, test: () => !!badgeStats()[stat] });
+const TIER_XP = [25, 50, 100, 200, 400, 800];
+const tierSet = (group, stat, list) => list.map(([id, icon, name, target, how], i) => ({ id, group, icon, name, how, target, stat, xp: TIER_XP[Math.min(i, TIER_XP.length - 1)], test: () => (badgeStats()[stat] || 0) >= target }));
+const flag = (group, stat, id, icon, name, how) => ({ id, group, icon, name, how, xp: 50, test: () => !!badgeStats()[stat] });
+/** XP from achievements already earned (stored ones, so levels never depend on themselves). */
+const badgeXp = () => state.seenBadges.reduce((a, id) => { const b = BADGES.find((x) => x.id === id); return a + (b ? b.xp || 0 : 0); }, 0);
 const BADGE_GROUPS = ["Logging", "Budget", "Nutrition", "Workouts", "Body", "Social", "Level up"];
 const BADGES = [
   ...tierSet("Logging", "daysLogged", [["first", "🌱", "First bite", 1, "Log your first day"], ["days10", "📒", "Getting the hang", 10, "Log 10 days"], ["days50", "📚", "Habit formed", 50, "Log 50 days"], ["days100", "💯", "Centurion", 100, "Log 100 days"], ["days250", "🗂️", "Record keeper", 250, "Log 250 days"]]),
@@ -1911,8 +1916,11 @@ function checkBadges() {
   const fresh = BADGES.filter((b) => !state.seenBadges.includes(b.id) && b.test());
   if (!fresh.length) return;
   for (const b of fresh) state.seenBadges.push(b.id);
+  let more; bsCache = null;
+  while ((more = BADGES.filter((b) => !state.seenBadges.includes(b.id) && b.test())).length) { for (const b of more) { state.seenBadges.push(b.id); fresh.push(b); } bsCache = null; }   // level badges can unlock from badge XP
   save();
-  toast(`${fresh[0].icon} Badge earned: ${fresh[0].name}${fresh.length > 1 ? ` and ${fresh.length - 1} more` : ""}`, 4500);
+  const gained = fresh.reduce((a, b) => a + (b.xp || 0), 0);
+  toast(`${fresh[0].icon} ${fresh.length > 1 ? `${fresh.length} achievements` : `Achievement: ${fresh[0].name}`} · +${fmt(gained)} XP`, 4500);
 }
 // ---- the leaderboard: publish my numbers, rank friends by weekly goals, level or streak
 function myStats() {
@@ -2020,13 +2028,13 @@ function renderGoals() {
     for (const b of order) {
       const has = got.includes(b), val = b.target ? Math.min(b.target, Math.floor(stats[b.stat] || 0)) : 0;
       const d = document.createElement("div"); d.className = `badge ${has ? "" : "locked"}`;
-      d.innerHTML = `<span class="ic">${b.icon}</span><b>${b.name}</b><small>${has ? "Earned" : b.how}</small>${!has && b.target > 1 ? `<span class="prog"><span style="width:${Math.round(val / b.target * 100)}%"></span></span><small>${fmt(val)} / ${fmt(b.target)}</small>` : ""}`;
+      d.innerHTML = `<span class="ic">${b.icon}</span><b>${b.name}</b><small>${has ? `Earned · +${b.xp} XP` : `${b.how} · +${b.xp} XP`}</small>${!has && b.target > 1 ? `<span class="prog"><span style="width:${Math.round(val / b.target * 100)}%"></span></span><small>${fmt(val)} / ${fmt(b.target)}</small>` : ""}`;
       grid.appendChild(d);
     }
     bl.appendChild(sec);
   }
   $("#g-badge-count").textContent = `${earned} of ${BADGES.length}`;
-  $("#g-xp").innerHTML = [["Log a day", XP.log], ["Finish a day under budget", XP.under], ["Hit your protein goal", XP.protein], ["Log a workout", XP.workout], ["Beat a lifting PB", XP.pb], ["Post to the feed", XP.post], ["Finish a weekly goal", XP.goal]].map(([k, v]) => `<div><span>${k}</span><b>+${v} XP</b></div>`).join("");
+  $("#g-xp").innerHTML = [["Log a food (up to 10 a day)", XP.item], ["Log a day", XP.log], ["Finish a day under budget", XP.under], ["Hit your protein goal", XP.protein], ["Log a workout", XP.workout], ["Beat a lifting PB", XP.pb], ["Post to the feed", XP.post], ["Finish a weekly goal", XP.goal]].map(([k, v]) => `<div><span>${k}</span><b>+${v} XP</b></div>`).join("") + `<div><span>Earn an achievement</span><b>+25 to 800 XP</b></div>`;
   checkBadges();
 }
 
