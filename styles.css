@@ -813,3 +813,51 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 .backup-row small { color: var(--muted); font-size: 12px; }
 .backup-row .btn.slim { width: auto; margin: 0; padding: 8px 14px; font-size: 13px; }
 #wl-signin { margin-top: 18px; }
+
+/* Plan: work out my budget */
+.plan-dots { display: flex; justify-content: center; gap: 6px; margin: 2px 0 14px; }
+.plan-dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
+.plan-dots i.on { background: var(--green); width: 22px; border-radius: 4px; }
+.plan-dots i.done { background: var(--green-2); opacity: .5; }
+.plan-q { font-size: 22px; font-weight: 800; text-align: center; margin: 4px 0 6px; line-height: 1.25; }
+.plan-sub { text-align: center; color: var(--muted); margin: 0 0 16px; font-size: 15px; line-height: 1.45; }
+.plan-opt { display: flex; align-items: center; gap: 14px; padding: 14px 16px; margin-bottom: 10px; width: 100%; text-align: left; border: 2px solid var(--line); }
+.plan-opt.on { border-color: var(--green); background: var(--mint-2); }
+.plan-opt .e { font-size: 26px; width: 34px; text-align: center; flex: none; font-style: normal; }
+.plan-opt b { display: block; font-size: 17px; }
+.plan-opt small { display: block; color: var(--muted); font-size: 13px; line-height: 1.35; margin-top: 2px; }
+.plan-row { display: flex; gap: 10px; }
+.plan-row > label { flex: 1; min-width: 0; }
+.plan-chips { justify-content: flex-start; margin: 6px 0 12px; }
+.plan-chips button { padding: 10px 14px; }
+.plan-label { font-size: 14px; font-weight: 700; margin: 12px 0 2px; color: var(--text); }
+.plan-note { font-size: 13px; color: var(--muted); margin: 4px 0 10px; line-height: 1.45; }
+.plan-src { font-size: 12px; color: var(--green); font-weight: 600; }
+.scale-box { padding: 14px; margin: 6px 0 12px; background: var(--mint-2); border-color: transparent; }
+.scale-box b { display: block; margin-bottom: 4px; }
+.scale-box .btn { margin-top: 8px; }
+.plan-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin: 6px 0 12px; }
+.plan-days button { border: 1.5px solid var(--line); border-radius: 10px; padding: 9px 0; font-weight: 700; background: var(--card); color: var(--text); }
+.plan-days button.on { background: var(--green); border-color: var(--green); color: #fff; }
+.plan-nav { margin-top: 10px; }
+.plan-sum { text-align: center; padding: 20px 16px; background: var(--mint-2); border-color: transparent; }
+.plan-sum .big { font-size: 40px; font-weight: 800; color: var(--green); line-height: 1; }
+.plan-sum .big small { font-size: 16px; font-weight: 700; color: var(--muted); }
+.plan-sum .split { margin-top: 6px; color: var(--muted); font-size: 14px; }
+.plan-macros { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+.plan-macros div { background: var(--card); border-radius: 12px; padding: 10px 6px; }
+.plan-macros b { display: block; font-size: 18px; color: var(--green); }
+.plan-macros small { color: var(--muted); font-size: 12px; }
+.plan-facts { margin-top: 12px; font-size: 14px; line-height: 1.6; }
+.plan-warn { margin-top: 10px; background: var(--peach-bg); color: var(--note); border-radius: 12px; padding: 10px 12px; font-size: 13px; line-height: 1.45; text-align: left; }
+.plan-how { font-size: 12px; color: var(--muted); line-height: 1.5; margin-top: 12px; }
+.plan-card-top { margin: 4px 0 12px; }
+.plan-card-top .circle { background: var(--mint); color: var(--green); }
+.home-plan-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin-bottom: 10px; border: 2px solid var(--mint); }
+.home-plan-card .body { flex: 1; min-width: 0; }
+.home-plan-card b { display: block; font-size: 15px; }
+.home-plan-card small { color: var(--muted); font-size: 13px; line-height: 1.35; display: block; }
+.home-plan-card .acts { display: flex; gap: 6px; margin-top: 8px; }
+.home-plan-card .acts .btn { width: auto; margin: 0; padding: 8px 14px; font-size: 13px; }
+.home-plan-card .x { color: var(--muted); padding: 6px; align-self: flex-start; }
+.wl-or { font-size: 15px; color: var(--muted); margin: 16px 0 6px; }

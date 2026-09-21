@@ -10,9 +10,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=86">
-  <link rel="icon" href="icons/icon-192.png?v=86">
-  <link rel="stylesheet" href="styles.css?v=86">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=87">
+  <link rel="icon" href="icons/icon-192.png?v=87">
+  <link rel="stylesheet" href="styles.css?v=87">
 </head>
 <body>
 
@@ -120,6 +120,7 @@
     <button class="btn primary slim" id="talk-go">Send</button>
   </div>
   <div id="talk-out"></div>
+  <div id="home-plan"></div>
   <div id="home-inbox"></div>
   <ul class="list" id="home-list"></ul>
   <p class="empty" id="home-empty">Nothing logged yet. Scan something delicious.</p>
@@ -132,6 +133,7 @@
     <button class="icon-btn" data-back aria-label="Back"><svg><use href="#i-back"/></svg></button>
     <h1>Daily budget</h1><span></span>
   </header>
+  <button class="card level-card plan-card-top" id="b-plan"></button>
   <div class="card form-card">
     <label>Calories for a cheat day
       <input type="number" inputmode="numeric" id="b-budget">
@@ -392,6 +394,7 @@
     <h1>Goals</h1><span></span>
   </header>
   <div class="card result level-hero" id="g-level"></div>
+  <button class="card level-card plan-card-top hidden" id="g-plan"></button>
 
   <div id="g-lb-wrap" class="hidden">
     <h2 class="section-title">Friends</h2>
@@ -498,7 +501,9 @@
   <div class="welcome-step hidden" id="wl-2">
     <p class="wl-step">Step 2 of 3</p>
     <h1 class="wl-title">How many calories a day?</h1>
-    <p class="wl-text">Pick a daily budget. Not sure? Around 1,800 is a common start for women and 2,200 for men.</p>
+    <p class="wl-text">Answer a few quick questions and the app works it out from your body, your routine and your goal.</p>
+    <button class="btn primary" id="wl-plan">Work it out for me</button>
+    <p class="wl-text wl-or">Or pick a number yourself</p>
     <div class="chips wl-chips" id="wl-budget">
       <button data-b="1400">1,400</button><button data-b="1600">1,600</button><button data-b="1800">1,800</button><button data-b="2000">2,000</button><button data-b="2200">2,200</button><button data-b="2500">2,500</button>
     </div>
@@ -515,6 +520,19 @@
     <p class="wl-text">After adding, you choose how much you had, then tap <b>Add to today</b>.</p>
     <button class="btn primary" id="wl-done">Start</button>
     <button class="btn ghost" id="wl-back-2">Back</button>
+  </div>
+</section>
+
+<!-- ===================== PLAN (work out my budget) ===================== -->
+<section class="view hidden" id="view-plan">
+  <header class="sub-head">
+    <button class="icon-btn" id="plan-back" aria-label="Back"><svg><use href="#i-back"/></svg></button>
+    <h1>Your plan</h1><span></span>
+  </header>
+  <div class="plan-dots" id="plan-dots"></div>
+  <div id="plan-body"></div>
+  <div class="plan-nav">
+    <button class="btn primary" id="plan-next">Next</button>
   </div>
 </section>
 
@@ -905,10 +923,10 @@
   <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=86"></script>
-<script src="foods.js?v=86"></script>
-<script src="supabase-config.js?v=86"></script>
-<script src="cloud.js?v=86"></script>
-<script src="app.js?v=86"></script>
+<script src="presets.js?v=87"></script>
+<script src="foods.js?v=87"></script>
+<script src="supabase-config.js?v=87"></script>
+<script src="cloud.js?v=87"></script>
+<script src="app.js?v=87"></script>
 </body>
 </html>

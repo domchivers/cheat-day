@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "86";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "87";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -188,7 +188,7 @@ function basisOf(obj) {
 
 // ---------------------------------------------------------------- router
 
-const VIEWS = ["home", "budget", "settings", "history", "friends", "feed", "compose", "workouts", "exercise", "goals", "body", "welcome", "ask", "chats", "scan", "search", "meals", "meal", "details", "share"];
+const VIEWS = ["home", "budget", "settings", "history", "friends", "feed", "compose", "workouts", "exercise", "goals", "body", "welcome", "plan", "ask", "chats", "scan", "search", "meals", "meal", "details", "share"];
 let stack = ["home"];
 function show(view) {
   for (const v of VIEWS) $(`#view-${v}`).classList.toggle("hidden", v !== view);
@@ -197,7 +197,7 @@ function show(view) {
   if (view !== "scan") stopCamera();
   if (view === "home") renderHome();
   if (view === "settings") renderSettings();
-  if (view === "budget") { renderDayBudgets(true); $("#b-budget").value = state.budget; $$("#budget-chips button").forEach((b) => b.classList.toggle("on", +b.dataset.b === state.budget)); const g = state.goals || {}; $("#b-p").value = g.p ?? ""; $("#b-c").value = g.c ?? ""; $("#b-f").value = g.f ?? ""; $("#b-notes").value = state.notes || ""; $("#b-weight").value = state.weightKg || ""; }
+  if (view === "budget") { renderPlanCards(); renderDayBudgets(true); $("#b-budget").value = state.budget; $$("#budget-chips button").forEach((b) => b.classList.toggle("on", +b.dataset.b === state.budget)); const g = state.goals || {}; $("#b-p").value = g.p ?? ""; $("#b-c").value = g.c ?? ""; $("#b-f").value = g.f ?? ""; $("#b-notes").value = state.notes || ""; $("#b-weight").value = state.weightKg || ""; }
   if (view === "scan") startCamera();
   if (view === "search") openSearch();
   if (view === "meals") renderMeals();
@@ -208,6 +208,7 @@ function show(view) {
   if (view === "exercise") renderExercise();
   if (view === "goals") renderGoals();
   if (view === "body") renderBody();
+  if (view === "plan") renderPlanStep();
   if (view === "feed") renderFeed();
   if (view === "compose") renderCompose();
   $$("#tabbar button").forEach((b) => b.classList.toggle("on", b.dataset.tab === view));
@@ -279,6 +280,7 @@ function renderHome() {
   } else { yc.classList.add("hidden"); yc.innerHTML = ""; }
   renderQuick();
   refreshInbox(false);
+  renderHomePlan();
   setTimeout(maybeAskReminders, 2500);
   renderLevelCard();
 }
@@ -1375,7 +1377,7 @@ function dayContext() {
 Recent days: ${past}.
 Things they often have: ${quickEntries().slice(0, 8).map((q) => q.basis.name).join(", ") || "unknown"}.
 Their saved meals, with ingredients: ${meals}. If they ask to change one of these, return kind=recipe with the SAME name and the full revised ingredient list.
-Lifting: ${liftingSummary()}. Workout routines: ${(state.routines || []).map((r) => `"${r.name}" (${r.exercises.map((e) => e.exercise).join(", ")})`).join("; ") || "none"}. Recent training days: ${trainingDays(14).map((d) => `${d.date}: ${d.names.join(", ")}`).join("; ") || "none"}.`;
+${state.plan ? `Their plan: ${PLAN_GOALS[state.plan.goal].name}, ${state.plan.kcal} kcal a day${state.plan.rate ? ` (${state.plan.rate > 0 ? "+" : ""}${state.plan.rate} kg a week)` : ""}, protein ${state.plan.macros.p} g, training ${state.plan.trainDays} days a week. ` : ""}Lifting: ${liftingSummary()}. Workout routines: ${(state.routines || []).map((r) => `"${r.name}" (${r.exercises.map((e) => e.exercise).join(", ")})`).join("; ") || "none"}. Recent training days: ${trainingDays(14).map((d) => `${d.date}: ${d.names.join(", ")}`).join("; ") || "none"}.`;
 }
 async function sendAsk() {
   const text = $("#ask-text").value.trim(), files = askFiles.slice();
@@ -1753,6 +1755,7 @@ $("#file-bd-shot").addEventListener("change", async (e) => {
   if (!await ask(`Save today's reading?\n\n${lines.join("\n")}`, { ok: "Save" })) return;
   upsertBody(row); save(); drawBody();
   toast(`Saved${row.weight ? `: ${row.weight} kg` : ""}`);
+  if (document.body.dataset.view === "plan") { planPrefillBody(true); renderPlanStep(); }
   const c = window.cloud; if (c && c.user) { try { const { day, updatedAt, ...rest } = row; await c.saveBodyRow({ day, ...rest }); } catch (err) {} }
 });
 // ---- upload a scale app's export (CSV or Excel): find the columns, bring in every day
@@ -1894,6 +1897,288 @@ async function showToken(make) {
 $("#bd-token").onclick = () => showToken(false);
 $("#bd-token-new").onclick = async () => { if (!await ask("Make a new link? The Shortcut will need the new one pasted in.")) return; showToken(true); };
 $("#bd-copy").onclick = async () => { try { await navigator.clipboard.writeText($("#bd-url").value); toast("Link copied"); } catch (e) { toast("Couldn't copy; long-press the field instead"); } };
+
+// ---------------------------------------------------------------- the plan: questions -> calories and macros that fit
+
+const PLAN_GOALS = {
+  lose: { name: "Lose weight", e: "📉", sub: "Steady fat loss, eat a little less" },
+  cut: { name: "Cut", e: "🔪", sub: "Lose fat, keep the muscle: high protein" },
+  maintain: { name: "Maintain", e: "⚖️", sub: "Stay where you are" },
+  recomp: { name: "Recomp", e: "🔄", sub: "Slowly swap fat for muscle at the same weight" },
+  leanbulk: { name: "Lean bulk", e: "🌱", sub: "Build muscle, keep fat gain small" },
+  bulk: { name: "Bulk", e: "💪", sub: "Build as much as possible, some fat comes with it" }
+};
+const ACTIVITY = [
+  { k: 1.2, e: "🪑", name: "Mostly sitting", sub: "Desk job, not much walking" },
+  { k: 1.375, e: "🚶", name: "Some walking", sub: "A bit on your feet, errands, a short walk" },
+  { k: 1.55, e: "🧍", name: "On my feet a lot", sub: "Retail, teaching, nursing, lots of walking" },
+  { k: 1.725, e: "🏗️", name: "Physical job", sub: "Building, deliveries, farming" }
+];
+const TRAIN_MET = { weights: 5, cardio: 7, mix: 6, sport: 7.5 };
+const PACES = {   // kg a week (negative = losing); cut is % of body weight
+  lose: [["Gentle", -0.25], ["Steady", -0.5], ["Fast", -0.75]],
+  cut: [["Gentle", -0.5, "%"], ["Steady", -0.75, "%"], ["Fast", -1, "%"]],
+  leanbulk: [["Slow", 0.15], ["Steady", 0.25]],
+  bulk: [["Steady", 0.35], ["Fast", 0.5]]
+};
+let plan = null, planStep = 0, planReturn = null;
+const PLAN_STEPS = ["body", "activity", "training", "goal", "pace", "spread", "protein", "summary"];
+const planHasPace = () => !!PACES[plan.goal];
+function planPrefillBody(scaleOnly) {
+  const lb = latestBody(), prof = state.profile || {};
+  if (!scaleOnly) Object.assign(plan, { sex: prof.sex || null, age: prof.age || null, height: prof.height || null });
+  if (lb) {
+    if (lb.weight) plan.weight = lb.weight;
+    if (lb.fat) plan.fat = lb.fat;
+    if (lb.lean) plan.lean = lb.lean;
+    plan.scaleDay = lb.day; plan.useScale = true;
+  } else if (!plan.weight && state.weightKg) plan.weight = state.weightKg;
+}
+function openPlan(returnTo) {
+  const old = state.plan || {};
+  plan = { sex: null, age: null, height: null, weight: null, fat: null, lean: null, activity: old.activity || null, trainDays: old.trainDays ?? null, trainType: old.trainType || null, trainMins: old.trainMins || null, trainWeekdays: (old.trainWeekdays || []).slice(),
+    goal: old.goal || null, pace: old.pace ?? null, goalWeight: state.goalWeight || null, spread: old.spread || "same", cheatDay: old.cheatDay ?? 0, protein: old.protein || null };
+  planPrefillBody(false);
+  planStep = 0; planReturn = returnTo || null;
+  go("plan");
+}
+/** The maths, all in one place. */
+function computePlan(q) {
+  const w = +q.weight, h = +q.height, a = +q.age, male = q.sex === "m";
+  const fat = q.useScale !== false && q.fat ? +q.fat : null;
+  const lean = fat ? w * (1 - fat / 100) : null;
+  const bmr = lean ? 370 + 21.6 * lean : 10 * w + 6.25 * h - 5 * a + (male ? 5 : -161);   // Katch-McArdle with body fat, else Mifflin-St Jeor
+  const everyday = bmr * (q.activity || 1.2);
+  const trainKcal = (q.trainDays || 0) * (TRAIN_MET[q.trainType] || 6) * w * ((q.trainMins || 45) / 60) / 7;   // averaged over the week
+  const tdee = everyday + trainKcal;
+  let rate = 0;   // kg a week
+  if (planHasPaceFor(q.goal)) { const p = PACES[q.goal].find((x) => x[1] === q.pace) || PACES[q.goal][1]; rate = p[2] === "%" ? p[1] / 100 * w : p[1]; }
+  let delta = rate * KCAL_PER_KG / 7, notes = [];
+  if (q.goal === "recomp") delta = -Math.min(300, tdee * 0.1);
+  const floor = male ? 1500 : 1200;
+  if (delta < 0 && -delta > tdee * 0.25) { delta = -tdee * 0.25; notes.push("That pace would need more than a quarter less than you burn, so it's been eased to a safer rate."); }
+  let kcal = tdee + delta;
+  if (kcal < floor) { kcal = floor; notes.push(`It won't go below ${fmt(floor)} kcal a day, the usual safe minimum.`); }
+  kcal = Math.round(kcal / 10) * 10;
+  rate = Math.round((kcal - tdee) * 7 / KCAL_PER_KG * 100) / 100;
+  // macros
+  const bmi = h ? w / ((h / 100) ** 2) : 0, heavy = fat ? fat > (male ? 25 : 32) : bmi >= 30;
+  const baseKg = heavy ? (lean ? lean * 1.25 : (h ? 25 * (h / 100) ** 2 : w)) : w;   // very high body fat: protein from a healthier weight
+  const perKg = { std: 1.6, high: 2.0, lift: q.goal === "cut" ? 2.4 : 2.2 }[q.protein || "std"];
+  const p = Math.round(baseKg * perKg);
+  let f = Math.round(Math.max(0.8 * w, kcal * 0.25 / 9));
+  let c = Math.round((kcal - p * 4 - f * 9) / 4);
+  if (c < 50) { f = Math.round(Math.max(0.6 * w, (kcal - p * 4 - 50 * 4) / 9)); c = Math.max(0, Math.round((kcal - p * 4 - f * 9) / 4)); }
+  // spreading over the week, same weekly total
+  const days = {}; let everydayKcal = kcal, trainDayKcal = null, cheatKcal = null;
+  const weekly = kcal * 7, tw = (q.trainWeekdays || []).slice();
+  if (q.spread === "train" && tw.length && tw.length < 7) {
+    trainDayKcal = Math.round(kcal * 1.1 / 10) * 10;
+    everydayKcal = Math.round((weekly - trainDayKcal * tw.length) / (7 - tw.length) / 10) * 10;
+    for (const d of tw) days[d] = trainDayKcal;
+  } else if (q.spread === "cheat") {
+    cheatKcal = Math.round(kcal * 1.3 / 10) * 10;
+    everydayKcal = Math.round((weekly - cheatKcal) / 6 / 10) * 10;
+    days[q.cheatDay] = cheatKcal;
+  }
+  if (everydayKcal < floor) notes.push(`Your lower days come out at ${fmt(everydayKcal)} kcal, under the usual ${fmt(floor)} minimum. "Same every day" avoids that.`);
+  if (a && a < 18) notes.push("Under 18, it's best to check targets with a doctor or dietitian.");
+  if (bmi && bmi < 18.5 && rate < 0) notes.push("Your weight is already on the low side for your height, so losing more isn't recommended.");
+  if (rate < 0 && -rate > w * 0.01) notes.push("That's faster than 1% of body weight a week, which risks losing muscle.");
+  let date = null;
+  if (q.goalWeight && rate && Math.sign(q.goalWeight - w) === Math.sign(rate)) { const d = new Date(); d.setDate(d.getDate() + Math.round((q.goalWeight - w) / rate * 7)); date = d; }
+  return { bmr: Math.round(bmr), tdee: Math.round(tdee), kcal, rate, macros: { p, c, f }, days, everydayKcal, trainDayKcal, cheatKcal, notes, date, formula: lean ? "Katch-McArdle, using your body fat" : "Mifflin-St Jeor" };
+}
+const planHasPaceFor = (g) => !!PACES[g];
+function planDots() { const steps = PLAN_STEPS.filter((st) => st !== "pace" || planHasPace()); const cur = steps.indexOf(PLAN_STEPS[planStep]); $("#plan-dots").innerHTML = steps.map((_, i) => `<i class="${i === cur ? "on" : i < cur ? "done" : ""}"></i>`).join(""); }
+function planOpt(active, e, name, sub, attrs) { return `<button class="card plan-opt${active ? " on" : ""}" ${attrs}><i class="e">${e}</i><span><b>${name}</b><small>${sub}</small></span></button>`; }
+function renderPlanStep() {
+  if (!plan) { back(); return; }
+  const step = PLAN_STEPS[planStep], box = $("#plan-body"), next = $("#plan-next");
+  planDots(); next.textContent = step === "summary" ? "Use this plan" : "Next";
+  if (step === "body") {
+    const lb = latestBody();
+    box.innerHTML = `<p class="plan-q">About you</p><p class="plan-sub">Used to work out what your body burns. Only kept on your account.</p>
+      <div class="plan-label">Sex</div><div class="chips plan-chips" id="pl-sex"><button data-v="f" class="${plan.sex === "f" ? "on" : ""}">Female</button><button data-v="m" class="${plan.sex === "m" ? "on" : ""}">Male</button></div>
+      <div class="plan-row"><label>Age <input type="number" inputmode="numeric" id="pl-age" value="${plan.age || ""}" placeholder="e.g. 32"></label><label>Height (cm) <input type="text" inputmode="decimal" id="pl-height" value="${plan.height || ""}" placeholder="e.g. 178 or 5'10"></label></div>
+      <div class="card scale-box">${lb && (lb.weight || lb.fat) ? `<b>Use your scale readings?</b><div class="plan-note">From ${lb.day === localDate() ? "today" : new Date(lb.day + "T12:00").toLocaleDateString(undefined, { day: "numeric", month: "short" })}: ${lb.weight ? `${fmt(lb.weight, 1)} kg` : ""}${lb.fat ? ` · ${fmt(lb.fat, 1)}% body fat` : ""}${lb.lean ? ` · ${fmt(lb.lean, 1)} kg lean` : ""}</div>
+        <div class="chips plan-chips" id="pl-usescale"><button data-v="1" class="${plan.useScale !== false ? "on" : ""}">Use these</button><button data-v="0" class="${plan.useScale === false ? "on" : ""}">Type my own</button></div>`
+        : `<b>Got a smart scale?</b><div class="plan-note">Body fat makes the numbers more accurate. Read your scale app's result, or type it below.</div>`}
+        <button class="btn mint slim" id="pl-shot">Read my scale screenshot</button></div>
+      <div class="plan-row"><label>Weight (kg) <input type="number" inputmode="decimal" id="pl-weight" value="${plan.weight ? fmt(plan.weight, 1).replace(/,/g, "") : ""}" placeholder="e.g. 80"></label><label>Body fat %<input type="number" inputmode="decimal" id="pl-fat" value="${plan.useScale !== false && plan.fat ? plan.fat : plan.useScale === false && plan.fatOwn ? plan.fatOwn : ""}" placeholder="Optional"></label></div>`;
+    box.querySelectorAll("#pl-sex button").forEach((b) => b.onclick = () => { plan.sex = b.dataset.v; renderPlanStep(); });
+    box.querySelectorAll("#pl-usescale button").forEach((b) => b.onclick = () => { plan.useScale = b.dataset.v === "1"; if (plan.useScale) planPrefillBody(true); renderPlanStep(); });
+    $("#pl-shot").onclick = () => { if (!aiAvailable()) { aiHelp(); return; } $("#file-bd-shot").click(); };
+    return;
+  }
+  if (step === "activity") {
+    box.innerHTML = `<p class="plan-q">Outside workouts, how active are your days?</p><p class="plan-sub">Workouts come next, so just think about a normal day.</p>` + ACTIVITY.map((a) => planOpt(plan.activity === a.k, a.e, a.name, a.sub, `data-k="${a.k}"`)).join("");
+    box.querySelectorAll(".plan-opt").forEach((b) => b.onclick = () => { plan.activity = +b.dataset.k; renderPlanStep(); });
+    return;
+  }
+  if (step === "training") {
+    const chip = (id, vals, cur) => `<div class="chips plan-chips" id="${id}">${vals.map(([v, l]) => `<button data-v="${v}" class="${String(cur) === String(v) ? "on" : ""}">${l}</button>`).join("")}</div>`;
+    box.innerHTML = `<p class="plan-q">How do you train?</p><p class="plan-sub">A typical week. Guess if it varies.</p>
+      <div class="plan-label">Days a week</div>${chip("pl-days", [0, 1, 2, 3, 4, 5, 6, 7].map((n) => [n, n === 0 ? "None" : n]), plan.trainDays)}
+      ${plan.trainDays > 0 ? `<div class="plan-label">What kind</div>${chip("pl-type", [["weights", "Weights"], ["cardio", "Cardio"], ["mix", "Mix"], ["sport", "Sport"]], plan.trainType)}
+      <div class="plan-label">How long, usually</div>${chip("pl-mins", [[30, "30 min"], [45, "45 min"], [60, "1 hour"], [90, "1½ hours"]], plan.trainMins)}
+      <div class="plan-label">Which days? <small class="muted">optional, for more calories on those days</small></div>
+      <div class="plan-days" id="pl-wd">${[1, 2, 3, 4, 5, 6, 0].map((d) => `<button data-d="${d}" class="${plan.trainWeekdays.includes(d) ? "on" : ""}">${WEEKDAYS[d].slice(0, 2)}</button>`).join("")}</div>` : ""}`;
+    box.querySelectorAll("#pl-days button").forEach((b) => b.onclick = () => { plan.trainDays = +b.dataset.v; if (!plan.trainDays) plan.trainWeekdays = []; renderPlanStep(); });
+    box.querySelectorAll("#pl-type button").forEach((b) => b.onclick = () => { plan.trainType = b.dataset.v; renderPlanStep(); });
+    box.querySelectorAll("#pl-mins button").forEach((b) => b.onclick = () => { plan.trainMins = +b.dataset.v; renderPlanStep(); });
+    box.querySelectorAll("#pl-wd button").forEach((b) => b.onclick = () => { const d = +b.dataset.d, i = plan.trainWeekdays.indexOf(d); if (i >= 0) plan.trainWeekdays.splice(i, 1); else plan.trainWeekdays.push(d); renderPlanStep(); });
+    return;
+  }
+  if (step === "goal") {
+    const young = plan.age && plan.age < 18;
+    box.innerHTML = `<p class="plan-q">What's your goal?</p><p class="plan-sub">You can change it any time.</p>` + Object.entries(PLAN_GOALS).filter(([k]) => !(young && k === "bulk")).map(([k, g]) => planOpt(plan.goal === k, g.e, g.name, g.sub, `data-g="${k}"`)).join("");
+    box.querySelectorAll(".plan-opt").forEach((b) => b.onclick = () => { if (plan.goal !== b.dataset.g) plan.pace = null; plan.goal = b.dataset.g; renderPlanStep(); });
+    return;
+  }
+  if (step === "pace") {
+    const list = PACES[plan.goal].filter((x) => !(plan.age && plan.age < 18 && x[0] === "Fast"));
+    if (plan.pace == null) plan.pace = list[Math.min(1, list.length - 1)][1];
+    const w = +plan.weight || 80;
+    box.innerHTML = `<p class="plan-q">How fast?</p><p class="plan-sub">Slower is easier to stick to and keeps more muscle.</p>` +
+      list.map(([name, v, pct]) => { const kg = pct ? v / 100 * w : v; return planOpt(plan.pace === v, name === "Gentle" || name === "Slow" ? "🐢" : name === "Steady" ? "🚶" : "🏃", name, `About ${kg > 0 ? "+" : "−"}${fmt(Math.abs(kg), 2)} kg a week${pct ? ` (${Math.abs(v)}% of body weight)` : ""}`, `data-p="${v}"`); }).join("") +
+      `<label>Goal weight (kg) <small>optional, for a target date</small><input type="number" inputmode="decimal" id="pl-goalw" value="${plan.goalWeight || ""}" placeholder="e.g. ${Math.round(w + (plan.goal.includes("bulk") ? 5 : -5))}"></label>`;
+    box.querySelectorAll(".plan-opt").forEach((b) => b.onclick = () => { plan.pace = +b.dataset.p; renderPlanStep(); });
+    return;
+  }
+  if (step === "spread") {
+    const hasDays = plan.trainWeekdays.length > 0 && plan.trainWeekdays.length < 7;
+    box.innerHTML = `<p class="plan-q">How should your week look?</p><p class="plan-sub">The weekly total is the same either way.</p>` +
+      planOpt(plan.spread === "same", "📅", "Same every day", "Simplest: one number, every day", `data-s="same"`) +
+      (plan.trainDays > 0 ? planOpt(plan.spread === "train", "🏋️", "More on training days", hasDays ? `A bit more on ${plan.trainWeekdays.map((d) => WEEKDAYS[d].slice(0, 3)).join(", ")}, a bit less on the rest` : "Pick your training days on the previous step first", `data-s="train"${hasDays ? "" : " disabled"}`) : "") +
+      planOpt(plan.spread === "cheat", "🍰", "A bigger cheat day", "One day with about 30% more, the others a little less", `data-s="cheat"`) +
+      (plan.spread === "cheat" ? `<div class="plan-label">Which day?</div><div class="plan-days" id="pl-cheat">${[1, 2, 3, 4, 5, 6, 0].map((d) => `<button data-d="${d}" class="${plan.cheatDay === d ? "on" : ""}">${WEEKDAYS[d].slice(0, 2)}</button>`).join("")}</div>` : "");
+    box.querySelectorAll(".plan-opt").forEach((b) => b.onclick = () => { if (b.disabled) return; plan.spread = b.dataset.s; renderPlanStep(); });
+    box.querySelectorAll("#pl-cheat button").forEach((b) => b.onclick = () => { plan.cheatDay = +b.dataset.d; renderPlanStep(); });
+    return;
+  }
+  if (step === "protein") {
+    const w = +plan.weight || 80;
+    box.innerHTML = `<p class="plan-q">How much protein?</p><p class="plan-sub">More protein keeps you fuller and protects muscle.</p>` +
+      planOpt(plan.protein === "std", "🥚", "Standard", `About ${Math.round(w * 1.6)} g a day`, `data-p="std"`) +
+      planOpt(plan.protein === "high", "🍗", "High", `About ${Math.round(w * 2.0)} g a day`, `data-p="high"`) +
+      planOpt(plan.protein === "lift", "🥩", "High, for lifting", `About ${Math.round(w * (plan.goal === "cut" ? 2.4 : 2.2))} g a day`, `data-p="lift"`);
+    box.querySelectorAll(".plan-opt").forEach((b) => b.onclick = () => { plan.protein = b.dataset.p; renderPlanStep(); });
+    return;
+  }
+  if (step === "summary") {
+    const r = computePlan(plan); plan.result = r;
+    const split = r.trainDayKcal ? `Training days ${fmt(r.trainDayKcal)} · other days ${fmt(r.everydayKcal)}` : r.cheatKcal ? `${WEEKDAYS[plan.cheatDay]} ${fmt(r.cheatKcal)} · other days ${fmt(r.everydayKcal)}` : "Every day";
+    box.innerHTML = `<p class="plan-q">Your plan</p>
+      <div class="card plan-sum"><div class="big">${fmt(r.kcal)} <small>kcal a day</small></div><div class="split">${split}</div>
+        <div class="plan-macros"><div><b>${r.macros.p} g</b><small>Protein</small></div><div><b>${r.macros.c} g</b><small>Carbs</small></div><div><b>${r.macros.f} g</b><small>Fat</small></div></div>
+        <div class="plan-facts">${PLAN_GOALS[plan.goal].e} ${PLAN_GOALS[plan.goal].name}${r.rate ? ` · ${r.rate > 0 ? "gaining" : "losing"} about ${fmt(Math.abs(r.rate), 2)} kg a week` : " · holding steady"}${r.date ? `<br>🏁 ${fmt(plan.goalWeight, 1)} kg around ${r.date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: r.date.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined })}` : ""}</div>
+        ${r.notes.map((n) => `<div class="plan-warn">${esc(n)}</div>`).join("")}</div>
+      <p class="plan-how">You burn about ${fmt(r.tdee)} kcal a day: ${fmt(r.bmr)} at rest (${r.formula}), plus daily activity and training. Workout calories are already counted, so "add burned calories to my budget" is switched off. After a couple of weeks the app checks your weight trend and suggests tweaks. A guide, not medical advice.</p>`;
+    return;
+  }
+}
+function planCollect() {
+  const step = PLAN_STEPS[planStep];
+  if (step === "body") {
+    plan.age = num($("#pl-age").value); let hv = String($("#pl-height").value || "").trim();
+    const ft = hv.match(/^(\d)\s*['′ft]+\s*(\d{1,2})?/i); plan.height = ft ? Math.round((+ft[1] * 12 + +(ft[2] || 0)) * 2.54) : num(hv);
+    plan.weight = num($("#pl-weight").value); const f = num($("#pl-fat").value);
+    if (plan.useScale === false) { plan.fatOwn = f; plan.fat = f; } else plan.fat = f;
+    if (!plan.sex) return "Pick female or male: it changes the maths";
+    if (!plan.age || plan.age < 13 || plan.age > 100) return "Add your age";
+    if (!plan.height || plan.height < 120 || plan.height > 230) return "Add your height in cm (or like 5'10)";
+    if (!plan.weight || plan.weight < 30 || plan.weight > 300) return "Add your weight in kg";
+    if (plan.fat && (plan.fat < 3 || plan.fat > 65)) return "Body fat looks off: leave it blank if unsure";
+  }
+  if (step === "activity" && !plan.activity) return "Pick the one closest to a normal day";
+  if (step === "training") { if (plan.trainDays == null) return "Pick how many days a week"; if (plan.trainDays > 0 && !plan.trainType) return "Pick what kind of training"; if (plan.trainDays > 0 && !plan.trainMins) return "Pick how long a session usually is"; }
+  if (step === "goal" && !plan.goal) return "Pick a goal";
+  if (step === "pace") { const g = num(($("#pl-goalw") || {}).value); plan.goalWeight = g && g > 30 && g < 300 ? Math.round(g * 10) / 10 : null; }
+  if (step === "spread" && plan.spread === "train" && !(plan.trainWeekdays.length > 0 && plan.trainWeekdays.length < 7)) plan.spread = "same";
+  if (step === "protein" && !plan.protein) return "Pick how much protein";
+  return null;
+}
+function applyPlan() {
+  const r = plan.result || computePlan(plan);
+  state.profile = { sex: plan.sex, age: plan.age, height: plan.height };
+  state.budget = r.everydayKcal;
+  state.dayBudgets = Object.assign({}, r.days);
+  state.goals = { p: r.macros.p, c: r.macros.c, f: r.macros.f };
+  state.eatBack = false;
+  state.weightKg = plan.weight;
+  if (plan.goalWeight) { state.goalWeight = plan.goalWeight; state.goalStart = { weight: plan.weight, day: localDate() }; }
+  // the starting weight goes in as today's reading if there isn't one
+  const today = state.body.find((x) => x.day === localDate());
+  if (!today || (!today.weight && plan.weight)) upsertBody(Object.assign({ day: localDate(), updatedAt: new Date().toISOString(), weight: plan.weight }, plan.fat && plan.useScale === false ? { fat: plan.fat } : {}));
+  state.plan = { createdAt: new Date().toISOString(), goal: plan.goal, pace: plan.pace, rate: r.rate, activity: plan.activity, trainDays: plan.trainDays, trainType: plan.trainType, trainMins: plan.trainMins, trainWeekdays: plan.trainWeekdays,
+    spread: plan.spread, cheatDay: plan.cheatDay, protein: plan.protein, startWeight: plan.weight, fat: plan.fat, tdee: r.tdee, bmr: r.bmr, kcal: r.kcal, macros: r.macros, lastCheckIn: Date.now() };
+  save();
+  toast(`Plan set: ${fmt(r.kcal)} kcal a day`, 4000);
+  const ret = planReturn; plan = null;
+  if (ret === "welcome") { stack = ["welcome"]; show("welcome"); wlStep(3); } else home();
+}
+$("#plan-next").onclick = () => {
+  const err = planCollect(); if (err) { toast(err); return; }
+  if (PLAN_STEPS[planStep] === "summary") { applyPlan(); return; }
+  planStep++; if (PLAN_STEPS[planStep] === "pace" && !planHasPace()) planStep++;
+  window.scrollTo(0, 0); renderPlanStep();
+};
+$("#plan-back").onclick = () => {
+  if (planStep === 0) { const ret = planReturn; plan = null; if (ret === "welcome") { stack = ["welcome"]; show("welcome"); wlStep(2); } else back(); return; }
+  planCollect(); planStep--; if (PLAN_STEPS[planStep] === "pace" && !planHasPace()) planStep--;
+  window.scrollTo(0, 0); renderPlanStep();
+};
+$("#wl-plan").onclick = () => openPlan("welcome");
+function planLine() { const pl = state.plan; return pl ? `${PLAN_GOALS[pl.goal].e} ${PLAN_GOALS[pl.goal].name} · ${fmt(pl.kcal)} kcal · since ${new Date(pl.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })}` : ""; }
+function renderPlanCards() {
+  const pl = state.plan;
+  const html = pl ? `<span class="circle"><svg><use href="#i-trophy"/></svg></span><span class="level-text"><b>Your plan</b><small>${esc(planLine())} · tap to redo</small></span><svg class="chev"><use href="#i-chev"/></svg>`
+    : `<span class="circle"><svg><use href="#i-spark"/></svg></span><span class="level-text"><b>Work out my budget for me</b><small>A few questions about you and your goal: 1 minute</small></span><svg class="chev"><use href="#i-chev"/></svg>`;
+  $("#b-plan").innerHTML = html; $("#b-plan").onclick = () => openPlan();
+  const g = $("#g-plan"); g.classList.toggle("hidden", !pl); if (pl) { g.innerHTML = html; g.onclick = () => openPlan(); }
+}
+/** Home: invite people without a plan once; with a plan, a weekly check-in against the real weight trend. */
+const PLAN_ASK = "cheatday.planAsk";
+function renderHomePlan() {
+  const box = $("#home-plan"); box.innerHTML = "";
+  const pl = state.plan;
+  if (!pl) {
+    let rec = {}; try { rec = JSON.parse(localStorage.getItem(PLAN_ASK) || "{}"); } catch (e) {}
+    if (rec.dismissed || !state.onboarded) return;
+    box.innerHTML = `<div class="card home-plan-card"><span class="circle green"><svg><use href="#i-spark"/></svg></span><div class="body"><b>Get a budget that fits your goal</b><small>Losing, cutting, bulking or maintaining: a few questions, 1 minute.</small><div class="acts"><button class="btn primary" data-a="go">Set it up</button></div></div><button class="x" aria-label="Dismiss">✕</button></div>`;
+    box.querySelector("[data-a=go]").onclick = () => openPlan();
+    box.querySelector(".x").onclick = () => { try { localStorage.setItem(PLAN_ASK, JSON.stringify({ dismissed: true })); } catch (e) {} box.innerHTML = ""; };
+    return;
+  }
+  const age = Date.now() - new Date(pl.createdAt).getTime(), since = Date.now() - (pl.lastCheckIn || 0);
+  if (age < 14 * 864e5 || since < 7 * 864e5) return;
+  const trend = weightTrend(), want = pl.rate || 0;
+  let title, body, acts = "";
+  if (!trend) { title = "Weekly check-in"; body = "Weigh in a few times this week so your plan can check it's on track."; acts = `<button class="btn mint" data-a="ok">OK</button>`; }
+  else {
+    const got = Math.round(trend.perDay * 7 * 100) / 100, gap = want - got;
+    const word = (v) => v === 0 ? "holding steady" : `${v > 0 ? "gaining" : "losing"} ${fmt(Math.abs(v), 2)} kg a week`;
+    if (Math.abs(gap) < 0.15) { title = "Check-in: on track 🎯"; body = `You're ${word(got)}, just as planned. Keep going.`; acts = `<button class="btn mint" data-a="ok">Nice</button>`; }
+    else {
+      const floor = (state.profile && state.profile.sex === "m") ? 1500 : 1200;
+      let delta = Math.round(Math.max(-250, Math.min(250, gap * KCAL_PER_KG / 7)) / 10) * 10;
+      if (state.budget + delta < floor) delta = floor - state.budget;
+      if (!delta) { title = "Weekly check-in"; body = `You're ${word(got)}; your plan aims for ${want === 0 ? "steady" : `${fmt(Math.abs(want), 2)}`}. Your budget is already at the safe minimum, so more movement is the next lever.`; acts = `<button class="btn mint" data-a="ok">OK</button>`; }
+      else { title = "Weekly check-in"; body = `You're ${word(got)}; your plan aims for ${want === 0 ? "steady" : `${fmt(Math.abs(want), 2)}`}. ${delta < 0 ? "Drop" : "Raise"} your budget to ${fmt(state.budget + delta)} kcal?`; acts = `<button class="btn primary" data-a="adj" data-d="${delta}">Update</button><button class="btn ghost" data-a="ok">Keep</button>`; }
+    }
+  }
+  box.innerHTML = `<div class="card home-plan-card"><span class="circle green"><svg><use href="#i-scale"/></svg></span><div class="body"><b>${title}</b><small>${body}</small><div class="acts">${acts}</div></div></div>`;
+  box.querySelectorAll("[data-a]").forEach((b) => b.onclick = () => {
+    if (b.dataset.a === "adj") {
+      const d = +b.dataset.d;
+      state.budget += d; for (const k of Object.keys(state.dayBudgets || {})) state.dayBudgets[k] += d;
+      pl.kcal += d; pl.macros.c = Math.max(0, pl.macros.c + Math.round(d / 4)); state.goals = Object.assign({}, state.goals, { c: pl.macros.c });
+      toast(`Budget now ${fmt(state.budget)} kcal`);
+    }
+    pl.lastCheckIn = Date.now(); save(); renderHome();
+  });
+}
 
 // ---------------------------------------------------------------- goals, XP, levels and badges: the game layer
 
@@ -2134,6 +2419,7 @@ function renderLevelCard() {
   publishStats();
 }
 function renderGoals() {
+  renderPlanCards();
   const signed = !!(window.cloud && window.cloud.user);
   $("#g-lb-wrap").classList.toggle("hidden", !signed);
   if (signed) { publishStats(); renderLeaderboards(false); }
@@ -3513,7 +3799,7 @@ $("#share-add").onclick = () => {
 
 // ---------------------------------------------------------------- account + sync (optional, see cloud.js)
 
-const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "weekGoals", "seenBadges", "goalWins", "postCount", "pbCount", "body", "goalWeight", "goalStart", "simple", "onboarded", "reminders", "reactCount", "commentCount", "sendCount", "friendCount", "tombs", "dayBudgets", "updatedAt"];   // the API key stays on the device
+const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "weekGoals", "seenBadges", "goalWins", "postCount", "pbCount", "body", "goalWeight", "goalStart", "simple", "onboarded", "reminders", "reactCount", "commentCount", "sendCount", "friendCount", "tombs", "dayBudgets", "profile", "plan", "updatedAt"];   // the API key stays on the device
 let pushTimer = null, pulledOnce = false;
 function schedulePush() {
   if (!window.cloud || !window.cloud.user) return;

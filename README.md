@@ -427,6 +427,22 @@ create policy "stats read" on public.stats for select to authenticated using (us
 create policy "stats own" on public.stats for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 ```
 
+## Your plan (work out my budget)
+
+A short set of questions (about you, daily activity, training, goal, pace, how
+to spread the week, protein) works out calories and macros. Weight and body fat
+are pre-filled from the Body screen, or read from a scale screenshot on the spot.
+Resting burn uses Katch-McArdle when body fat is known, else Mifflin-St Jeor;
+daily burn adds an activity factor and the week's training. Goals: lose, cut
+(0.5–1% of body weight a week), maintain, recomp, lean bulk, bulk; deficits are
+capped at 25% and never go below 1,200 (women) / 1,500 (men). Protein 1.6–2.4 g
+per kg, fat at least 0.8 g per kg, carbs the rest. "More on training days" or "a
+bigger cheat day" spread the same weekly total. Use this plan sets the budget,
+day budgets, macro goals and goal weight, and turns off workout eat-back. After
+two weeks, a weekly check-in on the home screen compares your weight trend with
+the plan and offers a small adjustment. Entry points: the Daily budget screen,
+the welcome guide, a one-time home card, and the Goals screen.
+
 ## Budgets for different days
 
 The Daily budget screen has a box per weekday; fill one (say Sunday, 2,200) and
