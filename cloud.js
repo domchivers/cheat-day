@@ -127,6 +127,14 @@
         body: JSON.stringify([{ user_id: this.uid, day: day.date, budget: day.budget, kcal: day.kcal, items: day.items, updated_at: new Date().toISOString() }]) });
     },
     async unpublishDays() { return this.rest(`/rest/v1/days?user_id=eq.${this.uid}`, { method: "DELETE" }); },
+    // ---- reminders and notifications, via the "push" edge function
+    async pushCall(action, payload = {}) {
+      const r = await this.rawFetch(`${SUPABASE_URL}/functions/v1/push`, { method: "POST", headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY }, body: JSON.stringify({ action, ...payload }) });
+      let data = null; try { data = await r.json(); } catch (e) {}
+      if (r.status === 404) { const e = new Error("Reminders aren't set up on the server yet"); e.missing = true; throw e; }
+      if (!r.ok) throw new Error((data && (data.error || data.message)) || `HTTP ${r.status}`);
+      return data;
+    },
     // ---- the leaderboard: each person's level, streaks and weekly goals, readable by friends
     async publishStats(row) { return this.rest(`/rest/v1/stats`, { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify([{ user_id: this.uid, ...row, updated_at: new Date().toISOString() }]) }); },
     async stats() { return this.rest(`/rest/v1/stats?select=*`); },

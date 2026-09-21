@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "73";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "74";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -749,6 +749,7 @@ function renderSettings() {
   $("#s-version").textContent = APP_VERSION;
   $("#s-eatback").checked = !!state.eatBack;
   $("#s-simple").checked = !!state.simple;
+  renderReminders();
   renderAccount();
   const d = state.day.date;
   $("#s-day").textContent = d === localDate() ? "Today" : new Date(d + "T12:00").toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "short" });
@@ -1957,6 +1958,7 @@ $("#share-send").onclick = async () => {
       const kcal = Math.round(amountKcal), a = amountsFor(draft, kcal);
       b.disabled = true;
       try {
+        notifyFriend(f.id, "send", draft.name);
         await c.sendItem(f.id, { name: draft.name, kcal, grams: a.grams != null ? Math.round(a.grams) : null, unit: draft.unit || "g", photo: draft.photo || null, payload: basisOf(draft) });
         toast(`Sent ${draft.name} to ${f.name}`); sheet.classList.add("hidden");
       } catch (err) { b.disabled = false; toast("Couldn't send: " + c.explain(err), 5000); }
@@ -2122,12 +2124,12 @@ function drawFeed() {
     };
     card.querySelectorAll("[data-emoji]").forEach((b) => b.onclick = async () => {
       const e = b.dataset.emoji, on = b.classList.contains("on");
-      try { if (on) await c.unreact(p.id, e); else await c.react(p.id, e); } catch (err) { toast(c.explain(err)); return; }
+      try { if (on) await c.unreact(p.id, e); else { await c.react(p.id, e); notifyFriend(p.owner, "react", p.name, { emoji: e }); } } catch (err) { toast(c.explain(err)); return; }
       if (on) feed.reactions = feed.reactions.filter((r) => !(r.post_id === p.id && r.user_id === me && r.emoji === e)); else feed.reactions.push({ post_id: p.id, user_id: me, emoji: e });
       drawFeed();
     });
     const input = card.querySelector(".chat input"), send = card.querySelector("[data-act=comment]");
-    const doComment = async () => { const t = input.value.trim(); if (!t) return; try { const rows = await c.comment(p.id, t); feed.comments.push((rows && rows[0]) || { id: uid(), post_id: p.id, user_id: me, text: t, created_at: new Date().toISOString() }); openComments.add(p.id); drawFeed(); } catch (err) { toast(c.explain(err)); } };
+    const doComment = async () => { const t = input.value.trim(); if (!t) return; try { const rows = await c.comment(p.id, t); notifyFriend(p.owner, "comment", t); feed.comments.push((rows && rows[0]) || { id: uid(), post_id: p.id, user_id: me, text: t, created_at: new Date().toISOString() }); openComments.add(p.id); drawFeed(); } catch (err) { toast(c.explain(err)); } };
     send.onclick = doComment; input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.target.blur(); doComment(); } });
     card.querySelectorAll("[data-comment]").forEach((b) => b.onclick = async () => { if (!await ask("Delete your comment?")) return; try { await c.deleteComment(b.dataset.comment); feed.comments = feed.comments.filter((x) => String(x.id) !== String(b.dataset.comment)); drawFeed(); } catch (err) { toast(c.explain(err)); } });
     list.appendChild(card);
@@ -3262,7 +3264,7 @@ $("#share-add").onclick = () => {
 
 // ---------------------------------------------------------------- account + sync (optional, see cloud.js)
 
-const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "weekGoals", "seenBadges", "goalWins", "postCount", "pbCount", "body", "goalWeight", "goalStart", "simple", "onboarded", "updatedAt"];   // the API key stays on the device
+const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "weekGoals", "seenBadges", "goalWins", "postCount", "pbCount", "body", "goalWeight", "goalStart", "simple", "onboarded", "reminders", "updatedAt"];   // the API key stays on the device
 let pushTimer = null;
 function schedulePush() {
   if (!window.cloud || !window.cloud.user) return;
@@ -3342,6 +3344,56 @@ $("#acct-signup").onclick = () => acct("signup");
 $("#acct-forgot").onclick = () => acct("forgot");
 $("#acct-signout").onclick = async () => { try { await window.cloud.signOut(); toast("Signed out. This device keeps its own copy."); } catch (e) {} };
 $("#acct-pass").addEventListener("keydown", (e) => { if (e.key === "Enter") acct("signin"); });
+
+// ---------------------------------------------------------------- reminders: web push through the "push" function
+
+const remPrefs = () => Object.assign({ lunch: true, weigh: "07:30", social: true }, state.reminders || {});
+const standalone = () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+function b64ToBytes(b64) { const pad = "=".repeat((4 - b64.length % 4) % 4), raw = atob((b64 + pad).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(raw, (ch) => ch.charCodeAt(0)); }
+async function currentSub() { if (!pushSupported()) return null; const reg = await navigator.serviceWorker.getRegistration(); return reg ? reg.pushManager.getSubscription() : null; }
+async function renderReminders() {
+  const status = $("#rem-status"), on = $("#rem-on"), opts = $("#rem-opts");
+  const signed = !!(window.cloud && window.cloud.user);
+  const p = remPrefs();
+  $("#rem-lunch").checked = p.lunch !== false; $("#rem-weigh-on").checked = !!p.weigh; $("#rem-weigh").value = p.weigh || "07:30"; $("#rem-social").checked = p.social !== false;
+  if (!signed) { status.textContent = "Reminders need an account: sign in above first."; on.classList.add("hidden"); opts.classList.add("hidden"); return; }
+  if (!pushSupported()) { status.textContent = /iphone|ipad/i.test(navigator.userAgent) && !standalone() ? "On iPhone, reminders work once Cheat Days is on your home screen: tap Share, then Add to Home Screen, and open it from there." : "This browser can't show notifications."; on.classList.add("hidden"); opts.classList.add("hidden"); return; }
+  const sub = await currentSub().catch(() => null);
+  if (sub && Notification.permission === "granted") { status.textContent = "On for this phone."; on.classList.add("hidden"); opts.classList.remove("hidden"); }
+  else { status.textContent = Notification.permission === "denied" ? "Notifications are blocked for Cheat Days. Turn them on in the phone's Settings → Notifications, then try again." : "Get a nudge to log, a weigh-in reminder, and a ping when friends react."; on.classList.remove("hidden"); opts.classList.add("hidden"); }
+}
+async function savePrefs() {
+  state.reminders = { lunch: $("#rem-lunch").checked, weigh: $("#rem-weigh-on").checked ? ($("#rem-weigh").value || "07:30") : null, social: $("#rem-social").checked };
+  save();
+  try { await window.cloud.pushCall("prefs", { prefs: state.reminders, tz: Intl.DateTimeFormat().resolvedOptions().timeZone }); } catch (e) { toast(e.message); }
+}
+$("#rem-on").onclick = async () => {
+  const c = window.cloud; if (!(c && c.user)) { toast("Sign in first"); return; }
+  try {
+    const perm = await Notification.requestPermission();   // must come straight from the tap on iPhone
+    if (perm !== "granted") { toast("Notifications weren't allowed"); renderReminders(); return; }
+    busy("Turning on reminders…");
+    const reg = await navigator.serviceWorker.ready;
+    const { publicKey } = await c.pushCall("key");
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(publicKey) });
+    await c.pushCall("subscribe", { subscription: sub.toJSON(), prefs: remPrefs(), tz: Intl.DateTimeFormat().resolvedOptions().timeZone });
+    busy(false); toast("Reminders on"); renderReminders();
+  } catch (e) { busy(false); toast("Couldn't turn on reminders: " + e.message, 6000); }
+};
+$("#rem-off").onclick = async () => {
+  if (!await ask("Turn off reminders on this phone?")) return;
+  try { const sub = await currentSub(); if (sub) { await window.cloud.pushCall("unsubscribe", { endpoint: sub.endpoint }).catch(() => {}); await sub.unsubscribe(); } toast("Reminders off"); } catch (e) { toast(e.message); }
+  renderReminders();
+};
+$("#rem-test").onclick = async () => { try { const r = await window.cloud.pushCall("test"); toast(r.sent ? "Test sent: it should pop up in a moment" : "Nothing sent: try turning reminders off and on", 4000); } catch (e) { toast(e.message, 5000); } };
+["#rem-lunch", "#rem-weigh-on", "#rem-weigh", "#rem-social"].forEach((q) => $(q).addEventListener("change", savePrefs));
+/** Tell a friend something happened (reaction, comment, food sent). Quiet if reminders aren't set up. */
+function notifyFriend(to, kind, text, extra = {}) {
+  const c = window.cloud; if (!c || !c.user || !to || to === c.uid) return;
+  c.pushCall("notify", { to, kind, text, ...extra }).catch(() => {});
+}
 
 // ---------------------------------------------------------------- simple mode and the welcome guide
 

@@ -295,6 +295,51 @@ Then deploy `supabase/functions/body-import/index.ts` as an Edge Function named
 `body-import` with **Verify JWT turned off** (the token is the secret). The
 Shortcut steps are on the Body screen under "How to set up the Shortcut".
 
+## Reminders
+
+Settings → Reminders turns on notifications for this phone: a 2pm nudge if
+nothing's logged, a weigh-in reminder at a chosen time, and a ping when friends
+react, comment or send food. On iPhone this needs the app on the home screen
+(Share → Add to Home Screen). Setup, once:
+
+1. Supabase → Database → Extensions: switch on **pg_cron** and **pg_net**.
+2. Run this in the SQL Editor:
+
+```sql
+create table if not exists public.push_config (
+  id integer primary key default 1,
+  public_key text not null,
+  private_key text not null
+);
+alter table public.push_config enable row level security;
+
+create table if not exists public.push_subs (
+  endpoint text primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  p256dh text not null,
+  auth text not null,
+  tz text,
+  prefs jsonb not null default '{}'::jsonb,
+  last_lunch date,
+  last_weigh date,
+  created_at timestamptz not null default now()
+);
+alter table public.push_subs enable row level security;
+-- no policies on purpose: only the push function reads or writes these
+
+select cron.schedule('cheatdays-reminders', '*/15 * * * *', $$
+  select net.http_post(
+    url := 'https://cthoynfsgpqgthxpmngm.supabase.co/functions/v1/push',
+    headers := '{"Content-Type":"application/json"}'::jsonb,
+    body := '{"action":"tick"}'::jsonb
+  );
+$$);
+```
+
+3. Deploy `supabase/functions/push/index.ts` as an Edge Function named `push`
+   with **Verify JWT off**. No secrets needed: its signing keys are made on first
+   use and kept in `push_config`.
+
 ## Friends leaderboard
 
 The Friends tab and the Goals screen rank you and your friends by this week's

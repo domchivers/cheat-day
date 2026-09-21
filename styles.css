@@ -706,3 +706,8 @@ body.simple .dialog-card p { font-size: 18px; }
 .lb-modes { justify-content: flex-start; margin: 0 0 8px; }
 .lb-modes button { padding: 7px 14px; font-size: 14px; }
 .board .row.me { background: var(--mint-2); margin: 0 -14px; padding-left: 14px; padding-right: 14px; }
+/* Reminders */
+#rem-card .check { margin: 8px 0; }
+.inline-time { width: auto; display: inline-block; padding: 6px 8px; margin-left: 4px; font-size: 15px; }
+#rem-opts .grid2 { margin-top: 6px; }
+#rem-opts .grid2 .btn { margin: 0; }
