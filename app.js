@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "89";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "90";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1901,18 +1901,18 @@ $("#bd-copy").onclick = async () => { try { await navigator.clipboard.writeText(
 // ---------------------------------------------------------------- the plan: questions -> calories and macros that fit
 
 const PLAN_GOALS = {
-  lose: { name: "Lose weight", e: "📉", sub: "Steady fat loss, eat a little less" },
-  cut: { name: "Cut", e: "🔪", sub: "Lose fat, keep the muscle: high protein" },
-  maintain: { name: "Maintain", e: "⚖️", sub: "Stay where you are" },
-  recomp: { name: "Recomp", e: "🔄", sub: "Slowly swap fat for muscle at the same weight" },
-  leanbulk: { name: "Lean bulk", e: "🌱", sub: "Build muscle, keep fat gain small" },
-  bulk: { name: "Bulk", e: "💪", sub: "Build as much as possible, some fat comes with it" }
+  lose: { name: "Lose weight", e: "i-trenddown:coral", sub: "Steady fat loss, eat a little less" },
+  cut: { name: "Cut", e: "i-flame:peach", sub: "Lose fat, keep the muscle: high protein" },
+  maintain: { name: "Maintain", e: "i-balance:sand", sub: "Stay where you are" },
+  recomp: { name: "Recomp", e: "i-repost:green", sub: "Slowly swap fat for muscle at the same weight" },
+  leanbulk: { name: "Lean bulk", e: "i-sprout:green", sub: "Build muscle, keep fat gain small" },
+  bulk: { name: "Bulk", e: "i-lift:coral", sub: "Build as much as possible, some fat comes with it" }
 };
 const ACTIVITY = [
-  { k: 1.2, e: "🪑", name: "Mostly sitting", sub: "Desk job, not much walking" },
-  { k: 1.375, e: "🚶", name: "Some walking", sub: "A bit on your feet, errands, a short walk" },
-  { k: 1.55, e: "🧍", name: "On my feet a lot", sub: "Retail, teaching, nursing, lots of walking" },
-  { k: 1.725, e: "🏗️", name: "Physical job", sub: "Building, deliveries, farming" }
+  { k: 1.2, e: "i-chair:sand", name: "Mostly sitting", sub: "Desk job, not much walking" },
+  { k: 1.375, e: "i-walk:green", name: "Some walking", sub: "A bit on your feet, errands, a short walk" },
+  { k: 1.55, e: "i-stand:peach", name: "On my feet a lot", sub: "Retail, teaching, nursing, lots of walking" },
+  { k: 1.725, e: "i-hammer:coral", name: "Physical job", sub: "Building, deliveries, farming" }
 ];
 const TRAIN_MET = { weights: 5, cardio: 7, mix: 6, sport: 7.5 };
 const PACES = {   // kg a week (negative = losing); cut is % of body weight
@@ -2021,7 +2021,7 @@ function paceNote(kg) {
   return t;
 }
 function planDots() { const steps = PLAN_STEPS.filter((st) => st !== "pace" || planHasPace()); const cur = steps.indexOf(PLAN_STEPS[planStep]); $("#plan-dots").innerHTML = steps.map((_, i) => `<i class="${i === cur ? "on" : i < cur ? "done" : ""}"></i>`).join(""); }
-function planOpt(active, e, name, sub, attrs) { return `<button class="card plan-opt${active ? " on" : ""}" ${attrs}><i class="e">${e}</i><span><b>${name}</b><small>${sub}</small></span></button>`; }
+function planOpt(active, icon, name, sub, attrs) { const [id, tone] = String(icon).split(":"); return `<button class="card plan-opt${active ? " on" : ""}" ${attrs}><span class="circle ${tone || "green"}"><svg><use href="#${id}"/></svg></span><span><b>${name}</b><small>${sub}</small></span></button>`; }
 function renderPlanStep() {
   if (!plan) { back(); return; }
   const step = PLAN_STEPS[planStep], box = $("#plan-body"), next = $("#plan-next");
@@ -2080,7 +2080,7 @@ function renderPlanStep() {
     if (plan.pace == null) plan.pace = list[Math.min(1, list.length - 1)][1];
     const w = +plan.weight || 80;
     box.innerHTML = `<p class="plan-q">How fast?</p><p class="plan-sub">Slower is easier to stick to and keeps more muscle.</p>` +
-      list.map(([name, v, pct]) => { const kg = pct ? v / 100 * w : v; return planOpt(plan.pace === v, name === "Gentle" || name === "Slow" ? "🐢" : name === "Steady" ? "🚶" : "🏃", name, `About ${kg > 0 ? "+" : "−"}${fmt(Math.abs(kg), 2)} kg a week${pct ? ` (${Math.abs(v)}% of body weight)` : ""}`, `data-p="${v}"`); }).join("") +
+      list.map(([name, v, pct]) => { const kg = pct ? v / 100 * w : v; return planOpt(plan.pace === v, name === "Gentle" || name === "Slow" ? "i-slow:green" : name === "Steady" ? "i-steady:sand" : "i-fast:coral", name, `About ${kg > 0 ? "+" : "−"}${fmt(Math.abs(kg), 2)} kg a week${pct ? ` (${Math.abs(v)}% of body weight)` : ""}`, `data-p="${v}"`); }).join("") +
       `<div class="card plan-own${plan.paceCustom ? " on" : ""}"><label>Or choose your own: kg ${plan.goal.includes("bulk") ? "to gain" : "to lose"} a week<input type="number" inputmode="decimal" step="0.05" id="pl-pace-own" value="${plan.paceCustom || ""}" placeholder="e.g. ${plan.goal.includes("bulk") ? "0.2" : "0.4"}"></label><div class="plan-note" id="pl-pace-note">${paceNote(plan.paceCustom)}</div></div>` +
       `<label>Goal weight (kg) <small>optional, for a target date</small><input type="number" inputmode="decimal" id="pl-goalw" value="${plan.goalWeight || ""}" placeholder="e.g. ${Math.round(w + (plan.goal.includes("bulk") ? 5 : -5))}"></label>`;
     box.querySelectorAll(".plan-opt").forEach((b) => b.onclick = () => { plan.pace = +b.dataset.p; plan.paceCustom = null; renderPlanStep(); });
@@ -2096,9 +2096,9 @@ function renderPlanStep() {
   if (step === "spread") {
     const hasDays = plan.trainWeekdays.length > 0 && plan.trainWeekdays.length < 7;
     box.innerHTML = `<p class="plan-q">How should your week look?</p><p class="plan-sub">The weekly total is the same either way.</p>` +
-      planOpt(plan.spread === "same", "📅", "Same every day", "Simplest: one number, every day", `data-s="same"`) +
-      (plan.trainDays > 0 ? planOpt(plan.spread === "train", "🏋️", "More on training days", hasDays ? `A bit more on ${plan.trainWeekdays.map((d) => WEEKDAYS[d].slice(0, 3)).join(", ")}, a bit less on the rest` : "Pick your training days on the previous step first", `data-s="train"${hasDays ? "" : " disabled"}`) : "") +
-      planOpt(plan.spread === "cheat", "🍰", "A bigger cheat day", "One day with about 30% more, the others a little less", `data-s="cheat"`) +
+      planOpt(plan.spread === "same", "i-calendar:green", "Same every day", "Simplest: one number, every day", `data-s="same"`) +
+      (plan.trainDays > 0 ? planOpt(plan.spread === "train", "i-lift:coral", "More on training days", hasDays ? `A bit more on ${plan.trainWeekdays.map((d) => WEEKDAYS[d].slice(0, 3)).join(", ")}, a bit less on the rest` : "Pick your training days on the previous step first", `data-s="train"${hasDays ? "" : " disabled"}`) : "") +
+      planOpt(plan.spread === "cheat", "i-cake:peach", "A bigger cheat day", "One day with about 30% more, the others a little less", `data-s="cheat"`) +
       (plan.spread === "cheat" ? `<div class="plan-label">Which day?</div><div class="plan-days" id="pl-cheat">${[1, 2, 3, 4, 5, 6, 0].map((d) => `<button data-d="${d}" class="${plan.cheatDay === d ? "on" : ""}">${WEEKDAYS[d].slice(0, 2)}</button>`).join("")}</div>` : "");
     box.querySelectorAll(".plan-opt").forEach((b) => b.onclick = () => { if (b.disabled) return; plan.spread = b.dataset.s; renderPlanStep(); });
     box.querySelectorAll("#pl-cheat button").forEach((b) => b.onclick = () => { plan.cheatDay = +b.dataset.d; renderPlanStep(); });
@@ -2107,9 +2107,9 @@ function renderPlanStep() {
   if (step === "protein") {
     const w = +plan.weight || 80;
     box.innerHTML = `<p class="plan-q">How much protein?</p><p class="plan-sub">More protein keeps you fuller and protects muscle.</p>` +
-      planOpt(plan.protein === "std", "🥚", "Standard", `About ${Math.round(w * 1.6)} g a day`, `data-p="std"`) +
-      planOpt(plan.protein === "high", "🍗", "High", `About ${Math.round(w * 2.0)} g a day`, `data-p="high"`) +
-      planOpt(plan.protein === "lift", "🥩", "High, for lifting", `About ${Math.round(w * (plan.goal === "cut" ? 2.4 : 2.2))} g a day`, `data-p="lift"`);
+      planOpt(plan.protein === "std", "i-egg:sand", "Standard", `About ${Math.round(w * 1.6)} g a day`, `data-p="std"`) +
+      planOpt(plan.protein === "high", "i-drumstick:peach", "High", `About ${Math.round(w * 2.0)} g a day`, `data-p="high"`) +
+      planOpt(plan.protein === "lift", "i-lift:coral", "High, for lifting", `About ${Math.round(w * (plan.goal === "cut" ? 2.4 : 2.2))} g a day`, `data-p="lift"`);
     box.querySelectorAll(".plan-opt").forEach((b) => b.onclick = () => { plan.protein = b.dataset.p; renderPlanStep(); });
     return;
   }
@@ -2119,7 +2119,7 @@ function renderPlanStep() {
     box.innerHTML = `<p class="plan-q">Your plan</p>
       <div class="card plan-sum"><div class="big">${fmt(r.kcal)} <small>kcal a day</small></div><div class="split">${split}</div>
         <div class="plan-macros"><div><b>${r.macros.p} g</b><small>Protein</small></div><div><b>${r.macros.c} g</b><small>Carbs</small></div><div><b>${r.macros.f} g</b><small>Fat</small></div></div>
-        <div class="plan-facts">${PLAN_GOALS[plan.goal].e} ${PLAN_GOALS[plan.goal].name}${r.rate ? ` · ${r.rate > 0 ? "gaining" : "losing"} about ${fmt(Math.abs(r.rate), 2)} kg a week` : " · holding steady"}${r.date ? `<br>🏁 ${fmt(plan.goalWeight, 1)} kg around ${r.date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: r.date.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined })}` : ""}</div>
+        <div class="plan-facts"><svg class="ic"><use href="#${PLAN_GOALS[plan.goal].e.split(":")[0]}"/></svg>${PLAN_GOALS[plan.goal].name}${r.rate ? ` · ${r.rate > 0 ? "gaining" : "losing"} about ${fmt(Math.abs(r.rate), 2)} kg a week` : " · holding steady"}${r.date ? `<br><svg class="ic"><use href="#i-flag"/></svg>${fmt(plan.goalWeight, 1)} kg around ${r.date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: r.date.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined })}` : ""}</div>
         ${r.notes.map((n) => `<div class="plan-warn">${esc(n)}</div>`).join("")}</div>
       <p class="plan-how">You burn about ${fmt(r.tdee)} kcal a day: ${r.fromKnown ? `${r.formula} (the formula guessed ${fmt(r.estimate)})` : `${fmt(r.bmr)} at rest (${r.formula}), plus daily activity and training`}. Workout calories are already counted, so "add burned calories to my budget" is switched off. Each week after the first two, it learns your real burn from what you log and weigh, and suggests an updated budget. A guide, not medical advice.</p>`;
     return;
@@ -2177,7 +2177,7 @@ $("#plan-back").onclick = () => {
   window.scrollTo(0, 0); renderPlanStep();
 };
 $("#wl-plan").onclick = () => openPlan("welcome");
-function planLine() { const pl = state.plan; return pl ? `${PLAN_GOALS[pl.goal].e} ${PLAN_GOALS[pl.goal].name} · ${fmt(pl.kcal)} kcal${pl.learnedBurn ? ` · your burn ${fmt(pl.learnedBurn)} (learned)` : ""} · since ${new Date(pl.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })}` : ""; }
+function planLine() { const pl = state.plan; return pl ? `${PLAN_GOALS[pl.goal].name} · ${fmt(pl.kcal)} kcal${pl.learnedBurn ? ` · your burn ${fmt(pl.learnedBurn)} (learned)` : ""} · since ${new Date(pl.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })}` : ""; }
 function renderPlanCards() {
   const pl = state.plan;
   const html = pl ? `<span class="circle"><svg><use href="#i-trophy"/></svg></span><span class="level-text"><b>Your plan</b><small>${esc(planLine())} · tap to redo</small></span><svg class="chev"><use href="#i-chev"/></svg>`
@@ -2223,13 +2223,13 @@ function renderHomePlan() {
     delta = Math.round(delta / 10) * 10;
     const word = (v) => v === 0 ? "holding steady" : `${v > 0 ? "gaining" : "losing"} ${fmt(Math.abs(v), 2)} kg a week`;
     const facts = `From ${learned.days} logged days and ${learned.weighins} weigh-ins, you burn about ${fmt(learned.burn)} kcal a day and you're ${word(learned.perWeek)}.`;
-    if (Math.abs(delta) < 50) { title = "Check-in: on track 🎯"; body = `${facts} Your budget already fits your plan.`; acts = `<button class="btn mint" data-a="ok" data-burn="${learned.burn}">Nice</button>`; }
+    if (Math.abs(delta) < 50) { title = "Check-in: on track"; body = `${facts} Your budget already fits your plan.`; acts = `<button class="btn mint" data-a="ok" data-burn="${learned.burn}">Nice</button>`; }
     else { title = "Weekly check-in"; body = `${facts} To ${want < 0 ? `lose ${fmt(-want, 2)} kg a week` : want > 0 ? `gain ${fmt(want, 2)} kg a week` : "hold steady"}, ${delta < 0 ? "drop" : "raise"} your average to ${fmt(pl.kcal + delta)} kcal?`; acts = `<button class="btn primary" data-a="adj" data-d="${delta}" data-burn="${learned.burn}">Update</button><button class="btn ghost" data-a="ok" data-burn="${learned.burn}">Keep</button>`; }
   } else if (!trend) { title = "Weekly check-in"; body = "Weigh in a few times this week so your plan can check it's on track."; acts = `<button class="btn mint" data-a="ok">OK</button>`; }
   else {
     const got = Math.round(trend.perDay * 7 * 100) / 100, gap = want - got;
     const word = (v) => v === 0 ? "holding steady" : `${v > 0 ? "gaining" : "losing"} ${fmt(Math.abs(v), 2)} kg a week`;
-    if (Math.abs(gap) < 0.15) { title = "Check-in: on track 🎯"; body = `You're ${word(got)}, just as planned. Keep going.`; acts = `<button class="btn mint" data-a="ok">Nice</button>`; }
+    if (Math.abs(gap) < 0.15) { title = "Check-in: on track"; body = `You're ${word(got)}, just as planned. Keep going.`; acts = `<button class="btn mint" data-a="ok">Nice</button>`; }
     else {
       let delta = Math.round(Math.max(-250, Math.min(250, gap * KCAL_PER_KG / 7)) / 10) * 10;
       if (state.budget + delta < floor) delta = floor - state.budget;

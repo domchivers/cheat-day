@@ -867,3 +867,6 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 .plan-own .plan-note { margin: 6px 0 0; }
 .plan-opt.on, .plan-own.on { border-color: var(--green); box-shadow: 0 0 0 1px var(--green) inset; }
 .plan-opt.on b::after { content: " ✓"; color: var(--green); }
+.plan-opt .circle { width: 44px; height: 44px; flex: none; }
+.plan-opt .circle svg { width: 22px; height: 22px; }
+.plan-facts .ic { width: 16px; height: 16px; vertical-align: -3px; margin-right: 4px; color: var(--green); }
