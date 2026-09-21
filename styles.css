@@ -640,3 +640,65 @@ body[data-view="home"] .view, body[data-view="feed"] .view, body[data-view="work
 #bd-form-toggle .chev { width: 18px; height: 18px; color: var(--muted); transition: transform .15s; }
 #bd-form-toggle.open .chev { transform: rotate(90deg); }
 #bd-form .form-card { margin-top: 8px; }
+
+/* Goal weight */
+.goal-card { margin-top: 12px; padding: 14px 16px; }
+.goal-card .gh { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.goal-card .gh b { font-size: 16px; }
+.goal-card .gh button { color: var(--green); font-weight: 600; font-size: 14px; }
+.goal-card .big { font-size: 20px; font-weight: 800; color: var(--green); margin: 6px 0 2px; line-height: 1.25; }
+.goal-card .big.warn { color: var(--coral); font-size: 17px; }
+.goal-card .bar { margin: 10px 0 6px; }
+.goal-card .ends { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+.goal-card .why { font-size: 13px; color: var(--muted); margin-top: 6px; line-height: 1.45; }
+.goal-card .set { display: flex; gap: 8px; margin-top: 10px; }
+.goal-card .set input { flex: 1; }
+.goal-card .set .btn { width: auto; margin: 0; padding: 12px 20px; }
+
+/* Welcome guide */
+#view-welcome { display: flex; flex-direction: column; }
+.welcome-step { padding: 24px 4px 32px; }
+.big-logo { justify-content: center; margin: 18px 0 6px; font-size: 26px; }
+.big-logo svg { width: 34px; height: 34px; }
+.wl-title { font-size: 28px; text-align: center; margin: 10px 0 12px; line-height: 1.2; }
+.wl-text { font-size: 18px; line-height: 1.5; text-align: center; color: var(--text); margin: 0 0 16px; }
+.wl-step { text-align: center; color: var(--muted); font-weight: 600; margin: 6px 0 0; }
+.wl-choice, .wl-way { display: flex; align-items: center; gap: 14px; padding: 16px; margin-bottom: 12px; text-align: left; width: 100%; }
+.wl-choice .circle, .wl-way .circle { width: 52px; height: 52px; flex: none; }
+.wl-choice b, .wl-way b { display: block; font-size: 19px; }
+.wl-choice small, .wl-way small { display: block; font-size: 15px; color: var(--muted); line-height: 1.4; margin-top: 2px; }
+.wl-choice { border: 2px solid var(--line); }
+.wl-chips button { font-size: 18px; padding: 14px 18px; }
+body[data-view="welcome"] .tabbar { display: none !important; }
+.big-check { font-size: 18px; font-weight: 700; }
+
+/* Simple mode: bigger, fewer things */
+body.simple .tabbar, body.simple #home-level, body.simple #ask-card, body.simple .tagline,
+body.simple .grid2 > [data-go="meals"], body.simple .grid2 > [data-go="manual"],
+body.simple .home-chat, body.simple #talk-out, body.simple #home-macros, body.simple #home-yesterday,
+body.simple #share-photo-row, body.simple #item-talk-row, body.simple #item-talk-note, body.simple #share-post, body.simple #share-send,
+body.simple #send-sheet, body.simple #share-rest { display: none !important; }
+body.simple { font-size: 18px; }
+body.simple .view { padding-bottom: calc(32px + var(--safe-bottom)) !important; }
+body.simple .budget-card .big b { font-size: 46px; }
+body.simple .budget-card .label, body.simple .budget-card .sub { font-size: 17px; }
+body.simple .grid2 .action { min-height: 150px; padding: 18px; }
+body.simple .action b { font-size: 21px; }
+body.simple .action small { font-size: 15px; }
+body.simple .action .circle { width: 56px; height: 56px; }
+body.simple .quick-toggle b { font-size: 19px; }
+body.simple .quick-text small { font-size: 15px; }
+body.simple .list li { padding: 14px; }
+body.simple .list .name { font-size: 18px; }
+body.simple .list .detail { font-size: 15px; }
+body.simple .list .kcal { font-size: 18px; }
+body.simple .list .add { width: 46px; height: 46px; }
+body.simple .section-title { font-size: 16px; }
+body.simple .btn { font-size: 19px; padding: 18px; }
+body.simple .chips button { font-size: 17px; padding: 12px 16px; }
+body.simple label { font-size: 16px; }
+body.simple input, body.simple select { font-size: 19px; }
+body.simple .sub-head h1 { font-size: 21px; }
+body.simple .question { font-size: 20px; }
+body.simple .toast { font-size: 17px; }
+body.simple .dialog-card p { font-size: 18px; }

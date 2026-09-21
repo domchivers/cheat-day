@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=71">
-  <link rel="icon" href="icons/icon-192.png?v=71">
-  <link rel="stylesheet" href="styles.css?v=71">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=72">
+  <link rel="icon" href="icons/icon-192.png?v=72">
+  <link rel="stylesheet" href="styles.css?v=72">
 </head>
 <body>
 
@@ -192,6 +192,11 @@
     </div>
   </div>
   <div class="card form-card">
+    <label class="check big-check"><input type="checkbox" id="s-simple"> Simple mode</label>
+    <p class="muted tiny">Bigger text and buttons, and a home screen with just the basics: your budget, Scan, Search, Quick add and Today.</p>
+    <button class="btn mint" id="s-welcome">Show the welcome guide again</button>
+  </div>
+  <div class="card form-card">
     <label class="check"><input type="checkbox" id="s-eatback"> Add calories burned in workouts to my daily budget</label>
     <p class="muted tiny">Off: workouts are recorded but the budget stays put. On: a 300 kcal run makes room for 300 kcal more.</p>
   </div>
@@ -351,6 +356,7 @@
     <button class="icon-btn" id="body-refresh" aria-label="Refresh"><svg><use href="#i-history"/></svg></button>
   </header>
   <div class="card stat-grid body-stats" id="body-stats"></div>
+  <div class="card goal-card" id="goal-card"></div>
   <div class="card chart-card">
     <div class="chart-head"><select id="body-metric" aria-label="Which measurement to chart"></select><span class="field-title" id="body-chart-title">last 30 readings</span></div>
     <div id="body-chart"></div>
@@ -413,6 +419,40 @@
   <ul class="list" id="body-list"></ul>
   <button class="btn ghost hidden" id="body-more">Show all readings</button>
   <p class="empty" id="body-empty">No readings yet. Read a screenshot or add one above.</p>
+</section>
+
+<!-- ===================== WELCOME ===================== -->
+<section class="view hidden" id="view-welcome">
+  <div class="welcome-step" id="wl-1">
+    <div class="logo big-logo"><svg><use href="#i-leaf"/></svg><span>Cheat Days</span></div>
+    <h1 class="wl-title">Welcome!</h1>
+    <p class="wl-text">Cheat Days keeps a simple daily calorie budget. Add what you eat and it shows how much is left.</p>
+    <p class="wl-text">How would you like it to look?</p>
+    <button class="card wl-choice" data-simple="1"><span class="circle green"><svg><use href="#i-leaf"/></svg></span><span><b>Keep it simple</b><small>Bigger text, just the basics</small></span></button>
+    <button class="card wl-choice" data-simple="0"><span class="circle sand"><svg><use href="#i-spark"/></svg></span><span><b>Show me everything</b><small>Workouts, friends, the assistant and more</small></span></button>
+    <p class="muted tiny center">You can switch any time in Settings.</p>
+  </div>
+  <div class="welcome-step hidden" id="wl-2">
+    <p class="wl-step">Step 2 of 3</p>
+    <h1 class="wl-title">How many calories a day?</h1>
+    <p class="wl-text">Pick a daily budget. Not sure? Around 1,800 is a common start for women and 2,200 for men.</p>
+    <div class="chips wl-chips" id="wl-budget">
+      <button data-b="1400">1,400</button><button data-b="1600">1,600</button><button data-b="1800">1,800</button><button data-b="2000">2,000</button><button data-b="2200">2,200</button><button data-b="2500">2,500</button>
+    </div>
+    <label>Or type your own <input type="number" inputmode="numeric" id="wl-custom" placeholder="e.g. 1,750"></label>
+    <button class="btn primary" id="wl-next">Next</button>
+    <button class="btn ghost" id="wl-back-1">Back</button>
+  </div>
+  <div class="welcome-step hidden" id="wl-3">
+    <p class="wl-step">Step 3 of 3</p>
+    <h1 class="wl-title">Three ways to add food</h1>
+    <div class="card wl-way"><span class="circle green"><svg><use href="#i-camera"/></svg></span><span><b>Scan</b><small>Point the camera at a barcode or a nutrition label.</small></span></div>
+    <div class="card wl-way"><span class="circle coral"><svg><use href="#i-search"/></svg></span><span><b>Search</b><small>Type a food, like "banana" or "chicken breast".</small></span></div>
+    <div class="card wl-way"><span class="circle sand"><svg><use href="#i-plus"/></svg></span><span><b>Quick add</b><small>Things you have often come back here. One tap adds them again.</small></span></div>
+    <p class="wl-text">After adding, you choose how much you had, then tap <b>Add to today</b>.</p>
+    <button class="btn primary" id="wl-done">Start</button>
+    <button class="btn ghost" id="wl-back-2">Back</button>
+  </div>
 </section>
 
 <!-- ===================== WORKOUTS ===================== -->
@@ -766,7 +806,7 @@
     </div>
     <input type="file" accept="image/*" capture="environment" id="file-share-cam" hidden>
     <input type="file" accept="image/*" id="file-share-lib" hidden>
-    <div class="chat">
+    <div class="chat" id="item-talk-row">
       <input type="text" id="item-talk" placeholder="Tweak it: added extra beef rolls, didn't drink the soup…" autocapitalize="sentences">
       <button class="btn primary slim" id="item-talk-go">Send</button>
     </div>
@@ -801,10 +841,10 @@
   <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=71"></script>
-<script src="foods.js?v=71"></script>
-<script src="supabase-config.js?v=71"></script>
-<script src="cloud.js?v=71"></script>
-<script src="app.js?v=71"></script>
+<script src="presets.js?v=72"></script>
+<script src="foods.js?v=72"></script>
+<script src="supabase-config.js?v=72"></script>
+<script src="cloud.js?v=72"></script>
+<script src="app.js?v=72"></script>
 </body>
 </html>

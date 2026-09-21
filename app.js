@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "71";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "72";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -32,6 +32,7 @@ function load() {
   if (!Array.isArray(base.day.workouts)) base.day.workouts = [];
   if (!Array.isArray(base.routines)) base.routines = [];
   if (!Array.isArray(base.body)) base.body = [];
+  if (base.goalWeight != null && !(+base.goalWeight > 0)) base.goalWeight = null;
   if (!base.weekGoals || typeof base.weekGoals !== "object") base.weekGoals = { under: 5, protein: 4, workouts: 3, log: 7 };
   if (!Array.isArray(base.seenBadges)) base.seenBadges = [];
   if (!Array.isArray(base.goalWins)) base.goalWins = [];
@@ -151,7 +152,7 @@ function basisOf(obj) {
 
 // ---------------------------------------------------------------- router
 
-const VIEWS = ["home", "budget", "settings", "history", "friends", "feed", "compose", "workouts", "exercise", "goals", "body", "ask", "chats", "scan", "search", "meals", "meal", "details", "share"];
+const VIEWS = ["home", "budget", "settings", "history", "friends", "feed", "compose", "workouts", "exercise", "goals", "body", "welcome", "ask", "chats", "scan", "search", "meals", "meal", "details", "share"];
 let stack = ["home"];
 function show(view) {
   for (const v of VIEWS) $(`#view-${v}`).classList.toggle("hidden", v !== view);
@@ -207,6 +208,7 @@ function rollDay() {
 }
 function renderHome() {
   rollDay();
+  applySimple();
   const used = usedKcal(), budget = budgetToday(), left = budget - used, burned = burnedKcal();
   $("#home-used").textContent = fmt(used);
   $("#home-budget").textContent = state.eatBack && burned ? `${fmt(state.budget)} + ${fmt(burned)}` : fmt(state.budget);
@@ -746,6 +748,7 @@ function renderSettings() {
   $("#s-ai-status").textContent = (window.cloud && window.cloud.user && aiProxyState === "yes") ? "Using the shared key from the app's server: nothing to add here." : state.geminiKey ? "Using your Gemini key (free)." : state.apiKey ? "Using your Anthropic key." : "No key yet. A free Google Gemini key from aistudio.google.com is enough.";
   $("#s-version").textContent = APP_VERSION;
   $("#s-eatback").checked = !!state.eatBack;
+  $("#s-simple").checked = !!state.simple;
   renderAccount();
   const d = state.day.date;
   $("#s-day").textContent = d === localDate() ? "Today" : new Date(d + "T12:00").toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "short" });
@@ -1466,7 +1469,7 @@ function lineChart(pts, dp) {
   const W = 320, H = 150, px = 20, py = 22, vals = pts.map((p) => p.v);
   const lo = Math.min(...vals), hi = Math.max(...vals), pad = (hi - lo || Math.abs(hi) * 0.05 || 1) * 0.25;
   const x = (i) => px + i * (W - 2 * px) / (pts.length - 1), y = (v) => H - py - (v - (lo - pad)) / ((hi + pad) - (lo - pad)) * (H - 2 * py);
-  const lab = (i) => (pts.length <= 8 || i === 0 || i === pts.length - 1 || i % Math.ceil(pts.length / 5) === 0) ? `<text x="${x(i)}" y="${H - 5}" text-anchor="middle" font-size="10" fill="#6b7770">${new Date(pts[i].day + "T12:00").toLocaleDateString(undefined, { day: "numeric", month: "short" })}</text>` : "";
+  const step = Math.ceil(pts.length / 5), lab = (i) => (pts.length <= 8 || i === 0 || i === pts.length - 1 || (i % step === 0 && pts.length - 1 - i >= step * 0.75)) ? `<text x="${x(i)}" y="${H - 5}" text-anchor="middle" font-size="10" fill="#6b7770">${new Date(pts[i].day + "T12:00").toLocaleDateString(undefined, { day: "numeric", month: "short" })}</text>` : "";
   const val = (i) => (pts.length <= 8 || i === 0 || i === pts.length - 1 || pts[i].v === hi || pts[i].v === lo) ? `<text x="${x(i)}" y="${y(pts[i].v) - 9}" text-anchor="middle" font-size="11" fill="#2f5d4b" font-weight="700">${fmt(pts[i].v, dp)}</text>` : "";
   return `<svg viewBox="0 0 ${W} ${H}"><polyline points="${pts.map((p, i) => `${x(i)},${y(p.v)}`).join(" ")}" fill="none" stroke="#2f5d4b" stroke-width="2.5" stroke-linejoin="round"/>${pts.map((p, i) => `<circle cx="${x(i)}" cy="${y(p.v)}" r="${pts.length > 20 ? 2.5 : 4}" fill="#2f5d4b"/>${val(i)}${lab(i)}`).join("")}</svg>`;
 }
@@ -1475,7 +1478,75 @@ async function renderBody() {
   drawBody();
   if (await pullBody(false)) drawBody();
 }
+// ---- goal weight: where you're heading and when you'll get there
+let goalEditing = false;
+const KCAL_PER_KG = 7700;
+/** Weight trend from the last 4 weeks of weigh-ins (least squares), in kg per day; null without enough readings. */
+function weightTrend() {
+  const since = dateMinus(28), pts = bodySorted().filter((r) => r.weight && r.day >= since);
+  if (pts.length < 3) return null;
+  const t0 = new Date(pts[0].day + "T12:00") / 864e5, xs = pts.map((r) => new Date(r.day + "T12:00") / 864e5 - t0), ys = pts.map((r) => r.weight);
+  if (xs[xs.length - 1] < 7) return null;
+  const mx = xs.reduce((a, b) => a + b) / xs.length, my = ys.reduce((a, b) => a + b) / ys.length;
+  const num_ = xs.reduce((a, x, i) => a + (x - mx) * (ys[i] - my), 0), den = xs.reduce((a, x) => a + (x - mx) ** 2, 0);
+  return den ? { perDay: num_ / den, n: pts.length } : null;
+}
+/** Energy balance from the last 2 weeks of finished days: what's eaten vs an estimate of what's burned. */
+function energyBalance(cur) {
+  const since = dateMinus(14), days = state.history.filter((h) => h.date >= since && (h.kcal || 0) > 300);
+  if (days.length < 3) return null;
+  const eat = days.reduce((a, h) => a + h.kcal, 0) / days.length, burn = days.reduce((a, h) => a + (h.burned || 0), 0) / days.length;
+  const lb = bodySorted().slice().reverse(), bmrRow = lb.find((r) => r.bmr), leanRow = lb.find((r) => r.lean);
+  const bmr = bmrRow ? bmrRow.bmr : leanRow ? 370 + 21.6 * leanRow.lean : 22 * cur;   // scale's own BMR, else Katch-McArdle, else a rough guess
+  const tdee = bmr * 1.3 + burn;
+  return { eat, tdee, perDay: (eat - tdee) / KCAL_PER_KG, days: days.length, guessed: !bmrRow && !leanRow };
+}
+function renderGoal() {
+  const card = $("#goal-card"), rows = bodySorted().filter((r) => r.weight), cur = rows.length ? rows[rows.length - 1].weight : state.weightKg;
+  const goal = state.goalWeight;
+  const setForm = (label) => `<div class="set"><input type="number" inputmode="decimal" step="0.1" id="goal-input" placeholder="Goal weight in kg" value="${goal || ""}"><button class="btn primary" id="goal-save">${label}</button></div>`;
+  if (!goal || goalEditing) {
+    card.innerHTML = `<div class="gh"><b>Goal weight</b>${goal ? `<button id="goal-cancel">Cancel</button>` : ""}</div>
+      <div class="why">${goal ? "Change your target." : "Set a target and the app works out when you'll get there, from your weigh-ins and what you eat."}</div>${setForm(goal ? "Save" : "Set goal")}${goal ? `<button class="btn ghost slim" id="goal-clear">Remove goal</button>` : ""}`;
+  } else if (!cur) {
+    card.innerHTML = `<div class="gh"><b>Goal: ${fmt(goal, 1)} kg</b><button id="goal-edit">Change</button></div><div class="why">Add a weigh-in and the app will show how far there is to go.</div>`;
+  } else {
+    const start = (state.goalStart && state.goalStart.weight) || rows[0].weight, diff = goal - cur, losing = goal < start;
+    const pct = start === goal ? 100 : Math.max(0, Math.min(100, (start - cur) / (start - goal) * 100));
+    const trend = weightTrend(), energy = energyBalance(cur), rate = trend ? trend.perDay : energy ? energy.perDay : null;
+    let big, warn = false; const why = [];
+    if (Math.abs(diff) < 0.25) big = `You've reached your goal 🎉`;
+    else if (rate == null) big = `${fmt(Math.abs(diff), 1)} kg to go`, why.push("Log a few days and weigh in over a week or two, and a projected date shows up here.");
+    else if (rate * Math.sign(diff) <= 0.0004) {
+      warn = true; big = `Not heading there yet`;
+      why.push(losing ? "At the current pace your weight is steady or going up." : "At the current pace your weight is steady or going down.");
+      if (energy) why.push(`A daily budget around ${fmt(Math.round((energy.tdee + (losing ? -550 : 300)) / 50) * 50)} kcal would move you about ${losing ? "0.5 kg a week down" : "0.3 kg a week up"}.`);
+    } else {
+      const days = diff / rate;
+      if (days > 730) big = `${fmt(Math.abs(diff), 1)} kg to go`, why.push("At this pace it's more than two years away.");
+      else { const d = new Date(); d.setDate(d.getDate() + Math.round(days)); big = `On track for ${fmt(goal, 1)} kg around ${d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: d.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined })}`; }
+    }
+    if (trend) why.push(`From your weigh-ins: ${trend.perDay > 0 ? "+" : "−"}${fmt(Math.abs(trend.perDay * 7), 1)} kg a week.`);
+    if (energy) why.push(`From what you eat: about ${fmt(Math.round(energy.eat / 10) * 10)} kcal a day against roughly ${fmt(Math.round(energy.tdee / 10) * 10)} burned${energy.guessed ? " (estimated)" : ""}.`);
+    card.innerHTML = `<div class="gh"><b>Goal: ${fmt(goal, 1)} kg</b><button id="goal-edit">Change</button></div>
+      <div class="big ${warn ? "warn" : ""}">${big}</div>
+      <span class="bar"><span style="width:${pct}%"></span></span>
+      <div class="ends"><span>Start ${fmt(start, 1)} kg</span><span>Now ${fmt(cur, 1)} kg</span><span>Goal ${fmt(goal, 1)} kg</span></div>
+      ${why.length ? `<div class="why">${why.join(" ")}</div>` : ""}`;
+  }
+  const saveBtn = $("#goal-save");
+  if (saveBtn) saveBtn.onclick = () => {
+    const v = num($("#goal-input").value);
+    if (!v || v < 25 || v > 350) { toast("Type a goal weight in kg"); return; }
+    if (!state.goalWeight || !state.goalStart) state.goalStart = { weight: cur || v, day: localDate() };
+    state.goalWeight = Math.round(v * 10) / 10; goalEditing = false; save(); renderGoal(); toast(`Goal set: ${state.goalWeight} kg`);
+  };
+  const edit = $("#goal-edit"); if (edit) edit.onclick = () => { goalEditing = true; renderGoal(); };
+  const cancel = $("#goal-cancel"); if (cancel) cancel.onclick = () => { goalEditing = false; renderGoal(); };
+  const clear = $("#goal-clear"); if (clear) clear.onclick = async () => { if (!await ask("Remove your goal weight?")) return; state.goalWeight = null; state.goalStart = null; goalEditing = false; save(); renderGoal(); };
+}
 function drawBody() {
+  renderGoal();
   const rows = bodySorted(), lb = rows[rows.length - 1] || null;
   const have = BODY_METRICS.filter((m) => rows.some((r) => r[m.key] != null));
   const cutoff = dateMinus(30);
@@ -3125,7 +3196,7 @@ $("#share-add").onclick = () => {
 
 // ---------------------------------------------------------------- account + sync (optional, see cloud.js)
 
-const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "weekGoals", "seenBadges", "goalWins", "postCount", "pbCount", "body", "updatedAt"];   // the API key stays on the device
+const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "weekGoals", "seenBadges", "goalWins", "postCount", "pbCount", "body", "goalWeight", "goalStart", "simple", "onboarded", "updatedAt"];   // the API key stays on the device
 let pushTimer = null;
 function schedulePush() {
   if (!window.cloud || !window.cloud.user) return;
@@ -3206,9 +3277,31 @@ $("#acct-forgot").onclick = () => acct("forgot");
 $("#acct-signout").onclick = async () => { try { await window.cloud.signOut(); toast("Signed out. This device keeps its own copy."); } catch (e) {} };
 $("#acct-pass").addEventListener("keydown", (e) => { if (e.key === "Enter") acct("signin"); });
 
+// ---------------------------------------------------------------- simple mode and the welcome guide
+
+function applySimple() { document.body.classList.toggle("simple", !!state.simple); }
+$("#s-simple").addEventListener("change", (e) => { state.simple = e.target.checked; save(); applySimple(); toast(state.simple ? "Simple mode on" : "Simple mode off"); });
+$("#s-welcome").onclick = () => { wlStep(1); stack = ["welcome"]; show("welcome"); };
+let wlBudget = null;
+function wlStep(n) { for (const i of [1, 2, 3]) $(`#wl-${i}`).classList.toggle("hidden", i !== n); window.scrollTo(0, 0); }
+$$("#view-welcome .wl-choice").forEach((b) => b.onclick = () => { state.simple = b.dataset.simple === "1"; save(false); applySimple(); wlBudget = state.budget; $$("#wl-budget button").forEach((x) => x.classList.toggle("on", +x.dataset.b === wlBudget)); wlStep(2); });
+$("#wl-budget").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; wlBudget = +b.dataset.b; $("#wl-custom").value = ""; $$("#wl-budget button").forEach((x) => x.classList.toggle("on", x === b)); });
+$("#wl-custom").addEventListener("input", (e) => { const v = num(e.target.value); if (v) { wlBudget = Math.round(v); $$("#wl-budget button").forEach((x) => x.classList.remove("on")); } });
+$("#wl-next").onclick = () => { if (!wlBudget || wlBudget < 800 || wlBudget > 6000) { toast("Pick a daily budget"); return; } state.budget = wlBudget; save(); wlStep(3); };
+$("#wl-back-1").onclick = () => wlStep(1);
+$("#wl-back-2").onclick = () => wlStep(2);
+$("#wl-done").onclick = () => { state.onboarded = true; save(); home(); toast(`All set: ${fmt(state.budget)} kcal a day`); };
+function needsWelcome() {
+  if (state.onboarded) return false;
+  const used = state.history.length || state.day.items.length || (state.recent || []).length || state.meals.length;
+  if (used) { state.onboarded = true; save(false); return false; }   // someone already using the app never sees it
+  return true;
+}
+
 // ---------------------------------------------------------------- boot
 
-show("home");
+applySimple();
+if (needsWelcome()) { wlStep(1); stack = ["welcome"]; show("welcome"); } else show("home");
 cloudInit();
 // Keep everyone current: if the server has a newer version, fetch it and reload. Checked on open and on return, at most every 5 minutes.
 let lastUpdateCheck = 0;

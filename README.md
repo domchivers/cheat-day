@@ -295,6 +295,22 @@ Then deploy `supabase/functions/body-import/index.ts` as an Edge Function named
 `body-import` with **Verify JWT turned off** (the token is the secret). The
 Shortcut steps are on the Body screen under "How to set up the Shortcut".
 
+## Simple mode and the welcome guide
+
+New users get a three-step welcome: choose **simple** or **everything**, pick a
+daily budget, and see the three ways to add food. Simple mode (switchable in
+Settings) uses bigger text and buttons and cuts the home screen to the budget,
+Scan, Search, Quick add and Today; the How much? screen drops photos, sharing and
+the tweak box. Anyone already using the app skips the guide.
+
+## Goal weight
+
+The Body screen has a goal weight. It projects a date from the last four weeks
+of weigh-ins (a straight-line trend) and, alongside, from the last two weeks of
+logged calories against an estimate of what you burn (the scale's BMR, or lean
+mass, times 1.3 plus logged workouts; 7,700 kcal per kg). If you're not heading
+towards the goal it says so and suggests a daily budget that would.
+
 ## Goals and rewards
 
 A small game on top of the tracking. The home page shows your **level** and an
