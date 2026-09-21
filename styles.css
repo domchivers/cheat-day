@@ -530,3 +530,18 @@ body[data-view="home"] .view, body[data-view="feed"] .view, body[data-view="work
 .week-totals b { display: block; margin-bottom: 2px; }
 .week-totals span { color: var(--muted); }
 #w-ask { margin-top: 14px; }
+
+/* Sending items to friends */
+.send-sheet { padding: 10px 14px 12px; margin: -4px 0 10px; }
+.send-sheet .chips { margin: 0 0 6px; }
+.send-sheet .chips button.avatar-chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px 6px 6px; }
+.send-sheet .chips .avatar { width: 28px; height: 28px; font-size: 11px; }
+.inbox-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin-bottom: 10px; border: 2px solid var(--mint); }
+.inbox-card .thumb-sm { flex: none; }
+.inbox-card .body { flex: 1; min-width: 0; }
+.inbox-card .from { font-size: 12px; color: var(--muted); }
+.inbox-card .name { font-weight: 700; }
+.inbox-card .detail { font-size: 13px; color: var(--muted); }
+.inbox-card .add { width: 38px; height: 38px; border-radius: 50%; background: var(--green); color: #fff; display: grid; place-items: center; flex: none; }
+.inbox-card .add svg { width: 20px; height: 20px; }
+.inbox-card .dismiss { color: var(--muted); padding: 6px; font-size: 16px; }

@@ -242,6 +242,34 @@ The day turns over by itself at midnight: what you logged goes into **History**
 (the link beside Today, or Settings → See history) with its items and macros,
 and Today starts empty. "Start a new day now" in Settings does the same early.
 
+## Send to a friend
+
+Ate the same thing as someone? On the How much? screen, **Send to a friend**
+lists your friends; tap one and the item (name, amount, calories, photo) lands
+on their home page as a card with a ＋. They tap it, check the amount, and it's
+on their day. One-off setup in the Supabase SQL Editor:
+
+```sql
+create table if not exists public.sends (
+  id uuid primary key default gen_random_uuid(),
+  from_user uuid not null references auth.users(id) on delete cascade,
+  to_user uuid not null references auth.users(id) on delete cascade,
+  name text not null,
+  kcal integer not null default 0,
+  grams numeric,
+  unit text,
+  photo text,
+  payload jsonb not null default '{}'::jsonb,
+  status text not null default 'new',
+  created_at timestamptz not null default now()
+);
+alter table public.sends enable row level security;
+create policy "sends read" on public.sends for select to authenticated using (from_user = auth.uid() or to_user = auth.uid());
+create policy "sends create" on public.sends for insert to authenticated with check (from_user = auth.uid() and public.is_friend(to_user));
+create policy "sends settle" on public.sends for update to authenticated using (to_user = auth.uid()) with check (to_user = auth.uid());
+create policy "sends delete" on public.sends for delete to authenticated using (from_user = auth.uid());
+```
+
 ## Share (the feed)
 
 The **Share** card is a feed between friends: post what you're having from the

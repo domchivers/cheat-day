@@ -128,6 +128,10 @@
     },
     async unpublishDays() { return this.rest(`/rest/v1/days?user_id=eq.${this.uid}`, { method: "DELETE" }); },
     async days(sinceDate) { return this.rest(`/rest/v1/days?day=gte.${sinceDate}&select=*&order=day.desc`); },
+    // ---- sending an item to a friend so they can add it with one tap
+    async inbox() { return this.rest(`/rest/v1/sends?to_user=eq.${this.uid}&status=eq.new&select=*&order=created_at.desc&limit=20`); },
+    async sendItem(toUser, item) { return this.rest(`/rest/v1/sends`, { method: "POST", body: JSON.stringify([{ from_user: this.uid, to_user: toUser, ...item }]) }); },
+    async settleSend(id, status) { return this.rest(`/rest/v1/sends?id=eq.${id}&to_user=eq.${this.uid}`, { method: "PATCH", body: JSON.stringify({ status }) }); },
     // ---- the feed
     async posts(limit = 40) { return this.rest(`/rest/v1/posts?select=*&order=created_at.desc&limit=${limit}`); },
     async createPost(post) { return this.rest(`/rest/v1/posts`, { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify([{ owner: this.uid, ...post }]) }); },

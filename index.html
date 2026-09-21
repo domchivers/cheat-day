@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=52">
-  <link rel="icon" href="icons/icon-192.png?v=52">
-  <link rel="stylesheet" href="styles.css?v=52">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=53">
+  <link rel="icon" href="icons/icon-192.png?v=53">
+  <link rel="stylesheet" href="styles.css?v=53">
 </head>
 <body>
 
@@ -36,6 +36,7 @@
   <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-off" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="currentColor"/><path d="M8 13c1.5 2 6.5 2 8 0M9 10h.01M15 10h.01" stroke="#fff" stroke-width="1.8" stroke-linecap="round" fill="none"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M3.5 11.5 20 4l-4.5 16.5-4-6.5-8-2.5z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/><path d="M11.5 14 20 4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
   <symbol id="i-repost" viewBox="0 0 24 24"><path d="M4 10.5V8a3 3 0 0 1 3-3h10M17 5l-2.5-2.5M17 5l-2.5 2.5M20 13.5V16a3 3 0 0 1-3 3H7M7 19l2.5 2.5M7 19l2.5-2.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-more" viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="18" cy="12" r="1.8" fill="currentColor"/></symbol>
   <symbol id="i-image" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 16l5-5 4 4 3-3 4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
@@ -111,6 +112,7 @@
     <button class="btn primary slim" id="talk-go">Send</button>
   </div>
   <div id="talk-out"></div>
+  <div id="home-inbox"></div>
   <ul class="list" id="home-list"></ul>
   <p class="empty" id="home-empty">Nothing logged yet. Scan something delicious.</p>
   <button class="card day-card hidden" id="home-yesterday" data-go="history"></button>
@@ -668,6 +670,12 @@
     <p class="muted tiny hidden" id="item-talk-note"></p>
     <button class="btn primary" id="share-add" disabled>Add to today</button>
     <button class="btn mint" id="share-post" disabled>Add and share it</button>
+    <button class="btn mint icon-text" id="share-send" disabled><svg><use href="#i-send"/></svg><span>Send to a friend</span></button>
+    <div class="card send-sheet hidden" id="send-sheet">
+      <div class="field-title">Send it to</div>
+      <div class="chips left" id="send-friends"></div>
+      <p class="muted tiny" id="send-hint">They get it on their home page and can add it with one tap.</p>
+    </div>
     <button class="btn ghost" id="share-reset">Clear</button>
   </div>
 </section>
@@ -682,10 +690,10 @@
   <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=52"></script>
-<script src="foods.js?v=52"></script>
-<script src="supabase-config.js?v=52"></script>
-<script src="cloud.js?v=52"></script>
-<script src="app.js?v=52"></script>
+<script src="presets.js?v=53"></script>
+<script src="foods.js?v=53"></script>
+<script src="supabase-config.js?v=53"></script>
+<script src="cloud.js?v=53"></script>
+<script src="app.js?v=53"></script>
 </body>
 </html>

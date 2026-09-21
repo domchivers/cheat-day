@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "52";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "53";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -205,6 +205,7 @@ function renderHome() {
     yc.classList.remove("hidden");
   } else { yc.classList.add("hidden"); yc.innerHTML = ""; }
   renderQuick();
+  refreshInbox(false);
 }
 function iconFor(source) {
   return { barcode: "barcode", label: "camera", quick: "plus", search: "search", claude: "search", meal: "meal" }[source] || "pen";
@@ -1384,6 +1385,66 @@ function showFits() {
 }
 
 
+
+// ---------------------------------------------------------------- send an item to a friend; they add it with one tap
+
+async function friendList() {
+  const c = window.cloud;
+  if (!fr.friendships.length) { fr.friendships = await c.friendships(); }
+  const ids = new Set();
+  for (const f of fr.friendships) if (f.status === "accepted") { ids.add(f.requester); ids.add(f.addressee); }
+  ids.delete(c.uid);
+  const missing = [...ids].filter((id) => !fr.people[id]);
+  if (missing.length) { const people = await c.profiles(missing); for (const p of people) fr.people[p.user_id] = p; }
+  return [...ids].map((id) => ({ id, name: personName(id) })).sort((a, b) => a.name.localeCompare(b.name));
+}
+$("#share-send").onclick = async () => {
+  const c = window.cloud; if (!(c && c.user)) { toast("Sending needs an account: sign in from Settings"); return; }
+  const sheet = $("#send-sheet"); if (!sheet.classList.contains("hidden")) { sheet.classList.add("hidden"); return; }
+  busy("Finding your friends…");
+  let friends = [];
+  try { friends = await friendList(); } catch (err) { busy(false); toast(c.explain(err)); return; }
+  busy(false);
+  const box = $("#send-friends"); box.innerHTML = "";
+  if (!friends.length) { box.innerHTML = `<span class="muted tiny">No friends yet. Add someone from the Friends tab first.</span>`; }
+  for (const f of friends) {
+    const b = document.createElement("button"); b.className = "avatar-chip"; b.innerHTML = `${avatar(f.id, f.name)}<span>${esc(f.name)}</span>`;
+    b.onclick = async () => {
+      const kcal = Math.round(amountKcal), a = amountsFor(draft, kcal);
+      b.disabled = true;
+      try {
+        await c.sendItem(f.id, { name: draft.name, kcal, grams: a.grams != null ? Math.round(a.grams) : null, unit: draft.unit || "g", photo: draft.photo || null, payload: basisOf(draft) });
+        toast(`Sent ${draft.name} to ${f.name}`); sheet.classList.add("hidden");
+      } catch (err) { b.disabled = false; toast("Couldn't send: " + c.explain(err), 5000); }
+    };
+    box.appendChild(b);
+  }
+  sheet.classList.remove("hidden");
+  sheet.scrollIntoView({ block: "nearest", behavior: "smooth" });
+};
+
+let inbox = [], inboxAt = 0;
+async function refreshInbox(force) {
+  const c = window.cloud, box = $("#home-inbox");
+  if (!(c && c.user)) { box.innerHTML = ""; return; }
+  if (!force && Date.now() - inboxAt < 60000) { drawInbox(); return; }
+  inboxAt = Date.now();
+  try { inbox = await c.inbox(); } catch (err) { return; }   // the table may not exist yet; stay quiet
+  const ids = new Set(inbox.map((x) => x.from_user)), missing = [...ids].filter((id) => !fr.people[id]);
+  if (missing.length) { try { const people = await c.profiles(missing); for (const p of people) fr.people[p.user_id] = p; } catch (e) {} }
+  drawInbox();
+}
+function drawInbox() {
+  const box = $("#home-inbox"); box.innerHTML = "";
+  for (const x of inbox) {
+    const card = document.createElement("div"); card.className = "card inbox-card";
+    card.innerHTML = `${x.photo ? `<img class="thumb-sm" src="${esc(x.photo)}" alt="">` : `<span class="thumb-sm"><svg><use href="#i-send"/></svg></span>`}<div class="body"><div class="from">${esc(personName(x.from_user))} sent you</div><div class="name">${esc(x.name)}</div><div class="detail">${x.grams != null ? `${x.grams} ${x.unit || "g"} · ` : ""}${fmt(x.kcal)} kcal</div></div><button class="add" aria-label="Add to today"><svg><use href="#i-plus"/></svg></button><button class="dismiss" aria-label="Dismiss">✕</button>`;
+    const settle = async (status) => { inbox = inbox.filter((y) => y.id !== x.id); drawInbox(); try { await window.cloud.settleSend(x.id, status); } catch (e) {} };
+    card.querySelector(".add").onclick = () => { draft = { ...(x.payload || { name: x.name, kcalPerServing: x.kcal, unitLabel: "portion" }), photo: x.photo || null, note: "" }; if (!draft.name) draft.name = x.name; settle("added"); openShare(x.kcal); };
+    card.querySelector(".dismiss").onclick = () => { if (!confirm(`Dismiss ${x.name} from ${personName(x.from_user)}?`)) return; settle("dismissed"); };
+    box.appendChild(card);
+  }
+}
 
 // ---------------------------------------------------------------- the feed: post what you're having, friends react, comment and repost
 
@@ -2565,6 +2626,7 @@ function openShare(prefillKcal) {
   $("#share-name").textContent = draft.name;
   $("#share-add").textContent = pick ? "Add to the meal" : editId ? "Save changes" : "Add to today";
   $("#item-talk").value = ""; $("#item-talk-note").classList.add("hidden");
+  $("#send-sheet").classList.add("hidden");
   $("#a-unit").textContent = draft.unit || "g";
   $("#a-grams-wrap").classList.toggle("hidden", !c.kcalPer100);
   $("#a-count-wrap").classList.toggle("hidden", !c.countKcal);
@@ -2612,6 +2674,7 @@ $("#share-reset").onclick = () => { amountKcal = null; fillAmounts(null); };
 function updateResult() {
   const btn = $("#share-add"), bar = $("#r-bar");
   $("#share-post").disabled = !amountKcal || !!pick;
+  $("#share-send").disabled = !amountKcal || !!pick;
   if (!amountKcal) { $("#r-kcal").textContent = "0"; $("#r-sub").textContent = "of your day"; bar.style.width = "0"; $("#r-lines").innerHTML = ""; $("#r-macros").innerHTML = ""; btn.disabled = true; return; }
   const kcal = Math.round(amountKcal);
   const frac = state.budget > 0 ? kcal / state.budget : 0;
