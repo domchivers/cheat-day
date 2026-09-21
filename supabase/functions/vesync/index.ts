@@ -69,13 +69,29 @@ const trim = (v: unknown) => { const s = JSON.stringify(v) || ""; return s.lengt
 /** Try the two reading endpoints the community has seen; return the raw rows and which endpoint answered. */
 async function readings(base: string, s: { token: string; accountId: string; terminalId: string }, dev: any) {
   const mobileId = String(1_000_000_000_000_000 + Math.floor(Math.random() * 9_000_000_000_000_000));
-  const v2 = await post(base, "/cloud/v2/deviceManaged/getWeighingDataV2", { ...session(s), method: "getWeighingDataV2", configModule: dev.configModule, mobileId, pageSize: 100, page: 1, debugMode: false, allData: true }, legacyHeaders(s));
-  if (expired(v2)) throw new Error("expired");
-  if (v2.code === 0 && v2.result) { const rows = firstArray(v2.result); if (rows.length) return { rows, from: "getWeighingDataV2", raw: v2.result }; }
-  const fs = await post(base, "/cloud/v1/deviceManaged/fatScale/getWeighData", { ...session(s), method: "getWeighData", cid: dev.cid, uuid: dev.uuid, configModule: dev.configModule, mobileId }, legacyHeaders(s));
-  if (expired(fs)) throw new Error("expired");
-  if (fs.code === 0 && fs.result) { const rows = firstArray(fs.result); if (rows.length) return { rows, from: "fatScale/getWeighData", raw: fs.result }; }
-  return { rows: [], from: "none", raw: { v2: { code: v2.code, msg: v2.msg, result: trim(v2.result) }, fatScale: { code: fs.code, msg: fs.msg, result: trim(fs.result) } } };
+  const now = Date.now(), ids = { cid: dev.cid, uuid: dev.uuid, configModule: dev.configModule, deviceId: dev.cid, macID: dev.macID };
+  // Parameter shapes to try, in order. The first that returns rows wins; every answer is reported so the right one can be found.
+  const tries: { label: string; path: string; body: Record<string, unknown> }[] = [
+    { label: "v2 configModule", path: "/cloud/v2/deviceManaged/getWeighingDataV2", body: { method: "getWeighingDataV2", configModule: dev.configModule, mobileId, pageSize: 100, page: 1, debugMode: false, allData: true } },
+    { label: "v2 +ids", path: "/cloud/v2/deviceManaged/getWeighingDataV2", body: { method: "getWeighingDataV2", ...ids, mobileId, pageSize: 100, page: 1, debugMode: false, allData: true } },
+    { label: "v2 +time", path: "/cloud/v2/deviceManaged/getWeighingDataV2", body: { method: "getWeighingDataV2", ...ids, mobileId, pageSize: 100, page: 1, debugMode: false, allData: false, startTime: 0, endTime: now, subUserID: 0 } },
+    { label: "fatScale ids", path: "/cloud/v1/deviceManaged/fatScale/getWeighData", body: { method: "getWeighData", ...ids, mobileId } },
+    { label: "fatScale paged", path: "/cloud/v1/deviceManaged/fatScale/getWeighData", body: { method: "getWeighData", ...ids, mobileId, page: 1, pageSize: 100 } },
+    { label: "fatScale time", path: "/cloud/v1/deviceManaged/fatScale/getWeighData", body: { method: "getWeighData", ...ids, mobileId, startTime: 0, endTime: now, subUserID: 0 } },
+    { label: "fatScale minimal", path: "/cloud/v1/deviceManaged/fatScale/getWeighData", body: { method: "getWeighData", configModule: dev.configModule, uuid: dev.uuid } },
+    { label: "fatScale seconds", path: "/cloud/v1/deviceManaged/fatScale/getWeighData", body: { method: "getWeighData", ...ids, startTime: 0, endTime: Math.floor(now / 1000), page: 1, pageSize: 100, allData: true } },
+    { label: "v1 getWeighingData", path: "/cloud/v1/deviceManaged/getWeighingData", body: { method: "getWeighingData", ...ids, mobileId, pageSize: 100, page: 1, allData: true } },
+    { label: "v2 subUsers", path: "/cloud/v2/deviceManaged/getSubUsers", body: { method: "getSubUsers", ...ids, mobileId } },
+  ];
+  const report: unknown[] = [];
+  for (const t of tries) {
+    const r = await post(base, t.path, { ...session(s), ...t.body }, legacyHeaders(s));
+    if (expired(r)) throw new Error("expired");
+    const rows = r.code === 0 && r.result ? firstArray(r.result) : [];
+    report.push({ [t.label]: `${r.code} ${r.msg || ""}${r.code === 0 ? ` · ${JSON.stringify(trim(r.result)).slice(0, 160)}` : ""}` });
+    if (rows.length && !/subUsers/.test(t.label)) return { rows, from: t.label, raw: report };
+  }
+  return { rows: [], from: "none", raw: report };
 }
 
 const n = (v: unknown) => { const x = Number(v); return isFinite(x) ? x : null; };
