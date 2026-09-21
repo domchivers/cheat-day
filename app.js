@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "59";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "60";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -60,13 +60,14 @@ function ask(text, opts = {}) {
     $("#dlg-cancel").textContent = opts.cancel || "Cancel";
     $("#dlg-ok").classList.toggle("danger", /^(delete|remove|discard|decline|dismiss)/i.test(String(text)));
     input.classList.toggle("hidden", !opts.input);
-    if (opts.input) { input.value = opts.value == null ? "" : String(opts.value); input.type = opts.number ? "number" : "text"; input.inputMode = opts.number ? "numeric" : "text"; }
+    if (opts.input) { input.value = opts.value == null ? "" : String(opts.value); input.type = "text"; input.inputMode = opts.number ? "numeric" : "text"; input.pattern = opts.number ? "[0-9]*" : ""; }
     wrap.classList.remove("hidden");
     const done = (v) => { wrap.classList.add("hidden"); $("#dlg-ok").onclick = $("#dlg-cancel").onclick = null; input.onkeydown = null; resolve(v); };
     $("#dlg-ok").onclick = () => done(opts.input ? input.value : true);
     $("#dlg-cancel").onclick = () => done(opts.input ? null : false);
     wrap.onclick = (e) => { if (e.target === wrap) done(opts.input ? null : false); };
-    if (opts.input) { setTimeout(() => { input.focus(); input.select(); }, 60); input.onkeydown = (e) => { if (e.key === "Enter") done(input.value); }; }
+    // Focus right away, inside the tap that opened the dialog, so the phone's keyboard comes up with it
+    if (opts.input) { input.focus(); try { const n = input.value.length; if (input.type === "text") input.setSelectionRange(n, n); } catch (e) {} input.onkeydown = (e) => { if (e.key === "Enter") done(input.value); }; }
     else setTimeout(() => $("#dlg-ok").focus(), 60);
   });
 }
