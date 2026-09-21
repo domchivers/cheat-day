@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "51";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "52";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1494,9 +1494,9 @@ function drawFeed() {
       ${p.photo ? `<div class="media"><img src="${esc(p.photo)}" alt=""></div>` : `<div class="media none ${meal ? "meal" : ""}"><svg><use href="#i-${meal ? "meal" : "search"}"/></svg>${esc(p.name)}</div>`}
       <div class="body">
         ${p.caption ? `<div class="caption"><b>${esc(who)}</b>${esc(p.caption)}</div>` : ""}
-        <div class="dish"><span class="thumb-sm ${meal ? "tone-peach" : ""}"><svg><use href="#i-${meal ? "meal" : "search"}"/></svg></span><div class="dish-main"><span class="dish-name">${esc(p.name)}</span><span class="dish-amt">${amt}</span></div><div class="dish-kcal">${fmt(p.kcal)}<small>kcal</small></div></div>
+        <div class="dish"><span class="thumb-sm ${meal ? "tone-peach" : ""}"><svg><use href="#i-${meal ? "meal" : "search"}"/></svg></span><div class="dish-main"><span class="dish-name">${esc(p.name)}</span><span class="dish-amt">${amt}</span></div><div class="dish-kcal">${fmt(p.kcal)}<small>kcal</small></div><button class="add" data-act="repost" aria-label="${meal ? "Save meal" : "Add to my day"}" title="${meal ? "Save to my meals" : "Add to my day"}"><svg><use href="#i-plus"/></svg></button></div>
         ${mac}
-        <div class="actions"><div class="reacts">${REACTS.map((e) => { const k = rx.filter((r) => r.emoji === e).length, on = rx.some((r) => r.emoji === e && r.user_id === me); return `<button data-emoji="${e}" class="${on ? "on" : ""}" aria-label="React ${e}">${e}${k ? `<small>${k}</small>` : ""}</button>`; }).join("")}</div><button class="repost" data-act="repost"><svg><use href="#i-repost"/></svg>${meal ? "Save meal" : "Add to my day"}</button></div>
+        <div class="actions"><div class="reacts">${REACTS.map((e) => { const k = rx.filter((r) => r.emoji === e).length, on = rx.some((r) => r.emoji === e && r.user_id === me); return `<button data-emoji="${e}" class="${on ? "on" : ""}" aria-label="React ${e}">${e}${k ? `<small>${k}</small>` : ""}</button>`; }).join("")}</div></div>
         <div class="comments">${!showAll ? `<button class="view-all">View all ${cm.length} comments</button>` : ""}${shown.map((x) => `<div class="comment">${avatar(x.user_id, feedName(x.user_id))}<span><b>${esc(x.user_id === me ? "You" : feedName(x.user_id))}</b>${esc(x.text)}</span>${x.user_id === me ? `<button class="del" data-comment="${x.id}" aria-label="Delete">✕</button>` : ""}</div>`).join("")}
           <div class="chat">${avatar(me, feedName(me))}<input type="text" placeholder="Add a comment…" maxlength="300" autocapitalize="sentences"><button class="btn primary slim" data-act="comment">Post</button></div></div>
       </div>`;
