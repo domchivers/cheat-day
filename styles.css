@@ -546,3 +546,41 @@ body[data-view="home"] .view, body[data-view="feed"] .view, body[data-view="work
 .inbox-card .add { width: 38px; height: 38px; border-radius: 50%; background: var(--green); color: #fff; display: grid; place-items: center; flex: none; }
 .inbox-card .add svg { width: 20px; height: 20px; }
 .inbox-card .dismiss { color: var(--muted); padding: 6px; font-size: 16px; }
+
+/* Goals, XP and badges */
+.level-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin-top: 10px; text-align: left; }
+.level-card .circle { width: 42px; height: 42px; flex: none; }
+.level-card .level-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.level-card b { font-size: 15px; }
+.level-card small { color: var(--muted); font-size: 12px; }
+.level-card .bar { display: block; height: 6px; border-radius: 3px; background: #e7e3d3; overflow: hidden; margin-top: 2px; }
+.level-card .bar span { display: block; height: 100%; background: var(--peach); border-radius: 3px; transition: width .4s; }
+.level-hero { background: var(--peach-bg); }
+.level-hero .lv-num { font-size: 44px; font-weight: 800; color: var(--peach); line-height: 1; }
+.level-hero .lv-name { font-weight: 700; margin-top: 2px; }
+.level-hero .bar { margin: 12px 0 6px; background: #f2dcc4; }
+.level-hero .bar span { background: var(--peach); }
+.level-hero .streaks { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.level-hero .streaks span { background: var(--card); border-radius: 999px; padding: 5px 12px; font-size: 13px; font-weight: 700; color: var(--green); }
+.goal-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin-bottom: 10px; }
+.goal-row.done { border-color: var(--green-2); background: var(--mint-2); }
+.goal-row .circle { width: 40px; height: 40px; flex: none; }
+.goal-row .body { flex: 1; min-width: 0; }
+.goal-row .name { font-weight: 700; }
+.goal-row .prog { font-size: 13px; color: var(--muted); }
+.goal-row .bar { height: 6px; margin-top: 6px; background: #d2dfd3; }
+.goal-row .stepper { display: flex; align-items: center; gap: 4px; flex: none; }
+.goal-row .stepper button { width: 30px; height: 30px; border-radius: 50%; background: var(--mint-2); color: var(--green); font-weight: 800; font-size: 16px; }
+.goal-row .stepper b { min-width: 22px; text-align: center; }
+.goal-row .stepper button:disabled { opacity: .35; }
+.badges { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.badge { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 8px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.badge .ic { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; font-size: 24px; background: var(--peach-ic); }
+.badge b { font-size: 13px; line-height: 1.15; }
+.badge small { font-size: 11px; color: var(--muted); line-height: 1.2; }
+.badge.locked { opacity: .55; }
+.badge.locked .ic { background: var(--bg); filter: grayscale(1); }
+.xp-table { padding: 8px 14px; }
+.xp-table div { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.xp-table div:last-child { border-bottom: 0; }
+.xp-table b { color: var(--peach); }

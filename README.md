@@ -242,6 +242,17 @@ The day turns over by itself at midnight: what you logged goes into **History**
 (the link beside Today, or Settings → See history) with its items and macros,
 and Today starts empty. "Start a new day now" in Settings does the same early.
 
+## Goals and rewards
+
+A small game on top of the tracking. The home page shows your **level** and an
+XP bar; tap it for the Goals screen. **Weekly goals** (Monday to Sunday) are
+days under budget, days hitting protein, workouts, and days logged, each with a
+target you set (0 switches it off). **XP** comes from logging a day, finishing
+a day under budget, hitting protein, workouts, lifting PBs, posts, and finished
+weekly goals; it is worked out from your history, so nothing double counts.
+**Badges** unlock for firsts, streaks, workout and PB counts, and posts, with a
+toast when one lands.
+
 ## Send to a friend
 
 Ate the same thing as someone? On the How much? screen, **Send to a friend**

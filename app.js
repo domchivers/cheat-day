@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "55";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "56";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -31,6 +31,10 @@ function load() {
   if (!base.exercises || typeof base.exercises !== "object") base.exercises = {};
   if (!Array.isArray(base.day.workouts)) base.day.workouts = [];
   if (!Array.isArray(base.routines)) base.routines = [];
+  if (!base.weekGoals || typeof base.weekGoals !== "object") base.weekGoals = { under: 5, protein: 4, workouts: 3, log: 7 };
+  if (!Array.isArray(base.seenBadges)) base.seenBadges = [];
+  if (!Array.isArray(base.goalWins)) base.goalWins = [];
+  if (typeof base.postCount !== "number") base.postCount = 0;
   if (base.session && typeof base.session !== "object") base.session = null;
   return base;
 }
@@ -119,7 +123,7 @@ function basisOf(obj) {
 
 // ---------------------------------------------------------------- router
 
-const VIEWS = ["home", "budget", "settings", "history", "friends", "feed", "compose", "workouts", "exercise", "ask", "chats", "scan", "search", "meals", "meal", "details", "share"];
+const VIEWS = ["home", "budget", "settings", "history", "friends", "feed", "compose", "workouts", "exercise", "goals", "ask", "chats", "scan", "search", "meals", "meal", "details", "share"];
 let stack = ["home"];
 function show(view) {
   for (const v of VIEWS) $(`#view-${v}`).classList.toggle("hidden", v !== view);
@@ -137,6 +141,7 @@ function show(view) {
   if (view === "ask") renderAsk();
   if (view === "workouts") renderWorkouts();
   if (view === "exercise") renderExercise();
+  if (view === "goals") renderGoals();
   if (view === "feed") renderFeed();
   if (view === "compose") renderCompose();
   $$("#tabbar button").forEach((b) => b.classList.toggle("on", b.dataset.tab === view));
@@ -206,6 +211,7 @@ function renderHome() {
   } else { yc.classList.add("hidden"); yc.innerHTML = ""; }
   renderQuick();
   refreshInbox(false);
+  renderLevelCard();
 }
 function iconFor(source) {
   return { barcode: "barcode", label: "camera", quick: "plus", search: "search", claude: "search", meal: "meal" }[source] || "pen";
@@ -1386,6 +1392,125 @@ function showFits() {
 
 
 
+
+// ---------------------------------------------------------------- goals, XP, levels and badges: the game layer
+
+const XP = { log: 10, under: 25, protein: 15, workout: 20, pb: 30, post: 5, goal: 50 };
+const LEVEL_NAMES = ["Newbie", "Regular", "Steady", "Committed", "Disciplined", "Machine", "Legend"];
+const GOAL_DEFS = [
+  { key: "under", name: "Days under budget", icon: "budget", tone: "green", max: 7, sub: (n) => `${n} day${n === 1 ? "" : "s"} this week` },
+  { key: "protein", name: "Days hitting protein", icon: "search", tone: "coral", max: 7, sub: (n) => `${n} day${n === 1 ? "" : "s"} this week`, needs: () => !!(state.goals && state.goals.p) },
+  { key: "workouts", name: "Workouts", icon: "dumbbell", tone: "coral", max: 14, sub: (n) => `${n} this week` },
+  { key: "log", name: "Days logged", icon: "pen", tone: "sand", max: 7, sub: (n) => `${n} day${n === 1 ? "" : "s"} this week` }
+];
+/** A day's facts, from history or today. */
+function dayFacts(date) {
+  const today = localDate();
+  if (date === today) { const m = sumMacros(state.day.items); return { date, logged: state.day.items.length > 0, kcal: usedKcal(), budget: budgetToday(), p: Math.round(m.p), workouts: (state.day.workouts || []).length, live: true }; }
+  const h = state.history.find((x) => x.date === date);
+  if (!h) return { date, logged: false, kcal: 0, budget: 0, p: 0, workouts: 0 };
+  return { date, logged: Array.isArray(h.items) ? h.items.length > 0 : (h.kcal || 0) > 0, kcal: h.kcal || 0, budget: h.budget || 0, p: h.p || 0, workouts: (h.workouts || []).length };
+}
+const underBudget = (d) => d.logged && d.budget > 0 && d.kcal <= d.budget;
+const hitProtein = (d) => d.logged && !!(state.goals && state.goals.p) && d.p >= state.goals.p;
+function weekDates() {   // Monday to today
+  const out = [], now = new Date(), dow = (now.getDay() + 6) % 7;
+  for (let i = dow; i >= 0; i--) out.push(dateMinus(i));
+  return out;
+}
+function weekProgress() {
+  const days = weekDates().map(dayFacts);
+  return { under: days.filter(underBudget).length, protein: days.filter(hitProtein).length, workouts: days.reduce((a, d) => a + d.workouts, 0), log: days.filter((d) => d.logged).length };
+}
+function logStreak() {
+  let n = 0, i = dayFacts(localDate()).logged ? 0 : 1;
+  for (; i < 400; i++) { if (dayFacts(dateMinus(i)).logged) n++; else break; }
+  return n;
+}
+function underStreak() {
+  let n = 0;
+  for (let i = 1; i < 400; i++) { const d = dayFacts(dateMinus(i)); if (underBudget(d)) n++; else break; }
+  return n;
+}
+/** XP is worked out from what's recorded, so it can't be double counted or lost. Today counts only for logging and workouts until it's over. */
+function totalXp() {
+  let xp = 0;
+  for (const h of state.history) { const d = dayFacts(h.date); if (d.logged) xp += XP.log; if (underBudget(d)) xp += XP.under; if (hitProtein(d)) xp += XP.protein; xp += d.workouts * XP.workout; }
+  const t = dayFacts(localDate()); if (t.logged) xp += XP.log; xp += t.workouts * XP.workout;
+  xp += (state.pbCount || 0) * XP.pb + (state.postCount || 0) * XP.post + (state.goalWins || []).length * XP.goal;
+  return xp;
+}
+function levelFor(xp) {
+  const lvl = Math.floor(Math.sqrt(xp / 100)) + 1, base = (lvl - 1) ** 2 * 100, next = lvl ** 2 * 100;
+  return { lvl, name: LEVEL_NAMES[Math.min(LEVEL_NAMES.length - 1, lvl - 1)], into: xp - base, span: next - base, next };
+}
+/** Weekly goals that have been reached are banked once per week so they keep paying XP. */
+function bankGoals() {
+  const wk = weekDates()[0], prog = weekProgress(), g = state.weekGoals; let banked = false;
+  for (const def of GOAL_DEFS) {
+    if (def.needs && !def.needs()) continue;
+    const key = `${wk}:${def.key}`;
+    if ((g[def.key] || 0) > 0 && prog[def.key] >= g[def.key] && !state.goalWins.includes(key)) { state.goalWins.push(key); banked = true; toast(`Goal reached: ${def.name.toLowerCase()} · +${XP.goal} XP`, 4000); }
+  }
+  if (banked) save();
+}
+const BADGES = [
+  { id: "first", icon: "🌱", name: "First bite", how: "Log your first day", test: () => state.history.some((h) => dayFacts(h.date).logged) || dayFacts(localDate()).logged },
+  { id: "streak7", icon: "🔥", name: "One week", how: "Log 7 days in a row", test: () => logStreak() >= 7 },
+  { id: "streak30", icon: "🏆", name: "One month", how: "Log 30 days in a row", test: () => logStreak() >= 30 },
+  { id: "under3", icon: "🎯", name: "On target", how: "3 days under budget in a row", test: () => underStreak() >= 3 },
+  { id: "under14", icon: "💎", name: "Iron will", how: "14 days under budget in a row", test: () => underStreak() >= 14 },
+  { id: "protein5", icon: "🥩", name: "Protein pro", how: "Hit your protein goal 5 times", test: () => state.history.filter((h) => hitProtein(dayFacts(h.date))).length >= 5 },
+  { id: "wo1", icon: "👟", name: "Moved", how: "Log a workout", test: () => state.history.some((h) => (h.workouts || []).length) || (state.day.workouts || []).length > 0 },
+  { id: "wo10", icon: "💪", name: "Ten strong", how: "Log 10 workouts", test: () => state.history.reduce((a, h) => a + (h.workouts || []).length, 0) + (state.day.workouts || []).length >= 10 },
+  { id: "pb", icon: "🥇", name: "New best", how: "Beat a lifting PB", test: () => (state.pbCount || 0) >= 1 },
+  { id: "post1", icon: "📸", name: "Shared", how: "Post to the feed", test: () => (state.postCount || 0) >= 1 },
+  { id: "post10", icon: "🌟", name: "Influencer", how: "Post 10 times", test: () => (state.postCount || 0) >= 10 },
+  { id: "goal", icon: "✅", name: "Goal getter", how: "Finish a weekly goal", test: () => (state.goalWins || []).length >= 1 },
+  { id: "lvl5", icon: "👑", name: "Level 5", how: "Reach level 5", test: () => levelFor(totalXp()).lvl >= 5 }
+];
+function checkBadges() {
+  bankGoals();
+  const fresh = BADGES.filter((b) => !state.seenBadges.includes(b.id) && b.test());
+  if (!fresh.length) return;
+  for (const b of fresh) state.seenBadges.push(b.id);
+  save();
+  toast(`${fresh[0].icon} Badge earned: ${fresh[0].name}${fresh.length > 1 ? ` and ${fresh.length - 1} more` : ""}`, 4500);
+}
+function renderLevelCard() {
+  const xp = totalXp(), L = levelFor(xp), prog = weekProgress(), g = state.weekGoals;
+  const active = GOAL_DEFS.filter((d) => (g[d.key] || 0) > 0 && !(d.needs && !d.needs()));
+  const done = active.filter((d) => prog[d.key] >= g[d.key]).length;
+  $("#lv-title").textContent = `Level ${L.lvl} · ${L.name}`;
+  $("#lv-sub").textContent = `${fmt(xp)} XP · ${L.next - xp} to next${active.length ? ` · ${done}/${active.length} goals this week` : ""}`;
+  $("#lv-bar").style.width = `${Math.round(L.into / L.span * 100)}%`;
+  checkBadges();
+}
+function renderGoals() {
+  const xp = totalXp(), L = levelFor(xp), prog = weekProgress(), g = state.weekGoals, ls = logStreak(), us = underStreak();
+  $("#g-level").innerHTML = `<div class="lv-num">${L.lvl}</div><div class="lv-name">${L.name}</div><div class="muted tiny">${fmt(xp)} XP · ${L.next - xp} more for level ${L.lvl + 1}</div><span class="bar"><span style="width:${Math.round(L.into / L.span * 100)}%"></span></span>
+    <div class="streaks">${ls ? `<span>🔥 ${ls} day${ls === 1 ? "" : "s"} logged</span>` : ""}${us ? `<span>🎯 ${us} day${us === 1 ? "" : "s"} under budget</span>` : ""}${!ls && !us ? `<span>Log today to start a streak</span>` : ""}</div>`;
+  const wk = weekDates(); $("#g-week-note").textContent = `Monday to Sunday · ${wk.length} day${wk.length === 1 ? "" : "s"} in so far. Tap − and + to set a target; 0 switches a goal off.`;
+  const box = $("#g-goals"); box.innerHTML = "";
+  for (const def of GOAL_DEFS) {
+    const target = g[def.key] || 0, have = prog[def.key], off = target === 0, na = def.needs && !def.needs();
+    const row = document.createElement("div"); row.className = `card goal-row ${!off && !na && have >= target ? "done" : ""}`;
+    row.innerHTML = `<span class="circle ${def.tone}"><svg><use href="#i-${def.icon}"/></svg></span><div class="body"><div class="name">${def.name}</div><div class="prog">${na ? "Set a protein goal on the Daily budget screen first" : off ? "Off" : `${have} of ${target} · ${def.sub(target)}${have >= target ? " · done ✓" : ""}`}</div>${!off && !na ? `<span class="bar"><span style="width:${Math.min(100, have / target * 100)}%"></span></span>` : ""}</div>
+      <div class="stepper"><button data-d="-1" ${off ? "disabled" : ""} aria-label="Lower">−</button><b>${target}</b><button data-d="1" ${target >= def.max ? "disabled" : ""} aria-label="Raise">+</button></div>`;
+    row.querySelectorAll(".stepper button").forEach((b) => b.onclick = () => { g[def.key] = Math.max(0, Math.min(def.max, target + +b.dataset.d)); save(); renderGoals(); });
+    box.appendChild(row);
+  }
+  const bl = $("#g-badges"); bl.innerHTML = "";
+  for (const b of BADGES) {
+    const has = state.seenBadges.includes(b.id) || b.test();
+    const d = document.createElement("div"); d.className = `badge ${has ? "" : "locked"}`;
+    d.innerHTML = `<span class="ic">${b.icon}</span><b>${b.name}</b><small>${has ? "Earned" : b.how}</small>`;
+    bl.appendChild(d);
+  }
+  $("#g-xp").innerHTML = [["Log a day", XP.log], ["Finish a day under budget", XP.under], ["Hit your protein goal", XP.protein], ["Log a workout", XP.workout], ["Beat a lifting PB", XP.pb], ["Post to the feed", XP.post], ["Finish a weekly goal", XP.goal]].map(([k, v]) => `<div><span>${k}</span><b>+${v} XP</b></div>`).join("");
+  checkBadges();
+}
+
 // ---------------------------------------------------------------- send an item to a friend; they add it with one tap
 
 async function friendList() {
@@ -1492,6 +1617,7 @@ $("#compose-go").onclick = async () => {
   try {
     await c.createPost({ kind: w.kind, caption: $("#compose-caption").value.trim(), photo: composePhoto, name: w.name, kcal: w.kcal, macros: { p: w.p, c: w.c, f: w.f }, payload: w.kind === "meal" ? w.meal : w.basis, extra: w.kind === "meal" ? { portions: w.portions } : { grams: w.grams, unit: w.unit } });
     busy(false); toast("Posted"); composeWhat = null; composePhoto = null;
+    state.postCount = (state.postCount || 0) + 1; save(); checkBadges();
     stack = ["home", "feed"]; show("feed");
   } catch (err) { busy(false); toast("Couldn't post: " + c.explain(err), 5000); }
 };
@@ -1877,7 +2003,8 @@ function logWorkout(w) {
   const key = `${w.type}|${w.name}`.toLowerCase();
   state.recentWorkouts = [{ key, type: w.type, name: w.name, minutes: w.minutes, effort: w.effort, lifts: w.lifts || [] }].concat(state.recentWorkouts.filter((r) => r.key !== key)).slice(0, 10);
   save();
-  if (pbs.length) setTimeout(() => toast(`New best: ${pbs.join(", ")}`, 5000), 400);
+  if (pbs.length) { state.pbCount = (state.pbCount || 0) + pbs.length; save(false); setTimeout(() => toast(`New best: ${pbs.join(", ")}`, 5000), 400); }
+  setTimeout(checkBadges, pbs.length ? 5600 : 600);
   if (stack[stack.length - 1] === "workouts") renderWorkouts();
 }
 
@@ -2714,7 +2841,7 @@ $("#share-add").onclick = () => {
 
 // ---------------------------------------------------------------- account + sync (optional, see cloud.js)
 
-const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "updatedAt"];   // the API key stays on the device
+const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "weekGoals", "seenBadges", "goalWins", "postCount", "pbCount", "updatedAt"];   // the API key stays on the device
 let pushTimer = null;
 function schedulePush() {
   if (!window.cloud || !window.cloud.user) return;
