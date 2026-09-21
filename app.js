@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "88";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "89";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1937,7 +1937,7 @@ function planPrefillBody(scaleOnly) {
 function openPlan(returnTo) {
   const old = state.plan || {};
   plan = { sex: null, age: null, height: null, weight: null, fat: null, lean: null, activity: old.activity || null, trainDays: old.trainDays ?? null, trainType: old.trainType || null, trainMins: old.trainMins || null, trainWeekdays: (old.trainWeekdays || []).slice(),
-    goal: old.goal || null, pace: old.pace ?? null, paceCustom: old.paceCustom || null, goalWeight: state.goalWeight || null, spread: old.spread || "same", cheatDay: old.cheatDay ?? 0, protein: old.protein || null };
+    goal: old.goal || null, pace: old.pace ?? null, paceCustom: old.paceCustom || null, knownKcal: null, knownKg: null, knownDir: "lose", knownRate: 0, goalWeight: state.goalWeight || null, spread: old.spread || "same", cheatDay: old.cheatDay ?? 0, protein: old.protein || null };
   planPrefillBody(false);
   planStep = 0; planReturn = returnTo || null;
   go("plan");
@@ -1949,8 +1949,11 @@ function computePlan(q) {
   const lean = fat ? w * (1 - fat / 100) : null;
   const bmr = lean ? 370 + 21.6 * lean : 10 * w + 6.25 * h - 5 * a + (male ? 5 : -161);   // Katch-McArdle with body fat, else Mifflin-St Jeor
   const everyday = bmr * (q.activity || 1.2);
-  const trainKcal = (q.trainDays || 0) * (TRAIN_MET[q.trainType] || 6) * w * ((q.trainMins || 45) / 60) / 7;   // averaged over the week
-  const tdee = everyday + trainKcal;
+  // training on top of the resting burn (so MET minus 1, which is already counted), averaged over the week
+  const trainKcal = (q.trainDays || 0) * ((TRAIN_MET[q.trainType] || 6) - 1) * w * ((q.trainMins || 45) / 60) / 7;
+  const estimate = everyday + trainKcal;
+  const known = q.knownKcal > 0 ? q.knownKcal + (q.knownRate || 0) * -KCAL_PER_KG / 7 : null;   // what they eat now, corrected by how their weight is moving
+  const tdee = known && known > 1000 && known < 6000 ? known : estimate;
   let rate = 0;   // kg a week
   if (planHasPaceFor(q.goal)) {
     if (q.paceCustom > 0) rate = (q.goal.includes("bulk") ? 1 : -1) * q.paceCustom;   // their own kg a week
@@ -1993,9 +1996,21 @@ function computePlan(q) {
   if (rate < 0 && -rate > w * 0.01) notes.push("That's faster than 1% of body weight a week, which risks losing muscle.");
   let date = null;
   if (q.goalWeight && rate && Math.sign(q.goalWeight - w) === Math.sign(rate)) { const d = new Date(); d.setDate(d.getDate() + Math.round((q.goalWeight - w) / rate * 7)); date = d; }
-  return { bmr: Math.round(bmr), tdee: Math.round(tdee), kcal, rate, macros: { p, c, f }, days, everydayKcal, trainDayKcal, cheatKcal, notes, date, formula: lean ? "Katch-McArdle, using your body fat" : "Mifflin-St Jeor" };
+  return { bmr: Math.round(bmr), tdee: Math.round(tdee), kcal, rate, macros: { p, c, f }, days, everydayKcal, trainDayKcal, cheatKcal, notes, date, formula: tdee !== estimate ? "worked out from what you eat now and how your weight is moving" : lean ? "Katch-McArdle, using your body fat" : "Mifflin-St Jeor", fromKnown: tdee !== estimate, estimate: Math.round(estimate) };
 }
 const planHasPaceFor = (g) => !!PACES[g];
+function knownRead() {
+  const k = $("#pl-known-kcal"), g = $("#pl-known-kg");
+  if (k) plan.knownKcal = num(k.value) && num(k.value) >= 800 && num(k.value) <= 6000 ? Math.round(num(k.value)) : null;
+  if (g) plan.knownKg = num(g.value) && num(g.value) <= 2 ? num(g.value) : null;
+  const dir = plan.knownDir || "lose";
+  plan.knownRate = dir === "steady" ? 0 : (dir === "lose" ? -1 : 1) * (plan.knownKg || 0);
+}
+function knownNote() {
+  if (!plan.knownKcal) return "Leave blank to use the estimate from the questions.";
+  const burn = Math.round((plan.knownKcal - (plan.knownRate || 0) * KCAL_PER_KG / 7) / 10) * 10;
+  return `That means you burn about ${fmt(burn)} kcal a day. The plan will start from that.`;
+}
 /** What a chosen weekly amount means, said plainly, with a nudge if it's a lot. */
 function paceNote(kg) {
   if (!kg) return "Anything from 0.1 kg. The app keeps it within safe limits.";
@@ -2027,8 +2042,17 @@ function renderPlanStep() {
     return;
   }
   if (step === "activity") {
-    box.innerHTML = `<p class="plan-q">Outside workouts, how active are your days?</p><p class="plan-sub">Workouts come next, so just think about a normal day.</p>` + ACTIVITY.map((a) => planOpt(plan.activity === a.k, a.e, a.name, a.sub, `data-k="${a.k}"`)).join("");
-    box.querySelectorAll(".plan-opt").forEach((b) => b.onclick = () => { plan.activity = +b.dataset.k; renderPlanStep(); });
+    const dir = plan.knownDir || "lose";
+    box.innerHTML = `<p class="plan-q">Outside workouts, how active are your days?</p><p class="plan-sub">Workouts come next, so just think about a normal day.</p>` + ACTIVITY.map((a) => planOpt(plan.activity === a.k, a.e, a.name, a.sub, `data-k="${a.k}"`)).join("") +
+      `<div class="card plan-own${plan.knownKcal ? " on" : ""}"><b>Already tracking? <small class="muted">optional, most accurate</small></b>
+        <div class="plan-note">If you know what you eat and how your weight's moving, that beats any formula.</div>
+        <div class="plan-row"><label>I eat about (kcal a day)<input type="number" inputmode="numeric" id="pl-known-kcal" value="${plan.knownKcal || ""}" placeholder="e.g. 2500"></label></div>
+        <div class="chips plan-chips" id="pl-known-dir"><button data-v="lose" class="${dir === "lose" ? "on" : ""}">Losing</button><button data-v="steady" class="${dir === "steady" ? "on" : ""}">Steady</button><button data-v="gain" class="${dir === "gain" ? "on" : ""}">Gaining</button></div>
+        ${dir !== "steady" ? `<div class="plan-row"><label>kg a week<input type="number" inputmode="decimal" step="0.05" id="pl-known-kg" value="${plan.knownKg || ""}" placeholder="e.g. 0.3"></label></div>` : ""}
+        <div class="plan-note" id="pl-known-note">${knownNote()}</div></div>`;
+    box.querySelectorAll(".plan-opt").forEach((b) => b.onclick = () => { plan.activity = +b.dataset.k; knownRead(); renderPlanStep(); });
+    box.querySelectorAll("#pl-known-dir button").forEach((b) => b.onclick = () => { knownRead(); plan.knownDir = b.dataset.v; renderPlanStep(); });
+    ["#pl-known-kcal", "#pl-known-kg"].forEach((q) => { const el = $(q); if (el) el.addEventListener("input", () => { knownRead(); $("#pl-known-note").textContent = knownNote(); $(".plan-own").classList.toggle("on", !!plan.knownKcal); }); });
     return;
   }
   if (step === "training") {
@@ -2097,7 +2121,7 @@ function renderPlanStep() {
         <div class="plan-macros"><div><b>${r.macros.p} g</b><small>Protein</small></div><div><b>${r.macros.c} g</b><small>Carbs</small></div><div><b>${r.macros.f} g</b><small>Fat</small></div></div>
         <div class="plan-facts">${PLAN_GOALS[plan.goal].e} ${PLAN_GOALS[plan.goal].name}${r.rate ? ` · ${r.rate > 0 ? "gaining" : "losing"} about ${fmt(Math.abs(r.rate), 2)} kg a week` : " · holding steady"}${r.date ? `<br>🏁 ${fmt(plan.goalWeight, 1)} kg around ${r.date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: r.date.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined })}` : ""}</div>
         ${r.notes.map((n) => `<div class="plan-warn">${esc(n)}</div>`).join("")}</div>
-      <p class="plan-how">You burn about ${fmt(r.tdee)} kcal a day: ${fmt(r.bmr)} at rest (${r.formula}), plus daily activity and training. Workout calories are already counted, so "add burned calories to my budget" is switched off. After a couple of weeks the app checks your weight trend and suggests tweaks. A guide, not medical advice.</p>`;
+      <p class="plan-how">You burn about ${fmt(r.tdee)} kcal a day: ${r.fromKnown ? `${r.formula} (the formula guessed ${fmt(r.estimate)})` : `${fmt(r.bmr)} at rest (${r.formula}), plus daily activity and training`}. Workout calories are already counted, so "add burned calories to my budget" is switched off. Each week after the first two, it learns your real burn from what you log and weigh, and suggests an updated budget. A guide, not medical advice.</p>`;
     return;
   }
 }
@@ -2114,7 +2138,7 @@ function planCollect() {
     if (!plan.weight || plan.weight < 30 || plan.weight > 300) return "Add your weight in kg";
     if (plan.fat && (plan.fat < 3 || plan.fat > 65)) return "Body fat looks off: leave it blank if unsure";
   }
-  if (step === "activity" && !plan.activity) return "Pick the one closest to a normal day";
+  if (step === "activity") { knownRead(); if (!plan.activity && !plan.knownKcal) return "Pick the one closest to a normal day, or fill in what you eat now"; if (!plan.activity) plan.activity = 1.375; if (plan.knownKcal && plan.knownDir !== "steady" && !plan.knownKg) return "Add how many kg a week, or pick Steady"; }
   if (step === "training") { if (plan.trainDays == null) return "Pick how many days a week"; if (plan.trainDays > 0 && !plan.trainType) return "Pick what kind of training"; if (plan.trainDays > 0 && !plan.trainMins) return "Pick how long a session usually is"; }
   if (step === "goal" && !plan.goal) return "Pick a goal";
   if (step === "pace") { const own = num(($("#pl-pace-own") || {}).value); if (own && (own < 0.05 || own > 2)) return "Choose between 0.05 and 2 kg a week"; const g = num(($("#pl-goalw") || {}).value); plan.goalWeight = g && g > 30 && g < 300 ? Math.round(g * 10) / 10 : null; }
@@ -2153,13 +2177,26 @@ $("#plan-back").onclick = () => {
   window.scrollTo(0, 0); renderPlanStep();
 };
 $("#wl-plan").onclick = () => openPlan("welcome");
-function planLine() { const pl = state.plan; return pl ? `${PLAN_GOALS[pl.goal].e} ${PLAN_GOALS[pl.goal].name} · ${fmt(pl.kcal)} kcal · since ${new Date(pl.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })}` : ""; }
+function planLine() { const pl = state.plan; return pl ? `${PLAN_GOALS[pl.goal].e} ${PLAN_GOALS[pl.goal].name} · ${fmt(pl.kcal)} kcal${pl.learnedBurn ? ` · your burn ${fmt(pl.learnedBurn)} (learned)` : ""} · since ${new Date(pl.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })}` : ""; }
 function renderPlanCards() {
   const pl = state.plan;
   const html = pl ? `<span class="circle"><svg><use href="#i-trophy"/></svg></span><span class="level-text"><b>Your plan</b><small>${esc(planLine())} · tap to redo</small></span><svg class="chev"><use href="#i-chev"/></svg>`
     : `<span class="circle"><svg><use href="#i-spark"/></svg></span><span class="level-text"><b>Work out my budget for me</b><small>A few questions about you and your goal: 1 minute</small></span><svg class="chev"><use href="#i-chev"/></svg>`;
   $("#b-plan").innerHTML = html; $("#b-plan").onclick = () => openPlan();
   const g = $("#g-plan"); g.classList.toggle("hidden", !pl); if (pl) { g.innerHTML = html; g.onclick = () => openPlan(); }
+}
+/** Real burn = average eaten on well-logged days minus what the weight trend says was stored or lost.
+ *  Needs 10+ well-logged days in the last 3 weeks and a weight trend (3+ weigh-ins over a week or more). */
+function learnedBurn() {
+  const trend = weightTrend(); if (!trend) return null;
+  const since = dateMinus(21);
+  const days = state.history.filter((h) => h.date >= since && h.budget && (h.kcal || 0) >= h.budget * 0.6);   // skip days that were clearly only half logged
+  if (days.length < 10) return null;
+  const eat = days.reduce((a, h) => a + h.kcal, 0) / days.length;
+  let burn = eat - trend.perDay * KCAL_PER_KG;
+  const est = state.plan && state.plan.tdee;
+  if (est) burn = Math.max(est * 0.7, Math.min(est * 1.3, burn));   // a sanity band around the estimate
+  return { burn: Math.round(burn / 10) * 10, eat: Math.round(eat), days: days.length, weighins: trend.n, perWeek: Math.round(trend.perDay * 7 * 100) / 100 };
 }
 /** Home: invite people without a plan once; with a plan, a weekly check-in against the real weight trend. */
 const PLAN_ASK = "cheatday.planAsk";
@@ -2176,15 +2213,24 @@ function renderHomePlan() {
   }
   const age = Date.now() - new Date(pl.createdAt).getTime(), since = Date.now() - (pl.lastCheckIn || 0);
   if (age < 14 * 864e5 || since < 7 * 864e5) return;
-  const trend = weightTrend(), want = pl.rate || 0;
+  const trend = weightTrend(), want = pl.rate || 0, learned = learnedBurn();
   let title, body, acts = "";
-  if (!trend) { title = "Weekly check-in"; body = "Weigh in a few times this week so your plan can check it's on track."; acts = `<button class="btn mint" data-a="ok">OK</button>`; }
+  const floor = (state.profile && state.profile.sex === "m") ? 1500 : 1200;
+  if (learned) {
+    // the budget that hits the plan's pace, given the burn the logs show
+    const target = Math.max(floor, Math.round((learned.burn + want * KCAL_PER_KG / 7) / 10) * 10);
+    let delta = Math.max(-300, Math.min(300, target - pl.kcal));
+    delta = Math.round(delta / 10) * 10;
+    const word = (v) => v === 0 ? "holding steady" : `${v > 0 ? "gaining" : "losing"} ${fmt(Math.abs(v), 2)} kg a week`;
+    const facts = `From ${learned.days} logged days and ${learned.weighins} weigh-ins, you burn about ${fmt(learned.burn)} kcal a day and you're ${word(learned.perWeek)}.`;
+    if (Math.abs(delta) < 50) { title = "Check-in: on track 🎯"; body = `${facts} Your budget already fits your plan.`; acts = `<button class="btn mint" data-a="ok" data-burn="${learned.burn}">Nice</button>`; }
+    else { title = "Weekly check-in"; body = `${facts} To ${want < 0 ? `lose ${fmt(-want, 2)} kg a week` : want > 0 ? `gain ${fmt(want, 2)} kg a week` : "hold steady"}, ${delta < 0 ? "drop" : "raise"} your average to ${fmt(pl.kcal + delta)} kcal?`; acts = `<button class="btn primary" data-a="adj" data-d="${delta}" data-burn="${learned.burn}">Update</button><button class="btn ghost" data-a="ok" data-burn="${learned.burn}">Keep</button>`; }
+  } else if (!trend) { title = "Weekly check-in"; body = "Weigh in a few times this week so your plan can check it's on track."; acts = `<button class="btn mint" data-a="ok">OK</button>`; }
   else {
     const got = Math.round(trend.perDay * 7 * 100) / 100, gap = want - got;
     const word = (v) => v === 0 ? "holding steady" : `${v > 0 ? "gaining" : "losing"} ${fmt(Math.abs(v), 2)} kg a week`;
     if (Math.abs(gap) < 0.15) { title = "Check-in: on track 🎯"; body = `You're ${word(got)}, just as planned. Keep going.`; acts = `<button class="btn mint" data-a="ok">Nice</button>`; }
     else {
-      const floor = (state.profile && state.profile.sex === "m") ? 1500 : 1200;
       let delta = Math.round(Math.max(-250, Math.min(250, gap * KCAL_PER_KG / 7)) / 10) * 10;
       if (state.budget + delta < floor) delta = floor - state.budget;
       if (!delta) { title = "Weekly check-in"; body = `You're ${word(got)}; your plan aims for ${want === 0 ? "steady" : `${fmt(Math.abs(want), 2)}`}. Your budget is already at the safe minimum, so more movement is the next lever.`; acts = `<button class="btn mint" data-a="ok">OK</button>`; }
@@ -2199,6 +2245,7 @@ function renderHomePlan() {
       pl.kcal += d; pl.macros.c = Math.max(0, pl.macros.c + Math.round(d / 4)); state.goals = Object.assign({}, state.goals, { c: pl.macros.c });
       toast(`Budget now ${fmt(state.budget)} kcal`);
     }
+    if (b.dataset.burn) { pl.learnedBurn = +b.dataset.burn; pl.learnedAt = Date.now(); }
     pl.lastCheckIn = Date.now(); save(); renderHome();
   });
 }
