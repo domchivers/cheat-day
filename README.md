@@ -316,6 +316,47 @@ routines and chats are joined by id, deletions are remembered for 60 days so
 they stay deleted, and for settings or the same item changed on both, the more
 recently saved copy wins.
 
+## Backups
+
+Three layers, so data can't just disappear:
+
+1. **Sync never uploads first.** After signing in, the app merges with the cloud
+   copy before it will upload, so a blank or reinstalled app can't overwrite it.
+2. **A copy on the phone**, kept in IndexedDB apart from the main store (one per
+   day, last 7). If the main copy is missing or unreadable at start-up, it's
+   restored automatically.
+3. **Daily cloud snapshots** (last 30), made by a database trigger. Settings →
+   Backups lists every phone and cloud backup to restore (restoring adds back,
+   never removes), rebuilds past days from the shared day summaries, and saves or
+   restores a backup file. One-off setup in the SQL Editor:
+
+```sql
+create table if not exists public.cheatday_backups (
+  id bigserial primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  data jsonb not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists cheatday_backups_user on public.cheatday_backups (user_id, created_at desc);
+alter table public.cheatday_backups enable row level security;
+create policy "backups read own" on public.cheatday_backups for select to authenticated using (user_id = auth.uid());
+
+create or replace function public.cheatday_snapshot() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  -- keep the copy being replaced, at most one every 20 hours, never an empty one
+  if old.data is not null and coalesce(jsonb_array_length(old.data->'history'), 0) + coalesce(jsonb_array_length(old.data->'meals'), 0) > 0
+     and not exists (select 1 from cheatday_backups where user_id = old.user_id and created_at > now() - interval '20 hours') then
+    insert into cheatday_backups (user_id, data) values (old.user_id, old.data);
+    delete from cheatday_backups where user_id = old.user_id and id not in
+      (select id from cheatday_backups where user_id = old.user_id order by created_at desc limit 30);
+  end if;
+  return new;
+end $$;
+drop trigger if exists cheatday_snapshot on public.cheatday;
+create trigger cheatday_snapshot before update on public.cheatday for each row execute function public.cheatday_snapshot();
+```
+
 ## Reminders
 
 Settings → Reminders turns on notifications for this phone: a 2pm nudge if

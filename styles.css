@@ -803,3 +803,13 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 .day-edit label { margin: 0; font-weight: 700; font-size: 14px; color: var(--text); min-width: 86px; }
 .day-edit input { flex: 1; min-width: 0; margin: 0; }
 .day-edit .btn.slim { width: auto; margin: 0; padding: 10px 12px; font-size: 13px; white-space: nowrap; }
+/* Backups */
+#backup-card .grid2 .btn { margin-top: 8px; }
+#backup-list { margin-top: 8px; }
+.backup-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.backup-row:last-child { border-bottom: 0; }
+.backup-row div { flex: 1; min-width: 0; }
+.backup-row b { display: block; font-size: 14px; }
+.backup-row small { color: var(--muted); font-size: 12px; }
+.backup-row .btn.slim { width: auto; margin: 0; padding: 8px 14px; font-size: 13px; }
+#wl-signin { margin-top: 18px; }

@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "85";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "86";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -19,7 +19,9 @@ function localDate(d = new Date()) {
 }
 function load() {
   const base = { budget: 1600, apiKey: "", geminiKey: "", day: { date: localDate(), items: [] }, history: [], recent: [], meals: [], presetUses: {}, mealDraft: null, shareDay: true, sharedMealIds: [], goals: { p: null, c: null, f: null }, chats: [], notes: "", weightKg: null, eatBack: false, recentWorkouts: [], exercises: {} };
-  try { const raw = localStorage.getItem(STORE_KEY); if (raw) Object.assign(base, JSON.parse(raw)); } catch (e) {}
+  load.fresh = false; load.unreadable = false;   // start-up facts for recoverLocal(), never stored
+  try { const raw = localStorage.getItem(STORE_KEY); if (raw) { try { Object.assign(base, JSON.parse(raw)); } catch (e) { try { localStorage.setItem(STORE_KEY + ".unreadable", raw); } catch (e2) {} load.unreadable = true; } } else load.fresh = true; } catch (e) { load.fresh = true; }
+  delete base.__fresh; delete base.__unreadable;
   if (!Array.isArray(base.recent)) base.recent = [];
   if (!Array.isArray(base.meals)) base.meals = [];
   if (!base.presetUses || typeof base.presetUses !== "object") base.presetUses = {};
@@ -66,6 +68,7 @@ function save(sync = true) {
     else toast("Couldn't save (storage blocked or full)");
   }
   if (sync) schedulePush();
+  if (typeof localBackup === "function") localBackup();
 }
 const state = load();
 /** A deletion to remember for a while, so merging with another device's copy doesn't resurrect it. */
@@ -229,7 +232,7 @@ function archiveDay() {
   const m = sumMacros(state.day.items);
   state.history.unshift({ date: state.day.date, budget: budgetToday(), kcal: usedKcal(), items: state.day.items.map((it) => ({ ...basisOf(it), kcal: it.kcal, shareLabel: it.shareLabel })),
     p: Math.round(m.p), c: Math.round(m.c), f: Math.round(m.f), burned: burnedKcal(), workouts: (state.day.workouts || []).map((w) => ({ name: w.name, minutes: w.minutes, kcal: w.kcal, lifts: w.lifts || [] })) });
-  state.history = state.history.slice(0, 120);
+  state.history = state.history.slice(0, 400);
   state.history.slice(14).forEach((h) => { if (Array.isArray(h.items)) h.items.forEach((it) => { delete it.photo; }); });
 }
 function rollDay() {
@@ -3511,9 +3514,10 @@ $("#share-add").onclick = () => {
 // ---------------------------------------------------------------- account + sync (optional, see cloud.js)
 
 const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "weekGoals", "seenBadges", "goalWins", "postCount", "pbCount", "body", "goalWeight", "goalStart", "simple", "onboarded", "reminders", "reactCount", "commentCount", "sendCount", "friendCount", "tombs", "dayBudgets", "updatedAt"];   // the API key stays on the device
-let pushTimer = null;
+let pushTimer = null, pulledOnce = false;
 function schedulePush() {
   if (!window.cloud || !window.cloud.user) return;
+  if (!pulledOnce) return;   // never upload before this session has merged with what's in the cloud
   clearTimeout(pushTimer);
   pushTimer = setTimeout(() => {
     const data = {}; for (const k of SYNC_KEYS) data[k] = state[k];
@@ -3568,7 +3572,7 @@ function mergeState(local, remote) {
       history.push({ date: earlier.date, budget: (wb > 0 ? wb : m.budget) + (m.eatBack ? burned : 0), kcal: (earlier.items || []).reduce((a, it) => a + (it.kcal || 0), 0), items: (earlier.items || []).map((it) => ({ ...basisOf(it), kcal: it.kcal, shareLabel: it.shareLabel })), p: Math.round(mac.p), c: Math.round(mac.c), f: Math.round(mac.f), burned, workouts: (earlier.workouts || []).map((w) => ({ name: w.name, minutes: w.minutes, kcal: w.kcal, lifts: w.lifts || [] })) });
     }
   }
-  m.history = history.sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 120);
+  m.history = history.sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 400);
   m.recent = join(newer.recent, older.recent, (r) => r.key, "recent").sort((a, b) => String(b.lastUsed || "").localeCompare(String(a.lastUsed || ""))).slice(0, RECENT_MAX);
   m.meals = join(newer.meals, older.meals, (x) => x.id, "meal");
   m.chats = join(newer.chats, older.chats, (x) => x.id, "chat");
@@ -3587,6 +3591,7 @@ async function pull() {
   const c = window.cloud; if (!c || !c.user) return;
   let remote;
   try { remote = await c.pull(); } catch (err) { syncProblem(err); return; }
+  pulledOnce = true;
   if (remote === null) { schedulePush(); return; }                       // fresh account: upload what we have
   if ((remote.updatedAt || 0) === (state.updatedAt || 0)) return;          // already the same
   const local = {}; for (const k of SYNC_KEYS) local[k] = state[k];
@@ -3640,8 +3645,9 @@ async function sharablePhoto(p) {
 }
 function renderAccount() {
   const c = window.cloud;
-  $("#account-card").classList.toggle("hidden", !c);
-  if (!c) return;
+  $("#account-card").classList.remove("hidden");   // always visible: if sign-in couldn't load, say so and offer a retry
+  $("#acct-down").classList.toggle("hidden", !!c);
+  if (!c) { $("#acct-out").classList.add("hidden"); $("#acct-in").classList.add("hidden"); return; }
   $("#acct-out").classList.toggle("hidden", !!c.user);
   $("#acct-in").classList.toggle("hidden", !c.user);
   if (c.user) $("#acct-who").textContent = c.user.email || "";
@@ -3650,7 +3656,7 @@ function cloudInit() {
   const c = window.cloud;
   renderAccount();
   if (!c) return;
-  c.onAuth((u) => { renderAccount(); if (u) { pull(); publishDay(); } });
+  c.onAuth((u) => { renderAccount(); if (u) { pull(); publishDay(); } else pulledOnce = false; });
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { pull(); publishDay(); if (stack[stack.length - 1] === "friends") renderFriends(); } });
   if (c.user) { pull(); publishDay(); }
 }
@@ -3670,6 +3676,11 @@ async function acct(action) {
     toast(action === "signup" ? "Account created. You're signed in." : "Signed in");
   } catch (err) { busy(false); toast(c.explain(err), 4500); }
 }
+$("#acct-retry").onclick = async () => {
+  busy("Reloading…");
+  try { if (window.caches) { const keys = await caches.keys(); await Promise.all(keys.map((k) => caches.delete(k))); } } catch (e) {}
+  location.reload();
+};
 $("#acct-signin").onclick = () => acct("signin");
 $("#acct-signup").onclick = () => acct("signup");
 $("#acct-forgot").onclick = () => acct("forgot");
@@ -3751,6 +3762,109 @@ function notifyFriend(to, kind, text, extra = {}) {
   c.pushCall("notify", { to, kind, text, ...extra }).catch(() => {});
 }
 
+// ---------------------------------------------------------------- backups: a second copy on the phone, cloud snapshots, files
+
+const BK_DB = "cheatday-backup";
+function bkOpen() {
+  return new Promise((res, rej) => { if (!window.indexedDB) { rej(new Error("no IndexedDB")); return; } const r = indexedDB.open(BK_DB, 1); r.onupgradeneeded = () => r.result.createObjectStore("copies"); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+}
+async function bkPut(key, value) { const db = await bkOpen(); return new Promise((res, rej) => { const tx = db.transaction("copies", "readwrite"); tx.objectStore("copies").put(value, key); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); }
+async function bkGetAll() { const db = await bkOpen(); return new Promise((res, rej) => { const out = []; const tx = db.transaction("copies", "readonly"); const cur = tx.objectStore("copies").openCursor(); cur.onsuccess = () => { const c = cur.result; if (c) { out.push({ key: c.key, value: c.value }); c.continue(); } else res(out); }; cur.onerror = () => rej(cur.error); }); }
+async function bkDelete(key) { const db = await bkOpen(); return new Promise((res) => { const tx = db.transaction("copies", "readwrite"); tx.objectStore("copies").delete(key); tx.oncomplete = () => res(); tx.onerror = () => res(); }); }
+/** How much a copy holds, to tell a real one from an empty one. */
+const richness = (d) => !d ? 0 : (d.history || []).length * 3 + (d.meals || []).length * 2 + ((d.day && d.day.items) || []).length + (d.recent || []).length + (d.body || []).length;
+let bkAt = 0;
+/** Every couple of minutes: keep today's copy on the phone (one per day, last 7), separate from the main store. */
+async function localBackup(force) {
+  if (!force && Date.now() - bkAt < 120000) return;
+  if (richness(state) < 2) return;   // never back up an empty app over a real backup
+  bkAt = Date.now();
+  try {
+    const snap = {}; for (const k of SYNC_KEYS) snap[k] = state[k];
+    await bkPut(`day:${localDate()}`, { at: Date.now(), data: snap });
+    const all = await bkGetAll(), days = all.filter((x) => String(x.key).startsWith("day:")).sort((a, b) => String(b.key).localeCompare(String(a.key)));
+    for (const old of days.slice(7)) await bkDelete(old.key);
+  } catch (e) {}
+}
+/** At start-up: if the main copy is empty or unreadable but the phone backup has data, bring it back. */
+async function recoverLocal() {
+  if (!load.fresh && !load.unreadable && richness(state) > 0) return;
+  try {
+    const all = (await bkGetAll()).filter((x) => x.value && x.value.data).sort((a, b) => (b.value.at || 0) - (a.value.at || 0));
+    const best = all.find((x) => richness(x.value.data) > richness(state));
+    if (!best) return;
+    const merged = mergeState(Object.assign({}, state, { updatedAt: 0 }), best.value.data);
+    for (const k of SYNC_KEYS) if (merged[k] !== undefined) state[k] = merged[k];
+    state.onboarded = true; load.fresh = load.unreadable = false;
+    save(false); home();
+    toast("Your data was missing on this phone, so it's been restored from the phone's backup.", 6000);
+  } catch (e) {}
+}
+function restoreFrom(data, label) {
+  const local = {}; for (const k of SYNC_KEYS) local[k] = state[k];
+  const merged = mergeState(local, Object.assign({}, data, { updatedAt: 0 }));   // keep today's settings; bring back everything in the backup
+  for (const k of SYNC_KEYS) if (merged[k] !== undefined && k !== "updatedAt") state[k] = merged[k];
+  state.onboarded = true; bsCache = null;
+  save(); home();
+  toast(`Restored from ${label}: ${state.history.length} past days, ${state.meals.length} meals`, 5000);
+}
+/** Rebuild missing past days from the day summaries shared with friends (kept separately in the days table). */
+async function rebuildFromDays() {
+  const c = window.cloud; const rows = await c.myDays();
+  const have = new Set(state.history.map((h) => h.date)); let added = 0;
+  for (const r of rows) {
+    if (r.day === state.day.date || have.has(r.day)) continue;
+    const items = (r.items || []).filter((it) => (it.kcal || 0) >= 0).map((it) => ({ name: it.name, kcal: it.kcal, source: "manual" }));
+    const wos = (r.items || []).filter((it) => (it.kcal || 0) < 0).map((it) => { const m = /^Workout: (.*), (\d+) min$/.exec(it.name || ""); return { name: m ? m[1] : it.name, minutes: m ? +m[2] : 0, kcal: -it.kcal, lifts: [] }; });
+    if (!items.length && !wos.length) continue;
+    state.history.push({ date: r.day, budget: r.budget, kcal: r.kcal, items, p: 0, c: 0, f: 0, burned: wos.reduce((a, w) => a + w.kcal, 0), workouts: wos });
+    added++;
+  }
+  state.history.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  state.history = state.history.slice(0, 400);
+  bsCache = null; save(); return added;
+}
+async function renderBackups() {
+  const box = $("#backup-list"); box.classList.remove("hidden"); box.innerHTML = `<p class="muted tiny">Looking for backups…</p>`;
+  const rows = [];
+  try { for (const x of (await bkGetAll()).filter((x) => x.value && x.value.data)) rows.push({ where: "On this phone", at: x.value.at, data: x.value.data }); } catch (e) {}
+  const c = window.cloud; let cloudNote = "";
+  if (c && c.user) {
+    try { for (const b of await c.backups()) rows.push({ where: "Cloud", at: new Date(b.created_at).getTime(), data: b.data }); }
+    catch (e) { cloudNote = "Cloud backups aren't set up yet."; }
+  } else cloudNote = "Sign in to see cloud backups.";
+  rows.sort((a, b) => b.at - a.at);
+  box.innerHTML = "";
+  for (const r of rows.filter((r) => richness(r.data) > 0)) {
+    const d = r.data, row = document.createElement("div"); row.className = "backup-row";
+    row.innerHTML = `<div><b>${r.where} · ${new Date(r.at).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}</b><small>${(d.history || []).length} past days · ${(d.meals || []).length} meals · ${(d.body || []).length} weigh-ins</small></div><button class="btn primary slim">Restore</button>`;
+    row.querySelector("button").onclick = async () => { if (!await ask(`Restore this backup?\n\nIts days, meals and readings are added back. Nothing you have now is removed.`, { ok: "Restore" })) return; restoreFrom(d, r.where === "Cloud" ? "the cloud backup" : "the phone backup"); };
+    box.appendChild(row);
+  }
+  if (c && c.user) {
+    const row = document.createElement("div"); row.className = "backup-row";
+    row.innerHTML = `<div><b>Rebuild from shared days</b><small>Past days' foods and totals from the summaries friends can see</small></div><button class="btn mint slim">Rebuild</button>`;
+    row.querySelector("button").onclick = async () => { busy("Rebuilding your past days…"); try { const n = await rebuildFromDays(); busy(false); toast(n ? `Brought back ${n} past day${n === 1 ? "" : "s"}` : "No missing days found in the shared summaries", 5000); } catch (e) { busy(false); toast(c.explain(e), 5000); } };
+    box.appendChild(row);
+  }
+  if (!box.children.length) box.innerHTML = `<p class="muted tiny">No backups found yet.</p>`;
+  if (cloudNote) box.insertAdjacentHTML("beforeend", `<p class="muted tiny">${cloudNote}</p>`);
+}
+$("#backup-restore").onclick = () => renderBackups();
+$("#backup-download").onclick = () => {
+  const snap = {}; for (const k of SYNC_KEYS) snap[k] = state[k];
+  const blob = new Blob([JSON.stringify({ app: "cheatdays", v: APP_VERSION, at: Date.now(), data: snap })], { type: "application/json" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `cheat-days-backup-${localDate()}.json`; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+};
+$("#backup-upload").onclick = () => $("#file-backup").click();
+$("#file-backup").addEventListener("change", async (e) => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  try { const j = JSON.parse(await f.text()); const d = j.data || j; if (!richness(d)) throw new Error("That file has no Cheat Days data in it"); if (!await ask(`Restore from this file?\n\n${(d.history || []).length} past days, ${(d.meals || []).length} meals. Nothing you have now is removed.`, { ok: "Restore" })) return; restoreFrom(d, "the file"); }
+  catch (err) { toast(err.message || "Couldn't read that file", 5000); }
+});
+$("#wl-signin").onclick = () => { stack = ["home", "settings"]; show("settings"); setTimeout(() => { const el = $("#acct-email"); if (el) { el.scrollIntoView({ block: "center" }); } }, 100); toast("Sign in below and your data comes back from the cloud", 5000); };
+
 // ---------------------------------------------------------------- appearance: match the phone, light or dark (this device only)
 
 const darkQuery = window.matchMedia ? matchMedia("(prefers-color-scheme: dark)") : null;
@@ -3787,6 +3901,7 @@ function needsWelcome() {
 // ---------------------------------------------------------------- boot
 
 applySimple(); applyTheme();
+recoverLocal();
 if (needsWelcome()) { wlStep(1); stack = ["welcome"]; show("welcome"); } else show("home");
 cloudInit();
 // Keep everyone current: if the server has a newer version, fetch it and reload. Checked on open and on return, at most every 5 minutes.

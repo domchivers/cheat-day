@@ -127,6 +127,9 @@
         body: JSON.stringify([{ user_id: this.uid, day: day.date, budget: day.budget, kcal: day.kcal, items: day.items, updated_at: new Date().toISOString() }]) });
     },
     async unpublishDays() { return this.rest(`/rest/v1/days?user_id=eq.${this.uid}`, { method: "DELETE" }); },
+    // ---- backups: daily cloud snapshots (kept by a database trigger) and my own shared day summaries
+    async backups() { return this.rest(`/rest/v1/cheatday_backups?user_id=eq.${this.uid}&select=id,created_at,data&order=created_at.desc&limit=30`); },
+    async myDays() { return this.rest(`/rest/v1/days?user_id=eq.${this.uid}&select=*&order=day.desc&limit=400`); },
     // ---- photos live in the public "photos" bucket, one folder per person, under unguessable names
     async uploadPhoto(dataUrl) {
       if (!signedIn()) throw new Error("Not signed in");
