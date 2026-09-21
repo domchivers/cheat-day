@@ -127,6 +127,9 @@
         body: JSON.stringify([{ user_id: this.uid, day: day.date, budget: day.budget, kcal: day.kcal, items: day.items, updated_at: new Date().toISOString() }]) });
     },
     async unpublishDays() { return this.rest(`/rest/v1/days?user_id=eq.${this.uid}`, { method: "DELETE" }); },
+    // ---- the leaderboard: each person's level, streaks and weekly goals, readable by friends
+    async publishStats(row) { return this.rest(`/rest/v1/stats`, { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify([{ user_id: this.uid, ...row, updated_at: new Date().toISOString() }]) }); },
+    async stats() { return this.rest(`/rest/v1/stats?select=*`); },
     async days(sinceDate) { return this.rest(`/rest/v1/days?day=gte.${sinceDate}&select=*&order=day.desc`); },
     // ---- body metrics (scale readings) and the private token a Shortcut uses to post them
     async bodyRows(since) { return this.rest(`/rest/v1/body_metrics?user_id=eq.${this.uid}&day=gte.${since}&select=*&order=day.asc`); },

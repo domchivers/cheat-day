@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "72";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "73";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -881,6 +881,7 @@ function drawFriends() {
     fl.appendChild(card);
   }
   $("#fr-empty").classList.toggle("hidden", friends.length > 0);
+  publishStats(); renderLeaderboards(true);
   // the week
   const byUser = {};
   for (const d of fr.days) { (byUser[d.user_id] = byUser[d.user_id] || []).push(d); }
@@ -1826,6 +1827,67 @@ function checkBadges() {
   save();
   toast(`${fresh[0].icon} Badge earned: ${fresh[0].name}${fresh.length > 1 ? ` and ${fresh.length - 1} more` : ""}`, 4500);
 }
+// ---- the leaderboard: publish my numbers, rank friends by weekly goals, level or streak
+function myStats() {
+  const xp = totalXp(), L = levelFor(xp), prog = weekProgress(), g = state.weekGoals;
+  const active = GOAL_DEFS.filter((d) => (g[d.key] || 0) > 0 && !(d.needs && !d.needs()));
+  return { xp, level: L.lvl, streak: logStreak(), under_streak: underStreak(), week_goals_done: active.filter((d) => prog[d.key] >= g[d.key]).length, week_goals_total: active.length,
+    week_pct: active.length ? Math.round(active.reduce((a, d) => a + Math.min(1, prog[d.key] / g[d.key]), 0) / active.length * 100) : 0, week_start: weekDates()[0] };
+}
+let statsSent = "";
+function publishStats() {
+  const c = window.cloud; if (!c || !c.user) return;
+  const row = myStats(), key = JSON.stringify(row);
+  if (key === statsSent) return;
+  statsSent = key;
+  c.publishStats(row).catch(() => { statsSent = ""; });   // table not made yet: stay quiet, try again later
+}
+let lbMode = "week", lbCache = null;
+async function loadLeaderboard(force) {
+  const c = window.cloud; if (!c || !c.user) return null;
+  if (!force && lbCache && Date.now() - lbCache.at < 60000) return lbCache;
+  try {
+    const rows = await c.stats();
+    const ids = rows.map((r) => r.user_id).filter((id) => !fr.people[id] && id !== c.uid);
+    if (ids.length) { const people = await c.profiles(ids); for (const p of people) fr.people[p.user_id] = p; }
+    lbCache = { at: Date.now(), rows };
+  } catch (e) { lbCache = { at: Date.now(), rows: null, error: e }; }
+  return lbCache;
+}
+function drawLeaderboard(el) {
+  const c = window.cloud, me = c && c.uid; if (!el) return;
+  if (!lbCache || !lbCache.rows) { el.innerHTML = `<div class="row muted">${lbCache && lbCache.error ? "The leaderboard isn't set up yet." : "Loading…"}</div>`; return; }
+  const wk = weekDates()[0];
+  const rows = lbCache.rows.map((r) => {
+    const mine = r.user_id === me, st = mine ? myStats() : r, thisWeek = st.week_start === wk;
+    return { uid: r.user_id, mine, name: mine ? "You" : personName(r.user_id), level: st.level || 1, xp: st.xp || 0, streak: st.streak || 0, under: st.under_streak || 0,
+      done: thisWeek ? st.week_goals_done || 0 : 0, total: st.week_goals_total || 0, pct: thisWeek ? st.week_pct || 0 : 0 };
+  });
+  if (me && !rows.some((r) => r.mine)) { const st = myStats(); rows.push({ uid: me, mine: true, name: "You", level: st.level, xp: st.xp, streak: st.streak, under: st.under_streak, done: st.week_goals_done, total: st.week_goals_total, pct: st.week_pct }); }
+  const sorters = { week: (a, b) => (b.pct - a.pct) || (b.done - a.done) || (b.xp - a.xp), level: (a, b) => (b.xp - a.xp), streak: (a, b) => (b.streak - a.streak) || (b.under - a.under) };
+  rows.sort(sorters[lbMode]);
+  el.innerHTML = "";
+  rows.forEach((r, i) => {
+    const row = document.createElement("div"); row.className = `row${r.mine ? " me" : ""}`;
+    const main = lbMode === "week" ? `<b>${r.pct}%</b><small>${r.done} of ${r.total} goals</small>` : lbMode === "level" ? `<b>Lv ${r.level}</b><small>${fmt(r.xp)} XP</small>` : `<b>🔥 ${r.streak}</b><small>day${r.streak === 1 ? "" : "s"} logged</small>`;
+    const sub = lbMode === "week" ? `Level ${r.level} · ${r.streak ? `${r.streak}-day streak` : "no streak"}` : lbMode === "level" ? `${r.done} of ${r.total} goals this week` : `${r.under}-day budget streak`;
+    row.innerHTML = `<span class="medal m${i + 1}">${i + 1}</span>${avatar(r.uid, r.mine ? ((fr.profile && fr.profile.display_name) || "Me") : r.name)}<div class="who"><b>${esc(r.name)}</b><small>${esc(sub)}</small></div><div class="score">${main}</div>`;
+    el.appendChild(row);
+  });
+  if (rows.length < 2) el.insertAdjacentHTML("beforeend", `<div class="row muted">Add friends to compete. Their levels show up once they open the app.</div>`);
+}
+async function renderLeaderboards(force) {
+  const targets = ["#fr-lb", "#g-lb"].map((q) => $(q)).filter(Boolean);
+  targets.forEach(drawLeaderboard);
+  await loadLeaderboard(force);
+  targets.forEach(drawLeaderboard);
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest(".lb-modes button"); if (!b) return;
+  lbMode = b.dataset.m;
+  $$(".lb-modes button").forEach((x) => x.classList.toggle("on", x.dataset.m === lbMode));
+  ["#fr-lb", "#g-lb"].forEach((q) => drawLeaderboard($(q)));
+});
 function renderLevelCard() {
   const xp = totalXp(), L = levelFor(xp), prog = weekProgress(), g = state.weekGoals;
   const active = GOAL_DEFS.filter((d) => (g[d.key] || 0) > 0 && !(d.needs && !d.needs()));
@@ -1834,8 +1896,12 @@ function renderLevelCard() {
   $("#lv-sub").textContent = `${fmt(xp)} XP · ${L.next - xp} to next${active.length ? ` · ${done}/${active.length} goals this week` : ""}`;
   $("#lv-bar").style.width = `${Math.round(L.into / L.span * 100)}%`;
   checkBadges();
+  publishStats();
 }
 function renderGoals() {
+  const signed = !!(window.cloud && window.cloud.user);
+  $("#g-lb-wrap").classList.toggle("hidden", !signed);
+  if (signed) { publishStats(); renderLeaderboards(false); }
   const xp = totalXp(), L = levelFor(xp), prog = weekProgress(), g = state.weekGoals, ls = logStreak(), us = underStreak();
   $("#g-level").innerHTML = `<div class="lv-num">${L.lvl}</div><div class="lv-name">${L.name}</div><div class="muted tiny">${fmt(xp)} XP · ${L.next - xp} more for level ${L.lvl + 1}</div><span class="bar"><span style="width:${Math.round(L.into / L.span * 100)}%"></span></span>
     <div class="streaks">${ls ? `<span>🔥 ${ls} day${ls === 1 ? "" : "s"} logged</span>` : ""}${us ? `<span>🎯 ${us} day${us === 1 ? "" : "s"} under budget</span>` : ""}${!ls && !us ? `<span>Log today to start a streak</span>` : ""}</div>`;

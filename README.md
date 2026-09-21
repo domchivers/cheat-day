@@ -295,6 +295,31 @@ Then deploy `supabase/functions/body-import/index.ts` as an Edge Function named
 `body-import` with **Verify JWT turned off** (the token is the secret). The
 Shortcut steps are on the Body screen under "How to set up the Shortcut".
 
+## Friends leaderboard
+
+The Friends tab and the Goals screen rank you and your friends by this week's
+goals, by level, or by streak. Each app publishes its own numbers (XP, level,
+streaks, weekly goals) to a `stats` table that only friends can read. One-off
+setup in the Supabase SQL Editor:
+
+```sql
+create table if not exists public.stats (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  xp integer not null default 0,
+  level integer not null default 1,
+  streak integer not null default 0,
+  under_streak integer not null default 0,
+  week_goals_done integer not null default 0,
+  week_goals_total integer not null default 0,
+  week_pct integer not null default 0,
+  week_start date,
+  updated_at timestamptz not null default now()
+);
+alter table public.stats enable row level security;
+create policy "stats read" on public.stats for select to authenticated using (user_id = auth.uid() or public.is_friend(user_id));
+create policy "stats own" on public.stats for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+```
+
 ## Simple mode and the welcome guide
 
 New users get a three-step welcome: choose **simple** or **everything**, pick a

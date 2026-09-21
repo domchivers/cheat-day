@@ -702,3 +702,7 @@ body.simple .sub-head h1 { font-size: 21px; }
 body.simple .question { font-size: 20px; }
 body.simple .toast { font-size: 17px; }
 body.simple .dialog-card p { font-size: 18px; }
+/* Leaderboard */
+.lb-modes { justify-content: flex-start; margin: 0 0 8px; }
+.lb-modes button { padding: 7px 14px; font-size: 14px; }
+.board .row.me { background: var(--mint-2); margin: 0 -14px; padding-left: 14px; padding-right: 14px; }
