@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "90";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "91";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -122,7 +122,7 @@ function toast(msg, ms = 2800) {
 }
 function busy(text) {
   const b = $("#busy");
-  if (text === false) { b.classList.add("hidden"); return; }
+  if (text === false) { b.classList.add("hidden"); $("#busy-sub").textContent = ""; $("#busy-cancel").classList.add("hidden"); return; }
   $("#busy-text").textContent = text; b.classList.remove("hidden");
 }
 const fmt = (n, dp = 0) => (n == null || !isFinite(n)) ? "–" : Number(n.toFixed(dp)).toLocaleString();
@@ -1384,7 +1384,7 @@ async function sendAsk() {
   if (!text && !files.length) return;
   if (!aiAvailable()) { aiHelp(); return; }
   const images = [];
-  for (const f of files) { const img = await loadImage(f); images.push(drawScaled(img, 1280).toDataURL("image/jpeg", 0.85)); }
+  for (const f of files) { const img = await loadImage(f); images.push(drawScaled(img, 1024).toDataURL("image/jpeg", 0.85)); }
   const image = images[0] || null;
   bubble("me", `${images.length ? `<div class="shots">${images.map((im) => `<img src="${im}" alt="">`).join("")}</div>` : ""}${esc(text || "(photos)")}`);
   askTurns.push({ role: "me", text: (text || "") + (images.length ? ` (${images.length} photo${images.length === 1 ? "" : "s"})` : "") });
@@ -1403,14 +1403,14 @@ Estimates use standard reference values. Keep reply short and friendly.`;
   const content = [];
   for (const im of images) content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: im.split(",")[1] } });
   content.push({ type: "text", text: prompt });
-  const thinking = bubble("bot", `<span class="muted">Thinking…</span>`);
+  const thinking = bubble("bot", `<span class="muted ai-live">Thinking… <span class="secs"></span><a href="#" class="cancel">Cancel</a></span>`);
   try {
     const r = await askAI(ASSIST_SCHEMA, content);
     thinking.remove();
     askTurns.push({ role: "bot", text: r.reply, kind: r.kind, result: r });
     renderAssistant(r, image);
     saveChat();
-  } catch (err) { thinking.innerHTML = `<span class="over">${esc(err.message || "Something went wrong")}</span>`; }
+  } catch (err) { thinking.innerHTML = err.message === "Cancelled" ? `<span class="muted">Stopped. Ask again whenever you like.</span>` : `<span class="over">${esc(err.message || "Something went wrong")}</span>`; }
 }
 function statRow(kcal, p, c, f) { return `<div><span class="stat"><b>${fmt(kcal)}</b> kcal</span><span class="stat">P <b>${Math.round(p)}</b></span><span class="stat">C <b>${Math.round(c)}</b></span><span class="stat">F <b>${Math.round(f)}</b></span></div>`; }
 function renderAssistant(r, image) {
@@ -1743,8 +1743,8 @@ $("#file-bd-shot").addEventListener("change", async (e) => {
   let r;
   try {
     const img = await loadImage(f);
-    const b64 = drawScaled(img, 1280).toDataURL("image/jpeg", 0.85).split(",")[1];
-    r = await askAI(BODY_SCHEMA, [{ type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } }, { type: "text", text: BODY_PROMPT }]);
+    const b64 = drawScaled(img, 1024).toDataURL("image/jpeg", 0.8).split(",")[1];
+    r = await askAI(BODY_SCHEMA, [{ type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } }, { type: "text", text: BODY_PROMPT }], "low");
   } catch (err) { busy(false); toast(err.message || "Couldn't read that picture", 5000); return; }
   busy(false);
   if (!r || r.is_body_reading === false || (num(r.weight_kg) == null && num(r.body_fat_pct) == null)) { toast("Couldn't see scale readings in that picture. Try a screenshot of the results screen.", 5000); return; }
@@ -3569,7 +3569,7 @@ $("#search-claude").onclick = async () => {
   if (!aiAvailable()) { aiHelp(); return; }
   busy(`Asking about ${query}…`);
   try {
-    const parsed = await askAI(FOOD_SCHEMA, [{ type: "text", text: `Give typical nutrition for this food as commonly eaten: "${query}". If it's ambiguous, pick the most common preparation and say so in notes. Use standard reference values (USDA / McCance & Widdowson), not guesses.` }]);
+    const parsed = await askAI(FOOD_SCHEMA, [{ type: "text", text: `Give typical nutrition for this food as commonly eaten: "${query}". If it's ambiguous, pick the most common preparation and say so in notes. Use standard reference values (USDA / McCance & Widdowson), not guesses.` }], "low");
     busy(false);
     const item = blankItem("claude");
     item.name = parsed.name || query; item.unit = parsed.unit === "ml" ? "ml" : "g";
@@ -3627,14 +3627,30 @@ const GEMINI_MODELS = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash
 let aiProxyState = "unknown";   // "unknown" | "yes" | "no": whether the Supabase "ai" function is deployed
 const aiAvailable = () => !!(state.geminiKey || state.apiKey || (window.cloud && window.cloud.user && aiProxyState !== "no"));
 function aiHelp() { toast("AI features need a key: a free Google Gemini key or an Anthropic key, in Settings. Or ask whoever set the app up to switch on the shared one.", 6000); go("settings"); }
+// ---- while the AI works: seconds ticking, honest words when it's slow, and a Cancel that always works
+let aiCtl = null, aiTick = null, aiStart = 0, aiNote = "";
+function aiProgress(note) { if (note != null) aiNote = note; const secs = Math.floor((Date.now() - aiStart) / 1000);
+  const words = aiNote || (secs < 8 ? "" : secs < 20 ? "Still thinking…" : "The free AI is slow right now…");
+  const sub = `${secs}s${words ? ` · ${words}` : ""}`;
+  if (!$("#busy").classList.contains("hidden")) { $("#busy-sub").textContent = sub; $("#busy-cancel").classList.toggle("hidden", secs < 6); }
+  $$(".ai-live .secs").forEach((el) => el.textContent = sub);
+}
+function cancelAI() { if (aiCtl) { aiCtl.cancelled = true; aiCtl.abort(); } }
+$("#busy-cancel").onclick = () => { cancelAI(); busy(false); };
+document.addEventListener("click", (e) => { if (e.target.closest(".ai-live .cancel")) { e.preventDefault(); cancelAI(); } });
 async function askAI(schema, content, effort = "medium") {
+  aiStart = Date.now(); aiNote = ""; clearInterval(aiTick); aiTick = setInterval(() => aiProgress(), 1000); aiProgress();
+  try { return await askAIInner(schema, content, effort); }
+  finally { clearInterval(aiTick); aiTick = null; aiCtl = null; }
+}
+async function askAIInner(schema, content, effort) {
   // 1) shared key via the Supabase function
   if (window.cloud && window.cloud.user && aiProxyState !== "no") {
-    try { return await askGemini(schema, content, null); }
+    try { return await askGemini(schema, content, null, effort); }
     catch (err) { if (err.proxyMissing) aiProxyState = "no"; else throw err; }
   }
   // 2) a Gemini key on this phone
-  if (state.geminiKey) return askGemini(schema, content, state.geminiKey);
+  if (state.geminiKey) return askGemini(schema, content, state.geminiKey, effort);
   // 3) a Claude key on this phone
   if (state.apiKey) return askClaude(schema, content, effort);
   throw new Error("No AI key set. Add a free Google Gemini key in Settings.");
@@ -3651,30 +3667,52 @@ function geminiSchema(node) {
   }
   return out;
 }
-async function askGemini(schema, content, key) {
+const AI_MODEL_KEY = "cheatday.aiModel";
+async function askGemini(schema, content, key, effort = "medium") {
   const parts = content.map((b) => b.type === "image" ? { inline_data: { mime_type: b.source.media_type, data: b.source.data } } : { text: b.text });
+  const hasImage = content.some((b) => b.type === "image");
+  let thinking = effort === "low" ? "minimal" : "low";   // reading a label or a screenshot needs no deliberation
   const bodyFor = (model) => {
     const generationConfig = { responseMimeType: "application/json", responseSchema: geminiSchema(schema), temperature: 0.2 };
-    if (/^gemini-3/.test(model)) generationConfig.thinkingConfig = { thinkingLevel: "low" };   // quick answers; these are lookups, not puzzles
+    if (/^gemini-3/.test(model) && thinking) generationConfig.thinkingConfig = { thinkingLevel: thinking };
     return JSON.stringify({ contents: [{ parts }], generationConfig });
   };
-  const send = async (model) => {
-    if (key) return fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, { method: "POST", headers: { "Content-Type": "application/json", "X-goog-api-key": key }, body: bodyFor(model) });
+  const send = async (model, signal) => {
+    if (key) return fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, { method: "POST", headers: { "Content-Type": "application/json", "X-goog-api-key": key }, body: bodyFor(model), signal });
     const cfg = window.SUPABASE_CONFIG;
-    return window.cloud.rawFetch(`${cfg.url}/functions/v1/ai?model=${model}`, { method: "POST", headers: { "Content-Type": "application/json", apikey: cfg.anonKey }, body: bodyFor(model) });
+    return window.cloud.rawFetch(`${cfg.url}/functions/v1/ai?model=${model}`, { method: "POST", headers: { "Content-Type": "application/json", apikey: cfg.anonKey }, body: bodyFor(model), signal });
   };
-  let resp, lastNet = null;
-  for (const model of GEMINI_MODELS) {             // newest first; fall through on "no longer available", "high demand", or a dropped connection
+  // the model that answered last time goes first; a model that times out hands over to the lighter ones
+  let remembered = null; try { remembered = localStorage.getItem(AI_MODEL_KEY); } catch (e) {}
+  let order = GEMINI_MODELS.slice(); if (remembered && order.includes(remembered)) order = [remembered].concat(order.filter((m) => m !== remembered));
+  const limit = hasImage ? 30000 : 22000;
+  let resp, lastNet = null, timedOut = 0;
+  for (let i = 0; i < order.length; i++) {
+    const model = order[i];
     resp = null;
     for (let attempt = 0; attempt < 2 && !resp; attempt++) {
-      try { resp = await send(model); } catch (e) { lastNet = e; await new Promise((r) => setTimeout(r, 600)); }
+      const ctl = new AbortController(); aiCtl = ctl;
+      const timer = setTimeout(() => ctl.abort(), limit);
+      try { resp = await send(model, ctl.signal); }
+      catch (e) {
+        if (ctl.cancelled) { clearTimeout(timer); throw new Error("Cancelled"); }
+        if (e.name === "AbortError") { timedOut++; break; }   // this model is too slow right now: move on rather than retry it
+        lastNet = e; await new Promise((r) => setTimeout(r, 600));
+      } finally { clearTimeout(timer); }
     }
-    if (!resp) continue;
+    if (!resp) {
+      if (timedOut) { aiProgress("Taking a while, trying a faster model…"); const lite = order.findIndex((m, j) => j > i && /lite/.test(m)); if (lite > i + 1) i = lite - 1; }
+      if (timedOut >= 2) break;   // two slow models in a row: stop and say so
+      continue;
+    }
     if (!key && resp.status === 404) { const e = new Error("shared AI not set up"); e.proxyMissing = true; throw e; }
+    if (resp.status === 400 && thinking) { const t = await resp.clone().text().catch(() => ""); if (/thinking/i.test(t)) { thinking = thinking === "minimal" ? "low" : null; i--; continue; } }   // older model: ask again without that setting
     if (!key && resp.ok) aiProxyState = "yes";
-    if (resp.status !== 503 && resp.status !== 429 && !(resp.status === 404 && key)) break;
+    if (resp.status !== 503 && resp.status !== 429 && !(resp.status === 404 && key)) { if (resp.ok) { try { localStorage.setItem(AI_MODEL_KEY, model); } catch (e) {} } break; }
+    aiProgress("That model's busy, trying another…");
     await new Promise((r) => setTimeout(r, 400));
   }
+  if (!resp && timedOut) throw new Error("The free AI didn't answer in time. Try again in a moment.");
   if (!resp) throw new Error(`Couldn't reach the AI service (${(lastNet && lastNet.message) || "no connection"}). Check the signal and try again.`);
   if (resp.status === 503 || resp.status === 429) throw new Error("Every free AI model is busy right now. Try again in a minute.");
   const json = await resp.json().catch(() => ({}));
@@ -3722,12 +3760,12 @@ async function askClaude(schema, content, effort = "medium") {
 
 async function readLabelWithClaude(file, quiet = false) {
   const img = await loadImage(file);
-  const dataUrl = drawScaled(img, 1280).toDataURL("image/jpeg", 0.85);
+  const dataUrl = drawScaled(img, 1024).toDataURL("image/jpeg", 0.8);
   const b64 = dataUrl.split(",")[1];
   const parsed = await askAI(LABEL_SCHEMA, [
     { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } },
     { type: "text", text: LABEL_PROMPT }
-  ]);
+  ], "low");
   if (parsed.is_nutrition_label === false || (!num(parsed.kcal_per_100) && !num(parsed.kcal_per_serving))) {
     if (quiet) return null;
     throw new Error("Can't see a nutrition table in that photo. Get closer and try again.");
