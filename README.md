@@ -242,6 +242,42 @@ The day turns over by itself at midnight: what you logged goes into **History**
 (the link beside Today, or Settings → See history) with its items and macros,
 and Today starts empty. "Start a new day now" in Settings does the same early.
 
+## Body (scale readings)
+
+The Workouts tab has a **Body** card: weight, body fat, muscle mass, water,
+bone, visceral fat and metabolic age, typed in or posted by a Shortcut, with a
+chart per metric and 30-day change. The latest weight feeds the workout burn
+estimate. Readings live in your synced data and, when signed in, in a
+`body_metrics` table so a Shortcut can add to them.
+
+**Connect a scale (iPhone).** Scales like Etekcity write to Apple Health. The
+Body screen gives you a link and a private token; an iPhone Shortcut runs every
+morning, reads the latest Health samples and POSTs them. One-off setup:
+
+```sql
+create table if not exists public.body_metrics (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  day date not null,
+  weight numeric, fat numeric, lean numeric, muscle numeric, water numeric, bone numeric, visceral numeric, bmr numeric, age numeric, bmi numeric,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, day)
+);
+alter table public.body_metrics enable row level security;
+create policy "body own" on public.body_metrics for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+create table if not exists public.import_tokens (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  token text unique not null,
+  created_at timestamptz not null default now()
+);
+alter table public.import_tokens enable row level security;
+create policy "tokens own" on public.import_tokens for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+```
+
+Then deploy `supabase/functions/body-import/index.ts` as an Edge Function named
+`body-import` with **Verify JWT turned off** (the token is the secret). The
+Shortcut steps are on the Body screen under "How to set up the Shortcut".
+
 ## Goals and rewards
 
 A small game on top of the tracking. The home page shows your **level** and an

@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "61";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "62";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -31,6 +31,7 @@ function load() {
   if (!base.exercises || typeof base.exercises !== "object") base.exercises = {};
   if (!Array.isArray(base.day.workouts)) base.day.workouts = [];
   if (!Array.isArray(base.routines)) base.routines = [];
+  if (!Array.isArray(base.body)) base.body = [];
   if (!base.weekGoals || typeof base.weekGoals !== "object") base.weekGoals = { under: 5, protein: 4, workouts: 3, log: 7 };
   if (!Array.isArray(base.seenBadges)) base.seenBadges = [];
   if (!Array.isArray(base.goalWins)) base.goalWins = [];
@@ -150,7 +151,7 @@ function basisOf(obj) {
 
 // ---------------------------------------------------------------- router
 
-const VIEWS = ["home", "budget", "settings", "history", "friends", "feed", "compose", "workouts", "exercise", "goals", "ask", "chats", "scan", "search", "meals", "meal", "details", "share"];
+const VIEWS = ["home", "budget", "settings", "history", "friends", "feed", "compose", "workouts", "exercise", "goals", "body", "ask", "chats", "scan", "search", "meals", "meal", "details", "share"];
 let stack = ["home"];
 function show(view) {
   for (const v of VIEWS) $(`#view-${v}`).classList.toggle("hidden", v !== view);
@@ -169,6 +170,7 @@ function show(view) {
   if (view === "workouts") renderWorkouts();
   if (view === "exercise") renderExercise();
   if (view === "goals") renderGoals();
+  if (view === "body") renderBody();
   if (view === "feed") renderFeed();
   if (view === "compose") renderCompose();
   $$("#tabbar button").forEach((b) => b.classList.toggle("on", b.dataset.tab === view));
@@ -1420,6 +1422,110 @@ function showFits() {
 
 
 
+
+// ---------------------------------------------------------------- body: scale readings, typed in or posted by an iPhone Shortcut
+
+const BODY_METRICS = [
+  { key: "weight", name: "Weight", unit: "kg", dp: 1 }, { key: "fat", name: "Body fat", unit: "%", dp: 1 }, { key: "muscle", name: "Muscle", unit: "kg", dp: 1 },
+  { key: "lean", name: "Lean mass", unit: "kg", dp: 1 }, { key: "water", name: "Water", unit: "%", dp: 1 }, { key: "bone", name: "Bone", unit: "kg", dp: 1 },
+  { key: "visceral", name: "Visceral fat", unit: "", dp: 1 }, { key: "bmr", name: "BMR", unit: "kcal", dp: 0 }, { key: "age", name: "Metabolic age", unit: "", dp: 0 }, { key: "bmi", name: "BMI", unit: "", dp: 1 }
+];
+let bodyMetric = "weight", bodyAt = 0;
+const bodySorted = () => state.body.slice().sort((a, b) => String(a.day).localeCompare(String(b.day)));
+const latestBody = () => { const rows = bodySorted(); return rows[rows.length - 1] || null; };
+/** Keep one row per day; newer updatedAt wins. Weight flows into the workout burn estimate. */
+function upsertBody(row) {
+  const i = state.body.findIndex((r) => r.day === row.day);
+  const merged = { ...(i >= 0 ? state.body[i] : {}), ...row };
+  if (i >= 0) state.body[i] = merged; else state.body.push(merged);
+  state.body = bodySorted().slice(-400);
+  const lb = latestBody(); if (lb && lb.weight) state.weightKg = Math.round(lb.weight * 10) / 10;
+}
+async function pullBody(force) {
+  const c = window.cloud; if (!(c && c.user)) return false;
+  if (!force && Date.now() - bodyAt < 60000) return false;
+  bodyAt = Date.now();
+  let rows; try { rows = await c.bodyRows(dateMinus(400)); } catch (e) { return false; }
+  let changed = false;
+  for (const r of rows) {
+    const mine = state.body.find((x) => x.day === r.day);
+    if (mine && String(mine.updatedAt || "") >= String(r.updated_at || "")) continue;
+    const row = { day: r.day, updatedAt: r.updated_at };
+    for (const m of BODY_METRICS) if (r[m.key] != null) row[m.key] = +r[m.key];
+    upsertBody(row); changed = true;
+  }
+  if (changed) save();
+  return changed;
+}
+function lineChart(pts, dp) {
+  if (pts.length < 2) return `<div class="none">${pts.length ? "One reading so far: the line starts with the next one." : "Nothing to chart yet."}</div>`;
+  const W = 320, H = 150, px = 20, py = 22, vals = pts.map((p) => p.v);
+  const lo = Math.min(...vals), hi = Math.max(...vals), pad = (hi - lo || Math.abs(hi) * 0.05 || 1) * 0.25;
+  const x = (i) => px + i * (W - 2 * px) / (pts.length - 1), y = (v) => H - py - (v - (lo - pad)) / ((hi + pad) - (lo - pad)) * (H - 2 * py);
+  const lab = (i) => (pts.length <= 8 || i === 0 || i === pts.length - 1 || i % Math.ceil(pts.length / 5) === 0) ? `<text x="${x(i)}" y="${H - 5}" text-anchor="middle" font-size="10" fill="#6b7770">${new Date(pts[i].day + "T12:00").toLocaleDateString(undefined, { day: "numeric", month: "short" })}</text>` : "";
+  const val = (i) => (pts.length <= 8 || i === 0 || i === pts.length - 1 || pts[i].v === hi || pts[i].v === lo) ? `<text x="${x(i)}" y="${y(pts[i].v) - 9}" text-anchor="middle" font-size="11" fill="#2f5d4b" font-weight="700">${fmt(pts[i].v, dp)}</text>` : "";
+  return `<svg viewBox="0 0 ${W} ${H}"><polyline points="${pts.map((p, i) => `${x(i)},${y(p.v)}`).join(" ")}" fill="none" stroke="#2f5d4b" stroke-width="2.5" stroke-linejoin="round"/>${pts.map((p, i) => `<circle cx="${x(i)}" cy="${y(p.v)}" r="${pts.length > 20 ? 2.5 : 4}" fill="#2f5d4b"/>${val(i)}${lab(i)}`).join("")}</svg>`;
+}
+async function renderBody() {
+  $("#bd-date").value = localDate();
+  drawBody();
+  if (await pullBody(false)) drawBody();
+}
+function drawBody() {
+  const rows = bodySorted(), lb = rows[rows.length - 1] || null;
+  const have = BODY_METRICS.filter((m) => rows.some((r) => r[m.key] != null));
+  const cutoff = dateMinus(30);
+  const st = $("#body-stats");
+  if (!lb) st.innerHTML = `<div style="grid-column:1/-1"><small>Nothing yet</small><b>Add your first reading below</b></div>`;
+  else st.innerHTML = have.slice(0, 6).map((m) => {
+    const cur = rows.filter((r) => r[m.key] != null), now = cur[cur.length - 1], before = cur.slice().reverse().find((r) => r.day <= cutoff) || cur[0];
+    const d = before !== now ? now[m.key] - before[m.key] : 0, good = m.key === "muscle" || m.key === "lean" || m.key === "water" || m.key === "bone" || m.key === "bmr" ? d > 0 : d < 0;
+    return `<div><small>${m.name}</small><b>${fmt(now[m.key], m.dp)}${m.unit ? ` <span class="muted tiny">${m.unit}</span>` : ""}${d ? `<span class="delta ${good ? "down" : "up"}">${d > 0 ? "+" : ""}${fmt(d, m.dp)}</span>` : ""}</b></div>`;
+  }).join("");
+  const chips = $("#body-metrics"); chips.innerHTML = "";
+  if (!have.some((m) => m.key === bodyMetric) && have.length) bodyMetric = have[0].key;
+  for (const m of have) { const b = document.createElement("button"); b.textContent = m.name; b.classList.toggle("on", m.key === bodyMetric); b.onclick = () => { bodyMetric = m.key; drawBody(); }; chips.appendChild(b); }
+  const m = BODY_METRICS.find((x) => x.key === bodyMetric);
+  $("#body-chart-title").textContent = `${m.name}${m.unit ? ` (${m.unit})` : ""}, last 30 readings`;
+  $("#body-chart").innerHTML = lineChart(rows.filter((r) => r[m.key] != null).slice(-30).map((r) => ({ day: r.day, v: r[m.key] })), m.dp);
+  const list = $("#body-list"); list.innerHTML = "";
+  for (const r of rows.slice().reverse().slice(0, 30)) {
+    const li = document.createElement("li");
+    const bits = BODY_METRICS.filter((x) => r[x.key] != null).map((x) => `${x.name} ${fmt(r[x.key], x.dp)}${x.unit === "%" ? "%" : x.unit ? ` ${x.unit}` : ""}`);
+    li.innerHTML = `<span class="thumb-sm"><svg><use href="#i-scale"/></svg></span><div class="body"><div class="name">${r.day === localDate() ? "Today" : new Date(r.day + "T12:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}</div><div class="detail">${esc(bits.join(" · "))}</div></div><button class="del" aria-label="Remove">✕</button>`;
+    li.querySelector(".del").onclick = async () => { if (!await ask(`Remove the reading for ${r.day}?`)) return; state.body = state.body.filter((x) => x.day !== r.day); save(); drawBody(); };
+    li.querySelector(".body").onclick = () => { $("#bd-date").value = r.day; for (const x of BODY_METRICS) { const el = $(`#bd-${x.key}`); if (el) el.value = r[x.key] ?? ""; } window.scrollTo({ top: $("#bd-date").getBoundingClientRect().top + window.scrollY - 90, behavior: "smooth" }); };
+    list.appendChild(li);
+  }
+  $("#body-empty").classList.toggle("hidden", rows.length > 0);
+}
+$("#bd-save").onclick = async () => {
+  const day = $("#bd-date").value || localDate(), row = { day, updatedAt: new Date().toISOString() };
+  let any = false;
+  for (const m of BODY_METRICS) { const el = $(`#bd-${m.key}`); if (!el) continue; const v = num(el.value); if (v != null) { row[m.key] = Math.round(v * 10) / 10; any = true; } }
+  if (!any) { toast("Type at least one number"); return; }
+  upsertBody(row); save(); drawBody();
+  for (const m of BODY_METRICS) { const el = $(`#bd-${m.key}`); if (el) el.value = ""; }
+  toast(`Saved${row.weight ? `: ${row.weight} kg` : ""}`);
+  const c = window.cloud; if (c && c.user) { try { const { day: d, updatedAt, ...rest } = row; await c.saveBodyRow({ day: d, ...rest }); } catch (e) {} }
+};
+$("#body-refresh").onclick = async () => { busy("Checking for new readings…"); const ch = await pullBody(true); busy(false); drawBody(); toast(ch ? "New readings pulled in" : "Nothing new"); };
+const randomToken = () => { const a = new Uint8Array(24); crypto.getRandomValues(a); return btoa(String.fromCharCode(...a)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
+async function showToken(make) {
+  const c = window.cloud; if (!(c && c.user)) { toast("Connecting a scale needs an account: sign in from Settings"); return; }
+  busy("One moment…");
+  let token = null;
+  try { token = make ? null : await c.importToken(); if (!token) { token = randomToken(); await c.setImportToken(token); } }
+  catch (err) { busy(false); toast("Not set up yet: " + c.explain(err), 6000); return; }
+  busy(false);
+  $("#bd-url").value = `${window.SUPABASE_CONFIG.url}/functions/v1/body-import`;
+  $("#bd-token-value").value = token;
+  $("#bd-token-box").classList.remove("hidden"); $("#bd-token").classList.add("hidden");
+}
+$("#bd-token").onclick = () => showToken(false);
+$("#bd-token-new").onclick = async () => { if (!await ask("Make a new token? The Shortcut will need updating with it.")) return; showToken(true); };
+$("#bd-copy").onclick = async () => { try { await navigator.clipboard.writeText(`URL: ${$("#bd-url").value}\nToken: ${$("#bd-token-value").value}`); toast("Copied"); } catch (e) { toast("Couldn't copy; long-press the fields instead"); } };
+
 // ---------------------------------------------------------------- goals, XP, levels and badges: the game layer
 
 const XP = { log: 10, under: 25, protein: 15, workout: 20, pb: 30, post: 5, goal: 50 };
@@ -1803,6 +1909,8 @@ function renderWorkouts() {
     <div class="sub-line">${state.eatBack ? (burned ? `Budget now ${fmt(budgetToday())} kcal` : "Workouts stretch your budget") : "Recorded; budget unchanged (switch in Settings)"}${state.weightKg ? "" : " · assuming 75 kg; set your weight on the Daily budget screen"}</div>
     ${streak ? `<span class="streak">🔥 ${streak} day${streak === 1 ? "" : "s"} in a row</span>` : ""}`;
   renderWeek();
+  const lb = latestBody();
+  $("#wb-sub").textContent = lb ? `${lb.weight ? `${lb.weight} kg` : ""}${lb.fat ? ` · ${lb.fat}% fat` : ""}${lb.muscle ? ` · ${lb.muscle} kg muscle` : lb.lean ? ` · ${lb.lean} kg lean` : ""} · ${lb.day === localDate() ? "today" : new Date(lb.day + "T12:00").toLocaleDateString(undefined, { day: "numeric", month: "short" })}` : "Weight, body fat, muscle: from your scale or typed in";
   const list = $("#w-list"); list.innerHTML = "";
   for (const w of ws) {
     const li = document.createElement("li");
@@ -2872,7 +2980,7 @@ $("#share-add").onclick = () => {
 
 // ---------------------------------------------------------------- account + sync (optional, see cloud.js)
 
-const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "weekGoals", "seenBadges", "goalWins", "postCount", "pbCount", "updatedAt"];   // the API key stays on the device
+const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "weekGoals", "seenBadges", "goalWins", "postCount", "pbCount", "body", "updatedAt"];   // the API key stays on the device
 let pushTimer = null;
 function schedulePush() {
   if (!window.cloud || !window.cloud.user) return;

@@ -597,3 +597,19 @@ body[data-view="home"] .view, body[data-view="feed"] .view, body[data-view="work
 .dlg-choices { margin: 0 0 12px; gap: 8px; }
 .dlg-choices button { min-width: 44px; padding: 10px 12px; }
 .dialog-actions .btn.hidden { display: none; }
+
+/* Body */
+.body-card { margin-top: 12px; }
+.body-card .circle { background: var(--mint); color: var(--green); }
+.body-stats { margin-top: 4px; }
+.body-stats b { font-size: 19px; }
+.body-stats .delta { font-size: 11px; font-weight: 700; margin-left: 4px; }
+.body-stats .delta.down { color: var(--green-2); }
+.body-stats .delta.up { color: var(--coral); }
+#body-metrics { margin: 12px 0 0; }
+.how { margin-top: 10px; }
+.how summary { cursor: pointer; font-weight: 600; color: var(--green); font-size: 14px; }
+.how ol { padding-left: 18px; margin: 8px 0 0; color: var(--muted); }
+.how li { margin-bottom: 6px; line-height: 1.4; }
+.how code { background: var(--bg); padding: 1px 5px; border-radius: 6px; }
+#bd-url, #bd-token-value { font-size: 13px; }

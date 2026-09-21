@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=61">
-  <link rel="icon" href="icons/icon-192.png?v=61">
-  <link rel="stylesheet" href="styles.css?v=61">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=62">
+  <link rel="icon" href="icons/icon-192.png?v=62">
+  <link rel="stylesheet" href="styles.css?v=62">
 </head>
 <body>
 
@@ -36,6 +36,7 @@
   <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-off" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="currentColor"/><path d="M8 13c1.5 2 6.5 2 8 0M9 10h.01M15 10h.01" stroke="#fff" stroke-width="1.8" stroke-linecap="round" fill="none"/></symbol>
+  <symbol id="i-scale" viewBox="0 0 24 24"><rect x="4" y="3.5" width="16" height="17" rx="3.5" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M8.5 9.5a4.5 4.5 0 0 1 7 0" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><path d="M12 9.5l1.6-1.8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
   <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M7 4h10v5a5 5 0 0 1-10 0V4z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/><path d="M7 6H4.5v1.5A3.5 3.5 0 0 0 8 11M17 6h2.5v1.5A3.5 3.5 0 0 1 16 11M12 14v3M8.5 20h7M10 17h4v3h-4z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-send" viewBox="0 0 24 24"><path d="M3.5 11.5 20 4l-4.5 16.5-4-6.5-8-2.5z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/><path d="M11.5 14 20 4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
   <symbol id="i-repost" viewBox="0 0 24 24"><path d="M4 10.5V8a3 3 0 0 1 3-3h10M17 5l-2.5-2.5M17 5l-2.5 2.5M20 13.5V16a3 3 0 0 1-3 3H7M7 19l2.5 2.5M7 19l2.5-2.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
@@ -342,6 +343,60 @@
   <div class="card xp-table" id="g-xp"></div>
 </section>
 
+<!-- ===================== BODY ===================== -->
+<section class="view hidden" id="view-body">
+  <header class="sub-head">
+    <button class="icon-btn" data-back aria-label="Back"><svg><use href="#i-back"/></svg></button>
+    <h1>Body</h1>
+    <button class="icon-btn" id="body-refresh" aria-label="Refresh"><svg><use href="#i-history"/></svg></button>
+  </header>
+  <div class="card stat-grid body-stats" id="body-stats"></div>
+  <div class="chips" id="body-metrics"></div>
+  <div class="card chart-card"><div class="field-title" id="body-chart-title">Weight</div><div id="body-chart"></div></div>
+
+  <h2 class="section-title">Add a reading</h2>
+  <div class="card form-card">
+    <div class="grid2 tight">
+      <label>Date <input type="date" id="bd-date"></label>
+      <label>Weight (kg) <input type="number" inputmode="decimal" step="0.1" id="bd-weight" placeholder="e.g. 78.4"></label>
+      <label>Body fat % <input type="number" inputmode="decimal" step="0.1" id="bd-fat" placeholder="e.g. 18.2"></label>
+      <label>Muscle mass (kg) <input type="number" inputmode="decimal" step="0.1" id="bd-muscle" placeholder="e.g. 34.5"></label>
+      <label>Water % <input type="number" inputmode="decimal" step="0.1" id="bd-water" placeholder="e.g. 55"></label>
+      <label>Bone mass (kg) <input type="number" inputmode="decimal" step="0.1" id="bd-bone" placeholder="e.g. 3.1"></label>
+      <label>Visceral fat <input type="number" inputmode="decimal" step="0.5" id="bd-visceral" placeholder="e.g. 8"></label>
+      <label>Metabolic age <input type="number" inputmode="numeric" id="bd-age" placeholder="e.g. 29"></label>
+    </div>
+    <p class="muted tiny">Only fill what you have. Same date again replaces that day.</p>
+    <button class="btn primary" id="bd-save">Save reading</button>
+  </div>
+
+  <h2 class="section-title">Connect your scale</h2>
+  <div class="card form-card" id="body-connect">
+    <p class="muted">Your Etekcity scale writes to Apple Health. An iPhone Shortcut can send those readings here every morning.</p>
+    <button class="btn mint" id="bd-token">Get my link and token</button>
+    <div class="hidden" id="bd-token-box">
+      <label>Send readings to <input type="text" id="bd-url" readonly></label>
+      <label>Your private token <input type="text" id="bd-token-value" readonly></label>
+      <button class="btn mint slim" id="bd-copy">Copy both</button>
+      <p class="muted tiny">Keep the token to yourself: anyone with it can add readings to your account. "New token" cancels the old one.</p>
+      <button class="btn ghost slim" id="bd-token-new">New token</button>
+      <details class="how"><summary>How to set up the Shortcut</summary>
+        <ol class="tiny">
+          <li>Open <b>Shortcuts</b>, tap <b>+</b>, name it "Scale to Cheat Days".</li>
+          <li>Add <b>Find Health Samples</b>: type <b>Weight</b>, sort by Start Date, Latest First, Limit 1. Then add <b>Get Details of Health Sample</b> → Value. (Set the Weight unit to kg in Health if it isn't.)</li>
+          <li>Repeat for <b>Body Fat Percentage</b> and <b>Lean Body Mass</b>, if your scale records them.</li>
+          <li>Add <b>Get Contents of URL</b>: the link above, Method <b>POST</b>, Request Body <b>JSON</b>, with fields <code>token</code> (your token), <code>weight</code>, <code>fat</code>, <code>lean</code> set to those values.</li>
+          <li>In <b>Automation</b>, add <b>Time of Day</b> (say 9:00, daily), pick this Shortcut, and turn off "Ask before running".</li>
+        </ol>
+      </details>
+    </div>
+  </div>
+
+  <h2 class="section-title">Readings</h2>
+  <ul class="list" id="body-list"></ul>
+  <p class="empty" id="body-empty">No readings yet. Add one above, or connect your scale.</p>
+</section>
+
 <!-- ===================== WORKOUTS ===================== -->
 <section class="view hidden" id="view-workouts">
   <header class="sub-head">
@@ -350,6 +405,11 @@
   </header>
   <div class="card result" id="w-summary"></div>
   <div class="card week-card" id="w-week"></div>
+  <button class="card level-card body-card" data-go="body" id="w-body">
+    <span class="circle green"><svg><use href="#i-scale"/></svg></span>
+    <span class="level-text"><b id="wb-title">Body</b><small id="wb-sub">Weight, body fat, muscle: from your scale or typed in</small></span>
+    <svg class="chev"><use href="#i-chev"/></svg>
+  </button>
 
   <div class="grid2 tight w-actions">
     <button class="btn primary" id="w-start-gym">Start gym session</button>
@@ -723,10 +783,10 @@
   <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=61"></script>
-<script src="foods.js?v=61"></script>
-<script src="supabase-config.js?v=61"></script>
-<script src="cloud.js?v=61"></script>
-<script src="app.js?v=61"></script>
+<script src="presets.js?v=62"></script>
+<script src="foods.js?v=62"></script>
+<script src="supabase-config.js?v=62"></script>
+<script src="cloud.js?v=62"></script>
+<script src="app.js?v=62"></script>
 </body>
 </html>
