@@ -11,7 +11,7 @@ const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers
 const json = (obj: unknown, status = 200) => new Response(JSON.stringify(obj), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
 const BASES: Record<string, string> = { US: "https://smartapi.vesync.com", EU: "https://smartapi.vesync.eu" };
-const APP_VERSION = "5.6.60", CLIENT_VERSION = `VeSync ${APP_VERSION}`, APP_ID = "eldodkfj", CLIENT_TYPE = "vesyncApp";
+const APP_VERSION = "5.9.70", CLIENT_VERSION = `VeSync ${APP_VERSION}`, APP_ID = "eldodkfj", CLIENT_TYPE = "vesyncApp";
 const PHONE_BRAND = "CheatDays", PHONE_OS = "iOS", LANG = "en", TZ = "Australia/Sydney";
 let traceN = 0;
 const traceId = (terminalId: string) => `APP${terminalId.replace(/-/g, "").slice(-4)}${Math.floor(Date.now() / 1000)}-${String(++traceN).padStart(5, "0")}`;
@@ -135,7 +135,7 @@ async function handle(req: Request): Promise<Response> {
 
   if (action === "status") {
     const { data } = await admin.from("vesync_links").select("device_name, region, last_sync, last_count, last_keys").eq("user_id", me.id).maybeSingle();
-    return json({ linked: !!data, ...(data || {}) });
+    return json({ linked: !!data, ...(data || {}) });   // region shown in the app
   }
   if (action === "disconnect") { await admin.from("vesync_links").delete().eq("user_id", me.id); return json({ ok: true }); }
 
@@ -159,10 +159,15 @@ async function handle(req: Request): Promise<Response> {
     const { data: link } = await admin.from("vesync_links").select("*").eq("user_id", me.id).maybeSingle();
     if (!link) return json({ error: "Not linked" }, 400);
     if (!link.device) return json({ error: "No scale found on that VeSync account. Weigh in with the VeSync app once, then reconnect." }, 400);
-    const base = BASES[link.region] || BASES.US, s = { token: link.token, accountId: link.account_id, terminalId: link.terminal_id };
-    let got;
-    try { got = await readings(base, s, link.device); }
-    catch (e) { if ((e as Error).message === "expired") { await admin.from("vesync_links").delete().eq("user_id", me.id); return json({ error: "VeSync signed you out; connect again" }, 401); } return json({ error: (e as Error).message }, 500); }
+    const s = { token: link.token, accountId: link.account_id, terminalId: link.terminal_id };
+    // The account's own server first, then the other one: accounts moved between regions can keep data on either
+    const order = [link.region in BASES ? link.region : "EU", ...Object.keys(BASES).filter((r) => r !== link.region)];
+    let got: any = null; const tried: unknown[] = [];
+    for (const region of order) {
+      try { const g = await readings(BASES[region], s, link.device); tried.push({ [region]: g.raw }); if (g.rows.length) { got = { ...g, from: `${region} · ${g.from}` }; break; } }
+      catch (e) { if ((e as Error).message === "expired" && region === order[0]) { await admin.from("vesync_links").delete().eq("user_id", me.id); return json({ error: "VeSync signed you out; connect again" }, 401); } tried.push({ [region]: (e as Error).message }); }
+    }
+    if (!got) got = { rows: [], from: "none", raw: tried };
     const byDay: Record<string, Record<string, number>> = {};
     for (const row of got.rows) { const day = dayOf(row); if (!day) continue; const m = toMetrics(row); if (!Object.keys(m).length) continue; byDay[day] = { ...(byDay[day] || {}), ...m }; }
     const days = Object.keys(byDay).sort();

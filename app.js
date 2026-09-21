@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "67";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "68";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1486,7 +1486,7 @@ function showVesync(st) {
   $("#bd-form-toggle").classList.toggle("hidden", !vsLinked);
   if (vsLinked && !bdFormOpen) $("#bd-form").classList.add("hidden"); else $("#bd-form").classList.remove("hidden");
   if (!vsLinked) return;
-  $("#vs-device").textContent = st.device_name ? `to ${st.device_name}` : "(no scale found on the account yet)";
+  $("#vs-device").textContent = (st.device_name ? `to ${st.device_name}` : "(no scale found on the account yet)") + (st.region ? ` · ${st.region} server` : "");
   $("#vs-last").textContent = st.last_sync ? `Last sync ${ago(st.last_sync)} · ${st.last_count || 0} reading${st.last_count === 1 ? "" : "s"} on VeSync` : "Not synced yet";
   if (st.last_keys && st.last_keys.length) $("#vs-keys").textContent = st.last_keys.join(", ");
 }
@@ -1500,7 +1500,7 @@ $("#vs-connect").onclick = async () => {
   if (!email || !password) { toast("Email and password, please"); return; }
   busy("Signing in to VeSync…");
   try {
-    const r = await c.vesync("connect", { email, password, country: "AU" });
+    const r = await c.vesync("connect", { email, password, country: $("#vs-country").value || "GB" });
     $("#vs-pass").value = "";
     busy(false);
     if (r.device) toast(`Linked to ${r.device.name || "your scale"}`, 4000);
