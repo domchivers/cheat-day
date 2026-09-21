@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "63";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "64";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1499,10 +1499,58 @@ function drawBody() {
   }
   $("#body-empty").classList.toggle("hidden", rows.length > 0);
 }
+// ---- read a scale app screenshot (or the scale's display) with the AI
+const BODY_SCHEMA = {
+  type: "object",
+  properties: {
+    weight_kg: { type: ["number", "null"], description: "Body weight in kg. Convert from lb (x0.4536) or st/lb if needed" },
+    body_fat_pct: { type: ["number", "null"], description: "Body fat as a percentage, e.g. 18.2" },
+    muscle_kg: { type: ["number", "null"], description: "Muscle mass or skeletal muscle in kg (convert if shown as %: kg = % x weight / 100)" },
+    lean_kg: { type: ["number", "null"], description: "Lean body mass / fat-free mass in kg, if shown" },
+    water_pct: { type: ["number", "null"], description: "Body water as a percentage" },
+    bone_kg: { type: ["number", "null"], description: "Bone mass in kg" },
+    visceral_fat: { type: ["number", "null"], description: "Visceral fat rating/level, a small number like 8" },
+    bmr_kcal: { type: ["number", "null"], description: "Basal metabolic rate in kcal" },
+    metabolic_age: { type: ["number", "null"], description: "Metabolic age in years" },
+    bmi: { type: ["number", "null"] },
+    date: { type: ["string", "null"], description: "The reading's date as YYYY-MM-DD if one is visible, else null" },
+    is_body_reading: { type: "boolean", description: "true only if this really shows body weight / composition figures" },
+    notes: { type: "string" }
+  },
+  required: ["weight_kg", "body_fat_pct", "muscle_kg", "lean_kg", "water_pct", "bone_kg", "visceral_fat", "bmr_kcal", "metabolic_age", "bmi", "date", "is_body_reading", "notes"],
+  additionalProperties: false
+};
+const BODY_PROMPT = `This is a screenshot of a smart-scale app (such as VeSync/Etekcity, Renpho, Withings) or a photo of a scale's display. Read the body measurements off it.
+Report only numbers actually visible; null for anything not shown. Convert units to kg and percentages as described in the schema. If it isn't a body-composition reading at all, set is_body_reading to false.`;
+async function readBodyShot(file) {
+  if (!aiAvailable()) { aiHelp(); return; }
+  busy("Reading the numbers…");
+  try {
+    const img = await loadImage(file);
+    const b64 = drawScaled(img, 1280).toDataURL("image/jpeg", 0.85).split(",")[1];
+    const r = await askAI(BODY_SCHEMA, [{ type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } }, { type: "text", text: BODY_PROMPT }]);
+    busy(false);
+    if (r.is_body_reading === false || (num(r.weight_kg) == null && num(r.body_fat_pct) == null)) { toast("Couldn't see any body readings in that picture", 4000); return; }
+    const map = { weight: r.weight_kg, fat: r.body_fat_pct, muscle: r.muscle_kg, water: r.water_pct, bone: r.bone_kg, visceral: r.visceral_fat, age: r.metabolic_age };
+    let n = 0;
+    for (const [k, v] of Object.entries(map)) { const el = $(`#bd-${k}`); if (el) { el.value = num(v) != null ? String(Math.round(v * 10) / 10) : ""; if (num(v) != null) n++; } }
+    if (r.date && /^\d{4}-\d{2}-\d{2}$/.test(r.date)) $("#bd-date").value = r.date;
+    bodyExtra = { lean: num(r.lean_kg), bmr: num(r.bmr_kcal), bmi: num(r.bmi) };
+    window.scrollTo({ top: $("#bd-date").getBoundingClientRect().top + window.scrollY - 90, behavior: "smooth" });
+    toast(`Read ${n} number${n === 1 ? "" : "s"}. Check them, then Save.`, 4000);
+  } catch (err) { busy(false); toast(err.message || "Couldn't read that", 5000); }
+}
+let bodyExtra = {};
+$("#bd-shot-lib").onclick = () => $("#file-bd-lib").click();
+$("#bd-shot-cam").onclick = () => $("#file-bd-cam").click();
+$("#file-bd-lib").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) readBodyShot(f); });
+$("#file-bd-cam").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) readBodyShot(f); });
 $("#bd-save").onclick = async () => {
   const day = $("#bd-date").value || localDate(), row = { day, updatedAt: new Date().toISOString() };
   let any = false;
   for (const m of BODY_METRICS) { const el = $(`#bd-${m.key}`); if (!el) continue; const v = num(el.value); if (v != null) { row[m.key] = Math.round(v * 10) / 10; any = true; } }
+  for (const [k, v] of Object.entries(bodyExtra)) if (v != null) { row[k] = Math.round(v * 10) / 10; any = true; }
+  bodyExtra = {};
   if (!any) { toast("Type at least one number"); return; }
   upsertBody(row); save(); drawBody();
   for (const m of BODY_METRICS) { const el = $(`#bd-${m.key}`); if (el) el.value = ""; }
