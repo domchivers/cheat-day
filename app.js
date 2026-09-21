@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "65";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "66";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1512,8 +1512,11 @@ async function vesyncSync(quiet) {
     const r = await c.vesync("sync");
     vsSyncAt = Date.now();
     if (!quiet) busy(false);
-    if (r.keys && r.keys.length) $("#vs-keys").textContent = r.keys.join(", ");
-    if (!r.readings) { if (!quiet) toast(`VeSync has no readings yet (tried ${r.from}). Weigh in with the VeSync app first.`, 6000); return; }
+    if (r.keys && r.keys.length) $("#vs-keys").textContent = `Fields: ${r.keys.join(", ")}
+From: ${r.from}
+First row: ${JSON.stringify(r.sample)}`;
+    else $("#vs-keys").textContent = `No rows. VeSync answered: ${JSON.stringify(r.raw || r)}`;
+    if (!r.readings) { if (!quiet) toast(`VeSync returned no readings (tried ${r.from}). Open "What the scale sends" below for its exact reply.`, 7000); const d = $("#vs-linked details"); if (d) d.open = true; return; }
     const changed = await pullBody(true); drawBody(); await vesyncStatus();
     if (!quiet || changed) toast(`${r.readings} reading${r.readings === 1 ? "" : "s"} on VeSync · ${r.days} day${r.days === 1 ? "" : "s"}${r.latest && r.latest.weight ? ` · latest ${r.latest.weight} kg` : ""}`, 4500);
   } catch (e) { if (!quiet) { busy(false); toast("Sync failed: " + e.message, 6000); } if (/connect again|Not linked/.test(e.message)) vesyncStatus(); }
