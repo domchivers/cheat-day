@@ -532,8 +532,9 @@ body[data-view="home"] .view, body[data-view="feed"] .view, body[data-view="work
 #w-ask { margin-top: 14px; }
 
 /* Sending items to friends */
-.send-sheet { padding: 10px 14px 12px; margin: -4px 0 10px; }
-.send-sheet .chips { margin: 0 0 6px; }
+.send-sheet { padding: 10px 14px 12px; margin: -4px 0 10px; text-align: center; }
+.send-sheet .field-title { margin-top: 0; }
+.send-sheet .chips { margin: 8px 0 6px; justify-content: center; }
 .send-sheet .chips button.avatar-chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px 6px 6px; }
 .send-sheet .chips .avatar { width: 28px; height: 28px; font-size: 11px; }
 .inbox-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin-bottom: 10px; border: 2px solid var(--mint); }
