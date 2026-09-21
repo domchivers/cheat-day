@@ -264,8 +264,8 @@ textarea:focus { outline: 2px solid var(--green-2); border-color: transparent; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .toast {
   position: fixed; left: 50%; bottom: calc(24px + var(--safe-bottom)); transform: translateX(-50%);
-  background: #1f2a24; color: #fff; padding: 12px 18px; border-radius: 12px;
-  max-width: 90vw; z-index: 40; box-shadow: 0 8px 24px rgba(0,0,0,.2); font-size: 14px;
+  background: var(--card); color: var(--text); padding: 12px 18px; border-radius: 14px; border: 1.5px solid var(--green-2);
+  max-width: 90vw; z-index: 40; box-shadow: 0 8px 24px rgba(31,42,36,.18); font-size: 14px; font-weight: 600;
 }
 
 /* Friends */
@@ -583,3 +583,14 @@ body[data-view="home"] .view, body[data-view="feed"] .view, body[data-view="work
 .xp-table div { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
 .xp-table div:last-child { border-bottom: 0; }
 .xp-table b { color: var(--peach); }
+
+/* In-app dialog (replaces the browser's confirm and prompt) */
+.dialog { position: fixed; inset: 0; background: rgba(31,42,36,.35); z-index: 50; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.dialog.hidden { display: none; }
+.dialog-card { background: var(--card); border-radius: 20px; padding: 22px 20px 16px; width: 100%; max-width: 340px; box-shadow: 0 16px 40px rgba(31,42,36,.25); animation: pop .18s ease-out; }
+@keyframes pop { from { transform: scale(.94); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.dialog-card p { font-size: 16px; line-height: 1.45; text-align: center; white-space: pre-line; margin: 0 0 14px; }
+.dialog-card input { width: 100%; margin-bottom: 12px; text-align: center; font-size: 18px; }
+.dialog-actions { display: flex; gap: 10px; }
+.dialog-actions .btn { margin: 0; flex: 1; padding: 13px; }
+.dialog-actions .btn.danger { background: var(--coral); color: #fff; }

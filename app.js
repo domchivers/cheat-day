@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "58";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "59";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -50,6 +50,27 @@ const budgetToday = () => state.budget + (state.eatBack ? burnedKcal() : 0);   /
 
 // ---------------------------------------------------------------- helpers
 
+/** An in-app dialog in place of the browser's confirm() and prompt(). Resolves true/false, or the text (null on cancel). */
+function ask(text, opts = {}) {
+  return new Promise((resolve) => {
+    const wrap = $("#ask-dialog"), input = $("#dlg-input");
+    const title = opts.title || (String(text).split("\n")[0].length <= 60 && String(text).includes("\n") ? "" : "");
+    $("#dlg-text").textContent = String(text);
+    $("#dlg-ok").textContent = opts.ok || "OK";
+    $("#dlg-cancel").textContent = opts.cancel || "Cancel";
+    $("#dlg-ok").classList.toggle("danger", /^(delete|remove|discard|decline|dismiss)/i.test(String(text)));
+    input.classList.toggle("hidden", !opts.input);
+    if (opts.input) { input.value = opts.value == null ? "" : String(opts.value); input.type = opts.number ? "number" : "text"; input.inputMode = opts.number ? "numeric" : "text"; }
+    wrap.classList.remove("hidden");
+    const done = (v) => { wrap.classList.add("hidden"); $("#dlg-ok").onclick = $("#dlg-cancel").onclick = null; input.onkeydown = null; resolve(v); };
+    $("#dlg-ok").onclick = () => done(opts.input ? input.value : true);
+    $("#dlg-cancel").onclick = () => done(opts.input ? null : false);
+    wrap.onclick = (e) => { if (e.target === wrap) done(opts.input ? null : false); };
+    if (opts.input) { setTimeout(() => { input.focus(); input.select(); }, 60); input.onkeydown = (e) => { if (e.key === "Enter") done(input.value); }; }
+    else setTimeout(() => $("#dlg-ok").focus(), 60);
+  });
+}
+const askText = (text, value) => ask(text, { input: true, value, ok: "Save", number: typeof value === "number" });
 function toast(msg, ms = 2800) {
   const t = $("#toast");
   t.textContent = msg; t.classList.remove("hidden");
@@ -224,7 +245,7 @@ function itemRow(it) {
     <div class="body"><div class="name">${esc(it.name || "Unnamed")}</div><div class="detail">${esc(shortAmounts(it))}</div></div>
     <div class="kcal">${fmt(it.kcal)}</div>
     <button class="del" aria-label="Remove">✕</button>`;
-  li.querySelector(".del").onclick = (e) => { e.stopPropagation(); if (!confirm(`Remove "${it.name}" from today?`)) return; state.day.items = state.day.items.filter((x) => x.id !== it.id); save(); renderHome(); };
+  li.querySelector(".del").onclick = async (e) => { e.stopPropagation(); if (!await ask(`Remove "${it.name}" from today?`)) return; state.day.items = state.day.items.filter((x) => x.id !== it.id); save(); renderHome(); };
   li.querySelector(".body").onclick = () => { editId = it.id; draft = { ...basisOf(it), note: "" }; openShare(it.kcal); };
   li.style.cursor = "pointer";
   return li;
@@ -265,8 +286,8 @@ function renderQuick() {
       <div class="kcal">${fmt(q.lastKcal)}</div><button class="add" aria-label="Add"><svg><use href="#i-plus"/></svg></button>`;
     li.querySelector(".add").onclick = (e) => { e.stopPropagation(); addToDay(b, q.lastKcal, q.lastShareLabel); toast(`Added ${b.name} · ${fmt(q.lastKcal)} kcal`); };
     li.querySelector(".body").onclick = () => { draft = { ...b, note: "" }; openShare(q.lastKcal); };
-    if (!q.preset && !q.meal) longPress(li, () => {
-      if (confirm(`Remove "${b.name}" from Quick add?`)) { state.recent = state.recent.filter((r) => r.key !== q.key); save(); renderQuick(); }
+    if (!q.preset && !q.meal) longPress(li, async () => {
+      if (await ask(`Remove "${b.name}" from Quick add?`)) { state.recent = state.recent.filter((r) => r.key !== q.key); save(); renderQuick(); }
     });
     list.appendChild(li);
   }
@@ -338,7 +359,7 @@ function renderMeals() {
     li.className = "warn";
     li.innerHTML = `<span class="thumb-sm tone-peach"><svg><use href="#i-meal"/></svg></span><div class="body"><div class="name">${esc(state.mealDraft.name || "Unsaved meal")}</div><div class="detail">Not saved yet · tap to carry on</div></div><button class="del" aria-label="Discard">✕</button>`;
     li.querySelector(".body").onclick = () => { mealDraft = state.mealDraft; go("meal"); };
-    li.querySelector(".del").onclick = (e) => { e.stopPropagation(); if (confirm(`Discard the unsaved "${state.mealDraft.name || "meal"}"?`)) { state.mealDraft = null; mealDraft = null; save(false); renderMeals(); } };
+    li.querySelector(".del").onclick = async (e) => { e.stopPropagation(); if (await ask(`Discard the unsaved "${state.mealDraft.name || "meal"}"?`)) { state.mealDraft = null; mealDraft = null; save(false); renderMeals(); } };
     list.appendChild(li);
   }
   for (const m of state.meals) {
@@ -398,11 +419,11 @@ function renderMeal() {
       actions.innerHTML = `<button data-act="amount" ${it.unresolved ? "disabled" : ""}>Amount</button><button data-act="swap">${it.unresolved ? "Pick it" : "Swap product"}</button><button data-act="remove" class="danger">Remove</button>`;
       li.appendChild(actions);
     }
-    li.onclick = (e) => {
+    li.onclick = async (e) => {
       const act = e.target.closest("[data-act]");
       if (act) {
         e.stopPropagation();
-        if (act.dataset.act === "remove") { if (!confirm(`Remove "${it.name}" from this meal?`)) return; m.items = m.items.filter((x) => x.id !== it.id); openRow = null; mealChanged(); }
+        if (act.dataset.act === "remove") { if (!await ask(`Remove "${it.name}" from this meal?`)) return; m.items = m.items.filter((x) => x.id !== it.id); openRow = null; mealChanged(); }
         if (act.dataset.act === "amount") { pick = { replaceId: it.id }; draft = { ...basisOf(it), note: "" }; openShare(it.kcal); }
         if (act.dataset.act === "swap") { pick = { replaceId: it.id, prefill: it.fromText || it.name }; go("search"); }
         return;
@@ -509,7 +530,7 @@ async function importMealFromLink() {
   let m;
   try { m = await decodeMeal(code); } catch (e) { toast("That meal link didn't open"); return; }
   const t = mealTotals(m), portions = num(m.portions) || 1;
-  if (!confirm(`Add "${m.name}" to your meals?\n\n${m.items.length} ingredients, ${portions} portion${portions === 1 ? "" : "s"}, ${fmt(t.kcal / portions)} kcal each.`)) return;
+  if (!await ask(`Add "${m.name}" to your meals?\n\n${m.items.length} ingredients, ${portions} portion${portions === 1 ? "" : "s"}, ${fmt(t.kcal / portions)} kcal each.`)) return;
   state.meals.unshift({ id: uid(), name: m.name, portions, items: m.items.map((it) => ({ ...it, id: uid() })), steps: m.steps || [], photo: m.photo || null, saved: true, shared: true, updatedAt: new Date().toISOString() });
   save(); toast(`Added ${m.name}`); stack = ["home", "meals"]; show("meals");
 }
@@ -596,15 +617,15 @@ $("#m-post").onclick = () => {
     meal: { name: m.name, portions, items: m.items.map((it) => ({ ...basisOf(it), kcal: it.kcal, grams: it.grams })), steps: m.steps || [] } }, m.photo || null);
 };
 $("#m-use").onclick = () => { const m = state.meals.find((x) => x.id === mealDraft.id) || mealDraft; draft = { ...mealBasis(m), note: "" }; openShare(); };
-function deleteMeal(m) {
-  if (!confirm(`Delete "${m.name}"?
+async function deleteMeal(m) {
+  if (!await ask(`Delete "${m.name}"?
 
 Days it was already added to keep their numbers.`)) return false;
   state.meals = state.meals.filter((x) => x.id !== m.id);
   if (mealDraft && mealDraft.id === m.id) { mealDraft = null; state.mealDraft = null; }
   save(); toast(`Deleted ${m.name}`); return true;
 }
-$("#meal-delete").onclick = () => { if (deleteMeal(mealDraft)) { stack = ["home", "meals"]; show("meals"); } };
+$("#meal-delete").onclick = async () => { if (await deleteMeal(mealDraft)) { stack = ["home", "meals"]; show("meals"); } };
 /** Where a chosen ingredient goes, then back to the editor. */
 function mealTakeIngredient(basis, kcal) {
   const m = mealDraft || state.mealDraft || newMeal(); mealDraft = m;
@@ -744,8 +765,8 @@ $("#btn-update").onclick = async () => {
   } catch (e) { console.warn("update", e); }
   location.replace(location.pathname + "?fresh=" + Date.now());   // bypasses any lingering HTTP cache too
 };
-$("#btn-new-day").onclick = () => {
-  if (state.day.items.length && !confirm("Start a fresh day now? Today's list goes into History.")) return;
+$("#btn-new-day").onclick = async () => {
+  if (state.day.items.length && !await ask("Start a fresh day now? Today's list goes into History.")) return;
   archiveDay();
   state.day = { date: localDate(), items: [], workouts: [] };
   save(); toast("New day started"); home();
@@ -812,13 +833,13 @@ function drawFriends() {
     li.innerHTML = `${avatar(f.requester, personName(f.requester))}<div class="body"><div class="name">${esc(personName(f.requester))}</div><div class="detail">wants to be friends</div></div>
       <button class="add" aria-label="Accept"><svg><use href="#i-plus"/></svg></button><button class="del" aria-label="Decline">✕</button>`;
     li.querySelector(".add").onclick = async () => { try { await c.acceptFriend(f.id); toast(`You and ${personName(f.requester)} are friends`); renderFriends(); } catch (e) { toast(c.explain(e)); } };
-    li.querySelector(".del").onclick = async () => { if (!confirm(`Decline ${personName(f.requester)}'s request?`)) return; try { await c.removeFriend(f.id); renderFriends(); } catch (e) { toast(c.explain(e)); } };
+    li.querySelector(".del").onclick = async () => { if (!await ask(`Decline ${personName(f.requester)}'s request?`)) return; try { await c.removeFriend(f.id); renderFriends(); } catch (e) { toast(c.explain(e)); } };
     pl.appendChild(li);
   }
   for (const f of sent) {
     const li = document.createElement("li");
     li.innerHTML = `${avatar(f.addressee, personName(f.addressee))}<div class="body"><div class="name">${esc(personName(f.addressee))}</div><div class="detail">request sent · waiting for them</div></div><button class="del" aria-label="Cancel">✕</button>`;
-    li.querySelector(".del").onclick = async () => { if (!confirm(`Cancel the request to ${personName(f.addressee)}?`)) return; try { await c.removeFriend(f.id); renderFriends(); } catch (e) { toast(c.explain(e)); } };
+    li.querySelector(".del").onclick = async () => { if (!await ask(`Cancel the request to ${personName(f.addressee)}?`)) return; try { await c.removeFriend(f.id); renderFriends(); } catch (e) { toast(c.explain(e)); } };
     pl.appendChild(li);
   }
   // friends today
@@ -845,7 +866,7 @@ function drawFriends() {
     card.innerHTML = `${avatar(f.uid, personName(f.uid))}<div class="body"><div class="name"><span>${esc(personName(f.uid))}</span>${right}</div>${bar}${items}</div><button class="del" aria-label="Remove friend">✕</button>`;
     const tog = card.querySelector("[data-act=toggle]");
     if (tog) tog.onclick = (e) => { e.stopPropagation(); if (frOpen.has(f.uid)) frOpen.delete(f.uid); else frOpen.add(f.uid); drawFriends(); };
-    card.querySelector(".del").onclick = async () => { if (!confirm(`Remove ${personName(f.uid)} as a friend?`)) return; try { await c.removeFriend(f.id); renderFriends(); } catch (e) { toast(c.explain(e)); } };
+    card.querySelector(".del").onclick = async () => { if (!await ask(`Remove ${personName(f.uid)} as a friend?`)) return; try { await c.removeFriend(f.id); renderFriends(); } catch (e) { toast(c.explain(e)); } };
     fl.appendChild(card);
   }
   $("#fr-empty").classList.toggle("hidden", friends.length > 0);
@@ -875,8 +896,8 @@ function drawFriends() {
     const card = document.createElement("div");
     card.className = "card meal-card";
     card.innerHTML = `<span class="thumb-sm tone-peach"><svg><use href="#i-meal"/></svg></span><div class="body"><div class="name">${esc(m.name)}</div><div class="detail">${m.portions} portion${m.portions == 1 ? "" : "s"} · ${fmt(m.kcal_per_portion)} kcal each · ${(m.items || []).filter((it) => it && !it._steps).length} ingredients</div><div class="by">${avatar(m.owner, personName(m.owner))} ${esc(personName(m.owner))}</div></div><button class="add" aria-label="Copy to my meals"><svg><use href="#i-plus"/></svg></button>`;
-    card.querySelector(".add").onclick = () => {
-      if (state.meals.some((x) => x.copiedFrom === m.id) && !confirm(`You already have "${m.name}". Add another copy?`)) return;
+    card.querySelector(".add").onclick = async () => {
+      if (state.meals.some((x) => x.copiedFrom === m.id) && !await ask(`You already have "${m.name}". Add another copy?`)) return;
       const stepsRow = (m.items || []).find((it) => it && it._steps);
       state.meals.unshift({ id: uid(), name: m.name, portions: +m.portions || 1, items: (m.items || []).filter((it) => it && !it._steps).map((it) => ({ ...it, id: uid() })), steps: stepsRow ? stepsRow._steps : [], saved: true, copiedFrom: m.id, updatedAt: new Date().toISOString() });
       save(); toast(`${m.name} is in your meals`);
@@ -1164,7 +1185,7 @@ function renderChats() {
     const when = new Date(c.when);
     li.innerHTML = `<span class="thumb-sm"><svg><use href="#i-spark"/></svg></span><div class="body"><div class="name">${esc(c.title)}</div><div class="detail">${c.turns.filter((t) => t.role === "me").length} message${c.turns.length === 1 ? "" : "s"} · ${when.toLocaleDateString(undefined, { day: "numeric", month: "short" })} ${when.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</div></div><button class="del" aria-label="Delete chat">✕</button>`;
     li.querySelector(".body").onclick = () => openChat(c);
-    li.querySelector(".del").onclick = (e) => { e.stopPropagation(); if (!confirm(`Delete this chat?`)) return; state.chats = state.chats.filter((x) => x.id !== c.id); if (chatId === c.id) newChat(); save(); renderChats(); };
+    li.querySelector(".del").onclick = async (e) => { e.stopPropagation(); if (!await ask(`Delete this chat?`)) return; state.chats = state.chats.filter((x) => x.id !== c.id); if (chatId === c.id) newChat(); save(); renderChats(); };
     list.appendChild(li);
   }
 }
@@ -1293,8 +1314,8 @@ function renderAssistant(r, image) {
     if (existing) {
       el.querySelector("[data-act=save]").textContent = "Save as a new meal";
       el.querySelector("[data-act=save]").insertAdjacentHTML("beforebegin", `<button class="btn primary" data-act="update">Update "${esc(existing.name)}"</button>`);
-      el.querySelector("[data-act=update]").onclick = (e) => {
-        if (!confirm(`Replace the ingredients of "${existing.name}" with this version?`)) return;
+      el.querySelector("[data-act=update]").onclick = async (e) => {
+        if (!await ask(`Replace the ingredients of "${existing.name}" with this version?`)) return;
         existing.items = items; existing.portions = portions; existing.steps = rc.steps || existing.steps || []; existing.updatedAt = new Date().toISOString();
         save(); e.target.textContent = "Updated"; e.target.disabled = true; toast(`${existing.name} updated`);
       };
@@ -1497,8 +1518,8 @@ function renderGoals() {
     const row = document.createElement("div"); row.className = `card goal-row ${!off && !na && have >= target ? "done" : ""}`;
     row.innerHTML = `<span class="circle ${def.tone}"><svg><use href="#i-${def.icon}"/></svg></span><div class="body"><div class="name">${def.name}</div><div class="prog">${na ? "Set a protein goal on the Daily budget screen first" : off ? "Off" : `${have} of ${target} · ${def.sub(target)}${have >= target ? " · done ✓" : ""}`}</div>${!off && !na ? `<span class="bar"><span style="width:${Math.min(100, have / target * 100)}%"></span></span>` : ""}</div>
       ${!na ? `<div class="count">${off ? "Off" : `${have}<small>/${target}</small>`}</div>` : ""}<svg class="chev"><use href="#i-chev"/></svg>`;
-    if (!na) row.onclick = () => {
-      const v = prompt(`${def.name}: how many ${def.key === "workouts" ? "workouts" : "days"} a week? (1 to ${def.max}, or 0 to switch it off)`, target);
+    if (!na) row.onclick = async () => {
+      const v = await askText(`${def.name}: how many ${def.key === "workouts" ? "workouts" : "days"} a week? (1 to ${def.max}, or 0 to switch it off)`, target);
       if (v == null) return;
       const n = parseInt(v, 10); if (!isFinite(n) || n < 0 || n > def.max) { toast(`Pick a number from 0 to ${def.max}`); return; }
       g[def.key] = n; save(); renderGoals();
@@ -1571,7 +1592,7 @@ function drawInbox() {
     card.innerHTML = `${x.photo ? `<img class="thumb-sm" src="${esc(x.photo)}" alt="">` : `<span class="thumb-sm"><svg><use href="#i-send"/></svg></span>`}<div class="body"><div class="from">${esc(personName(x.from_user))} sent you</div><div class="name">${esc(x.name)}</div><div class="detail">${x.grams != null ? `${x.grams} ${x.unit || "g"} · ` : ""}${fmt(x.kcal)} kcal</div></div><button class="add" aria-label="Add to today"><svg><use href="#i-plus"/></svg></button><button class="dismiss" aria-label="Dismiss">✕</button>`;
     const settle = async (status) => { inbox = inbox.filter((y) => y.id !== x.id); drawInbox(); try { await window.cloud.settleSend(x.id, status); } catch (e) {} };
     card.querySelector(".add").onclick = () => { draft = { ...(x.payload || { name: x.name, kcalPerServing: x.kcal, unitLabel: "portion" }), photo: x.photo || null, note: "" }; if (!draft.name) draft.name = x.name; settle("added"); openShare(x.kcal); };
-    card.querySelector(".dismiss").onclick = () => { if (!confirm(`Dismiss ${x.name} from ${personName(x.from_user)}?`)) return; settle("dismissed"); };
+    card.querySelector(".dismiss").onclick = async () => { if (!await ask(`Dismiss ${x.name} from ${personName(x.from_user)}?`)) return; settle("dismissed"); };
     box.appendChild(card);
   }
 }
@@ -1693,14 +1714,14 @@ function drawFeed() {
           <div class="chat">${avatar(me, feedName(me))}<input type="text" placeholder="Add a comment…" maxlength="300" autocapitalize="sentences"><button class="btn primary slim" data-act="comment">Post</button></div></div>
       </div>`;
     const delBtn = card.querySelector(".who .more");
-    if (delBtn) delBtn.onclick = async () => { if (!confirm("Delete this post?")) return; try { await c.deletePost(p.id); renderFeed(); } catch (e) { toast(c.explain(e)); } };
+    if (delBtn) delBtn.onclick = async () => { if (!await ask("Delete this post?")) return; try { await c.deletePost(p.id); renderFeed(); } catch (e) { toast(c.explain(e)); } };
     const va = card.querySelector(".view-all"); if (va) va.onclick = () => { openComments.add(p.id); drawFeed(); };
-    card.querySelector("[data-act=repost]").onclick = () => {
+    card.querySelector("[data-act=repost]").onclick = async () => {
       if (meal) {
         const m = p.payload || {};
         state.meals.unshift({ id: uid(), name: m.name || p.name, portions: +m.portions || 1, items: (m.items || []).map((it) => ({ ...it, id: uid() })), steps: m.steps || [], saved: true, copiedFrom: "post:" + p.id, updatedAt: new Date().toISOString() });
         save(); toast(`${p.name} saved to your meals`);
-        if (confirm("Share it on to your friends with your own caption?")) openCompose({ kind: "meal", name: p.name, kcal: p.kcal, portions: n, p: p.macros && p.macros.p, c: p.macros && p.macros.c, f: p.macros && p.macros.f, meal: m }, p.photo || null);
+        if (await ask("Share it on to your friends with your own caption?")) openCompose({ kind: "meal", name: p.name, kcal: p.kcal, portions: n, p: p.macros && p.macros.p, c: p.macros && p.macros.c, f: p.macros && p.macros.f, meal: m }, p.photo || null);
       } else {
         draft = { ...(p.payload || { name: p.name, kcalPerServing: p.kcal, unitLabel: "portion" }), note: "" };
         openShare(p.kcal);
@@ -1715,7 +1736,7 @@ function drawFeed() {
     const input = card.querySelector(".chat input"), send = card.querySelector("[data-act=comment]");
     const doComment = async () => { const t = input.value.trim(); if (!t) return; try { const rows = await c.comment(p.id, t); feed.comments.push((rows && rows[0]) || { id: uid(), post_id: p.id, user_id: me, text: t, created_at: new Date().toISOString() }); openComments.add(p.id); drawFeed(); } catch (err) { toast(c.explain(err)); } };
     send.onclick = doComment; input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.target.blur(); doComment(); } });
-    card.querySelectorAll("[data-comment]").forEach((b) => b.onclick = async () => { if (!confirm("Delete your comment?")) return; try { await c.deleteComment(b.dataset.comment); feed.comments = feed.comments.filter((x) => String(x.id) !== String(b.dataset.comment)); drawFeed(); } catch (err) { toast(c.explain(err)); } });
+    card.querySelectorAll("[data-comment]").forEach((b) => b.onclick = async () => { if (!await ask("Delete your comment?")) return; try { await c.deleteComment(b.dataset.comment); feed.comments = feed.comments.filter((x) => String(x.id) !== String(b.dataset.comment)); drawFeed(); } catch (err) { toast(c.explain(err)); } });
     list.appendChild(card);
   }
 }
@@ -1782,7 +1803,7 @@ function renderWorkouts() {
     const li = document.createElement("li");
     const lifts = (w.lifts || []).map((l) => `${l.exercise} ${l.sets}×${l.reps}${l.kg ? ` @ ${l.kg} kg` : ""}`).join(" · ");
     li.innerHTML = `<span class="thumb-sm tone-coral"><svg><use href="#i-dumbbell"/></svg></span><div class="body"><div class="name">${esc(w.name)}</div><div class="detail">${w.minutes} min · ${w.effort}${lifts ? `<div class="w-lifts">${esc(lifts)}</div>` : ""}</div></div><div class="kcal">${fmt(w.kcal)}</div><button class="del" aria-label="Remove">✕</button>`;
-    li.querySelector(".del").onclick = () => { if (!confirm(`Remove "${w.name}"?`)) return; state.day.workouts = ws.filter((x) => x.id !== w.id); save(); renderWorkouts(); };
+    li.querySelector(".del").onclick = async () => { if (!await ask(`Remove "${w.name}"?`)) return; state.day.workouts = ws.filter((x) => x.id !== w.id); save(); renderWorkouts(); };
     list.appendChild(li);
   }
   $("#w-empty").classList.toggle("hidden", ws.length > 0);
@@ -1790,7 +1811,7 @@ function renderWorkouts() {
   const rl = $("#w-routines"); rl.innerHTML = "";
   for (const r of state.routines) {
     const b = document.createElement("button"); b.textContent = `▶ ${r.name}`; b.title = "Tap to start, hold to remove";
-    let t; b.onpointerdown = () => { t = setTimeout(() => { t = null; if (confirm(`Remove the routine "${r.name}"?`)) { state.routines = state.routines.filter((x) => x.id !== r.id); save(); renderWorkouts(); } }, 600); };
+    let t; b.onpointerdown = () => { t = setTimeout(async () => { t = null; if (await ask(`Remove the routine "${r.name}"?`)) { state.routines = state.routines.filter((x) => x.id !== r.id); save(); renderWorkouts(); } }, 600); };
     const clear = () => { if (t) { clearTimeout(t); t = null; } };
     b.onpointerup = () => { if (t) { clear(); startSession(r); } }; b.onpointerleave = clear; b.onpointercancel = clear; b.oncontextmenu = (e) => e.preventDefault();
     rl.appendChild(b);
@@ -1868,9 +1889,9 @@ $("#w-save-routine").onclick = () => {
   const lifts = wLifts.filter((l) => (l.exercise || "").trim()).map((l) => ({ exercise: l.exercise.trim(), sets: l.sets || 3, reps: l.reps || 8, kg: l.kg || 0 }));
   saveRoutine($("#w-name").value.trim(), lifts);
 };
-function saveRoutine(suggested, exercises) {
+async function saveRoutine(suggested, exercises) {
   if (!exercises.length) { toast("Add some exercises first"); return; }
-  const name = prompt("Name this routine", suggested || "Gym day"); if (!name) return;
+  const name = await askText("Name this routine", suggested || "Gym day"); if (!name) return;
   const id = uid();
   state.routines = [{ id, name: name.trim(), exercises }].concat(state.routines.filter((r) => r.name.toLowerCase() !== name.trim().toLowerCase())).slice(0, 12);
   save(); toast(`Saved "${name.trim()}"`); if (stack[stack.length - 1] === "workouts") renderWorkouts();
@@ -1922,7 +1943,7 @@ function renderSession() {
       <button class="add-set">＋ set</button>`;
     const nameIn = div.querySelector(".ex-head input");
     nameIn.onchange = () => { ex.exercise = nameIn.value.trim(); const k = lastFor(ex.exercise); if (k) ex.sets.forEach((st) => { if (!st.done) { st.reps = k.reps; st.kg = k.kg; } }); save(false); renderSession(); };
-    div.querySelector(".ex-head .del").onclick = () => { if (ex.sets.some((st) => st.done) && !confirm(`Remove ${ex.exercise || "this exercise"} from the session?`)) return; ss.exercises.splice(i, 1); save(false); renderSession(); };
+    div.querySelector(".ex-head .del").onclick = async () => { if (ex.sets.some((st) => st.done) && !await ask(`Remove ${ex.exercise || "this exercise"} from the session?`)) return; ss.exercises.splice(i, 1); save(false); renderSession(); };
     div.querySelectorAll(".ws-set").forEach((row) => {
       const st = ex.sets[+row.dataset.j], [reps, kg] = row.querySelectorAll("input");
       reps.oninput = () => { st.reps = num(reps.value) || 0; save(false); sessionVolume(); }; kg.oninput = () => { st.kg = nz(kg.value) || 0; save(false); sessionVolume(); };
@@ -1944,8 +1965,8 @@ function sessionVolume() {
 $("#ws-name").addEventListener("input", (e) => { if (state.session) { state.session.name = e.target.value; save(false); } });
 $("#ws-add").onclick = () => { const ss = state.session; if (!ss) return; ss.exercises.push(sessionExercise("", null)); save(false); renderSession(); setTimeout(() => { const ins = $$("#ws-exercises .ex-head input"); ins[ins.length - 1].focus(); }, 50); };
 $("#ws-rest-skip").onclick = () => { if (state.session) { state.session.restUntil = null; save(false); $("#ws-rest").classList.add("hidden"); } };
-$("#ws-discard").onclick = () => { if (!confirm("Discard this session? Nothing will be logged.")) return; state.session = null; save(); renderWorkouts(); };
-$("#ws-finish").onclick = () => {
+$("#ws-discard").onclick = async () => { if (!await ask("Discard this session? Nothing will be logged.")) return; state.session = null; save(); renderWorkouts(); };
+$("#ws-finish").onclick = async () => {
   const ss = state.session; if (!ss) return;
   const lifts = [];
   for (const ex of ss.exercises) {
@@ -1956,13 +1977,13 @@ $("#ws-finish").onclick = () => {
     lifts.push({ exercise: ex.exercise.trim(), sets: sets.length, reps, kg, detail: sets.map((s) => ({ reps: s.reps || 0, kg: s.kg || 0 })) });
   }
   const minutes = Math.max(1, Math.round((Date.now() - ss.startedAt) / 60000));
-  if (!lifts.length && !confirm(`Finish an empty ${minutes} min session?`)) return;
+  if (!lifts.length && !await ask(`Finish an empty ${minutes} min session?`)) return;
   const name = (ss.name || "").trim() || (ss.routineId && (state.routines.find((r) => r.id === ss.routineId) || {}).name) || "Gym session";
   const routineId = ss.routineId;
   state.session = null;
   logWorkout({ type: "Gym weights", name, minutes, effort: "moderate", lifts });
   toast(`Logged ${name}: ${minutes} min`);
-  if (lifts.length && !routineId) setTimeout(() => { if (confirm("Save this session as a routine, to start again next time?")) saveRoutine(name, lifts.map((l) => ({ exercise: l.exercise, sets: l.sets, reps: l.reps, kg: l.kg }))); }, 500);
+  if (lifts.length && !routineId) setTimeout(async () => { if (await ask("Save this session as a routine, to start again next time?")) saveRoutine(name, lifts.map((l) => ({ exercise: l.exercise, sets: l.sets, reps: l.reps, kg: l.kg }))); }, 500);
 };
 
 // ---- one exercise: best set, estimated 1RM, a chart of the last sessions
@@ -2795,10 +2816,10 @@ function setAmount(value, field) {
 $("#a-kcal").addEventListener("input", (e) => setAmount(e.target.value, "kcal"));
 $("#a-grams").addEventListener("input", (e) => setAmount(e.target.value, "grams"));
 $("#a-count").addEventListener("input", (e) => setAmount(e.target.value, "count"));
-$("#share-rest").onclick = () => {
+$("#share-rest").onclick = async () => {
   const left = Math.max(0, budgetToday() - usedKcal());
   if (!left) { toast("Nothing left in today's budget"); return; }
-  if (!confirm(`Set this to ${fmt(left)} kcal, all that's left of today's budget?`)) return;
+  if (!await ask(`Set this to ${fmt(left)} kcal, all that's left of today's budget?`)) return;
   setAmount(left, "kcal");
 };
 $("#share-reset").onclick = () => { amountKcal = null; fillAmounts(null); };
