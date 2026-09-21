@@ -133,14 +133,6 @@
     async saveBodyRow(row) { return this.rest(`/rest/v1/body_metrics?on_conflict=user_id,day`, { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify([{ user_id: this.uid, ...row, updated_at: new Date().toISOString() }]) }); },
     async importToken() { const rows = await this.rest(`/rest/v1/import_tokens?user_id=eq.${this.uid}&select=token`); return rows[0] ? rows[0].token : null; },
     async setImportToken(token) { return this.rest(`/rest/v1/import_tokens?on_conflict=user_id`, { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify([{ user_id: this.uid, token }]) }); },
-    // ---- the VeSync (Etekcity) link, handled by the "vesync" edge function
-    async vesync(action, payload = {}) {
-      const r = await this.rawFetch(`${SUPABASE_URL}/functions/v1/vesync`, { method: "POST", headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY }, body: JSON.stringify({ action, ...payload }) });
-      let data = null; try { data = await r.json(); } catch (e) {}
-      if (r.status === 404) { const e = new Error("The vesync function isn't deployed yet"); e.missing = true; throw e; }
-      if (!r.ok) throw new Error((data && (data.error || data.message)) || `HTTP ${r.status}`);
-      return data;
-    },
     // ---- sending an item to a friend so they can add it with one tap
     async inbox() { return this.rest(`/rest/v1/sends?to_user=eq.${this.uid}&status=eq.new&select=*&order=created_at.desc&limit=20`); },
     async sendItem(toUser, item) { return this.rest(`/rest/v1/sends`, { method: "POST", body: JSON.stringify([{ from_user: this.uid, to_user: toUser, ...item }]) }); },

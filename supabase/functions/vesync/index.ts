@@ -1,3 +1,4 @@
+// PARKED (v70): not used by the app. VeSync returned no readings for the ESF-551; kept for reference.
 // Cheat Days <-> VeSync (Etekcity) link. Signed-in users connect their VeSync account once; this function logs in with
 // the same protocol the VeSync app uses (unofficial: the same one pyvesync / Home Assistant use), keeps ONLY the session
 // token (never the password), finds the scale, and on "sync" pulls the readings into body_metrics.

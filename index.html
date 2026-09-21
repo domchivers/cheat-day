@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=69">
-  <link rel="icon" href="icons/icon-192.png?v=69">
-  <link rel="stylesheet" href="styles.css?v=69">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=70">
+  <link rel="icon" href="icons/icon-192.png?v=70">
+  <link rel="stylesheet" href="styles.css?v=70">
 </head>
 <body>
 
@@ -367,36 +367,7 @@
   </button>
   <input type="file" accept=".csv,.xlsx,.xls,.txt,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" id="file-bd-import" hidden>
 
-  <h2 class="section-title" id="vs-title">Your scale</h2>
-  <div class="card form-card" id="vs-card">
-    <div id="vs-form">
-      <p class="muted">Sign in with your VeSync email and password. The password isn't kept, only the session. Every weigh-in that reaches VeSync then shows up here.</p>
-      <label>VeSync email <input type="email" id="vs-email" autocomplete="username" inputmode="email"></label>
-      <label>VeSync password <input type="password" id="vs-pass" autocomplete="current-password"></label>
-      <label>Where the VeSync account was set up
-        <select id="vs-country">
-          <option value="GB">UK</option>
-          <option value="DE">Europe</option>
-          <option value="AU">Australia / NZ</option>
-          <option value="US">USA</option>
-          <option value="CA">Canada</option>
-        </select>
-      </label>
-      <button class="btn primary" id="vs-connect">Link account</button>
-      <p class="muted tiny">Unofficial: it talks to VeSync the way their app does. If Etekcity ever changes that, readings just stop; nothing else is affected.</p>
-    </div>
-    <div id="vs-linked" class="hidden">
-      <div class="linked-row"><span class="circle green"><svg><use href="#i-scale"/></svg></span><div><b>Linked</b> <span id="vs-device"></span><div class="muted tiny" id="vs-last"></div></div></div>
-      <div class="grid2 tight">
-        <button class="btn primary" id="vs-sync">Sync now</button>
-        <button class="btn ghost" id="vs-unlink">Unlink</button>
-      </div>
-      <details class="how"><summary>What the scale sends</summary><p class="muted tiny" id="vs-keys">Sync once to see.</p></details>
-    </div>
-  </div>
-
   <h2 class="section-title">Add a reading</h2>
-  <button class="card prompt-card hidden" id="bd-form-toggle"><span class="circle sand"><svg><use href="#i-pen"/></svg></span><span class="prompt-text">Type a reading in</span><svg class="chev"><use href="#i-chev"/></svg></button>
   <div id="bd-form">
   <div class="card form-card">
     <div class="grid2 tight">
@@ -827,10 +798,10 @@
   <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=69"></script>
-<script src="foods.js?v=69"></script>
-<script src="supabase-config.js?v=69"></script>
-<script src="cloud.js?v=69"></script>
-<script src="app.js?v=69"></script>
+<script src="presets.js?v=70"></script>
+<script src="foods.js?v=70"></script>
+<script src="supabase-config.js?v=70"></script>
+<script src="cloud.js?v=70"></script>
+<script src="app.js?v=70"></script>
 </body>
 </html>

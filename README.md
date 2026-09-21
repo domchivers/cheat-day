@@ -259,31 +259,12 @@ export data), then "Upload exported data" on the Body screen takes the CSV or
 Excel file, finds the columns by name (asking the AI if the names are unusual)
 and brings in every day, keeping the last weigh-in of each day.
 
-**Link an Etekcity / VeSync account.** The Body screen's "Link your Etekcity
-account" signs in to VeSync with the app's own (unofficial) protocol via the
-`vesync` Edge Function, keeps only the session token, finds the scale and pulls
-every reading into `body_metrics` on "Sync now" (and quietly when the Body
-screen opens, at most every 6 hours). Unofficial, so it may stop if Etekcity
-changes things. Setup: the SQL below, then deploy
-`supabase/functions/vesync/index.ts` as `vesync` with Verify JWT **on**.
-
-```sql
-create table if not exists public.vesync_links (
-  user_id uuid primary key references auth.users(id) on delete cascade,
-  region text not null default 'US',
-  token text not null,
-  account_id text not null,
-  terminal_id text not null,
-  device jsonb,
-  device_name text,
-  last_sync timestamptz,
-  last_count integer,
-  last_keys jsonb,
-  updated_at timestamptz not null default now()
-);
-alter table public.vesync_links enable row level security;
--- no policies on purpose: only the edge function (service role) reads or writes it
-```
+**Etekcity / VeSync account link (parked).** Removed from the app in v70: VeSync's
+cloud returns no readings for the ESF-551 through any call we could find, and the
+app pins its certificates so the real call can't be observed. The edge function
+is kept in `supabase/functions/vesync/` in case that changes. To clean up a
+deployment: delete the `vesync` Edge Function and run `drop table if exists
+public.vesync_links;` (it holds VeSync session tokens).
 
 **Connect a scale (iPhone).** Scales like Etekcity write to Apple Health. The
 Body screen gives you a private link (your token is in it); a two-action iPhone

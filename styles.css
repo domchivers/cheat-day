@@ -613,15 +613,9 @@ body[data-view="home"] .view, body[data-view="feed"] .view, body[data-view="work
 .how li { margin-bottom: 6px; line-height: 1.4; }
 .how code { background: var(--bg); padding: 1px 5px; border-radius: 6px; }
 #bd-url, #bd-token-value { font-size: 13px; }
-#vs-keys { white-space: pre-wrap; word-break: break-all; }
-.linked-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-.linked-row .circle { width: 40px; height: 40px; flex: none; }
 .apple-health { margin: 14px 0 4px; }
 .apple-health > summary { padding: 6px 2px; }
 .apple-health .card { margin-top: 8px; }
-#bd-form-toggle { margin-bottom: 12px; }
-#bd-form-toggle .prompt-text { background: transparent; padding: 0; color: var(--text); font-weight: 600; }
-#bd-form-toggle .chev { width: 18px; height: 18px; color: var(--muted); }
 .shot-card { margin-top: 12px; border: 2px solid var(--mint); }
 .shot-card .circle { background: var(--mint); color: var(--green); }
 .shot-card b { font-size: 16px; }
