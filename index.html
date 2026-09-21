@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=50">
-  <link rel="icon" href="icons/icon-192.png?v=50">
-  <link rel="stylesheet" href="styles.css?v=50">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=51">
+  <link rel="icon" href="icons/icon-192.png?v=51">
+  <link rel="stylesheet" href="styles.css?v=51">
 </head>
 <body>
 
@@ -36,6 +36,8 @@
   <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
   <symbol id="i-off" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="currentColor"/><path d="M8 13c1.5 2 6.5 2 8 0M9 10h.01M15 10h.01" stroke="#fff" stroke-width="1.8" stroke-linecap="round" fill="none"/></symbol>
+  <symbol id="i-repost" viewBox="0 0 24 24"><path d="M4 10.5V8a3 3 0 0 1 3-3h10M17 5l-2.5-2.5M17 5l-2.5 2.5M20 13.5V16a3 3 0 0 1-3 3H7M7 19l2.5 2.5M7 19l2.5-2.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="18" cy="12" r="1.8" fill="currentColor"/></symbol>
   <symbol id="i-image" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 16l5-5 4 4 3-3 4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
 </svg>
 
@@ -274,7 +276,7 @@
     <button class="btn primary" data-go="settings">Go to Settings</button>
   </div>
   <div id="feed-body" class="hidden">
-    <button class="card prompt-card" id="feed-prompt"><span id="feed-me-avatar"></span><span class="prompt-text">Share what you're having…</span><span class="prompt-cam">📷</span></button>
+    <button class="card prompt-card" id="feed-prompt"><span id="feed-me-avatar"></span><span class="prompt-text">Share what you're having…</span><span class="prompt-cam circle green"><svg><use href="#i-camera"/></svg></span></button>
     <div class="card picker hidden" id="feed-picker">
       <div class="field-title">From today</div>
       <ul class="list plain" id="feed-pick-today"></ul>
@@ -284,7 +286,7 @@
       <p class="muted tiny hidden" id="feed-pick-meals-empty">No saved meals yet.</p>
     </div>
     <div id="feed-list"></div>
-    <div class="empty-state hidden" id="feed-empty"><span class="big">🍽️</span><b>Nothing here yet</b><span>Post what you're having and your friends will see it here. Their posts show up too.</span></div>
+    <div class="empty-state hidden" id="feed-empty"><span class="circle green big"><svg><use href="#i-feed"/></svg></span><b>Nothing here yet</b><span>Post what you're having and your friends will see it here. Their posts show up too.</span></div>
   </div>
 </section>
 
@@ -297,10 +299,10 @@
   <div class="card compose">
     <button class="compose-media" id="compose-media">
       <img id="compose-photo" alt="" class="hidden">
-      <span class="compose-hint" id="compose-hint"><span class="big">📷</span><b>Add a photo</b><span>Tap to snap one, or choose from your photos below</span></span>
+      <span class="compose-hint" id="compose-hint"><span class="circle green big"><svg><use href="#i-camera"/></svg></span><b>Add a photo</b><span>Tap to snap one, or choose from your photos below</span></span>
     </button>
     <div class="compose-tools">
-      <button class="btn mint slim" id="compose-cam">📷 Snap a pic</button>
+      <button class="btn mint slim icon-text" id="compose-cam"><svg><use href="#i-camera"/></svg><span>Snap a pic</span></button>
       <button class="btn mint slim" id="compose-lib">From photos</button>
       <button class="btn ghost slim hidden" id="compose-remove">Remove</button>
     </div>
@@ -680,10 +682,10 @@
   <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=50"></script>
-<script src="foods.js?v=50"></script>
-<script src="supabase-config.js?v=50"></script>
-<script src="cloud.js?v=50"></script>
-<script src="app.js?v=50"></script>
+<script src="presets.js?v=51"></script>
+<script src="foods.js?v=51"></script>
+<script src="supabase-config.js?v=51"></script>
+<script src="cloud.js?v=51"></script>
+<script src="app.js?v=51"></script>
 </body>
 </html>

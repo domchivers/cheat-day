@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "50";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "51";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1407,7 +1407,7 @@ function showComposePhoto() {
   img.classList.toggle("hidden", !has); if (has) img.src = composePhoto;
   $("#compose-hint").classList.toggle("hidden", has);
   $("#compose-remove").classList.toggle("hidden", !has);
-  $("#compose-cam").textContent = has ? "📷 Retake" : "📷 Snap a pic";
+  $("#compose-cam").querySelector("span").textContent = has ? "Retake" : "Snap a pic";
 }
 $("#compose-media").onclick = () => $("#file-compose-cam").click();
 async function composeAttach(file) { try { composePhoto = await thumbFromBig(file); showComposePhoto(); } catch (e) { toast("Couldn't read that photo"); } }
@@ -1490,13 +1490,13 @@ function drawFeed() {
     const cm = feed.comments.filter((x) => x.post_id === p.id);
     const showAll = openComments.has(p.id) || cm.length <= 2, shown = showAll ? cm : cm.slice(-2);
     const mac = p.macros && p.macros.p != null ? `<div class="pills"><span>P ${p.macros.p} g</span><span>C ${p.macros.c} g</span><span>F ${p.macros.f} g</span></div>` : "";
-    card.innerHTML = `<div class="who">${avatar(p.owner, feedName(p.owner))}<div><div class="name">${esc(who)}</div><div class="when">${ago(p.created_at)}${meal ? " · shared a meal" : ""}</div></div>${mine ? `<button class="more" aria-label="Delete post">⋯</button>` : ""}</div>
+    card.innerHTML = `<div class="who">${avatar(p.owner, feedName(p.owner))}<div><div class="name">${esc(who)}</div><div class="when">${ago(p.created_at)}${meal ? " · shared a meal" : ""}</div></div>${mine ? `<button class="more" aria-label="Delete post"><svg><use href="#i-more"/></svg></button>` : ""}</div>
       ${p.photo ? `<div class="media"><img src="${esc(p.photo)}" alt=""></div>` : `<div class="media none ${meal ? "meal" : ""}"><svg><use href="#i-${meal ? "meal" : "search"}"/></svg>${esc(p.name)}</div>`}
       <div class="body">
         ${p.caption ? `<div class="caption"><b>${esc(who)}</b>${esc(p.caption)}</div>` : ""}
         <div class="dish"><span class="thumb-sm ${meal ? "tone-peach" : ""}"><svg><use href="#i-${meal ? "meal" : "search"}"/></svg></span><div class="dish-main"><span class="dish-name">${esc(p.name)}</span><span class="dish-amt">${amt}</span></div><div class="dish-kcal">${fmt(p.kcal)}<small>kcal</small></div></div>
         ${mac}
-        <div class="actions"><div class="reacts">${REACTS.map((e) => { const k = rx.filter((r) => r.emoji === e).length, on = rx.some((r) => r.emoji === e && r.user_id === me); return `<button data-emoji="${e}" class="${on ? "on" : ""}" aria-label="React ${e}">${e}${k ? `<small>${k}</small>` : ""}</button>`; }).join("")}</div><button class="repost" data-act="repost">${meal ? "↻ Save meal" : "↻ Add to my day"}</button></div>
+        <div class="actions"><div class="reacts">${REACTS.map((e) => { const k = rx.filter((r) => r.emoji === e).length, on = rx.some((r) => r.emoji === e && r.user_id === me); return `<button data-emoji="${e}" class="${on ? "on" : ""}" aria-label="React ${e}">${e}${k ? `<small>${k}</small>` : ""}</button>`; }).join("")}</div><button class="repost" data-act="repost"><svg><use href="#i-repost"/></svg>${meal ? "Save meal" : "Add to my day"}</button></div>
         <div class="comments">${!showAll ? `<button class="view-all">View all ${cm.length} comments</button>` : ""}${shown.map((x) => `<div class="comment">${avatar(x.user_id, feedName(x.user_id))}<span><b>${esc(x.user_id === me ? "You" : feedName(x.user_id))}</b>${esc(x.text)}</span>${x.user_id === me ? `<button class="del" data-comment="${x.id}" aria-label="Delete">✕</button>` : ""}</div>`).join("")}
           <div class="chat">${avatar(me, feedName(me))}<input type="text" placeholder="Add a comment…" maxlength="300" autocapitalize="sentences"><button class="btn primary slim" data-act="comment">Post</button></div></div>
       </div>`;
