@@ -392,6 +392,15 @@ weekly goals; it is worked out from your history, so nothing double counts.
 **Badges** unlock for firsts, streaks, workout and PB counts, and posts, with a
 toast when one lands.
 
+## Achievements, rest days and cooking from the fridge
+
+About 70 achievements across logging, budget, nutrition, workouts, body, social
+and levels, most in tiers (7, 14, 30, 100 days…). Locked ones show progress.
+The logging streak allows one free **rest day** a week, so a single missed day
+doesn't reset it (two in a row still do). In the Assistant, **Cook from my
+fridge** takes a photo of the fridge or cupboard and suggests a recipe from what
+it can see, sized to what's left of the day, to save as a meal.
+
 ## Send to a friend
 
 Ate the same thing as someone? On the How much? screen, **Send to a friend**

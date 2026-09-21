@@ -719,3 +719,13 @@ body.simple .tabbar { grid-template-columns: repeat(3, 1fr); padding-top: 8px; }
 body.simple .tabbar button { font-size: 14px; }
 body.simple .tabbar button svg { width: 30px; height: 30px; }
 body.simple[data-view="home"] .view, body.simple[data-view="feed"] .view, body.simple[data-view="friends"] .view { padding-bottom: calc(96px + var(--safe-bottom)); }
+/* Achievements */
+.section-title .count { text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--green); margin-left: 6px; }
+.badge-group { margin-bottom: 14px; }
+.badge-group h3 { font-size: 14px; margin: 0 0 8px; color: var(--text); display: flex; justify-content: space-between; }
+.badge-group h3 small { color: var(--muted); font-weight: 600; }
+.badge-group .badges { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.badge .prog { width: 80%; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; margin-top: 3px; }
+.badge .prog span { display: block; height: 100%; background: var(--peach); }
+.badge.locked .prog span { background: var(--muted); }
+.level-hero .streaks span.rest { color: var(--muted); font-weight: 600; }

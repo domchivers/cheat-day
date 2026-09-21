@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "77";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "78";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -858,6 +858,7 @@ function drawFriends() {
   }
   // friends today
   const friends = fr.friendships.filter((f) => f.status === "accepted").map((f) => ({ id: f.id, uid: f.requester === me ? f.addressee : f.requester }));
+  if (state.friendCount !== friends.length) { state.friendCount = friends.length; save(); checkBadges(); }
   const today = localDate();
   const fl = $("#fr-list"); fl.innerHTML = "";
   
@@ -1218,7 +1219,14 @@ function showAskPreview() {
   wrap.classList.remove("hidden");
   $("#ask-text").placeholder = askFiles.length > 1 ? "What are they? e.g. the dish, the menu, what I left" : "What is it, and how much?";
 }
-function addAskFiles(list) { for (const f of list) if (askFiles.length < 5) askFiles.push(f); showAskPreview(); setTimeout(() => $("#ask-text").focus(), 100); }
+let askFridge = false;
+const FRIDGE_ASK = "This is my fridge / cupboard. What can I cook from what you can see, that fits what I have left today?";
+function addAskFiles(list) {
+  for (const f of list) if (askFiles.length < 5) askFiles.push(f);
+  showAskPreview();
+  if (askFridge) { askFridge = false; if (!$("#ask-text").value.trim()) $("#ask-text").value = FRIDGE_ASK; }
+  setTimeout(() => $("#ask-text").focus(), 100);
+}
 function bubble(role, html) {
   const el = document.createElement("div");
   el.className = `bubble ${role}`; el.innerHTML = html;
@@ -1237,6 +1245,7 @@ $("#ask-chips").addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b) return;
   const q = b.dataset.ask;
   if (q === "photo") { $("#ask-photo").click(); return; }
+  if (q === "fridge") { if (!aiAvailable()) { aiHelp(); return; } askFridge = true; $("#ask-photo").click(); return; }
   if (q === "library") { $("#ask-library").click(); return; }
   if (q === "fits") { showFits(); return; }
   $("#ask-text").value = q; sendAsk();
@@ -1267,13 +1276,13 @@ async function sendAsk() {
   $("#ask-text").value = ""; askFiles = []; showAskPreview();
   const history = askTurns.slice(-8, -1).map((t) => `${t.role === "me" ? "They" : "You"}: ${t.text}`).join("\n");
   const prompt = `You are the assistant inside a cheat-day food diary app. ${dayContext()}
-${history ? `Recent conversation:\n${history}\n` : ""}They now say: "${text || "(photos, no words)"}"${images.length === 1 ? " (a photo is attached; use it for what the food is and the portion size, but trust their words over the photo for the name)" : images.length > 1 ? ` (${images.length} photos are attached, in order. They may show the dish, a menu or label for it, and what was left over at the end. Use the menu or label for names and stated nutrition, the dish photo for the portion, and subtract anything shown left over so the estimate is what was actually eaten.)` : ""}.
+${history ? `Recent conversation:\n${history}\n` : ""}They now say: "${text || "(photos, no words)"}"${images.length === 1 ? " (a photo is attached. If it shows food to log, use it for what the food is and the portion size, trusting their words over the photo for the name. If it shows the inside of a fridge, a cupboard or loose ingredients, treat it as what they have to cook with)" : images.length > 1 ? ` (${images.length} photos are attached, in order. They may show the dish, a menu or label for it, and what was left over at the end. Use the menu or label for names and stated nutrition, the dish photo for the portion, and subtract anything shown left over so the estimate is what was actually eaten.)` : ""}.
 
 Decide what they want and fill exactly one of estimate / plan / edit / recipe / lighter (leave the others null), or kind=answer for a plain question:
 - estimate: a food or plate to log, as one portion with honest kcal and macros.
 - plan: 3 to 5 things for the rest of today that fit the calories left, close the macro gaps as far as sensible, and leave room for one treat.
 - edit: they're correcting today's list ("I only had 2 eggs", "remove the toast", "add a banana") or logging exercise (action "workout": activity from Walk, Run, Cycle, Swim, Gym weights, HIIT, Yoga / stretch, Football, Tennis / padel, Hike, Rowing, Elliptical, Dance, Boxing, Climbing, Other; minutes; effort; for gym sessions the lifts as sets × reps at kg); match targets to the exact names given above.
-- recipe: a dish to cook, with realistic ingredient amounts, kcal and macros per ingredient, and short method steps; respect any calorie or protein target they give and the calories they have left if they mention it.
+- recipe: a dish to cook, with realistic ingredient amounts, kcal and macros per ingredient, and short method steps; respect any calorie or protein target they give and the calories they have left if they mention it. If a photo shows a fridge, cupboard or ingredients, build the recipe mainly from what's visible (assume basics like oil, salt, pepper and spices), size one portion to fit the calories left today, and name two other dishes they could make instead in the reply.
 - lighter: a lighter way to have something, with tips and the lighter serving's numbers.
 Estimates use standard reference values. Keep reply short and friendly.`;
   const content = [];
@@ -1775,11 +1784,25 @@ function weekProgress() {
   const days = weekDates().map(dayFacts);
   return { under: days.filter(underBudget).length, protein: days.filter(hitProtein).length, workouts: days.reduce((a, d) => a + d.workouts, 0), log: days.filter((d) => d.logged).length };
 }
-function logStreak() {
-  let n = 0, i = dayFacts(localDate()).logged ? 0 : 1;
-  for (; i < 400; i++) { if (dayFacts(dateMinus(i)).logged) n++; else break; }
-  return n;
+/** Monday of the week a date is in. */
+function weekOf(date) { const d = new Date(date + "T12:00"); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return localDate(d); }
+/** Days logged in a row. One missed day per week is a free rest day and doesn't break it (never two misses in a row). */
+function streakInfo() {
+  let n = 0, i = dayFacts(localDate()).logged ? 0 : 1, lastRest = false;
+  const rests = [];
+  for (; i < 400; i++) {
+    const d = dateMinus(i);
+    if (dayFacts(d).logged) { n++; lastRest = false; continue; }
+    const wk = weekOf(d);
+    if (!lastRest && n > 0 && !rests.some((r) => weekOf(r) === wk)) { rests.push(d); lastRest = true; continue; }
+    if (!lastRest && n === 0 && i === 1 && !rests.length) { rests.push(d); lastRest = true; continue; }   // yesterday missed, today not logged yet
+    break;
+  }
+  // A rest that isn't followed (further back) by a logged day isn't really bridging anything
+  while (rests.length && rests[rests.length - 1] === dateMinus(i - 1)) rests.pop();
+  return { days: n, rests, restThisWeek: rests.some((r) => weekOf(r) === weekOf(localDate())) };
 }
+function logStreak() { return streakInfo().days; }
 function underStreak() {
   let n = 0;
   for (let i = 1; i < 400; i++) { const d = dayFacts(dateMinus(i)); if (underBudget(d)) n++; else break; }
@@ -1807,20 +1830,81 @@ function bankGoals() {
   }
   if (banked) save();
 }
+// Everything the achievements count, worked out once per render
+let bsCache = null;
+function badgeStats() {
+  if (bsCache && Date.now() - bsCache.at < 1500) return bsCache.v;
+  const today = dayFacts(localDate()), hist = state.history.map((h) => ({ h, f: dayFacts(h.date) }));
+  const allItems = state.history.flatMap((h) => Array.isArray(h.items) ? h.items : []).concat(state.day.items);
+  const allWorkouts = state.history.flatMap((h) => h.workouts || []).concat(state.day.workouts || []);
+  const weights = bodySorted().filter((r) => r.weight);
+  const wins = state.goalWins || [], winsByWeek = {};
+  for (const w of wins) { const wk = String(w).split(":")[0]; winsByWeek[wk] = (winsByWeek[wk] || 0) + 1; }
+  const activeGoals = GOAL_DEFS.filter((d) => (state.weekGoals[d.key] || 0) > 0 && !(d.needs && !d.needs())).length || 4;
+  const loggedDates = hist.filter((x) => x.f.logged).map((x) => x.h.date).concat(today.logged ? [localDate()] : []).sort();
+  let comeback = false;
+  for (let i = 1; i < loggedDates.length; i++) if ((new Date(loggedDates[i]) - new Date(loggedDates[i - 1])) / 864e5 >= 7) comeback = true;
+  const hours = allItems.map((it) => it.addedAt ? new Date(it.addedAt).getHours() : null).filter((h) => h != null);
+  const weekendWorkout = (() => { const days = new Set(state.history.filter((h) => (h.workouts || []).length).map((h) => h.date).concat((state.day.workouts || []).length ? [localDate()] : []));
+    for (const d of days) { const dt = new Date(d + "T12:00"); if (dt.getDay() === 6) { const sun = new Date(dt); sun.setDate(sun.getDate() + 1); if (days.has(localDate(sun))) return true; } } return false; })();
+  const v = {
+    daysLogged: loggedDates.length, streak: logStreak(), under: underStreak(),
+    underDays: hist.filter((x) => underBudget(x.f)).length, overDays: hist.filter((x) => x.f.logged && x.f.budget && x.f.kcal > x.f.budget).length,
+    proteinDays: hist.filter((x) => hitProtein(x.f)).length,
+    workouts: allWorkouts.length, workoutMins: allWorkouts.reduce((a, w) => a + (w.minutes || 0), 0), liftSessions: allWorkouts.filter((w) => (w.lifts || []).length).length,
+    burned: allWorkouts.reduce((a, w) => a + (w.kcal || 0), 0), pbs: state.pbCount || 0, routines: (state.routines || []).length, weekendWorkout,
+    weighins: weights.length, lost: weights.length > 1 ? Math.max(0, weights[0].weight - weights[weights.length - 1].weight) : 0,
+    goalSet: !!state.goalWeight, goalReached: !!(state.goalWeight && weights.length && Math.abs(weights[weights.length - 1].weight - state.goalWeight) < 0.25),
+    posts: state.postCount || 0, reacts: state.reactCount || 0, comments: state.commentCount || 0, sends: state.sendCount || 0, friends: state.friendCount || 0,
+    meals: state.meals.filter((m) => m.saved).length, recipes: state.meals.filter((m) => m.saved && (m.steps || []).length).length,
+    foods: new Set(allItems.map((it) => String(it.name || "").toLowerCase().trim()).filter(Boolean)).size,
+    scans: allItems.filter((it) => it.source === "barcode" || it.source === "label").length, photos: allItems.filter((it) => it.photo).length, askItems: allItems.filter((it) => it.source === "claude").length,
+    earlyBird: hours.some((h) => h < 8), nightOwl: hours.some((h) => h >= 22), comeback,
+    level: levelFor(totalXp()).lvl, weeklyWins: wins.length, perfectWeeks: Object.values(winsByWeek).filter((n) => n >= activeGoals).length,
+    rests: streakInfo().rests.length
+  };
+  bsCache = { at: Date.now(), v };
+  return v;
+}
+/** A run of badges on one number: [id, icon, name, target, how] each; progress shown towards the target. */
+const tierSet = (group, stat, list) => list.map(([id, icon, name, target, how]) => ({ id, group, icon, name, how, target, stat, test: () => (badgeStats()[stat] || 0) >= target }));
+const flag = (group, stat, id, icon, name, how) => ({ id, group, icon, name, how, test: () => !!badgeStats()[stat] });
+const BADGE_GROUPS = ["Logging", "Budget", "Nutrition", "Workouts", "Body", "Social", "Level up"];
 const BADGES = [
-  { id: "first", icon: "🌱", name: "First bite", how: "Log your first day", test: () => state.history.some((h) => dayFacts(h.date).logged) || dayFacts(localDate()).logged },
-  { id: "streak7", icon: "🔥", name: "One week", how: "Log 7 days in a row", test: () => logStreak() >= 7 },
-  { id: "streak30", icon: "🏆", name: "One month", how: "Log 30 days in a row", test: () => logStreak() >= 30 },
-  { id: "under3", icon: "🎯", name: "On target", how: "3 days under budget in a row", test: () => underStreak() >= 3 },
-  { id: "under14", icon: "💎", name: "Iron will", how: "14 days under budget in a row", test: () => underStreak() >= 14 },
-  { id: "protein5", icon: "🥩", name: "Protein pro", how: "Hit your protein goal 5 times", test: () => state.history.filter((h) => hitProtein(dayFacts(h.date))).length >= 5 },
-  { id: "wo1", icon: "👟", name: "Moved", how: "Log a workout", test: () => state.history.some((h) => (h.workouts || []).length) || (state.day.workouts || []).length > 0 },
-  { id: "wo10", icon: "💪", name: "Ten strong", how: "Log 10 workouts", test: () => state.history.reduce((a, h) => a + (h.workouts || []).length, 0) + (state.day.workouts || []).length >= 10 },
-  { id: "pb", icon: "🥇", name: "New best", how: "Beat a lifting PB", test: () => (state.pbCount || 0) >= 1 },
-  { id: "post1", icon: "📸", name: "Shared", how: "Post to the feed", test: () => (state.postCount || 0) >= 1 },
-  { id: "post10", icon: "🌟", name: "Influencer", how: "Post 10 times", test: () => (state.postCount || 0) >= 10 },
-  { id: "goal", icon: "✅", name: "Goal getter", how: "Finish a weekly goal", test: () => (state.goalWins || []).length >= 1 },
-  { id: "lvl5", icon: "👑", name: "Level 5", how: "Reach level 5", test: () => levelFor(totalXp()).lvl >= 5 }
+  ...tierSet("Logging", "daysLogged", [["first", "🌱", "First bite", 1, "Log your first day"], ["days10", "📒", "Getting the hang", 10, "Log 10 days"], ["days50", "📚", "Habit formed", 50, "Log 50 days"], ["days100", "💯", "Centurion", 100, "Log 100 days"], ["days250", "🗂️", "Record keeper", 250, "Log 250 days"]]),
+  ...tierSet("Logging", "streak", [["streak3", "✨", "Warming up", 3, "Log 3 days in a row"], ["streak7", "🔥", "One week", 7, "Log 7 days in a row"], ["streak14", "🔥", "Fortnight", 14, "Log 14 days in a row"], ["streak30", "🏆", "One month", 30, "Log 30 days in a row"], ["streak100", "🌋", "Unstoppable", 100, "Log 100 days in a row"], ["streak365", "👑", "A whole year", 365, "Log 365 days in a row"]]),
+  flag("Logging", "earlyBird", "early", "🌅", "Early bird", "Log something before 8am"),
+  flag("Logging", "nightOwl", "owl", "🦉", "Night owl", "Log something after 10pm"),
+  flag("Logging", "comeback", "comeback", "🔁", "Comeback", "Start logging again after a week off"),
+  ...tierSet("Logging", "rests", [["rest1", "🛋️", "Rest day", 1, "Use a rest day without breaking your streak"]]),
+  ...tierSet("Budget", "under", [["under3", "🎯", "On target", 3, "3 days under budget in a row"], ["under7", "🎯", "Bullseye week", 7, "7 days under budget in a row"], ["under14", "💎", "Iron will", 14, "14 days under budget in a row"], ["under30", "🧊", "Ice cold", 30, "30 days under budget in a row"]]),
+  ...tierSet("Budget", "underDays", [["ud10", "🟢", "Ten good days", 10, "10 days under budget"], ["ud50", "🌿", "Fifty good days", 50, "50 days under budget"], ["ud100", "🌳", "Hundred good days", 100, "100 days under budget"]]),
+  ...tierSet("Budget", "overDays", [["cheat1", "🍰", "It's a cheat day", 1, "Go over budget once. It happens!"]]),
+  ...tierSet("Nutrition", "proteinDays", [["protein5", "🥩", "Protein pro", 5, "Hit your protein goal 5 times"], ["protein20", "🍗", "Protein machine", 20, "Hit your protein goal 20 times"], ["protein50", "🦾", "Built different", 50, "Hit your protein goal 50 times"]]),
+  ...tierSet("Nutrition", "foods", [["foods25", "🥗", "Explorer", 25, "Log 25 different foods"], ["foods100", "🌍", "Adventurous eater", 100, "Log 100 different foods"]]),
+  ...tierSet("Nutrition", "scans", [["scan1", "🔍", "Scanner", 1, "Scan a barcode or label"], ["scan25", "📷", "Label reader", 25, "Scan 25 barcodes or labels"]]),
+  ...tierSet("Nutrition", "photos", [["photo1", "🖼️", "Food photographer", 1, "Add a photo to something you log"], ["photo25", "🎞️", "Food diary", 25, "Log 25 things with photos"]]),
+  ...tierSet("Nutrition", "meals", [["meal1", "🍲", "Home cook", 1, "Save a meal"], ["meal10", "👩‍🍳", "Recipe book", 10, "Save 10 meals"]]),
+  ...tierSet("Nutrition", "recipes", [["recipe1", "📝", "Chef's notes", 1, "Save a meal with method steps"]]),
+  ...tierSet("Nutrition", "askItems", [["ask1", "💬", "Just ask", 1, "Log something through the assistant"]]),
+  ...tierSet("Workouts", "workouts", [["wo1", "👟", "Moved", 1, "Log a workout"], ["wo10", "💪", "Ten strong", 10, "Log 10 workouts"], ["wo25", "🏃", "Regular", 25, "Log 25 workouts"], ["wo50", "🏋️", "Gym rat", 50, "Log 50 workouts"], ["wo100", "🥇", "Hundred club", 100, "Log 100 workouts"]]),
+  ...tierSet("Workouts", "workoutMins", [["min600", "⏱️", "Ten hours in", 600, "Train for 10 hours in total"], ["min3000", "⏳", "Fifty hours in", 3000, "Train for 50 hours in total"]]),
+  ...tierSet("Workouts", "burned", [["burn10k", "🔥", "Furnace", 10000, "Burn 10,000 kcal in workouts"]]),
+  ...tierSet("Workouts", "pbs", [["pb", "🥇", "New best", 1, "Beat a lifting PB"], ["pb10", "📈", "Getting stronger", 10, "Beat 10 lifting PBs"], ["pb25", "🦍", "Beast mode", 25, "Beat 25 lifting PBs"]]),
+  ...tierSet("Workouts", "routines", [["routine1", "📋", "Creature of habit", 1, "Save a workout routine"]]),
+  flag("Workouts", "weekendWorkout", "weekend", "🗓️", "Weekend warrior", "Work out on a Saturday and the Sunday after"),
+  ...tierSet("Body", "weighins", [["weigh1", "⚖️", "Stepped on", 1, "Record a weigh-in"], ["weigh10", "📉", "Tracking it", 10, "Record 10 weigh-ins"], ["weigh50", "📊", "Data driven", 50, "Record 50 weigh-ins"]]),
+  flag("Body", "goalSet", "goalset", "🏁", "Eyes on the prize", "Set a goal weight"),
+  ...tierSet("Body", "lost", [["lost1", "🪶", "First kilo", 1, "Lose 1 kg"], ["lost5", "🎈", "Five down", 5, "Lose 5 kg"], ["lost10", "🚀", "Ten down", 10, "Lose 10 kg"]]),
+  flag("Body", "goalReached", "goalhit", "🎉", "Made it", "Reach your goal weight"),
+  ...tierSet("Social", "friends", [["friend1", "🤝", "Buddy up", 1, "Add a friend"], ["friend5", "👥", "The crew", 5, "Have 5 friends"]]),
+  ...tierSet("Social", "posts", [["post1", "📸", "Shared", 1, "Post to the feed"], ["post10", "🌟", "Influencer", 10, "Post 10 times"], ["post50", "📣", "Celebrity chef", 50, "Post 50 times"]]),
+  ...tierSet("Social", "reacts", [["react10", "❤️", "Hype squad", 10, "React to 10 posts"]]),
+  ...tierSet("Social", "comments", [["comment10", "💭", "Chatterbox", 10, "Leave 10 comments"]]),
+  ...tierSet("Social", "sends", [["send1", "🎁", "Sharing is caring", 1, "Send food to a friend"]]),
+  ...tierSet("Level up", "level", [["lvl5", "👑", "Level 5", 5, "Reach level 5"], ["lvl10", "🏅", "Level 10", 10, "Reach level 10"], ["lvl20", "🌠", "Level 20", 20, "Reach level 20"]]),
+  ...tierSet("Level up", "weeklyWins", [["goal", "✅", "Goal getter", 1, "Finish a weekly goal"], ["goal10", "📆", "Consistent", 10, "Finish 10 weekly goals"], ["goal50", "🗓️", "Relentless", 50, "Finish 50 weekly goals"]]),
+  ...tierSet("Level up", "perfectWeeks", [["perfect1", "💫", "Perfect week", 1, "Finish every weekly goal in one week"], ["perfect5", "🌈", "Perfect month", 5, "Have 5 perfect weeks"]])
 ];
 function checkBadges() {
   bankGoals();
@@ -1907,7 +1991,7 @@ function renderGoals() {
   if (signed) { publishStats(); renderLeaderboards(false); }
   const xp = totalXp(), L = levelFor(xp), prog = weekProgress(), g = state.weekGoals, ls = logStreak(), us = underStreak();
   $("#g-level").innerHTML = `<div class="lv-num">${L.lvl}</div><div class="lv-name">${L.name}</div><div class="muted tiny">${fmt(xp)} XP · ${L.next - xp} more for level ${L.lvl + 1}</div><span class="bar"><span style="width:${Math.round(L.into / L.span * 100)}%"></span></span>
-    <div class="streaks">${ls ? `<span>🔥 ${ls} day${ls === 1 ? "" : "s"} logged</span>` : ""}${us ? `<span>🎯 ${us} day${us === 1 ? "" : "s"} under budget</span>` : ""}${!ls && !us ? `<span>Log today to start a streak</span>` : ""}</div>`;
+    <div class="streaks">${ls ? `<span>🔥 ${ls} day${ls === 1 ? "" : "s"} logged</span>` : ""}${ls ? `<span class="rest">${streakInfo().restThisWeek ? "Rest day used this week" : "1 rest day left this week"}</span>` : ""}${us ? `<span>🎯 ${us} day${us === 1 ? "" : "s"} under budget</span>` : ""}${!ls && !us ? `<span>Log today to start a streak</span>` : ""}</div>`;
   const wk = weekDates(); $("#g-week-note").textContent = `Monday to Sunday · ${wk.length} day${wk.length === 1 ? "" : "s"} in so far. Tap a goal to change its target.`;
   const box = $("#g-goals"); box.innerHTML = "";
   for (const def of GOAL_DEFS) {
@@ -1923,12 +2007,25 @@ function renderGoals() {
     box.appendChild(row);
   }
   const bl = $("#g-badges"); bl.innerHTML = "";
-  for (const b of BADGES) {
-    const has = state.seenBadges.includes(b.id) || b.test();
-    const d = document.createElement("div"); d.className = `badge ${has ? "" : "locked"}`;
-    d.innerHTML = `<span class="ic">${b.icon}</span><b>${b.name}</b><small>${has ? "Earned" : b.how}</small>`;
-    bl.appendChild(d);
+  const stats = badgeStats(); let earned = 0;
+  for (const group of BADGE_GROUPS) {
+    const list = BADGES.filter((b) => b.group === group); if (!list.length) continue;
+    const got = list.filter((b) => state.seenBadges.includes(b.id) || b.test());
+    earned += got.length;
+    const sec = document.createElement("div"); sec.className = "badge-group";
+    sec.innerHTML = `<h3>${group}<small>${got.length} of ${list.length}</small></h3><div class="badges"></div>`;
+    const grid = sec.querySelector(".badges");
+    // earned first, then the nearest to done
+    const order = list.slice().sort((a, b) => (got.includes(b) - got.includes(a)) || ((b.target ? (stats[b.stat] || 0) / b.target : 0) - (a.target ? (stats[a.stat] || 0) / a.target : 0)));
+    for (const b of order) {
+      const has = got.includes(b), val = b.target ? Math.min(b.target, Math.floor(stats[b.stat] || 0)) : 0;
+      const d = document.createElement("div"); d.className = `badge ${has ? "" : "locked"}`;
+      d.innerHTML = `<span class="ic">${b.icon}</span><b>${b.name}</b><small>${has ? "Earned" : b.how}</small>${!has && b.target > 1 ? `<span class="prog"><span style="width:${Math.round(val / b.target * 100)}%"></span></span><small>${fmt(val)} / ${fmt(b.target)}</small>` : ""}`;
+      grid.appendChild(d);
+    }
+    bl.appendChild(sec);
   }
+  $("#g-badge-count").textContent = `${earned} of ${BADGES.length}`;
   $("#g-xp").innerHTML = [["Log a day", XP.log], ["Finish a day under budget", XP.under], ["Hit your protein goal", XP.protein], ["Log a workout", XP.workout], ["Beat a lifting PB", XP.pb], ["Post to the feed", XP.post], ["Finish a weekly goal", XP.goal]].map(([k, v]) => `<div><span>${k}</span><b>+${v} XP</b></div>`).join("");
   checkBadges();
 }
@@ -1960,7 +2057,7 @@ $("#share-send").onclick = async () => {
       const kcal = Math.round(amountKcal), a = amountsFor(draft, kcal);
       b.disabled = true;
       try {
-        notifyFriend(f.id, "send", draft.name);
+        notifyFriend(f.id, "send", draft.name); state.sendCount = (state.sendCount || 0) + 1; save(false);
         await c.sendItem(f.id, { name: draft.name, kcal, grams: a.grams != null ? Math.round(a.grams) : null, unit: draft.unit || "g", photo: draft.photo || null, payload: basisOf(draft) });
         toast(`Sent ${draft.name} to ${f.name}`); sheet.classList.add("hidden");
       } catch (err) { b.disabled = false; toast("Couldn't send: " + c.explain(err), 5000); }
@@ -2126,12 +2223,12 @@ function drawFeed() {
     };
     card.querySelectorAll("[data-emoji]").forEach((b) => b.onclick = async () => {
       const e = b.dataset.emoji, on = b.classList.contains("on");
-      try { if (on) await c.unreact(p.id, e); else { await c.react(p.id, e); notifyFriend(p.owner, "react", p.name, { emoji: e }); } } catch (err) { toast(c.explain(err)); return; }
+      try { if (on) await c.unreact(p.id, e); else { await c.react(p.id, e); notifyFriend(p.owner, "react", p.name, { emoji: e }); state.reactCount = (state.reactCount || 0) + 1; save(); checkBadges(); } } catch (err) { toast(c.explain(err)); return; }
       if (on) feed.reactions = feed.reactions.filter((r) => !(r.post_id === p.id && r.user_id === me && r.emoji === e)); else feed.reactions.push({ post_id: p.id, user_id: me, emoji: e });
       drawFeed();
     });
     const input = card.querySelector(".chat input"), send = card.querySelector("[data-act=comment]");
-    const doComment = async () => { const t = input.value.trim(); if (!t) return; try { const rows = await c.comment(p.id, t); notifyFriend(p.owner, "comment", t); feed.comments.push((rows && rows[0]) || { id: uid(), post_id: p.id, user_id: me, text: t, created_at: new Date().toISOString() }); openComments.add(p.id); drawFeed(); } catch (err) { toast(c.explain(err)); } };
+    const doComment = async () => { const t = input.value.trim(); if (!t) return; try { const rows = await c.comment(p.id, t); notifyFriend(p.owner, "comment", t); state.commentCount = (state.commentCount || 0) + 1; save(); checkBadges(); feed.comments.push((rows && rows[0]) || { id: uid(), post_id: p.id, user_id: me, text: t, created_at: new Date().toISOString() }); openComments.add(p.id); drawFeed(); } catch (err) { toast(c.explain(err)); } };
     send.onclick = doComment; input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.target.blur(); doComment(); } });
     card.querySelectorAll("[data-comment]").forEach((b) => b.onclick = async () => { if (!await ask("Delete your comment?")) return; try { await c.deleteComment(b.dataset.comment); feed.comments = feed.comments.filter((x) => String(x.id) !== String(b.dataset.comment)); drawFeed(); } catch (err) { toast(c.explain(err)); } });
     list.appendChild(card);
@@ -3266,7 +3363,7 @@ $("#share-add").onclick = () => {
 
 // ---------------------------------------------------------------- account + sync (optional, see cloud.js)
 
-const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "weekGoals", "seenBadges", "goalWins", "postCount", "pbCount", "body", "goalWeight", "goalStart", "simple", "onboarded", "reminders", "updatedAt"];   // the API key stays on the device
+const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "weekGoals", "seenBadges", "goalWins", "postCount", "pbCount", "body", "goalWeight", "goalStart", "simple", "onboarded", "reminders", "reactCount", "commentCount", "sendCount", "friendCount", "updatedAt"];   // the API key stays on the device
 let pushTimer = null;
 function schedulePush() {
   if (!window.cloud || !window.cloud.user) return;
