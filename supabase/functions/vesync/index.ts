@@ -24,14 +24,28 @@ async function post(base: string, path: string, body: Record<string, unknown>, h
 }
 const expired = (r: Resp) => r.code === -11201022 || r.code === -11012022;
 
-async function login(base: string, country: string, email: string, password: string, terminalId: string) {
+const CROSS_REGION = -11260022;
+/** Two-step login. If VeSync says the account lives in another region, it tells us which: repeat step two there with the
+ *  one-time bizToken, exactly as the VeSync app (and pyvesync) do. Returns the region that finally answered. */
+async function login(region: string, country: string, email: string, password: string, terminalId: string) {
   const hashed = await md5(password);
-  const common = { acceptLanguage: LANG, accountID: "", clientInfo: PHONE_BRAND, clientType: CLIENT_TYPE, clientVersion: CLIENT_VERSION, debugMode: false, osInfo: PHONE_OS, terminalId, timeZone: TZ, token: "", userCountryCode: country };
-  const a = await post(base, "/globalPlatform/api/accountAuth/v1/authByPWDOrOTM", { ...common, email, method: "authByPWDOrOTM", password: hashed, authProtocolType: "generic", appID: APP_ID, sourceAppID: APP_ID, traceId: traceId(terminalId) });
+  const common = { acceptLanguage: LANG, accountID: "", clientInfo: PHONE_BRAND, clientType: CLIENT_TYPE, clientVersion: CLIENT_VERSION, debugMode: false, osInfo: PHONE_OS, terminalId, timeZone: TZ, token: "" };
+  const a = await post(BASES[region], "/globalPlatform/api/accountAuth/v1/authByPWDOrOTM", { ...common, userCountryCode: country, email, method: "authByPWDOrOTM", password: hashed, authProtocolType: "generic", appID: APP_ID, sourceAppID: APP_ID, traceId: traceId(terminalId) });
   if (a.code !== 0 || !a.result) throw new Error(a.msg || `VeSync login failed (${a.code})`);
-  const b = await post(base, "/user/api/accountManage/v1/loginByAuthorizeCode4Vesync", { ...common, method: "loginByAuthorizeCode4Vesync", authorizeCode: a.result.authorizeCode, emailSubscriptions: false, traceId: traceId(terminalId) });
-  if (b.code !== 0 || !b.result) throw new Error(b.msg || `VeSync login failed (${b.code})`);
-  return { token: b.result.token as string, accountId: b.result.accountID as string };
+  let bizToken: string | null = null;
+  for (let hop = 0; hop < 3; hop++) {
+    const b = await post(BASES[region], "/user/api/accountManage/v1/loginByAuthorizeCode4Vesync", { ...common, userCountryCode: country, method: "loginByAuthorizeCode4Vesync", authorizeCode: a.result.authorizeCode, emailSubscriptions: false, traceId: traceId(terminalId), ...(bizToken ? { bizToken, regionChange: "lastRegion" } : {}) });
+    if (b.code === CROSS_REGION && b.result) {
+      const r = b.result;
+      region = String(r.currentRegion || "").toUpperCase() in BASES ? String(r.currentRegion).toUpperCase() : (region === "US" ? "EU" : "US");
+      country = r.countryCode || country;
+      bizToken = r.bizToken || null;
+      continue;
+    }
+    if (b.code !== 0 || !b.result) throw new Error(b.msg || `VeSync login failed (${b.code})`);
+    return { token: b.result.token as string, accountId: b.result.accountID as string, region, country };
+  }
+  throw new Error("VeSync kept bouncing the login between regions");
 }
 const session = (s: { token: string; accountId: string; terminalId: string }) => ({ accountID: s.accountId, token: s.token, timeZone: TZ, appVersion: APP_VERSION, phoneBrand: PHONE_BRAND, phoneOS: PHONE_OS, acceptLanguage: LANG, traceId: traceId(s.terminalId) });
 const legacyHeaders = (s: { token: string; accountId: string }) => ({ "accept-language": LANG, accountId: s.accountId, appVersion: APP_VERSION, tk: s.token, tz: TZ });
@@ -105,18 +119,16 @@ async function handle(req: Request): Promise<Response> {
     const email = String(body.email || "").trim(), password = String(body.password || "");
     if (!email || !password) return json({ error: "Email and password needed" }, 400);
     const terminalId = globalThis.crypto.randomUUID();
-    const tries = body.region && BASES[body.region] ? [[body.region, body.country || body.region]] : [["US", body.country || "AU"], ["EU", body.country || "AU"], ["US", "US"]];
-    let last = "";
-    for (const [region, country] of tries) {
-      try {
-        const s = { ...(await login(BASES[region], country, email, password, terminalId)), terminalId };
-        const list = await devices(BASES[region], s);
-        const scale = list.find(isScale) || null;
-        await admin.from("vesync_links").upsert({ user_id: me.id, region, token: s.token, account_id: s.accountId, terminal_id: terminalId, device: scale, device_name: scale ? (scale.deviceName || scale.deviceType) : null, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
-        return json({ ok: true, region, device: scale ? { name: scale.deviceName, type: scale.deviceType, model: scale.configModule } : null, devices: list.map((d) => `${d.deviceName || "?"} (${d.deviceType || "?"})`) });
-      } catch (e) { last = (e as Error).message; if (/password|account|not exist|incorrect/i.test(last)) break; }
-    }
-    return json({ error: last || "Couldn't log in to VeSync" }, 400);
+    // Australia (and everywhere outside US/CA/MX/JP) is served from VeSync's EU cluster; the login hops if it's wrong anyway
+    const country = String(body.country || "AU").toUpperCase();
+    const startRegion = body.region && BASES[body.region] ? body.region : (["US", "CA", "MX", "JP"].includes(country) ? "US" : "EU");
+    try {
+      const s = { ...(await login(startRegion, country, email, password, terminalId)), terminalId };
+      const list = await devices(BASES[s.region], s);
+      const scale = list.find(isScale) || null;
+      await admin.from("vesync_links").upsert({ user_id: me.id, region: s.region, token: s.token, account_id: s.accountId, terminal_id: terminalId, device: scale, device_name: scale ? (scale.deviceName || scale.deviceType) : null, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+      return json({ ok: true, region: s.region, device: scale ? { name: scale.deviceName, type: scale.deviceType, model: scale.configModule } : null, devices: list.map((d) => `${d.deviceName || "?"} (${d.deviceType || "?"})`) });
+    } catch (e) { return json({ error: (e as Error).message || "Couldn't log in to VeSync" }, 400); }
   }
 
   if (action === "sync") {
