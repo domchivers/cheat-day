@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "87";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "88";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1937,7 +1937,7 @@ function planPrefillBody(scaleOnly) {
 function openPlan(returnTo) {
   const old = state.plan || {};
   plan = { sex: null, age: null, height: null, weight: null, fat: null, lean: null, activity: old.activity || null, trainDays: old.trainDays ?? null, trainType: old.trainType || null, trainMins: old.trainMins || null, trainWeekdays: (old.trainWeekdays || []).slice(),
-    goal: old.goal || null, pace: old.pace ?? null, goalWeight: state.goalWeight || null, spread: old.spread || "same", cheatDay: old.cheatDay ?? 0, protein: old.protein || null };
+    goal: old.goal || null, pace: old.pace ?? null, paceCustom: old.paceCustom || null, goalWeight: state.goalWeight || null, spread: old.spread || "same", cheatDay: old.cheatDay ?? 0, protein: old.protein || null };
   planPrefillBody(false);
   planStep = 0; planReturn = returnTo || null;
   go("plan");
@@ -1952,7 +1952,10 @@ function computePlan(q) {
   const trainKcal = (q.trainDays || 0) * (TRAIN_MET[q.trainType] || 6) * w * ((q.trainMins || 45) / 60) / 7;   // averaged over the week
   const tdee = everyday + trainKcal;
   let rate = 0;   // kg a week
-  if (planHasPaceFor(q.goal)) { const p = PACES[q.goal].find((x) => x[1] === q.pace) || PACES[q.goal][1]; rate = p[2] === "%" ? p[1] / 100 * w : p[1]; }
+  if (planHasPaceFor(q.goal)) {
+    if (q.paceCustom > 0) rate = (q.goal.includes("bulk") ? 1 : -1) * q.paceCustom;   // their own kg a week
+    else { const p = PACES[q.goal].find((x) => x[1] === q.pace) || PACES[q.goal][1]; rate = p[2] === "%" ? p[1] / 100 * w : p[1]; }
+  }
   let delta = rate * KCAL_PER_KG / 7, notes = [];
   if (q.goal === "recomp") delta = -Math.min(300, tdee * 0.1);
   const floor = male ? 1500 : 1200;
@@ -1973,8 +1976,11 @@ function computePlan(q) {
   const days = {}; let everydayKcal = kcal, trainDayKcal = null, cheatKcal = null;
   const weekly = kcal * 7, tw = (q.trainWeekdays || []).slice();
   if (q.spread === "train" && tw.length && tw.length < 7) {
-    trainDayKcal = Math.round(kcal * 1.1 / 10) * 10;
-    everydayKcal = Math.round((weekly - trainDayKcal * tw.length) / (7 - tw.length) / 10) * 10;
+    const n = tw.length, rest = 7 - n;
+    let restKcal = (weekly - kcal * 1.1 * n) / rest;          // 10% more on training days...
+    if (restKcal < kcal * 0.9) restKcal = kcal * 0.9;          // ...but a rest day stays within 10% of the average
+    everydayKcal = Math.round(restKcal / 10) * 10;
+    trainDayKcal = Math.round((weekly - everydayKcal * rest) / n / 10) * 10;
     for (const d of tw) days[d] = trainDayKcal;
   } else if (q.spread === "cheat") {
     cheatKcal = Math.round(kcal * 1.3 / 10) * 10;
@@ -1990,6 +1996,15 @@ function computePlan(q) {
   return { bmr: Math.round(bmr), tdee: Math.round(tdee), kcal, rate, macros: { p, c, f }, days, everydayKcal, trainDayKcal, cheatKcal, notes, date, formula: lean ? "Katch-McArdle, using your body fat" : "Mifflin-St Jeor" };
 }
 const planHasPaceFor = (g) => !!PACES[g];
+/** What a chosen weekly amount means, said plainly, with a nudge if it's a lot. */
+function paceNote(kg) {
+  if (!kg) return "Anything from 0.1 kg. The app keeps it within safe limits.";
+  const w = +plan.weight || 80, perDay = Math.round(kg * KCAL_PER_KG / 7 / 10) * 10, pct = kg / w * 100, bulk = plan.goal.includes("bulk");
+  let t = `About ${fmt(perDay)} kcal a day ${bulk ? "above" : "below"} what you burn (${fmt(pct, 1)}% of your weight a week).`;
+  if (!bulk && pct > 1) t += " That's faster than 1% a week, which risks muscle: it may be eased on the next screen.";
+  if (bulk && kg > 0.5) t += " Gaining faster than 0.5 kg a week is mostly fat.";
+  return t;
+}
 function planDots() { const steps = PLAN_STEPS.filter((st) => st !== "pace" || planHasPace()); const cur = steps.indexOf(PLAN_STEPS[planStep]); $("#plan-dots").innerHTML = steps.map((_, i) => `<i class="${i === cur ? "on" : i < cur ? "done" : ""}"></i>`).join(""); }
 function planOpt(active, e, name, sub, attrs) { return `<button class="card plan-opt${active ? " on" : ""}" ${attrs}><i class="e">${e}</i><span><b>${name}</b><small>${sub}</small></span></button>`; }
 function renderPlanStep() {
@@ -2033,7 +2048,7 @@ function renderPlanStep() {
   if (step === "goal") {
     const young = plan.age && plan.age < 18;
     box.innerHTML = `<p class="plan-q">What's your goal?</p><p class="plan-sub">You can change it any time.</p>` + Object.entries(PLAN_GOALS).filter(([k]) => !(young && k === "bulk")).map(([k, g]) => planOpt(plan.goal === k, g.e, g.name, g.sub, `data-g="${k}"`)).join("");
-    box.querySelectorAll(".plan-opt").forEach((b) => b.onclick = () => { if (plan.goal !== b.dataset.g) plan.pace = null; plan.goal = b.dataset.g; renderPlanStep(); });
+    box.querySelectorAll(".plan-opt").forEach((b) => b.onclick = () => { if (plan.goal !== b.dataset.g) { plan.pace = null; plan.paceCustom = null; } plan.goal = b.dataset.g; renderPlanStep(); });
     return;
   }
   if (step === "pace") {
@@ -2042,8 +2057,16 @@ function renderPlanStep() {
     const w = +plan.weight || 80;
     box.innerHTML = `<p class="plan-q">How fast?</p><p class="plan-sub">Slower is easier to stick to and keeps more muscle.</p>` +
       list.map(([name, v, pct]) => { const kg = pct ? v / 100 * w : v; return planOpt(plan.pace === v, name === "Gentle" || name === "Slow" ? "🐢" : name === "Steady" ? "🚶" : "🏃", name, `About ${kg > 0 ? "+" : "−"}${fmt(Math.abs(kg), 2)} kg a week${pct ? ` (${Math.abs(v)}% of body weight)` : ""}`, `data-p="${v}"`); }).join("") +
+      `<div class="card plan-own${plan.paceCustom ? " on" : ""}"><label>Or choose your own: kg ${plan.goal.includes("bulk") ? "to gain" : "to lose"} a week<input type="number" inputmode="decimal" step="0.05" id="pl-pace-own" value="${plan.paceCustom || ""}" placeholder="e.g. ${plan.goal.includes("bulk") ? "0.2" : "0.4"}"></label><div class="plan-note" id="pl-pace-note">${paceNote(plan.paceCustom)}</div></div>` +
       `<label>Goal weight (kg) <small>optional, for a target date</small><input type="number" inputmode="decimal" id="pl-goalw" value="${plan.goalWeight || ""}" placeholder="e.g. ${Math.round(w + (plan.goal.includes("bulk") ? 5 : -5))}"></label>`;
-    box.querySelectorAll(".plan-opt").forEach((b) => b.onclick = () => { plan.pace = +b.dataset.p; renderPlanStep(); });
+    box.querySelectorAll(".plan-opt").forEach((b) => b.onclick = () => { plan.pace = +b.dataset.p; plan.paceCustom = null; renderPlanStep(); });
+    $("#pl-pace-own").addEventListener("input", (e) => {
+      const v = num(e.target.value);
+      plan.paceCustom = v && v <= 2 ? Math.round(v * 100) / 100 : null;
+      box.querySelectorAll(".plan-opt").forEach((b) => b.classList.toggle("on", !plan.paceCustom && +b.dataset.p === plan.pace));
+      $(".plan-own").classList.toggle("on", !!plan.paceCustom);
+      $("#pl-pace-note").textContent = paceNote(plan.paceCustom);
+    });
     return;
   }
   if (step === "spread") {
@@ -2094,7 +2117,7 @@ function planCollect() {
   if (step === "activity" && !plan.activity) return "Pick the one closest to a normal day";
   if (step === "training") { if (plan.trainDays == null) return "Pick how many days a week"; if (plan.trainDays > 0 && !plan.trainType) return "Pick what kind of training"; if (plan.trainDays > 0 && !plan.trainMins) return "Pick how long a session usually is"; }
   if (step === "goal" && !plan.goal) return "Pick a goal";
-  if (step === "pace") { const g = num(($("#pl-goalw") || {}).value); plan.goalWeight = g && g > 30 && g < 300 ? Math.round(g * 10) / 10 : null; }
+  if (step === "pace") { const own = num(($("#pl-pace-own") || {}).value); if (own && (own < 0.05 || own > 2)) return "Choose between 0.05 and 2 kg a week"; const g = num(($("#pl-goalw") || {}).value); plan.goalWeight = g && g > 30 && g < 300 ? Math.round(g * 10) / 10 : null; }
   if (step === "spread" && plan.spread === "train" && !(plan.trainWeekdays.length > 0 && plan.trainWeekdays.length < 7)) plan.spread = "same";
   if (step === "protein" && !plan.protein) return "Pick how much protein";
   return null;
@@ -2112,7 +2135,7 @@ function applyPlan() {
   const today = state.body.find((x) => x.day === localDate());
   if (!today || (!today.weight && plan.weight)) upsertBody(Object.assign({ day: localDate(), updatedAt: new Date().toISOString(), weight: plan.weight }, plan.fat && plan.useScale === false ? { fat: plan.fat } : {}));
   state.plan = { createdAt: new Date().toISOString(), goal: plan.goal, pace: plan.pace, rate: r.rate, activity: plan.activity, trainDays: plan.trainDays, trainType: plan.trainType, trainMins: plan.trainMins, trainWeekdays: plan.trainWeekdays,
-    spread: plan.spread, cheatDay: plan.cheatDay, protein: plan.protein, startWeight: plan.weight, fat: plan.fat, tdee: r.tdee, bmr: r.bmr, kcal: r.kcal, macros: r.macros, lastCheckIn: Date.now() };
+    spread: plan.spread, cheatDay: plan.cheatDay, protein: plan.protein, paceCustom: plan.paceCustom || null, startWeight: plan.weight, fat: plan.fat, tdee: r.tdee, bmr: r.bmr, kcal: r.kcal, macros: r.macros, lastCheckIn: Date.now() };
   save();
   toast(`Plan set: ${fmt(r.kcal)} kcal a day`, 4000);
   const ret = planReturn; plan = null;

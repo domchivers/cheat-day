@@ -861,3 +861,9 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 .home-plan-card .acts .btn { width: auto; margin: 0; padding: 8px 14px; font-size: 13px; }
 .home-plan-card .x { color: var(--muted); padding: 6px; align-self: flex-start; }
 .wl-or { font-size: 15px; color: var(--muted); margin: 16px 0 6px; }
+.plan-own { padding: 12px 14px; margin: 2px 0 12px; border: 2px solid var(--line); }
+.plan-own.on { border-color: var(--green); background: var(--mint-2); }
+.plan-own label { margin: 0; font-weight: 700; font-size: 14px; }
+.plan-own .plan-note { margin: 6px 0 0; }
+.plan-opt.on, .plan-own.on { border-color: var(--green); box-shadow: 0 0 0 1px var(--green) inset; }
+.plan-opt.on b::after { content: " ✓"; color: var(--green); }

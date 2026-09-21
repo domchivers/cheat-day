@@ -436,8 +436,9 @@ Resting burn uses Katch-McArdle when body fat is known, else Mifflin-St Jeor;
 daily burn adds an activity factor and the week's training. Goals: lose, cut
 (0.5–1% of body weight a week), maintain, recomp, lean bulk, bulk; deficits are
 capped at 25% and never go below 1,200 (women) / 1,500 (men). Protein 1.6–2.4 g
-per kg, fat at least 0.8 g per kg, carbs the rest. "More on training days" or "a
-bigger cheat day" spread the same weekly total. Use this plan sets the budget,
+per kg, fat at least 0.8 g per kg, carbs the rest. You can also type your own kg a week. "More on training days" (about 10% more, with
+rest days never more than 10% below average) or "a bigger cheat day" spread the
+same weekly total. Use this plan sets the budget,
 day budgets, macro goals and goal weight, and turns off workout eat-back. After
 two weeks, a weekly check-in on the home screen compares your weight trend with
 the plan and offers a small adjustment. Entry points: the Daily budget screen,
