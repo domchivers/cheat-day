@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "60";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "61";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -59,19 +59,24 @@ function ask(text, opts = {}) {
     $("#dlg-ok").textContent = opts.ok || "OK";
     $("#dlg-cancel").textContent = opts.cancel || "Cancel";
     $("#dlg-ok").classList.toggle("danger", /^(delete|remove|discard|decline|dismiss)/i.test(String(text)));
+    const chips = $("#dlg-choices"); chips.innerHTML = ""; chips.classList.toggle("hidden", !opts.choices);
+    $("#dlg-ok").classList.toggle("hidden", !!opts.choices);
     input.classList.toggle("hidden", !opts.input);
     if (opts.input) { input.value = opts.value == null ? "" : String(opts.value); input.type = "text"; input.inputMode = opts.number ? "numeric" : "text"; input.pattern = opts.number ? "[0-9]*" : ""; }
     wrap.classList.remove("hidden");
     const done = (v) => { wrap.classList.add("hidden"); $("#dlg-ok").onclick = $("#dlg-cancel").onclick = null; input.onkeydown = null; resolve(v); };
+    if (opts.choices) for (const ch of opts.choices) { const b = document.createElement("button"); b.textContent = ch.label; b.classList.toggle("on", ch.value === opts.value); b.onclick = () => done(ch.value); chips.appendChild(b); }
     $("#dlg-ok").onclick = () => done(opts.input ? input.value : true);
     $("#dlg-cancel").onclick = () => done(opts.input ? null : false);
     wrap.onclick = (e) => { if (e.target === wrap) done(opts.input ? null : false); };
     // Focus right away, inside the tap that opened the dialog, so the phone's keyboard comes up with it
-    if (opts.input) { input.focus(); try { const n = input.value.length; if (input.type === "text") input.setSelectionRange(n, n); } catch (e) {} input.onkeydown = (e) => { if (e.key === "Enter") done(input.value); }; }
-    else setTimeout(() => $("#dlg-ok").focus(), 60);
+    if (opts.input) { input.focus(); input.onkeydown = (e) => { if (e.key === "Enter") done(input.value); }; }
+    else if (!opts.choices) setTimeout(() => $("#dlg-ok").focus(), 60);
   });
 }
-const askText = (text, value) => ask(text, { input: true, value, ok: "Save", number: typeof value === "number" });
+const askText = (text, value) => ask(text, { input: true, value, ok: "Save" });
+/** Pick a number from chips: no keyboard, one tap. Resolves the number, or null on cancel. */
+const askNumber = (text, value, min, max, offLabel) => ask(text, { value, choices: Array.from({ length: max - min + 1 }, (_, i) => ({ value: min + i, label: min + i === 0 && offLabel ? offLabel : String(min + i) })) });
 function toast(msg, ms = 2800) {
   const t = $("#toast");
   t.textContent = msg; t.classList.remove("hidden");
@@ -1520,9 +1525,8 @@ function renderGoals() {
     row.innerHTML = `<span class="circle ${def.tone}"><svg><use href="#i-${def.icon}"/></svg></span><div class="body"><div class="name">${def.name}</div><div class="prog">${na ? "Set a protein goal on the Daily budget screen first" : off ? "Off" : `${have} of ${target} · ${def.sub(target)}${have >= target ? " · done ✓" : ""}`}</div>${!off && !na ? `<span class="bar"><span style="width:${Math.min(100, have / target * 100)}%"></span></span>` : ""}</div>
       ${!na ? `<div class="count">${off ? "Off" : `${have}<small>/${target}</small>`}</div>` : ""}<svg class="chev"><use href="#i-chev"/></svg>`;
     if (!na) row.onclick = async () => {
-      const v = await askText(`${def.name}: how many ${def.key === "workouts" ? "workouts" : "days"} a week? (1 to ${def.max}, or 0 to switch it off)`, target);
-      if (v == null) return;
-      const n = parseInt(v, 10); if (!isFinite(n) || n < 0 || n > def.max) { toast(`Pick a number from 0 to ${def.max}`); return; }
+      const n = await askNumber(`${def.name}: how many ${def.key === "workouts" ? "workouts" : "days"} a week?`, target, 0, def.max, "Off");
+      if (n == null) return;
       g[def.key] = n; save(); renderGoals();
     };
     box.appendChild(row);
