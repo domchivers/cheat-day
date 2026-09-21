@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=70">
-  <link rel="icon" href="icons/icon-192.png?v=70">
-  <link rel="stylesheet" href="styles.css?v=70">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=71">
+  <link rel="icon" href="icons/icon-192.png?v=71">
+  <link rel="stylesheet" href="styles.css?v=71">
 </head>
 <body>
 
@@ -351,8 +351,10 @@
     <button class="icon-btn" id="body-refresh" aria-label="Refresh"><svg><use href="#i-history"/></svg></button>
   </header>
   <div class="card stat-grid body-stats" id="body-stats"></div>
-  <div class="chips" id="body-metrics"></div>
-  <div class="card chart-card"><div class="field-title" id="body-chart-title">Weight</div><div id="body-chart"></div></div>
+  <div class="card chart-card">
+    <div class="chart-head"><select id="body-metric" aria-label="Which measurement to chart"></select><span class="field-title" id="body-chart-title">last 30 readings</span></div>
+    <div id="body-chart"></div>
+  </div>
 
   <button class="card level-card shot-card" id="bd-shot">
     <span class="circle green"><svg><use href="#i-image"/></svg></span>
@@ -367,8 +369,8 @@
   </button>
   <input type="file" accept=".csv,.xlsx,.xls,.txt,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" id="file-bd-import" hidden>
 
-  <h2 class="section-title">Add a reading</h2>
-  <div id="bd-form">
+  <button class="card prompt-card" id="bd-form-toggle"><span class="circle sand"><svg><use href="#i-pen"/></svg></span><span class="prompt-text">Type a reading in</span><svg class="chev"><use href="#i-chev"/></svg></button>
+  <div id="bd-form" class="hidden">
   <div class="card form-card">
     <div class="grid2 tight">
       <label>Date <input type="date" id="bd-date"></label>
@@ -409,7 +411,8 @@
 
   <h2 class="section-title">Readings</h2>
   <ul class="list" id="body-list"></ul>
-  <p class="empty" id="body-empty">No readings yet. Add one above, or connect your scale.</p>
+  <button class="btn ghost hidden" id="body-more">Show all readings</button>
+  <p class="empty" id="body-empty">No readings yet. Read a screenshot or add one above.</p>
 </section>
 
 <!-- ===================== WORKOUTS ===================== -->
@@ -798,10 +801,10 @@
   <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=70"></script>
-<script src="foods.js?v=70"></script>
-<script src="supabase-config.js?v=70"></script>
-<script src="cloud.js?v=70"></script>
-<script src="app.js?v=70"></script>
+<script src="presets.js?v=71"></script>
+<script src="foods.js?v=71"></script>
+<script src="supabase-config.js?v=71"></script>
+<script src="cloud.js?v=71"></script>
+<script src="app.js?v=71"></script>
 </body>
 </html>

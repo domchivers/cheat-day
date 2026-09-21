@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "70";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "71";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1430,7 +1430,11 @@ const BODY_METRICS = [
   { key: "lean", name: "Lean mass", unit: "kg", dp: 1 }, { key: "water", name: "Water", unit: "%", dp: 1 }, { key: "bone", name: "Bone", unit: "kg", dp: 1 },
   { key: "visceral", name: "Visceral fat", unit: "", dp: 1 }, { key: "bmr", name: "BMR", unit: "kcal", dp: 0 }, { key: "age", name: "Metabolic age", unit: "", dp: 0 }, { key: "bmi", name: "BMI", unit: "", dp: 1 }
 ];
-let bodyMetric = "weight", bodyAt = 0;
+let bodyMetric = "weight", bodyAt = 0, bodyAll = false, bodyOpen = null;
+$("#body-metric").addEventListener("change", (e) => { bodyMetric = e.target.value; drawBody(); });
+$("#body-more").onclick = () => { bodyAll = !bodyAll; drawBody(); };
+const showBodyForm = (open) => { $("#bd-form").classList.toggle("hidden", !open); $("#bd-form-toggle").classList.toggle("open", open); };
+$("#bd-form-toggle").onclick = () => showBodyForm($("#bd-form").classList.contains("hidden"));
 const bodySorted = () => state.body.slice().sort((a, b) => String(a.day).localeCompare(String(b.day)));
 const latestBody = () => { const rows = bodySorted(); return rows[rows.length - 1] || null; };
 /** Keep one row per day; newer updatedAt wins. Weight flows into the workout burn estimate. */
@@ -1476,27 +1480,39 @@ function drawBody() {
   const have = BODY_METRICS.filter((m) => rows.some((r) => r[m.key] != null));
   const cutoff = dateMinus(30);
   const st = $("#body-stats");
-  if (!lb) st.innerHTML = `<div style="grid-column:1/-1"><small>Nothing yet</small><b>Add your first reading below</b></div>`;
-  else st.innerHTML = have.slice(0, 6).map((m) => {
+  if (!lb) st.innerHTML = `<div style="grid-column:1/-1"><small>Nothing yet</small><b>Read a screenshot or add a reading below</b></div>`;
+  const headline = ["weight", "fat", "muscle", "lean", "water"].map((k) => have.find((m) => m.key === k)).filter(Boolean).slice(0, 3);
+  if (lb) st.innerHTML = headline.map((m) => {
     const cur = rows.filter((r) => r[m.key] != null), now = cur[cur.length - 1], before = cur.slice().reverse().find((r) => r.day <= cutoff) || cur[0];
     const d = before !== now ? now[m.key] - before[m.key] : 0, good = m.key === "muscle" || m.key === "lean" || m.key === "water" || m.key === "bone" || m.key === "bmr" ? d > 0 : d < 0;
     return `<div><small>${m.name}</small><b>${fmt(now[m.key], m.dp)}${m.unit ? ` <span class="muted tiny">${m.unit}</span>` : ""}${d ? `<span class="delta ${good ? "down" : "up"}">${d > 0 ? "+" : ""}${fmt(d, m.dp)}</span>` : ""}</b></div>`;
   }).join("");
-  const chips = $("#body-metrics"); chips.innerHTML = "";
   if (!have.some((m) => m.key === bodyMetric) && have.length) bodyMetric = have[0].key;
-  for (const m of have) { const b = document.createElement("button"); b.textContent = m.name; b.classList.toggle("on", m.key === bodyMetric); b.onclick = () => { bodyMetric = m.key; drawBody(); }; chips.appendChild(b); }
+  const pickEl = $("#body-metric");
+  pickEl.innerHTML = (have.length ? have : BODY_METRICS.slice(0, 1)).map((x) => `<option value="${x.key}"${x.key === bodyMetric ? " selected" : ""}>${x.name}${x.unit ? ` (${x.unit})` : ""}</option>`).join("");
   const m = BODY_METRICS.find((x) => x.key === bodyMetric);
-  $("#body-chart-title").textContent = `${m.name}${m.unit ? ` (${m.unit})` : ""}, last 30 readings`;
+  $("#body-chart-title").textContent = "last 30 readings";
   $("#body-chart").innerHTML = lineChart(rows.filter((r) => r[m.key] != null).slice(-30).map((r) => ({ day: r.day, v: r[m.key] })), m.dp);
   const list = $("#body-list"); list.innerHTML = "";
-  for (const r of rows.slice().reverse().slice(0, 30)) {
+  const newest = rows.slice().reverse(), shown = bodyAll ? newest.slice(0, 60) : newest.slice(0, 5);
+  const val = (x, v) => `${fmt(v, x.dp)}${x.unit === "%" ? "%" : x.unit ? ` ${x.unit}` : ""}`;
+  for (const r of shown) {
     const li = document.createElement("li");
-    const bits = BODY_METRICS.filter((x) => r[x.key] != null).map((x) => `${x.name} ${fmt(r[x.key], x.dp)}${x.unit === "%" ? "%" : x.unit ? ` ${x.unit}` : ""}`);
-    li.innerHTML = `<span class="thumb-sm"><svg><use href="#i-scale"/></svg></span><div class="body"><div class="name">${r.day === localDate() ? "Today" : new Date(r.day + "T12:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}</div><div class="detail">${esc(bits.join(" · "))}</div></div><button class="del" aria-label="Remove">✕</button>`;
-    li.querySelector(".del").onclick = async () => { if (!await ask(`Remove the reading for ${r.day}?`)) return; state.body = state.body.filter((x) => x.day !== r.day); save(); drawBody(); };
-    li.querySelector(".body").onclick = () => { $("#bd-date").value = r.day; for (const x of BODY_METRICS) { const el = $(`#bd-${x.key}`); if (el) el.value = r[x.key] ?? ""; } window.scrollTo({ top: $("#bd-date").getBoundingClientRect().top + window.scrollY - 90, behavior: "smooth" }); };
+    const all = BODY_METRICS.filter((x) => r[x.key] != null);
+    const short = ["weight", "fat", "muscle"].map((k) => all.find((x) => x.key === k)).filter(Boolean).map((x) => x.key === "fat" ? `${val(x, r[x.key])} fat` : x.key === "muscle" ? `${val(x, r[x.key])} muscle` : val(x, r[x.key]));
+    const extra = all.length - short.length;
+    const open = bodyOpen === r.day;
+    li.innerHTML = `<span class="thumb-sm"><svg><use href="#i-scale"/></svg></span><div class="body"><div class="name">${r.day === localDate() ? "Today" : new Date(r.day + "T12:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}</div><div class="detail">${esc(short.join(" · "))}</div></div>${extra > 0 ? `<svg class="chev more-chev${open ? " up" : ""}"><use href="#i-chev"/></svg>` : ""}<button class="del" aria-label="Remove">✕</button>
+      ${open ? `<div class="all">${all.map((x) => `<span>${x.name} <b>${val(x, r[x.key])}</b></span>`).join("")}<button class="btn mint slim edit">Edit this reading</button></div>` : ""}`;
+    li.querySelector(".del").onclick = async (e) => { e.stopPropagation(); if (!await ask(`Remove the reading for ${r.day}?`)) return; state.body = state.body.filter((x) => x.day !== r.day); save(); drawBody(); };
+    li.onclick = (e) => { if (e.target.closest(".edit") || e.target.closest(".del")) return; bodyOpen = open ? null : r.day; drawBody(); };
+    const ed = li.querySelector(".edit");
+    if (ed) ed.onclick = () => { showBodyForm(true); $("#bd-date").value = r.day; for (const x of BODY_METRICS) { const el = $(`#bd-${x.key}`); if (el) el.value = r[x.key] ?? ""; } window.scrollTo({ top: $("#bd-date").getBoundingClientRect().top + window.scrollY - 90, behavior: "smooth" }); };
     list.appendChild(li);
   }
+  const more = $("#body-more");
+  more.classList.toggle("hidden", newest.length <= 5);
+  more.textContent = bodyAll ? "Show fewer" : `Show all ${newest.length} readings`;
   $("#body-empty").classList.toggle("hidden", rows.length > 0);
 }
 // ---- read a scale app screenshot with the AI: one tap, check, save
@@ -1636,7 +1652,7 @@ $("#bd-save").onclick = async () => {
   if (!any) { toast("Type at least one number"); return; }
   upsertBody(row); save(); drawBody();
   for (const m of BODY_METRICS) { const el = $(`#bd-${m.key}`); if (el) el.value = ""; }
-  toast(`Saved${row.weight ? `: ${row.weight} kg` : ""}`);
+  toast(`Saved${row.weight ? `: ${row.weight} kg` : ""}`); showBodyForm(false);
   const c = window.cloud; if (c && c.user) { try { const { day: d, updatedAt, ...rest } = row; await c.saveBodyRow({ day: d, ...rest }); } catch (e) {} }
 };
 $("#body-refresh").onclick = async () => { busy("Checking for new readings…"); const ch = await pullBody(true); busy(false); drawBody(); toast(ch ? "New readings pulled in" : "Nothing new"); };

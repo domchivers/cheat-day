@@ -606,7 +606,6 @@ body[data-view="home"] .view, body[data-view="feed"] .view, body[data-view="work
 .body-stats .delta { font-size: 11px; font-weight: 700; margin-left: 4px; }
 .body-stats .delta.down { color: var(--green-2); }
 .body-stats .delta.up { color: var(--coral); }
-#body-metrics { margin: 12px 0 0; }
 .how { margin-top: 10px; }
 .how summary { cursor: pointer; font-weight: 600; color: var(--green); font-size: 14px; }
 .how ol { padding-left: 18px; margin: 8px 0 0; color: var(--muted); }
@@ -621,3 +620,23 @@ body[data-view="home"] .view, body[data-view="feed"] .view, body[data-view="work
 .shot-card b { font-size: 16px; }
 #bd-import { margin-top: 10px; border-color: var(--line); }
 #bd-import .circle { background: var(--peach-bg); color: var(--peach); }
+/* Body: compact stats row, chart picker, short readings list */
+.body-stats { grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 10px; }
+.body-stats > div { padding: 8px 10px; }
+.body-stats b { font-size: 17px; white-space: nowrap; }
+.body-stats .delta { display: block; margin: 2px 0 0; }
+.chart-head { display: flex; align-items: center; gap: 10px; }
+.chart-head select { width: auto; flex: none; padding: 7px 30px 7px 12px; font-weight: 700; font-size: 15px; border-radius: 999px; background-color: var(--mint-2); border-color: transparent; color: var(--green); }
+.chart-head .field-title { margin: 0; }
+#body-list li { flex-wrap: wrap; }
+#body-list .all { flex-basis: 100%; font-size: 13px; color: var(--muted); line-height: 1.6; margin-top: 6px; display: grid; grid-template-columns: 1fr 1fr; column-gap: 12px; }
+#body-list .all b { color: var(--text); font-weight: 600; }
+#body-list .all .edit { grid-column: 1 / -1; margin-top: 6px; }
+#body-more { margin-top: 4px; }
+#body-list .more-chev { width: 16px; height: 16px; color: var(--muted); transform: rotate(90deg); flex: none; transition: transform .15s; }
+#body-list .more-chev.up { transform: rotate(-90deg); }
+#bd-form-toggle { margin-top: 10px; }
+#bd-form-toggle .prompt-text { background: transparent; padding: 0; color: var(--text); font-weight: 600; }
+#bd-form-toggle .chev { width: 18px; height: 18px; color: var(--muted); transition: transform .15s; }
+#bd-form-toggle.open .chev { transform: rotate(90deg); }
+#bd-form .form-card { margin-top: 8px; }
