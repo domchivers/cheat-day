@@ -737,3 +737,27 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 .inline-time { display: inline-block !important; width: auto; }
 .level-hero .streaks span { height: 30px; box-sizing: border-box; overflow: visible; }
 .level-hero .streaks .e { font-size: 14px; line-height: 1; display: inline-block; height: 16px; font-style: normal; }
+/* History calendar */
+.cal-card { padding: 10px 12px 12px; }
+.cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.cal-head b { font-size: 17px; }
+.cal-head .icon-btn svg { width: 20px; height: 20px; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.cal-dow span { text-align: center; font-size: 11px; font-weight: 700; color: var(--muted); padding: 2px 0 4px; }
+.cal-day { aspect-ratio: 1; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; background: var(--bg); color: var(--muted); border: 2px solid transparent; padding: 0; }
+.cal-day small { font-size: 9px; font-weight: 700; opacity: .85; line-height: 1; margin-top: 1px; }
+.cal-day.blank { background: transparent; }
+.cal-day.ok { background: #cfe8d3; color: #1f5a3b; }
+.cal-day.near { background: #f7e2b3; color: #7a5410; }
+.cal-day.over { background: #f6cbc5; color: #8e2b22; }
+.cal-day.today { border-color: var(--green); }
+.cal-day.future { opacity: .45; }
+.cal-key { display: flex; justify-content: center; gap: 14px; margin-top: 10px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+.cal-key .k { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.cal-key .k.ok { background: #cfe8d3; } .cal-key .k.near { background: #f7e2b3; } .cal-key .k.over { background: #f6cbc5; }
+.cal-week { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 14px; margin-top: 8px; }
+.cal-week b { font-size: 14px; display: block; }
+.cal-week small { color: var(--muted); font-size: 12px; }
+.cal-week .avg { text-align: right; white-space: nowrap; }
+.cal-week .avg b { color: var(--green); font-size: 16px; }
+.day-card.flash { outline: 2px solid var(--green); outline-offset: 2px; transition: outline-color .6s; }

@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=81">
-  <link rel="icon" href="icons/icon-192.png?v=81">
-  <link rel="stylesheet" href="styles.css?v=81">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=82">
+  <link rel="icon" href="icons/icon-192.png?v=82">
+  <link rel="stylesheet" href="styles.css?v=82">
 </head>
 <body>
 
@@ -234,7 +234,15 @@
     <button class="icon-btn" data-back aria-label="Back"><svg><use href="#i-back"/></svg></button>
     <h1>History</h1><span></span>
   </header>
+  <div class="card cal-card">
+    <div class="cal-head"><button class="icon-btn" id="cal-prev" aria-label="Previous month"><svg style="transform:rotate(180deg)"><use href="#i-chev"/></svg></button><b id="cal-title">Month</b><button class="icon-btn" id="cal-next" aria-label="Next month"><svg><use href="#i-chev"/></svg></button></div>
+    <div class="cal-grid cal-dow"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>
+    <div class="cal-grid" id="cal-days"></div>
+    <div class="cal-key"><span><i class="k ok"></i>On budget</span><span><i class="k near"></i>A little over</span><span><i class="k over"></i>Over</span></div>
+  </div>
+  <div id="cal-weeks"></div>
   <div class="card week-totals hidden" id="history-week"></div>
+  <h2 class="section-title">Days</h2>
   <div id="history-list"></div>
   <p class="empty" id="history-empty">No past days yet. Each day goes in here at midnight.</p>
 </section>
@@ -867,10 +875,10 @@
   <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=81"></script>
-<script src="foods.js?v=81"></script>
-<script src="supabase-config.js?v=81"></script>
-<script src="cloud.js?v=81"></script>
-<script src="app.js?v=81"></script>
+<script src="presets.js?v=82"></script>
+<script src="foods.js?v=82"></script>
+<script src="supabase-config.js?v=82"></script>
+<script src="cloud.js?v=82"></script>
+<script src="app.js?v=82"></script>
 </body>
 </html>

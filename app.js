@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "81";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "82";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -716,7 +716,56 @@ function ingredientFromText(line) {
 // ---------------------------------------------------------------- history
 
 const histOpen = new Set();
+// ---- a month calendar coloured by budget, and weekly averages under it
+let calMonth = null;   // "YYYY-MM"
+function dayRecord(date) {
+  if (date === localDate()) return state.day.items.length ? { date, kcal: usedKcal(), budget: budgetToday() } : null;
+  const h = state.history.find((x) => x.date === date);
+  return h && (h.kcal || (Array.isArray(h.items) && h.items.length)) ? h : null;
+}
+const budgetClass = (r) => !r || !r.budget ? "" : r.kcal <= r.budget ? "ok" : r.kcal <= r.budget * 1.1 ? "near" : "over";
+function renderCalendar() {
+  const today = localDate();
+  if (!calMonth) calMonth = today.slice(0, 7);
+  const [y, mo] = calMonth.split("-").map(Number);
+  const first = new Date(y, mo - 1, 1), daysIn = new Date(y, mo, 0).getDate(), lead = (first.getDay() + 6) % 7;
+  $("#cal-title").textContent = first.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  $("#cal-next").disabled = calMonth >= today.slice(0, 7);
+  const grid = $("#cal-days"); grid.innerHTML = "";
+  for (let i = 0; i < lead; i++) grid.insertAdjacentHTML("beforeend", `<span class="cal-day blank"></span>`);
+  for (let d = 1; d <= daysIn; d++) {
+    const date = `${calMonth}-${String(d).padStart(2, "0")}`, rec = dayRecord(date), cls = budgetClass(rec);
+    const b = document.createElement("button");
+    b.className = `cal-day ${cls}${date === today ? " today" : ""}${date > today ? " future" : ""}`;
+    b.innerHTML = `${d}${rec ? `<small>${fmt(Math.round(rec.kcal / 100) / 10, 1)}k</small>` : ""}`;
+    if (rec) b.onclick = () => {
+      if (date === today) { home(); return; }
+      histOpen.add(date); renderHistory();
+      const card = document.querySelector(`#history-list [data-date="${date}"]`);
+      if (card) { card.scrollIntoView({ behavior: "smooth", block: "center" }); card.classList.add("flash"); setTimeout(() => card.classList.remove("flash"), 1400); }
+    };
+    else b.disabled = true;
+    grid.appendChild(b);
+  }
+  // weeks that touch this month
+  const wl = $("#cal-weeks"); wl.innerHTML = "";
+  const monday = new Date(first); monday.setDate(1 - lead);
+  const weights = bodySorted().filter((r) => r.weight);
+  for (let wk = new Date(monday); wk <= new Date(y, mo - 1, daysIn); wk.setDate(wk.getDate() + 7)) {
+    const dates = Array.from({ length: 7 }, (_, i) => { const d = new Date(wk); d.setDate(d.getDate() + i); return localDate(d); });
+    const recs = dates.map(dayRecord).filter(Boolean);
+    if (!recs.length) continue;
+    const avg = recs.reduce((a, r) => a + r.kcal, 0) / recs.length, on = recs.filter((r) => r.budget && r.kcal <= r.budget).length;
+    const w = weights.filter((r) => r.day >= dates[0] && r.day <= dates[6]);
+    const change = w.length > 1 ? w[w.length - 1].weight - w[0].weight : null;
+    const label = (d) => new Date(d + "T12:00").toLocaleDateString(undefined, { day: "numeric", month: "short" });
+    wl.insertAdjacentHTML("beforeend", `<div class="card cal-week"><div><b>${label(dates[0])} – ${label(dates[6])}</b><small>${on} of ${recs.length} day${recs.length === 1 ? "" : "s"} on budget${change != null ? ` · ${change > 0 ? "+" : "−"}${fmt(Math.abs(change), 1)} kg` : ""}</small></div><div class="avg"><b>${fmt(avg)}</b><small>kcal a day</small></div></div>`);
+  }
+}
+$("#cal-prev").onclick = () => { const [y, m] = calMonth.split("-").map(Number); const d = new Date(y, m - 2, 1); calMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; renderCalendar(); };
+$("#cal-next").onclick = () => { const [y, m] = calMonth.split("-").map(Number); const d = new Date(y, m, 1); calMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; renderCalendar(); };
 function renderHistory() {
+  renderCalendar();
   const list = $("#history-list"); list.innerHTML = "";
   const wk = state.history.filter((h) => h.date >= dateMinus(6)), tr = trainingDays(7);
   const eaten = wk.reduce((a, h) => a + (h.kcal || 0), 0) + usedKcal(), burned = tr.reduce((a, d) => a + d.burned, 0), n = tr.reduce((a, d) => a + d.count, 0);
@@ -728,7 +777,7 @@ function renderHistory() {
   const today = localDate();
   for (const d of days) {
     const card = document.createElement("div");
-    card.className = "card day-card";
+    card.className = "card day-card"; card.dataset.date = d.date;
     const label = d.date === dateMinus(1) ? "Yesterday" : new Date(d.date + "T12:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
     const over = d.kcal > d.budget, pct = d.budget ? Math.min(100, d.kcal / d.budget * 100) : 0;
     const items = Array.isArray(d.items) ? d.items : [];
