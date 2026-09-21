@@ -874,3 +874,5 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 #busy-cancel { width: auto; margin: 14px auto 0; padding: 9px 22px; }
 .ai-live .secs { font-variant-numeric: tabular-nums; }
 .ai-live .cancel { margin-left: 10px; color: var(--green); font-weight: 700; text-decoration: underline; }
+.fit-line { margin: 4px 0 0; font-weight: 700; }
+.fit-line.ok { color: var(--green); }

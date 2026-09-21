@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "91";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "92";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1260,12 +1260,13 @@ const ASSIST_SCHEMA = {
     }, required: ["actions"], additionalProperties: false },
     recipe: { type: ["object", "null"], description: "kind=recipe: a dish they can cook and save as a meal", properties: {
       name: { type: "string" }, portions: { type: "number" },
+      target_kcal: { type: ["number", "null"], description: "the calorie limit per portion they asked for (or what's left today if they asked it to fit), else null" },
       ingredients: { type: "array", items: { type: "object", properties: {
         name: { type: "string" }, grams: { type: "number", description: "g, or ml for liquids" }, kcal: { type: "number" }, protein_g: { type: "number" }, carbs_g: { type: "number" }, fat_g: { type: "number" }
       }, required: ["name", "grams", "kcal", "protein_g", "carbs_g", "fat_g"], additionalProperties: false } },
       steps: { type: "array", items: { type: "string" }, description: "short numbered method steps" },
       notes: { type: "string" }
-    }, required: ["name", "portions", "ingredients", "steps", "notes"], additionalProperties: false },
+    }, required: ["name", "portions", "target_kcal", "ingredients", "steps", "notes"], additionalProperties: false },
     lighter: { type: ["object", "null"], description: "kind=lighter: a lighter way to have a named thing", properties: {
       name: { type: "string" }, tips: { type: "array", items: { type: "string" } }, serving_size: { type: "number" },
       kcal_per_serving: { type: "number" }, protein_g: { type: "number" }, carbs_g: { type: "number" }, fat_g: { type: "number" }
@@ -1389,15 +1390,27 @@ async function sendAsk() {
   bubble("me", `${images.length ? `<div class="shots">${images.map((im) => `<img src="${im}" alt="">`).join("")}</div>` : ""}${esc(text || "(photos)")}`);
   askTurns.push({ role: "me", text: (text || "") + (images.length ? ` (${images.length} photo${images.length === 1 ? "" : "s"})` : "") });
   $("#ask-text").value = ""; askFiles = []; showAskPreview();
-  const history = askTurns.slice(-8, -1).map((t) => `${t.role === "me" ? "They" : "You"}: ${t.text}`).join("\n");
+  const past = askTurns.slice(-8, -1);
+  const lastRecipe = past.slice().reverse().find((t) => t.role === "bot" && t.result && t.result.kind === "recipe" && t.result.recipe);
+  const history = past.map((t) => {
+    if (t.role === "me") return `They: ${t.text}`;
+    const r = t.result || {}; let line = `You: ${t.text}`;
+    if (r.kind === "recipe" && r.recipe && t !== lastRecipe) line += ` [an earlier recipe: ${recipeSummary(r.recipe)}]`;
+    if (r.kind === "plan" && r.plan) line += ` [suggested: ${(r.plan.suggestions || []).map((x) => `${x.name} ${fmt(x.kcal)} kcal`).join(", ")}]`;
+    if (r.kind === "lighter" && r.lighter) line += ` [lighter ${r.lighter.name}: ${fmt(r.lighter.kcal_per_serving)} kcal]`;
+    return line;
+  }).join("\n");
+  const current = lastRecipe ? `THE RECIPE YOU'RE WORKING ON, current version: ${recipeSummary(lastRecipe.result.recipe, true)}
+If they want it changed, start from exactly this version: change only what they ask, keep every other ingredient and amount the same, never bring back something they asked to remove, and say in the reply exactly what changed and the new calories per portion.
+` : "";
   const prompt = `You are the assistant inside a cheat-day food diary app. ${dayContext()}
-${history ? `Recent conversation:\n${history}\n` : ""}They now say: "${text || "(photos, no words)"}"${images.length === 1 ? " (a photo is attached. If it shows food to log, use it for what the food is and the portion size, trusting their words over the photo for the name. If it shows the inside of a fridge, a cupboard or loose ingredients, treat it as what they have to cook with)" : images.length > 1 ? ` (${images.length} photos are attached, in order. They may show the dish, a menu or label for it, and what was left over at the end. Use the menu or label for names and stated nutrition, the dish photo for the portion, and subtract anything shown left over so the estimate is what was actually eaten.)` : ""}.
+${history ? `Recent conversation:\n${history}\n` : ""}${current}They now say: "${text || "(photos, no words)"}"${images.length === 1 ? " (a photo is attached. If it shows food to log, use it for what the food is and the portion size, trusting their words over the photo for the name. If it shows the inside of a fridge, a cupboard or loose ingredients, treat it as what they have to cook with)" : images.length > 1 ? ` (${images.length} photos are attached, in order. They may show the dish, a menu or label for it, and what was left over at the end. Use the menu or label for names and stated nutrition, the dish photo for the portion, and subtract anything shown left over so the estimate is what was actually eaten.)` : ""}.
 
 Decide what they want and fill exactly one of estimate / plan / edit / recipe / lighter (leave the others null), or kind=answer for a plain question:
 - estimate: a food or plate to log, as one portion with honest kcal and macros.
 - plan: 3 to 5 things for the rest of today that fit the calories left, close the macro gaps as far as sensible, and leave room for one treat.
 - edit: they're correcting today's list ("I only had 2 eggs", "remove the toast", "add a banana") or logging exercise (action "workout": activity from Walk, Run, Cycle, Swim, Gym weights, HIIT, Yoga / stretch, Football, Tennis / padel, Hike, Rowing, Elliptical, Dance, Boxing, Climbing, Other; minutes; effort; for gym sessions the lifts as sets × reps at kg); match targets to the exact names given above.
-- recipe: a dish to cook, with realistic ingredient amounts, kcal and macros per ingredient, and short method steps; respect any calorie or protein target they give and the calories they have left if they mention it. If a photo shows a fridge, cupboard or ingredients, build the recipe mainly from what's visible (assume basics like oil, salt, pepper and spices), size one portion to fit the calories left today, and name two other dishes they could make instead in the reply.
+- recipe: a dish to cook, with realistic ingredient amounts, kcal and macros per ingredient (standard reference values, so the numbers add up), and short method steps. If they give a calorie limit, or ask it to fit what's left today, put that in target_kcal and check the per-portion total is at or under it before you answer. To make it tastier within the limit, pay for anything you add by trimming something else (oil, cheese, the carb portion) in the same answer, rather than adding and removing things over several turns. If a photo shows a fridge, cupboard or ingredients, build the recipe mainly from what's visible (assume basics like oil, salt, pepper and spices), size one portion to fit the calories left today, and name two other dishes they could make instead in the reply.
 - lighter: a lighter way to have something, with tips and the lighter serving's numbers.
 Estimates use standard reference values. Keep reply short and friendly.`;
   const content = [];
@@ -1445,7 +1458,7 @@ function renderAssistant(r, image) {
     const rc = r.recipe, portions = num(rc.portions) || 1;
     const items = (rc.ingredients || []).map(recipeIngredientToItem);
     const total = items.reduce((a, it) => a + it.kcal, 0), mac = sumMacros(items);
-    el.insertAdjacentHTML("beforeend", `<div class="card"><b>${esc(rc.name)}</b> · ${portions} portion${portions === 1 ? "" : "s"}${statRow(total / portions, mac.p / portions, mac.c / portions, mac.f / portions)}<p class="muted tiny">per portion</p>
+    el.insertAdjacentHTML("beforeend", `<div class="card"><b>${esc(rc.name)}</b> · ${portions} portion${portions === 1 ? "" : "s"}${statRow(total / portions, mac.p / portions, mac.c / portions, mac.f / portions)}<p class="muted tiny">per portion</p>${rc.target_kcal ? (total / portions <= rc.target_kcal + 10 ? `<p class="tiny fit-line ok">Fits your ${fmt(rc.target_kcal)} kcal limit</p>` : `<p class="tiny fit-line over">${fmt(total / portions - rc.target_kcal)} kcal over your ${fmt(rc.target_kcal)} limit. Say "fit it" and I'll trim it.</p>`) : ""}
       <ul class="list">${items.map((it) => `<li><div class="body"><div class="name">${esc(it.name)}</div><div class="detail">${fmt(it.grams)} ${it.unit || "g"} · ${fmt(it.kcal)} kcal</div></div></li>`).join("")}</ul>
       <ol class="method">${(rc.steps || []).map((st) => `<li>${esc(st)}</li>`).join("")}</ol>
       <p class="muted tiny">${esc(rc.notes || "")}</p><button class="btn primary" data-act="save">Save as a meal</button></div>`);
@@ -1496,6 +1509,14 @@ function suggestionToItem(sg) {
   return { basis: item, kcal: Math.round(sg.kcal) };
 }
 /** A recipe ingredient becomes a meal item: our numbers where the food list knows it, the model's otherwise. */
+/** A recipe as the app counts it: short for older turns, every ingredient for the one being worked on. */
+function recipeSummary(rc, full) {
+  const portions = num(rc.portions) || 1, items = (rc.ingredients || []).map(recipeIngredientToItem);
+  const total = items.reduce((a, it) => a + it.kcal, 0), mac = sumMacros(items);
+  const per = `${fmt(total / portions)} kcal, protein ${Math.round(mac.p / portions)} g, carbs ${Math.round(mac.c / portions)} g, fat ${Math.round(mac.f / portions)} g per portion`;
+  if (!full) return `"${rc.name}", ${per}`;
+  return `"${rc.name}", ${portions} portion${portions === 1 ? "" : "s"}${rc.target_kcal ? `, limit ${fmt(rc.target_kcal)} kcal a portion` : ""}. Ingredients (whole recipe): ${items.map((it) => `${it.name} ${fmt(it.grams)} ${it.unit || "g"} (${fmt(it.kcal)} kcal)`).join("; ")}. Totals as the app counts them: ${per}.`;
+}
 function recipeIngredientToItem(x) {
   const grams = num(x.grams) || 100;
   const hit = searchLocal(x.name)[0];
@@ -3630,7 +3651,7 @@ function aiHelp() { toast("AI features need a key: a free Google Gemini key or a
 // ---- while the AI works: seconds ticking, honest words when it's slow, and a Cancel that always works
 let aiCtl = null, aiTick = null, aiStart = 0, aiNote = "";
 function aiProgress(note) { if (note != null) aiNote = note; const secs = Math.floor((Date.now() - aiStart) / 1000);
-  const words = aiNote || (secs < 8 ? "" : secs < 20 ? "Still thinking…" : "The free AI is slow right now…");
+  const words = aiNote || (secs < 8 ? "" : secs < 25 ? "Still thinking…" : secs < 45 ? "Long answers take a little while…" : "The free AI is slow right now…");
   const sub = `${secs}s${words ? ` · ${words}` : ""}`;
   if (!$("#busy").classList.contains("hidden")) { $("#busy-sub").textContent = sub; $("#busy-cancel").classList.toggle("hidden", secs < 6); }
   $$(".ai-live .secs").forEach((el) => el.textContent = sub);
@@ -3685,7 +3706,7 @@ async function askGemini(schema, content, key, effort = "medium") {
   // the model that answered last time goes first; a model that times out hands over to the lighter ones
   let remembered = null; try { remembered = localStorage.getItem(AI_MODEL_KEY); } catch (e) {}
   let order = GEMINI_MODELS.slice(); if (remembered && order.includes(remembered)) order = [remembered].concat(order.filter((m) => m !== remembered));
-  const limit = hasImage ? 30000 : 22000;
+  const limit = effort === "low" ? (hasImage ? 30000 : 20000) : 45000;   // a recipe or a plan is a long answer
   let resp, lastNet = null, timedOut = 0;
   for (let i = 0; i < order.length; i++) {
     const model = order[i];
@@ -3701,7 +3722,8 @@ async function askGemini(schema, content, key, effort = "medium") {
       } finally { clearTimeout(timer); }
     }
     if (!resp) {
-      if (timedOut) { aiProgress("Taking a while, trying a faster model…"); const lite = order.findIndex((m, j) => j > i && /lite/.test(m)); if (lite > i + 1) i = lite - 1; }
+      if (timedOut && effort === "low") { aiProgress("Taking a while, trying a faster model…"); const lite = order.findIndex((m, j) => j > i && /lite/.test(m)); if (lite > i + 1) i = lite - 1; }
+      else if (timedOut) aiProgress("Taking a while, trying another model…");
       if (timedOut >= 2) break;   // two slow models in a row: stop and say so
       continue;
     }
