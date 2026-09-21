@@ -4,7 +4,7 @@
 // Deploy: Supabase dashboard -> Edge Functions -> Deploy a new function -> name it "vesync", paste this, Deploy.
 // Keep "Verify JWT" ON: the app calls it with the user's own login. Needs a vesync_links table (SQL in the README).
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { crypto } from "jsr:@std/crypto@1";
+import { crypto as stdCrypto } from "jsr:@std/crypto@1";
 import { encodeHex } from "jsr:@std/encoding@1/hex";
 
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, apikey, content-type", "Access-Control-Allow-Methods": "POST, OPTIONS" };
@@ -15,7 +15,7 @@ const APP_VERSION = "5.6.60", CLIENT_VERSION = `VeSync ${APP_VERSION}`, APP_ID =
 const PHONE_BRAND = "CheatDays", PHONE_OS = "iOS", LANG = "en", TZ = "Australia/Sydney";
 let traceN = 0;
 const traceId = (terminalId: string) => `APP${terminalId.replace(/-/g, "").slice(-4)}${Math.floor(Date.now() / 1000)}-${String(++traceN).padStart(5, "0")}`;
-const md5 = async (s: string) => encodeHex(await crypto.subtle.digest("MD5", new TextEncoder().encode(s)));
+const md5 = async (s: string) => encodeHex(await stdCrypto.subtle.digest("MD5", new TextEncoder().encode(s)));
 
 type Resp = { code?: number; msg?: string; result?: any };
 async function post(base: string, path: string, body: Record<string, unknown>, headers: Record<string, string> = {}): Promise<Resp> {
@@ -82,6 +82,10 @@ function dayOf(row: any) {
 }
 
 Deno.serve(async (req) => {
+  try { return await handle(req); } catch (e) { return json({ error: `Function error: ${(e as Error).message}` }, 500); }
+});
+
+async function handle(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
   const user = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: req.headers.get("Authorization") || "" } } });
@@ -100,7 +104,7 @@ Deno.serve(async (req) => {
   if (action === "connect") {
     const email = String(body.email || "").trim(), password = String(body.password || "");
     if (!email || !password) return json({ error: "Email and password needed" }, 400);
-    const terminalId = crypto.randomUUID();
+    const terminalId = globalThis.crypto.randomUUID();
     const tries = body.region && BASES[body.region] ? [[body.region, body.country || body.region]] : [["US", body.country || "AU"], ["EU", body.country || "AU"], ["US", "US"]];
     let last = "";
     for (const [region, country] of tries) {
@@ -133,4 +137,4 @@ Deno.serve(async (req) => {
     return json({ ok: true, from: got.from, readings: got.rows.length, days: days.length, latest: days.length ? { day: days[days.length - 1], ...byDay[days[days.length - 1]] } : null, keys, sample: got.rows[0] || null, raw: got.rows.length ? undefined : got.raw });
   }
   return json({ error: "Unknown action" }, 400);
-});
+}
