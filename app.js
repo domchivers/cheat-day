@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "62";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "63";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1518,13 +1518,12 @@ async function showToken(make) {
   try { token = make ? null : await c.importToken(); if (!token) { token = randomToken(); await c.setImportToken(token); } }
   catch (err) { busy(false); toast("Not set up yet: " + c.explain(err), 6000); return; }
   busy(false);
-  $("#bd-url").value = `${window.SUPABASE_CONFIG.url}/functions/v1/body-import`;
-  $("#bd-token-value").value = token;
+  $("#bd-url").value = `${window.SUPABASE_CONFIG.url}/functions/v1/body-import?token=${token}`;
   $("#bd-token-box").classList.remove("hidden"); $("#bd-token").classList.add("hidden");
 }
 $("#bd-token").onclick = () => showToken(false);
-$("#bd-token-new").onclick = async () => { if (!await ask("Make a new token? The Shortcut will need updating with it.")) return; showToken(true); };
-$("#bd-copy").onclick = async () => { try { await navigator.clipboard.writeText(`URL: ${$("#bd-url").value}\nToken: ${$("#bd-token-value").value}`); toast("Copied"); } catch (e) { toast("Couldn't copy; long-press the fields instead"); } };
+$("#bd-token-new").onclick = async () => { if (!await ask("Make a new link? The Shortcut will need the new one pasted in.")) return; showToken(true); };
+$("#bd-copy").onclick = async () => { try { await navigator.clipboard.writeText($("#bd-url").value); toast("Link copied"); } catch (e) { toast("Couldn't copy; long-press the field instead"); } };
 
 // ---------------------------------------------------------------- goals, XP, levels and badges: the game layer
 

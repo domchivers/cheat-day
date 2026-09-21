@@ -251,8 +251,9 @@ estimate. Readings live in your synced data and, when signed in, in a
 `body_metrics` table so a Shortcut can add to them.
 
 **Connect a scale (iPhone).** Scales like Etekcity write to Apple Health. The
-Body screen gives you a link and a private token; an iPhone Shortcut runs every
-morning, reads the latest Health samples and POSTs them. One-off setup:
+Body screen gives you a private link (your token is in it); a two-action iPhone
+Shortcut (Find Health Samples, then Get Contents of URL as POST with the samples
+as the body) runs every morning. The function accepts JSON or text like "78.4 kg". One-off setup:
 
 ```sql
 create table if not exists public.body_metrics (

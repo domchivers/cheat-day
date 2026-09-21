@@ -9,9 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=62">
-  <link rel="icon" href="icons/icon-192.png?v=62">
-  <link rel="stylesheet" href="styles.css?v=62">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=63">
+  <link rel="icon" href="icons/icon-192.png?v=63">
+  <link rel="stylesheet" href="styles.css?v=63">
 </head>
 <body>
 
@@ -373,21 +373,19 @@
   <h2 class="section-title">Connect your scale</h2>
   <div class="card form-card" id="body-connect">
     <p class="muted">Your Etekcity scale writes to Apple Health. An iPhone Shortcut can send those readings here every morning.</p>
-    <button class="btn mint" id="bd-token">Get my link and token</button>
+    <button class="btn mint" id="bd-token">Get my link</button>
     <div class="hidden" id="bd-token-box">
-      <label>Send readings to <input type="text" id="bd-url" readonly></label>
-      <label>Your private token <input type="text" id="bd-token-value" readonly></label>
-      <button class="btn mint slim" id="bd-copy">Copy both</button>
-      <p class="muted tiny">Keep the token to yourself: anyone with it can add readings to your account. "New token" cancels the old one.</p>
-      <button class="btn ghost slim" id="bd-token-new">New token</button>
-      <details class="how"><summary>How to set up the Shortcut</summary>
+      <label>Your private link <input type="text" id="bd-url" readonly></label>
+      <button class="btn mint slim" id="bd-copy">Copy the link</button>
+      <p class="muted tiny">The link has your token in it: anyone with it can add readings to your account. "New link" cancels the old one.</p>
+      <button class="btn ghost slim" id="bd-token-new">New link</button>
+      <details class="how" open><summary>Two-action Shortcut</summary>
         <ol class="tiny">
-          <li>Open <b>Shortcuts</b>, tap <b>+</b>, name it "Scale to Cheat Days".</li>
-          <li>Add <b>Find Health Samples</b>: type <b>Weight</b>, sort by Start Date, Latest First, Limit 1. Then add <b>Get Details of Health Sample</b> → Value. (Set the Weight unit to kg in Health if it isn't.)</li>
-          <li>Repeat for <b>Body Fat Percentage</b> and <b>Lean Body Mass</b>, if your scale records them.</li>
-          <li>Add <b>Get Contents of URL</b>: the link above, Method <b>POST</b>, Request Body <b>JSON</b>, with fields <code>token</code> (your token), <code>weight</code>, <code>fat</code>, <code>lean</code> set to those values.</li>
-          <li>In <b>Automation</b>, add <b>Time of Day</b> (say 9:00, daily), pick this Shortcut, and turn off "Ask before running".</li>
+          <li>Open <b>Shortcuts</b>, tap <b>+</b>. Add <b>Find Health Samples</b>: type <b>Weight</b>, Sort by Start Date, Latest First, Limit 1.</li>
+          <li>Add <b>Get Contents of URL</b>: paste your link, set Method to <b>POST</b>, Request Body to <b>File</b>, and choose the <b>Health Samples</b> variable as the file.</li>
+          <li>Run it once: the reply says <code>"ok":true</code>. Then in the <b>Automation</b> tab add a daily <b>Time of Day</b> that runs it, with "Ask before running" off.</li>
         </ol>
+        <p class="muted tiny">Want body fat too? Add a second Find Health Samples for <b>Body Fat Percentage</b> and a second Get Contents of URL for it, same link.</p>
       </details>
     </div>
   </div>
@@ -783,10 +781,10 @@
   <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=62"></script>
-<script src="foods.js?v=62"></script>
-<script src="supabase-config.js?v=62"></script>
-<script src="cloud.js?v=62"></script>
-<script src="app.js?v=62"></script>
+<script src="presets.js?v=63"></script>
+<script src="foods.js?v=63"></script>
+<script src="supabase-config.js?v=63"></script>
+<script src="cloud.js?v=63"></script>
+<script src="app.js?v=63"></script>
 </body>
 </html>
