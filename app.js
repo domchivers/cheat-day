@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "107";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "108";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -188,9 +188,10 @@ function basisOf(obj) {
 
 // ---------------------------------------------------------------- router
 
-const VIEWS = ["home", "budget", "settings", "history", "friends", "feed", "compose", "recipe", "workouts", "exercise", "goals", "body", "welcome", "plan", "ask", "chats", "scan", "search", "meals", "meal", "details", "share"];
+const VIEWS = ["home", "budget", "settings", "history", "friends", "compose", "recipe", "workouts", "exercise", "goals", "body", "welcome", "plan", "ask", "chats", "scan", "search", "meals", "meal", "details", "share"];
 let stack = ["home"];
 function show(view) {
+  if (view === "feed") { frSeg = "feed"; view = "friends"; }   // the feed lives in the Friends tab now
   for (const v of VIEWS) $(`#view-${v}`).classList.toggle("hidden", v !== view);
   document.body.dataset.view = view;
   window.scrollTo(0, 0);
@@ -209,7 +210,7 @@ function show(view) {
   if (view === "goals") renderGoals();
   if (view === "body") renderBody();
   if (view === "plan") renderPlanStep();
-  if (view === "feed") renderFeed();
+  if (view === "friends") showFrSeg(false);
   if (view === "compose") renderCompose();
   $$("#tabbar button").forEach((b) => b.classList.toggle("on", b.dataset.tab === view));
   if (view === "chats") renderChats();
@@ -1036,6 +1037,9 @@ function drawFriends() {
   const sent = fr.friendships.filter((f) => f.status === "pending" && f.requester === me);
   const pl = $("#fr-pending"); pl.innerHTML = "";
   $("#fr-pending-wrap").classList.toggle("hidden", !pending.length && !sent.length);
+  $("#fr-list-title").classList.toggle("hidden", !(pending.length || sent.length) || !fr.friendships.some((f) => f.status === "accepted"));
+  $("#fr-dot").textContent = pending.length; $("#fr-dot").classList.toggle("hidden", !pending.length);
+  $("#fr-code-sub").textContent = `Your code ${fr.profile.friend_code || "…"} · your name and privacy`;
   for (const f of pending) {
     const li = document.createElement("li");
     li.innerHTML = `${avatar(f.requester, personName(f.requester))}<div class="body"><div class="name">${esc(personName(f.requester))}</div><div class="detail">wants to be friends</div></div>
@@ -1072,10 +1076,13 @@ function drawFriends() {
       else if (frOpen.has(f.uid)) items = `<ul class="ate">${list.map((it) => `<li><span>${esc(it.name)}</span><b>${fmt(it.kcal)}</b></li>`).join("")}</ul><button class="btn mint ate-btn" data-act="toggle">Hide</button>`;
       else items = `<div class="items">${esc(list.map((it) => it.name).slice(0, 3).join(", "))}${list.length > 3 ? ` and ${list.length - 3} more` : ""}</div><button class="btn mint ate-btn" data-act="toggle">What they ate (${list.length}) ▾</button>`;
     }
-    card.innerHTML = `${avatar(f.uid, personName(f.uid))}<div class="body"><div class="name"><span>${esc(personName(f.uid))}</span>${right}</div>${bar}${items}</div><button class="del" aria-label="Remove friend">✕</button>`;
+    const opened = frOpen.has(f.uid);
+    card.innerHTML = `${avatar(f.uid, personName(f.uid))}<div class="body"><div class="name"><span>${esc(personName(f.uid))}</span>${right}</div>${bar}${items}${opened ? `<button class="link-danger fr-remove">Remove ${esc(personName(f.uid))} as a friend</button>` : ""}</div>`;
+    const flip = () => { if (frOpen.has(f.uid)) frOpen.delete(f.uid); else frOpen.add(f.uid); drawFriends(); };
     const tog = card.querySelector("[data-act=toggle]");
-    if (tog) tog.onclick = (e) => { e.stopPropagation(); if (frOpen.has(f.uid)) frOpen.delete(f.uid); else frOpen.add(f.uid); drawFriends(); };
-    card.querySelector(".del").onclick = async () => { if (!await ask(`Remove ${personName(f.uid)} as a friend?`)) return; try { await c.removeFriend(f.id); renderFriends(); } catch (e) { toast(c.explain(e)); } };
+    if (tog) tog.onclick = (e) => { e.stopPropagation(); flip(); };
+    card.onclick = (e) => { if (!e.target.closest("button")) flip(); };
+    if (opened) card.querySelector(".fr-remove").onclick = async (e) => { e.stopPropagation(); if (!await ask(`Remove ${personName(f.uid)} as a friend?`)) return; try { await c.removeFriend(f.id); renderFriends(); } catch (e) { toast(c.explain(e)); } };
     fl.appendChild(card);
   }
   $("#fr-empty").classList.toggle("hidden", friends.length > 0);
@@ -1116,8 +1123,30 @@ function drawFriends() {
   }
   $("#fr-meals-empty").classList.toggle("hidden", theirs.length > 0);
 }
-$("#fr-refresh").onclick = () => renderFriends();
-$("#fr-add-toggle").onclick = () => { $("#fr-add-wrap").classList.toggle("hidden"); $("#fr-add").focus(); };
+// ---- the Friends tab: Feed, Friends and Leaderboard behind one switch
+let frSeg = (() => { try { return localStorage.getItem("cheatday.frSeg") || "feed"; } catch (e) { return "feed"; } })();
+function showFrSeg(remember = true) {
+  if (!["feed", "friends", "board"].includes(frSeg)) frSeg = "feed";
+  if (remember) { try { localStorage.setItem("cheatday.frSeg", frSeg); } catch (e) {} }
+  $$("#fr-seg button").forEach((b) => b.classList.toggle("on", b.dataset.s === frSeg));
+  for (const k of ["feed", "friends", "board"]) $(`#seg-${k}`).classList.toggle("hidden", k !== frSeg);
+  if (frSeg === "feed") renderFeed();
+}
+$("#fr-seg").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; frSeg = b.dataset.s; showFrSeg(); window.scrollTo(0, 0); });
+$("#fr-refresh").onclick = () => { renderFriends(); if (frSeg === "feed") renderFeed(); };
+$("#fr-add-toggle").onclick = () => { const w = $("#fr-connect"), open = w.classList.toggle("hidden") === false; if (open) setTimeout(() => $("#fr-add").focus(), 50); };
+// one leaderboard: days on budget, or the goals / level / streak rankings
+let frBoard = "budget";
+document.addEventListener("click", (e) => {
+  const b = e.target.closest(".fr-board-modes button"); if (!b) return;
+  frBoard = b.dataset.m;
+  $$(".fr-board-modes button").forEach((x) => x.classList.toggle("on", x === b));
+  $("#fr-week").classList.toggle("hidden", frBoard !== "budget");
+  $("#fr-lb").classList.toggle("hidden", frBoard === "budget");
+  $("#fr-board-note").textContent = { budget: "Days on budget this week, from the days friends share.", week: "Weekly goals done this week.", level: "Everyone's level and XP.", streak: "Days in a row logging food." }[frBoard];
+  if (frBoard !== "budget") { lbMode = frBoard; drawLeaderboard($("#fr-lb")); }
+});
+$("#g-lb-link").onclick = () => { frSeg = "board"; go("friends"); };
 $("#fr-name").addEventListener("change", async () => {
   const c = window.cloud, name = $("#fr-name").value.trim();
   if (!name || !fr.profile) return;
@@ -3059,7 +3088,7 @@ function drawFeed() {
     list.appendChild(card);
   }
 }
-$("#feed-refresh").onclick = () => renderFeed();
+
 /** A friend's post as a recipe: what's in it, how to make it, and save it or have some today. */
 function openRecipe(p) {
   const box = $("#recipe-body"), meal = p.kind === "meal", m = p.payload || {}, who = p.owner === window.cloud.uid ? "you" : feedName(p.owner);

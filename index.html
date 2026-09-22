@@ -10,9 +10,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=107">
-  <link rel="icon" href="icons/icon-192.png?v=107">
-  <link rel="stylesheet" href="styles.css?v=107">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=108">
+  <link rel="icon" href="icons/icon-192.png?v=108">
+  <link rel="stylesheet" href="styles.css?v=108">
 </head>
 <body>
 
@@ -320,8 +320,54 @@
     <button class="btn primary" data-go="settings">Go to Settings</button>
   </div>
   <div id="fr-body" class="hidden">
+    <div class="seg" id="fr-seg"><button data-s="feed">Feed</button><button data-s="friends">Friends<b class="dot hidden" id="fr-dot"></b></button><button data-s="board">Leaderboard</button></div>
 
-    <div class="card me-card">
+    <div class="seg-pane" id="seg-feed">
+  <div class="card form-card never" id="feed-signin">
+    <p class="muted">The feed is between friends, so it needs an account. Sign in from Settings, then come back here.</p>
+    <button class="btn primary" data-go="settings">Go to Settings</button>
+  </div>
+  <div id="feed-body">
+    <button class="card prompt-card" id="feed-prompt"><span id="feed-me-avatar"></span><span class="prompt-text">Share what you're having…</span><span class="prompt-cam circle green"><svg><use href="#i-camera"/></svg></span></button>
+    <div class="card picker hidden" id="feed-picker">
+      <div class="field-title">From today</div>
+      <ul class="list plain" id="feed-pick-today"></ul>
+      <p class="muted tiny hidden" id="feed-pick-today-empty">Nothing logged yet today. Scan or search something first, or pick a meal.</p>
+      <div class="field-title">Your meals</div>
+      <ul class="list plain" id="feed-pick-meals"></ul>
+      <p class="muted tiny hidden" id="feed-pick-meals-empty">No saved meals yet.</p>
+    </div>
+    <div id="feed-list"></div>
+    <div class="empty-state hidden" id="feed-empty"><span class="circle green big"><svg><use href="#i-feed"/></svg></span><b>Nothing here yet</b><span>Post what you're having and your friends will see it here. Their posts show up too.</span></div>
+  </div>
+    </div>
+
+    <div class="seg-pane hidden" id="seg-friends">
+      <div id="fr-pending-wrap" class="hidden">
+        <h2 class="section-title">Requests</h2>
+        <ul class="list" id="fr-pending"></ul>
+      </div>
+      <h2 class="section-title hidden" id="fr-list-title">Your friends</h2>
+      <div id="fr-list"></div>
+      <p class="empty" id="fr-empty">No friends yet. Add one below: swap codes to get started.</p>
+      <div id="fr-meals-wrap">
+        <h2 class="section-title">Meals your friends share</h2>
+        <div class="meal-row" id="fr-meals"></div>
+        <p class="muted tiny" id="fr-meals-empty">Nothing shared yet. Friends share from their meal page.</p>
+      </div>
+      <button class="card level-card fr-connect-row" id="fr-add-toggle">
+        <span class="circle green"><svg><use href="#i-people"/></svg></span>
+        <span class="level-text"><b>Add a friend</b><small id="fr-code-sub">Your code, your name and privacy</small></span>
+        <svg class="chev"><use href="#i-chev"/></svg>
+      </button>
+      <div class="hidden" id="fr-connect">
+        <div class="card form-card" id="fr-add-wrap">
+          <label>Their friend code
+            <input type="text" id="fr-add" placeholder="e.g. MUM-4821" autocapitalize="characters" autocorrect="off">
+          </label>
+          <button class="btn primary" id="fr-add-go">Send request</button>
+        </div>
+        <div class="card me-card">
       <div class="me-row">
         <span class="avatar big" id="fr-avatar">?</span>
         <div class="me-text">
@@ -336,61 +382,18 @@
       <label class="check"><input type="checkbox" id="fr-share-day"> Friends can see my day</label>
     </div>
 
-    <button class="btn primary" id="fr-add-toggle">＋ Add a friend</button>
-    <div class="card form-card hidden" id="fr-add-wrap">
-      <label>Their friend code
-        <input type="text" id="fr-add" placeholder="e.g. MUM-4821" autocapitalize="characters" autocorrect="off">
-      </label>
-      <button class="btn primary" id="fr-add-go">Send request</button>
+      </div>
     </div>
 
-    <div id="fr-pending-wrap" class="hidden">
-      <h2 class="section-title">Requests</h2>
-      <ul class="list" id="fr-pending"></ul>
+    <div class="seg-pane hidden" id="seg-board">
+      <div class="chips fr-board-modes"><button data-m="budget" class="on">On budget</button><button data-m="week">Goals</button><button data-m="level">Level</button><button data-m="streak">Streak</button></div>
+      <div class="card board" id="fr-week"></div>
+      <div class="card board hidden" id="fr-lb"></div>
+      <p class="muted tiny center" id="fr-board-note">Days on budget this week, from the days friends share.</p>
     </div>
-
-    <h2 class="section-title">Today</h2>
-    <div id="fr-list"></div>
-    <p class="empty" id="fr-empty">No friends yet. Swap codes to get started.</p>
-
-    <h2 class="section-title">Leaderboard</h2>
-    <div class="chips lb-modes" data-lb="fr-lb"><button data-m="week" class="on">This week</button><button data-m="level">Level</button><button data-m="streak">Streak</button></div>
-    <div class="card board" id="fr-lb"></div>
-
-    <h2 class="section-title">Calories this week</h2>
-    <div class="card board" id="fr-week"></div>
-
-    <h2 class="section-title">Meals from friends</h2>
-    <div id="fr-meals"></div>
-    <p class="empty" id="fr-meals-empty">Nothing shared yet. Friends share from their meal editor.</p>
   </div>
 </section>
 
-<!-- ===================== FEED ===================== -->
-<section class="view hidden" id="view-feed">
-  <header class="sub-head">
-    <button class="icon-btn" data-back aria-label="Back"><svg><use href="#i-back"/></svg></button>
-    <h1>Share</h1>
-    <button class="icon-btn" id="feed-refresh" aria-label="Refresh"><svg><use href="#i-history"/></svg></button>
-  </header>
-  <div class="card form-card" id="feed-signin">
-    <p class="muted">The feed is between friends, so it needs an account. Sign in from Settings, then come back here.</p>
-    <button class="btn primary" data-go="settings">Go to Settings</button>
-  </div>
-  <div id="feed-body" class="hidden">
-    <button class="card prompt-card" id="feed-prompt"><span id="feed-me-avatar"></span><span class="prompt-text">Share what you're having…</span><span class="prompt-cam circle green"><svg><use href="#i-camera"/></svg></span></button>
-    <div class="card picker hidden" id="feed-picker">
-      <div class="field-title">From today</div>
-      <ul class="list plain" id="feed-pick-today"></ul>
-      <p class="muted tiny hidden" id="feed-pick-today-empty">Nothing logged yet today. Scan or search something first, or pick a meal.</p>
-      <div class="field-title">Your meals</div>
-      <ul class="list plain" id="feed-pick-meals"></ul>
-      <p class="muted tiny hidden" id="feed-pick-meals-empty">No saved meals yet.</p>
-    </div>
-    <div id="feed-list"></div>
-    <div class="empty-state hidden" id="feed-empty"><span class="circle green big"><svg><use href="#i-feed"/></svg></span><b>Nothing here yet</b><span>Post what you're having and your friends will see it here. Their posts show up too.</span></div>
-  </div>
-</section>
 
 <!-- ===================== COMPOSE ===================== -->
 <section class="view hidden" id="view-compose">
@@ -435,9 +438,11 @@
   <button class="card level-card plan-card-top hidden" id="g-plan"></button>
 
   <div id="g-lb-wrap" class="hidden">
-    <h2 class="section-title">Friends</h2>
-    <div class="chips lb-modes" data-lb="g-lb"><button data-m="week" class="on">This week</button><button data-m="level">Level</button><button data-m="streak">Streak</button></div>
-    <div class="card board" id="g-lb"></div>
+    <button class="card level-card" id="g-lb-link">
+      <span class="circle green"><svg><use href="#i-people"/></svg></span>
+      <span class="level-text"><b>How you rank with friends</b><small>The leaderboard is in the Friends tab</small></span>
+      <svg class="chev"><use href="#i-chev"/></svg>
+    </button>
   </div>
 
   <h2 class="section-title">This week</h2>
@@ -976,15 +981,14 @@
 
 <nav class="tabbar" id="tabbar">
   <button data-tab="home"><svg><use href="#i-home"/></svg><span>Home</span></button>
-  <button data-tab="feed"><svg><use href="#i-feed"/></svg><span>Share</span></button>
   <button data-tab="workouts"><svg><use href="#i-lift"/></svg><span>Workouts</span></button>
   <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=107"></script>
-<script src="foods.js?v=107"></script>
-<script src="supabase-config.js?v=107"></script>
-<script src="cloud.js?v=107"></script>
-<script src="app.js?v=107"></script>
+<script src="presets.js?v=108"></script>
+<script src="foods.js?v=108"></script>
+<script src="supabase-config.js?v=108"></script>
+<script src="cloud.js?v=108"></script>
+<script src="app.js?v=108"></script>
 </body>
 </html>
