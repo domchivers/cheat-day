@@ -960,3 +960,32 @@ body.simple #bb-freq button { padding: 9px 14px; font-size: 15px; }
 #body-often { margin-top: 12px; }
 #body-often .bb-often, #body-often { }
 #bb-next { margin: 4px 0 0; }
+.chart-head { justify-content: space-between; }
+.chart-head .range { display: flex; gap: 2px; background: var(--bg); border-radius: 999px; padding: 3px; }
+.chart-head .range button { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12px; font-weight: 700; padding: 5px 11px; border-radius: 999px; cursor: pointer; }
+.chart-head .range button.on { background: var(--mint-2); color: var(--green); }
+.chart-hero { margin: 12px 0 0; text-align: left; }
+.chart-hero .now { font-size: 26px; font-weight: 800; line-height: 1.1; }
+.chart-hero .now small { font-size: 14px; font-weight: 600; color: var(--muted); margin-left: 3px; }
+.chart-hero .pace { font-size: 13px; font-weight: 700; margin-left: 8px; }
+.chart-hero .pace.good { color: var(--green); } .chart-hero .pace.bad { color: var(--coral); }
+.chart-hero .since { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.chart-card #body-chart svg { height: 180px; margin-top: 4px; touch-action: pan-y; }
+.chart-key { display: flex; flex-wrap: wrap; gap: 14px; font-size: 11px; color: var(--muted); margin: 4px 0 6px; }
+.chart-key i { display: inline-block; vertical-align: middle; margin-right: 5px; }
+.chart-key .k-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); opacity: .5; }
+.chart-key .k-line { width: 16px; height: 3px; border-radius: 2px; background: var(--green); }
+.chart-key .k-goal { width: 16px; border-top: 2px dashed var(--coral); }
+.bchart .cg { stroke: var(--line); stroke-width: 1; }
+.bchart .ct { fill: var(--muted); font-size: 10px; }
+.bchart .cl { fill: none; stroke: var(--green); stroke-width: 2.8; stroke-linecap: round; stroke-linejoin: round; }
+.bchart .cd { fill: var(--green); opacity: .45; }
+.bchart .cend { fill: var(--green); stroke: var(--card); stroke-width: 2.5; }
+.bchart .cgoal { stroke: var(--coral); stroke-width: 1.4; stroke-dasharray: 4 4; }
+.bchart .ctg { fill: var(--coral); font-size: 10px; font-weight: 700; }
+.bchart .tip.hidden { display: none; }
+.bchart .tip-l { stroke: var(--muted); stroke-width: 1; opacity: .6; }
+.bchart .tip-c { fill: var(--card); stroke: var(--green); stroke-width: 2.5; }
+.bchart .tip-b { fill: var(--green); }
+.bchart .tip-t { fill: #fff; font-size: 11px; font-weight: 700; }
+.chart-card #body-chart svg { height: auto; aspect-ratio: 320 / 180; }

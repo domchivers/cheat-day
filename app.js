@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "100";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "101";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1655,14 +1655,78 @@ async function pullBody(force) {
   if (changed) save();
   return changed;
 }
-function lineChart(pts, dp) {
-  if (pts.length < 2) return `<div class="none">${pts.length ? "One reading so far: the line starts with the next one." : "Nothing to chart yet."}</div>`;
-  const W = 320, H = 150, px = 20, py = 22, vals = pts.map((p) => p.v);
-  const lo = Math.min(...vals), hi = Math.max(...vals), pad = (hi - lo || Math.abs(hi) * 0.05 || 1) * 0.25;
-  const x = (i) => px + i * (W - 2 * px) / (pts.length - 1), y = (v) => H - py - (v - (lo - pad)) / ((hi + pad) - (lo - pad)) * (H - 2 * py);
-  const step = Math.ceil(pts.length / 5), lab = (i) => (pts.length <= 8 || i === 0 || i === pts.length - 1 || (i % step === 0 && pts.length - 1 - i >= step * 0.75)) ? `<text x="${x(i)}" y="${H - 5}" text-anchor="middle" font-size="10" style="fill:var(--muted)">${new Date(pts[i].day + "T12:00").toLocaleDateString(undefined, { day: "numeric", month: "short" })}</text>` : "";
-  const val = (i) => (pts.length <= 8 || i === 0 || i === pts.length - 1 || pts[i].v === hi || pts[i].v === lo) ? `<text x="${x(i)}" y="${y(pts[i].v) - 9}" text-anchor="middle" font-size="11" style="fill:var(--green)" font-weight="700">${fmt(pts[i].v, dp)}</text>` : "";
-  return `<svg viewBox="0 0 ${W} ${H}"><polyline points="${pts.map((p, i) => `${x(i)},${y(p.v)}`).join(" ")}" fill="none" style="stroke:var(--green)" stroke-width="2.5" stroke-linejoin="round"/>${pts.map((p, i) => `<circle cx="${x(i)}" cy="${y(p.v)}" r="${pts.length > 20 ? 2.5 : 4}" style="fill:var(--green)"/>${val(i)}${lab(i)}`).join("")}</svg>`;
+/** A body-measurement chart: faint dots for each reading, a smooth trend through them (a moving average
+ *  that weighs the last week or so), soft fill, light gridlines, an optional goal line, and tap-for-value. */
+function trendOf(pts) {
+  // a local straight-line fit around each reading, weighted by how many days away the others are:
+  // it follows the middle of the readings without lagging behind them, even at the latest end
+  const ds = pts.map((p) => new Date(p.day + "T12:00") / 864e5);
+  const gaps = ds.slice(1).map((d, i) => d - ds[i]).sort((a, b) => a - b), mid = gaps[Math.floor(gaps.length / 2)] || 1;
+  const bw = Math.max(5, mid * 1.6);
+  return ds.map((d0) => {
+    let sw = 0, sx = 0, sy = 0, sxx = 0, sxy = 0;
+    pts.forEach((p, j) => { const dx = ds[j] - d0, w = Math.exp(-0.5 * (dx / bw) ** 2); sw += w; sx += w * dx; sy += w * p.v; sxx += w * dx * dx; sxy += w * dx * p.v; });
+    const den = sw * sxx - sx * sx;
+    return den > 1e-9 ? (sy * sxx - sx * sxy) / den : sy / sw;
+  });
+}
+function niceStep(span) { for (const s of [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500]) if (span / s <= 4) return s; return 1000; }
+function bodyChart(pts, { dp = 1, goal = null, unit = "" } = {}) {
+  if (pts.length < 2) return { html: `<div class="none">${pts.length ? "One reading so far: the line starts with the next one." : "Nothing to chart yet."}</div>`, trend: pts.map((p) => p.v), goalShown: false };
+  const W = 320, H = 180, L = 6, R = 34, T = 28, B = 22;
+  const trend = trendOf(pts), days = pts.map((p) => new Date(p.day + "T12:00") / 864e5);
+  const vals = pts.map((p) => p.v).concat(trend);
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  const spanNow = hi - lo || Math.max(Math.abs(hi) * 0.02, 0.5);
+  const goalShown = goal != null && goal >= lo - spanNow * 2.5 && goal <= hi + spanNow * 2.5;   // a goal far off would flatten the line
+  if (goalShown) { lo = Math.min(lo, goal); hi = Math.max(hi, goal); }
+  const pad = (hi - lo || spanNow) * 0.12; lo -= pad; hi += pad;
+  const d0 = days[0], d1 = days[days.length - 1] || d0 + 1;
+  const x = (d) => L + (d - d0) / (d1 - d0 || 1) * (W - L - R), y = (v) => T + (hi - v) / (hi - lo) * (H - T - B);
+  const step = niceStep(hi - lo), ticks = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) ticks.push(Math.round(v * 1000) / 1000);
+  const tdp = step < 1 ? 1 : 0;
+  const grid = ticks.map((v) => `<line x1="${L}" x2="${W - R + 4}" y1="${y(v)}" y2="${y(v)}" class="cg"/><text x="${W - R + 8}" y="${y(v) + 3.5}" class="ct">${fmt(v, tdp)}</text>`).join("");
+  // a smooth path through the trend (Catmull-Rom turned into curves)
+  const P = trend.map((v, i) => [x(days[i]), y(v)]);
+  let path = `M${P[0][0].toFixed(1)},${P[0][1].toFixed(1)}`;
+  for (let i = 0; i < P.length - 1; i++) {
+    const p0 = P[i - 1] || P[i], p1 = P[i], p2 = P[i + 1], p3 = P[i + 2] || p2;
+    const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6], c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
+    path += ` C${c1[0].toFixed(1)},${c1[1].toFixed(1)} ${c2[0].toFixed(1)},${c2[1].toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+  }
+  const area = `${path} L${P[P.length - 1][0].toFixed(1)},${H - B} L${P[0][0].toFixed(1)},${H - B} Z`;
+  const r = pts.length > 60 ? 1.8 : 2.6;
+  const dots = pts.map((p, i) => `<circle cx="${x(days[i]).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="${r}" class="cd"/>`).join("");
+  const last = P[P.length - 1];
+  const goalLine = goalShown ? `<line x1="${L}" x2="${W - R + 4}" y1="${y(goal)}" y2="${y(goal)}" class="cgoal"/><text x="${L + 2}" y="${y(goal) - 5}" class="ctg">Goal ${fmt(goal, dp)}${unit ? " " + unit : ""}</text>` : "";
+  const nLab = 4, dateLab = Array.from({ length: nLab }, (_, k) => {
+    const d = d0 + (d1 - d0) * k / (nLab - 1), anchor = k === 0 ? "start" : k === nLab - 1 ? "end" : "middle";
+    return `<text x="${x(d)}" y="${H - 5}" text-anchor="${anchor}" class="ct">${new Date(d * 864e5).toLocaleDateString(undefined, { day: "numeric", month: "short" })}</text>`;
+  }).join("");
+  const html = `<svg viewBox="0 0 ${W} ${H}" class="bchart" data-l="${L}" data-r="${R}">
+    <defs><linearGradient id="bfill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--green);stop-opacity:.28"/><stop offset="1" style="stop-color:var(--green);stop-opacity:0"/></linearGradient></defs>
+    ${grid}${goalLine}<path d="${area}" fill="url(#bfill)"/>${dots}<path d="${path}" class="cl"/>
+    <circle cx="${last[0]}" cy="${last[1]}" r="5" class="cend"/>${dateLab}
+    <g class="tip hidden"><line class="tip-l" y1="${T - 6}" y2="${H - B}"/><circle class="tip-c" r="5"/><rect class="tip-b" rx="10" height="20" y="2"/><text class="tip-t" y="16" text-anchor="middle"></text></g></svg>`;
+  return { html, trend, goalShown, geo: { days, x, y, W } };
+}
+/** Tap or drag across the chart to read any weigh-in. */
+function wireChartTip(el, pts, geo, dp, unit) {
+  const svg = el.querySelector("svg.bchart"); if (!svg || !geo) return;
+  const tip = svg.querySelector(".tip"), line = tip.querySelector(".tip-l"), dot = tip.querySelector(".tip-c"), box = tip.querySelector(".tip-b"), txt = tip.querySelector(".tip-t");
+  const show = (ev) => {
+    const rect = svg.getBoundingClientRect(), vx = (ev.clientX - rect.left) / rect.width * geo.W;
+    let best = 0; geo.days.forEach((d, i) => { if (Math.abs(geo.x(d) - vx) < Math.abs(geo.x(geo.days[best]) - vx)) best = i; });
+    const cx = geo.x(geo.days[best]), cy = geo.y(pts[best].v);
+    txt.textContent = `${fmt(pts[best].v, dp)}${unit === "%" ? "%" : unit ? " " + unit : ""} · ${new Date(pts[best].day + "T12:00").toLocaleDateString(undefined, { day: "numeric", month: "short" })}`;
+    const w = txt.textContent.length * 5.6 + 16, bx = Math.max(2, Math.min(geo.W - w - 2, cx - w / 2));
+    line.setAttribute("x1", cx); line.setAttribute("x2", cx); dot.setAttribute("cx", cx); dot.setAttribute("cy", cy);
+    box.setAttribute("x", bx); box.setAttribute("width", w); txt.setAttribute("x", bx + w / 2);
+    tip.classList.remove("hidden");
+  };
+  svg.addEventListener("pointerdown", show); svg.addEventListener("pointermove", (e) => { if (e.buttons || e.pointerType === "mouse") show(e); });
+  svg.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") tip.classList.add("hidden"); });
 }
 async function renderBody() {
   renderWeighDays();
@@ -1737,6 +1801,32 @@ function renderGoal() {
   const cancel = $("#goal-cancel"); if (cancel) cancel.onclick = () => { goalEditing = false; renderGoal(); };
   const clear = $("#goal-clear"); if (clear) clear.onclick = async () => { if (!await ask("Remove your goal weight?")) return; state.goalWeight = null; state.goalStart = null; goalEditing = false; save(); renderGoal(); };
 }
+let bodyRange = 90;   // days shown: 30, 90 or 0 for everything
+function drawBodyChart(rows, m) {
+  $$("#body-range button").forEach((b) => b.classList.toggle("on", +b.dataset.r === bodyRange));
+  const all = rows.filter((r) => r[m.key] != null).map((r) => ({ day: r.day, v: r[m.key] }));
+  let pts = bodyRange ? all.filter((p) => p.day >= dateMinus(bodyRange)) : all;
+  if (pts.length < 2 && all.length >= 2) pts = all.slice(-2);   // too few in range: show at least the last two
+  const goal = m.key === "weight" && state.goalWeight ? state.goalWeight : null;
+  const ch = bodyChart(pts, { dp: m.dp, goal, unit: m.unit });
+  $("#body-chart").innerHTML = ch.html;
+  wireChartTip($("#body-chart"), pts, ch.geo, m.dp, m.unit);
+  // headline: where you are, the pace, and the change over what's shown (measured on the trend, not one noisy day)
+  const hero = $("#body-hero");
+  if (!pts.length) { hero.innerHTML = ""; $("#body-key").innerHTML = ""; return; }
+  const now = pts[pts.length - 1].v, upGood = ["muscle", "lean", "water", "bone", "bmr"].includes(m.key);
+  let pace = "";
+  if (m.key === "weight") { const tr = weightTrend(); if (tr && Math.abs(tr.perDay * 7) >= 0.05) { const wk = tr.perDay * 7; pace = `<span class="pace ${(wk < 0) !== upGood ? "good" : "bad"}">${wk < 0 ? "↓" : "↑"} ${fmt(Math.abs(wk), 2)} kg a week</span>`; } }
+  let since = "";
+  if (pts.length >= 2) {
+    const d = ch.trend[ch.trend.length - 1] - ch.trend[0];
+    const when = new Date(pts[0].day + "T12:00").toLocaleDateString(undefined, { day: "numeric", month: "short" });
+    since = Math.abs(d) < Math.pow(10, -m.dp) ? `Steady since ${when}` : `${d < 0 ? "Down" : "Up"} ${fmt(Math.abs(d), m.dp)}${m.unit === "%" ? "%" : m.unit ? " " + m.unit : ""} since ${when}`;
+  }
+  hero.innerHTML = `<div><span class="now">${fmt(now, m.dp)}<small>${esc(m.unit || "")}</small></span>${pace}</div>${since ? `<div class="since">${since}</div>` : ""}`;
+  $("#body-key").innerHTML = pts.length >= 2 ? `<span><i class="k-dot"></i>Weigh-ins</span><span><i class="k-line"></i>Trend</span>${ch.goalShown ? `<span><i class="k-goal"></i>Goal</span>` : goal ? `<span>Goal ${fmt(goal, 1)} kg (off the chart)</span>` : ""}` : "";
+}
+$("#body-range").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; bodyRange = +b.dataset.r; drawBody(); });
 function drawBody() {
   renderGoal();
   const rows = bodySorted(), lb = rows[rows.length - 1] || null;
@@ -1754,8 +1844,7 @@ function drawBody() {
   const pickEl = $("#body-metric");
   pickEl.innerHTML = (have.length ? have : BODY_METRICS.slice(0, 1)).map((x) => `<option value="${x.key}"${x.key === bodyMetric ? " selected" : ""}>${x.name}${x.unit ? ` (${x.unit})` : ""}</option>`).join("");
   const m = BODY_METRICS.find((x) => x.key === bodyMetric);
-  $("#body-chart-title").textContent = "last 30 readings";
-  $("#body-chart").innerHTML = lineChart(rows.filter((r) => r[m.key] != null).slice(-30).map((r) => ({ day: r.day, v: r[m.key] })), m.dp);
+  drawBodyChart(rows, m);
   const list = $("#body-list"); list.innerHTML = "";
   const newest = rows.slice().reverse(), shown = bodyAll ? newest.slice(0, 60) : newest.slice(0, 5);
   const val = (x, v) => `${fmt(v, x.dp)}${x.unit === "%" ? "%" : x.unit ? ` ${x.unit}` : ""}`;
