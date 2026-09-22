@@ -719,7 +719,7 @@ body.simple #ask-card { padding: 18px 46px 18px 18px; }
 body.simple #ask-card b { font-size: 21px; }
 body.simple #ask-card small { font-size: 15px; }
 body.simple #ask-card .circle { width: 56px; height: 56px; }
-body.simple .tabbar { grid-template-columns: repeat(3, 1fr); padding-top: 8px; }
+body.simple .tabbar { padding-top: 8px; }
 body.simple .tabbar button { font-size: 14px; }
 body.simple .tabbar button svg { width: 30px; height: 30px; }
 body.simple[data-view="home"] .view, body.simple[data-view="feed"] .view, body.simple[data-view="friends"] .view { padding-bottom: calc(96px + var(--safe-bottom)); }
@@ -1103,3 +1103,27 @@ body.simple #bb-freq button { padding: 9px 14px; font-size: 15px; }
 #view-budget:has(#b-manual[open]) .plan-big .s { display: none; }
 body.simple .big-card .n { font-size: 30px; }
 .b-manual > summary::after, .b-manual[open] > summary::after { content: none !important; }
+/* ---- simple mode v113: everything scales together */
+body.simple .circle svg { width: 26px; height: 26px; }
+body.simple .action .circle svg, body.simple #ask-card .circle svg { width: 28px; height: 28px; }
+body.simple .quick-toggle .circle { width: 50px; height: 50px; }
+body.simple .budget-card .circle { width: 54px; height: 54px; }
+body.simple .budget-card .weigh-line { flex-wrap: wrap; gap: 10px 14px; }
+body.simple .budget-card .weigh-line svg { width: 24px; height: 24px; margin: 0 15px; }
+body.simple .budget-card .weigh-line .wl-btn { font-size: 15px; padding: 8px 16px; }
+body.simple .today-card .today-list li, body.simple .w-today .today-list li { padding: 12px 0; }
+body.simple .today-card .today-list li.grp { font-size: 14px; padding-top: 14px; }
+body.simple .today-head b { font-size: 20px; }
+body.simple .today-head .today-total, body.simple .today-head .link { font-size: 16px; }
+body.simple .today-more, body.simple .today-empty { font-size: 16px; }
+body.simple .seg button { font-size: 16px; padding: 11px 0; }
+body.simple .list.quick li.qgrp { font-size: 14px; }
+body.simple .big-card .k, body.simple .big-card .s { font-size: 15px; }
+body.simple .fr-board-modes button { font-size: 16px; }
+body.simple .week-head b { font-size: 18px; }
+body.simple .week-head small { font-size: 14px; }
+body.simple .chart-hero .now { font-size: 32px; }
+body.simple .chart-head .range button { font-size: 14px; padding: 7px 13px; }
+body.simple .chart-key { font-size: 13px; }
+body.simple .budget-card .weigh-line .wl-btn { display: none; }
+body.simple .budget-card .weigh-line.due .wl-text { color: var(--green); }
