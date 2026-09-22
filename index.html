@@ -10,9 +10,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=108">
-  <link rel="icon" href="icons/icon-192.png?v=108">
-  <link rel="stylesheet" href="styles.css?v=108">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=109">
+  <link rel="icon" href="icons/icon-192.png?v=109">
+  <link rel="stylesheet" href="styles.css?v=109">
 </head>
 <body>
 
@@ -165,6 +165,7 @@
     </div>
     <p class="muted tiny bb-line"><span id="bb-line"></span> · <a href="#" data-go="body">Change days</a></p>
   </div>
+  <details class="b-manual" id="b-manual"><summary>Adjust by hand</summary>
   <div class="card form-card">
     <label>Calories for a cheat day
       <input type="number" inputmode="numeric" id="b-budget">
@@ -188,14 +189,9 @@
       <label>Fat <input type="number" inputmode="numeric" id="b-f" placeholder="g"></label>
     </div>
     <button class="btn mint" id="budget-suggest">Suggest from my calories (30 / 40 / 30)</button>
-    <label>Your weight (kg) <small>Optional. Only used to estimate calories burned; never shown to friends.</small>
-      <input type="number" inputmode="decimal" id="b-weight" placeholder="e.g. 75">
-    </label>
-    <label>About my eating <small>The assistant reads this every time: habits, rules, usual portions.</small>
-      <textarea id="b-notes" rows="4" placeholder="e.g. every meal I have 220 g cooked rice&#10;vegetarian, no dairy&#10;breakfast is always 3 eggs and toast"></textarea>
-    </label>
     <button class="btn primary" id="budget-save">Save</button>
   </div>
+  </details>
   <p class="muted tiny">Other settings, like your account and API key, are behind the gear on the home screen.</p>
 </section>
 
@@ -205,20 +201,6 @@
     <button class="icon-btn" data-back aria-label="Back"><svg><use href="#i-back"/></svg></button>
     <h1>Settings</h1><span></span>
   </header>
-  <div class="card form-card">
-    <label>Cheat-day budget (kcal)
-      <input type="number" inputmode="numeric" id="s-budget">
-    </label>
-    <div class="field-title">AI features (label photos, guessing a plate, planning, making things lighter)</div>
-    <p class="muted tiny" id="s-ai-status"></p>
-    <label>Google Gemini key <small>Free tier, no card. Stays on this device.</small>
-      <input type="password" id="s-geminikey" placeholder="AIza…" autocomplete="off">
-    </label>
-    <label>Anthropic API key <small>Paid. Used only if there's no Gemini key.</small>
-      <input type="password" id="s-apikey" placeholder="sk-ant-…" autocomplete="off">
-    </label>
-    <button class="btn primary" id="settings-save">Save</button>
-  </div>
   <div class="card form-card hidden" id="account-card">
     <h3>Account</h3>
     <div id="acct-down" class="hidden">
@@ -237,17 +219,6 @@
       <p>Signed in as <b id="acct-who"></b>. Everything syncs automatically.</p>
       <button class="btn mint" id="acct-signout">Sign out</button>
     </div>
-  </div>
-  <div class="card form-card" id="backup-card">
-    <b>Backups</b>
-    <p class="muted tiny" id="backup-status">Your data is backed up on this phone and, when signed in, in the cloud every day.</p>
-    <button class="btn mint" id="backup-restore">Restore a backup</button>
-    <div id="backup-list" class="hidden"></div>
-    <div class="grid2 tight">
-      <button class="btn ghost" id="backup-download">Save a backup file</button>
-      <button class="btn ghost" id="backup-upload">Restore from a file</button>
-    </div>
-    <input type="file" accept="application/json,.json" id="file-backup" hidden>
   </div>
   <div class="card form-card" id="rem-card">
     <b>Reminders</b>
@@ -276,12 +247,30 @@
     <label class="check"><input type="checkbox" id="s-eatback"> Add calories burned in workouts to my daily budget</label>
     <p class="muted tiny">Off: workouts are recorded but the budget stays put. On: a 300 kcal run makes room for 300 kcal more.</p>
   </div>
-  <div class="card form-card">
-    <b id="s-day">Today</b>
-    <p class="muted">The day turns over by itself at midnight and goes into History. Use this if you want a fresh start sooner.</p>
-    <button class="btn mint" id="btn-new-day">Start a new day now</button>
-    <button class="btn mint" data-go="history">See history</button>
+  <div class="card form-card" id="backup-card">
+    <b>Backups</b>
+    <p class="muted tiny" id="backup-status">Your data is backed up on this phone and, when signed in, in the cloud every day.</p>
+    <button class="btn mint" id="backup-restore">Restore a backup</button>
+    <div id="backup-list" class="hidden"></div>
+    <div class="grid2 tight">
+      <button class="btn ghost" id="backup-download">Save a backup file</button>
+      <button class="btn ghost" id="backup-upload">Restore from a file</button>
+    </div>
+    <input type="file" accept="application/json,.json" id="file-backup" hidden>
   </div>
+  <details class="how advanced"><summary>Advanced: your own AI key</summary>
+  <div class="card form-card">
+    <p class="muted tiny">Only needed if the shared AI isn't set up. It powers label photos, guessing a plate, planning and making things lighter.</p>
+    <p class="muted tiny" id="s-ai-status"></p>
+    <label>Google Gemini key <small>Free tier, no card. Stays on this device.</small>
+      <input type="password" id="s-geminikey" placeholder="AIza…" autocomplete="off">
+    </label>
+    <label>Anthropic API key <small>Paid. Used only if there's no Gemini key.</small>
+      <input type="password" id="s-apikey" placeholder="sk-ant-…" autocomplete="off">
+    </label>
+    <button class="btn primary" id="settings-save">Save</button>
+  </div>
+  </details>
   <div class="card form-card">
     <b>App version <span id="s-version"></span></b>
     <p class="muted tiny" id="s-storage"></p>
@@ -678,9 +667,15 @@
   <header class="sub-head ask-head">
     <button class="icon-btn" data-back aria-label="Back"><svg><use href="#i-back"/></svg></button>
     <h1>Assistant</h1>
-    <div class="head-actions"><button class="ghost small" id="ask-chats">Chats</button><button class="icon-btn" id="ask-clear" aria-label="New chat"><svg><use href="#i-plus"/></svg></button></div>
+    <div class="head-actions"><button class="ghost small" id="ask-about-btn">About you</button><button class="ghost small" id="ask-chats">Chats</button><button class="icon-btn" id="ask-clear" aria-label="New chat"><svg><use href="#i-plus"/></svg></button></div>
   </header>
   <p class="muted tiny hidden" id="ask-nokey">Needs an AI key (Settings), or the shared one from whoever set the app up. "What fits what's left" works without.</p>
+  <div class="card form-card hidden" id="ask-about">
+    <label>About your eating <small>The assistant reads this every time: habits, rules, usual portions.</small>
+      <textarea id="b-notes" rows="4" placeholder="e.g. every meal I have 220 g cooked rice&#10;vegetarian, no dairy&#10;breakfast is always 3 eggs and toast"></textarea>
+    </label>
+    <button class="btn primary" id="ask-about-save">Save</button>
+  </div>
   <div id="ask-thread" class="thread"></div>
   <div class="ask-bottom">
   <div class="chips ask-chips" id="ask-chips">
@@ -985,10 +980,10 @@
   <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=108"></script>
-<script src="foods.js?v=108"></script>
-<script src="supabase-config.js?v=108"></script>
-<script src="cloud.js?v=108"></script>
-<script src="app.js?v=108"></script>
+<script src="presets.js?v=109"></script>
+<script src="foods.js?v=109"></script>
+<script src="supabase-config.js?v=109"></script>
+<script src="cloud.js?v=109"></script>
+<script src="app.js?v=109"></script>
 </body>
 </html>

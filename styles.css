@@ -1056,3 +1056,13 @@ body.simple #bb-freq button { padding: 9px 14px; font-size: 15px; }
 #fr-connect .me-card { margin-top: 10px; }
 .fr-board-modes { justify-content: center; margin-bottom: 10px; }
 #g-lb-link { margin-top: 12px; }
+/* ---- v109: budget hand-settings under a plan; Advanced in Settings; About you in the Assistant */
+.b-manual { margin-top: 4px; }
+.b-manual > summary { list-style: none; cursor: pointer; text-align: center; font-weight: 700; color: var(--green); padding: 12px 0; }
+.b-manual > summary::-webkit-details-marker { display: none; }
+.b-manual > summary::after { content: " ▾"; }
+.b-manual[open] > summary::after { content: " ▴"; }
+.b-manual.noplan > summary { display: none; }
+#account-card { margin-top: 4px; }
+.advanced { margin-top: 12px; }
+#ask-about { margin: 0 0 10px; }

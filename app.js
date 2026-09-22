@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "108";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "109";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -198,7 +198,7 @@ function show(view) {
   if (view !== "scan") stopCamera();
   if (view === "home") renderHome();
   if (view === "settings") renderSettings();
-  if (view === "budget") { renderPlanCards(); renderBudgetBody(); renderDayBudgets(true); $("#b-budget").value = state.budget; $$("#budget-chips button").forEach((b) => b.classList.toggle("on", +b.dataset.b === state.budget)); const g = state.goals || {}; $("#b-p").value = g.p ?? ""; $("#b-c").value = g.c ?? ""; $("#b-f").value = g.f ?? ""; $("#b-notes").value = state.notes || ""; $("#b-weight").value = state.weightKg || ""; }
+  if (view === "budget") { renderPlanCards(); renderBudgetBody(); renderDayBudgets(true); $("#b-budget").value = state.budget; $$("#budget-chips button").forEach((b) => b.classList.toggle("on", +b.dataset.b === state.budget)); const g = state.goals || {}; $("#b-p").value = g.p ?? ""; $("#b-c").value = g.c ?? ""; $("#b-f").value = g.f ?? ""; const man = $("#b-manual"); man.classList.toggle("noplan", !state.plan); man.open = !state.plan; }
   if (view === "scan") startCamera();
   if (view === "search") openSearch();
   if (view === "meals") renderMeals();
@@ -906,8 +906,6 @@ $("#budget-save").onclick = () => {
   if (!$("#b-same").checked) for (const [w, v] of Object.entries(dayDraft)) if (v && v !== state.budget) days[w] = v;
   state.dayBudgets = days;
   state.goals = { p: num($("#b-p").value) ? Math.round(num($("#b-p").value)) : null, c: num($("#b-c").value) ? Math.round(num($("#b-c").value)) : null, f: num($("#b-f").value) ? Math.round(num($("#b-f").value)) : null };
-  state.notes = $("#b-notes").value.trim();
-  state.weightKg = num($("#b-weight").value) || null;
   const extra = [1, 2, 3, 4, 5, 6, 0].filter((w) => state.dayBudgets[w]).map((w) => `${WEEKDAYS[w].slice(0, 3)} ${fmt(state.dayBudgets[w])}`);
   save(); toast(`Budget set to ${fmt(state.budget)} kcal${extra.length ? `; ${extra.join(", ")}` : ""}`); home();
 };
@@ -935,7 +933,6 @@ $("#b-day-reset").onclick = () => { delete dayDraft[daySel]; $("#b-day-val").val
 $("#b-same").addEventListener("change", () => renderDayBudgets());
 $("#b-budget").addEventListener("input", () => renderDayBudgets());
 function renderSettings() {
-  $("#s-budget").value = state.budget;
   $("#s-apikey").value = state.apiKey;
   $("#s-geminikey").value = state.geminiKey || "";
   $("#s-ai-status").textContent = (window.cloud && window.cloud.user && aiProxyState === "yes") ? "Using the shared key from the app's server: nothing to add here." : state.geminiKey ? "Using your Gemini key (free)." : state.apiKey ? "Using your Anthropic key." : "No key yet. A free Google Gemini key from aistudio.google.com is enough.";
@@ -948,13 +945,8 @@ function renderSettings() {
   applyTheme();
   renderReminders();
   renderAccount();
-  const d = state.day.date;
-  $("#s-day").textContent = d === localDate() ? "Today" : new Date(d + "T12:00").toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "short" });
 }
 $("#settings-save").onclick = () => {
-  const b = num($("#s-budget").value);
-  if (!b) { toast("Budget needs to be a number of kcal"); return; }
-  state.budget = Math.round(b);
   state.apiKey = $("#s-apikey").value.trim();
   state.geminiKey = $("#s-geminikey").value.trim();
   save(); toast("Saved"); home();
@@ -973,12 +965,6 @@ $("#btn-update").onclick = async () => {
     }
   } catch (e) { console.warn("update", e); }
   location.replace(location.pathname + "?fresh=" + Date.now());   // bypasses any lingering HTTP cache too
-};
-$("#btn-new-day").onclick = async () => {
-  if (state.day.items.length && !await ask("Start a fresh day now? Today's list goes into History.")) return;
-  archiveDay();
-  state.day = { date: localDate(), items: [], workouts: [] };
-  save(); toast("New day started"); home();
 };
 
 
@@ -1463,6 +1449,8 @@ function bubble(role, html) {
   return el;
 }
 $("#ask-clear").onclick = () => { newChat(); toast("New chat"); };
+$("#ask-about-btn").onclick = () => { const p = $("#ask-about"), open = p.classList.toggle("hidden") === false; if (open) { $("#b-notes").value = state.notes || ""; setTimeout(() => $("#b-notes").focus(), 50); } };
+$("#ask-about-save").onclick = () => { state.notes = $("#b-notes").value.trim(); save(); $("#ask-about").classList.add("hidden"); toast(state.notes ? "Saved: the assistant will use this" : "Cleared"); };
 $("#ask-photo").onclick = () => { if (!aiAvailable()) { aiHelp(); return; } $("#file-ask").click(); };
 $("#file-ask").addEventListener("change", (e) => { const fs = Array.from(e.target.files || []); e.target.value = ""; if (fs.length) addAskFiles(fs); });
 $("#ask-library").onclick = () => { if (!aiAvailable()) { aiHelp(); return; } $("#file-ask-lib").click(); };
