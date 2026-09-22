@@ -1243,3 +1243,34 @@ body.simple .d-sum .line { font-size: 16px; }
 .d-head .inline-input:focus { border-color: var(--line); background: var(--card); padding: 2px 8px; }
 #view-details .d-head input.inline-input { border: 1px solid transparent; background: transparent; }
 #view-details .d-head input.inline-input:focus { border-color: var(--line); background: var(--card); }
+/* ---- friends v120: one card, grouped like Today */
+#fr-list-title { display: none !important; }
+.fr-card { padding: 4px 16px; }
+.fr-hd { display: flex; justify-content: space-between; padding: 12px 0 4px; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.fr-row { border-top: 1px solid var(--line); }
+.fr-hd + .fr-row { border-top: 0; }
+.fr-main { display: flex; align-items: center; gap: 12px; padding: 10px 0; cursor: pointer; }
+.fr-main .avatar { width: 42px; height: 42px; flex: none; }
+.fr-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.fr-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.fr-top b { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fr-k { font-weight: 800; color: var(--green); white-space: nowrap; }
+.fr-k.over { color: var(--bad); }
+.fr-k small { font-weight: 600; color: var(--muted); }
+.fr-when { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.fr-body small { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fr-body .bar { margin-top: 4px; height: 5px; }
+.fr-row.quiet .fr-main { opacity: .72; }
+.fr-open { padding: 0 0 12px 54px; }
+.fr-open .ate { margin: 0; }
+.fr-acts { display: flex; gap: 8px; margin-top: 10px; }
+.fr-acts .btn { flex: 1; margin: 0; width: auto; }
+.fr-send { margin-top: 10px; }
+.fr-send .chips { margin: 6px 0 0; }
+.fr-open .fr-remove { margin: 14px auto 0; font-size: 13px; }
+#seg-friends { display: flex; flex-direction: column; }
+#seg-friends.nofriends #fr-pending-wrap { order: -3; }
+#seg-friends.nofriends #fr-add-toggle { order: -2; margin-top: 0; }
+#seg-friends.nofriends #fr-connect { order: -1; }
+body.simple .fr-top b { font-size: 18px; }
+body.simple .fr-body small { font-size: 14px; }

@@ -1,7 +1,7 @@
 /* Service worker: caches the app so it opens offline once installed.
  * Only registers over HTTPS or localhost. Bump CACHE when app files change. */
-const CACHE = "cheatday-v119";
-const ASSETS = ["./", "./index.html", "./styles.css?v=119", "./presets.js?v=119", "./foods.js?v=119", "./supabase-config.js?v=119", "./cloud.js?v=119", "./app.js?v=119", "./vendor/zxing.min.js", "./manifest.webmanifest", "./icons/icon-192.png?v=119", "./icons/icon-512.png?v=119"];
+const CACHE = "cheatday-v120";
+const ASSETS = ["./", "./index.html", "./styles.css?v=120", "./presets.js?v=120", "./foods.js?v=120", "./supabase-config.js?v=120", "./cloud.js?v=120", "./app.js?v=120", "./vendor/zxing.min.js", "./manifest.webmanifest", "./icons/icon-192.png?v=120", "./icons/icon-512.png?v=120"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
@@ -18,7 +18,7 @@ self.addEventListener("fetch", (e) => {
 // Reminders and friend notifications
 self.addEventListener("push", (e) => {
   let d = {}; try { d = e.data ? e.data.json() : {}; } catch (err) { d = { title: "Cheat Days", body: e.data ? e.data.text() : "" }; }
-  e.waitUntil(self.registration.showNotification(d.title || "Cheat Days", { body: d.body || "", icon: "icons/icon-192.png?v=119", badge: "icons/icon-192.png?v=119", tag: d.tag || undefined, data: { url: d.url || "./" } }));
+  e.waitUntil(self.registration.showNotification(d.title || "Cheat Days", { body: d.body || "", icon: "icons/icon-192.png?v=120", badge: "icons/icon-192.png?v=120", tag: d.tag || undefined, data: { url: d.url || "./" } }));
 });
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
