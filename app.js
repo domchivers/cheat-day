@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "120";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "121";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1016,7 +1016,7 @@ async function renderFriends() {
   busy(false);
   drawFriends();
 }
-// ---- friends in one card, like Today: who's active today, then the rest; open one to see their day by meal
+// ---- friends as swipeable cards: one friend per card, active today first; the week as dots, today's food by meal
 const frCheered = new Set();
 function drawFriendRows(friends, dayLabel) {
   const c = window.cloud, today = localDate(), fl = $("#fr-list"); fl.innerHTML = "";
@@ -1025,53 +1025,60 @@ function drawFriendRows(friends, dayLabel) {
   if (!friends.length) return;
   const stats = (uid) => ((lbCache && lbCache.rows) || []).find((r) => r.user_id === uid) || null;
   const isWorkout = (it) => /^Workout: /.test(String(it.name || ""));
-  const rows = friends.map((f) => {
-    const d = fr.days.filter((x) => x.user_id === f.uid).sort((p, q) => String(q.day).localeCompare(String(p.day)))[0];
+  // this week, Monday to Sunday
+  const mon = new Date(today + "T12:00"); mon.setDate(mon.getDate() - ((mon.getDay() + 6) % 7));
+  const week = Array.from({ length: 7 }, (_, k) => { const x = new Date(mon); x.setDate(x.getDate() + k); return localDate(x); });
+  const cards = friends.map((f) => {
+    const days = fr.days.filter((x) => x.user_id === f.uid);
+    const d = days.slice().sort((p, q) => String(q.day).localeCompare(String(p.day)))[0];
     const all = d && Array.isArray(d.items) ? d.items : [], food = all.filter((it) => !isWorkout(it));
-    return { f, d, all, food, active: !!(d && String(d.day) === today && food.length) };
-  });
-  const card = document.createElement("div"); card.className = "card fr-card";
-  const section = (title, list) => {
-    if (!list.length) return;
-    card.insertAdjacentHTML("beforeend", `<div class="fr-hd"><span>${title}</span><span>${list.length}</span></div>`);
-    list.forEach((r) => card.appendChild(friendRow(r)));
-  };
-  section("Active today", rows.filter((r) => r.active));
-  section("Not yet today", rows.filter((r) => !r.active));
-  fl.appendChild(card);
+    return { f, d, days, all, food, active: !!(d && String(d.day) === today && food.length) };
+  }).sort((p, q) => (q.active - p.active));
+  const deck = document.createElement("div"); deck.className = "fr-deck";
+  cards.forEach((cd) => deck.appendChild(friendCard(cd)));
+  const dots = document.createElement("div"); dots.className = "fr-dots";
+  dots.innerHTML = cards.length > 1 ? cards.map((_, k) => `<button data-k="${k}" aria-label="Friend ${k + 1}"></button>`).join("") : "";
+  fl.appendChild(deck); fl.appendChild(dots);
+  if (cards.length > 1) fl.insertAdjacentHTML("beforeend", `<p class="muted tiny center fr-hint">Swipe to see everyone</p>`);
+  const step = () => (deck.firstElementChild ? deck.firstElementChild.offsetWidth + 12 : 1);
+  const mark = () => { const k = Math.round(deck.scrollLeft / step()); fr.deckIndex = k; dots.querySelectorAll("button").forEach((b, n) => b.classList.toggle("on", n === k)); };
+  deck.addEventListener("scroll", () => requestAnimationFrame(mark), { passive: true });
+  dots.querySelectorAll("button").forEach((b) => b.onclick = () => deck.scrollTo({ left: +b.dataset.k * step(), behavior: "smooth" }));
+  requestAnimationFrame(() => { deck.scrollLeft = (fr.deckIndex || 0) * step(); mark(); });
 
-  function friendRow({ f, d, all, food, active }) {
-    const name = personName(f.uid), st = stats(f.uid), open = frOpen.has(f.uid);
-    const tag = st ? `🔥 ${st.streak || 0} · Level ${st.level || 1}` : "";
-    let right, bar = "", sub = tag;
+  function friendCard({ f, d, days, all, food, active }) {
+    const name = personName(f.uid), st = stats(f.uid);
+    const card = document.createElement("div"); card.className = `card fr-big${active ? "" : " quiet"}`;
+    const dot = (day) => {
+      const x = days.find((y) => String(y.day) === day);
+      if (day > today) return `<i class="future"></i>`;
+      if (!x || !x.budget) return `<i class="none${day === today ? " today" : ""}"></i>`;
+      const cls = x.kcal <= x.budget ? "ok" : x.kcal <= x.budget * 1.1 ? "near" : "over";
+      return `<i class="${cls}${day === today ? " today" : ""}"></i>`;
+    };
+    const wo = all.filter(isWorkout);
+    let top;
     if (active) {
       const over = d.kcal > d.budget, pct = d.budget ? Math.min(100, d.kcal / d.budget * 100) : 0;
-      right = `<span class="fr-k${over ? " over" : ""}">${fmt(d.kcal)}<small> / ${fmt(d.budget)}</small></span>`;
-      bar = `<span class="bar"><span style="width:${pct}%" class="${over ? "over" : ""}"></span></span>`;
-      const names = food.map((it) => String(it.name).toLowerCase()).slice(0, 3).join(", ") + (food.length > 3 ? "…" : "");
-      sub = [tag, names].filter(Boolean).join(" · ");
-    } else right = `<span class="fr-when">${d ? `${dayLabel(String(d.day))} ${fmt(d.kcal)}` : "nothing shared"}</span>`;
-    const wo = all.filter(isWorkout);
-    const row = document.createElement("div"); row.className = `fr-row${active ? "" : " quiet"}${open ? " open" : ""}`;
-    row.innerHTML = `<div class="fr-main">${avatar(f.uid, name)}<div class="fr-body"><div class="fr-top"><b>${esc(name)}</b>${right}</div>${sub ? `<small>${esc(sub)}</small>` : ""}${bar}</div></div>`
-      + (open ? `<div class="fr-open">
-          ${d && String(d.day) !== today && food.length ? `<p class="muted tiny">From ${esc(dayLabel(String(d.day)))}</p>` : ""}
-          ${food.length ? `<ul class="ate">${ateList(food)}</ul>` : `<p class="muted tiny">Nothing logged today yet.</p>`}
-          ${wo.length ? `<ul class="ate"><li class="ate-grp"><span>Workouts</span><b></b></li>${wo.map((w) => `<li><span>${esc(String(w.name).replace(/^Workout: /, ""))}</span><b>−${fmt(-w.kcal)}</b></li>`).join("")}</ul>` : ""}
-          <div class="fr-acts"><button class="btn mint slim" data-act="cheer"${frCheered.has(f.uid) ? " disabled" : ""}>${frCheered.has(f.uid) ? "Cheered 👏" : "👏 Cheer"}</button><button class="btn ghost slim" data-act="send">Send food</button></div>
-          <div class="fr-send hidden"></div>
-          <button class="link-danger fr-remove">Remove ${esc(name)}</button></div>` : "");
-    row.querySelector(".fr-main").onclick = () => { if (frOpen.has(f.uid)) frOpen.delete(f.uid); else frOpen.add(f.uid); drawFriendRows(fr.lastFriends, fr.lastDayLabel); };
-    if (!open) return row;
-    row.querySelector("[data-act=cheer]").onclick = (e) => {
+      top = `<div class="fb-big${over ? " over" : ""}">${fmt(d.kcal)}<small>of ${fmt(d.budget)} kcal</small></div><span class="bar"><span style="width:${pct}%" class="${over ? "over" : ""}"></span></span>`;
+    } else top = `<div class="fb-big quiet-big">Not yet today<small>${d ? `${esc(dayLabel(String(d.day)))}: ${fmt(d.kcal)} of ${fmt(d.budget)}` : "nothing shared yet"}</small></div>`;
+    card.innerHTML = `<div class="fb-head">${avatar(f.uid, name, true)}<div><b>${esc(name)}</b><small>${st ? `🔥 ${st.streak || 0} day${st.streak === 1 ? "" : "s"} · Level ${st.level || 1}` : "&nbsp;"}</small></div></div>
+      ${top}
+      <div class="fb-week">${week.map((day) => `<span><small>${WEEKDAYS[new Date(day + "T12:00").getDay()].slice(0, 1)}</small>${dot(day)}</span>`).join("")}</div>
+      ${active ? `<ul class="ate fb-food">${ateList(food)}</ul>` : ""}
+      ${active && wo.length ? `<ul class="ate fb-food"><li class="ate-grp"><span>Workouts</span><b></b></li>${wo.map((w) => `<li><span>${esc(String(w.name).replace(/^Workout: /, ""))}</span><b>−${fmt(-w.kcal)}</b></li>`).join("")}</ul>` : ""}
+      <div class="fr-acts"><button class="btn mint slim" data-act="cheer"${frCheered.has(f.uid) ? " disabled" : ""}>${frCheered.has(f.uid) ? "Cheered 👏" : "👏 Cheer"}</button><button class="btn ghost slim" data-act="send">Send food</button></div>
+      <div class="fr-send hidden"></div>
+      <button class="link-danger fr-remove">Remove ${esc(name)}</button>`;
+    card.querySelector("[data-act=cheer]").onclick = (e) => {
       notifyFriend(f.uid, "react", "your day", { emoji: "👏" }); frCheered.add(f.uid);
       e.target.textContent = "Cheered 👏"; e.target.disabled = true; toast(`You cheered ${name} on 👏`);
     };
-    row.querySelector("[data-act=send]").onclick = () => {
-      const box = row.querySelector(".fr-send"); box.classList.toggle("hidden");
+    card.querySelector("[data-act=send]").onclick = () => {
+      const box = card.querySelector(".fr-send"); box.classList.toggle("hidden");
       if (box.classList.contains("hidden")) return;
       const mine = state.day.items;
-      box.innerHTML = mine.length ? `<p class="muted tiny">Send one of today's:</p><div class="chips left">${mine.map((it, k) => `<button data-k="${k}">${esc(it.name)}</button>`).join("")}</div>` : `<p class="muted tiny">Log something first, then send it from here (or from the How much screen).</p>`;
+      box.innerHTML = mine.length ? `<p class="muted tiny">Send one of today's:</p><div class="chips left">${mine.map((it, k) => `<button data-k="${k}">${esc(it.name)}</button>`).join("")}</div>` : `<p class="muted tiny">Log something first, then send it from here.</p>`;
       box.querySelectorAll("[data-k]").forEach((b) => b.onclick = async () => {
         const it = mine[+b.dataset.k]; b.disabled = true;
         try {
@@ -1081,8 +1088,8 @@ function drawFriendRows(friends, dayLabel) {
         } catch (err) { b.disabled = false; toast("Couldn't send: " + c.explain(err), 5000); }
       });
     };
-    row.querySelector(".fr-remove").onclick = async () => { if (!await ask(`Remove ${name} as a friend?`)) return; try { await c.removeFriend(f.id); renderFriends(); } catch (err) { toast(c.explain(err)); } };
-    return row;
+    card.querySelector(".fr-remove").onclick = async () => { if (!await ask(`Remove ${name} as a friend?`)) return; try { await c.removeFriend(f.id); renderFriends(); } catch (err) { toast(c.explain(err)); } };
+    return card;
   }
 }
 const personName = (id) => (fr.people[id] && fr.people[id].display_name) || "Someone";

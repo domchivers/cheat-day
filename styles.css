@@ -1274,3 +1274,38 @@ body.simple .d-sum .line { font-size: 16px; }
 #seg-friends.nofriends #fr-connect { order: -1; }
 body.simple .fr-top b { font-size: 18px; }
 body.simple .fr-body small { font-size: 14px; }
+/* ---- friends v121: swipe through one card per friend */
+.fr-deck { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; margin: 0 -16px; padding: 2px 16px 6px; scrollbar-width: none; }
+.fr-deck::-webkit-scrollbar { display: none; }
+.fr-big { flex: 0 0 calc(100% - 24px); scroll-snap-align: center; margin: 0; padding: 18px; text-align: left; }
+.fr-deck .fr-big:only-child { flex-basis: 100%; }
+.fb-head { display: flex; align-items: center; gap: 12px; }
+.fb-head .avatar.big { width: 52px; height: 52px; font-size: 18px; flex: none; }
+.fb-head b { display: block; font-size: 19px; }
+.fb-head small { font-size: 13px; color: var(--muted); }
+.fb-big { font-size: 30px; font-weight: 800; margin-top: 14px; line-height: 1.1; color: var(--text); }
+.fb-big small { display: inline; font-size: 14px; font-weight: 600; color: var(--muted); margin-left: 6px; }
+.fb-big.over { color: var(--bad); }
+.fb-big.quiet-big { font-size: 20px; color: var(--muted); }
+.fb-big.quiet-big small { display: block; margin: 4px 0 0; }
+.fr-big .bar { margin-top: 8px; height: 8px; }
+.fb-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 14px; text-align: center; }
+.fb-week small { display: block; font-size: 10px; font-weight: 700; color: var(--muted); margin-bottom: 4px; }
+.fb-week i { display: block; width: 16px; height: 16px; border-radius: 50%; margin: 0 auto; }
+.fb-week i.ok { background: var(--green); }
+.fb-week i.near { background: #e8a33d; }
+.fb-week i.over { background: var(--coral); }
+.fb-week i.none { border: 1.5px solid var(--line); }
+.fb-week i.future { border: 1.5px dashed var(--line); opacity: .5; }
+.fb-week i.today { box-shadow: 0 0 0 3px var(--mint-2); }
+.fb-food { margin: 12px 0 0; border-top: 1px solid var(--line); padding-top: 4px; }
+.fr-big .fr-acts { margin-top: 14px; }
+.fr-big .fr-remove { margin: 14px auto 0; font-size: 13px; }
+.fr-big.quiet .fb-head, .fr-big.quiet .fb-week { opacity: .8; }
+.fr-dots { display: flex; justify-content: center; gap: 6px; margin: 8px 0 2px; }
+.fr-dots button { width: 8px; height: 8px; border-radius: 4px; border: 0; padding: 0; background: var(--line); cursor: pointer; transition: width .2s; }
+.fr-dots button.on { width: 20px; background: var(--green); }
+.fr-hint { margin: 2px 0 6px; }
+body.simple .fb-big { font-size: 34px; }
+body.simple .fb-head b { font-size: 21px; }
+.fr-deck { align-items: flex-start; }
