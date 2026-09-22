@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "117";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "118";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -4252,7 +4252,6 @@ function renderGramChips(c) {
 }
 $("#gram-chips").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; $("#a-grams").value = b.dataset.g; setAmount(+b.dataset.g, "grams"); });
 // the extras: one row opens the icons; each icon opens its own bit
-$("#share-more").onclick = () => $("#share-extras").classList.toggle("hidden");
 $("#x-photo").onclick = () => { const r = $("#share-photo-row"), open = r.classList.toggle("hidden") === false; $("#x-photo").classList.toggle("on", open); if (open && !(draft && draft.photo)) $("#file-share-cam").click(); };
 
 function openShare(prefillKcal) {
@@ -4267,7 +4266,7 @@ function openShare(prefillKcal) {
   $("#share-meal").value = shareMeal; $("#share-meal").classList.toggle("hidden", !!pick);
   // one amount control: counted things get count chips, weighed things get gram chips; the others are a tap away
   shareMode = c.countKcal && (c.countLabel !== "serving" || !c.kcalPer100) ? "count" : c.kcalPer100 ? "grams" : "kcal";
-  $("#share-extras").classList.add("hidden"); $("#share-more").classList.toggle("hidden", !!pick);
+  $("#share-extras").classList.toggle("hidden", !!pick);
   $("#share-photo-row").classList.toggle("hidden", !(draft && draft.photo)); $("#item-talk-row").classList.toggle("hidden", !!pick);
   $$(".x-ic").forEach((b) => b.classList.remove("on"));
   renderGramChips(c);

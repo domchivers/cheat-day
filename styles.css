@@ -1187,7 +1187,7 @@ body.simple .add-opt small { font-size: 14px; }
 .share-extras .photo-row, .share-extras .chat, .share-extras .send-sheet { margin-top: 12px; }
 .share-bar { position: sticky; bottom: 0; margin: 14px -16px 0; padding: 12px 16px calc(12px + var(--safe-bottom)); background: var(--bg); border-top: 1px solid var(--line); z-index: 5; }
 .share-bar .btn { margin: 0; }
-body.simple #share-more, body.simple #share-extras { display: none !important; }
+body.simple #share-extras { display: none !important; }
 body.simple .sr-kcal b { font-size: 34px; }
 body.simple .meal-sel { font-size: 15px; }
 .share-pad { display: flex; flex-direction: column; min-height: calc(100vh - 70px); min-height: calc(100dvh - 70px); }
@@ -1202,3 +1202,4 @@ body.simple .amt-seg button { font-size: 17px; padding: 12px 0; }
 .ask-tweak { margin-top: 10px; align-items: center; }
 .ask-tweak .tweak-ic { width: 36px; height: 36px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--sand-ic); color: var(--sand); }
 .ask-tweak .tweak-ic svg { width: 18px; height: 18px; }
+.share-extras { margin-top: 12px; }
