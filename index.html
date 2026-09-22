@@ -10,9 +10,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=95">
-  <link rel="icon" href="icons/icon-192.png?v=95">
-  <link rel="stylesheet" href="styles.css?v=95">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=96">
+  <link rel="icon" href="icons/icon-192.png?v=96">
+  <link rel="stylesheet" href="styles.css?v=96">
 </head>
 <body>
 
@@ -576,15 +576,19 @@
     <svg class="chev"><use href="#i-chev"/></svg>
   </button>
 
-  <div class="grid2 tight w-actions">
-    <button class="btn primary" id="w-start-gym">Start gym session</button>
-    <button class="btn mint" id="w-log-toggle">Log a workout</button>
+  <div class="card w-gym" id="w-gym">
+    <div class="w-tile-head">
+      <span class="circle coral"><svg><use href="#i-lift"/></svg></span>
+      <span class="level-text"><b>Gym session</b><small>Tick off sets as you go, with a rest timer</small></span>
+      <button class="btn primary slim" id="w-start-gym">Start</button>
+    </div>
+    <div class="w-routines-wrap"><div class="field-title">Or start a routine</div><div class="chips left routines" id="w-routines"></div></div>
   </div>
-  <div class="chips left routines" id="w-routines"></div>
 
   <div class="card session hidden" id="w-session">
     <div class="session-top"><input type="text" id="ws-name" placeholder="Gym session" autocapitalize="sentences"><span class="clock" id="ws-clock">0:00</span></div>
-    <div class="rest hidden" id="ws-rest"><span>Rest</span><b id="ws-rest-time">1:30</b><button class="btn ghost slim" id="ws-rest-skip">Skip</button></div>
+    <div class="rest-set" id="ws-rest-set"><span>Rest between sets</span><button class="step" id="ws-rest-less" aria-label="Less rest">−</button><b id="ws-rest-len">1:30</b><button class="step" id="ws-rest-more" aria-label="More rest">+</button></div>
+    <div class="rest hidden" id="ws-rest"><span>Rest</span><b id="ws-rest-time">1:30</b><button class="step" id="ws-rest-minus" aria-label="15 seconds less">−15</button><button class="step" id="ws-rest-plus" aria-label="15 seconds more">+15</button><button class="btn ghost slim" id="ws-rest-skip">Skip</button></div>
     <div id="ws-exercises"></div>
     <button class="btn mint slim" id="ws-add">＋ Add an exercise</button>
     <p class="muted tiny" id="ws-volume"></p>
@@ -593,6 +597,12 @@
       <button class="btn ghost" id="ws-discard">Discard</button>
     </div>
   </div>
+
+  <button class="card level-card w-log" id="w-log-toggle">
+    <span class="circle green"><svg><use href="#i-walk"/></svg></span>
+    <span class="level-text"><b>Log an activity</b><small>A walk, run or sport, or a workout you've already done</small></span>
+    <svg class="chev"><use href="#i-chev"/></svg>
+  </button>
 
   <div class="card form-card hidden" id="w-form">
     <div class="chips" id="w-types"></div>
@@ -604,7 +614,8 @@
     </div>
     <label>Name it (optional) <input type="text" id="w-name" placeholder="e.g. Leg day, Parkrun"></label>
     <div id="w-lifting" class="hidden">
-      <div class="field-title">Lifting log <span class="muted tiny">(optional: exercise, sets × reps at kg)</span></div>
+      <p class="muted tiny w-live-hint" id="w-live-hint">Lifting right now? <a href="#" id="w-go-live">Start a gym session</a> instead, to tick sets off with a rest timer.</p>
+      <div class="field-title">What you lifted <span class="muted tiny">(optional: exercise, sets × reps at kg)</span></div>
       <div id="w-sets"></div>
       <button class="btn mint slim" id="w-add-set">＋ Add an exercise</button>
       <button class="btn ghost slim hidden" id="w-save-routine">Save as a routine</button>
@@ -949,10 +960,10 @@
   <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=95"></script>
-<script src="foods.js?v=95"></script>
-<script src="supabase-config.js?v=95"></script>
-<script src="cloud.js?v=95"></script>
-<script src="app.js?v=95"></script>
+<script src="presets.js?v=96"></script>
+<script src="foods.js?v=96"></script>
+<script src="supabase-config.js?v=96"></script>
+<script src="cloud.js?v=96"></script>
+<script src="app.js?v=96"></script>
 </body>
 </html>

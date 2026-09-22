@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "95";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "96";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -2829,7 +2829,7 @@ const ACTIVITIES = [
   ["Football", 8], ["Tennis / padel", 7.3], ["Hike", 6], ["Rowing", 7], ["Elliptical", 5], ["Dance", 5.5], ["Boxing", 9], ["Climbing", 7], ["Other", 5]
 ];
 const EFFORT = { easy: 0.8, moderate: 1, hard: 1.25 };
-let wType = "Gym weights", wLifts = [];
+let wType = "Walk", wLifts = [];
 function burnFor(type, minutes, effort) {
   const a = ACTIVITIES.find((x) => x[0] === type) || ["Other", 5];
   return Math.round(a[1] * EFFORT[effort || "moderate"] * (state.weightKg || 75) * (minutes / 60));
@@ -2897,12 +2897,12 @@ function renderWorkouts() {
     b.onpointerup = () => { if (t) { clear(); startSession(r); } }; b.onpointerleave = clear; b.onpointercancel = clear; b.oncontextmenu = (e) => e.preventDefault();
     rl.appendChild(b);
   }
-  if (!state.routines.length) { const b = document.createElement("button"); b.className = "new"; b.textContent = "No routines yet: finish a session and save it as one"; b.disabled = true; rl.appendChild(b); }
-  // session and the plain form
+  $(".w-routines-wrap").classList.toggle("hidden", !state.routines.length);
+  // a running session takes the gym card's place
   const live = !!state.session;
   $("#w-session").classList.toggle("hidden", !live);
-  $("#w-start-gym").textContent = live ? "Session running" : "Start gym session";
-  $("#w-start-gym").disabled = live;
+  $("#w-gym").classList.toggle("hidden", live);
+  $("#w-live-hint").classList.toggle("hidden", live);
   if (live) renderSession();
   const types = $("#w-types"); types.innerHTML = "";
   for (const [name, , lifting] of ACTIVITIES) { const b = document.createElement("button"); b.textContent = name; b.dataset.type = name; b.classList.toggle("on", name === wType); types.appendChild(b); }
@@ -2930,6 +2930,7 @@ function renderWorkouts() {
   }
   $("#w-recent-hint").classList.toggle("hidden", state.recentWorkouts.length > 0);
 }
+$("#w-go-live").onclick = (e) => { e.preventDefault(); $("#w-form").classList.add("hidden"); startSession(null); };
 $("#w-log-toggle").onclick = () => { const f = $("#w-form"); f.classList.toggle("hidden"); if (!f.classList.contains("hidden")) window.scrollTo({ top: f.getBoundingClientRect().top + window.scrollY - 80, behavior: "smooth" }); };
 $("#w-ask").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; if (!aiAvailable()) { aiHelp(); return; } go("ask"); $("#ask-text").value = b.dataset.ask; sendAsk(); });
 $("#w-types").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; wType = b.dataset.type; renderWorkouts(); });
@@ -2988,6 +2989,8 @@ $("#w-save").onclick = () => {
 
 // ---- a live gym session: exercises pre-filled from last time, tick sets off, rest timer between them
 const REST_SECONDS = 90;
+const restLength = () => Math.max(15, Math.min(600, state.restSeconds || REST_SECONDS));
+const mmss = (sec) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
 let sessionTimer = null;
 function lastFor(name) { return state.exercises[(name || "").trim().toLowerCase()] || null; }
 function sessionExercise(name, tmpl) {
@@ -3008,8 +3011,9 @@ function tickSession() {
   const el = Math.floor((Date.now() - ss.startedAt) / 1000);
   $("#ws-clock").textContent = `${Math.floor(el / 60)}:${String(el % 60).padStart(2, "0")}`;
   const rest = $("#ws-rest"), left = ss.restUntil ? Math.ceil((ss.restUntil - Date.now()) / 1000) : 0;
-  if (left > 0) { rest.classList.remove("hidden"); $("#ws-rest-time").textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`; }
-  else { if (!rest.classList.contains("hidden")) { rest.classList.add("hidden"); if (ss.restUntil) { ss.restUntil = null; save(false); if (navigator.vibrate) navigator.vibrate([120, 60, 120]); toast("Rest's over: next set"); } } }
+  $("#ws-rest-len").textContent = mmss(restLength());
+  if (left > 0) { rest.classList.remove("hidden"); $("#ws-rest-set").classList.add("hidden"); $("#ws-rest-time").textContent = mmss(left); }
+  else { $("#ws-rest-set").classList.remove("hidden"); if (!rest.classList.contains("hidden")) { rest.classList.add("hidden"); if (ss.restUntil) { ss.restUntil = null; save(false); if (navigator.vibrate) navigator.vibrate([120, 60, 120]); toast("Rest's over: next set"); } } }
 }
 function renderSession() {
   const ss = state.session; if (!ss) return;
@@ -3028,7 +3032,7 @@ function renderSession() {
     div.querySelectorAll(".ws-set").forEach((row) => {
       const st = ex.sets[+row.dataset.j], [reps, kg] = row.querySelectorAll("input");
       reps.oninput = () => { st.reps = num(reps.value) || 0; save(false); sessionVolume(); }; kg.oninput = () => { st.kg = nz(kg.value) || 0; save(false); sessionVolume(); };
-      row.querySelector(".tick").onclick = () => { st.done = !st.done; if (st.done) { st.reps = num(reps.value) || st.reps || 1; st.kg = nz(kg.value) || 0; ss.restUntil = Date.now() + REST_SECONDS * 1000; } save(false); renderSession(); tickSession(); };
+      row.querySelector(".tick").onclick = () => { st.done = !st.done; if (st.done) { st.reps = num(reps.value) || st.reps || 1; st.kg = nz(kg.value) || 0; ss.restUntil = Date.now() + restLength() * 1000; } save(false); renderSession(); tickSession(); };
     });
     div.querySelector(".add-set").onclick = () => { const prev = ex.sets[ex.sets.length - 1] || { reps: 8, kg: 0 }; ex.sets.push({ reps: prev.reps, kg: prev.kg, done: false }); save(false); renderSession(); };
     box.appendChild(div);
@@ -3045,7 +3049,15 @@ function sessionVolume() {
 }
 $("#ws-name").addEventListener("input", (e) => { if (state.session) { state.session.name = e.target.value; save(false); } });
 $("#ws-add").onclick = () => { const ss = state.session; if (!ss) return; ss.exercises.push(sessionExercise("", null)); save(false); renderSession(); setTimeout(() => { const ins = $$("#ws-exercises .ex-head input"); ins[ins.length - 1].focus(); }, 50); };
-$("#ws-rest-skip").onclick = () => { if (state.session) { state.session.restUntil = null; save(false); $("#ws-rest").classList.add("hidden"); } };
+$("#ws-rest-skip").onclick = () => { if (state.session) { state.session.restUntil = null; save(false); $("#ws-rest").classList.add("hidden"); $("#ws-rest-set").classList.remove("hidden"); } };
+// the usual rest, in 15-second steps, remembered for next time
+const setRest = (d) => { state.restSeconds = Math.max(15, Math.min(600, restLength() + d)); save(); tickSession(); };
+$("#ws-rest-less").onclick = () => setRest(-15);
+$("#ws-rest-more").onclick = () => setRest(15);
+// just this rest: a little longer or shorter
+const nudgeRest = (d) => { const ss = state.session; if (!ss || !ss.restUntil) return; ss.restUntil = Math.max(Date.now() + 1000, ss.restUntil + d * 1000); save(false); tickSession(); };
+$("#ws-rest-minus").onclick = () => nudgeRest(-15);
+$("#ws-rest-plus").onclick = () => nudgeRest(15);
 $("#ws-discard").onclick = async () => { if (!await ask("Discard this session? Nothing will be logged.")) return; state.session = null; save(); renderWorkouts(); };
 $("#ws-finish").onclick = async () => {
   const ss = state.session; if (!ss) return;
@@ -4025,7 +4037,7 @@ $("#share-add").onclick = () => {
 
 // ---------------------------------------------------------------- account + sync (optional, see cloud.js)
 
-const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "weekGoals", "seenBadges", "goalWins", "postCount", "pbCount", "body", "goalWeight", "goalStart", "simple", "onboarded", "reminders", "reactCount", "commentCount", "sendCount", "friendCount", "tombs", "dayBudgets", "profile", "plan", "updatedAt"];   // the API key stays on the device
+const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "weekGoals", "seenBadges", "goalWins", "postCount", "pbCount", "body", "goalWeight", "goalStart", "simple", "onboarded", "reminders", "reactCount", "commentCount", "sendCount", "friendCount", "tombs", "dayBudgets", "profile", "plan", "restSeconds", "updatedAt"];   // the API key stays on the device
 let pushTimer = null, pulledOnce = false;
 function schedulePush() {
   if (!window.cloud || !window.cloud.user) return;
