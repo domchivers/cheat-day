@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "94";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "95";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1242,8 +1242,13 @@ const ASSIST_SCHEMA = {
     estimate: { type: ["object", "null"], description: "kind=estimate: a food or plate as one portion", properties: {
       name: { type: "string" }, portion_g: { type: "number" }, unit: { type: "string", enum: ["g", "ml"] },
       kcal_total: { type: "number" }, protein_g: { type: "number" }, carbs_g: { type: "number" }, fat_g: { type: "number" },
-      confidence: { type: "string", enum: ["high", "medium", "low"] }, notes: { type: "string" }
-    }, required: ["name", "portion_g", "unit", "kcal_total", "protein_g", "carbs_g", "fat_g", "confidence", "notes"], additionalProperties: false },
+      confidence: { type: "string", enum: ["high", "medium", "low"] }, notes: { type: "string" },
+      parts: { type: "array", description: "each component on the plate, including cooking oil, butter and sauces as their own parts", items: { type: "object", properties: {
+        name: { type: "string", description: "plain name, e.g. roast chicken breast" },
+        usda_name: { type: "string", description: "the closest USDA FoodData Central SR Legacy description, e.g. 'Chicken, broilers or fryers, breast, meat only, cooked, roasted'" },
+        grams: { type: "number", description: "as eaten (cooked weight)" }, kcal: { type: "number" }, protein_g: { type: "number" }, carbs_g: { type: "number" }, fat_g: { type: "number" }
+      }, required: ["name", "usda_name", "grams", "kcal", "protein_g", "carbs_g", "fat_g"], additionalProperties: false } }
+    }, required: ["name", "portion_g", "unit", "kcal_total", "protein_g", "carbs_g", "fat_g", "confidence", "notes", "parts"], additionalProperties: false },
     plan: { type: ["object", "null"], description: "kind=plan: things for the rest of the day", properties: {
       suggestions: { type: "array", items: { type: "object", properties: {
         name: { type: "string" }, amount: { type: "string" }, kcal: { type: "number" }, protein_g: { type: "number" }, carbs_g: { type: "number" }, fat_g: { type: "number" }, why: { type: "string" }
@@ -1407,7 +1412,7 @@ If they want it changed, start from exactly this version: change only what they 
 ${history ? `Recent conversation:\n${history}\n` : ""}${current}They now say: "${text || "(photos, no words)"}"${images.length === 1 ? " (a photo is attached. If it shows food to log, use it for what the food is and the portion size, trusting their words over the photo for the name. If it shows the inside of a fridge, a cupboard or loose ingredients, treat it as what they have to cook with)" : images.length > 1 ? ` (${images.length} photos are attached, in order. They may show the dish, a menu or label for it, and what was left over at the end. Use the menu or label for names and stated nutrition, the dish photo for the portion, and subtract anything shown left over so the estimate is what was actually eaten.)` : ""}.
 
 Decide what they want and fill exactly one of estimate / plan / edit / recipe / lighter (leave the others null), or kind=answer for a plain question:
-- estimate: a food or plate to log, as one portion with honest kcal and macros.
+- estimate: a food or plate to log, as one portion with honest kcal and macros, broken into parts (each component with its cooked grams, and oil, butter or sauce as separate parts) so the app can check each against a food database.
 - plan: 3 to 5 things for the rest of today that fit the calories left, close the macro gaps as far as sensible, and leave room for one treat.
 - edit: they're correcting today's list ("I only had 2 eggs", "remove the toast", "add a banana") or logging exercise (action "workout": activity from Walk, Run, Cycle, Swim, Gym weights, HIIT, Yoga / stretch, Football, Tennis / padel, Hike, Rowing, Elliptical, Dance, Boxing, Climbing, Other; minutes; effort; for gym sessions the lifts as sets × reps at kg); match targets to the exact names given above.
 - recipe: a dish to cook, with realistic ingredient amounts, kcal and macros per ingredient (standard reference values, so the numbers add up), and short method steps. If they give a calorie limit, or ask it to fit what's left today, put that in target_kcal and check the per-portion total is at or under it before you answer. To make it tastier within the limit, pay for anything you add by trimming something else (oil, cheese, the carb portion) in the same answer, rather than adding and removing things over several turns. If a photo shows a fridge, cupboard or ingredients, build the recipe mainly from what's visible (assume basics like oil, salt, pepper and spices), size one portion to fit the calories left today, and name two other dishes they could make instead in the reply.
@@ -1419,6 +1424,7 @@ Estimates use standard reference values. Keep reply short and friendly.`;
   const thinking = bubble("bot", `<span class="muted ai-live">Thinking… <span class="secs"></span><a href="#" class="cancel">Cancel</a></span>`);
   try {
     const r = await askAI(ASSIST_SCHEMA, content);
+    if (r.kind === "estimate" && r.estimate) r.estimate = await groundEstimate(r.estimate);
     thinking.remove();
     askTurns.push({ role: "bot", text: r.reply, kind: r.kind, result: r });
     renderAssistant(r, image);
@@ -1431,7 +1437,10 @@ function renderAssistant(r, image) {
   const el = bubble("bot", html);
   if (r.kind === "estimate" && r.estimate) {
     const g = r.estimate, portion = num(g.portion_g) || 100;
-    el.insertAdjacentHTML("beforeend", `<div class="card"><b>${esc(g.name)}</b> · ${fmt(portion)} ${g.unit || "g"}${statRow(g.kcal_total, g.protein_g, g.carbs_g, g.fat_g)}<p class="muted tiny">${esc(g.notes || "")} (${g.confidence} confidence)</p><button class="btn primary" data-act="add">Add to today</button><button class="btn mint" data-act="details">See the details first</button></div>`);
+    const parts = (g.parts || []).filter((x) => num(x.grams) > 0), checked = parts.filter((x) => x.src && x.src !== "ai").length;
+    const partsHtml = parts.length > 1 || checked ? `<ul class="est-parts">${parts.map((x) => `<li><span class="nm">${esc(x.name)} <span class="muted">${fmt(x.grams)} ${g.unit || "g"}</span></span><span class="kc">${fmt(x.kcal)} kcal</span><span class="src${x.src && x.src !== "ai" ? " ok" : ""}">${x.src === "usda" ? "USDA" : x.src === "list" ? "Food list" : "Estimate"}</span></li>`).join("")}</ul>
+      ${checked ? `<p class="tiny fit-line ok est-check">${checked} of ${parts.length} checked against food databases${g.aiKcal && Math.abs(g.aiKcal - g.kcal_total) > g.kcal_total * 0.05 ? ` (the AI first guessed ${fmt(g.aiKcal)} kcal)` : ""}</p>` : ""}` : "";
+    el.insertAdjacentHTML("beforeend", `<div class="card"><b>${esc(g.name)}</b> · ${fmt(portion)} ${g.unit || "g"}${statRow(g.kcal_total, g.protein_g, g.carbs_g, g.fat_g)}${partsHtml}<p class="muted tiny">${esc(g.notes || "")} (${g.confidence} confidence)</p><button class="btn primary" data-act="add">Add to today</button><button class="btn mint" data-act="details">See the details first</button></div>`);
     const item = estimateToItem(g, image);
     el.querySelector("[data-act=add]").onclick = () => { draft = { ...item }; openShare(); };
     el.querySelector("[data-act=details]").onclick = () => { draft = { ...item }; openDetails("Estimate"); };
@@ -1490,6 +1499,36 @@ function renderAssistant(r, image) {
   }
   scrollThread();
 }
+// ---- checking an AI estimate: each part's calories come from the app's own food list, then USDA, and only then the AI's guess
+let foodProxyOk = true;
+async function foodLookup(names) {
+  const cfg = window.SUPABASE_CONFIG, c = window.cloud;
+  if (!foodProxyOk || !cfg || !c || !c.user) return names.map(() => null);
+  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 6000);
+  try {
+    const r = await c.rawFetch(`${cfg.url}/functions/v1/food`, { method: "POST", headers: { "Content-Type": "application/json", apikey: cfg.anonKey }, body: JSON.stringify({ foods: names }), signal: ctl.signal });
+    if (r.status === 404 || r.status === 500) { foodProxyOk = false; return names.map(() => null); }   // not set up yet: keep the AI's numbers
+    if (!r.ok) return names.map(() => null);
+    return ((await r.json()).results || []).concat(names.map(() => null)).slice(0, names.length);
+  } catch (e) { return names.map(() => null); }
+  finally { clearTimeout(timer); }
+}
+async function groundEstimate(g) {
+  const parts = (g.parts || []).filter((x) => num(x.grams) > 0).map((x) => ({ ...x, grams: num(x.grams), src: "ai" }));
+  if (!parts.length) return g;
+  const ai100 = (x) => (nz(x.kcal) || 0) / x.grams * 100;
+  const plausible = (db, x) => { const a = ai100(x); return db != null && (!a || (db >= a * 0.55 && db <= a * 1.8)); };   // a wildly different number means a wrong match
+  const use = (x, k, pp, cc, ff, src) => { x.kcal = Math.round(x.grams * k / 100); if (pp != null) { x.protein_g = x.grams * pp / 100; x.carbs_g = x.grams * (cc || 0) / 100; x.fat_g = x.grams * (ff || 0) / 100; } x.src = src; };
+  const ask = [];
+  parts.forEach((x, i) => { const row = searchLocal(x.name)[0]; if (row && plausible(row[1], x)) use(x, row[1], row[6], row[7], row[8], "list"); else ask.push(i); });
+  if (ask.length) {
+    const found = await foodLookup(ask.map((i) => parts[i].usda_name || parts[i].name));
+    found.forEach((d, k) => { const x = parts[ask[k]]; if (d && plausible(d.kcal100, x)) use(x, d.kcal100, d.p100, d.c100, d.f100, "usda"); });
+  }
+  if (!parts.some((x) => x.src !== "ai")) return { ...g, parts };
+  const sum = (f) => parts.reduce((a, x) => a + (nz(x[f]) || 0), 0);
+  return { ...g, parts, aiKcal: g.kcal_total, kcal_total: Math.round(sum("kcal")), protein_g: sum("protein_g"), carbs_g: sum("carbs_g"), fat_g: sum("fat_g"), portion_g: Math.round(sum("grams")) };
+}
 function estimateToItem(g, image) {
   const item = blankItem("claude"), portion = num(g.portion_g) || 100;
   item.name = g.name || "Something"; item.unit = g.unit === "ml" ? "ml" : "g";
@@ -1497,7 +1536,8 @@ function estimateToItem(g, image) {
   item.servingSize = Math.round(portion); item.unitLabel = "portion"; item.kcalPerServing = Math.round(num(g.kcal_total) || 0);
   item.p100 = Math.round((nz(g.protein_g) || 0) / portion * 1000) / 10; item.c100 = Math.round((nz(g.carbs_g) || 0) / portion * 1000) / 10; item.f100 = Math.round((nz(g.fat_g) || 0) / portion * 1000) / 10;
   item.image = image || null;
-  item.note = `AI estimate (${g.confidence || "medium"} confidence), not a label. ${g.notes || ""}`;
+  const chk = (g.parts || []).filter((x) => x.src && x.src !== "ai").length;
+  item.note = `AI estimate (${g.confidence || "medium"} confidence)${chk ? `, ${chk} of ${g.parts.length} parts checked against food databases` : ""}, not a label. ${g.notes || ""}`;
   return item;
 }
 function suggestionToItem(sg) {

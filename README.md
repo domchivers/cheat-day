@@ -619,3 +619,14 @@ Both routes are automatic; you'll just see one button or the other.
 When you change app files, bump `APP_VERSION` in `app.js`, the `?v=` numbers in
 `index.html`, `CACHE` in `sw.js`, and `version.json`. Phones check `version.json`
 on opening and update themselves when it's newer.
+
+## Checked calories (USDA)
+
+Photo estimates list each part of the plate with grams. The app checks each part's calories
+against its own food list first, then USDA FoodData Central through the `food` edge function,
+and keeps the AI's guess only when neither has a sensible match (a database number more than
+~1.8x away from the AI's is treated as a wrong match). The card tags each line: Food list, USDA or Estimate.
+
+Setup: Edge Functions -> Deploy a new function named `food` with `supabase/functions/food/index.ts`,
+and add the secret `FDC_API_KEY` (free from https://fdc.nal.usda.gov/api-key-signup).
+Without it the app quietly keeps the AI's numbers.
