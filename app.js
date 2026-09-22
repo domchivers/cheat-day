@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "96";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "97";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -2829,7 +2829,7 @@ const ACTIVITIES = [
   ["Football", 8], ["Tennis / padel", 7.3], ["Hike", 6], ["Rowing", 7], ["Elliptical", 5], ["Dance", 5.5], ["Boxing", 9], ["Climbing", 7], ["Other", 5]
 ];
 const EFFORT = { easy: 0.8, moderate: 1, hard: 1.25 };
-let wType = "Walk", wLifts = [];
+let wType = "Walk";
 function burnFor(type, minutes, effort) {
   const a = ACTIVITIES.find((x) => x[0] === type) || ["Other", 5];
   return Math.round(a[1] * EFFORT[effort || "moderate"] * (state.weightKg || 75) * (minutes / 60));
@@ -2902,12 +2902,10 @@ function renderWorkouts() {
   const live = !!state.session;
   $("#w-session").classList.toggle("hidden", !live);
   $("#w-gym").classList.toggle("hidden", live);
-  $("#w-live-hint").classList.toggle("hidden", live);
   if (live) renderSession();
   const types = $("#w-types"); types.innerHTML = "";
-  for (const [name, , lifting] of ACTIVITIES) { const b = document.createElement("button"); b.textContent = name; b.dataset.type = name; b.classList.toggle("on", name === wType); types.appendChild(b); }
-  $("#w-lifting").classList.toggle("hidden", !(ACTIVITIES.find((x) => x[0] === wType) || [])[2]);
-  renderSets(); updateEstimate();
+  for (const [name, , lifting] of ACTIVITIES) { if (lifting) continue; const b = document.createElement("button"); b.textContent = name; b.dataset.type = name; b.classList.toggle("on", name === wType); types.appendChild(b); }
+  updateEstimate();
   // personal bests
   const pl = $("#w-pbs"); pl.innerHTML = "";
   const exs = Object.values(state.exercises).sort((a, b) => String(b.lastUsed).localeCompare(String(a.lastUsed))).slice(0, 12);
@@ -2925,12 +2923,14 @@ function renderWorkouts() {
     const li = document.createElement("li");
     li.innerHTML = `<span class="thumb-sm tone-coral"><svg><use href="#i-dumbbell"/></svg></span><div class="body"><div class="name">${esc(r.name)}</div><div class="detail">${r.minutes} min · ${r.effort}${(r.lifts || []).length ? ` · ${r.lifts.length} exercise${r.lifts.length === 1 ? "" : "s"}` : ""}</div></div><div class="kcal">${fmt(burnFor(r.type, r.minutes, r.effort))}</div><button class="add" aria-label="Log again"><svg><use href="#i-plus"/></svg></button>`;
     li.querySelector(".add").onclick = (e) => { e.stopPropagation(); logWorkout({ ...r, lifts: (r.lifts || []).map((l) => ({ ...l })) }); toast(`Logged ${r.name}`); };
-    li.querySelector(".body").onclick = () => { wType = r.type; $("#w-min").value = r.minutes; $("#w-effort").value = r.effort; $("#w-name").value = r.name; wLifts = (r.lifts || []).map((l) => ({ ...l })); $("#w-form").classList.remove("hidden"); renderWorkouts(); window.scrollTo({ top: $("#w-types").getBoundingClientRect().top + window.scrollY - 80, behavior: "smooth" }); };
+    li.querySelector(".body").onclick = () => {
+      if ((ACTIVITIES.find((x) => x[0] === r.type) || [])[2]) { startSession({ name: r.name, id: null, exercises: (r.lifts || []).map((l) => ({ ...l })) }); return; }
+      wType = r.type; $("#w-min").value = r.minutes; $("#w-effort").value = r.effort; $("#w-name").value = r.name; $("#w-form").classList.remove("hidden"); renderWorkouts(); window.scrollTo({ top: $("#w-types").getBoundingClientRect().top + window.scrollY - 80, behavior: "smooth" });
+    };
     ql.appendChild(li);
   }
   $("#w-recent-hint").classList.toggle("hidden", state.recentWorkouts.length > 0);
 }
-$("#w-go-live").onclick = (e) => { e.preventDefault(); $("#w-form").classList.add("hidden"); startSession(null); };
 $("#w-log-toggle").onclick = () => { const f = $("#w-form"); f.classList.toggle("hidden"); if (!f.classList.contains("hidden")) window.scrollTo({ top: f.getBoundingClientRect().top + window.scrollY - 80, behavior: "smooth" }); };
 $("#w-ask").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; if (!aiAvailable()) { aiHelp(); return; } go("ask"); $("#ask-text").value = b.dataset.ask; sendAsk(); });
 $("#w-types").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; wType = b.dataset.type; renderWorkouts(); });
@@ -2940,37 +2940,10 @@ function updateEstimate() {
   const min = num($("#w-min").value);
   $("#w-estimate").textContent = min ? `About ${fmt(burnFor(wType, min, $("#w-effort").value))} kcal for ${min} min of ${wType.toLowerCase()} (${$("#w-effort").value}). An estimate, like every tracker's.` : "";
 }
-function renderSets() {
-  const box = $("#w-sets"); box.innerHTML = "";
-  $("#w-save-routine").classList.toggle("hidden", !wLifts.some((l) => (l.exercise || "").trim()));
-  if (!wLifts.length) { $("#w-volume").textContent = ""; return; }
-  box.innerHTML = `<div class="set-head"><span>Exercise</span><span>Sets</span><span>Reps</span><span>kg</span><span></span></div>`;
-  wLifts.forEach((l, i) => {
-    const row = document.createElement("div"); row.className = "set-row";
-    const known = state.exercises[(l.exercise || "").toLowerCase()];
-    row.innerHTML = `<input type="text" placeholder="e.g. Squat" value="${esc(l.exercise || "")}" list="w-ex-list"><input type="number" inputmode="numeric" placeholder="3" value="${l.sets || ""}"><input type="number" inputmode="numeric" placeholder="8" value="${l.reps || ""}"><input type="number" inputmode="decimal" placeholder="${known ? known.kg : "kg"}" value="${l.kg || ""}"><button class="del" aria-label="Remove">✕</button>`;
-    const [ex, sets, reps, kg] = row.querySelectorAll("input");
-    ex.oninput = () => { l.exercise = ex.value; const k = state.exercises[ex.value.trim().toLowerCase()]; if (k && !sets.value) { sets.value = k.sets; reps.value = k.reps; kg.placeholder = k.kg; l.sets = k.sets; l.reps = k.reps; volume(); } $("#w-save-routine").classList.toggle("hidden", !wLifts.some((x) => (x.exercise || "").trim())); };
-    sets.oninput = () => { l.sets = num(sets.value); volume(); }; reps.oninput = () => { l.reps = num(reps.value); volume(); }; kg.oninput = () => { l.kg = num(kg.value); volume(); };
-    row.querySelector(".del").onclick = () => { wLifts.splice(i, 1); renderSets(); };
-    box.appendChild(row);
-  });
-  ensureExerciseList();
-  volume();
-}
 function ensureExerciseList() {
   if (!$("#w-ex-list")) { const dl = document.createElement("datalist"); dl.id = "w-ex-list"; document.body.appendChild(dl); }
   $("#w-ex-list").innerHTML = Object.values(state.exercises).map((e) => `<option value="${esc(e.name)}">`).join("");
 }
-function volume() {
-  const v = wLifts.reduce((a, l) => a + (l.sets || 0) * (l.reps || 0) * (l.kg || 0), 0);
-  $("#w-volume").textContent = v ? `Total volume ${fmt(v)} kg` : "";
-}
-$("#w-add-set").onclick = () => { wLifts.push({ exercise: "", sets: null, reps: null, kg: null }); renderSets(); setTimeout(() => { const rows = $$("#w-sets .set-row"); rows[rows.length - 1].querySelector("input").focus(); }, 50); };
-$("#w-save-routine").onclick = () => {
-  const lifts = wLifts.filter((l) => (l.exercise || "").trim()).map((l) => ({ exercise: l.exercise.trim(), sets: l.sets || 3, reps: l.reps || 8, kg: l.kg || 0 }));
-  saveRoutine($("#w-name").value.trim(), lifts);
-};
 async function saveRoutine(suggested, exercises) {
   if (!exercises.length) { toast("Add some exercises first"); return; }
   const name = await askText("Name this routine", suggested || "Gym day"); if (!name) return;
@@ -2981,9 +2954,8 @@ async function saveRoutine(suggested, exercises) {
 $("#w-save").onclick = () => {
   const minutes = num($("#w-min").value);
   if (!minutes) { toast("How many minutes?"); $("#w-min").focus(); return; }
-  const lifts = wLifts.filter((l) => (l.exercise || "").trim()).map((l) => ({ exercise: l.exercise.trim(), sets: l.sets || 1, reps: l.reps || 1, kg: l.kg || 0 }));
-  logWorkout({ type: wType, name: $("#w-name").value.trim() || wType, minutes, effort: $("#w-effort").value, lifts });
-  $("#w-min").value = ""; $("#w-name").value = ""; wLifts = []; $("#w-form").classList.add("hidden");
+  logWorkout({ type: wType, name: $("#w-name").value.trim() || wType, minutes, effort: $("#w-effort").value, lifts: [] });
+  $("#w-min").value = ""; $("#w-name").value = ""; $("#w-form").classList.add("hidden");
   toast("Workout logged");
 };
 
