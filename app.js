@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "114";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "115";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -4228,8 +4228,34 @@ $("#share-photo-lib").onclick = () => $("#file-share-lib").click();
 $("#file-share-cam").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) attachPhoto(f); });
 $("#file-share-lib").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) attachPhoto(f); });
 $("#share-photo-remove").onclick = () => { delete draft.photo; showSharePhoto(); };
-let shareMeal = null;
-$("#share-meal").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; shareMeal = b.dataset.m; $$("#share-meal button").forEach((x) => x.classList.toggle("on", x === b)); });
+let shareMeal = null, shareMode = "grams";
+$("#share-meal").addEventListener("change", (e) => { shareMeal = e.target.value; });
+function showAmountMode() {
+  const c = conv(draft);
+  $("#a-count-wrap").classList.toggle("hidden", shareMode !== "count");
+  $("#a-grams-wrap").classList.toggle("hidden", shareMode !== "grams");
+  $("#a-kcal-wrap").classList.toggle("hidden", shareMode !== "kcal");
+  const alt = [];
+  if (shareMode !== "count" && c.countKcal) alt.push(`<a href="#" data-mode="count">Count ${esc(c.countLabel || "serving")}s</a>`);
+  if (shareMode !== "grams" && c.kcalPer100) alt.push(`<a href="#" data-mode="grams">Weigh it instead</a>`);
+  if (shareMode !== "kcal") alt.push(`<a href="#" data-mode="kcal">Type the calories instead</a>`);
+  $("#amt-alt").innerHTML = alt.join(" · ");
+}
+$("#amt-alt").addEventListener("click", (e) => { const l = e.target.closest("[data-mode]"); if (!l) return; e.preventDefault(); shareMode = l.dataset.mode; showAmountMode(); fillAmounts(null); const f = { count: "#a-count", grams: "#a-grams", kcal: "#a-kcal" }[shareMode]; setTimeout(() => $(f).focus(), 50); });
+/** Quick weights: one serving if the pack says, then a few sensible amounts. */
+function renderGramChips(c) {
+  const box = $("#gram-chips"); if (!c.kcalPer100) { box.innerHTML = ""; return; }
+  const unit = draft.unit || "g", sv = draft.servingSize ? Math.round(draft.servingSize) : null;
+  const nice = (g) => g < 50 ? Math.round(g / 5) * 5 : g < 200 ? Math.round(g / 10) * 10 : Math.round(g / 25) * 25;   // 25 g, 70 g, 250 g: easy numbers
+  let list = sv ? [nice(sv / 2), nice(sv * 1.5), nice(sv * 2)] : unit === "ml" ? [100, 250, 330, 500] : [50, 100, 150, 200];
+  list = [...new Set(list.filter((g) => g > 0 && g !== sv))].sort((x, y) => x - y).slice(0, sv ? 3 : 4);
+  box.innerHTML = (sv ? `<button data-g="${sv}">1 serving · ${sv} ${unit}</button>` : "") + list.map((g) => `<button data-g="${g}">${g} ${unit}</button>`).join("");
+}
+$("#gram-chips").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; $("#a-grams").value = b.dataset.g; setAmount(+b.dataset.g, "grams"); });
+// the extras: one row opens the icons; each icon opens its own bit
+$("#share-more").onclick = () => $("#share-extras").classList.toggle("hidden");
+$("#x-photo").onclick = () => { const r = $("#share-photo-row"), open = r.classList.toggle("hidden") === false; $("#x-photo").classList.toggle("on", open); if (open && !(draft && draft.photo)) $("#file-share-cam").click(); };
+$("#x-ask").onclick = () => { const r = $("#item-talk-row"), open = r.classList.toggle("hidden") === false; $("#x-ask").classList.toggle("on", open); if (open) setTimeout(() => $("#item-talk").focus(), 50); };
 function openShare(prefillKcal) {
   const c = conv(draft);
   // A label read or an estimate came with a photo: keep a small copy of it with the entry
@@ -4238,14 +4264,18 @@ function openShare(prefillKcal) {
   $("#share-name").textContent = draft.name;
   $("#share-add").textContent = pick ? "Add to the meal" : editId ? "Save changes" : "Add to today";
   const editing = editId && state.day.items.find((x) => x.id === editId);
-  shareMeal = editing ? mealOf(editing) : null;
-  $("#share-meal").classList.toggle("hidden", !editing);
-  $$("#share-meal button").forEach((b) => b.classList.toggle("on", b.dataset.m === shareMeal));
+  shareMeal = editing ? mealOf(editing) : mealOf({ addedAt: new Date().toISOString() });
+  $("#share-meal").value = shareMeal; $("#share-meal").classList.toggle("hidden", !!pick);
+  // one amount control: counted things get count chips, weighed things get gram chips; the others are a tap away
+  shareMode = c.countKcal && (c.countLabel !== "serving" || !c.kcalPer100) ? "count" : c.kcalPer100 ? "grams" : "kcal";
+  $("#share-extras").classList.add("hidden"); $("#share-more").classList.toggle("hidden", !!pick);
+  $("#share-photo-row").classList.toggle("hidden", !(draft && draft.photo)); $("#item-talk-row").classList.add("hidden");
+  $$(".x-ic").forEach((b) => b.classList.remove("on"));
+  renderGramChips(c);
   $("#item-talk").value = ""; $("#item-talk-note").classList.add("hidden");
   $("#send-sheet").classList.add("hidden");
   $("#a-unit").textContent = draft.unit || "g";
-  $("#a-grams-wrap").classList.toggle("hidden", !c.kcalPer100);
-  $("#a-count-wrap").classList.toggle("hidden", !c.countKcal);
+  showAmountMode();
   if (c.countLabel) $("#a-count-label").textContent = c.countLabel.charAt(0).toUpperCase() + c.countLabel.slice(1) + "s";
   amountKcal = null;
   fillAmounts(null);
@@ -4261,6 +4291,8 @@ function fillAmounts(except) {
   if (except !== "count") $("#a-count").value = (k == null || !c.countKcal) ? "" : tidy(k / c.countKcal);
   const count = (k != null && c.countKcal) ? k / c.countKcal : null;
   $$("#count-chips button").forEach((b) => b.classList.toggle("on", count != null && Math.abs(count - +b.dataset.n) < 0.05));
+  const grams = (k != null && c.kcalPer100) ? k / c.kcalPer100 * 100 : null;
+  $$("#gram-chips button").forEach((b) => b.classList.toggle("on", grams != null && Math.abs(grams - +b.dataset.g) < 0.6));
   updateResult();
 }
 $("#count-chips").addEventListener("click", (e) => {
@@ -4285,7 +4317,7 @@ $("#share-rest").onclick = async () => {
   if (!await ask(`Set this to ${fmt(left)} kcal, all that's left of today's budget?`)) return;
   setAmount(left, "kcal");
 };
-$("#share-reset").onclick = () => { amountKcal = null; fillAmounts(null); };
+
 
 function updateResult() {
   const btn = $("#share-add"), bar = $("#r-bar");
@@ -4305,12 +4337,14 @@ function updateResult() {
   $("#r-macros").innerHTML = macroText(macrosFor(draft, kcal), true);
   btn.disabled = false;
 }
+/** The newest item goes in the meal picked on the How much screen, if that isn't what the clock would say. */
+function keepMeal() { const it = state.day.items[state.day.items.length - 1]; if (it && shareMeal && shareMeal !== mealOf(it)) { it.meal = shareMeal; save(); renderHome(); } }
 $("#share-post").onclick = () => {
   if (!amountKcal || !draft || pick) return;
   if (!(window.cloud && window.cloud.user)) { toast("Sharing needs an account: sign in from Settings"); return; }
   const kcal = Math.round(amountKcal);
   if (editId) { const it = state.day.items.find((x) => x.id === editId); if (it) { Object.assign(it, basisOf(draft)); it.kcal = kcal; it.shareLabel = `${fmt(kcal / baseBudget() * 100, 1)}% of the day`; save(); } editId = null; }
-  else addToDay(draft, kcal, `${fmt(kcal / baseBudget() * 100, 1)}% of the day`);
+  else { addToDay(draft, kcal, `${fmt(kcal / baseBudget() * 100, 1)}% of the day`); keepMeal(); }
   const m = macrosFor(draft, kcal), a = amountsFor(draft, kcal);
   openCompose({ kind: "food", name: draft.name, kcal, grams: a.grams != null ? Math.round(a.grams) : null, unit: draft.unit || "g", p: m.p != null ? Math.round(m.p) : null, c: m.c != null ? Math.round(m.c) : null, f: m.f != null ? Math.round(m.f) : null, basis: basisOf(draft) }, draft.photo || null);
 };
@@ -4324,6 +4358,7 @@ $("#share-add").onclick = () => {
     editId = null; toast(`Updated ${draft.name} · ${fmt(kcal)} kcal`); home(); return;
   }
   addToDay(draft, kcal, `${fmt(kcal / baseBudget() * 100, 1)}% of the day`);
+  keepMeal();
   toast(`Added ${draft.name} · ${fmt(kcal)} kcal`);
   home();
 };

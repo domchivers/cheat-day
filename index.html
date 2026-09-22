@@ -10,9 +10,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=114">
-  <link rel="icon" href="icons/icon-192.png?v=114">
-  <link rel="stylesheet" href="styles.css?v=114">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=115">
+  <link rel="icon" href="icons/icon-192.png?v=115">
+  <link rel="stylesheet" href="styles.css?v=115">
 </head>
 <body>
 
@@ -912,58 +912,63 @@
     <button class="icon-btn" data-back aria-label="Back"><svg><use href="#i-back"/></svg></button>
     <h1>How much?</h1><span></span>
   </header>
-  <div class="pad">
-    <p class="question"><b id="share-name">it</b></p>
-    <div class="chips meal-pick hidden" id="share-meal"><button data-m="Breakfast">Breakfast</button><button data-m="Lunch">Lunch</button><button data-m="Dinner">Dinner</button><button data-m="Snacks">Snacks</button></div>
-    <div class="card form-card">
+  <div class="pad share-pad">
+    <div class="share-top">
+      <p class="question"><b id="share-name">it</b></p>
+      <select id="share-meal" class="meal-sel" aria-label="Which meal"><option>Breakfast</option><option>Lunch</option><option>Dinner</option><option>Snacks</option></select>
+    </div>
+    <div class="card form-card amt-card">
       <div id="a-count-wrap">
-        <label><span id="a-count-label">Pieces</span>
-          <div class="chips count" id="count-chips">
-            <button data-n="0.5">½</button><button data-n="1">1</button><button data-n="2">2</button><button data-n="3">3</button><button data-n="4">4</button><button data-n="5">5</button><button data-n="6">6</button>
-          </div>
-          <input type="number" inputmode="decimal" id="a-count" placeholder="or type a number">
-        </label>
+        <span class="amt-label" id="a-count-label">Pieces</span>
+        <div class="chips count" id="count-chips">
+          <button data-n="0.5">½</button><button data-n="1">1</button><button data-n="2">2</button><button data-n="3">3</button><button data-n="4">4</button><button data-n="5">5</button><button data-n="6">6</button>
+        </div>
+        <input type="number" inputmode="decimal" id="a-count" placeholder="or type a number" aria-label="How many">
       </div>
-      <label id="a-grams-wrap">Amount (<span id="a-unit">g</span>)
-        <input type="number" inputmode="decimal" id="a-grams" placeholder="e.g. 50">
-      </label>
-      <label>Calories (kcal)
-        <input type="number" inputmode="decimal" id="a-kcal" placeholder="e.g. 250">
-      </label>
-      <button class="btn mint" id="share-rest">Use what's left of my day</button>
+      <div id="a-grams-wrap">
+        <div class="chips gram-chips" id="gram-chips"></div>
+        <label class="amt-input"><input type="number" inputmode="decimal" id="a-grams" placeholder="e.g. 50"><span id="a-unit">g</span></label>
+      </div>
+      <label id="a-kcal-wrap" class="amt-input hidden"><input type="number" inputmode="decimal" id="a-kcal" placeholder="e.g. 250"><span>kcal</span></label>
+      <p class="amt-alt" id="amt-alt"></p>
     </div>
 
-    <div class="card result">
-      <div class="muted">That's</div>
-      <div class="result-big"><span id="r-kcal">0</span><small> kcal</small></div>
-      <div class="muted" id="r-sub">of your day</div>
+    <div class="card share-result">
+      <div class="sr-top"><span class="sr-kcal"><b id="r-kcal">0</b> kcal</span><span class="muted tiny" id="r-sub">of your day</span></div>
       <span class="bar"><span id="r-bar"></span></span>
       <div class="result-lines" id="r-lines"></div>
       <div class="macros" id="r-macros"></div>
     </div>
 
-    <div class="photo-row" id="share-photo-row">
-      <img id="share-photo" alt="" class="hidden">
-      <button class="btn mint slim" id="share-photo-cam">📷 Add a photo</button>
-      <button class="btn mint slim" id="share-photo-lib">From photos</button>
-      <button class="btn ghost slim hidden" id="share-photo-remove">Remove</button>
+    <button class="more-row" id="share-more"><svg><use href="#i-more"/></svg><span>Photo, ask the AI, share or send</span></button>
+    <div class="card share-extras hidden" id="share-extras">
+      <div class="x-icons">
+        <button class="x-ic" id="x-photo"><span><svg><use href="#i-camera"/></svg></span>Photo</button>
+        <button class="x-ic" id="x-ask"><span><svg><use href="#i-spark"/></svg></span>Ask AI</button>
+        <button class="x-ic" id="share-post" disabled><span><svg><use href="#i-share"/></svg></span>Share</button>
+        <button class="x-ic" id="share-send" disabled><span><svg><use href="#i-send"/></svg></span>Send</button>
+        <button class="x-ic" id="share-rest"><span><svg><use href="#i-scale"/></svg></span>What's left</button>
+      </div>
+      <div class="photo-row hidden" id="share-photo-row">
+        <img id="share-photo" alt="" class="hidden">
+        <button class="btn mint slim" id="share-photo-cam">📷 Add a photo</button>
+        <button class="btn mint slim" id="share-photo-lib">From photos</button>
+        <button class="btn ghost slim hidden" id="share-photo-remove">Remove</button>
+      </div>
+      <div class="chat hidden" id="item-talk-row">
+        <input type="text" id="item-talk" placeholder="Tweak it: added extra beef rolls, didn't drink the soup…" autocapitalize="sentences">
+        <button class="btn primary slim" id="item-talk-go">Send</button>
+      </div>
+      <p class="muted tiny hidden" id="item-talk-note"></p>
+      <div class="send-sheet hidden" id="send-sheet">
+        <div class="field-title">Send it to</div>
+        <div class="chips" id="send-friends"></div>
+        <p class="muted tiny" id="send-hint">They get it on their home page and can add it with one tap.</p>
+      </div>
     </div>
     <input type="file" accept="image/*" capture="environment" id="file-share-cam" hidden>
     <input type="file" accept="image/*" id="file-share-lib" hidden>
-    <div class="chat" id="item-talk-row">
-      <input type="text" id="item-talk" placeholder="Tweak it: added extra beef rolls, didn't drink the soup…" autocapitalize="sentences">
-      <button class="btn primary slim" id="item-talk-go">Send</button>
-    </div>
-    <p class="muted tiny hidden" id="item-talk-note"></p>
-    <button class="btn primary" id="share-add" disabled>Add to today</button>
-    <button class="btn mint" id="share-post" disabled>Add and share it</button>
-    <button class="btn mint icon-text" id="share-send" disabled><svg><use href="#i-send"/></svg><span>Send to a friend</span></button>
-    <div class="card send-sheet hidden" id="send-sheet">
-      <div class="field-title">Send it to</div>
-      <div class="chips" id="send-friends"></div>
-      <p class="muted tiny" id="send-hint">They get it on their home page and can add it with one tap.</p>
-    </div>
-    <button class="btn ghost" id="share-reset">Clear</button>
+    <div class="share-bar"><button class="btn primary" id="share-add" disabled>Add to today</button></div>
   </div>
 </section>
 
@@ -984,10 +989,10 @@
   <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=114"></script>
-<script src="foods.js?v=114"></script>
-<script src="supabase-config.js?v=114"></script>
-<script src="cloud.js?v=114"></script>
-<script src="app.js?v=114"></script>
+<script src="presets.js?v=115"></script>
+<script src="foods.js?v=115"></script>
+<script src="supabase-config.js?v=115"></script>
+<script src="cloud.js?v=115"></script>
+<script src="app.js?v=115"></script>
 </body>
 </html>

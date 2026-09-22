@@ -917,8 +917,8 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 .w-live-hint a { color: var(--green); font-weight: 700; }
 .rest-set { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 14px; color: var(--muted); }
 .rest-set span { flex: 1; }
-.rest-set b { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; color: var(--ink); font-size: 16px; }
-.step { width: 38px; height: 34px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font: inherit; font-weight: 700; font-size: 15px; cursor: pointer; flex: none; }
+.rest-set b { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; color: var(--text); font-size: 16px; }
+.step { width: 38px; height: 34px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--text); font: inherit; font-weight: 700; font-size: 15px; cursor: pointer; flex: none; }
 .rest .step { width: auto; padding: 0 10px; background: rgba(255,255,255,.35); border-color: transparent; font-size: 13px; }
 :root[data-theme="dark"] .rest .step { background: rgba(0,0,0,.25); }
 .rest { gap: 8px; }
@@ -936,7 +936,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 .weigh-line .wl-text { flex: 1; min-width: 0; }
 .weigh-line .wl-btn { flex: none; padding: 5px 12px; border-radius: 999px; background: var(--mint); color: var(--green); font-weight: 700; font-size: 12px; }
 .weigh-line.due .wl-btn { background: var(--green); color: #fff; }
-.weigh-line.due .wl-text { color: var(--ink); font-weight: 600; }
+.weigh-line.due .wl-text { color: var(--text); font-weight: 600; }
 body.simple .weigh-line { font-size: 16px; }
 .budget-card .weigh-line .wl-text { font-size: 13px; line-height: 1.3; text-align: left; }
 .budget-card .weigh-line.due .wl-text { font-size: 14px; }
@@ -1035,7 +1035,7 @@ body.simple #bb-freq button { padding: 9px 14px; font-size: 15px; }
 .list.quick li.qgrp:first-child { padding-top: 4px; }
 /* ---- meal page v107: one Share button with the three ways behind it */
 .share-sheet { padding: 4px 14px; margin-top: 8px; }
-.share-opt { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: 12px 0; background: none; border: 0; border-top: 1px solid var(--line); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.share-opt { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: 12px 0; background: none; border: 0; border-top: 1px solid var(--line); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
 .share-sheet > .share-opt.first { border-top: 0; }
 .share-opt b { font-size: 15px; color: var(--green); }
 .share-opt small { font-size: 12px; color: var(--muted); }
@@ -1129,12 +1129,12 @@ body.simple .budget-card .weigh-line .wl-btn { display: none; }
 body.simple .budget-card .weigh-line.due .wl-text { color: var(--green); }
 /* ---- body v114: one main card, one Add a reading, a weigh-in row */
 .goal-line { display: block; width: 100%; background: none; border: 0; padding: 2px 0 0; margin: 0; text-align: left; font: inherit; font-size: 13px; color: var(--muted); cursor: pointer; }
-.goal-line b { color: var(--ink); font-weight: 700; }
+.goal-line b { color: var(--text); font-weight: 700; }
 .goal-line .warn { color: var(--coral); font-weight: 700; }
 .goal-line .go { color: var(--green); font-weight: 700; }
 .stat-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 6px; }
 .stat-chips span { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: var(--bg); color: var(--muted); }
-.stat-chips b { color: var(--ink); font-weight: 700; }
+.stat-chips b { color: var(--text); font-weight: 700; }
 #goal-card { margin-top: 10px; }
 .add-reading { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 12px; }
 .add-reading svg { width: 20px; height: 20px; }
@@ -1154,3 +1154,44 @@ body.simple .budget-card .weigh-line.due .wl-text { color: var(--green); }
 body.simple .goal-line, body.simple .stat-chips span { font-size: 15px; }
 body.simple .add-opt b { font-size: 18px; }
 body.simple .add-opt small { font-size: 14px; }
+/* ---- how much v115: one amount control, a compact result, Add pinned, extras behind one row */
+.share-pad { padding-bottom: 0; }
+.share-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.share-top .question { flex: 1; min-width: 0; margin: 0; text-align: left; }
+.meal-sel { width: auto; flex: none; padding: 6px 28px 6px 12px; font-size: 13px; font-weight: 700; border-radius: 999px; background-color: var(--mint-2); border-color: transparent; color: var(--green); }
+.amt-card { padding: 14px 16px; }
+.amt-label { display: block; font-size: 13px; font-weight: 700; color: var(--muted); margin-bottom: 8px; text-transform: capitalize; }
+.amt-card .chips { margin: 0 0 10px; justify-content: flex-start; }
+.amt-input { display: flex; align-items: center; gap: 8px; margin: 0; }
+.amt-input input { flex: 1; }
+.amt-input span { font-weight: 700; color: var(--muted); min-width: 34px; }
+#a-kcal-wrap { margin-top: 10px; }
+.amt-alt { margin: 10px 0 0; font-size: 13px; }
+.amt-alt a { color: var(--green); font-weight: 700; }
+.share-result { padding: 12px 16px; text-align: left; margin-top: 10px; }
+.sr-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.sr-kcal { font-size: 15px; color: var(--muted); font-weight: 600; }
+.sr-kcal b { font-size: 28px; font-weight: 800; color: var(--text); }
+.share-result .bar { margin-top: 8px; }
+.share-result .result-lines { font-size: 13px; color: var(--muted); margin-top: 8px; }
+.share-result .macros { margin-top: 4px; }
+.more-row { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin: 12px 0 0; padding: 8px; background: none; border: 0; color: var(--green); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+.more-row svg { width: 18px; height: 18px; }
+.share-extras { margin-top: 8px; padding: 12px; }
+.x-icons { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+.x-ic { display: flex; flex-direction: column; align-items: center; gap: 5px; background: none; border: 0; color: var(--text); font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; padding: 2px 0; }
+.x-ic span { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: var(--mint-2); color: var(--green); }
+.x-ic svg { width: 20px; height: 20px; }
+.x-ic:disabled { opacity: .4; }
+.x-ic.on span { background: var(--green); color: #fff; }
+.share-extras .photo-row, .share-extras .chat, .share-extras .send-sheet { margin-top: 12px; }
+.share-bar { position: sticky; bottom: 0; margin: 14px -16px 0; padding: 12px 16px calc(12px + var(--safe-bottom)); background: var(--bg); border-top: 1px solid var(--line); z-index: 5; }
+.share-bar .btn { margin: 0; }
+body.simple #share-more, body.simple #share-extras { display: none !important; }
+body.simple .sr-kcal b { font-size: 34px; }
+body.simple .meal-sel { font-size: 15px; }
+.share-pad { display: flex; flex-direction: column; min-height: calc(100vh - 70px); min-height: calc(100dvh - 70px); }
+.share-bar { margin-top: auto; }
+.share-pad > .card, .share-pad > .more-row { flex: none; }
+#r-kcal { color: var(--text); }
+.amt-input span { align-self: center; }
