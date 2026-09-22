@@ -1178,7 +1178,7 @@ body.simple .add-opt small { font-size: 14px; }
 .more-row { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin: 12px 0 0; padding: 8px; background: none; border: 0; color: var(--green); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
 .more-row svg { width: 18px; height: 18px; }
 .share-extras { margin-top: 8px; padding: 12px; }
-.x-icons { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+.x-icons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
 .x-ic { display: flex; flex-direction: column; align-items: center; gap: 5px; background: none; border: 0; color: var(--text); font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; padding: 2px 0; }
 .x-ic span { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: var(--mint-2); color: var(--green); }
 .x-ic svg { width: 20px; height: 20px; }
@@ -1199,3 +1199,6 @@ body.simple .meal-sel { font-size: 15px; }
 .amt-seg button { font-size: 15px; padding: 10px 0; }
 body.simple .amt-seg button { font-size: 17px; padding: 12px 0; }
 .amt-seg button.on { background: var(--green); color: #fff; }
+.ask-tweak { margin-top: 10px; align-items: center; }
+.ask-tweak .tweak-ic { width: 36px; height: 36px; flex: none; border-radius: 50%; display: grid; place-items: center; background: var(--sand-ic); color: var(--sand); }
+.ask-tweak .tweak-ic svg { width: 18px; height: 18px; }
