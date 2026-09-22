@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "122";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "123";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -292,11 +292,27 @@ function renderHome() {
 }
 // ---- today's food, grouped by meal (by the time it was logged, unless moved)
 const MEALS = ["Breakfast", "Lunch", "Dinner", "Snacks"];
+// What kind of food it is says a lot about the meal: oats are breakfast, a sandwich is lunch, curry is dinner.
+const MEAL_WORDS = {
+  Breakfast: /\b(oats?|porridge|granola|muesli|cereal|cornflakes|weetabix|shreddies|bran flakes|toast|bagel|croissant|pain au|pancakes?|waffles?|crumpets?|eggs?|omelette|scrambled|bacon|full english|yogh?urt|smoothie|overnight oats)\b/i,
+  Lunch: /\b(sandwich|sarnie|wrap|panini|baguette|sub|salad|soup|toastie|meal deal|sushi|poke|burrito bowl)\b/i,
+  Dinner: /\b(curry|pasta|spaghetti|lasagne|bolognese|chilli|steak|roast|stir.?fry|risotto|pizza|burger|fajitas?|tacos?|casserole|stew|pie|salmon|noodles|kebab|shepherd'?s|cottage pie|fish and chips|dinner)\b/i,
+  Snacks: /\b(crisps|chocolate|biscuits?|cookies?|cake|brownie|sweets|nuts|popcorn|protein bar|flapjack|ice cream|donut|doughnut|muffin|beer|wine|cider|gin|vodka|whisky|rum|cocktail|jack daniel)\b/i
+};
+const timeMeal = (h) => h == null ? "Snacks" : h >= 4 && h < 11 ? "Breakfast" : h >= 11 && h < 15 ? "Lunch" : h >= 17 && h < 22 ? "Dinner" : "Snacks";
+function guessMeal(name, h) {
+  const byTime = timeMeal(h), n = String(name || "");
+  const hits = MEALS.filter((m) => MEAL_WORDS[m].test(n));
+  if (!hits.length || hits.includes(byTime) || h == null) return byTime;
+  const m = hits[0];
+  if (m === "Breakfast") return h < 14 ? "Breakfast" : byTime;              // porridge at 9pm stays where the clock puts it
+  if (m === "Lunch") return h >= 10 && h < 17 ? "Lunch" : byTime;
+  if (m === "Dinner") return h >= 15 ? "Dinner" : h >= 11 ? "Lunch" : byTime;
+  return "Snacks";
+}
 function mealOf(it) {
   if (MEALS.includes(it.meal)) return it.meal;
-  const h = it.addedAt ? new Date(it.addedAt).getHours() : null;
-  if (h == null) return "Snacks";
-  return h >= 4 && h < 11 ? "Breakfast" : h >= 11 && h < 15 ? "Lunch" : h >= 17 && h < 22 ? "Dinner" : "Snacks";
+  return guessMeal(it.name, it.addedAt ? new Date(it.addedAt).getHours() : null);
 }
 let todayAll = false;
 function renderTodayList() {
@@ -364,7 +380,7 @@ function mealHabits() {
 }
 /** Quick add, ordered for now: what you usually have at this time of day, then your saved meals, then the rest. */
 function quickSections(entries) {
-  const now = mealOf({ addedAt: new Date().toISOString() }), habits = mealHabits();
+  const now = timeMeal(new Date().getHours()), habits = mealHabits();
   const fit = (q) => {   // times had at this meal, counted only if this is one of its main meals
     const h = habits[String(q.basis.name || "").toLowerCase()] || {}, n = h[now] || 0, top = Math.max(0, ...Object.values(h));
     return n && n * 2 >= top ? n : 0;
@@ -1057,13 +1073,13 @@ function drawFriendRows(friends, dayLabel) {
         ${st ? `<div class="fc-tag">🔥 ${st.streak || 0} day${st.streak === 1 ? "" : "s"} · Level ${st.level || 1}</div>` : ""}
         ${bar}
         <div class="fc-week">${week.map((day) => dot(day)).join("")}</div>
-        ${line ? `<div class="fc-line">${line}${active ? `<span class="fc-more">${open ? "▴" : "▾"}</span>` : ""}</div>` : ""}
+        ${line ? `<div class="fc-line">${line}${active ? `<svg class="fc-chev${open ? " up" : ""}"><use href="#i-chev"/></svg>` : ""}</div>` : ""}
         ${open ? `<div class="fc-open">
           ${active ? `<ul class="ate">${ateList(food)}</ul>` : ""}
           ${active && wo.length ? `<ul class="ate"><li class="ate-grp"><span>Workouts</span><b></b></li>${wo.map((w) => `<li><span>${esc(String(w.name).replace(/^Workout: /, ""))}</span><b>−${fmt(-w.kcal)}</b></li>`).join("")}</ul>` : ""}
-          <div class="fr-acts"><button class="btn mint slim" data-act="cheer"${frCheered.has(f.uid) ? " disabled" : ""}>${frCheered.has(f.uid) ? "Cheered 👏" : "👏 Cheer"}</button><button class="btn ghost slim" data-act="send">Send food</button></div>
+          <div class="fr-acts"><button class="btn mint slim" data-act="cheer"${frCheered.has(f.uid) ? " disabled" : ""}>${frCheered.has(f.uid) ? "Cheered 👏" : "👏 Cheer"}</button><button class="btn ghost slim" data-act="send">Send food</button><button class="fc-menu" data-act="menu" aria-label="More options"><svg><use href="#i-more"/></svg></button></div>
           <div class="fr-send hidden"></div>
-          <button class="link-danger fr-remove">Remove ${esc(name)}</button>
+          <div class="fc-menu-box hidden"><button class="fc-remove fr-remove">Remove ${esc(name)} as a friend</button></div>
         </div>` : ""}
       </div>`;
     card.onclick = (e) => { if (e.target.closest("button, .fr-send")) return; if (frOpen.has(f.uid)) frOpen.delete(f.uid); else frOpen.add(f.uid); drawFriendRows(fr.lastFriends, fr.lastDayLabel); };
@@ -1086,7 +1102,8 @@ function drawFriendRows(friends, dayLabel) {
         } catch (err) { b.disabled = false; toast("Couldn't send: " + c.explain(err), 5000); }
       });
     };
-    card.querySelector(".fr-remove").onclick = async () => { if (!await ask(`Remove ${name} as a friend?`)) return; try { await c.removeFriend(f.id); renderFriends(); } catch (err) { toast(c.explain(err)); } };
+    card.querySelector("[data-act=menu]").onclick = () => card.querySelector(".fc-menu-box").classList.toggle("hidden");
+    card.querySelector(".fr-remove").onclick = async () => { if (!await ask(`Remove ${name} as a friend? You'll stop seeing each other's days.`)) return; try { await c.removeFriend(f.id); renderFriends(); } catch (err) { toast(c.explain(err)); } };
     return card;
   }
 }
@@ -2204,7 +2221,7 @@ $("#file-bd-import").addEventListener("change", async (e) => {
     const { map, lb } = await mapColumns(header, data.slice(0, 2));
     // Mass columns in pounds: each column's own header says so ("Weight(lb)", "Muscle Mass(lb)"), else the AI's guess
     const MASS = ["weight", "lean", "muscle", "bone"];
-    const inLb = (k) => MASS.includes(k) && (/(lb|lbs|pounds?)|\(lb/i.test(String(header[map[k]] || "")) || (lb && !/kg/i.test(String(header[map[k]] || ""))));
+    const inLb = (k) => MASS.includes(k) && (/\b(lb|lbs|pounds?)\b|\(lb/i.test(String(header[map[k]] || "")) || (lb && !/kg/i.test(String(header[map[k]] || ""))));
     if (map.date == null || map.weight == null) throw new Error("Couldn't find the date and weight columns in that file");
     const byDay = {}, order = dateOrder(data.map((r) => r[map.date]));
     for (const r of data) {
@@ -4334,7 +4351,7 @@ function openShare(prefillKcal) {
   $("#share-name").textContent = draft.name;
   $("#share-add").textContent = pick ? "Add to the meal" : editId ? "Save changes" : "Add to today";
   const editing = editId && state.day.items.find((x) => x.id === editId);
-  shareMeal = editing ? mealOf(editing) : mealOf({ addedAt: new Date().toISOString() });
+  shareMeal = editing ? mealOf(editing) : mealOf({ name: draft.name, addedAt: new Date().toISOString() });
   $("#share-meal").value = shareMeal; $("#share-meal").classList.toggle("hidden", !!pick);
   // one amount control: counted things get count chips, weighed things get gram chips; the others are a tap away
   shareMode = c.countKcal && (c.countLabel !== "serving" || !c.kcalPer100) ? "count" : c.kcalPer100 ? "grams" : "kcal";

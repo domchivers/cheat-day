@@ -1338,3 +1338,12 @@ body.simple .fb-head b { font-size: 21px; }
 .fc-open .fr-remove { margin: 12px auto 0; font-size: 13px; }
 body.simple .fc-top b { font-size: 19px; }
 body.simple .fc-line, body.simple .fc-tag { font-size: 15px; }
+.fc-chev { width: 20px; height: 20px; flex: none; color: var(--green); transform: rotate(90deg); transition: transform .2s; }
+.fc-chev.up { transform: rotate(-90deg); }
+.fc-line { align-items: center; }
+.fc-menu { flex: none; width: 42px; height: 38px; border-radius: 999px; border: 1px solid var(--line); background: none; color: var(--muted); display: grid; place-items: center; cursor: pointer; }
+.fc-menu svg { width: 20px; height: 20px; }
+.fc-menu-box { margin-top: 10px; padding: 10px; border-radius: 12px; background: var(--bg); text-align: center; }
+.fc-remove { background: none; border: 0; color: var(--bad); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; padding: 4px 8px; }
+.fc-open .fr-acts .btn { flex: 1; }
+.fc-open .fr-acts .btn { white-space: nowrap; padding: 9px 10px; font-size: 14px; }
