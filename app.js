@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "97";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "98";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -197,7 +197,7 @@ function show(view) {
   if (view !== "scan") stopCamera();
   if (view === "home") renderHome();
   if (view === "settings") renderSettings();
-  if (view === "budget") { renderPlanCards(); renderDayBudgets(true); $("#b-budget").value = state.budget; $$("#budget-chips button").forEach((b) => b.classList.toggle("on", +b.dataset.b === state.budget)); const g = state.goals || {}; $("#b-p").value = g.p ?? ""; $("#b-c").value = g.c ?? ""; $("#b-f").value = g.f ?? ""; $("#b-notes").value = state.notes || ""; $("#b-weight").value = state.weightKg || ""; }
+  if (view === "budget") { renderPlanCards(); renderBudgetBody(); renderDayBudgets(true); $("#b-budget").value = state.budget; $$("#budget-chips button").forEach((b) => b.classList.toggle("on", +b.dataset.b === state.budget)); const g = state.goals || {}; $("#b-p").value = g.p ?? ""; $("#b-c").value = g.c ?? ""; $("#b-f").value = g.f ?? ""; $("#b-notes").value = state.notes || ""; $("#b-weight").value = state.weightKg || ""; }
   if (view === "scan") startCamera();
   if (view === "search") openSearch();
   if (view === "meals") renderMeals();
@@ -246,6 +246,7 @@ function rollDay() {
 function renderHome() {
   rollDay();
   applySimple();
+  renderHomeWeigh();
   const used = usedKcal(), budget = budgetToday(), left = budget - used, burned = burnedKcal();
   $("#home-used").textContent = fmt(used);
   $("#home-budget").textContent = state.eatBack && burned ? `${fmt(baseBudget())} + ${fmt(burned)}` : fmt(baseBudget());
@@ -2259,6 +2260,53 @@ function learnedBurn() {
   if (est) burn = Math.max(est * 0.7, Math.min(est * 1.3, burn));   // a sanity band around the estimate
   return { burn: Math.round(burn / 10) * 10, eat: Math.round(eat), days: days.length, weighins: trend.n, perWeek: Math.round(trend.perDay * 7 * 100) / 100 };
 }
+// ---- weigh-in days: which weekdays (0 = Sunday) someone steps on the scale. Once a week on Sunday unless they choose.
+const weighDays = () => (Array.isArray(state.weighDays) && state.weighDays.length ? state.weighDays : [0]);
+const weighedToday = () => { const lb = latestBody(); return !!(lb && lb.day === localDate()); };
+function weighDue() { return weighDays().includes(new Date().getDay()) && !weighedToday(); }
+function nextWeighIn() {
+  const days = weighDays(), today = new Date().getDay();
+  for (let i = weighedToday() || !days.includes(today) ? 1 : 0; i < 8; i++) if (days.includes((today + i) % 7)) return i;
+  return 7;
+}
+const whenWord = (i) => i === 0 ? "today" : i === 1 ? "tomorrow" : WEEKDAYS[(new Date().getDay() + i) % 7];
+function bodyLine(lb) {
+  if (!lb) return "Weight, body fat, muscle: from your scale or typed in";
+  const bits = [lb.weight ? `${lb.weight} kg` : "", lb.fat ? `${lb.fat}% fat` : "", lb.muscle ? `${lb.muscle} kg muscle` : lb.lean ? `${lb.lean} kg lean` : ""].filter(Boolean);
+  return `${bits.join(" · ")} · ${lb.day === localDate() ? "today" : new Date(lb.day + "T12:00").toLocaleDateString(undefined, { day: "numeric", month: "short" })}`;
+}
+function renderHomeWeigh() {
+  const el = $("#home-weigh"), lb = latestBody(), due = weighDue();
+  el.classList.toggle("due", due);
+  const text = !lb ? "Track your weight to tune your budget" : due ? `${lb.weight ? `${lb.weight} kg · ` : ""}weigh-in due today` : `${lb.weight ? `${lb.weight} kg · ` : ""}next weigh-in ${whenWord(nextWeighIn())}`;
+  el.innerHTML = `<svg><use href="#i-scale"/></svg><span class="wl-text">${esc(text)}</span><span class="wl-btn">${lb ? "Weigh in" : "Start"}</span>`;
+}
+function renderBudgetBody() {
+  const lb = latestBody(), days = weighDays(), n = days.length;
+  $("#b-tunes").classList.toggle("hidden", !state.plan);
+  $("#bb-sub").textContent = bodyLine(lb);
+  const since = dateMinus(14), recent = state.body.filter((r) => r.weight && r.day >= since).length;
+  $("#bb-line").textContent = `${recent ? `${recent} weigh-in${recent === 1 ? "" : "s"} in the last 2 weeks · ` : ""}next weigh-in ${whenWord(nextWeighIn())}`;
+  $$("#bb-freq button").forEach((b) => b.classList.toggle("on", +b.dataset.f === n));
+  const pick = $("#bb-days"); pick.classList.toggle("hidden", n === 7);
+  pick.innerHTML = [1, 2, 3, 4, 5, 6, 0].map((d) => `<button data-d="${d}" class="${days.includes(d) ? "on" : ""}">${WEEKDAYS[d].slice(0, 1)}</button>`).join("");
+  $("#bb-hint").textContent = n === 1 ? `Every ${WEEKDAYS[days[0]]}. Weekly works: your plan adjusts after about 3 weeks, and carefully, as one weigh-in can swing a kilo with water.`
+    : n === 7 ? "Every day, ideally first thing. The more often, the sooner and steadier your plan adjusts."
+    : `${n} days a week, ideally first thing. Your plan starts adjusting after about a week.`;
+}
+$("#bb-freq").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  const f = +b.dataset.f, cur = weighDays();
+  state.weighDays = f === 7 ? [0, 1, 2, 3, 4, 5, 6] : f === 3 ? [1, 3, 5] : [cur.length === 1 ? cur[0] : 0];
+  save(); renderBudgetBody();
+});
+$("#bb-days").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  const d = +b.dataset.d, cur = weighDays();
+  if (cur.length === 1) state.weighDays = [d];   // once a week: tap moves the day
+  else { const next = cur.includes(d) ? cur.filter((x) => x !== d) : cur.concat(d); state.weighDays = next.length ? next.sort() : cur; }
+  save(); renderBudgetBody();
+});
 /** Home: invite people without a plan once; with a plan, a weekly check-in against the real weight trend. */
 const PLAN_ASK = "cheatday.planAsk";
 function renderHomePlan() {
@@ -2286,7 +2334,7 @@ function renderHomePlan() {
     const facts = `From ${learned.days} logged days and ${learned.weighins} weigh-ins, you burn about ${fmt(learned.burn)} kcal a day and you're ${word(learned.perWeek)}.`;
     if (Math.abs(delta) < 50) { title = "Check-in: on track"; body = `${facts} Your budget already fits your plan.`; acts = `<button class="btn mint" data-a="ok" data-burn="${learned.burn}">Nice</button>`; }
     else { title = "Weekly check-in"; body = `${facts} To ${want < 0 ? `lose ${fmt(-want, 2)} kg a week` : want > 0 ? `gain ${fmt(want, 2)} kg a week` : "hold steady"}, ${delta < 0 ? "drop" : "raise"} your average to ${fmt(pl.kcal + delta)} kcal?`; acts = `<button class="btn primary" data-a="adj" data-d="${delta}" data-burn="${learned.burn}">Update</button><button class="btn ghost" data-a="ok" data-burn="${learned.burn}">Keep</button>`; }
-  } else if (!trend) { title = "Weekly check-in"; body = "Weigh in a few times this week so your plan can check it's on track."; acts = `<button class="btn mint" data-a="ok">OK</button>`; }
+  } else if (!trend) { title = "Weekly check-in"; body = "Weigh in a few times this week so your plan can check it's on track."; acts = `<button class="btn primary" data-go="body">Weigh in</button><button class="btn mint" data-a="ok">Later</button>`; }
   else {
     const got = Math.round(trend.perDay * 7 * 100) / 100, gap = want - got;
     const word = (v) => v === 0 ? "holding steady" : `${v > 0 ? "gaining" : "losing"} ${fmt(Math.abs(v), 2)} kg a week`;
@@ -2877,8 +2925,6 @@ function renderWorkouts() {
     <div class="sub-line">${state.eatBack ? (burned ? `Budget now ${fmt(budgetToday())} kcal` : "Workouts stretch your budget") : "Recorded; budget unchanged (switch in Settings)"}${state.weightKg ? "" : " · assuming 75 kg; set your weight on the Daily budget screen"}</div>
     ${streak ? `<span class="streak">🔥 ${streak} day${streak === 1 ? "" : "s"} in a row</span>` : ""}`;
   renderWeek();
-  const lb = latestBody();
-  $("#wb-sub").textContent = lb ? `${lb.weight ? `${lb.weight} kg` : ""}${lb.fat ? ` · ${lb.fat}% fat` : ""}${lb.muscle ? ` · ${lb.muscle} kg muscle` : lb.lean ? ` · ${lb.lean} kg lean` : ""} · ${lb.day === localDate() ? "today" : new Date(lb.day + "T12:00").toLocaleDateString(undefined, { day: "numeric", month: "short" })}` : "Weight, body fat, muscle: from your scale or typed in";
   const list = $("#w-list"); list.innerHTML = "";
   for (const w of ws) {
     const li = document.createElement("li");
@@ -4009,7 +4055,7 @@ $("#share-add").onclick = () => {
 
 // ---------------------------------------------------------------- account + sync (optional, see cloud.js)
 
-const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "weekGoals", "seenBadges", "goalWins", "postCount", "pbCount", "body", "goalWeight", "goalStart", "simple", "onboarded", "reminders", "reactCount", "commentCount", "sendCount", "friendCount", "tombs", "dayBudgets", "profile", "plan", "restSeconds", "updatedAt"];   // the API key stays on the device
+const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "weekGoals", "seenBadges", "goalWins", "postCount", "pbCount", "body", "goalWeight", "goalStart", "simple", "onboarded", "reminders", "reactCount", "commentCount", "sendCount", "friendCount", "tombs", "dayBudgets", "profile", "plan", "restSeconds", "weighDays", "updatedAt"];   // the API key stays on the device
 let pushTimer = null, pulledOnce = false;
 function schedulePush() {
   if (!window.cloud || !window.cloud.user) return;

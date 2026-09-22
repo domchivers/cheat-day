@@ -10,9 +10,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=97">
-  <link rel="icon" href="icons/icon-192.png?v=97">
-  <link rel="stylesheet" href="styles.css?v=97">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=98">
+  <link rel="icon" href="icons/icon-192.png?v=98">
+  <link rel="stylesheet" href="styles.css?v=98">
 </head>
 <body>
 
@@ -82,6 +82,7 @@
     </span>
     <svg class="chev"><use href="#i-chev"/></svg>
     <span class="macro-tiles" id="home-macros"></span>
+    <span class="weigh-line" id="home-weigh" data-go="body"></span>
   </button>
   <button class="card level-card" data-go="goals" id="home-level">
     <span class="circle sand"><svg><use href="#i-trophy"/></svg></span>
@@ -152,6 +153,21 @@
     <h1>Daily budget</h1><span></span>
   </header>
   <button class="card level-card plan-card-top" id="b-plan"></button>
+  <p class="tunes hidden" id="b-tunes"><svg><use href="#i-scale"/></svg>Your weigh-ins tune this plan</p>
+  <div class="card b-body" id="b-body">
+    <div class="w-tile-head">
+      <span class="circle green"><svg><use href="#i-scale"/></svg></span>
+      <span class="level-text"><b>Body</b><small id="bb-sub">Weight, body fat, muscle</small></span>
+      <button class="btn mint slim" data-go="body">Weigh in</button>
+    </div>
+    <p class="muted tiny bb-line" id="bb-line"></p>
+    <div class="bb-often">
+      <div class="field-title">How often do you weigh in?</div>
+      <div class="chips left" id="bb-freq"><button data-f="1">Once a week</button><button data-f="3">3 times a week</button><button data-f="7">Every day</button></div>
+      <div class="day-pick" id="bb-days"></div>
+      <p class="muted tiny" id="bb-hint"></p>
+    </div>
+  </div>
   <div class="card form-card">
     <label>Calories for a cheat day
       <input type="number" inputmode="numeric" id="b-budget">
@@ -570,11 +586,6 @@
   </header>
   <div class="card result" id="w-summary"></div>
   <div class="card week-card" id="w-week"></div>
-  <button class="card level-card body-card" data-go="body" id="w-body">
-    <span class="circle green"><svg><use href="#i-scale"/></svg></span>
-    <span class="level-text"><b id="wb-title">Body</b><small id="wb-sub">Weight, body fat, muscle: from your scale or typed in</small></span>
-    <svg class="chev"><use href="#i-chev"/></svg>
-  </button>
 
   <div class="card w-gym" id="w-gym">
     <div class="w-tile-head">
@@ -952,10 +963,10 @@
   <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=97"></script>
-<script src="foods.js?v=97"></script>
-<script src="supabase-config.js?v=97"></script>
-<script src="cloud.js?v=97"></script>
-<script src="app.js?v=97"></script>
+<script src="presets.js?v=98"></script>
+<script src="foods.js?v=98"></script>
+<script src="supabase-config.js?v=98"></script>
+<script src="cloud.js?v=98"></script>
+<script src="app.js?v=98"></script>
 </body>
 </html>
