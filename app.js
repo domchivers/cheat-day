@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "121";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "122";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1016,7 +1016,8 @@ async function renderFriends() {
   busy(false);
   drawFriends();
 }
-// ---- friends as swipeable cards: one friend per card, active today first; the week as dots, today's food by meal
+// ---- friends: a card each, as before, with a little more on them: streak and level, the week as dots,
+//      and a tap opens their day by meal with Cheer and Send
 const frCheered = new Set();
 function drawFriendRows(friends, dayLabel) {
   const c = window.cloud, today = localDate(), fl = $("#fr-list"); fl.innerHTML = "";
@@ -1025,51 +1026,48 @@ function drawFriendRows(friends, dayLabel) {
   if (!friends.length) return;
   const stats = (uid) => ((lbCache && lbCache.rows) || []).find((r) => r.user_id === uid) || null;
   const isWorkout = (it) => /^Workout: /.test(String(it.name || ""));
-  // this week, Monday to Sunday
   const mon = new Date(today + "T12:00"); mon.setDate(mon.getDate() - ((mon.getDay() + 6) % 7));
   const week = Array.from({ length: 7 }, (_, k) => { const x = new Date(mon); x.setDate(x.getDate() + k); return localDate(x); });
-  const cards = friends.map((f) => {
+  friends.map((f) => {
     const days = fr.days.filter((x) => x.user_id === f.uid);
     const d = days.slice().sort((p, q) => String(q.day).localeCompare(String(p.day)))[0];
     const all = d && Array.isArray(d.items) ? d.items : [], food = all.filter((it) => !isWorkout(it));
     return { f, d, days, all, food, active: !!(d && String(d.day) === today && food.length) };
-  }).sort((p, q) => (q.active - p.active));
-  const deck = document.createElement("div"); deck.className = "fr-deck";
-  cards.forEach((cd) => deck.appendChild(friendCard(cd)));
-  const dots = document.createElement("div"); dots.className = "fr-dots";
-  dots.innerHTML = cards.length > 1 ? cards.map((_, k) => `<button data-k="${k}" aria-label="Friend ${k + 1}"></button>`).join("") : "";
-  fl.appendChild(deck); fl.appendChild(dots);
-  if (cards.length > 1) fl.insertAdjacentHTML("beforeend", `<p class="muted tiny center fr-hint">Swipe to see everyone</p>`);
-  const step = () => (deck.firstElementChild ? deck.firstElementChild.offsetWidth + 12 : 1);
-  const mark = () => { const k = Math.round(deck.scrollLeft / step()); fr.deckIndex = k; dots.querySelectorAll("button").forEach((b, n) => b.classList.toggle("on", n === k)); };
-  deck.addEventListener("scroll", () => requestAnimationFrame(mark), { passive: true });
-  dots.querySelectorAll("button").forEach((b) => b.onclick = () => deck.scrollTo({ left: +b.dataset.k * step(), behavior: "smooth" }));
-  requestAnimationFrame(() => { deck.scrollLeft = (fr.deckIndex || 0) * step(); mark(); });
+  }).sort((p, q) => q.active - p.active).forEach((cd) => fl.appendChild(friendCard(cd)));
 
   function friendCard({ f, d, days, all, food, active }) {
-    const name = personName(f.uid), st = stats(f.uid);
-    const card = document.createElement("div"); card.className = `card fr-big${active ? "" : " quiet"}`;
+    const name = personName(f.uid), st = stats(f.uid), open = frOpen.has(f.uid);
+    const card = document.createElement("div"); card.className = `card friend-card fc${active ? "" : " quiet"}${open ? " open" : ""}`;
     const dot = (day) => {
       const x = days.find((y) => String(y.day) === day);
       if (day > today) return `<i class="future"></i>`;
       if (!x || !x.budget) return `<i class="none${day === today ? " today" : ""}"></i>`;
-      const cls = x.kcal <= x.budget ? "ok" : x.kcal <= x.budget * 1.1 ? "near" : "over";
-      return `<i class="${cls}${day === today ? " today" : ""}"></i>`;
+      return `<i class="${x.kcal <= x.budget ? "ok" : x.kcal <= x.budget * 1.1 ? "near" : "over"}${day === today ? " today" : ""}"></i>`;
     };
-    const wo = all.filter(isWorkout);
-    let top;
-    if (active) {
+    let right = `<span class="fc-when">nothing shared yet</span>`, bar = "", line = "";
+    if (d) {
       const over = d.kcal > d.budget, pct = d.budget ? Math.min(100, d.kcal / d.budget * 100) : 0;
-      top = `<div class="fb-big${over ? " over" : ""}">${fmt(d.kcal)}<small>of ${fmt(d.budget)} kcal</small></div><span class="bar"><span style="width:${pct}%" class="${over ? "over" : ""}"></span></span>`;
-    } else top = `<div class="fb-big quiet-big">Not yet today<small>${d ? `${esc(dayLabel(String(d.day)))}: ${fmt(d.kcal)} of ${fmt(d.budget)}` : "nothing shared yet"}</small></div>`;
-    card.innerHTML = `<div class="fb-head">${avatar(f.uid, name, true)}<div><b>${esc(name)}</b><small>${st ? `🔥 ${st.streak || 0} day${st.streak === 1 ? "" : "s"} · Level ${st.level || 1}` : "&nbsp;"}</small></div></div>
-      ${top}
-      <div class="fb-week">${week.map((day) => `<span><small>${WEEKDAYS[new Date(day + "T12:00").getDay()].slice(0, 1)}</small>${dot(day)}</span>`).join("")}</div>
-      ${active ? `<ul class="ate fb-food">${ateList(food)}</ul>` : ""}
-      ${active && wo.length ? `<ul class="ate fb-food"><li class="ate-grp"><span>Workouts</span><b></b></li>${wo.map((w) => `<li><span>${esc(String(w.name).replace(/^Workout: /, ""))}</span><b>−${fmt(-w.kcal)}</b></li>`).join("")}</ul>` : ""}
-      <div class="fr-acts"><button class="btn mint slim" data-act="cheer"${frCheered.has(f.uid) ? " disabled" : ""}>${frCheered.has(f.uid) ? "Cheered 👏" : "👏 Cheer"}</button><button class="btn ghost slim" data-act="send">Send food</button></div>
-      <div class="fr-send hidden"></div>
-      <button class="link-danger fr-remove">Remove ${esc(name)}</button>`;
+      right = active ? `<span class="fc-k${over ? " over" : ""}">${fmt(d.kcal)}<small> / ${fmt(d.budget)}</small></span>` : `<span class="fc-when">${esc(dayLabel(String(d.day)))} ${fmt(d.kcal)}</span>`;
+      if (active) bar = `<span class="bar"><span style="width:${pct}%" class="${over ? "over" : ""}"></span></span>`;
+      line = active ? esc(food.map((it) => it.name).slice(0, 3).join(", ") + (food.length > 3 ? ` and ${food.length - 3} more` : "")) : "Nothing logged today yet";
+    }
+    const wo = all.filter(isWorkout);
+    card.innerHTML = `${avatar(f.uid, name, true)}<div class="body">
+        <div class="fc-top"><b>${esc(name)}</b>${right}</div>
+        ${st ? `<div class="fc-tag">🔥 ${st.streak || 0} day${st.streak === 1 ? "" : "s"} · Level ${st.level || 1}</div>` : ""}
+        ${bar}
+        <div class="fc-week">${week.map((day) => dot(day)).join("")}</div>
+        ${line ? `<div class="fc-line">${line}${active ? `<span class="fc-more">${open ? "▴" : "▾"}</span>` : ""}</div>` : ""}
+        ${open ? `<div class="fc-open">
+          ${active ? `<ul class="ate">${ateList(food)}</ul>` : ""}
+          ${active && wo.length ? `<ul class="ate"><li class="ate-grp"><span>Workouts</span><b></b></li>${wo.map((w) => `<li><span>${esc(String(w.name).replace(/^Workout: /, ""))}</span><b>−${fmt(-w.kcal)}</b></li>`).join("")}</ul>` : ""}
+          <div class="fr-acts"><button class="btn mint slim" data-act="cheer"${frCheered.has(f.uid) ? " disabled" : ""}>${frCheered.has(f.uid) ? "Cheered 👏" : "👏 Cheer"}</button><button class="btn ghost slim" data-act="send">Send food</button></div>
+          <div class="fr-send hidden"></div>
+          <button class="link-danger fr-remove">Remove ${esc(name)}</button>
+        </div>` : ""}
+      </div>`;
+    card.onclick = (e) => { if (e.target.closest("button, .fr-send")) return; if (frOpen.has(f.uid)) frOpen.delete(f.uid); else frOpen.add(f.uid); drawFriendRows(fr.lastFriends, fr.lastDayLabel); };
+    if (!open) return card;
     card.querySelector("[data-act=cheer]").onclick = (e) => {
       notifyFriend(f.uid, "react", "your day", { emoji: "👏" }); frCheered.add(f.uid);
       e.target.textContent = "Cheered 👏"; e.target.disabled = true; toast(`You cheered ${name} on 👏`);

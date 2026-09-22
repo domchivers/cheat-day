@@ -1309,3 +1309,32 @@ body.simple .fr-body small { font-size: 14px; }
 body.simple .fb-big { font-size: 34px; }
 body.simple .fb-head b { font-size: 21px; }
 .fr-deck { align-items: flex-start; }
+/* ---- friends v122: the original cards, elevated */
+.fc { cursor: pointer; padding: 14px 16px; gap: 14px; margin-bottom: 10px; transition: border-color .15s; }
+.fc.open { border-color: var(--green); }
+.fc .avatar.big { width: 48px; height: 48px; font-size: 17px; flex: none; }
+.fc-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.fc-top b { font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc-k { font-weight: 800; font-size: 16px; color: var(--green); white-space: nowrap; }
+.fc-k.over { color: var(--bad); }
+.fc-k small { font-weight: 600; font-size: 13px; color: var(--muted); }
+.fc-when { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.fc-tag { font-size: 12px; color: var(--muted); margin-top: 1px; }
+.fc .bar { margin-top: 8px; height: 7px; }
+.fc-week { display: flex; gap: 5px; margin-top: 9px; }
+.fc-week i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+.fc-week i.ok { background: var(--green); }
+.fc-week i.near { background: #e8a33d; }
+.fc-week i.over { background: var(--coral); }
+.fc-week i.none { border: 1.5px solid var(--line); }
+.fc-week i.future { border: 1.5px dashed var(--line); opacity: .5; }
+.fc-week i.today { box-shadow: 0 0 0 2.5px var(--mint-2); }
+.fc-line { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--muted); margin-top: 8px; }
+.fc-more { color: var(--green); font-weight: 700; flex: none; }
+.fc.quiet > .avatar, .fc.quiet .fc-top, .fc.quiet .fc-week, .fc.quiet .fc-line { opacity: .72; }
+.fc-open { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 4px; }
+.fc-open .ate { margin: 0; }
+.fc-open .fr-acts { margin-top: 12px; }
+.fc-open .fr-remove { margin: 12px auto 0; font-size: 13px; }
+body.simple .fc-top b { font-size: 19px; }
+body.simple .fc-line, body.simple .fc-tag { font-size: 15px; }
