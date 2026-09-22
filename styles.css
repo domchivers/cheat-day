@@ -1195,3 +1195,7 @@ body.simple .meal-sel { font-size: 15px; }
 .share-pad > .card, .share-pad > .more-row { flex: none; }
 #r-kcal { color: var(--text); }
 .amt-input span { align-self: center; }
+.amt-seg { margin: 0 0 14px; background: var(--bg); }
+.amt-seg button { font-size: 15px; padding: 10px 0; }
+body.simple .amt-seg button { font-size: 17px; padding: 12px 0; }
+.amt-seg button.on { background: var(--green); color: #fff; }

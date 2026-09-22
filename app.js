@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "115";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "116";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -4235,13 +4235,12 @@ function showAmountMode() {
   $("#a-count-wrap").classList.toggle("hidden", shareMode !== "count");
   $("#a-grams-wrap").classList.toggle("hidden", shareMode !== "grams");
   $("#a-kcal-wrap").classList.toggle("hidden", shareMode !== "kcal");
-  const alt = [];
-  if (shareMode !== "count" && c.countKcal) alt.push(`<a href="#" data-mode="count">Count ${esc(c.countLabel || "serving")}s</a>`);
-  if (shareMode !== "grams" && c.kcalPer100) alt.push(`<a href="#" data-mode="grams">Weigh it instead</a>`);
-  if (shareMode !== "kcal") alt.push(`<a href="#" data-mode="kcal">Type the calories instead</a>`);
-  $("#amt-alt").innerHTML = alt.join(" · ");
+  // a clear switch between the ways that suit this food
+  const modes = [c.countKcal ? ["count", "Count"] : null, c.kcalPer100 ? ["grams", draft.unit === "ml" ? "Measure" : "Weigh"] : null, ["kcal", "Calories"]].filter(Boolean);
+  $("#amt-seg").innerHTML = modes.map(([m, label]) => `<button data-mode="${m}" class="${m === shareMode ? "on" : ""}">${label}</button>`).join("");
+  $("#amt-seg").classList.toggle("hidden", modes.length < 2);
 }
-$("#amt-alt").addEventListener("click", (e) => { const l = e.target.closest("[data-mode]"); if (!l) return; e.preventDefault(); shareMode = l.dataset.mode; showAmountMode(); fillAmounts(null); const f = { count: "#a-count", grams: "#a-grams", kcal: "#a-kcal" }[shareMode]; setTimeout(() => $(f).focus(), 50); });
+$("#amt-seg").addEventListener("click", (e) => { const l = e.target.closest("[data-mode]"); if (!l) return; e.preventDefault(); shareMode = l.dataset.mode; showAmountMode(); fillAmounts(null); const f = { count: "#a-count", grams: "#a-grams", kcal: "#a-kcal" }[shareMode]; setTimeout(() => $(f).focus(), 50); });
 /** Quick weights: one serving if the pack says, then a few sensible amounts. */
 function renderGramChips(c) {
   const box = $("#gram-chips"); if (!c.kcalPer100) { box.innerHTML = ""; return; }
