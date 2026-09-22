@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "125";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "126";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -221,9 +221,9 @@ const scrollMem = {};
 function rememberScroll() { const cur = document.body.dataset.view; if (cur) scrollMem[cur] = window.scrollY; }
 function restoreScroll(view) { const y = scrollMem[view]; if (y) { window.scrollTo(0, y); requestAnimationFrame(() => window.scrollTo(0, y)); } }
 function go(view) { rememberScroll(); stack.push(view); show(view); }
-$$("#tabbar button").forEach((b) => b.onclick = () => { const v = b.dataset.tab; if (stack[stack.length - 1] === "share") editId = null; stack = v === "home" ? ["home"] : ["home", v]; show(v); });
-function back() { if (stack[stack.length - 1] === "share") editId = null; stack.pop(); if (!stack.length) stack = ["home"]; const to = stack[stack.length - 1]; show(to); restoreScroll(to); }
-function home() { const from = document.body.dataset.view; pick = null; editId = null; stack = ["home"]; show("home"); if (from === "share" || from === "details") restoreScroll("home"); }   // after adding something, back where you were
+$$("#tabbar button").forEach((b) => b.onclick = () => { const v = b.dataset.tab; if (stack[stack.length - 1] === "share") editId = null; pastAdd = pastEdit = null; stack = v === "home" ? ["home"] : ["home", v]; show(v); });
+function back() { if (stack[stack.length - 1] === "share") editId = null; stack.pop(); if (!stack.length) stack = ["home"]; const to = stack[stack.length - 1]; if (to === "history" || to === "home") pastAdd = pastEdit = null; show(to); restoreScroll(to); }
+function home() { const from = document.body.dataset.view; pick = null; editId = null; pastAdd = pastEdit = null; stack = ["home"]; show("home"); if (from === "share" || from === "details") restoreScroll("home"); }   // after adding something, back where you were
 
 document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-go]"); if (b) { const v = b.dataset.go; v === "manual" ? openManual() : go(v); return; }
@@ -849,10 +849,34 @@ function renderCalendar() {
 }
 $("#cal-prev").onclick = () => { const [y, m] = calMonth.split("-").map(Number); const d = new Date(y, m - 2, 1); calMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; renderCalendar(); };
 $("#cal-next").onclick = () => { const [y, m] = calMonth.split("-").map(Number); const d = new Date(y, m, 1); calMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; renderCalendar(); };
-function ateList(items) {
-  const row = (it) => `<li><span>${it.photo ? `<img class="pic" src="${esc(it.photo)}" alt="">` : ""}${esc(it.name)}</span><b>${fmt(it.kcal)}</b></li>`;
+function ateList(items, editable) {
+  const row = (it) => `<li${editable ? ` data-i="${items.indexOf(it)}"` : ""}><span>${it.photo ? `<img class="pic" src="${esc(it.photo)}" alt="">` : ""}${esc(it.name)}</span><b>${fmt(it.kcal)}</b>${editable ? `<button class="x" aria-label="Remove">✕</button>` : ""}</li>`;
   if (!items.some((it) => it.addedAt || it.meal)) return items.map(row).join("");   // older days: no times kept
   return MEALS.map((g) => { const its = items.filter((it) => mealOf(it) === g); return its.length ? `<li class="ate-grp"><span>${g}</span><b>${fmt(its.reduce((a, it) => a + (it.kcal || 0), 0))}</b></li>${its.map(row).join("")}` : ""; }).join("");
+}
+// ---- fixing a past day: change or remove what's there, or add something you missed
+let pastAdd = null, pastEdit = null;   // a date to add to; { date, i } of an item being changed
+const pastLabel = (date) => new Date(date + "T12:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+function recalcPastDay(h) {
+  h.kcal = Math.round((h.items || []).reduce((x, it) => x + (it.kcal || 0), 0));
+  const m = sumMacros(h.items || []); h.p = Math.round(m.p); h.c = Math.round(m.c); h.f = Math.round(m.f);
+}
+function addToPastDay(date) { pastAdd = date; pastEdit = null; editId = null; pick = null; go("search"); }
+function editPastItem(date, i) {
+  const h = state.history.find((x) => x.date === date), it = h && h.items[i]; if (!it) return;
+  pastEdit = { date, i }; pastAdd = null; editId = null; pick = null;
+  draft = { ...basisOf(it), note: "" }; openShare(it.kcal);
+}
+function savePastItem(kcal) {
+  const date = pastAdd || pastEdit.date, h = state.history.find((x) => x.date === date); if (!h) return;
+  const hour = { Breakfast: 8, Lunch: 13, Dinner: 19, Snacks: 16 }[shareMeal] || 12, at = new Date(date + "T00:00"); at.setHours(hour);
+  if (pastEdit) { const it = h.items[pastEdit.i]; if (it) { Object.assign(it, basisOf(draft)); it.kcal = kcal; it.meal = shareMeal; } }
+  else h.items.push({ ...basisOf(draft), kcal, shareLabel: "", addedAt: at.toISOString(), meal: shareMeal });
+  recalcPastDay(h); save();
+  toast(`${pastEdit ? "Updated" : "Added"} ${draft.name} · ${pastLabel(date)}`);
+  pastAdd = pastEdit = null;
+  histOpen.add(date); stack = ["home", "history"]; show("history");
+  const card = document.querySelector(`#history-list [data-date="${date}"]`); if (card) card.scrollIntoView({ block: "center" });
 }
 function renderHistory() {
   renderCalendar();
@@ -892,7 +916,7 @@ function renderHistory() {
     let body = "";
     if (items.length) {
       body = histOpen.has(d.date)
-        ? `<ul class="ate">${ateList(items)}</ul><button class="btn mint ate-btn" data-act="toggle">Hide</button>`
+        ? `<ul class="ate ate-edit">${ateList(items, true)}</ul><p class="muted tiny hist-tip">Tap a food to change it or move its meal.</p><div class="hist-acts"><button class="btn mint slim" data-act="add">＋ Add something</button><button class="btn ghost slim" data-act="toggle">Hide</button></div>`
         : `<div class="items muted tiny">${esc(items.map((it) => it.name).slice(0, 3).join(", "))}${items.length > 3 ? ` and ${items.length - 3} more` : ""}</div><button class="btn mint ate-btn" data-act="toggle">What I had (${items.length}) ▾</button>`;
     } else if (count) body = `<div class="muted tiny">${count} item${count === 1 ? "" : "s"} (logged before history kept the details)</div>`;
     card.innerHTML = `<div class="top"><b>${esc(label)}</b><span class="kcal ${over ? "over" : "ok"}">${fmt(d.kcal)} / ${fmt(d.budget)} kcal</span></div>${d.burned ? `<div class="burned tiny">Burned ${fmt(d.burned)} kcal: ${esc((d.workouts || []).map((w) => w.name).join(", "))}</div>` : ""}
@@ -900,6 +924,16 @@ function renderHistory() {
       ${d.p != null ? `<div class="macros">${macroText({ p: d.p, c: d.c, f: d.f }, true)}</div>` : ""}${body}`;
     const tog = card.querySelector("[data-act=toggle]");
     if (tog) tog.onclick = () => { if (histOpen.has(d.date)) histOpen.delete(d.date); else histOpen.add(d.date); renderHistory(); };
+    const addBtn = card.querySelector("[data-act=add]");
+    if (addBtn) addBtn.onclick = () => addToPastDay(d.date);
+    card.querySelectorAll(".ate-edit li[data-i]").forEach((li) => {
+      const i = +li.dataset.i;
+      li.onclick = (e) => { if (e.target.closest(".x")) return; editPastItem(d.date, i); };
+      li.querySelector(".x").onclick = async (e) => {
+        e.stopPropagation(); const it = d.items[i]; if (!it || !await ask(`Remove ${it.name} from ${label}?`)) return;
+        d.items.splice(i, 1); recalcPastDay(d); save(); renderHistory(); toast(`Removed ${it.name}`);
+      };
+    });
     list.appendChild(card);
   }
 }
@@ -3986,6 +4020,7 @@ async function lookupBarcode(code) {
 let searchTimer = null, searchAbort = null, lastQuery = "";
 function openSearch() {
   const q = $("#q");
+  $("#search-past").textContent = pastAdd ? `Adding to ${pastLabel(pastAdd)}` : ""; $("#search-past").classList.toggle("hidden", !pastAdd);
   setTimeout(() => q.focus(), 50);
   if (pick && pick.prefill) { q.value = pick.prefill; pick.prefill = null; q.dispatchEvent(new Event("input")); return; }
   if (!q.value) { $("#search-local").innerHTML = ""; $("#search-off").innerHTML = ""; $("#search-status").classList.add("hidden"); $("#search-claude").classList.add("hidden"); }
@@ -4409,13 +4444,14 @@ function openShare(prefillKcal) {
   if (!draft.photo && draft.image && String(draft.image).startsWith("data:")) thumbFrom(draft.image).then((t) => { if (draft) { draft.photo = t; showSharePhoto(); } }).catch(() => {});
   showSharePhoto();
   $("#share-name").textContent = draft.name;
-  $("#share-add").textContent = pick ? "Add to the meal" : editId ? "Save changes" : "Add to today";
+  $("#share-add").textContent = pick ? "Add to the meal" : editId || pastEdit ? "Save changes" : pastAdd ? `Add to ${pastLabel(pastAdd)}` : "Add to today";
   const editing = editId && state.day.items.find((x) => x.id === editId);
-  shareMeal = editing ? mealOf(editing) : mealOf({ name: draft.name, addedAt: new Date().toISOString() });
+  const pastIt = pastEdit && ((state.history.find((x) => x.date === pastEdit.date) || {}).items || [])[pastEdit.i];
+  shareMeal = editing ? mealOf(editing) : pastIt ? mealOf(pastIt) : mealOf({ name: draft.name, addedAt: new Date().toISOString() });
   $("#share-meal").value = shareMeal; $("#share-meal").classList.toggle("hidden", !!pick);
   // one amount control: counted things get count chips, weighed things get gram chips; the others are a tap away
   shareMode = c.countKcal && (c.countLabel !== "serving" || !c.kcalPer100) ? "count" : c.kcalPer100 ? "grams" : "kcal";
-  $("#share-extras").classList.toggle("hidden", !!pick);
+  $("#share-extras").classList.toggle("hidden", !!pick || !!pastAdd || !!pastEdit);   // sharing is for today's food
   $("#share-photo-row").classList.toggle("hidden", !(draft && draft.photo)); $("#item-talk-row").classList.toggle("hidden", !!pick);
   $$(".x-ic").forEach((b) => b.classList.remove("on"));
   renderGramChips(c);
@@ -4499,6 +4535,7 @@ $("#share-add").onclick = () => {
   if (!amountKcal || !draft) return;
   const kcal = Math.round(amountKcal);
   if (pick) { mealTakeIngredient(draft, kcal); toast(`${draft.name} is in the meal`); return; }
+  if (pastAdd || pastEdit) { savePastItem(kcal); return; }
   if (editId) {
     const it = state.day.items.find((x) => x.id === editId);
     if (it) { Object.assign(it, basisOf(draft)); it.kcal = kcal; it.shareLabel = `${fmt(kcal / baseBudget() * 100, 1)}% of the day`; if (shareMeal) it.meal = shareMeal; save(); }
