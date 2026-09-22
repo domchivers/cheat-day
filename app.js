@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "123";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "124";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -3066,9 +3066,13 @@ function showComposePhoto() {
   $("#compose-hint").classList.toggle("hidden", has);
   $("#compose-remove").classList.toggle("hidden", !has);
   $("#compose-cam").querySelector("span").textContent = has ? "Retake" : "Snap a pic";
+  $("#compose-edit").classList.toggle("hidden", !composePhoto);
+  const small = $("#compose-small"); small.classList.add("hidden");
+  if (composePhoto) { const probe = new Image(); probe.onload = () => small.classList.toggle("hidden", Math.min(probe.naturalWidth, probe.naturalHeight) >= 600); probe.src = composePhoto; }
 }
 $("#compose-media").onclick = () => $("#file-compose-cam").click();
-async function composeAttach(file) { try { composePhoto = await thumbFromBig(file); showComposePhoto(); } catch (e) { toast("Couldn't read that photo"); } }
+async function composeAttach(file) { const out = await openPhotoEditor(file); if (out) { composePhoto = out; showComposePhoto(); } }
+$("#compose-edit").onclick = async () => { if (!composePhoto) return; const out = await openPhotoEditor(composePhoto); if (out) { composePhoto = out; showComposePhoto(); } };
 /** Feed photos can be a bit bigger than thumbnails: 640px square, roughly 40 KB. */
 async function thumbFromBig(src) {
   const img = await loadImage(src instanceof Blob ? src : await (await fetch(src)).blob());
@@ -3781,12 +3785,66 @@ async function decodeBarcodeFromFile(file) {
   return null;
 }
 /** A small square thumbnail (data URL) from a File or data URL: about 10 KB, fine to keep and sync. */
+// ---- photo editor: a square crop like the feed, drag to move, pinch / slide / scroll to zoom, rotate; returns a 1200 px JPEG
+let peState = null;
+function openPhotoEditor(src) {
+  return new Promise(async (resolve) => {
+    let img;
+    try { img = await loadImage(src instanceof Blob ? src : await (await fetch(src)).blob()); } catch (e) { toast("Couldn't read that photo"); resolve(null); return; }
+    const box = $("#photo-editor"), canvas = $("#pe-canvas"), stage = $("#pe-stage"), zoomIn = $("#pe-zoom");
+    const st = peState = { img, rot: 0, zoom: 1, ox: 0, oy: 0, pointers: new Map(), pinch: null };
+    box.classList.remove("hidden");
+    const S = () => canvas.width;
+    const dims = () => { const r = st.rot % 180 !== 0; return [r ? img.naturalHeight : img.naturalWidth, r ? img.naturalWidth : img.naturalHeight]; };
+    const base = (size) => { const [w, h] = dims(); return size / Math.min(w, h); };   // the scale that just covers the square
+    const clamp = () => {
+      const [w, h] = dims(), k = base(S()) * st.zoom;
+      const mx = Math.max(0, (w * k - S()) / 2), my = Math.max(0, (h * k - S()) / 2);
+      st.ox = Math.max(-mx, Math.min(mx, st.ox)); st.oy = Math.max(-my, Math.min(my, st.oy));
+    };
+    const draw = (ctx, size, ox, oy) => {
+      const k = base(size) * st.zoom;
+      ctx.fillStyle = "#1a1f1c"; ctx.fillRect(0, 0, size, size);
+      ctx.save(); ctx.translate(size / 2 + ox, size / 2 + oy); ctx.rotate(st.rot * Math.PI / 180); ctx.scale(k, k);
+      ctx.imageSmoothingQuality = "high"; ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2); ctx.restore();
+    };
+    const render = () => { clamp(); draw(canvas.getContext("2d"), S(), st.ox, st.oy); zoomIn.value = st.zoom; };
+    const fit = () => { const px = Math.round(stage.clientWidth * (window.devicePixelRatio || 1)); if (!px) return; if (canvas.width !== px) { const f = px / (canvas.width || px); st.ox *= f; st.oy *= f; canvas.width = canvas.height = px; } render(); };
+    render(); requestAnimationFrame(fit); setTimeout(fit, 80);   // once the editor is on screen, draw at the phone's full sharpness
+    const setZoom = (z, cx = 0, cy = 0) => {   // zoom around a point, so what's under your fingers stays put
+      const nz = Math.max(1, Math.min(5, z)), f = nz / st.zoom;
+      st.ox = cx + (st.ox - cx) * f; st.oy = cy + (st.oy - cy) * f; st.zoom = nz; render();
+    };
+    const local = (e) => { const r = stage.getBoundingClientRect(), d = S() / r.width; return [(e.clientX - r.left) * d - S() / 2, (e.clientY - r.top) * d - S() / 2]; };
+    stage.onpointerdown = (e) => { stage.setPointerCapture(e.pointerId); st.pointers.set(e.pointerId, local(e)); if (st.pointers.size === 2) { const [a, b] = [...st.pointers.values()]; st.pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), z: st.zoom }; } };
+    stage.onpointermove = (e) => {
+      if (!st.pointers.has(e.pointerId)) return;
+      const prev = st.pointers.get(e.pointerId), now = local(e); st.pointers.set(e.pointerId, now);
+      if (st.pointers.size === 1) { st.ox += now[0] - prev[0]; st.oy += now[1] - prev[1]; render(); }
+      else if (st.pointers.size === 2 && st.pinch) { const [a, b] = [...st.pointers.values()]; const d = Math.hypot(a[0] - b[0], a[1] - b[1]); setZoom(st.pinch.z * d / st.pinch.d, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2); }
+    };
+    const up = (e) => { st.pointers.delete(e.pointerId); if (st.pointers.size < 2) st.pinch = null; };
+    stage.onpointerup = up; stage.onpointercancel = up;
+    stage.onwheel = (e) => { e.preventDefault(); const [x, y] = local(e); setZoom(st.zoom * (e.deltaY < 0 ? 1.08 : 1 / 1.08), x, y); };
+    zoomIn.oninput = () => setZoom(+zoomIn.value);
+    $("#pe-rotate").onclick = () => { st.rot = (st.rot + 90) % 360; st.ox = 0; st.oy = 0; render(); };
+    $("#pe-reset").onclick = () => { st.rot = 0; st.zoom = 1; st.ox = 0; st.oy = 0; render(); };
+    window.addEventListener("resize", fit);
+    const finish = (out) => { window.removeEventListener("resize", fit); box.classList.add("hidden"); stage.onpointerdown = stage.onpointermove = stage.onpointerup = stage.onpointercancel = stage.onwheel = null; peState = null; resolve(out); };
+    $("#pe-cancel").onclick = () => finish(null);
+    $("#pe-done").onclick = () => {
+      const size = 1200, o = document.createElement("canvas"); o.width = o.height = size;
+      const f = size / S(); draw(o.getContext("2d"), size, st.ox * f, st.oy * f);
+      finish(o.toDataURL("image/jpeg", 0.86));
+    };
+  });
+}
 async function thumbFrom(src) {
   const img = await loadImage(src instanceof Blob ? src : await (await fetch(src)).blob());
-  const size = 256, c = document.createElement("canvas"); c.width = size; c.height = size;
+  const size = 512, c = document.createElement("canvas"); c.width = size; c.height = size;   // sharp on a phone screen, still small to keep
   const iw = img.naturalWidth, ih = img.naturalHeight, m = Math.min(iw, ih);
   c.getContext("2d").drawImage(img, (iw - m) / 2, (ih - m) / 2, m, m, 0, 0, size, size);
-  return c.toDataURL("image/jpeg", 0.7);
+  return c.toDataURL("image/jpeg", 0.8);
 }
 function loadImage(file) {
   return new Promise((resolve, reject) => {
@@ -4311,7 +4369,7 @@ function showSharePhoto() {
   $("#share-photo-remove").classList.toggle("hidden", !has);
   $("#share-photo-cam").textContent = has ? "📷 Retake" : "📷 Add a photo";
 }
-async function attachPhoto(file) { try { draft.photo = await thumbFrom(file); showSharePhoto(); } catch (e) { toast("Couldn't read that photo"); } }
+async function attachPhoto(file) { const out = await openPhotoEditor(file); if (!out) return; try { draft.photo = await thumbFrom(out); showSharePhoto(); } catch (e) { toast("Couldn't read that photo"); } }
 $("#share-photo-cam").onclick = () => $("#file-share-cam").click();
 $("#share-photo-lib").onclick = () => $("#file-share-lib").click();
 $("#file-share-cam").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) attachPhoto(f); });

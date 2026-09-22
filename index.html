@@ -10,9 +10,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=123">
-  <link rel="icon" href="icons/icon-192.png?v=123">
-  <link rel="stylesheet" href="styles.css?v=123">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=124">
+  <link rel="icon" href="icons/icon-192.png?v=124">
+  <link rel="stylesheet" href="styles.css?v=124">
 </head>
 <body>
 
@@ -401,10 +401,12 @@
     <div class="compose-tools">
       <button class="btn mint slim icon-text" id="compose-cam"><svg><use href="#i-camera"/></svg><span>Snap a pic</span></button>
       <button class="btn mint slim" id="compose-lib">From photos</button>
+      <button class="btn mint slim hidden" id="compose-edit">Edit</button>
       <button class="btn ghost slim hidden" id="compose-remove">Remove</button>
     </div>
     <input type="file" accept="image/*" capture="environment" id="file-compose-cam" hidden>
     <input type="file" accept="image/*" id="file-compose-lib" hidden>
+    <p class="muted tiny hidden" id="compose-small">This photo is small, so it may look soft in the feed. Snap a new one for a sharper post.</p>
     <textarea id="compose-caption" rows="2" placeholder="Write a caption…" autocapitalize="sentences" maxlength="220"></textarea>
     <div id="compose-what"></div>
     <button class="btn primary" id="compose-go">Post to friends</button>
@@ -977,16 +979,25 @@
   </div>
 </div>
 
+<div class="photo-editor hidden" id="photo-editor" role="dialog" aria-label="Edit photo">
+  <div class="pe-top"><button class="pe-btn" id="pe-cancel">Cancel</button><b>Edit photo</b><button class="pe-btn pe-done" id="pe-done">Done</button></div>
+  <div class="pe-stage" id="pe-stage"><canvas id="pe-canvas"></canvas><div class="pe-grid"></div></div>
+  <div class="pe-tools">
+    <div class="pe-zoom"><svg><use href="#i-search"/></svg><input type="range" id="pe-zoom" min="1" max="5" step="0.01" value="1" aria-label="Zoom"></div>
+    <div class="pe-row"><button class="pe-tool" id="pe-rotate"><svg><use href="#i-repost"/></svg>Rotate</button><button class="pe-tool" id="pe-reset">Reset</button></div>
+    <p class="pe-hint">Drag to move · pinch or slide to zoom</p>
+  </div>
+</div>
 <nav class="tabbar" id="tabbar">
   <button data-tab="home"><svg><use href="#i-home"/></svg><span>Home</span></button>
   <button data-tab="workouts"><svg><use href="#i-lift"/></svg><span>Workouts</span></button>
   <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=123"></script>
-<script src="foods.js?v=123"></script>
-<script src="supabase-config.js?v=123"></script>
-<script src="cloud.js?v=123"></script>
-<script src="app.js?v=123"></script>
+<script src="presets.js?v=124"></script>
+<script src="foods.js?v=124"></script>
+<script src="supabase-config.js?v=124"></script>
+<script src="cloud.js?v=124"></script>
+<script src="app.js?v=124"></script>
 </body>
 </html>
