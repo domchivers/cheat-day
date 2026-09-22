@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "102";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "103";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -266,9 +266,9 @@ function renderHome() {
     ? tile("Protein", mac.p, g.p) + tile("Carbs", mac.c, g.c) + tile("Fat", mac.f, g.f) + (mac.missing ? `<span class="note">${mac.missing} item${mac.missing === 1 ? " has" : "s have"} no macros (added before macros existed, or none on the pack).</span>` : "")
     : "";
 
-  const list = $("#home-list"); list.innerHTML = "";
-  for (const it of state.day.items) list.appendChild(itemRow(it));
-  $("#home-empty").classList.toggle("hidden", state.day.items.length > 0);
+  $("#home-left").textContent = left >= 0 ? ` · ${fmt(left)} left` : ` · ${fmt(-left)} over`;
+  $("#home-left").classList.toggle("over", left < 0);
+  renderTodayList();
   // Nothing yet today: show yesterday as a reminder of where you left off
   const y = !state.day.items.length && state.history.find((h) => h.date === dateMinus(1));
   const yc = $("#home-yesterday");
@@ -285,6 +285,37 @@ function renderHome() {
   setTimeout(maybeAskReminders, 2500);
   renderLevelCard();
 }
+// ---- today's food, grouped by meal (by the time it was logged, unless moved)
+const MEALS = ["Breakfast", "Lunch", "Dinner", "Snacks"];
+function mealOf(it) {
+  if (MEALS.includes(it.meal)) return it.meal;
+  const h = it.addedAt ? new Date(it.addedAt).getHours() : null;
+  if (h == null) return "Snacks";
+  return h >= 4 && h < 11 ? "Breakfast" : h >= 11 && h < 15 ? "Lunch" : h >= 17 && h < 22 ? "Dinner" : "Snacks";
+}
+let todayAll = false;
+function renderTodayList() {
+  const list = $("#home-list"), items = state.day.items; list.innerHTML = "";
+  const groups = MEALS.map((g) => ({ g, its: items.filter((it) => mealOf(it) === g) })).filter((x) => x.its.length);
+  const compact = items.length > 5 && !todayAll;   // a busy day: one line per meal until "Show all"
+  for (const { g, its } of groups) {
+    const total = its.reduce((a, it) => a + (it.kcal || 0), 0);
+    if (compact) {
+      const li = document.createElement("li"); li.className = "sum";
+      li.innerHTML = `<div class="body"><div class="name">${g}</div><div class="detail">${esc(its.map((it) => it.name).join(", "))}</div></div><div class="kcal">${fmt(total)}</div>`;
+      li.onclick = () => { todayAll = true; renderTodayList(); };
+      list.appendChild(li); continue;
+    }
+    const head = document.createElement("li"); head.className = "grp"; head.innerHTML = `<span>${g}</span><span>${fmt(total)}</span>`;
+    list.appendChild(head);
+    for (const it of its) list.appendChild(itemRow(it));
+  }
+  const more = $("#home-more");
+  more.classList.toggle("hidden", items.length <= 5);
+  more.textContent = todayAll ? "Show less" : `Show all ${items.length} items`;
+  more.onclick = () => { todayAll = !todayAll; renderTodayList(); };
+  $("#home-empty").classList.toggle("hidden", items.length > 0);
+}
 function iconFor(source) {
   return { barcode: "barcode", label: "camera", quick: "plus", search: "search", claude: "search", meal: "meal" }[source] || "pen";
 }
@@ -293,7 +324,7 @@ function itemRow(it) {
   const pic = it.photo || it.image;
   const thumb = pic ? `<img class="thumb-sm" src="${esc(pic)}" alt="">` : `<span class="thumb-sm"><svg><use href="#i-${iconFor(it.source)}"/></svg></span>`;
   li.innerHTML = `${thumb}
-    <div class="body"><div class="name">${esc(it.name || "Unnamed")}</div><div class="detail">${esc(shortAmounts(it))}</div></div>
+    <div class="body"><div class="name">${esc(it.name || "Unnamed")}</div><div class="detail">${esc(String(shortAmounts(it)).replace(/[\s·]+$/, ""))}</div></div>
     <div class="kcal">${fmt(it.kcal)}</div>
     <button class="del" aria-label="Remove">✕</button>`;
   li.querySelector(".del").onclick = async (e) => { e.stopPropagation(); if (!await ask(`Remove "${it.name}" from today?`)) return; tomb("item", it.id); state.day.items = state.day.items.filter((x) => x.id !== it.id); save(); renderHome(); };
@@ -1118,8 +1149,7 @@ const TALK_SCHEMA = {
   required: ["reply", "actions"],
   additionalProperties: false
 };
-$("#talk-go").onclick = () => talk();
-$("#talk").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.target.blur(); talk(); } });
+if ($("#talk-go")) { $("#talk-go").onclick = () => talk(); $("#talk").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.target.blur(); talk(); } }); }
 async function talk() {
   const text = $("#talk").value.trim(); if (!text) return;
   if (!aiAvailable()) { aiHelp(); return; }
@@ -4102,6 +4132,8 @@ $("#share-photo-lib").onclick = () => $("#file-share-lib").click();
 $("#file-share-cam").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) attachPhoto(f); });
 $("#file-share-lib").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) attachPhoto(f); });
 $("#share-photo-remove").onclick = () => { delete draft.photo; showSharePhoto(); };
+let shareMeal = null;
+$("#share-meal").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; shareMeal = b.dataset.m; $$("#share-meal button").forEach((x) => x.classList.toggle("on", x === b)); });
 function openShare(prefillKcal) {
   const c = conv(draft);
   // A label read or an estimate came with a photo: keep a small copy of it with the entry
@@ -4109,6 +4141,10 @@ function openShare(prefillKcal) {
   showSharePhoto();
   $("#share-name").textContent = draft.name;
   $("#share-add").textContent = pick ? "Add to the meal" : editId ? "Save changes" : "Add to today";
+  const editing = editId && state.day.items.find((x) => x.id === editId);
+  shareMeal = editing ? mealOf(editing) : null;
+  $("#share-meal").classList.toggle("hidden", !editing);
+  $$("#share-meal button").forEach((b) => b.classList.toggle("on", b.dataset.m === shareMeal));
   $("#item-talk").value = ""; $("#item-talk-note").classList.add("hidden");
   $("#send-sheet").classList.add("hidden");
   $("#a-unit").textContent = draft.unit || "g";
@@ -4188,7 +4224,7 @@ $("#share-add").onclick = () => {
   if (pick) { mealTakeIngredient(draft, kcal); toast(`${draft.name} is in the meal`); return; }
   if (editId) {
     const it = state.day.items.find((x) => x.id === editId);
-    if (it) { Object.assign(it, basisOf(draft)); it.kcal = kcal; it.shareLabel = `${fmt(kcal / baseBudget() * 100, 1)}% of the day`; save(); }
+    if (it) { Object.assign(it, basisOf(draft)); it.kcal = kcal; it.shareLabel = `${fmt(kcal / baseBudget() * 100, 1)}% of the day`; if (shareMeal) it.meal = shareMeal; save(); }
     editId = null; toast(`Updated ${draft.name} · ${fmt(kcal)} kcal`); home(); return;
   }
   addToDay(draft, kcal, `${fmt(kcal / baseBudget() * 100, 1)}% of the day`);

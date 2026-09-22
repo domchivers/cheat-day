@@ -10,9 +10,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=102">
-  <link rel="icon" href="icons/icon-192.png?v=102">
-  <link rel="stylesheet" href="styles.css?v=102">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=103">
+  <link rel="icon" href="icons/icon-192.png?v=103">
+  <link rel="stylesheet" href="styles.css?v=103">
 </head>
 <body>
 
@@ -71,26 +71,31 @@
   </header>
   <p class="tagline">Spend your cheat day<br>on purpose.</p>
 
-  <button class="card budget-card" data-go="budget">
-    <span class="circle green"><svg><use href="#i-budget"/></svg></span>
-    <span class="budget-body">
-      <span class="label" id="home-budget-label">Daily budget</span>
-      <span class="big"><b id="home-used">0</b> <small>kcal</small></span>
-      <span class="sub">of <span id="home-budget">1,600</span> kcal</span>
-      <span class="bar"><span id="home-bar"></span></span>
-      <span class="sub burned hidden" id="home-burned"></span>
-    </span>
-    <svg class="chev"><use href="#i-chev"/></svg>
+  <div class="card budget-card">
+    <button class="budget-top" data-go="budget">
+      <span class="circle green"><svg><use href="#i-budget"/></svg></span>
+      <span class="budget-body">
+        <span class="label" id="home-budget-label">Daily budget</span>
+        <span class="big"><b id="home-used">0</b> <small>kcal</small></span>
+        <span class="sub">of <span id="home-budget">1,600</span> kcal<span id="home-left"></span></span>
+        <span class="bar"><span id="home-bar"></span></span>
+        <span class="sub burned hidden" id="home-burned"></span>
+      </span>
+      <svg class="chev"><use href="#i-chev"/></svg>
+    </button>
     <span class="macro-tiles" id="home-macros"></span>
-    <span class="weigh-line" id="home-weigh" data-go="body"></span>
-  </button>
-  <button class="card level-card" data-go="goals" id="home-level">
-    <span class="circle sand"><svg><use href="#i-trophy"/></svg></span>
-    <span class="level-text"><b id="lv-title">Level 1</b><small id="lv-sub">Log your day to earn XP</small><span class="bar"><span id="lv-bar"></span></span></span>
-    <svg class="chev"><use href="#i-chev"/></svg>
-  </button>
+    <div class="today-in">
+      <ul class="list today-list" id="home-list"></ul>
+      <button class="today-more hidden" id="home-more"></button>
+      <p class="today-empty" id="home-empty">Nothing logged yet today.</p>
+    </div>
+    <button class="weigh-line" id="home-weigh" data-go="body"></button>
+  </div>
+  <div id="home-plan"></div>
+  <div id="home-inbox"></div>
 
-  <div class="grid2">
+  <div class="section-head add-head"><h2 class="section-title">Add food</h2><button class="link" data-go="history">History ›</button></div>
+  <div class="grid2" id="home-tiles">
     <button class="card action tint-green" data-go="scan">
       <span class="circle green"><svg><use href="#i-camera"/></svg></span>
       <b>Scan</b>
@@ -100,7 +105,7 @@
     <button class="card action tint-coral" data-go="search">
       <span class="circle coral"><svg><use href="#i-search"/></svg></span>
       <b>Search</b>
-      <small>Chicken thigh, eggs, a glass of wine…</small>
+      <small>Or type it in yourself</small>
       <svg class="chev"><use href="#i-chev"/></svg>
     </button>
     <button class="card action tint-peach" data-go="meals">
@@ -109,21 +114,13 @@
       <small>A cake, a curry: add it as one thing</small>
       <svg class="chev"><use href="#i-chev"/></svg>
     </button>
-    <button class="card action tint-sand" data-go="manual">
-      <span class="circle sand"><svg><use href="#i-pen"/></svg></span>
-      <b>Type it in</b>
-      <small>You already know the numbers</small>
+    <button class="card action tint-sand" data-go="ask" id="ask-tile">
+      <span class="circle sand"><svg><use href="#i-spark"/></svg></span>
+      <b>Assistant</b>
+      <small>Guess a plate, plan the day, fix what you logged</small>
       <svg class="chev"><use href="#i-chev"/></svg>
     </button>
   </div>
-
-
-  <button class="card action tint-sand wide" data-go="ask" id="ask-card">
-    <span class="circle sand"><svg><use href="#i-spark"/></svg></span>
-    <b>Assistant</b>
-    <small>Guess a plate, plan the day, make a recipe, fix what you logged: just ask</small>
-    <svg class="chev"><use href="#i-chev"/></svg>
-  </button>
 
   <button class="card quick-toggle" id="quick-toggle">
     <span class="circle green"><svg><use href="#i-plus"/></svg></span>
@@ -133,16 +130,11 @@
   <ul class="list quick hidden" id="quick-list"></ul>
   <p class="muted tiny hidden" id="quick-hint">Tap ＋ to add one like last time, tap the name to change the amount, hold to remove. Most-used first.</p>
 
-  <div class="section-head"><h2 class="section-title">Today</h2><button class="link" data-go="history">History ›</button></div>
-  <div class="chat home-chat">
-    <input type="text" id="talk" placeholder="Just tell it: add a banana, I only had 2 eggs, remove the toast…" autocapitalize="sentences">
-    <button class="btn primary slim" id="talk-go">Send</button>
-  </div>
-  <div id="talk-out"></div>
-  <div id="home-plan"></div>
-  <div id="home-inbox"></div>
-  <ul class="list" id="home-list"></ul>
-  <p class="empty" id="home-empty">Nothing logged yet. Scan something delicious.</p>
+  <button class="card level-card" data-go="goals" id="home-level">
+    <span class="circle sand"><svg><use href="#i-trophy"/></svg></span>
+    <span class="level-text"><b id="lv-title">Level 1</b><small id="lv-sub">Log your day to earn XP</small><span class="bar"><span id="lv-bar"></span></span></span>
+    <svg class="chev"><use href="#i-chev"/></svg>
+  </button>
   <button class="card day-card hidden" id="home-yesterday" data-go="history"></button>
 </section>
 
@@ -824,6 +816,11 @@
   <p class="muted tiny hidden" id="search-status"></p>
   <ul class="list" id="search-off"></ul>
   <button class="btn mint hidden" id="search-claude">Ask Claude about it</button>
+  <button class="card level-card type-in" data-go="manual">
+    <span class="circle sand"><svg><use href="#i-pen"/></svg></span>
+    <span class="level-text"><b>Type it in yourself</b><small>You already know the calories</small></span>
+    <svg class="chev"><use href="#i-chev"/></svg>
+  </button>
 </section>
 
 <!-- ===================== PRODUCT DETAILS ===================== -->
@@ -899,6 +896,7 @@
   </header>
   <div class="pad">
     <p class="question"><b id="share-name">it</b></p>
+    <div class="chips meal-pick hidden" id="share-meal"><button data-m="Breakfast">Breakfast</button><button data-m="Lunch">Lunch</button><button data-m="Dinner">Dinner</button><button data-m="Snacks">Snacks</button></div>
     <div class="card form-card">
       <div id="a-count-wrap">
         <label><span id="a-count-label">Pieces</span>
@@ -969,10 +967,10 @@
   <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=102"></script>
-<script src="foods.js?v=102"></script>
-<script src="supabase-config.js?v=102"></script>
-<script src="cloud.js?v=102"></script>
-<script src="app.js?v=102"></script>
+<script src="presets.js?v=103"></script>
+<script src="foods.js?v=103"></script>
+<script src="supabase-config.js?v=103"></script>
+<script src="cloud.js?v=103"></script>
+<script src="app.js?v=103"></script>
 </body>
 </html>
