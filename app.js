@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "118";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "119";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -3423,7 +3423,8 @@ function blankItem(source) {
 function openManual() { draft = blankItem("manual"); openDetails("Enter the details"); }
 function openDetails(title) {
   const d = draft;
-  $("#details-title").textContent = title;
+  const blank = !d.kcalPer100 && !d.kcalPerServing;   // typing something in: the boxes are the point
+  $("#details-title").textContent = blank ? (title || "Enter the details") : "Check the numbers";
   $("#f-name").value = d.name || ""; $("#f-brand").value = d.brand || "";
   $("#f-unit").value = d.unit || "g";
   $("#f-kcal100").value = d.kcalPer100 ?? ""; $("#f-serving").value = d.servingSize ?? "";
@@ -3431,10 +3432,12 @@ function openDetails(title) {
   $("#f-piece").value = d.unitLabel || "";
   $("#f-p100").value = d.p100 ?? ""; $("#f-c100").value = d.c100 ?? ""; $("#f-f100").value = d.f100 ?? "";
   $("#d-thumb").innerHTML = d.image ? `<img src="${esc(d.image)}" alt="">` : `<svg><use href="#i-image"/></svg>`;
-  $("#d-badge").classList.toggle("hidden", d.source !== "barcode");
+  const src = { barcode: "Open Food Facts", label: "Read from label", claude: "AI estimate", search: "Food list" }[d.source] || "";
+  $("#d-badge").textContent = src; $("#d-badge").classList.toggle("hidden", !src);
+  $("#d-edit").open = blank; $("#d-edit-label").textContent = blank ? "The numbers" : "Edit the numbers";
   const note = $("#d-note"); note.textContent = d.note || ""; note.classList.toggle("hidden", !d.note);
   $("#details-lighter-out").innerHTML = "";
-  syncUnitEcho();
+  syncUnitEcho(); renderDetailSummary();
   go("details");
 }
 function readDetails() {
@@ -3448,11 +3451,28 @@ function readDetails() {
   else { d.p100 = d.p100 || 0; d.c100 = d.c100 || 0; d.f100 = d.f100 || 0; }
   return d;
 }
+/** The label-style summary, from whatever is in the boxes right now. */
+function renderDetailSummary() {
+  const v = (id) => num($(id).value), unit = $("#f-unit").value || "g";
+  const k100 = v("#f-kcal100"), sv = v("#f-serving"), each = v("#f-kcalserving"), pack = v("#f-pack"), pcs = v("#f-pieces");
+  const label = ($("#f-piece").value.trim().replace(/s$/, "") || "serving"), p = v("#f-p100"), c = v("#f-c100"), f = v("#f-f100");
+  const box = $("#d-summary");
+  if (!k100 && !each) { box.innerHTML = `<div class="empty-sum">No calories yet. Add them below, from the pack.</div>`; return; }
+  const oneKcal = each || (k100 && sv ? k100 * sv / 100 : null);
+  const lines = [];
+  if (oneKcal && k100) lines.push(`1 ${esc(label)}${sv ? ` (${fmt(sv)} ${unit})` : ""} = <b>${fmt(oneKcal)} kcal</b>`);   // per-piece only: the big number already says it
+  if (pack) lines.push(`pack ${fmt(pack)} ${unit}${pcs ? `, ${fmt(pcs)} ${esc(label)}${pcs === 1 ? "" : "s"}` : ""}`);
+  const bar = (x, color) => `<span class="mb"><span style="width:${Math.min(100, (x || 0))}%;background:${color}"></span></span>`;
+  box.innerHTML = `<div class="big">${k100 ? `${fmt(k100)}<small>kcal per 100 ${unit}</small>` : `${fmt(each)}<small>kcal per ${esc(label)}</small>`}</div>
+    ${lines.length ? `<div class="line">${lines.join(" · ")}</div>` : ""}
+    ${p != null || c != null || f != null ? `<div class="d-macros"><div>Protein<b>${fmt(p || 0, 1)} g</b>${bar(p, "#7f77dd")}</div><div>Carbs<b>${fmt(c || 0, 1)} g</b>${bar(c, "#e8a33d")}</div><div>Fat<b>${fmt(f || 0, 1)} g</b>${bar(f, "var(--coral)")}</div></div>` : ""}`;
+}
+$$("#d-edit input, #d-edit select").forEach((el) => el.addEventListener("input", renderDetailSummary));
 function syncUnitEcho() { $$(".unit-echo").forEach((el) => el.textContent = $("#f-unit").value); }
-$("#f-unit").onchange = syncUnitEcho;
+$("#f-unit").onchange = () => { syncUnitEcho(); renderDetailSummary(); };
 $("#details-next").onclick = () => {
   const d = readDetails();
-  if (!d.kcalPer100 && !d.kcalPerServing) { toast("I need kcal per 100 or kcal per serving"); return; }
+  if (!d.kcalPer100 && !d.kcalPerServing) { $("#d-edit").open = true; toast("Add the calories first: per 100 g, or for one piece"); setTimeout(() => $("#f-kcal100").focus(), 50); return; }
   if (!d.name) d.name = d.brand || "Something tasty";
   openShare();
 };

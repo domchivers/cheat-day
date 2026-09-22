@@ -10,9 +10,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=118">
-  <link rel="icon" href="icons/icon-192.png?v=118">
-  <link rel="stylesheet" href="styles.css?v=118">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=119">
+  <link rel="icon" href="icons/icon-192.png?v=119">
+  <link rel="stylesheet" href="styles.css?v=119">
 </head>
 <body>
 
@@ -845,64 +845,59 @@
 <section class="view hidden" id="view-details">
   <header class="sub-head">
     <button class="icon-btn" data-back aria-label="Back"><svg><use href="#i-back"/></svg></button>
-    <h1 id="details-title">Product details</h1><span></span>
+    <h1 id="details-title">Check the numbers</h1><span></span>
   </header>
-  <div class="card product">
-    <div class="thumb" id="d-thumb"><svg><use href="#i-image"/></svg></div>
-    <div class="product-fields">
-      <input type="text" id="f-name" placeholder="Product name" class="inline-input name">
-      <input type="text" id="f-brand" placeholder="Brand (optional)" class="inline-input">
+  <div class="pad share-pad details-pad">
+    <div class="d-head">
+      <div class="thumb" id="d-thumb"><svg><use href="#i-image"/></svg></div>
+      <div class="product-fields">
+        <input type="text" id="f-name" placeholder="Product name" class="inline-input name">
+        <div class="d-sub"><input type="text" id="f-brand" placeholder="Brand (optional)" class="inline-input"><span class="d-badge hidden" id="d-badge"></span></div>
+      </div>
     </div>
-  </div>
-  <div class="badge hidden" id="d-badge"><svg><use href="#i-off"/></svg><span>Open Food Facts</span></div>
-  <p class="note hidden" id="d-note"></p>
+    <p class="note hidden" id="d-note"></p>
 
-  <div class="card form-card">
-    <h3>Nutrition</h3>
-    <div class="grid2 tight">
-      <label>Unit
-        <select id="f-unit"><option value="g">grams</option><option value="ml">ml</option></select>
-      </label>
-      <label>kcal per 100<span class="unit-echo">g</span>
-        <input type="number" inputmode="decimal" id="f-kcal100" placeholder="e.g. 520">
-      </label>
-      <label>Serving size (<span class="unit-echo">g</span>)
-        <input type="number" inputmode="decimal" id="f-serving" placeholder="e.g. 30">
-      </label>
-      <label>kcal per serving
-        <input type="number" inputmode="decimal" id="f-kcalserving" placeholder="auto">
-      </label>
-      <label>Pack size (<span class="unit-echo">g</span>)
-        <input type="number" inputmode="decimal" id="f-pack" placeholder="e.g. 200">
-      </label>
-      <label>Pieces in pack
-        <input type="number" inputmode="numeric" id="f-pieces" placeholder="e.g. 12">
-      </label>
-      <div class="span2">
-        <div class="field-title">Macros per 100 <span class="unit-echo">g</span></div>
+    <div class="card d-sum" id="d-summary"></div>
+
+    <details class="card d-edit" id="d-edit">
+      <summary><svg><use href="#i-pen"/></svg><span id="d-edit-label">Edit the numbers</span></summary>
+      <div class="d-group">
+        <div class="field-title">Per 100 <span class="unit-echo">g</span></div>
+        <div class="grid2 tight">
+          <label>Calories (kcal)<input type="number" inputmode="decimal" id="f-kcal100" placeholder="e.g. 520"></label>
+          <label>Measured in<select id="f-unit"><option value="g">grams</option><option value="ml">ml</option></select></label>
+        </div>
         <div class="grid3">
-          <label>Protein
-            <input type="number" inputmode="decimal" id="f-p100" placeholder="g">
-          </label>
-          <label>Carbs
-            <input type="number" inputmode="decimal" id="f-c100" placeholder="g">
-          </label>
-          <label>Fat
-            <input type="number" inputmode="decimal" id="f-f100" placeholder="g">
-          </label>
+          <label>Protein<input type="number" inputmode="decimal" id="f-p100" placeholder="g"></label>
+          <label>Carbs<input type="number" inputmode="decimal" id="f-c100" placeholder="g"></label>
+          <label>Fat<input type="number" inputmode="decimal" id="f-f100" placeholder="g"></label>
         </div>
       </div>
-      <label class="span2">Sold in pieces? What's one called
-        <input type="text" id="f-piece" placeholder="e.g. slice, biscuit, bar" autocapitalize="off">
-        <small>Then you can just say how many. Serving size above is the weight of one.</small>
-      </label>
+      <div class="d-group">
+        <div class="field-title">One piece or serving</div>
+        <div class="grid3">
+          <label>Called<input type="text" id="f-piece" placeholder="slice, bar…" autocapitalize="off"></label>
+          <label>Size (<span class="unit-echo">g</span>)<input type="number" inputmode="decimal" id="f-serving" placeholder="e.g. 30"></label>
+          <label>kcal each<input type="number" inputmode="decimal" id="f-kcalserving" placeholder="auto"></label>
+        </div>
+      </div>
+      <div class="d-group">
+        <div class="field-title">The pack <small class="muted">(optional)</small></div>
+        <div class="grid2 tight">
+          <label>Pack size (<span class="unit-echo">g</span>)<input type="number" inputmode="decimal" id="f-pack" placeholder="e.g. 200"></label>
+          <label>Pieces in it<input type="number" inputmode="numeric" id="f-pieces" placeholder="e.g. 12"></label>
+        </div>
+      </div>
+    </details>
+
+    <div class="chat ask-tweak">
+      <span class="tweak-ic"><svg><use href="#i-spark"/></svg></span>
+      <input type="text" id="details-ask" placeholder="Ask the AI: add cheese, half of it…" autocapitalize="sentences">
+      <button class="btn primary slim" id="details-ask-go">Send</button>
     </div>
-  </div>
-  <div class="pad">
-    <button class="btn primary" id="details-next">How much of my day?</button>
-    <button class="btn mint" id="details-lighter">Make it lighter</button>
-    <div class="chat"><input type="text" id="details-ask" placeholder="Or ask anything: more protein, add cheese, half of it…" autocapitalize="sentences"><button class="btn primary slim" id="details-ask-go">Send</button></div>
+    <div class="chips left d-quick"><button id="details-lighter">Make it lighter</button></div>
     <div id="details-lighter-out"></div>
+    <div class="share-bar"><button class="btn primary" id="details-next">Next: how much?</button></div>
   </div>
 </section>
 
@@ -988,10 +983,10 @@
   <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=118"></script>
-<script src="foods.js?v=118"></script>
-<script src="supabase-config.js?v=118"></script>
-<script src="cloud.js?v=118"></script>
-<script src="app.js?v=118"></script>
+<script src="presets.js?v=119"></script>
+<script src="foods.js?v=119"></script>
+<script src="supabase-config.js?v=119"></script>
+<script src="cloud.js?v=119"></script>
+<script src="app.js?v=119"></script>
 </body>
 </html>
