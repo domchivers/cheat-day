@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "103";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "104";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -315,6 +315,7 @@ function renderTodayList() {
   more.textContent = todayAll ? "Show less" : `Show all ${items.length} items`;
   more.onclick = () => { todayAll = !todayAll; renderTodayList(); };
   $("#home-empty").classList.toggle("hidden", items.length > 0);
+  $("#today-total").textContent = items.length ? `${fmt(items.reduce((x, it) => x + (it.kcal || 0), 0))} kcal` : "";
 }
 function iconFor(source) {
   return { barcode: "barcode", label: "camera", quick: "plus", search: "search", claude: "search", meal: "meal" }[source] || "pen";
