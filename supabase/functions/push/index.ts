@@ -68,7 +68,8 @@ async function tick() {
       await admin.from("push_subs").update({ last_lunch: now.date }).eq("endpoint", s.endpoint);
     }
     const w = toMins(prefs.weigh);
-    if (w != null && now.mins >= w && now.mins < w + 180 && s.last_weigh !== now.date) {
+    const weekday = new Date(now.date + "T12:00:00Z").getUTCDay(), weighDay = !Array.isArray(prefs.days) || !prefs.days.length || prefs.days.includes(weekday);   // only on their weigh-in days
+    if (w != null && weighDay && now.mins >= w && now.mins < w + 180 && s.last_weigh !== now.date) {
       const weighed = Array.isArray(st.body) && st.body.some((r: any) => r.day === now.date && r.weight);
       if (!weighed && await send(s, { title: "Time to weigh in", body: "Step on the scale, then screenshot the result into Cheat Days.", tag: "weigh" })) sent++;
       await admin.from("push_subs").update({ last_weigh: now.date }).eq("endpoint", s.endpoint);

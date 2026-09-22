@@ -1066,3 +1066,7 @@ body.simple #bb-freq button { padding: 9px 14px; font-size: 15px; }
 #account-card { margin-top: 4px; }
 .advanced { margin-top: 12px; }
 #ask-about { margin: 0 0 10px; }
+.rem-weigh-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rem-weigh-row .check { margin: 0; }
+.rem-weigh-days { margin: 2px 0 8px 30px; }
+.rem-weigh-days a { color: var(--green); font-weight: 700; }

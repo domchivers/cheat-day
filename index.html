@@ -10,9 +10,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=109">
-  <link rel="icon" href="icons/icon-192.png?v=109">
-  <link rel="stylesheet" href="styles.css?v=109">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=110">
+  <link rel="icon" href="icons/icon-192.png?v=110">
+  <link rel="stylesheet" href="styles.css?v=110">
 </head>
 <body>
 
@@ -226,7 +226,8 @@
     <button class="btn primary" id="rem-on">Turn on reminders</button>
     <div id="rem-opts" class="hidden">
       <label class="check"><input type="checkbox" id="rem-lunch"> Nudge me at 2pm if I haven't logged anything</label>
-      <label class="check"><input type="checkbox" id="rem-weigh-on"> Remind me to weigh in at <input type="time" id="rem-weigh" value="07:30" class="inline-time"></label>
+      <div class="rem-weigh-row"><label class="check"><input type="checkbox" id="rem-weigh-on"> Remind me to weigh in at</label><input type="time" id="rem-weigh" value="07:30" class="inline-time" aria-label="Weigh-in reminder time"></div>
+      <p class="muted tiny rem-weigh-days" id="rem-weigh-days"></p>
       <label class="check"><input type="checkbox" id="rem-social"> When friends react, comment or send me food</label>
       <div class="grid2 tight">
         <button class="btn mint" id="rem-test">Send a test</button>
@@ -980,10 +981,10 @@
   <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=109"></script>
-<script src="foods.js?v=109"></script>
-<script src="supabase-config.js?v=109"></script>
-<script src="cloud.js?v=109"></script>
-<script src="app.js?v=109"></script>
+<script src="presets.js?v=110"></script>
+<script src="foods.js?v=110"></script>
+<script src="supabase-config.js?v=110"></script>
+<script src="cloud.js?v=110"></script>
+<script src="app.js?v=110"></script>
 </body>
 </html>

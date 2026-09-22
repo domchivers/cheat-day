@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "109";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "110";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -2535,14 +2535,14 @@ $("#bb-freq").addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b) return;
   const f = +b.dataset.f, cur = weighDays();
   state.weighDays = f === 7 ? [0, 1, 2, 3, 4, 5, 6] : f === 3 ? [1, 3, 5] : [cur.length === 1 ? cur[0] : 0];
-  save(); renderWeighDays();
+  save(); renderWeighDays(); syncReminderDays();
 });
 $("#bb-days").addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b) return;
   const d = +b.dataset.d, cur = weighDays();
   if (cur.length === 1) state.weighDays = [d];   // once a week: tap moves the day
   else { const next = cur.includes(d) ? cur.filter((x) => x !== d) : cur.concat(d); state.weighDays = next.length ? next.sort() : cur; }
-  save(); renderWeighDays();
+  save(); renderWeighDays(); syncReminderDays();
 });
 /** Home: invite people without a plan once; with a plan, a weekly check-in against the real weight trend. */
 const PLAN_ASK = "cheatday.planAsk";
@@ -4474,7 +4474,12 @@ $("#acct-pass").addEventListener("keydown", (e) => { if (e.key === "Enter") acct
 
 // ---------------------------------------------------------------- reminders: web push through the "push" function
 
-const remPrefs = () => Object.assign({ lunch: true, weigh: "07:30", social: true }, state.reminders || {});
+const remPrefs = () => Object.assign({ lunch: true, weigh: "07:30", social: true }, state.reminders || {}, { days: weighDays() });   // weigh-in reminders only on your weigh-in days
+/** Weigh-in days changed: tell the reminder server, if reminders are on. Uses the saved settings, not the Settings screen. */
+function syncReminderDays() {
+  if (!(window.cloud && window.cloud.user && state.reminders && state.reminders.weigh)) return;
+  window.cloud.pushCall("prefs", { prefs: remPrefs(), tz: Intl.DateTimeFormat().resolvedOptions().timeZone }).catch(() => {});
+}
 const standalone = () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
 const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 function b64ToBytes(b64) { const pad = "=".repeat((4 - b64.length % 4) % 4), raw = atob((b64 + pad).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(raw, (ch) => ch.charCodeAt(0)); }
@@ -4484,6 +4489,8 @@ async function renderReminders() {
   const signed = !!(window.cloud && window.cloud.user);
   const p = remPrefs();
   $("#rem-lunch").checked = p.lunch !== false; $("#rem-weigh-on").checked = !!p.weigh; $("#rem-weigh").value = p.weigh || "07:30"; $("#rem-social").checked = p.social !== false;
+  const wd = weighDays(), daysText = wd.length === 7 ? "every day" : wd.length === 1 ? `${WEEKDAYS[wd[0]]}s` : wd.map((d) => WEEKDAYS[d].slice(0, 3)).join(", ");
+  $("#rem-weigh-days").innerHTML = `Only on your weigh-in days (${daysText}). <a href="#" data-go="body">Change days</a>`;
   if (!signed) { status.textContent = "Reminders need an account: sign in above first."; on.classList.add("hidden"); opts.classList.add("hidden"); return; }
   if (!pushSupported()) { status.textContent = /iphone|ipad/i.test(navigator.userAgent) && !standalone() ? "On iPhone, reminders work once Cheat Days is on your home screen: tap Share, then Add to Home Screen, and open it from there." : "This browser can't show notifications."; on.classList.add("hidden"); opts.classList.add("hidden"); return; }
   const sub = await currentSub().catch(() => null);
@@ -4493,7 +4500,7 @@ async function renderReminders() {
 async function savePrefs() {
   state.reminders = { lunch: $("#rem-lunch").checked, weigh: $("#rem-weigh-on").checked ? ($("#rem-weigh").value || "07:30") : null, social: $("#rem-social").checked };
   save();
-  try { await window.cloud.pushCall("prefs", { prefs: state.reminders, tz: Intl.DateTimeFormat().resolvedOptions().timeZone }); } catch (e) { toast(e.message); }
+  try { await window.cloud.pushCall("prefs", { prefs: remPrefs(), tz: Intl.DateTimeFormat().resolvedOptions().timeZone }); } catch (e) { toast(e.message); }
 }
 $("#rem-on").onclick = () => enableReminders(Notification.requestPermission());   // asked straight from the tap, as iPhone needs
 async function enableReminders(permission) {
