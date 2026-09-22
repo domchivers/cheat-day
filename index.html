@@ -10,9 +10,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=106">
-  <link rel="icon" href="icons/icon-192.png?v=106">
-  <link rel="stylesheet" href="styles.css?v=106">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=107">
+  <link rel="icon" href="icons/icon-192.png?v=107">
+  <link rel="stylesheet" href="styles.css?v=107">
 </head>
 <body>
 
@@ -809,10 +809,13 @@
   <button class="btn mint hidden" id="m-lighter">Make it lighter</button>
   <div class="chat hidden" id="m-ask-row"><input type="text" id="m-ask" placeholder="Or ask anything: more protein, swap the rice, double it…" autocapitalize="sentences"><button class="btn primary slim" id="m-ask-go">Send</button></div>
   <div id="m-lighter-out"></div>
-  <button class="btn mint hidden" id="m-post">Post to the feed</button>
-  <button class="btn mint hidden" id="m-share">Share as a link</button>
-  <button class="btn mint hidden" id="m-share-friends">Share with friends</button>
-  <button class="btn danger hidden" id="meal-delete">Delete this meal</button>
+  <button class="btn mint hidden" id="m-share-open">Share this meal</button>
+  <div class="card share-sheet hidden" id="m-share-sheet">
+    <button class="share-opt hidden" id="m-post"><b>Post to the feed</b><small>With a photo and a caption, for your friends</small></button>
+    <button class="share-opt hidden" id="m-share"><b>Send a link</b><small>Anyone can open the recipe, no account needed</small></button>
+    <button class="share-opt hidden" id="m-share-friends"><b>Share with friends</b><small>It stays in your friends' Meals so they can use it</small></button>
+  </div>
+  <button class="link-danger hidden" id="meal-delete">Delete this meal</button>
 </section>
 
 <!-- ===================== SEARCH ===================== -->
@@ -978,10 +981,10 @@
   <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=106"></script>
-<script src="foods.js?v=106"></script>
-<script src="supabase-config.js?v=106"></script>
-<script src="cloud.js?v=106"></script>
-<script src="app.js?v=106"></script>
+<script src="presets.js?v=107"></script>
+<script src="foods.js?v=107"></script>
+<script src="supabase-config.js?v=107"></script>
+<script src="cloud.js?v=107"></script>
+<script src="app.js?v=107"></script>
 </body>
 </html>

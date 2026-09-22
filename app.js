@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "106";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "107";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -215,10 +215,14 @@ function show(view) {
   if (view === "chats") renderChats();
   if (view === "meal") renderMeal();
 }
-function go(view) { stack.push(view); show(view); }
+// ---- coming back to a screen puts you where you were on it (Quick add, a long list...)
+const scrollMem = {};
+function rememberScroll() { const cur = document.body.dataset.view; if (cur) scrollMem[cur] = window.scrollY; }
+function restoreScroll(view) { const y = scrollMem[view]; if (y) { window.scrollTo(0, y); requestAnimationFrame(() => window.scrollTo(0, y)); } }
+function go(view) { rememberScroll(); stack.push(view); show(view); }
 $$("#tabbar button").forEach((b) => b.onclick = () => { const v = b.dataset.tab; if (stack[stack.length - 1] === "share") editId = null; stack = v === "home" ? ["home"] : ["home", v]; show(v); });
-function back() { if (stack[stack.length - 1] === "share") editId = null; stack.pop(); if (!stack.length) stack = ["home"]; show(stack[stack.length - 1]); }
-function home() { pick = null; editId = null; stack = ["home"]; show("home"); }
+function back() { if (stack[stack.length - 1] === "share") editId = null; stack.pop(); if (!stack.length) stack = ["home"]; const to = stack[stack.length - 1]; show(to); restoreScroll(to); }
+function home() { const from = document.body.dataset.view; pick = null; editId = null; stack = ["home"]; show("home"); if (from === "share" || from === "details") restoreScroll("home"); }   // after adding something, back where you were
 
 document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-go]"); if (b) { const v = b.dataset.go; v === "manual" ? openManual() : go(v); return; }
@@ -555,7 +559,13 @@ function renderMeal() {
   $("#m-ask-row").classList.toggle("hidden", !m.items.length);
   const canFriends = m.saved && window.cloud && window.cloud.user;
   $("#m-share-friends").classList.toggle("hidden", !canFriends);
-  $("#m-share-friends").textContent = state.sharedMealIds.includes(m.id) ? "Stop sharing with friends" : "Share with friends";
+  const sharing = state.sharedMealIds.includes(m.id);
+  $("#m-share-friends").innerHTML = sharing ? "<b>Stop sharing with friends</b><small>Take it out of your friends' Meals</small>" : "<b>Share with friends</b><small>It stays in your friends' Meals so they can use it</small>";
+  // the three ways to share sit behind one button
+  $("#m-share-open").classList.toggle("hidden", !m.saved);
+  $("#m-share-sheet").classList.add("hidden");
+  $("#m-share-open").classList.remove("open");
+  $$("#m-share-sheet .share-opt:not(.hidden)").forEach((b, i) => b.classList.toggle("first", i === 0));
   $("#m-save").textContent = m.saved ? "Save changes" : "Save meal";
 }
 $("#m-name").addEventListener("input", (e) => { mealDraft.name = e.target.value; state.mealDraft = mealDraft; save(false); });
@@ -622,6 +632,7 @@ async function decodeMeal(code) {
   if (!m || !m.name || !Array.isArray(m.items)) throw new Error("bad meal");
   return m;
 }
+$("#m-share-open").onclick = () => { const sh = $("#m-share-sheet"), open = sh.classList.toggle("hidden") === false; $("#m-share-open").classList.toggle("open", open); if (open) sh.scrollIntoView({ block: "nearest" }); };
 $("#m-share").onclick = async () => {
   const m = state.meals.find((x) => x.id === mealDraft.id) || mealDraft;
   const url = `${location.origin}${location.pathname}#meal=${await encodeMeal(m)}`;
