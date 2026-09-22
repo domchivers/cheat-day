@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "98";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "99";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -2278,7 +2278,7 @@ function bodyLine(lb) {
 function renderHomeWeigh() {
   const el = $("#home-weigh"), lb = latestBody(), due = weighDue();
   el.classList.toggle("due", due);
-  const text = !lb ? "Track your weight to tune your budget" : due ? `${lb.weight ? `${lb.weight} kg · ` : ""}weigh-in due today` : `${lb.weight ? `${lb.weight} kg · ` : ""}next weigh-in ${whenWord(nextWeighIn())}`;
+  const text = !lb ? "Track your weight to tune your budget" : due ? `${lb.weight ? `${lb.weight} kg · ` : ""}weigh-in due today` : `${lb.weight ? `${lb.weight} kg · ` : ""}next weigh-in ${whenWord(nextWeighIn()).replace(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\w*$/, "$1")}`;
   el.innerHTML = `<svg><use href="#i-scale"/></svg><span class="wl-text">${esc(text)}</span><span class="wl-btn">${lb ? "Weigh in" : "Start"}</span>`;
 }
 function renderBudgetBody() {

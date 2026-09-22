@@ -947,3 +947,12 @@ body.simple .budget-card .weigh-line .wl-text { font-size: 16px; }
 #bb-freq button { padding: 7px 12px; font-size: 13px; }
 .b-body .w-tile-head .btn.slim { padding: 8px 14px; font-size: 14px; }
 body.simple #bb-freq button { padding: 9px 14px; font-size: 15px; }
+/* home: the budget card, weigh-in line and level card share one grid: 16px in, a 42px icon column, text at the same edge */
+.budget-card .weigh-line { gap: 14px; }
+.budget-card .weigh-line svg { margin: 0 12px; }
+.budget-card .weigh-line .wl-text { margin: 0; }
+#home-level { padding: 12px 16px; gap: 14px; }
+#view-home .action { padding-left: 16px; padding-right: 16px; }
+#ask-card .chev { right: 16px; top: 50%; bottom: auto; transform: translateY(-50%); }
+#ask-card b, #ask-card small { padding-right: 30px; }
+#home-list li { padding-left: 16px; padding-right: 16px; }
