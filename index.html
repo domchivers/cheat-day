@@ -10,9 +10,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=113">
-  <link rel="icon" href="icons/icon-192.png?v=113">
-  <link rel="stylesheet" href="styles.css?v=113">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=114">
+  <link rel="icon" href="icons/icon-192.png?v=114">
+  <link rel="stylesheet" href="styles.css?v=114">
 </head>
 <body>
 
@@ -455,57 +455,27 @@
     <h1>Body</h1>
     <button class="icon-btn" id="body-refresh" aria-label="Refresh"><svg><use href="#i-history"/></svg></button>
   </header>
-  <div class="card stat-grid body-stats" id="body-stats"></div>
-  <div class="card goal-card" id="goal-card"></div>
   <div class="card chart-card">
     <div class="chart-head"><select id="body-metric" aria-label="Which measurement to chart"></select>
       <div class="range" id="body-range"><button data-r="30">1M</button><button data-r="90">3M</button><button data-r="0">All</button></div></div>
     <div class="body-alert hidden" id="body-alert"></div>
     <div class="chart-hero" id="body-hero"></div>
+    <button class="goal-line" id="goal-line"></button>
     <div id="body-chart"></div>
     <div class="chart-key" id="body-key"></div>
+    <div class="stat-chips" id="body-chips"></div>
   </div>
+  <div class="card goal-card hidden" id="goal-card"></div>
+  <div class="hidden" id="body-stats"></div>
 
-  <button class="card level-card shot-card" id="bd-shot">
-    <span class="circle green"><svg><use href="#i-image"/></svg></span>
-    <span class="level-text"><b>Read my scale screenshot</b><small>Weigh in with the VeSync app, screenshot the results, tap here</small></span>
-    <svg class="chev"><use href="#i-chev"/></svg>
-  </button>
-  <input type="file" accept="image/*" id="file-bd-shot" hidden>
-  <button class="card level-card shot-card" id="bd-import">
-    <span class="circle sand"><svg><use href="#i-share"/></svg></span>
-    <span class="level-text"><b>Upload exported data</b><small>Bring in your whole history from a VeSync (or other scale app) export file</small></span>
-    <svg class="chev"><use href="#i-chev"/></svg>
-  </button>
-  <input type="file" accept=".csv,.xlsx,.xls,.txt,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" id="file-bd-import" hidden>
-
-  <button class="card prompt-card" id="bd-form-toggle"><span class="circle sand"><svg><use href="#i-pen"/></svg></span><span class="prompt-text">Type a reading in</span><svg class="chev"><use href="#i-chev"/></svg></button>
-  <div id="bd-form" class="hidden">
-  <div class="card form-card">
-    <div class="grid2 tight">
-      <label>Date <input type="date" id="bd-date"></label>
-      <label>Weight (kg) <input type="number" inputmode="decimal" step="0.1" id="bd-weight" placeholder="e.g. 78.4"></label>
-      <label>Body fat % <input type="number" inputmode="decimal" step="0.1" id="bd-fat" placeholder="e.g. 18.2"></label>
-      <label>Muscle mass (kg) <input type="number" inputmode="decimal" step="0.1" id="bd-muscle" placeholder="e.g. 34.5"></label>
-      <label>Water % <input type="number" inputmode="decimal" step="0.1" id="bd-water" placeholder="e.g. 55"></label>
-      <label>Bone mass (kg) <input type="number" inputmode="decimal" step="0.1" id="bd-bone" placeholder="e.g. 3.1"></label>
-      <label>Visceral fat <input type="number" inputmode="decimal" step="0.5" id="bd-visceral" placeholder="e.g. 8"></label>
-      <label>Metabolic age <input type="number" inputmode="numeric" id="bd-age" placeholder="e.g. 29"></label>
-    </div>
-    <p class="muted tiny">Only fill what you have. Same date again replaces that day.</p>
-    <button class="btn primary" id="bd-save">Save reading</button>
-  </div>
-
-  </div>
-  <div class="card b-body bb-often" id="body-often">
-    <div class="field-title">How often do you weigh in?</div>
-    <div class="chips left" id="bb-freq"><button data-f="1">Once a week</button><button data-f="3">3 times a week</button><button data-f="7">Every day</button></div>
-    <div class="day-pick" id="bb-days"></div>
-    <p class="muted tiny" id="bb-hint"></p>
-    <p class="tiny fit-line ok" id="bb-next"></p>
-  </div>
-
-  <details class="how apple-health"><summary>Or use Apple Health instead</summary>
+  <button class="btn primary add-reading" id="bd-add"><svg><use href="#i-plus"/></svg>Add a reading</button>
+  <div class="card add-sheet hidden" id="bd-add-sheet">
+    <button class="add-opt" id="bd-shot"><span class="circle green"><svg><use href="#i-image"/></svg></span><span class="add-text"><b>Scale screenshot</b><small>Weigh in with your scale app, then pick the screenshot</small></span><svg class="chev"><use href="#i-chev"/></svg></button>
+    <input type="file" accept="image/*" id="file-bd-shot" hidden>
+    <button class="add-opt" id="bd-form-toggle"><span class="circle sand"><svg><use href="#i-pen"/></svg></span><span class="add-text"><b>Type it in</b><small>Weight, body fat and more</small></span><svg class="chev"><use href="#i-chev"/></svg></button>
+    <button class="add-opt" id="bd-import"><span class="circle coral"><svg><use href="#i-share"/></svg></span><span class="add-text"><b>Import a file</b><small>Your whole history from a scale app's export</small></span><svg class="chev"><use href="#i-chev"/></svg></button>
+    <input type="file" accept=".csv,.xlsx,.xls,.txt,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" id="file-bd-import" hidden>
+  <details class="how apple-health"><summary>Or connect Apple Health</summary>
   <div class="card form-card" id="body-connect">
     <p class="muted">Your Etekcity scale writes to Apple Health. An iPhone Shortcut can send those readings here every morning.</p>
     <button class="btn mint" id="bd-token">Get my link</button>
@@ -526,8 +496,39 @@
   </div>
 
   </details>
+  </div>
+  <div id="bd-form" class="hidden">
+  <div class="card form-card">
+    <div class="grid2 tight">
+      <label>Date <input type="date" id="bd-date"></label>
+      <label>Weight (kg) <input type="number" inputmode="decimal" step="0.1" id="bd-weight" placeholder="e.g. 78.4"></label>
+      <label>Body fat % <input type="number" inputmode="decimal" step="0.1" id="bd-fat" placeholder="e.g. 18.2"></label>
+      <label>Muscle mass (kg) <input type="number" inputmode="decimal" step="0.1" id="bd-muscle" placeholder="e.g. 34.5"></label>
+      <label>Water % <input type="number" inputmode="decimal" step="0.1" id="bd-water" placeholder="e.g. 55"></label>
+      <label>Bone mass (kg) <input type="number" inputmode="decimal" step="0.1" id="bd-bone" placeholder="e.g. 3.1"></label>
+      <label>Visceral fat <input type="number" inputmode="decimal" step="0.5" id="bd-visceral" placeholder="e.g. 8"></label>
+      <label>Metabolic age <input type="number" inputmode="numeric" id="bd-age" placeholder="e.g. 29"></label>
+    </div>
+    <p class="muted tiny">Only fill what you have. Same date again replaces that day.</p>
+    <button class="btn primary" id="bd-save">Save reading</button>
+  </div>
 
-  <h2 class="section-title">Readings</h2>
+  </div>
+
+  <button class="card level-card days-row" id="bd-days-row">
+    <span class="circle green"><svg><use href="#i-calendar"/></svg></span>
+    <span class="level-text"><b id="bd-days-title">Weigh in on Sundays</b><small id="bd-days-sub"></small></span>
+    <span class="days-change">Change</span>
+  </button>
+  <div class="card b-body bb-often hidden" id="body-often">
+    <div class="field-title">How often do you weigh in?</div>
+    <div class="chips left" id="bb-freq"><button data-f="1">Once a week</button><button data-f="3">3 times a week</button><button data-f="7">Every day</button></div>
+    <div class="day-pick" id="bb-days"></div>
+    <p class="muted tiny" id="bb-hint"></p>
+    <p class="tiny fit-line ok" id="bb-next"></p>
+  </div>
+
+  <h2 class="section-title">Recent readings</h2>
   <ul class="list" id="body-list"></ul>
   <button class="btn ghost hidden" id="body-more">Show all readings</button>
   <p class="empty" id="body-empty">No readings yet. Read a screenshot or add one above.</p>
@@ -983,10 +984,10 @@
   <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=113"></script>
-<script src="foods.js?v=113"></script>
-<script src="supabase-config.js?v=113"></script>
-<script src="cloud.js?v=113"></script>
-<script src="app.js?v=113"></script>
+<script src="presets.js?v=114"></script>
+<script src="foods.js?v=114"></script>
+<script src="supabase-config.js?v=114"></script>
+<script src="cloud.js?v=114"></script>
+<script src="app.js?v=114"></script>
 </body>
 </html>

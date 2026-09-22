@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "113";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "114";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1726,7 +1726,7 @@ const BODY_METRICS = [
 let bodyMetric = "weight", bodyAt = 0, bodyAll = false, bodyOpen = null;
 $("#body-metric").addEventListener("change", (e) => { bodyMetric = e.target.value; drawBody(); });
 $("#body-more").onclick = () => { bodyAll = !bodyAll; drawBody(); };
-const showBodyForm = (open) => { $("#bd-form").classList.toggle("hidden", !open); $("#bd-form-toggle").classList.toggle("open", open); };
+const showBodyForm = (open) => { $("#bd-form").classList.toggle("hidden", !open); $("#bd-form-toggle").classList.toggle("open", open); if (open) $("#bd-add-sheet").classList.add("hidden"); };
 $("#bd-form-toggle").onclick = () => showBodyForm($("#bd-form").classList.contains("hidden"));
 const bodySorted = () => state.body.slice().sort((a, b) => String(a.day).localeCompare(String(b.day)));
 const bodyPast = () => { const today = localDate(); return bodySorted().filter((r) => r.day <= today); };   // a future date is a misread, not a reading
@@ -1890,9 +1890,11 @@ function energyBalance(cur) {
   const tdee = bmr * 1.3 + burn;
   return { eat, tdee, perDay: (eat - tdee) / KCAL_PER_KG, days: days.length, guessed: !bmrRow && !leanRow };
 }
+let goalOpen = false;
 function renderGoal() {
-  const card = $("#goal-card"), rows = bodySorted().filter((r) => r.weight), cur = rows.length ? rows[rows.length - 1].weight : state.weightKg;
+  const card = $("#goal-card"), rows = bodyPast().filter((r) => r.weight), cur = rows.length ? rows[rows.length - 1].weight : state.weightKg;
   const goal = state.goalWeight;
+  let short = "";
   const setForm = (label) => `<div class="set"><input type="number" inputmode="decimal" step="0.1" id="goal-input" placeholder="Goal weight in kg" value="${goal || ""}"><button class="btn primary" id="goal-save">${label}</button></div>`;
   if (!goal || goalEditing) {
     card.innerHTML = `<div class="gh"><b>Goal weight</b>${goal ? `<button id="goal-cancel">Cancel</button>` : ""}</div>
@@ -1904,16 +1906,16 @@ function renderGoal() {
     const pct = start === goal ? 100 : Math.max(0, Math.min(100, (start - cur) / (start - goal) * 100));
     const trend = weightTrend(), energy = energyBalance(cur), rate = trend ? trend.perDay : energy ? energy.perDay : null;
     let big, warn = false; const why = [];
-    if (Math.abs(diff) < 0.25) big = `You've reached your goal 🎉`;
-    else if (rate == null) big = `${fmt(Math.abs(diff), 1)} kg to go`, why.push("Log a few days and weigh in over a week or two, and a projected date shows up here.");
+    if (Math.abs(diff) < 0.25) big = `You've reached your goal 🎉`, short = "reached 🎉";
+    else if (rate == null) big = `${fmt(Math.abs(diff), 1)} kg to go`, short = `${fmt(Math.abs(diff), 1)} kg to go`, why.push("Log a few days and weigh in over a week or two, and a projected date shows up here.");
     else if (rate * Math.sign(diff) <= 0.0004) {
-      warn = true; big = `Not heading there yet`;
+      warn = true; big = `Not heading there yet`; short = `<span class="warn">not heading there yet</span>`;
       why.push(losing ? "At the current pace your weight is steady or going up." : "At the current pace your weight is steady or going down.");
       if (energy) why.push(`A daily budget around ${fmt(Math.round((energy.tdee + (losing ? -550 : 300)) / 50) * 50)} kcal would move you about ${losing ? "0.5 kg a week down" : "0.3 kg a week up"}.`);
     } else {
       const days = diff / rate;
-      if (days > 730) big = `${fmt(Math.abs(diff), 1)} kg to go`, why.push("At this pace it's more than two years away.");
-      else { const d = new Date(); d.setDate(d.getDate() + Math.round(days)); big = `On track for ${fmt(goal, 1)} kg around ${d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: d.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined })}`; }
+      if (days > 730) big = `${fmt(Math.abs(diff), 1)} kg to go`, short = `${fmt(Math.abs(diff), 1)} kg to go`, why.push("At this pace it's more than two years away.");
+      else { const d = new Date(); d.setDate(d.getDate() + Math.round(days)); big = `On track for ${fmt(goal, 1)} kg around ${d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: d.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined })}`; short = `around ${d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: d.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined })}`; }
     }
     if (trend) why.push(`From your weigh-ins: ${trend.perDay > 0 ? "+" : "−"}${fmt(Math.abs(trend.perDay * 7), 1)} kg a week.`);
     if (energy) why.push(`From what you eat: about ${fmt(Math.round(energy.eat / 10) * 10)} kcal a day against roughly ${fmt(Math.round(energy.tdee / 10) * 10)} burned${energy.guessed ? " (estimated)" : ""}.`);
@@ -1923,6 +1925,9 @@ function renderGoal() {
       <div class="ends"><span>Start ${fmt(start, 1)} kg</span><span>Now ${fmt(cur, 1)} kg</span><span>Goal ${fmt(goal, 1)} kg</span></div>
       ${why.length ? `<div class="why">${why.join(" ")}</div>` : ""}`;
   }
+  // the one-line version in the main card, and the full card only when opened
+  $("#goal-line").innerHTML = goal ? `<b>Goal ${fmt(goal, 1)} kg</b>${short ? ` · ${short}` : ""} · <span class="go">${goalOpen || goalEditing ? "hide" : "details"}</span>` : `<span class="go">Set a goal weight</span>`;
+  card.classList.toggle("hidden", !(goalOpen || goalEditing));
   const saveBtn = $("#goal-save");
   if (saveBtn) saveBtn.onclick = () => {
     const v = num($("#goal-input").value);
@@ -1971,9 +1976,12 @@ function drawBodyChart(rows, m) {
   hero.innerHTML = `<div><span class="now">${fmt(now, m.dp)}<small>${esc(m.unit || "")}</small></span>${pace}</div>${since ? `<div class="since">${since}</div>` : ""}`;
   const odd = (ch.odd || []).filter(Boolean).length;
   bodyOdd = new Set(pts.filter((p, i) => ch.odd && ch.odd[i]).map((p) => p.day));
-  $("#body-key").innerHTML = pts.length >= 2 ? `<span><i class="k-dot"></i>Weigh-ins</span><span><i class="k-line"></i>Trend</span>${ch.goalShown ? `<span><i class="k-goal"></i>Goal</span>` : goal ? `<span>Goal ${fmt(goal, 1)} kg (off the chart)</span>` : ""}${odd ? `<span><i class="k-odd"></i>${odd} unusual: check ${odd === 1 ? "it" : "them"} in Readings below</span>` : ""}` : "";
+  $("#body-key").innerHTML = pts.length >= 2 ? `<span><i class="k-dot"></i>Weigh-ins</span><span><i class="k-line"></i>Trend</span>${ch.goalShown ? `<span><i class="k-goal"></i>Goal</span>` : goal ? `<span>Goal ${fmt(goal, 1)} kg (off the chart)</span>` : ""}${odd ? `<span><i class="k-odd"></i>${odd} unusual: check ${odd === 1 ? "it" : "them"} in the readings below</span>` : ""}` : "";
 }
 $("#body-range").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; bodyRange = +b.dataset.r; drawBody(); });
+$("#goal-line").onclick = () => { if (!state.goalWeight) { goalEditing = true; goalOpen = true; } else { goalOpen = !(goalOpen || goalEditing); goalEditing = false; } renderGoal(); };
+$("#bd-add").onclick = () => { const sh = $("#bd-add-sheet"); sh.classList.toggle("hidden"); if (!sh.classList.contains("hidden")) showBodyForm(false); };
+$("#bd-days-row").onclick = () => $("#body-often").classList.toggle("hidden");
 function drawBody() {
   renderGoal();
   const rows = bodySorted(), lb = rows[rows.length - 1] || null;
@@ -1992,6 +2000,8 @@ function drawBody() {
   pickEl.innerHTML = (have.length ? have : BODY_METRICS.slice(0, 1)).map((x) => `<option value="${x.key}"${x.key === bodyMetric ? " selected" : ""}>${x.name}${x.unit ? ` (${x.unit})` : ""}</option>`).join("");
   const m = BODY_METRICS.find((x) => x.key === bodyMetric);
   drawBodyChart(rows, m);
+  const past = bodyPast(), latestOf = (k) => { for (let i = past.length - 1; i >= 0; i--) if (past[i][k] != null) return past[i][k]; return null; };
+  $("#body-chips").innerHTML = BODY_METRICS.filter((x) => x.key !== m.key && ["weight", "fat", "muscle", "water", "visceral"].includes(x.key)).map((x) => { const v = latestOf(x.key); return v == null ? "" : `<span><b>${fmt(v, x.dp)}${x.unit === "%" ? "%" : x.unit ? " " + x.unit : ""}</b> ${x.key === "visceral" ? "visceral fat" : x.name.toLowerCase()}</span>`; }).join("");
   const list = $("#body-list"); list.innerHTML = "";
   const newest = rows.slice().reverse(), shown = bodyAll ? newest.slice(0, 60) : newest.slice(0, 5);
   const val = (x, v) => `${fmt(v, x.dp)}${x.unit === "%" ? "%" : x.unit ? ` ${x.unit}` : ""}`;
@@ -2542,6 +2552,9 @@ function renderBudgetBody() {
 /** Body page: which days to weigh in. */
 function renderWeighDays() {
   const days = weighDays(), n = days.length;
+  $("#bd-days-title").textContent = n === 7 ? "Weigh in every day" : n === 1 ? `Weigh in on ${WEEKDAYS[days[0]]}s` : `Weigh in ${n} days a week`;
+  const rem = state.reminders && state.reminders.weigh;
+  $("#bd-days-sub").textContent = `${weighDue() ? "Due today" : `Next: ${whenWord(nextWeighIn())}`}${rem ? ` · reminder at ${rem}` : ""}`;
   $("#bb-next").textContent = weighDue() ? "Weigh-in due today" : `Next weigh-in ${whenWord(nextWeighIn())}`;
   $$("#bb-freq button").forEach((b) => b.classList.toggle("on", +b.dataset.f === n));
   const pick = $("#bb-days"); pick.classList.toggle("hidden", n === 7);

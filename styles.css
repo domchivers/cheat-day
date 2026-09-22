@@ -1127,3 +1127,30 @@ body.simple .chart-head .range button { font-size: 14px; padding: 7px 13px; }
 body.simple .chart-key { font-size: 13px; }
 body.simple .budget-card .weigh-line .wl-btn { display: none; }
 body.simple .budget-card .weigh-line.due .wl-text { color: var(--green); }
+/* ---- body v114: one main card, one Add a reading, a weigh-in row */
+.goal-line { display: block; width: 100%; background: none; border: 0; padding: 2px 0 0; margin: 0; text-align: left; font: inherit; font-size: 13px; color: var(--muted); cursor: pointer; }
+.goal-line b { color: var(--ink); font-weight: 700; }
+.goal-line .warn { color: var(--coral); font-weight: 700; }
+.goal-line .go { color: var(--green); font-weight: 700; }
+.stat-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 6px; }
+.stat-chips span { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: var(--bg); color: var(--muted); }
+.stat-chips b { color: var(--ink); font-weight: 700; }
+#goal-card { margin-top: 10px; }
+.add-reading { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 12px; }
+.add-reading svg { width: 20px; height: 20px; }
+.add-sheet { padding: 4px 16px; margin-top: 10px; }
+.add-opt { display: flex; align-items: center; gap: 14px; width: 100%; padding: 12px 0; background: none; border: 0; border-top: 1px solid var(--line); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.add-opt:first-child { border-top: 0; }
+.add-opt .circle { width: 42px; height: 42px; flex: none; }
+.add-opt .add-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.add-opt b { font-size: 15px; }
+.add-opt small { font-size: 12px; color: var(--muted); }
+.add-opt .chev { color: var(--muted); flex: none; }
+.add-sheet .apple-health { margin: 4px 0 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+#bd-form { margin-top: 10px; }
+.days-row { margin-top: 12px; }
+.days-row .days-change { color: var(--green); font-weight: 700; font-size: 14px; flex: none; }
+#body-often { margin-top: 10px; }
+body.simple .goal-line, body.simple .stat-chips span { font-size: 15px; }
+body.simple .add-opt b { font-size: 18px; }
+body.simple .add-opt small { font-size: 14px; }
