@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "105";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "106";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -350,6 +350,29 @@ function quickEntries() {
   return presets.concat(meals, state.recent.map((r) => ({ ...r, uses: r.uses || 0 })))
     .sort((a, b) => (b.uses - a.uses) || String(b.lastUsed || "").localeCompare(String(a.lastUsed || "")));
 }
+/** How often each food was had at breakfast, lunch, dinner or as a snack, from the days with times kept. */
+function mealHabits() {
+  const c = {}, add = (it) => { if (!it || !(it.addedAt || it.meal)) return; const k = String(it.name || "").toLowerCase(), g = mealOf(it); (c[k] = c[k] || {})[g] = (c[k][g] || 0) + 1; };
+  state.day.items.forEach(add);
+  for (const h of state.history.slice(0, 60)) if (Array.isArray(h.items)) h.items.forEach(add);
+  return c;
+}
+/** Quick add, ordered for now: what you usually have at this time of day, then your saved meals, then the rest. */
+function quickSections(entries) {
+  const now = mealOf({ addedAt: new Date().toISOString() }), habits = mealHabits();
+  const fit = (q) => {   // times had at this meal, counted only if this is one of its main meals
+    const h = habits[String(q.basis.name || "").toLowerCase()] || {}, n = h[now] || 0, top = Math.max(0, ...Object.values(h));
+    return n && n * 2 >= top ? n : 0;
+  };
+  const scored = entries.map((q) => ({ q, f: fit(q) }));
+  const usual = scored.filter((x) => x.f > 0).sort((a, b) => (b.f - a.f) || (b.q.uses - a.q.uses)).slice(0, 6).map((x) => x.q);
+  const rest = entries.filter((q) => !usual.includes(q)), meals = rest.filter((q) => q.meal), other = rest.filter((q) => !q.meal);
+  return [
+    { title: `Your usual ${now === "Snacks" ? "snacks" : now.toLowerCase()}`, items: usual },
+    { title: "Your meals", items: meals },
+    { title: usual.length || meals.length ? "Other favourites" : "", items: other }
+  ].filter((s) => s.items.length);
+}
 function renderQuick() {
   const list = $("#quick-list"); list.innerHTML = "";
   const entries = quickEntries();
@@ -358,10 +381,12 @@ function renderQuick() {
   list.classList.toggle("hidden", !open);
   $("#quick-hint").classList.toggle("hidden", !open || entries.length === 0);
   $("#quick-sub").textContent = entries.length ? `${entries.length} thing${entries.length === 1 ? "" : "s"} you have often` : "Things you add come back here";
-  for (const q of entries) {
+  for (const sec of quickSections(entries)) {
+  if (sec.title) { const h = document.createElement("li"); h.className = "qgrp"; h.textContent = sec.title; list.appendChild(h); }
+  for (const q of sec.items) {
     const li = document.createElement("li");
     const b = q.basis;
-    const detail = q.detail || shortAmounts({ ...b, kcal: q.lastKcal, shareLabel: q.lastShareLabel });
+    const detail = String(q.detail || shortAmounts({ ...b, kcal: q.lastKcal, shareLabel: q.lastShareLabel })).replace(/[\s·]+$/, "");
     const qp = b.photo || b.image;
     const thumb = qp ? `<img class="thumb-sm" src="${esc(qp)}" alt="">` : `<span class="thumb-sm ${q.meal ? "tone-peach" : ""}"><svg><use href="#i-${iconFor(b.source)}"/></svg></span>`;
     li.innerHTML = `${thumb}
@@ -373,6 +398,7 @@ function renderQuick() {
       if (await ask(`Remove "${b.name}" from Quick add?`)) { tomb("recent", q.key); state.recent = state.recent.filter((r) => r.key !== q.key); save(); renderQuick(); }
     });
     list.appendChild(li);
+  }
   }
 }
 $("#quick-toggle").onclick = () => {
