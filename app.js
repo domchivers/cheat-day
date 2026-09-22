@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "93";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "94";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -3662,7 +3662,10 @@ If energy is given in kJ only, convert to kcal (kcal = kJ / 4.184). If values ar
 If no nutrition table or energy figure is visible at all, set is_nutrition_label to false and leave the numbers null.`;
 
 // ---- Which AI can we use? Shared key on the server (signed in), a free Gemini key on this phone, or a Claude key.
-const GEMINI_MODELS = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-flash-lite-latest"];
+// Free allowances are per model: about 20 a day for each Flash, about 500 for each Flash-Lite.
+const GEMINI_FLASH = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash"];
+const GEMINI_LITE = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-flash-lite-latest"];
+const GEMINI_MODELS = GEMINI_FLASH.concat(GEMINI_LITE);
 let aiProxyState = "unknown";   // "unknown" | "yes" | "no": whether the Supabase "ai" function is deployed
 const aiAvailable = () => !!(state.geminiKey || state.apiKey || (window.cloud && window.cloud.user && aiProxyState !== "no"));
 function aiHelp() { toast("AI features need a key: a free Google Gemini key or an Anthropic key, in Settings. Or ask whoever set the app up to switch on the shared one.", 6000); go("settings"); }
@@ -3706,7 +3709,29 @@ function geminiSchema(node) {
   }
   return out;
 }
-const AI_MODEL_KEY = "cheatday.aiModel";
+// ---- which models have used up today's free allowance. Google resets it at midnight Pacific time.
+const AI_SPENT_KEY = "cheatday.aiSpent";
+try { localStorage.removeItem("cheatday.aiModel"); } catch (e) {}   // the old "last model that answered" memory kept phones on Lite
+function pacificDay() { return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" }).format(new Date()); }
+function aiSpent() {
+  let r = null; try { r = JSON.parse(localStorage.getItem(AI_SPENT_KEY) || "null"); } catch (e) {}
+  if (!r || r.day !== pacificDay()) r = { day: pacificDay(), spent: [], cool: {} };
+  r.cool = r.cool || {}; return r;
+}
+function saveSpent(r) { try { localStorage.setItem(AI_SPENT_KEY, JSON.stringify(r)); } catch (e) {} }
+function markSpent(model, forDay) {
+  const r = aiSpent();
+  if (forDay) { if (!r.spent.includes(model)) r.spent.push(model); }
+  else r.cool[model] = Date.now() + 65000;   // a per-minute limit: rest it for a minute
+  saveSpent(r);
+}
+function modelReady(model) { const r = aiSpent(); return !r.spent.includes(model) && !((r.cool[model] || 0) > Date.now()); }
+/** When the free allowance comes back, in the phone's own time (8am in the UK most of the year). */
+function aiResetTime() {
+  const la = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Los_Angeles" }));
+  const msLeft = ((24 - la.getHours()) * 60 - la.getMinutes()) * 60000;
+  return new Date(Date.now() + msLeft).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
 async function askGemini(schema, content, key, effort = "medium") {
   const parts = content.map((b) => b.type === "image" ? { inline_data: { mime_type: b.source.media_type, data: b.source.data } } : { text: b.text });
   const hasImage = content.some((b) => b.type === "image");
@@ -3721,9 +3746,12 @@ async function askGemini(schema, content, key, effort = "medium") {
     const cfg = window.SUPABASE_CONFIG;
     return window.cloud.rawFetch(`${cfg.url}/functions/v1/ai?model=${model}`, { method: "POST", headers: { "Content-Type": "application/json", apikey: cfg.anonKey }, body: bodyFor(model), signal });
   };
-  // the model that answered last time goes first; a model that times out hands over to the lighter ones
-  let remembered = null; try { remembered = localStorage.getItem(AI_MODEL_KEY); } catch (e) {}
-  let order = GEMINI_MODELS.slice(); if (remembered && order.includes(remembered)) order = [remembered].concat(order.filter((m) => m !== remembered));
+  // Flash is kept for the jobs that need brains (food photos, chats, recipes); quick reading jobs go straight to Lite.
+  // Models that have used up today's allowance are skipped without asking.
+  const all = effort === "low" ? GEMINI_LITE.concat(GEMINI_FLASH) : GEMINI_FLASH.concat(GEMINI_LITE);
+  let order = all.filter(modelReady);
+  if (!order.length) { const r = aiSpent(); order = all.filter((m) => !r.spent.includes(m)); }   // only resting a minute: ask anyway
+  if (!order.length) throw new Error(`Today's free AI allowance is used up. It comes back at ${aiResetTime()}.`);
   const limit = effort === "low" ? (hasImage ? 30000 : 20000) : 45000;   // a recipe or a plan is a long answer
   let resp, lastNet = null, timedOut = 0;
   for (let i = 0; i < order.length; i++) {
@@ -3748,13 +3776,23 @@ async function askGemini(schema, content, key, effort = "medium") {
     if (!key && resp.status === 404) { const e = new Error("shared AI not set up"); e.proxyMissing = true; throw e; }
     if (resp.status === 400 && thinking) { const t = await resp.clone().text().catch(() => ""); if (/thinking/i.test(t)) { thinking = thinking === "minimal" ? "low" : null; i--; continue; } }   // older model: ask again without that setting
     if (!key && resp.ok) aiProxyState = "yes";
-    if (resp.status !== 503 && resp.status !== 429 && !(resp.status === 404 && key)) { if (resp.ok) { try { localStorage.setItem(AI_MODEL_KEY, model); } catch (e) {} } break; }
+    if (resp.status === 429) {
+      const t = await resp.clone().text().catch(() => "");
+      const forDay = /PerDay|per day|daily/i.test(t);
+      markSpent(model, forDay);
+      if (i < order.length - 1) aiProgress(forDay ? "Today's allowance for that model is used, trying the next…" : "That model's busy, trying another…");
+      continue;   // no need to wait: the next model has its own allowance
+    }
+    if (resp.status === 404 && key) { markSpent(model, true); continue; }   // this key can't use that model
+    if (resp.status !== 503) break;
+    markSpent(model, false);
     aiProgress("That model's busy, trying another…");
     await new Promise((r) => setTimeout(r, 400));
   }
   if (!resp && timedOut) throw new Error("The free AI didn't answer in time. Try again in a moment.");
   if (!resp) throw new Error(`Couldn't reach the AI service (${(lastNet && lastNet.message) || "no connection"}). Check the signal and try again.`);
-  if (resp.status === 503 || resp.status === 429) throw new Error("Every free AI model is busy right now. Try again in a minute.");
+  if (resp.status === 429 && aiSpent().spent.length >= GEMINI_MODELS.length) throw new Error(`Today's free AI allowance is used up. It comes back at ${aiResetTime()}.`);
+  if (resp.status === 503 || resp.status === 429 || (resp.status === 404 && key)) throw new Error("Every free AI model is busy right now. Try again in a minute.");
   const json = await resp.json().catch(() => ({}));
   if (resp.status === 401 && !key) { aiProxyState = "no"; const e = new Error("shared AI not available"); e.proxyMissing = true; throw e; }
   if (resp.status === 500 && !key && /GEMINI_API_KEY/.test(JSON.stringify(json))) { aiProxyState = "no"; const e = new Error("shared AI has no key yet"); e.proxyMissing = true; throw e; }
