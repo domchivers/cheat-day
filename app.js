@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "101";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "102";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1629,7 +1629,8 @@ $("#body-more").onclick = () => { bodyAll = !bodyAll; drawBody(); };
 const showBodyForm = (open) => { $("#bd-form").classList.toggle("hidden", !open); $("#bd-form-toggle").classList.toggle("open", open); };
 $("#bd-form-toggle").onclick = () => showBodyForm($("#bd-form").classList.contains("hidden"));
 const bodySorted = () => state.body.slice().sort((a, b) => String(a.day).localeCompare(String(b.day)));
-const latestBody = () => { const rows = bodySorted(); return rows[rows.length - 1] || null; };
+const bodyPast = () => { const today = localDate(); return bodySorted().filter((r) => r.day <= today); };   // a future date is a misread, not a reading
+const latestBody = () => { const rows = bodyPast(); return rows[rows.length - 1] || null; };
 /** Keep one row per day; newer updatedAt wins. Weight flows into the workout burn estimate. */
 function upsertBody(row) {
   if (state.tombs && state.tombs[`body:${row.day}`]) delete state.tombs[`body:${row.day}`];
@@ -1648,6 +1649,8 @@ async function pullBody(force) {
   for (const r of rows) {
     const mine = state.body.find((x) => x.day === r.day);
     if (mine && String(mine.updatedAt || "") >= String(r.updated_at || "")) continue;
+    const gone = state.tombs && state.tombs[`body:${r.day}`];
+    if (gone && gone >= (Date.parse(r.updated_at) || 0)) continue;
     const row = { day: r.day, updatedAt: r.updated_at };
     for (const m of BODY_METRICS) if (r[m.key] != null) row[m.key] = +r[m.key];
     upsertBody(row); changed = true;
@@ -1657,25 +1660,50 @@ async function pullBody(force) {
 }
 /** A body-measurement chart: faint dots for each reading, a smooth trend through them (a moving average
  *  that weighs the last week or so), soft fill, light gridlines, an optional goal line, and tap-for-value. */
-function trendOf(pts) {
-  // a local straight-line fit around each reading, weighted by how many days away the others are:
-  // it follows the middle of the readings without lagging behind them, even at the latest end
-  const ds = pts.map((p) => new Date(p.day + "T12:00") / 864e5);
-  const gaps = ds.slice(1).map((d, i) => d - ds[i]).sort((a, b) => a - b), mid = gaps[Math.floor(gaps.length / 2)] || 1;
-  const bw = Math.max(5, mid * 1.6);
-  return ds.map((d0) => {
-    let sw = 0, sx = 0, sy = 0, sxx = 0, sxy = 0;
-    pts.forEach((p, j) => { const dx = ds[j] - d0, w = Math.exp(-0.5 * (dx / bw) ** 2); sw += w; sx += w * dx; sy += w * p.v; sxx += w * dx * dx; sxy += w * dx * p.v; });
-    const den = sw * sxx - sx * sx;
-    return den > 1e-9 ? (sy * sxx - sx * sxy) / den : sy / sw;
+/** A robust local fit (LOWESS): each point's trend comes from a weighted straight line through the readings
+ *  within about 2 weeks (at least 5 readings, or 40% of them), and readings far from their neighbours count for less, then
+ *  nothing. Returns the trend and which readings look unusual. */
+function trendOf(pts, tol = 0.035) {
+  const n = pts.length, xs = pts.map((p) => new Date(p.day + "T12:00") / 864e5), ys = pts.map((p) => p.v);
+  if (n < 3) return { fit: ys.slice(), odd: ys.map(() => false) };
+  const k = Math.min(n, Math.max(5, Math.ceil(n * 0.4))), med = (a) => { const b = a.slice().sort((p, q) => p - q), m = b.length >> 1; return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
+  const floor = Math.abs(med(ys)) * 0.003 || 0.05;   // readings within ~0.3% are never "unusual" (0.25 kg at 83 kg)
+  // unusual: far from the typical reading in the 3 weeks around it (3.5% for weight, ~3 kg at 83 kg, past normal water swings)
+  const flag = (skip) => ys.map((v, a) => {
+    const nb = ys.filter((_, b) => b !== a && !skip[b] && Math.abs(xs[b] - xs[a]) <= 21);
+    if (nb.length < 3) return null;   // not enough to judge
+    const m = med(nb), spread = med(nb.map((u) => Math.abs(u - m))) * 1.4826;
+    return Math.abs(v - m) > Math.max(tol * Math.abs(m), Math.min(4 * spread, 2 * tol * Math.abs(m)));
   });
+  const first = flag(ys.map(() => false)), second = flag(first.map(Boolean));   // second pass: judge against the readings that look normal
+  const odd = second.map((v, a) => v == null ? !!first[a] : v);
+  let rw = odd.map((o) => o ? 0 : 1), fit = ys.slice();
+  for (let it = 0; it < 3; it++) {
+    for (let a = 0; a < n; a++) {
+      const dist = xs.map((x) => Math.abs(x - xs[a])), h = Math.max(dist.slice().sort((p, q) => p - q)[k - 1], 14) * 1.0001;
+      let sw = 0, sx = 0, sy = 0, sxx = 0, sxy = 0, lo = Infinity, hi = -Infinity;
+      for (let b = 0; b < n; b++) {
+        const u = dist[b] / h; if (u >= 1) continue;
+        const w = (1 - u ** 3) ** 3 * rw[b]; if (w <= 0) continue;
+        const dx = xs[b] - xs[a]; sw += w; sx += w * dx; sy += w * ys[b]; sxx += w * dx * dx; sxy += w * dx * ys[b];
+        if (w > 0.05) { lo = Math.min(lo, ys[b]); hi = Math.max(hi, ys[b]); }
+      }
+      const den = sw * sxx - sx * sx;
+      let v = den > 1e-9 ? (sy * sxx - sx * sxy) / den : sw ? sy / sw : ys[a];
+      if (isFinite(lo)) v = Math.min(hi, Math.max(lo, v));   // never overshoot the readings around it
+      fit[a] = v;
+    }
+    const res = ys.map((y, a) => y - fit[a]), mad = Math.max(med(res.map(Math.abs)), floor);
+    rw = res.map((r, a) => { if (odd[a]) return 0; const u = r / (6 * mad); return Math.abs(u) < 1 ? (1 - u * u) ** 2 : 0; });
+  }
+  return { fit, odd };
 }
 function niceStep(span) { for (const s of [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500]) if (span / s <= 4) return s; return 1000; }
 function bodyChart(pts, { dp = 1, goal = null, unit = "" } = {}) {
-  if (pts.length < 2) return { html: `<div class="none">${pts.length ? "One reading so far: the line starts with the next one." : "Nothing to chart yet."}</div>`, trend: pts.map((p) => p.v), goalShown: false };
+  if (pts.length < 2) return { html: `<div class="none">${pts.length ? "One reading so far: the line starts with the next one." : "Nothing to chart yet."}</div>`, trend: pts.map((p) => p.v), odd: pts.map(() => false), goalShown: false };
   const W = 320, H = 180, L = 6, R = 34, T = 28, B = 22;
-  const trend = trendOf(pts), days = pts.map((p) => new Date(p.day + "T12:00") / 864e5);
-  const vals = pts.map((p) => p.v).concat(trend);
+  const tr = trendOf(pts, unit === "kg" ? 0.035 : unit === "%" ? 0.1 : 0.05), trend = tr.fit, days = pts.map((p) => new Date(p.day + "T12:00") / 864e5);
+  const vals = pts.filter((p, i) => !tr.odd[i]).map((p) => p.v).concat(trend);   // unusual readings don't stretch the scale
   let lo = Math.min(...vals), hi = Math.max(...vals);
   const spanNow = hi - lo || Math.max(Math.abs(hi) * 0.02, 0.5);
   const goalShown = goal != null && goal >= lo - spanNow * 2.5 && goal <= hi + spanNow * 2.5;   // a goal far off would flatten the line
@@ -1687,17 +1715,20 @@ function bodyChart(pts, { dp = 1, goal = null, unit = "" } = {}) {
   for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) ticks.push(Math.round(v * 1000) / 1000);
   const tdp = step < 1 ? 1 : 0;
   const grid = ticks.map((v) => `<line x1="${L}" x2="${W - R + 4}" y1="${y(v)}" y2="${y(v)}" class="cg"/><text x="${W - R + 8}" y="${y(v) + 3.5}" class="ct">${fmt(v, tdp)}</text>`).join("");
-  // a smooth path through the trend (Catmull-Rom turned into curves)
-  const P = trend.map((v, i) => [x(days[i]), y(v)]);
+  // a smooth path through the trend that never swings past the points it joins (monotone cubic)
+  const P = trend.map((v, i) => [x(days[i]), y(v)]), nP = P.length;
+  const dxs = P.slice(1).map((p, i) => p[0] - P[i][0] || 1e-6), sl = P.slice(1).map((p, i) => (p[1] - P[i][1]) / dxs[i]);
+  const tg = P.map((_, i) => i === 0 ? sl[0] : i === nP - 1 ? sl[nP - 2] : sl[i - 1] * sl[i] <= 0 ? 0 : (sl[i - 1] + sl[i]) / 2);
+  for (let i = 0; i < nP - 1; i++) { if (!sl[i]) { tg[i] = tg[i + 1] = 0; continue; } const a = tg[i] / sl[i], b = tg[i + 1] / sl[i], h2 = a * a + b * b; if (h2 > 9) { const t3 = 3 / Math.sqrt(h2); tg[i] = t3 * a * sl[i]; tg[i + 1] = t3 * b * sl[i]; } }
   let path = `M${P[0][0].toFixed(1)},${P[0][1].toFixed(1)}`;
-  for (let i = 0; i < P.length - 1; i++) {
-    const p0 = P[i - 1] || P[i], p1 = P[i], p2 = P[i + 1], p3 = P[i + 2] || p2;
-    const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6], c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
-    path += ` C${c1[0].toFixed(1)},${c1[1].toFixed(1)} ${c2[0].toFixed(1)},${c2[1].toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+  for (let i = 0; i < nP - 1; i++) {
+    const d = dxs[i] / 3;
+    path += ` C${(P[i][0] + d).toFixed(1)},${(P[i][1] + tg[i] * d).toFixed(1)} ${(P[i + 1][0] - d).toFixed(1)},${(P[i + 1][1] - tg[i + 1] * d).toFixed(1)} ${P[i + 1][0].toFixed(1)},${P[i + 1][1].toFixed(1)}`;
   }
   const area = `${path} L${P[P.length - 1][0].toFixed(1)},${H - B} L${P[0][0].toFixed(1)},${H - B} Z`;
   const r = pts.length > 60 ? 1.8 : 2.6;
-  const dots = pts.map((p, i) => `<circle cx="${x(days[i]).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="${r}" class="cd"/>`).join("");
+  const clampY = (v) => Math.max(T - 4, Math.min(H - B, y(v)));
+  const dots = pts.map((p, i) => `<circle cx="${x(days[i]).toFixed(1)}" cy="${clampY(p.v).toFixed(1)}" r="${tr.odd[i] ? r + 0.8 : r}" class="cd${tr.odd[i] ? " odd" : ""}"/>`).join("");
   const last = P[P.length - 1];
   const goalLine = goalShown ? `<line x1="${L}" x2="${W - R + 4}" y1="${y(goal)}" y2="${y(goal)}" class="cgoal"/><text x="${L + 2}" y="${y(goal) - 5}" class="ctg">Goal ${fmt(goal, dp)}${unit ? " " + unit : ""}</text>` : "";
   const nLab = 4, dateLab = Array.from({ length: nLab }, (_, k) => {
@@ -1709,7 +1740,7 @@ function bodyChart(pts, { dp = 1, goal = null, unit = "" } = {}) {
     ${grid}${goalLine}<path d="${area}" fill="url(#bfill)"/>${dots}<path d="${path}" class="cl"/>
     <circle cx="${last[0]}" cy="${last[1]}" r="5" class="cend"/>${dateLab}
     <g class="tip hidden"><line class="tip-l" y1="${T - 6}" y2="${H - B}"/><circle class="tip-c" r="5"/><rect class="tip-b" rx="10" height="20" y="2"/><text class="tip-t" y="16" text-anchor="middle"></text></g></svg>`;
-  return { html, trend, goalShown, geo: { days, x, y, W } };
+  return { html, trend, odd: tr.odd, goalShown, geo: { days, x, y: (v) => Math.max(T - 4, Math.min(H - B, y(v))), W } };
 }
 /** Tap or drag across the chart to read any weigh-in. */
 function wireChartTip(el, pts, geo, dp, unit) {
@@ -1739,7 +1770,9 @@ let goalEditing = false;
 const KCAL_PER_KG = 7700;
 /** Weight trend from the last 4 weeks of weigh-ins (least squares), in kg per day; null without enough readings. */
 function weightTrend() {
-  const since = dateMinus(28), pts = bodySorted().filter((r) => r.weight && r.day >= since);
+  const since = dateMinus(28), wide = bodyPast().filter((r) => r.weight && r.day >= dateMinus(70));
+  const odd = wide.length >= 4 ? trendOf(wide.map((r) => ({ day: r.day, v: r.weight }))).odd : [];
+  const pts = wide.filter((r, i) => !odd[i] && r.day >= since);   // a misread or someone else on the scale shouldn't set the pace
   if (pts.length < 3) return null;
   const t0 = new Date(pts[0].day + "T12:00") / 864e5, xs = pts.map((r) => new Date(r.day + "T12:00") / 864e5 - t0), ys = pts.map((r) => r.weight);
   if (xs[xs.length - 1] < 7) return null;
@@ -1801,10 +1834,22 @@ function renderGoal() {
   const cancel = $("#goal-cancel"); if (cancel) cancel.onclick = () => { goalEditing = false; renderGoal(); };
   const clear = $("#goal-clear"); if (clear) clear.onclick = async () => { if (!await ask("Remove your goal weight?")) return; state.goalWeight = null; state.goalStart = null; goalEditing = false; save(); renderGoal(); };
 }
-let bodyRange = 90;   // days shown: 30, 90 or 0 for everything
+let bodyRange = 90, bodyOdd = new Set();   // days shown: 30, 90 or 0 for everything
 function drawBodyChart(rows, m) {
   $$("#body-range button").forEach((b) => b.classList.toggle("on", +b.dataset.r === bodyRange));
-  const all = rows.filter((r) => r[m.key] != null).map((r) => ({ day: r.day, v: r[m.key] }));
+  const today = localDate(), future = rows.filter((r) => r.day > today);
+  const alert = $("#body-alert"); alert.classList.toggle("hidden", !future.length);
+  if (future.length) {
+    const f = future[0], sw = swappedDay(f.day), fixable = sw && sw <= today && !rows.some((r) => r.day === sw);
+    const nice = (d) => new Date(d + "T12:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: d.slice(0, 4) !== today.slice(0, 4) ? "numeric" : undefined });
+    alert.innerHTML = `<span>${future.length === 1 ? "A reading is" : `${future.length} readings are`} dated in the future (${nice(f.day)}), so ${future.length === 1 ? "it's" : "they're"} left out.${fixable ? ` Probably ${nice(sw)}?` : ""}</span><button class="btn ${fixable ? "primary" : "ghost"} slim" id="body-fix">${fixable ? "Fix date" : "Remove"}</button>`;
+    $("#body-fix").onclick = async () => {
+      tomb("body", f.day); state.body = state.body.filter((r) => r.day !== f.day);
+      if (fixable) { upsertBody({ ...f, day: sw, updatedAt: new Date().toISOString() }); toast(`Moved to ${nice(sw)}`); } else toast("Reading removed");
+      save(); drawBody();
+    };
+  }
+  const all = rows.filter((r) => r[m.key] != null && r.day <= today).map((r) => ({ day: r.day, v: r[m.key] }));
   let pts = bodyRange ? all.filter((p) => p.day >= dateMinus(bodyRange)) : all;
   if (pts.length < 2 && all.length >= 2) pts = all.slice(-2);   // too few in range: show at least the last two
   const goal = m.key === "weight" && state.goalWeight ? state.goalWeight : null;
@@ -1824,7 +1869,9 @@ function drawBodyChart(rows, m) {
     since = Math.abs(d) < Math.pow(10, -m.dp) ? `Steady since ${when}` : `${d < 0 ? "Down" : "Up"} ${fmt(Math.abs(d), m.dp)}${m.unit === "%" ? "%" : m.unit ? " " + m.unit : ""} since ${when}`;
   }
   hero.innerHTML = `<div><span class="now">${fmt(now, m.dp)}<small>${esc(m.unit || "")}</small></span>${pace}</div>${since ? `<div class="since">${since}</div>` : ""}`;
-  $("#body-key").innerHTML = pts.length >= 2 ? `<span><i class="k-dot"></i>Weigh-ins</span><span><i class="k-line"></i>Trend</span>${ch.goalShown ? `<span><i class="k-goal"></i>Goal</span>` : goal ? `<span>Goal ${fmt(goal, 1)} kg (off the chart)</span>` : ""}` : "";
+  const odd = (ch.odd || []).filter(Boolean).length;
+  bodyOdd = new Set(pts.filter((p, i) => ch.odd && ch.odd[i]).map((p) => p.day));
+  $("#body-key").innerHTML = pts.length >= 2 ? `<span><i class="k-dot"></i>Weigh-ins</span><span><i class="k-line"></i>Trend</span>${ch.goalShown ? `<span><i class="k-goal"></i>Goal</span>` : goal ? `<span>Goal ${fmt(goal, 1)} kg (off the chart)</span>` : ""}${odd ? `<span><i class="k-odd"></i>${odd} unusual: check ${odd === 1 ? "it" : "them"} in Readings below</span>` : ""}` : "";
 }
 $("#body-range").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; bodyRange = +b.dataset.r; drawBody(); });
 function drawBody() {
@@ -1854,7 +1901,8 @@ function drawBody() {
     const short = ["weight", "fat", "muscle"].map((k) => all.find((x) => x.key === k)).filter(Boolean).map((x) => x.key === "fat" ? `${val(x, r[x.key])} fat` : x.key === "muscle" ? `${val(x, r[x.key])} muscle` : val(x, r[x.key]));
     const extra = all.length - short.length;
     const open = bodyOpen === r.day;
-    li.innerHTML = `<span class="thumb-sm"><svg><use href="#i-scale"/></svg></span><div class="body"><div class="name">${r.day === localDate() ? "Today" : new Date(r.day + "T12:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}</div><div class="detail">${esc(short.join(" · "))}</div></div>${extra > 0 ? `<svg class="chev more-chev${open ? " up" : ""}"><use href="#i-chev"/></svg>` : ""}<button class="del" aria-label="Remove">✕</button>
+    const flag = r.day > localDate() ? `<span class="odd-tag">Future date</span>` : bodyOdd.has(r.day) ? `<span class="odd-tag">Looks unusual</span>` : "";
+    li.innerHTML = `<span class="thumb-sm"><svg><use href="#i-scale"/></svg></span><div class="body"><div class="name">${r.day === localDate() ? "Today" : new Date(r.day + "T12:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}${flag}</div><div class="detail">${esc(short.join(" · "))}</div></div>${extra > 0 ? `<svg class="chev more-chev${open ? " up" : ""}"><use href="#i-chev"/></svg>` : ""}<button class="del" aria-label="Remove">✕</button>
       ${open ? `<div class="all">${all.map((x) => `<span>${x.name} <b>${val(x, r[x.key])}</b></span>`).join("")}<button class="btn mint slim edit">Edit this reading</button></div>` : ""}`;
     li.querySelector(".del").onclick = async (e) => { e.stopPropagation(); if (!await ask(`Remove the reading for ${r.day}?`)) return; tomb("body", r.day); state.body = state.body.filter((x) => x.day !== r.day); save(); drawBody(); };
     li.onclick = (e) => { if (e.target.closest(".edit") || e.target.closest(".del")) return; bodyOpen = open ? null : r.day; drawBody(); };
