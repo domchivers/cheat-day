@@ -10,9 +10,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=104">
-  <link rel="icon" href="icons/icon-192.png?v=104">
-  <link rel="stylesheet" href="styles.css?v=104">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=105">
+  <link rel="icon" href="icons/icon-192.png?v=105">
+  <link rel="stylesheet" href="styles.css?v=105">
 </head>
 <body>
 
@@ -302,9 +302,8 @@
     <div class="cal-grid" id="cal-days"></div>
     <div class="cal-key"><span><i class="k ok"></i>On budget</span><span><i class="k near"></i>A little over</span><span><i class="k over"></i>Over</span></div>
   </div>
-  <div id="cal-weeks"></div>
+  <div id="cal-weeks" class="hidden"></div>
   <div class="card week-totals hidden" id="history-week"></div>
-  <h2 class="section-title">Days</h2>
   <div id="history-list"></div>
   <p class="empty" id="history-empty">No past days yet. Each day goes in here at midnight.</p>
 </section>
@@ -593,7 +592,11 @@
     <button class="icon-btn" data-back aria-label="Back"><svg><use href="#i-back"/></svg></button>
     <h1>Workouts</h1><span></span>
   </header>
-  <div class="card result" id="w-summary"></div>
+  <div class="card result w-today">
+    <div id="w-summary"></div>
+    <ul class="list today-list" id="w-list"></ul>
+    <p class="today-empty" id="w-empty">No workouts yet today.</p>
+  </div>
   <div class="card week-card" id="w-week"></div>
 
   <div class="card w-gym" id="w-gym">
@@ -637,9 +640,6 @@
     <button class="btn primary" id="w-save">Add to today</button>
   </div>
 
-  <h2 class="section-title">Today</h2>
-  <ul class="list" id="w-list"></ul>
-  <p class="empty" id="w-empty">Nothing logged yet today.</p>
 
   <h2 class="section-title">Personal bests</h2>
   <ul class="list" id="w-pbs"></ul>
@@ -978,10 +978,10 @@
   <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=104"></script>
-<script src="foods.js?v=104"></script>
-<script src="supabase-config.js?v=104"></script>
-<script src="cloud.js?v=104"></script>
-<script src="app.js?v=104"></script>
+<script src="presets.js?v=105"></script>
+<script src="foods.js?v=105"></script>
+<script src="supabase-config.js?v=105"></script>
+<script src="cloud.js?v=105"></script>
+<script src="app.js?v=105"></script>
 </body>
 </html>

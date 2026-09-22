@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "104";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "105";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -231,7 +231,7 @@ document.addEventListener("click", (e) => {
 function archiveDay() {
   if (!state.day.items.length && !(state.day.workouts || []).length) return;
   const m = sumMacros(state.day.items);
-  state.history.unshift({ date: state.day.date, budget: budgetToday(), kcal: usedKcal(), items: state.day.items.map((it) => ({ ...basisOf(it), kcal: it.kcal, shareLabel: it.shareLabel })),
+  state.history.unshift({ date: state.day.date, budget: budgetToday(), kcal: usedKcal(), items: state.day.items.map((it) => ({ ...basisOf(it), kcal: it.kcal, shareLabel: it.shareLabel, addedAt: it.addedAt || null, meal: it.meal || null })),
     p: Math.round(m.p), c: Math.round(m.c), f: Math.round(m.f), burned: burnedKcal(), workouts: (state.day.workouts || []).map((w) => ({ name: w.name, minutes: w.minutes, kcal: w.kcal, lifts: w.lifts || [] })) });
   state.history = state.history.slice(0, 400);
   state.history.slice(14).forEach((h) => { if (Array.isArray(h.items)) h.items.forEach((it) => { delete it.photo; }); });
@@ -789,35 +789,44 @@ function renderCalendar() {
     else b.disabled = true;
     grid.appendChild(b);
   }
-  // weeks that touch this month
-  const wl = $("#cal-weeks"); wl.innerHTML = "";
-  const monday = new Date(first); monday.setDate(1 - lead);
-  const weights = bodySorted().filter((r) => r.weight);
-  for (let wk = new Date(monday); wk <= new Date(y, mo - 1, daysIn); wk.setDate(wk.getDate() + 7)) {
-    const dates = Array.from({ length: 7 }, (_, i) => { const d = new Date(wk); d.setDate(d.getDate() + i); return localDate(d); });
-    const recs = dates.map(dayRecord).filter(Boolean);
-    if (!recs.length) continue;
-    const avg = recs.reduce((a, r) => a + r.kcal, 0) / recs.length, on = recs.filter((r) => r.budget && r.kcal <= r.budget).length;
-    const w = weights.filter((r) => r.day >= dates[0] && r.day <= dates[6]);
-    const change = w.length > 1 ? w[w.length - 1].weight - w[0].weight : null;
-    const label = (d) => new Date(d + "T12:00").toLocaleDateString(undefined, { day: "numeric", month: "short" });
-    wl.insertAdjacentHTML("beforeend", `<div class="card cal-week"><div><b>${label(dates[0])} – ${label(dates[6])}</b><small>${on} of ${recs.length} day${recs.length === 1 ? "" : "s"} on budget${change != null ? ` · ${change > 0 ? "+" : "−"}${fmt(Math.abs(change), 1)} kg` : ""}</small></div><div class="avg"><b>${fmt(avg)}</b><small>kcal a day</small></div></div>`);
-  }
+  $("#cal-weeks").innerHTML = "";
 }
 $("#cal-prev").onclick = () => { const [y, m] = calMonth.split("-").map(Number); const d = new Date(y, m - 2, 1); calMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; renderCalendar(); };
 $("#cal-next").onclick = () => { const [y, m] = calMonth.split("-").map(Number); const d = new Date(y, m, 1); calMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; renderCalendar(); };
+function ateList(items) {
+  const row = (it) => `<li><span>${it.photo ? `<img class="pic" src="${esc(it.photo)}" alt="">` : ""}${esc(it.name)}</span><b>${fmt(it.kcal)}</b></li>`;
+  if (!items.some((it) => it.addedAt || it.meal)) return items.map(row).join("");   // older days: no times kept
+  return MEALS.map((g) => { const its = items.filter((it) => mealOf(it) === g); return its.length ? `<li class="ate-grp"><span>${g}</span><b>${fmt(its.reduce((a, it) => a + (it.kcal || 0), 0))}</b></li>${its.map(row).join("")}` : ""; }).join("");
+}
 function renderHistory() {
   renderCalendar();
   const list = $("#history-list"); list.innerHTML = "";
   const wk = state.history.filter((h) => h.date >= dateMinus(6)), tr = trainingDays(7);
   const eaten = wk.reduce((a, h) => a + (h.kcal || 0), 0) + usedKcal(), burned = tr.reduce((a, d) => a + d.burned, 0), n = tr.reduce((a, d) => a + d.count, 0);
   const daysCounted = wk.length + (state.day.items.length ? 1 : 0);
-  $("#history-week").classList.toggle("hidden", !daysCounted && !n);
+  $("#history-week").classList.add("hidden");
   $("#history-week").innerHTML = `<b>Last 7 days</b><span>${daysCounted ? `${fmt(eaten / Math.max(1, daysCounted))} kcal a day on average` : "nothing eaten logged"}${n ? ` · ${n} workout${n === 1 ? "" : "s"}, ${fmt(burned)} kcal burned` : " · no workouts"}</span>`;
   const days = state.history.slice().sort((a, b) => String(b.date).localeCompare(String(a.date)));
   $("#history-empty").classList.toggle("hidden", days.length > 0);
   const today = localDate();
+  const mondayOf = (date) => { const x = new Date(date + "T12:00"); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return localDate(x); };
+  const thisMon = mondayOf(today), lastMon = (() => { const x = new Date(thisMon + "T12:00"); x.setDate(x.getDate() - 7); return localDate(x); })();
+  const wAll = bodyPast().filter((r) => r.weight), oddW = wAll.length >= 4 ? trendOf(wAll.map((r) => ({ day: r.day, v: r.weight }))).odd : [];
+  const weights = wAll.filter((r, i) => !oddW[i]);   // unusual readings don't make a week look like a big gain
+  let week = null;
   for (const d of days) {
+    const mon = mondayOf(d.date);
+    if (mon !== week) {
+      week = mon;
+      const dates = Array.from({ length: 7 }, (_, i) => { const x = new Date(mon + "T12:00"); x.setDate(x.getDate() + i); return localDate(x); });
+      const recs = dates.map(dayRecord).filter(Boolean), on = recs.filter((r) => r.budget && r.kcal <= r.budget).length;
+      const avg = recs.length ? recs.reduce((a, r) => a + r.kcal, 0) / recs.length : 0;
+      const w = weights.filter((r) => r.day >= dates[0] && r.day <= dates[6]), change = w.length > 1 ? w[w.length - 1].weight - w[0].weight : null;
+      const wo = dates.reduce((a, dt) => a + ((dt === today ? state.day.workouts : (state.history.find((h) => h.date === dt) || {}).workouts) || []).length, 0);
+      const label = (x) => new Date(x + "T12:00").toLocaleDateString(undefined, { day: "numeric", month: "short" });
+      const title = mon === thisMon ? "This week" : mon === lastMon ? "Last week" : `${label(dates[0])} – ${label(dates[6])}`;
+      list.insertAdjacentHTML("beforeend", `<div class="week-head"><div><b>${title}</b><small>${on} of ${recs.length} day${recs.length === 1 ? "" : "s"} on budget${change != null ? ` · ${change > 0 ? "+" : "−"}${fmt(Math.abs(change), 1)} kg` : ""}${wo ? ` · ${wo} workout${wo === 1 ? "" : "s"}` : ""}</small></div><div class="avg"><b>${fmt(avg)}</b><small> kcal a day</small></div></div>`);
+    }
     const card = document.createElement("div");
     card.className = "card day-card"; card.dataset.date = d.date;
     const label = d.date === dateMinus(1) ? "Yesterday" : new Date(d.date + "T12:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
@@ -827,7 +836,7 @@ function renderHistory() {
     let body = "";
     if (items.length) {
       body = histOpen.has(d.date)
-        ? `<ul class="ate">${items.map((it) => `<li><span>${it.photo ? `<img class="pic" src="${esc(it.photo)}" alt="">` : ""}${esc(it.name)}</span><b>${fmt(it.kcal)}</b></li>`).join("")}</ul><button class="btn mint ate-btn" data-act="toggle">Hide</button>`
+        ? `<ul class="ate">${ateList(items)}</ul><button class="btn mint ate-btn" data-act="toggle">Hide</button>`
         : `<div class="items muted tiny">${esc(items.map((it) => it.name).slice(0, 3).join(", "))}${items.length > 3 ? ` and ${items.length - 3} more` : ""}</div><button class="btn mint ate-btn" data-act="toggle">What I had (${items.length}) ▾</button>`;
     } else if (count) body = `<div class="muted tiny">${count} item${count === 1 ? "" : "s"} (logged before history kept the details)</div>`;
     card.innerHTML = `<div class="top"><b>${esc(label)}</b><span class="kcal ${over ? "over" : "ok"}">${fmt(d.kcal)} / ${fmt(d.budget)} kcal</span></div>${d.burned ? `<div class="burned tiny">Burned ${fmt(d.burned)} kcal: ${esc((d.workouts || []).map((w) => w.name).join(", "))}</div>` : ""}
@@ -3103,7 +3112,7 @@ function renderWorkouts() {
   for (const w of ws) {
     const li = document.createElement("li");
     const lifts = (w.lifts || []).map((l) => `${l.exercise} ${l.sets}×${l.reps}${l.kg ? ` @ ${l.kg} kg` : ""}`).join(" · ");
-    li.innerHTML = `<span class="thumb-sm tone-coral"><svg><use href="#i-dumbbell"/></svg></span><div class="body"><div class="name">${esc(w.name)}</div><div class="detail">${w.minutes} min · ${w.effort}${lifts ? `<div class="w-lifts">${esc(lifts)}</div>` : ""}</div></div><div class="kcal">${fmt(w.kcal)}</div><button class="del" aria-label="Remove">✕</button>`;
+    li.innerHTML = `<span class="thumb-sm tone-coral"><svg><use href="#i-${(ACTIVITIES.find((x) => x[0] === w.type) || [])[2] ? "dumbbell" : "walk"}"/></svg></span><div class="body"><div class="name">${esc(w.name)}</div><div class="detail">${w.minutes} min · ${w.effort}${lifts ? `<div class="w-lifts">${esc(lifts)}</div>` : ""}</div></div><div class="kcal">${fmt(w.kcal)}</div><button class="del" aria-label="Remove">✕</button>`;
     li.querySelector(".del").onclick = async () => { if (!await ask(`Remove "${w.name}"?`)) return; tomb("wo", w.id); state.day.workouts = ws.filter((x) => x.id !== w.id); save(); renderWorkouts(); };
     list.appendChild(li);
   }

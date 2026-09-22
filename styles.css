@@ -1016,3 +1016,18 @@ body.simple #bb-freq button { padding: 9px 14px; font-size: 15px; }
 .type-in { margin-top: 12px; }
 .meal-pick { justify-content: center; margin: -4px 0 12px; }
 #home-list li { padding-left: 0; padding-right: 0; }
+/* ---- workouts v105: today's workouts inside the summary card */
+.w-today .today-list { margin: 12px 0 0; text-align: left; border-top: 1px solid var(--line); }
+.w-today .today-list li { background: none; border: 0; border-radius: 0; margin: 0; padding: 10px 0; gap: 14px; }
+.w-today .today-list li + li { border-top: 1px solid var(--line); }
+.w-today .today-list .thumb-sm { width: 42px; height: 42px; }
+.w-today .today-empty { margin: 12px 0 0; padding-top: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+/* ---- history v105: a heading per week over its days */
+.week-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; margin: 20px 2px 8px; }
+.week-head:first-child { margin-top: 14px; }
+.week-head b { font-size: 16px; display: block; }
+.week-head small { color: var(--muted); font-size: 12px; }
+.week-head .avg { text-align: right; white-space: nowrap; }
+.week-head .avg b { font-size: 16px; color: var(--green); }
+#history-list .day-card { margin-top: 8px; }
+.ate li.ate-grp { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; padding-top: 8px; border: 0; }
