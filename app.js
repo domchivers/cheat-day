@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "111";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "112";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -198,7 +198,7 @@ function show(view) {
   if (view !== "scan") stopCamera();
   if (view === "home") renderHome();
   if (view === "settings") renderSettings();
-  if (view === "budget") { renderPlanCards(); renderBudgetBody(); renderDayBudgets(true); $("#b-budget").value = state.budget; $$("#budget-chips button").forEach((b) => b.classList.toggle("on", +b.dataset.b === state.budget)); const g = state.goals || {}; $("#b-p").value = g.p ?? ""; $("#b-c").value = g.c ?? ""; $("#b-f").value = g.f ?? ""; renderManualHead(); const man = $("#b-manual"); man.open = !state.plan; $("#bm-warn").classList.toggle("hidden", !state.plan); }
+  if (view === "budget") { renderPlanCards(); renderBudgetBody(); renderDayBudgets(true); $("#b-budget").value = state.budget; $$("#budget-chips button").forEach((b) => b.classList.toggle("on", +b.dataset.b === state.budget)); const g = state.goals || {}; $("#b-p").value = g.p ?? ""; $("#b-c").value = g.c ?? ""; $("#b-f").value = g.f ?? ""; renderManualHead(); $("#b-manual").open = false; $("#bm-warn").classList.toggle("hidden", !state.plan); }
   if (view === "scan") startCamera();
   if (view === "search") openSearch();
   if (view === "meals") renderMeals();
