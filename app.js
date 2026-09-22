@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "124";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "125";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -301,13 +301,15 @@ const MEAL_WORDS = {
 };
 const timeMeal = (h) => h == null ? "Snacks" : h >= 4 && h < 11 ? "Breakfast" : h >= 11 && h < 15 ? "Lunch" : h >= 17 && h < 22 ? "Dinner" : "Snacks";
 function guessMeal(name, h) {
+  // the clock decides at meal times; the food only settles the in-between times (3-5pm, late night)
   const byTime = timeMeal(h), n = String(name || "");
+  if (h == null) return byTime;
   const hits = MEALS.filter((m) => MEAL_WORDS[m].test(n));
-  if (!hits.length || hits.includes(byTime) || h == null) return byTime;
-  const m = hits[0];
-  if (m === "Breakfast") return h < 14 ? "Breakfast" : byTime;              // porridge at 9pm stays where the clock puts it
-  if (m === "Lunch") return h >= 10 && h < 17 ? "Lunch" : byTime;
-  if (m === "Dinner") return h >= 15 ? "Dinner" : h >= 11 ? "Lunch" : byTime;
+  if (!hits.length) return byTime;
+  if (hits.includes("Breakfast") && h >= 11 && h < 12) return "Breakfast";   // brunch: porridge at 11:30 is still breakfast
+  if (byTime !== "Snacks") return byTime;
+  if (hits.includes("Lunch") && h >= 15 && h < 17) return "Lunch";            // a late lunch
+  if (hits.includes("Dinner") && (h >= 15 || h < 2)) return "Dinner";         // an early or a late dinner
   return "Snacks";
 }
 function mealOf(it) {
