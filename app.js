@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "99";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "100";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1665,6 +1665,7 @@ function lineChart(pts, dp) {
   return `<svg viewBox="0 0 ${W} ${H}"><polyline points="${pts.map((p, i) => `${x(i)},${y(p.v)}`).join(" ")}" fill="none" style="stroke:var(--green)" stroke-width="2.5" stroke-linejoin="round"/>${pts.map((p, i) => `<circle cx="${x(i)}" cy="${y(p.v)}" r="${pts.length > 20 ? 2.5 : 4}" style="fill:var(--green)"/>${val(i)}${lab(i)}`).join("")}</svg>`;
 }
 async function renderBody() {
+  renderWeighDays();
   $("#bd-date").value = localDate();
   drawBody();
   if (await pullBody(false)) drawBody();
@@ -2282,11 +2283,16 @@ function renderHomeWeigh() {
   el.innerHTML = `<svg><use href="#i-scale"/></svg><span class="wl-text">${esc(text)}</span><span class="wl-btn">${lb ? "Weigh in" : "Start"}</span>`;
 }
 function renderBudgetBody() {
-  const lb = latestBody(), days = weighDays(), n = days.length;
+  const lb = latestBody();
   $("#b-tunes").classList.toggle("hidden", !state.plan);
   $("#bb-sub").textContent = bodyLine(lb);
   const since = dateMinus(14), recent = state.body.filter((r) => r.weight && r.day >= since).length;
   $("#bb-line").textContent = `${recent ? `${recent} weigh-in${recent === 1 ? "" : "s"} in the last 2 weeks · ` : ""}next weigh-in ${whenWord(nextWeighIn())}`;
+}
+/** Body page: which days to weigh in. */
+function renderWeighDays() {
+  const days = weighDays(), n = days.length;
+  $("#bb-next").textContent = weighDue() ? "Weigh-in due today" : `Next weigh-in ${whenWord(nextWeighIn())}`;
   $$("#bb-freq button").forEach((b) => b.classList.toggle("on", +b.dataset.f === n));
   const pick = $("#bb-days"); pick.classList.toggle("hidden", n === 7);
   pick.innerHTML = [1, 2, 3, 4, 5, 6, 0].map((d) => `<button data-d="${d}" class="${days.includes(d) ? "on" : ""}">${WEEKDAYS[d].slice(0, 1)}</button>`).join("");
@@ -2298,14 +2304,14 @@ $("#bb-freq").addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b) return;
   const f = +b.dataset.f, cur = weighDays();
   state.weighDays = f === 7 ? [0, 1, 2, 3, 4, 5, 6] : f === 3 ? [1, 3, 5] : [cur.length === 1 ? cur[0] : 0];
-  save(); renderBudgetBody();
+  save(); renderWeighDays();
 });
 $("#bb-days").addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b) return;
   const d = +b.dataset.d, cur = weighDays();
   if (cur.length === 1) state.weighDays = [d];   // once a week: tap moves the day
   else { const next = cur.includes(d) ? cur.filter((x) => x !== d) : cur.concat(d); state.weighDays = next.length ? next.sort() : cur; }
-  save(); renderBudgetBody();
+  save(); renderWeighDays();
 });
 /** Home: invite people without a plan once; with a plan, a weekly check-in against the real weight trend. */
 const PLAN_ASK = "cheatday.planAsk";

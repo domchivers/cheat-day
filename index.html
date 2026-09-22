@@ -10,9 +10,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=99">
-  <link rel="icon" href="icons/icon-192.png?v=99">
-  <link rel="stylesheet" href="styles.css?v=99">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=100">
+  <link rel="icon" href="icons/icon-192.png?v=100">
+  <link rel="stylesheet" href="styles.css?v=100">
 </head>
 <body>
 
@@ -160,13 +160,7 @@
       <span class="level-text"><b>Body</b><small id="bb-sub">Weight, body fat, muscle</small></span>
       <button class="btn mint slim" data-go="body">Weigh in</button>
     </div>
-    <p class="muted tiny bb-line" id="bb-line"></p>
-    <div class="bb-often">
-      <div class="field-title">How often do you weigh in?</div>
-      <div class="chips left" id="bb-freq"><button data-f="1">Once a week</button><button data-f="3">3 times a week</button><button data-f="7">Every day</button></div>
-      <div class="day-pick" id="bb-days"></div>
-      <p class="muted tiny" id="bb-hint"></p>
-    </div>
+    <p class="muted tiny bb-line"><span id="bb-line"></span> · <a href="#" data-go="body">Change days</a></p>
   </div>
   <div class="card form-card">
     <label>Calories for a cheat day
@@ -500,6 +494,14 @@
   </div>
 
   </div>
+  <div class="card b-body bb-often" id="body-often">
+    <div class="field-title">How often do you weigh in?</div>
+    <div class="chips left" id="bb-freq"><button data-f="1">Once a week</button><button data-f="3">3 times a week</button><button data-f="7">Every day</button></div>
+    <div class="day-pick" id="bb-days"></div>
+    <p class="muted tiny" id="bb-hint"></p>
+    <p class="tiny fit-line ok" id="bb-next"></p>
+  </div>
+
   <details class="how apple-health"><summary>Or use Apple Health instead</summary>
   <div class="card form-card" id="body-connect">
     <p class="muted">Your Etekcity scale writes to Apple Health. An iPhone Shortcut can send those readings here every morning.</p>
@@ -963,10 +965,10 @@
   <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=99"></script>
-<script src="foods.js?v=99"></script>
-<script src="supabase-config.js?v=99"></script>
-<script src="cloud.js?v=99"></script>
-<script src="app.js?v=99"></script>
+<script src="presets.js?v=100"></script>
+<script src="foods.js?v=100"></script>
+<script src="supabase-config.js?v=100"></script>
+<script src="cloud.js?v=100"></script>
+<script src="app.js?v=100"></script>
 </body>
 </html>
