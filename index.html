@@ -10,9 +10,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=110">
-  <link rel="icon" href="icons/icon-192.png?v=110">
-  <link rel="stylesheet" href="styles.css?v=110">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=111">
+  <link rel="icon" href="icons/icon-192.png?v=111">
+  <link rel="stylesheet" href="styles.css?v=111">
 </head>
 <body>
 
@@ -155,19 +155,22 @@
     <button class="icon-btn" data-back aria-label="Back"><svg><use href="#i-back"/></svg></button>
     <h1>Daily budget</h1><span></span>
   </header>
-  <button class="card level-card plan-card-top" id="b-plan"></button>
+  <button class="card big-card plan-big" id="b-plan"></button>
   <p class="tunes hidden" id="b-tunes"><svg><use href="#i-scale"/></svg>Your weigh-ins tune this plan</p>
-  <div class="card b-body" id="b-body">
-    <div class="w-tile-head">
-      <span class="circle green"><svg><use href="#i-scale"/></svg></span>
-      <span class="level-text"><b>Body</b><small id="bb-sub">Weight, body fat, muscle</small></span>
-      <button class="btn mint slim" data-go="body">Weigh in</button>
-    </div>
-    <p class="muted tiny bb-line"><span id="bb-line"></span> · <a href="#" data-go="body">Change days</a></p>
+  <div class="card big-card body-big" id="b-body" data-go="body">
+    <span class="circle green big-ic"><svg><use href="#i-scale"/></svg></span>
+    <span class="big-text"><small class="k">Body</small><b class="n" id="bb-n">–</b><small class="s" id="bb-line"></small></span>
+    <span class="btn mint slim big-btn">Weigh in</span>
   </div>
-  <details class="b-manual" id="b-manual"><summary>Adjust by hand</summary>
-  <div class="card form-card">
-    <label>Calories for a cheat day
+  <details class="card big-card b-manual" id="b-manual">
+  <summary class="big-head">
+    <span class="circle purple big-ic"><svg><use href="#i-pen"/></svg></span>
+    <span class="big-text"><small class="k">Set by hand</small><b class="n" id="bm-n">–</b><small class="s" id="bm-s"></small></span>
+    <svg class="chev big-chev"><use href="#i-chev"/></svg>
+  </summary>
+  <div class="b-manual-body">
+    <p class="muted tiny bm-warn hidden" id="bm-warn">You have a plan: changing these overrides it.</p>
+    <label>Calories a day
       <input type="number" inputmode="numeric" id="b-budget">
     </label>
     <div class="chips" id="budget-chips">
@@ -192,7 +195,6 @@
     <button class="btn primary" id="budget-save">Save</button>
   </div>
   </details>
-  <p class="muted tiny">Other settings, like your account and API key, are behind the gear on the home screen.</p>
 </section>
 
 <!-- ===================== SETTINGS ===================== -->
@@ -981,10 +983,10 @@
   <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=110"></script>
-<script src="foods.js?v=110"></script>
-<script src="supabase-config.js?v=110"></script>
-<script src="cloud.js?v=110"></script>
-<script src="app.js?v=110"></script>
+<script src="presets.js?v=111"></script>
+<script src="foods.js?v=111"></script>
+<script src="supabase-config.js?v=111"></script>
+<script src="cloud.js?v=111"></script>
+<script src="app.js?v=111"></script>
 </body>
 </html>

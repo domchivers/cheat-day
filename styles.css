@@ -1070,3 +1070,36 @@ body.simple #bb-freq button { padding: 9px 14px; font-size: 15px; }
 .rem-weigh-row .check { margin: 0; }
 .rem-weigh-days { margin: 2px 0 8px 30px; }
 .rem-weigh-days a { color: var(--green); font-weight: 700; }
+/* ---- daily budget v111: three big cards */
+.big-card { display: flex; align-items: center; gap: 14px; width: 100%; padding: 16px; margin: 0 0 12px; border-radius: 18px; text-align: left; cursor: pointer; color: inherit; font: inherit; }
+.big-card .big-ic { width: 50px; height: 50px; flex: none; }
+.big-card .big-ic svg { width: 24px; height: 24px; }
+.big-card .big-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.big-card .k { font-size: 13px; color: var(--muted); font-weight: 600; }
+.big-card .n { font-size: 26px; font-weight: 800; line-height: 1.15; }
+.big-card .n small { font-size: 14px; font-weight: 600; color: var(--muted); margin-left: 4px; }
+.big-card .s { font-size: 13px; color: var(--muted); line-height: 1.35; }
+.big-card .big-btn { width: auto; margin: 0; padding: 9px 16px; flex: none; }
+#b-plan.plan-big { border: 2px solid var(--green); }
+.plan-big .big-ic { background: var(--sand-ic); color: var(--sand); }
+.circle.purple { background: #ecebfd; color: #534ab7; }
+:root[data-theme="dark"] .circle.purple { background: #2d2a52; color: #b4aef5; }
+.tunes { margin: -4px 0 10px; }
+/* the hand-set card: a details element whose summary is the card head */
+.b-manual { display: block; padding: 16px; }
+.b-manual > summary { list-style: none; display: flex; align-items: center; gap: 14px; cursor: pointer; text-align: left; padding: 0; color: inherit; font-weight: inherit; }
+.b-manual > summary::-webkit-details-marker { display: none; }
+.b-manual > summary::after { content: none; }
+.b-manual .big-chev { transform: rotate(90deg); transition: transform .2s; flex: none; color: var(--muted); }
+.b-manual[open] .big-chev { transform: rotate(-90deg); }
+.b-manual-body { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.b-manual-body > label:first-of-type { margin-top: 0; }
+.bm-warn { margin: 0 0 10px; color: var(--coral); font-weight: 600; }
+/* while setting by hand: the plan shrinks and Body steps aside */
+#view-budget:has(#b-manual[open]) #b-body, #view-budget:has(#b-manual[open]) #b-tunes { display: none; }
+#view-budget:has(#b-manual[open]) #b-plan.plan-big { padding: 10px 14px; border-width: 1px; }
+#view-budget:has(#b-manual[open]) .plan-big .big-ic { width: 38px; height: 38px; }
+#view-budget:has(#b-manual[open]) .plan-big .n { font-size: 17px; }
+#view-budget:has(#b-manual[open]) .plan-big .s { display: none; }
+body.simple .big-card .n { font-size: 30px; }
+.b-manual > summary::after, .b-manual[open] > summary::after { content: none !important; }

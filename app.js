@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "110";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "111";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -198,7 +198,7 @@ function show(view) {
   if (view !== "scan") stopCamera();
   if (view === "home") renderHome();
   if (view === "settings") renderSettings();
-  if (view === "budget") { renderPlanCards(); renderBudgetBody(); renderDayBudgets(true); $("#b-budget").value = state.budget; $$("#budget-chips button").forEach((b) => b.classList.toggle("on", +b.dataset.b === state.budget)); const g = state.goals || {}; $("#b-p").value = g.p ?? ""; $("#b-c").value = g.c ?? ""; $("#b-f").value = g.f ?? ""; const man = $("#b-manual"); man.classList.toggle("noplan", !state.plan); man.open = !state.plan; }
+  if (view === "budget") { renderPlanCards(); renderBudgetBody(); renderDayBudgets(true); $("#b-budget").value = state.budget; $$("#budget-chips button").forEach((b) => b.classList.toggle("on", +b.dataset.b === state.budget)); const g = state.goals || {}; $("#b-p").value = g.p ?? ""; $("#b-c").value = g.c ?? ""; $("#b-f").value = g.f ?? ""; renderManualHead(); const man = $("#b-manual"); man.open = !state.plan; $("#bm-warn").classList.toggle("hidden", !state.plan); }
   if (view === "scan") startCamera();
   if (view === "search") openSearch();
   if (view === "meals") renderMeals();
@@ -898,6 +898,12 @@ $("#budget-suggest").onclick = () => {
   const b = num($("#b-budget").value) || state.budget;
   $("#b-p").value = Math.round(b * 0.30 / 4); $("#b-c").value = Math.round(b * 0.40 / 4); $("#b-f").value = Math.round(b * 0.30 / 9);
 };
+function renderManualHead() {
+  const days = Object.keys(state.dayBudgets || {}).length, g = state.goals || {};
+  $("#bm-n").innerHTML = `${fmt(state.budget)}<small>kcal · ${days ? "varies by day" : "same every day"}</small>`;
+  const mac = [g.p ? `protein ${g.p} g` : "", g.c ? `carbs ${g.c} g` : "", g.f ? `fat ${g.f} g` : ""].filter(Boolean).join(" · ");
+  $("#bm-s").textContent = mac ? mac.charAt(0).toUpperCase() + mac.slice(1) : "No macro goals set";
+}
 $("#budget-save").onclick = () => {
   const b = num($("#b-budget").value);
   if (!b) { toast("Budget needs to be a number of kcal"); return; }
@@ -2472,11 +2478,24 @@ $("#plan-back").onclick = () => {
 };
 $("#wl-plan").onclick = () => openPlan("welcome");
 function planLine() { const pl = state.plan; return pl ? `${PLAN_GOALS[pl.goal].name} · ${fmt(pl.kcal)} kcal${pl.learnedBurn ? ` · your burn ${fmt(pl.learnedBurn)} (learned)` : ""} · since ${new Date(pl.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })}` : ""; }
+/** The plan as a big card: the daily number first, then the pace and the goal date. */
+function bigPlanCard() {
+  const pl = state.plan;
+  if (!pl) return `<span class="circle big-ic"><svg><use href="#i-spark"/></svg></span><span class="big-text"><small class="k">Your plan</small><b class="n" style="font-size:21px">Work out my budget for me</b><small class="s">A few questions about you and your goal: 1 minute</small></span><svg class="chev"><use href="#i-chev"/></svg>`;
+  const lb = latestBody(), goal = state.goalWeight;
+  let when = "";
+  if (goal && lb && lb.weight && pl.rate && Math.sign(goal - lb.weight) === Math.sign(pl.rate)) {
+    const d = new Date(); d.setDate(d.getDate() + Math.round((goal - lb.weight) / pl.rate * 7));
+    when = ` · ${fmt(goal, 1)} kg around ${d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: d.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined })}`;
+  }
+  const pace = pl.rate ? `${pl.rate > 0 ? "+" : "−"}${fmt(Math.abs(pl.rate), 2)} kg a week` : "holding steady";
+  return `<span class="circle big-ic"><svg><use href="#i-trophy"/></svg></span><span class="big-text"><small class="k">Your plan · ${esc(PLAN_GOALS[pl.goal].name)}</small><b class="n">${fmt(pl.kcal)}<small>kcal a day</small></b><small class="s">${pace}${when}</small></span><svg class="chev"><use href="#i-chev"/></svg>`;
+}
 function renderPlanCards() {
   const pl = state.plan;
   const html = pl ? `<span class="circle"><svg><use href="#i-trophy"/></svg></span><span class="level-text"><b>Your plan</b><small>${esc(planLine())} · tap to redo</small></span><svg class="chev"><use href="#i-chev"/></svg>`
     : `<span class="circle"><svg><use href="#i-spark"/></svg></span><span class="level-text"><b>Work out my budget for me</b><small>A few questions about you and your goal: 1 minute</small></span><svg class="chev"><use href="#i-chev"/></svg>`;
-  $("#b-plan").innerHTML = html; $("#b-plan").onclick = () => openPlan();
+  $("#b-plan").innerHTML = bigPlanCard(); $("#b-plan").onclick = () => openPlan();
   const g = $("#g-plan"); g.classList.toggle("hidden", !pl); if (pl) { g.innerHTML = html; g.onclick = () => openPlan(); }
 }
 /** Real burn = average eaten on well-logged days minus what the weight trend says was stored or lost.
@@ -2516,9 +2535,9 @@ function renderHomeWeigh() {
 function renderBudgetBody() {
   const lb = latestBody();
   $("#b-tunes").classList.toggle("hidden", !state.plan);
-  $("#bb-sub").textContent = bodyLine(lb);
+  $("#bb-n").innerHTML = lb && lb.weight ? `${fmt(lb.weight, 1)}<small>kg${lb.fat ? ` · ${fmt(lb.fat, 1)}% fat` : ""}</small>` : `<span style="font-size:20px">Track your weight</span>`;
   const since = dateMinus(14), recent = state.body.filter((r) => r.weight && r.day >= since).length;
-  $("#bb-line").textContent = `${recent ? `${recent} weigh-in${recent === 1 ? "" : "s"} in the last 2 weeks · ` : ""}next weigh-in ${whenWord(nextWeighIn())}`;
+  $("#bb-line").textContent = `${recent ? `${recent} weigh-in${recent === 1 ? "" : "s"} in 2 weeks · ` : ""}next ${whenWord(nextWeighIn())}`;
 }
 /** Body page: which days to weigh in. */
 function renderWeighDays() {
