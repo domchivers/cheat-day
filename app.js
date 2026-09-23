@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "126";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "127";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1080,11 +1080,13 @@ function drawFriendRows(friends, dayLabel) {
   const isWorkout = (it) => /^Workout: /.test(String(it.name || ""));
   const mon = new Date(today + "T12:00"); mon.setDate(mon.getDate() - ((mon.getDay() + 6) % 7));
   const week = Array.from({ length: 7 }, (_, k) => { const x = new Date(mon); x.setDate(x.getDate() + k); return localDate(x); });
+  // their date can differ from ours (family abroad), so a day they've touched in the last 18 hours is still their today
+  const current = (d) => !!d && (String(d.day) === today || Date.parse(d.updated_at || 0) > Date.now() - 18 * 3600e3);
   friends.map((f) => {
     const days = fr.days.filter((x) => x.user_id === f.uid);
     const d = days.slice().sort((p, q) => String(q.day).localeCompare(String(p.day)))[0];
     const all = d && Array.isArray(d.items) ? d.items : [], food = all.filter((it) => !isWorkout(it));
-    return { f, d, days, all, food, active: !!(d && String(d.day) === today && food.length) };
+    return { f, d, days, all, food, active: !!(food.length && current(d)) };
   }).sort((p, q) => q.active - p.active).forEach((cd) => fl.appendChild(friendCard(cd)));
 
   function friendCard({ f, d, days, all, food, active }) {
@@ -1100,6 +1102,7 @@ function drawFriendRows(friends, dayLabel) {
     if (d) {
       const over = d.kcal > d.budget, pct = d.budget ? Math.min(100, d.kcal / d.budget * 100) : 0;
       right = active ? `<span class="fc-k${over ? " over" : ""}">${fmt(d.kcal)}<small> / ${fmt(d.budget)}</small></span>` : `<span class="fc-when">${esc(dayLabel(String(d.day)))} ${fmt(d.kcal)}</span>`;
+      if (active && String(d.day) !== today) right += `<span class="fc-tz">their ${new Date(d.day + "T12:00").toLocaleDateString(undefined, { weekday: "long" })}</span>`;
       if (active) bar = `<span class="bar"><span style="width:${pct}%" class="${over ? "over" : ""}"></span></span>`;
       line = active ? esc(food.map((it) => it.name).slice(0, 3).join(", ") + (food.length > 3 ? ` and ${food.length - 3} more` : "")) : "Nothing logged today yet";
     }
@@ -4564,7 +4567,7 @@ function schedulePush() {
 }
 function publishDay() {
   const c = window.cloud; if (!c || !c.user || !state.shareDay) return;
-  const items = state.day.items.map((it) => ({ name: it.name, kcal: it.kcal, addedAt: it.addedAt || null, meal: it.meal || null })).concat((state.day.workouts || []).map((w) => ({ name: `Workout: ${w.name}, ${w.minutes} min`, kcal: -Math.round(w.kcal || 0) })));
+  const items = state.day.items.map((it) => ({ name: it.name, kcal: it.kcal, addedAt: it.addedAt || null, meal: mealOf(it) }))   // the meal is worked out here, in this phone's time zone.concat((state.day.workouts || []).map((w) => ({ name: `Workout: ${w.name}, ${w.minutes} min`, kcal: -Math.round(w.kcal || 0) })));
   c.publishDay({ date: state.day.date, budget: budgetToday(), kcal: usedKcal(), items }).catch((err) => { if (!publishDay.warned) { publishDay.warned = true; toast("Couldn't share your day: " + c.explain(err), 5000); } });
 }
 let syncWarned = false;
