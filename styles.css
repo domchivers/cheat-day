@@ -1375,3 +1375,21 @@ body.simple .fc-line, body.simple .fc-tag { font-size: 15px; }
 .hist-tip { margin: 8px 0 0; }
 .hist-acts .btn { white-space: nowrap; font-size: 14px; padding: 10px 12px; }
 .fc-tz { display: block; font-size: 11px; color: var(--muted); font-weight: 600; text-align: right; }
+/* ---- v128: workouts */
+.ws-float { position: fixed; left: 12px; right: 12px; bottom: calc(76px + var(--safe-bottom)); z-index: 25; display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 999px; background: var(--card); border: 1px solid var(--line); box-shadow: 0 6px 24px rgba(0,0,0,.25); cursor: pointer; }
+.ws-float.hidden { display: none; }
+.wsf-clock { font-weight: 800; font-size: 17px; color: var(--green); font-variant-numeric: tabular-nums; }
+.wsf-rest { flex: 1; display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.wsf-rest b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.wsf-rest button { margin-left: auto; padding: 6px 14px; border-radius: 999px; border: 0; background: var(--mint-2); color: var(--green); font: inherit; font-weight: 700; cursor: pointer; }
+.wsf-tip { flex: 1; font-size: 13px; color: var(--muted); }
+.w-post { background: none; border: 0; color: var(--green); padding: 6px; cursor: pointer; }
+.w-post svg { width: 20px; height: 20px; }
+.hist-wo { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.hist-w { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; width: 100%; padding: 6px 0; background: none; border: 0; border-top: 1px solid var(--line); color: var(--muted); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.hist-w svg { width: 16px; height: 16px; color: var(--coral); flex: none; }
+.hist-w small { flex-basis: 100%; padding-left: 22px; font-size: 12px; }
+.bar span.near { background: #e8a33d; }
+.fc-k.near { color: #e8a33d; }
+.post-lifts { font-size: 13px; color: var(--muted); margin: 6px 0 8px; display: flex; flex-direction: column; gap: 2px; }
+.post .media.none.wo { background: linear-gradient(135deg, var(--coral-ic) 0%, var(--coral-bg) 100%); color: var(--coral); }

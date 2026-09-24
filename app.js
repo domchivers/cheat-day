@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "127";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "128";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -919,11 +919,12 @@ function renderHistory() {
         ? `<ul class="ate ate-edit">${ateList(items, true)}</ul><p class="muted tiny hist-tip">Tap a food to change it or move its meal.</p><div class="hist-acts"><button class="btn mint slim" data-act="add">＋ Add something</button><button class="btn ghost slim" data-act="toggle">Hide</button></div>`
         : `<div class="items muted tiny">${esc(items.map((it) => it.name).slice(0, 3).join(", "))}${items.length > 3 ? ` and ${items.length - 3} more` : ""}</div><button class="btn mint ate-btn" data-act="toggle">What I had (${items.length}) ▾</button>`;
     } else if (count) body = `<div class="muted tiny">${count} item${count === 1 ? "" : "s"} (logged before history kept the details)</div>`;
-    card.innerHTML = `<div class="top"><b>${esc(label)}</b><span class="kcal ${over ? "over" : "ok"}">${fmt(d.kcal)} / ${fmt(d.budget)} kcal</span></div>${d.burned ? `<div class="burned tiny">Burned ${fmt(d.burned)} kcal: ${esc((d.workouts || []).map((w) => w.name).join(", "))}</div>` : ""}
+    card.innerHTML = `<div class="top"><b>${esc(label)}</b><span class="kcal ${over ? "over" : "ok"}">${fmt(d.kcal)} / ${fmt(d.budget)} kcal</span></div>${(d.workouts || []).length ? `<div class="hist-wo">${d.workouts.map((w, k) => `<button class="hist-w" data-w="${k}"><svg><use href="#i-dumbbell"/></svg>${esc(w.name)} · ${w.minutes} min · ${fmt(w.kcal)} kcal${(w.lifts || []).length ? `<small>${esc(w.lifts.map(liftText).join(" · "))}</small>` : ""}</button>`).join("")}</div>` : ""}
       <span class="bar"><span style="width:${pct}%" class="${over ? "over" : ""}"></span></span>
       ${d.p != null ? `<div class="macros">${macroText({ p: d.p, c: d.c, f: d.f }, true)}</div>` : ""}${body}`;
     const tog = card.querySelector("[data-act=toggle]");
     if (tog) tog.onclick = () => { if (histOpen.has(d.date)) histOpen.delete(d.date); else histOpen.add(d.date); renderHistory(); };
+    card.querySelectorAll(".hist-w").forEach((b) => b.onclick = () => editWorkoutMinutes(d.workouts[+b.dataset.w], () => { d.burned = d.workouts.reduce((x, w) => x + (w.kcal || 0), 0); save(); renderHistory(); }));
     const addBtn = card.querySelector("[data-act=add]");
     if (addBtn) addBtn.onclick = () => addToPastDay(d.date);
     card.querySelectorAll(".ate-edit li[data-i]").forEach((li) => {
@@ -1100,10 +1101,10 @@ function drawFriendRows(friends, dayLabel) {
     };
     let right = `<span class="fc-when">nothing shared yet</span>`, bar = "", line = "";
     if (d) {
-      const over = d.kcal > d.budget, pct = d.budget ? Math.min(100, d.kcal / d.budget * 100) : 0;
-      right = active ? `<span class="fc-k${over ? " over" : ""}">${fmt(d.kcal)}<small> / ${fmt(d.budget)}</small></span>` : `<span class="fc-when">${esc(dayLabel(String(d.day)))} ${fmt(d.kcal)}</span>`;
+      const over = d.kcal > d.budget * 1.1, near = !over && d.kcal > d.budget, pct = d.budget ? Math.min(100, d.kcal / d.budget * 100) : 0;
+      right = active ? `<span class="fc-k${over ? " over" : near ? " near" : ""}">${fmt(d.kcal)}<small> / ${fmt(d.budget)}</small></span>` : `<span class="fc-when">${esc(dayLabel(String(d.day)))} ${fmt(d.kcal)}</span>`;
       if (active && String(d.day) !== today) right += `<span class="fc-tz">their ${new Date(d.day + "T12:00").toLocaleDateString(undefined, { weekday: "long" })}</span>`;
-      if (active) bar = `<span class="bar"><span style="width:${pct}%" class="${over ? "over" : ""}"></span></span>`;
+      if (active) bar = `<span class="bar"><span style="width:${pct}%" class="${over ? "over" : near ? "near" : ""}"></span></span>`;
       line = active ? esc(food.map((it) => it.name).slice(0, 3).join(", ") + (food.length > 3 ? ` and ${food.length - 3} more` : "")) : "Nothing logged today yet";
     }
     const wo = all.filter(isWorkout);
@@ -3089,9 +3090,10 @@ let feed = { posts: [], reactions: [], comments: [], people: {} };
 const REACTS = ["👍", "❤️", "🔥", "😋"];
 function openCompose(what, photo) { composeWhat = what; composePhoto = photo; $("#compose-caption").value = ""; go("compose"); }
 function dishCard(w) {
+  if (w.kind === "workout") return `<div class="dish"><span class="thumb-sm tone-coral"><svg><use href="#i-dumbbell"/></svg></span><div class="dish-main"><span class="dish-name">${esc(w.name)}</span><span class="dish-amt">${w.minutes} min · ${(w.lifts || []).length} exercise${(w.lifts || []).length === 1 ? "" : "s"}</span></div><div class="dish-kcal">${fmt(w.kcal)}<small>burned</small></div></div>`;
   const meal = w.kind === "meal", n = w.portions || 1;
   const amt = meal ? `${n} portion${n === 1 ? "" : "s"} · ${fmt(w.kcal)} kcal each` : (w.grams != null ? `${w.grams} ${w.unit || "g"}` : "1 serving");
-  return `<div class="dish"><span class="thumb-sm ${meal ? "tone-peach" : ""}"><svg><use href="#i-${meal ? "meal" : "bowl"}"/></svg></span><div class="dish-main"><span class="dish-name">${esc(w.name)}</span><span class="dish-amt">${amt}</span></div><div class="dish-kcal">${fmt(w.kcal)}<small>kcal</small></div></div>`;
+  return `<div class="dish"><span class="thumb-sm ${meal ? "tone-peach" : wo ? "tone-coral" : ""}"><svg><use href="#i-${meal ? "meal" : wo ? "dumbbell" : "bowl"}"/></svg></span><div class="dish-main"><span class="dish-name">${esc(w.name)}</span><span class="dish-amt">${amt}</span></div><div class="dish-kcal">${fmt(w.kcal)}<small>kcal</small></div></div>`;
 }
 function renderCompose() {
   const w = composeWhat; if (!w) { back(); return; }
@@ -3131,7 +3133,7 @@ $("#compose-go").onclick = async () => {
   busy("Posting…");
   try {
     const postPhoto = await sharablePhoto(composePhoto);
-    await c.createPost({ kind: w.kind, caption: $("#compose-caption").value.trim(), photo: postPhoto, name: w.name, kcal: w.kcal, macros: { p: w.p, c: w.c, f: w.f }, payload: w.kind === "meal" ? w.meal : w.basis, extra: w.kind === "meal" ? { portions: w.portions } : { grams: w.grams, unit: w.unit } });
+    await c.createPost({ kind: w.kind, caption: $("#compose-caption").value.trim(), photo: postPhoto, name: w.name, kcal: w.kcal, macros: w.kind === "workout" ? null : { p: w.p, c: w.c, f: w.f }, payload: w.kind === "meal" ? w.meal : w.kind === "workout" ? { minutes: w.minutes, lifts: w.lifts } : w.basis, extra: w.kind === "meal" ? { portions: w.portions } : w.kind === "workout" ? { minutes: w.minutes } : { grams: w.grams, unit: w.unit } });
     busy(false); toast("Posted"); composeWhat = null; composePhoto = null;
     state.postCount = (state.postCount || 0) + 1; save(); checkBadges();
     stack = ["home", "feed"]; show("feed");
@@ -3186,18 +3188,19 @@ function drawFeed() {
   $("#feed-empty").classList.toggle("hidden", feed.posts.length > 0);
   for (const p of feed.posts) {
     const card = document.createElement("article"); card.className = "card post";
-    const meal = p.kind === "meal", ex = p.extra || {}, n = ex.portions || 1;
-    const amt = meal ? `${n} portion${n === 1 ? "" : "s"} · ${fmt(p.kcal)} kcal each` : (ex.grams != null ? `${ex.grams} ${ex.unit || "g"}` : "1 serving");
+    const meal = p.kind === "meal", wo = p.kind === "workout", ex = p.extra || {}, n = ex.portions || 1, lifts = wo ? ((p.payload || {}).lifts || []) : [];
+    const amt = wo ? `${ex.minutes || (p.payload || {}).minutes || "?"} min · ${lifts.length} exercise${lifts.length === 1 ? "" : "s"}` : meal ? `${n} portion${n === 1 ? "" : "s"} · ${fmt(p.kcal)} kcal each` : (ex.grams != null ? `${ex.grams} ${ex.unit || "g"}` : "1 serving");
     const mine = p.owner === me, who = mine ? "You" : feedName(p.owner);
     const rx = feed.reactions.filter((r) => r.post_id === p.id);
     const cm = feed.comments.filter((x) => x.post_id === p.id);
     const showAll = openComments.has(p.id) || cm.length <= 2, shown = showAll ? cm : cm.slice(-2);
     const mac = p.macros && p.macros.p != null ? `<div class="pills"><span>P ${p.macros.p} g</span><span>C ${p.macros.c} g</span><span>F ${p.macros.f} g</span></div>` : "";
     card.innerHTML = `<div class="who">${avatar(p.owner, feedName(p.owner))}<div><div class="name">${esc(who)}</div><div class="when">${ago(p.created_at)}${meal ? " · shared a meal" : ""}</div></div>${mine ? `<button class="more" aria-label="Delete post"><svg><use href="#i-more"/></svg></button>` : ""}</div>
-      ${p.photo ? `<div class="media"><img src="${esc(p.photo)}" alt=""></div>` : `<div class="media none ${meal ? "meal" : ""}"><svg><use href="#i-${meal ? "meal" : "bowl"}"/></svg>${esc(p.name)}</div>`}
+      ${p.photo ? `<div class="media"><img src="${esc(p.photo)}" alt=""></div>` : `<div class="media none ${meal ? "meal" : wo ? "wo" : ""}"><svg><use href="#i-${meal ? "meal" : wo ? "dumbbell" : "bowl"}"/></svg>${esc(p.name)}</div>`}
       <div class="body">
         ${p.caption ? `<div class="caption"><b>${esc(who)}</b>${esc(p.caption)}</div>` : ""}
-        <div class="dish"><span class="thumb-sm ${meal ? "tone-peach" : ""}"><svg><use href="#i-${meal ? "meal" : "bowl"}"/></svg></span><div class="dish-main"><span class="dish-name">${esc(p.name)}</span><span class="dish-amt">${amt}</span></div><div class="dish-kcal">${fmt(p.kcal)}<small>kcal</small></div><button class="recipe-btn" data-act="recipe" aria-label="See the recipe"><svg><use href="#i-book"/></svg><span>Recipe</span></button></div>
+        ${wo && lifts.length ? `<div class="post-lifts">${lifts.map((l) => `<div>${esc(liftText(l))}</div>`).join("")}</div>` : ""}
+        <div class="dish"><span class="thumb-sm ${meal ? "tone-peach" : ""}"><svg><use href="#i-${meal ? "meal" : "bowl"}"/></svg></span><div class="dish-main"><span class="dish-name">${esc(p.name)}</span><span class="dish-amt">${amt}</span></div><div class="dish-kcal">${fmt(p.kcal)}<small>${wo ? "burned" : "kcal"}</small></div><button class="recipe-btn" data-act="recipe" aria-label="${wo ? "Use this workout" : "See the recipe"}"><svg><use href="#${wo ? "i-lift" : "i-book"}"/></svg><span>${wo ? "Use it" : "Recipe"}</span></button></div>
         ${mac}
         <div class="actions"><div class="reacts">${REACTS.map((e) => { const k = rx.filter((r) => r.emoji === e).length, on = rx.some((r) => r.emoji === e && r.user_id === me); return `<button data-emoji="${e}" class="${on ? "on" : ""}" aria-label="React ${e}">${e}${k ? `<small>${k}</small>` : ""}</button>`; }).join("")}</div></div>
         <div class="comments">${!showAll ? `<button class="view-all">View all ${cm.length} comments</button>` : ""}${shown.map((x) => `<div class="comment">${avatar(x.user_id, feedName(x.user_id))}<span><b>${esc(x.user_id === me ? "You" : feedName(x.user_id))}</b>${esc(x.text)}</span>${x.user_id === me ? `<button class="del" data-comment="${x.id}" aria-label="Delete">✕</button>` : ""}</div>`).join("")}
@@ -3206,7 +3209,10 @@ function drawFeed() {
     const delBtn = card.querySelector(".who .more");
     if (delBtn) delBtn.onclick = async () => { if (!await ask("Delete this post?")) return; try { await c.deletePost(p.id); renderFeed(); } catch (e) { toast(c.explain(e)); } };
     const va = card.querySelector(".view-all"); if (va) va.onclick = () => { openComments.add(p.id); drawFeed(); };
-    card.querySelector("[data-act=recipe]").onclick = () => { openRecipe(p); go("recipe"); };
+    card.querySelector("[data-act=recipe]").onclick = () => {
+      if (wo) { if (state.session) { toast("Finish your current session first"); return; } startSession({ name: p.name, id: null, exercises: lifts.map((l) => ({ exercise: l.exercise, sets: l.sets, reps: l.reps, kg: l.kg })) }); stack = ["home", "workouts"]; show("workouts"); return; }
+      openRecipe(p); go("recipe");
+    };
     card.querySelectorAll("[data-emoji]").forEach((b) => b.onclick = async () => {
       const e = b.dataset.emoji, on = b.classList.contains("on");
       try { if (on) await c.unreact(p.id, e); else { await c.react(p.id, e); notifyFriend(p.owner, "react", p.name, { emoji: e }); state.reactCount = (state.reactCount || 0) + 1; save(); checkBadges(); } } catch (err) { toast(c.explain(err)); return; }
@@ -3259,6 +3265,21 @@ const ACTIVITIES = [
 ];
 const EFFORT = { easy: 0.8, moderate: 1, hard: 1.25 };
 let wType = "Walk";
+/** "Bench press 60×8, 60×8, 65×6" when the sets were ticked one by one; "3×8 @ 60 kg" for a plain log. */
+function liftText(l) {
+  if (Array.isArray(l.detail) && l.detail.length) return `${l.exercise} ${l.detail.map((s) => `${s.kg ? `${s.kg}×` : ""}${s.reps}`).join(", ")}${l.detail.some((s) => s.kg) ? " kg" : ""}`;
+  return `${l.exercise} ${l.sets}×${l.reps}${l.kg ? ` @ ${l.kg} kg` : ""}`;
+}
+/** Change how long a workout took (forgot to stop the timer?): the burn is worked out again. */
+async function editWorkoutMinutes(w, done) {
+  const v = await askText(`How many minutes was "${w.name}"?`, String(w.minutes || ""));
+  const m = num(v); if (!m || m < 1 || m > 600) return;
+  w.minutes = Math.round(m); if (w.type) w.kcal = burnFor(w.type, w.minutes, w.effort || "moderate");
+  toast(`${w.name}: ${w.minutes} min`); done();
+}
+function postWorkout(w) {
+  openCompose({ kind: "workout", name: w.name, kcal: Math.round(w.kcal || 0), minutes: w.minutes, lifts: (w.lifts || []).map((l) => ({ exercise: l.exercise, sets: l.sets, reps: l.reps, kg: l.kg, detail: l.detail || null })) }, null);
+}
 function burnFor(type, minutes, effort) {
   const a = ACTIVITIES.find((x) => x[0] === type) || ["Other", 5];
   return Math.round(a[1] * EFFORT[effort || "moderate"] * (state.weightKg || 75) * (minutes / 60));
@@ -3282,7 +3303,7 @@ function streakDays() {
 /** Every session of an exercise: date, best set, estimated 1RM. Newest first. */
 function exerciseSessions(name) {
   const key = name.toLowerCase(), out = [], today = localDate();
-  const scan = (date, ws) => { for (const w of ws || []) for (const l of w.lifts || []) if ((l.exercise || "").toLowerCase() === key) { const kg = l.kg || 0, reps = l.reps || 1; out.push({ date, workout: w.name, sets: l.sets || 1, reps, kg, est1rm: kg ? Math.round(kg * (1 + reps / 30)) : 0 }); } };
+  const scan = (date, ws) => { for (const w of ws || []) for (const l of w.lifts || []) if ((l.exercise || "").toLowerCase() === key) { const kg = l.kg || 0, reps = l.reps || 1; out.push({ date, workout: w.name, sets: l.sets || 1, reps, kg, detail: Array.isArray(l.detail) ? l.detail : null, est1rm: kg ? Math.round(kg * (1 + reps / 30)) : 0 }); } };
   scan(today, state.day.workouts);
   for (const h of state.history) scan(h.date, h.workouts);
   return out;
@@ -3309,9 +3330,15 @@ function renderWorkouts() {
   const list = $("#w-list"); list.innerHTML = "";
   for (const w of ws) {
     const li = document.createElement("li");
-    const lifts = (w.lifts || []).map((l) => `${l.exercise} ${l.sets}×${l.reps}${l.kg ? ` @ ${l.kg} kg` : ""}`).join(" · ");
+    const lifts = (w.lifts || []).map(liftText).join(" · ");
     li.innerHTML = `<span class="thumb-sm tone-coral"><svg><use href="#i-${(ACTIVITIES.find((x) => x[0] === w.type) || [])[2] ? "dumbbell" : "walk"}"/></svg></span><div class="body"><div class="name">${esc(w.name)}</div><div class="detail">${w.minutes} min · ${w.effort}${lifts ? `<div class="w-lifts">${esc(lifts)}</div>` : ""}</div></div><div class="kcal">${fmt(w.kcal)}</div><button class="del" aria-label="Remove">✕</button>`;
     li.querySelector(".del").onclick = async () => { if (!await ask(`Remove "${w.name}"?`)) return; tomb("wo", w.id); state.day.workouts = ws.filter((x) => x.id !== w.id); save(); renderWorkouts(); };
+    if ((w.lifts || []).length && window.cloud && window.cloud.user) {
+      li.querySelector(".del").insertAdjacentHTML("beforebegin", `<button class="w-post" aria-label="Post to the feed"><svg><use href="#i-share"/></svg></button>`);
+      li.querySelector(".w-post").onclick = (e) => { e.stopPropagation(); postWorkout(w); };
+    }
+    li.querySelector(".body").onclick = () => editWorkoutMinutes(w, () => { save(); renderWorkouts(); });
+    li.style.cursor = "pointer";
     list.appendChild(li);
   }
   $("#w-empty").classList.toggle("hidden", ws.length > 0);
@@ -3406,16 +3433,30 @@ function startSession(routine) {
 }
 $("#w-start-gym").onclick = () => startSession(null);
 function tickSession() {
-  const ss = state.session; if (!ss || document.body.dataset.view !== "workouts") { clearInterval(sessionTimer); sessionTimer = null; return; }
+  const ss = state.session; if (!ss || document.body.dataset.view !== "workouts") { clearInterval(sessionTimer); sessionTimer = null; $("#ws-float").classList.add("hidden"); return; }
   const el = Math.floor((Date.now() - ss.startedAt) / 1000);
   $("#ws-clock").textContent = `${Math.floor(el / 60)}:${String(el % 60).padStart(2, "0")}`;
   const rest = $("#ws-rest"), left = ss.restUntil ? Math.ceil((ss.restUntil - Date.now()) / 1000) : 0;
   $("#ws-rest-len").textContent = mmss(restLength());
+  $("#wsf-clock").textContent = $("#ws-clock").textContent;
+  $("#wsf-rest").classList.toggle("hidden", !(left > 0)); $("#wsf-tip").classList.toggle("hidden", left > 0);
+  if (left > 0) $("#wsf-rest-time").textContent = mmss(left);
   if (left > 0) { rest.classList.remove("hidden"); $("#ws-rest-set").classList.add("hidden"); $("#ws-rest-time").textContent = mmss(left); }
   else { $("#ws-rest-set").classList.remove("hidden"); if (!rest.classList.contains("hidden")) { rest.classList.add("hidden"); if (ss.restUntil) { ss.restUntil = null; save(false); if (navigator.vibrate) navigator.vibrate([120, 60, 120]); toast("Rest's over: next set"); } } }
 }
+let wsFloatWatch = null;
+function watchSessionTop() {   // the floating timer shows once the session's own clock scrolls out of view
+  if (wsFloatWatch) wsFloatWatch.disconnect();
+  const top = document.querySelector("#w-session .session-top"), fl = $("#ws-float");
+  if (!top || !("IntersectionObserver" in window)) return;
+  wsFloatWatch = new IntersectionObserver(([e]) => fl.classList.toggle("hidden", e.isIntersecting || !state.session || document.body.dataset.view !== "workouts"), { rootMargin: "-60px 0px 0px 0px" });
+  wsFloatWatch.observe(top);
+}
+$("#wsf-skip").onclick = () => $("#ws-rest-skip").click();
+$("#ws-float").onclick = (e) => { if (e.target.closest("button")) return; document.querySelector("#w-session .session-top").scrollIntoView({ block: "start", behavior: "smooth" }); };
 function renderSession() {
   const ss = state.session; if (!ss) return;
+  watchSessionTop();
   $("#ws-name").value = ss.name || "";
   const box = $("#ws-exercises"); box.innerHTML = "";
   ss.exercises.forEach((ex, i) => {
@@ -3468,14 +3509,19 @@ $("#ws-finish").onclick = async () => {
     const kg = Math.max(...sets.map((s) => s.kg || 0)), reps = Math.round(sets.reduce((a, s) => a + (s.reps || 0), 0) / sets.length) || 1;
     lifts.push({ exercise: ex.exercise.trim(), sets: sets.length, reps, kg, detail: sets.map((s) => ({ reps: s.reps || 0, kg: s.kg || 0 })) });
   }
-  const minutes = Math.max(1, Math.round((Date.now() - ss.startedAt) / 60000));
+  let minutes = Math.max(1, Math.round((Date.now() - ss.startedAt) / 60000));
+  if (minutes > 150) { const v = num(await askText(`The timer says ${minutes} min. Forgot to stop it? Put the real length in minutes.`, String(minutes))); if (v && v > 0) minutes = Math.round(v); }
   if (!lifts.length && !await ask(`Finish an empty ${minutes} min session?`)) return;
   const name = (ss.name || "").trim() || (ss.routineId && (state.routines.find((r) => r.id === ss.routineId) || {}).name) || "Gym session";
   const routineId = ss.routineId;
   state.session = null;
   logWorkout({ type: "Gym weights", name, minutes, effort: "moderate", lifts });
   toast(`Logged ${name}: ${minutes} min`);
-  if (lifts.length && !routineId) setTimeout(async () => { if (await ask("Save this session as a routine, to start again next time?")) saveRoutine(name, lifts.map((l) => ({ exercise: l.exercise, sets: l.sets, reps: l.reps, kg: l.kg }))); }, 500);
+  setTimeout(async () => {
+    if (lifts.length && !routineId && await ask("Save this session as a routine, to start again next time?")) await saveRoutine(name, lifts.map((l) => ({ exercise: l.exercise, sets: l.sets, reps: l.reps, kg: l.kg })));
+    const w = (state.day.workouts || [])[state.day.workouts.length - 1];
+    if (lifts.length && w && window.cloud && window.cloud.user && await ask("Post this session to the feed for your friends?")) postWorkout(w);
+  }, 500);
 };
 
 // ---- one exercise: best set, estimated 1RM, a chart of the last sessions
@@ -3499,7 +3545,7 @@ function renderExercise() {
   const list = $("#ex-sessions"); list.innerHTML = "";
   for (const s of ses.slice(0, 20)) {
     const li = document.createElement("li");
-    li.innerHTML = `<span class="thumb-sm tone-coral"><svg><use href="#i-lift"/></svg></span><div class="body"><div class="name">${s.date === localDate() ? "Today" : new Date(s.date + "T12:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}</div><div class="detail">${s.sets}×${s.reps}${s.kg ? ` @ ${s.kg} kg` : ""} · ${esc(s.workout)}</div></div>${s.est1rm ? `<div class="kcal">${s.est1rm}<small> 1RM</small></div>` : ""}`;
+    li.innerHTML = `<span class="thumb-sm tone-coral"><svg><use href="#i-lift"/></svg></span><div class="body"><div class="name">${s.date === localDate() ? "Today" : new Date(s.date + "T12:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}</div><div class="detail">${s.detail ? esc(s.detail.map((x) => `${x.kg ? `${x.kg}×` : ""}${x.reps}`).join(", ")) + (s.detail.some((x) => x.kg) ? " kg" : "") : `${s.sets}×${s.reps}${s.kg ? ` @ ${s.kg} kg` : ""}`} · ${esc(s.workout)}</div></div>${s.est1rm ? `<div class="kcal">${s.est1rm}<small> 1RM</small></div>` : ""}`;
     list.appendChild(li);
   }
   $("#ex-empty").classList.toggle("hidden", ses.length > 0);
