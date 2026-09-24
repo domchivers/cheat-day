@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "135";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "136";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -889,13 +889,13 @@ const histOpen = new Set();
 // ---- a month calendar coloured by budget, and weekly averages under it
 let calMonth = null;   // "YYYY-MM"
 function dayRecord(date) {
-  if (date === localDate()) return state.day.items.length ? { date, kcal: usedKcal(), budget: budgetToday() } : null;
+  if (date === state.day.date) return state.day.items.length ? { date, kcal: usedKcal(), budget: budgetToday() } : null;
   const h = state.history.find((x) => x.date === date);
   return h && (h.kcal || (Array.isArray(h.items) && h.items.length)) ? h : null;
 }
 const budgetClass = (r) => !r || !r.budget ? "" : r.kcal <= r.budget ? "ok" : r.kcal <= r.budget * 1.1 ? "near" : "over";
 function renderCalendar() {
-  const today = localDate();
+  const today = state.day.date;   // the day being logged, which past midnight may still be yesterday
   if (!calMonth) calMonth = today.slice(0, 7);
   const [y, mo] = calMonth.split("-").map(Number);
   const first = new Date(y, mo - 1, 1), daysIn = new Date(y, mo, 0).getDate(), lead = (first.getDay() + 6) % 7;
@@ -960,7 +960,7 @@ function renderHistory() {
   $("#history-week").innerHTML = `<b>Last 7 days</b><span>${daysCounted ? `${fmt(eaten / Math.max(1, daysCounted))} kcal a day on average` : "nothing eaten logged"}${n ? ` · ${n} workout${n === 1 ? "" : "s"}, ${fmt(burned)} kcal burned` : " · no workouts"}</span>`;
   const days = state.history.slice().sort((a, b) => String(b.date).localeCompare(String(a.date)));
   $("#history-empty").classList.toggle("hidden", days.length > 0);
-  const today = localDate();
+  const today = state.day.date;
   const mondayOf = (date) => { const x = new Date(date + "T12:00"); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return localDate(x); };
   const thisMon = mondayOf(today), lastMon = (() => { const x = new Date(thisMon + "T12:00"); x.setDate(x.getDate() - 7); return localDate(x); })();
   const wAll = bodyPast().filter((r) => r.weight), oddW = wAll.length >= 4 ? trendOf(wAll.map((r) => ({ day: r.day, v: r.weight }))).odd : [];
@@ -2820,7 +2820,7 @@ const GOAL_DEFS = [
 ];
 /** A day's facts, from history or today. */
 function dayFacts(date) {
-  const today = localDate();
+  const today = state.day.date;
   if (date === today) { const m = sumMacros(state.day.items); return { date, logged: state.day.items.length > 0, kcal: usedKcal(), budget: budgetToday(), p: Math.round(m.p), workouts: (state.day.workouts || []).length, live: true }; }
   const h = state.history.find((x) => x.date === date);
   if (!h) return { date, logged: false, kcal: 0, budget: 0, p: 0, workouts: 0 };
@@ -3399,9 +3399,9 @@ function burnFor(type, minutes, effort) {
 // ---- the week, streaks and history helpers
 /** Workouts on each of the last n days (today included), newest first. */
 function trainingDays(n) {
-  const out = [], today = localDate();
+  const out = [], today = state.day.date, base = new Date(today + "T12:00");
   for (let i = 0; i < n; i++) {
-    const date = dateMinus(i);
+    const d = new Date(base); d.setDate(d.getDate() - i); const date = localDate(d);
     const ws = date === today ? (state.day.workouts || []) : ((state.history.find((h) => h.date === date) || {}).workouts || []);
     out.push({ date, names: ws.map((w) => w.name), burned: ws.reduce((a, w) => a + (w.kcal || 0), 0), count: ws.length });
   }
