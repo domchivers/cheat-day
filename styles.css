@@ -1440,3 +1440,9 @@ body.simple .fc-line, body.simple .fc-tag { font-size: 15px; }
 .late-card small { display: block; font-size: 13px; color: var(--muted); margin-top: 2px; }
 .late-card .fr-acts { margin-top: 10px; }
 .late-card .fr-acts .btn { white-space: nowrap; font-size: 14px; padding: 9px 10px; }
+/* ---- v135: the late-night card lines up with the other home cards */
+.late-card { display: block; padding: 12px 16px; }
+.late-top { display: flex; align-items: center; gap: 14px; }
+.late-card .circle { width: 42px; height: 42px; }
+.late-acts { display: flex; gap: 8px; margin-top: 12px; }
+.late-acts .btn { flex: 1; margin: 0; width: auto; white-space: nowrap; font-size: 14px; padding: 10px 8px; }
