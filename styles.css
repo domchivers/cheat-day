@@ -1418,3 +1418,17 @@ body.simple .fc-line, body.simple .fc-tag { font-size: 15px; }
 /* ---- v131: a sent food's photo is a small thumbnail, never a wall */
 .inbox-card .thumb-sm { width: 46px; height: 46px; border-radius: 10px; object-fit: cover; display: grid; place-items: center; background: var(--mint-2); color: var(--green-2); }
 .inbox-card img.thumb-sm { display: block; }
+/* ---- v132: editing a workout after the fact */
+.wo-edit { padding: 14px 16px; margin: 8px 0; text-align: left; flex-basis: 100%; }
+.wo-edit .field-title { margin: 0 0 8px; }
+.wo-edit label { margin-top: 8px; }
+.we-ex { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.we-ex-head { display: flex; align-items: center; gap: 8px; }
+.we-ex-head input { flex: 1; font-weight: 700; }
+.we-set { display: grid; grid-template-columns: 52px 1fr 1fr 32px; gap: 8px; align-items: center; margin-top: 6px; font-size: 13px; color: var(--muted); }
+.we-set input { min-width: 0; }
+.wo-edit .del { background: none; border: 0; color: var(--muted); font-size: 16px; cursor: pointer; padding: 4px; }
+.wo-edit .add-set { margin-top: 6px; background: none; border: 0; color: var(--green); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; padding: 4px 0; }
+.wo-edit .fr-acts { margin-top: 14px; }
+.wo-edit .link-danger { margin: 12px auto 0; font-size: 13px; }
+.hist-w.hidden, .w-open.hidden { display: none; }

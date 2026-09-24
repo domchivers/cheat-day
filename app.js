@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "131";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "132";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -960,7 +960,7 @@ function renderHistory() {
       ${d.p != null ? `<div class="macros">${macroText({ p: d.p, c: d.c, f: d.f }, true)}</div>` : ""}${body}`;
     const tog = card.querySelector("[data-act=toggle]");
     if (tog) tog.onclick = () => { if (histOpen.has(d.date)) histOpen.delete(d.date); else histOpen.add(d.date); renderHistory(); };
-    card.querySelectorAll(".hist-w").forEach((b) => b.onclick = () => editWorkoutMinutes(d.workouts[+b.dataset.w], () => { d.burned = d.workouts.reduce((x, w) => x + (w.kcal || 0), 0); save(); renderHistory(); }));
+    card.querySelectorAll(".hist-w").forEach((b) => b.onclick = () => openWorkoutEditor(d.workouts[+b.dataset.w], b, () => { d.burned = d.workouts.reduce((x, w) => x + (w.kcal || 0), 0); save(); renderHistory(); }, () => { d.workouts.splice(+b.dataset.w, 1); d.burned = d.workouts.reduce((x, w) => x + (w.kcal || 0), 0); save(); renderHistory(); }));
     const addBtn = card.querySelector("[data-act=add]");
     if (addBtn) addBtn.onclick = () => addToPastDay(d.date);
     card.querySelectorAll(".ate-edit li[data-i]").forEach((li) => {
@@ -3313,6 +3313,46 @@ async function editWorkoutMinutes(w, done) {
   w.minutes = Math.round(m); if (w.type) w.kcal = burnFor(w.type, w.minutes, w.effort || "moderate");
   toast(`${w.name}: ${w.minutes} min`); done();
 }
+/** Edit a workout after the fact: name, minutes, effort, and every set's reps and weight. Draws in place of `anchor`. */
+function openWorkoutEditor(w, anchor, onSave, onDelete) {
+  const lifts = (w.lifts || []).map((l) => ({ exercise: l.exercise, detail: (Array.isArray(l.detail) && l.detail.length ? l.detail : Array.from({ length: l.sets || 1 }, () => ({ reps: l.reps || 0, kg: l.kg || 0 }))).map((s) => ({ reps: s.reps || 0, kg: s.kg || 0 })) }));
+  const box = document.createElement("div"); box.className = "card wo-edit"; box.onclick = (e) => e.stopPropagation();
+  const meta = { name: w.name || "", minutes: w.minutes || "", effort: w.effort || "moderate" };   // what's typed survives a redraw
+  const draw = () => {
+    box.innerHTML = `<div class="field-title">Edit workout</div>
+      <label>Name<input type="text" id="we-name" value="${esc(meta.name)}"></label>
+      <div class="grid2 tight"><label>Minutes<input type="number" inputmode="numeric" id="we-min" value="${meta.minutes}"></label><label>Effort<select id="we-effort">${["easy", "moderate", "hard"].map((e) => `<option value="${e}"${meta.effort === e ? " selected" : ""}>${e[0].toUpperCase() + e.slice(1)}</option>`).join("")}</select></label></div>
+      ${lifts.map((l, i) => `<div class="we-ex" data-i="${i}"><div class="we-ex-head"><input type="text" value="${esc(l.exercise)}" data-f="exercise" placeholder="Exercise"><button class="del" data-act="rm-ex" aria-label="Remove exercise">✕</button></div>
+        ${l.detail.map((s, j) => `<div class="we-set" data-j="${j}"><span>Set ${j + 1}</span><input type="number" inputmode="numeric" value="${s.reps || ""}" data-f="reps" placeholder="reps"><input type="number" inputmode="decimal" value="${s.kg || ""}" data-f="kg" placeholder="kg"><button class="del" data-act="rm-set" aria-label="Remove set">✕</button></div>`).join("")}
+        <button class="add-set" data-act="add-set">＋ set</button></div>`).join("")}
+      <button class="btn mint slim" data-act="add-ex">＋ Add an exercise</button>
+      <div class="fr-acts"><button class="btn primary slim" data-act="save">Save</button><button class="btn ghost slim" data-act="cancel">Cancel</button></div>
+      ${onDelete ? `<button class="link-danger" data-act="delete">Delete this workout</button>` : ""}`;
+  };
+  const read = () => {
+    meta.name = box.querySelector("#we-name").value; meta.minutes = box.querySelector("#we-min").value; meta.effort = box.querySelector("#we-effort").value;
+    box.querySelectorAll(".we-ex").forEach((ex) => { const l = lifts[+ex.dataset.i]; l.exercise = ex.querySelector('[data-f="exercise"]').value.trim(); ex.querySelectorAll(".we-set").forEach((row) => { const s = l.detail[+row.dataset.j]; s.reps = num(row.querySelector('[data-f="reps"]').value) || 0; s.kg = nz(row.querySelector('[data-f="kg"]').value) || 0; }); });
+  };
+  box.addEventListener("click", async (e) => {
+    const act = e.target.closest("[data-act]"); if (!act) return;
+    const k = act.dataset.act; read();
+    if (k === "rm-set") { const l = lifts[+act.closest(".we-ex").dataset.i]; l.detail.splice(+act.closest(".we-set").dataset.j, 1); if (!l.detail.length) l.detail.push({ reps: 0, kg: 0 }); draw(); }
+    if (k === "add-set") { const l = lifts[+act.closest(".we-ex").dataset.i], last = l.detail[l.detail.length - 1] || { reps: 8, kg: 0 }; l.detail.push({ reps: last.reps, kg: last.kg }); draw(); }
+    if (k === "rm-ex") { lifts.splice(+act.closest(".we-ex").dataset.i, 1); draw(); }
+    if (k === "add-ex") { lifts.push({ exercise: "", detail: [{ reps: 8, kg: 0 }] }); draw(); setTimeout(() => { const ins = box.querySelectorAll('[data-f="exercise"]'); ins[ins.length - 1].focus(); }, 50); }
+    if (k === "cancel") { box.remove(); anchor.classList.remove("hidden"); }
+    if (k === "delete") { if (!await ask(`Delete "${w.name}"? Its sets go too.`)) return; box.remove(); onDelete(); }
+    if (k === "save") {
+      const minutes = num(box.querySelector("#we-min").value); if (!minutes || minutes < 1 || minutes > 600) { toast("How many minutes?"); return; }
+      w.name = box.querySelector("#we-name").value.trim() || w.name; w.minutes = Math.round(minutes); w.effort = box.querySelector("#we-effort").value;
+      if (w.type) w.kcal = burnFor(w.type, w.minutes, w.effort);
+      w.lifts = lifts.filter((l) => l.exercise).map((l) => { const d = l.detail.filter((s) => s.reps > 0); const kg = Math.max(0, ...d.map((s) => s.kg)), reps = d.length ? Math.round(d.reduce((x, s) => x + s.reps, 0) / d.length) : 0; return { exercise: l.exercise, sets: d.length, reps, kg, detail: d }; }).filter((l) => l.sets);
+      box.remove(); toast(`Saved ${w.name}`); onSave();
+    }
+  });
+  draw(); anchor.classList.add("hidden"); anchor.insertAdjacentElement("afterend", box);
+  setTimeout(() => box.scrollIntoView({ block: "nearest" }), 50);
+}
 function postWorkout(w) {
   openCompose({ kind: "workout", name: w.name, kcal: Math.round(w.kcal || 0), minutes: w.minutes, lifts: (w.lifts || []).map((l) => ({ exercise: l.exercise, sets: l.sets, reps: l.reps, kg: l.kg, detail: l.detail || null })) }, null);
 }
@@ -3370,13 +3410,13 @@ function renderWorkouts() {
     const summary = lifts.length ? `${lifts.length} exercise${lifts.length === 1 ? "" : "s"} · ${sets} set${sets === 1 ? "" : "s"}` : "";
     li.innerHTML = `<span class="thumb-sm tone-coral"><svg><use href="#i-${(ACTIVITIES.find((x) => x[0] === w.type) || [])[2] ? "dumbbell" : "walk"}"/></svg></span><div class="body"><div class="name">${esc(w.name)}</div><div class="detail">${w.minutes} min · ${w.effort}${summary ? ` · ${summary}` : ""}</div></div><div class="kcal">${fmt(w.kcal)}</div>${lifts.length ? `<svg class="chev w-chev${open ? " up" : ""}"><use href="#i-chev"/></svg>` : ""}`;
     if (open) li.insertAdjacentHTML("beforeend", `<div class="w-open"><ul class="w-sets">${lifts.map((l) => `<li><b>${esc(l.exercise)}</b><span>${esc(liftText(l).slice(l.exercise.length + 1))}</span></li>`).join("")}</ul>
-      <div class="fr-acts"><button class="btn mint slim" data-act="time">Change time</button>${window.cloud && window.cloud.user ? `<button class="btn ghost slim" data-act="post">Post it</button>` : ""}<button class="fc-menu" data-act="menu" aria-label="More"><svg><use href="#i-more"/></svg></button></div>
+      <div class="fr-acts"><button class="btn mint slim" data-act="edit">Edit</button>${window.cloud && window.cloud.user ? `<button class="btn ghost slim" data-act="post">Post it</button>` : ""}<button class="fc-menu" data-act="menu" aria-label="More"><svg><use href="#i-more"/></svg></button></div>
       <div class="fc-menu-box hidden"><button class="fc-remove" data-act="del">Delete this workout</button></div></div>`);
     li.onclick = async (e) => {
       const act = e.target.closest("[data-act]");
       if (!act) { if (!lifts.length) { editWorkoutMinutes(w, () => { save(); renderWorkouts(); }); return; } woOpen = open ? null : w.id; renderWorkouts(); return; }
       e.stopPropagation();
-      if (act.dataset.act === "time") editWorkoutMinutes(w, () => { save(); renderWorkouts(); });
+      if (act.dataset.act === "edit") openWorkoutEditor(w, li.querySelector(".w-open"), () => { save(); renderWorkouts(); }, null);
       if (act.dataset.act === "post") postWorkout(w);
       if (act.dataset.act === "menu") li.querySelector(".fc-menu-box").classList.toggle("hidden");
       if (act.dataset.act === "del") { if (!await ask(`Delete "${w.name}"? Its sets go too.`)) return; tomb("wo", w.id); state.day.workouts = ws.filter((x) => x.id !== w.id); save(); renderWorkouts(); }
