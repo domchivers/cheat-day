@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "133";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "134";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -253,8 +253,27 @@ function rollDay(force) {
   save();
   return true;
 }
+/** Midnight already rolled the day (older version, or a device that hadn't heard)? Yesterday can come back until 5am. */
+function lateRolled() {
+  const h = new Date().getHours(), y = state.history[0];
+  return h < LATE_END && state.day.date === localDate() && !state.day.items.length && !(state.day.workouts || []).length && y && y.date === dateMinus(1) && Array.isArray(y.items) && (y.items.length || (y.workouts || []).length) && state.dayRolled !== localDate();
+}
+function unrollDay() {
+  const y = state.history.shift();
+  state.day = { date: y.date, items: (y.items || []).map((it) => ({ id: uid(), ...basisOf(it), kcal: it.kcal, shareLabel: it.shareLabel || "", addedAt: it.addedAt || null, meal: it.meal || null })), workouts: (y.workouts || []).map((w) => ({ id: uid(), type: w.type || "Gym weights", effort: w.effort || "moderate", ...w })) };
+  state.dayKeep = y.date; save();
+}
 function renderLateCard() {
   const card = $("#late-card"); if (!card) return;
+  if (lateRolled()) {
+    const day = WEEKDAYS[new Date(dateMinus(1) + "T12:00").getDay()];
+    card.classList.remove("hidden"); $("#late-keep").classList.remove("hidden"); $("#late-keep").textContent = `Bring ${day} back`;
+    $("#late-title").textContent = "Still up?"; $("#late-sub").textContent = `Midnight started ${WEEKDAYS[new Date().getDay()]}. Still ${day} for you? Bring it back and keep logging on it until 5am.`;
+    $("#late-keep").onclick = () => { unrollDay(); renderHome(); toast(`Back on ${day} until 5am`); };
+    $("#late-new").onclick = () => { state.dayRolled = localDate(); save(); renderHome(); };
+    return;
+  }
+  $("#late-keep").onclick = lateKeep; $("#late-new").onclick = lateNew;
   const show = lateNight() && state.day.date !== localDate() && state.dayKeep !== state.day.date;
   card.classList.toggle("hidden", !show);
   if (!show) { card.classList.toggle("hidden", !(lateNight() && state.dayKeep === state.day.date)); if (!card.classList.contains("hidden")) { $("#late-title").textContent = `Still ${WEEKDAYS[new Date(state.day.date + "T12:00").getDay()]} until you say`; $("#late-sub").textContent = "Anything you add goes on that day. It rolls over at 5am, or when you tap this."; $("#late-keep").classList.add("hidden"); } return; }
@@ -262,8 +281,8 @@ function renderLateCard() {
   $("#late-title").textContent = "Still up?";
   $("#late-sub").textContent = `It's past midnight. Keep logging as ${WEEKDAYS[new Date(state.day.date + "T12:00").getDay()]}, or start ${WEEKDAYS[new Date().getDay()]} now.`;
 }
-$("#late-keep").onclick = () => { state.dayKeep = state.day.date; save(); renderHome(); toast(`Still ${WEEKDAYS[new Date(state.day.date + "T12:00").getDay()]} until 5am`); };
-$("#late-new").onclick = () => { state.dayRolled = localDate(); state.dayKeep = null; rollDay(true); renderHome(); };
+const lateKeep = () => { state.dayKeep = state.day.date; save(); renderHome(); toast(`Still ${WEEKDAYS[new Date(state.day.date + "T12:00").getDay()]} until 5am`); };
+const lateNew = () => { state.dayRolled = localDate(); state.dayKeep = null; rollDay(true); renderHome(); };
 function renderHome() {
   rollDay();
   renderLateCard();
