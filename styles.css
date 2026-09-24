@@ -1393,3 +1393,13 @@ body.simple .fc-line, body.simple .fc-tag { font-size: 15px; }
 .fc-k.near { color: #e8a33d; }
 .post-lifts { font-size: 13px; color: var(--muted); margin: 6px 0 8px; display: flex; flex-direction: column; gap: 2px; }
 .post .media.none.wo { background: linear-gradient(135deg, var(--coral-ic) 0%, var(--coral-bg) 100%); color: var(--coral); }
+/* ---- v129: a saved meal reads like a recipe card until you tap Edit */
+.m-view { padding: 4px 2px 10px; }
+.m-view h2 { margin: 0; font-size: 24px; }
+.m-view p { margin: 4px 0 0; }
+#view-meal.viewing #m-head-card label, #view-meal.viewing #m-method-card, #view-meal.viewing #m-add-card, #view-meal.viewing #m-paste-wrap, #view-meal.viewing #m-save, #view-meal.viewing #m-photo-cam, #view-meal.viewing #m-photo-lib, #view-meal.viewing #m-photo-remove { display: none !important; }
+#view-meal.viewing #m-head-card { padding: 0; background: none; border: 0; }
+#view-meal.viewing #m-head-card:not(:has(img:not(.hidden))) { display: none; }
+.mv-steps { margin-bottom: 12px; }
+.list li.plain { cursor: default; }
+.list li.plain .name { font-weight: 600; }

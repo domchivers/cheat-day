@@ -10,9 +10,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=128">
-  <link rel="icon" href="icons/icon-192.png?v=128">
-  <link rel="stylesheet" href="styles.css?v=128">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=129">
+  <link rel="icon" href="icons/icon-192.png?v=129">
+  <link rel="stylesheet" href="styles.css?v=129">
 </head>
 <body>
 
@@ -761,7 +761,8 @@
     <h1 id="meal-title">New meal</h1>
     <span></span>
   </header>
-  <div class="card form-card">
+  <div class="m-view hidden" id="m-view"><h2 id="mv-name"></h2><p class="muted" id="mv-portions"></p></div>
+  <div class="card form-card" id="m-head-card">
     <div class="photo-row" id="m-photo-row">
       <img id="m-photo" alt="" class="hidden">
       <button class="btn mint slim" id="m-photo-cam">📷 Photo</button>
@@ -783,10 +784,11 @@
       <textarea id="m-steps" rows="5" placeholder="1. Preheat the oven to 180C&#10;2. Mix the flour, sugar and eggs&#10;3. Bake for 35 minutes"></textarea>
     </label>
   </div>
+  <div class="card mv-steps hidden" id="mv-steps"><div class="field-title">Method</div><ol class="method" id="mv-steps-list"></ol></div>
   <h2 class="section-title">Ingredients</h2>
   <ul class="list" id="m-items"></ul>
   <p class="empty" id="m-empty">Nothing in it yet.</p>
-  <div class="card form-card">
+  <div class="card form-card" id="m-add-card">
     <label>Add an ingredient
       <input type="search" id="m-q" placeholder="Type to search: flour, eggs, butter…" autocomplete="off" autocorrect="off" autocapitalize="off" enterkeyhint="search">
     </label>
@@ -812,6 +814,7 @@
     <div class="macros" id="m-macros"></div>
   </div>
   <button class="btn primary" id="m-save">Save meal</button>
+  <button class="btn mint hidden" id="m-edit">Edit this meal</button>
   <button class="btn mint hidden" id="m-use">Add a portion to today</button>
   <button class="btn mint hidden" id="m-lighter">Make it lighter</button>
   <div class="chat hidden" id="m-ask-row"><input type="text" id="m-ask" placeholder="Or ask anything: more protein, swap the rice, double it…" autocapitalize="sentences"><button class="btn primary slim" id="m-ask-go">Send</button></div>
@@ -996,10 +999,10 @@
   <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=128"></script>
-<script src="foods.js?v=128"></script>
-<script src="supabase-config.js?v=128"></script>
-<script src="cloud.js?v=128"></script>
-<script src="app.js?v=128"></script>
+<script src="presets.js?v=129"></script>
+<script src="foods.js?v=129"></script>
+<script src="supabase-config.js?v=129"></script>
+<script src="cloud.js?v=129"></script>
+<script src="app.js?v=129"></script>
 </body>
 </html>

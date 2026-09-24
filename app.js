@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "128";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "129";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -482,6 +482,8 @@ function mealBasis(meal) {
   };
 }
 function newMeal() { return { id: uid(), name: "", portions: 4, items: [], saved: false }; }
+let mealEditing = false;
+$("#m-edit").onclick = () => { mealEditing = true; renderMeal(); setTimeout(() => $("#m-name").focus(), 60); };
 function mealChanged() { state.mealDraft = mealDraft; save(false); renderMeal(); }
 
 function renderMeals() {
@@ -527,9 +529,18 @@ function renderMeal() {
   const m = mealDraft;
   showMealPhoto();
   if (document.activeElement !== $("#m-q")) { $("#m-q").value = ""; $("#m-results").innerHTML = ""; $("#m-noresult").classList.add("hidden"); }
-  if (!renderMeal.lastId || renderMeal.lastId !== m.id) $("#m-lighter-out").innerHTML = "";
+  if (!renderMeal.lastId || renderMeal.lastId !== m.id) { $("#m-lighter-out").innerHTML = ""; mealEditing = false; }
   renderMeal.lastId = m.id;
-  $("#meal-title").textContent = m.saved ? "Edit meal" : "New meal";
+  // a saved meal reads like a recipe card; Edit turns the boxes back on
+  const viewing = !!m.saved && !mealEditing;
+  $("#view-meal").classList.toggle("viewing", viewing);
+  $("#m-view").classList.toggle("hidden", !viewing);
+  if (viewing) { $("#mv-name").textContent = m.name || "Meal"; const n = num(m.portions) || 1; $("#mv-portions").textContent = `Makes ${n} portion${n === 1 ? "" : "s"}`; }
+  const steps = Array.isArray(m.steps) ? m.steps.filter((x) => String(x).trim()) : [];
+  $("#mv-steps").classList.toggle("hidden", !(viewing && steps.length));
+  if (viewing) $("#mv-steps-list").innerHTML = steps.map((st) => `<li>${esc(String(st).replace(/^\d+[.)]\s*/, ""))}</li>`).join("");
+  $("#m-edit").classList.toggle("hidden", !viewing);
+  $("#meal-title").textContent = viewing ? "Meal" : m.saved ? "Edit meal" : "New meal";
   $("#meal-delete").classList.toggle("hidden", !m.saved);
   if (document.activeElement !== $("#m-name")) $("#m-name").value = m.name || "";
   if (document.activeElement !== $("#m-portions")) $("#m-portions").value = m.portions || "";
@@ -545,13 +556,15 @@ function renderMeal() {
     if (it.brand) bits.unshift(it.brand);
     const thumb = it.image ? `<img class="thumb-sm" src="${esc(it.image)}" alt="">` : `<span class="thumb-sm"><svg><use href="#i-${iconFor(it.source)}"/></svg></span>`;
     li.innerHTML = `${thumb}<div class="body"><div class="name">${esc(it.name)}</div><div class="detail">${esc(bits.join(" · "))}</div></div><div class="kcal">${fmt(it.kcal || 0)}</div>`;
-    if (openRow === it.id) {
+    if (openRow === it.id && !viewing) {
       const actions = document.createElement("div");
       actions.className = "row-actions";
       actions.innerHTML = `<button data-act="amount" ${it.unresolved ? "disabled" : ""}>Amount</button><button data-act="swap">${it.unresolved ? "Pick it" : "Swap product"}</button><button data-act="remove" class="danger">Remove</button>`;
       li.appendChild(actions);
     }
+    if (viewing) li.classList.add("plain");
     li.onclick = async (e) => {
+      if (viewing) return;
       const act = e.target.closest("[data-act]");
       if (act) {
         e.stopPropagation();
@@ -628,6 +641,7 @@ $("#m-save").onclick = () => {
   if (i >= 0) state.meals[i] = m; else state.meals.unshift(m);
   state.mealDraft = null;
   save(); toast(`Saved ${m.name}`); renderMeal();
+  mealEditing = false; renderMeal();
 };
 // Share a meal as a link: the whole recipe travels inside the address, no server needed.
 const b64url = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -731,6 +745,26 @@ function renderMealLighter(m, t, portions, r) {
 $("#m-lighter").onclick = () => mealAsk("Make it noticeably lower in calories while keeping it recognisably the same dish and still enjoyable. Prefer swaps people actually have (lighter dairy, less oil or butter, leaner cuts, less sugar, more veg, smaller amounts of the richest items). Aim for at least 20% fewer calories if achievable without ruining it.");
 $("#m-ask-go").onclick = () => { const t = $("#m-ask").value.trim(); if (t) { $("#m-ask").value = ""; mealAsk(t); } };
 $("#m-ask").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.target.blur(); $("#m-ask-go").click(); } });
+/** If they asked for a number (kcal or protein per portion), check the AI's sums and send it back once to fix them. */
+function mealTargets(instruction) {
+  const t = String(instruction || "").toLowerCase(), out = {};
+  const k = /(\d{2,4})\s*(?:k?cal|calories)/.exec(t); if (k) out.kcal = +k[1];
+  const p = /(\d{1,3})\s*g?\s*(?:of\s+)?protein/.exec(t) || /protein\D{0,12}(\d{1,3})\s*g?/.exec(t); if (p) out.protein = +p[1];
+  return out;
+}
+async function checkMealTarget(r, instruction, portions, prompt) {
+  const want = mealTargets(instruction); if (!want.kcal && !want.protein) return r;
+  const totals = (x) => { const its = (x.ingredients || []).filter((i) => !/removed/i.test(i.change)); return { kcal: its.reduce((s, i) => s + (nz(i.kcal) || 0), 0) / portions, protein: its.reduce((s, i) => s + (nz(i.protein_g) || 0), 0) / portions }; };
+  const got = totals(r), off = (want.kcal && Math.abs(got.kcal - want.kcal) > want.kcal * 0.07) || (want.protein && Math.abs(got.protein - want.protein) > Math.max(4, want.protein * 0.1));
+  if (!off) return r;
+  busy("Checking the sums…");
+  const fix = `${prompt}
+
+Your first answer was:
+${JSON.stringify(r.ingredients)}
+Adding it up gives ${fmt(got.kcal)} kcal and ${fmt(got.protein)} g protein per portion, but they asked for ${want.kcal ? `${want.kcal} kcal` : ""}${want.kcal && want.protein ? " and " : ""}${want.protein ? `${want.protein} g protein` : ""} per portion. Change the ingredient amounts (kcal must stay consistent with the grams) until the per-portion totals land within 3% of that, then answer again in full.`;
+  try { const r2 = await askAI(LIGHTER_SCHEMA, [{ type: "text", text: fix }]); const g2 = totals(r2); const better = (!want.kcal || Math.abs(g2.kcal - want.kcal) <= Math.abs(got.kcal - want.kcal)) && (!want.protein || Math.abs(g2.protein - want.protein) <= Math.abs(got.protein - want.protein)); return better ? r2 : r; } catch (e) { return r; }
+}
 async function mealAsk(instruction) {
   if (!aiAvailable()) { aiHelp(); return; }
   const m = mealDraft, t = mealTotals(m), portions = num(m.portions) || 1;
@@ -739,10 +773,12 @@ async function mealAsk(instruction) {
 ${lines}
 
 The person asks: "${instruction}"
-Return the full new ingredient list with realistic amounts and honest kcal and macro figures per ingredient, marking each as kept, less, more, swapped or removed, and a name for the new version (new_name). Say in the summary what changed and what it does to the taste.`;
+Return the full new ingredient list with realistic amounts and honest kcal and macro figures per ingredient (standard reference values; kcal must match the grams: kcal = grams × kcal-per-100 ÷ 100), marking each as kept, less, more, swapped or removed, and a name for the new version (new_name).
+Rules: change amounts, not just labels. If they give a target (kcal or protein per portion, or "double it"), work it out: per portion = total ÷ ${portions} portions, and adjust the main ingredients until the per-portion figure lands within 3% of the target, keeping the dish recognisable. Before answering, add up every ingredient's kcal and protein and state the per-portion totals in the summary. Say what changed and what it does to the taste.`;
   busy("Thinking…");
   try {
-    const r = await askAI(LIGHTER_SCHEMA, [{ type: "text", text: prompt }]);
+    let r = await askAI(LIGHTER_SCHEMA, [{ type: "text", text: prompt }]);
+    r = await checkMealTarget(r, instruction, portions, prompt);
     busy(false);
     chats.mlight = { schema: LIGHTER_SCHEMA, basePrompt: prompt, turns: [{ ask: "(first version)", answer: r }] };
     renderMealLighter(m, t, portions, r);
