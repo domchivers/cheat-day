@@ -1403,3 +1403,15 @@ body.simple .fc-line, body.simple .fc-tag { font-size: 15px; }
 .mv-steps { margin-bottom: 12px; }
 .list li.plain { cursor: default; }
 .list li.plain .name { font-weight: 600; }
+/* ---- v130: today's workouts fold up; delete is behind the menu */
+.w-today .today-list li { flex-wrap: wrap; }
+.w-chev { width: 20px; height: 20px; color: var(--muted); transform: rotate(90deg); transition: transform .2s; flex: none; }
+.w-chev.up { transform: rotate(-90deg); }
+.w-open { flex-basis: 100%; padding: 4px 0 4px 56px; }
+.w-sets { list-style: none; margin: 0; padding: 0; }
+.w-sets li { display: flex; flex-direction: column; gap: 1px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.w-sets li:first-child { border-top: 0; }
+.w-sets li span { font-size: 13px; color: var(--muted); }
+.w-open .fr-acts { margin-top: 8px; }
+.w-open { text-align: left; }
+.w-sets li { align-items: flex-start; }

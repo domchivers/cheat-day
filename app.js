@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "129";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "130";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -3300,7 +3300,7 @@ const ACTIVITIES = [
   ["Football", 8], ["Tennis / padel", 7.3], ["Hike", 6], ["Rowing", 7], ["Elliptical", 5], ["Dance", 5.5], ["Boxing", 9], ["Climbing", 7], ["Other", 5]
 ];
 const EFFORT = { easy: 0.8, moderate: 1, hard: 1.25 };
-let wType = "Walk";
+let wType = "Walk", woOpen = null;
 /** "Bench press 60×8, 60×8, 65×6" when the sets were ticked one by one; "3×8 @ 60 kg" for a plain log. */
 function liftText(l) {
   if (Array.isArray(l.detail) && l.detail.length) return `${l.exercise} ${l.detail.map((s) => `${s.kg ? `${s.kg}×` : ""}${s.reps}`).join(", ")}${l.detail.some((s) => s.kg) ? " kg" : ""}`;
@@ -3366,14 +3366,21 @@ function renderWorkouts() {
   const list = $("#w-list"); list.innerHTML = "";
   for (const w of ws) {
     const li = document.createElement("li");
-    const lifts = (w.lifts || []).map(liftText).join(" · ");
-    li.innerHTML = `<span class="thumb-sm tone-coral"><svg><use href="#i-${(ACTIVITIES.find((x) => x[0] === w.type) || [])[2] ? "dumbbell" : "walk"}"/></svg></span><div class="body"><div class="name">${esc(w.name)}</div><div class="detail">${w.minutes} min · ${w.effort}${lifts ? `<div class="w-lifts">${esc(lifts)}</div>` : ""}</div></div><div class="kcal">${fmt(w.kcal)}</div><button class="del" aria-label="Remove">✕</button>`;
-    li.querySelector(".del").onclick = async () => { if (!await ask(`Remove "${w.name}"?`)) return; tomb("wo", w.id); state.day.workouts = ws.filter((x) => x.id !== w.id); save(); renderWorkouts(); };
-    if ((w.lifts || []).length && window.cloud && window.cloud.user) {
-      li.querySelector(".del").insertAdjacentHTML("beforebegin", `<button class="w-post" aria-label="Post to the feed"><svg><use href="#i-share"/></svg></button>`);
-      li.querySelector(".w-post").onclick = (e) => { e.stopPropagation(); postWorkout(w); };
-    }
-    li.querySelector(".body").onclick = () => editWorkoutMinutes(w, () => { save(); renderWorkouts(); });
+    const lifts = w.lifts || [], sets = lifts.reduce((x, l) => x + (Array.isArray(l.detail) ? l.detail.length : l.sets || 0), 0), open = woOpen === w.id;
+    const summary = lifts.length ? `${lifts.length} exercise${lifts.length === 1 ? "" : "s"} · ${sets} set${sets === 1 ? "" : "s"}` : "";
+    li.innerHTML = `<span class="thumb-sm tone-coral"><svg><use href="#i-${(ACTIVITIES.find((x) => x[0] === w.type) || [])[2] ? "dumbbell" : "walk"}"/></svg></span><div class="body"><div class="name">${esc(w.name)}</div><div class="detail">${w.minutes} min · ${w.effort}${summary ? ` · ${summary}` : ""}</div></div><div class="kcal">${fmt(w.kcal)}</div>${lifts.length ? `<svg class="chev w-chev${open ? " up" : ""}"><use href="#i-chev"/></svg>` : ""}`;
+    if (open) li.insertAdjacentHTML("beforeend", `<div class="w-open"><ul class="w-sets">${lifts.map((l) => `<li><b>${esc(l.exercise)}</b><span>${esc(liftText(l).slice(l.exercise.length + 1))}</span></li>`).join("")}</ul>
+      <div class="fr-acts"><button class="btn mint slim" data-act="time">Change time</button>${window.cloud && window.cloud.user ? `<button class="btn ghost slim" data-act="post">Post it</button>` : ""}<button class="fc-menu" data-act="menu" aria-label="More"><svg><use href="#i-more"/></svg></button></div>
+      <div class="fc-menu-box hidden"><button class="fc-remove" data-act="del">Delete this workout</button></div></div>`);
+    li.onclick = async (e) => {
+      const act = e.target.closest("[data-act]");
+      if (!act) { if (!lifts.length) { editWorkoutMinutes(w, () => { save(); renderWorkouts(); }); return; } woOpen = open ? null : w.id; renderWorkouts(); return; }
+      e.stopPropagation();
+      if (act.dataset.act === "time") editWorkoutMinutes(w, () => { save(); renderWorkouts(); });
+      if (act.dataset.act === "post") postWorkout(w);
+      if (act.dataset.act === "menu") li.querySelector(".fc-menu-box").classList.toggle("hidden");
+      if (act.dataset.act === "del") { if (!await ask(`Delete "${w.name}"? Its sets go too.`)) return; tomb("wo", w.id); state.day.workouts = ws.filter((x) => x.id !== w.id); save(); renderWorkouts(); }
+    };
     li.style.cursor = "pointer";
     list.appendChild(li);
   }
