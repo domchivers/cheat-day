@@ -1415,3 +1415,6 @@ body.simple .fc-line, body.simple .fc-tag { font-size: 15px; }
 .w-open .fr-acts { margin-top: 8px; }
 .w-open { text-align: left; }
 .w-sets li { align-items: flex-start; }
+/* ---- v131: a sent food's photo is a small thumbnail, never a wall */
+.inbox-card .thumb-sm { width: 46px; height: 46px; border-radius: 10px; object-fit: cover; display: grid; place-items: center; background: var(--mint-2); color: var(--green-2); }
+.inbox-card img.thumb-sm { display: block; }
