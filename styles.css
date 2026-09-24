@@ -1432,3 +1432,11 @@ body.simple .fc-line, body.simple .fc-tag { font-size: 15px; }
 .wo-edit .fr-acts { margin-top: 14px; }
 .wo-edit .link-danger { margin: 12px auto 0; font-size: 13px; }
 .hist-w.hidden, .w-open.hidden { display: none; }
+/* ---- v133: the small hours */
+.late-card { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; margin-bottom: 10px; border: 2px solid var(--sand-ic); }
+.late-card .circle { width: 40px; height: 40px; flex: none; }
+.late-card .body { flex: 1; min-width: 0; }
+.late-card b { display: block; font-size: 15px; }
+.late-card small { display: block; font-size: 13px; color: var(--muted); margin-top: 2px; }
+.late-card .fr-acts { margin-top: 10px; }
+.late-card .fr-acts .btn { white-space: nowrap; font-size: 14px; padding: 9px 10px; }

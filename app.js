@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "132";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "133";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -241,15 +241,32 @@ function archiveDay() {
   state.history = state.history.slice(0, 400);
   state.history.slice(14).forEach((h) => { if (Array.isArray(h.items)) h.items.forEach((it) => { delete it.photo; }); });
 }
-function rollDay() {
+// ---- the small hours: between midnight and 5am the day only rolls over when you say so (or at 5am)
+const LATE_END = 5;
+function lateNight() { const h = new Date().getHours(); return h < LATE_END && state.day.date === dateMinus(1) && (state.day.items.length || (state.day.workouts || []).length); }
+function lateDecided() { return state.dayKeep === state.day.date || state.dayRolled === localDate(); }
+function rollDay(force) {
   if (state.day.date === localDate()) return false;
+  if (!force && lateNight() && (state.dayKeep === state.day.date || !lateDecided())) { renderLateCard(); return false; }   // keep going as yesterday until they choose, or 5am
   archiveDay();
   state.day = { date: localDate(), items: [], workouts: [] };
   save();
   return true;
 }
+function renderLateCard() {
+  const card = $("#late-card"); if (!card) return;
+  const show = lateNight() && state.day.date !== localDate() && state.dayKeep !== state.day.date;
+  card.classList.toggle("hidden", !show);
+  if (!show) { card.classList.toggle("hidden", !(lateNight() && state.dayKeep === state.day.date)); if (!card.classList.contains("hidden")) { $("#late-title").textContent = `Still ${WEEKDAYS[new Date(state.day.date + "T12:00").getDay()]} until you say`; $("#late-sub").textContent = "Anything you add goes on that day. It rolls over at 5am, or when you tap this."; $("#late-keep").classList.add("hidden"); } return; }
+  $("#late-keep").classList.remove("hidden"); $("#late-keep").textContent = `Keep it as ${WEEKDAYS[new Date(state.day.date + "T12:00").getDay()]}`;
+  $("#late-title").textContent = "Still up?";
+  $("#late-sub").textContent = `It's past midnight. Keep logging as ${WEEKDAYS[new Date(state.day.date + "T12:00").getDay()]}, or start ${WEEKDAYS[new Date().getDay()]} now.`;
+}
+$("#late-keep").onclick = () => { state.dayKeep = state.day.date; save(); renderHome(); toast(`Still ${WEEKDAYS[new Date(state.day.date + "T12:00").getDay()]} until 5am`); };
+$("#late-new").onclick = () => { state.dayRolled = localDate(); state.dayKeep = null; rollDay(true); renderHome(); };
 function renderHome() {
   rollDay();
+  renderLateCard();
   applySimple();
   renderHomeWeigh();
   const used = usedKcal(), budget = budgetToday(), left = budget - used, burned = burnedKcal();
@@ -4681,7 +4698,7 @@ $("#share-add").onclick = () => {
 
 // ---------------------------------------------------------------- account + sync (optional, see cloud.js)
 
-const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "weekGoals", "seenBadges", "goalWins", "postCount", "pbCount", "body", "goalWeight", "goalStart", "simple", "onboarded", "reminders", "reactCount", "commentCount", "sendCount", "friendCount", "tombs", "dayBudgets", "profile", "plan", "restSeconds", "weighDays", "updatedAt"];   // the API key stays on the device
+const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "weekGoals", "seenBadges", "goalWins", "postCount", "pbCount", "body", "goalWeight", "goalStart", "simple", "onboarded", "reminders", "reactCount", "commentCount", "sendCount", "friendCount", "tombs", "dayBudgets", "profile", "plan", "restSeconds", "weighDays", "dayKeep", "dayRolled", "updatedAt"];   // the API key stays on the device
 let pushTimer = null, pulledOnce = false;
 function schedulePush() {
   if (!window.cloud || !window.cloud.user) return;
