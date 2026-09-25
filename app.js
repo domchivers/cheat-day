@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "136";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "137";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -5082,10 +5082,14 @@ const darkQuery = window.matchMedia ? matchMedia("(prefers-color-scheme: dark)")
 function applyTheme() {
   const t = state.theme || "system", dark = t === "dark" || (t === "system" && darkQuery && darkQuery.matches);
   document.documentElement.dataset.theme = dark ? "dark" : "light";
+  const p = ["forest", "ocean", "berry", "sunset", "slate"].includes(state.palette) ? state.palette : "forest";
+  document.documentElement.dataset.palette = p;
+  $$("#s-palette button").forEach((b) => b.classList.toggle("on", b.dataset.p === p));
   const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.content = dark ? "#0f1411" : "#f5f6f1";
   $$("#s-theme button").forEach((b) => b.classList.toggle("on", b.dataset.t === t));
 }
 if (darkQuery && darkQuery.addEventListener) darkQuery.addEventListener("change", applyTheme);
+$("#s-palette").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; state.palette = b.dataset.p; save(false); applyTheme(); });
 $("#s-theme").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; state.theme = b.dataset.t; save(false); applyTheme(); });
 
 // ---------------------------------------------------------------- simple mode and the welcome guide

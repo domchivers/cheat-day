@@ -1446,3 +1446,17 @@ body.simple .fc-line, body.simple .fc-tag { font-size: 15px; }
 .late-card .circle { width: 42px; height: 42px; }
 .late-acts { display: flex; gap: 8px; margin-top: 12px; }
 .late-acts .btn { flex: 1; margin: 0; width: auto; white-space: nowrap; font-size: 14px; padding: 10px 8px; }
+/* ---- v137: colour schemes. Each swaps the accent (green), its tints, and the on-budget calendar colour */
+:root[data-palette="ocean"] { --green: #2b5f8f; --green-2: #3b7cb3; --mint: #d6e6f2; --mint-2: #e7f0f8; --track-2: #cfdfec; --cal-ok: #cfe1f0; --cal-ok-t: #1d4f7a; }
+:root[data-theme="dark"][data-palette="ocean"] { --green: #5f9fd6; --green-2: #6cabe0; --mint: #22364a; --mint-2: #1b2a3a; --track-2: #2a3d4f; --cal-ok: #1f3a52; --cal-ok-t: #a9d0f2; }
+:root[data-palette="berry"] { --green: #7d3a70; --green-2: #9a4a8a; --mint: #efdcea; --mint-2: #f6ebf3; --track-2: #e7d3e2; --cal-ok: #ecd6e6; --cal-ok-t: #6a2c5e; }
+:root[data-theme="dark"][data-palette="berry"] { --green: #cf7dbd; --green-2: #d98cc8; --mint: #3d2538; --mint-2: #2e1c2a; --track-2: #483042; --cal-ok: #46283f; --cal-ok-t: #f0bfe5; }
+:root[data-palette="sunset"] { --green: #b4522a; --green-2: #d1683a; --mint: #f8e1d3; --mint-2: #fbeee5; --track-2: #f0d6c6; --cal-ok: #f7dccc; --cal-ok-t: #8f3f1d; }
+:root[data-theme="dark"][data-palette="sunset"] { --green: #ef9366; --green-2: #f2a074; --mint: #43291d; --mint-2: #332017; --track-2: #4f3123; --cal-ok: #4a2b1e; --cal-ok-t: #f8c3a6; }
+:root[data-palette="slate"] { --green: #38666b; --green-2: #4b7f85; --mint: #d9e7e8; --mint-2: #e8f0f1; --track-2: #cfdedf; --cal-ok: #d3e4e5; --cal-ok-t: #2a5257; }
+:root[data-theme="dark"][data-palette="slate"] { --green: #7fb7bd; --green-2: #8cc3c9; --mint: #263a3c; --mint-2: #1d2d2f; --track-2: #2f4548; --cal-ok: #223e41; --cal-ok-t: #b8e0e4; }
+.swatches { display: flex; flex-wrap: wrap; gap: 10px; }
+.swatches button { display: flex; flex-direction: column; align-items: center; gap: 5px; background: none; border: 0; padding: 4px; color: var(--muted); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.swatches button span { width: 40px; height: 40px; border-radius: 50%; background: var(--sw); border: 3px solid transparent; box-shadow: 0 0 0 2px var(--card), 0 0 0 4px transparent; transition: box-shadow .15s; }
+.swatches button.on span { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--sw); }
+.swatches button.on { color: var(--text); }
