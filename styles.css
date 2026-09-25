@@ -780,8 +780,8 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
   --cal-ok: #214533; --cal-ok-t: #9fd9b4; --cal-near: #4a3b1a; --cal-near-t: #f1c877; --cal-over: #4d2622; --cal-over-t: #f4a39b;
 }
 :root[data-theme="dark"] body { background: var(--bg); }
-:root[data-theme="dark"] input, :root[data-theme="dark"] select, :root[data-theme="dark"] textarea { background-color: #141a16; color: var(--text); border-color: var(--line); }
-:root[data-theme="dark"] input::placeholder, :root[data-theme="dark"] textarea::placeholder { color: #6f7c75; }
+:root[data-theme="dark"] input, :root[data-theme="dark"] select, :root[data-theme="dark"] textarea { background-color: var(--field, #141a16); color: var(--text); border-color: var(--line); }
+:root[data-theme="dark"] input::placeholder, :root[data-theme="dark"] textarea::placeholder { color: var(--muted); opacity: .75; }
 :root[data-theme="dark"] .card { border-color: var(--line); }
 :root[data-theme="dark"] .toast { box-shadow: 0 8px 24px rgba(0,0,0,.5); }
 :root[data-theme="dark"] .dialog { background: rgba(0,0,0,.55); }
@@ -1460,3 +1460,14 @@ body.simple .fc-line, body.simple .fc-tag { font-size: 15px; }
 .swatches button span { width: 40px; height: 40px; border-radius: 50%; background: var(--sw); border: 3px solid transparent; box-shadow: 0 0 0 2px var(--card), 0 0 0 4px transparent; transition: box-shadow .15s; }
 .swatches button.on span { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--sw); }
 .swatches button.on { color: var(--text); }
+/* ---- v138: every colour scheme gets its own dark backgrounds, so the whole screen sits in one palette */
+:root[data-theme="dark"][data-palette="forest"] { --field: #141a16; }
+:root[data-theme="dark"][data-palette="ocean"] { --bg: #0d1219; --card: #161e28; --line: #26333f; --text: #e4ebf3; --muted: #93a3b3; --field: #111820; --veil: rgba(13,18,25,.92); --track: #26333f; --sand: #d9bf6a; --sand-bg: #2b2a1f; --sand-ic: #433f22; --coral-bg: #3a2326; --coral-ic: #4f2c30; --peach-bg: #33281f; --peach-ic: #4b3828; }
+:root[data-theme="dark"][data-palette="berry"] { --bg: #140f15; --card: #1f1822; --line: #34293a; --text: #efe6ee; --muted: #a795a6; --field: #191219; --veil: rgba(20,15,21,.92); --track: #34293a; --coral-bg: #3d2226; --coral-ic: #522b31; --peach-bg: #36261f; --peach-ic: #4f3728; --sand-bg: #2f2a1f; --sand-ic: #463f22; }
+:root[data-theme="dark"][data-palette="sunset"] { --bg: #16110e; --card: #221a16; --line: #382c25; --text: #f2e9e2; --muted: #ad9c90; --field: #1a1410; --veil: rgba(22,17,14,.92); --track: #382c25; --coral: #f08a84; --coral-bg: #3f2422; --coral-ic: #55302c; --peach: #f0b47a; --peach-bg: #3a2a1c; --peach-ic: #533b26; --sand-bg: #302a1d; --sand-ic: #483f22; --bad: #f47a74; }
+:root[data-theme="dark"][data-palette="slate"] { --bg: #0e1415; --card: #172022; --line: #28353a; --text: #e5eeef; --muted: #96a8ab; --field: #121a1c; --veil: rgba(14,20,21,.92); --track: #28353a; --coral-bg: #3a2426; --coral-ic: #4f2d31; --peach-bg: #32281e; --peach-ic: #4a3827; --sand-bg: #2c2b1f; --sand-ic: #434022; }
+/* a little of the colour in the light backgrounds too */
+:root[data-theme="light"][data-palette="ocean"] { --bg: #f3f6fa; --line: #e0e6ee; --track: #e3e9f0; }
+:root[data-theme="light"][data-palette="berry"] { --bg: #f8f4f8; --line: #eadfe8; --track: #ece2ea; }
+:root[data-theme="light"][data-palette="sunset"] { --bg: #faf5f1; --line: #eee1d7; --track: #f0e3d9; }
+:root[data-theme="light"][data-palette="slate"] { --bg: #f2f6f6; --line: #dfe8e8; --track: #e2eaea; }
