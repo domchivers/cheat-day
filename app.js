@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "140";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "141";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -237,7 +237,7 @@ function archiveDay() {
   if (!state.day.items.length && !(state.day.workouts || []).length) return;
   const m = sumMacros(state.day.items);
   state.history.unshift({ date: state.day.date, budget: budgetToday(), kcal: usedKcal(), items: state.day.items.map((it) => ({ ...basisOf(it), kcal: it.kcal, shareLabel: it.shareLabel, addedAt: it.addedAt || null, meal: it.meal || null })),
-    p: Math.round(m.p), c: Math.round(m.c), f: Math.round(m.f), burned: burnedKcal(), workouts: (state.day.workouts || []).map((w) => ({ name: w.name, minutes: w.minutes, kcal: w.kcal, lifts: w.lifts || [] })) });
+    p: Math.round(m.p), c: Math.round(m.c), f: Math.round(m.f), burned: burnedKcal(), workouts: (state.day.workouts || []).map((w) => ({ name: w.name, type: w.type || null, effort: w.effort || null, minutes: w.minutes, kcal: w.kcal, lifts: w.lifts || [] })) });
   state.history = state.history.slice(0, 400);
   state.history.slice(14).forEach((h) => { if (Array.isArray(h.items)) h.items.forEach((it) => { delete it.photo; }); });
 }
@@ -3346,7 +3346,7 @@ function liftText(l) {
 async function editWorkoutMinutes(w, done) {
   const v = await askText(`How many minutes was "${w.name}"?`, String(w.minutes || ""));
   const m = num(v); if (!m || m < 1 || m > 600) return;
-  w.minutes = Math.round(m); if (w.type) w.kcal = burnFor(w.type, w.minutes, w.effort || "moderate");
+  w.minutes = Math.round(m); w.kcal = burnFor(w.type || ((w.lifts || []).length ? "Gym weights" : "Other"), w.minutes, w.effort || "moderate");
   toast(`${w.name}: ${w.minutes} min`); done();
 }
 /** Edit a workout after the fact: name, minutes, effort, and every set's reps and weight. Draws in place of `anchor`. */
@@ -3381,7 +3381,7 @@ function openWorkoutEditor(w, anchor, onSave, onDelete) {
     if (k === "save") {
       const minutes = num(box.querySelector("#we-min").value); if (!minutes || minutes < 1 || minutes > 600) { toast("How many minutes?"); return; }
       w.name = box.querySelector("#we-name").value.trim() || w.name; w.minutes = Math.round(minutes); w.effort = box.querySelector("#we-effort").value;
-      if (w.type) w.kcal = burnFor(w.type, w.minutes, w.effort);
+      w.kcal = burnFor(w.type || ((w.lifts || []).length ? "Gym weights" : "Other"), w.minutes, w.effort);
       w.lifts = lifts.filter((l) => l.exercise).map((l) => { const d = l.detail.filter((s) => s.reps > 0); const kg = Math.max(0, ...d.map((s) => s.kg)), reps = d.length ? Math.round(d.reduce((x, s) => x + s.reps, 0) / d.length) : 0; return { exercise: l.exercise, sets: d.length, reps, kg, detail: d }; }).filter((l) => l.sets);
       box.remove(); toast(`Saved ${w.name}`); onSave();
     }
@@ -4807,7 +4807,7 @@ function mergeState(local, remote) {
     if (((earlier.items || []).length || (earlier.workouts || []).length) && !history.some((h) => h.date === earlier.date)) {
       const mac = sumMacros(earlier.items || []), burned = (earlier.workouts || []).reduce((a, w) => a + (w.kcal || 0), 0);
       const wb = m.dayBudgets && m.dayBudgets[new Date(earlier.date + "T12:00").getDay()];
-      history.push({ date: earlier.date, budget: (wb > 0 ? wb : m.budget) + (m.eatBack ? burned : 0), kcal: (earlier.items || []).reduce((a, it) => a + (it.kcal || 0), 0), items: (earlier.items || []).map((it) => ({ ...basisOf(it), kcal: it.kcal, shareLabel: it.shareLabel })), p: Math.round(mac.p), c: Math.round(mac.c), f: Math.round(mac.f), burned, workouts: (earlier.workouts || []).map((w) => ({ name: w.name, minutes: w.minutes, kcal: w.kcal, lifts: w.lifts || [] })) });
+      history.push({ date: earlier.date, budget: (wb > 0 ? wb : m.budget) + (m.eatBack ? burned : 0), kcal: (earlier.items || []).reduce((a, it) => a + (it.kcal || 0), 0), items: (earlier.items || []).map((it) => ({ ...basisOf(it), kcal: it.kcal, shareLabel: it.shareLabel })), p: Math.round(mac.p), c: Math.round(mac.c), f: Math.round(mac.f), burned, workouts: (earlier.workouts || []).map((w) => ({ name: w.name, type: w.type || null, effort: w.effort || null, minutes: w.minutes, kcal: w.kcal, lifts: w.lifts || [] })) });
     }
   }
   m.history = history.sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 400);
