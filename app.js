@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "139";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "140";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -3428,10 +3428,43 @@ const DAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
 function renderWeek() {
   const days = trainingDays(7).reverse(), max = Math.max(1, ...days.map((d) => d.burned));
   const total = days.reduce((a, d) => a + d.burned, 0), count = days.reduce((a, d) => a + d.count, 0);
-  $("#w-week").innerHTML = `<div class="bars">${days.map((d, i) => `<div class="bar ${d.count ? "on" : ""} ${i === 6 ? "today" : ""}" style="height:${Math.max(6, Math.round(d.burned / max * 100))}%" title="${d.date}: ${fmt(d.burned)} kcal"></div>`).join("")}</div>
-    <div class="days">${days.map((d, i) => `<span><span class="tick">${d.count ? "✓" : ""}</span>${i === 6 ? "<b>Today</b>" : DAY_LETTERS[new Date(d.date + "T12:00").getDay()]}</span>`).join("")}</div>
-    <div class="totals">This week: ${count} workout${count === 1 ? "" : "s"}, ${fmt(total)} kcal burned</div>`;
+  $("#w-week").innerHTML = `<div class="bars">${days.map((d, i) => `<button class="bar ${d.count ? "on" : ""} ${i === 6 ? "today" : ""}" data-date="${d.date}" style="height:${Math.max(6, Math.round(d.burned / max * 100))}%" aria-label="${d.date}: ${fmt(d.burned)} kcal"></button>`).join("")}</div>
+    <div class="days">${days.map((d, i) => `<span data-date="${d.date}"><span class="tick">${d.count ? "✓" : ""}</span>${i === 6 ? "<b>Today</b>" : DAY_LETTERS[new Date(d.date + "T12:00").getDay()]}</span>`).join("")}</div>
+    <div class="totals">This week: ${count} workout${count === 1 ? "" : "s"}, ${fmt(total)} kcal burned · tap a day to see it</div>`;
+  $("#w-week").querySelectorAll("[data-date]").forEach((el) => el.onclick = () => showWorkoutDay(el.dataset.date));
 }
+/** Jump to a day's workouts: today's list, or that day in Past workouts (opened). */
+function showWorkoutDay(date) {
+  if (date === state.day.date) { const t = $("#w-list"); if (!(state.day.workouts || []).length) { toast("Nothing logged that day"); return; } t.scrollIntoView({ block: "center", behavior: "smooth" }); return; }
+  const h = state.history.find((x) => x.date === date);
+  if (!h || !(h.workouts || []).length) { toast("Nothing logged that day"); return; }
+  pastOpen = date + ":0"; renderPastWorkouts();
+  const row = document.querySelector(`#w-past li[data-key="${date}:0"]`); if (row) row.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+let pastOpen = null;
+function renderPastWorkouts() {
+  const list = $("#w-past"); list.innerHTML = "";
+  const rows = [];
+  for (const h of state.history.slice(0, 60)) (h.workouts || []).forEach((w, k) => rows.push({ h, w, k }));
+  const shown = rows.slice(0, pastAll ? 60 : 8);
+  for (const { h, w, k } of shown) {
+    const key = `${h.date}:${k}`, open = pastOpen === key, lifts = w.lifts || [], sets = lifts.reduce((x, l) => x + (Array.isArray(l.detail) ? l.detail.length : l.sets || 0), 0);
+    const li = document.createElement("li"); li.dataset.key = key; li.className = open ? "open" : "";
+    const when = h.date === dateMinus(1) ? "Yesterday" : new Date(h.date + "T12:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+    li.innerHTML = `<span class="thumb-sm tone-coral"><svg><use href="#i-${lifts.length ? "dumbbell" : "walk"}"/></svg></span><div class="body"><div class="name">${esc(w.name)}</div><div class="detail">${when} · ${w.minutes} min${lifts.length ? ` · ${lifts.length} exercise${lifts.length === 1 ? "" : "s"} · ${sets} set${sets === 1 ? "" : "s"}` : ""}</div></div><div class="kcal">${fmt(w.kcal)}</div><svg class="chev w-chev${open ? " up" : ""}"><use href="#i-chev"/></svg>`
+      + (open ? `<div class="w-open">${lifts.length ? `<ul class="w-sets">${lifts.map((l) => `<li><b>${esc(l.exercise)}</b><span>${esc(liftText(l).slice(l.exercise.length + 1))}</span></li>`).join("")}</ul>` : ""}<div class="fr-acts"><button class="btn mint slim" data-act="edit">Edit</button></div></div>` : "");
+    li.onclick = (e) => {
+      const act = e.target.closest("[data-act]");
+      if (act && act.dataset.act === "edit") { e.stopPropagation(); openWorkoutEditor(w, li.querySelector(".w-open"), () => { h.burned = (h.workouts || []).reduce((x, y) => x + (y.kcal || 0), 0); save(); renderWorkouts(); }, () => { h.workouts.splice(k, 1); h.burned = (h.workouts || []).reduce((x, y) => x + (y.kcal || 0), 0); save(); renderWorkouts(); }); return; }
+      pastOpen = open ? null : key; renderPastWorkouts();
+    };
+    list.appendChild(li);
+  }
+  if (rows.length > 8 && !pastAll) { const b = document.createElement("button"); b.className = "btn ghost slim"; b.textContent = `Show all ${Math.min(rows.length, 60)}`; b.onclick = () => { pastAll = true; renderPastWorkouts(); }; list.insertAdjacentElement("afterend", b); b.id = "w-past-more"; }
+  const old = $("#w-past-more"); if (old && (pastAll || rows.length <= 8)) old.remove();
+  $("#w-past-hint").textContent = rows.length ? "Tap one for its sets, or to change it." : "Finished workouts land here once the day is over.";
+}
+let pastAll = false;
 
 function renderWorkouts() {
   const ws = state.day.workouts || [], burned = burnedKcal(), streak = streakDays();
@@ -3461,6 +3494,7 @@ function renderWorkouts() {
     list.appendChild(li);
   }
   $("#w-empty").classList.toggle("hidden", ws.length > 0);
+  renderPastWorkouts();
   // routines
   const rl = $("#w-routines"); rl.innerHTML = "";
   for (const r of state.routines) {

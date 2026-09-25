@@ -1493,3 +1493,11 @@ body.simple .fc-line, body.simple .fc-tag { font-size: 15px; }
 :root[data-palette="rainbow"] #ask-card .circle { background: linear-gradient(135deg, #a06cff, #ff6fd8); color: #fff; }
 :root[data-palette="rainbow"] .card { border-color: var(--line); }
 .swatches .sw-rainbow span { background: conic-gradient(#ff5f6d, #ffc371, #ffe66d, #4ecdc4, #45b7ff, #a06cff, #ff6fd8, #ff5f6d); --sw: #a06cff; }
+/* ---- v140: past workouts, a tappable week, a rainbow arc */
+.week-card .bar { border: 0; padding: 0; cursor: pointer; }
+.week-card .days span[data-date] { cursor: pointer; }
+#w-past li { flex-wrap: wrap; cursor: pointer; }
+#w-past li .w-open { flex-basis: 100%; padding: 4px 0 4px 56px; text-align: left; }
+#w-past-more { margin-top: 4px; }
+.swatches .sw-rainbow span { background: var(--card); display: grid; place-items: center; border: 1px solid var(--line); }
+.swatches .sw-rainbow span svg { width: 30px; height: 30px; }
