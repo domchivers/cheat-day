@@ -1471,3 +1471,25 @@ body.simple .fc-line, body.simple .fc-tag { font-size: 15px; }
 :root[data-theme="light"][data-palette="berry"] { --bg: #f8f4f8; --line: #eadfe8; --track: #ece2ea; }
 :root[data-theme="light"][data-palette="sunset"] { --bg: #faf5f1; --line: #eee1d7; --track: #f0e3d9; }
 :root[data-theme="light"][data-palette="slate"] { --bg: #f2f6f6; --line: #dfe8e8; --track: #e2eaea; }
+/* ---- v139: rainbow, for fun */
+:root { --rb: linear-gradient(90deg, #ff5f6d, #ffc371, #ffe66d, #4ecdc4, #45b7ff, #a06cff, #ff6fd8); }
+:root[data-palette="rainbow"] { --green: #6d3fd6; --green-2: #7c4fe0; --mint: #e6dcfb; --mint-2: #f1ebfd; --track-2: #ded3f5; --cal-ok: #e3d8fb; --cal-ok-t: #4b2ba3; --bg: #fbf7ff; --line: #e9e0f5; --track: #ece5f6;
+  --coral-bg: #ffe4ec; --coral-ic: #ffc9d8; --coral: #e0457b; --peach-bg: #fff0d6; --peach-ic: #ffd9a3; --peach: #e58a1f; --sand-bg: #e2f7f3; --sand-ic: #b6ede4; --sand: #148f7e; }
+:root[data-theme="dark"][data-palette="rainbow"] { --green: #b79bff; --green-2: #c3aaff; --mint: #2f2547; --mint-2: #251d38; --track-2: #3a2e57; --cal-ok: #33275a; --cal-ok-t: #d8c8ff; --bg: #120f1c; --card: #1c1728; --line: #2f2742; --text: #efe9fb; --muted: #a79cc0; --field: #171223; --veil: rgba(18,15,28,.92); --track: #2f2742;
+  --coral: #ff7aa5; --coral-bg: #3d1f2e; --coral-ic: #55283e; --peach: #ffb45a; --peach-bg: #3a2a16; --peach-ic: #533a1e; --sand: #5fe0cb; --sand-bg: #17332f; --sand-ic: #1f4a44; }
+:root[data-palette="rainbow"] .logo span, :root[data-palette="rainbow"] .result-big span, :root[data-palette="rainbow"] .budget-card .big b { background: var(--rb); -webkit-background-clip: text; background-clip: text; color: transparent; }
+:root[data-palette="rainbow"] .bar span:not(.over), :root[data-palette="rainbow"] .level-card .bar span, :root[data-palette="rainbow"] .lv-bar, :root[data-palette="rainbow"] .macro-tiles .bar span, :root[data-palette="rainbow"] .d-macros .mb span { background: var(--rb) !important; }
+:root[data-palette="rainbow"] .btn.primary, :root[data-palette="rainbow"] .wl-btn, :root[data-palette="rainbow"] .inbox-card .add, :root[data-palette="rainbow"] .list .add, :root[data-palette="rainbow"] .recipe-btn { background: linear-gradient(135deg, #6d3fd6, #e0457b); color: #fff; }
+:root[data-palette="rainbow"] .tabbar button.on { background: var(--rb); -webkit-background-clip: text; background-clip: text; color: transparent; }
+:root[data-palette="rainbow"] .tabbar button.on svg { color: #a06cff; }
+:root[data-palette="rainbow"] .grid2 > .action:nth-child(1) { background: linear-gradient(135deg, #ffe4ec, #ffd6f3); } :root[data-palette="rainbow"] .grid2 > .action:nth-child(1) .circle { background: #ff5f6d; color: #fff; }
+:root[data-palette="rainbow"] .grid2 > .action:nth-child(2) { background: linear-gradient(135deg, #fff0d6, #ffeab0); } :root[data-palette="rainbow"] .grid2 > .action:nth-child(2) .circle { background: #ff9f43; color: #fff; }
+:root[data-palette="rainbow"] .grid2 > .action:nth-child(3) { background: linear-gradient(135deg, #dff8f4, #d6f5e8); } :root[data-palette="rainbow"] .grid2 > .action:nth-child(3) .circle { background: #1dbf9f; color: #fff; }
+:root[data-palette="rainbow"] .grid2 > .action:nth-child(4) { background: linear-gradient(135deg, #e0efff, #e6dcfb); } :root[data-palette="rainbow"] .grid2 > .action:nth-child(4) .circle { background: #45b7ff; color: #fff; }
+:root[data-theme="dark"][data-palette="rainbow"] .grid2 > .action:nth-child(1) { background: linear-gradient(135deg, #3a1f2e, #3d2340); }
+:root[data-theme="dark"][data-palette="rainbow"] .grid2 > .action:nth-child(2) { background: linear-gradient(135deg, #3a2a16, #3a3318); }
+:root[data-theme="dark"][data-palette="rainbow"] .grid2 > .action:nth-child(3) { background: linear-gradient(135deg, #16332f, #163326); }
+:root[data-theme="dark"][data-palette="rainbow"] .grid2 > .action:nth-child(4) { background: linear-gradient(135deg, #1a2a3f, #2a2145); }
+:root[data-palette="rainbow"] #ask-card .circle { background: linear-gradient(135deg, #a06cff, #ff6fd8); color: #fff; }
+:root[data-palette="rainbow"] .card { border-color: var(--line); }
+.swatches .sw-rainbow span { background: conic-gradient(#ff5f6d, #ffc371, #ffe66d, #4ecdc4, #45b7ff, #a06cff, #ff6fd8, #ff5f6d); --sw: #a06cff; }
