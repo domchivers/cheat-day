@@ -1501,3 +1501,5 @@ body.simple .fc-line, body.simple .fc-tag { font-size: 15px; }
 #w-past-more { margin-top: 4px; }
 .swatches .sw-rainbow span { background: var(--card); display: grid; place-items: center; border: 1px solid var(--line); }
 .swatches .sw-rainbow span svg { width: 30px; height: 30px; }
+.swatches .sw-rainbow span { background: none; border: 0; overflow: hidden; }
+.swatches .sw-rainbow span svg { width: 40px; height: 40px; display: block; }
