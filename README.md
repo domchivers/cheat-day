@@ -630,3 +630,23 @@ and keeps the AI's guess only when neither has a sensible match (a database numb
 Setup: Edge Functions -> Deploy a new function named `food` with `supabase/functions/food/index.ts`,
 and add the secret `FDC_API_KEY` (free from https://fdc.nal.usda.gov/api-key-signup).
 Without it the app quietly keeps the AI's numbers.
+
+
+## A helper can set a friend's budget
+
+The app's owner (email listed in `HELPER_EMAILS` in app.js) gets a "Set X's daily budget" option in the ⋯ menu on a friend's card.
+The friend's app applies it next time it opens or syncs, with a note saying who set it. Run once in the SQL editor:
+
+```sql
+create table if not exists public.budget_overrides (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  budget integer not null,
+  set_by uuid not null references auth.users(id) on delete cascade,
+  updated_at timestamptz not null default now()
+);
+alter table public.budget_overrides enable row level security;
+create policy "override read" on public.budget_overrides for select to authenticated using (user_id = auth.uid() or set_by = auth.uid());
+create policy "override write" on public.budget_overrides for all to authenticated
+  using (set_by = auth.uid() and auth.jwt() ->> 'email' = 'domchivers@gmail.com' and public.is_friend(user_id))
+  with check (set_by = auth.uid() and auth.jwt() ->> 'email' = 'domchivers@gmail.com' and public.is_friend(user_id));
+```

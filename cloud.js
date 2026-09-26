@@ -160,6 +160,13 @@
     async inbox() { return this.rest(`/rest/v1/sends?to_user=eq.${this.uid}&status=eq.new&select=*&order=created_at.desc&limit=20`); },
     async sendItem(toUser, item) { return this.rest(`/rest/v1/sends`, { method: "POST", body: JSON.stringify([{ from_user: this.uid, to_user: toUser, ...item }]) }); },
     async settleSend(id, status) { return this.rest(`/rest/v1/sends?id=eq.${id}&to_user=eq.${this.uid}`, { method: "PATCH", body: JSON.stringify({ status }) }); },
+    // ---- a helper (the app's owner) can set a friend's daily budget
+    async setBudgetFor(userId, budget) {
+      if (budget == null) return this.rest(`/rest/v1/budget_overrides?user_id=eq.${userId}`, { method: "DELETE" });
+      return this.rest(`/rest/v1/budget_overrides`, { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify([{ user_id: userId, budget, set_by: this.uid, updated_at: new Date().toISOString() }]) });
+    },
+    async budgetFor(userId) { const r = await this.rest(`/rest/v1/budget_overrides?user_id=eq.${userId}&select=*`); return (r || [])[0] || null; },
+    async myBudgetOverride() { return this.budgetFor(this.uid); },
     // ---- the feed
     async posts(limit = 40) { return this.rest(`/rest/v1/posts?select=*&order=created_at.desc&limit=${limit}`); },
     async createPost(post) { return this.rest(`/rest/v1/posts`, { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify([{ owner: this.uid, ...post }]) }); },

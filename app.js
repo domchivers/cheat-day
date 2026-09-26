@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "142";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "143";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1143,6 +1143,20 @@ async function renderFriends() {
 }
 // ---- friends: a card each, as before, with a little more on them: streak and level, the week as dots,
 //      and a tap opens their day by meal with Cheer and Send
+const HELPER_EMAILS = ["domchivers@gmail.com"];   // who may set a friend's budget for them
+const isHelper = () => !!(window.cloud && window.cloud.user && HELPER_EMAILS.includes(String(window.cloud.user.email || "").toLowerCase()));
+/** A friend's phone picks this up: a budget the helper set for them. Applied once per change, with a note. */
+async function applyBudgetOverride() {
+  const c = window.cloud; if (!(c && c.user)) return;
+  let o = null; try { o = await c.myBudgetOverride(); } catch (e) { return; }   // the table may not exist yet
+  if (!o || !o.budget) return;
+  if (state.overrideApplied === o.updated_at) return;
+  state.overrideApplied = o.updated_at; state.budget = Math.round(o.budget); state.dayBudgets = {};
+  if (state.plan) state.plan.kcal = state.budget;
+  save(); renderHome();
+  const who = (fr.people[o.set_by] && fr.people[o.set_by].display_name) || "Dom";
+  toast(`${who} set your daily budget to ${fmt(state.budget)} kcal`, 6000);
+}
 const frCheered = new Set();
 function drawFriendRows(friends, dayLabel) {
   const c = window.cloud, today = localDate(), fl = $("#fr-list"); fl.innerHTML = "";
@@ -1191,7 +1205,7 @@ function drawFriendRows(friends, dayLabel) {
           ${active && wo.length ? `<ul class="ate"><li class="ate-grp"><span>Workouts</span><b></b></li>${wo.map((w) => `<li><span>${esc(String(w.name).replace(/^Workout: /, ""))}</span><b>−${fmt(-w.kcal)}</b></li>`).join("")}</ul>` : ""}
           <div class="fr-acts"><button class="btn mint slim" data-act="cheer"${frCheered.has(f.uid) ? " disabled" : ""}>${frCheered.has(f.uid) ? "Cheered 👏" : "👏 Cheer"}</button><button class="btn ghost slim" data-act="send">Send food</button><button class="fc-menu" data-act="menu" aria-label="More options"><svg><use href="#i-more"/></svg></button></div>
           <div class="fr-send hidden"></div>
-          <div class="fc-menu-box hidden"><button class="fc-remove fr-remove">Remove ${esc(name)} as a friend</button></div>
+          <div class="fc-menu-box hidden">${isHelper() ? `<button class="fc-help" data-act="budget">Set ${esc(name)}'s daily budget</button>` : ""}<button class="fc-remove fr-remove">Remove ${esc(name)} as a friend</button></div>
         </div>` : ""}
       </div>`;
     card.onclick = (e) => { if (e.target.closest("button, .fr-send")) return; if (frOpen.has(f.uid)) frOpen.delete(f.uid); else frOpen.add(f.uid); drawFriendRows(fr.lastFriends, fr.lastDayLabel); };
@@ -1215,6 +1229,19 @@ function drawFriendRows(friends, dayLabel) {
       });
     };
     card.querySelector("[data-act=menu]").onclick = () => card.querySelector(".fc-menu-box").classList.toggle("hidden");
+    const helpBtn = card.querySelector("[data-act=budget]");
+    if (helpBtn) helpBtn.onclick = async (e) => {
+      e.stopPropagation();
+      let cur = null; try { cur = await c.budgetFor(f.uid); } catch (err) {}
+      const v = await askText(`${name}'s daily budget in kcal. Their app updates next time it opens. Leave empty to stop overriding.`, cur && cur.budget ? String(cur.budget) : "");
+      if (v === null) return;
+      const n = num(v);
+      try {
+        if (!v.trim()) { await c.setBudgetFor(f.uid, null); toast(`No longer setting ${name}'s budget`); return; }
+        if (!n || n < 800 || n > 6000) { toast("Between 800 and 6,000 kcal"); return; }
+        await c.setBudgetFor(f.uid, Math.round(n)); toast(`${name}'s budget set to ${fmt(Math.round(n))} kcal`);
+      } catch (err) { toast("Couldn't set it: " + c.explain(err), 6000); }
+    };
     card.querySelector(".fr-remove").onclick = async () => { if (!await ask(`Remove ${name} as a friend? You'll stop seeing each other's days.`)) return; try { await c.removeFriend(f.id); renderFriends(); } catch (err) { toast(c.explain(err)); } };
     return card;
   }
@@ -4751,7 +4778,7 @@ $("#share-add").onclick = () => {
 
 // ---------------------------------------------------------------- account + sync (optional, see cloud.js)
 
-const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "weekGoals", "seenBadges", "goalWins", "postCount", "pbCount", "body", "goalWeight", "goalStart", "simple", "onboarded", "reminders", "reactCount", "commentCount", "sendCount", "friendCount", "tombs", "dayBudgets", "profile", "plan", "restSeconds", "weighDays", "dayKeep", "dayRolled", "updatedAt"];   // the API key stays on the device
+const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "weekGoals", "seenBadges", "goalWins", "postCount", "pbCount", "body", "goalWeight", "goalStart", "simple", "onboarded", "reminders", "reactCount", "commentCount", "sendCount", "friendCount", "tombs", "dayBudgets", "profile", "plan", "restSeconds", "weighDays", "dayKeep", "dayRolled", "overrideApplied", "updatedAt"];   // the API key stays on the device
 let pushTimer = null, pulledOnce = false;
 function schedulePush() {
   if (!window.cloud || !window.cloud.user) return;
@@ -4826,6 +4853,7 @@ function mergeState(local, remote) {
   return m;
 }
 async function pull() {
+  setTimeout(applyBudgetOverride, 1500);
   const c = window.cloud; if (!c || !c.user) return;
   let remote;
   try { remote = await c.pull(); } catch (err) { syncProblem(err); return; }

@@ -1503,3 +1503,4 @@ body.simple .fc-line, body.simple .fc-tag { font-size: 15px; }
 .swatches .sw-rainbow span svg { width: 30px; height: 30px; }
 .swatches .sw-rainbow span { background: none; border: 0; overflow: hidden; }
 .swatches .sw-rainbow span svg { width: 40px; height: 40px; display: block; }
+.fc-help { display: block; width: 100%; background: none; border: 0; color: var(--green); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; padding: 6px 8px 10px; border-bottom: 1px solid var(--line); margin-bottom: 6px; }
