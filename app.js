@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "143";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "144";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1157,6 +1157,31 @@ async function applyBudgetOverride() {
   const who = (fr.people[o.set_by] && fr.people[o.set_by].display_name) || "Dom";
   toast(`${who} set your daily budget to ${fmt(state.budget)} kcal`, 6000);
 }
+/** Edits the helper made to this person's food: change a calorie figure or remove an item, once, with a note. */
+async function applyHelperEdits() {
+  const c = window.cloud; if (!(c && c.user) || isHelper()) return;
+  let edits = []; try { edits = await c.myHelperEdits(); } catch (e) { return; }
+  if (!edits || !edits.length) return;
+  let changed = 0;
+  for (const ed of edits) {
+    const day = String(ed.day) === state.day.date ? state.day : state.history.find((h) => h.date === String(ed.day));
+    const items = day && Array.isArray(day.items) ? day.items : null;
+    if (items) {
+      const key = String(ed.item_name || "").toLowerCase();
+      let it = items.find((x) => String(x.name || "").toLowerCase() === key && Math.round(x.kcal || 0) === Math.round(ed.old_kcal || 0)) || items.find((x) => String(x.name || "").toLowerCase() === key);
+      if (it) {
+        if (ed.remove) { day.items = items.filter((x) => x !== it); }
+        else { const k = Math.round(ed.new_kcal); it.kcal = k; if (it.kcalPerServing != null && it.servingSize == null) it.kcalPerServing = k; }
+        if (day !== state.day) recalcPastDay(day);
+        changed++;
+        const who = (fr.people[ed.set_by] && fr.people[ed.set_by].display_name) || "Dom";
+        toast(ed.remove ? `${who} removed ${ed.item_name} from ${String(ed.day) === state.day.date ? "today" : ed.day}` : `${who} changed ${ed.item_name} to ${fmt(ed.new_kcal)} kcal`, 6000);
+      }
+    }
+    try { await c.markEditApplied(ed.id); } catch (e) {}
+  }
+  if (changed) { save(); renderHome(); publishDay(); }
+}
 const frCheered = new Set();
 function drawFriendRows(friends, dayLabel) {
   const c = window.cloud, today = localDate(), fl = $("#fr-list"); fl.innerHTML = "";
@@ -1201,7 +1226,7 @@ function drawFriendRows(friends, dayLabel) {
         <div class="fc-week">${week.map((day) => dot(day)).join("")}</div>
         ${line ? `<div class="fc-line">${line}${active ? `<svg class="fc-chev${open ? " up" : ""}"><use href="#i-chev"/></svg>` : ""}</div>` : ""}
         ${open ? `<div class="fc-open">
-          ${active ? `<ul class="ate">${ateList(food)}</ul>` : ""}
+          ${active ? `<ul class="ate${isHelper() ? " ate-help" : ""}">${ateList(food)}</ul>${isHelper() ? `<p class="muted tiny">Tap a food to change its calories for ${esc(name)}.</p>` : ""}` : ""}
           ${active && wo.length ? `<ul class="ate"><li class="ate-grp"><span>Workouts</span><b></b></li>${wo.map((w) => `<li><span>${esc(String(w.name).replace(/^Workout: /, ""))}</span><b>−${fmt(-w.kcal)}</b></li>`).join("")}</ul>` : ""}
           <div class="fr-acts"><button class="btn mint slim" data-act="cheer"${frCheered.has(f.uid) ? " disabled" : ""}>${frCheered.has(f.uid) ? "Cheered 👏" : "👏 Cheer"}</button><button class="btn ghost slim" data-act="send">Send food</button><button class="fc-menu" data-act="menu" aria-label="More options"><svg><use href="#i-more"/></svg></button></div>
           <div class="fr-send hidden"></div>
@@ -1229,6 +1254,15 @@ function drawFriendRows(friends, dayLabel) {
       });
     };
     card.querySelector("[data-act=menu]").onclick = () => card.querySelector(".fc-menu-box").classList.toggle("hidden");
+    if (isHelper()) card.querySelectorAll(".ate-help li:not(.ate-grp)").forEach((li) => li.onclick = async (e) => {
+      e.stopPropagation();
+      const itemName = li.querySelector("span").textContent.trim(), oldKcal = num(li.querySelector("b").textContent.replace(/,/g, ""));
+      const v = await askText(`Calories for ${name}'s "${itemName}" (now ${fmt(oldKcal)}). Type 0 to remove it. Their app updates next time it opens.`, String(oldKcal || ""));
+      if (v === null) return;
+      const n = parseFloat(String(v).replace(/,/g, "")); if (!isFinite(n) || n < 0 || n > 5000) { toast("A number of kcal, or 0 to remove"); return; }
+      try { await c.helperEdit(f.uid, { day: String(d.day), item_name: itemName, old_kcal: oldKcal || 0, new_kcal: n ? Math.round(n) : null, remove: !n }); toast(n ? `${itemName} will be ${fmt(Math.round(n))} kcal for ${name}` : `${itemName} will be removed for ${name}`); }
+      catch (err) { toast("Couldn't send that: " + c.explain(err), 6000); }
+    });
     const helpBtn = card.querySelector("[data-act=budget]");
     if (helpBtn) helpBtn.onclick = async (e) => {
       e.stopPropagation();
@@ -4853,7 +4887,7 @@ function mergeState(local, remote) {
   return m;
 }
 async function pull() {
-  setTimeout(applyBudgetOverride, 1500);
+  setTimeout(applyBudgetOverride, 1500); setTimeout(applyHelperEdits, 2500);
   const c = window.cloud; if (!c || !c.user) return;
   let remote;
   try { remote = await c.pull(); } catch (err) { syncProblem(err); return; }

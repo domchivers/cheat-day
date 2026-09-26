@@ -650,3 +650,25 @@ create policy "override write" on public.budget_overrides for all to authenticat
   using (set_by = auth.uid() and auth.jwt() ->> 'email' = 'domchivers@gmail.com' and public.is_friend(user_id))
   with check (set_by = auth.uid() and auth.jwt() ->> 'email' = 'domchivers@gmail.com' and public.is_friend(user_id));
 ```
+
+The helper can also tap a food on a friend's card to change its calories (or type 0 to remove it). Run once:
+
+```sql
+create table if not exists public.helper_edits (
+  id bigserial primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  day date not null,
+  item_name text not null,
+  old_kcal integer,
+  new_kcal integer,
+  remove boolean not null default false,
+  set_by uuid not null references auth.users(id) on delete cascade,
+  applied boolean not null default false,
+  created_at timestamptz not null default now()
+);
+alter table public.helper_edits enable row level security;
+create policy "edits read" on public.helper_edits for select to authenticated using (user_id = auth.uid() or set_by = auth.uid());
+create policy "edits write" on public.helper_edits for insert to authenticated
+  with check (set_by = auth.uid() and auth.jwt() ->> 'email' = 'domchivers@gmail.com' and public.is_friend(user_id));
+create policy "edits applied" on public.helper_edits for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+```

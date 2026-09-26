@@ -165,6 +165,9 @@
       if (budget == null) return this.rest(`/rest/v1/budget_overrides?user_id=eq.${userId}`, { method: "DELETE" });
       return this.rest(`/rest/v1/budget_overrides`, { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify([{ user_id: userId, budget, set_by: this.uid, updated_at: new Date().toISOString() }]) });
     },
+    async helperEdit(userId, edit) { return this.rest(`/rest/v1/helper_edits`, { method: "POST", body: JSON.stringify([{ user_id: userId, set_by: this.uid, ...edit }]) }); },
+    async myHelperEdits() { return this.rest(`/rest/v1/helper_edits?user_id=eq.${this.uid}&applied=eq.false&select=*&order=created_at.asc&limit=50`); },
+    async markEditApplied(id) { return this.rest(`/rest/v1/helper_edits?id=eq.${id}&user_id=eq.${this.uid}`, { method: "PATCH", body: JSON.stringify({ applied: true }) }); },
     async budgetFor(userId) { const r = await this.rest(`/rest/v1/budget_overrides?user_id=eq.${userId}&select=*`); return (r || [])[0] || null; },
     async myBudgetOverride() { return this.budgetFor(this.uid); },
     // ---- the feed
