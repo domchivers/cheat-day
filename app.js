@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "144";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "145";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1638,7 +1638,7 @@ function saveChat() {
   if (!askTurns.length) return;
   if (!chatId) chatId = uid();
   const first = askTurns.find((t) => t.role === "me");
-  const rec = { id: chatId, title: (first ? first.text : "Chat").slice(0, 60), when: new Date().toISOString(), turns: askTurns.slice(-40) };
+  const rec = { id: chatId, title: (first ? first.text : "Chat").slice(0, 60), when: new Date().toISOString(), turns: askTurns.slice(-40).map((t) => { const { images: _drop, ...rest } = t; return rest; }) };
   const i = state.chats.findIndex((c) => c.id === chatId);
   if (i >= 0) state.chats[i] = rec; else state.chats.unshift(rec);
   state.chats = state.chats.slice(0, 30);
@@ -1735,13 +1735,17 @@ async function sendAsk() {
   for (const f of files) { const img = await loadImage(f); images.push(drawScaled(img, 1024).toDataURL("image/jpeg", 0.85)); }
   const image = images[0] || null;
   bubble("me", `${images.length ? `<div class="shots">${images.map((im) => `<img src="${im}" alt="">`).join("")}</div>` : ""}${esc(text || "(photos)")}`);
-  askTurns.push({ role: "me", text: (text || "") + (images.length ? ` (${images.length} photo${images.length === 1 ? "" : "s"})` : "") });
+  askTurns.push({ role: "me", text: (text || "") + (images.length ? ` (${images.length} photo${images.length === 1 ? "" : "s"})` : ""), images: images.length ? images.slice(0, 4) : undefined });
   $("#ask-text").value = ""; askFiles = []; showAskPreview();
   const past = askTurns.slice(-8, -1);
+  let carried = [];   // earlier photos come along when this message has none
+  if (!images.length) { const withPics = past.slice().reverse().find((t) => t.role === "me" && t.images && t.images.length); if (withPics) carried = withPics.images; }
   const lastRecipe = past.slice().reverse().find((t) => t.role === "bot" && t.result && t.result.kind === "recipe" && t.result.recipe);
   const history = past.map((t) => {
     if (t.role === "me") return `They: ${t.text}`;
     const r = t.result || {}; let line = `You: ${t.text}`;
+    if (r.kind === "estimate" && r.estimate) { const g = r.estimate; line += ` [you worked out: ${g.name}, ${fmt(g.portion_g)} ${g.unit || "g"}, ${fmt(g.kcal_total)} kcal, P ${Math.round(g.protein_g || 0)} C ${Math.round(g.carbs_g || 0)} F ${Math.round(g.fat_g || 0)}${(g.parts || []).length > 1 ? `; parts: ${g.parts.map((p) => `${p.name} ${fmt(p.kcal)} kcal`).join(", ")}` : ""}]`; }
+    if (r.kind === "answer" && r.reply && r.reply.length > 220) line = `You: ${r.reply}`;
     if (r.kind === "recipe" && r.recipe && t !== lastRecipe) line += ` [an earlier recipe: ${recipeSummary(r.recipe)}]`;
     if (r.kind === "plan" && r.plan) line += ` [suggested: ${(r.plan.suggestions || []).map((x) => `${x.name} ${fmt(x.kcal)} kcal`).join(", ")}]`;
     if (r.kind === "lighter" && r.lighter) line += ` [lighter ${r.lighter.name}: ${fmt(r.lighter.kcal_per_serving)} kcal]`;
@@ -1751,7 +1755,7 @@ async function sendAsk() {
 If they want it changed, start from exactly this version: change only what they ask, keep every other ingredient and amount the same, never bring back something they asked to remove, and say in the reply exactly what changed and the new calories per portion.
 ` : "";
   const prompt = `You are the assistant inside a cheat-day food diary app. ${dayContext()}
-${history ? `Recent conversation:\n${history}\n` : ""}${current}They now say: "${text || "(photos, no words)"}"${images.length === 1 ? " (a photo is attached. If it shows food to log, use it for what the food is and the portion size, trusting their words over the photo for the name. If it shows the inside of a fridge, a cupboard or loose ingredients, treat it as what they have to cook with)" : images.length > 1 ? ` (${images.length} photos are attached, in order. They may show the dish, a menu or label for it, and what was left over at the end. Use the menu or label for names and stated nutrition, the dish photo for the portion, and subtract anything shown left over so the estimate is what was actually eaten.)` : ""}.
+${history ? `Recent conversation:\n${history}\n` : ""}${current}${carried.length ? `(${carried.length} photo${carried.length === 1 ? " is" : "s are"} attached again from earlier in this conversation, in the same order they first sent them. Their new message is about those.)\n` : ""}They now say: "${text || "(photos, no words)"}"${images.length === 1 ? " (a photo is attached. If it shows food to log, use it for what the food is and the portion size, trusting their words over the photo for the name. If it shows the inside of a fridge, a cupboard or loose ingredients, treat it as what they have to cook with)" : images.length > 1 ? ` (${images.length} photos are attached, in order. They may show the dish, a menu or label for it, and what was left over at the end. Use the menu or label for names and stated nutrition, the dish photo for the portion, and subtract anything shown left over so the estimate is what was actually eaten.)` : ""}.
 
 Decide what they want and fill exactly one of estimate / plan / edit / recipe / lighter (leave the others null), or kind=answer for a plain question:
 - estimate: a food or plate to log, as one portion with honest kcal and macros, broken into parts (each component with its cooked grams, and oil, butter or sauce as separate parts) so the app can check each against a food database.
@@ -1759,8 +1763,14 @@ Decide what they want and fill exactly one of estimate / plan / edit / recipe / 
 - edit: they're correcting today's list ("I only had 2 eggs", "remove the toast", "add a banana") or logging exercise (action "workout": activity from Walk, Run, Cycle, Swim, Gym weights, HIIT, Yoga / stretch, Football, Tennis / padel, Hike, Rowing, Elliptical, Dance, Boxing, Climbing, Other; minutes; effort; for gym sessions the lifts as sets × reps at kg); match targets to the exact names given above.
 - recipe: a dish to cook, with realistic ingredient amounts, kcal and macros per ingredient (standard reference values, so the numbers add up), and short method steps. If they give a calorie limit, or ask it to fit what's left today, put that in target_kcal and check the per-portion total is at or under it before you answer. To make it tastier within the limit, pay for anything you add by trimming something else (oil, cheese, the carb portion) in the same answer, rather than adding and removing things over several turns. If a photo shows a fridge, cupboard or ingredients, build the recipe mainly from what's visible (assume basics like oil, salt, pepper and spices), size one portion to fit the calories left today, and name two other dishes they could make instead in the reply.
 - lighter: a lighter way to have something, with tips and the lighter serving's numbers.
-Estimates use standard reference values. Keep reply short and friendly.`;
+Estimates use standard reference values. Keep reply short and friendly.
+Hard rules:
+- If they give numbers themselves (calories, grams, protein, carbs, fat), use exactly those numbers. Never replace them with your own estimate.
+- Only talk about foods that are actually in the conversation: their message, their photos, their day, their meals. Never invent placeholders like "Option 1" or a food they didn't mention. If they refer to "the other ones" or "the options", that means the items in the photos or earlier messages: name each one by what it is.
+- When several products are in the photos, read every one of them and give each its own numbers before recommending. For a comparison, answer with kind=answer and a reply that lists each item with its calories and protein for the amount that fits, then the pick and why (up to six sentences is fine here).
+- If you genuinely can't tell what something is, say so and ask, rather than guessing.`;
   const content = [];
+  for (const im of carried) content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: im.split(",")[1] } });
   for (const im of images) content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: im.split(",")[1] } });
   content.push({ type: "text", text: prompt });
   const thinking = bubble("bot", `<span class="muted ai-live">Thinking… <span class="secs"></span><a href="#" class="cancel">Cancel</a></span>`);
