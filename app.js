@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "145";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "146";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1783,6 +1783,62 @@ Hard rules:
     saveChat();
   } catch (err) { thinking.innerHTML = err.message === "Cancelled" ? `<span class="muted">Stopped. Ask again whenever you like.</span>` : `<span class="over">${esc(err.message || "Something went wrong")}</span>`; }
 }
+/** The assistant's recipe card. Ingredients can be tapped: change the amount, swap for something from Search, or remove. */
+let recipeOpenRow = null;
+function drawRecipeCard(holder, r) {
+  const rc = r.recipe, portions = num(rc.portions) || 1;
+  if (!rc.items) rc.items = (rc.ingredients || []).map(recipeIngredientToItem);   // kept on the result, so edits stick
+  const items = rc.items, total = items.reduce((a, it) => a + it.kcal, 0), mac = sumMacros(items);
+  holder.innerHTML = `<div class="card"><b>${esc(rc.name)}</b> · ${portions} portion${portions === 1 ? "" : "s"}${statRow(total / portions, mac.p / portions, mac.c / portions, mac.f / portions)}<p class="muted tiny">per portion</p>${rc.target_kcal ? (total / portions <= rc.target_kcal + 10 ? `<p class="tiny fit-line ok">Fits your ${fmt(rc.target_kcal)} kcal limit</p>` : `<p class="tiny fit-line over">${fmt(total / portions - rc.target_kcal)} kcal over your ${fmt(rc.target_kcal)} limit. Say "fit it" and I'll trim it.</p>`) : ""}
+      <ul class="list rc-items">${items.map((it) => `<li class="ingredient" data-id="${it.id}"><div class="body"><div class="name">${esc(it.name)}</div><div class="detail">${fmt(it.grams)} ${it.unit || "g"} · ${fmt(it.kcal)} kcal${it.p100 != null ? ` · P ${Math.round(it.grams * it.p100 / 100)} C ${Math.round(it.grams * (it.c100 || 0) / 100)} F ${Math.round(it.grams * (it.f100 || 0) / 100)}` : ""}</div></div><svg class="chev"><use href="#i-chev"/></svg>${recipeOpenRow === it.id ? `<div class="row-actions"><button data-act="amount">Amount</button><button data-act="swap">Swap</button><button data-act="remove" class="danger">Remove</button></div>` : ""}</li>`).join("")}</ul>
+      <p class="muted tiny">Tap an ingredient to change it.</p>
+      <ol class="method">${(rc.steps || []).map((st) => `<li>${esc(st)}</li>`).join("")}</ol>
+      <p class="muted tiny">${esc(rc.notes || "")}</p><button class="btn primary" data-act="save">Save as a meal</button></div>`;
+  holder.querySelectorAll(".rc-items li").forEach((li) => {
+    const it = items.find((x) => x.id === li.dataset.id);
+    li.onclick = async (e) => {
+      const act = e.target.closest("[data-act]");
+      if (act) {
+        e.stopPropagation();
+        if (act.dataset.act === "remove") { if (!await ask(`Take ${it.name} out of this recipe?`)) return; rc.items = items.filter((x) => x !== it); recipeOpenRow = null; syncRecipeIngredients(rc); drawRecipeCard(holder, r); saveChat(); }
+        if (act.dataset.act === "amount") { pick = { replaceId: it.id, assist: { r, holder } }; draft = { ...basisOf(it), note: "" }; openShare(it.kcal); }
+        if (act.dataset.act === "swap") { pick = { replaceId: it.id, assist: { r, holder }, prefill: it.name }; go("search"); }
+        return;
+      }
+      recipeOpenRow = recipeOpenRow === it.id ? null : it.id; drawRecipeCard(holder, r);
+    };
+  });
+  const existing = state.meals.find((m) => m.name.trim().toLowerCase() === String(rc.name || "").trim().toLowerCase());
+  const saveBtn = holder.querySelector("[data-act=save]");
+  if (existing) {
+    saveBtn.textContent = "Save as a new meal"; saveBtn.classList.remove("primary"); saveBtn.classList.add("mint");
+    saveBtn.insertAdjacentHTML("beforebegin", `<button class="btn primary" data-act="update">Update "${esc(existing.name)}"</button>`);
+    holder.querySelector("[data-act=update]").onclick = async (e) => {
+      if (!await ask(`Replace the ingredients of "${existing.name}" with this version?`)) return;
+      existing.items = rc.items.map((x) => ({ ...x })); existing.portions = portions; existing.steps = rc.steps || existing.steps || []; existing.updatedAt = new Date().toISOString();
+      save(); e.target.textContent = "Updated"; e.target.disabled = true; toast(`${existing.name} updated`);
+    };
+  }
+  saveBtn.onclick = (e) => {
+    state.meals.unshift({ id: uid(), name: existing ? `${rc.name} (new)` : rc.name, portions, items: rc.items.map((x) => ({ ...x })), steps: rc.steps || [], saved: true, updatedAt: new Date().toISOString() });
+    save(); e.target.textContent = "Saved to Meals"; e.target.disabled = true; toast(`${rc.name} is in your meals`);
+  };
+}
+/** After an edit, the recipe's ingredient list (what the AI sees on follow-ups) matches the items. */
+function syncRecipeIngredients(rc) {
+  rc.ingredients = rc.items.map((it) => { const m = macrosFor(it, it.kcal); return { name: it.name, grams: it.grams || 0, kcal: it.kcal, protein_g: m.p || 0, carbs_g: m.c || 0, fat_g: m.f || 0 }; });
+}
+/** An ingredient picked (from Search or the How much screen) goes back into the assistant's recipe. */
+function assistTakeIngredient(basis, kcal) {
+  const { r, holder } = pick.assist, rc = r.recipe, a = amountsFor(basis, kcal);
+  const it = { id: uid(), ...basisOf(basis), kcal: Math.round(kcal), grams: a.grams != null ? Math.round(a.grams * 10) / 10 : null };
+  const i = rc.items.findIndex((x) => x.id === pick.replaceId);
+  if (i >= 0) rc.items[i] = it; else rc.items.push(it);
+  syncRecipeIngredients(rc); pick = null; recipeOpenRow = null;
+  stack = ["home", "ask"]; show("ask");
+  if (holder.isConnected) drawRecipeCard(holder, r);
+  saveChat(); toast(`${it.name} · ${fmt(it.kcal)} kcal`);
+}
 function statRow(kcal, p, c, f) { return `<div><span class="stat"><b>${fmt(kcal)}</b> kcal</span><span class="stat">P <b>${Math.round(p)}</b></span><span class="stat">C <b>${Math.round(c)}</b></span><span class="stat">F <b>${Math.round(f)}</b></span></div>`; }
 function renderAssistant(r, image) {
   let html = esc(r.reply || "");
@@ -1816,28 +1872,8 @@ function renderAssistant(r, image) {
     }
   }
   if (r.kind === "recipe" && r.recipe) {
-    const rc = r.recipe, portions = num(rc.portions) || 1;
-    const items = (rc.ingredients || []).map(recipeIngredientToItem);
-    const total = items.reduce((a, it) => a + it.kcal, 0), mac = sumMacros(items);
-    el.insertAdjacentHTML("beforeend", `<div class="card"><b>${esc(rc.name)}</b> · ${portions} portion${portions === 1 ? "" : "s"}${statRow(total / portions, mac.p / portions, mac.c / portions, mac.f / portions)}<p class="muted tiny">per portion</p>${rc.target_kcal ? (total / portions <= rc.target_kcal + 10 ? `<p class="tiny fit-line ok">Fits your ${fmt(rc.target_kcal)} kcal limit</p>` : `<p class="tiny fit-line over">${fmt(total / portions - rc.target_kcal)} kcal over your ${fmt(rc.target_kcal)} limit. Say "fit it" and I'll trim it.</p>`) : ""}
-      <ul class="list">${items.map((it) => `<li><div class="body"><div class="name">${esc(it.name)}</div><div class="detail">${fmt(it.grams)} ${it.unit || "g"} · ${fmt(it.kcal)} kcal</div></div></li>`).join("")}</ul>
-      <ol class="method">${(rc.steps || []).map((st) => `<li>${esc(st)}</li>`).join("")}</ol>
-      <p class="muted tiny">${esc(rc.notes || "")}</p><button class="btn primary" data-act="save">Save as a meal</button></div>`);
-    const existing = state.meals.find((m) => m.name.trim().toLowerCase() === String(rc.name || "").trim().toLowerCase());
-    if (existing) {
-      el.querySelector("[data-act=save]").textContent = "Save as a new meal";
-      el.querySelector("[data-act=save]").insertAdjacentHTML("beforebegin", `<button class="btn primary" data-act="update">Update "${esc(existing.name)}"</button>`);
-      el.querySelector("[data-act=update]").onclick = async (e) => {
-        if (!await ask(`Replace the ingredients of "${existing.name}" with this version?`)) return;
-        existing.items = items; existing.portions = portions; existing.steps = rc.steps || existing.steps || []; existing.updatedAt = new Date().toISOString();
-        save(); e.target.textContent = "Updated"; e.target.disabled = true; toast(`${existing.name} updated`);
-      };
-      el.querySelector("[data-act=save]").classList.remove("primary"); el.querySelector("[data-act=save]").classList.add("mint");
-    }
-    el.querySelector("[data-act=save]").onclick = (e) => {
-      state.meals.unshift({ id: uid(), name: existing ? `${rc.name} (new)` : rc.name, portions, items, steps: rc.steps || [], saved: true, updatedAt: new Date().toISOString() });
-      save(); e.target.textContent = "Saved to Meals"; e.target.disabled = true; toast(`${rc.name} is in your meals`);
-    };
+    const holder = document.createElement("div"); holder.className = "recipe-holder"; el.appendChild(holder);
+    drawRecipeCard(holder, r);
   }
   if (r.kind === "lighter" && r.lighter) {
     const l = r.lighter;
@@ -4717,7 +4753,7 @@ function openShare(prefillKcal) {
   if (!draft.photo && draft.image && String(draft.image).startsWith("data:")) thumbFrom(draft.image).then((t) => { if (draft) { draft.photo = t; showSharePhoto(); } }).catch(() => {});
   showSharePhoto();
   $("#share-name").textContent = draft.name;
-  $("#share-add").textContent = pick ? "Add to the meal" : editId || pastEdit ? "Save changes" : pastAdd ? `Add to ${pastLabel(pastAdd)}` : "Add to today";
+  $("#share-add").textContent = pick && pick.assist ? "Use in the recipe" : pick ? "Add to the meal" : editId || pastEdit ? "Save changes" : pastAdd ? `Add to ${pastLabel(pastAdd)}` : "Add to today";
   const editing = editId && state.day.items.find((x) => x.id === editId);
   const pastIt = pastEdit && ((state.history.find((x) => x.date === pastEdit.date) || {}).items || [])[pastEdit.i];
   shareMeal = editing ? mealOf(editing) : pastIt ? mealOf(pastIt) : mealOf({ name: draft.name, addedAt: new Date().toISOString() });
@@ -4807,6 +4843,7 @@ $("#share-post").onclick = () => {
 $("#share-add").onclick = () => {
   if (!amountKcal || !draft) return;
   const kcal = Math.round(amountKcal);
+  if (pick && pick.assist) { assistTakeIngredient(draft, kcal); return; }
   if (pick) { mealTakeIngredient(draft, kcal); toast(`${draft.name} is in the meal`); return; }
   if (pastAdd || pastEdit) { savePastItem(kcal); return; }
   if (editId) {

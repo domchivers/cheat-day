@@ -1506,3 +1506,7 @@ body.simple .fc-line, body.simple .fc-tag { font-size: 15px; }
 .fc-help { display: block; width: 100%; background: none; border: 0; color: var(--green); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; padding: 6px 8px 10px; border-bottom: 1px solid var(--line); margin-bottom: 6px; }
 .ate-help li:not(.ate-grp) { cursor: pointer; }
 .ate-help li:not(.ate-grp) b { text-decoration: underline dotted; text-underline-offset: 3px; }
+/* ---- v146: the assistant's recipe ingredients can be changed */
+.rc-items li { cursor: pointer; }
+.rc-items li .chev { width: 18px; height: 18px; color: var(--muted); flex: none; }
+.rc-items li .row-actions { flex-basis: 100%; }
