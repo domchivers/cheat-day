@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "146";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "147";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1802,7 +1802,7 @@ function drawRecipeCard(holder, r) {
         e.stopPropagation();
         if (act.dataset.act === "remove") { if (!await ask(`Take ${it.name} out of this recipe?`)) return; rc.items = items.filter((x) => x !== it); recipeOpenRow = null; syncRecipeIngredients(rc); drawRecipeCard(holder, r); saveChat(); }
         if (act.dataset.act === "amount") { pick = { replaceId: it.id, assist: { r, holder } }; draft = { ...basisOf(it), note: "" }; openShare(it.kcal); }
-        if (act.dataset.act === "swap") { pick = { replaceId: it.id, assist: { r, holder }, prefill: it.name }; go("search"); }
+        if (act.dataset.act === "swap") { pick = { replaceId: it.id, assist: { r, holder } }; go("search"); }
         return;
       }
       recipeOpenRow = recipeOpenRow === it.id ? null : it.id; drawRecipeCard(holder, r);
@@ -4327,8 +4327,26 @@ async function lookupBarcode(code) {
 // ---------------------------------------------------------------- search: everyday foods (bundled), Open Food Facts, Claude
 
 let searchTimer = null, searchAbort = null, lastQuery = "";
+/** While picking an ingredient (for a recipe or a meal): your Quick add things, one tap away. */
+function renderSearchQuick() {
+  const box = $("#search-quick"), list = $("#search-quick-list");
+  const show = !!pick && !$("#q").value.trim();
+  box.classList.toggle("hidden", !show); if (!show) { list.innerHTML = ""; return; }
+  list.innerHTML = "";
+  for (const sec of quickSections(quickEntries())) {
+    if (sec.title) { const hd = document.createElement("li"); hd.className = "qgrp"; hd.textContent = sec.title; list.appendChild(hd); }
+    for (const q of sec.items.slice(0, 12)) {
+      const b = q.basis, li = document.createElement("li");
+      const detail = String(q.detail || shortAmounts({ ...b, kcal: q.lastKcal, shareLabel: q.lastShareLabel })).replace(/[\s·]+$/, "");
+      li.innerHTML = `<span class="thumb-sm ${q.meal ? "tone-peach" : ""}"><svg><use href="#i-${iconFor(b.source)}"/></svg></span><div class="body"><div class="name">${esc(b.name)}</div><div class="detail">${esc(detail)}</div></div><div class="kcal">${fmt(q.lastKcal)}</div>`;
+      li.onclick = () => { draft = { ...b, note: "" }; openShare(q.lastKcal); };
+      list.appendChild(li);
+    }
+  }
+}
 function openSearch() {
   const q = $("#q");
+  renderSearchQuick();
   $("#search-past").textContent = pastAdd ? `Adding to ${pastLabel(pastAdd)}` : ""; $("#search-past").classList.toggle("hidden", !pastAdd);
   setTimeout(() => q.focus(), 50);
   if (pick && pick.prefill) { q.value = pick.prefill; pick.prefill = null; q.dispatchEvent(new Event("input")); return; }
@@ -4381,6 +4399,7 @@ function resultRow(item, tone) {
 }
 $("#q").addEventListener("input", (e) => {
   const query = e.target.value.trim();
+  renderSearchQuick();
   clearTimeout(searchTimer);
   const local = $("#search-local"); local.innerHTML = "";
   const ql = query.toLowerCase();

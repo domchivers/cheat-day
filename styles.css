@@ -1510,3 +1510,6 @@ body.simple .fc-line, body.simple .fc-tag { font-size: 15px; }
 .rc-items li { cursor: pointer; }
 .rc-items li .chev { width: 18px; height: 18px; color: var(--muted); flex: none; }
 .rc-items li .row-actions { flex-basis: 100%; }
+#search-quick { margin: 4px 0 8px; }
+#search-quick .section-title { margin-top: 4px; }
+#search-quick li { cursor: pointer; }
