@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "147";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "148";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -4344,6 +4344,7 @@ function renderSearchQuick() {
     }
   }
 }
+$("#search-scan").onclick = () => { if (!pick) return; go("scan"); };   // the pick stays set, so the scanned product lands back in the recipe or meal
 function openSearch() {
   const q = $("#q");
   renderSearchQuick();

@@ -1513,3 +1513,4 @@ body.simple .fc-line, body.simple .fc-tag { font-size: 15px; }
 #search-quick { margin: 4px 0 8px; }
 #search-quick .section-title { margin-top: 4px; }
 #search-quick li { cursor: pointer; }
+.scan-row { margin: 4px 0 12px; }
