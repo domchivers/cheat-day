@@ -1514,3 +1514,11 @@ body.simple .fc-line, body.simple .fc-tag { font-size: 15px; }
 #search-quick .section-title { margin-top: 4px; }
 #search-quick li { cursor: pointer; }
 .scan-row { margin: 4px 0 12px; }
+/* ---- v149: favourites */
+.list .fav { flex: none; width: 34px; height: 40px; margin: 0 -6px; display: grid; place-items: center; background: none; border: 0; padding: 0; color: var(--muted); cursor: pointer; }
+.list .fav svg { width: 22px; height: 22px; fill: none; opacity: .6; }
+.list .fav.on { color: #e8a317; }
+.list .fav.on svg { fill: currentColor; opacity: 1; }
+.list .fav-mark { flex: none; width: 16px; height: 16px; color: #e8a317; fill: currentColor; }
+body.simple .list .fav { width: 42px; height: 46px; }
+body.simple .list .fav svg { width: 26px; height: 26px; }

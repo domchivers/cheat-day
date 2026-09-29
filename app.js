@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "148";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "149";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -25,6 +25,7 @@ function load() {
   if (!Array.isArray(base.recent)) base.recent = [];
   if (!Array.isArray(base.meals)) base.meals = [];
   if (!base.presetUses || typeof base.presetUses !== "object") base.presetUses = {};
+  if (!base.favs || typeof base.favs !== "object" || Array.isArray(base.favs)) base.favs = {};
   if (!Array.isArray(base.sharedMealIds)) base.sharedMealIds = [];
   if (base.shareDay == null) base.shareDay = true;
   if (!base.goals || typeof base.goals !== "object") base.goals = { p: null, c: null, f: null };
@@ -416,8 +417,22 @@ function mealHabits() {
   for (const h of state.history.slice(0, 60)) if (Array.isArray(h.items)) h.items.forEach(add);
   return c;
 }
-/** Quick add, ordered for now: what you usually have at this time of day, then your saved meals, then the rest. */
+/** Favourites: starred Quick add entries. They sit at the top and are never trimmed away. Kept as key -> { on, at } so two phones can agree. */
+const isFav = (key) => !!(state.favs && state.favs[key] && state.favs[key].on);
+function setFav(key, on) { if (!state.favs) state.favs = {}; state.favs[key] = { on: !!on, at: new Date().toISOString() }; }
+/** The recent list, kept short, but a favourite is never the one dropped. */
+function trimRecent(list, favs) {
+  let room = RECENT_MAX;
+  return list.filter((r) => (favs && favs[r.key] && favs[r.key].on) || room-- > 0);
+}
+const STAR = (on) => `<button class="fav${on ? " on" : ""}" aria-label="${on ? "Remove from favourites" : "Add to favourites"}" aria-pressed="${on ? "true" : "false"}"><svg><use href="#i-star"/></svg></button>`;
+/** Quick add, ordered for now: favourites, what you usually have at this time of day, then your saved meals, then the rest. */
 function quickSections(entries) {
+  const favs = entries.filter((q) => isFav(q.key)).sort((x, y) => String(x.basis.name || "").localeCompare(String(y.basis.name || "")));
+  if (favs.length) return [{ title: "Favourites", fav: true, items: favs }].concat(quickSectionsRest(entries.filter((q) => !isFav(q.key)), true));
+  return quickSectionsRest(entries, false);
+}
+function quickSectionsRest(entries, hasFavs) {
   const now = timeMeal(new Date().getHours()), habits = mealHabits();
   const fit = (q) => {   // times had at this meal, counted only if this is one of its main meals
     const h = habits[String(q.basis.name || "").toLowerCase()] || {}, n = h[now] || 0, top = Math.max(0, ...Object.values(h));
@@ -429,7 +444,7 @@ function quickSections(entries) {
   return [
     { title: `Your usual ${now === "Snacks" ? "snacks" : now.toLowerCase()}`, items: usual },
     { title: "Your meals", items: meals },
-    { title: usual.length || meals.length ? "Other favourites" : "", items: other }
+    { title: hasFavs || usual.length || meals.length ? "Other foods" : "", items: other }
   ].filter((s) => s.items.length);
 }
 function renderQuick() {
@@ -450,11 +465,16 @@ function renderQuick() {
     const thumb = qp ? `<img class="thumb-sm" src="${esc(qp)}" alt="">` : `<span class="thumb-sm ${q.meal ? "tone-peach" : ""}"><svg><use href="#i-${iconFor(b.source)}"/></svg></span>`;
     li.innerHTML = `${thumb}
       <div class="body"><div class="name">${esc(b.name)}</div><div class="detail">${esc(detail)}</div></div>
-      <div class="kcal">${fmt(q.lastKcal)}</div><button class="add" aria-label="Add"><svg><use href="#i-plus"/></svg></button>`;
+      ${STAR(isFav(q.key))}<div class="kcal">${fmt(q.lastKcal)}</div><button class="add" aria-label="Add"><svg><use href="#i-plus"/></svg></button>`;
     li.querySelector(".add").onclick = (e) => { e.stopPropagation(); addToDay(b, q.lastKcal, q.lastShareLabel); toast(`Added ${b.name} · ${fmt(q.lastKcal)} kcal`); };
+    li.querySelector(".fav").onclick = (e) => {
+      e.stopPropagation(); const on = !isFav(q.key); setFav(q.key, on);
+      if (!on) state.recent = trimRecent(state.recent, state.favs);
+      save(); renderQuick(); toast(on ? `${b.name} is a favourite` : `${b.name} is no longer a favourite`);
+    };
     li.querySelector(".body").onclick = () => { draft = { ...b, note: "" }; openShare(q.lastKcal); };
     if (!q.preset && !q.meal) longPress(li, async () => {
-      if (await ask(`Remove "${b.name}" from Quick add?`)) { tomb("recent", q.key); state.recent = state.recent.filter((r) => r.key !== q.key); save(); renderQuick(); }
+      if (await ask(isFav(q.key) ? `"${b.name}" is a favourite. Remove it from Quick add anyway?` : `Remove "${b.name}" from Quick add?`)) { tomb("recent", q.key); if (isFav(q.key)) setFav(q.key, false); state.recent = state.recent.filter((r) => r.key !== q.key); save(); renderQuick(); }
     });
     list.appendChild(li);
   }
@@ -478,7 +498,7 @@ function rememberRecent(basis, kcal, shareLabel) {
   const old = state.recent.find((r) => r.key === key);
   state.recent = state.recent.filter((r) => r.key !== key);
   state.recent.unshift({ key, basis, lastKcal: kcal, lastShareLabel: shareLabel, lastUsed: new Date().toISOString(), uses: ((old && old.uses) || 0) + 1 });
-  state.recent = state.recent.slice(0, RECENT_MAX);
+  state.recent = trimRecent(state.recent, state.favs);
 }
 function addToDay(basis, kcal, shareLabel) {
   kcal = Math.round(kcal);
@@ -532,13 +552,15 @@ function renderMeals() {
     li.querySelector(".del").onclick = async (e) => { e.stopPropagation(); if (await ask(`Discard the unsaved "${state.mealDraft.name || "meal"}"?`)) { state.mealDraft = null; mealDraft = null; save(false); renderMeals(); } };
     list.appendChild(li);
   }
-  for (const m of state.meals) {
+  const mealsShown = state.meals.filter((m) => isFav("meal:" + m.id)).concat(state.meals.filter((m) => !isFav("meal:" + m.id)));
+  for (const m of mealsShown) {
     const t = mealTotals(m), portions = num(m.portions) || 1;
     const li = document.createElement("li");
     li.innerHTML = `${m.photo ? `<img class="thumb-sm" src="${esc(m.photo)}" alt="">` : `<span class="thumb-sm tone-peach"><svg><use href="#i-meal"/></svg></span>`}
       <div class="body"><div class="name">${esc(m.name)}</div><div class="detail">${portions} portion${portions === 1 ? "" : "s"} · ${fmt(t.kcal / portions)} kcal each · ${m.items.length} ingredient${m.items.length === 1 ? "" : "s"}</div></div>
-      <button class="add" aria-label="Add a portion to today"><svg><use href="#i-plus"/></svg></button>
+      ${STAR(isFav("meal:" + m.id))}<button class="add" aria-label="Add a portion to today"><svg><use href="#i-plus"/></svg></button>
       <button class="del" aria-label="Delete meal">✕</button>`;
+    li.querySelector(".fav").onclick = (e) => { e.stopPropagation(); const on = !isFav("meal:" + m.id); setFav("meal:" + m.id, on); save(); renderMeals(); toast(on ? `${m.name} is a favourite: it stays at the top of Quick add` : `${m.name} is no longer a favourite`); };
     li.querySelector(".add").onclick = (e) => { e.stopPropagation(); draft = { ...mealBasis(m), note: "" }; openShare(); };
     li.querySelector(".del").onclick = (e) => { e.stopPropagation(); deleteMeal(m); };
     li.querySelector(".body").onclick = () => { mealDraft = JSON.parse(JSON.stringify(m)); mealDraft.saved = true; go("meal"); };
@@ -4335,10 +4357,10 @@ function renderSearchQuick() {
   list.innerHTML = "";
   for (const sec of quickSections(quickEntries())) {
     if (sec.title) { const hd = document.createElement("li"); hd.className = "qgrp"; hd.textContent = sec.title; list.appendChild(hd); }
-    for (const q of sec.items.slice(0, 12)) {
+    for (const q of (sec.fav ? sec.items : sec.items.slice(0, 12))) {
       const b = q.basis, li = document.createElement("li");
       const detail = String(q.detail || shortAmounts({ ...b, kcal: q.lastKcal, shareLabel: q.lastShareLabel })).replace(/[\s·]+$/, "");
-      li.innerHTML = `<span class="thumb-sm ${q.meal ? "tone-peach" : ""}"><svg><use href="#i-${iconFor(b.source)}"/></svg></span><div class="body"><div class="name">${esc(b.name)}</div><div class="detail">${esc(detail)}</div></div><div class="kcal">${fmt(q.lastKcal)}</div>`;
+      li.innerHTML = `<span class="thumb-sm ${q.meal ? "tone-peach" : ""}"><svg><use href="#i-${iconFor(b.source)}"/></svg></span><div class="body"><div class="name">${esc(b.name)}</div><div class="detail">${esc(detail)}</div></div>${sec.fav ? `<svg class="fav-mark"><use href="#i-star"/></svg>` : ""}<div class="kcal">${fmt(q.lastKcal)}</div>`;
       li.onclick = () => { draft = { ...b, note: "" }; openShare(q.lastKcal); };
       list.appendChild(li);
     }
@@ -4879,7 +4901,7 @@ $("#share-add").onclick = () => {
 
 // ---------------------------------------------------------------- account + sync (optional, see cloud.js)
 
-const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "weekGoals", "seenBadges", "goalWins", "postCount", "pbCount", "body", "goalWeight", "goalStart", "simple", "onboarded", "reminders", "reactCount", "commentCount", "sendCount", "friendCount", "tombs", "dayBudgets", "profile", "plan", "restSeconds", "weighDays", "dayKeep", "dayRolled", "overrideApplied", "updatedAt"];   // the API key stays on the device
+const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "favs", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "weekGoals", "seenBadges", "goalWins", "postCount", "pbCount", "body", "goalWeight", "goalStart", "simple", "onboarded", "reminders", "reactCount", "commentCount", "sendCount", "friendCount", "tombs", "dayBudgets", "profile", "plan", "restSeconds", "weighDays", "dayKeep", "dayRolled", "overrideApplied", "updatedAt"];   // the API key stays on the device
 let pushTimer = null, pulledOnce = false;
 function schedulePush() {
   if (!window.cloud || !window.cloud.user) return;
@@ -4939,7 +4961,8 @@ function mergeState(local, remote) {
     }
   }
   m.history = history.sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 400);
-  m.recent = join(newer.recent, older.recent, (r) => r.key, "recent").sort((a, b) => String(b.lastUsed || "").localeCompare(String(a.lastUsed || ""))).slice(0, RECENT_MAX);
+  m.favs = Object.assign({}, older.favs || {}); for (const [k, v] of Object.entries(newer.favs || {})) { const o = m.favs[k]; if (!o || String(v && v.at || "") >= String(o.at || "")) m.favs[k] = v; }
+  m.recent = trimRecent(join(newer.recent, older.recent, (r) => r.key, "recent").sort((a, b) => String(b.lastUsed || "").localeCompare(String(a.lastUsed || ""))), m.favs);
   m.meals = join(newer.meals, older.meals, (x) => x.id, "meal");
   m.chats = join(newer.chats, older.chats, (x) => x.id, "chat");
   m.routines = join(newer.routines, older.routines, (x) => x.id, "routine");
