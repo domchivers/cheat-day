@@ -1597,3 +1597,7 @@ body.simple .scan-seg button { font-size: 17px; padding: 11px 20px; }
 .share-src svg { width: 16px; height: 16px; flex: none; margin-top: 2px; color: var(--green-2); }
 .share-src .link { font-size: 13px; padding: 0; }
 body.simple .share-src { font-size: 15px; }
+/* ---- v156: links under the source note */
+.share-src-links { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 4px; }
+.share-src-links .link { font-weight: 700; }
+.share-src-links .link.hidden { display: none; }

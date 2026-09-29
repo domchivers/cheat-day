@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "155";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "156";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -4094,7 +4094,7 @@ $("#details-next").onclick = () => {
   const d = readDetails();
   if (!d.kcalPer100 && !d.kcalPerServing) { $("#d-edit").open = true; toast("Add the calories first: per 100 g, or for one piece"); setTimeout(() => $("#f-kcal100").focus(), 50); return; }
   if (!d.name) d.name = d.brand || "Something tasty";
-  if (d.fromPack) { d.checked = true; d.packNote = packNote(d); }
+  if (d.packNote) { d.checked = true; d.packNote = packNote(d); }
   openShare();
 };
 
@@ -4694,11 +4694,12 @@ async function readLabel(file, shown) {
   try {
     const item = await readLabelWithClaude(file);
     if (item.fromPack && item.guessed) { $("#busy-text").textContent = "Checking the numbers…"; await packLookup(item); }
-    if (item.fromPack && item.guessed && webSearchPossible()) { $("#busy-text").textContent = "Searching online for this product…"; try { await webLookupPack(item); } catch (e) { console.warn("web lookup", e); } if ($("#busy").classList.contains("hidden")) busy("Reading the photo…", pic); }   // cancelled or failed: carry on with the estimate
-    if (item.fromPack) { packAsCount(item); item.packNote = packNote(item); }
+    if (item.fromPack && item.guessed) await runWebLookup(item, pic);
+    if (item.fromPack) packAsCount(item);
+    item.packNote = packNote(item);
     draft = item;
     busy(false);
-    if (item.fromPack) openShare(); else openDetails("Nutrition (from photo)");
+    openShare();   // straight to "how much?"; the numbers are one tap away under the name
     return true;
   } catch (err) { busy(false); console.error(err); toast(err.message || "Label reading failed", 5000); return false; }
 }
@@ -4776,6 +4777,20 @@ async function packLookup(item) {
 // ---- a pack nobody has listed (Chinese crisps, say): Gemini reads it in any language and searches Google for the product.
 // Google Search is free only on the 2.5 Flash models (about 500 a day, shared); the 3.x models charge for it, so they're never used here.
 const GEMINI_SEARCH = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
+/** Runs the online search and remembers how it went, so the note can say why when it found nothing. */
+async function runWebLookup(item, pic) {
+  const why = webSearchWhyNot();
+  if (why) { item.webTried = why; return; }
+  $("#busy-text").textContent = "Searching online for this product…";
+  try { item.webTried = await webLookupPack(item); }
+  catch (e) { console.warn("web lookup", e); item.webTried = /Cancelled/.test(e.message) ? "cancelled" : "error"; }
+  if ($("#busy").classList.contains("hidden")) busy("Reading the photo…", pic);   // cancelled: carry on with the estimate
+}
+function webSearchWhyNot() {
+  if (!((window.cloud && window.cloud.user && aiProxyState !== "no") || state.geminiKey)) return "nokey";
+  if (!GEMINI_SEARCH.some((m) => !aiSpent().spent.includes(m))) return "spent";
+  return null;
+}
 const webSearchPossible = () => !!((window.cloud && window.cloud.user && aiProxyState !== "no") || state.geminiKey) && GEMINI_SEARCH.some(modelReady);
 const WEB_PACK_PROMPT = (item, where) => `This is a photo of a packaged food or drink. Read everything printed on it, in any language (Chinese, Japanese, Korean, Thai and so on), including the brand and the flavour.
 My first guess: "${item.brand ? item.brand + " " : ""}${item.name}", about ${fmt(item.kcalPer100)} kcal per 100 ${item.unit || "g"}.${where ? ` I shop in ${where.name}.` : ""}
@@ -4785,7 +4800,7 @@ Reply with ONLY a JSON object, no other text:
 {"found": true or false, "name_en": "English name with the flavour", "name_original": "the name as printed, or null", "brand": "brand in English, or null", "unit": "g" or "ml", "kcal_per_100": number or null, "protein_per_100": number or null, "carbs_per_100": number or null, "fat_per_100": number or null, "pack_size": number or null, "pieces_per_pack": number or null, "piece_name": "what one piece is called, or null", "piece_weight": number or null, "source": "the website the numbers came from", "notes": "one short sentence: how sure you are that it's the same product"}
 Set found to false if you can't find nutrition figures for this product, rather than guessing.`;
 async function webLookupPack(item) {
-  if (!item.image) return false;
+  if (!item.image) return "error";
   const key = state.geminiKey && !(window.cloud && window.cloud.user && aiProxyState !== "no") ? state.geminiKey : null;
   const body = JSON.stringify({
     contents: [{ parts: [{ inline_data: { mime_type: "image/jpeg", data: String(item.image).split(",")[1] } }, { text: WEB_PACK_PROMPT(item, shopCountry()) }] }],
@@ -4793,26 +4808,28 @@ async function webLookupPack(item) {
     generationConfig: { temperature: 0.2 }
   });
   aiStart = Date.now(); aiNote = ""; clearInterval(aiTick); aiTick = setInterval(() => aiProgress(), 1000); aiProgress();
+  let result = "error";
   try {
-    for (const model of GEMINI_SEARCH.filter(modelReady)) {
+    const models = GEMINI_SEARCH.filter(modelReady);
+    for (const model of models.length ? models : GEMINI_SEARCH.filter((m) => !aiSpent().spent.includes(m))) {
       const ctl = new AbortController(); aiCtl = ctl;
       const timer = setTimeout(() => ctl.abort(), 35000);
       let r;
       try {
         r = key ? await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, { method: "POST", headers: { "Content-Type": "application/json", "X-goog-api-key": key }, body, signal: ctl.signal })
           : await window.cloud.rawFetch(`${window.SUPABASE_CONFIG.url}/functions/v1/ai?model=${model}`, { method: "POST", headers: { "Content-Type": "application/json", apikey: window.SUPABASE_CONFIG.anonKey }, body, signal: ctl.signal });
-      } catch (e) { if (ctl.cancelled) throw new Error("Cancelled"); continue; }
+      } catch (e) { if (ctl.cancelled) throw new Error("Cancelled"); result = ctl.signal.aborted ? "slow" : "error"; continue; }
       finally { clearTimeout(timer); }
-      if (r.status === 429) { const t = await r.text().catch(() => ""); markSpent(model, /PerDay|per day|daily/i.test(t)); continue; }
-      if (r.status === 404 || r.status === 400) { markSpent(model, true); continue; }   // not offered to this key
-      if (!r.ok) continue;
+      if (r.status === 429) { const t = await r.text().catch(() => ""); const day = /PerDay|per day|daily/i.test(t); markSpent(model, day); result = day ? "spent" : "busy"; continue; }
+      if (r.status === 404 || r.status === 400 || r.status === 403) { const t = await r.text().catch(() => ""); console.warn("search model", model, r.status, t.slice(0, 300)); markSpent(model, true); result = `http${r.status}`; continue; }   // not offered to this key
+      if (!r.ok) { result = r.status === 503 ? "busy" : `http${r.status}`; continue; }
       const json = await r.json().catch(() => ({})), cand = (json.candidates || [])[0] || {};
       const text = ((cand.content || {}).parts || []).map((p) => p.text || "").join("");
-      const m = text.match(/\{[\s\S]*\}/); if (!m) continue;
-      let got; try { got = JSON.parse(m[0]); } catch (e) { continue; }
+      const m = text.match(/\{[\s\S]*\}/); if (!m) { result = "notfound"; continue; }
+      let got; try { got = JSON.parse(m[0]); } catch (e) { result = "notfound"; continue; }
       const k = num(got.kcal_per_100);
-      if (!got.found || !k || k < 20 || k > 950) return false;
-      if (item.kcalPer100 && (k < item.kcalPer100 * 0.5 || k > item.kcalPer100 * 1.8)) return false;   // wildly off the photo's own guess: probably a different product
+      if (!got.found || !k || k < 20 || k > 950) return "notfound";
+      if (item.kcalPer100 && (k < item.kcalPer100 * 0.5 || k > item.kcalPer100 * 1.8)) return "far";   // wildly off the photo's own guess: probably a different product
       const sites = ((cand.groundingMetadata || {}).groundingChunks || []).map((c) => c.web && c.web.title).filter(Boolean);
       item.kcalPer100 = Math.round(k);
       if (nz(got.protein_per_100) != null) { item.p100 = nz(got.protein_per_100); item.c100 = nz(got.carbs_per_100) || 0; item.f100 = nz(got.fat_per_100) || 0; }
@@ -4826,9 +4843,9 @@ async function webLookupPack(item) {
       else if (item.servingSize) item.kcalPerServing = Math.round(item.servingSize * item.kcalPer100 / 100);
       item.guessed = false; item.web = String(got.source || sites[0] || "the web").slice(0, 60); item.source = "claude";
       item.note = `Found online (${item.web}) by searching for the product in your photo.${got.notes ? " " + got.notes : ""}`;
-      return true;
+      return "found";
     }
-    return false;
+    return result;
   } finally { clearInterval(aiTick); aiTick = null; aiCtl = null; }
 }
 /** A pack eaten whole (a bag of crisps, a bar) and not by the piece: count bags, with a half a tap away. */
@@ -4840,7 +4857,12 @@ function packAsCount(item) {
 function packNote(item) {
   const c = conv(item);
   const what = c.countKcal && c.countLabel ? `${fmt(c.countKcal)} kcal per ${c.countLabel}` : `${fmt(c.kcalPer100)} kcal per 100 ${item.unit || "g"}`;
-  return item.checked ? `${what}, as you checked it.` : item.web ? `${what}, found online (${item.web}).` : item.matched ? `${what}, from Open Food Facts.` : item.guessed ? `About ${what}: an estimate for this product. The nutrition table on the back is more exact.` : `${what}, read off the pack.`;
+  if (item.checked) return `${what}, as you checked it.`;
+  if (item.web) return `${what}, found online (${item.web}).`;
+  if (item.matched) return `${what}, from Open Food Facts.`;
+  if (!item.guessed) return item.fromPack ? `${what}, read off the pack.` : `${what}, read off the nutrition table.`;
+  const why = { notfound: "It couldn't be found online.", far: "What was found online didn't look like the same product.", spent: "Today's free online searches are used up.", nokey: "", cancelled: "The online search was stopped.", slow: "The online search took too long.", busy: "The online search was busy.", error: "The online search couldn't connect." }[item.webTried];
+  return `About ${what}, an estimate. ${why != null ? why : item.webTried ? `The online search didn't work (${item.webTried.replace("http", "error ")}).` : ""}`.trim();
 }
 const LABEL_SCHEMA = {
   type: "object",
@@ -5121,6 +5143,20 @@ $("#file-share-lib").addEventListener("change", (e) => { const f = e.target.file
 $("#share-photo-remove").onclick = () => { delete draft.photo; showSharePhoto(); };
 let shareMeal = null, shareMode = "grams";
 $("#share-src-check").onclick = () => { if (draft) openDetails("Check the numbers"); };
+$("#share-src-table").onclick = () => {   // back to the camera, ready for the back of the pack
+  scanMode = "label"; try { localStorage.setItem(LS_SCAN_MODE, "label"); } catch (e) {}
+  if (stack[stack.length - 2] === "scan") back(); else { stack = ["home"]; go("scan"); }
+  setTimeout(() => showScanMode("Turn the pack over and take a photo of the nutrition table."), 400);
+};
+$("#share-src-again").onclick = async () => {
+  const item = draft; if (!item) return;
+  busy("Searching online for this product…", item.image);
+  await runWebLookup(item, item.image);
+  busy(false);
+  packAsCount(item); item.packNote = packNote(item); openShareKeep();
+};
+/** Redraw How much for the same food without adding another screen to the back stack. */
+function openShareKeep() { if (stack[stack.length - 1] === "share") stack.pop(); openShare(); }
 $("#share-meal").addEventListener("change", (e) => { shareMeal = e.target.value; });
 function showAmountMode() {
   const c = conv(draft);
@@ -5153,6 +5189,8 @@ function openShare(prefillKcal) {
   showSharePhoto();
   $("#share-name").textContent = draft.name;
   $("#share-src").classList.toggle("hidden", !draft.packNote); $("#share-src-text").textContent = draft.packNote || "";
+  $("#share-src-table").classList.toggle("hidden", !(draft.fromPack && draft.guessed));
+  $("#share-src-again").classList.toggle("hidden", !(draft.fromPack && draft.guessed && ["slow", "busy", "error", "cancelled"].includes(draft.webTried) && webSearchPossible()));
   $("#share-add").textContent = pick && pick.assist ? "Use in the recipe" : pick ? "Add to the meal" : editId || pastEdit ? "Save changes" : pastAdd ? `Add to ${pastLabel(pastAdd)}` : "Add to today";
   const editing = editId && state.day.items.find((x) => x.id === editId);
   const pastIt = pastEdit && ((state.history.find((x) => x.date === pastEdit.date) || {}).items || [])[pastEdit.i];
