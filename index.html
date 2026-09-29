@@ -10,9 +10,9 @@
   <meta name="apple-mobile-web-app-title" content="Cheat Days">
   <title>Cheat Days</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icons/icon-180.png?v=152">
-  <link rel="icon" href="icons/icon-192.png?v=152">
-  <link rel="stylesheet" href="styles.css?v=152">
+  <link rel="apple-touch-icon" href="icons/icon-180.png?v=153">
+  <link rel="icon" href="icons/icon-192.png?v=153">
+  <link rel="stylesheet" href="styles.css?v=153">
 </head>
 <body>
 
@@ -762,7 +762,7 @@
       <button class="btn light" id="scan-photo">Take a photo</button>
       <small id="scan-fallback-sub">of the barcode</small>
     </div>
-    <div class="scan-seg" id="scan-seg" role="tablist"><button data-m="barcode" class="on"><svg><use href="#i-barcode"/></svg>Barcode</button><button data-m="label"><svg><use href="#i-camera"/></svg>Label</button></div>
+    <div class="scan-seg" id="scan-seg" role="tablist"><button data-m="barcode" class="on"><svg><use href="#i-barcode"/></svg>Barcode</button><button data-m="label"><svg><use href="#i-camera"/></svg>Photo</button></div>
     <div class="pill"><svg><use id="scan-hint-ic" href="#i-barcode"/></svg><span id="scan-hint">Point at a barcode and it reads itself.</span></div>
     <button class="shutter hidden" id="scan-shutter" aria-label="Take the photo"><span></span></button>
     <button class="btn light retake hidden" id="scan-retake">Retake</button>
@@ -956,6 +956,7 @@
       <p class="question"><b id="share-name">it</b></p>
       <select id="share-meal" class="meal-sel" aria-label="Which meal"><option>Breakfast</option><option>Lunch</option><option>Dinner</option><option>Snacks</option></select>
     </div>
+    <p class="share-src hidden" id="share-src"><svg><use href="#i-camera"/></svg><span><span id="share-src-text"></span> <button class="link" id="share-src-check">Check the numbers</button></span></p>
     <div class="card form-card amt-card">
       <div class="seg amt-seg" id="amt-seg"></div>
       <div id="a-count-wrap">
@@ -1036,10 +1037,10 @@
   <button data-tab="friends"><svg><use href="#i-people"/></svg><span>Friends</span></button>
 </nav>
 <script src="vendor/zxing.min.js"></script>
-<script src="presets.js?v=152"></script>
-<script src="foods.js?v=152"></script>
-<script src="supabase-config.js?v=152"></script>
-<script src="cloud.js?v=152"></script>
-<script src="app.js?v=152"></script>
+<script src="presets.js?v=153"></script>
+<script src="foods.js?v=153"></script>
+<script src="supabase-config.js?v=153"></script>
+<script src="cloud.js?v=153"></script>
+<script src="app.js?v=153"></script>
 </body>
 </html>

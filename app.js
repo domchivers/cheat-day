@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "152";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "153";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -4094,6 +4094,7 @@ $("#details-next").onclick = () => {
   const d = readDetails();
   if (!d.kcalPer100 && !d.kcalPerServing) { $("#d-edit").open = true; toast("Add the calories first: per 100 g, or for one piece"); setTimeout(() => $("#f-kcal100").focus(), 50); return; }
   if (!d.name) d.name = d.brand || "Something tasty";
+  if (d.fromPack) { d.checked = true; d.packNote = packNote(d); }
   openShare();
 };
 
@@ -4191,10 +4192,10 @@ function showScanMode(hint) {
   $("#barcode-manual-toggle").classList.toggle("hidden", label);
   if (label) $("#barcode-manual").classList.add("hidden");
   $("#scan-hint-ic").setAttribute("href", label ? "#i-camera" : "#i-barcode");
-  $("#scan-fallback-sub").textContent = label ? "of the nutrition table" : "of the barcode";
+  $("#scan-fallback-sub").textContent = label ? "of the pack or its nutrition table" : "of the barcode";
   $("#scan-hint").textContent = hint || (!label ? "Point at a barcode and it reads itself."
-    : !aiAvailable() ? "Reading a label needs a free AI key. Set one up in Settings."
-    : "Fit the nutrition table in the frame, then take the photo.");
+    : !aiAvailable() ? "Reading a photo needs a free AI key. Set one up in Settings."
+    : "Take a photo of the pack, or of its nutrition table.");
 }
 $("#scan-seg").addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b || b.dataset.m === scanMode) return;
@@ -4212,7 +4213,7 @@ $("#scan-shutter").onclick = async () => {
   showScanMode("Photo taken. Reading it now…");
   const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.9));
   const ok = await readLabel(blob, url);
-  if (!ok && onScanView()) showScanMode("That one couldn't be read. Get closer, keep it flat and in good light, then retake.");
+  if (!ok && onScanView()) showScanMode("That one couldn't be read. Get the pack or the table in the frame, in good light, then retake.");
 };
 $("#scan-retake").onclick = () => { clearStill(); showScanMode(); };
 let camToken = 0;
@@ -4271,7 +4272,7 @@ async function scanLoop(video, token) {
       }
       frame++;
       // No barcode for a while: say where label reading lives
-      if (!hinted && Date.now() - quietSince > 6000) { hinted = true; $("#scan-hint").textContent = "No barcode? Tap Label at the top and take a photo of the nutrition table."; }
+      if (!hinted && Date.now() - quietSince > 6000) { hinted = true; $("#scan-hint").textContent = "No barcode? Tap Photo at the top and take a picture of the pack."; }
     }
     await sleep(120);
   }
@@ -4689,18 +4690,60 @@ async function readLabel(file, shown) {
   if (!aiAvailable()) { aiHelp(); return false; }
   let pic = shown || null;
   if (!pic) { try { pic = drawScaled(await loadImage(file), 480).toDataURL("image/jpeg", 0.7); } catch (e) {} }
-  busy("Reading the label…", pic);
+  busy("Reading the photo…", pic);
   try {
-    draft = await readLabelWithClaude(file);
+    const item = await readLabelWithClaude(file);
+    if (item.fromPack && item.guessed) { $("#busy-text").textContent = "Checking the numbers…"; await packLookup(item); }
+    if (item.fromPack) item.packNote = packNote(item);
+    draft = item;
     busy(false);
-    openDetails("Nutrition (from photo)");
+    if (item.fromPack) openShare(); else openDetails("Nutrition (from photo)");
     return true;
   } catch (err) { busy(false); console.error(err); toast(err.message || "Label reading failed", 5000); return false; }
 }
 
+/** A product recognised from the front of its pack: the real numbers, if Open Food Facts has the same brand and product. */
+async function packLookup(item) {
+  const words = (s) => String(s || "").toLowerCase().match(/[a-z]{3,}/g) || [];
+  const want = words(item.name), brand = words(item.brand);
+  if (!brand.length || !want.length || !item.kcalPer100) return false;   // without a brand a match is only a lookalike
+  const ctrl = new AbortController(), timer = setTimeout(() => ctrl.abort(), 5000);
+  try {
+    const fields = "code,product_name,product_name_en,brands,quantity,product_quantity,product_quantity_unit,serving_size,serving_quantity,nutriments,categories_tags";
+    const r = await fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(`${item.brand} ${item.name}`)}&search_simple=1&action=process&json=1&page_size=10&fields=${fields}`, { signal: ctrl.signal });
+    if (!r.ok) return false;
+    let best = null, bestHit = 0;
+    for (const p of (await r.json()).products || []) {
+      const it = itemFromProduct(p); if (!it.name || !it.kcalPer100) continue;
+      const ratio = it.kcalPer100 / item.kcalPer100; if (ratio < 0.75 || ratio > 1.35) continue;   // far from the estimate: a different product
+      const have = words(`${it.name} ${it.brand}`);
+      if (!brand.some((w) => have.includes(w))) continue;
+      const hit = want.filter((w) => have.includes(w)).length;
+      if (hit >= Math.min(2, want.length) && hit > bestHit) { best = it; bestHit = hit; }
+    }
+    if (!best) return false;
+    item.kcalPer100 = best.kcalPer100;
+    if (best.p100 != null) { item.p100 = best.p100; item.c100 = best.c100 || 0; item.f100 = best.f100 || 0; }
+    if (item.servingSize) item.kcalPerServing = Math.round(best.kcalPer100 * item.servingSize / 100);
+    if (!item.packSize && best.packSize) item.packSize = best.packSize;
+    item.guessed = false; item.matched = best.name; item.source = "barcode";
+    item.note = `Recognised from your photo; the numbers are Open Food Facts' for "${best.name}".`;
+    return true;
+  } catch (e) { return false; }
+  finally { clearTimeout(timer); }
+}
+function packNote(item) {
+  const c = conv(item);
+  const what = c.countKcal && c.countLabel ? `${fmt(c.countKcal)} kcal per ${c.countLabel}` : `${fmt(c.kcalPer100)} kcal per 100 ${item.unit || "g"}`;
+  return item.checked ? `${what}, as you checked it.` : item.matched ? `${what}, from Open Food Facts.` : item.guessed ? `About ${what}: an estimate for this product. The nutrition table on the back is more exact.` : `${what}, read off the pack.`;
+}
 const LABEL_SCHEMA = {
   type: "object",
   properties: {
+    photo_shows: { type: "string", enum: ["nutrition_table", "pack", "neither"], description: "nutrition_table: a nutrition table or panel is the main thing in the photo. pack: a packaged product (usually its front), whether or not some figures are printed on it. neither: not a food product at all" },
+    numbers_from: { type: "string", enum: ["printed", "estimate"], description: "printed: the calories were read off the photo. estimate: nothing readable, so these are typical values for this exact product" },
+    piece_weight: { type: ["number", "null"], description: "Weight in g (or ml) of ONE piece (one bun, one biscuit, one bar), even when the pack's serving is several pieces. Printed, or pack size divided by the number of pieces, or a typical weight for this product" },
+    kcal_per_piece: { type: ["number", "null"], description: "kcal in ONE piece" },
     name: { type: "string", description: "Product name as printed, or a short description if no name is visible" },
     brand: { type: ["string", "null"] },
     unit: { type: "string", enum: ["g", "ml"], description: "Whether the per-100 values are per 100 g or per 100 ml" },
@@ -4717,13 +4760,16 @@ const LABEL_SCHEMA = {
     confidence: { type: "string", enum: ["high", "medium", "low"] },
     notes: { type: "string", description: "Anything unclear, e.g. 'values are per 30g portion; per-100 not shown'" }
   },
-  required: ["name", "brand", "unit", "kcal_per_100", "serving_size", "kcal_per_serving", "pack_size", "pieces_per_pack", "protein_per_100", "carbs_per_100", "fat_per_100", "piece_name", "is_nutrition_label", "confidence", "notes"],
+  required: ["photo_shows", "numbers_from", "piece_weight", "kcal_per_piece", "name", "brand", "unit", "kcal_per_100", "serving_size", "kcal_per_serving", "pack_size", "pieces_per_pack", "protein_per_100", "carbs_per_100", "fat_per_100", "piece_name", "is_nutrition_label", "confidence", "notes"],
   additionalProperties: false
 };
 const LABEL_PROMPT = `This is a photo of a food or drink product, its nutrition table, or both. Read the energy information off it.
 Report only numbers you can actually read on the label; use null for anything not visible rather than guessing.
 If energy is given in kJ only, convert to kcal (kcal = kJ / 4.184). If values are per portion only, fill kcal_per_serving and serving_size and leave kcal_per_100 null.
-If no nutrition table or energy figure is visible at all, set is_nutrition_label to false and leave the numbers null.`;
+If the photo is of the pack itself (for example the front of a pack of biscuits or hot cross buns), set photo_shows to "pack". Read anything printed on it: the name, the brand, the pack weight, how many pieces are inside, and any calorie figure (front-of-pack panels often say "each bun contains 176 kcal").
+If no calorie figure can be read but you can tell what the product is, set numbers_from to "estimate" and give typical values for that exact product, using the brand and variety if you know them: kcal_per_100, the macros per 100, piece_weight and kcal_per_piece. Set is_nutrition_label to true in that case, since there are numbers to use.
+piece_name, piece_weight and kcal_per_piece describe ONE piece as it is eaten (one bun, one biscuit). Leave them null for things not eaten by the piece (a bag of rice, a tub of yoghurt).
+If it isn't a food or drink product at all, set photo_shows to "neither", is_nutrition_label to false and leave the numbers null.`;
 
 // ---- Which AI can we use? Shared key on the server (signed in), a free Gemini key on this phone, or a Claude key.
 // Free allowances are per model: about 20 a day for each Flash, about 500 for each Flash-Lite.
@@ -4908,11 +4954,14 @@ async function readLabelWithClaude(file, quiet = false) {
     { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } },
     { type: "text", text: LABEL_PROMPT }
   ], "low");
-  if (parsed.is_nutrition_label === false || (!num(parsed.kcal_per_100) && !num(parsed.kcal_per_serving))) {
+  const anyKcal = num(parsed.kcal_per_100) || num(parsed.kcal_per_serving) || num(parsed.kcal_per_piece);
+  if (parsed.photo_shows === "neither" || (parsed.is_nutrition_label === false && !anyKcal) || !anyKcal) {
     if (quiet) return null;
-    throw new Error("Can't see a nutrition table in that photo. Get closer and try again.");
+    throw new Error("Couldn't tell what that is. Get the pack or its nutrition table in the frame and try again.");
   }
-  const item = blankItem("label");
+  const guessed = parsed.numbers_from === "estimate";
+  const item = blankItem(guessed ? "claude" : "label");
+  item.fromPack = parsed.photo_shows === "pack"; item.guessed = guessed;
   item.name = parsed.name || ""; item.brand = parsed.brand || "";
   item.unitLabel = parsed.piece_name ? String(parsed.piece_name).toLowerCase().replace(/s$/, "") : null;
   if (nz(parsed.protein_per_100) != null || nz(parsed.carbs_per_100) != null || nz(parsed.fat_per_100) != null) { item.p100 = nz(parsed.protein_per_100) || 0; item.c100 = nz(parsed.carbs_per_100) || 0; item.f100 = nz(parsed.fat_per_100) || 0; }
@@ -4921,8 +4970,18 @@ async function readLabelWithClaude(file, quiet = false) {
   item.servingSize = num(parsed.serving_size);
   item.kcalPerServing = num(parsed.kcal_per_serving) ? Math.round(parsed.kcal_per_serving) : null;
   item.packSize = num(parsed.pack_size); item.piecesPerPack = num(parsed.pieces_per_pack);
+  // one piece, when the AI could say what one is: that is what "how many?" counts
+  let pw = num(parsed.piece_weight); const pk = num(parsed.kcal_per_piece);
+  if (!pw && item.packSize && item.piecesPerPack) pw = Math.round(item.packSize / item.piecesPerPack * 10) / 10;
+  if (!item.kcalPer100 && pk && pw) item.kcalPer100 = Math.round(pk / pw * 100);
+  if (item.unitLabel && (pk || (pw && item.kcalPer100))) {
+    item.servingSize = pw || null;
+    item.kcalPerServing = Math.round(pk || pw * item.kcalPer100 / 100);
+    if (item.packSize && item.piecesPerPack && pw && Math.abs(item.packSize / item.piecesPerPack - pw) > pw * 0.15) item.piecesPerPack = null;   // the count and the weights disagree: trust the piece
+  }
   item.image = dataUrl;
   const bits = [];
+  if (guessed) bits.push("AI estimate from a photo of the pack, not read off a label.");
   if (parsed.confidence && parsed.confidence !== "high") bits.push(`Claude's confidence: ${parsed.confidence}.`);
   if (parsed.notes) bits.push(parsed.notes);
   item.note = bits.join(" ");
@@ -4954,6 +5013,7 @@ $("#file-share-cam").addEventListener("change", (e) => { const f = e.target.file
 $("#file-share-lib").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) attachPhoto(f); });
 $("#share-photo-remove").onclick = () => { delete draft.photo; showSharePhoto(); };
 let shareMeal = null, shareMode = "grams";
+$("#share-src-check").onclick = () => { if (draft) openDetails("Check the numbers"); };
 $("#share-meal").addEventListener("change", (e) => { shareMeal = e.target.value; });
 function showAmountMode() {
   const c = conv(draft);
@@ -4985,6 +5045,7 @@ function openShare(prefillKcal) {
   if (!draft.photo && draft.image && String(draft.image).startsWith("data:")) thumbFrom(draft.image).then((t) => { if (draft) { draft.photo = t; showSharePhoto(); } }).catch(() => {});
   showSharePhoto();
   $("#share-name").textContent = draft.name;
+  $("#share-src").classList.toggle("hidden", !draft.packNote); $("#share-src-text").textContent = draft.packNote || "";
   $("#share-add").textContent = pick && pick.assist ? "Use in the recipe" : pick ? "Add to the meal" : editId || pastEdit ? "Save changes" : pastAdd ? `Add to ${pastLabel(pastAdd)}` : "Add to today";
   const editing = editId && state.day.items.find((x) => x.id === editId);
   const pastIt = pastEdit && ((state.history.find((x) => x.date === pastEdit.date) || {}).items || [])[pastEdit.i];

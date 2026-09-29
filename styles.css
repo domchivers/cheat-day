@@ -1591,3 +1591,9 @@ body.simple .ws-ex .add-set, body.simple .ws-ex .rm-set { font-size: 15px; paddi
 #busy-img { width: 150px; height: 150px; object-fit: cover; border-radius: 16px; margin: 0 auto 16px; display: block; border: 1px solid var(--line); }
 #busy-img.hidden { display: none; }
 body.simple .scan-seg button { font-size: 17px; padding: 11px 20px; }
+/* ---- v153: a photo of the pack goes straight to "how many?" */
+.share-src { display: flex; align-items: flex-start; gap: 8px; margin: -2px 2px 12px; font-size: 13px; line-height: 1.4; color: var(--muted); }
+.share-src.hidden { display: none; }
+.share-src svg { width: 16px; height: 16px; flex: none; margin-top: 2px; color: var(--green-2); }
+.share-src .link { font-size: 13px; padding: 0; }
+body.simple .share-src { font-size: 15px; }
