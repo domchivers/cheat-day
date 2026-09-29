@@ -1565,3 +1565,8 @@ body.simple .list .fav svg { width: 26px; height: 26px; }
 .hist-acts .btn.wide svg { width: 16px; height: 16px; }
 body.simple .ci-kv { font-size: 17px; }
 body.simple .ci-top b, body.simple .same-top b { font-size: 18px; }
+/* ---- v151: a set can be taken away again */
+.ws-ex .set-acts { display: flex; gap: 18px; align-items: center; }
+.ws-ex .rm-set { font-size: 13px; color: var(--muted); font-weight: 600; padding: 4px 0; background: none; border: 0; cursor: pointer; }
+body.simple .ws-ex .add-set, body.simple .ws-ex .rm-set { font-size: 15px; padding: 8px 0; }
+.ws-ex .set-acts .add-set, .ws-ex .set-acts .rm-set { font-size: 14px; padding: 9px 6px 9px 0; }

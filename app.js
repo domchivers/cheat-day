@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "150";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "151";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -3844,7 +3844,30 @@ const restLength = () => Math.max(15, Math.min(600, state.restSeconds || REST_SE
 const mmss = (sec) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
 let sessionTimer = null;
 function lastFor(name) { return state.exercises[(name || "").trim().toLowerCase()] || null; }
+/** The sets of an exercise the last time it was done: from its record, else from the most recent workout that kept them. */
+function lastSets(name) {
+  const key = (name || "").trim().toLowerCase(); if (!key) return null;
+  const k = state.exercises[key];
+  if (k && Array.isArray(k.detail) && k.detail.length) return k.detail;
+  const days = [state.day].concat(state.history.slice(0, 120));
+  for (const d of days) for (const w of (d.workouts || []).slice().reverse()) for (const l of w.lifts || [])
+    if ((l.exercise || "").trim().toLowerCase() === key && Array.isArray(l.detail) && l.detail.length) return l.detail;
+  return null;
+}
+function lastLine(name) {
+  const last = lastFor(name), sets = lastSets(name);
+  if (!last && !sets) return "New exercise";
+  const best = last && last.best1rm ? ` · best est. 1RM ${last.best1rm} kg` : "";
+  if (sets && sets.some((s) => s.reps !== sets[0].reps || s.kg !== sets[0].kg)) {
+    const sameKg = sets.every((s) => s.kg === sets[0].kg);
+    return `Last time ${sameKg ? `${sets.map((s) => s.reps).join(", ")}${sets[0].kg ? ` @ ${sets[0].kg} kg` : ""}` : sets.map((s) => `${s.kg ? `${s.kg}×` : ""}${s.reps}`).join(", ") + " kg"}${best}`;
+  }
+  const n = sets ? sets.length : last.sets, reps = sets ? sets[0].reps : last.reps, kg = sets ? sets[0].kg : last.kg;
+  return `Last time ${n}×${reps}${kg ? ` @ ${kg} kg` : ""}${best}`;
+}
 function sessionExercise(name, tmpl) {
+  const sets = lastSets(name);
+  if (sets) return { exercise: name, sets: sets.slice(0, 8).map((s) => ({ reps: s.reps || 8, kg: s.kg || 0, done: false })) };
   const k = lastFor(name) || tmpl || { sets: 3, reps: 8, kg: 0 };
   const n = Math.max(1, Math.min(8, k.sets || 3));
   return { exercise: name, sets: Array.from({ length: n }, () => ({ reps: k.reps || 8, kg: k.kg || 0, done: false })) };
@@ -3888,11 +3911,18 @@ function renderSession() {
     const div = document.createElement("div"); div.className = "ws-ex";
     const last = lastFor(ex.exercise);
     div.innerHTML = `<div class="ex-head"><input type="text" placeholder="Exercise, e.g. Bench press" value="${esc(ex.exercise || "")}" list="w-ex-list"><button class="del" aria-label="Remove">✕</button></div>
-      <div class="last">${last ? `Last time ${last.sets}×${last.reps}${last.kg ? ` @ ${last.kg} kg` : ""}${last.best1rm ? ` · best est. 1RM ${last.best1rm} kg` : ""}` : "New exercise"}</div>
+      <div class="last">${esc(lastLine(ex.exercise))}</div>
       ${ex.sets.map((st, j) => `<div class="ws-set ${st.done ? "done" : ""}" data-j="${j}"><span>Set ${j + 1}</span><input type="number" inputmode="numeric" value="${st.reps || ""}" placeholder="reps"><input type="number" inputmode="decimal" value="${st.kg || ""}" placeholder="kg"><button class="tick" aria-label="Done">${st.done ? "✓" : "○"}</button></div>`).join("")}
-      <button class="add-set">＋ set</button>`;
+      <div class="set-acts"><button class="add-set">＋ set</button>${ex.sets.length > 1 ? `<button class="rm-set">− set</button>` : ""}</div>`;
     const nameIn = div.querySelector(".ex-head input");
-    nameIn.onchange = () => { ex.exercise = nameIn.value.trim(); const k = lastFor(ex.exercise); if (k) ex.sets.forEach((st) => { if (!st.done) { st.reps = k.reps; st.kg = k.kg; } }); save(false); renderSession(); };
+    nameIn.onchange = () => {
+      ex.exercise = nameIn.value.trim();
+      const k = lastFor(ex.exercise), sets = lastSets(ex.exercise);
+      if (sets && !ex.sets.some((st) => st.done)) ex.sets = sets.slice(0, 8).map((s) => ({ reps: s.reps || 8, kg: s.kg || 0, done: false }));
+      else if (sets) ex.sets.forEach((st, j) => { if (!st.done && sets[j]) { st.reps = sets[j].reps; st.kg = sets[j].kg; } });
+      else if (k) ex.sets.forEach((st) => { if (!st.done) { st.reps = k.reps; st.kg = k.kg; } });
+      save(false); renderSession();
+    };
     div.querySelector(".ex-head .del").onclick = async () => { if (ex.sets.some((st) => st.done) && !await ask(`Remove ${ex.exercise || "this exercise"} from the session?`)) return; ss.exercises.splice(i, 1); save(false); renderSession(); };
     div.querySelectorAll(".ws-set").forEach((row) => {
       const st = ex.sets[+row.dataset.j], [reps, kg] = row.querySelectorAll("input");
@@ -3900,6 +3930,12 @@ function renderSession() {
       row.querySelector(".tick").onclick = () => { st.done = !st.done; if (st.done) { st.reps = num(reps.value) || st.reps || 1; st.kg = nz(kg.value) || 0; ss.restUntil = Date.now() + restLength() * 1000; } save(false); renderSession(); tickSession(); };
     });
     div.querySelector(".add-set").onclick = () => { const prev = ex.sets[ex.sets.length - 1] || { reps: 8, kg: 0 }; ex.sets.push({ reps: prev.reps, kg: prev.kg, done: false }); save(false); renderSession(); };
+    const rm = div.querySelector(".rm-set");
+    if (rm) rm.onclick = async () => {
+      const lastSet = ex.sets[ex.sets.length - 1];
+      if (lastSet.done && !await ask(`Set ${ex.sets.length} is ticked as done. Remove it anyway?`, { ok: "Remove" })) return;
+      ex.sets.pop(); save(false); renderSession();
+    };
     box.appendChild(div);
   });
   ensureExerciseList(); sessionVolume();
@@ -3985,7 +4021,7 @@ function logWorkout(w) {
     const est1rm = l.kg ? Math.round(l.kg * (1 + l.reps / 30)) : 0;   // Epley estimate, for spotting a best
     if (prev && est1rm > (prev.best1rm || 0) && l.kg) pbs.push(`${l.exercise} (${l.kg} kg × ${l.reps})`);
     const prevBest = (prev && prev.bestSet) || null, better = l.kg && (!prevBest || l.kg > prevBest.kg || (l.kg === prevBest.kg && l.reps > prevBest.reps));
-    state.exercises[key] = { name: l.exercise, sets: l.sets, reps: l.reps, kg: l.kg, best1rm: Math.max(est1rm, (prev && prev.best1rm) || 0), bestSet: better ? { kg: l.kg, reps: l.reps } : prevBest, lastUsed: new Date().toISOString() };
+    state.exercises[key] = { name: l.exercise, sets: l.sets, reps: l.reps, kg: l.kg, detail: Array.isArray(l.detail) && l.detail.length ? l.detail.map((s) => ({ reps: s.reps || 0, kg: s.kg || 0 })) : null, best1rm: Math.max(est1rm, (prev && prev.best1rm) || 0), bestSet: better ? { kg: l.kg, reps: l.reps } : prevBest, lastUsed: new Date().toISOString() };
   }
   state.day.workouts = state.day.workouts || [];
   state.day.workouts.push({ id: uid(), type: w.type, name: w.name, minutes: w.minutes, effort: w.effort, kcal, lifts: w.lifts || [], at: new Date().toISOString() });
