@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "153";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "154";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -4702,35 +4702,75 @@ async function readLabel(file, shown) {
   } catch (err) { busy(false); console.error(err); toast(err.message || "Label reading failed", 5000); return false; }
 }
 
-/** A product recognised from the front of its pack: the real numbers, if Open Food Facts has the same brand and product. */
+/** Which country's shops this phone is in, from its time zone (then its language): products differ by country. */
+function shopCountry() {
+  let tz = ""; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (e) {}
+  if (/^Europe\/(London|Belfast|Jersey|Guernsey|Isle_of_Man)$/.test(tz)) return { tag: "united-kingdom", name: "the UK" };
+  if (/^Australia\//.test(tz)) return { tag: "australia", name: "Australia" };
+  if (/^Pacific\/Auckland$/.test(tz)) return { tag: "new-zealand", name: "New Zealand" };
+  if (/^Europe\/Dublin$/.test(tz)) return { tag: "ireland", name: "Ireland" };
+  const lang = (navigator.language || "").toLowerCase();
+  if (lang === "en-gb") return { tag: "united-kingdom", name: "the UK" };
+  if (lang === "en-au") return { tag: "australia", name: "Australia" };
+  return null;
+}
+/** Brand and product words, the same way on both sides: "M&S", "Marks & Spencer" and "Co-op" all match what Open Food Facts calls them. */
+const BRAND_ALIASES = [[/\bm\s*(?:&|and)\s*s\b/g, "marks spencer"], [/\bmarks\s*(?:&|and)\s*spencers?\b/g, "marks spencer"], [/\bco-?op(?:erative)?\b/g, "coop"], [/\bsainsbury'?s\b/g, "sainsbury"], [/\bmorrisons?\b/g, "morrison"], [/\bwoolies\b/g, "woolworths"], [/\bmcvitie'?s\b/g, "mcvitie"], [/\barnott'?s\b/g, "arnott"]];
+function productWords(s) {
+  let t = String(s || "").toLowerCase().replace(/[’`]/g, "'");
+  for (const [re, to] of BRAND_ALIASES) t = t.replace(re, to);
+  t = t.replace(/'s\b/g, "").replace(/[^a-z0-9 ]+/g, " ");
+  return (t.match(/[a-z]{3,}/g) || []).filter((w) => !PRODUCT_STOP.has(w));
+}
+const PRODUCT_SAME = new Set(["fruited", "fruity", "fruit", "spiced", "traditional", "british", "luxury", "finest", "best", "taste", "difference", "collection", "extra", "large", "soft", "our", "by", "mixed", "bakery", "baked", "freshly", "fresh", "select", "essential", "essentials", "value", "everyday", "biscuits", "biscuit", "buns", "bun", "crumpet", "crumpets", "cookies", "cookie"]);
+const PRODUCT_STOP = new Set(["the", "and", "with", "for", "pack", "each", "new", "original", "classic", "free", "from"]);
+/** A product recognised from the front of its pack: the real numbers, if Open Food Facts has the same brand and product.
+ *  This phone's country is searched first (a UK and an Australian hot cross bun aren't the same bun), then the world. */
 async function packLookup(item) {
-  const words = (s) => String(s || "").toLowerCase().match(/[a-z]{3,}/g) || [];
-  const want = words(item.name), brand = words(item.brand);
+  const want = productWords(item.name), brand = productWords(item.brand);
   if (!brand.length || !want.length || !item.kcalPer100) return false;   // without a brand a match is only a lookalike
-  const ctrl = new AbortController(), timer = setTimeout(() => ctrl.abort(), 5000);
-  try {
-    const fields = "code,product_name,product_name_en,brands,quantity,product_quantity,product_quantity_unit,serving_size,serving_quantity,nutriments,categories_tags";
-    const r = await fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(`${item.brand} ${item.name}`)}&search_simple=1&action=process&json=1&page_size=10&fields=${fields}`, { signal: ctrl.signal });
-    if (!r.ok) return false;
-    let best = null, bestHit = 0;
-    for (const p of (await r.json()).products || []) {
-      const it = itemFromProduct(p); if (!it.name || !it.kcalPer100) continue;
-      const ratio = it.kcalPer100 / item.kcalPer100; if (ratio < 0.75 || ratio > 1.35) continue;   // far from the estimate: a different product
-      const have = words(`${it.name} ${it.brand}`);
-      if (!brand.some((w) => have.includes(w))) continue;
-      const hit = want.filter((w) => have.includes(w)).length;
-      if (hit >= Math.min(2, want.length) && hit > bestHit) { best = it; bestHit = hit; }
+  const country = shopCountry(), ctrl = new AbortController(), timer = setTimeout(() => ctrl.abort(), 12000);
+  // Open Food Facts allows about 10 searches a minute and says "busy" (often without the header browsers need, so it looks like a failed connection): one retry
+  const get = async (url) => {
+    for (let n = 0; n < 2; n++) {
+      try { const r = await fetch(url, { signal: ctrl.signal }); if (r.ok) return await r.json(); if (r.status !== 503 && r.status !== 429) return null; }
+      catch (e) { if (ctrl.signal.aborted) return null; }
+      await new Promise((res) => setTimeout(res, 1600));
     }
-    if (!best) return false;
-    item.kcalPer100 = best.kcalPer100;
-    if (best.p100 != null) { item.p100 = best.p100; item.c100 = best.c100 || 0; item.f100 = best.f100 || 0; }
-    if (item.servingSize) item.kcalPerServing = Math.round(best.kcalPer100 * item.servingSize / 100);
-    if (!item.packSize && best.packSize) item.packSize = best.packSize;
-    item.guessed = false; item.matched = best.name; item.source = "barcode";
-    item.note = `Recognised from your photo; the numbers are Open Food Facts' for "${best.name}".`;
-    return true;
-  } catch (e) { return false; }
-  finally { clearTimeout(timer); }
+    return null;
+  };
+  const fields = "code,product_name,product_name_en,brands,quantity,product_quantity,product_quantity_unit,serving_size,serving_quantity,nutriments,categories_tags,countries_tags";
+  const q = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(`${item.brand} ${item.name}`)}&search_simple=1&action=process&json=1&page_size=15&fields=${fields}`;
+  const urls = country ? [`${q}&tagtype_0=countries&tag_contains_0=contains&tag_0=${country.tag}`, q] : [q];
+  try {
+    for (const url of urls) {
+      const data = await get(url); if (ctrl.signal.aborted) return false; if (!data) continue;
+      let best = null, bestScore = 0;
+      for (const p of data.products || []) {
+        const it = itemFromProduct(p); if (!it.name || !it.kcalPer100) continue;
+        const ratio = it.kcalPer100 / item.kcalPer100; if (ratio < 0.75 || ratio > 1.35) continue;   // far from the estimate: a different product
+        const have = productWords(`${it.name} ${it.brand}`);
+        if (!brand.some((w) => have.includes(w))) continue;
+        const hit = want.filter((w) => have.includes(w)).length;
+        if (hit < Math.min(2, want.length)) continue;
+        const here = country && (p.countries_tags || []).some((c) => String(c).endsWith(country.tag)) ? 0.5 : 0;   // sold here: a better bet
+        // "blueberry", "tiramisu", "gluten free": a different variety, not a match. "Fruited", "Finest", "6 pack" don't change it.
+        const extra = have.filter((w) => !want.includes(w) && !brand.includes(w) && !PRODUCT_SAME.has(w));
+        if (extra.length) continue;
+        const score = hit + here - have.filter((w) => PRODUCT_SAME.has(w)).length * 0.05;
+        if (score > bestScore) { best = it; bestScore = score; }
+      }
+      if (!best) continue;
+      item.kcalPer100 = best.kcalPer100;
+      if (best.p100 != null) { item.p100 = best.p100; item.c100 = best.c100 || 0; item.f100 = best.f100 || 0; }
+      if (item.servingSize) item.kcalPerServing = Math.round(best.kcalPer100 * item.servingSize / 100);
+      if (!item.packSize && best.packSize) item.packSize = best.packSize;
+      item.guessed = false; item.matched = best.name; item.source = "barcode";
+      item.note = `Recognised from your photo; the numbers are Open Food Facts' for "${best.name}".`;
+      return true;
+    }
+    return false;
+  } finally { clearTimeout(timer); }
 }
 function packNote(item) {
   const c = conv(item);
@@ -4766,7 +4806,8 @@ const LABEL_SCHEMA = {
 const LABEL_PROMPT = `This is a photo of a food or drink product, its nutrition table, or both. Read the energy information off it.
 Report only numbers you can actually read on the label; use null for anything not visible rather than guessing.
 If energy is given in kJ only, convert to kcal (kcal = kJ / 4.184). If values are per portion only, fill kcal_per_serving and serving_size and leave kcal_per_100 null.
-If the photo is of the pack itself (for example the front of a pack of biscuits or hot cross buns), set photo_shows to "pack". Read anything printed on it: the name, the brand, the pack weight, how many pieces are inside, and any calorie figure (front-of-pack panels often say "each bun contains 176 kcal").
+If the photo is of the pack itself (for example the front of a pack of biscuits or hot cross buns), set photo_shows to "pack".
+UK and Irish packs often have a front-of-pack panel like "Each 70g bun contains: Energy 823kJ 196kcal 10% | Fat ... | Sugars ... | Salt ...": the kcal figure there is for one piece (use it for kcal_per_piece and the weight for piece_weight). Never use the kJ figure or the % reference intake as calories. Australian packs may show "Health Star Rating" and "per serve" figures instead. Read anything printed on it: the name, the brand, the pack weight, how many pieces are inside, and any calorie figure (front-of-pack panels often say "each bun contains 176 kcal").
 If no calorie figure can be read but you can tell what the product is, set numbers_from to "estimate" and give typical values for that exact product, using the brand and variety if you know them: kcal_per_100, the macros per 100, piece_weight and kcal_per_piece. Set is_nutrition_label to true in that case, since there are numbers to use.
 piece_name, piece_weight and kcal_per_piece describe ONE piece as it is eaten (one bun, one biscuit). Leave them null for things not eaten by the piece (a bag of rice, a tub of yoghurt).
 If it isn't a food or drink product at all, set photo_shows to "neither", is_nutrition_label to false and leave the numbers null.`;
@@ -4950,9 +4991,10 @@ async function readLabelWithClaude(file, quiet = false) {
   const img = await loadImage(file);
   const dataUrl = drawScaled(img, 1024).toDataURL("image/jpeg", 0.8);
   const b64 = dataUrl.split(",")[1];
+  const where = shopCountry();
   const parsed = await askAI(LABEL_SCHEMA, [
     { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } },
-    { type: "text", text: LABEL_PROMPT }
+    { type: "text", text: LABEL_PROMPT + (where ? `\nThe person shops in ${where.name}. If you have to estimate, use ${where.name}'s version of this product: the same brand's recipe and sizes can differ between countries.` : "") }
   ], "low");
   const anyKcal = num(parsed.kcal_per_100) || num(parsed.kcal_per_serving) || num(parsed.kcal_per_piece);
   if (parsed.photo_shows === "neither" || (parsed.is_nutrition_label === false && !anyKcal) || !anyKcal) {
