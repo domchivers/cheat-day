@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "154";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "155";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -4694,7 +4694,8 @@ async function readLabel(file, shown) {
   try {
     const item = await readLabelWithClaude(file);
     if (item.fromPack && item.guessed) { $("#busy-text").textContent = "Checking the numbers…"; await packLookup(item); }
-    if (item.fromPack) item.packNote = packNote(item);
+    if (item.fromPack && item.guessed && webSearchPossible()) { $("#busy-text").textContent = "Searching online for this product…"; try { await webLookupPack(item); } catch (e) { console.warn("web lookup", e); } if ($("#busy").classList.contains("hidden")) busy("Reading the photo…", pic); }   // cancelled or failed: carry on with the estimate
+    if (item.fromPack) { packAsCount(item); item.packNote = packNote(item); }
     draft = item;
     busy(false);
     if (item.fromPack) openShare(); else openDetails("Nutrition (from photo)");
@@ -4772,10 +4773,74 @@ async function packLookup(item) {
     return false;
   } finally { clearTimeout(timer); }
 }
+// ---- a pack nobody has listed (Chinese crisps, say): Gemini reads it in any language and searches Google for the product.
+// Google Search is free only on the 2.5 Flash models (about 500 a day, shared); the 3.x models charge for it, so they're never used here.
+const GEMINI_SEARCH = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
+const webSearchPossible = () => !!((window.cloud && window.cloud.user && aiProxyState !== "no") || state.geminiKey) && GEMINI_SEARCH.some(modelReady);
+const WEB_PACK_PROMPT = (item, where) => `This is a photo of a packaged food or drink. Read everything printed on it, in any language (Chinese, Japanese, Korean, Thai and so on), including the brand and the flavour.
+My first guess: "${item.brand ? item.brand + " " : ""}${item.name}", about ${fmt(item.kcalPer100)} kcal per 100 ${item.unit || "g"}.${where ? ` I shop in ${where.name}.` : ""}
+Use Google Search to find this exact product (same brand, same flavour, same size if you can) and its nutrition information: the manufacturer's site, a supermarket or online shop listing, Open Food Facts, or a nutrition database. Search in the pack's own language too.
+Chinese nutrition tables (营养成分表) give energy (能量) in kJ per 100 g: convert to kcal by dividing by 4.184. NRV% is not a quantity.
+Reply with ONLY a JSON object, no other text:
+{"found": true or false, "name_en": "English name with the flavour", "name_original": "the name as printed, or null", "brand": "brand in English, or null", "unit": "g" or "ml", "kcal_per_100": number or null, "protein_per_100": number or null, "carbs_per_100": number or null, "fat_per_100": number or null, "pack_size": number or null, "pieces_per_pack": number or null, "piece_name": "what one piece is called, or null", "piece_weight": number or null, "source": "the website the numbers came from", "notes": "one short sentence: how sure you are that it's the same product"}
+Set found to false if you can't find nutrition figures for this product, rather than guessing.`;
+async function webLookupPack(item) {
+  if (!item.image) return false;
+  const key = state.geminiKey && !(window.cloud && window.cloud.user && aiProxyState !== "no") ? state.geminiKey : null;
+  const body = JSON.stringify({
+    contents: [{ parts: [{ inline_data: { mime_type: "image/jpeg", data: String(item.image).split(",")[1] } }, { text: WEB_PACK_PROMPT(item, shopCountry()) }] }],
+    tools: [{ google_search: {} }],
+    generationConfig: { temperature: 0.2 }
+  });
+  aiStart = Date.now(); aiNote = ""; clearInterval(aiTick); aiTick = setInterval(() => aiProgress(), 1000); aiProgress();
+  try {
+    for (const model of GEMINI_SEARCH.filter(modelReady)) {
+      const ctl = new AbortController(); aiCtl = ctl;
+      const timer = setTimeout(() => ctl.abort(), 35000);
+      let r;
+      try {
+        r = key ? await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, { method: "POST", headers: { "Content-Type": "application/json", "X-goog-api-key": key }, body, signal: ctl.signal })
+          : await window.cloud.rawFetch(`${window.SUPABASE_CONFIG.url}/functions/v1/ai?model=${model}`, { method: "POST", headers: { "Content-Type": "application/json", apikey: window.SUPABASE_CONFIG.anonKey }, body, signal: ctl.signal });
+      } catch (e) { if (ctl.cancelled) throw new Error("Cancelled"); continue; }
+      finally { clearTimeout(timer); }
+      if (r.status === 429) { const t = await r.text().catch(() => ""); markSpent(model, /PerDay|per day|daily/i.test(t)); continue; }
+      if (r.status === 404 || r.status === 400) { markSpent(model, true); continue; }   // not offered to this key
+      if (!r.ok) continue;
+      const json = await r.json().catch(() => ({})), cand = (json.candidates || [])[0] || {};
+      const text = ((cand.content || {}).parts || []).map((p) => p.text || "").join("");
+      const m = text.match(/\{[\s\S]*\}/); if (!m) continue;
+      let got; try { got = JSON.parse(m[0]); } catch (e) { continue; }
+      const k = num(got.kcal_per_100);
+      if (!got.found || !k || k < 20 || k > 950) return false;
+      if (item.kcalPer100 && (k < item.kcalPer100 * 0.5 || k > item.kcalPer100 * 1.8)) return false;   // wildly off the photo's own guess: probably a different product
+      const sites = ((cand.groundingMetadata || {}).groundingChunks || []).map((c) => c.web && c.web.title).filter(Boolean);
+      item.kcalPer100 = Math.round(k);
+      if (nz(got.protein_per_100) != null) { item.p100 = nz(got.protein_per_100); item.c100 = nz(got.carbs_per_100) || 0; item.f100 = nz(got.fat_per_100) || 0; }
+      if (got.name_en) item.name = got.name_original && got.name_original !== got.name_en ? `${got.name_en} (${got.name_original})` : got.name_en;
+      if (got.brand) item.brand = got.brand;
+      if (!item.packSize && num(got.pack_size)) item.packSize = num(got.pack_size);
+      if (!item.piecesPerPack && num(got.pieces_per_pack)) item.piecesPerPack = num(got.pieces_per_pack);
+      if (got.piece_name && !item.unitLabel) item.unitLabel = String(got.piece_name).toLowerCase().replace(/s$/, "");
+      const pw = num(got.piece_weight) || item.servingSize;
+      if (item.unitLabel && pw) { item.servingSize = pw; item.kcalPerServing = Math.round(pw * item.kcalPer100 / 100); }
+      else if (item.servingSize) item.kcalPerServing = Math.round(item.servingSize * item.kcalPer100 / 100);
+      item.guessed = false; item.web = String(got.source || sites[0] || "the web").slice(0, 60); item.source = "claude";
+      item.note = `Found online (${item.web}) by searching for the product in your photo.${got.notes ? " " + got.notes : ""}`;
+      return true;
+    }
+    return false;
+  } finally { clearInterval(aiTick); aiTick = null; aiCtl = null; }
+}
+/** A pack eaten whole (a bag of crisps, a bar) and not by the piece: count bags, with a half a tap away. */
+function packAsCount(item) {
+  if (item.unitLabel || !item.packSize || !item.kcalPer100 || item.packSize > 250) return;
+  item.unitLabel = /crisp|chip|puff|snack|popcorn|薯|片/i.test(`${item.name} ${item.brand}`) ? "bag" : "pack";
+  item.servingSize = item.packSize; item.kcalPerServing = Math.round(item.packSize * item.kcalPer100 / 100); item.piecesPerPack = null;
+}
 function packNote(item) {
   const c = conv(item);
   const what = c.countKcal && c.countLabel ? `${fmt(c.countKcal)} kcal per ${c.countLabel}` : `${fmt(c.kcalPer100)} kcal per 100 ${item.unit || "g"}`;
-  return item.checked ? `${what}, as you checked it.` : item.matched ? `${what}, from Open Food Facts.` : item.guessed ? `About ${what}: an estimate for this product. The nutrition table on the back is more exact.` : `${what}, read off the pack.`;
+  return item.checked ? `${what}, as you checked it.` : item.web ? `${what}, found online (${item.web}).` : item.matched ? `${what}, from Open Food Facts.` : item.guessed ? `About ${what}: an estimate for this product. The nutrition table on the back is more exact.` : `${what}, read off the pack.`;
 }
 const LABEL_SCHEMA = {
   type: "object",
