@@ -1522,3 +1522,46 @@ body.simple .fc-line, body.simple .fc-tag { font-size: 15px; }
 .list .fav-mark { flex: none; width: 16px; height: 16px; color: #e8a317; fill: currentColor; }
 body.simple .list .fav { width: 42px; height: 46px; }
 body.simple .list .fav svg { width: 26px; height: 26px; }
+/* ---- v150: the weekly check-in, and copying food from another day */
+.ci-home { padding: 14px 16px; margin: 0 0 12px; border: 2px solid var(--mint); }
+.ci-top, .same-top { display: flex; align-items: center; gap: 12px; }
+.ci-top .body, .same-top .body { flex: 1; min-width: 0; }
+.ci-top b, .same-top b { display: block; font-size: 16px; }
+.ci-top small, .same-top small { display: block; color: var(--muted); font-size: 13px; line-height: 1.35; }
+.ci-home .ci-top { margin-bottom: 8px; }
+.ci-home .btn { margin: 10px 0 0; }
+.ci-kv { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 7px 0; font-size: 15px; border-bottom: 1px solid var(--line); }
+.ci-kv:last-of-type { border-bottom: 0; }
+.ci-kv span { color: var(--muted); }
+.ci-kv b { font-weight: 700; text-align: right; }
+.ci-card { padding: 16px; margin: 0 0 12px; border-radius: 18px; display: flex; flex-direction: column; gap: 2px; }
+.ci-card .k { font-size: 13px; color: var(--muted); font-weight: 600; }
+.ci-card .t { font-size: 17px; margin-bottom: 2px; }
+.ci-card .n { font-size: 30px; font-weight: 800; line-height: 1.15; }
+.ci-card .n small { font-size: 14px; font-weight: 600; color: var(--muted); margin-left: 6px; }
+.ci-card .n.ci-soft { font-size: 21px; }
+.ci-card .s { font-size: 14px; color: var(--muted); line-height: 1.4; margin-top: 2px; }
+.ci-suggest { border: 2px solid var(--mint); }
+.ci-acts { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.ci-acts .btn { margin: 0; }
+.ci-note { margin: 4px 4px 0; line-height: 1.45; }
+.same-card { margin: 10px 0 4px; padding: 12px; border-radius: 14px; background: var(--mint-2); }
+.same-top .circle { width: 38px; height: 38px; flex: none; }
+.same-top small { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.same-x { color: var(--muted); padding: 6px; font-size: 16px; line-height: 1; align-self: flex-start; background: none; border: 0; cursor: pointer; }
+.same-acts { display: flex; gap: 8px; margin-top: 10px; }
+.same-acts .btn { flex: 1; margin: 0; width: auto; }
+.same-list { list-style: none; margin: 8px 0 0; padding: 0; }
+.same-list li { padding: 0; margin: 0; background: none; border: 0; }
+.same-list label { display: flex; align-items: center; gap: 10px; padding: 8px 2px; font-size: 15px; cursor: pointer; }
+.same-list input { width: 20px; height: 20px; flex: none; accent-color: var(--green); }
+.same-list span { flex: 1; min-width: 0; }
+.same-list b { color: var(--green); }
+.ate li.ate-grp { align-items: center; }
+.ate li.ate-grp .cp { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; background: none; border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 12px; font-weight: 600; color: var(--green); text-transform: none; letter-spacing: 0; cursor: pointer; }
+.ate li.ate-grp .cp svg { width: 14px; height: 14px; }
+.hist-acts { flex-wrap: wrap; }
+.hist-acts .btn.wide { flex-basis: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.hist-acts .btn.wide svg { width: 16px; height: 16px; }
+body.simple .ci-kv { font-size: 17px; }
+body.simple .ci-top b, body.simple .same-top b { font-size: 18px; }

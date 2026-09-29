@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "149";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "150";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -189,7 +189,7 @@ function basisOf(obj) {
 
 // ---------------------------------------------------------------- router
 
-const VIEWS = ["home", "budget", "settings", "history", "friends", "compose", "recipe", "workouts", "exercise", "goals", "body", "welcome", "plan", "ask", "chats", "scan", "search", "meals", "meal", "details", "share"];
+const VIEWS = ["home", "checkin", "budget", "settings", "history", "friends", "compose", "recipe", "workouts", "exercise", "goals", "body", "welcome", "plan", "ask", "chats", "scan", "search", "meals", "meal", "details", "share"];
 let stack = ["home"];
 function show(view) {
   if (view === "feed") { frSeg = "feed"; view = "friends"; }   // the feed lives in the Friends tab now
@@ -199,7 +199,8 @@ function show(view) {
   if (view !== "scan") stopCamera();
   if (view === "home") renderHome();
   if (view === "settings") renderSettings();
-  if (view === "budget") { renderPlanCards(); renderBudgetBody(); renderDayBudgets(true); $("#b-budget").value = state.budget; $$("#budget-chips button").forEach((b) => b.classList.toggle("on", +b.dataset.b === state.budget)); const g = state.goals || {}; $("#b-p").value = g.p ?? ""; $("#b-c").value = g.c ?? ""; $("#b-f").value = g.f ?? ""; renderManualHead(); $("#b-manual").open = false; $("#bm-warn").classList.toggle("hidden", !state.plan); }
+  if (view === "checkin") renderCheckIn();
+  if (view === "budget") { renderBudgetCheckIn(); renderPlanCards(); renderBudgetBody(); renderDayBudgets(true); $("#b-budget").value = state.budget; $$("#budget-chips button").forEach((b) => b.classList.toggle("on", +b.dataset.b === state.budget)); const g = state.goals || {}; $("#b-p").value = g.p ?? ""; $("#b-c").value = g.c ?? ""; $("#b-f").value = g.f ?? ""; renderManualHead(); $("#b-manual").open = false; $("#bm-warn").classList.toggle("hidden", !state.plan); }
   if (view === "scan") startCamera();
   if (view === "search") openSearch();
   if (view === "meals") renderMeals();
@@ -311,6 +312,8 @@ function renderHome() {
   $("#home-left").textContent = left >= 0 ? ` · ${fmt(left)} left` : ` · ${fmt(-left)} over`;
   $("#home-left").classList.toggle("over", left < 0);
   renderTodayList();
+  renderSameAs();
+  renderHomeCheckIn();
   // Nothing yet today: show yesterday as a reminder of where you left off
   const y = !state.day.items.length && state.history.find((h) => h.date === dateMinus(1));
   const yc = $("#home-yesterday");
@@ -946,7 +949,7 @@ $("#cal-next").onclick = () => { const [y, m] = calMonth.split("-").map(Number);
 function ateList(items, editable) {
   const row = (it) => `<li${editable ? ` data-i="${items.indexOf(it)}"` : ""}><span>${it.photo ? `<img class="pic" src="${esc(it.photo)}" alt="">` : ""}${esc(it.name)}</span><b>${fmt(it.kcal)}</b>${editable ? `<button class="x" aria-label="Remove">✕</button>` : ""}</li>`;
   if (!items.some((it) => it.addedAt || it.meal)) return items.map(row).join("");   // older days: no times kept
-  return MEALS.map((g) => { const its = items.filter((it) => mealOf(it) === g); return its.length ? `<li class="ate-grp"><span>${g}</span><b>${fmt(its.reduce((a, it) => a + (it.kcal || 0), 0))}</b></li>${its.map(row).join("")}` : ""; }).join("");
+  return MEALS.map((g) => { const its = items.filter((it) => mealOf(it) === g); return its.length ? `<li class="ate-grp"><span>${g}</span>${editable ? `<button class="cp" data-meal="${g}"><svg><use href="#i-copy"/></svg>Copy to today</button>` : ""}<b>${fmt(its.reduce((a, it) => a + (it.kcal || 0), 0))}</b></li>${its.map(row).join("")}` : ""; }).join("");
 }
 // ---- fixing a past day: change or remove what's there, or add something you missed
 let pastAdd = null, pastEdit = null;   // a date to add to; { date, i } of an item being changed
@@ -1010,7 +1013,7 @@ function renderHistory() {
     let body = "";
     if (items.length) {
       body = histOpen.has(d.date)
-        ? `<ul class="ate ate-edit">${ateList(items, true)}</ul><p class="muted tiny hist-tip">Tap a food to change it or move its meal.</p><div class="hist-acts"><button class="btn mint slim" data-act="add">＋ Add something</button><button class="btn ghost slim" data-act="toggle">Hide</button></div>`
+        ? `<ul class="ate ate-edit">${ateList(items, true)}</ul><p class="muted tiny hist-tip">Tap a food to change it or move its meal.</p><div class="hist-acts"><button class="btn mint slim" data-act="add">＋ Add something</button><button class="btn ghost slim" data-act="toggle">Hide</button><button class="btn mint slim wide" data-act="copy"><svg><use href="#i-copy"/></svg>Copy the whole day to today</button></div>`
         : `<div class="items muted tiny">${esc(items.map((it) => it.name).slice(0, 3).join(", "))}${items.length > 3 ? ` and ${items.length - 3} more` : ""}</div><button class="btn mint ate-btn" data-act="toggle">What I had (${items.length}) ▾</button>`;
     } else if (count) body = `<div class="muted tiny">${count} item${count === 1 ? "" : "s"} (logged before history kept the details)</div>`;
     card.innerHTML = `<div class="top"><b>${esc(label)}</b><span class="kcal ${over ? "over" : "ok"}">${fmt(d.kcal)} / ${fmt(d.budget)} kcal</span></div>${(d.workouts || []).length ? `<div class="hist-wo">${d.workouts.map((w, k) => `<button class="hist-w" data-w="${k}"><svg><use href="#i-dumbbell"/></svg>${esc(w.name)} · ${w.minutes} min · ${fmt(w.kcal)} kcal${(w.lifts || []).length ? `<small>${esc(w.lifts.map(liftText).join(" · "))}</small>` : ""}</button>`).join("")}</div>` : ""}
@@ -1019,6 +1022,9 @@ function renderHistory() {
     const tog = card.querySelector("[data-act=toggle]");
     if (tog) tog.onclick = () => { if (histOpen.has(d.date)) histOpen.delete(d.date); else histOpen.add(d.date); renderHistory(); };
     card.querySelectorAll(".hist-w").forEach((b) => b.onclick = () => openWorkoutEditor(d.workouts[+b.dataset.w], b, () => { d.burned = d.workouts.reduce((x, w) => x + (w.kcal || 0), 0); save(); renderHistory(); }, () => { d.workouts.splice(+b.dataset.w, 1); d.burned = d.workouts.reduce((x, w) => x + (w.kcal || 0), 0); save(); renderHistory(); }));
+    card.querySelectorAll(".ate-grp .cp").forEach((b) => b.onclick = (e) => { e.stopPropagation(); const g = b.dataset.meal; copyToToday(items.filter((it) => mealOf(it) === g), `${label === "Yesterday" ? "yesterday" : label}'s ${g.toLowerCase()}`); });
+    const copyBtn = card.querySelector("[data-act=copy]");
+    if (copyBtn) copyBtn.onclick = async () => { if (await ask(`Copy all ${items.length} food${items.length === 1 ? "" : "s"} from ${label === "Yesterday" ? "yesterday" : label} (${fmt(d.kcal)} kcal) to today?`, { ok: "Copy" })) copyToToday(items); };
     const addBtn = card.querySelector("[data-act=add]");
     if (addBtn) addBtn.onclick = () => addToPastDay(d.date);
     card.querySelectorAll(".ate-edit li[data-i]").forEach((li) => {
@@ -2817,12 +2823,20 @@ function renderPlanCards() {
   $("#b-plan").innerHTML = bigPlanCard(); $("#b-plan").onclick = () => openPlan();
   const g = $("#g-plan"); g.classList.toggle("hidden", !pl); if (pl) { g.innerHTML = html; g.onclick = () => openPlan(); }
 }
+/** Days that count towards the burn: properly logged ones, and not a finished week with fewer than 5 of them
+ *  (a missed weekend shouldn't look like a diet). */
+function wellLoggedDays(since) {
+  const days = state.history.filter((h) => h.date >= since && h.budget && (h.kcal || 0) >= h.budget * 0.6);   // skip days that were clearly only half logged
+  const thisWeek = weekOf(localDate()), per = {};
+  for (const h of days) per[weekOf(h.date)] = (per[weekOf(h.date)] || 0) + 1;
+  return days.filter((h) => { const wk = weekOf(h.date); return wk === thisWeek || wk < since || per[wk] >= 5; });
+}
 /** Real burn = average eaten on well-logged days minus what the weight trend says was stored or lost.
  *  Needs 10+ well-logged days in the last 3 weeks and a weight trend (3+ weigh-ins over a week or more). */
 function learnedBurn() {
   const trend = weightTrend(); if (!trend) return null;
   const since = dateMinus(21);
-  const days = state.history.filter((h) => h.date >= since && h.budget && (h.kcal || 0) >= h.budget * 0.6);   // skip days that were clearly only half logged
+  const days = wellLoggedDays(since);
   if (days.length < 10) return null;
   const eat = days.reduce((a, h) => a + h.kcal, 0) / days.length;
   let burn = eat - trend.perDay * KCAL_PER_KG;
@@ -2898,43 +2912,172 @@ function renderHomePlan() {
     box.querySelector(".x").onclick = () => { try { localStorage.setItem(PLAN_ASK, JSON.stringify({ dismissed: true })); } catch (e) {} box.innerHTML = ""; };
     return;
   }
-  const age = Date.now() - new Date(pl.createdAt).getTime(), since = Date.now() - (pl.lastCheckIn || 0);
-  if (age < 14 * 864e5 || since < 7 * 864e5) return;
-  const trend = weightTrend(), want = pl.rate || 0, learned = learnedBurn();
-  let title, body, acts = "";
-  const floor = (state.profile && state.profile.sex === "m") ? 1500 : 1200;
-  if (learned) {
-    // the budget that hits the plan's pace, given the burn the logs show
-    const target = Math.max(floor, Math.round((learned.burn + want * KCAL_PER_KG / 7) / 10) * 10);
-    let delta = Math.max(-300, Math.min(300, target - pl.kcal));
-    delta = Math.round(delta / 10) * 10;
-    const word = (v) => v === 0 ? "holding steady" : `${v > 0 ? "gaining" : "losing"} ${fmt(Math.abs(v), 2)} kg a week`;
-    const facts = `From ${learned.days} logged days and ${learned.weighins} weigh-ins, you burn about ${fmt(learned.burn)} kcal a day and you're ${word(learned.perWeek)}.`;
-    if (Math.abs(delta) < 50) { title = "Check-in: on track"; body = `${facts} Your budget already fits your plan.`; acts = `<button class="btn mint" data-a="ok" data-burn="${learned.burn}">Nice</button>`; }
-    else { title = "Weekly check-in"; body = `${facts} To ${want < 0 ? `lose ${fmt(-want, 2)} kg a week` : want > 0 ? `gain ${fmt(want, 2)} kg a week` : "hold steady"}, ${delta < 0 ? "drop" : "raise"} your average to ${fmt(pl.kcal + delta)} kcal?`; acts = `<button class="btn primary" data-a="adj" data-d="${delta}" data-burn="${learned.burn}">Update</button><button class="btn ghost" data-a="ok" data-burn="${learned.burn}">Keep</button>`; }
-  } else if (!trend) { title = "Weekly check-in"; body = "Weigh in a few times this week so your plan can check it's on track."; acts = `<button class="btn primary" data-go="body">Weigh in</button><button class="btn mint" data-a="ok">Later</button>`; }
-  else {
-    const got = Math.round(trend.perDay * 7 * 100) / 100, gap = want - got;
-    const word = (v) => v === 0 ? "holding steady" : `${v > 0 ? "gaining" : "losing"} ${fmt(Math.abs(v), 2)} kg a week`;
-    if (Math.abs(gap) < 0.15) { title = "Check-in: on track"; body = `You're ${word(got)}, just as planned. Keep going.`; acts = `<button class="btn mint" data-a="ok">Nice</button>`; }
-    else {
-      let delta = Math.round(Math.max(-250, Math.min(250, gap * KCAL_PER_KG / 7)) / 10) * 10;
-      if (state.budget + delta < floor) delta = floor - state.budget;
-      if (!delta) { title = "Weekly check-in"; body = `You're ${word(got)}; your plan aims for ${want === 0 ? "steady" : `${fmt(Math.abs(want), 2)}`}. Your budget is already at the safe minimum, so more movement is the next lever.`; acts = `<button class="btn mint" data-a="ok">OK</button>`; }
-      else { title = "Weekly check-in"; body = `You're ${word(got)}; your plan aims for ${want === 0 ? "steady" : `${fmt(Math.abs(want), 2)}`}. ${delta < 0 ? "Drop" : "Raise"} your budget to ${fmt(state.budget + delta)} kcal?`; acts = `<button class="btn primary" data-a="adj" data-d="${delta}">Update</button><button class="btn ghost" data-a="ok">Keep</button>`; }
-    }
+}
+
+// ---------------------------------------------------------------- the weekly check-in: last week's facts, what you really burn, a budget to match
+const dayShift = (date, n) => { const d = new Date(date + "T12:00"); d.setDate(d.getDate() + n); return localDate(d); };
+const r10 = (v) => Math.round(v / 10) * 10;
+/** The budget averaged over the week, whatever the days are set to. */
+const avgBudget = () => { let t = 0; for (let d = 0; d < 7; d++) { const v = state.dayBudgets && state.dayBudgets[d]; t += v > 0 ? v : state.budget; } return Math.round(t / 7); };
+const CI_STEP = 200;   // the most a check-in moves the budget in one week
+function checkInData() {
+  const week = weekOf(localDate()), mon = dayShift(week, -7), sun = dayShift(week, -1);
+  const dates = Array.from({ length: 7 }, (_, i) => dayShift(mon, i));
+  const recs = dates.map((d) => state.history.find((h) => h.date === d)).filter((h) => h && (h.kcal || 0) > 0);
+  const good = recs.filter((h) => !h.budget || h.kcal >= h.budget * 0.6);
+  const avg = good.length ? Math.round(good.reduce((x, h) => x + h.kcal, 0) / good.length) : null;
+  const workouts = recs.reduce((x, h) => x + (h.workouts || []).length, 0);
+  // how the weight trend moved across the week (the smoothed line, so one heavy morning doesn't count)
+  const wide = bodyPast().filter((r) => r.weight && r.day >= dateMinus(70));
+  let change = null;
+  if (wide.length >= 3) {
+    const t = trendOf(wide.map((r) => ({ day: r.day, v: r.weight })));
+    const pts = wide.map((r, k) => ({ x: new Date(r.day + "T12:00") / 864e5, v: t.fit[k], odd: t.odd[k] })).filter((p) => !p.odd);
+    const at = (date) => {
+      const x = new Date(date + "T12:00") / 864e5; if (!pts.length) return null;
+      if (x <= pts[0].x) return pts[0].x - x <= 3 ? pts[0].v : null;
+      const last = pts[pts.length - 1]; if (x >= last.x) return x - last.x <= 3 ? last.v : null;
+      const k = pts.findIndex((p) => p.x >= x), p0 = pts[k - 1], p1 = pts[k];
+      return p1.x === p0.x ? p1.v : p0.v + (p1.v - p0.v) * (x - p0.x) / (p1.x - p0.x);
+    };
+    const s = at(dayShift(mon, -1)), e = at(sun);
+    if (s != null && e != null) change = Math.round((e - s) * 10) / 10;
   }
-  box.innerHTML = `<div class="card home-plan-card"><span class="circle green"><svg><use href="#i-scale"/></svg></span><div class="body"><b>${title}</b><small>${body}</small><div class="acts">${acts}</div></div></div>`;
+  const learned = learnedBurn(), trend = weightTrend();
+  const oddAll = wide.length >= 4 ? trendOf(wide.map((r) => ({ day: r.day, v: r.weight }))).odd : [];
+  const weighins = wide.filter((r, k) => !oddAll[k] && r.day >= dateMinus(28)).length, goodDays = wellLoggedDays(dateMinus(21)).length;
+  const enough = !!(learned && weighins >= 4);
+  const needs = [];
+  if (goodDays < 10) needs.push(`${10 - goodDays} more logged day${10 - goodDays === 1 ? "" : "s"}`);
+  if (weighins < 4) needs.push(`${4 - weighins} more weigh-in${4 - weighins === 1 ? "" : "s"}`);
+  if (!needs.length && !enough) needs.push("weigh-ins spread over at least a week");
+  const pl = state.plan, want = pl ? (pl.rate || 0) : null, now = avgBudget();
+  let suggest = null;
+  if (enough && pl) {
+    const floor = (state.profile && state.profile.sex === "m") ? 1500 : 1200;
+    const target = Math.max(floor, r10(learned.burn + want * KCAL_PER_KG / 7));
+    const d = r10(Math.max(-CI_STEP, Math.min(CI_STEP, target - now)));
+    suggest = Math.abs(d) < 50 ? now : r10(now + d);
+  }
+  return { week, mon, sun, logged: recs.length, avg, workouts, change, learned: enough ? learned : null, needs, pace: trend ? Math.round(trend.perDay * 7 * 100) / 100 : null, want, now, suggest };
+}
+const ciChange = (c) => c == null ? "not enough weigh-ins" : Math.abs(c) < 0.05 ? "steady" : `${c < 0 ? "down" : "up"} ${fmt(Math.abs(c), 1)} kg`;
+const ciGoal = (w) => w < 0 ? `lose ${fmt(-w, 2)} kg a week` : w > 0 ? `gain ${fmt(w, 2)} kg a week` : "hold steady";
+const ciRange = (d) => { const f = (x) => new Date(x + "T12:00").toLocaleDateString(undefined, { day: "numeric", month: "short" }); return `${f(d.mon)} to ${f(d.sun)}`; };
+function ciStatus(d) {
+  if (d.want == null || d.pace == null) return "";
+  const gap = d.pace - d.want;
+  if (Math.abs(gap) < 0.15) return "You're on track.";
+  if (d.want === 0) return gap > 0 ? "Drifting up a little." : "Drifting down a little.";
+  const faster = d.want < 0 ? gap < 0 : gap > 0;
+  return faster ? "A little faster than planned." : "A little slower than planned.";
+}
+/** Home: once a week, until it has been looked at. */
+function renderHomeCheckIn() {
+  const box = $("#home-checkin"); if (!box) return;
+  box.innerHTML = "";
+  if (!state.onboarded) return;
+  const d = checkInData();
+  if (state.checkInSeen === d.week || !d.logged) return;
+  box.innerHTML = `<div class="card ci-home"><div class="ci-top"><span class="circle green"><svg><use href="#i-calendar"/></svg></span><div class="body"><b>Your weekly check-in</b><small>${ciRange(d)}</small></div></div>
+    <div class="ci-kv"><span>Ate on average</span><b>${d.avg != null ? `${fmt(d.avg)} a day` : "–"}</b></div>
+    <div class="ci-kv"><span>Weight trend</span><b>${ciChange(d.change)}</b></div>
+    <div class="ci-kv"><span>Days logged</span><b>${d.logged} of 7</b></div>
+    <button class="btn primary" data-go="checkin">${d.suggest != null ? "See what it suggests" : "See your week"}</button></div>`;
+}
+function renderBudgetCheckIn() {
+  const el = $("#b-checkin"); if (!el) return;
+  const d = checkInData();
+  el.classList.toggle("hidden", !d.logged && !d.learned);
+  el.querySelector("#bc-n").innerHTML = d.learned ? `${fmt(d.learned.burn)}<small>kcal burned a day</small>` : d.avg != null ? `${fmt(d.avg)}<small>kcal eaten a day</small>` : "–";
+  el.querySelector("#bc-s").textContent = d.learned ? `Worked out from your food and weigh-ins · last week ${ciChange(d.change)}` : `Last week · ${d.logged} of 7 days logged`;
+}
+function checkInDone(msg) { const d = checkInData(); state.checkInSeen = d.week; if (state.plan) state.plan.lastCheckIn = Date.now(); save(); if (msg) toast(msg, 4000); home(); }
+function renderCheckIn() {
+  const d = checkInData(), pl = state.plan, box = $("#ci-body");
+  let html = `<div class="card ci-card"><small class="k">Last week · ${ciRange(d)}</small>
+    <div class="ci-kv"><span>Ate on average</span><b>${d.avg != null ? `${fmt(d.avg)} kcal a day` : "nothing logged"}</b></div>
+    <div class="ci-kv"><span>Days logged</span><b>${d.logged} of 7</b></div>
+    <div class="ci-kv"><span>Weight trend</span><b>${ciChange(d.change)}</b></div>
+    <div class="ci-kv"><span>Workouts</span><b>${d.workouts}</b></div></div>`;
+  html += d.learned
+    ? `<div class="card ci-card"><small class="k">You burn about</small><b class="n">${fmt(d.learned.burn)}<small>kcal a day</small></b><small class="s">Worked out from ${d.learned.days} days of food and ${d.learned.weighins} weigh-ins.${pl && pl.tdee ? ` Your plan guessed ${fmt(pl.tdee)}.` : ""}</small></div>`
+    : `<div class="card ci-card"><small class="k">What you really burn</small><b class="n ci-soft">Not enough to tell yet</b><small class="s">It needs ${d.needs.join(" and ")}. Keep going and it appears here.</small><div class="ci-acts"><button class="btn mint" data-go="body">Weigh in</button></div></div>`;
+  if (pl) html += `<div class="card ci-card"><b class="t">Your goal: ${ciGoal(d.want)}</b>
+    <div class="ci-kv"><span>Last week</span><b>${ciChange(d.change)}</b></div>
+    <div class="ci-kv"><span>Last 4 weeks</span><b>${d.pace == null ? "not enough weigh-ins" : Math.abs(d.pace) < 0.05 ? "steady" : `${d.pace < 0 ? "down" : "up"} ${fmt(Math.abs(d.pace), 2)} kg a week`}</b></div>
+    ${ciStatus(d) ? `<small class="s">${ciStatus(d)}</small>` : ""}</div>`;
+  if (d.suggest != null && d.suggest !== d.now) {
+    html += `<div class="card ci-card ci-suggest"><small class="k">Suggested budget</small><b class="n">${fmt(d.suggest)}<small>now ${fmt(r10(d.now))}</small></b>
+      <small class="s">${d.suggest > d.now ? "A little more food, and still on pace for your goal." : "A little less food, to match the pace you chose."}${Object.keys(state.dayBudgets || {}).length ? " Your days keep the same split." : ""}</small>
+      <div class="ci-acts"><button class="btn primary" data-a="use">Use ${fmt(d.suggest)}</button><button class="btn mint" data-a="keep">Keep ${fmt(r10(d.now))}</button></div></div>`;
+  } else if (d.suggest != null) {
+    html += `<div class="card ci-card ci-suggest"><small class="k">Your budget</small><b class="n">${fmt(r10(d.now))}<small>kcal a day</small></b><small class="s">It already fits your goal. Nothing to change.</small><div class="ci-acts"><button class="btn primary" data-a="keep">Done</button></div></div>`;
+  } else if (!pl) {
+    html += `<div class="card ci-card"><b class="t">Want a suggested budget?</b><small class="s">Set a goal and the check-in works out the calories that get you there.</small><div class="ci-acts"><button class="btn primary" data-a="plan">Set a goal</button><button class="btn mint" data-a="keep">Done</button></div></div>`;
+  } else {
+    html += `<div class="ci-acts"><button class="btn primary" data-a="keep">Done</button></div>`;
+  }
+  box.innerHTML = html;
   box.querySelectorAll("[data-a]").forEach((b) => b.onclick = () => {
-    if (b.dataset.a === "adj") {
-      const d = +b.dataset.d;
-      state.budget += d; for (const k of Object.keys(state.dayBudgets || {})) state.dayBudgets[k] += d;
-      pl.kcal += d; pl.macros.c = Math.max(0, pl.macros.c + Math.round(d / 4)); state.goals = Object.assign({}, state.goals, { c: pl.macros.c });
-      toast(`Budget now ${fmt(state.budget)} kcal`);
+    if (b.dataset.a === "plan") { state.checkInSeen = d.week; save(false); openPlan(); return; }
+    if (d.learned && pl) { pl.learnedBurn = d.learned.burn; pl.learnedAt = Date.now(); }
+    if (b.dataset.a === "use") {
+      const ratio = d.suggest / d.now, diff = d.suggest - d.now;
+      state.budget = r10(state.budget * ratio);
+      for (const k of Object.keys(state.dayBudgets || {})) state.dayBudgets[k] = r10(state.dayBudgets[k] * ratio);
+      pl.kcal = d.suggest;
+      if (pl.macros) { pl.macros.c = Math.max(0, pl.macros.c + Math.round(diff / 4)); if (state.goals && state.goals.c != null) state.goals = Object.assign({}, state.goals, { c: pl.macros.c }); }
+      checkInDone(`Budget now ${fmt(avgBudget())} kcal a day`); return;
     }
-    if (b.dataset.burn) { pl.learnedBurn = +b.dataset.burn; pl.learnedAt = Date.now(); }
-    pl.lastCheckIn = Date.now(); save(); renderHome();
+    checkInDone("");
   });
+}
+
+// ---------------------------------------------------------------- copying food from another day
+function copyToToday(items, what) {
+  if (!items.length) return;
+  const now = new Date().toISOString();
+  let total = 0;
+  for (const it of items) {
+    const kcal = Math.round(it.kcal || 0); total += kcal;
+    const row = { id: uid(), ...basisOf(it), kcal, shareLabel: `${fmt(kcal / baseBudget() * 100, 1)}% of the day`, addedAt: now };
+    if (it.meal || it.addedAt) row.meal = mealOf(it);   // breakfast stays breakfast
+    state.day.items.push(row);
+  }
+  save(); renderHome();
+  toast(`Added ${what || `${items.length} food${items.length === 1 ? "" : "s"}`} · ${fmt(total)} kcal`);
+}
+const LS_SAME_HIDE = "cheatday.sameHide";
+let sameChoose = false;
+/** The meal it is now, if today has none of it yet: the last day (within a week) that had one. */
+function sameAsSource() {
+  const meal = timeMeal(new Date().getHours()); if (meal === "Snacks") return null;
+  if (state.day.items.some((it) => mealOf(it) === meal)) return null;
+  try { if (localStorage.getItem(LS_SAME_HIDE) === `${state.day.date}:${meal}`) return null; } catch (e) {}
+  for (let i = 1; i <= 7; i++) {
+    const date = dayShift(state.day.date, -i), h = state.history.find((x) => x.date === date);
+    if (!h || !Array.isArray(h.items)) continue;
+    const its = h.items.filter((it) => (it.addedAt || it.meal) && mealOf(it) === meal);
+    if (its.length) return { meal, date, items: its, i };
+  }
+  return null;
+}
+function renderSameAs() {
+  const box = $("#home-same"); if (!box) return;
+  const s = sameAsSource();
+  if (!s) { box.innerHTML = ""; sameChoose = false; return; }
+  const total = s.items.reduce((x, it) => x + (it.kcal || 0), 0), day = s.i === 1 ? "yesterday" : WEEKDAYS[new Date(s.date + "T12:00").getDay()];
+  box.innerHTML = `<div class="same-card"><div class="same-top"><span class="circle green"><svg><use href="#i-copy"/></svg></span><div class="body"><b>${s.meal}: same as ${day}?</b><small>${sameChoose ? "Untick anything you're not having" : `${esc(s.items.map((it) => it.name).join(", "))} · ${fmt(total)} kcal`}</small></div><button class="same-x" aria-label="Not today">✕</button></div>
+    ${sameChoose ? `<ul class="same-list">${s.items.map((it, k) => `<li><label><input type="checkbox" data-k="${k}" checked><span>${esc(it.name)}</span><b>${fmt(it.kcal)}</b></label></li>`).join("")}</ul>` : ""}
+    <div class="same-acts"><button class="btn primary slim" data-a="all">${sameChoose ? "Add these" : "Add all"}</button><button class="btn mint slim" data-a="choose">${sameChoose ? "Cancel" : "Choose"}</button></div></div>`;
+  box.querySelector(".same-x").onclick = () => { try { localStorage.setItem(LS_SAME_HIDE, `${state.day.date}:${s.meal}`); } catch (e) {} sameChoose = false; renderSameAs(); };
+  box.querySelector("[data-a=choose]").onclick = () => { sameChoose = !sameChoose; renderSameAs(); };
+  box.querySelector("[data-a=all]").onclick = () => {
+    const picked = sameChoose ? s.items.filter((it, k) => { const c = box.querySelector(`input[data-k="${k}"]`); return c && c.checked; }) : s.items;
+    if (!picked.length) { toast("Tick at least one"); return; }
+    sameChoose = false; copyToToday(picked, picked.length === s.items.length ? `${day}'s ${s.meal.toLowerCase()}` : "");
+  };
 }
 
 // ---------------------------------------------------------------- goals, XP, levels and badges: the game layer
@@ -4901,7 +5044,7 @@ $("#share-add").onclick = () => {
 
 // ---------------------------------------------------------------- account + sync (optional, see cloud.js)
 
-const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "favs", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "weekGoals", "seenBadges", "goalWins", "postCount", "pbCount", "body", "goalWeight", "goalStart", "simple", "onboarded", "reminders", "reactCount", "commentCount", "sendCount", "friendCount", "tombs", "dayBudgets", "profile", "plan", "restSeconds", "weighDays", "dayKeep", "dayRolled", "overrideApplied", "updatedAt"];   // the API key stays on the device
+const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "favs", "checkInSeen", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "weekGoals", "seenBadges", "goalWins", "postCount", "pbCount", "body", "goalWeight", "goalStart", "simple", "onboarded", "reminders", "reactCount", "commentCount", "sendCount", "friendCount", "tombs", "dayBudgets", "profile", "plan", "restSeconds", "weighDays", "dayKeep", "dayRolled", "overrideApplied", "updatedAt"];   // the API key stays on the device
 let pushTimer = null, pulledOnce = false;
 function schedulePush() {
   if (!window.cloud || !window.cloud.user) return;
