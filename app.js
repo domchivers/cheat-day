@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "151";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "152";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -121,10 +121,11 @@ function toast(msg, ms = 2800) {
   t.textContent = msg; t.classList.remove("hidden");
   clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.add("hidden"), ms);
 }
-function busy(text) {
-  const b = $("#busy");
-  if (text === false) { b.classList.add("hidden"); $("#busy-sub").textContent = ""; $("#busy-cancel").classList.add("hidden"); return; }
+function busy(text, img) {
+  const b = $("#busy"), pic = $("#busy-img");
+  if (text === false) { b.classList.add("hidden"); $("#busy-sub").textContent = ""; $("#busy-cancel").classList.add("hidden"); pic.classList.add("hidden"); pic.removeAttribute("src"); return; }
   $("#busy-text").textContent = text; b.classList.remove("hidden");
+  pic.classList.toggle("hidden", !img); if (img) pic.src = img;
 }
 const fmt = (n, dp = 0) => (n == null || !isFinite(n)) ? "–" : Number(n.toFixed(dp)).toLocaleString();
 const fmt1 = (n) => (n == null || !isFinite(n)) ? "–" : String(Math.abs(n) >= 10 ? Math.round(n) : Math.round(n * 10) / 10);
@@ -4176,6 +4177,44 @@ function zxingDecodeCanvas(canvas) {
     return res ? res.getText() : null;
   } catch (e) { return null; }
 }
+const LS_SCAN_MODE = "cheatday.scanMode";
+let scanMode = "barcode";
+try { if (localStorage.getItem(LS_SCAN_MODE) === "label") scanMode = "label"; } catch (e) {}
+const scanStill = () => !$("#scan-still").classList.contains("hidden");
+function clearStill() { const s = $("#scan-still"); s.classList.add("hidden"); s.removeAttribute("src"); }
+function showScanMode(hint) {
+  const label = scanMode === "label", still = scanStill();
+  $$("#scan-seg button").forEach((b) => b.classList.toggle("on", b.dataset.m === scanMode));
+  document.querySelector("#view-scan .camera").classList.toggle("label-mode", label);
+  $("#scan-shutter").classList.toggle("hidden", !label || still || !scanStream);
+  $("#scan-retake").classList.toggle("hidden", !still);
+  $("#barcode-manual-toggle").classList.toggle("hidden", label);
+  if (label) $("#barcode-manual").classList.add("hidden");
+  $("#scan-hint-ic").setAttribute("href", label ? "#i-camera" : "#i-barcode");
+  $("#scan-fallback-sub").textContent = label ? "of the nutrition table" : "of the barcode";
+  $("#scan-hint").textContent = hint || (!label ? "Point at a barcode and it reads itself."
+    : !aiAvailable() ? "Reading a label needs a free AI key. Set one up in Settings."
+    : "Fit the nutrition table in the frame, then take the photo.");
+}
+$("#scan-seg").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b || b.dataset.m === scanMode) return;
+  scanMode = b.dataset.m; try { localStorage.setItem(LS_SCAN_MODE, scanMode); } catch (err) {}
+  clearStill(); showScanMode();
+});
+$("#scan-shutter").onclick = async () => {
+  if (!aiAvailable()) { aiHelp(); return; }
+  const video = $("#video"), cam = document.querySelector("#view-scan .camera");
+  if (!(scanStream && video.videoWidth)) { photoMode = "label"; $("#file-scan").click(); return; }
+  const canvas = drawScaled(video, 1600), url = canvas.toDataURL("image/jpeg", 0.9);
+  const still = $("#scan-still"); still.src = url; still.classList.remove("hidden");
+  cam.classList.add("flash"); setTimeout(() => cam.classList.remove("flash"), 300);
+  if (navigator.vibrate) navigator.vibrate(30);
+  showScanMode("Photo taken. Reading it now…");
+  const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.9));
+  const ok = await readLabel(blob, url);
+  if (!ok && onScanView()) showScanMode("That one couldn't be read. Get closer, keep it flat and in good light, then retake.");
+};
+$("#scan-retake").onclick = () => { clearStill(); showScanMode(); };
 let camToken = 0;
 const onScanView = () => stack[stack.length - 1] === "scan";
 const busyShown = () => !$("#busy").classList.contains("hidden");
@@ -4184,7 +4223,7 @@ async function startCamera() {
   stopCamera();
   $("#scan-fallback").classList.add("hidden");
   $("#barcode-manual").classList.add("hidden");
-  $("#scan-hint").textContent = "Point at a barcode. For a nutrition table, tap Read the label.";
+  clearStill(); showScanMode();
   if (!cameraPossible()) { $("#scan-fallback").classList.remove("hidden"); return; }
   const video = $("#video");
   let stream;
@@ -4206,12 +4245,14 @@ async function startCamera() {
   if (!nativeDetector && "BarcodeDetector" in window) { try { nativeDetector = new BarcodeDetector({ formats: NATIVE_FORMATS }); } catch (e) {} }
   scanning = true;
   fitVideo();
+  showScanMode();
   scanLoop(video, token);
 }
 async function scanLoop(video, token) {
-  let frame = 0, autoReads = 0, quietSince = Date.now();
+  let frame = 0, hinted = false, quietSince = Date.now();
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   while (scanning && token === camToken) {
+    if (scanMode !== "barcode") { quietSince = Date.now(); hinted = false; await sleep(200); continue; }
     if (video.readyState >= 2 && video.videoWidth && !busyShown()) {
       let code = null;
       if (nativeDetector) {
@@ -4229,36 +4270,11 @@ async function scanLoop(video, token) {
         return;
       }
       frame++;
-      // No barcode for a while: maybe it's a nutrition table. Let Claude look, at most twice.
-      const quiet = Date.now() - quietSince;
-      if (quiet > 4500 && autoReads < 2 && aiAvailable()) {
-        autoReads++; quietSince = Date.now();
-        $("#scan-hint").textContent = "No barcode yet, checking for a nutrition table…";
-        const found = await autoReadLabel(video, token);
-        if (found || token !== camToken) return;
-        $("#scan-hint").textContent = autoReads < 2 ? "Not a nutrition table yet. Get closer, or keep looking for the barcode." : "Point at the barcode, or tap Read the label when the table is in view.";
-      } else if (quiet > 4500 && !aiAvailable() && autoReads === 0) {
-        autoReads = 1;
-        $("#scan-hint").textContent = "No barcode? A nutrition table can be read too, with a free AI key in Settings.";
-      }
+      // No barcode for a while: say where label reading lives
+      if (!hinted && Date.now() - quietSince > 6000) { hinted = true; $("#scan-hint").textContent = "No barcode? Tap Label at the top and take a photo of the nutrition table."; }
     }
     await sleep(120);
   }
-}
-/** Sends the current frame to Claude; true if it was a nutrition table and the product page opened. */
-async function autoReadLabel(video, token) {
-  const blob = await new Promise((res) => drawScaled(video, 1600).toBlob(res, "image/jpeg", 0.9));
-  busy("Checking for a nutrition table…");
-  try {
-    const item = await readLabelWithClaude(blob, true);
-    busy(false);
-    if (!item) return false;
-    if (token !== camToken) return true;
-    stopCamera();
-    draft = item;
-    openDetails("Nutrition (from photo)");
-    return true;
-  } catch (err) { busy(false); console.warn("auto label", err); return false; }
 }
 function frameCanvas(video, maxW, rot, zoom) {
   const vw = video.videoWidth, vh = video.videoHeight;
@@ -4284,18 +4300,9 @@ document.addEventListener("visibilitychange", () => {
   if (onScanView() && !busyShown()) startCamera();
 });
 
-$("#scan-photo").onclick = () => { photoMode = "auto"; $("#file-scan").click(); };
-$("#scan-library").onclick = () => { photoMode = "auto"; $("#file-scan-lib").click(); };
+$("#scan-photo").onclick = () => { photoMode = scanMode === "label" ? "label" : "auto"; $("#file-scan").click(); };
+$("#scan-library").onclick = () => { photoMode = scanMode === "label" ? "label" : "auto"; $("#file-scan-lib").click(); };
 $("#file-scan-lib").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) handleScanPhoto(f); });
-$("#scan-label").onclick = () => {
-  if (!aiAvailable()) { aiHelp(); return; }
-  const video = $("#video");
-  if (scanStream && video.videoWidth) {
-    drawScaled(video, 1600).toBlob((blob) => readLabel(blob), "image/jpeg", 0.9);
-  } else {
-    photoMode = "label"; $("#file-scan").click();
-  }
-};
 $("#barcode-manual-toggle").onclick = () => { $("#barcode-manual").classList.toggle("hidden"); $("#code-input").focus(); };
 $("#code-go").onclick = () => { const c = $("#code-input").value.replace(/\D/g, ""); if (c) lookupBarcode(c); };
 $("#code-input").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#code-go").click(); });
@@ -4677,14 +4684,18 @@ $("#search-claude").onclick = async () => {
 
 // ---------------------------------------------------------------- Claude reads a label
 
-async function readLabel(file) {
-  if (!aiAvailable()) { aiHelp(); return; }
-  busy("Reading the label with Claude…");
+/** Reads a photo of a label and opens the food's page; false if it couldn't. The photo shows while it works. */
+async function readLabel(file, shown) {
+  if (!aiAvailable()) { aiHelp(); return false; }
+  let pic = shown || null;
+  if (!pic) { try { pic = drawScaled(await loadImage(file), 480).toDataURL("image/jpeg", 0.7); } catch (e) {} }
+  busy("Reading the label…", pic);
   try {
     draft = await readLabelWithClaude(file);
     busy(false);
     openDetails("Nutrition (from photo)");
-  } catch (err) { busy(false); console.error(err); toast(err.message || "Label reading failed", 5000); }
+    return true;
+  } catch (err) { busy(false); console.error(err); toast(err.message || "Label reading failed", 5000); return false; }
 }
 
 const LABEL_SCHEMA = {
