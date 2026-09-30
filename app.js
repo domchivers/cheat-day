@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "157";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "158";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -501,7 +501,7 @@ function quickRow(q) {
   });
   return li;
 }
-const QUICK_ROWS = 6;   // the window shows about this many, then scrolls
+const QUICK_ROWS = 4;   // the window shows about this many, then scrolls
 function renderQuick() {
   const list = $("#quick-list"), keepTop = list.scrollTop, query = $("#quick-q").value.trim();
   const entries = quickEntries();
@@ -534,7 +534,7 @@ function renderQuick() {
   if (open) sizeQuick(list);
   list.scrollTop = keepTop;
 }
-/** About six rows tall, with the next one peeking out so it's clear there's more. */
+/** About four rows tall, with the next one peeking out so it's clear there's more. */
 function sizeQuick(list) {
   const rows = [...list.children].filter((li) => !li.classList.contains("qgrp"));
   list.classList.toggle("scrolls", rows.length > QUICK_ROWS);
