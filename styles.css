@@ -1601,3 +1601,23 @@ body.simple .share-src { font-size: 15px; }
 .share-src-links { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 4px; }
 .share-src-links .link { font-weight: 700; }
 .share-src-links .link.hidden { display: none; }
+/* ---- v157: Quick add is a window you scroll, with a search of everything ever added */
+.quick-box { margin-top: 10px; }
+.quick-box.hidden { display: none; }
+.quick-search { display: flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 0 6px 0 14px; }
+.quick-search.hidden { display: none; }
+.quick-search svg { width: 18px; height: 18px; color: var(--muted); flex: none; }
+.quick-search input, :root[data-theme="dark"] .quick-search input { background: none; border-radius: 0; }
+.quick-search input { flex: 1; min-width: 0; border: 0; background: none; padding: 13px 0; font-size: 16px; box-shadow: none; outline: none; color: var(--text); }
+.quick-search input::-webkit-search-cancel-button { display: none; }
+.quick-clear { flex: none; width: 36px; height: 36px; border: 0; background: none; color: var(--muted); font-size: 16px; cursor: pointer; }
+.quick-clear.hidden { display: none; }
+.quick-count { margin: 6px 4px 0; font-size: 12px; color: var(--muted); }
+.quick-count:empty { display: none; }
+.list.quick { margin-top: 8px; }
+.list.quick.scrolls { overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; border-radius: 14px; padding-right: 2px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent); }
+.list.quick li.q-none { display: block; text-align: center; padding: 16px; }
+.list.quick li.q-none .name { font-weight: 600; margin-bottom: 10px; }
+.list.quick li.q-none .btn { width: auto; display: inline-block; margin: 0; padding: 9px 16px; }
+body.simple .quick-search input { font-size: 18px; }

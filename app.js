@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "156";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "157";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -451,41 +451,104 @@ function quickSectionsRest(entries, hasFavs) {
     { title: hasFavs || usual.length || meals.length ? "Other foods" : "", items: other }
   ].filter((s) => s.items.length);
 }
+/** Everything ever logged, for the Quick add search: today and every past day, one entry per food, newest amount kept. */
+function historyEntries(known) {
+  const seen = new Set(known.map((q) => String(q.basis.name || "").toLowerCase() + "|" + String(q.basis.brand || "").toLowerCase()));
+  const map = new Map();
+  const days = [{ date: state.day.date, items: state.day.items }].concat(state.history);
+  for (const d of days) for (const it of Array.isArray(d.items) ? d.items : []) {
+    if (!it || !it.name || !(it.kcal > 0)) continue;
+    const key = (String(it.name) + "|" + String(it.brand || "")).toLowerCase();
+    if (seen.has(key)) continue;
+    const e = map.get(key);
+    if (e) { e.uses++; continue; }   // days run newest first, so the first one seen is the latest amount
+    map.set(key, { key, basis: basisOf(it), lastKcal: Math.round(it.kcal), lastShareLabel: it.shareLabel || "", lastUsed: d.date || "", uses: 1, past: true });
+  }
+  return [...map.values()];
+}
+let quickHist = null;   // built when a search starts, dropped when it ends
+function quickMatches(query) {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const known = quickEntries();
+  if (!quickHist) quickHist = historyEntries(known);
+  const hit = (q) => { const t = `${q.basis.name || ""} ${q.basis.brand || ""}`.toLowerCase(); return words.every((w) => t.includes(w)); };
+  const starts = (q) => String(q.basis.name || "").toLowerCase().startsWith(words[0]) ? 1 : 0;
+  return known.concat(quickHist).filter(hit)
+    .sort((x, y) => (isFav(y.key) - isFav(x.key)) || (starts(y) - starts(x)) || ((y.uses || 0) - (x.uses || 0)) || String(y.lastUsed || "").localeCompare(String(x.lastUsed || "")));
+}
+function quickRow(q) {
+  const li = document.createElement("li");
+  const b = q.basis;
+  let detail = String(q.detail || shortAmounts({ ...b, kcal: q.lastKcal, shareLabel: q.lastShareLabel })).replace(/[\s·]+$/, "");
+  if (q.past && q.lastUsed) detail = `${detail ? detail + " · " : ""}last had ${q.lastUsed === state.day.date ? "today" : q.lastUsed === dateMinus(1) ? "yesterday" : new Date(q.lastUsed + "T12:00").toLocaleDateString(undefined, { day: "numeric", month: "short" })}`;
+  const qp = b.photo || b.image;
+  const thumb = qp ? `<img class="thumb-sm" src="${esc(qp)}" alt="">` : `<span class="thumb-sm ${q.meal ? "tone-peach" : ""}"><svg><use href="#i-${iconFor(b.source)}"/></svg></span>`;
+  li.innerHTML = `${thumb}
+    <div class="body"><div class="name">${esc(b.name)}</div><div class="detail">${esc(detail)}</div></div>
+    ${STAR(isFav(q.key))}<div class="kcal">${fmt(q.lastKcal)}</div><button class="add" aria-label="Add"><svg><use href="#i-plus"/></svg></button>`;
+  li.querySelector(".add").onclick = (e) => { e.stopPropagation(); addToDay(b, q.lastKcal, q.lastShareLabel); toast(`Added ${b.name} · ${fmt(q.lastKcal)} kcal`); };
+  li.querySelector(".fav").onclick = (e) => {
+    e.stopPropagation(); const on = !isFav(q.key);
+    // an old food starred from the search joins Quick add, so it stays
+    if (on && q.past && !state.recent.some((r) => r.key === q.key)) state.recent.unshift({ key: q.key, basis: q.basis, lastKcal: q.lastKcal, lastShareLabel: q.lastShareLabel, lastUsed: new Date().toISOString(), uses: q.uses || 1 });
+    setFav(q.key, on);
+    if (!on) state.recent = trimRecent(state.recent, state.favs);
+    quickHist = null; save(); renderQuick(); toast(on ? `${b.name} is a favourite` : `${b.name} is no longer a favourite`);
+  };
+  li.querySelector(".body").onclick = () => { draft = { ...b, note: "" }; openShare(q.lastKcal); };
+  if (!q.preset && !q.meal && !q.past) longPress(li, async () => {
+    if (await ask(isFav(q.key) ? `"${b.name}" is a favourite. Remove it from Quick add anyway?` : `Remove "${b.name}" from Quick add?`)) { tomb("recent", q.key); if (isFav(q.key)) setFav(q.key, false); state.recent = state.recent.filter((r) => r.key !== q.key); quickHist = null; save(); renderQuick(); }
+  });
+  return li;
+}
+const QUICK_ROWS = 6;   // the window shows about this many, then scrolls
 function renderQuick() {
-  const list = $("#quick-list"); list.innerHTML = "";
+  const list = $("#quick-list"), keepTop = list.scrollTop, query = $("#quick-q").value.trim();
   const entries = quickEntries();
   let open = false; try { open = localStorage.getItem(LS_QUICK_OPEN) === "1"; } catch (e) {}
   $("#quick-toggle").classList.toggle("open", open);
-  list.classList.toggle("hidden", !open);
-  $("#quick-hint").classList.toggle("hidden", !open || entries.length === 0);
+  $("#quick-box").classList.toggle("hidden", !open);
+  $("#quick-search").classList.toggle("hidden", entries.length + state.history.length === 0);
+  $("#quick-hint").classList.toggle("hidden", !open || entries.length === 0 || !!query);
   $("#quick-sub").textContent = entries.length ? `${entries.length} thing${entries.length === 1 ? "" : "s"} you have often` : "Things you add come back here";
-  for (const sec of quickSections(entries)) {
-  if (sec.title) { const h = document.createElement("li"); h.className = "qgrp"; h.textContent = sec.title; list.appendChild(h); }
-  for (const q of sec.items) {
-    const li = document.createElement("li");
-    const b = q.basis;
-    const detail = String(q.detail || shortAmounts({ ...b, kcal: q.lastKcal, shareLabel: q.lastShareLabel })).replace(/[\s·]+$/, "");
-    const qp = b.photo || b.image;
-    const thumb = qp ? `<img class="thumb-sm" src="${esc(qp)}" alt="">` : `<span class="thumb-sm ${q.meal ? "tone-peach" : ""}"><svg><use href="#i-${iconFor(b.source)}"/></svg></span>`;
-    li.innerHTML = `${thumb}
-      <div class="body"><div class="name">${esc(b.name)}</div><div class="detail">${esc(detail)}</div></div>
-      ${STAR(isFav(q.key))}<div class="kcal">${fmt(q.lastKcal)}</div><button class="add" aria-label="Add"><svg><use href="#i-plus"/></svg></button>`;
-    li.querySelector(".add").onclick = (e) => { e.stopPropagation(); addToDay(b, q.lastKcal, q.lastShareLabel); toast(`Added ${b.name} · ${fmt(q.lastKcal)} kcal`); };
-    li.querySelector(".fav").onclick = (e) => {
-      e.stopPropagation(); const on = !isFav(q.key); setFav(q.key, on);
-      if (!on) state.recent = trimRecent(state.recent, state.favs);
-      save(); renderQuick(); toast(on ? `${b.name} is a favourite` : `${b.name} is no longer a favourite`);
-    };
-    li.querySelector(".body").onclick = () => { draft = { ...b, note: "" }; openShare(q.lastKcal); };
-    if (!q.preset && !q.meal) longPress(li, async () => {
-      if (await ask(isFav(q.key) ? `"${b.name}" is a favourite. Remove it from Quick add anyway?` : `Remove "${b.name}" from Quick add?`)) { tomb("recent", q.key); if (isFav(q.key)) setFav(q.key, false); state.recent = state.recent.filter((r) => r.key !== q.key); save(); renderQuick(); }
-    });
-    list.appendChild(li);
+  $("#quick-clear").classList.toggle("hidden", !query);
+  list.innerHTML = "";
+  if (query) {
+    const found = quickMatches(query);
+    $("#quick-count").textContent = found.length ? `${found.length} match${found.length === 1 ? "" : "es"} in everything you've added` : "";
+    for (const q of found.slice(0, 60)) list.appendChild(quickRow(q));
+    if (!found.length) {
+      const li = document.createElement("li"); li.className = "q-none";
+      li.innerHTML = `<div class="body"><div class="name">Nothing you've added matches "${esc(query)}"</div><button class="btn mint slim" data-a="all">Search all foods for it</button></div>`;
+      li.querySelector("[data-a=all]").onclick = () => { go("search"); const q = $("#q"); q.value = query; q.dispatchEvent(new Event("input")); };
+      list.appendChild(li);
+    }
+  } else {
+    $("#quick-count").textContent = "";
+    quickHist = null;
+    for (const sec of quickSections(entries)) {
+      if (sec.title) { const h = document.createElement("li"); h.className = "qgrp"; h.textContent = sec.title; list.appendChild(h); }
+      for (const q of sec.items) list.appendChild(quickRow(q));
+    }
   }
-  }
+  if (open) sizeQuick(list);
+  list.scrollTop = keepTop;
 }
+/** About six rows tall, with the next one peeking out so it's clear there's more. */
+function sizeQuick(list) {
+  const rows = [...list.children].filter((li) => !li.classList.contains("qgrp"));
+  list.classList.toggle("scrolls", rows.length > QUICK_ROWS);
+  list.style.maxHeight = "";
+  if (rows.length <= QUICK_ROWS) return;
+  const next = rows[QUICK_ROWS];
+  list.style.maxHeight = `${next.offsetTop - list.offsetTop + 30}px`;
+}
+let quickTyping = null;
+$("#quick-q").addEventListener("input", () => { clearTimeout(quickTyping); quickTyping = setTimeout(() => { $("#quick-list").scrollTop = 0; renderQuick(); }, 120); });
+$("#quick-q").addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
+$("#quick-clear").onclick = () => { $("#quick-q").value = ""; $("#quick-list").scrollTop = 0; renderQuick(); };
 $("#quick-toggle").onclick = () => {
-  const open = $("#quick-list").classList.contains("hidden");
+  const open = $("#quick-box").classList.contains("hidden");
   try { localStorage.setItem(LS_QUICK_OPEN, open ? "1" : "0"); } catch (e) {}
   renderQuick();
 };
