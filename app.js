@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "158";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "159";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1238,16 +1238,29 @@ async function renderFriends() {
 const HELPER_EMAILS = ["domchivers@gmail.com"];   // who may set a friend's budget for them
 const isHelper = () => !!(window.cloud && window.cloud.user && HELPER_EMAILS.includes(String(window.cloud.user.email || "").toLowerCase()));
 /** A friend's phone picks this up: a budget the helper set for them. Applied once per change, with a note. */
+/** An override as seven numbers, Sunday first: its own day budgets if it has them, else the one budget every day. */
+function weekFromOverride(o) {
+  const base = Math.round(o.budget || 0), d = o && o.days && typeof o.days === "object" ? o.days : {};
+  return [0, 1, 2, 3, 4, 5, 6].map((i) => { const v = num(d[i] ?? d[String(i)]); return v ? Math.round(v) : base; });
+}
+function mostCommon(list) {
+  const n = {}; for (const v of list) n[v] = (n[v] || 0) + 1;
+  return +Object.keys(n).sort((x, y) => (n[y] - n[x]) || (x - y))[0];
+}
 async function applyBudgetOverride() {
   const c = window.cloud; if (!(c && c.user)) return;
   let o = null; try { o = await c.myBudgetOverride(); } catch (e) { return; }   // the table may not exist yet
   if (!o || !o.budget) return;
   if (state.overrideApplied === o.updated_at) return;
-  state.overrideApplied = o.updated_at; state.budget = Math.round(o.budget); state.dayBudgets = {};
-  if (state.plan) state.plan.kcal = state.budget;
+  state.overrideApplied = o.updated_at;
+  const week = weekFromOverride(o), most = mostCommon(week);
+  state.budget = most; state.dayBudgets = {};
+  week.forEach((v, dow) => { if (v !== most) state.dayBudgets[dow] = v; });
+  if (state.plan) state.plan.kcal = Math.round(week.reduce((x, v) => x + v, 0) / 7);
   save(); renderHome();
   const who = (fr.people[o.set_by] && fr.people[o.set_by].display_name) || "Dom";
-  toast(`${who} set your daily budget to ${fmt(state.budget)} kcal`, 6000);
+  const odd = [1, 2, 3, 4, 5, 6, 0].filter((d) => week[d] !== most).map((d) => `${WEEKDAYS[d].slice(0, 3)} ${fmt(week[d])}`);
+  toast(odd.length ? `${who} set your budget for the week: ${fmt(most)} kcal most days, ${odd.join(", ")}` : `${who} set your daily budget to ${fmt(most)} kcal`, 7000);
 }
 /** Edits the helper made to this person's food: change a calorie figure or remove an item, once, with a note. */
 async function applyHelperEdits() {
@@ -1273,6 +1286,58 @@ async function applyHelperEdits() {
     try { await c.markEditApplied(ed.id); } catch (e) {}
   }
   if (changed) { save(); renderHome(); publishDay(); }
+}
+/** The helper sets a friend's budget for each day of the week (or one number for every day). */
+const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];   // Monday first, as people think of a week
+async function openWeekBudget(card, f, name, days) {
+  const c = window.cloud, box = card.querySelector(".fc-menu-box");
+  box.innerHTML = `<div class="fc-budget"><p class="muted tiny">Loading ${esc(name)}'s budget…</p></div>`;
+  let cur = null; try { cur = await c.budgetFor(f.uid); } catch (err) {}
+  // start from what's set now: the override, else what their own days have been, else today's
+  let week;
+  if (cur && cur.budget) week = weekFromOverride(cur);
+  else {
+    const seen = {}; for (const x of (days || []).slice().sort((p, q) => String(q.day).localeCompare(String(p.day)))) { const dow = new Date(String(x.day) + "T12:00").getDay(); if (x.budget && seen[dow] == null) seen[dow] = Math.round(x.budget); }
+    const fall = mostCommon(Object.values(seen).length ? Object.values(seen) : [1600]);
+    week = [0, 1, 2, 3, 4, 5, 6].map((d) => seen[d] || fall);
+  }
+  const same = week.every((v) => v === week[0]);
+  box.innerHTML = `<div class="fc-budget">
+    <b>${esc(name)}'s budget for the week</b>
+    <label class="fw-all"><span>Every day</span><input type="number" inputmode="numeric" data-all value="${same ? week[0] : ""}" placeholder="${same ? "" : "mixed"}"><small>kcal</small></label>
+    <div class="fw-days">${WEEK_ORDER.map((d) => `<label><span>${WEEKDAYS[d].slice(0, 3)}</span><input type="number" inputmode="numeric" data-d="${d}" value="${week[d]}"></label>`).join("")}</div>
+    <p class="muted tiny fw-note">Type one number for every day, or change single days, such as more on a Saturday. ${esc(name)}'s app updates next time it opens.</p>
+    <div class="fw-acts"><button class="btn primary slim" data-w="save">Save</button><button class="btn ghost slim" data-w="cancel">Cancel</button></div>
+    ${cur && cur.budget ? `<button class="fw-stop" data-w="stop">Stop setting ${esc(name)}'s budget</button>` : ""}
+  </div>`;
+  const all = box.querySelector("[data-all]"), dayIns = [...box.querySelectorAll("[data-d]")];
+  all.oninput = () => { if (num(all.value)) dayIns.forEach((i) => i.value = all.value); };
+  dayIns.forEach((i) => i.oninput = () => { const vals = dayIns.map((x) => x.value); const s = vals.every((v) => v === vals[0]); all.value = s ? vals[0] : ""; all.placeholder = s ? "" : "mixed"; });
+  const close = () => drawFriendRows(fr.lastFriends, fr.lastDayLabel);
+  box.querySelector("[data-w=cancel]").onclick = (e) => { e.stopPropagation(); close(); };
+  const stop = box.querySelector("[data-w=stop]");
+  if (stop) stop.onclick = async (e) => {
+    e.stopPropagation();
+    if (!await ask(`Stop setting ${name}'s budget? They keep the budget they have now and can change it themselves.`)) return;
+    try { await c.setBudgetFor(f.uid, null); toast(`No longer setting ${name}'s budget`); close(); } catch (err) { toast("Couldn't change it: " + c.explain(err), 6000); }
+  };
+  box.querySelector("[data-w=save]").onclick = async (e) => {
+    e.stopPropagation();
+    const vals = {}; for (const i of dayIns) vals[i.dataset.d] = Math.round(num(i.value) || 0);
+    const bad = WEEK_ORDER.find((d) => vals[d] < 800 || vals[d] > 6000);
+    if (bad != null) { toast(`${WEEKDAYS[bad]}: between 800 and 6,000 kcal`); box.querySelector(`[data-d="${bad}"]`).focus(); return; }
+    const list = WEEK_ORDER.map((d) => vals[d]), most = mostCommon(list), same = list.every((v) => v === list[0]);
+    e.target.disabled = true;
+    try {
+      await c.setBudgetFor(f.uid, most, same ? null : vals);
+      toast(same ? `${name}'s budget set to ${fmt(most)} kcal every day` : `${name}'s week set: ${fmt(most)} kcal most days`);
+      close();
+    } catch (err) {
+      e.target.disabled = false;
+      toast(err.needsDays ? "A different budget per day needs one line run in Supabase first (see the README). The same every day works now." : "Couldn't set it: " + c.explain(err), 8000);
+    }
+  };
+  setTimeout(() => all.focus(), 50);
 }
 const frCheered = new Set();
 function drawFriendRows(friends, dayLabel) {
@@ -1322,10 +1387,10 @@ function drawFriendRows(friends, dayLabel) {
           ${active && wo.length ? `<ul class="ate"><li class="ate-grp"><span>Workouts</span><b></b></li>${wo.map((w) => `<li><span>${esc(String(w.name).replace(/^Workout: /, ""))}</span><b>−${fmt(-w.kcal)}</b></li>`).join("")}</ul>` : ""}
           <div class="fr-acts"><button class="btn mint slim" data-act="cheer"${frCheered.has(f.uid) ? " disabled" : ""}>${frCheered.has(f.uid) ? "Cheered 👏" : "👏 Cheer"}</button><button class="btn ghost slim" data-act="send">Send food</button><button class="fc-menu" data-act="menu" aria-label="More options"><svg><use href="#i-more"/></svg></button></div>
           <div class="fr-send hidden"></div>
-          <div class="fc-menu-box hidden">${isHelper() ? `<button class="fc-help" data-act="budget">Set ${esc(name)}'s daily budget</button>` : ""}<button class="fc-remove fr-remove">Remove ${esc(name)} as a friend</button></div>
+          <div class="fc-menu-box hidden">${isHelper() ? `<button class="fc-help" data-act="budget">Set ${esc(name)}'s budget for the week</button>` : ""}<button class="fc-remove fr-remove">Remove ${esc(name)} as a friend</button></div>
         </div>` : ""}
       </div>`;
-    card.onclick = (e) => { if (e.target.closest("button, .fr-send")) return; if (frOpen.has(f.uid)) frOpen.delete(f.uid); else frOpen.add(f.uid); drawFriendRows(fr.lastFriends, fr.lastDayLabel); };
+    card.onclick = (e) => { if (e.target.closest("button, .fr-send, .fc-budget")) return; if (frOpen.has(f.uid)) frOpen.delete(f.uid); else frOpen.add(f.uid); drawFriendRows(fr.lastFriends, fr.lastDayLabel); };
     if (!open) return card;
     card.querySelector("[data-act=cheer]").onclick = (e) => {
       notifyFriend(f.uid, "react", "your day", { emoji: "👏" }); frCheered.add(f.uid);
@@ -1356,18 +1421,7 @@ function drawFriendRows(friends, dayLabel) {
       catch (err) { toast("Couldn't send that: " + c.explain(err), 6000); }
     });
     const helpBtn = card.querySelector("[data-act=budget]");
-    if (helpBtn) helpBtn.onclick = async (e) => {
-      e.stopPropagation();
-      let cur = null; try { cur = await c.budgetFor(f.uid); } catch (err) {}
-      const v = await askText(`${name}'s daily budget in kcal. Their app updates next time it opens. Leave empty to stop overriding.`, cur && cur.budget ? String(cur.budget) : "");
-      if (v === null) return;
-      const n = num(v);
-      try {
-        if (!v.trim()) { await c.setBudgetFor(f.uid, null); toast(`No longer setting ${name}'s budget`); return; }
-        if (!n || n < 800 || n > 6000) { toast("Between 800 and 6,000 kcal"); return; }
-        await c.setBudgetFor(f.uid, Math.round(n)); toast(`${name}'s budget set to ${fmt(Math.round(n))} kcal`);
-      } catch (err) { toast("Couldn't set it: " + c.explain(err), 6000); }
-    };
+    if (helpBtn) helpBtn.onclick = (e) => { e.stopPropagation(); openWeekBudget(card, f, name, days); };
     card.querySelector(".fr-remove").onclick = async () => { if (!await ask(`Remove ${name} as a friend? You'll stop seeing each other's days.`)) return; try { await c.removeFriend(f.id); renderFriends(); } catch (err) { toast(c.explain(err)); } };
     return card;
   }

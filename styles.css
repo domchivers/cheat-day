@@ -1621,3 +1621,18 @@ body.simple .share-src { font-size: 15px; }
 .list.quick li.q-none .name { font-weight: 600; margin-bottom: 10px; }
 .list.quick li.q-none .btn { width: auto; display: inline-block; margin: 0; padding: 9px 16px; }
 body.simple .quick-search input { font-size: 18px; }
+/* ---- v159: the helper sets a friend's budget for each day */
+.fc-budget { text-align: left; display: flex; flex-direction: column; gap: 10px; }
+.fc-budget > b { font-size: 15px; }
+.fw-all { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 14px; }
+.fw-all span { flex: 1; }
+.fw-all input { width: 110px; text-align: right; }
+.fw-all small { color: var(--muted); font-weight: 600; }
+.fw-days { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 6px; }
+.fw-days label { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 12px; font-weight: 700; color: var(--muted); }
+.fw-days input { width: 100%; padding: 9px 2px; text-align: center; font-size: 15px; font-variant-numeric: tabular-nums; }
+.fw-note { margin: 0; line-height: 1.4; }
+.fw-acts { display: flex; gap: 8px; }
+.fw-acts .btn { flex: 1; margin: 0; width: auto; }
+.fw-stop { background: none; border: 0; color: var(--bad); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; padding: 2px 0; align-self: center; }
+body.simple .fw-days input { font-size: 15px; }

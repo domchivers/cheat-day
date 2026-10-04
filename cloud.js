@@ -161,9 +161,17 @@
     async sendItem(toUser, item) { return this.rest(`/rest/v1/sends`, { method: "POST", body: JSON.stringify([{ from_user: this.uid, to_user: toUser, ...item }]) }); },
     async settleSend(id, status) { return this.rest(`/rest/v1/sends?id=eq.${id}&to_user=eq.${this.uid}`, { method: "PATCH", body: JSON.stringify({ status }) }); },
     // ---- a helper (the app's owner) can set a friend's daily budget
-    async setBudgetFor(userId, budget) {
+    // days: { "0": kcal (Sunday) ... "6": kcal } when the week isn't the same every day, else null.
+    async setBudgetFor(userId, budget, days) {
       if (budget == null) return this.rest(`/rest/v1/budget_overrides?user_id=eq.${userId}`, { method: "DELETE" });
-      return this.rest(`/rest/v1/budget_overrides`, { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify([{ user_id: userId, budget, set_by: this.uid, updated_at: new Date().toISOString() }]) });
+      const row = { user_id: userId, budget, set_by: this.uid, updated_at: new Date().toISOString() };
+      const send = (r) => this.rest(`/rest/v1/budget_overrides`, { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify([r]) });
+      try { return await send({ ...row, days: days || null }); }
+      catch (err) {
+        if (!/'days' column|column .*days/i.test(String(err && err.message))) throw err;
+        if (days) { const e = new Error("NEEDS_DAYS_COLUMN"); e.needsDays = true; throw e; }   // a different budget per day needs one new column
+        return send(row);   // the same every day works without it
+      }
     },
     async helperEdit(userId, edit) { return this.rest(`/rest/v1/helper_edits`, { method: "POST", body: JSON.stringify([{ user_id: userId, set_by: this.uid, ...edit }]) }); },
     async myHelperEdits() { return this.rest(`/rest/v1/helper_edits?user_id=eq.${this.uid}&applied=eq.false&select=*&order=created_at.asc&limit=50`); },

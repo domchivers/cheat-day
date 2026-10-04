@@ -672,3 +672,9 @@ create policy "edits write" on public.helper_edits for insert to authenticated
   with check (set_by = auth.uid() and auth.jwt() ->> 'email' = 'domchivers@gmail.com' and public.is_friend(user_id));
 create policy "edits applied" on public.helper_edits for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 ```
+
+To let the helper set a different budget for each day of the week, run once:
+
+```sql
+alter table public.budget_overrides add column if not exists days jsonb;
+```
