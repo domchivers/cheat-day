@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "159";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "160";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -1010,13 +1010,15 @@ function renderCalendar() {
 }
 $("#cal-prev").onclick = () => { const [y, m] = calMonth.split("-").map(Number); const d = new Date(y, m - 2, 1); calMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; renderCalendar(); };
 $("#cal-next").onclick = () => { const [y, m] = calMonth.split("-").map(Number); const d = new Date(y, m, 1); calMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; renderCalendar(); };
-function ateList(items, editable) {
-  const row = (it) => `<li${editable ? ` data-i="${items.indexOf(it)}"` : ""}><span>${it.photo ? `<img class="pic" src="${esc(it.photo)}" alt="">` : ""}${esc(it.name)}</span><b>${fmt(it.kcal)}</b>${editable ? `<button class="x" aria-label="Remove">✕</button>` : ""}</li>`;
+function ateList(items, editable, openI) {
+  const row = (it) => { const i = items.indexOf(it), open = editable && openI === i;
+    return `<li${editable ? ` data-i="${i}"${open ? ' class="open"' : ""}` : ""}><span>${it.photo ? `<img class="pic" src="${esc(it.photo)}" alt="">` : ""}${esc(it.name)}</span><b>${fmt(it.kcal)}</b>${editable ? `<svg class="chev${open ? " up" : ""}"><use href="#i-chev"/></svg>` : ""}${open ? `<div class="row-actions"><button data-act="today" class="pri">＋ Add to today</button><button data-act="edit">Change</button><button data-act="del" class="danger">Remove</button></div>` : ""}</li>`; };
   if (!items.some((it) => it.addedAt || it.meal)) return items.map(row).join("");   // older days: no times kept
   return MEALS.map((g) => { const its = items.filter((it) => mealOf(it) === g); return its.length ? `<li class="ate-grp"><span>${g}</span>${editable ? `<button class="cp" data-meal="${g}"><svg><use href="#i-copy"/></svg>Copy to today</button>` : ""}<b>${fmt(its.reduce((a, it) => a + (it.kcal || 0), 0))}</b></li>${its.map(row).join("")}` : ""; }).join("");
 }
 // ---- fixing a past day: change or remove what's there, or add something you missed
-let pastAdd = null, pastEdit = null;   // a date to add to; { date, i } of an item being changed
+let pastAdd = null, pastEdit = null;
+let histRow = null;   // { date, i }: the past food showing its choices   // a date to add to; { date, i } of an item being changed
 const pastLabel = (date) => new Date(date + "T12:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
 function recalcPastDay(h) {
   h.kcal = Math.round((h.items || []).reduce((x, it) => x + (it.kcal || 0), 0));
@@ -1077,7 +1079,7 @@ function renderHistory() {
     let body = "";
     if (items.length) {
       body = histOpen.has(d.date)
-        ? `<ul class="ate ate-edit">${ateList(items, true)}</ul><p class="muted tiny hist-tip">Tap a food to change it or move its meal.</p><div class="hist-acts"><button class="btn mint slim" data-act="add">＋ Add something</button><button class="btn ghost slim" data-act="toggle">Hide</button><button class="btn mint slim wide" data-act="copy"><svg><use href="#i-copy"/></svg>Copy the whole day to today</button></div>`
+        ? `<ul class="ate ate-edit">${ateList(items, true, histRow && histRow.date === d.date ? histRow.i : null)}</ul><p class="muted tiny hist-tip">Tap a food to add it to today, change it or remove it.</p><div class="hist-acts"><button class="btn mint slim" data-act="add">＋ Add something</button><button class="btn ghost slim" data-act="toggle">Hide</button><button class="btn mint slim wide" data-act="copy"><svg><use href="#i-copy"/></svg>Copy the whole day to today</button></div>`
         : `<div class="items muted tiny">${esc(items.map((it) => it.name).slice(0, 3).join(", "))}${items.length > 3 ? ` and ${items.length - 3} more` : ""}</div><button class="btn mint ate-btn" data-act="toggle">What I had (${items.length}) ▾</button>`;
     } else if (count) body = `<div class="muted tiny">${count} item${count === 1 ? "" : "s"} (logged before history kept the details)</div>`;
     card.innerHTML = `<div class="top"><b>${esc(label)}</b><span class="kcal ${over ? "over" : "ok"}">${fmt(d.kcal)} / ${fmt(d.budget)} kcal</span></div>${(d.workouts || []).length ? `<div class="hist-wo">${d.workouts.map((w, k) => `<button class="hist-w" data-w="${k}"><svg><use href="#i-dumbbell"/></svg>${esc(w.name)} · ${w.minutes} min · ${fmt(w.kcal)} kcal${(w.lifts || []).length ? `<small>${esc(w.lifts.map(liftText).join(" · "))}</small>` : ""}</button>`).join("")}</div>` : ""}
@@ -1093,10 +1095,19 @@ function renderHistory() {
     if (addBtn) addBtn.onclick = () => addToPastDay(d.date);
     card.querySelectorAll(".ate-edit li[data-i]").forEach((li) => {
       const i = +li.dataset.i;
-      li.onclick = (e) => { if (e.target.closest(".x")) return; editPastItem(d.date, i); };
-      li.querySelector(".x").onclick = async (e) => {
-        e.stopPropagation(); const it = d.items[i]; if (!it || !await ask(`Remove ${it.name} from ${label}?`)) return;
-        d.items.splice(i, 1); recalcPastDay(d); save(); renderHistory(); toast(`Removed ${it.name}`);
+      li.onclick = async (e) => {
+        const act = e.target.closest("[data-act]"), it = d.items[i]; if (!it) return;
+        if (!act) { histRow = histRow && histRow.date === d.date && histRow.i === i ? null : { date: d.date, i }; renderHistory(); return; }
+        e.stopPropagation();
+        if (act.dataset.act === "today") {
+          addToDay(basisOf(it), it.kcal, it.shareLabel || `${fmt(it.kcal / baseBudget() * 100, 1)}% of the day`);   // today's meal goes by the clock, like anything added now
+          histRow = null; renderHistory(); toast(`Added ${it.name} to today · ${fmt(it.kcal)} kcal`);
+        }
+        if (act.dataset.act === "edit") { histRow = null; editPastItem(d.date, i); }
+        if (act.dataset.act === "del") {
+          if (!await ask(`Remove ${it.name} from ${label}?`)) return;
+          d.items.splice(i, 1); recalcPastDay(d); histRow = null; save(); renderHistory(); toast(`Removed ${it.name}`);
+        }
       };
     });
     list.appendChild(card);
