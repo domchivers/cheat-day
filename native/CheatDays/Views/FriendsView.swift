@@ -12,7 +12,7 @@ struct FriendsView: View {
             VStack(spacing: 0) {
                 Picker("Show", selection: $seg) { Text("People").tag(0); Text("Feed").tag(1) }
                     .pickerStyle(.segmented).padding(.horizontal, 16).padding(.vertical, 8)
-                if seg == 0 { people } else { WebScreen(view: "friends", opts: ["seg": "feed"]) }
+                if seg == 0 { people } else { FeedView() }
             }
             .background(Theme.bg)
             .navigationTitle("Friends")

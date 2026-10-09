@@ -66,6 +66,29 @@ final class Supabase {
         _ = try await rest("/rest/v1/days", method: "POST", body: [row], prefer: "resolution=merge-duplicates")
     }
 
+    /// A photo into the public "photos" bucket (the web app's uploadPhoto); returns its address.
+    func uploadPhoto(_ jpeg: Data) async throws -> String {
+        guard let id = userId else { throw APIError(status: 401, message: "Not signed in") }
+        let path = "\(id)/\(UUID().uuidString.lowercased()).jpg"
+        func attempt() async throws -> (Data, HTTPURLResponse) {
+            guard let url = URL(string: SupabaseConfig.url.absoluteString + "/storage/v1/object/photos/" + path) else { throw APIError(status: 0, message: "Bad address") }
+            var req = URLRequest(url: url, timeoutInterval: 40)
+            req.httpMethod = "POST"
+            req.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
+            req.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+            req.setValue("false", forHTTPHeaderField: "x-upsert")
+            req.setValue("31536000", forHTTPHeaderField: "cache-control")
+            if let t = session?.access_token { req.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization") }
+            let (d, resp) = try await URLSession.shared.upload(for: req, from: jpeg)
+            guard let http = resp as? HTTPURLResponse else { throw APIError(status: 0, message: "No answer from the server") }
+            return (d, http)
+        }
+        var (d, r) = try await attempt()
+        if r.statusCode == 401, await refresh() { (d, r) = try await attempt() }
+        guard (200..<300).contains(r.statusCode) else { throw Self.error(d, r.statusCode, "Upload failed (\(r.statusCode))") }
+        return SupabaseConfig.url.absoluteString + "/storage/v1/object/public/photos/" + path
+    }
+
     // MARK: plumbing
 
     func rest(_ path: String, method: String = "GET", body: Any? = nil, prefer: String? = nil) async throws -> Data {

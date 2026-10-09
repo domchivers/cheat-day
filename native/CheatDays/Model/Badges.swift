@@ -241,6 +241,9 @@ extension Store {
             var seen = (d["seenBadges"] as? [String]) ?? []
             for id in (op["ids"] as? [String]) ?? [] where !seen.contains(id) { seen.append(id) }
             d["seenBadges"] = seen
+        case "bump":   // the social counters the badges read
+            let key = str(op["key"])
+            if ["postCount", "reactCount", "commentCount", "sendCount", "friendCount"].contains(key) { d[key] = Int(num(d[key]) ?? 0) + 1 }
         case "goalWins":
             var wins = (d["goalWins"] as? [String]) ?? []
             for k in (op["keys"] as? [String]) ?? [] where !wins.contains(k) { wins.append(k) }
