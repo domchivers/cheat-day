@@ -12,6 +12,12 @@ final class Store {
     static let shared = Store()
 
     private(set) var doc: JSON = [:]
+    /// Goes up with every change to the record; derived lists are remembered per revision.
+    @ObservationIgnored private(set) var rev = 0
+    private func setDoc(_ d: JSON) { doc = d; rev &+= 1 }
+    @ObservationIgnored private var memo: [String: (rev: Int, value: Any)] = [:]
+    @ObservationIgnored private let io = DispatchQueue(label: "cheatdays.store.io", qos: .utility)
+    @ObservationIgnored private var saveWork: DispatchWorkItem?
     private(set) var pending: [JSON] = []
     private(set) var syncing = false
     private(set) var lastSynced: Date?
@@ -103,7 +109,7 @@ final class Store {
         var d = doc
         Self.apply(op, to: &d, today: today)
         d["updatedAt"] = nowMs()
-        doc = d
+        setDoc(d)
         // a live session changes often: only its latest state needs sending
         if str(op["type"]) == "session", let last = pending.last, str(last["type"]) == "session" { pending[pending.count - 1] = op }
         else { pending.append(op) }
@@ -248,7 +254,7 @@ final class Store {
             let ops = pending
             if var base = try await Supabase.shared.pullDoc() {
                 if ops.isEmpty {
-                    if num(base["updatedAt"]) != num(doc["updatedAt"]) { doc = base; persist() }
+                    if num(base["updatedAt"]) != num(doc["updatedAt"]) { setDoc(base); persist() }
                 } else {
                     for op in ops { Self.apply(op, to: &base, today: today) }
                     base["updatedAt"] = nowMs()
@@ -276,7 +282,7 @@ final class Store {
         let later = Array(pending.dropFirst(sent))
         var d = base
         for op in later { Self.apply(op, to: &d, today: today) }
-        doc = d
+        setDoc(d)
         pending = later
         persist()
     }
@@ -292,19 +298,45 @@ final class Store {
     /// Signing out keeps nothing of this account on the phone.
     func reset() {
         syncTask?.cancel()
-        doc = [:]; pending = []; syncError = nil; lastSynced = nil
+        setDoc([:]); pending = []; syncError = nil; lastSynced = nil
         persist()
     }
 
     // MARK: disk
 
-    private func persist() {
-        write(doc, "doc.json")
-        write(pending, "pending.json")
+    /// Work something out once per change to the record, not on every redraw.
+    func cached<T>(_ key: String, _ make: () -> T) -> T {
+        if let m = memo[key], m.rev == rev, let v = m.value as? T { return v }
+        let v = make()
+        memo[key] = (rev, v)
+        return v
     }
-    private func write(_ obj: Any, _ name: String) {
+
+    /// Saving a year of history takes a moment: it happens in the background, a little after the last change.
+    private func persist() {
+        let snapshot = doc, queue = pending, dir = folder
+        saveWork?.cancel()
+        let work = DispatchWorkItem {
+            Self.write(snapshot, to: dir.appendingPathComponent("doc.json"))
+            Self.write(queue, to: dir.appendingPathComponent("pending.json"))
+        }
+        saveWork = work
+        io.asyncAfter(deadline: .now() + 0.4, execute: work)
+    }
+
+    /// Save now (the app is going to the background).
+    func flush() {
+        saveWork?.cancel()
+        let snapshot = doc, queue = pending, dir = folder
+        io.sync {
+            Self.write(snapshot, to: dir.appendingPathComponent("doc.json"))
+            Self.write(queue, to: dir.appendingPathComponent("pending.json"))
+        }
+    }
+
+    nonisolated private static func write(_ obj: Any, to url: URL) {
         guard let d = try? JSONSerialization.data(withJSONObject: obj) else { return }
-        try? d.write(to: folder.appendingPathComponent(name), options: .atomic)
+        try? d.write(to: url, options: .atomic)
     }
     private static func read(_ url: URL) -> Any? {
         guard let d = try? Data(contentsOf: url) else { return nil }

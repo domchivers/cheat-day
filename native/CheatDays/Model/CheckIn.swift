@@ -119,7 +119,8 @@ extension Store {
         return ((burn / 10).rounded() * 10, days.count, trend.n)
     }
 
-    var checkIn: CheckIn {
+    var checkIn: CheckIn { cached("checkIn-" + DayKey.string(Date())) { buildCheckIn() } }
+    private func buildCheckIn() -> CheckIn {
         let todayKey = DayKey.string(Date())
         let week = Self.weekOf(todayKey), mon = DayKey.shift(week, days: -7), sun = DayKey.shift(week, days: -1)
         let dates = (0..<7).map { DayKey.shift(mon, days: $0) }

@@ -176,7 +176,7 @@ struct TodayView: View {
         .background(Theme.hero, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
         .padding(.horizontal, 16)
         .animation(.snappy, value: eaten)
-        .gesture(DragGesture(minimumDistance: 30).onEnded { v in
+        .simultaneousGesture(DragGesture(minimumDistance: 40).onEnded { v in
             guard abs(v.translation.width) > abs(v.translation.height) * 1.5 else { return }
             withAnimation(.snappy) { offset = v.translation.width > 0 ? offset - 1 : min(0, offset + 1) }
         })

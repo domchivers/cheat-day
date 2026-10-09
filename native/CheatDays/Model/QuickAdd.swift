@@ -54,7 +54,8 @@ extension Store {
     func isFavourite(_ key: String) -> Bool { (dict(dict(doc["favs"])[key])["on"] as? Bool) == true }
 
     /// Presets, saved meals and recent foods, most used first (the web app's quickEntries).
-    var quickEntries: [QuickEntry] {
+    var quickEntries: [QuickEntry] { cached("quick") { buildQuickEntries() } }
+    private func buildQuickEntries() -> [QuickEntry] {
         var out: [QuickEntry] = []
         let presetUses = dict(doc["presetUses"])
         for p in FoodsDB.presets {
@@ -81,7 +82,8 @@ extension Store {
     var favourites: [QuickEntry] { quickEntries.filter { isFavourite($0.key) }.sorted { $0.name < $1.name } }
 
     /// What you usually have at this meal, from the days with times kept (the web app's mealHabits).
-    func usual(for meal: String) -> [QuickEntry] {
+    func usual(for meal: String) -> [QuickEntry] { cached("usual-" + meal) { buildUsual(meal) } }
+    private func buildUsual(_ meal: String) -> [QuickEntry] {
         var counts: [String: [String: Int]] = [:]
         func count(_ it: JSON) {
             guard it["addedAt"] as? String != nil || !str(it["meal"]).isEmpty else { return }
@@ -98,7 +100,8 @@ extension Store {
     }
 
     /// Everything ever logged that matches, then the food list.
-    func search(_ query: String) -> (mine: [QuickEntry], foods: [JSON]) {
+    func search(_ query: String) -> (mine: [QuickEntry], foods: [JSON]) { cached("search-" + query.lowercased()) { buildSearch(query) } }
+    private func buildSearch(_ query: String) -> (mine: [QuickEntry], foods: [JSON]) {
         let words = query.lowercased().split(separator: " ").map(String.init)
         guard !words.isEmpty else { return ([], []) }
         let hit: (JSON) -> Bool = { b in let t = (str(b["name"]) + " " + str(b["brand"])).lowercased(); return words.allSatisfy { t.contains($0) } }

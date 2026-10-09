@@ -7,6 +7,7 @@ struct AddSheet: View {
     let onFlow: (WebFlow) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
+    @State private var settled = ""
     @State private var scanning = false
     @State private var photo = false
     @State private var typing = false
@@ -31,9 +32,14 @@ struct AddSheet: View {
                     .buttonStyle(.plain)
                     .listRowInsets(EdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12))
                 }
-                if query.trimmingCharacters(in: .whitespaces).isEmpty { suggestions } else { results }
+                if settled.trimmingCharacters(in: .whitespaces).isEmpty { suggestions } else { results }
             }
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search foods and your history")
+            .task(id: query) {
+                if query.isEmpty { settled = ""; return }
+                try? await Task.sleep(nanoseconds: 220_000_000)
+                if !Task.isCancelled { settled = query }
+            }
             .navigationTitle("Add to \(meal)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
@@ -64,7 +70,7 @@ struct AddSheet: View {
     }
 
     @ViewBuilder private var results: some View {
-        let found = store.search(query)
+        let found = store.search(settled)
         if !found.mine.isEmpty { Section("Things you've had") { ForEach(found.mine) { row($0) } } }
         if !found.foods.isEmpty {
             Section("Foods") {
@@ -80,7 +86,7 @@ struct AddSheet: View {
         }
         if found.mine.isEmpty && found.foods.isEmpty {
             Section {
-                Text("Nothing matches \"\(query)\".").foregroundStyle(.secondary)
+                Text("Nothing matches \"\(settled)\".").foregroundStyle(.secondary)
                 Button("Ask the assistant about it") { onFlow(WebFlow(view: "ask", opts: ["meal": meal, "q": query], title: "Assistant")) }
                 Button("Type the numbers in") { typing = true }
             }
