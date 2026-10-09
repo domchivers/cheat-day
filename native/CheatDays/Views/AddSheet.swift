@@ -7,6 +7,7 @@ struct AddSheet: View {
     let onFlow: (WebFlow) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
+    @State private var scanning = false
     private var store: Store { Store.shared }
 
     init(meal: String, onFlow: @escaping (WebFlow) -> Void) {
@@ -20,7 +21,7 @@ struct AddSheet: View {
                 Section {
                     Picker("Meal", selection: $meal) { ForEach(Meals.all, id: \.self) { Text($0).tag($0) } }.pickerStyle(.segmented)
                     HStack(spacing: 10) {
-                        way("barcode.viewfinder", "Barcode") { onFlow(WebFlow(view: "scan", opts: ["scan": "barcode", "meal": meal], title: "Scan")) }
+                        way("barcode.viewfinder", "Barcode") { scanning = true }
                         way("camera.fill", "Photo") { onFlow(WebFlow(view: "scan", opts: ["scan": "label", "meal": meal], title: "Photo")) }
                         way("sparkles", "Ask AI") { onFlow(WebFlow(view: "ask", opts: ["meal": meal], title: "Assistant")) }
                         way("square.and.pencil", "Type it") { onFlow(WebFlow(view: "manual", opts: ["meal": meal], title: "Type it in")) }
@@ -35,6 +36,9 @@ struct AddSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
             .navigationDestination(for: EditTarget.self) { t in AmountView(target: t) { dismiss() } }
+            .sheet(isPresented: $scanning) {
+                ScanSheet(meal: meal, onAdded: { scanning = false; dismiss() }, onFlow: { f in scanning = false; onFlow(f) })
+            }
         }
     }
 
