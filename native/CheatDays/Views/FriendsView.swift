@@ -65,7 +65,7 @@ struct FriendsView: View {
                     }
                 }
                 NavigationLink {
-                    WebScreen(view: "friends", opts: ["seg": "friends"], pushed: true).navigationTitle("Friends").navigationBarTitleDisplayMode(.inline)
+                    FriendsMore()
                 } label: {
                     HStack {
                         Label("Shared meals, sending food and more", systemImage: "ellipsis.circle")

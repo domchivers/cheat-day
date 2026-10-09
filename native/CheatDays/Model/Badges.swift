@@ -244,6 +244,11 @@ extension Store {
         case "bump":   // the social counters the badges read
             let key = str(op["key"])
             if ["postCount", "reactCount", "commentCount", "sendCount", "friendCount"].contains(key) { d[key] = Int(num(d[key]) ?? 0) + 1 }
+        case "shareMeal":
+            var ids = (d["sharedMealIds"] as? [String]) ?? []
+            let id = str(op["id"])
+            if op["on"] as? Bool == true { if !ids.contains(id) { ids.append(id) } } else { ids.removeAll { $0 == id } }
+            d["sharedMealIds"] = ids
         case "goalWins":
             var wins = (d["goalWins"] as? [String]) ?? []
             for k in (op["keys"] as? [String]) ?? [] where !wins.contains(k) { wins.append(k) }

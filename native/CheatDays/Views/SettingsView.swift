@@ -10,6 +10,9 @@ struct SettingsView: View {
     @State private var share = true
     @State private var allowed = true
     @State private var loaded = false
+    @State private var notes = ""
+    @State private var newPassword = ""
+    @State private var passwordNote: String?
     private var store: Store { Store.shared }
     private let order = [1, 2, 3, 4, 5, 6, 0]
 
@@ -41,9 +44,20 @@ struct SettingsView: View {
             Section {
                 Toggle("Share my day with friends", isOn: $share)
             } footer: { Text("Friends see your calories and what you had today.") }
+            Section {
+                TextField("Vegetarian, no dairy, I train in the mornings…", text: $notes, axis: .vertical).lineLimit(3...6)
+            } header: { Text("About you") } footer: { Text("The assistant reads this before every answer.") }
+            Section {
+                ShareLink(item: exportText, preview: SharePreview("Cheat Days data")) { Label("Export my data", systemImage: "square.and.arrow.up") }
+                NavigationLink { WebScreen(view: "settings", pushed: true).navigationTitle("Backups").navigationBarTitleDisplayMode(.inline) } label: { Label("Backups and restore", systemImage: "clock.arrow.circlepath") }
+            } header: { Text("Your data") } footer: { Text("Everything syncs to your account. Export gives you a copy of it all as a file. Daily backups and restoring stay on the website's page for now.") }
             Section("Account") {
                 LabeledContent("Signed in as", value: Supabase.shared.email)
-                NavigationLink { WebScreen(view: "settings", pushed: true).navigationTitle("More settings").navigationBarTitleDisplayMode(.inline) } label: { Text("More settings") }
+                SecureField("New password (8 or more characters)", text: $newPassword).textContentType(.newPassword)
+                if !newPassword.isEmpty {
+                    Button("Change password") { Task { await changePassword() } }.disabled(newPassword.count < 8)
+                }
+                if let passwordNote { Text(passwordNote).font(.footnote).foregroundStyle(.secondary) }
             }
         }
         .navigationTitle("Settings")
@@ -53,6 +67,7 @@ struct SettingsView: View {
             lunch = p.lunch; weighOn = p.weigh != nil
             if let w = p.weigh { let parts = w.split(separator: ":").compactMap { Int($0) }; weighTime = Calendar.current.date(from: DateComponents(hour: parts.first ?? 7, minute: parts.count > 1 ? parts[1] : 30)) ?? weighTime }
             days = Set(store.weighDays); share = (store.doc["shareDay"] as? Bool) ?? true
+            notes = str(store.doc["notes"])
             let s = await UNUserNotificationCenter.current().notificationSettings()
             allowed = s.authorizationStatus == .authorized || s.authorizationStatus == .provisional
             loaded = true
@@ -62,6 +77,20 @@ struct SettingsView: View {
         .onChange(of: weighTime) { _, _ in save() }
         .onChange(of: days) { _, now in if loaded { store.setWeighDays(Array(now)) } }
         .onChange(of: share) { _, now in if loaded { store.setShareDay(now) } }
+        .onChange(of: notes) { _, now in if loaded { store.perform(["type": "set", "key": "notes", "value": String(now.prefix(1000))], syncAfter: 3) } }
+    }
+
+    /// The whole record as a file to keep.
+    private var exportText: String {
+        guard let d = try? JSONSerialization.data(withJSONObject: store.doc, options: [.prettyPrinted, .sortedKeys]) else { return "{}" }
+        return String(data: d, encoding: .utf8) ?? "{}"
+    }
+
+    private func changePassword() async {
+        do {
+            _ = try await Supabase.shared.rest("/auth/v1/user", method: "PUT", body: ["password": newPassword])
+            newPassword = ""; passwordNote = "Password changed. Use the new one on the website too."
+        } catch { passwordNote = "Couldn't change it: \(error.localizedDescription)" }
     }
 
     private var timeText: String {

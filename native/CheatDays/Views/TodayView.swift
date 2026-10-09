@@ -58,6 +58,24 @@ struct TodayView: View {
                         }
                     }
                 }
+                if offset == 0 {
+                    ForEach(Inbox.shared.items.indices, id: \.self) { i in
+                        let x = Inbox.shared.items[i]
+                        Section {
+                            HStack(spacing: 12) {
+                                Image(systemName: "paperplane.fill").foregroundStyle(Theme.accent).frame(width: 34, height: 34).background(Theme.hero, in: Circle())
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text("\(Inbox.shared.name(str(x["from_user"]))) sent you").font(.caption).foregroundStyle(.secondary)
+                                    Text(str(x["name"])).font(.subheadline.weight(.bold))
+                                    Text("\(Int(num(x["kcal"]) ?? 0)) kcal").font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Button("Add") { withAnimation { Inbox.shared.add(x) } }.buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(.small).foregroundStyle(.black)
+                                Button { withAnimation { Inbox.shared.settle(x, "dismissed") } } label: { Image(systemName: "xmark") }.buttonStyle(.borderless).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
                 Section { hero }
                     .listRowBackground(Color.clear)   // the panel draws its own card, so the trim and badge can sit on its top edge
                     .listRowInsets(EdgeInsets())
@@ -116,7 +134,8 @@ struct TodayView: View {
             }
             .onAppear { checkRank(); checkBadges() }
             .onChange(of: store.rank.level) { _, _ in checkRank() }
-            .onChange(of: store.lastSynced) { _, _ in checkBadges() }
+            .onChange(of: store.lastSynced) { _, _ in checkBadges(); Task { await Inbox.shared.refresh() } }
+            .task { await Inbox.shared.refresh(force: true) }
             .onChange(of: store.todayItems.count) { _, _ in checkBadges() }
             .overlay(alignment: .top) {
                 if let badgeNote {
