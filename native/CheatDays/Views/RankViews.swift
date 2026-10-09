@@ -40,7 +40,7 @@ struct RankTrim: View {
             }
             .mask(TrimPath(tier: t).stroke(style: StrokeStyle(lineWidth: width + 1, lineCap: .round, lineJoin: .round)))
         }
-        .frame(height: 30, alignment: .top)
+        .frame(height: 30)
         .shadow(color: rank.color.opacity(t >= 4 ? 0.7 : 0.3), radius: t >= 4 ? 6 : 3)
         .task {
             // a sweep every few seconds, not a constant shimmer
@@ -71,35 +71,22 @@ private struct TrimPath: Shape {
 
     func path(in r: CGRect) -> Path {
         var p = Path()
-        // the outer line runs along the card's top edge and round both top corners, a little way down the sides
-        let w = r.width, mid = r.midX, radius: CGFloat = 26, inset: CGFloat = radius
+        let w = r.width, mid = r.midX, inset: CGFloat = 6   // the same trim, stretched out to the panel's corners
         let y: CGFloat = inner ? 10 : 6
         let notch: CGFloat = tier == 0 ? 0 : 30 + CGFloat(tier) * 5
         let depth: CGFloat = tier == 0 ? 0 : 13 + CGFloat(tier)
-        let down = radius + CGFloat(6 + tier * 3)   // higher tiers reach further down the sides
-        if inner {
-            p.move(to: CGPoint(x: inset + 8, y: y))
-        } else {
-            p.move(to: CGPoint(x: 0, y: y + down))
-            p.addLine(to: CGPoint(x: 0, y: y + radius))
-            p.addQuadCurve(to: CGPoint(x: radius, y: y), control: CGPoint(x: 0, y: y))
-        }
+        p.move(to: CGPoint(x: inset + (inner ? 6 : 0), y: y))
         if notch > 0 {
             p.addLine(to: CGPoint(x: mid - notch, y: y))
             p.addLine(to: CGPoint(x: mid - notch * 0.42, y: y + depth))
             p.addLine(to: CGPoint(x: mid + notch * 0.42, y: y + depth))
             p.addLine(to: CGPoint(x: mid + notch, y: y))
         }
-        if inner {
-            p.addLine(to: CGPoint(x: w - inset - 8, y: y))
-            return p
-        }
-        p.addLine(to: CGPoint(x: w - radius, y: y))
-        p.addQuadCurve(to: CGPoint(x: w, y: y + radius), control: CGPoint(x: w, y: y))
-        p.addLine(to: CGPoint(x: w, y: y + down))
-        if tier >= 2 {   // studs where the corners begin
-            for x in [inset, w - inset] {
-                p.move(to: CGPoint(x: x, y: y)); p.addLine(to: CGPoint(x: x, y: y + 6))
+        p.addLine(to: CGPoint(x: w - inset - (inner ? 6 : 0), y: y))
+        guard !inner else { return p }
+        if tier >= 2 {   // end caps
+            for (x, d) in [(inset, CGFloat(-1)), (w - inset, CGFloat(1))] {
+                p.move(to: CGPoint(x: x, y: y)); p.addLine(to: CGPoint(x: x + d * 8, y: y + 7))
             }
         }
         if tier >= 3 {   // wings beside the notch
