@@ -62,7 +62,8 @@ def main():
         bg_refs = [] if test else ["out/raw/dumpling-bg.png"]          # backgrounds match the approved background,
         badge_refs = [] if test else ["out/raw/dumpling-badge.png"]    # badges match the approved badge
         lead = "" if test else REF_NOTE
-        jobs.append({"file": f"out/raw/{key}-bg.png", "group": "test" if test else "ranks", "size": "1536x1024", "refs": bg_refs,
+        if False:   # backgrounds dropped: the app draws a rank trim instead
+          jobs.append({"file": f"out/raw/{key}-bg.png", "group": "test" if test else "ranks", "size": "1536x1024", "refs": bg_refs,
                      "prompt": f"{lead}{STYLE_BG}\n\nRank: {name}, {place}. Accent colour: {accent}.\nScene: {scene}."})
         jobs.append({"file": f"out/raw/{key}-badge.png", "group": "test" if test else "ranks", "size": "1024x1024", "refs": badge_refs,
                      "prompt": f"{lead}{STYLE_BADGE}\n\nRank: {name}, {place}. Accent colour: {accent}.\nBadge: {badge}."})

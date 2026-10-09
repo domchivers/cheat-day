@@ -151,8 +151,7 @@ def main():
             bg, n = fit_bg(Image.open(bg_src))
             bg.save(os.path.join(FINAL, f"rank-{key}-bg.jpg"), quality=86)
             if n: note.append(n)
-        else:
-            note.append("background missing")
+
         if os.path.exists(badge_src):
             key_badge(Image.open(badge_src)).save(os.path.join(FINAL, f"rank-{key}-badge.png"))
         else:

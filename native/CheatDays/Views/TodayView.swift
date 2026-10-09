@@ -33,6 +33,8 @@ struct TodayView: View {
     @State private var showPast = false
     @State private var showCheckIn = false
     @State private var showCheat = false
+    @State private var showRanks = false
+    @State private var rankUp: Rank?
     private var store: Store { Store.shared }
 
     private var date: String { DayKey.shift(store.today, days: offset) }
@@ -57,6 +59,7 @@ struct TodayView: View {
                 }
                 Section { hero }
                     .listRowBackground(Theme.hero)
+                    .listRowInsets(EdgeInsets())
                 if offset == 0 && store.checkInDue {
                     let c = store.checkIn
                     Section {
@@ -103,6 +106,12 @@ struct TodayView: View {
             .sheet(item: $flow) { f in WebFlowSheet(flow: f) }
             .sheet(isPresented: $showCheckIn) { NavigationStack { CheckInView() } }
             .sheet(isPresented: $showCheat) { CheatDayView().presentationDragIndicator(.visible) }
+            .sheet(isPresented: $showRanks) { RanksView().presentationDragIndicator(.visible) }
+            .fullScreenCover(isPresented: Binding(get: { rankUp != nil }, set: { if !$0 { rankUp = nil } })) {
+                if let r = rankUp { RankUpView(rank: r) { rankUp = nil } }
+            }
+            .onAppear { checkRank() }
+            .onChange(of: store.rank.level) { _, _ in checkRank() }
             .onReceive(NotificationCenter.default.publisher(for: .webDone)) { _ in
                 guard flow != nil else { return }
                 flow = nil
@@ -196,8 +205,9 @@ struct TodayView: View {
                 stat(Fmt.int(budget), "budget")
             }
         }
-        .padding(.vertical, 10)
-        .overlay(alignment: .topTrailing) { if offset == 0 { cheatButton } }
+        .padding(.horizontal, 20).padding(.top, offset == 0 ? 40 : 16).padding(.bottom, 16)
+        .overlay(alignment: .top) { if offset == 0 { rankTop } }
+        .overlay(alignment: .topTrailing) { if offset == 0 { cheatButton.padding(.top, 62).padding(.trailing, 16) } }
         .animation(.snappy, value: eaten)
         .simultaneousGesture(DragGesture(minimumDistance: 40).onEnded { v in
             guard abs(v.translation.width) > abs(v.translation.height) * 1.5 else { return }
@@ -216,7 +226,30 @@ struct TodayView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Plan your cheat day")
-        .padding(.top, 6)
+    }
+
+    /// The rank trim along the top of the panel, with the badge in its notch: tap for the ranks.
+    private var rankTop: some View {
+        let r = store.rank
+        return ZStack(alignment: .top) {
+            RankTrim(rank: r)
+            Button { showRanks = true } label: { RankBadge(rank: r, size: r.tier >= 4 ? 40 : 34) }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Your rank: \(r.name)")
+                .offset(y: 2)
+        }
+        .padding(.top, 2)
+    }
+
+    /// A new rank since last time: celebrate it once. The first time, just remember where they are.
+    private func checkRank() {
+        guard store.lastSynced != nil else { return }   // not before the record has loaded
+        let now = store.rank, seen = UserDefaults.standard.integer(forKey: "rank.seen")
+        if seen == 0 { UserDefaults.standard.set(now.level, forKey: "rank.seen"); return }
+        if now.level > seen {
+            UserDefaults.standard.set(now.level, forKey: "rank.seen")
+            rankUp = now
+        }
     }
 
     private func stat(_ value: String, _ label: String) -> some View {
