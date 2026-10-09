@@ -75,8 +75,7 @@ struct HistoryView: View {
                 Section { calendar(byDate) { date in withAnimation { openDay = date; proxy.scrollTo(date, anchor: .top) } } }
                 ForEach(all.prefix(90)) { day in
                     Section {
-                        Button { withAnimation(.snappy) { openDay = openDay == day.id ? nil : day.id } } label: { dayHeader(day) }.buttonStyle(.plain)
-                        if openDay == day.id {
+                        DisclosureGroup(isExpanded: Binding(get: { openDay == day.id }, set: { open in withAnimation(.snappy) { openDay = open ? day.id : (openDay == day.id ? nil : openDay) } })) {
                             ForEach(Meals.all, id: \.self) { meal in
                                 let its = day.items.filter { Meals.of($0) == meal }
                                 if !its.isEmpty {
@@ -86,15 +85,14 @@ struct HistoryView: View {
                                         Button("Copy to today") { copy(its, keepMeal: true, label: "\(Store.when(day.id))'s \(meal.lowercased())") }.font(.caption.weight(.bold)).buttonStyle(.borderless)
                                     }
                                     ForEach(its.indices, id: \.self) { i in
-                                        FoodRow(item: its[i])
-                                            .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                                                Button { copy([its[i]], keepMeal: false, label: str(its[i]["name"])) } label: { Label("Add to today", systemImage: "plus") }.tint(Theme.accent)
-                                            }
+                                        Button { copy([its[i]], keepMeal: false, label: str(its[i]["name"])) } label: { FoodRow(item: its[i], hint: .add) }
+                                            .buttonStyle(.plain)
                                     }
                                 }
                             }
                             Button { copy(day.items, keepMeal: true, label: "the whole day") } label: { Label("Copy the whole day to today", systemImage: "doc.on.doc") }
-                        }
+                        } label: { dayHeader(day) }
+                        .tint(.secondary)
                     }
                     .id(day.id)
                 }
@@ -120,7 +118,6 @@ struct HistoryView: View {
                 Text(Store.when(day.id) == "yesterday" ? "Yesterday" : DayKey.date(day.id).formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))).font(.headline)
                 Spacer()
                 Text("\(Fmt.int(day.kcal)) / \(Fmt.int(day.budget))").font(.subheadline.weight(.bold)).monospacedDigit().foregroundStyle(over || near ? Theme.warn : Theme.accent)
-                Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.secondary).rotationEffect(.degrees(openDay == day.id ? 90 : 0))
             }
             GeometryReader { g in
                 ZStack(alignment: .leading) {
@@ -130,6 +127,7 @@ struct HistoryView: View {
             }
             .frame(height: 6)
             if openDay != day.id { Text(day.items.map { str($0["name"]) }.prefix(4).joined(separator: ", ")).font(.footnote).foregroundStyle(.secondary).lineLimit(1) }
+            else { Text("Tap a food to add it to today").font(.footnote).foregroundStyle(.secondary) }
         }
         .contentShape(Rectangle())
         .padding(.vertical, 2)

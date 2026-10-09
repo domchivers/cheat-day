@@ -199,7 +199,7 @@ struct TodayView: View {
         if offset == 0 || !lines.isEmpty {
             Section {
                 ForEach(lines) { line in
-                    Button { tap(line.item, meal: meal) } label: { FoodRow(item: line.item) }
+                    Button { tap(line.item, meal: meal) } label: { FoodRow(item: line.item, hint: offset == 0 ? .open : .add) }
                         .buttonStyle(.plain)
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             if offset == 0 {
@@ -212,6 +212,11 @@ struct TodayView: View {
                     Button { addChoice = MealChoice(id: meal) } label: {
                         Label("Add \(meal.lowercased())", systemImage: "plus.circle.fill").foregroundStyle(Theme.accent)
                     }
+                }
+                if !lines.isEmpty && meal == Meals.all.first(where: { m in items.contains { Meals.of($0) == m } }) {
+                    Text(offset == 0 ? "Tap a food to change the amount. Swipe left to delete." : "Tap a food to add it to today.")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .listRowBackground(Color.clear)
                 }
             } header: {
                 HStack {
@@ -252,7 +257,9 @@ struct TodayView: View {
 }
 
 struct FoodRow: View {
+    enum Hint { case none, open, add }
     let item: JSON
+    var hint: Hint = .none
     var body: some View {
         let kcal = num(item["kcal"]) ?? 0
         HStack(spacing: 12) {
@@ -264,6 +271,11 @@ struct FoodRow: View {
             }
             Spacer(minLength: 8)
             Text(Fmt.int(kcal)).font(.body.weight(.bold)).monospacedDigit()
+            switch hint {
+            case .open: Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
+            case .add: Image(systemName: "plus.circle").font(.title3).foregroundStyle(Theme.accent)
+            case .none: EmptyView()
+            }
         }
         .contentShape(Rectangle())
         .padding(.vertical, 2)

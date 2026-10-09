@@ -49,7 +49,7 @@ struct WorkoutsView: View {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(str(r["name"])).font(.body.weight(.semibold))
-                                    Text("\(list(r["exercises"]).count) exercises").font(.footnote).foregroundStyle(.secondary)
+                                    Text("\(list(r["exercises"]).count) exercises · tap play to start").font(.footnote).foregroundStyle(.secondary)
                                 }
                                 Spacer()
                                 Button {

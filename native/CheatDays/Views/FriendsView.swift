@@ -92,10 +92,12 @@ struct FriendsView: View {
                     .frame(width: 42, height: 42).background(Theme.hero, in: Circle())
                 VStack(alignment: .leading, spacing: 2) {
                     Text(p.name).font(.headline)
-                    Text(p.isActive ? p.food.map { str($0["name"]) }.prefix(3).joined(separator: ", ") : "Nothing logged today yet")
+                    Text(p.isActive ? (open.contains(p.id) ? "Their day so far" : "Tap to see what they had") : "Nothing logged today yet")
                         .font(.footnote).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer()
+                Image(systemName: "chevron.down").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
+                    .rotationEffect(.degrees(open.contains(p.id) ? 180 : 0))
                 if p.isActive {
                     (Text(Fmt.int(kcal)).foregroundStyle(over || near ? Theme.warn : Theme.accent) + Text(" / \(Fmt.int(budget))").foregroundStyle(.secondary))
                         .font(.subheadline.weight(.bold)).monospacedDigit()
@@ -127,6 +129,7 @@ struct FriendsView: View {
                 .buttonStyle(.bordered).buttonBorderShape(.capsule).disabled(model.cheered.contains(p.id))
             }
             if open.contains(p.id) {
+              VStack(alignment: .leading, spacing: 8) {
                 let food = p.food
                 if food.isEmpty { Text("Nothing shared today yet.").font(.footnote).foregroundStyle(.secondary) }
                 ForEach(Meals.all, id: \.self) { meal in
@@ -140,6 +143,8 @@ struct FriendsView: View {
                         }
                     }
                 }
+              }
+              .transition(.asymmetric(insertion: .move(edge: .top).combined(with: .opacity), removal: .opacity))
             }
         }
         .padding(.vertical, 4)
