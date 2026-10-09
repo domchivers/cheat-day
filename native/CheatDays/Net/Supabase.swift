@@ -75,6 +75,13 @@ final class Supabase {
         return d
     }
 
+    /// Like rest(), but hands back the status instead of throwing, for callers that try one model after another.
+    func call(_ path: String, body: Any, timeout: TimeInterval = 40) async throws -> (Data, Int) {
+        var (d, r) = try await send(path, method: "POST", body: body, timeout: timeout)
+        if r.statusCode == 401, await refresh() { (d, r) = try await send(path, method: "POST", body: body, timeout: timeout) }
+        return (d, r.statusCode)
+    }
+
     /// Access tokens last about an hour. Only a definite rejection of the refresh token signs you out, never a network blip.
     private func refresh() async -> Bool {
         guard let rt = session?.refresh_token else { return false }
@@ -94,9 +101,9 @@ final class Supabase {
         Keychain.save("session", d)
     }
 
-    private func send(_ path: String, method: String, body: Any? = nil, prefer: String? = nil, auth: Bool = true) async throws -> (Data, HTTPURLResponse) {
+    private func send(_ path: String, method: String, body: Any? = nil, prefer: String? = nil, auth: Bool = true, timeout: TimeInterval = 20) async throws -> (Data, HTTPURLResponse) {
         guard let url = URL(string: SupabaseConfig.url.absoluteString + path) else { throw APIError(status: 0, message: "Bad address") }
-        var req = URLRequest(url: url, timeoutInterval: 20)
+        var req = URLRequest(url: url, timeoutInterval: timeout)
         req.httpMethod = method
         req.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")

@@ -7,6 +7,8 @@ struct EditTarget: Identifiable, Hashable {
     let kcal: Double?
     let editId: String?
     let meal: String
+    /// Where the numbers came from, when it's worth saying (a photo estimate, found online...).
+    var note: String? = nil
     static func == (a: EditTarget, b: EditTarget) -> Bool { a.id == b.id }
     func hash(into h: inout Hasher) { h.combine(id) }
 }
@@ -290,6 +292,10 @@ struct AmountView: View {
                         .padding(.top, 10)
                     Text(leftAfter >= 0 ? "kcal · \(Fmt.int(leftAfter)) left after this" : "kcal · \(Fmt.int(-leftAfter)) over your day")
                         .font(.footnote.weight(.semibold)).foregroundStyle(leftAfter >= 0 ? Color.secondary : Theme.warn)
+                    if let note = target.note, !note.isEmpty {
+                        Label(note, systemImage: "info.circle").font(.footnote).foregroundStyle(.secondary)
+                            .multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
+                    }
                 }
                 .frame(maxWidth: .infinity)
                 .listRowBackground(Color.clear)

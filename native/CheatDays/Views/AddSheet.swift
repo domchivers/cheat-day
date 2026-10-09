@@ -8,6 +8,8 @@ struct AddSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
     @State private var scanning = false
+    @State private var photo = false
+    @State private var typing = false
     private var store: Store { Store.shared }
 
     init(meal: String, onFlow: @escaping (WebFlow) -> Void) {
@@ -22,9 +24,9 @@ struct AddSheet: View {
                     Picker("Meal", selection: $meal) { ForEach(Meals.all, id: \.self) { Text($0).tag($0) } }.pickerStyle(.segmented)
                     HStack(spacing: 10) {
                         way("barcode.viewfinder", "Barcode") { scanning = true }
-                        way("camera.fill", "Photo") { onFlow(WebFlow(view: "scan", opts: ["scan": "label", "meal": meal], title: "Photo")) }
+                        way("camera.fill", "Photo") { photo = true }
                         way("sparkles", "Ask AI") { onFlow(WebFlow(view: "ask", opts: ["meal": meal], title: "Assistant")) }
-                        way("square.and.pencil", "Type it") { onFlow(WebFlow(view: "manual", opts: ["meal": meal], title: "Type it in")) }
+                        way("square.and.pencil", "Type it") { typing = true }
                     }
                     .buttonStyle(.plain)
                     .listRowInsets(EdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12))
@@ -36,6 +38,10 @@ struct AddSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
             .navigationDestination(for: EditTarget.self) { t in AmountView(target: t) { dismiss() } }
+            .navigationDestination(isPresented: $typing) { ManualEntry(meal: meal) { dismiss() } }
+            .sheet(isPresented: $photo) {
+                PhotoSheet(meal: meal, onAdded: { photo = false; dismiss() }, onFlow: { f in photo = false; onFlow(f) })
+            }
             .sheet(isPresented: $scanning) {
                 ScanSheet(meal: meal, onAdded: { scanning = false; dismiss() }, onFlow: { f in scanning = false; onFlow(f) })
             }
@@ -76,7 +82,7 @@ struct AddSheet: View {
             Section {
                 Text("Nothing matches \"\(query)\".").foregroundStyle(.secondary)
                 Button("Ask the assistant about it") { onFlow(WebFlow(view: "ask", opts: ["meal": meal, "q": query], title: "Assistant")) }
-                Button("Type the numbers in") { onFlow(WebFlow(view: "manual", opts: ["meal": meal], title: "Type it in")) }
+                Button("Type the numbers in") { typing = true }
             }
         }
     }

@@ -1,8 +1,9 @@
 # The Cheat Days iPhone app. XcodeGen turns this into CheatDays.xcodeproj on the Mac:
 #   brew install xcodegen && cd native && xcodegen generate
 # Being rebuilt natively in SwiftUI, a stage at a time. Native so far: sign-in, Today, adding food, Me,
-# Workouts (live sessions, routines, exercises), sync with the same account as the website, the lock-screen
-# workout timer and haptics. Still web inside the app: Friends, scanning, the assistant and the pages under Me.
+# Workouts (live sessions, routines, exercises), barcode scanning, photos of packs and labels, typing numbers,
+# sync with the same account as the website, the lock-screen workout timer and haptics.
+# Still web inside the app: Friends, the assistant and the pages under Me.
 name: CheatDays
 options:
   bundleIdPrefix: com.cheatdays
@@ -12,7 +13,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.3.0"
+    MARKETING_VERSION: "0.4.0"
     CURRENT_PROJECT_VERSION: "1"
 targets:
   CheatDays:
