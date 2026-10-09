@@ -9,6 +9,15 @@ enum Theme {
     static let heroLabel = Color(red: 0.56, green: 0.73, blue: 0.87)
     static let track = Color(red: 0.11, green: 0.17, blue: 0.23)
     static let warn = Color(red: 0.95, green: 0.71, blue: 0.36)
+    /// Each meal's colour in the calorie bar.
+    static func meal(_ meal: String) -> Color {
+        switch meal {
+        case "Breakfast": return Color(red: 0.98, green: 0.78, blue: 0.40)
+        case "Lunch": return Color(red: 0.36, green: 0.82, blue: 0.62)
+        case "Dinner": return accent
+        default: return Color(red: 0.93, green: 0.55, blue: 0.70)
+        }
+    }
     static let uiBackground = UIColor(red: 0.027, green: 0.035, blue: 0.047, alpha: 1)
 
     static func tone(_ name: String) -> (bg: Color, fg: Color) {

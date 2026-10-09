@@ -149,7 +149,8 @@ struct TodayView: View {
         let eaten = items.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }
         let left = budget - eaten
         let protein = store.macros(items).p
-        let share = budget > 0 ? min(1, eaten / budget) : 0
+        let scale = max(budget, eaten, 1)
+        let byMeal = Meals.all.map { m in (m, items.filter { Meals.of($0) == m }.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }) }.filter { $0.1 > 0 }
         return VStack(alignment: .leading, spacing: 14) {
             Eyebrow(text: left >= 0 ? "Left to eat" : "Over today", color: Theme.heroLabel)
             HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -158,13 +159,33 @@ struct TodayView: View {
                     .contentTransition(.numericText(value: abs(left)))
                 Text("kcal").font(.headline).foregroundStyle(.secondary)
             }
-            GeometryReader { g in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Theme.track)
-                    Capsule().fill(eaten > budget ? Theme.warn : Theme.accent).frame(width: max(8, g.size.width * share))
+            VStack(alignment: .leading, spacing: 8) {
+                GeometryReader { g in
+                    ZStack(alignment: .leading) {
+                        Theme.track
+                        HStack(spacing: 2) {
+                            ForEach(byMeal, id: \.0) { part in
+                                Theme.meal(part.0).frame(width: max(4, g.size.width * part.1 / scale - 2))
+                            }
+                        }
+                        if eaten > budget, budget > 0 {
+                            Rectangle().fill(.white).frame(width: 2).offset(x: g.size.width * budget / scale - 1)
+                        }
+                    }
+                }
+                .frame(height: 12)
+                .clipShape(Capsule())
+                if !byMeal.isEmpty {
+                    HStack(spacing: 12) {
+                        ForEach(byMeal, id: \.0) { part in
+                            HStack(spacing: 4) {
+                                Circle().fill(Theme.meal(part.0)).frame(width: 7, height: 7)
+                                Text(part.0).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
                 }
             }
-            .frame(height: 10)
             HStack {
                 stat(Fmt.int(eaten), "eaten")
                 Spacer()
