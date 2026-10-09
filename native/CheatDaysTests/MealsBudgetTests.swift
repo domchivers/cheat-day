@@ -40,4 +40,14 @@ final class MealsBudgetTests: XCTestCase {
         XCTAssertTrue(list(d["body"]).isEmpty)
         XCTAssertEqual(num(dict(d["tombs"])["body:2026-10-08"]), 5)
     }
+
+    // meals are in grams, including older saved ingredients that only had a serving
+    func testMealsShowGrams() {
+        let toast: JSON = ["name": "Toast", "kcal": 160, "kcalPer100": 265, "unitLabel": "slice", "kcalPerServing": 80]
+        XCTAssertEqual(MealEditor.grams(toast) ?? 0, 60.4, accuracy: 0.1)            // worked out from its calories
+        XCTAssertEqual(MealEditor.grams(["name": "Rice", "kcal": 200, "grams": 150]), 150)
+        XCTAssertNil(MealEditor.grams(["name": "Mystery", "kcal": 200, "unitLabel": "portion", "kcalPerServing": 200]))
+        let meal: JSON = ["name": "Stir fry", "source": "meal", "kcalPer100": 130, "unitLabel": "portion", "kcalPerServing": 520, "servingSize": 400]
+        XCTAssertEqual(FoodMath.amountText(meal, kcal: 260), "200 g")
+    }
 }
