@@ -35,6 +35,7 @@ struct TodayView: View {
     @State private var showCheat = false
     @State private var showRanks = false
     @State private var rankUp: Rank?
+    @State private var badgeNote: String?
     private var store: Store { Store.shared }
 
     private var date: String { DayKey.shift(store.today, days: offset) }
@@ -110,8 +111,17 @@ struct TodayView: View {
             .fullScreenCover(isPresented: Binding(get: { rankUp != nil }, set: { if !$0 { rankUp = nil } })) {
                 if let r = rankUp { RankUpView(rank: r) { rankUp = nil } }
             }
-            .onAppear { checkRank() }
+            .onAppear { checkRank(); checkBadges() }
             .onChange(of: store.rank.level) { _, _ in checkRank() }
+            .onChange(of: store.lastSynced) { _, _ in checkBadges() }
+            .onChange(of: store.todayItems.count) { _, _ in checkBadges() }
+            .overlay(alignment: .top) {
+                if let badgeNote {
+                    Text(badgeNote).font(.subheadline.weight(.bold)).padding(.horizontal, 16).padding(.vertical, 10)
+                        .background(.ultraThinMaterial, in: Capsule()).padding(.top, 6)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
             .onReceive(NotificationCenter.default.publisher(for: .webDone)) { _ in
                 guard flow != nil else { return }
                 flow = nil
@@ -243,6 +253,16 @@ struct TodayView: View {
                 .offset(y: 4 - size * 0.55)   // the badge stands on the trim, mostly above the card
         }
         .offset(y: -6)   // the trim's line runs along the card's top edge
+    }
+
+    /// New achievements (and finished weekly goals) get banked, with a note at the top.
+    private func checkBadges() {
+        let fresh = store.checkBadges()
+        guard let first = fresh.first else { return }
+        let xp = fresh.reduce(0) { $0 + $1.xp }
+        let text = "\(first.icon) \(fresh.count > 1 ? "\(fresh.count) achievements" : first.name) · +\(xp) XP"
+        withAnimation(.snappy) { badgeNote = text }
+        Task { try? await Task.sleep(nanoseconds: 3_500_000_000); withAnimation { if badgeNote == text { badgeNote = nil } } }
     }
 
     /// A new rank since last time: celebrate it once. The first time, just remember where they are.

@@ -40,7 +40,7 @@ struct MeView: View {
                     NavigationLink { BudgetView() } label: { Label("Plan and budget", systemImage: "target") }
                     NavigationLink { BodyView() } label: { Label("Body and weigh-ins", systemImage: "scalemass.fill") }
                     NavigationLink { HistoryView() } label: { Label("History", systemImage: "calendar") }
-                    page("Goals and badges", "trophy.fill", "goals")
+                    NavigationLink { GoalsView() } label: { Label("Goals and badges", systemImage: "trophy.fill") }
                     NavigationLink { MealsView() } label: { Label("Your meals", systemImage: "fork.knife") }
                     NavigationLink { SettingsView() } label: { Label("Settings", systemImage: "gearshape.fill") }
                 }

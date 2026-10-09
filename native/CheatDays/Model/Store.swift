@@ -163,6 +163,7 @@ final class Store {
             applyBodyOp(op, to: &d)
             applyCheckInOp(op, to: &d)
             applyPlanOp(op, to: &d)
+            applyBadgeOp(op, to: &d)
         }
     }
 
