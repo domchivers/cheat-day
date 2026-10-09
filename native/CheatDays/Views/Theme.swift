@@ -72,3 +72,35 @@ struct Eyebrow: View {
         Text(text.uppercased()).font(.caption.weight(.bold)).tracking(0.8).foregroundStyle(color)
     }
 }
+
+/// A pizza slice drawn to match the app's icons (SF Symbols has no pizza): crust, a line under it, and pepperoni cut out.
+struct PizzaSlice: Shape {
+    func path(in r: CGRect) -> Path {
+        var p = Path()
+        let w = r.width, h = r.height
+        let top = r.minY + h * 0.24, left = r.minX + w * 0.06, right = r.maxX - w * 0.06, tip = CGPoint(x: r.midX, y: r.maxY)
+        p.move(to: tip)
+        p.addLine(to: CGPoint(x: left, y: top))
+        p.addQuadCurve(to: CGPoint(x: right, y: top), control: CGPoint(x: r.midX, y: r.minY - h * 0.06))
+        p.closeSubpath()
+        // the line between crust and topping, cut out (even-odd fill)
+        func side(_ y: CGFloat) -> CGFloat { (r.midX - left) * (r.maxY - y) / (r.maxY - top) }
+        let y1 = top + h * 0.09, y2 = top + h * 0.15
+        p.move(to: CGPoint(x: r.midX - side(y1) + w * 0.05, y: y1))
+        p.addQuadCurve(to: CGPoint(x: r.midX + side(y1) - w * 0.05, y: y1), control: CGPoint(x: r.midX, y: y1 - h * 0.27))
+        p.addLine(to: CGPoint(x: r.midX + side(y2) - w * 0.06, y: y2))
+        p.addQuadCurve(to: CGPoint(x: r.midX - side(y2) + w * 0.06, y: y2), control: CGPoint(x: r.midX, y: y2 - h * 0.27))
+        p.closeSubpath()
+        for (x, y, d) in [(0.37, 0.50, 0.15), (0.60, 0.53, 0.13), (0.49, 0.71, 0.12)] as [(CGFloat, CGFloat, CGFloat)] {
+            p.addEllipse(in: CGRect(x: r.minX + w * x - w * d / 2, y: r.minY + h * y - w * d / 2, width: w * d, height: w * d))
+        }
+        return p
+    }
+}
+
+struct PizzaIcon: View {
+    var size: CGFloat = 22
+    var body: some View {
+        PizzaSlice().fill(Theme.warn, style: FillStyle(eoFill: true)).frame(width: size, height: size)
+    }
+}

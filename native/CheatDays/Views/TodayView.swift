@@ -209,7 +209,7 @@ struct TodayView: View {
     private var cheatButton: some View {
         let isToday = store.nextCheat?.date == store.today
         return Button { showCheat = true } label: {
-            Text("🍕").font(.system(size: 22))
+            PizzaIcon(size: 22)
                 .frame(width: 44, height: 44)
                 .background(Color(red: 0.16, green: 0.13, blue: 0.07), in: Circle())
                 .overlay(Circle().stroke(Theme.warn.opacity(isToday ? 1 : 0.45), lineWidth: isToday ? 2 : 1))
