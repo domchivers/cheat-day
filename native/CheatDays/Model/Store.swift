@@ -164,6 +164,7 @@ final class Store {
             applyCheckInOp(op, to: &d)
             applyPlanOp(op, to: &d)
             applyBadgeOp(op, to: &d)
+            Assistant.applyChatOp(op, to: &d)
         }
     }
 

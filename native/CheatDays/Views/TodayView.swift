@@ -104,7 +104,10 @@ struct TodayView: View {
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
             }
-            .sheet(item: $flow) { f in WebFlowSheet(flow: f) }
+            .sheet(item: $flow) { f in
+                if f.view == "ask" { AssistantView(meal: str(f.opts["meal"]).isEmpty ? Meals.now : str(f.opts["meal"]), firstQuestion: str(f.opts["q"])) }
+                else { WebFlowSheet(flow: f) }
+            }
             .sheet(isPresented: $showCheckIn) { NavigationStack { CheckInView() } }
             .sheet(isPresented: $showCheat) { CheatDayView().presentationDragIndicator(.visible) }
             .sheet(isPresented: $showRanks) { RanksView().presentationDragIndicator(.visible) }
