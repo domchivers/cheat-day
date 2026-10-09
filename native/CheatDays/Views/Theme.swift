@@ -100,7 +100,8 @@ struct PizzaSlice: Shape {
 
 struct PizzaIcon: View {
     var size: CGFloat = 22
+    var color: Color = Theme.warn
     var body: some View {
-        PizzaSlice().fill(Theme.warn, style: FillStyle(eoFill: true)).frame(width: size, height: size)
+        PizzaSlice().fill(color, style: FillStyle(eoFill: true)).frame(width: size, height: size)
     }
 }

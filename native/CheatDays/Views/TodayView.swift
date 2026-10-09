@@ -237,12 +237,10 @@ struct TodayView: View {
                 stat(Fmt.int(budget), "budget")
             }
         }
-        .padding(.horizontal, 20).padding(.top, offset == 0 ? 40 : 18).padding(.bottom, 18)
+        .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.hero, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .overlay(alignment: .top) { if offset == 0 { rankTop } }
         .overlay(alignment: .topTrailing) { if offset == 0 { cheatButton.padding(.top, 14).padding(.trailing, 14) } }
-        .padding(.top, offset == 0 ? 38 : 0)   // room above the card for the badge
         .animation(.snappy, value: eaten)
         .simultaneousGesture(DragGesture(minimumDistance: 40).onEnded { v in
             guard abs(v.translation.width) > abs(v.translation.height) * 1.5 else { return }
@@ -254,10 +252,10 @@ struct TodayView: View {
     private var cheatButton: some View {
         let isToday = store.nextCheat?.date == store.today
         return Button { showCheat = true } label: {
-            PizzaIcon(size: 22).scaleEffect(y: -1)   // tip up
-                .frame(width: 44, height: 44)
-                .background(Color(red: 0.16, green: 0.13, blue: 0.07), in: Circle())
-                .overlay(Circle().stroke(Theme.warn.opacity(isToday ? 1 : 0.45), lineWidth: isToday ? 2 : 1))
+            // the same dark circle as the day arrows, the pizza in the app's blue (amber on the day itself)
+            PizzaIcon(size: 20, color: isToday ? Theme.warn : Theme.accent).scaleEffect(y: -1)
+                .frame(width: 40, height: 40)
+                .background(Color(.secondarySystemBackground), in: Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Plan your cheat day")

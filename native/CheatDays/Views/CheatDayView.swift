@@ -49,7 +49,7 @@ struct CheatDayView: View {
     private func top(_ next: (date: String, kcal: Double, extra: Double)) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
-                PizzaIcon(size: 34)
+                PizzaIcon(size: 34).scaleEffect(y: -1)
                 VStack(alignment: .leading, spacing: 0) {
                     Eyebrow(text: when(next.date), color: Theme.warn)
                     Text("\(Fmt.int(next.kcal)) kcal to play with").font(.title2.weight(.heavy))
@@ -204,7 +204,7 @@ struct CheatDayView: View {
         let base = store.baseBudget(store.today)
         let cheat = Plan.r10(base * setupSize), everyday = Plan.r10((base * 7 - Double(cheat)) / 6)
         return VStack(alignment: .leading, spacing: 10) {
-            PizzaIcon(size: 54).padding(.top, 10)
+            PizzaIcon(size: 54).scaleEffect(y: -1).padding(.top, 10)
             Text("Pick a cheat day").font(.largeTitle.bold())
             Text("Eat a little less on normal days and spend it on one day. Same weekly total, so you stay on track.").foregroundStyle(.secondary)
             label("Which day?")

@@ -54,7 +54,7 @@ struct PlanCard: View {
                 .foregroundStyle(isToday && !done ? Color.black : Color.primary)
             Group {
                 if done { Image(systemName: "checkmark").font(.caption2.weight(.heavy)).foregroundStyle(.green) }
-                else if cheat { PizzaIcon(size: 11) }
+                else if cheat { PizzaIcon(size: 11).scaleEffect(y: -1) }
                 else if planned { Circle().fill(isToday ? Color.black : Theme.accent).frame(width: 5, height: 5) }
                 else { Color.clear.frame(width: 5, height: 5) }
             }

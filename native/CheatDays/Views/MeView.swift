@@ -8,20 +8,27 @@ struct MeView: View {
     @State private var confirmSignOut = false
     @State private var weighing = false
     @State private var personalise = false
+    @State private var ranks = false
     private var store: Store { Store.shared }
 
     var body: some View {
         NavigationStack {
             List {
                 Section {
-                    HStack(spacing: 14) {
-                        Image(systemName: "person.crop.circle.fill").font(.system(size: 48)).foregroundStyle(Theme.accent)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(displayName).font(.title2.bold())
-                            Text(Supabase.shared.email).font(.subheadline).foregroundStyle(.secondary)
+                    Button { ranks = true } label: {
+                        HStack(spacing: 14) {
+                            RankBadge(rank: store.rank, size: 56)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(displayName).font(.title2.bold())
+                                Text("\(store.rank.name) · \(Fmt.int(Double(store.totalXP))) XP").font(.subheadline.weight(.semibold)).foregroundStyle(store.rank.color)
+                                Text(Supabase.shared.email).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
                         }
+                        .padding(.vertical, 4)
                     }
-                    .padding(.vertical, 4)
+                    .buttonStyle(.plain)
                 }
                 Section { weightCard }
                 Section {
@@ -55,6 +62,7 @@ struct MeView: View {
             .background(Theme.bg)
             .refreshable { await store.sync(); await store.pullBody() }
             .sheet(isPresented: $weighing) { WeighInSheet().presentationDetents([.medium]) }
+            .sheet(isPresented: $ranks) { RanksView() }
             .fullScreenCover(isPresented: $personalise) { OnboardingView(firstRun: false) { personalise = false } }
             .confirmationDialog("Sign out of Cheat Days on this phone?", isPresented: $confirmSignOut, titleVisibility: .visible) {
                 Button("Sign out", role: .destructive) {
