@@ -264,6 +264,7 @@ final class Store {
                     try await Supabase.shared.pushDoc(base)
                     finish(sent: ops.count, base: base)
                     await publishDay()
+                    publishStats()
                 }
             } else {
                 // a brand-new account: start its record from what's here

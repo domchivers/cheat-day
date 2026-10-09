@@ -98,7 +98,8 @@ final class Feed {
     static func square(_ img: UIImage) -> Data? {
         let side = min(img.size.width, img.size.height), size = CGSize(width: 640, height: 640)
         let crop = CGRect(x: (img.size.width - side) / 2, y: (img.size.height - side) / 2, width: side, height: side)
-        let out = UIGraphicsImageRenderer(size: size).image { _ in
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1   // 640 pixels, not 640 points at the screen's 3x
+        let out = UIGraphicsImageRenderer(size: size, format: format).image { _ in
             img.draw(in: CGRect(x: -crop.minX * 640 / side, y: -crop.minY * 640 / side, width: img.size.width * 640 / side, height: img.size.height * 640 / side))
         }
         return out.jpegData(compressionQuality: 0.72)

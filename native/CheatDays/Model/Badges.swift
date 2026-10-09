@@ -213,6 +213,38 @@ extension Store {
         }
     }
 
+    /// How far through this week's goals, as a percentage (the website's week_pct).
+    static func weekPercent(progress: [String: Int], goals: [String: Int], active: [String]) -> Int {
+        guard !active.isEmpty else { return 0 }
+        let sum = active.reduce(0.0) { $0 + min(1, Double(progress[$1] ?? 0) / Double(max(1, goals[$1] ?? 1))) }
+        return Int((sum / Double(active.count) * 100).rounded())
+    }
+
+    /// What friends see of you on the leaderboard (the website's myStats).
+    var statsRow: JSON {
+        let xp = totalXP, prog = weekProgress, goals = weekGoals, active = activeWeekGoals.map(\.key)
+        return ["xp": xp, "level": Rank.level(for: xp), "streak": streakInfo.days, "under_streak": underStreak,
+                "week_goals_done": active.filter { (prog[$0] ?? 0) >= (goals[$0] ?? 0) }.count, "week_goals_total": active.count,
+                "week_pct": Self.weekPercent(progress: prog, goals: goals, active: active), "week_start": weekDates.first ?? today]
+    }
+
+    private static var statsSent = ""
+
+    /// Send the leaderboard row when it has changed, so friends see an up-to-date rank, streak and goals
+    /// even if this person never opens the website.
+    func publishStats() {
+        guard let me = Supabase.shared.userId, lastSynced != nil else { return }
+        let row = statsRow
+        let key = (try? JSONSerialization.data(withJSONObject: row, options: .sortedKeys)).map { String(decoding: $0, as: UTF8.self) } ?? ""
+        guard key != Self.statsSent else { return }
+        Self.statsSent = key
+        var out = row; out["user_id"] = me; out["updated_at"] = ISO.now()
+        Task {
+            do { _ = try await Supabase.shared.rest("/rest/v1/stats", method: "POST", body: [out], prefer: "resolution=merge-duplicates") }
+            catch { Self.statsSent = "" }   // try again next time
+        }
+    }
+
     var seenBadges: Set<String> { Set((doc["seenBadges"] as? [String]) ?? []) }
 
     /// Bank this week's finished goals and award new achievements, as the website's checkBadges does.
@@ -232,6 +264,7 @@ extension Store {
             perform(["type": "badges", "ids": more.map(\.id)], syncAfter: 2)
             fresh += more
         }
+        publishStats()
         return fresh
     }
 

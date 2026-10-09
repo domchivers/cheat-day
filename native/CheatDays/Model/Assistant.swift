@@ -29,7 +29,9 @@ enum Assistant {
         "estimate": obj([
             "name": s, "portion_g": n, "unit": ["type": "string", "enum": ["g", "ml"]] as JSON,
             "kcal_total": n, "protein_g": n, "carbs_g": n, "fat_g": n, "notes": s,
-            "parts": arr(obj(["name": s, "grams": n, "kcal": n]), desc: "each component, including oil, butter and sauces as their own parts")
+            "parts": arr(obj(["name": s, "usda_name": ["type": "string", "description": "the closest USDA FoodData Central SR Legacy description, e.g. 'Chicken, broilers or fryers, breast, meat only, cooked, roasted'"] as JSON,
+                              "grams": ["type": "number", "description": "as eaten (cooked weight)"] as JSON, "kcal": n, "protein_g": n, "carbs_g": n, "fat_g": n]),
+                          desc: "each component, including oil, butter and sauces as their own parts")
         ], nullable: true, desc: "kind=estimate: a food or plate as one portion"),
         "plan": obj(["suggestions": arr(obj(["name": s, "amount": s, "kcal": n, "protein_g": n, "carbs_g": n, "fat_g": n, "why": s]))],
                     nullable: true, desc: "kind=plan: 3 to 5 things for the rest of today"),
@@ -99,7 +101,65 @@ enum Assistant {
         let pics = last.images.isEmpty ? (turns.dropLast().last { $0.me && !$0.images.isEmpty }?.images ?? []) : last.images
         var parts: [JSON] = pics.prefix(4).compactMap { Gemini.imagePart($0) }
         parts.append(["text": "You are the assistant inside a cheat-day food diary app called Cheat Days. \(context(store))\(earlier.isEmpty ? "" : "Recent conversation:\n\(earlier)\n")They now say: \"\(last.text)\"\(last.images.isEmpty && !pics.isEmpty ? " (about the photos from earlier)" : "")\n\n\(rules)"])
-        return try await Gemini.ask(schema: schema, parts: parts, quick: false)
+        var answer = try await Gemini.ask(schema: schema, parts: parts, quick: false)
+        if str(answer["kind"]) == "estimate", let e = answer["estimate"] as? JSON { answer["estimate"] = await ground(e) }
+        return answer
+    }
+
+    /// A food-list or database number replaces the AI's only when it's in the same ballpark; a wildly different one means a wrong match.
+    static func plausible(_ db: Double?, aiKcal: Double, grams: Double) -> Bool {
+        guard let db else { return false }
+        let ai = grams > 0 ? aiKcal / grams * 100 : 0
+        return ai == 0 || (db >= ai * 0.55 && db <= ai * 1.8)
+    }
+
+    /// One part with checked numbers per 100 g.
+    static func checked(_ part: JSON, kcal100: Double, p100: Double?, c100: Double?, f100: Double?, source: String) -> JSON {
+        var x = part
+        let g = num(part["grams"]) ?? 0
+        x["kcal"] = (g * kcal100 / 100).rounded()
+        if let p100 { x["protein_g"] = g * p100 / 100; x["carbs_g"] = g * (c100 ?? 0) / 100; x["fat_g"] = g * (f100 ?? 0) / 100 }
+        x["src"] = source
+        return x
+    }
+
+    /// The plate's totals from its parts, once any part has been checked.
+    static func totals(_ e: JSON, parts: [JSON]) -> JSON {
+        guard parts.contains(where: { str($0["src"]) != "ai" }) else { var out = e; out["parts"] = parts; return out }
+        func sum(_ k: String) -> Double { parts.reduce(0) { $0 + (num($1[k]) ?? 0) } }
+        var out = e
+        out["parts"] = parts; out["aiKcal"] = e["kcal_total"] ?? 0
+        out["kcal_total"] = sum("kcal").rounded(); out["protein_g"] = sum("protein_g"); out["carbs_g"] = sum("carbs_g"); out["fat_g"] = sum("fat_g")
+        out["portion_g"] = sum("grams").rounded()
+        return out
+    }
+
+    /// Check each part: the app's own food list first, then the food database through the server (if it's set up).
+    @MainActor
+    static func ground(_ e: JSON) async -> JSON {
+        var parts = CheatDays.list(e["parts"]).filter { (num($0["grams"]) ?? 0) > 0 }.map { p -> JSON in var x = p; x["src"] = "ai"; return x }
+        guard !parts.isEmpty else { return e }
+        var ask: [Int] = []
+        for i in parts.indices {
+            let x = parts[i], g = num(x["grams"]) ?? 0
+            if let row = FoodsDB.search(str(x["name"]), limit: 1).first, plausible(num(row["kcalPer100"]), aiKcal: num(x["kcal"]) ?? 0, grams: g) {
+                parts[i] = checked(x, kcal100: num(row["kcalPer100"]) ?? 0, p100: num(row["p100"]), c100: num(row["c100"]), f100: num(row["f100"]), source: "list")
+            } else { ask.append(i) }
+        }
+        if !ask.isEmpty {
+            let names = ask.map { str(parts[$0]["usda_name"]).isEmpty ? str(parts[$0]["name"]) : str(parts[$0]["usda_name"]) }
+            if let res = try? await Supabase.shared.call("/functions/v1/food", body: ["foods": names], timeout: 8), res.1 == 200,
+               let j = (try? JSONSerialization.jsonObject(with: res.0)) as? JSON, let found = j["results"] as? [Any] {
+                for (k, i) in ask.enumerated() where k < found.count {
+                    guard let r = found[k] as? JSON else { continue }
+                    let x = parts[i]
+                    if plausible(num(r["kcal100"]), aiKcal: num(x["kcal"]) ?? 0, grams: num(x["grams"]) ?? 0) {
+                        parts[i] = checked(x, kcal100: num(r["kcal100"]) ?? 0, p100: num(r["p100"]), c100: num(r["c100"]), f100: num(r["f100"]), source: "usda")
+                    }
+                }
+            }
+        }
+        return totals(e, parts: parts)
     }
 
     /// What an estimate, a suggestion or a lighter serving adds to the day as.

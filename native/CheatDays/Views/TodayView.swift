@@ -33,7 +33,6 @@ struct TodayView: View {
     @State private var showPast = false
     @State private var showCheckIn = false
     @State private var showCheat = false
-    @State private var showRanks = false
     @State private var rankUp: Rank?
     @State private var badgeNote: String?
     private var store: Store { Store.shared }
@@ -128,7 +127,6 @@ struct TodayView: View {
             }
             .sheet(isPresented: $showCheckIn) { NavigationStack { CheckInView() } }
             .sheet(isPresented: $showCheat) { CheatDayView().presentationDragIndicator(.visible) }
-            .sheet(isPresented: $showRanks) { RanksView().presentationDragIndicator(.visible) }
             .fullScreenCover(isPresented: Binding(get: { rankUp != nil }, set: { if !$0 { rankUp = nil } })) {
                 if let r = rankUp { RankUpView(rank: r) { rankUp = nil } }
             }
@@ -259,30 +257,6 @@ struct TodayView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Plan your cheat day")
-    }
-
-    /// The rank trim along the top of the panel, with the badge in its notch: tap for the ranks.
-    private var rankTop: some View {
-        let r = store.rank
-        let size: CGFloat = r.tier >= 4 ? 64 : 56
-        return ZStack(alignment: .top) {
-            RankTrim(rank: r)
-            Button { showRanks = true } label: { RankBadge(rank: r, size: size) }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Your rank: \(r.name)")
-                .offset(y: 4 - size * 0.55)   // the badge stands on the trim, mostly above the card
-        }
-        .offset(y: -6)   // the trim's line runs along the card's top edge
-    }
-
-    /// New achievements (and finished weekly goals) get banked, with a note at the top.
-    private func checkBadges() {
-        let fresh = store.checkBadges()
-        guard let first = fresh.first else { return }
-        let xp = fresh.reduce(0) { $0 + $1.xp }
-        let text = "\(first.icon) \(fresh.count > 1 ? "\(fresh.count) achievements" : first.name) · +\(xp) XP"
-        withAnimation(.snappy) { badgeNote = text }
-        Task { try? await Task.sleep(nanoseconds: 3_500_000_000); withAnimation { if badgeNote == text { badgeNote = nil } } }
     }
 
     /// A new rank since last time: celebrate it once. The first time, just remember where they are.

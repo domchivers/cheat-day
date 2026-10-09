@@ -134,10 +134,19 @@ struct AssistantView: View {
             Text(str(e["name"])).font(.headline)
             Text("\(Fmt.int(num(e["portion_g"]) ?? 0)) \(str(e["unit"]).isEmpty ? "g" : str(e["unit"]))").font(.caption).foregroundStyle(.secondary)
             macros(k, p, c, f)
-            ForEach(list(e["parts"]).indices, id: \.self) { i in
-                let pt = list(e["parts"])[i]
-                HStack { Text(str(pt["name"])).font(.caption); Spacer(); Text("\(Int(num(pt["grams"]) ?? 0)) g · \(Int(num(pt["kcal"]) ?? 0))").font(.caption).monospacedDigit().foregroundStyle(.secondary) }
+            let parts = list(e["parts"]), checked = parts.filter { ["list", "usda"].contains(str($0["src"])) }.count
+            ForEach(parts.indices, id: \.self) { i in
+                let pt = parts[i], ok = ["list", "usda"].contains(str(pt["src"]))
+                HStack(spacing: 6) {
+                    Image(systemName: ok ? "checkmark.seal.fill" : "sparkles").font(.caption2).foregroundStyle(ok ? Color.green : .secondary)
+                    Text(str(pt["name"])).font(.caption)
+                    Spacer()
+                    Text("\(Int(num(pt["grams"]) ?? 0)) g · \(Int(num(pt["kcal"]) ?? 0))").font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                }
             }
+            Text(checked > 0 ? "\(checked) of \(parts.count) parts checked against food databases\(num(e["aiKcal"]).map { " (the AI first said \(Int($0)) kcal)" } ?? ""). An estimate, not a label."
+                             : "The AI's estimate: none of the parts could be checked against a food database.")
+                .font(.caption2).foregroundStyle(.secondary)
             addButton("Add to \(meal.lowercased())", key: "est", turn: turn) {
                 store.add(Assistant.basis(name: str(e["name"]), kcal: k, grams: num(e["portion_g"]), unit: str(e["unit"]).isEmpty ? "g" : str(e["unit"]), p: p, c: c, f: f), kcal: k, meal: meal)
             }
