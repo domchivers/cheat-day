@@ -58,7 +58,7 @@ struct TodayView: View {
                     }
                 }
                 Section { hero }
-                    .listRowBackground(Theme.hero)
+                    .listRowBackground(Color.clear)   // the panel draws its own card, so the trim and badge can sit on its top edge
                     .listRowInsets(EdgeInsets())
                 if offset == 0 && store.checkInDue {
                     let c = store.checkIn
@@ -205,9 +205,12 @@ struct TodayView: View {
                 stat(Fmt.int(budget), "budget")
             }
         }
-        .padding(.horizontal, 20).padding(.top, offset == 0 ? 40 : 16).padding(.bottom, 16)
+        .padding(.horizontal, 20).padding(.top, offset == 0 ? 40 : 18).padding(.bottom, 18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.hero, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
         .overlay(alignment: .top) { if offset == 0 { rankTop } }
-        .overlay(alignment: .topTrailing) { if offset == 0 { cheatButton.padding(.top, 62).padding(.trailing, 16) } }
+        .overlay(alignment: .topTrailing) { if offset == 0 { cheatButton.padding(.top, 14).padding(.trailing, 14) } }
+        .padding(.top, offset == 0 ? 38 : 0)   // room above the card for the badge
         .animation(.snappy, value: eaten)
         .simultaneousGesture(DragGesture(minimumDistance: 40).onEnded { v in
             guard abs(v.translation.width) > abs(v.translation.height) * 1.5 else { return }
@@ -219,7 +222,7 @@ struct TodayView: View {
     private var cheatButton: some View {
         let isToday = store.nextCheat?.date == store.today
         return Button { showCheat = true } label: {
-            PizzaIcon(size: 22)
+            PizzaIcon(size: 22).scaleEffect(y: -1)   // tip up
                 .frame(width: 44, height: 44)
                 .background(Color(red: 0.16, green: 0.13, blue: 0.07), in: Circle())
                 .overlay(Circle().stroke(Theme.warn.opacity(isToday ? 1 : 0.45), lineWidth: isToday ? 2 : 1))
@@ -231,14 +234,15 @@ struct TodayView: View {
     /// The rank trim along the top of the panel, with the badge in its notch: tap for the ranks.
     private var rankTop: some View {
         let r = store.rank
+        let size: CGFloat = r.tier >= 4 ? 64 : 56
         return ZStack(alignment: .top) {
             RankTrim(rank: r)
-            Button { showRanks = true } label: { RankBadge(rank: r, size: r.tier >= 4 ? 40 : 34) }
+            Button { showRanks = true } label: { RankBadge(rank: r, size: size) }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Your rank: \(r.name)")
-                .offset(y: 2)
+                .offset(y: 4 - size * 0.55)   // the badge stands on the trim, mostly above the card
         }
-        .padding(.top, 2)
+        .offset(y: -6)   // the trim's line runs along the card's top edge
     }
 
     /// A new rank since last time: celebrate it once. The first time, just remember where they are.
