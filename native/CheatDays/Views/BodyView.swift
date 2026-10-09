@@ -243,7 +243,7 @@ struct BodyEntrySheet: View {
         do {
             let a = try await Gemini.ask(schema: schema, parts: [part, ["text": "This is a screenshot from a smart scale's app. Read the body measurements shown. Leave anything not shown as null."]], quick: true)
             for f in fields { if let v = pos(a[f.0]) { values[f.0] = Fmt.one(v) } }
-            if let d = a["date"] as? String, let when = DayKey.date(d as String?), when <= Date() { date = when }
+            if let d = a["date"] as? String, d.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil, DayKey.date(d) <= Date() { date = DayKey.date(d) }   // only a real date, never a guess
             if fields.allSatisfy({ pos(a[$0.0]) == nil }) { problem = "Couldn't find any readings in that picture." }
         } catch { problem = error.localizedDescription }
     }
