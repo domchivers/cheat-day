@@ -43,6 +43,16 @@ struct TodayView: View {
                 header
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 0, trailing: 4))
+                if let n = store.notice {
+                    Section {
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: "person.2.fill").foregroundStyle(Theme.accent)
+                            Text(n).font(.subheadline)
+                            Spacer()
+                            Button { withAnimation { store.notice = nil } } label: { Image(systemName: "xmark").foregroundStyle(.secondary) }.buttonStyle(.borderless)
+                        }
+                    }
+                }
                 Section { hero }
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets())

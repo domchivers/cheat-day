@@ -35,15 +35,15 @@ struct MainTabs: View {
                 .tabItem { Label("Today", systemImage: "sun.max.fill") }.tag(0)
             WorkoutsView()
                 .tabItem { Label("Workouts", systemImage: "dumbbell.fill") }.tag(1)
-            WebScreen(view: "friends")
+            FriendsView()
                 .tabItem { Label("Friends", systemImage: "person.2.fill") }.tag(2)
             MeView()
                 .tabItem { Label("Me", systemImage: "person.crop.circle.fill") }.tag(3)
         }
         .sensoryFeedback(.selection, trigger: tab)
-        .task { await Store.shared.sync() }
-        .onChange(of: phase) { _, now in if now == .active { Task { await Store.shared.sync() } } }
-        .onChange(of: tab) { _, now in if now != 2 { Task { await Store.shared.sync() } } }
+        .task { await Store.shared.sync(); await Store.shared.applyHelperChanges() }
+        .onChange(of: phase) { _, now in if now == .active { Task { await Store.shared.sync(); await Store.shared.applyHelperChanges() } } }
+        .onChange(of: tab) { _, _ in Task { await Store.shared.sync() } }
     }
 }
 

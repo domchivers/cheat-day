@@ -16,6 +16,8 @@ final class Store {
     private(set) var syncing = false
     private(set) var lastSynced: Date?
     var syncError: String?
+    /// Something to tell you once, like "your budget for the week was set".
+    var notice: String?
 
     @ObservationIgnored private var syncTask: Task<Void, Never>?
     @ObservationIgnored private let folder: URL
@@ -149,6 +151,7 @@ final class Store {
             }
         default:
             applyWorkoutOp(op, to: &d, today: today)
+            applyHelperOp(op, to: &d, today: today)
         }
     }
 
