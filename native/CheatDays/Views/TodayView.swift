@@ -259,6 +259,16 @@ struct TodayView: View {
         .accessibilityLabel("Plan your cheat day")
     }
 
+    /// New achievements (and finished weekly goals) get banked, with a note at the top.
+    private func checkBadges() {
+        let fresh = store.checkBadges()
+        guard let first = fresh.first else { return }
+        let xp = fresh.reduce(0) { $0 + $1.xp }
+        let text = "\(first.icon) \(fresh.count > 1 ? "\(fresh.count) achievements" : first.name) · +\(xp) XP"
+        withAnimation(.snappy) { badgeNote = text }
+        Task { try? await Task.sleep(nanoseconds: 3_500_000_000); withAnimation { if badgeNote == text { badgeNote = nil } } }
+    }
+
     /// A new rank since last time: celebrate it once. The first time, just remember where they are.
     private func checkRank() {
         guard store.lastSynced != nil else { return }   // not before the record has loaded
