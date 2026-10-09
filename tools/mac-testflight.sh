@@ -9,6 +9,10 @@
 #     (if the bundle ID isn't in the list yet, run this script once: the archive step registers it)
 set -euo pipefail
 TEAM="${CHEAT_TEAM:-${BUBU_TEAM:-}}"
+# run from a non-interactive shell (Claude, scripts): the team ID lives in ~/.zshrc, so read it from there
+if [ -z "$TEAM" ] && command -v zsh >/dev/null; then
+  TEAM="$(zsh -ic 'printf %s "${CHEAT_TEAM:-${BUBU_TEAM:-}}"' 2>/dev/null | tail -n 1)"
+fi
 : "${TEAM:?Set CHEAT_TEAM (or BUBU_TEAM) to your Apple team ID (developer.apple.com → Membership details)}"
 cd "$(dirname "$0")/.."
 git pull --ff-only
