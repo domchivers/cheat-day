@@ -32,6 +32,7 @@ struct TodayView: View {
     @State private var pastItem: JSON?
     @State private var showPast = false
     @State private var showCheckIn = false
+    @State private var showCheat = false
     private var store: Store { Store.shared }
 
     private var date: String { DayKey.shift(store.today, days: offset) }
@@ -101,6 +102,7 @@ struct TodayView: View {
             }
             .sheet(item: $flow) { f in WebFlowSheet(flow: f) }
             .sheet(isPresented: $showCheckIn) { NavigationStack { CheckInView() } }
+            .sheet(isPresented: $showCheat) { CheatDayView().presentationDragIndicator(.visible) }
             .onReceive(NotificationCenter.default.publisher(for: .webDone)) { _ in
                 guard flow != nil else { return }
                 flow = nil
@@ -195,11 +197,26 @@ struct TodayView: View {
             }
         }
         .padding(.vertical, 10)
+        .overlay(alignment: .topTrailing) { if offset == 0 { cheatButton } }
         .animation(.snappy, value: eaten)
         .simultaneousGesture(DragGesture(minimumDistance: 40).onEnded { v in
             guard abs(v.translation.width) > abs(v.translation.height) * 1.5 else { return }
             withAnimation(.snappy) { offset = v.translation.width > 0 ? offset - 1 : min(0, offset + 1) }
         })
+    }
+
+    /// The pizza in the panel's corner: plan your cheat day (or pick one).
+    private var cheatButton: some View {
+        let isToday = store.nextCheat?.date == store.today
+        return Button { showCheat = true } label: {
+            Text("🍕").font(.system(size: 22))
+                .frame(width: 44, height: 44)
+                .background(Color(red: 0.16, green: 0.13, blue: 0.07), in: Circle())
+                .overlay(Circle().stroke(Theme.warn.opacity(isToday ? 1 : 0.45), lineWidth: isToday ? 2 : 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Plan your cheat day")
+        .padding(.top, 6)
     }
 
     private func stat(_ value: String, _ label: String) -> some View {
@@ -233,11 +250,6 @@ struct TodayView: View {
                         Label("Add \(meal.lowercased())", systemImage: "plus.circle.fill").foregroundStyle(Theme.accent)
                     }
                 }
-                if !lines.isEmpty && meal == Meals.all.first(where: { m in items.contains { Meals.of($0) == m } }) {
-                    Text(offset == 0 ? "Tap a food to change the amount. Swipe left to delete." : "Tap a food to add it to today.")
-                        .font(.caption).foregroundStyle(.secondary)
-                        .listRowBackground(Color.clear)
-                }
             } header: {
                 HStack {
                     Text(meal).font(.title3.bold()).foregroundStyle(.primary).textCase(nil)
@@ -252,6 +264,11 @@ struct TodayView: View {
                         }
                         .buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.small).textCase(nil)
                     }
+                }
+            } footer: {
+                // the tip sits under the card, so the card keeps its rounded corners
+                if !lines.isEmpty && meal == Meals.all.first(where: { m in items.contains { Meals.of($0) == m } }) {
+                    Text(offset == 0 ? "Tap a food to change the amount. Swipe left to delete." : "Tap a food to add it to today.")
                 }
             }
         }

@@ -7,6 +7,7 @@ private struct WeightPoint: Identifiable { let id = UUID(); let date: Date; let 
 struct MeView: View {
     @State private var confirmSignOut = false
     @State private var weighing = false
+    @State private var personalise = false
     private var store: Store { Store.shared }
 
     var body: some View {
@@ -34,6 +35,7 @@ struct MeView: View {
                     .frame(maxWidth: .infinity)
                 }
                 Section {
+                    Button { personalise = true } label: { Label("Personalise my plan", systemImage: "sparkles") }
                     NavigationLink { CheckInView() } label: { Label("Weekly check-in", systemImage: "chart.line.uptrend.xyaxis") }
                     page("Plan and budget", "target", "budget")
                     page("Body and weigh-ins", "scalemass.fill", "body")
@@ -53,6 +55,7 @@ struct MeView: View {
             .background(Theme.bg)
             .refreshable { await store.sync(); await store.pullBody() }
             .sheet(isPresented: $weighing) { WeighInSheet().presentationDetents([.medium]) }
+            .fullScreenCover(isPresented: $personalise) { OnboardingView(firstRun: false) { personalise = false } }
             .confirmationDialog("Sign out of Cheat Days on this phone?", isPresented: $confirmSignOut, titleVisibility: .visible) {
                 Button("Sign out", role: .destructive) {
                     WebHost.shared.signOut()

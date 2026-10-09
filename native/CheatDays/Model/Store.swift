@@ -162,6 +162,7 @@ final class Store {
             applyHelperOp(op, to: &d, today: today)
             applyBodyOp(op, to: &d)
             applyCheckInOp(op, to: &d)
+            applyPlanOp(op, to: &d)
         }
     }
 

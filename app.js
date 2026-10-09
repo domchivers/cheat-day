@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "163";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "164";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -5582,7 +5582,7 @@ $("#share-add").onclick = () => {
 
 // ---------------------------------------------------------------- account + sync (optional, see cloud.js)
 
-const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "favs", "checkInSeen", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "weekGoals", "seenBadges", "goalWins", "postCount", "pbCount", "body", "goalWeight", "goalStart", "simple", "onboarded", "reminders", "reactCount", "commentCount", "sendCount", "friendCount", "tombs", "dayBudgets", "profile", "plan", "restSeconds", "weighDays", "dayKeep", "dayRolled", "overrideApplied", "updatedAt"];   // the API key stays on the device
+const SYNC_KEYS = ["budget", "day", "history", "recent", "meals", "presetUses", "favs", "checkInSeen", "shareDay", "sharedMealIds", "goals", "chats", "notes", "weightKg", "eatBack", "recentWorkouts", "exercises", "routines", "session", "weekGoals", "seenBadges", "goalWins", "postCount", "pbCount", "body", "goalWeight", "goalStart", "simple", "onboarded", "reminders", "reactCount", "commentCount", "sendCount", "friendCount", "tombs", "dayBudgets", "profile", "plan", "restSeconds", "weighDays", "dayKeep", "dayRolled", "overrideApplied", "prefs", "updatedAt"];   // the API key stays on the device
 let pushTimer = null, pulledOnce = false;
 function schedulePush() {
   if (!window.cloud || !window.cloud.user) return;
@@ -5626,6 +5626,8 @@ function mergeState(local, remote) {
   };
   const m = Object.assign({}, older, newer);   // settings and anything not listed below: newer copy
   m.tombs = tombs;
+  // the iPhone app's food and training answers, and cheat day plans: keep both sides' (a device without them mustn't wipe them)
+  if (local.prefs || remote.prefs) m.prefs = Object.assign({}, older.prefs || {}, newer.prefs || {}, { cheatPlans: Object.assign({}, (older.prefs || {}).cheatPlans || {}, (newer.prefs || {}).cheatPlans || {}) });
   // today: same day -> join the items; different days -> keep the later day and file the earlier one in history
   const ld = local.day || { items: [] }, rd = remote.day || { items: [] };
   const nd = newer.day || { items: [] }, od = older.day || { items: [] };

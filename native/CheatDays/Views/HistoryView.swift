@@ -75,7 +75,7 @@ struct HistoryView: View {
                 Section { calendar(byDate) { date in withAnimation { openDay = date; proxy.scrollTo(date, anchor: .top) } } }
                 ForEach(all.prefix(90)) { day in
                     Section {
-                        DisclosureGroup(isExpanded: Binding(get: { openDay == day.id }, set: { open in withAnimation(.snappy) { openDay = open ? day.id : (openDay == day.id ? nil : openDay) } })) {
+                        DisclosureGroup(isExpanded: Binding(get: { openDay == day.id }, set: { open in openDay = open ? day.id : (openDay == day.id ? nil : openDay) })) {
                             ForEach(Meals.all, id: \.self) { meal in
                                 let its = day.items.filter { Meals.of($0) == meal }
                                 if !its.isEmpty {

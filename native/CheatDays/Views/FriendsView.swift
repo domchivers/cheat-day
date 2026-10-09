@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Friends: each friend's day as a card (tap for what they had), the week as dots, cheers, requests, and the feed.
+/// Friends: each friend's day as a card (tap for what they had), the week as dots, requests, and the feed.
 struct FriendsView: View {
     @State private var seg = 0
     @State private var open: Set<String> = []
@@ -50,7 +50,7 @@ struct FriendsView: View {
             }
             ForEach(model.people) { p in
                 Section {
-                    DisclosureGroup(isExpanded: Binding(get: { open.contains(p.id) }, set: { now in withAnimation(.snappy) { if now { open.insert(p.id) } else { open.remove(p.id) } } })) {
+                    DisclosureGroup(isExpanded: Binding(get: { open.contains(p.id) }, set: { now in if now { open.insert(p.id) } else { open.remove(p.id) } })) {
                         let food = p.food
                         if food.isEmpty { Text("Nothing shared today yet.").font(.footnote).foregroundStyle(.secondary) }
                         ForEach(Meals.all, id: \.self) { meal in
@@ -136,12 +136,6 @@ struct FriendsView: View {
                 }
                 if p.streak > 1 { Label("\(p.streak)", systemImage: "flame.fill").font(.caption.weight(.bold)).foregroundStyle(.orange) }
                 Spacer()
-                Button {
-                    Task { await model.cheer(p) }
-                } label: {
-                    Text(model.cheered.contains(p.id) ? "Cheered" : "👏 Cheer").font(.subheadline.weight(.bold))
-                }
-                .buttonStyle(.bordered).buttonBorderShape(.capsule).disabled(model.cheered.contains(p.id))
             }
         }
         .padding(.vertical, 4)
