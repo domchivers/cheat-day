@@ -160,7 +160,8 @@ struct CheatDayView: View {
         let loves = (prefs["loves"] as? [String] ?? []).joined(separator: ", ")
         let cuisines = (prefs["cuisines"] as? [String] ?? []).joined(separator: ", ")
         let avoid = (prefs["avoid"] as? [String] ?? []).joined(separator: ", ")
-        let workout = list(prefs["training"]).first { Int(num($0["weekday"]) ?? -1) == DayKey.weekday(next.date) }.map { str($0["name"]) }
+        let fromPrefs: String? = list(prefs["training"]).first { Int(num($0["weekday"]) ?? -1) == DayKey.weekday(next.date) }.map { str($0["name"]) }
+        let workout = store.workoutPlan?.session(on: next.date)?.name ?? fromPrefs
         let style: String
         switch kind {
         case "big": style = "One big meal: keep the rest of the day light and high in protein so the main event gets most of the calories."

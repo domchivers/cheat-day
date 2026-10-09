@@ -111,7 +111,7 @@ final class Store {
         d["updatedAt"] = nowMs()
         setDoc(d)
         // a live session changes often: only its latest state needs sending
-        if str(op["type"]) == "session", let last = pending.last, str(last["type"]) == "session" { pending[pending.count - 1] = op }
+        if ["session", "workoutPlan"].contains(str(op["type"])), let last = pending.last, str(last["type"]) == str(op["type"]) { pending[pending.count - 1] = op }
         else { pending.append(op) }
         persist()
         scheduleSync(after: syncAfter)

@@ -396,7 +396,10 @@ struct OnboardingView: View {
         return i
     }
 
-    private var week: [Training.Day] { Training.week(days: gymDays, experience: experience, kit: kit) }
+    private var week: [PlanSession] { builtPlan.sessions }
+    private var builtPlan: WorkoutPlan {
+        WorkoutPlanner.build(goal: q.goal == "maintain" ? "fitness" : "muscle", days: gymDays, experience: experience, kit: kit, minutes: 60, focus: [], keep: [], start: store.today)
+    }
 
     private var planStep: some View {
         let r = Plan.compute(input)
@@ -436,13 +439,13 @@ struct OnboardingView: View {
                             Text(Calendar.current.shortWeekdaySymbols[d.weekday]).font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent).frame(width: 40, alignment: .leading)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(d.name).font(.subheadline.weight(.bold))
-                                Text(d.moves.map { "\($0.name) \($0.sets)×\($0.reps)" }.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary)
+                                Text(d.moves.map { "\($0.exercise) \($0.sets)×\($0.low)–\($0.high)" }.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer(minLength: 0)
                         }
                     }
                     Text(Training.note(experience)).font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
-                    Toggle("Save these as routines", isOn: $saveRoutines).font(.subheadline.weight(.semibold))
+                    Toggle("Make this my workout plan", isOn: $saveRoutines).font(.subheadline.weight(.semibold))
                 }
             }
             label("Meals you'll actually want")
@@ -562,22 +565,16 @@ struct OnboardingView: View {
             "experience": experience, "kit": kit, "gymDays": gymDays,
             "training": week.map { ["weekday": $0.weekday, "name": $0.name] as JSON }, "ideas": ideas, "updatedAt": ISO.now()
         ]
+        var prefsOut = prefs
+        if saveRoutines && gymDays > 0 { prefsOut["workoutPlan"] = builtPlan.json }
         var days = JSON(); for (k, v) in r.days { days[String(k)] = v }
         store.perform([
             "type": "plan", "profile": ["sex": q.sex, "age": Int(q.age), "height": q.height] as JSON,
             "budget": r.everyday, "dayBudgets": days, "goals": ["p": r.p, "c": r.c, "f": r.f] as JSON,
-            "plan": plan, "prefs": prefs, "weightKg": q.weight,
+            "plan": plan, "prefs": prefsOut, "weightKg": q.weight,
             "goalWeight": goalWeight.map { $0 as Any } ?? NSNull(), "day": store.today
         ])
         if store.latestWeight?.day != store.today { store.weighIn(q.weight) }
-        if saveRoutines && gymDays > 0 {
-            var saved = Set<String>()
-            for d in week where saved.insert(d.name).inserted {
-                let name = "Plan: \(d.name)"
-                guard !store.routines.contains(where: { str($0["name"]) == name }) else { continue }
-                store.saveRoutine(name: name, exercises: d.moves.map { ["exercise": $0.name, "sets": $0.sets, "reps": $0.reps, "kg": 0] as JSON })
-            }
-        }
         onDone()
     }
 }

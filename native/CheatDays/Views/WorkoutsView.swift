@@ -9,6 +9,7 @@ struct WorkoutsView: View {
     @State private var showSession = false
     @State private var showActivity = false
     @State private var confirmRoutineDelete: JSON?
+    @State private var building = false
     private var store: Store { Store.shared }
 
     var body: some View {
@@ -19,6 +20,33 @@ struct WorkoutsView: View {
                         Button { showSession = true } label: { liveCard(s) }.buttonStyle(.plain)
                     }
                     .listRowBackground(Theme.hero)
+                }
+                if let plan = store.workoutPlan {
+                    Section {
+                        PlanCard(plan: plan) { ps in
+                            if store.session == nil { store.startPlanSession(ps, plan: plan) }
+                            showSession = true
+                        }
+                        .listRowBackground(Theme.hero)
+                        VolumeRows(plan: plan)
+                        NavigationLink { PlanEditor() } label: { Label("Edit your week", systemImage: "slider.horizontal.3") }
+                    }
+                } else {
+                    Section {
+                        Button { building = true } label: {
+                            HStack(spacing: 14) {
+                                Image(systemName: "calendar.badge.plus").font(.title2).foregroundStyle(Theme.accent)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Get a workout plan").font(.headline)
+                                    Text("A week built around your days, kit and goal, with weights that go up when you're ready.").font(.footnote).foregroundStyle(.secondary)
+                                }
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
                 Section { weekCard }
                 if store.session == nil {
@@ -81,6 +109,7 @@ struct WorkoutsView: View {
             .background(Theme.bg)
             .refreshable { await store.sync() }
             .navigationDestination(isPresented: $showSession) { SessionView() }
+            .sheet(isPresented: $building) { PlanBuilder() }
             .sheet(isPresented: $showActivity) { ActivitySheet().presentationDetents([.medium, .large]) }
         }
     }

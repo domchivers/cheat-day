@@ -167,7 +167,12 @@ struct SessionView: View {
     private func exerciseSection(_ e: Binding<LiveExercise>) -> some View {
         let ex = e.wrappedValue
         Section {
-            Text(store.lastLine(ex.name)).font(.footnote).foregroundStyle(.secondary).opacity(ex.complete ? 0.55 : 1)
+            if let t = planTarget(ex.name) {
+                Label(t.hint, systemImage: t.up ? "arrow.up.right.circle.fill" : "target")
+                    .font(.footnote).foregroundStyle(t.up ? Color.green : .secondary).opacity(ex.complete ? 0.55 : 1)
+            } else {
+                Text(store.lastLine(ex.name)).font(.footnote).foregroundStyle(.secondary).opacity(ex.complete ? 0.55 : 1)
+            }
             ForEach(e.sets) { $set in
                 let j = ex.sets.firstIndex { $0.id == set.id } ?? 0
                 SetRow(set: $set, label: "Set \(j + 1)", isNext: set.id == nextSetId,
@@ -194,6 +199,14 @@ struct SessionView: View {
                 } label: { Image(systemName: "ellipsis").font(.headline).padding(6) }
             }
         }
+    }
+
+    /// In a session from the plan: this exercise's target and why.
+    private func planTarget(_ name: String) -> Target? {
+        guard let rid = s.routineId, rid.hasPrefix("plan:"), let plan = store.workoutPlan,
+              let ps = plan.sessions.first(where: { "plan:\($0.id)" == rid }),
+              let m = ps.moves.first(where: { $0.exercise.lowercased() == name.lowercased() }) else { return nil }
+        return Progression.target(m, last: store.lastSets(m.exercise), deload: plan.isDeload(on: store.today))
     }
 
     private func index(_ id: UUID) -> Int? { s.exercises.firstIndex { $0.id == id } }

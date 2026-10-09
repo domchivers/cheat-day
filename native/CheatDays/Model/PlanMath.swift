@@ -146,10 +146,15 @@ enum Training {
                                      "Seated cable row": "Back extension", "Face pull": "Dead bug", "Pull-up": "Back extension", "Hammer curl": "Side plank",
                                      "Hanging leg raise": "Dead bug", "Goblet squat": "Lunge", "Calf raise": "Calf raise", "Bulgarian split squat": "Bulgarian split squat"]
 
+    /// The move to do instead with the kit they have.
+    static func swap(_ name: String, kit: String) -> String {
+        kit == "none" ? (bodyweight[name] ?? name) : kit == "dumbbells" ? (dumbbells[name] ?? name) : name
+    }
+
     static func moves(_ name: String, experience: String, kit: String) -> [Move] {
         var seen = Set<String>(), out: [Move] = []
         for (i, t) in (templates[name] ?? []).enumerated() {
-            let n = kit == "none" ? (bodyweight[t.0] ?? t.0) : kit == "dumbbells" ? (dumbbells[t.0] ?? t.0) : t.0
+            let n = swap(t.0, kit: kit)
             guard seen.insert(n).inserted else { continue }
             let sets = experience == "new" ? max(2, t.1 - 1) : experience == "lots" && i < 2 ? t.1 + 1 : t.1
             out.append(Move(name: n, sets: sets, reps: t.2))
@@ -205,6 +210,7 @@ extension Store {
             for k in ["profile", "budget", "dayBudgets", "goals", "plan", "weightKg"] { if let v = op[k], !(v is NSNull) { d[k] = v } }
             var prefs = dict(op["prefs"])
             if let kept = dict(d["prefs"])["cheatPlans"] { prefs["cheatPlans"] = kept }
+            if prefs["workoutPlan"] == nil, let kept = dict(d["prefs"])["workoutPlan"] { prefs["workoutPlan"] = kept }
             d["prefs"] = prefs
             d["eatBack"] = false
             d["onboarded"] = true
@@ -214,6 +220,10 @@ extension Store {
             plans[str(op["date"])] = op["plan"] ?? NSNull()
             for k in plans.keys.sorted().dropLast(8) { plans.removeValue(forKey: k) }   // only the recent ones
             prefs["cheatPlans"] = plans; d["prefs"] = prefs
+        case "workoutPlan":
+            var prefs = dict(d["prefs"])
+            prefs["workoutPlan"] = op["plan"] ?? NSNull()
+            d["prefs"] = prefs
         case "cheatSpread":
             let day = Int(num(op["day"]) ?? 6), cheat = Int(num(op["cheat"]) ?? 0), everyday = Int(num(op["everyday"]) ?? 0)
             guard cheat > 0, everyday > 0 else { return }
