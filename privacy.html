@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cheat Days privacy</title>
+<style>
+  :root { --bg: #f5f6f1; --card: #fff; --text: #1f2a24; --muted: #5d6a63; --accent: #2f5d4b; --line: #e4e7de; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0d1219; --card: #161e28; --text: #e4ebf3; --muted: #93a3b3; --accent: #7cc4ff; --line: #26333f; } }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 680px; margin: 0 auto; padding: 32px 18px 60px; }
+  h1 { font-size: 28px; margin: 0 0 4px; }
+  h2 { font-size: 18px; margin: 28px 0 6px; color: var(--accent); }
+  p, li { color: var(--text); }
+  .muted { color: var(--muted); font-size: 14px; }
+  ul { padding-left: 20px; }
+  li { margin: 4px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Cheat Days privacy</h1>
+  <p class="muted">Last updated 9 October 2026. This covers the Cheat Days app (on the App Store as "My Cheat Days") and the web version at domchivers.github.io/cheat-day.</p>
+
+  <p>Cheat Days is a small calorie and workout tracker made for friends and family. It has no ads, doesn't sell or share your data for advertising, and doesn't use tracking or analytics tools.</p>
+
+  <h2>What the app keeps</h2>
+  <ul>
+    <li>The food you log, your daily budget, your meals and recipes, your workouts, and body readings you enter, such as weight.</li>
+    <li>Your settings, such as reminders and colour theme.</li>
+  </ul>
+  <p>This is stored on your phone. You can use the app without an account, and then it stays only on your phone.</p>
+
+  <h2>If you make an account</h2>
+  <ul>
+    <li>Your email address is used to sign in. Your password is handled by the sign-in service and isn't stored by the app.</li>
+    <li>Your data is copied to a cloud database (Supabase) so it syncs between your devices and is backed up.</li>
+    <li>If you add friends, they can see what you choose to share: your day's food and calories, your streak, posts and workouts you share, and the display name you pick. You can turn sharing your day off in Settings.</li>
+  </ul>
+
+  <h2>Services the app uses</h2>
+  <ul>
+    <li><b>Food lookups.</b> Barcodes and food names you search for are sent to Open Food Facts and the USDA food database to find nutrition information.</li>
+    <li><b>AI features.</b> When you use the assistant, read a label, or take a photo of food or a pack, the photo and your request are sent to an AI service (Google Gemini, or Anthropic's Claude if you add your own key) to work out the numbers. For packs it can't recognise, the AI may search the web for the product.</li>
+    <li><b>Reminders and sign-in</b> go through Supabase.</li>
+  </ul>
+  <p>These services receive only what's needed for that feature. They have their own privacy policies.</p>
+
+  <h2>Camera, photos and notifications</h2>
+  <p>The camera is used only when you scan a barcode or take a photo. Photos you attach to food are shrunk and kept with that entry. Notifications are used for the workout rest timer and reminders you turn on.</p>
+
+  <h2>Deleting your data</h2>
+  <p>Deleting the app removes everything stored on your phone. To delete your account and its cloud copy, ask through TestFlight feedback or the contact details on the App Store page, and it will be removed.</p>
+
+  <h2>Children</h2>
+  <p>Cheat Days isn't meant for children under 13.</p>
+
+  <h2>Changes</h2>
+  <p>If this policy changes, the date at the top changes too.</p>
+</main>
+</body>
+</html>
