@@ -40,7 +40,7 @@ struct MeView: View {
                     NavigationLink { HistoryView() } label: { Label("History", systemImage: "calendar") }
                     page("Goals and badges", "trophy.fill", "goals")
                     page("Your meals", "fork.knife", "meals")
-                    page("Settings", "gearshape.fill", "settings")
+                    NavigationLink { SettingsView() } label: { Label("Settings", systemImage: "gearshape.fill") }
                 }
                 Section {
                     Button("Sign out", role: .destructive) { confirmSignOut = true }

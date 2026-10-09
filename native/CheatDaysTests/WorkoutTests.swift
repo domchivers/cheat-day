@@ -62,6 +62,14 @@ final class WorkoutTests: XCTestCase {
         XCTAssertEqual(list(d["routines"]).map { str($0["id"]) }, ["r2"])
     }
 
+    func testOnlyKnownSettingsCanBeSet() {
+        var d = record()
+        Store.apply(["type": "set", "key": "weighDays", "value": [1, 4]], to: &d, today: today)
+        Store.apply(["type": "set", "key": "budget", "value": 99], to: &d, today: today)
+        XCTAssertEqual((d["weighDays"] as? [Int]) ?? [], [1, 4])
+        XCTAssertNil(d["budget"].flatMap { num($0) == 99 ? $0 : nil }, "the budget isn't a setting this operation may change")
+    }
+
     func testOneRepMaxEstimate() {
         XCTAssertEqual(Store.est(kg: 100, reps: 5), 117)
         XCTAssertEqual(Store.est(kg: 0, reps: 12), 0)

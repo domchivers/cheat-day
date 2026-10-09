@@ -109,6 +109,8 @@ final class Store {
         else { pending.append(op) }
         persist()
         scheduleSync(after: syncAfter)
+        // logging food or weighing in cancels today's reminder for it
+        if ["add", "body", "delete"].contains(str(op["type"])) { Task { await Reminders.reschedule(self) } }
     }
 
     // MARK: the operations, applied to any copy of the record
