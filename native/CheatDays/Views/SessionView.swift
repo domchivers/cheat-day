@@ -48,6 +48,7 @@ struct SessionView: View {
             }
         }
         .environment(\.editMode, .constant(reordering ? .active : .inactive))
+        .safeAreaInset(edge: .bottom) { timerBar }
         .scrollContentBackground(.hidden)
         .background(Theme.bg)
         .navigationTitle("Session")
@@ -106,6 +107,31 @@ struct SessionView: View {
             }
             Button("Not now", role: .cancel) { routineOffer = nil; dismiss() }
         }
+    }
+
+    // MARK: the bar that stays on screen
+
+    private var timerBar: some View {
+        HStack(spacing: 12) {
+            Text(Date(timeIntervalSince1970: s.startedAt / 1000), style: .timer)
+                .font(.headline.weight(.heavy)).monospacedDigit().foregroundStyle(.secondary)
+            Spacer()
+            if let r = s.restUntil, r > Double(nowMs()) {
+                Text("Rest").font(.subheadline.weight(.bold))
+                Text(timerInterval: Date()...Date(timeIntervalSince1970: r / 1000), countsDown: true)
+                    .font(.title2.weight(.heavy)).monospacedDigit().foregroundStyle(Theme.accent)
+                Button("+15") { nudge(15) }.buttonStyle(.bordered).controlSize(.small)
+                Button("Skip") { s.restUntil = nil }.buttonStyle(.borderedProminent).controlSize(.small)
+            } else if let n = s.next {
+                Text("Next: \(s.exercises[n.ex].name.isEmpty ? "Exercise" : s.exercises[n.ex].name) · set \(n.set + 1)")
+                    .font(.subheadline.weight(.semibold)).lineLimit(1)
+            } else {
+                Text("All sets done").font(.subheadline.weight(.semibold))
+            }
+        }
+        .padding(.horizontal, 18).padding(.vertical, 12)
+        .background(.regularMaterial, in: Capsule())
+        .padding(.horizontal, 12).padding(.bottom, 6)
     }
 
     // MARK: rest

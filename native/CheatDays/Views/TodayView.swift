@@ -55,8 +55,7 @@ struct TodayView: View {
                     }
                 }
                 Section { hero }
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Theme.hero)
                 if offset == 0 && store.checkInDue {
                     let c = store.checkIn
                     Section {
@@ -150,7 +149,7 @@ struct TodayView: View {
         let eaten = items.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }
         let left = budget - eaten
         let protein = store.macros(items).p
-        let lit = budget > 0 ? min(12, Int((eaten / budget * 12).rounded())) : 0
+        let share = budget > 0 ? min(1, eaten / budget) : 0
         return VStack(alignment: .leading, spacing: 14) {
             Eyebrow(text: left >= 0 ? "Left to eat" : "Over today", color: Theme.heroLabel)
             HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -159,11 +158,13 @@ struct TodayView: View {
                     .contentTransition(.numericText(value: abs(left)))
                 Text("kcal").font(.headline).foregroundStyle(.secondary)
             }
-            HStack(spacing: 4) {
-                ForEach(0..<12, id: \.self) { i in
-                    Capsule().fill(i < lit ? (eaten > budget ? Theme.warn : Theme.accent) : Theme.track).frame(height: 7)
+            GeometryReader { g in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Theme.track)
+                    Capsule().fill(eaten > budget ? Theme.warn : Theme.accent).frame(width: max(8, g.size.width * share))
                 }
             }
+            .frame(height: 10)
             HStack {
                 stat(Fmt.int(eaten), "eaten")
                 Spacer()
@@ -172,9 +173,7 @@ struct TodayView: View {
                 stat(Fmt.int(budget), "budget")
             }
         }
-        .padding(20)
-        .background(Theme.hero, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
         .animation(.snappy, value: eaten)
         .simultaneousGesture(DragGesture(minimumDistance: 40).onEnded { v in
             guard abs(v.translation.width) > abs(v.translation.height) * 1.5 else { return }

@@ -50,8 +50,25 @@ struct FriendsView: View {
             }
             ForEach(model.people) { p in
                 Section {
-                    Button { withAnimation(.snappy) { if open.contains(p.id) { open.remove(p.id) } else { open.insert(p.id) } } } label: { card(p) }
-                        .buttonStyle(.plain)
+                    DisclosureGroup(isExpanded: Binding(get: { open.contains(p.id) }, set: { now in withAnimation(.snappy) { if now { open.insert(p.id) } else { open.remove(p.id) } } })) {
+                        let food = p.food
+                        if food.isEmpty { Text("Nothing shared today yet.").font(.footnote).foregroundStyle(.secondary) }
+                        ForEach(Meals.all, id: \.self) { meal in
+                            let its = food.filter { (str($0["meal"]).isEmpty ? Meals.of($0) : str($0["meal"])) == meal }
+                            if !its.isEmpty {
+                                Text(meal.uppercased()).font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                                ForEach(its.indices, id: \.self) { i in
+                                    HStack {
+                                        FoodDot(name: str(its[i]["name"]), size: 28)
+                                        Text(str(its[i]["name"])).font(.subheadline)
+                                        Spacer()
+                                        Text(Fmt.int(num(its[i]["kcal"]) ?? 0)).font(.subheadline.weight(.semibold)).monospacedDigit()
+                                    }
+                                }
+                            }
+                        }
+                    } label: { card(p) }
+                    .tint(.secondary)
                 }
             }
             let leaders = model.people.filter { $0.streak > 0 }.sorted { $0.streak > $1.streak }.prefix(5)
@@ -96,8 +113,6 @@ struct FriendsView: View {
                         .font(.footnote).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer()
-                Image(systemName: "chevron.down").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
-                    .rotationEffect(.degrees(open.contains(p.id) ? 180 : 0))
                 if p.isActive {
                     (Text(Fmt.int(kcal)).foregroundStyle(over || near ? Theme.warn : Theme.accent) + Text(" / \(Fmt.int(budget))").foregroundStyle(.secondary))
                         .font(.subheadline.weight(.bold)).monospacedDigit()
@@ -127,24 +142,6 @@ struct FriendsView: View {
                     Text(model.cheered.contains(p.id) ? "Cheered" : "👏 Cheer").font(.subheadline.weight(.bold))
                 }
                 .buttonStyle(.bordered).buttonBorderShape(.capsule).disabled(model.cheered.contains(p.id))
-            }
-            if open.contains(p.id) {
-              VStack(alignment: .leading, spacing: 8) {
-                let food = p.food
-                if food.isEmpty { Text("Nothing shared today yet.").font(.footnote).foregroundStyle(.secondary) }
-                ForEach(Meals.all, id: \.self) { meal in
-                    let its = food.filter { (str($0["meal"]).isEmpty ? Meals.of($0) : str($0["meal"])) == meal }
-                    if !its.isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(meal.uppercased()).font(.caption.weight(.bold)).foregroundStyle(.secondary)
-                            ForEach(its.indices, id: \.self) { i in
-                                HStack { Text(str(its[i]["name"])).font(.subheadline); Spacer(); Text(Fmt.int(num(its[i]["kcal"]) ?? 0)).font(.subheadline.weight(.semibold)).monospacedDigit() }
-                            }
-                        }
-                    }
-                }
-              }
-              .transition(.asymmetric(insertion: .move(edge: .top).combined(with: .opacity), removal: .opacity))
             }
         }
         .padding(.vertical, 4)
