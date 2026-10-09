@@ -1681,3 +1681,9 @@ body.simple .ate.ate-edit .row-actions button { font-size: 15px; padding: 11px 4
 .xl-add.in { background: var(--mint-2); color: var(--green); cursor: default; }
 .xl-new { margin: 10px 0 0; }
 body.simple .xl-add, body.simple .w-addlift { width: 40px; height: 40px; }
+/* ---- v163: inside the native app's tabs */
+body.in-tabs #tabbar { display: none !important; }
+body.in-tabs .ws-float { bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
+body.in-tabs { padding-bottom: env(safe-area-inset-bottom, 0px); }
+body.in-tabs.native-root .sub-head [data-back] { visibility: hidden; }
+body.in-tabs.native-root.native-pushed .sub-head { display: none; }

@@ -1,8 +1,8 @@
 # The Cheat Days iPhone app. XcodeGen turns this into CheatDays.xcodeproj on the Mac:
 #   brew install xcodegen && cd native && xcodegen generate
-# The app is a native shell around the web app (loaded from GitHub Pages, so web changes reach it
-# without a new build) plus the native parts a web page can't do: the workout timer on the lock
-# screen and in the Dynamic Island, a "rest's over" alert while the phone is locked, and haptics.
+# Being rebuilt natively in SwiftUI, a stage at a time. Native so far: sign-in, Today, adding food, Me,
+# sync with the same account as the website, the lock-screen workout timer and haptics. Still web inside
+# the app (loaded from GitHub Pages): Workouts, Friends, scanning, the assistant and the pages under Me.
 name: CheatDays
 options:
   bundleIdPrefix: com.cheatdays
@@ -12,7 +12,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.1.0"
+    MARKETING_VERSION: "0.2.0"
     CURRENT_PROJECT_VERSION: "1"
 targets:
   CheatDays:
@@ -68,9 +68,23 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_STYLE: Automatic
         SKIP_INSTALL: YES
+  CheatDaysTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: CheatDaysTests
+    dependencies:
+      - target: CheatDays
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
 schemes:
   CheatDays:
     build:
       targets:
         CheatDays: all
         RestTimer: all
+        CheatDaysTests: [test]
+    test:
+      targets:
+        - CheatDaysTests

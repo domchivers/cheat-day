@@ -14,8 +14,14 @@ final class NativeBridge: NSObject, WKScriptMessageHandler, WKNavigationDelegate
         case "haptic": Haptics.play(body["style"] as? String ?? "light")
         case "session": WorkoutTimer.shared.update(from: body)
         case "sessionEnd": WorkoutTimer.shared.end()
+        case "done": NotificationCenter.default.post(name: .webDone, object: nil)
         default: break
         }
+    }
+
+    /// The page has loaded: show the screen the app wants.
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        Task { @MainActor in WebHost.shared.didLoad() }
     }
 
     // MARK: links

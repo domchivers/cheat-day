@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "162";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "163";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -192,10 +192,25 @@ function basisOf(obj) {
 
 const VIEWS = ["home", "exlib", "checkin", "budget", "settings", "history", "friends", "compose", "recipe", "workouts", "exercise", "goals", "body", "welcome", "plan", "ask", "chats", "scan", "search", "meals", "meal", "details", "share"];
 let stack = ["home"];
+// The native iPhone app (0.2+) draws Today itself and shows this page inside its tabs and sheets: no web tab bar,
+// a root screen per tab, and "done" goes back to the app instead of to the web Home.
+const inTabs = () => !!(window.cheatDaysNative && window.cheatDaysNative.tabs);
+let nativeRoot = "home", nativeMealPref = null;
+window.nativeShow = function (view, opts) {
+  opts = opts || {};
+  pick = null; editId = null; pastAdd = pastEdit = null;
+  nativeMealPref = opts.meal || null;
+  document.body.classList.toggle("native-pushed", !!opts.pushed);
+  if (view === "manual") { nativeRoot = "details"; stack = []; openManual(); return; }
+  if (view === "scan" && opts.scan) { scanMode = opts.scan; try { localStorage.setItem(LS_SCAN_MODE, scanMode); } catch (e) {} }
+  if (view === "friends" && opts.seg) frSeg = opts.seg;
+  nativeRoot = view; stack = [view]; show(view);
+};
 function show(view) {
   if (view === "feed") { frSeg = "feed"; view = "friends"; }   // the feed lives in the Friends tab now
   for (const v of VIEWS) $(`#view-${v}`).classList.toggle("hidden", v !== view);
   document.body.dataset.view = view;
+  document.body.classList.toggle("native-root", inTabs() && stack.length <= 1);
   window.scrollTo(0, 0);
   if (view !== "scan") stopCamera();
   if (view === "home") renderHome();
@@ -227,8 +242,10 @@ function restoreScroll(view) { const y = scrollMem[view]; if (y) { window.scroll
 function go(view) { rememberScroll(); stack.push(view); show(view); }
 $$("#tabbar button").forEach((b) => b.onclick = () => { const v = b.dataset.tab; if (stack[stack.length - 1] === "share") editId = null; pastAdd = pastEdit = null; stack = v === "home" ? ["home"] : ["home", v]; show(v); });
 function back() { if (stack[stack.length - 1] === "exlib") exPick = false; backInner(); }
-function backInner() { if (stack[stack.length - 1] === "share") editId = null; stack.pop(); if (!stack.length) stack = ["home"]; const to = stack[stack.length - 1]; if (to === "history" || to === "home") pastAdd = pastEdit = null; show(to); restoreScroll(to); }
-function home() { const from = document.body.dataset.view; pick = null; editId = null; pastAdd = pastEdit = null; stack = ["home"]; show("home"); if (from === "share" || from === "details") restoreScroll("home"); }   // after adding something, back where you were
+function backInner() { if (stack[stack.length - 1] === "share") editId = null; stack.pop(); if (!stack.length) { if (inTabs()) { nativeSend({ type: "done" }); stack = [nativeRoot]; } else stack = ["home"]; } const to = stack[stack.length - 1]; if (to === "history" || to === "home") pastAdd = pastEdit = null; show(to); restoreScroll(to); }
+function home() {
+  if (inTabs()) { nativeSend({ type: "done" }); pick = null; editId = null; pastAdd = pastEdit = null; stack = [nativeRoot]; show(nativeRoot); return; }   // the app takes it from here
+  const from = document.body.dataset.view; pick = null; editId = null; pastAdd = pastEdit = null; stack = ["home"]; show("home"); if (from === "share" || from === "details") restoreScroll("home"); }   // after adding something, back where you were
 
 document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-go]"); if (b) { const v = b.dataset.go; v === "manual" ? openManual() : go(v); return; }
@@ -5462,7 +5479,7 @@ function openShare(prefillKcal) {
   $("#share-add").textContent = pick && pick.assist ? "Use in the recipe" : pick ? "Add to the meal" : editId || pastEdit ? "Save changes" : pastAdd ? `Add to ${pastLabel(pastAdd)}` : "Add to today";
   const editing = editId && state.day.items.find((x) => x.id === editId);
   const pastIt = pastEdit && ((state.history.find((x) => x.date === pastEdit.date) || {}).items || [])[pastEdit.i];
-  shareMeal = editing ? mealOf(editing) : pastIt ? mealOf(pastIt) : mealOf({ name: draft.name, addedAt: new Date().toISOString() });
+  shareMeal = editing ? mealOf(editing) : pastIt ? mealOf(pastIt) : nativeMealPref || mealOf({ name: draft.name, addedAt: new Date().toISOString() });
   $("#share-meal").value = shareMeal; $("#share-meal").classList.toggle("hidden", !!pick);
   // one amount control: counted things get count chips, weighed things get gram chips; the others are a tap away
   shareMode = c.countKcal && (c.countLabel !== "serving" || !c.kcalPer100) ? "count" : c.kcalPer100 ? "grams" : "kcal";
@@ -5967,7 +5984,9 @@ function needsWelcome() {
 
 applySimple(); applyTheme();
 recoverLocal();
-if (needsWelcome()) { wlStep(1); stack = ["welcome"]; show("welcome"); } else show("home");
+if (inTabs()) document.body.classList.add("in-tabs");
+if (inTabs()) { /* the app calls nativeShow() as soon as the page has loaded */ }
+else if (needsWelcome()) { wlStep(1); stack = ["welcome"]; show("welcome"); } else show("home");
 cloudInit();
 // Keep everyone current: if the server has a newer version, fetch it and reload. Checked on open and on return, at most every 5 minutes.
 let lastUpdateCheck = 0;
