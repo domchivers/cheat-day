@@ -34,7 +34,7 @@ struct MeView: View {
                     .frame(maxWidth: .infinity)
                 }
                 Section {
-                    page("Weekly check-in", "chart.line.uptrend.xyaxis", "checkin")
+                    NavigationLink { CheckInView() } label: { Label("Weekly check-in", systemImage: "chart.line.uptrend.xyaxis") }
                     page("Plan and budget", "target", "budget")
                     page("Body and weigh-ins", "scalemass.fill", "body")
                     NavigationLink { HistoryView() } label: { Label("History", systemImage: "calendar") }

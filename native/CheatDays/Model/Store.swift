@@ -155,6 +155,7 @@ final class Store {
             applyWorkoutOp(op, to: &d, today: today)
             applyHelperOp(op, to: &d, today: today)
             applyBodyOp(op, to: &d)
+            applyCheckInOp(op, to: &d)
         }
     }
 

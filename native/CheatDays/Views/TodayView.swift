@@ -31,6 +31,7 @@ struct TodayView: View {
     @State private var flow: WebFlow?
     @State private var pastItem: JSON?
     @State private var showPast = false
+    @State private var showCheckIn = false
     private var store: Store { Store.shared }
 
     private var date: String { DayKey.shift(store.today, days: offset) }
@@ -56,6 +57,24 @@ struct TodayView: View {
                 Section { hero }
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets())
+                if offset == 0 && store.checkInDue {
+                    let c = store.checkIn
+                    Section {
+                        Button { showCheckIn = true } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "calendar.badge.checkmark").font(.title3).foregroundStyle(Theme.accent)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Your weekly check-in").font(.headline)
+                                    Text("\(c.avg.map { "\(Fmt.int($0)) a day" } ?? "Nothing logged") · \(c.logged) of 7 days\(c.suggest != nil ? " · a new budget to look at" : "")")
+                                        .font(.footnote).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
                 ForEach(Meals.all, id: \.self) { meal in mealSection(meal) }
                 if let e = store.syncError {
                     Section { Label("Not synced: \(e)", systemImage: "exclamationmark.icloud").font(.footnote).foregroundStyle(.secondary) }
@@ -82,6 +101,7 @@ struct TodayView: View {
                     .presentationDragIndicator(.visible)
             }
             .sheet(item: $flow) { f in WebFlowSheet(flow: f) }
+            .sheet(isPresented: $showCheckIn) { NavigationStack { CheckInView() } }
             .onReceive(NotificationCenter.default.publisher(for: .webDone)) { _ in
                 guard flow != nil else { return }
                 flow = nil
