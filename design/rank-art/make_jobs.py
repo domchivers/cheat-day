@@ -16,7 +16,7 @@ Style:
 - Wide landscape, 3:2.
 - Very dark overall: a deep navy-to-black base (around #0b1520), like a night-mode game menu. Big white text on top must stay easy to read.
 - The left 55% stays almost empty: just the dark base with very faint texture. All the detail sits on the right and fades out towards the left.
-- Flat, modern, slightly glowing illustration, like a mobile game rank screen. Soft rim light, gentle bloom, no harsh contrast.
+- Anime / cartoon style: cel-shaded with clean, confident line art, bold simple shapes and two or three flat shading tones, like a Studio Ghibli food scene or a Japanese mobile game rank screen. Chunky, appealing, slightly exaggerated food that looks delicious, with anime-style sparkles, glossy highlights and stylised steam or light. Not painterly, not realistic.
 - One accent colour, given below, used for the glow and highlights.
 - No text, letters, numbers, logos, UI or people. Nothing awkwardly cut off at the right edge."""
 
@@ -30,7 +30,7 @@ Style:
 - Background: a flat, solid, pure magenta (#FF00FF) filling the whole canvas, with no shadow, gradient or glow on it, so it can be cut out. Don't use magenta or pink anywhere in the badge itself.
 - No text, letters or numbers."""
 
-REF_NOTE = "The attached images are this app's Dumpling rank art: match their style, lighting, darkness and level of detail exactly. Don't copy their subject; draw only what's described below.\n\n"
+REF_NOTE = "The attached image is this app's Dumpling rank art: match their style, lighting, darkness and level of detail exactly. Don't copy their subject; draw only what's described below.\n\n"
 
 RANKS = [
     ("crumb", "Crumb", "the very first rank", "warm bronze (#c9965c)",
@@ -58,11 +58,12 @@ def main():
     jobs = []
     for key, name, place, accent, scene, badge in RANKS:
         test = key == "dumpling"
-        refs = [] if test else ["out/raw/dumpling-bg.png", "out/raw/dumpling-badge.png"]
+        bg_refs = [] if test else ["out/raw/dumpling-bg.png"]          # backgrounds match the approved background,
+        badge_refs = [] if test else ["out/raw/dumpling-badge.png"]    # badges match the approved badge
         lead = "" if test else REF_NOTE
-        jobs.append({"file": f"out/raw/{key}-bg.png", "group": "test" if test else "ranks", "size": "1536x1024", "refs": refs,
+        jobs.append({"file": f"out/raw/{key}-bg.png", "group": "test" if test else "ranks", "size": "1536x1024", "refs": bg_refs,
                      "prompt": f"{lead}{STYLE_BG}\n\nRank: {name}, {place}. Accent colour: {accent}.\nScene: {scene}."})
-        jobs.append({"file": f"out/raw/{key}-badge.png", "group": "test" if test else "ranks", "size": "1024x1024", "refs": refs,
+        jobs.append({"file": f"out/raw/{key}-badge.png", "group": "test" if test else "ranks", "size": "1024x1024", "refs": badge_refs,
                      "prompt": f"{lead}{STYLE_BADGE}\n\nRank: {name}, {place}. Accent colour: {accent}.\nBadge: {badge}."})
     jobs.sort(key=lambda j: j["group"] != "test")   # the test first
     with open(os.path.join(HERE, "jobs.json"), "w", encoding="utf-8") as f:
