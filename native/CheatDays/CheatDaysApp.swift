@@ -33,7 +33,7 @@ struct MainTabs: View {
         TabView(selection: $tab) {
             TodayView()
                 .tabItem { Label("Today", systemImage: "sun.max.fill") }.tag(0)
-            WebScreen(view: "workouts")
+            WorkoutsView()
                 .tabItem { Label("Workouts", systemImage: "dumbbell.fill") }.tag(1)
             WebScreen(view: "friends")
                 .tabItem { Label("Friends", systemImage: "person.2.fill") }.tag(2)
@@ -43,7 +43,7 @@ struct MainTabs: View {
         .sensoryFeedback(.selection, trigger: tab)
         .task { await Store.shared.sync() }
         .onChange(of: phase) { _, now in if now == .active { Task { await Store.shared.sync() } } }
-        .onChange(of: tab) { _, now in if now == 0 || now == 3 { Task { await Store.shared.sync() } } }
+        .onChange(of: tab) { _, now in if now != 2 { Task { await Store.shared.sync() } } }
     }
 }
 

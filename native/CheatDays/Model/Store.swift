@@ -97,14 +97,16 @@ final class Store {
         perform(op)
     }
 
-    private func perform(_ op: JSON) {
+    func perform(_ op: JSON, syncAfter: Double = 0.6) {
         var d = doc
         Self.apply(op, to: &d, today: today)
         d["updatedAt"] = nowMs()
         doc = d
-        pending.append(op)
+        // a live session changes often: only its latest state needs sending
+        if str(op["type"]) == "session", let last = pending.last, str(last["type"]) == "session" { pending[pending.count - 1] = op }
+        else { pending.append(op) }
         persist()
-        scheduleSync()
+        scheduleSync(after: syncAfter)
     }
 
     // MARK: the operations, applied to any copy of the record
@@ -145,7 +147,8 @@ final class Store {
                 var recent = list(d["recent"])
                 if !recent.contains(where: { str($0["key"]) == key }) { recent.insert(r, at: 0); d["recent"] = recent }
             }
-        default: break
+        default:
+            applyWorkoutOp(op, to: &d, today: today)
         }
     }
 
