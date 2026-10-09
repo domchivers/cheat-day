@@ -32,4 +32,12 @@ final class MealsBudgetTests: XCTestCase {
         XCTAssertTrue(dict(d["dayBudgets"]).isEmpty)
         XCTAssertEqual(d["eatBack"] as? Bool, true)
     }
+
+    func testDeletingAReadingLeavesATombstone() {
+        var d = doc()
+        Store.apply(["type": "body", "row": ["day": "2026-10-08", "weight": 82.4, "updatedAt": "2026-10-08T07:00:00Z"] as JSON], to: &d, today: "2026-10-09")
+        Store.apply(["type": "deleteBody", "day": "2026-10-08", "at": 5], to: &d, today: "2026-10-09")
+        XCTAssertTrue(list(d["body"]).isEmpty)
+        XCTAssertEqual(num(dict(d["tombs"])["body:2026-10-08"]), 5)
+    }
 }

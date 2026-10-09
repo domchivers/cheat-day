@@ -258,7 +258,7 @@ extension Store {
             d["session"] = op["session"] ?? NSNull()
         case "set":
             let key = str(op["key"])
-            if ["restSeconds", "reminders", "weighDays", "shareDay", "onboarded"].contains(key) { d[key] = op["value"] ?? NSNull() }
+            if ["restSeconds", "reminders", "weighDays", "shareDay", "onboarded", "goalWeight", "goalStart"].contains(key) { d[key] = op["value"] ?? NSNull() }
         case "logWorkout":
             let w = dict(op["workout"]), id = str(w["id"])
             if op["clearSession"] as? Bool == true { d["session"] = NSNull() }

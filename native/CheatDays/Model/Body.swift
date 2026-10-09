@@ -42,6 +42,12 @@ extension Store {
     }
 
     static func applyBodyOp(_ op: JSON, to d: inout JSON) {
+        if str(op["type"]) == "deleteBody" {
+            let day = str(op["day"])
+            d["body"] = list(d["body"]).filter { str($0["day"]) != day }
+            var tombs = dict(d["tombs"]); tombs["body:\(day)"] = op["at"] ?? nowMs(); d["tombs"] = tombs
+            return
+        }
         guard str(op["type"]) == "body" else { return }
         let row = dict(op["row"]), day = str(row["day"])
         guard !day.isEmpty else { return }

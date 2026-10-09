@@ -38,7 +38,7 @@ struct MeView: View {
                     Button { personalise = true } label: { Label("Personalise my plan", systemImage: "sparkles") }
                     NavigationLink { CheckInView() } label: { Label("Weekly check-in", systemImage: "chart.line.uptrend.xyaxis") }
                     NavigationLink { BudgetView() } label: { Label("Plan and budget", systemImage: "target") }
-                    page("Body and weigh-ins", "scalemass.fill", "body")
+                    NavigationLink { BodyView() } label: { Label("Body and weigh-ins", systemImage: "scalemass.fill") }
                     NavigationLink { HistoryView() } label: { Label("History", systemImage: "calendar") }
                     page("Goals and badges", "trophy.fill", "goals")
                     NavigationLink { MealsView() } label: { Label("Your meals", systemImage: "fork.knife") }
