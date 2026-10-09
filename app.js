@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "161";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "162";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -575,7 +575,7 @@ function addToDay(basis, kcal, shareLabel) {
   if (basis.source === "quick") state.presetUses[basis.name] = (state.presetUses[basis.name] || 0) + 1;
   else if (basis.source === "meal") { const m = state.meals.find((x) => x.id === basis.mealId); if (m) { m.uses = (m.uses || 0) + 1; m.lastUsed = new Date().toISOString(); } }
   else rememberRecent(basisOf(basis), kcal, shareLabel);
-  save(); renderHome();
+  save(); renderHome(); haptic("light");
 }
 
 // ---------------------------------------------------------------- meals: a cake or a curry as one thing
@@ -4024,7 +4024,7 @@ function tickSession() {
   $("#wsf-rest").classList.toggle("hidden", !(left > 0)); $("#wsf-tip").classList.toggle("hidden", left > 0);
   if (left > 0) $("#wsf-rest-time").textContent = mmss(left);
   if (left > 0) { rest.classList.remove("hidden"); $("#ws-rest-set").classList.add("hidden"); $("#ws-rest-time").textContent = mmss(left); }
-  else { $("#ws-rest-set").classList.remove("hidden"); if (!rest.classList.contains("hidden")) { rest.classList.add("hidden"); if (ss.restUntil) { ss.restUntil = null; save(false); if (navigator.vibrate) navigator.vibrate([120, 60, 120]); toast("Rest's over: next set"); } } }
+  else { $("#ws-rest-set").classList.remove("hidden"); if (!rest.classList.contains("hidden")) { rest.classList.add("hidden"); if (ss.restUntil) { ss.restUntil = null; save(false); nativeSession(); if (navigator.vibrate) navigator.vibrate([120, 60, 120]); toast("Rest's over: next set"); } } }
 }
 let wsFloatWatch = null;
 function watchSessionTop() {   // the floating timer shows once the session's own clock scrolls out of view
@@ -4079,8 +4079,8 @@ function renderSession() {
           const prev = lastFor(ex.exercise), est = st.kg ? Math.round(st.kg * (1 + st.reps / 30)) : 0;
           const bestSoFar = Math.max((prev && prev.best1rm) || 0, ...ss.exercises.filter((x) => (x.exercise || "").toLowerCase() === (ex.exercise || "").toLowerCase()).flatMap((x) => x.sets).filter((s) => s !== st && s.done && s.pb).map((s) => Math.round(s.kg * (1 + s.reps / 30))));
           if (est && prev && prev.best1rm && est > bestSoFar) { st.pb = true; toast(`New best for ${ex.exercise}: ${st.kg} kg × ${st.reps}`, 4000); }
-          try { navigator.vibrate && navigator.vibrate(15); } catch (e) {}
         }
+        haptic(st.done ? "success" : "light");
         save(false); renderSession(); tickSession();
         if (st.done) { const nx = document.querySelector("#ws-exercises .ws-set.next"); if (nx) { const r = nx.getBoundingClientRect(); if (r.top < 90 || r.bottom > innerHeight - 150) nx.scrollIntoView({ block: "center", behavior: "smooth" }); } }
       };
@@ -4096,9 +4096,25 @@ function renderSession() {
     box.appendChild(div);
   });
   if (wsScrollToLast) { wsScrollToLast = false; const all = box.querySelectorAll(".ws-ex"); const lastEl = all[all.length - 1]; if (lastEl) setTimeout(() => lastEl.scrollIntoView({ block: "center", behavior: "smooth" }), 80); }
-  ensureExerciseList(); sessionVolume();
+  ensureExerciseList(); sessionVolume(); nativeSession();
   if (!sessionTimer) sessionTimer = setInterval(tickSession, 1000);
   tickSession();
+}
+// ---- the iPhone app (native/): the workout timer on the lock screen, a rest alert when locked, haptics
+const nativeApp = () => !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.native);
+function nativeSend(msg) { try { if (nativeApp()) window.webkit.messageHandlers.native.postMessage(msg); } catch (e) {} }
+const haptic = (style) => { if (nativeApp()) nativeSend({ type: "haptic", style }); else { try { navigator.vibrate && navigator.vibrate(style === "success" ? 15 : 8); } catch (e) {} } };
+let nativeSent = "";
+/** Tell the app what the session is doing; it shows it on the lock screen and in the Dynamic Island. */
+function nativeSession() {
+  if (!nativeApp()) return;
+  const ss = state.session;
+  if (!ss) { if (nativeSent !== "end") { nativeSent = "end"; nativeSend({ type: "sessionEnd" }); } return; }
+  let next = "";
+  for (const ex of ss.exercises) { const j = ex.sets.findIndex((s) => !s.done); if (j >= 0) { const s = ex.sets[j]; next = `${ex.exercise || "Exercise"} · set ${j + 1}${s.kg ? ` · ${s.reps}×${s.kg} kg` : s.reps ? ` · ${s.reps} reps` : ""}`; break; } }
+  const msg = { type: "session", name: ss.name || "", startedAt: ss.startedAt, restEnds: ss.restUntil && ss.restUntil > Date.now() ? ss.restUntil : null, next, setsDone: ss.exercises.reduce((x, ex) => x + ex.sets.filter((s) => s.done).length, 0) };
+  const key = JSON.stringify(msg); if (key === nativeSent) return;
+  nativeSent = key; nativeSend(msg);
 }
 /** Drag an exercise by its handle: the list folds to just the names while you drag, so moving is short and easy. */
 let wsScrollToLast = false;
@@ -4127,7 +4143,7 @@ function startExDrag(e, from) {
     window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", up);
     clearInterval(scroller);
     box.classList.remove("reordering");
-    if (to !== from) { const [m] = ss.exercises.splice(from, 1); ss.exercises.splice(to, 0, m); save(false); try { navigator.vibrate && navigator.vibrate(10); } catch (err) {} }
+    if (to !== from) { const [m] = ss.exercises.splice(from, 1); ss.exercises.splice(to, 0, m); save(false); haptic("select"); }
     renderSession();
   };
   window.addEventListener("pointermove", move); window.addEventListener("pointerup", up); window.addEventListener("pointercancel", up);
@@ -4147,16 +4163,16 @@ function sessionVolume() {
 }
 $("#ws-name").addEventListener("input", (e) => { if (state.session) { state.session.name = e.target.value; save(false); } });
 $("#ws-add").onclick = () => { if (!state.session) return; exPick = true; xlSeg = state.history.some((h) => (h.workouts || []).some((w) => (w.lifts || []).length)) || state.routines.length ? "past" : "lib"; $("#xl-q").value = ""; go("exlib"); };
-$("#ws-rest-skip").onclick = () => { if (state.session) { state.session.restUntil = null; save(false); $("#ws-rest").classList.add("hidden"); $("#ws-rest-set").classList.remove("hidden"); } };
+$("#ws-rest-skip").onclick = () => { if (state.session) { state.session.restUntil = null; save(false); $("#ws-rest").classList.add("hidden"); $("#ws-rest-set").classList.remove("hidden"); nativeSession(); } };
 // the usual rest, in 15-second steps, remembered for next time
 const setRest = (d) => { state.restSeconds = Math.max(15, Math.min(600, restLength() + d)); save(); tickSession(); };
 $("#ws-rest-less").onclick = () => setRest(-15);
 $("#ws-rest-more").onclick = () => setRest(15);
 // just this rest: a little longer or shorter
-const nudgeRest = (d) => { const ss = state.session; if (!ss || !ss.restUntil) return; ss.restUntil = Math.max(Date.now() + 1000, ss.restUntil + d * 1000); save(false); tickSession(); };
+const nudgeRest = (d) => { const ss = state.session; if (!ss || !ss.restUntil) return; ss.restUntil = Math.max(Date.now() + 1000, ss.restUntil + d * 1000); save(false); tickSession(); nativeSession(); };
 $("#ws-rest-minus").onclick = () => nudgeRest(-15);
 $("#ws-rest-plus").onclick = () => nudgeRest(15);
-$("#ws-discard").onclick = async () => { if (!await ask("Discard this session? Nothing will be logged.")) return; state.session = null; save(); renderWorkouts(); };
+$("#ws-discard").onclick = async () => { if (!await ask("Discard this session? Nothing will be logged.")) return; state.session = null; save(); renderWorkouts(); nativeSession(); };
 $("#ws-finish").onclick = async () => {
   const ss = state.session; if (!ss) return;
   const lifts = [];
@@ -4172,7 +4188,7 @@ $("#ws-finish").onclick = async () => {
   if (!lifts.length && !await ask(`Finish an empty ${minutes} min session?`)) return;
   const name = (ss.name || "").trim() || (ss.routineId && (state.routines.find((r) => r.id === ss.routineId) || {}).name) || "Gym session";
   const routineId = ss.routineId;
-  state.session = null;
+  state.session = null; nativeSession(); haptic("success");
   logWorkout({ type: "Gym weights", name, minutes, effort: "moderate", lifts });
   toast(`Logged ${name}: ${minutes} min`);
   setTimeout(async () => {
@@ -5745,7 +5761,7 @@ async function renderReminders() {
   const wd = weighDays(), daysText = wd.length === 7 ? "every day" : wd.length === 1 ? `${WEEKDAYS[wd[0]]}s` : wd.map((d) => WEEKDAYS[d].slice(0, 3)).join(", ");
   $("#rem-weigh-days").innerHTML = `Only on your weigh-in days (${daysText}). <a href="#" data-go="body">Change days</a>`;
   if (!signed) { status.textContent = "Reminders need an account: sign in above first."; on.classList.add("hidden"); opts.classList.add("hidden"); return; }
-  if (!pushSupported()) { status.textContent = /iphone|ipad/i.test(navigator.userAgent) && !standalone() ? "On iPhone, reminders work once Cheat Days is on your home screen: tap Share, then Add to Home Screen, and open it from there." : "This browser can't show notifications."; on.classList.add("hidden"); opts.classList.add("hidden"); return; }
+  if (!pushSupported()) { status.textContent = nativeApp() ? "Reminders aren't in the iPhone app yet. The home-screen version still sends them." : /iphone|ipad/i.test(navigator.userAgent) && !standalone() ? "On iPhone, reminders work once Cheat Days is on your home screen: tap Share, then Add to Home Screen, and open it from there." : "This browser can't show notifications."; on.classList.add("hidden"); opts.classList.add("hidden"); return; }
   const sub = await currentSub().catch(() => null);
   if (sub && Notification.permission === "granted") { status.textContent = "On for this phone."; on.classList.add("hidden"); opts.classList.remove("hidden"); }
   else { status.textContent = Notification.permission === "denied" ? "Notifications are blocked for Cheat Days. Turn them on in the phone's Settings → Notifications, then try again." : "Get a nudge to log, a weigh-in reminder, and a ping when friends react."; on.classList.remove("hidden"); opts.classList.add("hidden"); }
@@ -5774,6 +5790,7 @@ async function enableReminders(permission) {
 const REM_ASK = "cheatday.remAsk";
 let remAskedThisVisit = false;
 async function maybeAskReminders() {
+  if (nativeApp()) return;   // reminders in the iPhone app come with a later build
   if (remAskedThisVisit || document.body.dataset.view !== "home" || !$("#ask-dialog").classList.contains("hidden")) return;
   const c = window.cloud; if (!(c && c.user)) return;
   let rec = {}; try { rec = JSON.parse(localStorage.getItem(REM_ASK) || "{}"); } catch (e) {}

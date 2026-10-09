@@ -678,3 +678,31 @@ To let the helper set a different budget for each day of the week, run once:
 ```sql
 alter table public.budget_overrides add column if not exists days jsonb;
 ```
+
+
+## The iPhone app (native/)
+
+A native shell around the web app, built on the Mac the same way as Bùbù. It loads the live site, so web
+changes reach it with no new build. The native parts are what a web page can't do on iPhone:
+
+- the gym session on the lock screen and in the Dynamic Island (a Live Activity): the rest counting down,
+  then the session clock, with the next set underneath
+- a "Rest's over" notification that arrives even when the phone is locked
+- haptics when food is added and sets are ticked
+
+The page talks to the app through `window.webkit.messageHandlers.native` (see `nativeSession()` in app.js).
+
+**On the Mac** (Xcode signed in to the same Apple team as Bùbù, and `brew install xcodegen`):
+
+```bash
+git clone https://github.com/domchivers/cheat-day.git ~/Projects/cheat-day
+cd ~/Projects/cheat-day
+tools/mac-build.sh        # builds for the simulator: a compile check, no signing
+tools/mac-testflight.sh   # archives and uploads to TestFlight (uses CHEAT_TEAM, else BUBU_TEAM)
+```
+
+One-off in App Store Connect before the first upload: My Apps → ＋ → New App, name "Cheat Days", bundle ID
+`com.cheatdays.app`. If that bundle ID isn't offered yet, run `tools/mac-testflight.sh` once (the archive
+step registers it), then create the app and run the script again.
+
+The version is `MARKETING_VERSION` in `native/project.yml` (0.1.0 to start); the build number is the date and time.
