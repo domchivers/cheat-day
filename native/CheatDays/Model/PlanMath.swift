@@ -220,6 +220,20 @@ extension Store {
             plans[str(op["date"])] = op["plan"] ?? NSNull()
             for k in plans.keys.sorted().dropLast(8) { plans.removeValue(forKey: k) }   // only the recent ones
             prefs["cheatPlans"] = plans; d["prefs"] = prefs
+        case "saveMeal":
+            let m = dict(op["meal"]), id = str(m["id"])
+            guard !id.isEmpty, dict(d["tombs"])["meal:\(id)"] == nil else { return }
+            var meals = list(d["meals"])
+            if let i = meals.firstIndex(where: { str($0["id"]) == id }) { meals[i] = m } else { meals.insert(m, at: 0) }
+            d["meals"] = meals
+        case "deleteMeal":
+            let id = str(op["id"])
+            d["meals"] = list(d["meals"]).filter { str($0["id"]) != id }
+            var tombs = dict(d["tombs"]); tombs["meal:\(id)"] = op["at"] ?? nowMs(); d["tombs"] = tombs
+        case "budget":
+            if let b = pos(op["budget"]) { d["budget"] = Int(b) }
+            d["dayBudgets"] = op["dayBudgets"] as? JSON ?? JSON()
+            if let e = op["eatBack"] as? Bool { d["eatBack"] = e }
         case "workoutPlan":
             var prefs = dict(d["prefs"])
             prefs["workoutPlan"] = op["plan"] ?? NSNull()

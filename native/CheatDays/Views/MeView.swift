@@ -37,11 +37,11 @@ struct MeView: View {
                 Section {
                     Button { personalise = true } label: { Label("Personalise my plan", systemImage: "sparkles") }
                     NavigationLink { CheckInView() } label: { Label("Weekly check-in", systemImage: "chart.line.uptrend.xyaxis") }
-                    page("Plan and budget", "target", "budget")
+                    NavigationLink { BudgetView() } label: { Label("Plan and budget", systemImage: "target") }
                     page("Body and weigh-ins", "scalemass.fill", "body")
                     NavigationLink { HistoryView() } label: { Label("History", systemImage: "calendar") }
                     page("Goals and badges", "trophy.fill", "goals")
-                    page("Your meals", "fork.knife", "meals")
+                    NavigationLink { MealsView() } label: { Label("Your meals", systemImage: "fork.knife") }
                     NavigationLink { SettingsView() } label: { Label("Settings", systemImage: "gearshape.fill") }
                 }
                 Section {
