@@ -49,7 +49,10 @@ struct AddSheet: View {
                 PhotoSheet(meal: meal, onAdded: { photo = false; dismiss() }, onFlow: { f in photo = false; onFlow(f) })
             }
             .sheet(isPresented: $scanning) {
-                ScanSheet(meal: meal, onAdded: { scanning = false; dismiss() }, onFlow: { f in scanning = false; onFlow(f) })
+                ScanSheet(meal: meal, onAdded: { scanning = false; dismiss() }, onFlow: { f in
+                    scanning = false
+                    if f.view == "scan" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { photo = true } } else { onFlow(f) }
+                })
             }
         }
     }

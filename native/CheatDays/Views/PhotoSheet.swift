@@ -34,7 +34,7 @@ struct PhotoSheet: View {
                         Section { VStack(alignment: .leading, spacing: 6) { Text("Couldn't read that").font(.title3.bold()); Text(why).foregroundStyle(.secondary) }.padding(.vertical, 6) }
                         Section {
                             Button { phase = .choose } label: { Label("Try another photo", systemImage: "camera.fill") }
-                            Button { onFlow(WebFlow(view: "manual", opts: ["meal": meal], title: "Type it in")) } label: { Label("Type the numbers in", systemImage: "square.and.pencil") }
+                            NavigationLink { ManualEntry(meal: meal) { onAdded() } } label: { Label("Type the numbers in", systemImage: "square.and.pencil") }
                         }
                     }
                 }

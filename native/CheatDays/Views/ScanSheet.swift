@@ -64,7 +64,7 @@ struct ScanSheet: View {
             Section {
                 if let retry { Button { look(retry) } label: { Label("Try again", systemImage: "arrow.clockwise") } }
                 Button { onFlow(WebFlow(view: "scan", opts: ["scan": "label", "meal": meal], title: "Photo")) } label: { Label("Take a photo instead", systemImage: "camera.fill") }
-                Button { onFlow(WebFlow(view: "manual", opts: ["meal": meal], title: "Type it in")) } label: { Label("Type the numbers in", systemImage: "square.and.pencil") }
+                NavigationLink { ManualEntry(meal: meal) { onAdded() } } label: { Label("Type the numbers in", systemImage: "square.and.pencil") }
                 Button { phase = .scanning } label: { Label("Scan another", systemImage: "barcode.viewfinder") }
             }
         }
