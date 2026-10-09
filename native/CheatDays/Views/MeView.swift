@@ -6,6 +6,7 @@ private struct WeightPoint: Identifiable { let id = UUID(); let date: Date; let 
 /// You: weight trend, this week, and the rest of the app's pages (still web for now) in one list.
 struct MeView: View {
     @State private var confirmSignOut = false
+    @State private var weighing = false
     private var store: Store { Store.shared }
 
     var body: some View {
@@ -36,7 +37,7 @@ struct MeView: View {
                     page("Weekly check-in", "chart.line.uptrend.xyaxis", "checkin")
                     page("Plan and budget", "target", "budget")
                     page("Body and weigh-ins", "scalemass.fill", "body")
-                    page("History", "calendar", "history")
+                    NavigationLink { HistoryView() } label: { Label("History", systemImage: "calendar") }
                     page("Goals and badges", "trophy.fill", "goals")
                     page("Your meals", "fork.knife", "meals")
                     page("Settings", "gearshape.fill", "settings")
@@ -50,7 +51,8 @@ struct MeView: View {
             .navigationTitle("Me")
             .scrollContentBackground(.hidden)
             .background(Theme.bg)
-            .refreshable { await store.sync() }
+            .refreshable { await store.sync(); await store.pullBody() }
+            .sheet(isPresented: $weighing) { WeighInSheet().presentationDetents([.medium]) }
             .confirmationDialog("Sign out of Cheat Days on this phone?", isPresented: $confirmSignOut, titleVisibility: .visible) {
                 Button("Sign out", role: .destructive) {
                     WebHost.shared.signOut()
@@ -105,8 +107,10 @@ struct MeView: View {
                 }
             } else {
                 Text("No weigh-ins yet").font(.title3.bold())
-                Text("Weigh in from Body and weigh-ins below, and your trend shows here.").font(.footnote).foregroundStyle(.secondary)
+                Text("Weigh in and your trend shows here.").font(.footnote).foregroundStyle(.secondary)
             }
+            Button { weighing = true } label: { Label("Weigh in", systemImage: "scalemass.fill").frame(maxWidth: .infinity) }
+                .buttonStyle(.bordered).buttonBorderShape(.capsule).padding(.top, 4)
         }
         .padding(.vertical, 6)
     }

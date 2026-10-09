@@ -41,7 +41,7 @@ struct MainTabs: View {
                 .tabItem { Label("Me", systemImage: "person.crop.circle.fill") }.tag(3)
         }
         .sensoryFeedback(.selection, trigger: tab)
-        .task { await Store.shared.sync(); await Store.shared.applyHelperChanges() }
+        .task { await Store.shared.sync(); await Store.shared.applyHelperChanges(); await Store.shared.pullBody() }
         .onChange(of: phase) { _, now in if now == .active { Task { await Store.shared.sync(); await Store.shared.applyHelperChanges() } } }
         .onChange(of: tab) { _, _ in Task { await Store.shared.sync() } }
     }

@@ -152,6 +152,7 @@ final class Store {
         default:
             applyWorkoutOp(op, to: &d, today: today)
             applyHelperOp(op, to: &d, today: today)
+            applyBodyOp(op, to: &d)
         }
     }
 
