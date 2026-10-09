@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "160";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "161";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -190,7 +190,7 @@ function basisOf(obj) {
 
 // ---------------------------------------------------------------- router
 
-const VIEWS = ["home", "checkin", "budget", "settings", "history", "friends", "compose", "recipe", "workouts", "exercise", "goals", "body", "welcome", "plan", "ask", "chats", "scan", "search", "meals", "meal", "details", "share"];
+const VIEWS = ["home", "exlib", "checkin", "budget", "settings", "history", "friends", "compose", "recipe", "workouts", "exercise", "goals", "body", "welcome", "plan", "ask", "chats", "scan", "search", "meals", "meal", "details", "share"];
 let stack = ["home"];
 function show(view) {
   if (view === "feed") { frSeg = "feed"; view = "friends"; }   // the feed lives in the Friends tab now
@@ -210,6 +210,7 @@ function show(view) {
   if (view === "ask") renderAsk();
   if (view === "workouts") renderWorkouts();
   if (view === "exercise") renderExercise();
+  if (view === "exlib") renderExLib();
   if (view === "goals") renderGoals();
   if (view === "body") renderBody();
   if (view === "plan") renderPlanStep();
@@ -225,7 +226,8 @@ function rememberScroll() { const cur = document.body.dataset.view; if (cur) scr
 function restoreScroll(view) { const y = scrollMem[view]; if (y) { window.scrollTo(0, y); requestAnimationFrame(() => window.scrollTo(0, y)); } }
 function go(view) { rememberScroll(); stack.push(view); show(view); }
 $$("#tabbar button").forEach((b) => b.onclick = () => { const v = b.dataset.tab; if (stack[stack.length - 1] === "share") editId = null; pastAdd = pastEdit = null; stack = v === "home" ? ["home"] : ["home", v]; show(v); });
-function back() { if (stack[stack.length - 1] === "share") editId = null; stack.pop(); if (!stack.length) stack = ["home"]; const to = stack[stack.length - 1]; if (to === "history" || to === "home") pastAdd = pastEdit = null; show(to); restoreScroll(to); }
+function back() { if (stack[stack.length - 1] === "exlib") exPick = false; backInner(); }
+function backInner() { if (stack[stack.length - 1] === "share") editId = null; stack.pop(); if (!stack.length) stack = ["home"]; const to = stack[stack.length - 1]; if (to === "history" || to === "home") pastAdd = pastEdit = null; show(to); restoreScroll(to); }
 function home() { const from = document.body.dataset.view; pick = null; editId = null; pastAdd = pastEdit = null; stack = ["home"]; show("home"); if (from === "share" || from === "details") restoreScroll("home"); }   // after adding something, back where you were
 
 document.addEventListener("click", (e) => {
@@ -3853,9 +3855,11 @@ function renderPastWorkouts() {
     const li = document.createElement("li"); li.dataset.key = key; li.className = open ? "open" : "";
     const when = h.date === dateMinus(1) ? "Yesterday" : new Date(h.date + "T12:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
     li.innerHTML = `<span class="thumb-sm tone-coral"><svg><use href="#i-${lifts.length ? "dumbbell" : "walk"}"/></svg></span><div class="body"><div class="name">${esc(w.name)}</div><div class="detail">${when} · ${w.minutes} min${lifts.length ? ` · ${lifts.length} exercise${lifts.length === 1 ? "" : "s"} · ${sets} set${sets === 1 ? "" : "s"}` : ""}</div></div><div class="kcal">${fmt(w.kcal)}</div><svg class="chev w-chev${open ? " up" : ""}"><use href="#i-chev"/></svg>`
-      + (open ? `<div class="w-open">${lifts.length ? `<ul class="w-sets">${lifts.map((l) => `<li><b>${esc(l.exercise)}</b><span>${esc(liftText(l).slice(l.exercise.length + 1))}</span></li>`).join("")}</ul>` : ""}<div class="fr-acts"><button class="btn mint slim" data-act="edit">Edit</button></div></div>` : "");
+      + (open ? `<div class="w-open">${lifts.length ? `<ul class="w-sets">${lifts.map((l, n) => `<li><b>${esc(l.exercise)}</b><span>${esc(liftText(l).slice(l.exercise.length + 1))}</span>${state.session ? `<button class="w-addlift" data-act="addlift" data-l="${n}" aria-label="Add ${esc(l.exercise)} to your workout">＋</button>` : ""}</li>`).join("")}</ul>` : ""}<div class="fr-acts">${state.session && lifts.length ? `<button class="btn primary slim" data-act="addall">Add all to my workout</button>` : ""}<button class="btn mint slim" data-act="edit">Edit</button></div></div>` : "");
     li.onclick = (e) => {
       const act = e.target.closest("[data-act]");
+      if (act && act.dataset.act === "addlift") { e.stopPropagation(); const l = lifts[+act.dataset.l]; if (addToSession(l.exercise, l.detail)) { renderWorkouts(); toast(`Added ${l.exercise} to your workout`); } return; }
+      if (act && act.dataset.act === "addall") { e.stopPropagation(); lifts.forEach((l) => addToSession(l.exercise, l.detail)); renderWorkouts(); toast(`Added ${lifts.length} exercise${lifts.length === 1 ? "" : "s"} to your workout`); return; }
       if (act && act.dataset.act === "edit") { e.stopPropagation(); openWorkoutEditor(w, li.querySelector(".w-open"), () => { h.burned = (h.workouts || []).reduce((x, y) => x + (y.kcal || 0), 0); save(); renderWorkouts(); }, () => { h.workouts.splice(k, 1); h.burned = (h.workouts || []).reduce((x, y) => x + (y.kcal || 0), 0); save(); renderWorkouts(); }); return; }
       pastOpen = open ? null : key; renderPastWorkouts();
     };
@@ -3916,7 +3920,7 @@ function renderWorkouts() {
   updateEstimate();
   // personal bests
   const pl = $("#w-pbs"); pl.innerHTML = "";
-  const exs = Object.values(state.exercises).sort((a, b) => String(b.lastUsed).localeCompare(String(a.lastUsed))).slice(0, 12);
+  const exs = Object.values(state.exercises).sort((a, b) => String(b.lastUsed).localeCompare(String(a.lastUsed))).slice(0, 5);
   for (const e of exs) {
     const li = document.createElement("li");
     const best = e.bestSet ? `${e.bestSet.kg} kg × ${e.bestSet.reps}` : (e.kg ? `${e.kg} kg × ${e.reps}` : "bodyweight");
@@ -3950,7 +3954,8 @@ function updateEstimate() {
 }
 function ensureExerciseList() {
   if (!$("#w-ex-list")) { const dl = document.createElement("datalist"); dl.id = "w-ex-list"; document.body.appendChild(dl); }
-  $("#w-ex-list").innerHTML = Object.values(state.exercises).map((e) => `<option value="${esc(e.name)}">`).join("");
+  const names = new Set(Object.values(state.exercises).map((e) => e.name)); Object.values(EX_LIBRARY).flat().forEach((n) => names.add(n));
+  $("#w-ex-list").innerHTML = [...names].map((n) => `<option value="${esc(n)}">`).join("");
 }
 async function saveRoutine(suggested, exercises) {
   if (!exercises.length) { toast("Add some exercises first"); return; }
@@ -4036,12 +4041,17 @@ function renderSession() {
   watchSessionTop();
   $("#ws-name").value = ss.name || "";
   const box = $("#ws-exercises"); box.innerHTML = "";
+  // the next set to do: the first one not ticked, top to bottom
+  let nextSet = null;
+  ss.exercises.some((ex, i) => ex.sets.some((st, j) => { if (!st.done) { nextSet = [i, j]; return true; } return false; }));
   ss.exercises.forEach((ex, i) => {
     const div = document.createElement("div"); div.className = "ws-ex";
     const last = lastFor(ex.exercise);
-    div.innerHTML = `<div class="ex-head"><input type="text" placeholder="Exercise, e.g. Bench press" value="${esc(ex.exercise || "")}" list="w-ex-list"><button class="del" aria-label="Remove">✕</button></div>
+    const complete = ex.sets.length > 0 && ex.sets.every((st) => st.done);
+    div.className = "ws-ex" + (complete ? " complete" : "");
+    div.innerHTML = `<div class="ex-head"><button class="drag" aria-label="Drag to reorder" title="Drag to reorder"><svg viewBox="0 0 24 24"><path d="M8 6h.01M8 12h.01M8 18h.01M16 6h.01M16 12h.01M16 18h.01"/></svg></button><input type="text" placeholder="Exercise, e.g. Bench press" value="${esc(ex.exercise || "")}" list="w-ex-list">${complete ? `<span class="ex-done">✓ Done</span>` : ""}<button class="del" aria-label="Remove">✕</button></div>
       <div class="last">${esc(lastLine(ex.exercise))}</div>
-      ${ex.sets.map((st, j) => `<div class="ws-set ${st.done ? "done" : ""}" data-j="${j}"><span>Set ${j + 1}</span><input type="number" inputmode="numeric" value="${st.reps || ""}" placeholder="reps"><input type="number" inputmode="decimal" value="${st.kg || ""}" placeholder="kg"><button class="tick" aria-label="Done">${st.done ? "✓" : "○"}</button></div>`).join("")}
+      ${ex.sets.map((st, j) => `<div class="ws-set ${st.done ? "done" : ""}${nextSet && nextSet[0] === i && nextSet[1] === j ? " next" : ""}" data-j="${j}"><span>${st.pb ? `<b class="pb">PB</b>` : `Set ${j + 1}`}</span><input type="number" inputmode="numeric" value="${st.reps || ""}" placeholder="reps"><input type="number" inputmode="decimal" value="${st.kg || ""}" placeholder="kg"><button class="tick" aria-label="Done">${st.done ? "✓" : "○"}</button></div>`).join("")}
       <div class="set-acts"><button class="add-set">＋ set</button>${ex.sets.length > 1 ? `<button class="rm-set">− set</button>` : ""}</div>`;
     const nameIn = div.querySelector(".ex-head input");
     nameIn.onchange = () => {
@@ -4055,8 +4065,25 @@ function renderSession() {
     div.querySelector(".ex-head .del").onclick = async () => { if (ex.sets.some((st) => st.done) && !await ask(`Remove ${ex.exercise || "this exercise"} from the session?`)) return; ss.exercises.splice(i, 1); save(false); renderSession(); };
     div.querySelectorAll(".ws-set").forEach((row) => {
       const st = ex.sets[+row.dataset.j], [reps, kg] = row.querySelectorAll("input");
-      reps.oninput = () => { st.reps = num(reps.value) || 0; save(false); sessionVolume(); }; kg.oninput = () => { st.kg = nz(kg.value) || 0; save(false); sessionVolume(); };
-      row.querySelector(".tick").onclick = () => { st.done = !st.done; if (st.done) { st.reps = num(reps.value) || st.reps || 1; st.kg = nz(kg.value) || 0; ss.restUntil = Date.now() + restLength() * 1000; } save(false); renderSession(); tickSession(); };
+      // a changed weight or rep count carries on to the later sets that still had the old number
+      const flow = (field, input, val) => {
+        const old = st[field]; st[field] = val;
+        ex.sets.forEach((later, k) => { if (k > +row.dataset.j && !later.done && later[field] === old) { later[field] = val; const ins = div.querySelectorAll(`.ws-set[data-j="${k}"] input`); if (ins[field === "reps" ? 0 : 1]) ins[field === "reps" ? 0 : 1].value = val || ""; } });
+        save(false); sessionVolume();
+      };
+      reps.oninput = () => flow("reps", reps, num(reps.value) || 0); kg.oninput = () => flow("kg", kg, nz(kg.value) || 0);
+      row.querySelector(".tick").onclick = () => {
+        st.done = !st.done; st.pb = false;
+        if (st.done) {
+          st.reps = num(reps.value) || st.reps || 1; st.kg = nz(kg.value) || 0; ss.restUntil = Date.now() + restLength() * 1000;
+          const prev = lastFor(ex.exercise), est = st.kg ? Math.round(st.kg * (1 + st.reps / 30)) : 0;
+          const bestSoFar = Math.max((prev && prev.best1rm) || 0, ...ss.exercises.filter((x) => (x.exercise || "").toLowerCase() === (ex.exercise || "").toLowerCase()).flatMap((x) => x.sets).filter((s) => s !== st && s.done && s.pb).map((s) => Math.round(s.kg * (1 + s.reps / 30))));
+          if (est && prev && prev.best1rm && est > bestSoFar) { st.pb = true; toast(`New best for ${ex.exercise}: ${st.kg} kg × ${st.reps}`, 4000); }
+          try { navigator.vibrate && navigator.vibrate(15); } catch (e) {}
+        }
+        save(false); renderSession(); tickSession();
+        if (st.done) { const nx = document.querySelector("#ws-exercises .ws-set.next"); if (nx) { const r = nx.getBoundingClientRect(); if (r.top < 90 || r.bottom > innerHeight - 150) nx.scrollIntoView({ block: "center", behavior: "smooth" }); } }
+      };
     });
     div.querySelector(".add-set").onclick = () => { const prev = ex.sets[ex.sets.length - 1] || { reps: 8, kg: 0 }; ex.sets.push({ reps: prev.reps, kg: prev.kg, done: false }); save(false); renderSession(); };
     const rm = div.querySelector(".rm-set");
@@ -4065,11 +4092,52 @@ function renderSession() {
       if (lastSet.done && !await ask(`Set ${ex.sets.length} is ticked as done. Remove it anyway?`, { ok: "Remove" })) return;
       ex.sets.pop(); save(false); renderSession();
     };
+    div.querySelector(".drag").addEventListener("pointerdown", (e) => startExDrag(e, i));
     box.appendChild(div);
   });
+  if (wsScrollToLast) { wsScrollToLast = false; const all = box.querySelectorAll(".ws-ex"); const lastEl = all[all.length - 1]; if (lastEl) setTimeout(() => lastEl.scrollIntoView({ block: "center", behavior: "smooth" }), 80); }
   ensureExerciseList(); sessionVolume();
   if (!sessionTimer) sessionTimer = setInterval(tickSession, 1000);
   tickSession();
+}
+/** Drag an exercise by its handle: the list folds to just the names while you drag, so moving is short and easy. */
+let wsScrollToLast = false;
+function startExDrag(e, from) {
+  e.preventDefault();
+  const ss = state.session, box = $("#ws-exercises"); if (!ss || ss.exercises.length < 2) return;
+  box.classList.add("reordering");
+  const items = [...box.querySelectorAll(".ws-ex")], el = items[from];
+  const rects = items.map((x) => x.getBoundingClientRect()), h = rects[from].height + 8;
+  const startY = e.clientY; let to = from, scroller = null, lastY = e.clientY, scrolled = 0;
+  el.classList.add("dragging");
+  try { el.setPointerCapture && e.target.setPointerCapture(e.pointerId); } catch (err) {}
+  const place = () => {
+    const dy = lastY - startY + scrolled; el.style.transform = `translateY(${dy}px)`;
+    const mid = rects[from].top + rects[from].height / 2 + dy;
+    to = rects.filter((r, k) => k !== from && r.top + r.height / 2 < mid).length;
+    items.forEach((x, k) => { if (k === from) return; const shift = from < to ? (k > from && k <= to ? -h : 0) : (k >= to && k < from ? h : 0); x.style.transform = shift ? `translateY(${shift}px)` : ""; });
+  };
+  const move = (ev) => {
+    lastY = ev.clientY; place();
+    clearInterval(scroller); scroller = null;
+    const edge = ev.clientY < 110 ? -8 : ev.clientY > innerHeight - 160 ? 8 : 0;   // near the top or bottom: keep scrolling
+    if (edge) scroller = setInterval(() => { window.scrollBy(0, edge); scrolled += edge; place(); }, 16);
+  };
+  const up = () => {
+    window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", up);
+    clearInterval(scroller);
+    box.classList.remove("reordering");
+    if (to !== from) { const [m] = ss.exercises.splice(from, 1); ss.exercises.splice(to, 0, m); save(false); try { navigator.vibrate && navigator.vibrate(10); } catch (err) {} }
+    renderSession();
+  };
+  window.addEventListener("pointermove", move); window.addEventListener("pointerup", up); window.addEventListener("pointercancel", up);
+}
+/** Add an exercise to the running session: with a given workout's sets, or else the sets it had last time. */
+function addToSession(name, detail) {
+  const ss = state.session; if (!ss || !name) return false;
+  const ex = detail && detail.length ? { exercise: name, sets: detail.slice(0, 8).map((s) => ({ reps: s.reps || 8, kg: s.kg || 0, done: false })) } : sessionExercise(name, null);
+  ss.exercises.push(ex); wsScrollToLast = true; save(false);
+  return true;
 }
 function sessionVolume() {
   const ss = state.session; if (!ss) return;
@@ -4078,7 +4146,7 @@ function sessionVolume() {
   $("#ws-volume").textContent = done ? `${done} set${done === 1 ? "" : "s"} done${v ? ` · ${fmt(v)} kg lifted` : ""}` : "Tick each set as you finish it; the rest timer starts on its own.";
 }
 $("#ws-name").addEventListener("input", (e) => { if (state.session) { state.session.name = e.target.value; save(false); } });
-$("#ws-add").onclick = () => { const ss = state.session; if (!ss) return; ss.exercises.push(sessionExercise("", null)); save(false); renderSession(); setTimeout(() => { const ins = $$("#ws-exercises .ex-head input"); ins[ins.length - 1].focus(); }, 50); };
+$("#ws-add").onclick = () => { if (!state.session) return; exPick = true; xlSeg = state.history.some((h) => (h.workouts || []).some((w) => (w.lifts || []).length)) || state.routines.length ? "past" : "lib"; $("#xl-q").value = ""; go("exlib"); };
 $("#ws-rest-skip").onclick = () => { if (state.session) { state.session.restUntil = null; save(false); $("#ws-rest").classList.add("hidden"); $("#ws-rest-set").classList.remove("hidden"); } };
 // the usual rest, in 15-second steps, remembered for next time
 const setRest = (d) => { state.restSeconds = Math.max(15, Math.min(600, restLength() + d)); save(); tickSession(); };
@@ -4113,6 +4181,62 @@ $("#ws-finish").onclick = async () => {
     if (lifts.length && w && window.cloud && window.cloud.user && await ask("Post this session to the feed for your friends?")) postWorkout(w);
   }, 500);
 };
+
+// ---- every exercise: the ones in past workouts and routines, the ones you've done, and a library to pick from
+const EX_LIBRARY = {
+  Chest: ["Bench press", "Incline bench press", "Dumbbell bench press", "Incline dumbbell press", "Machine chest press", "Chest fly", "Cable crossover", "Push-up", "Chest dip"],
+  Back: ["Deadlift", "Lat pulldown", "Pull-up", "Chin-up", "Barbell row", "Dumbbell row", "Seated cable row", "T-bar row", "Face pull", "Back extension"],
+  Shoulders: ["Overhead press", "Dumbbell shoulder press", "Arnold press", "Lateral raise", "Front raise", "Rear delt fly", "Upright row", "Shrug"],
+  Arms: ["Barbell curl", "Dumbbell curl", "Hammer curl", "Preacher curl", "Cable curl", "Tricep pushdown", "Skull crusher", "Overhead tricep extension", "Close-grip bench press", "Tricep dip"],
+  Legs: ["Squat", "Front squat", "Goblet squat", "Hack squat", "Leg press", "Romanian deadlift", "Lunge", "Bulgarian split squat", "Step-up", "Leg extension", "Leg curl", "Hip thrust", "Glute bridge", "Calf raise"],
+  Core: ["Plank", "Side plank", "Crunch", "Cable crunch", "Hanging leg raise", "Russian twist", "Ab wheel rollout", "Dead bug"],
+  "Full body": ["Kettlebell swing", "Farmer's carry", "Burpee", "Box jump", "Battle ropes", "Sled push", "Rowing machine"]
+};
+let exPick = false, xlSeg = "yours";
+function renderExLib() {
+  const q = $("#xl-q").value.trim().toLowerCase(), hit = (n) => !q || String(n).toLowerCase().includes(q);
+  const live = exPick && !!state.session;
+  $("#xl-title").textContent = live ? "Add an exercise" : "Exercises";
+  $$("#xl-seg button").forEach((b) => b.classList.toggle("on", b.dataset.s === xlSeg));
+  $("#xl-hint").textContent = live ? "Tap ＋ to add it to your workout. Add as many as you like, then go back." : xlSeg === "lib" ? "Tap one to see your progress with it." : "";
+  const inSession = new Set(live ? state.session.exercises.map((x) => (x.exercise || "").toLowerCase()) : []);
+  const plus = (name, attrs) => live ? `<button class="xl-add${inSession.has(name.toLowerCase()) ? " in" : ""}" ${attrs} aria-label="Add ${esc(name)}">${inSession.has(name.toLowerCase()) ? "✓" : "＋"}</button>` : `<svg class="chev"><use href="#i-chev"/></svg>`;
+  const box = $("#xl-list"); let html = "";
+  if (xlSeg === "past") {
+    const groups = [];
+    const seen = new Set();
+    const add = (title, sub, lifts) => { const ls = lifts.filter((l) => l.exercise && hit(l.exercise)); if (ls.length) groups.push({ title, sub, lifts: ls }); };
+    for (const r of state.routines) add(r.name, "Routine", r.exercises.map((x) => ({ exercise: x.exercise, sets: x.sets, reps: x.reps, kg: x.kg })));
+    const past = [];
+    (state.day.workouts || []).forEach((w) => past.push({ date: state.day.date, w }));
+    for (const h of state.history) for (const w of h.workouts || []) past.push({ date: h.date, w });
+    for (const { date, w } of past) { if (!(w.lifts || []).length) continue; const key = w.name + "|" + w.lifts.map((l) => l.exercise).join(","); if (seen.has(key) && groups.length > 6) continue; seen.add(key); add(w.name, date === state.day.date ? "Today" : date === dateMinus(1) ? "Yesterday" : new Date(date + "T12:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" }), w.lifts); if (groups.length >= 12) break; }
+    html = groups.map((g, gi) => `<div class="xl-group"><div class="xl-ghead"><div><b>${esc(g.title)}</b><small>${esc(g.sub)}</small></div>${live ? `<button class="btn mint slim" data-all="${gi}">Add all</button>` : ""}</div>
+      <ul class="list xl-rows">${g.lifts.map((l, li) => `<li data-name="${esc(l.exercise)}"><div class="body"><div class="name">${esc(l.exercise)}</div><div class="detail">${esc(liftText(l).slice(l.exercise.length + 1))}</div></div>${plus(l.exercise, `data-g="${gi}" data-l="${li}"`)}</li>`).join("")}</ul></div>`).join("") || `<p class="empty">${q ? "No past exercise matches that." : "Finished workouts and routines appear here."}</p>`;
+    box.innerHTML = html;
+    box.querySelectorAll("[data-all]").forEach((b) => b.onclick = () => { const g = groups[+b.dataset.all]; g.lifts.forEach((l) => addToSession(l.exercise, l.detail)); toast(`Added ${g.lifts.length} exercise${g.lifts.length === 1 ? "" : "s"}`); renderExLib(); });
+    box.querySelectorAll("[data-g]").forEach((b) => b.onclick = (e) => { e.stopPropagation(); const l = groups[+b.dataset.g].lifts[+b.dataset.l]; addToSession(l.exercise, l.detail); toast(`Added ${l.exercise}`); renderExLib(); });
+  } else if (xlSeg === "yours") {
+    const yours = Object.values(state.exercises).filter((e) => hit(e.name)).sort((x, y) => String(y.lastUsed || "").localeCompare(String(x.lastUsed || "")));
+    html = `<ul class="list xl-rows">${yours.map((e) => { const best = e.bestSet ? `${e.bestSet.kg} kg × ${e.bestSet.reps}` : e.kg ? `${e.kg} kg × ${e.reps}` : "bodyweight"; return `<li data-name="${esc(e.name)}"><span class="thumb-sm tone-coral"><svg><use href="#i-lift"/></svg></span><div class="body"><div class="name">${esc(e.name)}</div><div class="detail">${esc(lastLine(e.name).replace(/^Last time /, "Last "))}${e.best1rm ? "" : ` · best ${best}`}</div></div>${plus(e.name, `data-n="${esc(e.name)}"`)}</li>`; }).join("")}</ul>`;
+    if (!yours.length) html = `<p class="empty">${q ? "None of yours match. Try the Library." : "Exercises you log show up here, with your best set."}</p>`;
+    box.innerHTML = html;
+  } else {
+    const mine = new Set(Object.keys(state.exercises));
+    html = Object.entries(EX_LIBRARY).map(([grp, names]) => { const ns = names.filter(hit); return ns.length ? `<h2 class="section-title xl-sec">${grp}</h2><ul class="list xl-rows">${ns.map((n) => `<li data-name="${esc(n)}"><div class="body"><div class="name">${esc(n)}</div>${mine.has(n.toLowerCase()) ? `<div class="detail">${esc(lastLine(n).replace(/^Last time /, "Last "))}</div>` : ""}</div>${plus(n, `data-n="${esc(n)}"`)}</li>`).join("")}</ul>` : ""; }).join("");
+    box.innerHTML = html || `<p class="empty">Nothing in the library matches that.</p>`;
+  }
+  // a name nobody has: add it as new
+  if (live && q) {
+    const exact = [...box.querySelectorAll("li[data-name]")].some((li) => li.dataset.name.toLowerCase() === q);
+    if (!exact) { box.insertAdjacentHTML(box.querySelector("li[data-name]") ? "beforeend" : "afterbegin", `<button class="btn mint xl-new" id="xl-new">＋ Add "${esc($("#xl-q").value.trim())}" as a new exercise</button>`); $("#xl-new").onclick = () => { const n = $("#xl-q").value.trim().replace(/^./, (c) => c.toUpperCase()); addToSession(n, null); toast(`Added ${n}`); $("#xl-q").value = ""; renderExLib(); }; }
+  }
+  box.querySelectorAll("[data-n]").forEach((b) => b.onclick = (e) => { e.stopPropagation(); const n = b.dataset.n; if (inSession.has(n.toLowerCase())) return; addToSession(n, null); toast(`Added ${n}`); renderExLib(); });
+  box.querySelectorAll("li[data-name]").forEach((li) => li.onclick = () => { if (live) { const btn = li.querySelector(".xl-add"); if (btn && !btn.classList.contains("in")) btn.click(); return; } openExercise(li.dataset.name); });
+}
+$("#xl-q").addEventListener("input", () => renderExLib());
+$("#xl-seg").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; xlSeg = b.dataset.s; renderExLib(); });
+$("#w-allex").onclick = () => { exPick = false; xlSeg = "yours"; $("#xl-q").value = ""; go("exlib"); };
 
 // ---- one exercise: best set, estimated 1RM, a chart of the last sessions
 let exerciseName = null;

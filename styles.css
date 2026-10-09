@@ -1646,3 +1646,38 @@ body.simple .fw-days input { font-size: 15px; }
 .ate.ate-edit .row-actions button.pri { background: var(--green); color: #fff; flex: 1.4; }
 .ate.ate-edit .row-actions button.danger { background: var(--coral-bg); color: var(--coral); }
 body.simple .ate.ate-edit .row-actions button { font-size: 15px; padding: 11px 4px; }
+/* ---- v161: workouts. Drag to reorder, done sets and exercises go dark, the next set stands out, an exercise library */
+.ws-ex { position: relative; background: var(--card); transition: opacity .2s; }
+.ws-ex .drag { flex: none; width: 28px; height: 36px; display: grid; place-items: center; color: var(--muted); background: none; border: 0; cursor: grab; touch-action: none; padding: 0; }
+.ws-ex .drag svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 3.2; stroke-linecap: round; fill: none; }
+.ws-ex.dragging { z-index: 5; box-shadow: 0 10px 28px rgba(0,0,0,.35); border-radius: 14px; transition: none; }
+#ws-exercises.reordering .ws-ex { transition: transform .18s; padding: 8px 6px; }
+#ws-exercises.reordering .ws-ex.dragging { transition: none; }
+#ws-exercises.reordering .ws-ex .last, #ws-exercises.reordering .ws-ex .ws-set, #ws-exercises.reordering .ws-ex .set-acts { display: none; }
+#ws-exercises.reordering { user-select: none; -webkit-user-select: none; }
+.ws-set { border-radius: 12px; padding: 3px; margin-left: -3px; margin-right: -3px; transition: background .2s, opacity .2s; }
+.ws-set.done { background: var(--mint-2); }
+.ws-set.done > span, .ws-set.done input { opacity: .45; }
+.ws-set.done .tick { background: var(--green); color: #fff; }
+.ws-set.next { box-shadow: inset 0 0 0 2px var(--green); }
+.ws-set.next > span { color: var(--green); font-weight: 700; }
+.ws-set .pb { color: #e8a317; font-size: 12px; letter-spacing: .03em; }
+.ws-ex.complete { opacity: .55; }
+.ws-ex.complete .ex-head input { text-decoration: line-through; text-decoration-thickness: 1px; }
+.ws-ex .ex-done { flex: none; font-size: 12px; font-weight: 800; color: var(--green); background: var(--mint-2); border-radius: 999px; padding: 4px 9px; }
+.ws-tip { margin: 6px 2px 0; }
+.w-sets li { align-items: center; }
+.w-addlift { flex: none; width: 30px; height: 30px; border-radius: 50%; background: var(--green); color: #fff; border: 0; font-size: 16px; font-weight: 800; cursor: pointer; margin-left: 8px; }
+.w-allex { margin-top: 6px; }
+.xl-seg { margin: 10px 0 6px; }
+.xl-group { margin-top: 12px; }
+.xl-ghead { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 2px 6px; }
+.xl-ghead b { display: block; font-size: 15px; }
+.xl-ghead small { color: var(--muted); font-size: 12px; }
+.xl-ghead .btn { width: auto; margin: 0; padding: 7px 14px; }
+.xl-rows li { cursor: pointer; }
+.xl-sec { margin-top: 14px; }
+.xl-add { flex: none; width: 34px; height: 34px; border-radius: 50%; background: var(--green); color: #fff; border: 0; font-size: 18px; font-weight: 800; cursor: pointer; }
+.xl-add.in { background: var(--mint-2); color: var(--green); cursor: default; }
+.xl-new { margin: 10px 0 0; }
+body.simple .xl-add, body.simple .w-addlift { width: 40px; height: 40px; }
