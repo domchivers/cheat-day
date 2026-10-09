@@ -38,6 +38,7 @@ struct WeighInSheet: View {
             }
             .padding(.top, 30)
             .sensoryFeedback(.selection, trigger: kg)
+            .keyboardDone()
             .navigationTitle("Weigh in")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

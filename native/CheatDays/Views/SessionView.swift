@@ -49,6 +49,8 @@ struct SessionView: View {
         }
         .environment(\.editMode, .constant(reordering ? .active : .inactive))
         .safeAreaInset(edge: .bottom) { timerBar }
+        .scrollDismissesKeyboard(.interactively)
+        .keyboardDone()
         .scrollContentBackground(.hidden)
         .background(Theme.bg)
         .navigationTitle("Session")

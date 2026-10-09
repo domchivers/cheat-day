@@ -20,7 +20,11 @@ struct MealsView: View {
                 Button { editing = Self.blank() } label: { Label("Build a meal", systemImage: "plus.circle.fill") }
                 ForEach(today, id: \.self) { m in
                     Button {
-                        let items = store.todayItems.filter { Meals.of($0) == m }.map { it -> JSON in var c = it; c["id"] = uid(); c.removeValue(forKey: "meal"); return c }
+                        let items = store.todayItems.filter { Meals.of($0) == m }.map { it -> JSON in
+                            var c = it; c["id"] = uid(); c.removeValue(forKey: "meal")
+                            if pos(c["grams"]) == nil, let g = MealEditor.grams(it) { c["grams"] = g.rounded() }
+                            return c
+                        }
                         var meal = Self.blank(); meal["name"] = "My \(m.lowercased())"; meal["items"] = items
                         editing = meal
                     } label: { Label("Save today's \(m.lowercased()) as a meal", systemImage: "square.and.arrow.down") }
@@ -37,7 +41,7 @@ struct MealsView: View {
                                 FoodDot(name: str(m["name"]), size: 36)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(str(m["name"])).font(.body.weight(.semibold))
-                                    Text("\(list(m["items"]).count) foods · \(Fmt.int(per)) kcal a portion · \(Int(num(basis["pServ"]) ?? 0))g protein").font(.footnote).foregroundStyle(.secondary)
+                                    Text("\(num(basis["servingSize"]).map { "\(Fmt.int($0)) g a portion · " } ?? "")\(Fmt.int(per)) kcal · \(Int(num(basis["pServ"]) ?? 0))g protein").font(.footnote).foregroundStyle(.secondary)
                                 }
                                 Spacer()
                                 Button {
@@ -82,6 +86,7 @@ struct MealEditor: View {
     var done: () -> Void
     @State private var picking = false
     @State private var portionsToAdd = 1.0
+    @State private var gramsToAdd: Double?
     @State private var newStep = ""
     private var store: Store { Store.shared }
 
@@ -102,18 +107,26 @@ struct MealEditor: View {
                             FoodDot(name: str(it["name"]), size: 30)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(str(it["name"])).font(.subheadline.weight(.semibold))
-                                Text(FoodMath.amountText(it, kcal: num(it["kcal"]) ?? 0)).font(.caption).foregroundStyle(.secondary)
+                                Text("\(Fmt.int(num(it["kcal"]) ?? 0)) kcal").font(.caption).foregroundStyle(.secondary).monospacedDigit()
                             }
                             Spacer()
-                            Menu {
-                                ForEach([0.5, 0.75, 1.25, 1.5, 2], id: \.self) { f in Button("× \(Fmt.one(f))") { scale(i, f) } }
-                            } label: { Text(Fmt.int(num(it["kcal"]) ?? 0)).font(.subheadline.weight(.bold)).monospacedDigit() }
+                            HStack(spacing: 4) {
+                                TextField("–", text: Binding(get: { Self.grams(it).map { Fmt.int($0) } ?? "" }, set: { setGrams(i, $0) }))
+                                    .keyboardType(.numberPad).multilineTextAlignment(.trailing).frame(width: 64)
+                                    .font(.subheadline.weight(.bold).monospacedDigit())
+                                Text("g").font(.subheadline).foregroundStyle(.secondary)
+                            }
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                         }
                     }
                     .onDelete { idx in var its = items; its.remove(atOffsets: idx); meal["items"] = its }
                     Button { picking = true } label: { Label("Add a food", systemImage: "plus.circle.fill") }
                 } header: { Text("Foods") } footer: {
-                    if !items.isEmpty { Text("Whole meal \(Fmt.int(per * portions)) kcal · \(Fmt.int(per)) a portion · \(Int(num(basis["pServ"]) ?? 0))g protein a portion. Tap a number to change the amount.") }
+                    if !items.isEmpty {
+                        let total = items.compactMap { Self.grams($0) }.reduce(0, +)
+                        Text("Whole meal \(Fmt.int(total)) g, \(Fmt.int(per * portions)) kcal. A portion is \(Fmt.int(total / portions)) g: \(Fmt.int(per)) kcal, \(Int(num(basis["pServ"]) ?? 0))g protein. Type the grams to change an amount.")
+                    }
                 }
                 Section("Method (optional)") {
                     ForEach(steps.indices, id: \.self) { i in
@@ -125,17 +138,38 @@ struct MealEditor: View {
                 }
                 if !items.isEmpty {
                     Section {
-                        Stepper("\(Fmt.one(portionsToAdd)) portion\(portionsToAdd == 1 ? "" : "s"): \(Fmt.int(per * portionsToAdd)) kcal", value: $portionsToAdd, in: 0.5...10, step: 0.5)
-                        Button {
-                            save()
-                            store.add(store.mealBasis(meal), kcal: per * portionsToAdd, meal: Meals.now)
-                            done()
-                        } label: { Label("Add to today", systemImage: "plus.circle.fill").font(.headline) }
+                        let k100 = num(basis["kcalPer100"]), portionG = num(basis["servingSize"])
+                        if let k100, let portionG {
+                            // in grams: start at one portion, change it in 10 g steps or type it
+                            let g = gramsToAdd ?? portionG.rounded()
+                            HStack {
+                                Text("How much")
+                                Spacer()
+                                Stepper(value: Binding(get: { g }, set: { gramsToAdd = max(10, $0) }), in: 10...3000, step: 10) { EmptyView() }.labelsHidden()
+                                TextField("g", text: Binding(get: { Fmt.int(g) }, set: { if let v = Double($0), v > 0 { gramsToAdd = v } }))
+                                    .keyboardType(.numberPad).multilineTextAlignment(.trailing).frame(width: 60).font(.headline.monospacedDigit())
+                                Text("g").foregroundStyle(.secondary)
+                            }
+                            Button {
+                                save()
+                                store.add(store.mealBasis(meal), kcal: k100 * g / 100, meal: Meals.now)
+                                done()
+                            } label: { Label("Add \(Fmt.int(g)) g to today · \(Fmt.int(k100 * g / 100)) kcal", systemImage: "plus.circle.fill").font(.headline) }
+                        } else {
+                            Stepper("\(Fmt.one(portionsToAdd)) portion\(portionsToAdd == 1 ? "" : "s"): \(Fmt.int(per * portionsToAdd)) kcal", value: $portionsToAdd, in: 0.5...10, step: 0.5)
+                            Button {
+                                save()
+                                store.add(store.mealBasis(meal), kcal: per * portionsToAdd, meal: Meals.now)
+                                done()
+                            } label: { Label("Add to today", systemImage: "plus.circle.fill").font(.headline) }
+                        }
                     }
                 }
             }
             .scrollContentBackground(.hidden)
             .background(Theme.bg)
+            .keyboardDone()
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle(str(meal["name"]).isEmpty ? "New meal" : str(meal["name"]))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -149,6 +183,24 @@ struct MealEditor: View {
                 FoodPicker { item in var its = list(meal["items"]); its.append(item); meal["items"] = its }
             }
         }
+    }
+
+    /// An ingredient's weight: kept on it, or worked out from its calories.
+    static func grams(_ it: JSON) -> Double? {
+        if let g = pos(it["grams"]) { return g }
+        return FoodMath.amounts(it, kcal: num(it["kcal"]) ?? 0).grams
+    }
+
+    /// Typing grams: the calories follow, from the food's kcal per 100 g (or in proportion, if that isn't known).
+    private func setGrams(_ i: Int, _ text: String) {
+        var its = list(meal["items"]); guard i < its.count else { return }
+        var it = its[i]
+        guard let g = Double(text.filter { $0.isNumber || $0 == "." }), g > 0 else { return }
+        if let k100 = FoodMath.kcalPer100(it) { it["kcal"] = Int((k100 * g / 100).rounded()) }
+        else if let old = Self.grams(it), old > 0 { it["kcal"] = Int(((num(it["kcal"]) ?? 0) * g / old).rounded()) }
+        else { it["kcalPer100"] = (num(it["kcal"]) ?? 0) / g * 100 }   // first weight for a portion-only food: its calories stay
+        it["grams"] = g
+        its[i] = it; meal["items"] = its
     }
 
     private func scale(_ i: Int, _ f: Double) {
@@ -215,6 +267,7 @@ struct FoodPicker: View {
     private func pick(_ basis: JSON, kcal: Double) {
         var item = FoodMath.basisOf(basis)
         item["id"] = uid(); item["kcal"] = Int(kcal.rounded())
+        if let g = FoodMath.amounts(basis, kcal: kcal).grams { item["grams"] = g.rounded() }
         add(item); dismiss()
     }
 }

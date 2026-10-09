@@ -204,6 +204,7 @@ struct BodyEntrySheet: View {
                     }
                 } footer: { Text("Only weight is needed. Fill in whatever your scale shows.") }
             }
+            .keyboardDone()
             .navigationTitle("Reading")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

@@ -105,3 +105,16 @@ struct PizzaIcon: View {
         PizzaSlice().fill(color, style: FillStyle(eoFill: true)).frame(width: size, height: size)
     }
 }
+
+extension View {
+    /// Number keyboards have no return key: a Done button above the keyboard puts it away (and keeps what was typed).
+    func keyboardDone() -> some View {
+        toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
+                    .fontWeight(.bold)
+            }
+        }
+    }
+}

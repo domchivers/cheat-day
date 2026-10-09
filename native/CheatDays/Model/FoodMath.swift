@@ -63,6 +63,7 @@ enum FoodMath {
     /// "2 slices", "150 g", "½ portion" for a line in the day.
     static func amountText(_ b: JSON, kcal: Double) -> String {
         let a = amounts(b, kcal: kcal)
+        if str(b["source"]) == "meal", let g = a.grams { return "\(Fmt.int(g)) g" }   // meals are always in grams
         let label = str(b["unitLabel"])
         if !label.isEmpty, let s = a.servings { return "\(Fmt.one(s)) \(plural(s, label))" }
         var parts: [String] = []

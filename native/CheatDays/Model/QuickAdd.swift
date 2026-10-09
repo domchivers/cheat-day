@@ -67,7 +67,7 @@ extension Store {
         for m in list(doc["meals"]) {
             let basis = mealBasis(m), kcal = (num(basis["kcalPerServing"]) ?? 0).rounded()
             guard kcal > 0 else { continue }
-            out.append(QuickEntry(key: "meal:" + str(m["id"]), basis: basis, kcal: kcal, detail: "1 portion of \(Int(num(m["portions"]) ?? 1))",
+            out.append(QuickEntry(key: "meal:" + str(m["id"]), basis: basis, kcal: kcal, detail: num(basis["servingSize"]).map { "\(Fmt.int($0)) g" } ?? "1 portion of \(Int(num(m["portions"]) ?? 1))",
                                   uses: num(m["uses"]) ?? 0, lastUsed: str(m["lastUsed"]), kind: .meal))
         }
         for r in list(doc["recent"]) {
