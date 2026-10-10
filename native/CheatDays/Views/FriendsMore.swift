@@ -141,17 +141,8 @@ struct FriendsMore: View {
     }
 
     private func send(_ it: JSON, to p: Friends.Person) async {
-        guard let me = api.userId else { return }
-        var row: JSON = ["from_user": me, "to_user": p.id, "name": it["name"] ?? "", "kcal": Int((num(it["kcal"]) ?? 0).rounded()),
-                         "unit": str(it["unit"]).isEmpty ? "g" : str(it["unit"]), "payload": FoodMath.basisOf(it)]
-        row["grams"] = num(it["grams"]).map { Int($0.rounded()) as Any } ?? NSNull()
-        if str(it["photo"]).hasPrefix("http") { row["photo"] = str(it["photo"]) } else { row["photo"] = NSNull() }
-        do {
-            _ = try await api.rest("/rest/v1/sends", method: "POST", body: [row])
-            _ = try? await api.call("/functions/v1/push", body: ["action": "notify", "to": p.id, "kind": "send", "text": str(it["name"])])
-            store.perform(["type": "bump", "key": "sendCount"], syncAfter: 3)
-            flash("Sent \(str(it["name"])) to \(p.name)")
-        } catch { flash("Couldn't send: \(error.localizedDescription)") }
+        do { try await friends.send(it, to: p); flash("Sent \(str(it["name"])) to \(p.name)") }
+        catch { flash("Couldn't send: \(error.localizedDescription)") }
     }
 
     private func flash(_ t: String) {

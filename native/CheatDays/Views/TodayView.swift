@@ -35,6 +35,7 @@ struct TodayView: View {
     @State private var showCheat = false
     @State private var rankUp: Rank?
     @State private var badgeNote: String?
+    @State private var sendingItem: JSON?
     private var store: Store { Store.shared }
 
     private var date: String { DayKey.shift(store.today, days: offset) }
@@ -130,6 +131,7 @@ struct TodayView: View {
             .fullScreenCover(isPresented: Binding(get: { rankUp != nil }, set: { if !$0 { rankUp = nil } })) {
                 if let r = rankUp { RankUpView(rank: r) { rankUp = nil } }
             }
+            .modifier(SendFoodDialog(item: $sendingItem) { note($0) })
             .onAppear { checkRank(); checkBadges() }
             .onChange(of: store.rank.level) { _, _ in checkRank() }
             .onChange(of: store.lastSynced) { _, _ in checkBadges(); Task { await Inbox.shared.refresh() } }
@@ -259,6 +261,11 @@ struct TodayView: View {
         .accessibilityLabel("Plan your cheat day")
     }
 
+    private func note(_ text: String) {
+        withAnimation(.snappy) { badgeNote = text }
+        Task { try? await Task.sleep(nanoseconds: 2_500_000_000); withAnimation { if badgeNote == text { badgeNote = nil } } }
+    }
+
     /// New achievements (and finished weekly goals) get banked, with a note at the top.
     private func checkBadges() {
         let fresh = store.checkBadges()
@@ -303,6 +310,12 @@ struct TodayView: View {
                             if offset == 0 {
                                 Button(role: .destructive) { withAnimation { store.delete(line.id) } } label: { Label("Delete", systemImage: "trash") }
                             }
+                        }
+                        .swipeActions(edge: .leading) {
+                            Button { sendingItem = line.item } label: { Label("Send", systemImage: "paperplane.fill") }.tint(Theme.accent)
+                        }
+                        .contextMenu {
+                            Button { sendingItem = line.item } label: { Label("Send to a friend", systemImage: "paperplane") }
                         }
                         .transition(.move(edge: .leading).combined(with: .opacity))
                 }
@@ -381,6 +394,27 @@ struct FoodRow: View {
 }
 
 /// How much: count, weigh or calories, with the meal, then add (or save a change).
+/// Pick a friend to send one of your foods to (kept out of TodayView's long modifier chain).
+private struct SendFoodDialog: ViewModifier {
+    @Binding var item: JSON?
+    var note: (String) -> Void
+    func body(content: Content) -> some View {
+        content
+            .confirmationDialog("Send \(str(item?["name"])) to…", isPresented: Binding(get: { item != nil }, set: { if !$0 { item = nil } }), titleVisibility: .visible) {
+                ForEach(Friends.shared.people) { p in
+                    Button(p.name) {
+                        guard let it = item else { return }
+                        Task {
+                            do { try await Friends.shared.send(it, to: p); note("Sent \(str(it["name"])) to \(p.name)") }
+                            catch { note("Couldn't send: \(error.localizedDescription)") }
+                        }
+                    }
+                }
+            } message: { Text(Friends.shared.people.isEmpty ? "Add a friend first, in the Friends tab." : "It'll wait on their Today, ready to add in one tap.") }
+            .task { if Friends.shared.people.isEmpty { await Friends.shared.load() } }
+    }
+}
+
 struct AmountView: View {
     enum Mode: String, CaseIterable, Identifiable { case count = "Count", grams = "Weigh", kcal = "Calories"; var id: String { rawValue } }
 
@@ -407,6 +441,16 @@ struct AmountView: View {
     }
 
     private var name: String { str(target.basis["name"]) }
+
+    private func macro(_ label: String, _ grams: Double, _ tint: Color) -> some View {
+        VStack(spacing: 2) {
+            Text("\(Fmt.one(grams))g").font(.headline.weight(.heavy)).monospacedDigit().contentTransition(.numericText(value: grams))
+            Text(label).font(.caption).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 8)
+        .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(tint.opacity(0.4), lineWidth: 1))
+    }
     private var modes: [Mode] { [conv.countKcal != nil ? Mode.count : nil, conv.kcalPer100 != nil ? Mode.grams : nil, Mode.kcal].compactMap { $0 } }
     private var unit: String { str(target.basis["unit"]).isEmpty ? "g" : str(target.basis["unit"]) }
     private var leftAfter: Double {
@@ -432,6 +476,17 @@ struct AmountView: View {
                         .padding(.top, 10)
                     Text(leftAfter >= 0 ? "kcal · \(Fmt.int(leftAfter)) left after this" : "kcal · \(Fmt.int(-leftAfter)) over your day")
                         .font(.footnote.weight(.semibold)).foregroundStyle(leftAfter >= 0 ? Color.secondary : Theme.warn)
+                    if let m = FoodMath.macros(target.basis, kcal: kcal) {
+                        HStack(spacing: 10) {
+                            macro("Protein", m.p, Color(red: 0.36, green: 0.82, blue: 0.62))
+                            macro("Carbs", m.c, Color(red: 0.98, green: 0.78, blue: 0.40))
+                            macro("Fat", m.f, Color(red: 0.93, green: 0.55, blue: 0.70))
+                        }
+                        .padding(.top, 10)
+                        .animation(.snappy, value: kcal)
+                    } else {
+                        Text("No protein, carbs or fat on this one").font(.caption).foregroundStyle(.tertiary).padding(.top, 6)
+                    }
                     if let note = target.note, !note.isEmpty {
                         Label(note, systemImage: "info.circle").font(.footnote).foregroundStyle(.secondary)
                             .multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
