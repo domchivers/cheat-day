@@ -13,6 +13,7 @@ struct AssistantView: View {
     @State private var pending: [UIImage] = []
     @State private var picked: [PhotosPickerItem] = []
     @State private var camera = false
+    @State private var library = false
     @State private var busy = false
     @State private var problem: String?
     @State private var done: [UUID: String] = [:]
@@ -29,6 +30,11 @@ struct AssistantView: View {
                     LazyVStack(alignment: .leading, spacing: 12) {
                         bot(Text("**Ask me anything about your day.** Photograph a plate and tell me what it is, ask for a plan for the rest of today, a recipe that fits, a lighter version of something, or tell me what you actually ate and I'll fix the list."))
                         if turns.isEmpty {
+                            HStack(spacing: 10) {
+                                Button { camera = true } label: { Label("Snap my plate", systemImage: "camera.fill").frame(maxWidth: .infinity) }
+                                Button { library = true } label: { Label("From photos", systemImage: "photo.on.rectangle").frame(maxWidth: .infinity) }
+                            }
+                            .buttonStyle(.bordered).buttonBorderShape(.roundedRectangle(radius: 14)).controlSize(.large)
                             Flow { ForEach(chips, id: \.self) { c in Chip(text: c, on: false) { text = c; send() } } }
                         }
                         ForEach(turns) { t in turnView(t).id(t.id) }
@@ -56,7 +62,8 @@ struct AssistantView: View {
             }
             .sheet(isPresented: $showChats) { ChatsList { c in turns = Assistant.turns(from: c); chatId = str(c["id"]); done = [:]; showChats = false } }
             .fullScreenCover(isPresented: $camera) { CameraPicker { img in camera = false; if let img { pending.append(img) } }.ignoresSafeArea() }
-            .onChange(of: picked) { _, items in Task { await load(items) } }
+            .photosPicker(isPresented: $library, selection: $picked, maxSelectionCount: 4, matching: .images)
+            .onChange(of: picked) { _, items in if !items.isEmpty { Task { await load(items) } } }
             .onAppear { if !firstQuestion.isEmpty && turns.isEmpty { text = firstQuestion; send() } }
         }
     }
@@ -265,7 +272,7 @@ struct AssistantView: View {
             HStack(spacing: 10) {
                 Menu {
                     Button { camera = true } label: { Label("Take a photo", systemImage: "camera") }
-                    PhotosPicker(selection: $picked, maxSelectionCount: 4, matching: .images) { Label("Choose photos", systemImage: "photo.on.rectangle") }
+                    Button { library = true } label: { Label("Choose photos", systemImage: "photo.on.rectangle") }
                 } label: { Image(systemName: "camera.fill").font(.title3).foregroundStyle(Theme.accent).frame(width: 38, height: 38).background(Theme.hero, in: Circle()) }
                 TextField("Ask, or say what you ate", text: $text, axis: .vertical).lineLimit(1...4).focused($typing)
                     .padding(.horizontal, 14).padding(.vertical, 9)
