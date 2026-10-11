@@ -1,5 +1,5 @@
 import UIKit
-import Vision
+@preconcurrency import Vision
 
 /// Reads a nutrition table on the phone, with no AI: the iPhone's own text recognition finds the words and numbers,
 /// then plain rules pick out energy, protein, carbs, fat and the serving size, choosing the per-100 column on UK and
