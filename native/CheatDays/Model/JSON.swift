@@ -67,7 +67,6 @@ enum Fmt {
     static func int(_ v: Double) -> String { grouped.string(from: NSNumber(value: v.rounded())) ?? String(Int(v.rounded())) }
     /// Whole numbers from 10 up, one decimal below (the web app's fmt1).
     static func one(_ v: Double) -> String {
-        if abs(v) >= 10 { return String(Int(v.rounded())) }
         let r = (v * 10).rounded() / 10
         return r == r.rounded() ? String(Int(r)) : String(format: "%.1f", r)
     }

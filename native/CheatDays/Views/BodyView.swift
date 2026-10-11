@@ -59,16 +59,18 @@ struct BodyView: View {
                 }
             }
             Section {
-                NavigationLink { WebScreen(view: "body", pushed: true).navigationTitle("Scale imports").navigationBarTitleDisplayMode(.inline) } label: {
-                    Label("Scale imports and connections", systemImage: "link")
+                ScaleConnectRow()
+                NavigationLink { WebScreen(view: "body", pushed: true).navigationTitle("Other imports").navigationBarTitleDisplayMode(.inline) } label: {
+                    Label("Other imports (CSV, Shortcut)", systemImage: "link")
                 }
-            } footer: { Text("Import a CSV from your scale's app, or connect a Shortcut so readings arrive on their own.") }
+            } header: { Text("Your scale") } footer: { Text("Smart scale apps (VeSync, Withings, Eufy, Renpho, Fitbit, Garmin and more) save to Apple Health. Connect it and every weigh-in arrives on its own.") }
         }
         .scrollContentBackground(.hidden)
         .background(Theme.bg)
         .navigationTitle("Body")
         .navigationBarTitleDisplayMode(.inline)
-        .refreshable { await store.pullBody() }
+        .refreshable { await store.pullBody(); await HealthSync.pull(force: true) }
+        .task { await HealthSync.pull() }
         .sheet(item: Binding(get: { entry.map { EntryBox(row: $0) } }, set: { entry = $0?.row })) { b in
             BodyEntrySheet(row: b.row) { entry = nil }.presentationDetents([.large])
         }
@@ -234,19 +236,36 @@ struct BodyEntrySheet: View {
     }
 
     private func read(_ item: PhotosPickerItem?) async {
-        guard let item, let data = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: data), let part = Gemini.imagePart(img) else { return }
+        guard let item, let data = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: data) else { return }
         reading = true; problem = nil
         defer { reading = false }
+        do {
+            let a = try await BodyReader.read(img)
+            for f in fields { if let v = pos(a[f.0]) { values[f.0] = Fmt.one(v) } }
+            if let d = a["day"] as? String { date = DayKey.date(d) }
+        } catch { problem = error.localizedDescription }
+    }
+}
+
+/// A screenshot of a scale's app: the measurements on it, and its date if it shows one.
+enum BodyReader {
+    static let fields: [(String, String, String)] = [
+        ("weight", "Weight", "kg"), ("fat", "Body fat", "%"), ("muscle", "Muscle", "kg"), ("water", "Water", "%"),
+        ("bone", "Bone", "kg"), ("visceral", "Visceral fat", "level"), ("age", "Body age", "years"), ("bmi", "BMI", "")
+    ]
+
+    static func read(_ img: UIImage) async throws -> JSON {
+        guard let part = Gemini.imagePart(img) else { throw Gemini.Failure(message: "Couldn't read that picture.") }
         var props = JSON()
-        for f in fields { props[f.0] = ["type": "number", "nullable": true, "description": "\(f.1) in \(f.2), if shown"] as JSON }
+        for f in fields { props[f.0] = ["type": "number", "nullable": true, "description": "\(f.1)\(f.2.isEmpty ? "" : " in \(f.2)"), if shown, with its decimals"] as JSON }
         props["date"] = ["type": "string", "nullable": true, "description": "The reading's date as YYYY-MM-DD, if shown"] as JSON
         let schema: JSON = ["type": "object", "properties": props, "required": Array(props.keys)]
-        do {
-            let a = try await Gemini.ask(schema: schema, parts: [part, ["text": "This is a screenshot from a smart scale's app. Read the body measurements shown. Leave anything not shown as null."]], quick: true)
-            for f in fields { if let v = pos(a[f.0]) { values[f.0] = Fmt.one(v) } }
-            if let d = a["date"] as? String, DayKey.string(DayKey.date(d)) == d, DayKey.date(d) <= Date() { date = DayKey.date(d) }   // only a real date, never a guess
-            if fields.allSatisfy({ pos(a[$0.0]) == nil }) { problem = "Couldn't find any readings in that picture." }
-        } catch { problem = error.localizedDescription }
+        let a = try await Gemini.ask(schema: schema, parts: [part, ["text": "This is a screenshot from a smart scale's app. Read the body measurements shown, exactly as printed, decimals included. Leave anything not shown as null."]], quick: true)
+        var out = JSON()
+        for f in fields { if let v = pos(a[f.0]) { out[f.0] = (v * 10).rounded() / 10 } }
+        if let d = a["date"] as? String, DayKey.string(DayKey.date(d)) == d, DayKey.date(d) <= Date() { out["day"] = d }   // only a real date, never a guess
+        if fields.allSatisfy({ out[$0.0] == nil }) { throw Gemini.Failure(message: "Couldn't find any readings in that picture.") }
+        return out
     }
 }
 
@@ -272,5 +291,42 @@ extension Store {
     func setGoalWeight(_ kg: Double) {
         perform(["type": "set", "key": "goalWeight", "value": (kg * 2).rounded() / 2], syncAfter: 2)
         if dict(doc["goalStart"]).isEmpty, let w = latestWeight?.kg { perform(["type": "set", "key": "goalStart", "value": ["weight": w, "day": today] as JSON], syncAfter: 2) }
+    }
+}
+
+/// Connect a smart scale through Apple Health: one tap, then readings come in by themselves.
+struct ScaleConnectRow: View {
+    @State private var on = HealthSync.on
+    @State private var busy = false
+    @State private var note: String?
+    @State private var confirmOff = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 12) {
+                Image(systemName: "heart.text.square.fill").font(.title2).foregroundStyle(.pink)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(on ? "Connected to Apple Health" : "Connect your scale").font(.subheadline.weight(.semibold))
+                    Text(on ? (HealthSync.lastPull.map { "Checked \($0.formatted(.relative(presentation: .named)))" } ?? "Waiting for a reading") : "Through Apple Health, any brand").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                if busy { ProgressView() }
+                else if on { Button("Turn off") { confirmOff = true }.font(.caption.weight(.semibold)).buttonStyle(.borderless).foregroundStyle(.secondary) }
+                else { Button("Connect") { Task { await connect() } }.buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(.small).foregroundStyle(.black) }
+            }
+            if let note { Text(note).font(.caption).foregroundStyle(.secondary) }
+        }
+        .confirmationDialog("Stop reading weigh-ins from Apple Health?", isPresented: $confirmOff, titleVisibility: .visible) {
+            Button("Turn off", role: .destructive) { HealthSync.disconnect(); on = false; note = nil }
+        } message: { Text("Readings already in Cheat Days stay.") }
+    }
+
+    private func connect() async {
+        busy = true; defer { busy = false }
+        do {
+            let n = try await HealthSync.connect()
+            on = true
+            note = n > 0 ? "\(n) day\(n == 1 ? "" : "s") of readings came in." : "Connected. In your scale's app (in VeSync: Me, then Third-party services) turn on Apple Health, and weigh-ins arrive here."
+        } catch { note = error.localizedDescription }
     }
 }

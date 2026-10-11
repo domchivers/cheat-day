@@ -67,7 +67,7 @@ enum FoodMath {
         let label = str(b["unitLabel"])
         if !label.isEmpty, let s = a.servings { return "\(Fmt.one(s)) \(plural(s, label))" }
         var parts: [String] = []
-        if let g = a.grams { parts.append("\(Fmt.one(g)) \(a.unit)") }
+        if let g = a.grams { parts.append("\(g >= 10 ? Fmt.int(g) : Fmt.one(g)) \(a.unit)") }
         if let p = a.pieces { parts.append("\(Fmt.one(p)) pcs") } else if let s = a.servings { parts.append("\(Fmt.one(s)) serv") }
         return parts.joined(separator: " · ")
     }

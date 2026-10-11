@@ -46,11 +46,12 @@ struct MainTabs: View {
             await Store.shared.sync()
             if Store.shared.needsOnboarding { onboarding = true }
             await Store.shared.applyHelperChanges(); await Store.shared.pullBody(); await Reminders.reschedule(Store.shared)
+            await HealthSync.pull()
         }
         .fullScreenCover(isPresented: $onboarding) { OnboardingView(firstRun: true) { onboarding = false } }
         .onChange(of: phase) { _, now in
             if now == .background { Store.shared.flush() }
-            if now == .active { Task { await Store.shared.sync(); await Store.shared.applyHelperChanges(); await Reminders.reschedule(Store.shared) } } }
+            if now == .active { Task { await Store.shared.sync(); await Store.shared.applyHelperChanges(); await Reminders.reschedule(Store.shared); await HealthSync.pull() } } }
         .onChange(of: tab) { _, _ in
             if Store.shared.lastSynced.map({ Date().timeIntervalSince($0) > 60 }) ?? true { Task { await Store.shared.sync() } }
         }

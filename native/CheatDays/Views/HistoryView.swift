@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 /// Weigh in: a big number you nudge, or type.
@@ -5,6 +6,10 @@ struct WeighInSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var kg: Double
     @State private var text: String
+    @State private var extra = JSON()          // body fat and the rest, from a screenshot
+    @State private var picked: PhotosPickerItem?
+    @State private var reading = false
+    @State private var problem: String?
     private var store: Store { Store.shared }
 
     init() {
@@ -34,18 +39,55 @@ struct WeighInSheet: View {
                 if let last = store.latestWeight {
                     Text("Last: \(String(format: "%.1f", last.kg)) kg, \(Store.when(last.day))").font(.subheadline).foregroundStyle(.secondary)
                 }
+                if !extra.isEmpty {
+                    Text(BodyReader.fields.compactMap { f in f.0 == "weight" ? nil : pos(extra[f.0]).map { "\(f.1) \(String(format: "%.1f", $0))\(f.2 == "%" ? "%" : "")" } }.joined(separator: " · "))
+                        .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.horizontal)
+                }
+                VStack(spacing: 10) {
+                    PhotosPicker(selection: $picked, matching: .images) {
+                        Label(reading ? "Reading the screenshot…" : "From a screenshot of your scale's app", systemImage: "photo.on.rectangle")
+                            .font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered).buttonBorderShape(.capsule).disabled(reading)
+                    if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn) }
+                    if !HealthSync.on { ScaleConnectRow().padding(12).background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous)) }
+                }
+                .padding(.horizontal, 20)
                 Spacer()
             }
             .padding(.top, 30)
             .sensoryFeedback(.selection, trigger: kg)
+            .onChange(of: picked) { _, item in Task { await read(item) } }
             .keyboardDone()
             .navigationTitle("Weigh in")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("Save") { store.weighIn(kg); dismiss() }.fontWeight(.bold) }
+                ToolbarItem(placement: .confirmationAction) { Button("Save") { save(); dismiss() }.fontWeight(.bold) }
             }
         }
+    }
+}
+
+extension WeighInSheet {
+    fileprivate func save() {
+        if extra.isEmpty { store.weighIn(kg); return }
+        var row = extra
+        row["weight"] = (kg * 10).rounded() / 10
+        if row["day"] == nil { row["day"] = store.today }
+        row["updatedAt"] = ISO.now()
+        store.saveBody(row)
+    }
+
+    fileprivate func read(_ item: PhotosPickerItem?) async {
+        guard let item, let data = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: data) else { return }
+        reading = true; problem = nil
+        defer { reading = false }
+        do {
+            let a = try await BodyReader.read(img)
+            if let w = pos(a["weight"]) { kg = w; text = String(format: "%.1f", w) }
+            extra = a; extra.removeValue(forKey: "weight")
+        } catch { problem = error.localizedDescription }
     }
 }
 
