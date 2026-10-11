@@ -47,6 +47,12 @@ enum LabelReader {
 
     /// Read a photo. `progress` gets short updates ("Checking the numbers…").
     static func read(_ image: UIImage, progress: @escaping @MainActor (String) -> Void) async throws -> Result {
+        // a nutrition table: read on the phone by rules, no AI (quicker, and the printed numbers exactly)
+        await progress("Reading the table…")
+        if let quick = await NutritionTable.read(image) {
+            return Result(item: quick, note: "Read off the nutrition table on your phone. Check the numbers match the pack.")
+        }
+        await progress("Reading the photo…")
         guard let imagePart = Gemini.imagePart(image) else { throw Failure(message: "Couldn't read that photo.") }
         var text = prompt
         if let c = ShopCountry.current { text += "\nThe person shops in \(c.name). If you have to estimate, use \(c.name)'s version of this product: the same brand's recipe and sizes can differ between countries." }

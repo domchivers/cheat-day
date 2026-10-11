@@ -425,8 +425,10 @@ struct AmountView: View {
     @State private var kcal: Double
     @State private var gramsText = ""
     @State private var kcalText = ""
+    @State private var nameText = ""
     private var store: Store { Store.shared }
     private let conv: FoodMath.Conv
+    private var asksName: Bool { target.basis["askName"] as? Bool == true }
 
     init(target: EditTarget, finish: @escaping () -> Void) {
         self.target = target
@@ -465,7 +467,8 @@ struct AmountView: View {
                     HStack(spacing: 12) {
                         FoodDot(name: name, size: 48)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(name).font(.title3.bold()).lineLimit(2)
+                            if asksName { TextField("What is it?", text: $nameText).font(.title3.bold()) }
+                            else { Text(name).font(.title3.bold()).lineLimit(2) }
                             if let per = perText { Text(per).font(.subheadline).foregroundStyle(.secondary) }
                         }
                         Spacer()
@@ -592,7 +595,13 @@ struct AmountView: View {
     }
 
     private func save() {
-        if let id = target.editId { store.edit(id, kcal: kcal, meal: meal) } else { store.add(target.basis, kcal: kcal, meal: meal) }
+        var basis = target.basis
+        if asksName {   // read off a table, which doesn't say what the food is
+            let n = nameText.trimmingCharacters(in: .whitespaces)
+            basis["name"] = n.isEmpty ? "Scanned food" : n
+        }
+        basis.removeValue(forKey: "askName")
+        if let id = target.editId { store.edit(id, kcal: kcal, meal: meal) } else { store.add(basis, kcal: kcal, meal: meal) }
         finish()
     }
 }
