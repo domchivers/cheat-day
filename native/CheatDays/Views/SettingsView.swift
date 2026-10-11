@@ -13,6 +13,7 @@ struct SettingsView: View {
     @State private var notes = ""
     @State private var newPassword = ""
     @State private var passwordNote: String?
+    @State private var confirmSignOut = false
     private var store: Store { Store.shared }
     private let order = [1, 2, 3, 4, 5, 6, 0]
 
@@ -59,7 +60,19 @@ struct SettingsView: View {
                 }
                 if let passwordNote { Text(passwordNote).font(.footnote).foregroundStyle(.secondary) }
             }
+            Section {
+                Button("Sign out", role: .destructive) { confirmSignOut = true }
+            } footer: {
+                Text("Cheat Days \(Bundle.main.shortVersion)\(store.lastSynced.map { " · synced \($0.formatted(date: .omitted, time: .shortened))" } ?? "")")
+            }
         }
+        .confirmationDialog("Sign out of Cheat Days on this phone?", isPresented: $confirmSignOut, titleVisibility: .visible) {
+            Button("Sign out", role: .destructive) {
+                WebHost.shared.signOut()
+                Supabase.shared.signOut()
+                store.reset()
+            }
+        } message: { Text("Everything stays in your account. Sign in again to get it back.") }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .task {
