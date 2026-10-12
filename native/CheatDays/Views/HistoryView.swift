@@ -15,7 +15,7 @@ struct WeighInSheet: View {
     init() {
         let start = Store.shared.latestWeight?.kg ?? 75
         _kg = State(initialValue: start)
-        _text = State(initialValue: String(format: "%.1f", start))
+        _text = State(initialValue: Fmt.kg(start))
     }
 
     var body: some View {
@@ -31,13 +31,13 @@ struct WeighInSheet: View {
                 HStack(spacing: 10) {
                     ForEach([-0.5, -0.1, 0.1, 0.5], id: \.self) { step in
                         Button(step > 0 ? "+\(String(format: "%.1f", step))" : String(format: "%.1f", step).replacingOccurrences(of: "-", with: "−")) {
-                            kg = ((kg + step) * 10).rounded() / 10; text = String(format: "%.1f", kg)
+                            kg = Fmt.kg2(kg + step); text = Fmt.kg(kg)
                         }
                         .font(.headline).buttonStyle(.bordered).buttonBorderShape(.capsule)
                     }
                 }
                 if let last = store.latestWeight {
-                    Text("Last: \(String(format: "%.1f", last.kg)) kg, \(Store.when(last.day))").font(.subheadline).foregroundStyle(.secondary)
+                    Text("Last: \(Fmt.kg(last.kg)) kg, \(Store.when(last.day))").font(.subheadline).foregroundStyle(.secondary)
                 }
                 if !extra.isEmpty {
                     Text(BodyReader.fields.compactMap { f in f.0 == "weight" ? nil : pos(extra[f.0]).map { "\(f.1) \(String(format: "%.1f", $0))\(f.2 == "%" ? "%" : "")" } }.joined(separator: " · "))
@@ -73,7 +73,7 @@ extension WeighInSheet {
     fileprivate func save() {
         if extra.isEmpty { store.weighIn(kg); return }
         var row = extra
-        row["weight"] = (kg * 10).rounded() / 10
+        row["weight"] = Fmt.kg2(kg)
         if row["day"] == nil { row["day"] = store.today }
         row["updatedAt"] = ISO.now()
         store.saveBody(row)
@@ -85,7 +85,7 @@ extension WeighInSheet {
         defer { reading = false }
         do {
             let a = try await BodyReader.read(img)
-            if let w = pos(a["weight"]) { kg = w; text = String(format: "%.1f", w) }
+            if let w = pos(a["weight"]) { kg = w; text = Fmt.kg(w) }
             extra = a; extra.removeValue(forKey: "weight")
         } catch { problem = error.localizedDescription }
     }

@@ -94,12 +94,12 @@ struct MeView: View {
             if let now {
                 HStack(alignment: .firstTextBaseline) {
                     HStack(alignment: .firstTextBaseline, spacing: 3) {
-                        Text(Fmt.one(now)).font(.system(size: 44, weight: .heavy, design: .rounded)).contentTransition(.numericText())
+                        Text(Fmt.kg(now)).font(.system(size: 44, weight: .heavy, design: .rounded)).contentTransition(.numericText())
                         Text("kg").font(.headline).foregroundStyle(.secondary)
                     }
                     Spacer()
                     if let goal {
-                        (Text("→ ").foregroundStyle(.secondary) + Text(Fmt.one(goal)).font(.title3.weight(.heavy)) + Text(" kg").foregroundStyle(.secondary)).font(.title3)
+                        (Text("→ ").foregroundStyle(.secondary) + Text(Fmt.kg(goal)).font(.title3.weight(.heavy)) + Text(" kg").foregroundStyle(.secondary)).font(.title3)
                     }
                 }
                 if let goal {
@@ -132,9 +132,9 @@ struct MeView: View {
             }
             .frame(height: 15)
             HStack {
-                Text("Started \(Fmt.one(start))")
+                Text("Started \(Fmt.kg(start))")
                 Spacer()
-                Text("\(Fmt.one(done)) \(goal < start ? "down" : "up") · \(Fmt.one(abs(now - goal))) to go")
+                Text("\(Fmt.kg(done)) \(goal < start ? "down" : "up") · \(Fmt.kg(abs(now - goal))) to go")
             }
             .font(.caption).foregroundStyle(.secondary)
         }
@@ -153,8 +153,8 @@ struct MeView: View {
         switch s {
         case .there: title = "You're there."; body = "Time to switch your plan to keeping it steady."; tint = .green
         case .early: title = "Keep weighing in."; body = "A trend needs a week or two of weigh-ins before it can give a date."; tint = .gray
-        case .ahead: title = "Ahead of plan."; body = "At \(paceText) you'll reach \(Fmt.one(goal)) kg around \(date ?? "soon")."; tint = .green
-        case .onTrack: title = "On track."; body = "At \(paceText) you'll reach \(Fmt.one(goal)) kg around \(date ?? "soon")."; tint = .green
+        case .ahead: title = "Ahead of plan."; body = "At \(paceText) you'll reach \(Fmt.kg(goal)) kg around \(date ?? "soon")."; tint = .green
+        case .onTrack: title = "On track."; body = "At \(paceText) you'll reach \(Fmt.kg(goal)) kg around \(date ?? "soon")."; tint = .green
         case .behind: title = "Slower than planned."; body = date.map { "At \(paceText) you'd get there around \($0)." } ?? "Your weight's barely moving at the moment."; tint = Theme.warn
         case .wrongWay: title = "Going the wrong way."; body = "Your trend is \(paceText) at the moment. See how to get there below."; tint = Theme.warn
         }

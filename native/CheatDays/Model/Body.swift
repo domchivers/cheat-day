@@ -13,7 +13,7 @@ extension Store {
     }
 
     func weighIn(_ kg: Double, fat: Double? = nil, day: String? = nil) {
-        var row: JSON = ["day": day ?? DayKey.string(Date()), "updatedAt": ISO.now(), "weight": (kg * 10).rounded() / 10]
+        var row: JSON = ["day": day ?? DayKey.string(Date()), "updatedAt": ISO.now(), "weight": Fmt.kg2(kg)]
         if let fat { row["fat"] = (fat * 10).rounded() / 10 }
         perform(["type": "body", "row": row])
         Task {
@@ -57,6 +57,6 @@ extension Store {
         body.sort { str($0["day"]) < str($1["day"]) }
         d["body"] = Array(body.suffix(400))
         let todayKey = DayKey.string(Date())
-        if let last = body.last(where: { pos($0["weight"]) != nil && str($0["day"]) <= todayKey }), let w = pos(last["weight"]) { d["weightKg"] = (w * 10).rounded() / 10 }
+        if let last = body.last(where: { pos($0["weight"]) != nil && str($0["day"]) <= todayKey }), let w = pos(last["weight"]) { d["weightKg"] = Fmt.kg2(w) }
     }
 }

@@ -224,7 +224,7 @@ enum Progression {
         let top = last.allSatisfy { $0.reps >= Double(m.high) }
         if deload {
             let k = kg > 0 ? snap(kg * 0.9, step(m.exercise, kg: kg)) : 0
-            return Target(reps: m.low, kg: k, sets: sets, hint: "Easier week: fewer sets\(k > 0 ? " at \(Fmt.one(k)) kg" : ""). Leave plenty in the tank so you come back stronger.", up: false)
+            return Target(reps: m.low, kg: k, sets: sets, hint: "Easier week: fewer sets\(k > 0 ? " at \(Fmt.kg(k)) kg" : ""). Leave plenty in the tank so you come back stronger.", up: false)
         }
         if kg <= 0 {
             return top ? Target(reps: m.high, kg: 0, sets: sets, hint: "You hit \(said) last time. Add a set, or slow each rep down to make it harder.", up: true)
@@ -232,10 +232,10 @@ enum Progression {
         }
         if top {
             let k = kg + step(m.exercise, kg: kg)
-            return Target(reps: m.low, kg: k, sets: sets, hint: "Go up to \(Fmt.one(k)) kg. You hit \(said) at \(Fmt.one(kg)) kg last time, the top of \(range).", up: true)
+            return Target(reps: m.low, kg: k, sets: sets, hint: "Go up to \(Fmt.kg(k)) kg. You hit \(said) at \(Fmt.kg(kg)) kg last time, the top of \(range).", up: true)
         }
         return Target(reps: max(m.low, min(m.high, lowest + 1)), kg: kg, sets: sets,
-                      hint: "Stay at \(Fmt.one(kg)) kg and beat last time (\(said)). When every set hits \(m.high), the weight goes up.", up: false)
+                      hint: "Stay at \(Fmt.kg(kg)) kg and beat last time (\(said)). When every set hits \(m.high), the weight goes up.", up: false)
     }
 }
 

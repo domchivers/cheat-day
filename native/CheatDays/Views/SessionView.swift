@@ -227,7 +227,7 @@ struct SessionView: View {
                 .filter { $0.pb && $0.id != setId }.map { Store.est(kg: $0.kg, reps: $0.reps) }.max() ?? 0
             if prev > 0, e1 > max(prev, sessionBest) {
                 set.pb = true
-                show("New best for \(name): \(Fmt.one(set.kg)) kg × \(Fmt.one(set.reps))")
+                show("New best for \(name): \(Fmt.kg(set.kg)) kg × \(Fmt.one(set.reps))")
             }
         }
         withAnimation(.snappy) { s.exercises[i].sets[j] = set }
@@ -304,9 +304,9 @@ struct SetRow: View {
         }
         .opacity(set.done ? 0.45 : 1)
         .listRowBackground(isNext ? Theme.hero : Color(.secondarySystemGroupedBackground))
-        .onAppear { repsText = Fmt.one(set.reps); kgText = set.kg > 0 ? Fmt.one(set.kg) : "" }
+        .onAppear { repsText = Fmt.one(set.reps); kgText = set.kg > 0 ? Fmt.kg(set.kg) : "" }
         .onChange(of: set.reps) { _, v in if Double(repsText.replacingOccurrences(of: ",", with: ".")) != v { repsText = Fmt.one(v) } }
-        .onChange(of: set.kg) { _, v in if Double(kgText.replacingOccurrences(of: ",", with: ".")) ?? 0 != v { kgText = v > 0 ? Fmt.one(v) : "" } }
+        .onChange(of: set.kg) { _, v in if Double(kgText.replacingOccurrences(of: ",", with: ".")) ?? 0 != v { kgText = v > 0 ? Fmt.kg(v) : "" } }
     }
 
     private func box(_ text: Binding<String>, _ placeholder: String, field: String) -> some View {

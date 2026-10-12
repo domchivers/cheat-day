@@ -45,7 +45,7 @@ enum HealthSync {
             for s in await samples(type, since: since).sorted(by: { $0.endDate < $1.endDate }) {
                 let day = DayKey.string(s.endDate)
                 var row = byDay[day] ?? ["day": day]
-                row[k.1] = (s.quantity.doubleValue(for: k.2) * k.3 * 10).rounded() / 10   // the day's latest wins
+                row[k.1] = Fmt.kg2(s.quantity.doubleValue(for: k.2) * k.3)   // the day's latest wins
                 let at = ISO8601DateFormatter().string(from: s.endDate)
                 if str(row["updatedAt"]) < at { row["updatedAt"] = at }
                 byDay[day] = row

@@ -66,6 +66,15 @@ enum Fmt {
     }()
     static func int(_ v: Double) -> String { grouped.string(from: NSNumber(value: v.rounded())) ?? String(Int(v.rounded())) }
     /// Whole numbers from 10 up, one decimal below (the web app's fmt1).
+    /// Weights (on the scale or the bar): up to two decimals, no trailing zeros. 83.32, 61.25, 82.4, 80.
+    static func kg(_ v: Double) -> String {
+        let r = (v * 100).rounded() / 100
+        if r == r.rounded() { return String(Int(r)) }
+        let s = String(format: "%.2f", r)
+        return s.hasSuffix("0") ? String(s.dropLast()) : s
+    }
+    static func kg2(_ v: Double) -> Double { (v * 100).rounded() / 100 }
+
     static func one(_ v: Double) -> String {
         let r = (v * 10).rounded() / 10
         return r == r.rounded() ? String(Int(r)) : String(format: "%.1f", r)

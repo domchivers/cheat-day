@@ -49,7 +49,7 @@ struct BodyView: View {
                             HStack {
                                 Text(DayKey.date(str(r["day"])).formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))).font(.subheadline)
                                 Spacer()
-                                Text(Self.metrics.compactMap { x in pos(r[x.key]).map { "\(Fmt.one($0))\(x.unit == "%" ? "%" : x.unit.isEmpty ? "" : " \(x.unit)")" } }.prefix(3).joined(separator: " · "))
+                                Text(Self.metrics.compactMap { x in pos(r[x.key]).map { "\(Fmt.kg($0))\(x.unit == "%" ? "%" : x.unit.isEmpty ? "" : " \(x.unit)")" } }.prefix(3).joined(separator: " · "))
                                     .font(.subheadline.weight(.semibold)).monospacedDigit().foregroundStyle(.secondary)
                             }
                         }
@@ -93,7 +93,7 @@ struct BodyView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Eyebrow(text: m.key == "weight" && last?.trend != nil ? "Trend weight" : m.name, color: Theme.heroLabel)
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(now.map { Fmt.one($0) } ?? "–").font(.system(size: 44, weight: .heavy, design: .rounded)).contentTransition(.numericText())
+                    Text(now.map { Fmt.kg($0) } ?? "–").font(.system(size: 44, weight: .heavy, design: .rounded)).contentTransition(.numericText())
                     Text(m.unit).font(.headline).foregroundStyle(.secondary)
                 }
             }
@@ -215,7 +215,7 @@ struct BodyEntrySheet: View {
             }
             .onAppear {
                 date = DayKey.date(str(row["day"]).isEmpty ? store.today : str(row["day"]))
-                for f in fields { if let v = pos(row[f.0]) { values[f.0] = Fmt.one(v) } }
+                for f in fields { if let v = pos(row[f.0]) { values[f.0] = Fmt.kg(v) } }
             }
             .onChange(of: picked) { _, item in Task { await read(item) } }
         }
@@ -223,7 +223,7 @@ struct BodyEntrySheet: View {
 
     private var parsed: JSON {
         var out = JSON()
-        for f in fields { if let v = Double((values[f.0] ?? "").replacingOccurrences(of: ",", with: ".")), v > 0 { out[f.0] = (v * 10).rounded() / 10 } }
+        for f in fields { if let v = Double((values[f.0] ?? "").replacingOccurrences(of: ",", with: ".")), v > 0 { out[f.0] = Fmt.kg2(v) } }
         return out
     }
 
@@ -241,7 +241,7 @@ struct BodyEntrySheet: View {
         defer { reading = false }
         do {
             let a = try await BodyReader.read(img)
-            for f in fields { if let v = pos(a[f.0]) { values[f.0] = Fmt.one(v) } }
+            for f in fields { if let v = pos(a[f.0]) { values[f.0] = Fmt.kg(v) } }
             if let d = a["day"] as? String { date = DayKey.date(d) }
         } catch { problem = error.localizedDescription }
     }
@@ -262,7 +262,7 @@ enum BodyReader {
         let schema: JSON = ["type": "object", "properties": props, "required": Array(props.keys)]
         let a = try await Gemini.ask(schema: schema, parts: [part, ["text": "This is a screenshot from a smart scale's app. Read the body measurements shown, exactly as printed, decimals included. Leave anything not shown as null."]], quick: true)
         var out = JSON()
-        for f in fields { if let v = pos(a[f.0]) { out[f.0] = (v * 10).rounded() / 10 } }
+        for f in fields { if let v = pos(a[f.0]) { out[f.0] = Fmt.kg2(v) } }
         if let d = a["date"] as? String, DayKey.string(DayKey.date(d)) == d, DayKey.date(d) <= Date() { out["day"] = d }   // only a real date, never a guess
         if fields.allSatisfy({ out[$0.0] == nil }) { throw Gemini.Failure(message: "Couldn't find any readings in that picture.") }
         return out

@@ -50,4 +50,15 @@ final class GapTests: XCTestCase {
         let twoHours = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-7300))
         XCTAssertEqual(Feed.ago(twoHours), "2 h ago")
     }
+
+    // weights keep their decimals: a scale's 83.32 and a 61.25 kg lift aren't rounded away
+    func testWeightsKeepTwoDecimals() {
+        XCTAssertEqual(Fmt.kg(83.32), "83.32")
+        XCTAssertEqual(Fmt.kg(61.25), "61.25")
+        XCTAssertEqual(Fmt.kg(82.4), "82.4")
+        XCTAssertEqual(Fmt.kg(80), "80")
+        XCTAssertEqual(Fmt.kg(83.326), "83.33")
+        XCTAssertEqual(Fmt.kg2(83.324), 83.32)
+        XCTAssertEqual(Fmt.one(82.4), "82.4")   // was 82: anything over 10 lost its decimal
+    }
 }

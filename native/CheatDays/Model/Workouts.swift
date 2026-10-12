@@ -183,14 +183,14 @@ extension Store {
         let best = (rec.flatMap { pos($0["best1rm"]) }).map { " · best est. 1RM \(Fmt.int($0)) kg" } ?? ""
         if let sets, sets.contains(where: { $0.reps != sets[0].reps || $0.kg != sets[0].kg }) {
             let sameKg = sets.allSatisfy { $0.kg == sets[0].kg }
-            let body = sameKg ? sets.map { Fmt.one($0.reps) }.joined(separator: ", ") + (sets[0].kg > 0 ? " @ \(Fmt.one(sets[0].kg)) kg" : "")
-                              : sets.map { ($0.kg > 0 ? "\(Fmt.one($0.kg))×" : "") + Fmt.one($0.reps) }.joined(separator: ", ") + " kg"
+            let body = sameKg ? sets.map { Fmt.one($0.reps) }.joined(separator: ", ") + (sets[0].kg > 0 ? " @ \(Fmt.kg(sets[0].kg)) kg" : "")
+                              : sets.map { ($0.kg > 0 ? "\(Fmt.kg($0.kg))×" : "") + Fmt.one($0.reps) }.joined(separator: ", ") + " kg"
             return "Last time \(body)\(best)"
         }
         let n = sets.map { Double($0.count) } ?? num(rec?["sets"]) ?? 0
         let reps = sets?.first?.reps ?? num(rec?["reps"]) ?? 0
         let kg = sets?.first?.kg ?? num(rec?["kg"]) ?? 0
-        return "Last time \(Fmt.one(n))×\(Fmt.one(reps))\(kg > 0 ? " @ \(Fmt.one(kg)) kg" : "")\(best)"
+        return "Last time \(Fmt.one(n))×\(Fmt.one(reps))\(kg > 0 ? " @ \(Fmt.kg(kg)) kg" : "")\(best)"
     }
 
     /// A new exercise for a session: last time's sets, or the routine's, or 3 × 8.
@@ -312,7 +312,7 @@ enum WorkoutLive {
         var next = ""
         if let n = s.next {
             let e = s.exercises[n.ex], set = e.sets[n.set]
-            next = "\(e.name.isEmpty ? "Exercise" : e.name) · set \(n.set + 1)" + (set.kg > 0 ? " · \(Fmt.one(set.reps))×\(Fmt.one(set.kg)) kg" : " · \(Fmt.one(set.reps)) reps")
+            next = "\(e.name.isEmpty ? "Exercise" : e.name) · set \(n.set + 1)" + (set.kg > 0 ? " · \(Fmt.one(set.reps))×\(Fmt.kg(set.kg)) kg" : " · \(Fmt.one(set.reps)) reps")
         }
         var body: [String: Any] = ["name": s.name, "startedAt": s.startedAt, "next": next, "setsDone": s.setsDone]
         if let r = s.restUntil, r > Double(nowMs()) { body["restEnds"] = r }
