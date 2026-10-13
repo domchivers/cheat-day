@@ -66,18 +66,23 @@ enum HealthSync {
         for day in byDay.keys.sorted() {
             guard let row = byDay[day] else { continue }
             // nothing new: the record already has these numbers for that day
-            // a reading typed or read from a screenshot after the scale's one stays: the newest wins
-            if let have = mine[day], str(have["from"]) != "health", let mineAt = ISO.date(str(have["updatedAt"])),
-               let scaleAt = ISO.date(str(row["takenAt"])), mineAt > scaleAt { continue }
-            // nothing new: the record already has exactly these numbers (and the time) for that day
-            if let have = mine[day], !str(have["takenAt"]).isEmpty, kinds.allSatisfy({ k in
-                guard let v = num(row[k.1]) else { return true }
-                return num(have[k.1]).map { abs($0 - v) < 0.005 } ?? false
-            }) { continue }
+            guard shouldImport(row, over: mine[day]) else { continue }
             store.saveBody(row)
             n += 1
         }
         return n
+    }
+
+    /// Whether a day's reading from Health goes in. Not when the record already has exactly these numbers
+    /// (and the time), and not over a reading typed or read from a screenshot after the scale's: the newest wins.
+    nonisolated static func shouldImport(_ row: JSON, over have: JSON?) -> Bool {
+        guard let have else { return true }
+        if str(have["from"]) != "health", let mineAt = ISO.date(str(have["updatedAt"])), let scaleAt = ISO.date(str(row["takenAt"])), mineAt > scaleAt { return false }
+        let same = ["weight", "fat", "lean", "bmi"].allSatisfy { k in
+            guard let v = num(row[k]) else { return true }
+            return num(have[k]).map { abs($0 - v) < 0.005 } ?? false
+        }
+        return !(same && !str(have["takenAt"]).isEmpty)
     }
 
     private static func samples(_ type: HKQuantityType, since: Date) async -> [HKQuantitySample] {

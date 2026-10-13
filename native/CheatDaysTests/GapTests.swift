@@ -61,4 +61,14 @@ final class GapTests: XCTestCase {
         XCTAssertEqual(Fmt.kg2(83.324), 83.32)
         XCTAssertEqual(Fmt.one(82.4), "82.4")   // was 82: anything over 10 lost its decimal
     }
+
+    // the scale's reading from Health: replaces an older one, keeps a later correction, skips an identical one
+    func testHealthReadingsAndYourOwn() {
+        let scale: JSON = ["day": "2026-10-13", "weight": 83.32, "takenAt": "2026-10-13T07:42:00Z", "updatedAt": "2026-10-13T07:42:00Z", "from": "health"]
+        XCTAssertTrue(HealthSync.shouldImport(scale, over: nil))
+        XCTAssertTrue(HealthSync.shouldImport(scale, over: ["day": "2026-10-13", "weight": 83.3, "updatedAt": "2026-10-13T06:00:00.000Z"]))     // typed before: replaced
+        XCTAssertFalse(HealthSync.shouldImport(scale, over: ["day": "2026-10-13", "weight": 83.1, "updatedAt": "2026-10-13T09:00:00.000Z"]))    // corrected after: kept
+        XCTAssertTrue(HealthSync.shouldImport(scale, over: ["day": "2026-10-13", "weight": 83.3, "updatedAt": "2026-10-13T07:42:00Z", "from": "health"]))   // an old import: corrected
+        XCTAssertFalse(HealthSync.shouldImport(scale, over: scale))   // nothing new
+    }
 }
