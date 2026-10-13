@@ -90,17 +90,17 @@ struct BodyView: View {
 
     private func hero(_ pts: [BodyPoint], _ m: (key: String, name: String, unit: String)) -> some View {
         let last = pts.last, first = pts.first { !$0.odd }
-        let now = last?.trend ?? last?.value
+        let now = last?.value   // the latest reading, as measured; the trend is the line on the chart
         let change = (now != nil && first != nil) ? now! - (first!.trend ?? first!.value) : nil
         return HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
-                Eyebrow(text: m.key == "weight" && last?.trend != nil ? "Trend weight" : m.name, color: Theme.heroLabel)
+                Eyebrow(text: m.key == "weight" ? "Last weigh-in" : m.name, color: Theme.heroLabel)
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(now.map { Fmt.kg($0) } ?? "–").font(.system(size: 44, weight: .heavy, design: .rounded)).contentTransition(.numericText())
                     Text(m.unit).font(.headline).foregroundStyle(.secondary)
                 }
-                if m.key == "weight", let w = store.lastWeighIn, last?.trend != nil {
-                    Text("Last weigh-in \(Fmt.kg(w.kg)) kg, \(Store.whenTaken(day: w.day, at: w.at))").font(.caption).foregroundStyle(.secondary)
+                if m.key == "weight", let w = store.lastWeighIn {
+                    Text("\(Store.whenTaken(day: w.day, at: w.at).capitalizedFirst)\(store.trendWeight.map { " · trend \(Fmt.kg($0)) kg" } ?? "")").font(.caption).foregroundStyle(.secondary)
                 }
             }
             Spacer()

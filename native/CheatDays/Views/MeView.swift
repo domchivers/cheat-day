@@ -87,7 +87,7 @@ struct MeView: View {
 
     private var goalCard: some View {
         let pts = weights
-        let now = pts.last.map { $0.trend ?? $0.kg } ?? store.latestWeight?.kg
+        let now = store.lastWeighIn?.kg ?? pts.last?.kg   // the scale's own number; the trend is the small print
         let start = pos(dict(store.doc["goalStart"])["weight"]) ?? pts.first?.kg
         return VStack(alignment: .leading, spacing: 10) {
             Eyebrow(text: goal == nil ? "Your weight" : "Your goal", color: Theme.heroLabel)
@@ -103,7 +103,7 @@ struct MeView: View {
                     }
                 }
                 if let w = store.lastWeighIn {
-                    Text("Trend · last weigh-in \(Fmt.kg(w.kg)) kg, \(Store.whenTaken(day: w.day, at: w.at))")
+                    Text("Weighed \(Store.whenTaken(day: w.day, at: w.at))\(store.trendWeight.map { " · trend \(Fmt.kg($0)) kg" } ?? "")")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 if let goal {
@@ -219,7 +219,7 @@ struct MeView: View {
 
     /// One plain sentence on what to do next, from the numbers.
     private func advice(tw: (avg: Double, budget: Double, days: Int)?) -> String {
-        guard let goal, let now = weights.last.map({ $0.trend ?? $0.kg }) ?? store.latestWeight?.kg else {
+        guard let goal, let now = store.lastWeighIn?.kg ?? store.latestWeight?.kg else {
             return "Set a goal weight and the app works out how to get there."
         }
         let s = status(now: now, goal: goal)

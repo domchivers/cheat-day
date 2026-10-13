@@ -19,6 +19,17 @@ extension Store {
         return (pos(r["weight"]) ?? 0, str(r["day"]), ISO.date(str(r["takenAt"]).isEmpty ? str(r["updatedAt"]) : str(r["takenAt"])))
     }
 
+    /// The smoothed trend weight, worked out one way everywhere (the last 120 days of weigh-ins).
+    var trendWeight: Double? {
+        let since = DayKey.shift(today, days: -120)
+        let rows = bodyRows.compactMap { r -> (String, Double)? in
+            guard let kg = pos(r["weight"]), str(r["day"]) >= since, str(r["day"]) <= today else { return nil }
+            return (str(r["day"]), kg)
+        }
+        guard rows.count >= 4 else { return rows.last?.1 }
+        return Trend.fit(days: rows.map(\.0), values: rows.map(\.1)).fit.last
+    }
+
     /// "today, 7:42", "yesterday, 7:42", "Mon 13 Oct, 7:42"; just the day when the time isn't known.
     static func whenTaken(day: String, at: Date?) -> String {
         let d = Store.when(day)
