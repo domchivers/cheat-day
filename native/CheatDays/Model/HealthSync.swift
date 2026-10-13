@@ -55,6 +55,7 @@ enum HealthSync {
                 row[k.1] = Fmt.kg2(s.quantity.doubleValue(for: k.2) * k.3)   // the day's latest wins
                 let at = ISO8601DateFormatter().string(from: s.endDate)
                 if str(row["updatedAt"]) < at { row["updatedAt"] = at; row["takenAt"] = at }   // the time the scale took it
+                row["from"] = "health"
                 byDay[day] = row
             }
         }
@@ -65,6 +66,9 @@ enum HealthSync {
         for day in byDay.keys.sorted() {
             guard let row = byDay[day] else { continue }
             // nothing new: the record already has these numbers for that day
+            // a reading typed or read from a screenshot after the scale's one stays: the newest wins
+            if let have = mine[day], str(have["from"]) != "health", let mineAt = ISO.date(str(have["updatedAt"])),
+               let scaleAt = ISO.date(str(row["takenAt"])), mineAt > scaleAt { continue }
             // nothing new: the record already has exactly these numbers (and the time) for that day
             if let have = mine[day], !str(have["takenAt"]).isEmpty, kinds.allSatisfy({ k in
                 guard let v = num(row[k.1]) else { return true }
