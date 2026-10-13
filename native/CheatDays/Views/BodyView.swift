@@ -47,7 +47,10 @@ struct BodyView: View {
                         let r = recent[i]
                         Button { entry = r } label: {
                             HStack {
-                                Text(DayKey.date(str(r["day"])).formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))).font(.subheadline)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(DayKey.date(str(r["day"])).formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))).font(.subheadline)
+                                    if let t = ISO.date(str(r["takenAt"])) { Text(t.formatted(date: .omitted, time: .shortened)).font(.caption2).foregroundStyle(.secondary) }
+                                }
                                 Spacer()
                                 Text(Self.metrics.compactMap { x in pos(r[x.key]).map { "\(Fmt.kg($0))\(x.unit == "%" ? "%" : x.unit.isEmpty ? "" : " \(x.unit)")" } }.prefix(3).joined(separator: " · "))
                                     .font(.subheadline.weight(.semibold)).monospacedDigit().foregroundStyle(.secondary)
@@ -95,6 +98,9 @@ struct BodyView: View {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(now.map { Fmt.kg($0) } ?? "–").font(.system(size: 44, weight: .heavy, design: .rounded)).contentTransition(.numericText())
                     Text(m.unit).font(.headline).foregroundStyle(.secondary)
+                }
+                if m.key == "weight", let w = store.lastWeighIn, last?.trend != nil {
+                    Text("Last weigh-in \(Fmt.kg(w.kg)) kg, \(Store.whenTaken(day: w.day, at: w.at))").font(.caption).foregroundStyle(.secondary)
                 }
             }
             Spacer()

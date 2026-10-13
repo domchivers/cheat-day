@@ -12,7 +12,14 @@ enum HealthSync {
         get { UserDefaults.standard.bool(forKey: "health.on") }
         set { UserDefaults.standard.set(newValue, forKey: "health.on") }
     }
-    static var lastPull: Date? { UserDefaults.standard.object(forKey: "health.lastPull") as? Date }
+    static var lastPull: Date? {
+        // once: read the whole history again, so earlier imports get the scale's exact numbers and their times
+        if UserDefaults.standard.integer(forKey: "health.version") < 2 {
+            UserDefaults.standard.removeObject(forKey: "health.lastPull")
+            UserDefaults.standard.set(2, forKey: "health.version")
+        }
+        return UserDefaults.standard.object(forKey: "health.lastPull") as? Date
+    }
 
     /// Health's measure, the record's key, its unit, and what to multiply by (Health keeps body fat as 0.18 for 18%).
     private static let kinds: [(HKQuantityTypeIdentifier, String, HKUnit, Double)] = [
@@ -47,7 +54,7 @@ enum HealthSync {
                 var row = byDay[day] ?? ["day": day]
                 row[k.1] = Fmt.kg2(s.quantity.doubleValue(for: k.2) * k.3)   // the day's latest wins
                 let at = ISO8601DateFormatter().string(from: s.endDate)
-                if str(row["updatedAt"]) < at { row["updatedAt"] = at }
+                if str(row["updatedAt"]) < at { row["updatedAt"] = at; row["takenAt"] = at }   // the time the scale took it
                 byDay[day] = row
             }
         }
@@ -58,9 +65,10 @@ enum HealthSync {
         for day in byDay.keys.sorted() {
             guard let row = byDay[day] else { continue }
             // nothing new: the record already has these numbers for that day
-            if let have = mine[day], kinds.allSatisfy({ k in
+            // nothing new: the record already has exactly these numbers (and the time) for that day
+            if let have = mine[day], !str(have["takenAt"]).isEmpty, kinds.allSatisfy({ k in
                 guard let v = num(row[k.1]) else { return true }
-                return num(have[k.1]).map { abs($0 - v) < 0.05 } ?? false
+                return num(have[k.1]).map { abs($0 - v) < 0.005 } ?? false
             }) { continue }
             store.saveBody(row)
             n += 1

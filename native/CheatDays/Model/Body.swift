@@ -12,6 +12,21 @@ extension Store {
         return (str(r["day"]), pos(r["weight"]) ?? 0)
     }
 
+    /// The latest weigh-in exactly as the scale read it, and when.
+    var lastWeighIn: (kg: Double, day: String, at: Date?)? {
+        let todayKey = DayKey.string(Date())
+        guard let r = bodyRows.last(where: { pos($0["weight"]) != nil && str($0["day"]) <= todayKey }) else { return nil }
+        return (pos(r["weight"]) ?? 0, str(r["day"]), ISO.date(str(r["takenAt"]).isEmpty ? str(r["updatedAt"]) : str(r["takenAt"])))
+    }
+
+    /// "today, 7:42", "yesterday, 7:42", "Mon 13 Oct, 7:42"; just the day when the time isn't known.
+    static func whenTaken(day: String, at: Date?) -> String {
+        let d = Store.when(day)
+        let dayText = d == "today" || d == "yesterday" ? d : DayKey.date(day).formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
+        guard let at, DayKey.string(at) == day else { return dayText }
+        return "\(dayText), \(at.formatted(date: .omitted, time: .shortened))"
+    }
+
     func weighIn(_ kg: Double, fat: Double? = nil, day: String? = nil) {
         var row: JSON = ["day": day ?? DayKey.string(Date()), "updatedAt": ISO.now(), "weight": Fmt.kg2(kg)]
         if let fat { row["fat"] = (fat * 10).rounded() / 10 }

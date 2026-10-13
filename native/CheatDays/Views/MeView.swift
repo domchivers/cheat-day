@@ -102,6 +102,10 @@ struct MeView: View {
                         (Text("→ ").foregroundStyle(.secondary) + Text(Fmt.kg(goal)).font(.title3.weight(.heavy)) + Text(" kg").foregroundStyle(.secondary)).font(.title3)
                     }
                 }
+                if let w = store.lastWeighIn {
+                    Text("Trend · last weigh-in \(Fmt.kg(w.kg)) kg, \(Store.whenTaken(day: w.day, at: w.at))")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 if let goal {
                     progress(start: start ?? now, now: now, goal: goal)
                     statusLine(now: now, goal: goal)
