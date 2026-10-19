@@ -70,6 +70,7 @@ struct BudgetView: View {
         }
         .scrollContentBackground(.hidden)
         .background(Theme.bg)
+        .keyboardDone()
         .navigationTitle("Plan and budget")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { if !loaded { load(); loaded = true } }

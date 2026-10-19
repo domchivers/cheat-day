@@ -219,10 +219,19 @@ struct MealEditor: View {
 }
 
 /// Pick a food for a meal: your foods first, then the food list, at the amount you usually have.
+private struct PickedFood: Identifiable, Hashable {
+    let id = UUID()
+    let basis: JSON
+    let kcal: Double
+    static func == (a: Self, b: Self) -> Bool { a.id == b.id }
+    func hash(into h: inout Hasher) { h.combine(id) }
+}
+
 struct FoodPicker: View {
     var add: (JSON) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
+    @State private var choosing: PickedFood?
     private var store: Store { Store.shared }
 
     var body: some View {
@@ -246,6 +255,7 @@ struct FoodPicker: View {
                 }
             }
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search foods")
+            .navigationDestination(item: $choosing) { p in GramsStep(basis: p.basis, kcal: p.kcal) { item in add(item); dismiss() } }
             .navigationTitle("Add a food")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
@@ -265,9 +275,49 @@ struct FoodPicker: View {
     }
 
     private func pick(_ basis: JSON, kcal: Double) {
+        if FoodMath.kcalPer100(basis) != nil { choosing = PickedFood(basis: basis, kcal: kcal); return }   // grams next
         var item = FoodMath.basisOf(basis)
         item["id"] = uid(); item["kcal"] = Int(kcal.rounded())
-        if let g = FoodMath.amounts(basis, kcal: kcal).grams { item["grams"] = g.rounded() }
         add(item); dismiss()
+    }
+}
+
+/// How many grams of an ingredient: type it or pick a size; the calories follow.
+private struct GramsStep: View {
+    let basis: JSON
+    let kcal: Double
+    var done: (JSON) -> Void
+    @State private var text = ""
+    private var k100: Double { FoodMath.kcalPer100(basis) ?? 0 }
+    private var grams: Double { Double(text.replacingOccurrences(of: ",", with: ".")) ?? 0 }
+
+    var body: some View {
+        Form {
+            Section {
+                HStack {
+                    TextField("Grams", text: $text).keyboardType(.decimalPad).font(.title2.weight(.bold))
+                    Text("g").foregroundStyle(.secondary)
+                }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach([25.0, 50, 100, 150, 200, 250], id: \.self) { g in Chip(text: "\(Fmt.int(g)) g", on: grams == g) { text = Fmt.int(g) } }
+                    }
+                }
+            } header: { Text(str(basis["name"])) } footer: {
+                Text("\(Fmt.int(k100 * grams / 100)) kcal\(num(basis["p100"]).map { " · \(Fmt.one($0 * grams / 100))g protein" } ?? "")")
+            }
+            Section {
+                Button("Add to the meal") {
+                    var item = FoodMath.basisOf(basis)
+                    item["id"] = uid(); item["grams"] = grams; item["kcal"] = Int((k100 * grams / 100).rounded())
+                    done(item)
+                }
+                .font(.headline).disabled(grams <= 0)
+            }
+        }
+        .keyboardDone()
+        .navigationTitle("How much?")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear { if text.isEmpty { text = Fmt.int((FoodMath.amounts(basis, kcal: kcal).grams ?? 100).rounded()) } }
     }
 }

@@ -151,6 +151,7 @@ struct ManualEntry: View {
                 Button("Next: how much") { next() }.font(.headline).frame(maxWidth: .infinity).disabled((d(kcalText) ?? 0) <= 0)
             }
         }
+        .keyboardDone()
         .navigationTitle("Type it in")
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $go) { t in AmountView(target: t) { onAdded() } }

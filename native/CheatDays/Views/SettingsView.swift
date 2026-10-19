@@ -73,6 +73,7 @@ struct SettingsView: View {
                 store.reset()
             }
         } message: { Text("Everything stays in your account. Sign in again to get it back.") }
+        .keyboardDone()
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .task {

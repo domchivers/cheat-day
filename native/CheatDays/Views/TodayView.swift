@@ -508,6 +508,7 @@ struct AmountView: View {
                 case .kcal: kcalControls
                 }
             }
+            .onChange(of: mode) { _, _ in syncTexts() }   // whichever way it was set, the others show the same amount
             Section("Meal") {
                 Picker("Meal", selection: $meal) { ForEach(Meals.all, id: \.self) { Text($0).tag($0) } }.pickerStyle(.segmented)
             }
@@ -521,6 +522,7 @@ struct AmountView: View {
                 }
             }
         }
+        .keyboardDone()
         .navigationTitle(target.editId == nil ? "How much?" : "Change amount")
         .navigationBarTitleDisplayMode(.inline)
         .animation(.snappy, value: kcal)
@@ -571,10 +573,15 @@ struct AmountView: View {
     }
 
     private var kcalControls: some View {
-        HStack {
-            TextField("Calories", text: $kcalText).keyboardType(.numberPad)
-                .onChange(of: kcalText) { _, t in if let k = Double(t), abs(k - kcal) > 0.5 { kcal = k } }
-            Text("kcal").foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                TextField("Calories", text: $kcalText).keyboardType(.numberPad)
+                    .onChange(of: kcalText) { _, t in if let k = Double(t), abs(k - kcal) > 0.5 { kcal = k; syncGrams() } }
+                Text("kcal").foregroundStyle(.secondary)
+            }
+            let eq = [conv.kcalPer100.flatMap { k in k > 0 ? "\(Fmt.int(kcal / k * 100)) \(unit)" : nil },
+                      conv.countKcal.flatMap { e in e > 0 ? "\(Fmt.one(kcal / e)) \(FoodMath.plural(kcal / e, conv.countLabel ?? "piece"))" : nil }].compactMap { $0 }
+            if !eq.isEmpty { Text("That's about " + eq.joined(separator: " or ")).font(.caption).foregroundStyle(.secondary) }
         }
     }
 
@@ -588,6 +595,11 @@ struct AmountView: View {
     }
 
     private func nice(_ g: Double) -> Double { g < 50 ? (g / 5).rounded() * 5 : g < 200 ? (g / 10).rounded() * 10 : (g / 25).rounded() * 25 }
+
+    /// Only the grams box (so typing calories isn't interrupted).
+    private func syncGrams() {
+        if let k100 = conv.kcalPer100, k100 > 0 { gramsText = Fmt.one(kcal / k100 * 100) }
+    }
 
     private func syncTexts() {
         if let k100 = conv.kcalPer100, k100 > 0 { gramsText = Fmt.one(kcal / k100 * 100) }

@@ -10,6 +10,7 @@ struct AddSheet: View {
     @State private var settled = ""
     @State private var scanning = false
     @State private var photo = false
+    @State private var meals = false
     @State private var typing = false
     private var store: Store { Store.shared }
 
@@ -23,11 +24,12 @@ struct AddSheet: View {
             List {
                 Section {
                     Picker("Meal", selection: $meal) { ForEach(Meals.all, id: \.self) { Text($0).tag($0) } }.pickerStyle(.segmented)
-                    HStack(spacing: 10) {
+                    HStack(spacing: 8) {
                         way("barcode.viewfinder", "Barcode") { scanning = true }
                         way("camera.fill", "Photo") { photo = true }
                         way("sparkles", "Ask AI") { onFlow(WebFlow(view: "ask", opts: ["meal": meal], title: "Assistant")) }
                         way("square.and.pencil", "Type it") { typing = true }
+                        way("fork.knife", "Meals") { meals = true }
                     }
                     .buttonStyle(.plain)
                     .listRowInsets(EdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12))
@@ -45,6 +47,7 @@ struct AddSheet: View {
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
             .navigationDestination(for: EditTarget.self) { t in AmountView(target: t) { dismiss() } }
             .navigationDestination(isPresented: $typing) { ManualEntry(meal: meal) { dismiss() } }
+            .navigationDestination(isPresented: $meals) { MealsView() }
             .sheet(isPresented: $photo) {
                 PhotoSheet(meal: meal, onAdded: { photo = false; dismiss() }, onFlow: { f in photo = false; onFlow(f) })
             }

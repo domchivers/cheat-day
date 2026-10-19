@@ -130,6 +130,7 @@ struct OnboardingView: View {
         }
         .background(Theme.bg.ignoresSafeArea())
         .onAppear { if !loaded { prefill(); loaded = true } }
+        .keyboardDone()
     }
 
     // MARK: the frame
