@@ -4,7 +4,10 @@ import WidgetKit
 
 @main
 struct RestTimerBundle: WidgetBundle {
-    var body: some Widget { WorkoutLiveActivity() }
+    var body: some Widget {
+        WorkoutLiveActivity()
+        CaloriesWidget()
+    }
 }
 
 private let accent = Color(red: 0.49, green: 0.77, blue: 1.0)

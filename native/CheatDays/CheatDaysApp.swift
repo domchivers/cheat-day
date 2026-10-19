@@ -42,6 +42,11 @@ struct MainTabs: View {
                 .tabItem { Label("Me", systemImage: "person.crop.circle.fill") }.tag(3)
         }
         .sensoryFeedback(.selection, trigger: tab)
+        .onOpenURL { url in
+            guard url.scheme == "cheatdays" else { return }
+            tab = 0
+            if url.host == "add" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { NotificationCenter.default.post(name: .openAdd, object: nil) } }
+        }
         .task {
             await Store.shared.sync()
             if Store.shared.needsOnboarding { onboarding = true }

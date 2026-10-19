@@ -4,6 +4,8 @@ import WebKit
 extension Notification.Name {
     /// The web page finished what it was opened for (food added, or it went back from its first screen).
     static let webDone = Notification.Name("cheatDaysWebDone")
+    /// The widget was tapped: open Today's add sheet.
+    static let openAdd = Notification.Name("cheatDaysOpenAdd")
 }
 
 /// A screen that is still the web app (Workouts, Friends, the pages under Me, scanning). One web view is

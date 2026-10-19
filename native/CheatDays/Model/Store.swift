@@ -318,6 +318,7 @@ final class Store {
 
     /// Saving a year of history takes a moment: it happens in the background, a little after the last change.
     private func persist() {
+        WidgetBridge.update(self)
         let snapshot = doc, queue = pending, dir = folder
         saveWork?.cancel()
         let work = DispatchWorkItem {

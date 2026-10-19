@@ -28,6 +28,9 @@ targets:
       path: CheatDays/Info.plist
       properties:
         CFBundleDisplayName: Cheat Days
+        CFBundleURLTypes:
+          - CFBundleURLName: com.cheatdays.app
+            CFBundleURLSchemes: [cheatdays]
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen:
@@ -70,6 +73,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.cheatdays.app.RestTimer
         TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_ENTITLEMENTS: RestTimer/RestTimer.entitlements
         CODE_SIGN_STYLE: Automatic
         SKIP_INSTALL: YES
   CheatDaysTests:

@@ -144,6 +144,7 @@ struct TodayView: View {
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
+            .onReceive(NotificationCenter.default.publisher(for: .openAdd)) { _ in withAnimation { offset = 0 }; addChoice = MealChoice(id: Meals.now) }
             .onReceive(NotificationCenter.default.publisher(for: .webDone)) { _ in
                 guard flow != nil else { return }
                 flow = nil
