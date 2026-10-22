@@ -67,10 +67,14 @@ struct LiveSession: Equatable {
     var routineId: String?
     var restUntil: Double?
     var exercises: [LiveExercise]
+    var lastAt: Double?        // the last time a set was ticked
 
     init(startedAt: Double, name: String, routineId: String?, restUntil: Double? = nil, exercises: [LiveExercise]) {
         self.startedAt = startedAt; self.name = name; self.routineId = routineId; self.restUntil = restUntil; self.exercises = exercises
     }
+
+    /// Nothing ticked for half an hour: probably forgot to finish.
+    var looksForgotten: Bool { Double(nowMs()) - (lastAt ?? startedAt) > 30 * 60_000 }
 
     init?(_ j: Any?) {
         guard let j = j as? JSON, let started = num(j["startedAt"]) else { return nil }
@@ -78,6 +82,7 @@ struct LiveSession: Equatable {
         name = str(j["name"])
         routineId = (j["routineId"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         restUntil = num(j["restUntil"])
+        lastAt = num(j["lastAt"])
         exercises = list(j["exercises"]).map { e in
             LiveExercise(name: str(e["exercise"]), sets: list(e["sets"]).map { s in
                 LiveSet(reps: num(s["reps"]) ?? 0, kg: num(s["kg"]) ?? 0, done: (s["done"] as? Bool) ?? false, pb: (s["pb"] as? Bool) ?? false)
@@ -89,6 +94,7 @@ struct LiveSession: Equatable {
         var j: JSON = ["startedAt": Int(startedAt), "name": name]
         j["routineId"] = routineId.map { $0 as Any } ?? NSNull()
         j["restUntil"] = restUntil.map { Int($0) as Any } ?? NSNull()
+        j["lastAt"] = lastAt.map { Int($0) as Any } ?? NSNull()
         j["exercises"] = exercises.map { e -> JSON in
             ["exercise": e.name, "sets": e.sets.map { s -> JSON in ["reps": s.reps, "kg": s.kg, "done": s.done, "pb": s.pb] }]
         }
@@ -112,7 +118,9 @@ extension Store {
     var weightKg: Double { pos(doc["weightKg"]) ?? 75 }
     var routines: [JSON] { list(doc["routines"]) }
     /// Finished workouts go on the feed for friends, unless turned off.
-    var shareWorkouts: Bool { (doc["shareWorkouts"] as? Bool) ?? true }
+    var shareWorkouts: Bool { (doc["shareWorkouts"] as? Bool) ?? false }
+    /// Not asked yet whether workouts should go on the feed.
+    var shareWorkoutsUnset: Bool { doc["shareWorkouts"] as? Bool == nil }
 
     func burn(_ type: String, minutes: Double, effort: String) -> Double {
         let met = Activities.all.first { $0.name == type }?.met ?? 5

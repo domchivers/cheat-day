@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 /// A live gym session: tick sets as you go, the rest timer starts on its own, drag exercises into any order.
 struct SessionView: View {
@@ -12,6 +13,8 @@ struct SessionView: View {
     @State private var restOver = 0
     @State private var finished = false
     @State private var routineOffer: JSON?
+    @State private var askShare: JSON?
+    @State private var forgotten = false
     @Environment(\.dismiss) private var dismiss
     private var store: Store { Store.shared }
 
@@ -98,7 +101,7 @@ struct SessionView: View {
             Text("How many minutes did it take? Change it if the timer ran on.")
         }
         .confirmationDialog("Discard this session? Nothing will be logged.", isPresented: $confirmDiscard, titleVisibility: .visible) {
-            Button("Discard", role: .destructive) { finished = true; store.saveSession(nil); dismiss() }
+            Button("Discard", role: .destructive) { finished = true; Self.cancelIdleReminder(); store.saveSession(nil); dismiss() }
         }
         .confirmationDialog("Save this as a routine, to start it again next time?", isPresented: Binding(get: { routineOffer != nil }, set: { if !$0, let w = routineOffer { routineOffer = nil; offerShare(w) } }), titleVisibility: .visible) {
             Button("Save as a routine") {
@@ -109,6 +112,19 @@ struct SessionView: View {
             }
             Button("Not now", role: .cancel) { let w = routineOffer; routineOffer = nil; offerShare(w) }
         }
+        .confirmationDialog("Show your workouts on the feed?", isPresented: Binding(get: { askShare != nil }, set: { if !$0 && askShare != nil { answerShare(false) } }), titleVisibility: .visible) {
+            Button("Yes, show them") { answerShare(true) }
+            Button("No, keep them to myself", role: .cancel) { answerShare(false) }
+        } message: { Text("Friends would see each workout you finish and can react or do the same one. You can change this in Settings.") }
+        .sheet(isPresented: $forgotten) {
+            ForgotToFinish(session: $s) { minutes in
+                forgotten = false
+                minutesText = String(minutes)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { finish() }
+            }
+            .presentationDetents([.medium, .large])
+        }
+        .onAppear { if s.looksForgotten && s.setsDone > 0 { forgotten = true } }
     }
 
     // MARK: the bar that stays on screen
@@ -211,6 +227,16 @@ struct SessionView: View {
         return Progression.target(m, last: store.lastSets(m.exercise), deload: plan.isDeload(on: store.today))
     }
 
+    /// A reminder 35 minutes after the last ticked set, replaced with each tick; gone once the session ends.
+    static func remindIfIdle() {
+        let c = UNMutableNotificationContent()
+        c.title = "Still training?"
+        c.body = "Nothing's been ticked for a while. Open Cheat Days to finish your workout with the right time."
+        let req = UNNotificationRequest(identifier: "workout.idle", content: c, trigger: UNTimeIntervalNotificationTrigger(timeInterval: 35 * 60, repeats: false))
+        UNUserNotificationCenter.current().add(req)
+    }
+    static func cancelIdleReminder() { UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ["workout.idle"]) }
+
     private func index(_ id: UUID) -> Int? { s.exercises.firstIndex { $0.id == id } }
 
     private func tick(_ exId: UUID, _ setId: UUID) {
@@ -218,6 +244,8 @@ struct SessionView: View {
         var set = s.exercises[i].sets[j]
         set.done.toggle(); set.pb = false
         if set.done {
+            s.lastAt = Double(nowMs())
+            Self.remindIfIdle()
             if set.reps <= 0 { set.reps = 1 }
             s.restUntil = Double(nowMs() + store.restSeconds * 1000)
             let name = s.exercises[i].name
@@ -262,7 +290,16 @@ struct SessionView: View {
 
     /// Done with the session: friends see the workout on the feed (unless that's turned off in Settings).
     private func offerShare(_ w: JSON?) {
-        if let w, store.shareWorkouts { Task { try? await Feed.shared.post(ComposeSheet.workoutPost(w), photo: nil) } }
+        guard let w else { dismiss(); return }
+        if store.shareWorkoutsUnset { DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { askShare = w }; return }   // the first time only
+        if store.shareWorkouts { Task { try? await Feed.shared.post(ComposeSheet.workoutPost(w), photo: nil) } }
+        dismiss()
+    }
+
+    private func answerShare(_ yes: Bool) {
+        store.perform(["type": "set", "key": "shareWorkouts", "value": yes])
+        if yes, let w = askShare { Task { try? await Feed.shared.post(ComposeSheet.workoutPost(w), photo: nil) } }
+        askShare = nil
         dismiss()
     }
 
@@ -272,6 +309,7 @@ struct SessionView: View {
     }
 
     private func finish() {
+        Self.cancelIdleReminder()
         let minutes = max(1, Int(minutesText) ?? Int((Double(nowMs()) - s.startedAt) / 60000))
         let routineName = s.routineId.flatMap { id in store.routines.first { str($0["id"]) == id }.map { str($0["name"]) } }
         let name = s.name.trimmingCharacters(in: .whitespaces).isEmpty ? (routineName ?? "Gym session") : s.name.trimmingCharacters(in: .whitespaces)
@@ -333,3 +371,62 @@ struct SetRow: View {
     }
 }
 
+
+/// Left the gym without finishing: last set's time, the set you might not have ticked, and finish with the real time.
+private struct ForgotToFinish: View {
+    @Binding var session: LiveSession
+    var finish: (Int) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var didIt = false
+    @State private var reps = ""
+    @State private var kg = ""
+
+    /// The set after the last ticked one, in an exercise you'd started.
+    private var nextSet: (ex: Int, set: Int)? {
+        guard let n = session.next, session.exercises[n.ex].sets.contains(where: \.done) else { return nil }
+        return n
+    }
+    private var lastAt: Double { session.lastAt ?? session.startedAt }
+    private var minutes: Int { max(1, Int(((lastAt - session.startedAt) / 60000).rounded()) + (didIt ? 3 : 1)) }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("Your last set was ticked at \(Date(timeIntervalSince1970: lastAt / 1000).formatted(date: .omitted, time: .shortened)), \(Date(timeIntervalSince1970: lastAt / 1000).formatted(.relative(presentation: .named))).")
+                }
+                if let n = nextSet {
+                    let e = session.exercises[n.ex]
+                    Section {
+                        Toggle("I did set \(n.set + 1) of \(e.name.isEmpty ? "this exercise" : e.name)", isOn: $didIt.animation())
+                        if didIt {
+                            HStack {
+                                TextField("Reps", text: $reps).keyboardType(.decimalPad)
+                                Text("reps").foregroundStyle(.secondary)
+                                TextField("kg", text: $kg).keyboardType(.decimalPad)
+                                Text("kg").foregroundStyle(.secondary)
+                            }
+                        }
+                    } header: { Text("Forgot to tick the last set?") }
+                }
+                Section {
+                    Button { save(); finish(minutes) } label: { Text("Finish: \(minutes) min").font(.headline).frame(maxWidth: .infinity) }
+                    Button("I'm still going") { dismiss() }.frame(maxWidth: .infinity)
+                }
+            }
+            .keyboardDone()
+            .navigationTitle("Forgot to finish?")
+            .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                if let n = nextSet { let set = session.exercises[n.ex].sets[n.set]; reps = Fmt.one(set.reps); kg = set.kg > 0 ? Fmt.kg(set.kg) : "" }
+            }
+        }
+    }
+
+    private func save() {
+        guard didIt, let n = nextSet else { return }
+        session.exercises[n.ex].sets[n.set].reps = Double(reps.replacingOccurrences(of: ",", with: ".")) ?? session.exercises[n.ex].sets[n.set].reps
+        session.exercises[n.ex].sets[n.set].kg = Double(kg.replacingOccurrences(of: ",", with: ".")) ?? session.exercises[n.ex].sets[n.set].kg
+        session.exercises[n.ex].sets[n.set].done = true
+    }
+}

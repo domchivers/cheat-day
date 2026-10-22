@@ -21,13 +21,14 @@ struct FriendsView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { showActivity = true } label: {
-                        Image(systemName: "bell.fill")
-                            .overlay(alignment: .topTrailing) {
-                                if FriendActivity.shared.unread > 0 {
-                                    Text("\(min(FriendActivity.shared.unread, 99))").font(.system(size: 10, weight: .heavy)).foregroundStyle(.white)
-                                        .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 16).background(Color.red, in: Capsule()).offset(x: 9, y: -8)
-                                }
+                        ZStack(alignment: .topTrailing) {
+                            Image(systemName: "bell.fill").padding(.top, 6).padding(.trailing, 9)
+                            if FriendActivity.shared.unread > 0 {
+                                Text("\(min(FriendActivity.shared.unread, 99))").font(.system(size: 10, weight: .heavy)).foregroundStyle(.white)
+                                    .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 16).background(Color.red, in: Capsule())
                             }
+                        }
+                        .frame(minWidth: 34, minHeight: 30)
                     }
                     .accessibilityLabel("Activity, \(FriendActivity.shared.unread) new")
                 }

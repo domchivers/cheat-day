@@ -119,7 +119,8 @@ struct WorkoutsView: View {
             Image(systemName: "dumbbell.fill").font(.title2).foregroundStyle(Theme.accent)
             VStack(alignment: .leading, spacing: 2) {
                 Text(s.name.isEmpty ? "Gym session" : s.name).font(.headline)
-                Text("\(s.setsDone) sets done · tap to carry on").font(.footnote).foregroundStyle(.secondary)
+                Text(s.looksForgotten && s.setsDone > 0 ? "Forgot to finish? Tap to wrap it up" : "\(s.setsDone) sets done · tap to carry on")
+                    .font(.footnote).foregroundStyle(s.looksForgotten && s.setsDone > 0 ? Theme.warn : .secondary)
             }
             Spacer()
             Text(Date(timeIntervalSince1970: s.startedAt / 1000), style: .timer)
