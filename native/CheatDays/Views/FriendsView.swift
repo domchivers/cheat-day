@@ -5,6 +5,7 @@ struct FriendsView: View {
     @State private var seg = 0
     @State private var open: Set<String> = []
     @State private var adding = false
+    @State private var showActivity = false
     private var model: Friends { Friends.shared }
 
     var body: some View {
@@ -18,11 +19,24 @@ struct FriendsView: View {
             .keyboardDone()
             .navigationTitle("Friends")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { showActivity = true } label: {
+                        Image(systemName: "bell.fill")
+                            .overlay(alignment: .topTrailing) {
+                                if Activity.shared.unread > 0 {
+                                    Text("\(min(Activity.shared.unread, 99))").font(.system(size: 10, weight: .heavy)).foregroundStyle(.white)
+                                        .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 16).background(Color.red, in: Capsule()).offset(x: 9, y: -8)
+                                }
+                            }
+                    }
+                    .accessibilityLabel("Activity, \(Activity.shared.unread) new")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { adding = true } label: { Image(systemName: "person.badge.plus") }.accessibilityLabel("Add a friend")
                 }
             }
             .sheet(isPresented: $adding) { AddFriendSheet().presentationDetents([.medium]) }
+            .sheet(isPresented: $showActivity) { ActivityView { seg = 1 } }
             .task { await model.load() }
         }
     }

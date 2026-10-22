@@ -224,6 +224,7 @@ private struct PostBox: Identifiable { let post: JSON; var id: String { str(post
 
 /// Share something: one of today's foods, a saved meal or today's workout, with a caption and an optional photo.
 struct ComposeSheet: View {
+    var preset: JSON? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var what: JSON?
     @State private var caption = ""
@@ -268,6 +269,7 @@ struct ComposeSheet: View {
                 }
             }
             .keyboardDone()
+            .onAppear { if what == nil, let preset { what = preset } }
             .navigationTitle(what == nil ? "What are you sharing?" : "New post")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -300,7 +302,10 @@ struct ComposeSheet: View {
                 "macros": ["p": Int(num(b["pServ"]) ?? 0), "c": Int(num(b["cServ"]) ?? 0), "f": Int(num(b["fServ"]) ?? 0)] as JSON,
                 "payload": ["name": m["name"] ?? "", "portions": n, "items": m["items"] ?? [Any](), "steps": m["steps"] ?? [Any]()] as JSON, "extra": ["portions": n] as JSON]
     }
-    private func workout(_ w: JSON) -> JSON {
+    private func workout(_ w: JSON) -> JSON { Self.workoutPost(w) }
+
+    /// A finished workout as a post.
+    static func workoutPost(_ w: JSON) -> JSON {
         ["kind": "workout", "name": w["name"] ?? "", "kcal": w["kcal"] ?? 0, "macros": NSNull(),
          "payload": ["minutes": w["minutes"] ?? 0, "lifts": w["lifts"] ?? [Any]()] as JSON, "extra": ["minutes": w["minutes"] ?? 0] as JSON]
     }

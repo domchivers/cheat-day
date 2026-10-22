@@ -12,6 +12,8 @@ struct SessionView: View {
     @State private var restOver = 0
     @State private var finished = false
     @State private var routineOffer: JSON?
+    @State private var shareOffer: JSON?
+    @State private var sharing: JSON?
     @Environment(\.dismiss) private var dismiss
     private var store: Store { Store.shared }
 
@@ -100,14 +102,21 @@ struct SessionView: View {
         .confirmationDialog("Discard this session? Nothing will be logged.", isPresented: $confirmDiscard, titleVisibility: .visible) {
             Button("Discard", role: .destructive) { finished = true; store.saveSession(nil); dismiss() }
         }
-        .confirmationDialog("Save this as a routine, to start it again next time?", isPresented: Binding(get: { routineOffer != nil }, set: { if !$0 { routineOffer = nil; dismiss() } }), titleVisibility: .visible) {
+        .confirmationDialog("Save this as a routine, to start it again next time?", isPresented: Binding(get: { routineOffer != nil }, set: { if !$0, let w = routineOffer { routineOffer = nil; offerShare(w) } }), titleVisibility: .visible) {
             Button("Save as a routine") {
                 if let w = routineOffer {
                     store.saveRoutine(name: str(w["name"]), exercises: list(w["lifts"]).map { ["exercise": $0["exercise"] ?? "", "sets": $0["sets"] ?? 3, "reps": $0["reps"] ?? 8, "kg": $0["kg"] ?? 0] as JSON })
                 }
-                routineOffer = nil; dismiss()
+                let w = routineOffer; routineOffer = nil; offerShare(w)
             }
-            Button("Not now", role: .cancel) { routineOffer = nil; dismiss() }
+            Button("Not now", role: .cancel) { let w = routineOffer; routineOffer = nil; offerShare(w) }
+        }
+        .confirmationDialog("Share this workout with your friends?", isPresented: Binding(get: { shareOffer != nil }, set: { if !$0 && sharing == nil { shareOffer = nil; dismiss() } }), titleVisibility: .visible) {
+            Button("Share to the feed") { sharing = shareOffer; shareOffer = nil }
+            Button("Not now", role: .cancel) { shareOffer = nil; dismiss() }
+        } message: { Text("Add a photo and a caption if you like. Friends can react and do the same workout.") }
+        .sheet(item: Binding(get: { sharing.map { SharePost(post: $0) } }, set: { if $0 == nil { sharing = nil; dismiss() } })) { p in
+            ComposeSheet(preset: ComposeSheet.workoutPost(p.post))
         }
     }
 
@@ -260,6 +269,12 @@ struct SessionView: View {
 
     // MARK: finish
 
+    /// After the routine question (or straight after finishing): offer to share the workout.
+    private func offerShare(_ w: JSON?) {
+        guard let w else { dismiss(); return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { shareOffer = w }   // after the last question has gone
+    }
+
     private func prepareFinish() {
         minutesText = String(max(1, Int((Double(nowMs()) - s.startedAt) / 60000)))
         finishing = true
@@ -271,7 +286,7 @@ struct SessionView: View {
         let name = s.name.trimmingCharacters(in: .whitespaces).isEmpty ? (routineName ?? "Gym session") : s.name.trimmingCharacters(in: .whitespaces)
         finished = true
         let w = store.finish(s, minutes: minutes, name: name)
-        if s.routineId == nil && !list(w["lifts"]).isEmpty { routineOffer = w } else { dismiss() }
+        if s.routineId == nil && !list(w["lifts"]).isEmpty { routineOffer = w } else { offerShare(w) }
     }
 }
 
@@ -326,3 +341,5 @@ struct SetRow: View {
         }
     }
 }
+
+private struct SharePost: Identifiable { let post: JSON; var id: String { str(post["id"]) + str(post["name"]) } }

@@ -474,6 +474,9 @@ struct AmountView: View {
     @State private var gramsText = ""
     @State private var kcalText = ""
     @State private var nameText = ""
+    @State private var change = ""
+    @State private var tweaking = false
+    @State private var tweakNote: String?
     private var store: Store { Store.shared }
     private let conv: FoodMath.Conv
     private var asksName: Bool { target.basis["askName"] as? Bool == true }
@@ -557,6 +560,18 @@ struct AmountView: View {
                 }
             }
             .onChange(of: mode) { _, _ in syncTexts() }   // whichever way it was set, the others show the same amount
+            if let id = target.editId {
+                Section {
+                    HStack {
+                        TextField("It was a large one, no sauce…", text: $change).submitLabel(.done).onSubmit { tweak(id) }
+                        if tweaking { ProgressView() }
+                        else if !change.trimmingCharacters(in: .whitespaces).isEmpty {
+                            Button { tweak(id) } label: { Image(systemName: "sparkles") }.buttonStyle(.borderless)
+                        }
+                    }
+                    if let tweakNote { Text(tweakNote).font(.footnote).foregroundStyle(.secondary) }
+                } header: { Text("Something different?") } footer: { Text("Say what changed and the AI updates the food: its name, calories and macros.") }
+            }
             Section("Meal") {
                 Picker("Meal", selection: $meal) { ForEach(Meals.all, id: \.self) { Text($0).tag($0) } }.pickerStyle(.segmented)
             }
@@ -652,6 +667,24 @@ struct AmountView: View {
     private func syncTexts() {
         if let k100 = conv.kcalPer100, k100 > 0 { gramsText = Fmt.one(kcal / k100 * 100) }
         kcalText = String(Int(kcal.rounded()))
+    }
+
+    /// "It was a large one": the AI updates this entry, then the sheet closes.
+    private func tweak(_ id: String) {
+        let said = change.trimmingCharacters(in: .whitespaces)
+        guard !said.isEmpty, !tweaking else { return }
+        var item = target.basis; item["kcal"] = kcal; item["id"] = id
+        tweaking = true; tweakNote = nil
+        Task {
+            defer { tweaking = false }
+            do {
+                let r = try await Tweak.ask(item, change: said)
+                store.perform(["type": "tweak", "id": id, "item": r.item])
+                tweakNote = r.reply.isEmpty ? "Updated." : r.reply
+                try? await Task.sleep(nanoseconds: 1_300_000_000)
+                finish()
+            } catch { tweakNote = error.localizedDescription }
+        }
     }
 
     private func save() {

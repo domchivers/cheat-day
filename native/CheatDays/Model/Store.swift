@@ -189,6 +189,7 @@ final class Store {
             applyPlanOp(op, to: &d)
             applyBadgeOp(op, to: &d)
             Assistant.applyChatOp(op, to: &d)
+            Tweak.applyOp(op, to: &d)
         }
     }
 
