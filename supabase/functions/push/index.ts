@@ -25,9 +25,43 @@ async function vapid() {
   return keys;
 }
 
+// ---- the iPhone app: Apple's push service (APNs). Its rows in push_subs have endpoint "apns:<device token>".
+// Secrets, set by the owner: APNS_KEY_ID, APNS_TEAM_ID, APNS_KEY (the .p8 file's text); APNS_TOPIC defaults to the app's bundle id.
+let apnsJwt: { token: string; at: number } | null = null;
+async function apnsToken(): Promise<string | null> {
+  const keyId = Deno.env.get("APNS_KEY_ID"), team = Deno.env.get("APNS_TEAM_ID"), pem = Deno.env.get("APNS_KEY");
+  if (!keyId || !team || !pem) return null;
+  if (apnsJwt && Date.now() - apnsJwt.at < 40 * 60 * 1000) return apnsJwt.token;   // Apple wants it renewed within the hour
+  const der = Uint8Array.from(atob(pem.replace(/-----[^-]+-----/g, "").replace(/\s+/g, "")), (c) => c.charCodeAt(0));
+  const key = await crypto.subtle.importKey("pkcs8", der, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+  const b64 = (o: unknown) => btoa(typeof o === "string" ? o : JSON.stringify(o)).replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
+  const head = b64({ alg: "ES256", kid: keyId }), claims = b64({ iss: team, iat: Math.floor(Date.now() / 1000) });
+  const sig = new Uint8Array(await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, new TextEncoder().encode(`${head}.${claims}`)));
+  const token = `${head}.${claims}.${b64(String.fromCharCode(...sig))}`;
+  apnsJwt = { token, at: Date.now() };
+  return token;
+}
+async function sendApns(endpoint: string, payload: { title: string; body: string; tag?: string }) {
+  const jwt = await apnsToken(); if (!jwt) return false;
+  const device = endpoint.slice(5), topic = Deno.env.get("APNS_TOPIC") || "com.cheatdays.app";
+  const host = Deno.env.get("APNS_SANDBOX") === "1" ? "api.sandbox.push.apple.com" : "api.push.apple.com";   // TestFlight and App Store builds use the main one
+  const r = await fetch(`https://${host}/3/device/${device}`, {
+    method: "POST",
+    headers: { authorization: `bearer ${jwt}`, "apns-topic": topic, "apns-push-type": "alert", "apns-priority": "10", ...(payload.tag ? { "apns-collapse-id": payload.tag.slice(0, 64) } : {}) },
+    body: JSON.stringify({ aps: { alert: { title: payload.title, body: payload.body }, sound: "default" }, kind: payload.tag || "" }),
+  });
+  if (r.status === 410 || r.status === 400) {   // the app was removed or the token is no longer valid
+    const why = await r.text().catch(() => "");
+    if (r.status === 410 || /BadDeviceToken|Unregistered/.test(why)) await admin.from("push_subs").delete().eq("endpoint", endpoint);
+    return false;
+  }
+  return r.ok;
+}
+
 type Sub = { endpoint: string; user_id: string; p256dh: string; auth: string; tz: string | null; prefs: any; last_lunch: string | null; last_weigh: string | null };
 /** Send to one subscription; a gone subscription (404/410) is removed. */
 async function send(sub: Sub, payload: { title: string; body: string; url?: string; tag?: string }) {
+  if (sub.endpoint.startsWith("apns:")) return await sendApns(sub.endpoint, payload).catch(() => false);
   await vapid();
   try {
     await webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, JSON.stringify({ url: APP_URL, ...payload }), { TTL: 3600 });

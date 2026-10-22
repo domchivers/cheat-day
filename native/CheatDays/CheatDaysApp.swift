@@ -9,6 +9,7 @@ enum AppConfig {
 
 @main
 struct CheatDaysApp: App {
+    @UIApplicationDelegateAdaptor(PushDelegate.self) private var pushDelegate
     var body: some Scene {
         WindowGroup {
             RootView()
@@ -43,6 +44,7 @@ struct MainTabs: View {
                 .tabItem { Label("Me", systemImage: "person.crop.circle.fill") }.tag(3)
         }
         .sensoryFeedback(.selection, trigger: tab)
+        .onReceive(NotificationCenter.default.publisher(for: .openTab)) { n in if let t = n.object as? Int { tab = t } }
         .onOpenURL { url in
             guard url.scheme == "cheatdays" else { return }
             tab = 0
@@ -54,6 +56,7 @@ struct MainTabs: View {
             await Store.shared.applyHelperChanges(); await Store.shared.pullBody(); await Reminders.reschedule(Store.shared)
             await HealthSync.pull()
             await FriendActivity.shared.load()
+            await Push.start()
         }
         .fullScreenCover(isPresented: $onboarding) { OnboardingView(firstRun: true) { onboarding = false } }
         .onChange(of: phase) { _, now in

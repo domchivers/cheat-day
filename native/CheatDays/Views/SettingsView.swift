@@ -44,6 +44,7 @@ struct SettingsView: View {
             } header: { Text("Weigh-in days") } footer: { Text("Once a week is plenty. Your plan's check-in uses these too.") }
             Section {
                 Toggle("Share my day with friends", isOn: $share)
+                Toggle("Notifications from friends", isOn: Binding(get: { Push.on }, set: { v in Task { await Push.setOn(v) } }))
                 Toggle("Show my workouts on the feed", isOn: Binding(get: { store.shareWorkouts }, set: { store.perform(["type": "set", "key": "shareWorkouts", "value": $0]) }))
             } footer: { Text("Friends see your calories and what you had today.") }
             Section {
