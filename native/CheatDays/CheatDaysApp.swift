@@ -38,7 +38,7 @@ struct MainTabs: View {
                 .tabItem { Label("Workouts", systemImage: "dumbbell.fill") }.tag(1)
             FriendsView()
                 .tabItem { Label("Friends", systemImage: "person.2.fill") }.tag(2)
-                .badge(Activity.shared.unread)
+                .badge(FriendActivity.shared.unread)
             MeView()
                 .tabItem { Label("Me", systemImage: "person.crop.circle.fill") }.tag(3)
         }
@@ -53,12 +53,12 @@ struct MainTabs: View {
             if Store.shared.needsOnboarding { onboarding = true }
             await Store.shared.applyHelperChanges(); await Store.shared.pullBody(); await Reminders.reschedule(Store.shared)
             await HealthSync.pull()
-            await Activity.shared.load()
+            await FriendActivity.shared.load()
         }
         .fullScreenCover(isPresented: $onboarding) { OnboardingView(firstRun: true) { onboarding = false } }
         .onChange(of: phase) { _, now in
             if now == .background { Store.shared.flush() }
-            if now == .active { Task { await Store.shared.sync(); await Store.shared.applyHelperChanges(); await Reminders.reschedule(Store.shared); await HealthSync.pull(); await Activity.shared.load() } } }
+            if now == .active { Task { await Store.shared.sync(); await Store.shared.applyHelperChanges(); await Reminders.reschedule(Store.shared); await HealthSync.pull(); await FriendActivity.shared.load() } } }
         .onChange(of: tab) { _, _ in
             if Store.shared.lastSynced.map({ Date().timeIntervalSince($0) > 60 }) ?? true { Task { await Store.shared.sync() } }
         }

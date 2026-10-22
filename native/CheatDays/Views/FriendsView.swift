@@ -23,13 +23,13 @@ struct FriendsView: View {
                     Button { showActivity = true } label: {
                         Image(systemName: "bell.fill")
                             .overlay(alignment: .topTrailing) {
-                                if Activity.shared.unread > 0 {
-                                    Text("\(min(Activity.shared.unread, 99))").font(.system(size: 10, weight: .heavy)).foregroundStyle(.white)
+                                if FriendActivity.shared.unread > 0 {
+                                    Text("\(min(FriendActivity.shared.unread, 99))").font(.system(size: 10, weight: .heavy)).foregroundStyle(.white)
                                         .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 16).background(Color.red, in: Capsule()).offset(x: 9, y: -8)
                                 }
                             }
                     }
-                    .accessibilityLabel("Activity, \(Activity.shared.unread) new")
+                    .accessibilityLabel("Activity, \(FriendActivity.shared.unread) new")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { adding = true } label: { Image(systemName: "person.badge.plus") }.accessibilityLabel("Add a friend")

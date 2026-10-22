@@ -186,6 +186,7 @@ struct WorkoutDetail: View {
     let workout: JSON
     let date: String
     @State private var savedRoutine = false
+    @State private var sharing = false
     private var store: Store { Store.shared }
 
     var body: some View {
@@ -230,6 +231,8 @@ struct WorkoutDetail: View {
                 }
             }
         }
+        .toolbar { ToolbarItem(placement: .topBarTrailing) { Button { sharing = true } label: { Label("Share", systemImage: "square.and.arrow.up") } } }
+        .sheet(isPresented: $sharing) { ComposeSheet(preset: ComposeSheet.workoutPost(workout)) }
         .navigationTitle(str(workout["name"]))
         .navigationBarTitleDisplayMode(.inline)
         .scrollContentBackground(.hidden)

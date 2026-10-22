@@ -111,6 +111,8 @@ extension Store {
     var restSeconds: Int { max(15, min(600, Int(num(doc["restSeconds"]) ?? 90))) }
     var weightKg: Double { pos(doc["weightKg"]) ?? 75 }
     var routines: [JSON] { list(doc["routines"]) }
+    /// Finished workouts go on the feed for friends, unless turned off.
+    var shareWorkouts: Bool { (doc["shareWorkouts"] as? Bool) ?? true }
 
     func burn(_ type: String, minutes: Double, effort: String) -> Double {
         let met = Activities.all.first { $0.name == type }?.met ?? 5
@@ -258,7 +260,7 @@ extension Store {
             d["session"] = op["session"] ?? NSNull()
         case "set":
             let key = str(op["key"])
-            if ["restSeconds", "reminders", "weighDays", "shareDay", "onboarded", "goalWeight", "goalStart", "weekGoals", "notes", "dayKeep", "dayRolled"].contains(key) { d[key] = op["value"] ?? NSNull() }
+            if ["restSeconds", "reminders", "weighDays", "shareDay", "onboarded", "goalWeight", "goalStart", "weekGoals", "notes", "dayKeep", "dayRolled", "shareWorkouts"].contains(key) { d[key] = op["value"] ?? NSNull() }
         case "logWorkout":
             let w = dict(op["workout"]), id = str(w["id"])
             if op["clearSession"] as? Bool == true { d["session"] = NSNull() }

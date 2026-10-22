@@ -81,9 +81,25 @@ final class Feed {
         var r = row
         r["owner"] = me
         if let photo, let jpeg = Self.square(photo) { r["photo"] = (try? await api.uploadPhoto(jpeg)) ?? NSNull() }
+        // a workout that's already on the feed (posted when it finished): add the photo and caption to that post instead
+        if str(r["kind"]) == "workout", let existing = await sameWorkout(str(r["name"])) {
+            var change: JSON = [:]
+            if let ph = r["photo"], !(ph is NSNull) { change["photo"] = ph }
+            if !str(r["caption"]).isEmpty { change["caption"] = r["caption"] }
+            if !change.isEmpty { _ = try await api.rest("/rest/v1/posts?id=eq.\(str(existing["id"]))&owner=eq.\(me)", method: "PATCH", body: change) }
+            await load()
+            return
+        }
         _ = try await api.rest("/rest/v1/posts", method: "POST", body: [r], prefer: "return=representation")
         Store.shared.perform(["type": "bump", "key": "postCount"], syncAfter: 2)
         await load()
+    }
+
+    /// My workout post with this name from the last day, if there is one.
+    private func sameWorkout(_ name: String) async -> JSON? {
+        let since = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-86400))
+        let n = name.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? name
+        return try? await rows("/rest/v1/posts?owner=eq.\(me)&kind=eq.workout&name=eq.\(n)&created_at=gte.\(since)&select=id&order=created_at.desc&limit=1").first
     }
 
     /// A friend hears about it (the website's notifyFriend), if push is set up.

@@ -12,8 +12,6 @@ struct SessionView: View {
     @State private var restOver = 0
     @State private var finished = false
     @State private var routineOffer: JSON?
-    @State private var shareOffer: JSON?
-    @State private var sharing: JSON?
     @Environment(\.dismiss) private var dismiss
     private var store: Store { Store.shared }
 
@@ -110,13 +108,6 @@ struct SessionView: View {
                 let w = routineOffer; routineOffer = nil; offerShare(w)
             }
             Button("Not now", role: .cancel) { let w = routineOffer; routineOffer = nil; offerShare(w) }
-        }
-        .confirmationDialog("Share this workout with your friends?", isPresented: Binding(get: { shareOffer != nil }, set: { if !$0 && sharing == nil { shareOffer = nil; dismiss() } }), titleVisibility: .visible) {
-            Button("Share to the feed") { sharing = shareOffer; shareOffer = nil }
-            Button("Not now", role: .cancel) { shareOffer = nil; dismiss() }
-        } message: { Text("Add a photo and a caption if you like. Friends can react and do the same workout.") }
-        .sheet(item: Binding(get: { sharing.map { SharePost(post: $0) } }, set: { if $0 == nil { sharing = nil; dismiss() } })) { p in
-            ComposeSheet(preset: ComposeSheet.workoutPost(p.post))
         }
     }
 
@@ -269,10 +260,10 @@ struct SessionView: View {
 
     // MARK: finish
 
-    /// After the routine question (or straight after finishing): offer to share the workout.
+    /// Done with the session: friends see the workout on the feed (unless that's turned off in Settings).
     private func offerShare(_ w: JSON?) {
-        guard let w else { dismiss(); return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { shareOffer = w }   // after the last question has gone
+        if let w, store.shareWorkouts { Task { try? await Feed.shared.post(ComposeSheet.workoutPost(w), photo: nil) } }
+        dismiss()
     }
 
     private func prepareFinish() {
@@ -342,4 +333,3 @@ struct SetRow: View {
     }
 }
 
-private struct SharePost: Identifiable { let post: JSON; var id: String { str(post["id"]) + str(post["name"]) } }

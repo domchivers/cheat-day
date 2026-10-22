@@ -3,8 +3,8 @@ import SwiftUI
 /// Everything friends did that concerns you, newest first: reactions and comments on your posts, food sent to you,
 /// friend requests, and friends' new posts (workouts, meals, photos). The bell in Friends shows how many are new.
 @Observable @MainActor
-final class Activity {
-    static let shared = Activity()
+final class FriendActivity {
+    static let shared = FriendActivity()
 
     struct Item: Identifiable {
         enum Kind { case reaction, comment, sent, post, request }
@@ -93,8 +93,8 @@ final class Activity {
 struct ActivityView: View {
     var openFeed: () -> Void
     @Environment(\.dismiss) private var dismiss
-    private var activity: Activity { Activity.shared }
-    @State private var lastSeen = Activity.shared.seen
+    private var activity: FriendActivity { FriendActivity.shared }
+    @State private var lastSeen = FriendActivity.shared.seen
 
     var body: some View {
         NavigationStack {
@@ -118,7 +118,7 @@ struct ActivityView: View {
         }
     }
 
-    private func row(_ it: Activity.Item) -> some View {
+    private func row(_ it: FriendActivity.Item) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: symbol(it.kind)).font(.subheadline.weight(.bold)).foregroundStyle(tint(it.kind))
                 .frame(width: 34, height: 34).background(tint(it.kind).opacity(0.15), in: Circle())
@@ -136,10 +136,10 @@ struct ActivityView: View {
         .padding(.vertical, 3)
     }
 
-    private func symbol(_ k: Activity.Item.Kind) -> String {
+    private func symbol(_ k: FriendActivity.Item.Kind) -> String {
         switch k { case .reaction: return "heart.fill"; case .comment: return "bubble.left.fill"; case .sent: return "paperplane.fill"; case .post: return "photo.on.rectangle"; case .request: return "person.badge.plus" }
     }
-    private func tint(_ k: Activity.Item.Kind) -> Color {
+    private func tint(_ k: FriendActivity.Item.Kind) -> Color {
         switch k { case .reaction: return .pink; case .comment: return Theme.accent; case .sent: return .green; case .post: return Theme.warn; case .request: return .purple }
     }
 }
