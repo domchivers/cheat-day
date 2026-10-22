@@ -42,7 +42,7 @@ async function apnsToken(): Promise<string | null> {
   return token;
 }
 async function sendApns(endpoint: string, payload: { title: string; body: string; tag?: string }) {
-  const jwt = await apnsToken(); if (!jwt) return false;
+  const jwt = await apnsToken(); if (!jwt) { console.log("apns: secrets missing (APNS_KEY_ID / APNS_TEAM_ID / APNS_KEY)"); return false; }
   const device = endpoint.slice(5), topic = Deno.env.get("APNS_TOPIC") || "com.cheatdays.app";
   const host = Deno.env.get("APNS_SANDBOX") === "1" ? "api.sandbox.push.apple.com" : "api.push.apple.com";   // TestFlight and App Store builds use the main one
   const r = await fetch(`https://${host}/3/device/${device}`, {
@@ -50,8 +50,9 @@ async function sendApns(endpoint: string, payload: { title: string; body: string
     headers: { authorization: `bearer ${jwt}`, "apns-topic": topic, "apns-push-type": "alert", "apns-priority": "10", ...(payload.tag ? { "apns-collapse-id": payload.tag.slice(0, 64) } : {}) },
     body: JSON.stringify({ aps: { alert: { title: payload.title, body: payload.body }, sound: "default" }, kind: payload.tag || "" }),
   });
+  const why = r.ok ? "" : await r.text().catch(() => "");
+  console.log(`apns: ${r.status} ${why} (${host}, ${topic}, …${device.slice(-6)})`);
   if (r.status === 410 || r.status === 400) {   // the app was removed or the token is no longer valid
-    const why = await r.text().catch(() => "");
     if (r.status === 410 || /BadDeviceToken|Unregistered/.test(why)) await admin.from("push_subs").delete().eq("endpoint", endpoint);
     return false;
   }
@@ -61,7 +62,7 @@ async function sendApns(endpoint: string, payload: { title: string; body: string
 type Sub = { endpoint: string; user_id: string; p256dh: string; auth: string; tz: string | null; prefs: any; last_lunch: string | null; last_weigh: string | null };
 /** Send to one subscription; a gone subscription (404/410) is removed. */
 async function send(sub: Sub, payload: { title: string; body: string; url?: string; tag?: string }) {
-  if (sub.endpoint.startsWith("apns:")) return await sendApns(sub.endpoint, payload).catch(() => false);
+  if (sub.endpoint.startsWith("apns:")) return await sendApns(sub.endpoint, payload).catch((e) => { console.log("apns: failed", String(e)); return false; });
   await vapid();
   try {
     await webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, JSON.stringify({ url: APP_URL, ...payload }), { TTL: 3600 });
