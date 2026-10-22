@@ -20,7 +20,7 @@ struct ScanSheet: View {
         NavigationStack {
             Group {
                 switch phase {
-                case .scanning: scanning
+                case .scanning: scanning.keyboardDone()   // only here: "How much?" brings its own
                 case .looking(let code):
                     VStack(spacing: 14) { ProgressView().controlSize(.large); Text("Looking up \(code)…").foregroundStyle(.secondary) }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -32,7 +32,6 @@ struct ScanSheet: View {
                     problem("Couldn't look it up", "\(why) Try barcode \(code) again in a moment, or use a photo.", retry: code)
                 }
             }
-            .keyboardDone()
             .navigationTitle("Scan")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
