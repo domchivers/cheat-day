@@ -41,14 +41,14 @@ async function apnsToken(): Promise<string | null> {
   apnsJwt = { token, at: Date.now() };
   return token;
 }
-async function sendApns(endpoint: string, payload: { title: string; body: string; tag?: string }) {
+async function sendApns(endpoint: string, payload: { title: string; body: string; tag?: string; post?: string }) {
   const jwt = await apnsToken(); if (!jwt) { console.log("apns: secrets missing (APNS_KEY_ID / APNS_TEAM_ID / APNS_KEY)"); return false; }
   const device = endpoint.slice(5), topic = Deno.env.get("APNS_TOPIC") || "com.cheatdays.app";
   const host = Deno.env.get("APNS_SANDBOX") === "1" ? "api.sandbox.push.apple.com" : "api.push.apple.com";   // TestFlight and App Store builds use the main one
   const r = await fetch(`https://${host}/3/device/${device}`, {
     method: "POST",
     headers: { authorization: `bearer ${jwt}`, "apns-topic": topic, "apns-push-type": "alert", "apns-priority": "10", ...(payload.tag ? { "apns-collapse-id": payload.tag.slice(0, 64) } : {}) },
-    body: JSON.stringify({ aps: { alert: { title: payload.title, body: payload.body }, sound: "default" }, kind: payload.tag || "" }),
+    body: JSON.stringify({ aps: { alert: { title: payload.title, body: payload.body }, sound: "default" }, kind: payload.tag || "", post: payload.post || "" }),
   });
   const why = r.ok ? "" : await r.text().catch(() => "");
   console.log(`apns: ${r.status} ${why} (${host}, ${topic}, …${device.slice(-6)})`);
@@ -61,7 +61,7 @@ async function sendApns(endpoint: string, payload: { title: string; body: string
 
 type Sub = { endpoint: string; user_id: string; p256dh: string; auth: string; tz: string | null; prefs: any; last_lunch: string | null; last_weigh: string | null };
 /** Send to one subscription; a gone subscription (404/410) is removed. */
-async function send(sub: Sub, payload: { title: string; body: string; url?: string; tag?: string }) {
+async function send(sub: Sub, payload: { title: string; body: string; url?: string; tag?: string; post?: string }) {
   if (sub.endpoint.startsWith("apns:")) return await sendApns(sub.endpoint, payload).catch((e) => { console.log("apns: failed", String(e)); return false; });
   await vapid();
   try {
@@ -73,7 +73,7 @@ async function send(sub: Sub, payload: { title: string; body: string; url?: stri
     return false;
   }
 }
-async function sendToUser(userId: string, payload: { title: string; body: string; url?: string; tag?: string }, pref?: string) {
+async function sendToUser(userId: string, payload: { title: string; body: string; url?: string; tag?: string; post?: string }, pref?: string) {
   const { data } = await admin.from("push_subs").select("*").eq("user_id", userId);
   let n = 0;
   for (const s of (data || []) as Sub[]) { if (pref && s.prefs && s.prefs[pref] === false) continue; if (await send(s, payload)) n++; }
@@ -159,7 +159,7 @@ async function handle(req: Request): Promise<Response> {
     const msg = body.kind === "comment" ? { title: `${who} commented`, body: what || "on your post" }
       : body.kind === "send" ? { title: `${who} sent you food`, body: what ? `${what}: tap to add it to your day` : "Tap to add it to your day" }
       : { title: `${who} reacted ${String(body.emoji || "").slice(0, 4)}`, body: what ? `to ${what}` : "to your post" };
-    const n = await sendToUser(to, { ...msg, tag: `social-${body.kind || "react"}` }, "social");
+    const n = await sendToUser(to, { ...msg, tag: `social-${body.kind || "react"}`, post: String(body.post || "").slice(0, 64) }, "social");
     return json({ ok: true, sent: n });
   }
   return json({ error: "Unknown action" }, 400);

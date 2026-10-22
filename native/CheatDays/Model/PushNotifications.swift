@@ -24,15 +24,36 @@ final class PushDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCen
 
     // tapping one: food sent goes to Today (it's waiting there), anything else to Friends
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
-        let kind = response.notification.request.content.userInfo["kind"] as? String ?? ""
+        let info = response.notification.request.content.userInfo
+        let kind = info["kind"] as? String ?? "", post = info["post"] as? String ?? ""
         await MainActor.run {
-            NotificationCenter.default.post(name: .openTab, object: kind.contains("send") ? 0 : 2)
+            if kind.contains("send") { Nav.shared.today() }
+            else if !post.isEmpty || kind.contains("comment") { Nav.shared.feed(post: post) }
+            else { Nav.shared.people() }   // a reaction to your day
+            Task { await FriendActivity.shared.load() }
         }
     }
 }
 
 extension Notification.Name {
     static let openTab = Notification.Name("cheatDaysOpenTab")
+}
+
+/// Taking you to the thing a notification or an Activity row is about: Today for food sent, Friends' People for a
+/// request or a reaction to your day, the feed (scrolled to the post) for anything about a post.
+@Observable @MainActor
+final class Nav {
+    static let shared = Nav()
+    var friendsSeg = 0
+    var focusPost: String?
+
+    func today() { NotificationCenter.default.post(name: .openTab, object: 0) }
+    func people() { friendsSeg = 0; NotificationCenter.default.post(name: .openTab, object: 2) }
+    func feed(post: String? = nil) {
+        friendsSeg = 1
+        focusPost = (post?.isEmpty ?? true) ? nil : post
+        NotificationCenter.default.post(name: .openTab, object: 2)
+    }
 }
 
 @MainActor

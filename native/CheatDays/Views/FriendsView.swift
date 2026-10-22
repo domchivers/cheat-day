@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Friends: each friend's day as a card (tap for what they had), the week as dots, requests, and the feed.
 struct FriendsView: View {
-    @State private var seg = 0
+    @Bindable private var nav = Nav.shared
     @State private var open: Set<String> = []
     @State private var adding = false
     @State private var showActivity = false
@@ -11,16 +11,16 @@ struct FriendsView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                Picker("Show", selection: $seg) { Text("People").tag(0); Text("Feed").tag(1) }
+                Picker("Show", selection: $nav.friendsSeg) { Text("People").tag(0); Text("Feed").tag(1) }
                     .pickerStyle(.segmented).padding(.horizontal, 16).padding(.vertical, 8)
-                if seg == 0 { people } else { FeedView() }
+                if nav.friendsSeg == 0 { people } else { FeedView() }
             }
             .background(Theme.bg)
             .keyboardDone()
             .navigationTitle("Friends")
             .modifier(FriendsToolbar(unread: FriendActivity.shared.unread, showActivity: $showActivity, adding: $adding))
             .sheet(isPresented: $adding) { AddFriendSheet().presentationDetents([.medium]) }
-            .sheet(isPresented: $showActivity) { ActivityView { seg = 1 } }
+            .sheet(isPresented: $showActivity) { ActivityView() }
             .task { await model.load() }
         }
     }

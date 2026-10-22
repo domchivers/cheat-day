@@ -52,7 +52,7 @@ final class Feed {
             } else {
                 _ = try await api.rest("/rest/v1/reactions", method: "POST", body: [["post_id": post["id"] ?? id, "user_id": me, "emoji": emoji]], prefer: "resolution=ignore-duplicates")
                 reactions.append(["post_id": id, "user_id": me, "emoji": emoji])
-                notify(str(post["owner"]), kind: "react", text: str(post["name"]), extra: ["emoji": emoji])
+                notify(str(post["owner"]), kind: "react", text: str(post["name"]), extra: ["emoji": emoji, "post": id])
                 Store.shared.perform(["type": "bump", "key": "reactCount"], syncAfter: 3)
             }
         } catch { self.error = error.localizedDescription }
@@ -62,7 +62,7 @@ final class Feed {
         do {
             let d = try await api.rest("/rest/v1/comments", method: "POST", body: [["post_id": post["id"] ?? "", "user_id": me, "text": text]], prefer: "return=representation")
             comments += (try? JSONSerialization.jsonObject(with: d)) as? [JSON] ?? []
-            notify(str(post["owner"]), kind: "comment", text: text)
+            notify(str(post["owner"]), kind: "comment", text: text, extra: ["post": str(post["id"])])
             Store.shared.perform(["type": "bump", "key": "commentCount"], syncAfter: 3)
         } catch { self.error = error.localizedDescription }
     }
@@ -139,9 +139,11 @@ struct FeedView: View {
     @State private var opened: Set<String> = []
     @State private var drafts: [String: String] = [:]
     @State private var recipe: JSON?
+    @State private var flash: String?
     private var feed: Feed { Feed.shared }
 
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             LazyVStack(spacing: 16) {
                 Button { composing = true } label: {
@@ -156,15 +158,38 @@ struct FeedView: View {
                 .buttonStyle(.plain)
                 if let e = feed.error { Text(e).font(.footnote).foregroundStyle(Theme.warn) }
                 if feed.posts.isEmpty && !feed.loading { Text("Nothing in the feed yet. Share something, or add a friend.").foregroundStyle(.secondary).padding(.top, 30) }
-                ForEach(feed.posts.indices, id: \.self) { i in postCard(feed.posts[i]) }
+                ForEach(feed.posts.indices, id: \.self) { i in
+                    let pid = str(feed.posts[i]["id"])
+                    postCard(feed.posts[i]).id(pid)
+                        .overlay { if flash == pid { RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Theme.accent, lineWidth: 2.5).allowsHitTesting(false) } }
+                }
             }
             .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 100)
+        }
+        .task(id: Nav.shared.focusPost) { await focus(proxy) }
+        .onChange(of: feed.posts.count) { _, _ in Task { await focus(proxy) } }
         }
         .refreshable { await feed.load() }
         .task { if feed.posts.isEmpty { await feed.load() } }
         .overlay { if feed.loading && feed.posts.isEmpty { ProgressView() } }
         .sheet(isPresented: $composing) { ComposeSheet() }
         .sheet(item: Binding(get: { recipe.map { PostBox(post: $0) } }, set: { recipe = $0?.post })) { b in PostRecipeSheet(post: b.post) }
+    }
+
+    /// Scroll to the post a notification or Activity row pointed at (loading the feed first if it isn't there yet).
+    private func focus(_ proxy: ScrollViewProxy) async {
+        guard let id = Nav.shared.focusPost else { return }
+        if !feed.posts.contains(where: { str($0["id"]) == id }) {
+            if feed.loading { return }   // the count change brings us back
+            await feed.load()
+            guard feed.posts.contains(where: { str($0["id"]) == id }) else { Nav.shared.focusPost = nil; return }
+        }
+        try? await Task.sleep(for: .milliseconds(250))
+        withAnimation(.snappy) { proxy.scrollTo(id, anchor: .top) }
+        Nav.shared.focusPost = nil
+        flash = id
+        try? await Task.sleep(for: .seconds(1.6))
+        withAnimation(.easeOut) { if flash == id { flash = nil } }
     }
 
     private func postCard(_ p: JSON) -> some View {

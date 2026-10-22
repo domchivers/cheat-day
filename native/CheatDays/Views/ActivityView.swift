@@ -15,6 +15,7 @@ final class FriendActivity {
         let text: String
         let detail: String
         let photo: String?
+        var post: String? = nil
     }
 
     private(set) var items: [Item] = []
@@ -65,11 +66,11 @@ final class FriendActivity {
             let pid = str(r["post_id"])
             out.append(Item(id: "r-\(pid)-\(str(r["user_id"]))-\(str(r["emoji"]))", kind: .reaction, who: name(str(r["user_id"])),
                             at: r["created_at"] != nil ? date(r["created_at"]) : (postAt[pid] ?? .distantPast),
-                            text: "reacted \(str(r["emoji"])) to your post", detail: postName[pid] ?? "", photo: nil))
+                            text: "reacted \(str(r["emoji"])) to your post", detail: postName[pid] ?? "", photo: nil, post: pid))
         }
         for c in comments where str(c["user_id"]) != me {
             out.append(Item(id: "c-\(str(c["id"]))", kind: .comment, who: name(str(c["user_id"])), at: date(c["created_at"]),
-                            text: "commented on \(postName[str(c["post_id"])] ?? "your post")", detail: "“\(str(c["text"]))”", photo: nil))
+                            text: "commented on \(postName[str(c["post_id"])] ?? "your post")", detail: "“\(str(c["text"]))”", photo: nil, post: str(c["post_id"])))
         }
         for s in sends {
             out.append(Item(id: "s-\(str(s["id"]))", kind: .sent, who: name(str(s["from_user"])), at: date(s["created_at"]),
@@ -82,7 +83,7 @@ final class FriendActivity {
             let detail = kind == "workout" ? "\(str(p["name"])) · \(Int(num(extra["minutes"]) ?? 0)) min" : "\(str(p["name"])) · \(Int(num(p["kcal"]) ?? 0)) kcal"
             out.append(Item(id: "p-\(str(p["id"]))", kind: .post, who: name(str(p["owner"])), at: date(p["created_at"]),
                             text: what, detail: (str(p["caption"]).isEmpty ? "" : "“\(str(p["caption"]))” · ") + detail,
-                            photo: str(p["photo"]).hasPrefix("http") ? str(p["photo"]) : nil))
+                            photo: str(p["photo"]).hasPrefix("http") ? str(p["photo"]) : nil, post: str(p["id"])))
         }
         for r in Friends.shared.requests {
             out.append(Item(id: "q-\(r.id)", kind: .request, who: r.name, at: Date(), text: "wants to be friends", detail: "", photo: nil))
@@ -102,7 +103,6 @@ final class FriendActivity {
 }
 
 struct ActivityView: View {
-    var openFeed: () -> Void
     @Environment(\.dismiss) private var dismiss
     private var activity: FriendActivity { FriendActivity.shared }
     @State private var lastSeen = FriendActivity.shared.seen
@@ -114,7 +114,7 @@ struct ActivityView: View {
                     Text("Nothing yet. Reactions, comments, food sent to you and friends' posts show up here.").foregroundStyle(.secondary)
                 }
                 ForEach(activity.items) { it in
-                    Button { if it.kind == .post || it.kind == .reaction || it.kind == .comment { dismiss(); openFeed() } } label: { row(it) }
+                    Button { go(it) } label: { row(it) }
                         .buttonStyle(.plain)
                         .listRowBackground(it.at > lastSeen ? Theme.hero : Color(.secondarySystemGroupedBackground))
                 }
@@ -129,6 +129,16 @@ struct ActivityView: View {
         }
     }
 
+    private func go(_ it: FriendActivity.Item) {
+        if it.id.hasPrefix("test-") { return }
+        dismiss()
+        switch it.kind {
+        case .sent: Nav.shared.today()
+        case .request: Nav.shared.people()
+        case .post, .reaction, .comment: Nav.shared.feed(post: it.post)
+        }
+    }
+
     private func row(_ it: FriendActivity.Item) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: symbol(it.kind)).font(.subheadline.weight(.bold)).foregroundStyle(tint(it.kind))
@@ -139,6 +149,7 @@ struct ActivityView: View {
                 Text(it.at.formatted(.relative(presentation: .named))).font(.caption2).foregroundStyle(.tertiary)
             }
             Spacer(minLength: 0)
+            if !it.id.hasPrefix("test-") { Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary).padding(.top, 10) }
             if let p = it.photo, let url = URL(string: p) {
                 AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { Theme.hero }
                     .frame(width: 46, height: 46).clipShape(RoundedRectangle(cornerRadius: 8))
