@@ -88,7 +88,18 @@ enum Assistant {
     """
 
     @MainActor
-    static func ask(_ turns: [Turn], store: Store) async throws -> JSON {
+    /// Words that mean a bigger job (worth the careful model): recipes, plans, comparisons, lighter versions.
+    private static let bigJobs = ["recipe", "plan", "cook", "make me", "week", "cheat day", "lighter", "compare", "swap", "instead", "meal prep", "ideas", "suggest"]
+
+    /// A plain "what's in this / log this" message, with no photo: the quick model answers it.
+    static func isSimple(_ text: String, hasPhotos: Bool) -> Bool {
+        guard !hasPhotos else { return false }
+        let t = text.lowercased()
+        return t.count <= 140 && !bigJobs.contains(where: { t.contains($0) })
+    }
+
+    /// Ask, then check an estimate's parts against the food list and database afterwards (`ground` false: the caller does it later).
+    static func ask(_ turns: [Turn], store: Store, ground groundNow: Bool = true) async throws -> JSON {
         guard let last = turns.last, last.me else { throw Gemini.Failure(message: "Nothing to ask.") }
         let earlier = turns.dropLast().suffix(8).map { t -> String in
             if t.me { return "They: \(t.text)" }
@@ -101,8 +112,9 @@ enum Assistant {
         let pics = last.images.isEmpty ? (turns.dropLast().last { $0.me && !$0.images.isEmpty }?.images ?? []) : last.images
         var parts: [JSON] = pics.prefix(4).compactMap { Gemini.imagePart($0) }
         parts.append(["text": "You are the assistant inside a cheat-day food diary app called Cheat Days. \(context(store))\(earlier.isEmpty ? "" : "Recent conversation:\n\(earlier)\n")They now say: \"\(last.text)\"\(last.images.isEmpty && !pics.isEmpty ? " (about the photos from earlier)" : "")\n\n\(rules)"])
-        var answer = try await Gemini.ask(schema: schema, parts: parts, quick: false)
-        if str(answer["kind"]) == "estimate", let e = answer["estimate"] as? JSON { answer["estimate"] = await ground(e) }
+        // simple questions go to the quick model with minimal thinking; recipes, plans and photos to the careful one
+        var answer = try await Gemini.ask(schema: schema, parts: parts, quick: isSimple(last.text, hasPhotos: !pics.isEmpty))
+        if groundNow, str(answer["kind"]) == "estimate", let e = answer["estimate"] as? JSON { answer["estimate"] = await ground(e) }
         return answer
     }
 

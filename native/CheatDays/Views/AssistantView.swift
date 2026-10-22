@@ -151,9 +151,11 @@ struct AssistantView: View {
                     Text("\(Int(num(pt["grams"]) ?? 0)) g · \(Int(num(pt["kcal"]) ?? 0))").font(.caption).monospacedDigit().foregroundStyle(.secondary)
                 }
             }
-            Text(checked > 0 ? "\(checked) of \(parts.count) parts checked against food databases\(num(e["aiKcal"]).map { " (the AI first said \(Int($0)) kcal)" } ?? ""). An estimate, not a label."
+            let pending = !parts.isEmpty && parts.allSatisfy { str($0["src"]).isEmpty }   // not checked yet
+            if pending { Label("Checking against the food database…", systemImage: "hourglass").font(.caption2).foregroundStyle(.secondary) }
+            else { Text(checked > 0 ? "\(checked) of \(parts.count) parts checked against food databases\(num(e["aiKcal"]).map { " (the AI first said \(Int($0)) kcal)" } ?? ""). An estimate, not a label."
                              : "The AI's estimate: none of the parts could be checked against a food database.")
-                .font(.caption2).foregroundStyle(.secondary)
+                .font(.caption2).foregroundStyle(.secondary) }
             addButton("Add to \(meal.lowercased())", key: "est", turn: turn) {
                 store.add(Assistant.basis(name: str(e["name"]), kcal: k, grams: num(e["portion_g"]), unit: str(e["unit"]).isEmpty ? "g" : str(e["unit"]), p: p, c: c, f: f), kcal: k, meal: meal)
             }
@@ -309,8 +311,18 @@ struct AssistantView: View {
         Task {
             defer { busy = false }
             do {
-                let r = try await Assistant.ask(turns, store: store)
-                withAnimation(.snappy) { turns.append(Assistant.Turn(me: false, text: str(r["reply"]), result: r)) }
+                // the answer shows as soon as it's back; an estimate's parts are checked against the food database after
+                let r = try await Assistant.ask(turns, store: store, ground: false)
+                let turn = Assistant.Turn(me: false, text: str(r["reply"]), result: r)
+                withAnimation(.snappy) { turns.append(turn) }
+                if str(r["kind"]) == "estimate", let e = r["estimate"] as? JSON {
+                    busy = false
+                    let checked = await Assistant.ground(e)
+                    if let i = turns.firstIndex(where: { $0.id == turn.id }), var res = turns[i].result {
+                        res["estimate"] = checked
+                        withAnimation { turns[i].result = res }
+                    }
+                }
                 store.perform(["type": "chat", "chat": Assistant.record(id: chatId, turns: turns)], syncAfter: 3)
             } catch { problem = error.localizedDescription }
         }
