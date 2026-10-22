@@ -209,8 +209,8 @@ struct AddFriendSheet: View {
     }
 }
 
-/// The bell and add-friend buttons. On iOS 26 the new-activity count is the toolbar's own badge, sitting on the bell's
-/// top-right corner over the glass; before that, a red dot drawn into the button.
+/// The bell and add-friend buttons. On iOS 26 the new-activity count sits over the bell's top-right corner;
+/// before that, a red dot drawn into the button.
 private struct FriendsToolbar: ViewModifier {
     let unread: Int
     @Binding var showActivity: Bool
@@ -219,8 +219,20 @@ private struct FriendsToolbar: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 26, *) {
             content.toolbar {
-                ToolbarItem(placement: .topBarLeading) { bell(Image(systemName: "bell.fill")) }
-                    .badge(min(unread, 99))
+                // its own glass circle (not the toolbar's shared one, which clips) so the count can sit over the corner
+                ToolbarItem(placement: .topBarLeading) {
+                    bell(Image(systemName: "bell.fill").font(.system(size: 17, weight: .semibold))
+                        .frame(width: 44, height: 44).glassEffect(.regular.interactive(), in: Circle())
+                        .overlay(alignment: .topTrailing) {
+                            if unread > 0 {
+                                Text("\(min(unread, 99))").font(.system(size: 11, weight: .heavy)).foregroundStyle(.white)
+                                    .padding(.horizontal, 5).frame(minWidth: 19, minHeight: 19).background(Color.red, in: Capsule())
+                                    .offset(x: 5, y: -5)
+                            }
+                        })
+                    .buttonStyle(.plain)
+                }
+                .sharedBackgroundVisibility(.hidden)
                 ToolbarItem(placement: .topBarTrailing) { add }
             }
         } else {
