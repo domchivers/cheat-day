@@ -73,6 +73,7 @@ final class GapTests: XCTestCase {
     }
 
     // after midnight, yesterday can come back out of History with its food (the website's unrollDay)
+    @MainActor
     func testBringingYesterdayBack() {
         var d: JSON = ["day": ["date": "2026-10-23", "items": [Any](), "workouts": [Any]()] as JSON,
                        "history": [["date": "2026-10-22", "kcal": 1800, "items": [["name": "Toast", "kcal": 160] as JSON], "workouts": [Any]()] as JSON]]
