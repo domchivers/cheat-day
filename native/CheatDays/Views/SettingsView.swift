@@ -8,6 +8,7 @@ struct SettingsView: View {
     @State private var weighTime = Calendar.current.date(from: DateComponents(hour: 7, minute: 30)) ?? Date()
     @State private var days: Set<Int> = [0]
     @State private var share = true
+    @State private var pushNote: String?
     @State private var allowed = true
     @State private var loaded = false
     @State private var notes = ""
@@ -45,8 +46,10 @@ struct SettingsView: View {
             Section {
                 Toggle("Share my day with friends", isOn: $share)
                 Toggle("Notifications from friends", isOn: Binding(get: { Push.on }, set: { v in Task { await Push.setOn(v) } }))
+                if Push.on { Button("Send a test notification") { Task { pushNote = await Push.test() } } }
                 Toggle("Show my workouts on the feed", isOn: Binding(get: { store.shareWorkouts }, set: { store.perform(["type": "set", "key": "shareWorkouts", "value": $0]) }))
             } footer: { Text("Friends see your calories and what you had today.") }
+            .alert("Notifications", isPresented: Binding(get: { pushNote != nil }, set: { if !$0 { pushNote = nil } })) { Button("OK") {} } message: { Text(pushNote ?? "") }
             Section {
                 TextField("Vegetarian, no dairy, I train in the mornings…", text: $notes, axis: .vertical).lineLimit(3...6)
             } header: { Text("About you") } footer: { Text("The assistant reads this before every answer.") }
