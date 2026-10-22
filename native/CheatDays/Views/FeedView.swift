@@ -80,7 +80,7 @@ final class Feed {
     func post(_ row: JSON, photo: UIImage?) async throws {
         var r = row
         r["owner"] = me
-        if let photo, let jpeg = Self.square(photo) { r["photo"] = (try? await api.uploadPhoto(jpeg)) ?? NSNull() }
+        if let photo, let jpeg = Self.prepare(photo) { r["photo"] = (try? await api.uploadPhoto(jpeg)) ?? NSNull() }
         // a workout that's already on the feed (posted when it finished): add the photo and caption to that post instead
         if str(r["kind"]) == "workout", let existing = await sameWorkout(str(r["name"])) {
             var change: JSON = [:]
@@ -108,6 +108,11 @@ final class Feed {
         var body: JSON = ["action": "notify", "to": to, "kind": kind, "text": text]
         body.merge(extra) { _, n in n }
         Task { _ = try? await api.call("/functions/v1/push", body: body) }
+    }
+
+    /// A post photo as edited: at most 1080 px wide, its own shape, about 150 KB.
+    static func prepare(_ img: UIImage) -> Data? {
+        PhotoEditor.shrink(img, to: max(img.size.width, img.size.height) * min(1, 1080 / max(1, img.size.width))).jpegData(compressionQuality: 0.75)
     }
 
     /// Feed photos: a 640 px square, about 40 KB, like the website's thumbFromBig.
@@ -182,8 +187,8 @@ struct FeedView: View {
                 }
             }
             if let url = URL(string: str(p["photo"])), str(p["photo"]).hasPrefix("http") {
-                AsyncImage(url: url) { img in img.resizable().scaledToFill() } placeholder: { Theme.hero }
-                    .frame(maxWidth: .infinity).aspectRatio(1, contentMode: .fit).clipped()
+                AsyncImage(url: url) { img in img.resizable().scaledToFit() } placeholder: { Theme.hero.frame(height: 300) }
+                    .frame(maxWidth: .infinity, maxHeight: 560)
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
             if !str(p["caption"]).isEmpty { (Text(feed.name(owner) + " ").bold() + Text(str(p["caption"]))).font(.subheadline) }
@@ -244,6 +249,8 @@ struct ComposeSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var what: JSON?
     @State private var caption = ""
+    @State private var editing: EditBox?
+    @State private var source: UIImage?   // the photo before editing, to edit again from
     @State private var photo: UIImage?
     @State private var picked: PhotosPickerItem?
     @State private var camera = false
@@ -260,7 +267,10 @@ struct ComposeSheet: View {
                         TextField("Say something about it", text: $caption, axis: .vertical).lineLimit(2...5)
                     }
                     Section {
-                        if let photo { Image(uiImage: photo).resizable().scaledToFill().frame(height: 220).clipped().clipShape(RoundedRectangle(cornerRadius: 14)) }
+                        if let photo {
+                            Image(uiImage: photo).resizable().scaledToFit().frame(maxHeight: 320).frame(maxWidth: .infinity).clipShape(RoundedRectangle(cornerRadius: 14))
+                            Button { editing = EditBox(image: source ?? photo) } label: { Label("Edit photo", systemImage: "crop.rotate") }.buttonStyle(.borderless)
+                        }
                         HStack(spacing: 18) {
                             Button { camera = true } label: { Label(photo == nil ? "Snap a pic" : "Retake", systemImage: "camera.fill") }.buttonStyle(.borderless)
                             PhotosPicker(selection: $picked, matching: .images) { Label("Library", systemImage: "photo") }.buttonStyle(.borderless)
@@ -292,8 +302,9 @@ struct ComposeSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 if what != nil { ToolbarItem(placement: .confirmationAction) { Button(busy ? "Posting…" : "Post") { post() }.fontWeight(.bold).disabled(busy) } }
             }
-            .fullScreenCover(isPresented: $camera) { CameraPicker { img in camera = false; if let img { photo = img } }.ignoresSafeArea() }
-            .onChange(of: picked) { _, item in Task { if let d = try? await item?.loadTransferable(type: Data.self), let img = UIImage(data: d) { photo = img } } }
+            .fullScreenCover(isPresented: $camera) { CameraPicker { img in camera = false; if let img { DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { editing = EditBox(image: img) } } }.ignoresSafeArea() }
+            .onChange(of: picked) { _, item in Task { if let d = try? await item?.loadTransferable(type: Data.self), let img = UIImage(data: d) { editing = EditBox(image: img) } } }
+            .fullScreenCover(item: $editing) { e in PhotoEditor(image: e.image) { photo = $0; source = e.image } }
         }
     }
 
@@ -409,3 +420,5 @@ struct PostRecipeSheet: View {
          "saved": true, "copiedFrom": "post:\(str(post["id"]))", "updatedAt": ISO.now()]
     }
 }
+
+private struct EditBox: Identifiable { let id = UUID(); let image: UIImage }
