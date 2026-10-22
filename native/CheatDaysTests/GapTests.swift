@@ -71,4 +71,21 @@ final class GapTests: XCTestCase {
         XCTAssertTrue(HealthSync.shouldImport(scale, over: ["day": "2026-10-13", "weight": 83.3, "updatedAt": "2026-10-13T07:42:00Z", "from": "health"]))   // an old import: corrected
         XCTAssertFalse(HealthSync.shouldImport(scale, over: scale))   // nothing new
     }
+
+    // after midnight, yesterday can come back out of History with its food (the website's unrollDay)
+    func testBringingYesterdayBack() {
+        var d: JSON = ["day": ["date": "2026-10-23", "items": [Any](), "workouts": [Any]()] as JSON,
+                       "history": [["date": "2026-10-22", "kcal": 1800, "items": [["name": "Toast", "kcal": 160] as JSON], "workouts": [Any]()] as JSON]]
+        Store.apply(["type": "unroll", "date": "2026-10-22"], to: &d, today: "2026-10-23")
+        XCTAssertEqual(str(dict(d["day"])["date"]), "2026-10-22")
+        XCTAssertEqual(list(dict(d["day"])["items"]).count, 1)
+        XCTAssertFalse(str(list(dict(d["day"])["items"])[0]["id"]).isEmpty)
+        XCTAssertTrue(list(d["history"]).isEmpty)
+        XCTAssertEqual(str(d["dayKeep"]), "2026-10-22")
+        // not over a day that already has food
+        var e: JSON = ["day": ["date": "2026-10-23", "items": [["id": "x", "name": "Tea", "kcal": 20] as JSON]] as JSON,
+                       "history": [["date": "2026-10-22", "items": [["name": "Toast", "kcal": 160] as JSON]] as JSON]]
+        Store.apply(["type": "unroll", "date": "2026-10-22"], to: &e, today: "2026-10-23")
+        XCTAssertEqual(str(dict(e["day"])["date"]), "2026-10-23")
+    }
 }

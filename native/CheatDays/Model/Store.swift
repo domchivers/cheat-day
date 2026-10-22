@@ -43,9 +43,33 @@ final class Store {
     var today: String {
         let now = Date(), key = DayKey.string(now)
         let logged = str(day["date"])
-        if Calendar.current.component(.hour, from: now) < 5, logged == DayKey.shift(key, days: -1) { return logged }
+        if Calendar.current.component(.hour, from: now) < 5, logged == DayKey.shift(key, days: -1), str(doc["dayRolled"]) != key { return logged }
         return key
     }
+
+    /// Between midnight and 5am: what to ask (the website's late-night card).
+    enum LateNight { case none, stillYesterday(String), keptYesterday(String), canBringBack(String) }
+    var lateNight: LateNight {
+        let now = Date(), key = DayKey.string(now), yesterday = DayKey.shift(key, days: -1)
+        guard Calendar.current.component(.hour, from: now) < 5 else { return .none }
+        let logged = str(day["date"])
+        if logged == yesterday, str(doc["dayRolled"]) != key {
+            return str(doc["dayKeep"]) == logged ? .keptYesterday(logged) : .stillYesterday(logged)
+        }
+        // midnight already moved on (another device, or before this version) with nothing logged yet: yesterday can come back
+        if logged == key, list(day["items"]).isEmpty, list(day["workouts"]).isEmpty, str(doc["dayRolled"]) != key,
+           let h = list(doc["history"]).first, str(h["date"]) == yesterday, !(list(h["items"]).isEmpty && list(h["workouts"]).isEmpty) {
+            return .canBringBack(yesterday)
+        }
+        return .none
+    }
+
+    func keepYesterday(_ date: String) { perform(["type": "set", "key": "dayKeep", "value": date]) }
+    func startNewDay() {
+        perform(["type": "set", "key": "dayRolled", "value": DayKey.string(Date())])
+        perform(["type": "set", "key": "dayRolled", "value": DayKey.string(Date())])   // the second runs with the new day, which files yesterday
+    }
+    func bringBackYesterday(_ date: String) { perform(["type": "unroll", "date": date]) }
 
     var todayItems: [JSON] { str(day["date"]) == today ? list(day["items"]) : [] }
     var todayWorkouts: [JSON] { str(day["date"]) == today ? list(day["workouts"]) : [] }

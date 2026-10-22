@@ -48,6 +48,7 @@ struct TodayView: View {
                 header
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 0, trailing: 4))
+                if offset == 0 { LateNightCard() }
                 if let n = store.notice {
                     Section {
                         HStack(alignment: .top, spacing: 10) {
@@ -395,6 +396,52 @@ struct FoodRow: View {
 }
 
 /// How much: count, weigh or calories, with the meal, then add (or save a change).
+/// After midnight: still yesterday, or a new day? Food stays on yesterday until you say, or until 5am.
+private struct LateNightCard: View {
+    private var store: Store { Store.shared }
+    private func name(_ d: String) -> String { DayKey.date(d).formatted(.dateTime.weekday(.wide)) }
+
+    var body: some View {
+        let todayName = Date().formatted(.dateTime.weekday(.wide))
+        switch store.lateNight {
+        case .stillYesterday(let d):
+            card("It's after midnight", "Still \(name(d)) for you? Food you add goes on \(name(d)) until you say, or until 5am.",
+                 keep: "Keep it as \(name(d))", { store.keepYesterday(d) }, new: "Start \(todayName)", { store.startNewDay() })
+        case .keptYesterday(let d):
+            Section {
+                HStack {
+                    Image(systemName: "moon.stars.fill").foregroundStyle(Theme.accent)
+                    Text("Still \(name(d)) until 5am").font(.subheadline)
+                    Spacer()
+                    Button("Start \(todayName)") { withAnimation { store.startNewDay() } }.font(.subheadline.weight(.semibold)).buttonStyle(.borderless)
+                }
+            }
+        case .canBringBack(let d):
+            card("Still up?", "Midnight started \(todayName). Still \(name(d)) for you? Bring it back and keep logging on it until 5am.",
+                 keep: "Bring \(name(d)) back", { store.bringBackYesterday(d) }, new: "No, it's \(todayName)", { store.perform(["type": "set", "key": "dayRolled", "value": DayKey.string(Date())]) })
+        case .none:
+            EmptyView()
+        }
+    }
+
+    private func card(_ title: String, _ body: String, keep: String, _ onKeep: @escaping () -> Void, new: String, _ onNew: @escaping () -> Void) -> some View {
+        Section {
+            VStack(alignment: .leading, spacing: 10) {
+                Label(title, systemImage: "moon.stars.fill").font(.headline).foregroundStyle(Theme.accent)
+                Text(body).font(.subheadline).foregroundStyle(.secondary)
+                HStack(spacing: 10) {
+                    Button { withAnimation { onKeep() } } label: { Text(keep).font(.subheadline.weight(.bold)).frame(maxWidth: .infinity).padding(.vertical, 4) }
+                        .buttonStyle(.borderedProminent).foregroundStyle(.black)
+                    Button { withAnimation { onNew() } } label: { Text(new).font(.subheadline.weight(.bold)).frame(maxWidth: .infinity).padding(.vertical, 4) }
+                        .buttonStyle(.bordered)
+                }
+                .buttonBorderShape(.roundedRectangle(radius: 12))
+            }
+            .padding(.vertical, 4)
+        }
+    }
+}
+
 /// Pick a friend to send one of your foods to (kept out of TodayView's long modifier chain).
 private struct SendFoodDialog: ViewModifier {
     @Binding var item: JSON?

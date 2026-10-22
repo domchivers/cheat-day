@@ -230,6 +230,16 @@ extension Store {
             let id = str(op["id"])
             d["meals"] = list(d["meals"]).filter { str($0["id"]) != id }
             var tombs = dict(d["tombs"]); tombs["meal:\(id)"] = op["at"] ?? nowMs(); d["tombs"] = tombs
+        case "unroll":
+            let date = str(op["date"]), day = dict(d["day"])
+            guard list(day["items"]).isEmpty, list(day["workouts"]).isEmpty, var history = d["history"] as? [JSON],
+                  let h = history.first, str(h["date"]) == date else { return }
+            history.removeFirst()
+            d["history"] = history
+            d["day"] = ["date": date,
+                        "items": list(h["items"]).map { it -> JSON in var c = it; c["id"] = uid(); return c },
+                        "workouts": list(h["workouts"]).map { w -> JSON in var c = w; c["id"] = uid(); return c }] as JSON
+            d["dayKeep"] = date
         case "budget":
             if let b = pos(op["budget"]) { d["budget"] = Int(b) }
             d["dayBudgets"] = op["dayBudgets"] as? JSON ?? JSON()
