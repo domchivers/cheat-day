@@ -18,7 +18,7 @@ final class PushDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCen
 
     // shown even while the app is open
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        await MainActor.run { Task { await FriendActivity.shared.load() } }
+        Task { @MainActor in await FriendActivity.shared.load() }
         return [.banner, .sound]
     }
 
