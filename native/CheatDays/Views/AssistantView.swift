@@ -49,7 +49,6 @@ struct AssistantView: View {
             }
             .safeAreaInset(edge: .bottom) { composer }
             .background(Theme.bg.ignoresSafeArea())
-            .keyboardDone()
             .navigationTitle("Assistant")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -276,17 +275,20 @@ struct AssistantView: View {
                 Menu {
                     Button { camera = true } label: { Label("Take a photo", systemImage: "camera") }
                     Button { library = true } label: { Label("Choose photos", systemImage: "photo.on.rectangle") }
-                } label: { Image(systemName: "camera.fill").font(.title3).foregroundStyle(Theme.accent).frame(width: 38, height: 38).background(Theme.hero, in: Circle()) }
-                TextField("Ask, or say what you ate", text: $text, axis: .vertical).lineLimit(1...4).focused($typing)
-                    .padding(.horizontal, 14).padding(.vertical, 9)
-                    .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                } label: { Image(systemName: "camera.fill").font(.title3).foregroundStyle(Theme.accent).frame(width: 44, height: 44).composerGlass(Circle()) }
+                // the whole box takes the tap (not just the line of text), so the keyboard and Paste come up first time
+                TextField("Ask, or say what you ate", text: $text, axis: .vertical).lineLimit(1...5).focused($typing)
                     .submitLabel(.send).onSubmit { send() }
-                Button { send() } label: { Image(systemName: "arrow.up.circle.fill").font(.system(size: 34)).foregroundStyle(Theme.accent) }
+                    .padding(.horizontal, 16).padding(.vertical, 11)
+                    .frame(minHeight: 44)
+                    .background { Color.clear.contentShape(Rectangle()).onTapGesture { typing = true } }   // behind the field, so its own cursor and Paste menu still work
+                    .composerGlass(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                Button { send() } label: { Image(systemName: "arrow.up.circle.fill").font(.system(size: 38)).foregroundStyle(Theme.accent) }
                     .disabled(busy || (text.trimmingCharacters(in: .whitespaces).isEmpty && pending.isEmpty))
             }
         }
-        .padding(.horizontal, 14).padding(.vertical, 8)
-        .background(.regularMaterial)
+        .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 8)
+        .composerBar()
     }
 
     private func load(_ items: [PhotosPickerItem]) async {
@@ -357,5 +359,16 @@ struct ChatsList: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
         }
+    }
+}
+
+/// The chat box: on iOS 26 it floats in the same glass as the keyboard; before that, a material bar.
+private extension View {
+    @ViewBuilder func composerGlass(_ shape: some Shape) -> some View {
+        if #available(iOS 26, *) { glassEffect(.regular.interactive(), in: shape) }
+        else { background(Color(.secondarySystemBackground), in: shape) }
+    }
+    @ViewBuilder func composerBar() -> some View {
+        if #available(iOS 26, *) { self } else { background(.regularMaterial) }
     }
 }
