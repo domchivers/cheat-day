@@ -294,6 +294,16 @@ struct AssistantView: View {
     private func send() {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !busy, !t.isEmpty || !pending.isEmpty else { return }
+        // foods with their numbers typed in: logged straight away, no waiting for the AI
+        if pending.isEmpty, let lines = QuickLog.instant(t) {
+            for l in lines { store.add(QuickLog.basis(l), kcal: l.kcal, meal: meal) }
+            turns.append(Assistant.Turn(me: true, text: t))
+            let list = lines.map(QuickLog.summary).joined(separator: "\n")
+            withAnimation(.snappy) { turns.append(Assistant.Turn(me: false, text: "Logged to \(meal.lowercased()):\n\(list)\nSwipe it on Today to change or delete.")) }
+            text = ""; problem = nil
+            store.perform(["type": "chat", "chat": Assistant.record(id: chatId, turns: turns)], syncAfter: 3)
+            return
+        }
         turns.append(Assistant.Turn(me: true, text: t.isEmpty ? "What's this?" : t, images: pending))
         text = ""; pending = []; problem = nil; busy = true
         Task {

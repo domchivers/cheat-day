@@ -32,6 +32,11 @@ struct LogFoodIntent: AppIntent {
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let store = Store.shared
         let q = food.trimmingCharacters(in: .whitespacesAndNewlines)
+        // "chicken sandwich 600 calories 60 protein": logged as said
+        if let lines = QuickLog.instant(q) {
+            for l in lines { store.add(QuickLog.basis(l), kcal: l.kcal, meal: Meals.now) }
+            return .result(dialog: IntentDialog(stringLiteral: "Added " + lines.map { "\($0.name), \(Fmt.int($0.kcal)) calories" }.joined(separator: " and ") + "."))
+        }
         // your own foods first (at the amount you usually have), then the food list at a typical serving
         if let mine = store.search(q).mine.first {
             store.add(mine.basis, kcal: mine.kcal, meal: Meals.now)
