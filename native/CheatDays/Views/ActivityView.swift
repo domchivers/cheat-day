@@ -18,6 +18,7 @@ final class FriendActivity {
     }
 
     private(set) var items: [Item] = []
+    private var sample: Item?   // from Settings' test button, until Activity is opened
     private(set) var loading = false
     private var api: Supabase { Supabase.shared }
     private var seenAt: Date = (UserDefaults.standard.object(forKey: "activity.seen") as? Date) ?? .distantPast
@@ -86,8 +87,18 @@ final class FriendActivity {
         for r in Friends.shared.requests {
             out.append(Item(id: "q-\(r.id)", kind: .request, who: r.name, at: Date(), text: "wants to be friends", detail: "", photo: nil))
         }
+        if let x = sample { out.append(x) }
         items = out.sorted { $0.at > $1.at }
     }
+
+    /// A pretend item so the bell's count can be seen; gone once Activity is opened.
+    func addSample() {
+        let x = Item(id: "test-\(UUID().uuidString)", kind: .reaction, who: "Cheat Days", at: Date(), text: "sent a test notification",
+                     detail: "This is how new activity looks. It goes once you've opened this.", photo: nil)
+        sample = x
+        items.insert(x, at: 0)
+    }
+    func clearSample() { sample = nil }
 }
 
 struct ActivityView: View {
@@ -114,7 +125,7 @@ struct ActivityView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.fontWeight(.bold) } }
             .refreshable { await activity.load() }
-            .task { await activity.load(); activity.seen = Date() }   // opening it marks everything as seen
+            .task { await activity.load(); activity.seen = Date(); activity.clearSample() }   // opening it marks everything as seen
         }
     }
 

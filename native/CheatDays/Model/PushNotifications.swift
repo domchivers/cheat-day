@@ -74,7 +74,8 @@ enum Push {
         guard let (d, code) = try? await Supabase.shared.call("/functions/v1/push", body: ["action": "test"]), code < 300,
               let j = (try? JSONSerialization.jsonObject(with: d)) as? JSON else { return "Couldn't reach the server. Try again in a moment." }
         let n = Int(num(j["sent"]) ?? 0)
-        return n > 0 ? "Sent. Lock your phone: it should pop up in a few seconds." : "The server couldn't deliver it to this phone. Tell Claude so the logs can be checked."
+        FriendActivity.shared.addSample()
+        return n > 0 ? "Sent. Lock your phone: it should pop up in a few seconds. The bell in Friends shows it too." : "The server couldn't deliver it to this phone. Tell Claude so the logs can be checked."
     }
 
     static func setOn(_ value: Bool) async {
