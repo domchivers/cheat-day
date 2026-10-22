@@ -87,7 +87,6 @@ enum Assistant {
     - Keep reply short, friendly and never preachy. It's a cheat-day app: treats are part of the plan.
     """
 
-    @MainActor
     /// Words that mean a bigger job (worth the careful model): recipes, plans, comparisons, lighter versions.
     private static let bigJobs = ["recipe", "plan", "cook", "make me", "week", "cheat day", "lighter", "compare", "swap", "instead", "meal prep", "ideas", "suggest"]
 
@@ -99,6 +98,7 @@ enum Assistant {
     }
 
     /// Ask, then check an estimate's parts against the food list and database afterwards (`ground` false: the caller does it later).
+    @MainActor
     static func ask(_ turns: [Turn], store: Store, ground groundNow: Bool = true) async throws -> JSON {
         guard let last = turns.last, last.me else { throw Gemini.Failure(message: "Nothing to ask.") }
         let earlier = turns.dropLast().suffix(8).map { t -> String in

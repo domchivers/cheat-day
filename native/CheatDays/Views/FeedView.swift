@@ -267,6 +267,7 @@ struct ComposeSheet: View {
                     if items.isEmpty && meals.isEmpty && wos.isEmpty { Text("Log a food, save a meal or finish a workout, then share it here.").foregroundStyle(.secondary) }
                 }
             }
+            .keyboardDone()
             .navigationTitle(what == nil ? "What are you sharing?" : "New post")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

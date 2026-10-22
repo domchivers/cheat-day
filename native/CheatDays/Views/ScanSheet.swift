@@ -32,6 +32,7 @@ struct ScanSheet: View {
                     problem("Couldn't look it up", "\(why) Try barcode \(code) again in a moment, or use a photo.", retry: code)
                 }
             }
+            .keyboardDone()
             .navigationTitle("Scan")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }

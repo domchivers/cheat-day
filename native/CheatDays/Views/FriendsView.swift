@@ -15,6 +15,7 @@ struct FriendsView: View {
                 if seg == 0 { people } else { FeedView() }
             }
             .background(Theme.bg)
+            .keyboardDone()
             .navigationTitle("Friends")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -202,6 +203,7 @@ struct AddFriendSheet: View {
                     .disabled(busy || code.trimmingCharacters(in: .whitespaces).count < 4)
                 } footer: { if let message { Text(message) } }
             }
+            .keyboardDone()
             .navigationTitle("Add a friend")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }

@@ -279,6 +279,7 @@ struct ActivitySheet: View {
                     Text("About \(Fmt.int(store.burn(type, minutes: minutes, effort: effort))) kcal. An estimate, like every tracker's.")
                 }
             }
+            .keyboardDone()
             .navigationTitle("Log an activity")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

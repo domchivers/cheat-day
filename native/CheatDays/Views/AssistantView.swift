@@ -49,6 +49,7 @@ struct AssistantView: View {
             }
             .safeAreaInset(edge: .bottom) { composer }
             .background(Theme.bg.ignoresSafeArea())
+            .keyboardDone()
             .navigationTitle("Assistant")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

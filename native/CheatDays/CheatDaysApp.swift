@@ -95,6 +95,7 @@ struct SignInView: View {
             }
             .padding(.horizontal, 24)
         }
+        .keyboardDone()
         .background(Theme.bg.ignoresSafeArea())
     }
 

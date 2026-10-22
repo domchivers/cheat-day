@@ -287,6 +287,7 @@ struct PlanDayEditor: View {
         }
         .scrollContentBackground(.hidden)
         .background(Theme.bg)
+        .keyboardDone()
         .navigationTitle(index.map { plan.sessions[$0].name } ?? "Day")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { EditButton() }

@@ -32,6 +32,7 @@ struct CheatDayView: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .background(Theme.bg.ignoresSafeArea())
+            .keyboardDone()
             .navigationTitle("Cheat day")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.fontWeight(.bold) } }
