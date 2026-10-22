@@ -222,7 +222,7 @@ private struct FriendsToolbar: ViewModifier {
                 // its own glass circle (not the toolbar's shared one, which clips) so the count can sit over the corner
                 ToolbarItem(placement: .topBarLeading) {
                     bell(Image(systemName: "bell.fill").font(.system(size: 17, weight: .semibold))
-                        .frame(width: 44, height: 44).glassEffect(.regular.interactive(), in: Circle())
+                        .frame(width: 44, height: 44).glassEffect(.regular, in: Circle())
                         .overlay(alignment: .topTrailing) {
                             if unread > 0 {
                                 Text("\(min(unread, 99))").font(.system(size: 11, weight: .heavy)).foregroundStyle(.white)
