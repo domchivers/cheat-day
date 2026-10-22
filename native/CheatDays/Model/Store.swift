@@ -257,7 +257,14 @@ final class Store {
             let ops = pending
             if var base = try await Supabase.shared.pullDoc() {
                 if ops.isEmpty {
-                    if num(base["updatedAt"]) != num(doc["updatedAt"]) { setDoc(base); persist() }
+                    if num(base["updatedAt"]) != num(doc["updatedAt"]) {
+                        // anything added while the pull was on its way (it isn't in the cloud copy yet) stays on screen;
+                        // without this a food added right then vanished until the next sync sent it
+                        var d = base
+                        for op in pending { Self.apply(op, to: &d, today: today) }
+                        setDoc(d); persist()
+                    }
+                    if !pending.isEmpty { scheduleSync(after: 0.3) }
                 } else {
                     for op in ops { Self.apply(op, to: &base, today: today) }
                     base["updatedAt"] = nowMs()
