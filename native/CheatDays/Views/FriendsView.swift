@@ -18,24 +18,7 @@ struct FriendsView: View {
             .background(Theme.bg)
             .keyboardDone()
             .navigationTitle("Friends")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button { showActivity = true } label: {
-                        ZStack(alignment: .topTrailing) {
-                            Image(systemName: "bell.fill").padding(.top, 6).padding(.trailing, 9)
-                            if FriendActivity.shared.unread > 0 {
-                                Text("\(min(FriendActivity.shared.unread, 99))").font(.system(size: 10, weight: .heavy)).foregroundStyle(.white)
-                                    .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 16).background(Color.red, in: Capsule())
-                            }
-                        }
-                        .frame(minWidth: 34, minHeight: 30)
-                    }
-                    .accessibilityLabel("Activity, \(FriendActivity.shared.unread) new")
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { adding = true } label: { Image(systemName: "person.badge.plus") }.accessibilityLabel("Add a friend")
-                }
-            }
+            .modifier(FriendsToolbar(unread: FriendActivity.shared.unread, showActivity: $showActivity, adding: $adding))
             .sheet(isPresented: $adding) { AddFriendSheet().presentationDetents([.medium]) }
             .sheet(isPresented: $showActivity) { ActivityView { seg = 1 } }
             .task { await model.load() }
@@ -223,5 +206,44 @@ struct AddFriendSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
+    }
+}
+
+/// The bell and add-friend buttons. On iOS 26 the new-activity count is the toolbar's own badge, sitting on the bell's
+/// top-right corner over the glass; before that, a red dot drawn into the button.
+private struct FriendsToolbar: ViewModifier {
+    let unread: Int
+    @Binding var showActivity: Bool
+    @Binding var adding: Bool
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.toolbar {
+                ToolbarItem(placement: .topBarLeading) { bell(Image(systemName: "bell.fill")) }
+                    .badge(min(unread, 99))
+                ToolbarItem(placement: .topBarTrailing) { add }
+            }
+        } else {
+            content.toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    bell(ZStack(alignment: .topTrailing) {
+                        Image(systemName: "bell.fill").padding(.top, 6).padding(.trailing, 9)
+                        if unread > 0 {
+                            Text("\(min(unread, 99))").font(.system(size: 10, weight: .heavy)).foregroundStyle(.white)
+                                .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 16).background(Color.red, in: Capsule())
+                        }
+                    }
+                    .frame(minWidth: 34, minHeight: 30))
+                }
+                ToolbarItem(placement: .topBarTrailing) { add }
+            }
+        }
+    }
+
+    private func bell(_ label: some View) -> some View {
+        Button { showActivity = true } label: { label }.accessibilityLabel("Activity, \(unread) new")
+    }
+    private var add: some View {
+        Button { adding = true } label: { Image(systemName: "person.badge.plus") }.accessibilityLabel("Add a friend")
     }
 }
