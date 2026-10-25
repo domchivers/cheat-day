@@ -58,13 +58,13 @@ struct FoodDot: View {
         let t = Theme.tone(name)
         Group {
             if let e = FoodEmoji.for(name) {
-                Text(e).font(.system(size: size * 0.56))
+                Text(e).font(.system(size: size * 0.78))   // the emoji on its own, no circle behind it
             } else {
                 Image(systemName: Theme.symbol(for: name)).font(.system(size: size * 0.45, weight: .semibold)).foregroundStyle(t.fg)
+                    .frame(width: size, height: size).background(t.bg, in: Circle())
             }
         }
         .frame(width: size, height: size)
-        .background(t.bg, in: Circle())
         .accessibilityHidden(true)
     }
 }
