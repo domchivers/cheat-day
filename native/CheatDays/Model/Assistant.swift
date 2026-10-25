@@ -114,9 +114,7 @@ enum Assistant {
         parts.append(["text": "You are the assistant inside a cheat-day food diary app called Cheat Days. \(context(store))\(earlier.isEmpty ? "" : "Recent conversation:\n\(earlier)\n")They now say: \"\(last.text)\"\(last.images.isEmpty && !pics.isEmpty ? " (about the photos from earlier)" : "")\n\n\(rules)"])
         // quick jobs on the phone first (Apple Intelligence), when it has it; then the online models
         if pics.isEmpty, isSimple(last.text, hasPhotos: false),
-           var local = await OnDevice.assistant(last.text, context: context(store) + (earlier.isEmpty ? "" : "Recent conversation:
-\(earlier)
-")) {
+           var local = await OnDevice.assistant(last.text, context: context(store) + (earlier.isEmpty ? "" : "Recent conversation:\n\(earlier)\n")) {
             if groundNow, str(local["kind"]) == "estimate", let e = local["estimate"] as? JSON { local["estimate"] = await ground(e) }
             return local
         }
