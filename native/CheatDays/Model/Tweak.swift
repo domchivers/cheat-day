@@ -25,7 +25,9 @@ enum Tweak {
         The person says: "\(change)".
         Give the food as it should be logged after that change, using standard reference values: if they say large, small, double, half, no sauce, extra cheese and so on, scale or adjust the calories and macros sensibly. If they give numbers, use exactly those. Keep the name short.
         """
-        let a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: true)
+        let a: JSON
+        if let local = await OnDevice.tweak(now, change: change) { a = local }
+        else { a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: true) }
         guard let k = pos(a["kcal"]) else { throw Gemini.Failure(message: "Couldn't work that change out. Try saying it another way.") }
         let p = num(a["protein_g"]) ?? 0, c = num(a["carbs_g"]) ?? 0, f = num(a["fat_g"]) ?? 0
         var b: JSON = ["name": str(a["name"]).isEmpty ? str(item["name"]) : str(a["name"]), "source": str(item["source"]).isEmpty ? "manual" : str(item["source"]),

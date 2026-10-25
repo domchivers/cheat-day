@@ -51,6 +51,10 @@ struct SettingsView: View {
             } footer: { Text("Friends see your calories and what you had today.") }
             .alert("Notifications", isPresented: Binding(get: { pushNote != nil }, set: { if !$0 { pushNote = nil } })) { Button("OK") {} } message: { Text(pushNote ?? "") }
             Section {
+                Toggle("Use Apple Intelligence for quick jobs", isOn: Binding(get: { OnDevice.allowed }, set: { OnDevice.allowed = $0 }))
+                    .disabled(!OnDevice.ready)
+            } header: { Text("Assistant") } footer: { Text(OnDevice.status + " Photos, recipes and plans always use the online AI.") }
+            Section {
                 TextField("Vegetarian, no dairy, I train in the mornings…", text: $notes, axis: .vertical).lineLimit(3...6)
             } header: { Text("About you") } footer: { Text("The assistant reads this before every answer.") }
             Section {

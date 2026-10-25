@@ -95,6 +95,9 @@ struct AssistantView: View {
         } else {
             VStack(alignment: .leading, spacing: 10) {
                 bot(Text(t.text))
+                if str(t.result?["engine"]) == "device" {
+                    Label("Answered on this iPhone", systemImage: "bolt.fill").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary).padding(.leading, 6)
+                }
                 if let r = t.result { card(r, turn: t.id) }
             }
         }

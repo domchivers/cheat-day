@@ -112,6 +112,14 @@ enum Assistant {
         let pics = last.images.isEmpty ? (turns.dropLast().last { $0.me && !$0.images.isEmpty }?.images ?? []) : last.images
         var parts: [JSON] = pics.prefix(4).compactMap { Gemini.imagePart($0) }
         parts.append(["text": "You are the assistant inside a cheat-day food diary app called Cheat Days. \(context(store))\(earlier.isEmpty ? "" : "Recent conversation:\n\(earlier)\n")They now say: \"\(last.text)\"\(last.images.isEmpty && !pics.isEmpty ? " (about the photos from earlier)" : "")\n\n\(rules)"])
+        // quick jobs on the phone first (Apple Intelligence), when it has it; then the online models
+        if pics.isEmpty, isSimple(last.text, hasPhotos: false),
+           var local = await OnDevice.assistant(last.text, context: context(store) + (earlier.isEmpty ? "" : "Recent conversation:
+\(earlier)
+")) {
+            if groundNow, str(local["kind"]) == "estimate", let e = local["estimate"] as? JSON { local["estimate"] = await ground(e) }
+            return local
+        }
         // simple questions go to the quick model with minimal thinking; recipes, plans and photos to the careful one
         var answer = try await Gemini.ask(schema: schema, parts: parts, quick: isSimple(last.text, hasPhotos: !pics.isEmpty))
         if groundNow, str(answer["kind"]) == "estimate", let e = answer["estimate"] as? JSON { answer["estimate"] = await ground(e) }
