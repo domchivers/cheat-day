@@ -35,6 +35,7 @@ struct TodayView: View {
     @State private var showCheat = false
     @State private var rankUp: Rank?
     @State private var badgeNote: String?
+    @AppStorage("today.more") private var moreOpen = false
     @State private var sendingItem: JSON?
     private var store: Store { Store.shared }
 
@@ -227,24 +228,41 @@ struct TodayView: View {
                 }
                 .frame(height: 12)
                 .clipShape(Capsule())
-                if !byMeal.isEmpty {
-                    HStack(spacing: 12) {
-                        ForEach(byMeal, id: \.0) { part in
-                            HStack(spacing: 4) {
-                                Circle().fill(Theme.meal(part.0)).frame(width: 7, height: 7)
-                                Text(part.0).font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
             }
             HStack {
                 stat(Fmt.int(eaten), "eaten")
                 Spacer()
-                if offset == 0, let s = Steps.shared.today { stat(s.formatted(), "steps"); Spacer() }
+                // the extras (meal colours, steps, protein/carbs/fat) fold away under this arrow
+                Button { withAnimation(.snappy) { moreOpen.toggle() } } label: {
+                    Image(systemName: "chevron.down").font(.subheadline.weight(.bold)).foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(moreOpen ? 180 : 0))
+                        .frame(width: 44, height: 32).background(Color.white.opacity(0.07), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(moreOpen ? "Hide details" : "Show protein, carbs, fat and steps")
+                Spacer()
                 stat(Fmt.int(budget), "budget")
             }
-            macroBars(protein: protein, carbs: m.c, fat: m.f)
+            if moreOpen {
+                VStack(alignment: .leading, spacing: 14) {
+                    if !byMeal.isEmpty || (offset == 0 && Steps.shared.today != nil) {
+                        HStack(spacing: 12) {
+                            ForEach(byMeal, id: \.0) { part in
+                                HStack(spacing: 4) {
+                                    Circle().fill(Theme.meal(part.0)).frame(width: 7, height: 7)
+                                    Text(part.0).font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                            Spacer(minLength: 0)
+                            if offset == 0, let st = Steps.shared.today {
+                                Label(st.formatted() + " steps", systemImage: "figure.walk").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    macroBars(protein: protein, carbs: m.c, fat: m.f)
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
         .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 18)
         .frame(maxWidth: .infinity, alignment: .leading)
