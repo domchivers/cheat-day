@@ -72,8 +72,7 @@ struct SettingsView: View {
             Section {
                 Button("Sign out", role: .destructive) { confirmSignOut = true }
             } footer: {
-                Text("Cheat Days \(Bundle.main.shortVersion)\(store.lastSynced.map { " · synced \($0.formatted(date: .omitted, time: .shortened))" } ?? "")
-Food icons: Fluent Emoji by Microsoft, MIT licence.")
+                Text("Cheat Days \(Bundle.main.shortVersion)\(store.lastSynced.map { " · synced \($0.formatted(date: .omitted, time: .shortened))" } ?? "")\nFood icons: Fluent Emoji by Microsoft, MIT licence.")
             }
         }
         .confirmationDialog("Sign out of Cheat Days on this phone?", isPresented: $confirmSignOut, titleVisibility: .visible) {
