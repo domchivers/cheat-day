@@ -26,6 +26,7 @@ struct AssistantView: View {
     var body: some View {
         NavigationStack {
             ScrollViewReader { proxy in
+              VStack(spacing: 0) {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
                         bot(Text("**Ask me anything about your day.** Photograph a plate and tell me what it is, ask for a plan for the rest of today, a recipe that fits, a lighter version of something, or tell me what you actually ate and I'll fix the list."))
@@ -43,11 +44,16 @@ struct AssistantView: View {
                     }
                     .padding(16)
                 }
-                .scrollDismissesKeyboard(.interactively)
+                .scrollDismissesKeyboard(.immediately)
                 .onChange(of: turns.count) { _, _ in withAnimation { proxy.scrollTo(turns.last?.id, anchor: .bottom) } }
                 .onChange(of: busy) { _, b in if b { withAnimation { proxy.scrollTo("busy", anchor: .bottom) } } }
+                .onChange(of: typing) { _, t in
+                    guard t, let last = turns.last?.id else { return }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { withAnimation { proxy.scrollTo(last, anchor: .bottom) } }
+                }
+                composer
+              }
             }
-            .safeAreaInset(edge: .bottom) { composer }
             .background(Theme.bg.ignoresSafeArea())
             .navigationTitle("Assistant")
             .navigationBarTitleDisplayMode(.inline)

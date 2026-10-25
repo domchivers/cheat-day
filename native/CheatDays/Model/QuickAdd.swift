@@ -81,22 +81,30 @@ extension Store {
 
     var favourites: [QuickEntry] { quickEntries.filter { isFavourite($0.key) }.sorted { $0.name < $1.name } }
 
-    /// What you usually have at this meal, from the days with times kept (the web app's mealHabits).
+    /// The top of the add sheet for a meal: your starred foods, then what you have most at this meal. Recent weeks
+    /// count most (a food's weight halves every three weeks), so popcorn every night sits near the top.
     func usual(for meal: String) -> [QuickEntry] { cached("usual-" + meal) { buildUsual(meal) } }
     private func buildUsual(_ meal: String) -> [QuickEntry] {
-        var counts: [String: [String: Int]] = [:]
-        func count(_ it: JSON) {
+        var counts: [String: [String: Double]] = [:]
+        func count(_ it: JSON, _ weight: Double) {
             guard it["addedAt"] as? String != nil || !str(it["meal"]).isEmpty else { return }
             let k = str(it["name"]).lowercased(), g = Meals.of(it)
-            counts[k, default: [:]][g, default: 0] += 1
+            counts[k, default: [:]][g, default: 0] += weight
         }
-        todayItems.forEach(count)
-        for h in list(doc["history"]).prefix(60) { list(h["items"]).forEach(count) }
-        let scored: [(QuickEntry, Int)] = quickEntries.compactMap { e in
+        todayItems.forEach { count($0, 1) }
+        for h in list(doc["history"]).prefix(90) {
+            let days = Double(max(0, Calendar.current.dateComponents([.day], from: DayKey.date(str(h["date"])), to: Date()).day ?? 0))
+            let weight = pow(0.5, days / 21)
+            list(h["items"]).forEach { count($0, weight) }
+        }
+        func here(_ e: QuickEntry) -> Double { counts[e.name.lowercased()]?[meal] ?? 0 }
+        let stars = quickEntries.filter { isFavourite($0.key) }.sorted { (here($0), $1.name) > (here($1), $0.name) }
+        let scored: [(QuickEntry, Double)] = quickEntries.compactMap { e in
+            guard !isFavourite(e.key) else { return nil }
             let h = counts[e.name.lowercased()] ?? [:], n = h[meal] ?? 0, top = h.values.max() ?? 0
-            return n > 0 && n * 2 >= top ? (e, n) : nil
+            return n >= 0.5 && n * 3 >= top ? (e, n) : nil   // had at this meal at least a third of the time
         }
-        return scored.sorted { $0.1 > $1.1 }.prefix(6).map { $0.0 }
+        return stars + scored.sorted { $0.1 > $1.1 }.prefix(8).map { $0.0 }
     }
 
     /// Everything ever logged that matches, then the food list.

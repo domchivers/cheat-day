@@ -255,6 +255,7 @@ struct FoodPicker: View {
                 }
             }
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search foods")
+            .keyboardDone()
             .navigationDestination(item: $choosing) { p in GramsStep(basis: p.basis, kcal: p.kcal) { item in add(item); dismiss() } }
             .navigationTitle("Add a food")
             .navigationBarTitleDisplayMode(.inline)

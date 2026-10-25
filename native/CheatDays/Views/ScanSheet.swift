@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 import Vision
 import VisionKit
@@ -46,6 +47,7 @@ struct ScanSheet: View {
                 Text("Point at a barcode").font(.subheadline.weight(.bold)).padding(.horizontal, 16).padding(.vertical, 10)
                     .background(.ultraThinMaterial, in: Capsule()).padding(.bottom, 30)
             }
+            .overlay(alignment: .topTrailing) { TorchButton().padding(16) }
         } else {
             Form {
                 Section {
@@ -92,11 +94,16 @@ struct BarcodeScanner: UIViewControllerRepresentable {
 
     func makeUIViewController(context: Context) -> DataScannerViewController {
         let vc = DataScannerViewController(
-            recognizedDataTypes: [.barcode(symbologies: [.ean13, .ean8, .upce, .code128, .code39, .itf14, .qr])],
-            qualityLevel: .balanced, recognizesMultipleItems: false, isHighFrameRateTrackingEnabled: false,
+            // only the codes on food packs: fewer kinds to look for reads faster
+            recognizedDataTypes: [.barcode(symbologies: [.ean13, .ean8, .upce, .itf14, .code128])],
+            qualityLevel: .accurate, recognizesMultipleItems: false, isHighFrameRateTrackingEnabled: true,
             isPinchToZoomEnabled: true, isGuidanceEnabled: true, isHighlightingEnabled: true)
         vc.delegate = context.coordinator
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { try? vc.startScanning() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            try? vc.startScanning()
+            // a little zoom lets the camera focus on a pack held at a comfortable distance (newer iPhones can't focus very close)
+            vc.zoomFactor = min(max(vc.minZoomFactor, 1.6), vc.maxZoomFactor)
+        }
         return vc
     }
 
@@ -112,9 +119,12 @@ struct BarcodeScanner: UIViewControllerRepresentable {
         private var done = false
         init(onCode: @escaping (String) -> Void) { self.onCode = onCode }
 
-        func dataScanner(_ dataScanner: DataScannerViewController, didAdd addedItems: [RecognizedItem], allItems: [RecognizedItem]) {
+        func dataScanner(_ dataScanner: DataScannerViewController, didAdd addedItems: [RecognizedItem], allItems: [RecognizedItem]) { take(addedItems, dataScanner) }
+        func dataScanner(_ dataScanner: DataScannerViewController, didUpdate updatedItems: [RecognizedItem], allItems: [RecognizedItem]) { take(updatedItems, dataScanner) }
+
+        private func take(_ items: [RecognizedItem], _ dataScanner: DataScannerViewController) {
             guard !done else { return }
-            for item in addedItems {
+            for item in items {
                 if case .barcode(let b) = item, let value = b.payloadStringValue, !value.isEmpty {
                     done = true
                     dataScanner.stopScanning()
@@ -122,6 +132,27 @@ struct BarcodeScanner: UIViewControllerRepresentable {
                     return
                 }
             }
+        }
+    }
+}
+
+/// The torch, for scanning in a dim kitchen.
+private struct TorchButton: View {
+    @State private var on = false
+    var body: some View {
+        Button {
+            guard let d = AVCaptureDevice.default(for: .video), d.hasTorch, (try? d.lockForConfiguration()) != nil else { return }
+            on.toggle()
+            d.torchMode = on ? .on : .off
+            d.unlockForConfiguration()
+        } label: {
+            Image(systemName: on ? "flashlight.on.fill" : "flashlight.off.fill").font(.title3).foregroundStyle(on ? .yellow : .white)
+                .frame(width: 48, height: 48).background(.ultraThinMaterial, in: Circle())
+        }
+        .accessibilityLabel(on ? "Torch off" : "Torch on")
+        .onDisappear {
+            guard on, let d = AVCaptureDevice.default(for: .video), (try? d.lockForConfiguration()) != nil else { return }
+            d.torchMode = .off; d.unlockForConfiguration()
         }
     }
 }

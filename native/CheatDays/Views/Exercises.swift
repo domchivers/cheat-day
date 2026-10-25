@@ -31,6 +31,7 @@ struct ExercisePicker: View {
                 }
             }
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search exercises")
+            .keyboardDone()
             .navigationTitle("Add an exercise")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.fontWeight(.bold) } }
@@ -161,6 +162,7 @@ struct ExerciseBrowser: View {
             }
         }
         .searchable(text: $query, prompt: "Search exercises")
+        .keyboardDone()
         .navigationTitle("Exercises")
         .scrollContentBackground(.hidden)
         .background(Theme.bg)

@@ -29,7 +29,7 @@ struct AddSheet: View {
                         way("camera.fill", "Photo") { photo = true }
                         way("sparkles", "Ask AI") { onFlow(WebFlow(view: "ask", opts: ["meal": meal], title: "Assistant")) }
                         way("square.and.pencil", "Type it") { typing = true }
-                        way("fork.knife", "Meals") { meals = true }
+                        way("book.closed.fill", "Meals") { meals = true }
                     }
                     .buttonStyle(.plain)
                     .listRowInsets(EdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12))
@@ -37,6 +37,7 @@ struct AddSheet: View {
                 if settled.trimmingCharacters(in: .whitespaces).isEmpty { suggestions } else { results }
             }
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search foods and your history")
+            .keyboardDone()
             .task(id: query) {
                 if query.isEmpty { settled = ""; return }
                 try? await Task.sleep(nanoseconds: 220_000_000)
@@ -62,15 +63,24 @@ struct AddSheet: View {
 
     @ViewBuilder private var suggestions: some View {
         let usual = store.usual(for: meal)
-        let favs = store.favourites.filter { f in !usual.contains { $0.key == f.key } }
-        let shown = Set((usual + favs).map(\.key))
+        let saved = store.quickEntries.filter { $0.kind == .meal && !usual.contains(where: { u in u.key == $0.key }) }
+        let shown = Set((usual + saved).map(\.key))
         let rest = store.quickEntries.filter { !shown.contains($0.key) }.prefix(20)
-        if !usual.isEmpty { Section("Your \(meal == "Snacks" ? "snacks" : meal.lowercased() + "s")") { ForEach(usual) { row($0) } } }
-        if !favs.isEmpty { Section("Favourites") { ForEach(favs) { row($0) } } }
+        if !usual.isEmpty {
+            Section { ForEach(usual) { row($0) } } header: { Text("Your \(meal == "Snacks" ? "snacks" : meal.lowercased() + "s")") }
+                footer: { Text("Starred foods first, then what you have most at \(meal.lowercased()).") }
+        }
+        if !saved.isEmpty {
+            Section {
+                ForEach(saved) { row($0) }
+            } header: {
+                HStack { Text("Your meals and recipes"); Spacer(); Button("See all") { meals = true }.font(.caption.weight(.bold)).textCase(nil) }
+            }
+        }
         if !rest.isEmpty {
             Section { ForEach(Array(rest)) { row($0) } } header: { Text("Recent") } footer: { Text("Swipe right on a food to star it. Stars stay at the top.") }
         }
-        if usual.isEmpty && favs.isEmpty && rest.isEmpty {
+        if usual.isEmpty && saved.isEmpty && rest.isEmpty {
             Section { Text("Foods you add come back here, so next time is one tap. Search above, or scan a barcode.").foregroundStyle(.secondary) }
         }
     }
