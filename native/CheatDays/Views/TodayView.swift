@@ -110,6 +110,12 @@ struct TodayView: View {
             .refreshable { await store.sync() }
             .toolbar(.hidden, for: .navigationBar)
             .overlay(alignment: .bottomTrailing) { if offset == 0 { addButton } }
+            .overlay(alignment: .bottom) { if let u = store.undo { undoBanner(u) } }
+            .task(id: store.undo) {
+                guard let u = store.undo else { return }
+                try? await Task.sleep(for: .seconds(6))
+                if store.undo == u { withAnimation(.snappy) { store.undo = nil } }
+            }
             .sensoryFeedback(.success, trigger: store.todayItems.count)
             .sheet(item: $addChoice) { c in
                 AddSheet(meal: c.id) { f in
@@ -332,12 +338,14 @@ struct TodayView: View {
                     Spacer()
                     if total > 0 {
                         Text("\(Fmt.int(total)) kcal").font(.subheadline.weight(.bold)).foregroundStyle(.secondary).textCase(nil)
-                    } else if let first = again.first {
+                    } else if !again.isEmpty {
+                        let kcal = again.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }
                         Button {
-                            for it in again { store.add(FoodMath.basisOf(it), kcal: num(it["kcal"]) ?? 0, meal: meal) }
+                            withAnimation(.snappy) { store.addAll(again, meal: meal, label: "Added yesterday's \(meal.lowercased())") }
                         } label: {
-                            Label("\(str(first["name"])) again?", systemImage: "arrow.counterclockwise").font(.caption.weight(.bold)).lineLimit(1)
+                            Label("Same as yesterday · \(Fmt.int(kcal))", systemImage: "arrow.counterclockwise").font(.caption.weight(.bold)).lineLimit(1)
                         }
+                        .accessibilityLabel("Add yesterday's \(meal.lowercased()) again: \(again.map { str($0["name"]) }.joined(separator: ", "))")
                         .buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.small).textCase(nil)
                     }
                 }
@@ -356,6 +364,19 @@ struct TodayView: View {
         } else {
             pastItem = item; showPast = true
         }
+    }
+
+    private func undoBanner(_ u: Store.Undo) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+            Text(u.label).font(.subheadline.weight(.semibold)).lineLimit(1)
+            Spacer(minLength: 4)
+            Button("Undo") { withAnimation(.snappy) { store.undoLast() } }.font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 12)
+        .background(.regularMaterial, in: Capsule())
+        .padding(.leading, 16).padding(.trailing, 96).padding(.bottom, 22)   // clear of the + button
+        .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
     private var addButton: some View {

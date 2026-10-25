@@ -21,6 +21,9 @@ final class Store {
     private(set) var pending: [JSON] = []
     private(set) var syncing = false
     private(set) var lastSynced: Date?
+    /// The last food (or foods) added, for Today's "Added … · Undo" banner.
+    struct Undo: Equatable { let ids: [String]; let label: String; let at: Date }
+    var undo: Undo?
     var syncError: String?
     /// Something to tell you once, like "your budget for the week was set".
     var notice: String?
@@ -103,7 +106,8 @@ final class Store {
 
     // MARK: changing
 
-    func add(_ basis: JSON, kcal: Double, meal: String?) {
+    @discardableResult
+    func add(_ basis: JSON, kcal: Double, meal: String?) -> String {
         let k = kcal.rounded()
         var item = FoodMath.basisOf(basis)
         item["id"] = uid()
@@ -112,6 +116,21 @@ final class Store {
         item["addedAt"] = ISO.now()
         if let meal, Meals.all.contains(meal) { item["meal"] = meal }
         perform(["type": "add", "item": item])
+        let id = str(item["id"])
+        undo = Undo(ids: [id], label: "Added \(str(item["name"]).isEmpty ? "it" : str(item["name"]))", at: Date())
+        return id
+    }
+
+    /// Several foods at once (yesterday's breakfast again); one Undo takes them all back.
+    func addAll(_ items: [JSON], meal: String, label: String) {
+        let ids = items.map { add(FoodMath.basisOf($0), kcal: num($0["kcal"]) ?? 0, meal: meal) }
+        undo = Undo(ids: ids, label: label, at: Date())
+    }
+
+    func undoLast() {
+        guard let u = undo else { return }
+        u.ids.forEach(delete)
+        undo = nil
     }
 
     func delete(_ id: String) { perform(["type": "delete", "id": id, "at": nowMs()]) }

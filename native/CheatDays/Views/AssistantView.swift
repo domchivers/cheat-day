@@ -307,7 +307,8 @@ struct AssistantView: View {
         guard !busy, !t.isEmpty || !pending.isEmpty else { return }
         // foods with their numbers typed in: logged straight away, no waiting for the AI
         if pending.isEmpty, let lines = QuickLog.instant(t) {
-            for l in lines { store.add(QuickLog.basis(l), kcal: l.kcal, meal: meal) }
+            let ids = lines.map { store.add(QuickLog.basis($0), kcal: $0.kcal, meal: meal) }
+            if ids.count > 1 { store.undo = Store.Undo(ids: ids, label: "Added \(ids.count) foods", at: Date()) }
             turns.append(Assistant.Turn(me: true, text: t))
             let list = lines.map(QuickLog.summary).joined(separator: "\n")
             withAnimation(.snappy) { turns.append(Assistant.Turn(me: false, text: "Logged to \(meal.lowercased()):\n\(list)\nSwipe it on Today to change or delete.")) }

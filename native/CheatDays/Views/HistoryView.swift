@@ -216,7 +216,8 @@ struct HistoryView: View {
     }
 
     private func copy(_ items: [JSON], keepMeal: Bool, label: String) {
-        for it in items { store.add(FoodMath.basisOf(it), kcal: num(it["kcal"]) ?? 0, meal: keepMeal ? Meals.of(it) : Meals.now) }
+        let ids = items.map { store.add(FoodMath.basisOf($0), kcal: num($0["kcal"]) ?? 0, meal: keepMeal ? Meals.of($0) : Meals.now) }
+        if ids.count > 1 { store.undo = Store.Undo(ids: ids, label: "Added \(ids.count) foods", at: Date()) }
         withAnimation { added = label }
         Task { try? await Task.sleep(nanoseconds: 2_000_000_000); withAnimation { if added == label { added = nil } } }
     }
