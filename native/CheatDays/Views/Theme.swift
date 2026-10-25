@@ -58,7 +58,9 @@ struct FoodDot: View {
         let t = Theme.tone(name)
         Group {
             if let e = FoodEmoji.for(name) {
-                Text(e).font(.system(size: size * 0.78))   // the emoji on its own, no circle behind it
+                // Microsoft's Fluent flat icon for it when we have one, else the phone's own emoji; no circle behind
+                if let img = UIImage(named: FoodEmoji.asset(e)) { Image(uiImage: img).resizable().scaledToFit().padding(size * 0.06) }
+                else { Text(e).font(.system(size: size * 0.78)) }
             } else {
                 Image(systemName: Theme.symbol(for: name)).font(.system(size: size * 0.45, weight: .semibold)).foregroundStyle(t.fg)
                     .frame(width: size, height: size).background(t.bg, in: Circle())
@@ -103,6 +105,11 @@ enum FoodEmoji {
         // general
         ("🍽️", ["dinner", "lunch", "meal", "plate", "roast", "bowl"])
     ]
+
+    /// The bundled icon's name for an emoji (Fluent Emoji, flat style, MIT licence; added by tools/fluent.py).
+    static func asset(_ emoji: String) -> String {
+        "food-" + emoji.unicodeScalars.filter { $0.value != 0xFE0F }.map { String($0.value, radix: 16) }.joined(separator: "-")
+    }
 
     /// Phrases first ("dairy milk", "butter chicken", "sweet potato"), then single words in the table's order.
     /// Whole words only, so steak isn't tea and rump isn't rum; longer words also match their plurals.
