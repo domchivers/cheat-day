@@ -33,7 +33,8 @@ enum HealthSync {
     static func connect() async throws -> Int {
         guard available else { throw APIError(status: 0, message: "Apple Health isn't available on this device.") }
         let types = Set(kinds.compactMap { HKObjectType.quantityType(forIdentifier: $0.0) as HKObjectType? })
-        try await health.requestAuthorization(toShare: [], read: types)
+        try await health.requestAuthorization(toShare: [], read: types.union([HKQuantityType(.stepCount)]))
+        UserDefaults.standard.set(true, forKey: "health.stepsAsked")
         on = true
         return await pull(force: true)
     }

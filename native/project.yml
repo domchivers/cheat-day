@@ -40,7 +40,7 @@ targets:
         UIStatusBarStyle: UIStatusBarStyleLightContent
         NSCameraUsageDescription: Cheat Days uses the camera to scan barcodes and take photos of food labels and packs.
         NSPhotoLibraryUsageDescription: Cheat Days lets you pick a photo of food or a label from your library.
-        NSHealthShareUsageDescription: Cheat Days reads your weight, body fat, lean mass and BMI from Apple Health, so weigh-ins from your smart scale's app arrive on their own.
+        NSHealthShareUsageDescription: Cheat Days reads your weight, body fat, lean mass, BMI and steps from Apple Health, so weigh-ins from your smart scale's app arrive on their own and Today can show your steps.
         NSHealthUpdateUsageDescription: Cheat Days only reads your weigh-ins from Apple Health. It never writes to or changes your Health data.
         NSSupportsLiveActivities: true
         # the web app's own domain, so its offline cache (service worker) works inside the app

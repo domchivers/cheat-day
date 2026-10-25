@@ -140,6 +140,7 @@ struct TodayView: View {
             }
             .modifier(SendFoodDialog(item: $sendingItem) { note($0) })
             .onAppear { checkRank(); checkBadges() }
+            .task { await Steps.shared.refresh() }
             .onChange(of: store.rank.level) { _, _ in checkRank() }
             .onChange(of: store.lastSynced) { _, _ in checkBadges(); Task { await Inbox.shared.refresh() } }
             .task { await Inbox.shared.refresh(force: true) }
@@ -199,7 +200,7 @@ struct TodayView: View {
     private var hero: some View {
         let eaten = items.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }
         let left = budget - eaten
-        let protein = store.macros(items).p
+        let m = store.macros(items), protein = m.p
         let scale = max(budget, eaten, 1)
         let byMeal = Meals.all.map { m in (m, items.filter { Meals.of($0) == m }.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }) }.filter { $0.1 > 0 }
         return VStack(alignment: .leading, spacing: 14) {
@@ -240,10 +241,10 @@ struct TodayView: View {
             HStack {
                 stat(Fmt.int(eaten), "eaten")
                 Spacer()
-                stat(store.proteinGoal.map { "\(Int(protein.rounded())) / \(Int($0))g" } ?? "\(Int(protein.rounded()))g", "protein")
-                Spacer()
+                if offset == 0, let s = Steps.shared.today { stat(s.formatted(), "steps"); Spacer() }
                 stat(Fmt.int(budget), "budget")
             }
+            macroBars(protein: protein, carbs: m.c, fat: m.f)
         }
         .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 18)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -254,6 +255,36 @@ struct TodayView: View {
             guard abs(v.translation.width) > abs(v.translation.height) * 1.5 else { return }
             withAnimation(.snappy) { offset = v.translation.width > 0 ? offset - 1 : min(0, offset + 1) }
         })
+    }
+
+    /// Protein, carbs and fat so far, each against its goal when one's set (Plan and budget).
+    private func macroBars(protein: Double, carbs: Double, fat: Double) -> some View {
+        let goals = dict(store.doc["goals"])
+        let rows: [(String, Double, Double?, Color)] = [
+            ("Protein", protein, store.proteinGoal, Color(red: 0.36, green: 0.82, blue: 0.62)),
+            ("Carbs", carbs, pos(goals["c"]), Color(red: 0.98, green: 0.78, blue: 0.40)),
+            ("Fat", fat, pos(goals["f"]), Color(red: 0.93, green: 0.55, blue: 0.70))
+        ]
+        return HStack(spacing: 12) {
+            ForEach(rows, id: \.0) { r in
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(spacing: 0) {
+                        Text("\(Int(r.1.rounded()))").font(.subheadline.weight(.heavy)).monospacedDigit()
+                        Text(r.2.map { " / \(Int($0))g" } ?? "g").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    }
+                    GeometryReader { g in
+                        ZStack(alignment: .leading) {
+                            Theme.track
+                            r.3.frame(width: g.size.width * min(1, r.2.map { r.1 / max($0, 1) } ?? min(1, r.1 / 100)))
+                        }
+                    }
+                    .frame(height: 5).clipShape(Capsule())
+                    Text(r.0).font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 
     /// The pizza in the panel's corner: plan your cheat day (or pick one).
@@ -592,6 +623,7 @@ struct AmountView: View {
                     }
                     if let tweakNote { Text(tweakNote).font(.footnote).foregroundStyle(.secondary) }
                 } header: { Text("Something different?") } footer: { Text("Say what changed and the AI updates the food: its name, calories and macros.") }
+                FixNumbers(id: id) { finish() }
             }
             Section("Meal") {
                 Picker("Meal", selection: $meal) { ForEach(Meals.all, id: \.self) { Text($0).tag($0) } }.pickerStyle(.segmented)
@@ -717,5 +749,70 @@ struct AmountView: View {
         basis.removeValue(forKey: "askName")
         if let id = target.editId { store.edit(id, kcal: kcal, meal: meal) } else { store.add(basis, kcal: kcal, meal: meal) }
         finish()
+    }
+}
+
+/// Type the right numbers into a logged food (when a scan or the AI got it wrong). It keeps its place, meal and time.
+struct FixNumbers: View {
+    let id: String
+    let done: () -> Void
+    @State private var open = false
+    @State private var name = ""
+    @State private var kcal = ""
+    @State private var p = ""
+    @State private var c = ""
+    @State private var f = ""
+    private var store: Store { Store.shared }
+    private var item: JSON? { store.todayItems.first { str($0["id"]) == id } }
+
+    var body: some View {
+        Section {
+            DisclosureGroup("Fix the numbers", isExpanded: $open) {
+                TextField("Name", text: $name)
+                row("Calories", $kcal, "kcal")
+                row("Protein", $p, "g")
+                row("Carbs", $c, "g")
+                row("Fat", $f, "g")
+                Button("Save these numbers") { save() }.fontWeight(.bold).disabled((Self.d(kcal) ?? 0) <= 0)
+            }
+            .onChange(of: open) { _, o in if o { fill() } }
+        } footer: { Text("For when the label, scan or AI got it wrong. Leave a macro empty if you don't know it.") }
+    }
+
+    private func row(_ label: String, _ text: Binding<String>, _ unit: String) -> some View {
+        HStack {
+            Text(label)
+            TextField("–", text: text).keyboardType(.decimalPad).multilineTextAlignment(.trailing)
+            Text(unit).foregroundStyle(.secondary).frame(width: 34, alignment: .leading)
+        }
+    }
+
+    private static func d(_ s: String) -> Double? { Double(s.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespaces)) }
+
+    private func fill() {
+        guard let it = item else { return }
+        let k = num(it["kcal"]) ?? 0
+        name = str(it["name"]); kcal = Fmt.int(k)
+        if let m = FoodMath.macros(it, kcal: k) { p = Fmt.one(m.p); c = Fmt.one(m.c); f = Fmt.one(m.f) }
+    }
+
+    private func save() {
+        guard let it = item, let k = Self.d(kcal), k > 0 else { return }
+        let oldK = num(it["kcal"]) ?? 0
+        let grams = num(it["grams"]) ?? FoodMath.amounts(it, kcal: oldK).grams
+        let hasMacros = !(p.isEmpty && c.isEmpty && f.isEmpty)
+        let pv = Self.d(p) ?? 0, cv = Self.d(c) ?? 0, fv = Self.d(f) ?? 0
+        var b = FoodMath.basisOf(it)
+        for key in ["kcalPer100", "p100", "c100", "f100", "pServ", "cServ", "fServ", "servingSize", "grams", "countKcal", "pieceKcal"] { b.removeValue(forKey: key) }
+        b["name"] = name.trimmingCharacters(in: .whitespaces).isEmpty ? str(it["name"]) : name.trimmingCharacters(in: .whitespaces)
+        b["unitLabel"] = "portion"; b["kcalPerServing"] = k.rounded()
+        if hasMacros { b["pServ"] = pv; b["cServ"] = cv; b["fServ"] = fv }
+        if let g = grams, g > 0 {
+            b["servingSize"] = g.rounded(); b["grams"] = g.rounded(); b["kcalPer100"] = (k / g * 1000).rounded() / 10
+            if hasMacros { b["p100"] = pv / g * 100; b["c100"] = cv / g * 100; b["f100"] = fv / g * 100 }
+        }
+        b["kcal"] = Int(k.rounded())
+        store.perform(["type": "tweak", "id": id, "item": b])
+        done()
     }
 }

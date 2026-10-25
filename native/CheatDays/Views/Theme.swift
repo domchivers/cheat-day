@@ -50,17 +50,72 @@ enum Theme {
     }
 }
 
-/// A round tinted icon for a food line.
+/// A round icon for a food line: a full-colour emoji of the food on a soft tint (a plain symbol if nothing fits).
 struct FoodDot: View {
     let name: String
     var size: CGFloat = 34
     var body: some View {
         let t = Theme.tone(name)
-        Image(systemName: Theme.symbol(for: name))
-            .font(.system(size: size * 0.45, weight: .semibold))
-            .foregroundStyle(t.fg)
-            .frame(width: size, height: size)
-            .background(t.bg, in: Circle())
+        Group {
+            if let e = FoodEmoji.for(name) {
+                Text(e).font(.system(size: size * 0.56))
+            } else {
+                Image(systemName: Theme.symbol(for: name)).font(.system(size: size * 0.45, weight: .semibold)).foregroundStyle(t.fg)
+            }
+        }
+        .frame(width: size, height: size)
+        .background(t.bg, in: Circle())
+        .accessibilityHidden(true)
+    }
+}
+
+/// Which emoji fits a food's name. More specific words come first ("chicken burger" is a burger, "egg fried rice" is rice).
+enum FoodEmoji {
+    private static let table: [(String, [String])] = [
+        // drinks
+        ("🧋", ["bubble tea", "boba"]), ("🥤", ["coke", "cola", "pepsi", "soft drink", "fanta", "sprite", "lemonade", "energy drink", "red bull", "monster", "smoothie", "milkshake", "shake"]),
+        ("☕️", ["coffee", "flat white", "latte", "cappuccino", "espresso", "americano", "mocha", "macchiato", "long black"]), ("🍵", ["matcha", "green tea", "tea", "chai"]),
+        ("🍺", ["beer", "lager", "ale", "cider", "stout", "pint"]), ("🍷", ["wine", "prosecco", "champagne", "rosé"]), ("🍸", ["cocktail", "martini", "margarita", "spritz", "gin", "vodka"]),
+        ("🥃", ["whisky", "whiskey", "rum", "bourbon"]), ("🥛", ["milk"]), ("🧃", ["juice"]), ("💧", ["water"]),
+        // fast food and dishes
+        ("🍕", ["pizza"]), ("🍔", ["burger", "cheeseburger", "big mac", "whopper"]), ("🌭", ["hot dog", "hotdog", "sausage roll"]), ("🍟", ["fries", "chips", "wedges", "hash brown"]),
+        ("🌮", ["taco"]), ("🌯", ["burrito", "wrap", "kebab", "gyro", "souvlaki", "shawarma"]), ("🥙", ["pita", "falafel"]), ("🥪", ["sandwich", "sub", "toastie", "panini", "baguette", "roll"]),
+        ("🍣", ["sushi", "sashimi", "nigiri"]), ("🍱", ["bento"]), ("🥟", ["dumpling", "gyoza", "dim sum", "bao", "wonton"]), ("🍜", ["ramen", "pho", "noodle", "laksa", "udon", "pad thai", "chow mein", "soba"]),
+        ("🍝", ["pasta", "spaghetti", "lasagne", "lasagna", "bolognese", "carbonara", "penne", "mac and cheese", "macaroni", "gnocchi", "ravioli"]),
+        ("🍛", ["curry", "korma", "tikka", "butter chicken", "biryani", "dal", "dahl"]), ("🍚", ["rice", "risotto", "fried rice"]), ("🥘", ["paella", "stew", "casserole", "chilli", "chili"]),
+        ("🍲", ["soup", "hot pot", "broth"]), ("🥗", ["salad", "poke", "buddha bowl", "slaw"]), ("🥧", ["pie", "quiche", "pasty"]), ("🫔", ["tamale", "enchilada"]),
+        // meat, fish, eggs
+        ("🍗", ["chicken", "wings", "drumstick", "nugget", "schnitzel", "turkey"]), ("🥩", ["steak", "beef", "lamb", "mince", "pork", "veal"]), ("🥓", ["bacon", "ham", "prosciutto", "salami"]),
+        ("🍤", ["prawn", "shrimp", "tempura"]), ("🐟", ["salmon", "tuna", "fish", "cod", "barramundi", "sardine", "mackerel"]), ("🦐", ["seafood"]), ("🍳", ["omelette", "fried egg", "scrambled", "frittata"]), ("🥚", ["egg"]),
+        // bakery and breakfast
+        ("🥞", ["pancake", "crepe", "pikelet"]), ("🧇", ["waffle"]), ("🥐", ["croissant", "pastry", "danish", "pain au"]), ("🥯", ["bagel"]), ("🍞", ["toast", "bread", "sourdough", "crumpet", "muffin english"]),
+        ("🥣", ["cereal", "porridge", "oats", "oatmeal", "granola", "muesli", "weet-bix", "weetbix", "cornflakes"]),
+        // sweets and snacks
+        ("🍩", ["donut", "doughnut"]), ("🧁", ["cupcake", "muffin"]), ("🍰", ["cake", "cheesecake", "slice", "tart"]), ("🍪", ["cookie", "biscuit", "tim tam", "oreo"]), ("🍫", ["chocolate", "brownie", "kitkat", "kit kat", "snickers", "mars", "twix", "freddo", "dairy milk"]),
+        ("🍦", ["ice cream", "gelato", "sundae", "frozen yoghurt", "froyo"]), ("🍬", ["lolly", "lollies", "sweets", "candy", "gummy", "jelly"]), ("🍿", ["popcorn"]), ("🥨", ["pretzel"]),
+        ("🥜", ["peanut", "nuts", "almond", "cashew", "walnut", "trail mix", "peanut butter"]), ("🍯", ["honey"]), ("🧀", ["cheese", "brie", "cheddar", "feta", "halloumi"]),
+        ("🥫", ["baked beans", "beans"]), ("🍫", ["protein bar", "muesli bar", "bar"]), ("🫙", ["yoghurt", "yogurt"]),
+        // fruit and veg
+        ("🍌", ["banana"]), ("🍎", ["apple"]), ("🍊", ["orange", "mandarin"]), ("🍓", ["strawberr"]), ("🫐", ["blueberr", "berries", "berry"]), ("🍇", ["grape"]), ("🍉", ["watermelon"]), ("🍍", ["pineapple"]),
+        ("🥭", ["mango"]), ("🍑", ["peach", "nectarine"]), ("🍐", ["pear"]), ("🥝", ["kiwi"]), ("🍒", ["cherr"]), ("🥑", ["avocado", "avo", "guacamole"]), ("🍅", ["tomato"]),
+        ("🥦", ["broccoli", "veg", "vegetable", "greens", "spinach", "kale", "zucchini", "beans green"]), ("🥕", ["carrot"]), ("🌽", ["corn"]), ("🥔", ["potato", "mash"]), ("🍠", ["sweet potato"]),
+        ("🍄", ["mushroom"]), ("🥒", ["cucumber"]), ("🫑", ["capsicum", "pepper"]), ("🧅", ["onion"]), ("🍋", ["lemon", "lime"]), ("🥥", ["coconut"]),
+        // general
+        ("🍽️", ["dinner", "lunch", "meal", "plate", "roast", "bowl"])
+    ]
+
+    /// Phrases first ("dairy milk", "butter chicken", "sweet potato"), then single words in the table's order.
+    /// Whole words only, so steak isn't tea and rump isn't rum; longer words also match their plurals.
+    static func `for`(_ name: String) -> String? {
+        let n = name.lowercased()
+        func hit(_ w: String) -> Bool {
+            let esc = NSRegularExpression.escapedPattern(for: w.trimmingCharacters(in: .whitespaces))
+            let pattern = w.count <= 4 ? "\\b\(esc)(s|es)?\\b" : "\\b\(esc)"
+            return n.range(of: pattern, options: .regularExpression) != nil
+        }
+        for (e, words) in table where words.contains(where: { $0.contains(" ") && hit($0) }) { return e }
+        for (e, words) in table where words.contains(where: { !$0.contains(" ") && hit($0) }) { return e }
+        return nil
     }
 }
 
