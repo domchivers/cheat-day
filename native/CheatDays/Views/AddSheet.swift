@@ -63,7 +63,7 @@ struct AddSheet: View {
 
     @ViewBuilder private var suggestions: some View {
         let usual = store.usual(for: meal)
-        let saved = store.quickEntries.filter { $0.kind == .meal && !usual.contains(where: { u in u.key == $0.key }) }
+        let saved = store.quickEntries.filter { e in e.kind == .meal && !usual.contains(where: { $0.key == e.key }) }
         let shown = Set((usual + saved).map(\.key))
         let rest = store.quickEntries.filter { !shown.contains($0.key) }.prefix(20)
         if !usual.isEmpty {
