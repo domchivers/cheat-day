@@ -78,7 +78,7 @@ enum FoodMath {
         var item: JSON = ["source": "search", "name": str(at(0)), "unit": str(at(4)).isEmpty ? "g" : str(at(4))]
         if let k = num(at(1)) { item["kcalPer100"] = k }
         if let p = num(at(6)) { item["p100"] = p; item["c100"] = num(at(7)) ?? 0; item["f100"] = num(at(8)) ?? 0 }
-        if let serving = pos(at(2)), let k = num(at(1)) {
+        if let serving = Region.portion(str(at(0))) ?? pos(at(2)), let k = num(at(1)) {
             item["servingSize"] = serving
             item["kcalPerServing"] = (k * serving / 10).rounded() / 10
         }

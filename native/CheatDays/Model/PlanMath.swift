@@ -93,9 +93,7 @@ enum Plan {
     }
 
     /// Where they are, for the AI's food suggestions.
-    static var country: String {
-        switch Locale.current.region?.identifier { case "GB": return "the UK"; case "AU": return "Australia"; default: return "the UK or Australia" }
-    }
+    static var country: String { Region.current.name }
 }
 
 /// A training week built from how often they can train, what they've got, and how long they've been at it.

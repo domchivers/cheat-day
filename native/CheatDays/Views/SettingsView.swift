@@ -51,6 +51,12 @@ struct SettingsView: View {
             } footer: { Text("Friends see your calories and what you had today.") }
             .alert("Notifications", isPresented: Binding(get: { pushNote != nil }, set: { if !$0 { pushNote = nil } })) { Button("OK") {} } message: { Text(pushNote ?? "") }
             Section {
+                Picker("Portion sizes", selection: Binding(get: { Region.choice }, set: { Region.choice = $0; Store.shared.clearCaches() })) {
+                    Text("Automatic (\(Region.detected.label))").tag("")
+                    ForEach(Region.allCases) { Text($0.label).tag($0.rawValue) }
+                }
+            } footer: { Text("A chicken thigh or a glass of wine isn't the same size everywhere. This sets the usual portions in the food list and for the assistant.") }
+            Section {
                 Toggle("Use Apple Intelligence for quick jobs", isOn: Binding(get: { OnDevice.allowed }, set: { OnDevice.allowed = $0 }))
                     .disabled(!OnDevice.ready)
             } header: { Text("Assistant") } footer: { Text(OnDevice.status + " Photos, recipes and plans always use the online AI.") }

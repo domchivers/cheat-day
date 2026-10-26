@@ -63,7 +63,7 @@ enum Assistant {
         let prefs = dict(store.doc["prefs"])
         let loves = (prefs["loves"] as? [String] ?? []).joined(separator: ", "), avoid = (prefs["avoid"] as? [String] ?? []).joined(separator: ", ")
         var c = notes.isEmpty ? "" : "About this person, in their own words (respect it in every suggestion): \(notes)\n"
-        c += "They live in \(Plan.country). Today: budget \(Int(store.budgetToday)) kcal, eaten \(Int(eaten)) kcal (\(list.isEmpty ? "nothing yet" : list)), \(Int(store.budgetToday - eaten)) kcal left. "
+        c += "They live in \(Plan.country): use the usual portion sizes there (how big a chicken thigh, a steak, a slice of bread or a glass of wine typically is). Today: budget \(Int(store.budgetToday)) kcal, eaten \(Int(eaten)) kcal (\(list.isEmpty ? "nothing yet" : list)), \(Int(store.budgetToday - eaten)) kcal left. "
         c += "Protein so far \(Int(m.p)) g\(store.proteinGoal.map { " of \(Int($0)) g" } ?? ""), carbs \(Int(m.c)) g, fat \(Int(m.f)) g. Workouts today: \(wk.isEmpty ? "none" : wk). Weight \(Fmt.one(store.latestWeight?.kg ?? store.weightKg)) kg.\n"
         c += "Recent days: \(past.isEmpty ? "none yet" : past).\n"
         c += "Things they often have: \(store.quickEntries.prefix(8).map(\.name).joined(separator: ", ")). Their saved meals: \(meals.isEmpty ? "none" : meals).\n"

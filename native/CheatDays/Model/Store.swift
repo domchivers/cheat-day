@@ -367,6 +367,9 @@ final class Store {
         return v
     }
 
+    /// Forget worked-out lists (after a setting that changes them, like portion sizes).
+    func clearCaches() { memo = [:] }
+
     /// Saving a year of history takes a moment: it happens in the background, a little after the last change.
     private func persist() {
         WidgetBridge.update(self)
