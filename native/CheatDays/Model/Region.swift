@@ -54,4 +54,15 @@ enum Region: String, CaseIterable, Identifiable {
 
     /// The usual portion for a food-list item here, or nil to keep the list's own.
     static func portion(_ name: String) -> Double? { portions[current]?[name] }
+
+    /// A food-list food saved earlier (in recents or history) with the portion size for here now, so one
+    /// chicken thigh is an Australian thigh even if it was first added before. Scanned packs and your own foods are left alone.
+    static func adjust(_ basis: JSON) -> JSON {
+        guard str(basis["source"]) == "search", let g = portion(str(basis["name"])), let k100 = pos(basis["kcalPer100"]) else { return basis }
+        var b = basis
+        b["servingSize"] = g
+        b["kcalPerServing"] = (k100 * g / 10).rounded() / 10
+        if b["p100"] != nil { b.removeValue(forKey: "pServ"); b.removeValue(forKey: "cServ"); b.removeValue(forKey: "fServ") }   // per-100 macros scale with the new size
+        return b
+    }
 }

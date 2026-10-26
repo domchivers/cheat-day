@@ -71,7 +71,7 @@ extension Store {
                                   uses: num(m["uses"]) ?? 0, lastUsed: str(m["lastUsed"]), kind: .meal))
         }
         for r in list(doc["recent"]) {
-            let basis = dict(r["basis"]), kcal = num(r["lastKcal"]) ?? 0
+            let basis = Region.adjust(dict(r["basis"])), kcal = num(r["lastKcal"]) ?? 0
             guard !str(basis["name"]).isEmpty else { continue }
             out.append(QuickEntry(key: str(r["key"]), basis: basis, kcal: kcal, detail: FoodMath.amountText(basis, kcal: kcal),
                                   uses: num(r["uses"]) ?? 0, lastUsed: str(r["lastUsed"]), kind: .recent))
@@ -121,7 +121,7 @@ extension Store {
                 let k = (str(it["name"]) + "|" + str(it["brand"])).lowercased()
                 guard !seen.contains(k), let kcal = num(it["kcal"]), kcal > 0 else { continue }
                 seen.insert(k)
-                let basis = FoodMath.basisOf(it)
+                let basis = Region.adjust(FoodMath.basisOf(it))
                 mine.append(QuickEntry(key: k, basis: basis, kcal: kcal, detail: "last had \(Self.when(date))", uses: 1, lastUsed: date, kind: .past))
             }
         }

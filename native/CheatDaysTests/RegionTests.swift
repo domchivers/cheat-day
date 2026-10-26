@@ -26,4 +26,14 @@ final class RegionTests: XCTestCase {
         Region.choice = "au"
         XCTAssertEqual(num(FoodMath.foodItem(row)["servingSize"]), 140)
     }
+
+    func testSavedFoodsGetTheRegionalPortion() {
+        Region.choice = "au"
+        let old: JSON = ["name": "Chicken thigh, raw, skinless", "source": "search", "kcalPer100": 121, "servingSize": 100, "kcalPerServing": 121, "unitLabel": "thigh"]
+        let b = Region.adjust(old)
+        XCTAssertEqual(num(b["servingSize"]), 140)
+        XCTAssertEqual(num(b["kcalPerServing"]), 169.4)
+        let pack: JSON = ["name": "Chicken thigh, raw, skinless", "source": "barcode", "kcalPer100": 121, "servingSize": 100]
+        XCTAssertEqual(num(Region.adjust(pack)["servingSize"]), 100)   // a scanned pack keeps its own size
+    }
 }
