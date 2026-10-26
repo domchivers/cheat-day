@@ -713,6 +713,18 @@ create policy "edits write" on public.helper_edits for insert to authenticated
   with check (set_by = auth.uid() and auth.jwt() ->> 'email' = 'domchivers@gmail.com' and public.is_family(user_id));
 ```
 
+And so an invite can't be pointed at different people after it's sent (run once):
+
+```sql
+create or replace function public.family_keep_people() returns trigger language plpgsql as $$
+begin
+  if new.helper <> old.helper or new.member <> old.member then raise exception 'family links cannot change people'; end if;
+  return new;
+end $$;
+drop trigger if exists family_keep_people on public.family_links;
+create trigger family_keep_people before update on public.family_links for each row execute function public.family_keep_people();
+```
+
 
 ## The iPhone app (native/)
 
