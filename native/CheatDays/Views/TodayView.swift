@@ -575,6 +575,13 @@ struct AmountView: View {
         .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(tint.opacity(0.4), lineWidth: 1))
     }
+    private func macroDot(_ label: String, _ grams: Double, _ tint: Color) -> some View {
+        HStack(spacing: 5) {
+            Circle().fill(tint).frame(width: 7, height: 7)
+            Text("\(Fmt.one(grams))g").font(.subheadline.weight(.bold)).monospacedDigit().contentTransition(.numericText(value: grams))
+            Text(label).font(.subheadline).foregroundStyle(.secondary)
+        }
+    }
     private var modes: [Mode] { [conv.countKcal != nil ? Mode.count : nil, conv.kcalPer100 != nil ? Mode.grams : nil, Mode.kcal].compactMap { $0 } }
     private var unit: String { str(target.basis["unit"]).isEmpty ? "g" : str(target.basis["unit"]) }
     private var leftAfter: Double { leftBefore - kcal }
@@ -599,12 +606,12 @@ struct AmountView: View {
                     Text(leftAfter >= 0 ? "kcal · \(Fmt.int(leftAfter)) left after this" : "kcal · \(Fmt.int(-leftAfter)) over your day")
                         .font(.footnote.weight(.semibold)).foregroundStyle(leftAfter >= 0 ? Color.secondary : Theme.warn)
                     if let m = FoodMath.macros(target.basis, kcal: kcal) {
-                        HStack(spacing: 10) {
-                            macro("Protein", m.p, Color(red: 0.36, green: 0.82, blue: 0.62))
-                            macro("Carbs", m.c, Color(red: 0.98, green: 0.78, blue: 0.40))
-                            macro("Fat", m.f, Color(red: 0.93, green: 0.55, blue: 0.70))
+                        HStack(spacing: 14) {
+                            macroDot("protein", m.p, Color(red: 0.36, green: 0.82, blue: 0.62))
+                            macroDot("carbs", m.c, Color(red: 0.98, green: 0.78, blue: 0.40))
+                            macroDot("fat", m.f, Color(red: 0.93, green: 0.55, blue: 0.70))
                         }
-                        .padding(.top, 10)
+                        .padding(.top, 8)
                         .animation(.snappy, value: kcal)
                     } else {
                         Text("No protein, carbs or fat on this one").font(.caption).foregroundStyle(.tertiary).padding(.top, 6)
@@ -617,7 +624,6 @@ struct AmountView: View {
                 .frame(maxWidth: .infinity)
                 .listRowBackground(Color.clear)
             }
-            if target.editId == nil { portionGuide }
             Section {
                 if modes.count > 1 {
                     Picker("How", selection: $mode) { ForEach(modes) { Text($0.rawValue).tag($0) } }.pickerStyle(.segmented)
@@ -642,10 +648,8 @@ struct AmountView: View {
                 } header: { Text("Something different?") } footer: { Text("Say what changed and the AI updates the food: its name, calories and macros.") }
                 FixNumbers(id: id) { finish() }
             }
-            Section("Meal") {
-                Picker("Meal", selection: $meal) { ForEach(Meals.all, id: \.self) { Text($0).tag($0) } }.pickerStyle(.segmented)
-            }
             Section {
+                Picker("Meal", selection: $meal) { ForEach(Meals.all, id: \.self) { Text($0).tag($0) } }.pickerStyle(.segmented)
                 Button { save() } label: {
                     Text(target.editId == nil ? "Add to \(meal)" : "Save").font(.headline).frame(maxWidth: .infinity)
                 }
@@ -675,53 +679,33 @@ struct AmountView: View {
         return store.budgetToday - others
     }
 
-    /// At a glance: what 1, 2, 3, 4 of it cost (or the usual weights), tap one to pick it, and how many fit in today.
-    @ViewBuilder private var portionGuide: some View {
-        let tiles: [(amount: String, label: String, kcal: Double, pick: () -> Void, on: Bool)] = {
-            if let each = conv.countKcal, each > 0 {
-                let word = conv.countLabel ?? "piece"
-                return [1.0, 2, 3, 4].map { n in
-                    (Fmt.one(n), FoodMath.plural(n, word), n * each, {
-                        if modes.contains(.count) { mode = .count }
-                        kcal = n * each; syncTexts()
-                    }, abs(kcal - n * each) < 0.5)
-                }
-            }
-            if let k100 = conv.kcalPer100, k100 > 0 {
-                let grams: [Double] = unit == "ml" ? [100, 250, 330, 500] : [30, 50, 100, 150]
-                return grams.map { g in
-                    (Fmt.one(g), unit, g * k100 / 100, {
-                        if modes.contains(.grams) { mode = .grams }
-                        kcal = g * k100 / 100; syncTexts()
-                    }, abs(kcal - g * k100 / 100) < 0.5)
-                }
-            }
-            return []
-        }()
-        if !tiles.isEmpty {
-            Section {
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                    ForEach(tiles.indices, id: \.self) { i in
-                        let t = tiles[i]
-                        Button(action: t.pick) {
-                            VStack(spacing: 2) {
-                                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                                    Text(t.amount).font(.title2.weight(.heavy)).monospacedDigit()
-                                    Text(t.label).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1)
-                                }
-                                Text("\(Fmt.int(t.kcal)) kcal").font(.headline.weight(.bold)).foregroundStyle(Theme.accent).monospacedDigit()
-                            }
-                            .frame(maxWidth: .infinity).padding(.vertical, 12)
-                            .background(t.on ? Theme.accent.opacity(0.18) : Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(t.on ? Theme.accent : .clear, lineWidth: 1.5))
+    /// Four big tap targets with their calories: 1, 2, 3, 4 of it, or the usual weights.
+    private func tiles(_ items: [(amount: String, label: String, kcal: Double)]) -> some View {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+            ForEach(items.indices, id: \.self) { i in
+                let t = items[i], on = abs(kcal - t.kcal) < 0.5
+                Button { kcal = t.kcal; syncTexts() } label: {
+                    VStack(spacing: 2) {
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            Text(t.amount).font(.title3.weight(.heavy)).monospacedDigit()
+                            Text(t.label).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1)
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("\(t.amount) \(t.label), \(Fmt.int(t.kcal)) calories")
+                        Text("\(Fmt.int(t.kcal)) kcal").font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent).monospacedDigit()
                     }
+                    .frame(maxWidth: .infinity).padding(.vertical, 10)
+                    .background(on ? Theme.accent.opacity(0.18) : Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(on ? Theme.accent : .clear, lineWidth: 1.5))
                 }
-                .listRowInsets(EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12))
-                if let fit = fitsLine { Label(fit, systemImage: "checkmark.seal.fill").font(.subheadline.weight(.semibold)).foregroundStyle(leftBefore > 0 ? Theme.accent : Theme.warn) }
-            } header: { Text("How much is that?") }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(t.amount) \(t.label), \(Fmt.int(t.kcal)) calories")
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder private var fitsNote: some View {
+        if let fit = fitsLine {
+            Text(fit).font(.footnote.weight(.semibold)).foregroundStyle(leftBefore > 0 ? Color.secondary : Theme.warn)
         }
     }
 
@@ -745,15 +729,10 @@ struct AmountView: View {
         if let each = conv.countKcal, each > 0 {
             let count = kcal / each
             let label = conv.countLabel ?? "piece"
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach([0.5, 1, 2, 3, 4, 5, 6], id: \.self) { n in
-                        chip(n == 0.5 ? "½" : Fmt.one(n), on: abs(count - n) < 0.05) { kcal = n * each; syncTexts() }
-                    }
-                }
-            }
+            tiles([1.0, 2, 3, 4].map { n in (Fmt.one(n), FoodMath.plural(n, label), n * each) })
             Stepper("\(Fmt.one(count)) \(FoodMath.plural(count, label))", onIncrement: { kcal = (count + 0.5) * each; syncTexts() },
                     onDecrement: { kcal = max(0.5, count - 0.5) * each; syncTexts() })
+            fitsNote
         }
     }
 
@@ -762,18 +741,13 @@ struct AmountView: View {
             let grams = kcal / k100 * 100
             let serving = pos(target.basis["servingSize"])
             let options: [Double] = serving.map { s in [s / 2, s, s * 1.5, s * 2].map { nice($0) } } ?? (unit == "ml" ? [100, 250, 330, 500] : [50, 100, 150, 200])
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(Array(Set(options)).sorted(), id: \.self) { g in
-                        chip("\(Fmt.one(g)) \(unit)", on: abs(grams - g) < 0.6) { kcal = g * k100 / 100; syncTexts() }
-                    }
-                }
-            }
+            tiles(Array(Array(Set(options)).sorted().prefix(4)).map { g in (Fmt.one(g), unit, g * k100 / 100) })
             HStack {
                 TextField("Amount", text: $gramsText).keyboardType(.decimalPad)
                     .onChange(of: gramsText) { _, t in if let g = Double(t.replacingOccurrences(of: ",", with: ".")), abs(g - grams) > 0.05 { kcal = g * k100 / 100 } }
                 Text(unit).foregroundStyle(.secondary)
             }
+            fitsNote
         }
     }
 

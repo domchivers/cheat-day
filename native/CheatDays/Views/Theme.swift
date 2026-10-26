@@ -62,8 +62,12 @@ struct FoodDot: View {
                 if let img = UIImage(named: FoodEmoji.asset(e)) { Image(uiImage: img).resizable().scaledToFit().padding(size * 0.06) }
                 else { Text(e).font(.system(size: size * 0.78)) }
             } else {
-                Image(systemName: Theme.symbol(for: name)).font(.system(size: size * 0.45, weight: .semibold)).foregroundStyle(t.fg)
-                    .frame(width: size, height: size).background(t.bg, in: Circle())
+                // nothing matched: a plate, so every food still has a picture
+                if let img = UIImage(named: FoodEmoji.asset("🍽️")) { Image(uiImage: img).resizable().scaledToFit().padding(size * 0.06) }
+                else {
+                    Image(systemName: Theme.symbol(for: name)).font(.system(size: size * 0.45, weight: .semibold)).foregroundStyle(t.fg)
+                        .frame(width: size, height: size).background(t.bg, in: Circle())
+                }
             }
         }
         .frame(width: size, height: size)
@@ -84,7 +88,7 @@ enum FoodEmoji {
         ("🌮", ["taco"]), ("🌯", ["burrito", "wrap", "kebab", "gyro", "souvlaki", "shawarma"]), ("🥙", ["pita", "falafel"]), ("🥪", ["sandwich", "sub", "toastie", "panini", "baguette", "roll"]),
         ("🍣", ["sushi", "sashimi", "nigiri"]), ("🍱", ["bento"]), ("🥟", ["dumpling", "gyoza", "dim sum", "bao", "wonton"]), ("🍜", ["ramen", "pho", "noodle", "laksa", "udon", "pad thai", "chow mein", "soba"]),
         ("🍝", ["pasta", "spaghetti", "lasagne", "lasagna", "bolognese", "carbonara", "penne", "mac and cheese", "macaroni", "gnocchi", "ravioli"]),
-        ("🍛", ["curry", "korma", "tikka", "butter chicken", "biryani", "dal", "dahl"]), ("🍚", ["rice", "risotto", "fried rice"]), ("🥘", ["paella", "stew", "casserole", "chilli", "chili"]),
+        ("🍛", ["curry", "korma", "tikka", "butter chicken", "biryani", "dal", "dahl"]), ("🍚", ["rice", "risotto", "fried rice"]), ("🌶️", ["chilli sauce", "chili sauce", "hot sauce", "sweet chilli", "sriracha", "tabasco", "jalapeno", "peri peri"]), ("🥘", ["paella", "stew", "casserole", "chilli", "chili"]),
         ("🍲", ["soup", "hot pot", "broth"]), ("🥗", ["salad", "poke", "buddha bowl", "slaw"]), ("🥧", ["pie", "quiche", "pasty"]), ("🫔", ["tamale", "enchilada"]),
         // meat, fish, eggs
         ("🍗", ["chicken", "wings", "drumstick", "nugget", "schnitzel", "turkey"]), ("🥩", ["steak", "beef", "lamb", "mince", "pork", "veal"]), ("🥓", ["bacon", "ham", "prosciutto", "salami"]),
@@ -96,7 +100,8 @@ enum FoodEmoji {
         ("🍩", ["donut", "doughnut"]), ("🧁", ["cupcake", "muffin"]), ("🍰", ["cake", "cheesecake", "slice", "tart"]), ("🍪", ["cookie", "biscuit", "tim tam", "oreo"]), ("🍫", ["chocolate", "brownie", "kitkat", "kit kat", "snickers", "mars", "twix", "freddo", "dairy milk"]),
         ("🍦", ["ice cream", "gelato", "sundae", "frozen yoghurt", "froyo"]), ("🍬", ["lolly", "lollies", "sweets", "candy", "gummy", "jelly"]), ("🍿", ["popcorn"]), ("🥨", ["pretzel"]),
         ("🥜", ["peanut", "nuts", "almond", "cashew", "walnut", "trail mix", "peanut butter"]), ("🍯", ["honey"]), ("🧀", ["cheese", "brie", "cheddar", "feta", "halloumi"]),
-        ("🥫", ["baked beans", "beans"]), ("🍫", ["protein bar", "muesli bar", "bar"]), ("🫙", ["yoghurt", "yogurt"]),
+        ("🥫", ["baked beans", "beans"]), ("🍫", ["protein bar", "muesli bar", "bar"]), ("🥣", ["yoghurt", "yogurt", "skyr"]), ("🧈", ["butter", "margarine"]), ("🫒", ["olive", "oil"]),
+        ("🫙", ["mayo", "mayonnaise", "aioli", "kewpie", "ketchup", "sauce", "dressing", "mustard", "relish", "pesto", "hummus", "houmous", "dip", "spread", "jam", "vegemite", "marmite", "nutella", "syrup"]),
         // fruit and veg
         ("🍌", ["banana"]), ("🍎", ["apple"]), ("🍊", ["orange", "mandarin"]), ("🍓", ["strawberr"]), ("🫐", ["blueberr", "berries", "berry"]), ("🍇", ["grape"]), ("🍉", ["watermelon"]), ("🍍", ["pineapple"]),
         ("🥭", ["mango"]), ("🍑", ["peach", "nectarine"]), ("🍐", ["pear"]), ("🥝", ["kiwi"]), ("🍒", ["cherr"]), ("🥑", ["avocado", "avo", "guacamole"]), ("🍅", ["tomato"]),
