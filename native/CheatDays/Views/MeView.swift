@@ -345,7 +345,7 @@ struct MeView: View {
                 Chart {
                     ForEach(pts) { p in PointMark(x: .value("Day", p.date), y: .value("kg", p.kg)).foregroundStyle(Theme.accent.opacity(0.4)).symbolSize(14) }
                     ForEach(pts.filter { $0.trend != nil }) { p in
-                        LineMark(x: .value("Day", p.date), y: .value("Trend", p.trend ?? 0)).foregroundStyle(Theme.accent).lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round)).interpolationMethod(.catmullRom)
+                        LineMark(x: .value("Day", p.date), y: .value("Trend", p.trend ?? 0)).foregroundStyle(Theme.accent).lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round)).interpolationMethod(.monotone)
                     }
                     if let goal { RuleMark(y: .value("Goal", goal)).foregroundStyle(Color.green.opacity(0.7)).lineStyle(StrokeStyle(lineWidth: 1.5, dash: [5, 4])) }
                 }

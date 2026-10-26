@@ -9,6 +9,7 @@ struct BodyView: View {
     @State private var metric = "weight"
     @State private var range = 90
     @State private var entry: JSON?
+    @State private var picked: Date?
     private var store: Store { Store.shared }
 
     static let metrics: [(key: String, name: String, unit: String)] = [
@@ -33,6 +34,8 @@ struct BodyView: View {
                     .pickerStyle(.segmented)
                     hero(points, m)
                     chart(points, m)
+                        .onChange(of: metric) { _, _ in picked = nil }
+                        .onChange(of: range) { _, _ in picked = nil }
                 }
                 .listRowSeparator(.hidden)
             }
@@ -116,23 +119,80 @@ struct BodyView: View {
 
     private var rangeText: String { [30: "a month", 90: "3 months", 180: "6 months", 365: "a year"][range] ?? "" }
 
+    /// The reading nearest to where your finger is on the chart.
+    private func nearest(_ pts: [BodyPoint]) -> BodyPoint? {
+        guard let picked else { return nil }
+        return pts.min { abs($0.date.timeIntervalSince(picked)) < abs($1.date.timeIntervalSince(picked)) }
+    }
+
+    /// Readings as soft dots, the trend as a smooth line with a fade under it, the goal dashed. Touch and drag along it
+    /// to see any day's reading.
     private func chart(_ pts: [BodyPoint], _ m: (key: String, name: String, unit: String)) -> some View {
         let goal = m.key == "weight" ? pos(store.doc["goalWeight"]) : nil
-        let vals = pts.map(\.value) + (goal.map { [$0] } ?? [])
-        let lo = (vals.min() ?? 0), hi = (vals.max() ?? 1), pad = max(0.5, (hi - lo) * 0.15)
+        let vals = pts.map(\.value) + pts.compactMap(\.trend) + (goal.map { [$0] } ?? [])
+        let lo = (vals.min() ?? 0), hi = (vals.max() ?? 1), pad = max(0.4, (hi - lo) * 0.12)
+        let floor = lo - pad
+        let line = pts.filter { $0.trend != nil }
+        let sel = nearest(pts)
+        let unit = m.unit == "%" ? "%" : m.unit.isEmpty ? "" : " \(m.unit)"
         return Chart {
+            ForEach(line) { p in
+                AreaMark(x: .value("Day", p.date), yStart: .value("Base", floor), yEnd: .value("Trend", p.trend ?? p.value))
+                    .foregroundStyle(LinearGradient(colors: [Theme.accent.opacity(0.28), Theme.accent.opacity(0.0)], startPoint: .top, endPoint: .bottom))
+                    .interpolationMethod(.monotone)
+            }
+            ForEach(line) { p in
+                LineMark(x: .value("Day", p.date), y: .value("Trend", p.trend ?? p.value))
+                    .foregroundStyle(Theme.accent)
+                    .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                    .interpolationMethod(.monotone)
+            }
             ForEach(pts) { p in
                 PointMark(x: .value("Day", p.date), y: .value(m.name, p.value))
-                    .foregroundStyle(p.odd ? Color.secondary.opacity(0.4) : Theme.accent.opacity(0.55)).symbolSize(p.odd ? 18 : 26)
+                    .foregroundStyle(p.odd ? Color.secondary.opacity(0.35) : Color.white.opacity(0.55))
+                    .symbolSize(p.odd ? 14 : 20)
             }
-            ForEach(pts.filter { $0.trend != nil }) { p in
-                LineMark(x: .value("Day", p.date), y: .value("Trend", p.trend ?? 0)).foregroundStyle(Theme.accent).lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round)).interpolationMethod(.catmullRom)
+            if let goal {
+                RuleMark(y: .value("Goal", goal))
+                    .foregroundStyle(Color.green.opacity(0.75))
+                    .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                    .annotation(position: .top, alignment: .leading) { Text("Goal \(Fmt.kg(goal))").font(.caption2.weight(.bold)).foregroundStyle(.green) }
             }
-            if let goal { RuleMark(y: .value("Goal", goal)).foregroundStyle(Color.green.opacity(0.7)).lineStyle(StrokeStyle(lineWidth: 1.5, dash: [5, 4])).annotation(position: .top, alignment: .leading) { Text("Goal").font(.caption2.weight(.bold)).foregroundStyle(.green) } }
+            if let sel {
+                RuleMark(x: .value("Picked", sel.date))
+                    .foregroundStyle(Color.white.opacity(0.35))
+                    .lineStyle(StrokeStyle(lineWidth: 1))
+                    .annotation(position: .top, spacing: 6, overflowResolution: .init(x: .fit(to: .chart), y: .disabled)) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(Fmt.kg(sel.value))\(unit)").font(.headline.weight(.heavy)).monospacedDigit()
+                            Text(sel.date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).year(.twoDigits))).font(.caption2).foregroundStyle(.secondary)
+                            if let t = sel.trend { Text("trend \(Fmt.kg(t))\(unit)").font(.caption2).foregroundStyle(Theme.accent) }
+                        }
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                PointMark(x: .value("Day", sel.date), y: .value(m.name, sel.value))
+                    .foregroundStyle(Theme.accent).symbolSize(90)
+            }
         }
-        .chartYScale(domain: (lo - pad)...(hi + pad))
-        .frame(height: 210)
+        .chartYScale(domain: floor...(hi + pad))
+        .chartXSelection(value: $picked)
+        .chartYAxis {
+            AxisMarks(position: .trailing, values: .automatic(desiredCount: 4)) { v in
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [2, 3])).foregroundStyle(Color.white.opacity(0.12))
+                AxisValueLabel { if let d = v.as(Double.self) { Text(Fmt.one(d)).font(.caption2).foregroundStyle(.secondary) } }
+            }
+        }
+        .chartXAxis {
+            AxisMarks(values: .automatic(desiredCount: 4)) { _ in
+                AxisValueLabel(format: range <= 30 ? .dateTime.day().month(.abbreviated) : .dateTime.month(.abbreviated), centered: false)
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+        .frame(height: 220)
+        .padding(.top, 34)   // room for the reading's label above the chart
         .overlay { if pts.isEmpty { Text("No readings in this range").font(.footnote).foregroundStyle(.secondary) } }
+        .sensoryFeedback(.selection, trigger: sel?.id)
     }
 
     private var goalCard: some View {
