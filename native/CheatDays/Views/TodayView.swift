@@ -65,14 +65,22 @@ struct TodayView: View {
                         let x = Inbox.shared.items[i]
                         Section {
                             HStack(spacing: 12) {
-                                Image(systemName: "paperplane.fill").foregroundStyle(Theme.accent).frame(width: 34, height: 34).background(Theme.hero, in: Circle())
+                                let recipe = Inbox.shared.meal(x)
+                                Image(systemName: recipe == nil ? "paperplane.fill" : "book.closed.fill").foregroundStyle(Theme.accent).frame(width: 34, height: 34).background(Theme.hero, in: Circle())
                                 VStack(alignment: .leading, spacing: 1) {
-                                    Text("\(Inbox.shared.name(str(x["from_user"]))) sent you").font(.caption).foregroundStyle(.secondary)
+                                    Text("\(Inbox.shared.name(str(x["from_user"]))) sent you \(recipe == nil ? "" : "a recipe")").font(.caption).foregroundStyle(.secondary)
                                     Text(str(x["name"])).font(.subheadline.weight(.bold))
-                                    Text("\(Int(num(x["kcal"]) ?? 0)) kcal").font(.caption).foregroundStyle(.secondary)
+                                    Text(recipe.map { "\(list($0["items"]).count) ingredients · \(Int(num(x["kcal"]) ?? 0)) kcal a portion" } ?? "\(Int(num(x["kcal"]) ?? 0)) kcal").font(.caption).foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                Button("Add") { withAnimation { Inbox.shared.add(x) } }.buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(.small).foregroundStyle(.black)
+                                if recipe != nil {
+                                    Menu {
+                                        Button { withAnimation { Inbox.shared.save(x) }; note("Saved to your meals") } label: { Label("Save to my meals", systemImage: "book.closed") }
+                                        Button { withAnimation { Inbox.shared.add(x) } } label: { Label("Have a portion today", systemImage: "plus.circle") }
+                                    } label: { Text("Save").font(.subheadline.weight(.bold)).padding(.horizontal, 12).padding(.vertical, 6).background(Theme.accent, in: Capsule()).foregroundStyle(.black) }
+                                } else {
+                                    Button("Add") { withAnimation { Inbox.shared.add(x) } }.buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(.small).foregroundStyle(.black)
+                                }
                                 Button { withAnimation { Inbox.shared.settle(x, "dismissed") } } label: { Image(systemName: "xmark") }.buttonStyle(.borderless).foregroundStyle(.secondary)
                             }
                         }

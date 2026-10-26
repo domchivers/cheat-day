@@ -4,6 +4,7 @@ import SwiftUI
 struct MealsView: View {
     @State private var editing: JSON?
     @State private var added: String?
+    @State private var sending: JSON?
     private var store: Store { Store.shared }
 
     private var meals: [JSON] {
@@ -44,16 +45,19 @@ struct MealsView: View {
                                     Text("\(num(basis["servingSize"]).map { "\(Fmt.int($0)) g a portion · " } ?? "")\(Fmt.int(per)) kcal · \(Int(num(basis["pServ"]) ?? 0))g protein").font(.footnote).foregroundStyle(.secondary)
                                 }
                                 Spacer()
+                                Button { sending = m } label: { Image(systemName: "paperplane").font(.title3).foregroundStyle(Theme.accent) }
+                                    .buttonStyle(.borderless).accessibilityLabel("Send \(str(m["name"])) to a friend")
                                 Button {
                                     store.add(basis, kcal: per, meal: Meals.now)
-                                    withAnimation { added = str(m["name"]) }
-                                    Task { try? await Task.sleep(nanoseconds: 1_800_000_000); withAnimation { added = nil } }
+                                    flash("Added \(str(m["name"])) to today")
                                 } label: { Image(systemName: "plus.circle.fill").font(.title2).foregroundStyle(Theme.accent) }
                                 .buttonStyle(.borderless)
                             }
                         }
                         .buttonStyle(.plain)
                         .swipeActions { Button(role: .destructive) { store.perform(["type": "deleteMeal", "id": str(m["id"]), "at": nowMs()]) } label: { Label("Delete", systemImage: "trash") } }
+                        .swipeActions(edge: .leading) { Button { sending = m } label: { Label("Send", systemImage: "paperplane.fill") }.tint(Theme.accent) }
+                        .contextMenu { Button { sending = m } label: { Label("Send to a friend", systemImage: "paperplane") } }
                     }
                 }
             }
@@ -64,13 +68,30 @@ struct MealsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .overlay(alignment: .bottom) {
             if let added {
-                Text("Added \(added) to today").font(.subheadline.weight(.bold)).padding(.horizontal, 16).padding(.vertical, 10)
+                Text(added).font(.subheadline.weight(.bold)).padding(.horizontal, 16).padding(.vertical, 10)
                     .background(.ultraThinMaterial, in: Capsule()).padding(.bottom, 20).transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .confirmationDialog("Send \(str(sending?["name"])) to…", isPresented: Binding(get: { sending != nil }, set: { if !$0 { sending = nil } }), titleVisibility: .visible) {
+            ForEach(Friends.shared.people) { p in
+                Button(p.name) {
+                    guard let m = sending else { return }
+                    Task {
+                        do { try await Friends.shared.sendMeal(m, to: p); flash("Sent \(str(m["name"])) to \(p.name)") }
+                        catch { flash("Couldn't send: \(error.localizedDescription)") }
+                    }
+                }
+            }
+        } message: { Text(Friends.shared.people.isEmpty ? "Add a friend first, in the Friends tab." : "They get the whole recipe on their Today, to save or have a portion.") }
+        .task { if Friends.shared.people.isEmpty { await Friends.shared.load() } }
         .sheet(item: Binding(get: { editing.map { MealBox(meal: $0) } }, set: { editing = $0?.meal })) { box in
             MealEditor(meal: box.meal) { editing = nil }
         }
+    }
+
+    private func flash(_ text: String) {
+        withAnimation { added = text }
+        Task { try? await Task.sleep(nanoseconds: 2_200_000_000); withAnimation { if added == text { added = nil } } }
     }
 
     static func blank() -> JSON {

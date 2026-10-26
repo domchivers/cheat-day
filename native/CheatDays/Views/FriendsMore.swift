@@ -30,6 +30,23 @@ final class Inbox {
         Task { _ = try? await api.rest("/rest/v1/sends?id=eq.\(str(x["id"]))&to_user=eq.\(me)", method: "PATCH", body: ["status": status]) }
     }
 
+    /// A recipe a friend sent: the whole meal, when it came with one.
+    func meal(_ x: JSON) -> JSON? {
+        let p = dict(x["payload"])
+        guard str(p["kind"]) == "meal" else { return nil }
+        let m = dict(p["meal"])
+        return m.isEmpty ? nil : m
+    }
+
+    /// Keep it in your meals (as your own copy), and clear it from Today.
+    func save(_ x: JSON) {
+        guard var m = meal(x) else { return }
+        m["id"] = uid(); m["saved"] = true; m["updatedAt"] = ISO.now()
+        m["from"] = name(str(x["from_user"]))
+        Store.shared.perform(["type": "saveMeal", "meal": m])
+        settle(x, "added")
+    }
+
     func add(_ x: JSON) {
         var b = dict(x["payload"])
         if b.isEmpty { b = ["name": x["name"] ?? "", "kcalPerServing": x["kcal"] ?? 0, "unitLabel": "portion"] }
