@@ -58,7 +58,7 @@ struct FriendsView: View {
                                 Text("\(i + 1)").font(.headline).foregroundStyle(i == 0 ? Theme.accent : .secondary).frame(width: 22)
                                 Text(p.name)
                                 Spacer()
-                                Label("\(p.streak) days", systemImage: "flame.fill").font(.subheadline).foregroundStyle(.orange)
+                                HStack(spacing: 4) { FluentIcon(emoji: "🔥", size: 18); Text("\(p.streak) days").font(.subheadline.weight(.semibold)).foregroundStyle(.orange) }
                             }
                         }
                     }
@@ -166,7 +166,7 @@ struct FriendsView: View {
                         Circle().fill(v == 1 ? Theme.accent : v == 2 ? Theme.warn : v == 3 ? Color.red.opacity(0.75) : Theme.track).frame(width: 10, height: 10)
                     }
                 }
-                if p.streak > 1 { Label("\(p.streak)", systemImage: "flame.fill").font(.caption.weight(.bold)).foregroundStyle(.orange) }
+                if p.streak > 1 { HStack(spacing: 3) { FluentIcon(emoji: "🔥", size: 15); Text("\(p.streak)").font(.caption.weight(.bold)).foregroundStyle(.orange) } }
                 Spacer()
             }
         }

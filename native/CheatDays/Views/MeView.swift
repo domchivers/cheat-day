@@ -44,8 +44,11 @@ struct MeView: View {
                     Text(name).font(.title2.weight(.heavy)).foregroundStyle(.primary).lineLimit(1)
                     HStack(spacing: 5) {
                         RankBadge(rank: store.rank, size: 18)
-                        Text("\(store.rank.name) rank" + (streak > 1 ? " · \(streak)-day streak" : ""))
-                            .font(.caption.weight(.semibold)).foregroundStyle(store.rank.color)
+                        Text("\(store.rank.name) rank").font(.caption.weight(.semibold)).foregroundStyle(store.rank.color)
+                        if streak > 1 {
+                            FluentIcon(emoji: "🔥", size: 14)
+                            Text("\(streak)-day streak").font(.caption.weight(.semibold)).foregroundStyle(.orange)
+                        }
                     }
                 }
             }

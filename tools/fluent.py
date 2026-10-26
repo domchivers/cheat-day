@@ -17,7 +17,7 @@ def get(url):
 s = io.open(THEME, encoding="utf-8").read()
 part = s[s.index("enum FoodEmoji"):s.index("static func `for`")]
 # the food table's emoji, plus the ones the app uses elsewhere (Me page tiles, settings)
-EXTRA = ["🎯", "📈", "📖", "🗓️", "🏆", "👨‍👩‍👧", "⚙️"]
+EXTRA = ["🔥", "🎯", "📈", "📖", "🗓️", "🏆", "👨‍👩‍👧", "⚙️"]
 emojis = list(dict.fromkeys(re.findall(r'\("([^"]+)", \[', part) + EXTRA))
 
 tree = json.loads(get("https://api.github.com/repos/microsoft/fluentui-emoji/git/trees/main?recursive=1"))["tree"]
