@@ -9,6 +9,7 @@ struct SettingsView: View {
     @State private var days: Set<Int> = [0]
     @State private var share = true
     @State private var pushNote: String?
+    @AppStorage("region") private var region = ""   // the same setting Region reads; this way the picker shows the change
     @State private var allowed = true
     @State private var loaded = false
     @State private var notes = ""
@@ -51,7 +52,7 @@ struct SettingsView: View {
             } footer: { Text("Friends see your calories and what you had today.") }
             .alert("Notifications", isPresented: Binding(get: { pushNote != nil }, set: { if !$0 { pushNote = nil } })) { Button("OK") {} } message: { Text(pushNote ?? "") }
             Section {
-                Picker("Portion sizes", selection: Binding(get: { Region.choice }, set: { Region.choice = $0; Store.shared.clearCaches() })) {
+                Picker("Portion sizes", selection: $region) {
                     Text("Automatic (\(Region.detected.label))").tag("")
                     ForEach(Region.allCases) { Text($0.label).tag($0.rawValue) }
                 }
