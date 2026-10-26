@@ -93,21 +93,25 @@ struct BodyView: View {
 
     private func hero(_ pts: [BodyPoint], _ m: (key: String, name: String, unit: String)) -> some View {
         let last = pts.last, first = pts.first { !$0.odd }
-        let now = last?.value   // the latest reading, as measured; the trend is the line on the chart
+        let sel = nearest(pts)
+        let now = sel?.value ?? last?.value   // the latest reading as measured, or the one under your finger
         let change = (now != nil && first != nil) ? now! - (first!.trend ?? first!.value) : nil
         return HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
-                Eyebrow(text: m.key == "weight" ? "Last weigh-in" : m.name, color: Theme.heroLabel)
+                Eyebrow(text: sel.map { $0.date.formatted(.dateTime.weekday(.wide).day().month(.wide)) } ?? (m.key == "weight" ? "Last weigh-in" : m.name), color: Theme.heroLabel)
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(now.map { Fmt.kg($0) } ?? "–").font(.system(size: 44, weight: .heavy, design: .rounded)).contentTransition(.numericText())
                     Text(m.unit).font(.headline).foregroundStyle(.secondary)
                 }
-                if m.key == "weight", let w = store.lastWeighIn {
-                    Text("\(Store.whenTaken(day: w.day, at: w.at).capitalizedFirst)\(store.trendWeight.map { " · trend \(Fmt.kg($0)) kg" } ?? "")").font(.caption).foregroundStyle(.secondary)
+                if let sel {
+                    Text(sel.trend.map { "Trend that day \(Fmt.kg($0))" } ?? "A single reading").font(.caption).foregroundStyle(.secondary)
+                } else if m.key == "weight", let w = store.lastWeighIn {
+                    let trend = store.trendWeight.flatMap { abs($0 - w.kg) >= 0.2 ? " · trend \(Fmt.kg($0)) kg" : nil } ?? ""
+                    Text("\(Store.whenTaken(day: w.day, at: w.at).capitalizedFirst)\(trend)").font(.caption).foregroundStyle(.secondary)
                 }
             }
             Spacer()
-            if let change, pts.count > 1 {
+            if let change, pts.count > 1, sel == nil {
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("\(change > 0 ? "+" : change < 0 ? "−" : "")\(Fmt.one(abs(change)))\(m.unit.isEmpty || m.unit == "%" ? m.unit : " \(m.unit)")")
                         .font(.title3.weight(.heavy)).foregroundStyle(m.key == "muscle" ? (change >= 0 ? Color.green : Theme.warn) : (change <= 0 ? Color.green : Theme.warn))
@@ -126,7 +130,7 @@ struct BodyView: View {
     }
 
     /// Readings as soft dots, the trend as a smooth line with a fade under it, the goal dashed. Touch and drag along it
-    /// to see any day's reading.
+    /// and the big number above shows that day's reading.
     private func chart(_ pts: [BodyPoint], _ m: (key: String, name: String, unit: String)) -> some View {
         let goal = m.key == "weight" ? pos(store.doc["goalWeight"]) : nil
         let vals = pts.map(\.value) + pts.compactMap(\.trend) + (goal.map { [$0] } ?? [])
@@ -138,7 +142,7 @@ struct BodyView: View {
         return Chart {
             ForEach(line) { p in
                 AreaMark(x: .value("Day", p.date), yStart: .value("Base", floor), yEnd: .value("Trend", p.trend ?? p.value))
-                    .foregroundStyle(LinearGradient(colors: [Theme.accent.opacity(0.28), Theme.accent.opacity(0.0)], startPoint: .top, endPoint: .bottom))
+                    .foregroundStyle(LinearGradient(colors: [Theme.accent.opacity(0.16), Theme.accent.opacity(0.0)], startPoint: .top, endPoint: .bottom))
                     .interpolationMethod(.monotone)
             }
             ForEach(line) { p in
@@ -159,20 +163,8 @@ struct BodyView: View {
                     .annotation(position: .top, alignment: .leading) { Text("Goal \(Fmt.kg(goal))").font(.caption2.weight(.bold)).foregroundStyle(.green) }
             }
             if let sel {
-                RuleMark(x: .value("Picked", sel.date))
-                    .foregroundStyle(Color.white.opacity(0.35))
-                    .lineStyle(StrokeStyle(lineWidth: 1))
-                    .annotation(position: .top, spacing: 6, overflowResolution: .init(x: .fit(to: .chart), y: .disabled)) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("\(Fmt.kg(sel.value))\(unit)").font(.headline.weight(.heavy)).monospacedDigit()
-                            Text(sel.date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).year(.twoDigits))).font(.caption2).foregroundStyle(.secondary)
-                            if let t = sel.trend { Text("trend \(Fmt.kg(t))\(unit)").font(.caption2).foregroundStyle(Theme.accent) }
-                        }
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    }
-                PointMark(x: .value("Day", sel.date), y: .value(m.name, sel.value))
-                    .foregroundStyle(Theme.accent).symbolSize(90)
+                RuleMark(x: .value("Picked", sel.date)).foregroundStyle(Color.white.opacity(0.3)).lineStyle(StrokeStyle(lineWidth: 1))
+                PointMark(x: .value("Day", sel.date), y: .value(m.name, sel.value)).foregroundStyle(Theme.accent).symbolSize(90)
             }
         }
         .chartYScale(domain: floor...(hi + pad))
@@ -184,13 +176,16 @@ struct BodyView: View {
             }
         }
         .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: 4)) { _ in
-                AxisValueLabel(format: range <= 30 ? .dateTime.day().month(.abbreviated) : .dateTime.month(.abbreviated), centered: false)
-                    .font(.caption2).foregroundStyle(.secondary)
+            // one label per week (1M), per month (3M), or every few months, so none repeat
+            if range <= 30 {
+                AxisMarks(values: .stride(by: .weekOfYear)) { _ in AxisValueLabel(format: .dateTime.day().month(.abbreviated)).font(.caption2).foregroundStyle(.secondary) }
+            } else if range <= 365 {
+                AxisMarks(values: .stride(by: .month, count: range <= 90 ? 1 : range <= 180 ? 2 : 3)) { _ in AxisValueLabel(format: .dateTime.month(.abbreviated)).font(.caption2).foregroundStyle(.secondary) }
+            } else {
+                AxisMarks(values: .automatic(desiredCount: 4)) { _ in AxisValueLabel(format: .dateTime.month(.abbreviated).year(.twoDigits)).font(.caption2).foregroundStyle(.secondary) }
             }
         }
         .frame(height: 220)
-        .padding(.top, 34)   // room for the reading's label above the chart
         .overlay { if pts.isEmpty { Text("No readings in this range").font(.footnote).foregroundStyle(.secondary) } }
         .sensoryFeedback(.selection, trigger: sel?.id)
     }

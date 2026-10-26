@@ -153,8 +153,8 @@ struct MeView: View {
                     }
                 }
                 if let w = store.lastWeighIn {
-                    Text("Weighed \(Store.whenTaken(day: w.day, at: w.at))\(store.trendWeight.map { " · trend \(Fmt.kg($0)) kg" } ?? "")")
-                        .font(.caption).foregroundStyle(.secondary)
+                    let trend = store.trendWeight.flatMap { abs($0 - w.kg) >= 0.2 ? " · trend \(Fmt.kg($0)) kg" : nil } ?? ""
+                    Text("Weighed \(Store.whenTaken(day: w.day, at: w.at))\(trend)").font(.caption).foregroundStyle(.secondary)
                 }
                 NavigationLink { BodyView() } label: { miniChart }.buttonStyle(.plain)
                 if let goal {
@@ -176,22 +176,16 @@ struct MeView: View {
     private func progress(start: Double, now: Double, goal: Double) -> some View {
         let total = abs(start - goal), done = max(0, min(total, total - abs(now - goal)))
         let share = total > 0 ? done / total : 1
-        return VStack(spacing: 5) {
+        return VStack(alignment: .leading, spacing: 6) {
             GeometryReader { g in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color(.tertiarySystemFill))
-                    Capsule().fill(Color.green).frame(width: max(9, g.size.width * share))
-                    Circle().fill(.white).frame(width: 15, height: 15).overlay(Circle().stroke(Color.green, lineWidth: 3))
-                        .offset(x: max(0, min(g.size.width - 15, g.size.width * share - 7.5)))
+                    Capsule().fill(Color.green).frame(width: max(6, g.size.width * share))
                 }
             }
-            .frame(height: 15)
-            HStack {
-                Text("Started \(Fmt.kg(start))")
-                Spacer()
-                Text("\(Fmt.kg(done)) \(goal < start ? "down" : "up") · \(Fmt.kg(abs(now - goal))) to go")
-            }
-            .font(.caption).foregroundStyle(.secondary)
+            .frame(height: 6)
+            Text("\(Fmt.kg(done)) kg \(goal < start ? "down" : "up") from \(Fmt.kg(start)) · \(Fmt.kg(abs(now - goal))) to go")
+                .font(.caption).foregroundStyle(.secondary)
         }
     }
 
@@ -208,8 +202,8 @@ struct MeView: View {
         switch s {
         case .there: title = "You're there."; body = "Time to switch your plan to keeping it steady."; tint = .green
         case .early: title = "Keep weighing in."; body = "A trend needs a week or two of weigh-ins before it can give a date."; tint = .gray
-        case .ahead: title = "Ahead of plan."; body = "At \(paceText) you'll reach \(Fmt.kg(goal)) kg around \(date ?? "soon")."; tint = .green
-        case .onTrack: title = "On track."; body = "At \(paceText) you'll reach \(Fmt.kg(goal)) kg around \(date ?? "soon")."; tint = .green
+        case .ahead: title = "Ahead of plan."; body = "\(Fmt.kg(goal)) kg around \(date ?? "soon")."; tint = .green
+        case .onTrack: title = "On track."; body = "\(Fmt.kg(goal)) kg around \(date ?? "soon")."; tint = .green
         case .behind: title = "Slower than planned."; body = date.map { "At \(paceText) you'd get there around \($0)." } ?? "Your weight's barely moving at the moment."; tint = Theme.warn
         case .wrongWay: title = "Going the wrong way."; body = "Your trend is \(paceText) at the moment. See how to get there below."; tint = Theme.warn
         }
@@ -334,31 +328,30 @@ struct MeView: View {
 
     // MARK: 4 the chart
 
-    /// The last three months: weigh-ins as dots, the trend as a line, the goal dashed. Small, no axes; Body has the detail.
+    /// The last three months as one smooth trend line and the dashed goal. Tap for Body, which has the detail.
     private var miniChart: some View {
         let since = Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? Date()
-        let pts = weights.filter { $0.date >= since }
-        let vals = pts.map(\.kg) + (goal.map { [$0] } ?? [])
-        let lo = vals.min() ?? 0, hi = vals.max() ?? 1, pad = max(0.5, (hi - lo) * 0.12)
-        return VStack(alignment: .leading, spacing: 4) {
+        let pts = weights.filter { $0.date >= since && $0.trend != nil }
+        let vals = pts.compactMap(\.trend) + (goal.map { [$0] } ?? [])
+        let lo = vals.min() ?? 0, hi = vals.max() ?? 1, pad = max(0.3, (hi - lo) * 0.15)
+        return Group {
             if pts.count >= 2 {
                 Chart {
-                    ForEach(pts) { p in PointMark(x: .value("Day", p.date), y: .value("kg", p.kg)).foregroundStyle(Theme.accent.opacity(0.4)).symbolSize(14) }
-                    ForEach(pts.filter { $0.trend != nil }) { p in
-                        LineMark(x: .value("Day", p.date), y: .value("Trend", p.trend ?? 0)).foregroundStyle(Theme.accent).lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round)).interpolationMethod(.monotone)
+                    ForEach(pts) { p in
+                        LineMark(x: .value("Day", p.date), y: .value("Trend", p.trend ?? 0)).foregroundStyle(Theme.accent)
+                            .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round)).interpolationMethod(.monotone)
                     }
-                    if let goal { RuleMark(y: .value("Goal", goal)).foregroundStyle(Color.green.opacity(0.7)).lineStyle(StrokeStyle(lineWidth: 1.5, dash: [5, 4])) }
+                    if let goal { RuleMark(y: .value("Goal", goal)).foregroundStyle(Color.green.opacity(0.6)).lineStyle(StrokeStyle(lineWidth: 1.5, dash: [5, 4])) }
                 }
                 .chartYScale(domain: (lo - pad)...(hi + pad))
                 .chartXAxis(.hidden).chartYAxis(.hidden)
-                .frame(height: 64)
+                .frame(height: 56)
+                .overlay(alignment: .topTrailing) { Image(systemName: "chevron.right").font(.caption2.weight(.bold)).foregroundStyle(.tertiary) }
+            } else {
+                Text("Weigh in a few times to see your trend").font(.caption).foregroundStyle(.secondary)
             }
-            HStack(spacing: 3) {
-                Text(pts.count >= 2 ? "3 months · all weigh-ins" : "Weigh in a few times to see your trend")
-                Image(systemName: "chevron.right")
-            }
-            .font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
         }
         .contentShape(Rectangle())
+        .accessibilityLabel("Weight trend, last 3 months. Opens Body")
     }
 }
