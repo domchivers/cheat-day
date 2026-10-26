@@ -61,6 +61,25 @@ struct TodayView: View {
                     }
                 }
                 if offset == 0 {
+                    ForEach(Family.shared.asks) { l in
+                        Section {
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack(spacing: 10) {
+                                    FluentIcon(emoji: "👨‍👩‍👧", size: 30)
+                                    Text("\(Family.shared.name(l.helper)) wants to help with your budget").font(.subheadline.weight(.bold))
+                                }
+                                Text("They'd be able to set your daily budget and fix foods on your day. You can stop it any time in Settings.")
+                                    .font(.footnote).foregroundStyle(.secondary)
+                                HStack(spacing: 10) {
+                                    Button { Task { await Family.shared.answer(l, yes: true) } } label: { Text("Allow").font(.subheadline.weight(.bold)).frame(maxWidth: .infinity) }
+                                        .buttonStyle(.borderedProminent).foregroundStyle(.black)
+                                    Button { Task { await Family.shared.answer(l, yes: false) } } label: { Text("No thanks").font(.subheadline.weight(.bold)).frame(maxWidth: .infinity) }
+                                        .buttonStyle(.bordered)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
                     ForEach(Inbox.shared.items.indices, id: \.self) { i in
                         let x = Inbox.shared.items[i]
                         Section {
@@ -152,7 +171,7 @@ struct TodayView: View {
             .task { await Steps.shared.refresh() }
             .onChange(of: store.rank.level) { _, _ in checkRank() }
             .onChange(of: store.lastSynced) { _, _ in checkBadges(); Task { await Inbox.shared.refresh() } }
-            .task { await Inbox.shared.refresh(force: true) }
+            .task { await Inbox.shared.refresh(force: true); await Family.shared.load() }
             .onChange(of: store.todayItems.count) { _, _ in checkBadges() }
             .overlay(alignment: .top) {
                 if let badgeNote {

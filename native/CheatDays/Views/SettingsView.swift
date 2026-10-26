@@ -69,6 +69,17 @@ struct SettingsView: View {
                 ShareLink(item: exportText, preview: SharePreview("Cheat Days data")) { Label("Export my data", systemImage: "square.and.arrow.up") }
                 NavigationLink { WebScreen(view: "settings", pushed: true).navigationTitle("Backups").navigationBarTitleDisplayMode(.inline) } label: { Label("Backups and restore", systemImage: "clock.arrow.circlepath") }
             } header: { Text("Your data") } footer: { Text("Everything syncs to your account. Export gives you a copy of it all as a file. Daily backups and restoring stay on the website's page for now.") }
+            if !Family.shared.helpers.isEmpty {
+                Section {
+                    ForEach(Family.shared.helpers) { l in
+                        HStack {
+                            Text("\(Family.shared.name(l.helper)) can set your budget")
+                            Spacer()
+                            Button("Stop", role: .destructive) { Task { await Family.shared.remove(l) } }.buttonStyle(.borderless)
+                        }
+                    }
+                } header: { Text("Family") } footer: { Text("They can set your daily budget and fix foods on your day. Stop it and they can't any more.") }
+            }
             Section("Account") {
                 LabeledContent("Signed in as", value: Supabase.shared.email)
                 SecureField("New password (8 or more characters)", text: $newPassword).textContentType(.newPassword)
@@ -83,6 +94,7 @@ struct SettingsView: View {
                 Text("Cheat Days \(Bundle.main.shortVersion)\(store.lastSynced.map { " · synced \($0.formatted(date: .omitted, time: .shortened))" } ?? "")\nFood icons: Fluent Emoji by Microsoft, MIT licence.")
             }
         }
+        .task { await Family.shared.load() }
         .confirmationDialog("Sign out of Cheat Days on this phone?", isPresented: $confirmSignOut, titleVisibility: .visible) {
             Button("Sign out", role: .destructive) {
                 WebHost.shared.signOut()

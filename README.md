@@ -679,6 +679,40 @@ To let the helper set a different budget for each day of the week, run once:
 alter table public.budget_overrides add column if not exists days jsonb;
 ```
 
+### Family by invitation (run once)
+
+The helper can only set the budget of, or fix foods for, people they've invited **who tapped Allow**. Either side can
+stop it (the member in Settings, the helper by swiping in Family budgets).
+
+```sql
+create table if not exists public.family_links (
+  helper uuid not null references auth.users(id) on delete cascade,
+  member uuid not null references auth.users(id) on delete cascade,
+  status text not null default 'asked' check (status in ('asked', 'yes')),
+  created_at timestamptz not null default now(),
+  primary key (helper, member)
+);
+alter table public.family_links enable row level security;
+create policy "family read" on public.family_links for select to authenticated using (helper = auth.uid() or member = auth.uid());
+create policy "family ask" on public.family_links for insert to authenticated
+  with check (helper = auth.uid() and status = 'asked' and auth.jwt() ->> 'email' = 'domchivers@gmail.com' and public.is_friend(member));
+create policy "family answer" on public.family_links for update to authenticated using (member = auth.uid()) with check (member = auth.uid());
+create policy "family leave" on public.family_links for delete to authenticated using (helper = auth.uid() or member = auth.uid());
+
+create or replace function public.is_family(m uuid) returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.family_links where helper = auth.uid() and member = m and status = 'yes')
+$$;
+
+-- the helper's powers now need a yes, not just a friendship
+drop policy if exists "override write" on public.budget_overrides;
+create policy "override write" on public.budget_overrides for all to authenticated
+  using (set_by = auth.uid() and auth.jwt() ->> 'email' = 'domchivers@gmail.com' and public.is_family(user_id))
+  with check (set_by = auth.uid() and auth.jwt() ->> 'email' = 'domchivers@gmail.com' and public.is_family(user_id));
+drop policy if exists "edits write" on public.helper_edits;
+create policy "edits write" on public.helper_edits for insert to authenticated
+  with check (set_by = auth.uid() and auth.jwt() ->> 'email' = 'domchivers@gmail.com' and public.is_family(user_id));
+```
+
 
 ## The iPhone app (native/)
 

@@ -12,42 +12,89 @@ struct MeView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                Section { goalCard }
-                Section { howCard }
-                if let c = adjustment { Section { adjustCard(c) }.listRowBackground(Color(red: 0.13, green: 0.11, blue: 0.07)) }
-                Section {
-                    NavigationLink { BodyView() } label: { chartCard }
+            ScrollView {
+                VStack(spacing: 14) {
+                    header
+                    card(Theme.hero) { goalCard }
+                    if let c = adjustment { card(Color(red: 0.13, green: 0.11, blue: 0.07)) { adjustCard(c) } }
+                    card { weekCard }
+                    tiles
                 }
-                Section {
-                    NavigationLink { BudgetView() } label: { Label("Plan and budget", systemImage: "target") }
-                    NavigationLink { BodyView() } label: { Label("Body and weigh-ins", systemImage: "scalemass.fill") }
-                    NavigationLink { HistoryView() } label: { Label("History", systemImage: "calendar") }
-                    NavigationLink { MealsView() } label: { Label("Your meals", systemImage: "fork.knife") }
-                    NavigationLink { GoalsView() } label: { Label("Goals and badges", systemImage: "trophy.fill") }
-                    if store.isHelper {
-                        NavigationLink { FamilyView() } label: { Label("Family budgets", systemImage: "person.2.badge.gearshape.fill") }
-                    }
-                    NavigationLink { SettingsView() } label: { Label("Settings", systemImage: "gearshape.fill") }
-                }
+                .padding(.horizontal, 16).padding(.bottom, 30)
             }
-            .navigationTitle("Me")
-            .scrollContentBackground(.hidden)
             .background(Theme.bg)
+            .toolbar(.hidden, for: .navigationBar)
             .refreshable { await store.sync(); await store.pullBody() }
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { ranks = true } label: {
-                        HStack(spacing: 5) {
-                            RankBadge(rank: store.rank, size: 24)
-                            Text(store.rank.name).font(.caption.weight(.bold)).foregroundStyle(store.rank.color)
-                        }
-                    }
-                    .accessibilityLabel("Your rank: \(store.rank.name)")
-                }
-            }
             .sheet(isPresented: $weighing) { WeighInSheet().presentationDetents([.medium]) }
             .sheet(isPresented: $ranks) { RanksView() }
+        }
+    }
+
+    // MARK: you
+
+    private var header: some View {
+        let name = Friends.shared.myName.isEmpty ? "Me" : Friends.shared.myName
+        let streak = store.streakInfo.days
+        return HStack(spacing: 12) {
+            Text(String(name.prefix(1)).uppercased())
+                .font(.title3.weight(.heavy)).foregroundStyle(Theme.accent)
+                .frame(width: 48, height: 48).background(Theme.hero, in: Circle())
+            Button { ranks = true } label: {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(name).font(.title2.weight(.heavy)).foregroundStyle(.primary).lineLimit(1)
+                    HStack(spacing: 5) {
+                        RankBadge(rank: store.rank, size: 18)
+                        Text("\(store.rank.name) rank" + (streak > 1 ? " · \(streak)-day streak" : ""))
+                            .font(.caption.weight(.semibold)).foregroundStyle(store.rank.color)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(name), \(store.rank.name) rank. Show ranks")
+            Spacer()
+            NavigationLink { SettingsView() } label: {
+                FluentIcon(emoji: "⚙️", size: 24)
+                    .frame(width: 44, height: 44).background(Color(.secondarySystemGroupedBackground), in: Circle())
+            }
+            .accessibilityLabel("Settings")
+        }
+        .padding(.top, 8)
+    }
+
+    private func card<C: View>(_ tint: Color = Color(.secondarySystemGroupedBackground), @ViewBuilder _ content: () -> C) -> some View {
+        content()
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(tint, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+
+    // MARK: the rest of the app, as tiles
+
+    private var tiles: some View {
+        let meals = CheatDays.list(store.doc["meals"]).count
+        var items: [(icon: String, title: String, hint: String, to: AnyView)] = [
+            ("🎯", "Plan", "Budget and cheat day", AnyView(BudgetView())),
+            ("📈", "Body", "Weigh-ins and scale", AnyView(BodyView())),
+            ("📖", "Meals", meals == 0 ? "Recipes you save" : "\(meals) saved", AnyView(MealsView())),
+            ("🗓️", "History", "Past days", AnyView(HistoryView())),
+            ("🏆", "Badges", "\(store.seenBadges.count) of \(Badge.all.count)", AnyView(GoalsView()))
+        ]
+        if store.isHelper { items.append(("👨‍👩‍👧", "Family", "People you help", AnyView(FamilyView()))) }
+        return LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+            ForEach(items.indices, id: \.self) { i in
+                let t = items[i]
+                NavigationLink { t.to } label: {
+                    VStack(alignment: .leading, spacing: 6) {
+                        FluentIcon(emoji: t.icon, size: 30)
+                        Text(t.title).font(.headline).foregroundStyle(.primary)
+                        Text(t.hint).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14)
+                    .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
         }
     }
 
@@ -106,6 +153,7 @@ struct MeView: View {
                     Text("Weighed \(Store.whenTaken(day: w.day, at: w.at))\(store.trendWeight.map { " · trend \(Fmt.kg($0)) kg" } ?? "")")
                         .font(.caption).foregroundStyle(.secondary)
                 }
+                NavigationLink { BodyView() } label: { miniChart }.buttonStyle(.plain)
                 if let goal {
                     progress(start: start ?? now, now: now, goal: goal)
                     statusLine(now: now, goal: goal)
@@ -188,24 +236,28 @@ struct MeView: View {
         return n >= 3 ? (kcal / Double(n), budget / Double(n), n) : nil
     }
 
-    private var howCard: some View {
+    private var weekCard: some View {
         let base = pos(store.doc["budget"]) ?? store.baseBudget(store.today)
         let tw = twoWeeks
-        let burn = store.checkIn.burn ?? pos(plan["learnedBurn"]) ?? pos(plan["tdee"])
         let week = store.weekDates.map(store.dayFacts).filter(\.logged)
         let onBudget = week.filter(store.underBudget).count
-        return VStack(alignment: .leading, spacing: 6) {
-            Eyebrow(text: "How to get there", color: Theme.heroLabel)
-            line("Your budget", "\(Fmt.int(base)) a day")
-            if let wd = store.cheatWeekday {
-                line("Cheat day", "\(Calendar.current.weekdaySymbols[wd]) · \(Fmt.int(store.baseBudget(store.nextCheat?.date ?? store.today)))")
+        return VStack(alignment: .leading, spacing: 12) {
+            Eyebrow(text: "This week", color: Theme.heroLabel)
+            HStack {
+                bigStat(Fmt.int(base), "budget a day")
+                bigStat(tw.map { Fmt.int($0.avg) } ?? "–", "averaged")
+                bigStat(week.isEmpty ? "–" : "\(onBudget)/\(week.count)", "on budget")
             }
-            if let tw { line("You've averaged", "\(Fmt.int(tw.avg)) a day", note: "last 2 weeks") }
-            if let burn { line("You burn about", "\(Fmt.int(burn)) a day") }
-            if !week.isEmpty { line("This week", "\(onBudget) of \(week.count) days on budget") }
-            Text(advice(tw: tw)).font(.footnote).foregroundStyle(.secondary).padding(.top, 4)
+            Text(advice(tw: tw)).font(.footnote).foregroundStyle(.secondary)
         }
-        .padding(.vertical, 4)
+    }
+
+    private func bigStat(_ v: String, _ l: String) -> some View {
+        VStack(spacing: 2) {
+            Text(v).font(.title3.weight(.heavy)).monospacedDigit()
+            Text(l).font(.caption).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private func line(_ l: String, _ v: String, note: String? = nil) -> some View {
@@ -279,27 +331,31 @@ struct MeView: View {
 
     // MARK: 4 the chart
 
-    private var chartCard: some View {
+    /// The last three months: weigh-ins as dots, the trend as a line, the goal dashed. Small, no axes; Body has the detail.
+    private var miniChart: some View {
         let since = Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? Date()
         let pts = weights.filter { $0.date >= since }
         let vals = pts.map(\.kg) + (goal.map { [$0] } ?? [])
         let lo = vals.min() ?? 0, hi = vals.max() ?? 1, pad = max(0.5, (hi - lo) * 0.12)
-        return VStack(alignment: .leading, spacing: 8) {
-            Eyebrow(text: "Weight · 3 months", color: Theme.heroLabel)
-            if pts.count < 2 {
-                Text("Weigh in a few times and your trend shows here.").font(.footnote).foregroundStyle(.secondary)
-            } else {
+        return VStack(alignment: .leading, spacing: 4) {
+            if pts.count >= 2 {
                 Chart {
-                    ForEach(pts) { p in PointMark(x: .value("Day", p.date), y: .value("kg", p.kg)).foregroundStyle(Theme.accent.opacity(0.45)).symbolSize(18) }
+                    ForEach(pts) { p in PointMark(x: .value("Day", p.date), y: .value("kg", p.kg)).foregroundStyle(Theme.accent.opacity(0.4)).symbolSize(14) }
                     ForEach(pts.filter { $0.trend != nil }) { p in
                         LineMark(x: .value("Day", p.date), y: .value("Trend", p.trend ?? 0)).foregroundStyle(Theme.accent).lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round)).interpolationMethod(.catmullRom)
                     }
                     if let goal { RuleMark(y: .value("Goal", goal)).foregroundStyle(Color.green.opacity(0.7)).lineStyle(StrokeStyle(lineWidth: 1.5, dash: [5, 4])) }
                 }
                 .chartYScale(domain: (lo - pad)...(hi + pad))
-                .frame(height: 130)
+                .chartXAxis(.hidden).chartYAxis(.hidden)
+                .frame(height: 64)
             }
+            HStack(spacing: 3) {
+                Text(pts.count >= 2 ? "3 months · all weigh-ins" : "Weigh in a few times to see your trend")
+                Image(systemName: "chevron.right")
+            }
+            .font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
         }
-        .padding(.vertical, 4)
+        .contentShape(Rectangle())
     }
 }

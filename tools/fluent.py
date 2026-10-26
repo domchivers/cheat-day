@@ -16,7 +16,9 @@ def get(url):
 
 s = io.open(THEME, encoding="utf-8").read()
 part = s[s.index("enum FoodEmoji"):s.index("static func `for`")]
-emojis = list(dict.fromkeys(re.findall(r'\("([^"]+)", \[', part)))
+# the food table's emoji, plus the ones the app uses elsewhere (Me page tiles, settings)
+EXTRA = ["🎯", "📈", "📖", "🗓️", "🏆", "👨‍👩‍👧", "⚙️"]
+emojis = list(dict.fromkeys(re.findall(r'\("([^"]+)", \[', part) + EXTRA))
 
 tree = json.loads(get("https://api.github.com/repos/microsoft/fluentui-emoji/git/trees/main?recursive=1"))["tree"]
 paths = [t["path"] for t in tree]
@@ -26,7 +28,7 @@ flats = {p.split("/")[1]: p for p in paths if re.match(r"assets/[^/]+/Flat/[^/]+
 # which folder holds which emoji: read each folder's metadata (unicode field), only for folders with a flat svg
 want = {code(e): e for e in emojis}
 found = {}
-cache = os.path.join(ROOT, "tools", ".fluent-index.json")
+cache = os.path.join(ROOT, "tools", ".fluent-index.json")   # kept (git-ignored) so a rerun is quick
 index = json.load(open(cache)) if os.path.exists(cache) else {}
 for m in metas:
     folder = m.split("/")[1]

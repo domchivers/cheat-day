@@ -1,20 +1,32 @@
 import SwiftUI
 
-/// Family budgets (helper only): set a friend's daily budget for the week, and fix or remove a food on their day.
-/// Their app picks the change up the next time it opens, as it did from the website.
+/// Family budgets (helper only), for the people you've invited who said yes: set their daily budget for the week, and
+/// fix or remove a food on their day. Their app picks the change up the next time it opens.
 struct FamilyView: View {
     @State private var overrides: [String: JSON] = [:]
     @State private var editing: Friends.Person?
     @State private var fixing: (person: Friends.Person, item: JSON)?
     @State private var fixText = ""
     @State private var note: String?
+    @State private var inviting = false
     private var friends: Friends { Friends.shared }
+    private var family: Family { Family.shared }
     private var api: Supabase { Supabase.shared }
 
     var body: some View {
         List {
-            if friends.people.isEmpty { Text("No friends yet.").foregroundStyle(.secondary) }
-            ForEach(friends.people) { p in
+            Section {
+                Button { inviting = true } label: { Label("Invite someone", systemImage: "person.badge.plus") }
+                ForEach(friends.people.filter { family.isAsked($0.id) }) { p in
+                    HStack {
+                        Text(p.name)
+                        Spacer()
+                        Text("Waiting for them to allow").font(.caption).foregroundStyle(.secondary)
+                    }
+                    .swipeActions { Button("Cancel", role: .destructive) { if let l = family.mine.first(where: { $0.member == p.id }) { Task { await family.remove(l) } } } }
+                }
+            } footer: { Text("Only people who say yes are here. They can stop it any time in their Settings.") }
+            ForEach(friends.people.filter { family.isFamily($0.id) }) { p in
                 Section {
                     Button { editing = p } label: {
                         HStack {
@@ -46,8 +58,18 @@ struct FamilyView: View {
         .background(Theme.bg)
         .navigationTitle("Family budgets")
         .navigationBarTitleDisplayMode(.inline)
-        .task { if friends.people.isEmpty { await friends.load() }; await loadOverrides() }
-        .refreshable { await friends.load(); await loadOverrides() }
+        .task { if friends.people.isEmpty { await friends.load() }; await family.load(); await loadOverrides() }
+        .refreshable { await friends.load(); await family.load(); await loadOverrides() }
+        .confirmationDialog("Invite to your family", isPresented: $inviting, titleVisibility: .visible) {
+            ForEach(friends.people.filter { p in !family.mine.contains { $0.member == p.id } }) { p in
+                Button(p.name) {
+                    Task {
+                        do { try await family.ask(p.id); flash("Asked \(p.name). They'll see it on their Today.") }
+                        catch { flash("Couldn't ask: \(error.localizedDescription)") }
+                    }
+                }
+            }
+        } message: { Text("They choose whether to allow it. Once they do, you can set their budget and fix foods on their day.") }
         .sheet(item: $editing) { p in FamilyBudgetSheet(person: p, current: overrides[p.id]) { msg in editing = nil; if let msg { flash(msg) }; Task { await loadOverrides() } } }
         .alert("Change \(str(fixing?.item["name"]))", isPresented: Binding(get: { fixing != nil }, set: { if !$0 { fixing = nil } })) {
             TextField("kcal", text: $fixText).keyboardType(.numberPad)

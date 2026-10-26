@@ -6,3 +6,4 @@ build/
 native/*.xcodeproj/
 
 design/rank-art/out/
+tools/.fluent-index.json

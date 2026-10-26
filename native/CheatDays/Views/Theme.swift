@@ -75,6 +75,19 @@ struct FoodDot: View {
     }
 }
 
+/// One of the bundled Fluent icons by its emoji (the phone's own emoji if it isn't bundled).
+struct FluentIcon: View {
+    let emoji: String
+    var size: CGFloat = 28
+    var body: some View {
+        if let img = UIImage(named: FoodEmoji.asset(emoji)) {
+            Image(uiImage: img).resizable().scaledToFit().frame(width: size, height: size)
+        } else {
+            Text(emoji).font(.system(size: size * 0.85)).frame(width: size, height: size)
+        }
+    }
+}
+
 /// Which emoji fits a food's name. More specific words come first ("chicken burger" is a burger, "egg fried rice" is rice).
 enum FoodEmoji {
     private static let table: [(String, [String])] = [
