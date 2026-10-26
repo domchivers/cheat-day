@@ -187,6 +187,18 @@ struct PizzaIcon: View {
 }
 
 extension View {
+    /// Tapping into a box puts the cursor after the number, wherever the tap landed (the numbers sit on the right of
+    /// a wide box, so a tap usually lands on the empty left and the cursor ended up in front of the digits).
+    func cursorAtEnd() -> some View {
+        onReceive(NotificationCenter.default.publisher(for: UITextField.textDidBeginEditingNotification)) { n in
+            guard let tf = n.object as? UITextField else { return }
+            // after the tap has placed its own cursor
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                tf.selectedTextRange = tf.textRange(from: tf.endOfDocument, to: tf.endOfDocument)
+            }
+        }
+    }
+
     /// Number keyboards have no return key: a Done button above the keyboard puts it away (and keeps what was typed).
     func keyboardDone() -> some View {
         toolbar {

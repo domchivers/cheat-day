@@ -54,6 +54,7 @@ struct SessionView: View {
         .safeAreaInset(edge: .bottom) { timerBar }
         .scrollDismissesKeyboard(.interactively)
         .keyboardDone()
+        .cursorAtEnd()
         .scrollContentBackground(.hidden)
         .background(Theme.bg)
         .navigationTitle("Session")
