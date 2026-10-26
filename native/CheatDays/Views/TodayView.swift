@@ -577,10 +577,7 @@ struct AmountView: View {
     }
     private var modes: [Mode] { [conv.countKcal != nil ? Mode.count : nil, conv.kcalPer100 != nil ? Mode.grams : nil, Mode.kcal].compactMap { $0 } }
     private var unit: String { str(target.basis["unit"]).isEmpty ? "g" : str(target.basis["unit"]) }
-    private var leftAfter: Double {
-        let others = store.todayItems.filter { str($0["id"]) != (target.editId ?? "") }.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }
-        return store.budgetToday - others - kcal
-    }
+    private var leftAfter: Double { leftBefore - kcal }
 
     var body: some View {
         List {
@@ -620,6 +617,7 @@ struct AmountView: View {
                 .frame(maxWidth: .infinity)
                 .listRowBackground(Color.clear)
             }
+            if target.editId == nil { portionGuide }
             Section {
                 if modes.count > 1 {
                     Picker("How", selection: $mode) { ForEach(modes) { Text($0.rawValue).tag($0) } }.pickerStyle(.segmented)
@@ -668,6 +666,78 @@ struct AmountView: View {
     private var perText: String? {
         if let c = conv.countKcal, let label = conv.countLabel { return "\(Fmt.int(c)) kcal per \(label)" }
         if let k = conv.kcalPer100 { return "\(Fmt.int(k)) kcal per 100 \(unit)" }
+        return nil
+    }
+
+    /// What's left today before this food.
+    private var leftBefore: Double {
+        let others = store.todayItems.filter { str($0["id"]) != (target.editId ?? "") }.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }
+        return store.budgetToday - others
+    }
+
+    /// At a glance: what 1, 2, 3, 4 of it cost (or the usual weights), tap one to pick it, and how many fit in today.
+    @ViewBuilder private var portionGuide: some View {
+        let tiles: [(amount: String, label: String, kcal: Double, pick: () -> Void, on: Bool)] = {
+            if let each = conv.countKcal, each > 0 {
+                let word = conv.countLabel ?? "piece"
+                return [1.0, 2, 3, 4].map { n in
+                    (Fmt.one(n), FoodMath.plural(n, word), n * each, {
+                        if modes.contains(.count) { mode = .count }
+                        kcal = n * each; syncTexts()
+                    }, abs(kcal - n * each) < 0.5)
+                }
+            }
+            if let k100 = conv.kcalPer100, k100 > 0 {
+                let grams: [Double] = unit == "ml" ? [100, 250, 330, 500] : [30, 50, 100, 150]
+                return grams.map { g in
+                    (Fmt.one(g), unit, g * k100 / 100, {
+                        if modes.contains(.grams) { mode = .grams }
+                        kcal = g * k100 / 100; syncTexts()
+                    }, abs(kcal - g * k100 / 100) < 0.5)
+                }
+            }
+            return []
+        }()
+        if !tiles.isEmpty {
+            Section {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                    ForEach(tiles.indices, id: \.self) { i in
+                        let t = tiles[i]
+                        Button(action: t.pick) {
+                            VStack(spacing: 2) {
+                                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                    Text(t.amount).font(.title2.weight(.heavy)).monospacedDigit()
+                                    Text(t.label).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                                Text("\(Fmt.int(t.kcal)) kcal").font(.headline.weight(.bold)).foregroundStyle(Theme.accent).monospacedDigit()
+                            }
+                            .frame(maxWidth: .infinity).padding(.vertical, 12)
+                            .background(t.on ? Theme.accent.opacity(0.18) : Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(t.on ? Theme.accent : .clear, lineWidth: 1.5))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("\(t.amount) \(t.label), \(Fmt.int(t.kcal)) calories")
+                    }
+                }
+                .listRowInsets(EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12))
+                if let fit = fitsLine { Label(fit, systemImage: "checkmark.seal.fill").font(.subheadline.weight(.semibold)).foregroundStyle(leftBefore > 0 ? Theme.accent : Theme.warn) }
+            } header: { Text("How much is that?") }
+        }
+    }
+
+    /// "You could have up to 6 biscuits today" (or grams), from what's left.
+    private var fitsLine: String? {
+        let left = leftBefore
+        guard left > 0 else { return "Today's budget is used up, so any of this goes over." }
+        if let each = conv.countKcal, each > 0 {
+            let n = floor(left / each)
+            let word = conv.countLabel ?? "piece"
+            return n >= 1 ? "Up to \(Fmt.int(n)) \(FoodMath.plural(n, word)) fit in the \(Fmt.int(left)) kcal you have left" : "Even 1 \(word) is more than the \(Fmt.int(left)) kcal you have left"
+        }
+        if let k100 = conv.kcalPer100, k100 > 0 {
+            let g = floor(left / k100 * 100 / 5) * 5
+            return "Up to \(Fmt.int(g)) \(unit) fits in the \(Fmt.int(left)) kcal you have left"
+        }
         return nil
     }
 
