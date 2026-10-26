@@ -56,6 +56,7 @@ struct SettingsView: View {
                     Text("Automatic (\(Region.detected.label))").tag("")
                     ForEach(Region.allCases) { Text($0.label).tag($0.rawValue) }
                 }
+                .onChange(of: region) { _, _ in Store.shared.clearCaches() }   // lists worked out with the old sizes
             } footer: { Text("A chicken thigh or a glass of wine isn't the same size everywhere. This sets the usual portions in the food list and for the assistant.") }
             Section {
                 Toggle("Use Apple Intelligence for quick jobs", isOn: Binding(get: { OnDevice.allowed }, set: { OnDevice.allowed = $0 }))
