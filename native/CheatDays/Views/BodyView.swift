@@ -138,7 +138,6 @@ struct BodyView: View {
         let floor = lo - pad
         let line = pts.filter { $0.trend != nil }
         let sel = nearest(pts)
-        let unit = m.unit == "%" ? "%" : m.unit.isEmpty ? "" : " \(m.unit)"
         return Chart {
             ForEach(line) { p in
                 AreaMark(x: .value("Day", p.date), yStart: .value("Base", floor), yEnd: .value("Trend", p.trend ?? p.value))
