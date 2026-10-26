@@ -115,8 +115,17 @@ enum Assistant {
         // quick jobs on the phone first (Apple Intelligence), when it has it; then the online models
         if pics.isEmpty, isSimple(last.text, hasPhotos: false),
            var local = await OnDevice.assistant(last.text, context: context(store) + (earlier.isEmpty ? "" : "Recent conversation:\n\(earlier)\n")) {
-            if groundNow, str(local["kind"]) == "estimate", let e = local["estimate"] as? JSON { local["estimate"] = await ground(e) }
-            return local
+            if str(local["kind"]) == "estimate", let e = local["estimate"] as? JSON {
+                let g = await ground(e), found = CheatDays.list(g["parts"])
+                let trusted = !found.isEmpty && found.allSatisfy { str($0["src"]) != "ai" && (num($0["grams"]) ?? 0) >= 3 }
+                if trusted {
+                    if groundNow { local["estimate"] = g }
+                    return local
+                }
+                // fall through: the online model works it out
+            } else {
+                return local
+            }
         }
         // simple questions go to the quick model with minimal thinking; recipes, plans and photos to the careful one
         var answer = try await Gemini.ask(schema: schema, parts: parts, quick: isSimple(last.text, hasPhotos: !pics.isEmpty))
@@ -125,10 +134,12 @@ enum Assistant {
     }
 
     /// A food-list or database number replaces the AI's only when it's in the same ballpark; a wildly different one means a wrong match.
+    /// Except when the AI's own number is next to nothing (under 10 kcal per 100 g, like "2 kcal for 105 g of cabbage"): that's
+    /// the AI being wrong, so the database wins.
     static func plausible(_ db: Double?, aiKcal: Double, grams: Double) -> Bool {
         guard let db else { return false }
         let ai = grams > 0 ? aiKcal / grams * 100 : 0
-        return ai == 0 || (db >= ai * 0.55 && db <= ai * 1.8)
+        return ai < 10 || (db >= ai * 0.55 && db <= ai * 1.8)
     }
 
     /// One part with checked numbers per 100 g.

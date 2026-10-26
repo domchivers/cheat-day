@@ -19,6 +19,7 @@ final class GapTests: XCTestCase {
         XCTAssertFalse(Assistant.plausible(400, aiKcal: 300, grams: 150))   // far too high
         XCTAssertFalse(Assistant.plausible(nil, aiKcal: 300, grams: 150))
         XCTAssertTrue(Assistant.plausible(250, aiKcal: 0, grams: 150))      // nothing to compare with
+        XCTAssertTrue(Assistant.plausible(25, aiKcal: 2, grams: 105))       // the AI's 2 kcal for 105 g of cabbage is the mistake
     }
 
     func testCheckedPartsRebuildTheTotals() {
