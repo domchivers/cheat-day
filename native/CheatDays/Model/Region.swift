@@ -10,8 +10,13 @@ enum Region: String, CaseIterable, Identifiable {
     var name: String { switch self { case .uk: return "the UK"; case .au: return "Australia"; case .us: return "the US" } }
     var label: String { switch self { case .uk: return "UK"; case .au: return "Australia"; case .us: return "US" } }
 
-    /// From the phone's region (Ireland counts as UK, New Zealand as Australia, Canada as US).
+    /// Where the phone is: its time zone first (a Brit in Melbourne often keeps the UK region setting), then the
+    /// region setting (Ireland counts as UK, New Zealand as Australia, Canada as US).
     static var detected: Region {
+        let tz = TimeZone.current.identifier
+        if tz.hasPrefix("Australia/") || tz.hasPrefix("Pacific/Auckland") { return .au }
+        if tz == "Europe/London" || tz == "Europe/Dublin" { return .uk }
+        if tz.hasPrefix("America/") && !["America/Sao_Paulo", "America/Mexico_City", "America/Bogota", "America/Lima", "America/Argentina/Buenos_Aires"].contains(tz) { return .us }
         switch Locale.current.region?.identifier {
         case "AU", "NZ": return .au
         case "US", "CA": return .us
