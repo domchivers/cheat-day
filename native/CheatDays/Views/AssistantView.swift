@@ -46,6 +46,8 @@ struct AssistantView: View {
                     .padding(16)
                 }
                 .scrollDismissesKeyboard(.immediately)
+                // a short chat doesn't scroll, so a swipe can't put the keyboard away: a tap on the chat does
+                .simultaneousGesture(TapGesture().onEnded { typing = false })
                 .onChange(of: turns.count) { _, _ in withAnimation { proxy.scrollTo(turns.last?.id, anchor: .bottom) } }
                 .onChange(of: busy) { _, b in if b { withAnimation { proxy.scrollTo("busy", anchor: .bottom) } } }
                 .onChange(of: typing) { _, t in

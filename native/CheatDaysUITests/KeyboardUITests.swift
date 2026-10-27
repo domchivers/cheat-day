@@ -25,8 +25,9 @@ final class KeyboardUITests: XCTestCase {
     }
 
     private func keyboardAway() {
-        app.scrollViews.firstMatch.swipeUp()
-        _ = keyboard.waitForNonExistence(timeout: 3)
+        // a tap on the chat (the welcome text at the top, clear of the buttons) puts the keyboard away
+        app.scrollViews.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.04)).tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 3), "a tap on the chat didn't put the keyboard away")
     }
 
     private func checkAtBottom(_ what: String) {
