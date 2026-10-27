@@ -48,7 +48,11 @@ struct AssistantView: View {
                 .accessibilityIdentifier("chat")
                 .scrollDismissesKeyboard(.immediately)
                 // a short chat doesn't scroll, so a swipe can't put the keyboard away: a tap on the chat does
-                .simultaneousGesture(TapGesture().onEnded { typing = false })
+                .simultaneousGesture(TapGesture().onEnded {
+                    // straight to UIKit: the focus flag can be stale after a plain tap into the box, so clearing it did nothing
+                    typing = false
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                })
                 .onChange(of: turns.count) { _, _ in withAnimation { proxy.scrollTo(turns.last?.id, anchor: .bottom) } }
                 .onChange(of: busy) { _, b in if b { withAnimation { proxy.scrollTo("busy", anchor: .bottom) } } }
                 .onChange(of: typing) { _, t in
