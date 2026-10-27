@@ -9,7 +9,10 @@ struct HabitsView: View {
     @State private var step = 0
     @State private var forward = true
     @State private var loaded = false
+    @State private var aim = "better"
     @State private var goals: Set<String> = []
+    @State private var verdict = ""   // "great" when what you eat already fits what you're after
+    @State private var verdictLine = ""
     @State private var newGoal = ""
     @State private var items: [Habit] = []
     @State private var adding = ["", "", "", ""]
@@ -106,9 +109,22 @@ struct HabitsView: View {
 
     // MARK: 1 what to improve
 
+    private static let aims: [(k: String, title: String, sub: String, symbol: String)] = [
+        ("lose", "Lose weight", "Steadily, still eating what you love", "flame.fill"),
+        ("stuck", "My weight's not moving", "Find where it's slipping", "pause.circle.fill"),
+        ("muscle", "Build muscle", "Enough protein and food to grow", "dumbbell.fill"),
+        ("steady", "Stay where I am", "Keep it steady", "equal.circle.fill"),
+        ("better", "Just eat a bit better", "Feel good, no big changes", "leaf.fill")
+    ]
+
     private var goalsStep: some View {
         VStack(alignment: .leading, spacing: 12) {
-            heading("What would you like to improve?", "Pick a few. Then we'll go through your meals, and you choose what stays.")
+            heading("What are you after?", "Then we'll go through your meals, and you choose what stays.")
+            ForEach(Self.aims, id: \.k) { a in
+                ChoiceCard(title: a.title, sub: a.sub, symbol: a.symbol, on: aim == a.k) { aim = a.k }
+            }
+            Text("Anything you'd like to improve?").font(.headline).padding(.top, 10)
+            Text("Optional. If you're happy with how you eat, leave these.").font(.footnote).foregroundStyle(.secondary)
             Flow {
                 ForEach(Habits.goals + goals.subtracting(Habits.goals).sorted(), id: \.self) { g in
                     Chip(text: g, on: goals.contains(g)) { if goals.contains(g) { goals.remove(g) } else { goals.insert(g) } }
@@ -132,6 +148,12 @@ struct HabitsView: View {
         return VStack(alignment: .leading, spacing: 10) {
             heading(meal == "Snacks" ? "Snacks and drinks" : meal,
                     here.isEmpty ? "What do you usually have? Add a few things." : "What you usually have. Keep it, tweak it or swap it.")
+            if verdict == "great" && i == 0 {
+                Label(verdictLine.isEmpty ? "Your diet already looks great. Keep it all, or switch things up if you like." : verdictLine, systemImage: "checkmark.seal.fill")
+                    .font(.subheadline).foregroundStyle(Theme.accent)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14).background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
             if skipped {
                 Text("You skip \(meal.lowercased()). Nothing to change here.").foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -212,11 +234,13 @@ struct HabitsView: View {
 
     private var planStep: some View {
         let save = items.reduce(0) { $0 + max(0, $1.weekSave) }
+        let great = verdict == "great" && save < 50
         return VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
                 Eyebrow(text: "Your food, your way", color: Theme.heroLabel)
-                Text(save >= 50 ? "About \(Fmt.int((save / 10).rounded() * 10)) kcal a week" : "Your food plan").font(.largeTitle.bold())
-                Text(save >= 50 ? "Saved, without giving up what you love." : "Keep what you love. Change a little at a time.").foregroundStyle(.secondary)
+                Text(great ? "Your diet's already great" : save >= 50 ? "About \(Fmt.int((save / 10).rounded() * 10)) kcal a week" : "Your food plan").font(.largeTitle.bold())
+                Text(great ? (verdictLine.isEmpty ? "Nothing needs to change. Go back and switch things up if you fancy a change." : verdictLine)
+                     : save >= 50 ? "Saved, without giving up what you love." : "Keep what you love. Change a little at a time.").foregroundStyle(.secondary)
             }
             .padding(.bottom, 6)
             ForEach(Meals.all, id: \.self) { meal in
@@ -267,7 +291,7 @@ struct HabitsView: View {
     // MARK: the AI's ideas
 
     private func suggest(_ todo: [Habit], withTips: Bool) async {
-        guard !todo.isEmpty || (withTips && !goals.isEmpty) else { return }
+        guard !todo.isEmpty || withTips else { return }
         asking = true; problem = nil
         defer { asking = false }
         let prefs = dict(store.doc["prefs"])
@@ -283,15 +307,17 @@ struct HabitsView: View {
                 "pick": ["type": "string", "enum": ["keep", "tweak", "swap"], "description": "keep when it's already a good choice"] as JSON,
                 "perWeek": ["type": "number", "description": "Your guess at how many times a week, only used when unknown"] as JSON
             ] as JSON, "required": ["id", "tweak", "tweakSave", "swap", "swapSave", "pick", "perWeek"]] as JSON] as JSON,
-            "tips": ["type": "array", "items": ["type": "string"] as JSON, "description": "One short, specific action per goal, under 12 words"] as JSON
-        ] as JSON, "required": ["items", "tips"]]
+            "tips": ["type": "array", "items": ["type": "string"] as JSON, "description": "One short, specific action per goal, under 12 words"] as JSON,
+            "verdict": ["type": "string", "enum": ["great", "good", "work"], "description": "great when what they eat already suits what they're after and nothing needs to change"] as JSON,
+            "verdictLine": ["type": "string", "description": "One warm, honest sentence under 20 words on how their eating suits their aim"] as JSON
+        ] as JSON, "required": ["items", "tips", "verdict", "verdictLine"]]
         let prompt = """
         Someone in \(Plan.country) wants to eat better without giving up what they love. Daily budget about \(Int(store.budgetToday)) kcal\(store.proteinGoal.map { ", protein goal \(Int($0)) g" } ?? "").
-        What they want to improve: \(goals.isEmpty ? "nothing in particular, just eat a bit better" : goals.sorted().joined(separator: ", ")).
+        What they're after: \(aimText). What they'd like to improve: \(goals.isEmpty ? "nothing in particular" : goals.sorted().joined(separator: ", ")).
         Never suggest: \(avoid.isEmpty ? "nothing" : avoid).
-        For each thing they usually have (id | meal | food | how often), suggest one realistic tweak and one swap using products and portions from there, aimed at their goals. Honest kcal per time. Pick keep for things that are already fine, or tiny.
+        For each thing they usually have (id | meal | food | how often), suggest one realistic tweak and one swap using products and portions from there, aimed at their goals. Honest kcal per time. Pick keep for things that are already fine, or tiny. If their eating already suits what they're after, say so honestly (verdict great) and pick keep for everything: the tweaks and swaps are then just ideas to switch things up. Don't invent problems.
         \(lines.isEmpty ? "(no foods this time, items can be empty)" : lines)
-        \(withTips ? "Also give one tip per goal." : "Tips can be empty.")
+        \(withTips ? "Also give one tip per goal, and the verdict on their whole day." : "Tips can be empty; verdict good.")
         """
         do {
             let a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: true)
@@ -306,7 +332,10 @@ struct HabitsView: View {
                     if ["keep", "tweak", "swap"].contains(str(x["pick"])) { items[i].choice = str(x["pick"]) }
                     items[i].asked = true
                 }
-                if withTips { tips = (a["tips"] as? [String] ?? []).filter { !$0.isEmpty } }
+                if withTips {
+                    tips = (a["tips"] as? [String] ?? []).filter { !$0.isEmpty }
+                    verdict = str(a["verdict"]); verdictLine = str(a["verdictLine"])
+                }
             }
         } catch {
             problem = "Couldn't get ideas just now. Write your own, or try again later from Me."
@@ -314,16 +343,36 @@ struct HabitsView: View {
         }
     }
 
+    private var aimText: String {
+        switch aim {
+        case "lose": return "lose weight"
+        case "stuck": return "their weight isn't moving and they want it to start going down again"
+        case "muscle": return "build muscle (enough protein and food)"
+        case "steady": return "stay at the weight they are"
+        default: return "just eat a bit better, no big changes"
+        }
+    }
+
     // MARK: saving
 
     private func prefill() {
         let h = store.habits
+        if let a = h["aim"] as? String, !a.isEmpty { aim = a }
+        else {
+            switch str(dict(store.doc["plan"])["goal"]) {
+            case "lose": aim = "lose"
+            case "leanbulk", "recomp": aim = "muscle"
+            case "maintain": aim = "steady"
+            default: break
+            }
+        }
         let saved = store.habitItems
         if !saved.isEmpty {
             items = saved
             goals = Set(h["goals"] as? [String] ?? [])
             skips = Set(h["skips"] as? [String] ?? [])
             tips = h["tips"] as? [String] ?? []
+            verdict = str(h["verdict"]); verdictLine = str(h["verdictLine"])
             let have = Set(saved.map { $0.meal + "|" + $0.name.lowercased() })   // anything new in the log since
             items += store.loggedHabits().filter { !have.contains($0.meal + "|" + $0.name.lowercased()) }
         } else {
@@ -339,7 +388,7 @@ struct HabitsView: View {
     private func finish() {
         let kept = items.filter { !skips.contains($0.meal) }
         store.saveHabits([
-            "goals": goals.sorted(), "items": kept.map(\.json), "tips": tips, "skips": skips.sorted(), "updatedAt": ISO.now()
+            "aim": aim, "verdict": verdict, "verdictLine": verdictLine, "goals": goals.sorted(), "items": kept.map(\.json), "tips": tips, "skips": skips.sorted(), "updatedAt": ISO.now()
         ])
         Task { await Reminders.reschedule(store) }
         close()

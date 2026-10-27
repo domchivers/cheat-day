@@ -102,10 +102,11 @@ extension Store {
     /// The food plan in a line or two for the assistant: what to leave alone, what they're cutting back on.
     var habitsContext: String {
         let items = habitItems
-        guard !items.isEmpty || !(habits["goals"] as? [String] ?? []).isEmpty else { return "" }
+        guard !items.isEmpty || !(habits["goals"] as? [String] ?? []).isEmpty || habits["aim"] != nil else { return "" }
         let keep = items.filter { $0.choice == "keep" }.map(\.name)
         let change = items.compactMap { h in h.plan.map { "\(h.name) (\(h.choice): \($0))" } }
         var c = "Their own food plan: "
+        if let a = habits["aim"] as? String, !a.isEmpty { c += "aim: \(a == "stuck" ? "weight not moving, want it going down again" : a == "better" ? "eat a bit better" : a). " }
         if let g = habits["goals"] as? [String], !g.isEmpty { c += "they want \(g.joined(separator: ", ").lowercased()). " }
         if !keep.isEmpty { c += "Keeping as they are, never nag about: \(keep.joined(separator: ", ")). " }
         if !change.isEmpty { c += "Changing: \(change.joined(separator: "; ")). Nudge gently towards these when they come up." }
