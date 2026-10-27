@@ -37,6 +37,10 @@ struct TodayView: View {
     @State private var badgeNote: String?
     @AppStorage("today.more") private var moreOpen = false
     @AppStorage("nudge.hidden") private var nudgeHidden = ""   // "day|meal" of the card you closed
+    @AppStorage("dailyTips") private var dailyTipsOn = true
+    @AppStorage("dailyTips.seen") private var dailyTipsSeen = ""
+    @State private var daily: DailyReview?
+    @State private var openIdea: IdeaRef?
     @State private var sendingItem: JSON?
     private var store: Store { Store.shared }
 
@@ -165,6 +169,18 @@ struct TodayView: View {
                 else { WebFlowSheet(flow: f) }
             }
             .sheet(isPresented: $showCheckIn) { NavigationStack { CheckInView() } }
+            .sheet(isPresented: Binding(get: { daily != nil }, set: { if !$0 { daily = nil } })) {
+                if let r = daily { DailyTipsSheet(review: r).presentationDetents([.medium, .large]) }
+            }
+            .sheet(item: $openIdea) { r in RecipeSheet(idea: r.idea) { store.keepRecipe($0, for: r.id) } }
+            .task(id: store.lastSynced) {
+                // once a day, after the first sync, unless it's turned off
+                guard dailyTipsOn, dailyTipsSeen != store.today, store.lastSynced != nil, !store.needsOnboarding, !store.needsHabits,
+                      let r = store.dailyReview else { return }
+                try? await Task.sleep(for: .seconds(0.8))
+                dailyTipsSeen = store.today
+                daily = r
+            }
             .sheet(isPresented: $showCheat) { CheatDayView().presentationDragIndicator(.visible) }
             .fullScreenCover(isPresented: Binding(get: { rankUp != nil }, set: { if !$0 { rankUp = nil } })) {
                 if let r = rankUp { RankUpView(rank: r) { rankUp = nil } }
@@ -241,10 +257,17 @@ struct TodayView: View {
                 ForEach(n.ideas) { e in
                     HStack(spacing: 12) {
                         FoodDot(name: e.name, size: 32)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(e.name).font(.subheadline.weight(.semibold)).lineLimit(2)
-                            if !e.detail.isEmpty { Text(e.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                        Button {
+                            if let m = store.habitIdeas.first(where: { str($0["name"]).lowercased() == e.name.lowercased() }) { openIdea = IdeaRef(id: e.name, idea: m) }
+                        } label: {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(e.name).font(.subheadline.weight(.semibold)).lineLimit(2)
+                                Text(e.detail.isEmpty ? "See the recipe" : "\(e.detail) · recipe").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.borderless).foregroundStyle(.primary)
                         Spacer(minLength: 4)
                         Text(Fmt.int(e.kcal)).font(.subheadline.weight(.bold)).monospacedDigit().foregroundStyle(Theme.accent)
                         Button { withAnimation { _ = store.add(e.basis, kcal: e.kcal, meal: n.meal) } } label: {

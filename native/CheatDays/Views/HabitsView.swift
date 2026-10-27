@@ -19,10 +19,13 @@ struct HabitsView: View {
     @State private var skips: Set<String> = []
     @State private var tips: [String] = []
     @State private var ideas: [JSON] = []   // meals to try: meal, name, kcal, protein, carbs, fat, why, picked
+    @State private var cook = "sometimes"
+    @State private var cuisines: Set<String> = []
+    @State private var open: IdeaRef?
     @State private var asking = false
     @State private var problem: String?
     private var store: Store { Store.shared }
-    private let last = 5
+    private let last = 6
 
     var body: some View {
         VStack(spacing: 0) {
@@ -31,7 +34,8 @@ struct HabitsView: View {
                 Group {
                     switch step {
                     case 0: goalsStep
-                    case 1...4: mealStep(Meals.all[step - 1])
+                    case 1: cookStep
+                    case 2...5: mealStep(Meals.all[step - 2])
                     default: planStep
                     }
                 }
@@ -48,6 +52,9 @@ struct HabitsView: View {
         .toolbar(.hidden, for: .tabBar)
         .onAppear { if !loaded { prefill(); loaded = true } }
         .keyboardDone()
+        .sheet(item: $open) { r in
+            RecipeSheet(idea: r.idea) { rc in if let k = ideas.firstIndex(where: { str($0["name"]) == r.id }) { ideas[k]["recipe"] = rc } }
+        }
     }
 
     private func close() { if let onDone { onDone() } else { dismiss() } }
@@ -86,15 +93,16 @@ struct HabitsView: View {
         switch step {
         case last: return "Done"
         case last - 1: return "See my plan"
-        case 0: return "Next: breakfast"
-        default: return "Next: \(Meals.all[step].lowercased())"
+        case 0: return "Next: cooking"
+        case 1: return "Next: breakfast"
+        default: return "Next: \(Meals.all[step - 1].lowercased())"
         }
     }
 
     private func go(_ by: Int) {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         forward = by > 0
-        if step == 0 && by > 0 { Task { await suggest(items.filter { !$0.asked }, withTips: true) } }
+        if step == 1 && by > 0 { Task { await suggest(items.filter { !$0.asked }, withTips: true) } }
         withAnimation(.snappy) { step = max(0, min(last, step + by)) }
     }
 
@@ -140,7 +148,24 @@ struct HabitsView: View {
         }
     }
 
-    // MARK: 2 to 5, a meal at a time
+    // MARK: 2 cooking and cuisines
+
+    private var cookStep: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            heading("How do you feel about cooking?", "So the ideas suit you, from proper recipes to no-cook.")
+            ForEach(Habits.cookLevels, id: \.k) { c in
+                ChoiceCard(title: c.title, sub: c.sub, symbol: c.symbol, on: cook == c.k) { cook = c.k }
+            }
+            Text("Cuisines you like").font(.headline).padding(.top, 10)
+            Flow {
+                ForEach(Habits.cuisines + cuisines.subtracting(Habits.cuisines).sorted(), id: \.self) { c in
+                    Chip(text: c, on: cuisines.contains(c)) { if cuisines.contains(c) { cuisines.remove(c) } else { cuisines.insert(c) } }
+                }
+            }
+        }
+    }
+
+    // MARK: 3 to 6, a meal at a time
 
     private func mealStep(_ meal: String) -> some View {
         let i = Meals.all.firstIndex(of: meal) ?? 0
@@ -183,34 +208,41 @@ struct HabitsView: View {
         let here = ideas.indices.filter { str(ideas[$0]["meal"]) == meal }
         if !here.isEmpty || asking {
             Text("Ideas for \(meal == "Snacks" ? "snacks" : meal.lowercased())").font(.headline).padding(.top, 10)
-            Text("Picked for what you're after. Tap the ones you'd try: they'll be in Add for \(meal.lowercased()).").font(.footnote).foregroundStyle(.secondary)
+            Text("Picked for what you're after. Tap one for its recipe, and the heart for the ones you'd try.").font(.footnote).foregroundStyle(.secondary)
         }
         if here.isEmpty && asking {
             HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Finding ideas…").font(.footnote).foregroundStyle(.secondary) }
         }
         ForEach(here, id: \.self) { k in
             let m = ideas[k], on = m["picked"] as? Bool == true
-            Button { ideas[k]["picked"] = !on } label: {
-                HStack(spacing: 12) {
-                    FoodDot(name: str(m["name"]), size: 34)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(str(m["name"])).font(.subheadline.weight(.bold)).multilineTextAlignment(.leading)
-                        Text(str(m["why"])).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.leading)
+            HStack(spacing: 12) {
+                Button { open = IdeaRef(id: str(m["name"]), idea: m) } label: {
+                    HStack(spacing: 12) {
+                        FoodDot(name: str(m["name"]), size: 34)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(str(m["name"])).font(.subheadline.weight(.bold)).multilineTextAlignment(.leading)
+                            Text(str(m["why"])).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.leading)
+                            Text("See the recipe").font(.caption.weight(.semibold)).foregroundStyle(Theme.accent)
+                        }
+                        Spacer(minLength: 0)
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(Fmt.int(num(m["kcal"]) ?? 0)).font(.subheadline.weight(.heavy)).monospacedDigit()
+                            Text("\(Int(num(m["protein"]) ?? 0))g protein").font(.caption2).foregroundStyle(.secondary)
+                        }
                     }
-                    Spacer(minLength: 0)
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text(Fmt.int(num(m["kcal"]) ?? 0)).font(.subheadline.weight(.heavy)).monospacedDigit()
-                        Text("\(Int(num(m["protein"]) ?? 0))g protein").font(.caption2).foregroundStyle(.secondary)
-                    }
-                    Image(systemName: on ? "heart.fill" : "heart").foregroundStyle(on ? Theme.warn : Color.secondary)
+                    .contentShape(Rectangle())
                 }
-                .padding(12)
-                .background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(on ? Theme.warn : .clear, lineWidth: 1.5))
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                Button { ideas[k]["picked"] = !on } label: {
+                    Image(systemName: on ? "heart.fill" : "heart").font(.title3).foregroundStyle(on ? Theme.warn : Color.secondary)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(on ? "Don't try this" : "I'd try this")
+                .sensoryFeedback(.selection, trigger: on)
             }
-            .buttonStyle(.plain)
-            .sensoryFeedback(.selection, trigger: on)
+            .padding(12)
+            .background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(on ? Theme.warn : .clear, lineWidth: 1.5))
         }
     }
 
@@ -299,7 +331,7 @@ struct HabitsView: View {
                 VStack(spacing: 0) {
                     ForEach(tryThese.indices, id: \.self) { i in
                         let m = tryThese[i]
-                        HStack(spacing: 10) {
+                        Button { open = IdeaRef(id: str(m["name"]), idea: m) } label: { HStack(spacing: 10) {
                             FoodDot(name: str(m["name"]), size: 26)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(str(m["name"])).font(.subheadline.weight(.semibold))
@@ -307,8 +339,11 @@ struct HabitsView: View {
                             }
                             Spacer(minLength: 0)
                             Text("\(Fmt.int(num(m["kcal"]) ?? 0)) kcal").font(.caption.weight(.bold)).foregroundStyle(.secondary).monospacedDigit()
+                            Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.secondary)
                         }
                         .padding(.horizontal, 14).padding(.vertical, 10)
+                        .contentShape(Rectangle()) }
+                        .buttonStyle(.plain)
                         if i < tryThese.count - 1 { Divider().padding(.leading, 14) }
                     }
                 }
@@ -381,7 +416,7 @@ struct HabitsView: View {
         Never suggest: \(avoid.isEmpty ? "nothing" : avoid).
         For each thing they usually have (id | meal | food | how often), suggest one realistic tweak and one swap using products and portions from there, aimed at their goals. Honest kcal per time. Pick keep for things that are already fine, or tiny. If their eating already suits what they're after, say so honestly (verdict great) and pick keep for everything: the tweaks and swaps are then just ideas to switch things up. Don't invent problems.
         \(lines.isEmpty ? "(no foods this time, items can be empty)" : lines)
-        \(withTips ? "Also give one tip per goal, the verdict on their whole day, and 3 meal ideas for each of Breakfast, Lunch, Dinner and Snacks (\(ideaBrief)). Ideas are real food they'd want: familiar dishes, home-cooked or easy orders, close to what they already like, sized for one portion (breakfast about \(Int(store.budgetToday * 0.25)), lunch \(Int(store.budgetToday * 0.3)), dinner \(Int(store.budgetToday * 0.35)), snacks under \(Int(store.budgetToday * 0.12)) kcal) and honest kcal and macros." : "Tips and ideas can be empty; verdict good.")
+        \(withTips ? "Also give one tip per goal, the verdict on their whole day, and 3 meal ideas for each of Breakfast, Lunch, Dinner and Snacks (\(ideaBrief)). Ideas are real food they'd want, matched to how much they like cooking: authentic, familiar dishes, home-cooked or easy orders, close to what they already like, sized for one portion (breakfast about \(Int(store.budgetToday * 0.25)), lunch \(Int(store.budgetToday * 0.3)), dinner \(Int(store.budgetToday * 0.35)), snacks under \(Int(store.budgetToday * 0.12)) kcal) and honest kcal and macros." : "Tips and ideas can be empty; verdict good.")
         """
         do {
             let a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: true)
@@ -412,7 +447,8 @@ struct HabitsView: View {
         let p = dict(store.doc["prefs"])
         let loves = (p["loves"] as? [String] ?? []).joined(separator: ", "), cuisines = (p["cuisines"] as? [String] ?? []).joined(separator: ", ")
         let skipped = skips.isEmpty ? "" : "; they skip \(skips.sorted().joined(separator: " and ").lowercased()), so none for that"
-        return "they love \(loves.isEmpty ? "not said" : loves); cuisines \(cuisines.isEmpty ? "anything" : cuisines)\(skipped)"
+        let liked = self.cuisines.isEmpty ? cuisines : self.cuisines.sorted().joined(separator: ", ")
+        return "they \(Habits.cookText(cook)); they love \(loves.isEmpty ? "not said" : loves); cuisines they like \(liked.isEmpty ? "anything" : liked), mostly ideas from these\(skipped)"
     }
 
     private var aimText: String {
@@ -429,6 +465,8 @@ struct HabitsView: View {
 
     private func prefill() {
         let h = store.habits
+        if let c = h["cook"] as? String, !c.isEmpty { cook = c }
+        cuisines = Set(h["cuisines"] as? [String] ?? dict(store.doc["prefs"])["cuisines"] as? [String] ?? [])
         if let a = h["aim"] as? String, !a.isEmpty { aim = a }
         else {
             switch str(dict(store.doc["plan"])["goal"]) {
@@ -461,7 +499,7 @@ struct HabitsView: View {
     private func finish() {
         let kept = items.filter { !skips.contains($0.meal) }
         store.saveHabits([
-            "aim": aim, "ideas": ideas.filter { !skips.contains(str($0["meal"])) }, "verdict": verdict, "verdictLine": verdictLine, "goals": goals.sorted(), "items": kept.map(\.json), "tips": tips, "skips": skips.sorted(), "updatedAt": ISO.now()
+            "aim": aim, "cook": cook, "cuisines": cuisines.sorted(), "ideas": ideas.filter { !skips.contains(str($0["meal"])) }, "verdict": verdict, "verdictLine": verdictLine, "goals": goals.sorted(), "items": kept.map(\.json), "tips": tips, "skips": skips.sorted(), "updatedAt": ISO.now()
         ])
         Task { await Reminders.reschedule(store) }
         close()

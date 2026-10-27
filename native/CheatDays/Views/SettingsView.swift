@@ -18,11 +18,13 @@ struct SettingsView: View {
     @State private var confirmSignOut = false
     private var store: Store { Store.shared }
     private let order = [1, 2, 3, 4, 5, 6, 0]
+    @AppStorage("dailyTips") private var dailyTips = true
 
     var body: some View {
         Form {
             Section {
                 Toggle("Nudge at 2pm if nothing's logged", isOn: $lunch)
+                Toggle("Daily tips when you open the app", isOn: $dailyTips)
                 Toggle("Weigh-in reminder", isOn: $weighOn)
                 if weighOn { DatePicker("At", selection: $weighTime, displayedComponents: .hourAndMinute) }
                 if !allowed {

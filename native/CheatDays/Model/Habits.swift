@@ -52,6 +52,21 @@ struct Habit: Identifiable, Equatable {
 }
 
 enum Habits {
+    static let cookLevels: [(k: String, title: String, sub: String, symbol: String)] = [
+        ("love", "I love cooking", "Happy to spend time on proper recipes", "frying.pan.fill"),
+        ("sometimes", "Here and there", "Cook a few nights, keep the rest easy", "fork.knife"),
+        ("quick", "Quick and easy only", "20 minutes, one pan, few things to buy", "timer"),
+        ("hate", "I hate cooking", "Ready meals, easy orders, no-cook", "takeoutbag.and.cup.and.straw.fill")
+    ]
+    static func cookText(_ k: String) -> String {
+        switch k {
+        case "love": return "loves cooking and is happy with proper recipes"
+        case "quick": return "only wants quick, easy cooking (about 20 minutes, one pan)"
+        case "hate": return "hates cooking: ready meals, easy shop-bought or takeaway orders, or no-cook assembly"
+        default: return "cooks here and there, so a mix of simple recipes and easy options"
+        }
+    }
+    static let cuisines = ["Chinese", "Thai", "Japanese", "Korean", "Vietnamese", "Indian", "Italian", "Mexican", "Middle Eastern", "Greek", "Spanish", "French", "Caribbean", "Pub classics", "Sunday roast", "Aussie BBQ"]
     static let goals = ["More protein", "More veg", "Fewer evening snacks", "Less takeaway", "Weekends", "Less sugar", "Drink less", "Smaller portions", "Eat out smarter", "More water"]
 }
 
