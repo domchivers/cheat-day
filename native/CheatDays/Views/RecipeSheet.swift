@@ -2,17 +2,45 @@ import SwiftUI
 
 struct IdeaRef: Identifiable { let id: String; let idea: JSON }
 
+/// Writes recipes away from the screen: close the sheet, switch tab or leave the app and it carries on, then keeps
+/// the recipe with its idea. Opening the idea again shows it, or that it's still being written.
+@Observable @MainActor
+final class RecipeMaker {
+    static let shared = RecipeMaker()
+    private(set) var made: [String: JSON] = [:]
+    private(set) var working: Set<String> = []
+    private(set) var failed: [String: String] = [:]
+
+    func recipe(for idea: JSON) -> JSON? {
+        let name = str(idea["name"])
+        return made[name] ?? idea["recipe"] as? JSON ?? Store.shared.habitIdeas.first { str($0["name"]) == name }?["recipe"] as? JSON
+    }
+
+    func make(_ idea: JSON) {
+        let name = str(idea["name"])
+        guard !working.contains(name), recipe(for: idea) == nil else { return }
+        working.insert(name); failed[name] = nil
+        Task {
+            defer { working.remove(name) }
+            do {
+                let r = try await Self.write(idea)
+                made[name] = r
+                Store.shared.keepRecipe(r, for: name)
+            } catch { failed[name] = error.localizedDescription }
+        }
+    }
+
 /// A meal idea as something to follow: the authentic recipe as it's really made, and a healthier take that keeps its
 /// character (what changed, and the numbers for both). Written by the AI the first time, then kept with the idea.
 struct RecipeSheet: View {
     let idea: JSON
-    var onRecipe: ((JSON) -> Void)?
     @Environment(\.dismiss) private var dismiss
-    @State private var recipe: JSON?
     @State private var version = "authentic"
-    @State private var problem: String?
     @State private var done: String?
     private var store: Store { Store.shared }
+    private var maker: RecipeMaker { RecipeMaker.shared }
+    private var recipe: JSON? { maker.recipe(for: idea) }
+    private var problem: String? { maker.failed[str(idea["name"])] }
     private var meal: String { Meals.all.contains(str(idea["meal"])) ? str(idea["meal"]) : Meals.byTime(Calendar.current.component(.hour, from: Date())) }
 
     var body: some View {
@@ -29,9 +57,11 @@ struct RecipeSheet: View {
                     if let r = recipe { content(r) }
                     else if let problem {
                         Text(problem).font(.footnote).foregroundStyle(Theme.warn)
-                        Button("Try again") { Task { await load() } }
+                        Button("Try again") { maker.make(idea) }
                     } else {
                         HStack(spacing: 10) { ProgressView(); Text("Writing the recipe…").foregroundStyle(.secondary) }.padding(.top, 20)
+                        Text("Usually 10 to 20 seconds. You can close this: it keeps going and will be here when you come back.")
+                            .font(.footnote).foregroundStyle(.secondary)
                     }
                 }
                 .padding(20)
@@ -40,10 +70,7 @@ struct RecipeSheet: View {
             .navigationTitle("Recipe").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
-        .task {
-            if recipe == nil { recipe = idea["recipe"] as? JSON }
-            if recipe == nil { await load() }
-        }
+        .onAppear { maker.make(idea) }
     }
 
     @ViewBuilder private func content(_ r: JSON) -> some View {
@@ -139,8 +166,11 @@ struct RecipeSheet: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { withAnimation { if done == t { done = nil } } }
     }
 
-    private func load() async {
-        problem = nil
+}
+
+extension RecipeMaker {
+    static func write(_ idea: JSON) async throws -> JSON {
+        let store = Store.shared
         let ing: JSON = ["type": "array", "items": ["type": "object", "properties": [
             "name": ["type": "string"] as JSON, "amount": ["type": "string", "description": "How a cook measures it: '2 tbsp', '1 onion', '200 g'"] as JSON,
             "grams": ["type": "number"] as JSON, "kcal": ["type": "number"] as JSON,
@@ -162,11 +192,9 @@ struct RecipeSheet: View {
         If it's really a takeaway order or shop-bought, authentic is what to buy or order and how to put it together, healthier is the lighter choice.
         Portions 1 to 4. Grams are as weighed; kcal and macros per ingredient from standard reference values, so they add up.
         """
-        do {
-            let a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: false)
-            guard !list(dict(a["authentic"])["ingredients"]).isEmpty else { problem = "Couldn't write that recipe just now."; return }
-            withAnimation { recipe = a }
-            onRecipe?(a)
-        } catch { problem = error.localizedDescription }
+        // the quick models write a recipe fine; three tries at most, so it never hangs for minutes
+        let a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: true, tries: 3)
+        guard !list(dict(a["authentic"])["ingredients"]).isEmpty else { throw Gemini.Failure(message: "Couldn't write that recipe just now. Try again.") }
+        return a
     }
 }

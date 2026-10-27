@@ -1,6 +1,20 @@
 import Foundation
 import UIKit
 
+/// Asks iOS for time to finish something after the app leaves the screen.
+@MainActor
+enum BackgroundWork {
+    private final class Ticket { var id = UIBackgroundTaskIdentifier.invalid }
+    static func run<T>(_ name: String, _ work: () async throws -> T) async rethrows -> T {
+        let t = Ticket()
+        t.id = UIApplication.shared.beginBackgroundTask(withName: name) {
+            UIApplication.shared.endBackgroundTask(t.id); t.id = .invalid
+        }
+        defer { if t.id != .invalid { UIApplication.shared.endBackgroundTask(t.id) } }
+        return try await work()
+    }
+}
+
 /// The free Gemini models, through the app's shared key (the Supabase "ai" function), like the web app.
 /// Each model has its own daily allowance; a refused or busy model is skipped for the next.
 enum Gemini {
@@ -27,9 +41,14 @@ enum Gemini {
         d.set(pacificDay, forKey: "ai.day"); d.set(Array(s), forKey: "ai.spent")
     }
 
-    /// One structured answer: an image and a prompt in, JSON matching the schema out.
-    static func ask(schema: JSON, parts: [JSON], quick: Bool = true) async throws -> JSON {
-        let order = (quick ? lite + flash : flash + lite).filter { !spent().contains($0) }
+    /// One structured answer: an image and a prompt in, JSON matching the schema out. It carries on for a while if
+    /// you leave the app meanwhile (iOS gives about half a minute), so the answer is there when you come back.
+    static func ask(schema: JSON, parts: [JSON], quick: Bool = true, tries: Int = 99) async throws -> JSON {
+        try await BackgroundWork.run("AI") { try await askNow(schema: schema, parts: parts, quick: quick, tries: tries) }
+    }
+
+    private static func askNow(schema: JSON, parts: [JSON], quick: Bool, tries: Int) async throws -> JSON {
+        let order = Array((quick ? lite + flash : flash + lite).filter { !spent().contains($0) }.prefix(tries))
         guard !order.isEmpty else { throw Failure(message: "Today's free AI allowance is used up. It comes back tomorrow morning.") }
         var thinking: String? = quick ? "minimal" : "low"
         var lastProblem = "Couldn't reach the AI. Check the signal and try again."

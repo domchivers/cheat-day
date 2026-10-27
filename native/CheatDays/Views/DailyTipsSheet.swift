@@ -35,7 +35,7 @@ struct DailyTipsSheet: View {
             }
             .background(Theme.bg.ignoresSafeArea())
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Let's go") { dismiss() } } }
-            .sheet(item: $open) { r in RecipeSheet(idea: r.idea) { store.keepRecipe($0, for: str(r.idea["name"])) } }
+            .sheet(item: $open) { r in RecipeSheet(idea: r.idea) }
         }
     }
 

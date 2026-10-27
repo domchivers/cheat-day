@@ -2,6 +2,24 @@ import UIKit
 
 /// The assistant's brain: what it knows about the day, the answer shapes it can give, and turning answers into changes.
 /// Same jobs as the website's assistant: log a plate, plan the rest of the day, fix today's list, a recipe, a lighter version, or just answer.
+/// The conversation on screen, kept outside the view: leave the assistant (or the app) while it's thinking and the
+/// answer still lands, and opening it again within a while carries on where you were.
+@Observable @MainActor
+final class AssistantLive {
+    static let shared = AssistantLive()
+    var turns: [Assistant.Turn] = []
+    var chatId = uid()
+    var busy = false
+    var problem: String?
+    var used = Date()
+
+    func open(fresh: Bool) {
+        if busy { return }
+        if fresh || Date().timeIntervalSince(used) > 20 * 60 { turns = []; chatId = uid(); problem = nil }
+        used = Date()
+    }
+}
+
 enum Assistant {
     struct Turn: Identifiable {
         let id = UUID()

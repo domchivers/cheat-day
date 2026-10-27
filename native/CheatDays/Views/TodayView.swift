@@ -172,7 +172,7 @@ struct TodayView: View {
             .sheet(isPresented: Binding(get: { daily != nil }, set: { if !$0 { daily = nil } })) {
                 if let r = daily { DailyTipsSheet(review: r).presentationDetents([.medium, .large]) }
             }
-            .sheet(item: $openIdea) { r in RecipeSheet(idea: r.idea) { store.keepRecipe($0, for: r.id) } }
+            .sheet(item: $openIdea) { r in RecipeSheet(idea: r.idea) }
             .task(id: store.lastSynced) {
                 // once a day, after the first sync, unless it's turned off
                 guard dailyTipsOn, dailyTipsSeen != store.today, store.lastSynced != nil, !store.needsOnboarding, !store.needsHabits,

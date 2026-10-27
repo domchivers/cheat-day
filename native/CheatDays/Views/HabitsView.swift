@@ -53,7 +53,7 @@ struct HabitsView: View {
         .onAppear { if !loaded { prefill(); loaded = true } }
         .keyboardDone()
         .sheet(item: $open) { r in
-            RecipeSheet(idea: r.idea) { rc in if let k = ideas.firstIndex(where: { str($0["name"]) == r.id }) { ideas[k]["recipe"] = rc } }
+            RecipeSheet(idea: r.idea)
         }
     }
 
@@ -498,6 +498,10 @@ struct HabitsView: View {
 
     private func finish() {
         let kept = items.filter { !skips.contains($0.meal) }
+        let ideas = self.ideas.map { i -> JSON in
+            guard i["recipe"] == nil, let r = RecipeMaker.shared.recipe(for: i) else { return i }
+            var c = i; c["recipe"] = r; return c
+        }
         store.saveHabits([
             "aim": aim, "cook": cook, "cuisines": cuisines.sorted(), "ideas": ideas.filter { !skips.contains(str($0["meal"])) }, "verdict": verdict, "verdictLine": verdictLine, "goals": goals.sorted(), "items": kept.map(\.json), "tips": tips, "skips": skips.sorted(), "updatedAt": ISO.now()
         ])

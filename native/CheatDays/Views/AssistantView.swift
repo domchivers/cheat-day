@@ -7,15 +7,16 @@ struct AssistantView: View {
     let meal: String
     var firstQuestion = ""
     @Environment(\.dismiss) private var dismiss
-    @State private var turns: [Assistant.Turn] = []
-    @State private var chatId = uid()
+    private var live: AssistantLive { AssistantLive.shared }
+    private var turns: [Assistant.Turn] { get { live.turns } nonmutating set { live.turns = newValue } }
+    private var chatId: String { get { live.chatId } nonmutating set { live.chatId = newValue } }
+    private var busy: Bool { get { live.busy } nonmutating set { live.busy = newValue } }
+    private var problem: String? { get { live.problem } nonmutating set { live.problem = newValue } }
     @State private var text = ""
     @State private var pending: [UIImage] = []
     @State private var picked: [PhotosPickerItem] = []
     @State private var camera = false
     @State private var library = false
-    @State private var busy = false
-    @State private var problem: String?
     @State private var done: [UUID: String] = [:]
     @State private var showChats = false
     @FocusState private var typing: Bool
@@ -70,7 +71,10 @@ struct AssistantView: View {
             .fullScreenCover(isPresented: $camera) { CameraPicker { img in camera = false; if let img { pending.append(img) } }.ignoresSafeArea() }
             .photosPicker(isPresented: $library, selection: $picked, maxSelectionCount: 4, matching: .images)
             .onChange(of: picked) { _, items in if !items.isEmpty { Task { await load(items) } } }
-            .onAppear { if !firstQuestion.isEmpty && turns.isEmpty { text = firstQuestion; send() } }
+            .onAppear {
+                live.open(fresh: !firstQuestion.isEmpty)
+                if !firstQuestion.isEmpty && turns.isEmpty { text = firstQuestion; send() }
+            }
         }
     }
 
@@ -321,11 +325,12 @@ struct AssistantView: View {
         }
         turns.append(Assistant.Turn(me: true, text: t.isEmpty ? "What's this?" : t, images: pending))
         text = ""; pending = []; problem = nil; busy = true
+        let store = self.store, live = self.live
         Task {
-            defer { busy = false }
+            defer { live.busy = false; live.used = Date() }
             do {
                 // the answer shows as soon as it's back; an estimate's parts are checked against the food database after
-                let r = try await Assistant.ask(turns, store: store, ground: false)
+                let r = try await Assistant.ask(live.turns, store: store, ground: false)
                 let turn = Assistant.Turn(me: false, text: str(r["reply"]), result: r)
                 withAnimation(.snappy) { turns.append(turn) }
                 if str(r["kind"]) == "estimate", let e = r["estimate"] as? JSON {
