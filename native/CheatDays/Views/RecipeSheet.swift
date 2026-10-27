@@ -29,6 +29,7 @@ final class RecipeMaker {
             } catch { failed[name] = error.localizedDescription }
         }
     }
+}
 
 /// A meal idea as something to follow: the authentic recipe as it's really made, and a healthier take that keeps its
 /// character (what changed, and the numbers for both). Written by the AI the first time, then kept with the idea.
