@@ -22,7 +22,17 @@ struct CheatDaysApp: App {
 
 struct RootView: View {
     var body: some View {
-        if Supabase.shared.session == nil { SignInView() } else { MainTabs() }
+        if ProcessInfo.processInfo.arguments.contains("-uitest-assistant") { AssistantHarness() }
+        else if Supabase.shared.session == nil { SignInView() } else { MainTabs() }
+    }
+}
+
+/// For the keyboard UI test only: the assistant opened as a sheet the way Today opens it, with no sign-in needed.
+private struct AssistantHarness: View {
+    @State private var open = false
+    var body: some View {
+        Button("Open assistant") { open = true }.accessibilityIdentifier("openAssistant")
+            .sheet(isPresented: $open) { AssistantView(meal: "Lunch", firstQuestion: "") }
     }
 }
 

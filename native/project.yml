@@ -86,7 +86,27 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
+  CheatDaysUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: CheatDaysUITests
+    dependencies:
+      - target: CheatDays
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: CheatDays
 schemes:
+  # run by hand on the Mac (simulator): xcodebuild test -scheme CheatDaysUITests
+  CheatDaysUITests:
+    build:
+      targets:
+        CheatDays: all
+        CheatDaysUITests: [test]
+    test:
+      targets:
+        - CheatDaysUITests
   CheatDays:
     build:
       targets:

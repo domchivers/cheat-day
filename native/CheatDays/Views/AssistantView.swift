@@ -292,6 +292,7 @@ struct AssistantView: View {
                 } label: { Image(systemName: "camera.fill").font(.title3).foregroundStyle(Theme.accent).frame(width: 44, height: 44).composerGlass(Circle()) }
                 // the whole box takes the tap (not just the line of text), so the keyboard and Paste come up first time
                 TextField("Ask, or say what you ate", text: $text, axis: .vertical).lineLimit(1...5).focused($typing)
+                    .accessibilityIdentifier("chatBox")
                     .submitLabel(.send).onSubmit { send() }
                     .padding(.horizontal, 16).padding(.vertical, 11)
                     .frame(minHeight: 44)

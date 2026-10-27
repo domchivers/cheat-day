@@ -1,9 +1,7 @@
 import AVFoundation
 import SwiftUI
-import Vision
-import VisionKit
 
-/// Scan a barcode with the iPhone's own scanner, look it up, then pick how much.
+/// Scan a barcode with the camera, look it up, then pick how much.
 struct ScanSheet: View {
     enum Phase { case scanning, looking(String), found(EditTarget), notFound(String), failed(String, String) }
 
@@ -15,7 +13,7 @@ struct ScanSheet: View {
     @State private var typed = ""
     @State private var found = 0
 
-    private var scannerWorks: Bool { DataScannerViewController.isSupported && DataScannerViewController.isAvailable }
+    private var scannerWorks: Bool { BarcodeScanner.camera != nil && AVCaptureDevice.authorizationStatus(for: .video) != .denied }
 
     var body: some View {
         NavigationStack {
@@ -88,54 +86,80 @@ struct ScanSheet: View {
     }
 }
 
-/// Apple's live barcode scanner (VisionKit). Calls back once with the first code it reads.
+/// The barcode scanner: the camera straight into AVFoundation's barcode reader, which reads a code in a frame or two.
+/// Locked to the main (wide) lens: Apple's ready-made scanner let Pro iPhones hop between lenses as you moved, so the
+/// picture kept zooming in and out and took seconds to settle. Calls back once with the first code it reads.
 struct BarcodeScanner: UIViewControllerRepresentable {
     let onCode: (String) -> Void
 
-    func makeUIViewController(context: Context) -> DataScannerViewController {
-        let vc = DataScannerViewController(
-            // only the codes on food packs: fewer kinds to look for reads faster
-            recognizedDataTypes: [.barcode(symbologies: [.ean13, .ean8, .upce, .itf14, .code128])],
-            qualityLevel: .balanced, recognizesMultipleItems: false, isHighFrameRateTrackingEnabled: false,
-            isPinchToZoomEnabled: true, isGuidanceEnabled: true, isHighlightingEnabled: true)
-        vc.delegate = context.coordinator
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            try? vc.startScanning()
-            // newer Pro iPhones can't focus closer than about 20 cm: a little zoom lets a pack held closer than that come
-            // into focus (Apple's suggestion). Other phones stay at 1x, which reads fastest.
-            if let d = AVCaptureDevice.default(for: .video), d.minimumFocusDistance > 150 {
-                let z = Double(d.minimumFocusDistance) / 120
-                vc.zoomFactor = min(max(vc.minZoomFactor, z), min(vc.maxZoomFactor, 2))
+    static var camera: AVCaptureDevice? { AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) }
+
+    func makeUIViewController(context: Context) -> ScannerController { ScannerController(onCode: onCode) }
+    func updateUIViewController(_ vc: ScannerController, context: Context) {}
+    static func dismantleUIViewController(_ vc: ScannerController, coordinator: ()) { vc.stop() }
+
+    final class ScannerController: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
+        private let onCode: (String) -> Void
+        private let session = AVCaptureSession()
+        private let queue = DispatchQueue(label: "scanner.session")
+        private var preview: AVCaptureVideoPreviewLayer?
+        private var done = false
+
+        init(onCode: @escaping (String) -> Void) { self.onCode = onCode; super.init(nibName: nil, bundle: nil) }
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            view.backgroundColor = .black
+            let layer = AVCaptureVideoPreviewLayer(session: session)
+            layer.videoGravity = .resizeAspectFill
+            view.layer.addSublayer(layer)
+            preview = layer
+            AVCaptureDevice.requestAccess(for: .video) { ok in
+                guard ok else { return }
+                self.queue.async { self.configure() }
             }
         }
-        return vc
-    }
 
-    func updateUIViewController(_ vc: DataScannerViewController, context: Context) {}
+        override func viewDidLayoutSubviews() {
+            super.viewDidLayoutSubviews()
+            preview?.frame = view.bounds
+        }
 
-    static func dismantleUIViewController(_ vc: DataScannerViewController, coordinator: Coordinator) { vc.stopScanning() }
-
-    func makeCoordinator() -> Coordinator { Coordinator(onCode: onCode) }
-
-    @MainActor
-    final class Coordinator: NSObject, DataScannerViewControllerDelegate {
-        let onCode: (String) -> Void
-        private var done = false
-        init(onCode: @escaping (String) -> Void) { self.onCode = onCode }
-
-        func dataScanner(_ dataScanner: DataScannerViewController, didAdd addedItems: [RecognizedItem], allItems: [RecognizedItem]) { take(addedItems, dataScanner) }
-        func dataScanner(_ dataScanner: DataScannerViewController, didUpdate updatedItems: [RecognizedItem], allItems: [RecognizedItem]) { take(updatedItems, dataScanner) }
-
-        private func take(_ items: [RecognizedItem], _ dataScanner: DataScannerViewController) {
-            guard !done else { return }
-            for item in items {
-                if case .barcode(let b) = item, let value = b.payloadStringValue, !value.isEmpty {
-                    done = true
-                    dataScanner.stopScanning()
-                    onCode(value)
-                    return
-                }
+        private func configure() {
+            guard let device = BarcodeScanner.camera, let input = try? AVCaptureDeviceInput(device: device) else { return }
+            session.beginConfiguration()
+            session.sessionPreset = session.canSetSessionPreset(.hd1920x1080) ? .hd1920x1080 : .high
+            if session.canAddInput(input) { session.addInput(input) }
+            let output = AVCaptureMetadataOutput()
+            if session.canAddOutput(output) {
+                session.addOutput(output)
+                output.setMetadataObjectsDelegate(self, queue: .main)
+                // only the codes on food packs
+                let wanted: [AVMetadataObject.ObjectType] = [.ean13, .ean8, .upce, .itf14, .code128]
+                output.metadataObjectTypes = wanted.filter { output.availableMetadataObjectTypes.contains($0) }
             }
+            session.commitConfiguration()
+            if (try? device.lockForConfiguration()) != nil {
+                if device.isFocusModeSupported(.continuousAutoFocus) { device.focusMode = .continuousAutoFocus }
+                if device.isAutoFocusRangeRestrictionSupported { device.autoFocusRangeRestriction = .near }
+                if device.isExposureModeSupported(.continuousAutoExposure) { device.exposureMode = .continuousAutoExposure }
+                // Pro iPhones can't focus nearer than about 20 cm: a fixed, gentle zoom lets a pack held at a natural
+                // distance fill the picture and stay sharp. Set once, so it never hunts. Other phones stay at 1x.
+                let minFocus = Double(device.minimumFocusDistance)
+                if minFocus > 150 { device.videoZoomFactor = min(CGFloat(minFocus / 100), device.activeFormat.videoMaxZoomFactor, 2) }
+                device.unlockForConfiguration()
+            }
+            session.startRunning()
+        }
+
+        func stop() { queue.async { if self.session.isRunning { self.session.stopRunning() } } }
+
+        func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput objects: [AVMetadataObject], from connection: AVCaptureConnection) {
+            guard !done, let code = objects.compactMap({ ($0 as? AVMetadataMachineReadableCodeObject)?.stringValue }).first(where: { !$0.isEmpty }) else { return }
+            done = true
+            stop()
+            onCode(code)
         }
     }
 }
