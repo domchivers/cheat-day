@@ -96,13 +96,17 @@ struct BarcodeScanner: UIViewControllerRepresentable {
         let vc = DataScannerViewController(
             // only the codes on food packs: fewer kinds to look for reads faster
             recognizedDataTypes: [.barcode(symbologies: [.ean13, .ean8, .upce, .itf14, .code128])],
-            qualityLevel: .accurate, recognizesMultipleItems: false, isHighFrameRateTrackingEnabled: true,
+            qualityLevel: .balanced, recognizesMultipleItems: false, isHighFrameRateTrackingEnabled: false,
             isPinchToZoomEnabled: true, isGuidanceEnabled: true, isHighlightingEnabled: true)
         vc.delegate = context.coordinator
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             try? vc.startScanning()
-            // a little zoom lets the camera focus on a pack held at a comfortable distance (newer iPhones can't focus very close)
-            vc.zoomFactor = min(max(vc.minZoomFactor, 1.6), vc.maxZoomFactor)
+            // newer Pro iPhones can't focus closer than about 20 cm: a little zoom lets a pack held closer than that come
+            // into focus (Apple's suggestion). Other phones stay at 1x, which reads fastest.
+            if let d = AVCaptureDevice.default(for: .video), d.minimumFocusDistance > 150 {
+                let z = Double(d.minimumFocusDistance) / 120
+                vc.zoomFactor = min(max(vc.minZoomFactor, z), min(vc.maxZoomFactor, 2))
+            }
         }
         return vc
     }

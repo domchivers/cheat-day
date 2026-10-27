@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 /// Your meals: saved meals to add in one tap, build new ones, or save one of today's meals.
@@ -253,11 +254,29 @@ struct FoodPicker: View {
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
     @State private var choosing: PickedFood?
+    @State private var scanning = false
+    @State private var camera = false
+    @State private var photo: PhotosPickerItem?
+    @State private var describing = false
+    @State private var busy: String?
+    @State private var problem: String?
     private var store: Store { Store.shared }
 
     var body: some View {
         NavigationStack {
             List {
+                // the same ways in as adding food to your day
+                Section {
+                    HStack(spacing: 8) {
+                        way("barcode.viewfinder", "Scan") { scanning = true }
+                        if UIImagePickerController.isSourceTypeAvailable(.camera) { way("camera.fill", "Label") { camera = true } }
+                        PhotosPicker(selection: $photo, matching: .images) { wayLabel("photo.on.rectangle", "Photo") }.buttonStyle(.plain)
+                        way("sparkles", "Describe") { describing = true }
+                    }
+                    .buttonStyle(.plain)
+                    if let busy { HStack(spacing: 8) { ProgressView(); Text(busy).font(.footnote).foregroundStyle(.secondary) } }
+                    if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn) }
+                }
                 if query.trimmingCharacters(in: .whitespaces).count < 2 {
                     Section("Your foods") {
                         ForEach(store.quickEntries.filter { $0.kind == .recent }.prefix(30)) { e in row(e.name, e.detail, e.kcal) { pick(e.basis, kcal: e.kcal) } }
@@ -281,6 +300,51 @@ struct FoodPicker: View {
             .navigationTitle("Add a food")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+            .sheet(isPresented: $scanning) { IngredientScan { basis in scanning = false; use(basis) } }
+            .fullScreenCover(isPresented: $camera) { CameraPicker { img in camera = false; if let img { read(img) } }.ignoresSafeArea() }
+            .onChange(of: photo) { _, item in
+                guard let item else { return }
+                Task {
+                    if let d = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: d) { read(img) }
+                    photo = nil
+                }
+            }
+            .sheet(isPresented: $describing) {
+                IngredientAsk { items in describing = false; items.forEach(add); dismiss() }.presentationDetents([.medium])
+            }
+        }
+    }
+
+    private func way(_ symbol: String, _ label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) { wayLabel(symbol, label) }
+    }
+    private func wayLabel(_ symbol: String, _ label: String) -> some View {
+        VStack(spacing: 5) {
+            Image(systemName: symbol).font(.title3).foregroundStyle(Theme.accent)
+            Text(label).font(.caption.weight(.bold))
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 10)
+        .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    /// A food from a scan or a label photo: on to how much.
+    private func use(_ basis: JSON) {
+        problem = nil
+        let k = pos(basis["kcalPerServing"]) ?? pos(basis["kcalPer100"]) ?? 0
+        pick(basis, kcal: k)
+    }
+
+    private func read(_ img: UIImage) {
+        busy = "Reading the label…"; problem = nil
+        Task {
+            do {
+                let r = try await LabelReader.read(img) { step in busy = step }
+                busy = nil
+                use(r.item)
+            } catch {
+                busy = nil
+                problem = error.localizedDescription
+            }
         }
     }
 
@@ -341,5 +405,108 @@ private struct GramsStep: View {
         .navigationTitle("How much?")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { if text.isEmpty { text = Fmt.int((FoodMath.amounts(basis, kcal: kcal).grams ?? 100).rounded()) } }
+    }
+}
+
+/// Scan an ingredient's barcode for a meal: looks it up and hands the food back (nothing goes on today).
+private struct IngredientScan: View {
+    var found: (JSON) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var status = "Point at a barcode"
+    @State private var looking = false
+    @State private var key = 0
+
+    var body: some View {
+        NavigationStack {
+            ZStack(alignment: .bottom) {
+                BarcodeScanner { code in look(code) }.id(key).ignoresSafeArea(edges: .bottom)
+                HStack(spacing: 8) {
+                    if looking { ProgressView() }
+                    Text(status).font(.subheadline.weight(.bold))
+                }
+                .padding(.horizontal, 16).padding(.vertical, 10)
+                .background(.ultraThinMaterial, in: Capsule()).padding(.bottom, 30)
+            }
+            .navigationTitle("Scan an ingredient")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+        }
+    }
+
+    private func look(_ code: String) {
+        looking = true; status = "Looking up \(code)…"
+        Task {
+            switch await OpenFoodFacts.lookup(code) {
+            case .found(let item) where pos(item["kcalPer100"]) != nil || pos(item["kcalPerServing"]) != nil:
+                found(item)
+            default:
+                looking = false; status = "Not found. Try another, or use Label or Describe."
+                key += 1   // start the camera again
+            }
+        }
+    }
+}
+
+/// Say what goes in ("2 tbsp olive oil and 200 g chicken thigh"): the AI lists each ingredient with its weight and
+/// numbers, checked against the food databases, and they go into the meal.
+private struct IngredientAsk: View {
+    var done: ([JSON]) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var text = ""
+    @State private var busy = false
+    @State private var problem: String?
+
+    private static let schema: JSON = ["type": "object", "properties": [
+        "items": ["type": "array", "items": ["type": "object", "properties": [
+            "name": ["type": "string"] as JSON,
+            "usda_name": ["type": "string", "description": "the closest USDA FoodData Central description"] as JSON,
+            "grams": ["type": "number", "description": "weight as used in the recipe"] as JSON,
+            "kcal": ["type": "number"] as JSON, "protein_g": ["type": "number"] as JSON, "carbs_g": ["type": "number"] as JSON, "fat_g": ["type": "number"] as JSON
+        ] as JSON, "required": ["name", "usda_name", "grams", "kcal", "protein_g", "carbs_g", "fat_g"]] as JSON] as JSON
+    ] as JSON, "required": ["items"]]
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("2 tbsp olive oil, 200 g chicken thigh…", text: $text, axis: .vertical).lineLimit(2...5)
+                } footer: { Text("Say each ingredient and roughly how much. The AI works out the weights and numbers, checked against the food databases.") }
+                if let problem { Section { Text(problem).foregroundStyle(Theme.warn) } }
+                Section {
+                    Button { Task { await work() } } label: {
+                        HStack { if busy { ProgressView() }; Text(busy ? "Working it out…" : "Add to the meal").fontWeight(.bold) }.frame(maxWidth: .infinity)
+                    }
+                    .disabled(busy || text.trimmingCharacters(in: .whitespaces).count < 3)
+                }
+            }
+            .keyboardDone()
+            .navigationTitle("Describe it")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+        }
+    }
+
+    private func work() async {
+        busy = true; problem = nil
+        defer { busy = false }
+        let prompt = """
+        Ingredients for a recipe, in \(Plan.country): "\(text)".
+        List each ingredient with its weight in grams as used (raw unless it says cooked), and its calories, protein, carbs and fat for that weight, using standard reference values and the usual sizes there (a tablespoon of oil is about 14 g). If they give numbers themselves, use exactly those.
+        """
+        do {
+            let a = try await Gemini.ask(schema: Self.schema, parts: [["text": prompt]], quick: true)
+            let raw = CheatDays.list(a["items"]).filter { (num($0["grams"]) ?? 0) > 0 }
+            guard !raw.isEmpty else { problem = "Couldn't work that out. Try saying each ingredient with an amount."; return }
+            let checked = CheatDays.list(await Assistant.ground(["parts": raw])["parts"])
+            let items: [JSON] = checked.map { p in
+                let g = num(p["grams"]) ?? 0, k = num(p["kcal"]) ?? 0
+                var it = Assistant.basis(name: str(p["name"]).capitalizedFirst, kcal: k, grams: g, p: num(p["protein_g"]) ?? 0, c: num(p["carbs_g"]) ?? 0, f: num(p["fat_g"]) ?? 0)
+                it["id"] = uid(); it["kcal"] = Int(k.rounded()); it["grams"] = g.rounded()
+                return it
+            }
+            done(items)
+        } catch {
+            problem = error.localizedDescription
+        }
     }
 }
