@@ -40,8 +40,10 @@ extension Store {
         for h in list(doc["history"]).prefix(7) {
             for it in list(h["items"]) {
                 let n = str(it["name"]); guard let k = num(it["kcal"]), k > 60 else { continue }
-                seen[n, default: ([], 0)].days.insert(str(h["date"]))
-                seen[n]?.kcal = max(seen[n]?.kcal ?? 0, k)
+                var e = seen[n, default: ([], 0)]
+                e.days.insert(str(h["date"]))
+                e.kcal = max(e.kcal, k)
+                seen[n] = e
             }
         }
         return seen.filter { $0.value.days.count >= 3 }
