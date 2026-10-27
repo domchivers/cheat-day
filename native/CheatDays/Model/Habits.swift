@@ -92,12 +92,28 @@ extension Store {
             guard let p = h.plan else { return nil }
             return h.choice == "swap" ? "\(h.name) → \(p)" : "\(h.name): \(p)"
         }
+        lines += habitIdeas.filter { $0["picked"] as? Bool == true }.map { "\(str($0["name"])) for \(str($0["meal"]).lowercased())" }
         lines += habits["tips"] as? [String] ?? []
         guard !lines.isEmpty else { return nil }
         let week = Int((DayKey.date(Self.weekOf(date)).timeIntervalSince1970 / 604_800).rounded())
         return lines[((week % lines.count) + lines.count) % lines.count]
     }
     var habitFocus: String? { habitFocus(on: today) }
+
+    var habitIdeas: [JSON] { list(habits["ideas"]) }
+
+    /// The food plan's ideas for a meal as things to add, the ones you'd try first.
+    func ideaEntries(for meal: String) -> [QuickEntry] {
+        habitIdeas.filter { str($0["meal"]) == meal }
+            .sorted { ($0["picked"] as? Bool == true ? 1 : 0) > ($1["picked"] as? Bool == true ? 1 : 0) }
+            .compactMap { m in
+                guard let kcal = pos(m["kcal"]) else { return nil }
+                let basis: JSON = ["name": str(m["name"]), "source": "quick", "unit": "g", "unitLabel": "portion", "kcalPerServing": kcal.rounded(),
+                                   "pServ": num(m["protein"]) ?? 0, "cServ": num(m["carbs"]) ?? 0, "fServ": num(m["fat"]) ?? 0]
+                return QuickEntry(key: "idea:" + str(m["name"]).lowercased(), basis: basis, kcal: kcal.rounded(), detail: str(m["why"]),
+                                  uses: 0, lastUsed: "", kind: .preset)
+            }
+    }
 
     /// The food plan in a line or two for the assistant: what to leave alone, what they're cutting back on.
     var habitsContext: String {

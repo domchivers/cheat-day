@@ -36,6 +36,7 @@ struct TodayView: View {
     @State private var rankUp: Rank?
     @State private var badgeNote: String?
     @AppStorage("today.more") private var moreOpen = false
+    @AppStorage("nudge.hidden") private var nudgeHidden = ""   // "day|meal" of the card you closed
     @State private var sendingItem: JSON?
     private var store: Store { Store.shared }
 
@@ -108,6 +109,7 @@ struct TodayView: View {
                 Section { hero }
                     .listRowBackground(Color.clear)   // the panel draws its own card, so the trim and badge can sit on its top edge
                     .listRowInsets(EdgeInsets())
+                if offset == 0, let n = store.nudge, nudgeHidden != store.today + "|" + n.meal { nudgeCard(n) }
                 if offset == 0 && store.checkInDue {
                     let c = store.checkIn
                     Section {
@@ -223,6 +225,41 @@ struct TodayView: View {
         case 0: return "Today"
         case -1: return "Yesterday"
         default: return DayKey.date(date).formatted(.dateTime.weekday(.wide))
+        }
+    }
+
+    private func nudgeCard(_ n: Nudge) -> some View {
+        Section {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(n.ideas.isEmpty ? "A thought" : "\(n.meal == "Snacks" ? "Snack time" : n.meal + " time"). Fancy one of these?").font(.headline)
+                    Spacer()
+                    Button { withAnimation { nudgeHidden = store.today + "|" + n.meal } } label: { Image(systemName: "xmark") }
+                        .buttonStyle(.borderless).foregroundStyle(.secondary).font(.footnote.weight(.bold))
+                        .accessibilityLabel("Hide")
+                }
+                ForEach(n.ideas) { e in
+                    HStack(spacing: 12) {
+                        FoodDot(name: e.name, size: 32)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(e.name).font(.subheadline.weight(.semibold)).lineLimit(2)
+                            if !e.detail.isEmpty { Text(e.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                        }
+                        Spacer(minLength: 4)
+                        Text(Fmt.int(e.kcal)).font(.subheadline.weight(.bold)).monospacedDigit().foregroundStyle(Theme.accent)
+                        Button { withAnimation { _ = store.add(e.basis, kcal: e.kcal, meal: n.meal) } } label: {
+                            Image(systemName: "plus.circle.fill").font(.system(size: 26)).foregroundStyle(Theme.accent)
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("Add \(e.name)")
+                    }
+                }
+                if let a = n.advice {
+                    Label { Text(a).font(.footnote) } icon: { FluentIcon(emoji: "🎯", size: 18) }
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.vertical, 4)
         }
     }
 

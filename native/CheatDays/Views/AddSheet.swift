@@ -70,6 +70,10 @@ struct AddSheet: View {
             Section { ForEach(usual) { row($0) } } header: { Text("Your \(meal == "Snacks" ? "snacks" : meal.lowercased() + "s")") }
                 footer: { Text("Starred foods first, then what you have most at \(meal.lowercased()).") }
         }
+        let ideas = store.ideaEntries(for: meal).filter { i in !usual.contains(where: { $0.name.lowercased() == i.name.lowercased() }) }
+        if !ideas.isEmpty {
+            Section { ForEach(ideas) { row($0) } } header: { Text("Ideas from your food plan") }
+        }
         if !saved.isEmpty {
             Section {
                 ForEach(saved) { row($0) }
