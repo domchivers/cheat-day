@@ -22,7 +22,7 @@ struct AssistantView: View {
     @FocusState private var typing: Bool
     private var store: Store { Store.shared }
 
-    private let chips = ["What fits the rest of today?", "A recipe under 600 kcal", "Make my favourite takeaway lighter", "I only had half of that"]
+    private let chips = ["What fits the rest of today?", "Make today healthier", "Healthier swaps for what I eat most", "A recipe under 600 kcal"]
 
     var body: some View {
         NavigationStack {
@@ -33,8 +33,8 @@ struct AssistantView: View {
                         bot(Text("**Ask me anything about your day.** Photograph a plate and tell me what it is, ask for a plan for the rest of today, a recipe that fits, a lighter version of something, or tell me what you actually ate and I'll fix the list."))
                         if turns.isEmpty {
                             HStack(spacing: 10) {
-                                Button { camera = true } label: { Label("Snap my plate", systemImage: "camera.fill").frame(maxWidth: .infinity) }
-                                Button { library = true } label: { Label("From photos", systemImage: "photo.on.rectangle").frame(maxWidth: .infinity) }
+                                Button { camera = true } label: { Label("Snap a plate", systemImage: "camera.fill").lineLimit(1).frame(maxWidth: .infinity) }
+                                Button { library = true } label: { Label("Photos", systemImage: "photo.on.rectangle").lineLimit(1).frame(maxWidth: .infinity) }
                             }
                             .buttonStyle(.bordered).buttonBorderShape(.roundedRectangle(radius: 14)).controlSize(.large)
                             Flow { ForEach(chips, id: \.self) { c in Chip(text: c, on: false) { text = c; send() } } }

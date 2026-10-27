@@ -712,6 +712,20 @@ struct AmountView: View {
                 .frame(maxWidth: .infinity)
                 .listRowBackground(Color.clear)
             }
+            if target.editId == nil, let s = Swaps.pick(for: name, kcal: kcal) {
+                Section {
+                    HStack(spacing: 12) {
+                        FoodDot(name: s.name, size: 36)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(s.name).font(.subheadline.weight(.bold))
+                            Text("\(s.why) · saves \(Fmt.int(s.saves)) kcal").font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 4)
+                        Button("Have this") { store.add(s.basis, kcal: s.kcal, meal: meal); finish() }
+                            .buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.small)
+                    }
+                } header: { Text("Healthier pick") } footer: { Text("Or add yours as normal below. No judgement.") }
+            }
             Section {
                 if modes.count > 1 {
                     Picker("How", selection: $mode) { ForEach(modes) { Text($0.rawValue).tag($0) } }.pickerStyle(.segmented)

@@ -47,7 +47,10 @@ extension Store {
             return "Lots of carbs today already (\(Int(m.c)) g). Go lighter on bread, rice and pasta later, more protein and veg."
         }
 
-        // the week
+        // the week: the lighter pick for something you keep having
+        if let w = weekSwap {
+            return "\(w.food) came up \(w.days) days this week. \(w.pick.name) instead saves \(Fmt.int(w.pick.saves)) kcal each time: \(w.pick.why.lowercased())."
+        }
         if snackShare > 0.28 && week.count >= 4 { return "Snacks are \(Int(snackShare * 100))% of your food this week. Fewer evening snacks would make the biggest difference." }
         if breadDays >= 6 { return "Bread's in nearly every day this week. Try eggs, yoghurt or a salad for one meal." }
         return nil

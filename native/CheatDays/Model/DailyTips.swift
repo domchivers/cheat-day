@@ -30,6 +30,7 @@ extension Store {
             else if let p = proteinGoal, m.p < p * 0.7 { r.improve = "Protein was \(Int(m.p)) of \(Int(p)) g. Start today with some: eggs, yoghurt or a shake." }
             else if d.kcal > 0, snack / d.kcal > 0.3 { r.improve = "Snacks were \(Int(snack / d.kcal * 100))% of yesterday. A proper meal first keeps them down." }
             else if let cg = pos(goals["c"]), m.c > cg * 1.2 { r.improve = "Carbs were high (\(Int(m.c)) g). Swap one bread, rice or pasta for protein and veg." }
+            else if let w = weekSwap { r.improve = "\(w.food) came up \(w.days) days this week. Try \(w.pick.name) instead: saves \(Fmt.int(w.pick.saves)) kcal each time." }
         }
         guard r.good != nil || r.improve != nil || r.afterCheat || !r.ideas.isEmpty else { return nil }
         return r
