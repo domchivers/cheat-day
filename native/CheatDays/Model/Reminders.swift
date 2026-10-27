@@ -52,7 +52,7 @@ enum Reminders {
             if let w = prefs.weigh, store.weighDays.contains(cal.component(.weekday, from: day) - 1), !(offset == 0 && weighedToday) {
                 let parts = w.split(separator: ":").compactMap { Int($0) }
                 add(center, id: "weigh-\(key)", day: day, hour: parts.first ?? 7, minute: parts.count > 1 ? parts[1] : 30,
-                    title: "Weigh-in day", body: "Step on the scale before breakfast and log it in Cheat Days.")
+                    title: "Time to weigh in", body: store.habitFocus(on: key).map { "Step on the scale before breakfast. This week, try: \($0)" } ?? "Step on the scale before breakfast and log it in Cheat Days.")
             }
         }
     }

@@ -118,6 +118,7 @@ struct TodayView: View {
                                     Text("Your weekly check-in").font(.headline)
                                     Text("\(c.avg.map { "\(Fmt.int($0)) a day" } ?? "Nothing logged") · \(c.logged) of 7 days\(c.suggest != nil ? " · a new budget to look at" : "")")
                                         .font(.footnote).foregroundStyle(.secondary)
+                                    if let focus = store.habitFocus { Text("This week, try: \(focus)").font(.footnote.weight(.semibold)).foregroundStyle(Theme.heroLabel) }
                                 }
                                 Spacer()
                                 Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.secondary)

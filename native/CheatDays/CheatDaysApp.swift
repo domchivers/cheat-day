@@ -29,6 +29,7 @@ struct RootView: View {
 struct MainTabs: View {
     @State private var tab = 0
     @State private var onboarding = false
+    @State private var habits = false
     @Environment(\.scenePhase) private var phase
 
     var body: some View {
@@ -52,13 +53,14 @@ struct MainTabs: View {
         }
         .task {
             await Store.shared.sync()
-            if Store.shared.needsOnboarding { onboarding = true }
+            if Store.shared.needsOnboarding { onboarding = true } else if Store.shared.needsHabits { habits = true }
             await Store.shared.applyHelperChanges(); await Store.shared.pullBody(); await Reminders.reschedule(Store.shared)
             await HealthSync.pull()
             await FriendActivity.shared.load()
             await Push.start()
         }
-        .fullScreenCover(isPresented: $onboarding) { OnboardingView(firstRun: true) { onboarding = false } }
+        .fullScreenCover(isPresented: $onboarding, onDismiss: { if Store.shared.needsHabits { habits = true } }) { OnboardingView(firstRun: true) { onboarding = false } }
+        .fullScreenCover(isPresented: $habits) { HabitsView { habits = false } }
         .onChange(of: phase) { _, now in
             if now == .background { Store.shared.flush() }
             if now == .active { Task { await Store.shared.sync(); await Store.shared.applyHelperChanges(); await Reminders.reschedule(Store.shared); await HealthSync.pull(); await Steps.shared.refresh(); await FriendActivity.shared.load() } } }

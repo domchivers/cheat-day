@@ -68,6 +68,7 @@ enum Assistant {
         c += "Recent days: \(past.isEmpty ? "none yet" : past).\n"
         c += "Things they often have: \(store.quickEntries.prefix(8).map(\.name).joined(separator: ", ")). Their saved meals: \(meals.isEmpty ? "none" : meals).\n"
         if !loves.isEmpty || !avoid.isEmpty { c += "Foods they love: \(loves.isEmpty ? "not said" : loves). Never suggest: \(avoid.isEmpty ? "nothing" : avoid).\n" }
+        c += store.habitsContext
         if let next = store.nextCheat { c += "Their next cheat day is \(next.date == store.today ? "today" : next.date), with \(Int(next.kcal)) kcal.\n" }
         return c
     }

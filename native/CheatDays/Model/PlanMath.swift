@@ -209,6 +209,7 @@ extension Store {
             var prefs = dict(op["prefs"])
             if let kept = dict(d["prefs"])["cheatPlans"] { prefs["cheatPlans"] = kept }
             if prefs["workoutPlan"] == nil, let kept = dict(d["prefs"])["workoutPlan"] { prefs["workoutPlan"] = kept }
+            if prefs["habits"] == nil, let kept = dict(d["prefs"])["habits"] { prefs["habits"] = kept }
             d["prefs"] = prefs
             d["eatBack"] = false
             d["onboarded"] = true
@@ -242,6 +243,10 @@ extension Store {
             if let b = pos(op["budget"]) { d["budget"] = Int(b) }
             d["dayBudgets"] = op["dayBudgets"] as? JSON ?? JSON()
             if let e = op["eatBack"] as? Bool { d["eatBack"] = e }
+        case "habits":
+            var prefs = dict(d["prefs"])
+            prefs["habits"] = op["value"] ?? NSNull()
+            d["prefs"] = prefs
         case "workoutPlan":
             var prefs = dict(d["prefs"])
             prefs["workoutPlan"] = op["plan"] ?? NSNull()

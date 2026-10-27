@@ -34,6 +34,18 @@ struct CheckInView: View {
                     .padding(.vertical, 4)
                 }
             }
+            if let focus = store.habitFocus {
+                Section {
+                    HStack(alignment: .top, spacing: 12) {
+                        FluentIcon(emoji: "🥗", size: 30)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(focus).font(.headline)
+                            Text("One thing from your food habits. Next week there's another.").font(.footnote).foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                } header: { Text("This week, try") }
+            }
             if let want = c.want {
                 Section("Your goal: \(goal(want))") {
                     fact("Last week", change(c.change))

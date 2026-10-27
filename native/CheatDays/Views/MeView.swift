@@ -79,6 +79,7 @@ struct MeView: View {
             ("🎯", "Plan", "Budget and cheat day", AnyView(BudgetView())),
             ("📈", "Body", "Weigh-ins and scale", AnyView(BodyView())),
             ("📖", "Meals", meals == 0 ? "Recipes you save" : "\(meals) saved", AnyView(MealsView())),
+            ("🥗", "Food habits", store.habitItems.isEmpty ? "Keep, tweak or swap" : "\(store.habitItems.filter { $0.plan != nil }.count) changes", AnyView(HabitsView())),
             ("🗓️", "History", "Past days", AnyView(HistoryView())),
             ("🏆", "Badges", "\(store.seenBadges.count) of \(Badge.all.count)", AnyView(GoalsView()))
         ]
