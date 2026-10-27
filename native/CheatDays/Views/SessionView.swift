@@ -51,7 +51,10 @@ struct SessionView: View {
             }
         }
         .environment(\.editMode, .constant(reordering ? .active : .inactive))
-        .safeAreaInset(edge: .bottom) { timerBar }
+        // pinned to the bottom whatever the keyboard does: as a safe-area inset it could be left floating mid-screen
+        // after the keyboard went away; the list still makes room for it and still scrolls a box clear of the keyboard
+        .contentMargins(.bottom, 76, for: .scrollContent)
+        .overlay(alignment: .bottom) { timerBar.ignoresSafeArea(.keyboard) }
         .scrollDismissesKeyboard(.interactively)
         .keyboardDone()
         .cursorAtEnd()

@@ -186,7 +186,31 @@ struct PizzaIcon: View {
     }
 }
 
+/// Lifts the bottom of a screen clear of the keyboard by watching the keyboard itself, instead of SwiftUI's keyboard
+/// safe area, which inside a sheet sometimes never updates (the chat box stayed under the keyboard) or never resets.
+struct KeyboardLift: ViewModifier {
+    @State private var keyboardTop: CGFloat?   // in screen points; nil when it's away
+
+    func body(content: Content) -> some View {
+        GeometryReader { geo in
+            let lift = keyboardTop.map { max(0, geo.frame(in: .global).maxY - $0) } ?? 0
+            content.frame(width: geo.size.width, height: max(0, geo.size.height - lift), alignment: .top)
+        }
+        .ignoresSafeArea(.keyboard)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { n in
+            guard let f = n.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+            let screen = UIScreen.main.bounds.height
+            withAnimation(.snappy(duration: 0.25)) { keyboardTop = f.minY >= screen - 1 || f.height < 1 ? nil : f.minY }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            withAnimation(.snappy(duration: 0.25)) { keyboardTop = nil }
+        }
+    }
+}
+
 extension View {
+    func keyboardLift() -> some View { modifier(KeyboardLift()) }
+
     /// Tapping into a box puts the cursor after the number, wherever the tap landed (the numbers sit on the right of
     /// a wide box, so a tap usually lands on the empty left and the cursor ended up in front of the digits).
     func cursorAtEnd() -> some View {

@@ -54,6 +54,7 @@ struct AssistantView: View {
                 }
                 composer
               }
+              .keyboardLift()
             }
             .background(Theme.bg.ignoresSafeArea())
             .navigationTitle("Assistant")
