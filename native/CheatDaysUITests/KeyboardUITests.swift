@@ -25,10 +25,10 @@ final class KeyboardUITests: XCTestCase {
     }
 
     private func keyboardAway() {
-        // a tap on the chat (the welcome text at the top, clear of the buttons) puts the keyboard away
-        let chat = app.scrollViews["chat"], spot = chat.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.04))
-        print("keyboardAway: chat frame \(chat.frame), tapping \(spot.screenPoint), keyboard \(keyboard.frame)")
-        spot.tap()
+        // a tap on the chat (the welcome message, well clear of the title bar and the buttons) puts the keyboard away
+        let welcome = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'Ask me anything'")).firstMatch
+        print("keyboardAway: welcome \(welcome.frame), keyboard \(keyboard.frame)")
+        welcome.tap()
         XCTAssertTrue(keyboard.waitForNonExistence(timeout: 3), "a tap on the chat didn't put the keyboard away")
     }
 
