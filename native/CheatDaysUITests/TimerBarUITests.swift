@@ -24,14 +24,16 @@ final class TimerBarUITests: XCTestCase {
         print("timerBar: start bar \(bar.frame), list \(list.frame)")
 
         for round in 1...5 {
-            // a reps box near the bottom of the list, so it has to scroll clear of the keyboard
-            let boxes = app.textFields.matching(identifier: "box-reps")
-            let box = boxes.element(boundBy: min(round + 5, boxes.count - 1))
-            if !box.isHittable { app.swipeUp() }
+            // the lowest reps box on screen, so it has to scroll clear of the keyboard (the list loads rows lazily,
+            // so pick from what's there now, and afterwards measure whichever box has the keyboard)
+            if round == 3 { app.swipeUp() }
+            let shown = app.textFields.matching(identifier: "box-reps").allElementsBoundByIndex.filter { $0.isHittable && $0.frame.maxY < bar.frame.minY }
+            guard let box = shown.max(by: { $0.frame.maxY < $1.frame.maxY }) else { XCTFail("round \(round): no reps box on screen"); return }
             box.tap()
             XCTAssertTrue(keyboard.waitForExistence(timeout: 4), "round \(round): no keyboard came up")
             Thread.sleep(forTimeInterval: 0.8)
-            XCTAssertLessThanOrEqual(box.frame.maxY, keyboard.frame.minY + 2, "round \(round): box \(box.frame.maxY) is under the keyboard \(keyboard.frame.minY)")
+            let typing = app.textFields.element(matching: NSPredicate(format: "hasKeyboardFocus == true"))
+            XCTAssertLessThanOrEqual(typing.frame.maxY, keyboard.frame.minY + 2, "round \(round): box \(typing.frame.maxY) is under the keyboard \(keyboard.frame.minY)")
 
             // leave with the keyboard up (the lock button does the same to the app), then come back
             XCUIDevice.shared.press(.home)

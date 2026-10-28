@@ -263,13 +263,19 @@ struct KeyboardRoom: ViewModifier {
         }
     }
 
+    /// Scrolls the box being typed in up until it clears the keyboard's top by a little, worked out from where the
+    /// keyboard really is (scrollRectToVisible went by the list's own insets, and left the box half under it).
     private func reveal() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            guard let tf = field.view, tf.isFirstResponder else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            guard let tf = field.view, tf.isFirstResponder, height > 0, let window = tf.window else { return }
             var v = tf.superview
             while let s = v, !(s is UIScrollView) { v = s.superview }
             guard let scroll = v as? UIScrollView else { return }
-            scroll.scrollRectToVisible(tf.convert(tf.bounds, to: scroll).insetBy(dx: 0, dy: -24), animated: true)
+            let keyboardTop = window.bounds.height - height
+            let over = tf.convert(tf.bounds, to: window).maxY + 16 - keyboardTop
+            guard over > 0 else { return }
+            let most = max(0, scroll.contentSize.height + scroll.adjustedContentInset.bottom - scroll.bounds.height)
+            scroll.setContentOffset(CGPoint(x: scroll.contentOffset.x, y: min(most, scroll.contentOffset.y + over)), animated: true)
         }
     }
 }
