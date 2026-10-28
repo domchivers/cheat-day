@@ -413,11 +413,17 @@ struct TodayView: View {
     private var cheatButton: some View {
         let isToday = store.nextCheat?.date == store.today
         return Button { if isToday { showCheat = true } else { showPlanner = true } } label: {
-            // the same dark circle as the day arrows, the logo in the app's blue (amber on the cheat day)
-            LogoMark().fill(isToday ? Theme.warn : Theme.accent)
-                .frame(width: 24, height: 13)
-                .frame(width: 40, height: 40)
-                .background(Color(.secondarySystemBackground), in: Circle())
+            // a little app-icon tile with the word, so it says what it does; warm on the cheat day
+            HStack(spacing: 8) {
+                LogoMark().fill(isToday ? Theme.warn : Color(red: 0.93, green: 0.95, blue: 0.97)).frame(width: 24, height: 13)
+                Text("Plan").font(.subheadline.weight(.semibold))
+                    .foregroundStyle(isToday ? Color(red: 1, green: 0.82, blue: 0.6) : Color(red: 0.93, green: 0.95, blue: 0.97))
+            }
+            .padding(.horizontal, 12).frame(height: 36)
+            .background(isToday ? Color(red: 0.23, green: 0.16, blue: 0.07) : Color(red: 0.11, green: 0.14, blue: 0.21),
+                        in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(isToday ? Color(red: 0.42, green: 0.29, blue: 0.12) : Color(red: 0.17, green: 0.22, blue: 0.31), lineWidth: 1))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(isToday ? "Plan your cheat day" : "Plan a meal")
@@ -486,15 +492,18 @@ struct TodayView: View {
                         Label("Add \(meal.lowercased())", systemImage: "plus.circle.fill").foregroundStyle(Theme.accent)
                     }
                 }
-                if lines.count >= 2 {
-                    Button { mealName = "My \(meal.lowercased())"; savingMeal = meal } label: {
-                        Label("Save as a meal", systemImage: "square.and.arrow.down").foregroundStyle(Theme.accent)
-                    }
-                }
             } header: {
                 HStack {
                     Text(meal).font(.title3.bold()).foregroundStyle(.primary).textCase(nil)
                     Spacer()
+                    if offset == 0 && lines.count >= 2 {
+                        // where Same as yesterday sits on an empty meal
+                        Button { mealName = "My \(meal.lowercased())"; savingMeal = meal } label: {
+                            Label("Save as meal", systemImage: "bookmark").font(.caption.weight(.bold)).lineLimit(1)
+                        }
+                        .accessibilityLabel("Save this \(meal.lowercased()) as a meal")
+                        .buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.small).textCase(nil)
+                    }
                     if total > 0 {
                         Text("\(Fmt.int(total)) kcal").font(.subheadline.weight(.bold)).foregroundStyle(.secondary).textCase(nil)
                     } else if !again.isEmpty {

@@ -16,6 +16,7 @@ struct DailyTipsSheet: View {
 
     var body: some View {
         NavigationStack {
+            ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     Text(greeting).font(.largeTitle.bold())
@@ -41,6 +42,12 @@ struct DailyTipsSheet: View {
             }
             .background(Theme.bg.ignoresSafeArea())
             .scrollDismissesKeyboard(.interactively)
+            .onChange(of: typing) { _, t in
+                guard t else { return }
+                // the keyboard would cover the button under the box: bring it up with the box
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { withAnimation { proxy.scrollTo("go", anchor: .bottom) } }
+            }
+            }
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Let's go") { dismiss() } } }
             .onAppear { if cooking.isEmpty { cooking = Self.cookChoice(str(store.habits["cook"])) } }
             .sheet(item: $open) { r in RecipeSheet(idea: r.idea) }
@@ -80,6 +87,7 @@ struct DailyTipsSheet: View {
                     .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 6)
             }
             .buttonStyle(.borderedProminent).foregroundStyle(.black)
+            .id("go")
             Text("Leave the fridge empty for ideas from anything. You can also snap your fridge in the chat.").font(.caption).foregroundStyle(.secondary)
         }
         .padding(14)

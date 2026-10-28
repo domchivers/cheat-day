@@ -43,6 +43,7 @@ struct MealPlannerView: View {
 
     var body: some View {
         NavigationStack {
+            ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     Picker("Meal", selection: $meal) { ForEach(["Breakfast", "Lunch", "Dinner"], id: \.self) { Text($0).tag($0) } }
@@ -62,6 +63,7 @@ struct MealPlannerView: View {
                             .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 8)
                     }
                     .buttonStyle(.borderedProminent).foregroundStyle(.black).disabled(busy)
+                    .id("go")
                     if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn) }
                     ForEach(ideas.indices, id: \.self) { i in idea(ideas[i]) }
                     Button { cheat = true } label: { Label("Plan your cheat day", systemImage: "arrow.right").font(.subheadline.weight(.semibold)) }
@@ -70,6 +72,12 @@ struct MealPlannerView: View {
                 .padding(20)
             }
             .scrollDismissesKeyboard(.interactively)
+            .onChange(of: typing) { _, t in
+                guard t else { return }
+                // the keyboard would cover the button under the box: bring it up with the box
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { withAnimation { proxy.scrollTo("go", anchor: .bottom) } }
+            }
+            }
             .background(Theme.bg.ignoresSafeArea())
             .navigationTitle("Plan \(meal.lowercased())").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
