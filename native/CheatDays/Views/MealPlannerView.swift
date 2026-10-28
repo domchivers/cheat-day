@@ -1,6 +1,21 @@
 import SwiftUI
 
 extension Store {
+    /// A fair size for one meal: what's left today, shared across the meals still to come (snacks always keep a
+    /// little), so a lunch idea leaves room for dinner. Never more than about a third over that meal's usual share.
+    func mealTarget(_ meal: String) -> (kcal: Double, protein: Double?) {
+        let share = ["Breakfast": 0.25, "Lunch": 0.30, "Dinner": 0.35, "Snacks": 0.10]
+        let at = Meals.all.firstIndex(of: meal) ?? 0
+        let upcoming = Meals.all.enumerated().filter { i, m in
+            i >= at && (m == meal || m == "Snacks" || !todayItems.contains { Meals.of($0) == m })
+        }.map(\.element)
+        let part = (share[meal] ?? 0.3) / max(0.1, upcoming.reduce(0) { $0 + (share[$1] ?? 0) })
+        let left = max(0, budgetToday - eaten)
+        let kcal = min(left * part, budgetToday * (share[meal] ?? 0.3) * 1.3)
+        let protein = proteinGoal.map { max(0, $0 - macros(todayItems).p) * part }
+        return ((kcal / 10).rounded() * 10, protein.map { $0.rounded() })
+    }
+
     /// What you've had at a meal over the last four weeks, most often first: the planner's sense of your style
     /// (Asian dinners, toast breakfasts) and the ingredients you already buy.
     func mealHistory(_ meal: String, days: Int = 28) -> [(name: String, days: Int, kcal: Double)] {
@@ -49,7 +64,8 @@ struct MealPlannerView: View {
                     Picker("Meal", selection: $meal) { ForEach(["Breakfast", "Lunch", "Dinner"], id: \.self) { Text($0).tag($0) } }
                         .pickerStyle(.segmented)
                         .onChange(of: meal) { _, _ in ideas = []; problem = nil }
-                    Text("\(Fmt.int(left)) kcal left\(proteinLeft.map { " · \(Int($0)) g protein to go" } ?? "")")
+                    let t = store.mealTarget(meal)
+                    Text("Aim for about \(Fmt.int(t.kcal)) kcal\(t.protein.map { " · \(Int($0)) g protein" } ?? "") · \(Fmt.int(left)) left today")
                         .font(.subheadline).foregroundStyle(.secondary)
                     usual
                     Eyebrow(text: "How much cooking?", color: Theme.heroLabel).padding(.top, 4)
@@ -153,6 +169,7 @@ struct MealPlannerView: View {
     private func suggest() async {
         busy = true; problem = nil
         defer { busy = false }
+        let target = store.mealTarget(meal)
         let had = history.prefix(20).map { "\($0.name) (\($0.days)×)" }.joined(separator: ", ")
         let cuisines = (store.habits["cuisines"] as? [String] ?? []).joined(separator: ", ")
         let cook = cooking == Self.cookChoices[0] ? "No cooking: assembling, shop-bought or a microwave only."
@@ -167,7 +184,7 @@ struct MealPlannerView: View {
         ] as JSON, "required": ["ideas"]]
         let prompt = """
         Suggest 3 \(meal.lowercased()) ideas for someone in \(Plan.country), one portion each.
-        They have \(Int(left)) kcal left today\(proteinLeft.map { " and \(Int($0)) g protein to go" } ?? ""). Each idea must fit what's left, and lean high in protein.
+        Size each idea for this one meal: about \(Int(target.kcal)) kcal (between \(Int(target.kcal - 120)) and \(Int(target.kcal + 60))), not the whole day's \(Int(left)) kcal left: they still have other meals and snacks to come.\(target.protein.map { " Aim for around \(Int($0)) g protein each." } ?? " Lean high in protein.")
         What they've actually had for \(meal.lowercased()) over the last 4 weeks: \(had.isEmpty ? "nothing logged yet" : had).
         Match that style: if it's mostly one cuisine (Asian dinners, say), stay in it and use the ingredients and dishes they clearly buy, just lighter or better balanced. One idea can be a healthier take on something they have often.
         Cuisines they like: \(cuisines.isEmpty ? "not said" : cuisines). \(cook)
