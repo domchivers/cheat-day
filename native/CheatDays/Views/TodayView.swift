@@ -371,7 +371,7 @@ struct TodayView: View {
         .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.hero, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .overlay(alignment: .topTrailing) { if offset == 0 { cheatButton.padding(.top, 14).padding(.trailing, 14) } }
+        .overlay(alignment: .topTrailing) { if offset == 0 { cheatButton.padding(.top, 12).padding(.trailing, 14) } }
         .animation(.snappy, value: eaten)
         .simultaneousGesture(DragGesture(minimumDistance: 40).onEnded { v in
             guard abs(v.translation.width) > abs(v.translation.height) * 1.5 else { return }
@@ -413,19 +413,14 @@ struct TodayView: View {
     private var cheatButton: some View {
         let isToday = store.nextCheat?.date == store.today
         return Button { if isToday { showCheat = true } else { showPlanner = true } } label: {
-            // a little app-icon tile with the word, so it says what it does; warm on the cheat day
-            HStack(spacing: 8) {
-                LogoMark().fill(isToday ? Theme.warn : Color(red: 0.93, green: 0.95, blue: 0.97)).frame(width: 24, height: 13)
-                Text("Plan").font(.subheadline.weight(.semibold))
-                    .foregroundStyle(isToday ? Color(red: 1, green: 0.82, blue: 0.6) : Color(red: 0.93, green: 0.95, blue: 0.97))
+            // the same blue pill as Same as yesterday and Save as meal; orange on the cheat day
+            HStack(spacing: 6) {
+                LogoMark().fill(isToday ? Theme.warn : Theme.accent).frame(width: 20, height: 11)
+                Text("Plan").font(.caption.weight(.bold))
             }
-            .padding(.horizontal, 12).frame(height: 36)
-            .background(isToday ? Color(red: 0.23, green: 0.16, blue: 0.07) : Color(red: 0.11, green: 0.14, blue: 0.21),
-                        in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(isToday ? Color(red: 0.42, green: 0.29, blue: 0.12) : Color(red: 0.17, green: 0.22, blue: 0.31), lineWidth: 1))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.small)
+        .tint(isToday ? Theme.warn : Theme.accent)
         .accessibilityLabel(isToday ? "Plan your cheat day" : "Plan a meal")
     }
 
