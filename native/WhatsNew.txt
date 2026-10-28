@@ -1,0 +1,11 @@
+New in this build: the Plan button gives meal ideas sized for one meal, not the whole day.
+
+Thanks for testing! Please just use it like a normal day:
+
+• Log your meals: try scanning a barcode, taking a photo of a label, and typing things like "2 slices of toast with butter".
+• Tap the blue Plan button at the top of Today for meal ideas. Tell it what's in your fridge and how much you fancy cooking.
+• Try the Assistant: ask it anything about food or your day.
+• If you train, log a workout and use the rest timer.
+• Add a weigh-in, or connect Apple Health if you have a smart scale.
+
+If anything looks wrong, confusing or too small to read, take a screenshot. TestFlight then asks if you want to send it as feedback, and you can add a note. Crashes are sent automatically.

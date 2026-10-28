@@ -45,3 +45,16 @@ xcodebuild -exportArchive -archivePath "$OUT/CheatDays.xcarchive" -exportPath "$
   -exportOptionsPlist "$OUT/ExportOptions.plist" -allowProvisioningUpdates \
   | grep -E "error:|EXPORT (SUCCEEDED|FAILED)|Upload"
 echo "Uploaded build $BUILD. It shows in TestFlight after Apple finishes processing (usually 5 to 15 minutes)."
+
+# then hand it to the family (External Testers) with native/WhatsNew.txt as its note, if the API key is set up
+for v in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_PATH; do
+  if [ -z "${!v:-}" ] && command -v zsh >/dev/null; then
+    export "$v=$(zsh -ic "printf %s \"\${$v:-}\"" 2>/dev/null | tail -n 1)"
+  fi
+done
+if [ -n "${ASC_KEY_ID:-}" ] && [ -n "${ASC_ISSUER_ID:-}" ]; then
+  [ -n "${ASC_KEY_PATH:-}" ] || unset ASC_KEY_PATH
+  swift tools/TestFlightExternal.swift "$BUILD"
+else
+  echo "No App Store Connect API key set up, so the family group wasn't sent this build (see tools/TestFlightExternal.swift)."
+fi
