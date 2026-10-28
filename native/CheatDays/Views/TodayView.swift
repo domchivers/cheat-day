@@ -371,7 +371,7 @@ struct TodayView: View {
         .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.hero, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .overlay(alignment: .topTrailing) { if offset == 0 { cheatButton.padding(.top, 12).padding(.trailing, 14) } }
+        .overlay(alignment: .topTrailing) { if offset == 0 { cheatButton.padding(.top, 10).padding(.trailing, 12) } }
         .animation(.snappy, value: eaten)
         .simultaneousGesture(DragGesture(minimumDistance: 40).onEnded { v in
             guard abs(v.translation.width) > abs(v.translation.height) * 1.5 else { return }
@@ -414,12 +414,13 @@ struct TodayView: View {
         let isToday = store.nextCheat?.date == store.today
         return Button { if isToday { showCheat = true } else { showPlanner = true } } label: {
             // the same blue pill as Same as yesterday and Save as meal; orange on the cheat day
-            HStack(spacing: 6) {
-                LogoMark().fill(isToday ? Theme.warn : Theme.accent).frame(width: 20, height: 11)
-                Text("Plan").font(.caption.weight(.bold))
+            HStack(spacing: 8) {
+                LogoMark().fill(isToday ? Theme.warn : Theme.accent).frame(width: 28, height: 15)
+                Text("Plan").font(.subheadline.weight(.bold))
             }
+            .padding(.horizontal, 4).padding(.vertical, 2)
         }
-        .buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.small)
+        .buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.regular)
         .tint(isToday ? Theme.warn : Theme.accent)
         .accessibilityLabel(isToday ? "Plan your cheat day" : "Plan a meal")
     }
@@ -494,7 +495,7 @@ struct TodayView: View {
                     if offset == 0 && lines.count >= 2 {
                         // where Same as yesterday sits on an empty meal
                         Button { mealName = "My \(meal.lowercased())"; savingMeal = meal } label: {
-                            Label("Save as meal", systemImage: "bookmark").font(.caption.weight(.bold)).lineLimit(1).fixedSize()   // never squeezed to "Save as m…"
+                            HStack(spacing: 5) { Image(systemName: "bookmark"); Text("Save as meal") }.font(.caption.weight(.bold)).lineLimit(1).fixedSize()   // never squeezed to "Save as m…"
                         }
                         .accessibilityLabel("Save this \(meal.lowercased()) as a meal")
                         .buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.small).textCase(nil)
@@ -506,7 +507,7 @@ struct TodayView: View {
                         Button {
                             withAnimation(.snappy) { store.addAll(again, meal: meal, label: "Added yesterday's \(meal.lowercased())") }
                         } label: {
-                            Label("Same as yesterday · \(Fmt.int(kcal))", systemImage: "arrow.counterclockwise").font(.caption.weight(.bold)).lineLimit(1)
+                            HStack(spacing: 5) { Image(systemName: "arrow.counterclockwise"); Text("Same as yesterday · \(Fmt.int(kcal))") }.font(.caption.weight(.bold)).lineLimit(1)
                         }
                         .accessibilityLabel("Add yesterday's \(meal.lowercased()) again: \(again.map { str($0["name"]) }.joined(separator: ", "))")
                         .buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.small).textCase(nil)
