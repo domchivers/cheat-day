@@ -1,12 +1,17 @@
 import SwiftUI
 
-/// The once-a-day pop-up on Today: yesterday in two lines, then meals to try today (each opens its recipe).
+/// The once-a-day pop-up on Today: yesterday in two lines, meals to try today (each opens its recipe), and a hand with
+/// the next meal: how much cooking you fancy and what's in the fridge, then the assistant suggests what to make.
 /// Turned off in Settings; never shows on a cheat day.
 struct DailyTipsSheet: View {
     let review: DailyReview
+    var ask: ((_ meal: String, _ question: String) -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var open: IdeaRef?
     @State private var added: Set<String> = []
+    @State private var cooking = ""
+    @AppStorage("pantry") private var pantry = ""   // kept for next time: the fridge doesn't change that much
+    @FocusState private var typing: Bool
     private var store: Store { Store.shared }
 
     var body: some View {
@@ -25,6 +30,7 @@ struct DailyTipsSheet: View {
                         Eyebrow(text: "Try today", color: Theme.heroLabel).padding(.top, 8)
                         ForEach(review.ideas.indices, id: \.self) { i in idea(review.ideas[i]) }
                     }
+                    if ask != nil { help }
                     if let f = review.focus {
                         Eyebrow(text: "This week", color: Theme.heroLabel).padding(.top, 8)
                         line("🥗", f)
@@ -34,9 +40,62 @@ struct DailyTipsSheet: View {
                 .padding(20)
             }
             .background(Theme.bg.ignoresSafeArea())
+            .scrollDismissesKeyboard(.interactively)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Let's go") { dismiss() } } }
+            .onAppear { if cooking.isEmpty { cooking = Self.cookChoice(str(store.habits["cook"])) } }
             .sheet(item: $open) { r in RecipeSheet(idea: r.idea) }
         }
+    }
+
+    // MARK: a hand with the next meal
+
+    private static let cookChoices = ["No cooking", "Quick, 15 min", "Happy to cook"]
+    private static func cookChoice(_ level: String) -> String {
+        switch level { case "love": return cookChoices[2]; case "hate": return cookChoices[0]; default: return cookChoices[1] }
+    }
+
+    /// The meal it's time to think about; snacks aren't worth planning, so it's dinner then.
+    private var nextMeal: String {
+        let m = Meals.byTime(Calendar.current.component(.hour, from: Date()))
+        return m == "Snacks" ? "Dinner" : m
+    }
+
+    private var help: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                FluentIcon(emoji: "🍽️", size: 26)
+                Text("Need a hand with \(nextMeal.lowercased())?").font(.headline)
+            }
+            Text("How much cooking?").font(.subheadline).foregroundStyle(.secondary)
+            Flow { ForEach(Self.cookChoices, id: \.self) { c in Chip(text: c, on: cooking == c) { cooking = c } } }
+            Text("What's in your fridge and cupboard?").font(.subheadline).foregroundStyle(.secondary)
+            TextField("e.g. eggs, chicken, rice, peppers, cheese", text: $pantry, axis: .vertical)
+                .lineLimit(2...4).focused($typing)
+                .padding(12).background(Theme.bg, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            Button {
+                typing = false
+                ask?(nextMeal, question)
+            } label: {
+                Label(pantry.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Give me ideas" : "What can I make?", systemImage: "sparkles")
+                    .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 6)
+            }
+            .buttonStyle(.borderedProminent).foregroundStyle(.black)
+            Text("Leave the fridge empty for ideas from anything. You can also snap your fridge in the chat.").font(.caption).foregroundStyle(.secondary)
+        }
+        .padding(14)
+        .background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(.top, 8)
+    }
+
+    private var question: String {
+        let meal = nextMeal.lowercased()
+        let cook = cooking == Self.cookChoices[0] ? "I don't want to cook: nothing more than assembling or a microwave."
+                 : cooking == Self.cookChoices[2] ? "I'm happy to cook properly."
+                 : "Something quick, 15 minutes or so."
+        let have = pantry.trimmingCharacters(in: .whitespacesAndNewlines)
+        return have.isEmpty
+            ? "Help me with \(meal). \(cook) Give me 2 or 3 ideas that fit what I've got left today, with the calories and protein for each."
+            : "Help me with \(meal). \(cook) I've got: \(have). Give me 2 or 3 things I can make mostly from that (staples like oil, salt and spices are fine), that fit what I've got left today, with calories, protein and a short method."
     }
 
     private var greeting: String {

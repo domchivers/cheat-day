@@ -42,6 +42,8 @@ struct TodayView: View {
     @State private var daily: DailyReview?
     @State private var openIdea: IdeaRef?
     @State private var sendingItem: JSON?
+    @State private var savingMeal: String?   // the meal whose foods are being saved as one
+    @State private var mealName = ""
     private var store: Store { Store.shared }
 
     private var date: String { DayKey.shift(store.today, days: offset) }
@@ -170,7 +172,13 @@ struct TodayView: View {
             }
             .sheet(isPresented: $showCheckIn) { NavigationStack { CheckInView() } }
             .sheet(isPresented: Binding(get: { daily != nil }, set: { if !$0 { daily = nil } })) {
-                if let r = daily { DailyTipsSheet(review: r).presentationDetents([.medium, .large]) }
+                if let r = daily {
+                    DailyTipsSheet(review: r) { meal, q in
+                        daily = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { flow = WebFlow(view: "ask", opts: ["meal": meal, "q": q], title: "Assistant") }
+                    }
+                    .presentationDetents([.medium, .large])
+                }
             }
             .sheet(item: $openIdea) { r in RecipeSheet(idea: r.idea) }
             .task(id: store.lastSynced) {
@@ -186,6 +194,11 @@ struct TodayView: View {
                 if let r = rankUp { RankUpView(rank: r) { rankUp = nil } }
             }
             .modifier(SendFoodDialog(item: $sendingItem) { note($0) })
+            .alert("Save as a meal", isPresented: Binding(get: { savingMeal != nil }, set: { if !$0 { savingMeal = nil } })) {
+                TextField("Name", text: $mealName)
+                Button("Save") { if let m = savingMeal { saveAsMeal(m) } }
+                Button("Cancel", role: .cancel) {}
+            } message: { Text("Next time it's one tap: it shows in Add with your saved meals.") }
             .onAppear { checkRank(); checkBadges() }
             .task { await Steps.shared.refresh() }
             .onChange(of: store.rank.level) { _, _ in checkRank() }
@@ -470,6 +483,11 @@ struct TodayView: View {
                         Label("Add \(meal.lowercased())", systemImage: "plus.circle.fill").foregroundStyle(Theme.accent)
                     }
                 }
+                if lines.count >= 2 {
+                    Button { mealName = "My \(meal.lowercased())"; savingMeal = meal } label: {
+                        Label("Save as a meal", systemImage: "square.and.arrow.down").foregroundStyle(Theme.accent)
+                    }
+                }
             } header: {
                 HStack {
                     Text(meal).font(.title3.bold()).foregroundStyle(.primary).textCase(nil)
@@ -494,6 +512,18 @@ struct TodayView: View {
                 }
             }
         }
+    }
+
+    /// This meal's foods as one saved meal, at today's amounts, so it can be added again in one go.
+    private func saveAsMeal(_ meal: String) {
+        let its = items.filter { Meals.of($0) == meal }.map { it -> JSON in
+            var c = it; c["id"] = uid(); c.removeValue(forKey: "meal"); c.removeValue(forKey: "addedAt"); return c
+        }
+        guard !its.isEmpty else { return }
+        let name = mealName.trimmingCharacters(in: .whitespaces)
+        store.perform(["type": "saveMeal", "meal": ["id": uid(), "name": name.isEmpty ? "My \(meal.lowercased())" : name, "portions": 1,
+                                                     "items": its, "saved": true, "updatedAt": ISO.now()] as JSON])
+        note("Saved: find it in Add, under your meals")
     }
 
     private func tap(_ item: JSON, meal: String) {
