@@ -231,8 +231,52 @@ struct KeyboardLift: ViewModifier {
     }
 }
 
+/// For a list of boxes with a bar pinned over its foot. Locking the phone with the keyboard up could leave the
+/// keyboard's safe area behind, squashing the whole list and stranding the bar mid-screen; so the list ignores the
+/// keyboard and makes its own room: a bottom margin the keyboard's height, and the box being typed in scrolled clear.
+struct KeyboardRoom: ViewModifier {
+    var base: CGFloat
+    @State private var height: CGFloat = 0
+    @State private var field = Field()
+    final class Field { weak var view: UITextField? }
+
+    func body(content: Content) -> some View {
+        GeometryReader { geo in
+            content
+                .contentMargins(.bottom, base + max(0, height - geo.safeAreaInsets.bottom), for: .scrollContent)
+        }
+        .ignoresSafeArea(.keyboard)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { n in
+            guard let f = n.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+            height = max(0, UIScreen.main.bounds.height - f.minY)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in height = 0 }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in reveal() }
+        .onReceive(NotificationCenter.default.publisher(for: UITextField.textDidBeginEditingNotification)) { n in
+            field.view = n.object as? UITextField
+            if height > 0 { reveal() }
+        }
+        // put the keyboard away when the phone locks or the app goes behind, so nothing is left half-shown on return
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            height = 0
+        }
+    }
+
+    private func reveal() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            guard let tf = field.view, tf.isFirstResponder else { return }
+            var v = tf.superview
+            while let s = v, !(s is UIScrollView) { v = s.superview }
+            guard let scroll = v as? UIScrollView else { return }
+            scroll.scrollRectToVisible(tf.convert(tf.bounds, to: scroll).insetBy(dx: 0, dy: -24), animated: true)
+        }
+    }
+}
+
 extension View {
     func keyboardLift() -> some View { modifier(KeyboardLift()) }
+    func keyboardRoom(_ base: CGFloat) -> some View { modifier(KeyboardRoom(base: base)) }
 
     /// Tapping into a box puts the cursor after the number, wherever the tap landed (the numbers sit on the right of
     /// a wide box, so a tap usually lands on the empty left and the cursor ended up in front of the digits).

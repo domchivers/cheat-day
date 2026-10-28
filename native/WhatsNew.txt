@@ -1,4 +1,4 @@
-New in this build: the Plan button gives meal ideas sized for one meal, not the whole day.
+New in this build: the workout timer bar stays at the bottom after you lock the phone mid-workout.
 
 Thanks for testing! Please just use it like a normal day:
 
