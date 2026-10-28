@@ -12,11 +12,11 @@ final class RankTests: XCTestCase {
     }
 
     func testRankNames() {
-        XCTAssertEqual(Rank(level: 1).name, "Crumb I")
-        XCTAssertEqual(Rank(level: 6).name, "Toast III")
-        XCTAssertEqual(Rank(level: 7).name, "Dumpling I")
+        XCTAssertEqual(Rank(level: 1).name, "Starter I")
+        XCTAssertEqual(Rank(level: 6).name, "Steady III")
+        XCTAssertEqual(Rank(level: 7).name, "Committed I")
+        XCTAssertEqual(Rank(level: 13).name, "Elite I")
         XCTAssertEqual(Rank(level: 16).name, "Legend")
         XCTAssertEqual(Rank(level: 30).name, "Legend")
-        XCTAssertEqual(Rank(level: 9).key, "dumpling")
     }
 }

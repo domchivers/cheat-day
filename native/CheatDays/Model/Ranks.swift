@@ -1,25 +1,25 @@
 import SwiftUI
 
-/// A rank: six food tiers with three steps each (Legend has none), built on the website's XP and levels so both always agree.
+/// A rank: six tiers with three steps each (Legend has none), built on the website's XP and levels so both always agree.
 struct Rank: Equatable {
-    static let tiers = ["Crumb", "Toast", "Dumpling", "Burger", "Feast", "Legend"]
+    static let tiers = ["Starter", "Steady", "Committed", "Strong", "Elite", "Legend"]
     let level: Int
     var tier: Int { min(5, (level - 1) / 3) }
     var step: Int? { tier == 5 ? nil : (level - 1) % 3 + 1 }
-    var key: String { Self.tiers[tier].lowercased() }
     var tierName: String { Self.tiers[tier] }
     var name: String { step.map { "\(tierName) \(["I", "II", "III"][$0 - 1])" } ?? tierName }
 
+    /// The badge's logo and outline, cool slate up through the app's blues to violet, and gold for Legend.
     var color: Color { Self.colors[tier].0 }
+    /// The badge's tile.
     var dark: Color { Self.colors[tier].1 }
-    var light: Color { Self.colors[tier].2 }
-    private static let colors: [(Color, Color, Color)] = [
-        (Color(red: 0.79, green: 0.59, blue: 0.36), Color(red: 0.36, green: 0.24, blue: 0.13), Color(red: 0.93, green: 0.78, blue: 0.58)),
-        (Color(red: 0.62, green: 0.72, blue: 0.82), Color(red: 0.30, green: 0.36, blue: 0.43), Color(red: 0.88, green: 0.92, blue: 0.96)),
-        (Color(red: 0.36, green: 0.79, blue: 0.65), Color(red: 0.06, green: 0.33, blue: 0.29), Color(red: 0.70, green: 0.95, blue: 0.85)),
-        (Color(red: 0.94, green: 0.47, blue: 0.29), Color(red: 0.45, green: 0.17, blue: 0.08), Color(red: 1.0, green: 0.76, blue: 0.58)),
-        (Color(red: 0.62, green: 0.55, blue: 0.94), Color(red: 0.24, green: 0.20, blue: 0.52), Color(red: 0.85, green: 0.81, blue: 1.0)),
-        (Color(red: 0.98, green: 0.78, blue: 0.46), Color(red: 0.48, green: 0.33, blue: 0.05), Color(red: 1.0, green: 0.93, blue: 0.70))
+    private static let colors: [(Color, Color)] = [
+        (Color(red: 0.545, green: 0.608, blue: 0.690), Color(red: 0.106, green: 0.133, blue: 0.169)),
+        (Color(red: 0.357, green: 0.561, blue: 0.839), Color(red: 0.078, green: 0.133, blue: 0.227)),
+        (Color(red: 0.247, green: 0.714, blue: 0.851), Color(red: 0.051, green: 0.165, blue: 0.200)),
+        (Color(red: 0.486, green: 0.769, blue: 1.000), Color(red: 0.071, green: 0.188, blue: 0.290)),
+        (Color(red: 0.616, green: 0.549, blue: 0.941), Color(red: 0.133, green: 0.114, blue: 0.271)),
+        (Color(red: 0.949, green: 0.710, blue: 0.361), Color(red: 0.227, green: 0.165, blue: 0.051))
     ]
 
     /// The first level of each tier, for the ladder.

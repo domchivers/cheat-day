@@ -1,20 +1,17 @@
 import SwiftUI
 
-/// A rank's badge: the art from design/rank-art when it's in the app, else a drawn shield in the rank's colours.
+/// A rank's badge: the app's logo on a little app-icon tile, both in the rank's colours.
 struct RankBadge: View {
     let rank: Rank
     var size: CGFloat = 40
     var body: some View {
-        if UIImage(named: "rank-\(rank.key)") != nil {
-            Image("rank-\(rank.key)").resizable().scaledToFit().frame(width: size, height: size)
-        } else {
-            ZStack {
-                Image(systemName: "shield.fill").resizable().scaledToFit().foregroundStyle(rank.dark)
-                Image(systemName: "shield").resizable().scaledToFit().foregroundStyle(rank.color)
-                Text(String(rank.tierName.prefix(1))).font(.system(size: size * 0.36, weight: .heavy, design: .rounded)).foregroundStyle(rank.light)
-            }
-            .frame(width: size, height: size)
+        let tile = RoundedRectangle(cornerRadius: size * 0.24, style: .continuous)
+        ZStack {
+            tile.fill(rank.dark)
+            tile.strokeBorder(rank.color, lineWidth: max(1.5, size * 0.035))
+            LogoMark().fill(rank.color).frame(width: size * 0.64, height: size * 0.34)
         }
+        .frame(width: size, height: size)
     }
 }
 
