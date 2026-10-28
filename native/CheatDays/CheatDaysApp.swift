@@ -23,6 +23,7 @@ struct CheatDaysApp: App {
 struct RootView: View {
     var body: some View {
         if ProcessInfo.processInfo.arguments.contains("-uitest-assistant") { AssistantHarness() }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-session") { SessionHarness() }
         else if Supabase.shared.session == nil { SignInView() } else { MainTabs() }
     }
 }
@@ -33,6 +34,19 @@ private struct AssistantHarness: View {
     var body: some View {
         Button("Open assistant") { open = true }.accessibilityIdentifier("openAssistant")
             .sheet(isPresented: $open) { AssistantView(meal: "Lunch", firstQuestion: "") }
+    }
+}
+
+/// For the timer bar UI test only: a session with a sample workout inside a tab, the way Workouts shows it, no sign-in.
+private struct SessionHarness: View {
+    var body: some View {
+        TabView {
+            NavigationStack {
+                SessionView(sample: LiveSession(startedAt: Double(nowMs()), name: "Legs", routineId: nil, exercises:
+                    ["Squat", "Leg press", "Calf raises"].map { n in LiveExercise(name: n, sets: (0..<4).map { _ in LiveSet(reps: 10, kg: 100) }) }))
+            }
+            .tabItem { Label("Workouts", systemImage: "dumbbell") }
+        }
     }
 }
 

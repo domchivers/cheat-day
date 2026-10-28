@@ -18,8 +18,8 @@ struct SessionView: View {
     @Environment(\.dismiss) private var dismiss
     private var store: Store { Store.shared }
 
-    init() {
-        _s = State(initialValue: Store.shared.session ?? LiveSession(startedAt: Double(nowMs()), name: "", routineId: nil, exercises: []))
+    init(sample: LiveSession? = nil) {
+        _s = State(initialValue: sample ?? Store.shared.session ?? LiveSession(startedAt: Double(nowMs()), name: "", routineId: nil, exercises: []))
     }
 
     private var nextSetId: UUID? { s.next.map { s.exercises[$0.ex].sets[$0.set].id } }
@@ -53,6 +53,7 @@ struct SessionView: View {
         .environment(\.editMode, .constant(reordering ? .active : .inactive))
         // pinned to the bottom whatever the keyboard does: the list ignores the keyboard and makes its own room, as
         // after a lock with the keyboard up the keyboard's safe area could be left behind with the bar mid-screen
+        .accessibilityIdentifier("sessionList")
         .overlay(alignment: .bottom) { timerBar }
         .keyboardRoom(76)
         .scrollDismissesKeyboard(.interactively)
@@ -153,6 +154,7 @@ struct SessionView: View {
         }
         .padding(.horizontal, 18).padding(.vertical, 12)
         .background(.regularMaterial, in: Capsule())
+        .accessibilityElement(children: .contain).accessibilityIdentifier("timerBar")
         .padding(.horizontal, 12).padding(.bottom, 6)
     }
 
@@ -361,6 +363,7 @@ struct SetRow: View {
         HStack(spacing: 4) {
             TextField(placeholder, text: text)
                 .keyboardType(.decimalPad)
+                .accessibilityIdentifier("box-" + field)
                 .multilineTextAlignment(.trailing)
                 .font(.body.weight(.semibold).monospacedDigit())
             Text(placeholder).font(.caption).foregroundStyle(.secondary)
