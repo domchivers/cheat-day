@@ -68,6 +68,7 @@ struct MealPlannerView: View {
                     ForEach(ideas.indices, id: \.self) { i in idea(ideas[i]) }
                     Button { cheat = true } label: { Label("Plan your cheat day", systemImage: "arrow.right").font(.subheadline.weight(.semibold)) }
                         .frame(maxWidth: .infinity).padding(.top, 10)
+                        .id("link")
                 }
                 .padding(20)
             }
@@ -75,7 +76,7 @@ struct MealPlannerView: View {
             .onChange(of: typing) { _, t in
                 guard t else { return }
                 // the keyboard would cover the button under the box: bring it up with the box
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { withAnimation { proxy.scrollTo("go", anchor: .bottom) } }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { withAnimation { proxy.scrollTo(ideas.isEmpty ? "link" : "go", anchor: .bottom) } }
             }
             }
             .background(Theme.bg.ignoresSafeArea())

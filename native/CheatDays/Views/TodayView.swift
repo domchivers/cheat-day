@@ -499,7 +499,7 @@ struct TodayView: View {
                     if offset == 0 && lines.count >= 2 {
                         // where Same as yesterday sits on an empty meal
                         Button { mealName = "My \(meal.lowercased())"; savingMeal = meal } label: {
-                            Label("Save as meal", systemImage: "bookmark").font(.caption.weight(.bold)).lineLimit(1)
+                            Label("Save as meal", systemImage: "bookmark").font(.caption.weight(.bold)).lineLimit(1).fixedSize()   // never squeezed to "Save as m…"
                         }
                         .accessibilityLabel("Save this \(meal.lowercased()) as a meal")
                         .buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.small).textCase(nil)

@@ -87,8 +87,8 @@ struct DailyTipsSheet: View {
                     .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 6)
             }
             .buttonStyle(.borderedProminent).foregroundStyle(.black)
-            .id("go")
             Text("Leave the fridge empty for ideas from anything. You can also snap your fridge in the chat.").font(.caption).foregroundStyle(.secondary)
+                .id("go")   // scrolled to with the keyboard up, so the button sits clear of it with room to spare
         }
         .padding(14)
         .background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
