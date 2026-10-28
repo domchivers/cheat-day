@@ -178,6 +178,29 @@ struct PizzaSlice: Shape {
     }
 }
 
+/// The app's logo mark, traced from the icon: a stadium ring cut by two slashes into a C and a D.
+/// Measured on the 1199 px source (the mark spans 257...920 by 474...826), so it draws true at any size.
+struct LogoMark: Shape {
+    func path(in rect: CGRect) -> Path {
+        let w0: CGFloat = 663, h0: CGFloat = 352, t: CGFloat = 89
+        let s = min(rect.width / w0, rect.height / h0)
+        let ox = rect.midX - w0 * s / 2, oy = rect.midY - h0 * s / 2
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: ox + (x - 257) * s, y: oy + (y - 474) * s) }
+        let outer = Path(roundedRect: CGRect(origin: p(257, 474), size: CGSize(width: w0 * s, height: h0 * s)), cornerRadius: h0 * s / 2)
+        let inner = Path(roundedRect: CGRect(origin: p(257 + t, 474 + t), size: CGSize(width: (w0 - 2 * t) * s, height: (h0 - 2 * t) * s)),
+                         cornerRadius: (h0 - 2 * t) * s / 2)
+        // the slashes: parallel, 52 wide, the top one further right
+        func slash(_ x: CGFloat, _ y: CGFloat, _ y1: CGFloat, _ y2: CGFloat) -> Path {
+            let lx = { (yy: CGFloat) in x - 0.6 * (yy - y) }
+            var g = Path()
+            g.move(to: p(lx(y1), y1)); g.addLine(to: p(lx(y1) + 52, y1)); g.addLine(to: p(lx(y2) + 52, y2)); g.addLine(to: p(lx(y2), y2))
+            g.closeSubpath()
+            return g
+        }
+        return outer.subtracting(inner).subtracting(slash(597.5, 518, 440, 600)).subtracting(slash(527, 780, 700, 860))
+    }
+}
+
 struct PizzaIcon: View {
     var size: CGFloat = 22
     var color: Color = Theme.warn

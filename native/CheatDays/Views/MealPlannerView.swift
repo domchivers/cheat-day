@@ -1,0 +1,175 @@
+import SwiftUI
+
+extension Store {
+    /// What you've had at a meal over the last four weeks, most often first: the planner's sense of your style
+    /// (Asian dinners, toast breakfasts) and the ingredients you already buy.
+    func mealHistory(_ meal: String, days: Int = 28) -> [(name: String, days: Int, kcal: Double)] {
+        let since = DayKey.shift(today, days: -days)
+        let all: [(String, [JSON])] = [(today, todayItems)] + list(doc["history"]).filter { str($0["date"]) >= since && str($0["date"]) < today }.map { (str($0["date"]), list($0["items"])) }
+        var seen: [String: (name: String, days: Set<String>, kcal: Double)] = [:]
+        for (date, items) in all {
+            for it in items where Meals.of(it) == meal {
+                let n = str(it["name"]).trimmingCharacters(in: .whitespaces)
+                guard !n.isEmpty else { continue }
+                var e = seen[n.lowercased(), default: (n, [], 0)]
+                e.days.insert(date); e.kcal = max(e.kcal, num(it["kcal"]) ?? 0)
+                seen[n.lowercased()] = e
+            }
+        }
+        return seen.values.sorted { ($0.days.count, $1.name) > ($1.days.count, $0.name) }.map { ($0.name, $0.days.count, $0.kcal) }
+    }
+}
+
+/// The Plan button on a normal day: the meal it's time for, what you usually have then (with a lighter pick where
+/// there is one), how much cooking you fancy and what's in the fridge, then ideas in your usual style to log or cook.
+struct MealPlannerView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var meal = Meals.byTime(Calendar.current.component(.hour, from: Date())) == "Snacks" ? "Dinner" : Meals.byTime(Calendar.current.component(.hour, from: Date()))
+    @State private var cooking = ""
+    @AppStorage("pantry") private var pantry = ""
+    @State private var ideas: [JSON] = []
+    @State private var busy = false
+    @State private var problem: String?
+    @State private var added: Set<String> = []
+    @State private var open: IdeaRef?
+    @State private var cheat = false
+    @FocusState private var typing: Bool
+    private var store: Store { Store.shared }
+
+    private static let cookChoices = ["No cooking", "Quick, 15 min", "Happy to cook"]
+    private var left: Double { max(0, store.budgetToday - store.eaten) }
+    private var proteinLeft: Double? { store.proteinGoal.map { max(0, $0 - store.macros(store.todayItems).p) } }
+    private var history: [(name: String, days: Int, kcal: Double)] { store.mealHistory(meal) }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    Picker("Meal", selection: $meal) { ForEach(["Breakfast", "Lunch", "Dinner"], id: \.self) { Text($0).tag($0) } }
+                        .pickerStyle(.segmented)
+                        .onChange(of: meal) { _, _ in ideas = []; problem = nil }
+                    Text("\(Fmt.int(left)) kcal left\(proteinLeft.map { " · \(Int($0)) g protein to go" } ?? "")")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                    usual
+                    Eyebrow(text: "How much cooking?", color: Theme.heroLabel).padding(.top, 4)
+                    Flow { ForEach(Self.cookChoices, id: \.self) { c in Chip(text: c, on: cooking == c) { cooking = c } } }
+                    Eyebrow(text: "In your fridge and cupboard", color: Theme.heroLabel).padding(.top, 4)
+                    TextField("chicken, rice, peppers, eggs, feta", text: $pantry, axis: .vertical)
+                        .lineLimit(2...4).focused($typing)
+                        .padding(12).background(Theme.hero, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    Button { typing = false; Task { await suggest() } } label: {
+                        Label(busy ? "Thinking…" : pantry.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Give me ideas" : "What can I make?", systemImage: "sparkles")
+                            .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 8)
+                    }
+                    .buttonStyle(.borderedProminent).foregroundStyle(.black).disabled(busy)
+                    if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn) }
+                    ForEach(ideas.indices, id: \.self) { i in idea(ideas[i]) }
+                    Button { cheat = true } label: { Label("Plan your cheat day", systemImage: "arrow.right").font(.subheadline.weight(.semibold)) }
+                        .frame(maxWidth: .infinity).padding(.top, 10)
+                }
+                .padding(20)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .background(Theme.bg.ignoresSafeArea())
+            .navigationTitle("Plan \(meal.lowercased())").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .sheet(item: $open) { r in RecipeSheet(idea: r.idea) }
+            .sheet(isPresented: $cheat) { CheatDayView().presentationDragIndicator(.visible) }
+            .onAppear {
+                if cooking.isEmpty {
+                    switch str(store.habits["cook"]) { case "love": cooking = Self.cookChoices[2]; case "hate": cooking = Self.cookChoices[0]; default: cooking = Self.cookChoices[1] }
+                }
+            }
+        }
+    }
+
+    /// What you usually have at this meal, each with a lighter pick from the food list when there's a real saving.
+    @ViewBuilder private var usual: some View {
+        let top = history.filter { $0.days >= 2 }.prefix(3)
+        if !top.isEmpty {
+            Eyebrow(text: "You usually have", color: Theme.heroLabel).padding(.top, 4)
+            VStack(spacing: 0) {
+                ForEach(Array(top.enumerated()), id: \.offset) { i, h in
+                    let pick = Swaps.pick(for: h.name, kcal: h.kcal)
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack {
+                            FoodDot(name: h.name, size: 26)
+                            Text(h.name).font(.subheadline.weight(.semibold)).lineLimit(1)
+                            Spacer()
+                            Text("\(h.days)× in 4 weeks").font(.caption).foregroundStyle(.secondary)
+                        }
+                        if let p = pick {
+                            Label("Try \(p.name): saves \(Fmt.int(p.saves)) kcal. \(p.why).", systemImage: "arrow.triangle.swap")
+                                .font(.caption).foregroundStyle(Theme.accent)
+                        }
+                    }
+                    .padding(12)
+                    if i < top.count - 1 { Divider().padding(.leading, 12) }
+                }
+            }
+            .background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+    }
+
+    private func idea(_ m: JSON) -> some View {
+        let name = str(m["name"]), kcal = (num(m["kcal"]) ?? 0).rounded()
+        return HStack(spacing: 12) {
+            Button { open = IdeaRef(id: name, idea: m) } label: {
+                HStack(spacing: 12) {
+                    FoodDot(name: name, size: 36)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(name).font(.subheadline.weight(.bold)).multilineTextAlignment(.leading)
+                        Text("\(Fmt.int(kcal)) kcal · \(Int(num(m["protein"]) ?? 0)) g protein\(num(m["minutes"]).map { " · \(Int($0)) min" } ?? "") · recipe")
+                            .font(.caption).foregroundStyle(.secondary)
+                        if !str(m["why"]).isEmpty { Text(str(m["why"])).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.leading) }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            Button {
+                store.add(Assistant.basis(name: name, kcal: kcal, grams: nil, p: num(m["protein"]) ?? 0, c: num(m["carbs"]) ?? 0, f: num(m["fat"]) ?? 0), kcal: kcal, meal: meal)
+                withAnimation { _ = added.insert(name) }
+            } label: {
+                Image(systemName: added.contains(name) ? "checkmark.circle.fill" : "plus.circle.fill").font(.system(size: 28)).foregroundStyle(Theme.accent)
+            }
+            .buttonStyle(.borderless).disabled(added.contains(name))
+            .accessibilityLabel("Add \(name) to \(meal.lowercased())")
+        }
+        .padding(12)
+        .background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func suggest() async {
+        busy = true; problem = nil
+        defer { busy = false }
+        let had = history.prefix(20).map { "\($0.name) (\($0.days)×)" }.joined(separator: ", ")
+        let cuisines = (store.habits["cuisines"] as? [String] ?? []).joined(separator: ", ")
+        let cook = cooking == Self.cookChoices[0] ? "No cooking: assembling, shop-bought or a microwave only."
+                 : cooking == Self.cookChoices[2] ? "Happy to cook properly." : "Quick: 15 minutes or so."
+        let have = pantry.trimmingCharacters(in: .whitespacesAndNewlines)
+        let schema: JSON = ["type": "object", "properties": [
+            "ideas": ["type": "array", "items": ["type": "object", "properties": [
+                "name": ["type": "string"] as JSON, "kcal": ["type": "number"] as JSON, "protein": ["type": "number"] as JSON,
+                "carbs": ["type": "number"] as JSON, "fat": ["type": "number"] as JSON, "minutes": ["type": "number"] as JSON,
+                "why": ["type": "string", "description": "Under 14 words: why it suits them"] as JSON
+            ] as JSON, "required": ["name", "kcal", "protein", "carbs", "fat", "minutes", "why"]] as JSON] as JSON
+        ] as JSON, "required": ["ideas"]]
+        let prompt = """
+        Suggest 3 \(meal.lowercased()) ideas for someone in \(Plan.country), one portion each.
+        They have \(Int(left)) kcal left today\(proteinLeft.map { " and \(Int($0)) g protein to go" } ?? ""). Each idea must fit what's left, and lean high in protein.
+        What they've actually had for \(meal.lowercased()) over the last 4 weeks: \(had.isEmpty ? "nothing logged yet" : had).
+        Match that style: if it's mostly one cuisine (Asian dinners, say), stay in it and use the ingredients and dishes they clearly buy, just lighter or better balanced. One idea can be a healthier take on something they have often.
+        Cuisines they like: \(cuisines.isEmpty ? "not said" : cuisines). \(cook)
+        \(have.isEmpty ? "" : "They have in: \(have). Make the ideas mostly from that, plus staples like oil, salt, sauces and spices.")
+        Real dish names, numbers from standard reference values.
+        """
+        do {
+            let a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: true, tries: 3)
+            let got = list(a["ideas"]).map { i -> JSON in var c = i; c["meal"] = meal; return c }
+            withAnimation(.snappy) { ideas = got }
+            if got.isEmpty { problem = "No ideas came back. Try again." }
+        } catch { problem = error.localizedDescription }
+    }
+}

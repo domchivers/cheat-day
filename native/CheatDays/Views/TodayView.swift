@@ -33,6 +33,7 @@ struct TodayView: View {
     @State private var showPast = false
     @State private var showCheckIn = false
     @State private var showCheat = false
+    @State private var showPlanner = false
     @State private var rankUp: Rank?
     @State private var badgeNote: String?
     @AppStorage("today.more") private var moreOpen = false
@@ -190,6 +191,7 @@ struct TodayView: View {
                 daily = r
             }
             .sheet(isPresented: $showCheat) { CheatDayView().presentationDragIndicator(.visible) }
+            .sheet(isPresented: $showPlanner) { MealPlannerView().presentationDragIndicator(.visible) }
             .fullScreenCover(isPresented: Binding(get: { rankUp != nil }, set: { if !$0 { rankUp = nil } })) {
                 if let r = rankUp { RankUpView(rank: r) { rankUp = nil } }
             }
@@ -407,17 +409,18 @@ struct TodayView: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// The pizza in the panel's corner: plan your cheat day (or pick one).
+    /// The logo in the panel's corner: plan your next meal, or on the cheat day itself, plan the day (cheekily).
     private var cheatButton: some View {
         let isToday = store.nextCheat?.date == store.today
-        return Button { showCheat = true } label: {
-            // the same dark circle as the day arrows, the pizza in the app's blue (amber on the day itself)
-            PizzaIcon(size: 20, color: isToday ? Theme.warn : Theme.accent).scaleEffect(y: -1)
+        return Button { if isToday { showCheat = true } else { showPlanner = true } } label: {
+            // the same dark circle as the day arrows, the logo in the app's blue (amber on the cheat day)
+            LogoMark().fill(isToday ? Theme.warn : Theme.accent)
+                .frame(width: 24, height: 13)
                 .frame(width: 40, height: 40)
                 .background(Color(.secondarySystemBackground), in: Circle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Plan your cheat day")
+        .accessibilityLabel(isToday ? "Plan your cheat day" : "Plan a meal")
     }
 
     private func note(_ text: String) {

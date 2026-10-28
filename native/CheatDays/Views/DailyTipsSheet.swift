@@ -93,9 +93,11 @@ struct DailyTipsSheet: View {
                  : cooking == Self.cookChoices[2] ? "I'm happy to cook properly."
                  : "Something quick, 15 minutes or so."
         let have = pantry.trimmingCharacters(in: .whitespacesAndNewlines)
-        return have.isEmpty
+        let usual = store.mealHistory(nextMeal).prefix(12).map(\.name).joined(separator: ", ")
+        let style = usual.isEmpty ? "" : " Lately I've had \(usual) for \(meal): keep to that sort of food, just better."
+        return (have.isEmpty
             ? "Help me with \(meal). \(cook) Give me 2 or 3 ideas that fit what I've got left today, with the calories and protein for each."
-            : "Help me with \(meal). \(cook) I've got: \(have). Give me 2 or 3 things I can make mostly from that (staples like oil, salt and spices are fine), that fit what I've got left today, with calories, protein and a short method."
+            : "Help me with \(meal). \(cook) I've got: \(have). Give me 2 or 3 things I can make mostly from that (staples like oil, salt and spices are fine), that fit what I've got left today, with calories, protein and a short method.") + style
     }
 
     private var greeting: String {

@@ -8,6 +8,7 @@ struct CheatDayView: View {
     @State private var newWhat = ""
     @State private var keepProtein = true
     @State private var training = true
+    @State private var cheeky = "Properly"
     @State private var busy = false
     @State private var problem: String?
     @State private var replan = false
@@ -84,6 +85,8 @@ struct CheatDayView: View {
                 Image(systemName: "plus.circle.fill").foregroundStyle(Theme.accent)
             }
             .padding(12).background(Theme.hero, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            label("How cheeky?")
+            Flow { ForEach(["A bit", "Properly", "Go wild"], id: \.self) { c in Chip(text: c, on: cheeky == c) { cheeky = c } } }
             VStack(spacing: 0) {
                 Toggle(isOn: $keepProtein) { VStack(alignment: .leading, spacing: 1) { Text("Still hit my protein"); Text("\(Int(store.proteinGoal ?? 0)) g").font(.caption).foregroundStyle(.secondary) } }
                     .padding(.vertical, 10)
@@ -130,6 +133,17 @@ struct CheatDayView: View {
                 }
                 .padding(14)
                 .background(big ? Color(red: 0.16, green: 0.13, blue: 0.07) : Theme.hero, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay {
+                    if s["extra"] as? Bool == true {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Theme.warn, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                    }
+                }
+                .overlay(alignment: .topTrailing) {
+                    if s["extra"] as? Bool == true {
+                        Text("Cheeky extra").font(.caption2.weight(.heavy)).foregroundStyle(Theme.warn).padding(.horizontal, 8).padding(.vertical, 3)
+                            .background(Theme.bg, in: Capsule()).offset(x: -14, y: -9)
+                    }
+                }
             }
             HStack {
                 Text("About \(Fmt.int(kcal)) kcal").font(.subheadline.weight(.bold))
@@ -177,8 +191,9 @@ struct CheatDayView: View {
                 "detail": ["type": "string", "description": "Under 22 words: what to have, or the move that makes it better"] as JSON,
                 "kcal": ["type": "number"] as JSON,
                 "protein": ["type": "number"] as JSON,
-                "workout": ["type": "boolean"] as JSON
-            ] as JSON, "required": ["time", "title", "detail", "kcal", "protein", "workout"]] as JSON] as JSON,
+                "workout": ["type": "boolean"] as JSON,
+                "extra": ["type": "boolean", "description": "true for the one cheeky extra treat added because there's room"] as JSON
+            ] as JSON, "required": ["time", "title", "detail", "kcal", "protein", "workout", "extra"]] as JSON] as JSON,
             "tips": ["type": "array", "items": ["type": "string"] as JSON, "description": "3 short tips, under 16 words each"] as JSON
         ] as JSON, "required": ["title", "slots", "tips"]]
         let prompt = """
@@ -188,12 +203,15 @@ struct CheatDayView: View {
         What's on: \(whats.isEmpty ? "nothing fixed, suggest a great day around the foods they love" : whats.sorted().joined(separator: ", ")).
         Foods they love: \(loves.isEmpty ? "not said" : loves). Cuisines: \(cuisines.isEmpty ? "anything" : cuisines). Never include: \(avoid.isEmpty ? "nothing" : avoid).
         \(training ? "Include one workout slot (workout true, kcal 0) before the biggest meal\(workout.map { ": their plan has \($0) that day" } ?? ", ideally legs or full body"). The big meal after training helps recovery." : "No workout today.")
+        How cheeky: \(cheeky). \(cheeky == "A bit" ? "Treats, but sensible portions and some lighter picks." : cheeky == "Go wild" ? "Go big and indulgent: the full fat, the extra side, dessert, a proper shake. Off the books, have fun with it." : "Proper treats, no lighter swaps unless they really don't cost the fun.")
+        If there's room left in the budget, add one cheeky extra treat slot (extra true): a shake, dessert, a pastry, something fun, and say there's room for it.
+        What they normally have for dinner lately: \(store.mealHistory("Dinner").prefix(8).map(\.name).joined(separator: ", ")). Lean into those cuisines unless what's on says otherwise.
         4 to 6 slots. Name real dishes and orders from those places, with smart choices that keep the fun (e.g. which yum cha dishes give most for the calories, spirits with soda over pints).
         Tips: hydration, sleep, and getting straight back to normal tomorrow. Never suggest skipping meals the next day or making up for it.
         """
         do {
             var a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: false)
-            a["kind"] = kind; a["whats"] = whats.sorted(); a["at"] = ISO.now()
+            a["kind"] = kind; a["whats"] = whats.sorted(); a["cheeky"] = cheeky; a["at"] = ISO.now()
             store.perform(["type": "cheatPlan", "date": next.date, "plan": a])
             withAnimation(.snappy) { replan = false }
         } catch { problem = error.localizedDescription }
