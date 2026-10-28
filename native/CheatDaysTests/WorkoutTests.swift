@@ -70,6 +70,36 @@ final class WorkoutTests: XCTestCase {
         XCTAssertNil(d["budget"].flatMap { num($0) == 99 ? $0 : nil }, "the budget isn't a setting this operation may change")
     }
 
+    func testRoutineChangesAreTheBigOnesOnly() {
+        let routine: JSON = ["id": "r1", "name": "Chest", "exercises": [
+            ["exercise": "Bench press", "sets": 3, "reps": 8, "kg": 80] as JSON,
+            ["exercise": "Flyes", "sets": 3, "reps": 12, "kg": 20] as JSON]]
+        let s = LiveSession(startedAt: 0, name: "Chest", routineId: "r1", exercises: [
+            LiveExercise(name: "Bench press", sets: (0..<4).map { _ in LiveSet(reps: 6, kg: 85, done: true) }),
+            LiveExercise(name: "Incline press", sets: (0..<3).map { _ in LiveSet(reps: 10, kg: 60) })])
+        let ex = Store.routineExercises(s)
+        XCTAssertEqual(ex.map { str($0["exercise"]) }, ["Bench press", "Incline press"])
+        XCTAssertEqual(num(ex[0]["kg"]), 85)
+        XCTAssertEqual(Store.routineChanges(from: routine, to: ex, name: "Chest"),
+                       ["Added Incline press", "Dropped Flyes", "Bench press: 4 sets (was 3)"])
+        // heavier and fewer reps on the same plan is no change: the routine just keeps up
+        let same = LiveSession(startedAt: 0, name: "Chest", routineId: "r1", exercises: [
+            LiveExercise(name: "Bench press", sets: (0..<3).map { _ in LiveSet(reps: 6, kg: 90) }),
+            LiveExercise(name: "flyes", sets: (0..<3).map { _ in LiveSet(reps: 12, kg: 22) })])
+        XCTAssertEqual(Store.routineChanges(from: routine, to: Store.routineExercises(same), name: "Chest"), [])
+        XCTAssertEqual(Store.routineChanges(from: routine, to: Store.routineExercises(same), name: "Push day"), ["Renamed to Push day"])
+    }
+
+    func testUpdatingARoutineKeepsItsPlaceAndId() {
+        var d = record()
+        d["routines"] = [["id": "r1", "name": "Chest", "exercises": [Any]()] as JSON, ["id": "r2", "name": "Legs", "exercises": [Any]()] as JSON]
+        Store.apply(["type": "updateRoutine", "routine": ["id": "r1", "name": "Chest and tris", "exercises": [["exercise": "Dips", "sets": 3] as JSON]] as JSON], to: &d, today: today)
+        let rs = list(d["routines"])
+        XCTAssertEqual(rs.map { str($0["id"]) }, ["r1", "r2"])
+        XCTAssertEqual(str(rs[0]["name"]), "Chest and tris")
+        XCTAssertEqual(list(rs[0]["exercises"]).count, 1)
+    }
+
     func testOneRepMaxEstimate() {
         XCTAssertEqual(Store.est(kg: 100, reps: 5), 117)
         XCTAssertEqual(Store.est(kg: 0, reps: 12), 0)

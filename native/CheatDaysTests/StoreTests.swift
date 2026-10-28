@@ -77,6 +77,31 @@ final class StoreTests: XCTestCase {
         XCTAssertEqual(list(d["history"]).count, 1)
     }
 
+    func testFoodLoggedAfterTheDayWasFiledJoinsIt() {
+        // the website (or another phone) filed the day with breakfast only; this one carried on and logged dinner
+        var d = record()
+        d["history"] = [["date": today, "kcal": 400, "items": [["name": "Granola", "kcal": 400, "addedAt": "2026-10-09T07:00:00.000Z"] as JSON]] as JSON]
+        Store.ensureDay(&d, today: "2026-10-10")
+        let filed = list(d["history"])
+        XCTAssertEqual(filed.count, 1)
+        XCTAssertEqual(Set(list(filed[0]["items"]).map { str($0["name"]) }), ["Granola", "Oats"])
+        XCTAssertEqual(num(filed[0]["kcal"]), 720)
+    }
+
+    func testTwoEntriesForOneDateBecomeOne() {
+        var d = record()
+        let breakfast: JSON = ["name": "Granola", "kcal": 400, "addedAt": "2026-10-08T07:00:00.000Z"]
+        let dinner: JSON = ["name": "Curry", "kcal": 900, "addedAt": "2026-10-08T19:00:00.000Z"]
+        d["history"] = [["date": "2026-10-08", "kcal": 400, "items": [breakfast]] as JSON,
+                        ["date": "2026-10-07", "kcal": 1500, "items": [Any]()] as JSON,
+                        ["date": "2026-10-08", "kcal": 1300, "items": [breakfast, dinner]] as JSON]
+        Store.apply(["type": "add", "item": item("b2", "Banana", 95)], to: &d, today: today)
+        let filed = list(d["history"])
+        XCTAssertEqual(filed.map { str($0["date"]) }, ["2026-10-08", "2026-10-07"])
+        XCTAssertEqual(list(filed[0]["items"]).count, 2, "the breakfast in both is kept once")
+        XCTAssertEqual(num(filed[0]["kcal"]), 1300)
+    }
+
     func testRecentKeepsFifteenPlusFavourites() {
         var d = record()
         d["favs"] = ["food 0|": ["on": true, "at": "x"] as JSON]

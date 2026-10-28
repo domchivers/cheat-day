@@ -14,6 +14,9 @@ struct SessionView: View {
     @State private var finished = false
     @State private var routineOffer: JSON?
     @State private var askShare: JSON?
+    @State private var routineUpdate: RoutineUpdate?
+    /// A session started from a routine that came out different: what changed, to ask whether the routine follows.
+    struct RoutineUpdate { let routine: JSON; let name: String; let exercises: [JSON]; let changes: [String]; let workout: JSON }
     @State private var forgotten = false
     @Environment(\.dismiss) private var dismiss
     private var store: Store { Store.shared }
@@ -117,6 +120,21 @@ struct SessionView: View {
             }
             Button("Not now", role: .cancel) { let w = routineOffer; routineOffer = nil; offerShare(w) }
         }
+        .confirmationDialog("You changed \(str(routineUpdate?.routine["name"])) today", isPresented: Binding(get: { routineUpdate != nil }, set: { if !$0, let u = routineUpdate { routineUpdate = nil; offerShare(u.workout) } }), titleVisibility: .visible) {
+            Button("Update the routine") {
+                if let u = routineUpdate { store.updateRoutine(u.routine, name: u.name, exercises: u.exercises) }
+                let w = routineUpdate?.workout; routineUpdate = nil; offerShare(w)
+            }
+            Button("Save as a new routine") {
+                if let u = routineUpdate {
+                    let old = str(u.routine["name"])
+                    store.saveRoutine(name: u.name.lowercased() == old.lowercased() ? "\(old) 2" : u.name, exercises: u.exercises)
+                }
+                let w = routineUpdate?.workout; routineUpdate = nil; offerShare(w)
+            }
+            Button("Keep it as it was", role: .cancel) { let w = routineUpdate?.workout; routineUpdate = nil; offerShare(w) }
+        } message: { Text((routineUpdate?.changes ?? []).joined(separator: "
+")) }
         .confirmationDialog("Show your workouts on the feed?", isPresented: Binding(get: { askShare != nil }, set: { if !$0 && askShare != nil { answerShare(false) } }), titleVisibility: .visible) {
             Button("Yes, show them") { answerShare(true) }
             Button("No, keep them to myself", role: .cancel) { answerShare(false) }
@@ -321,7 +339,14 @@ struct SessionView: View {
         let name = s.name.trimmingCharacters(in: .whitespaces).isEmpty ? (routineName ?? "Gym session") : s.name.trimmingCharacters(in: .whitespaces)
         finished = true
         let w = store.finish(s, minutes: minutes, name: name)
-        if s.routineId == nil && !list(w["lifts"]).isEmpty { routineOffer = w } else { offerShare(w) }
+        if let id = s.routineId, let r = store.routines.first(where: { str($0["id"]) == id }) {
+            // the routine keeps up with what you do: new weights and reps quietly, bigger changes when you say so
+            let exercises = Store.routineExercises(s)
+            let changes = Store.routineChanges(from: r, to: exercises, name: name)
+            if exercises.isEmpty { offerShare(w) }
+            else if changes.isEmpty { store.updateRoutine(r, name: str(r["name"]), exercises: exercises); offerShare(w) }
+            else { DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { routineUpdate = RoutineUpdate(routine: r, name: name, exercises: exercises, changes: changes, workout: w) } }
+        } else if !list(w["lifts"]).isEmpty { routineOffer = w } else { offerShare(w) }
     }
 }
 

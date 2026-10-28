@@ -214,11 +214,13 @@ final class Store {
 
     /// A new day starts clean; the old one is filed in History first (the web app's archiveDay).
     static func ensureDay(_ d: inout JSON, today: String) {
+        mergeHistory(&d)
         let day = dict(d["day"])
         if str(day["date"]) == today { return }
-        let history = list(d["history"])
         let date = str(day["date"])
-        if !date.isEmpty, !(list(day["items"]).isEmpty && list(day["workouts"]).isEmpty), !history.contains(where: { str($0["date"]) == date }) {
+        // filed even when History already has this date (another device or the website filed it first, or the
+        // late-night rule kept the day going): it joins that entry, where it used to be dropped
+        if !date.isEmpty, !(list(day["items"]).isEmpty && list(day["workouts"]).isEmpty) {
             archive(day, in: &d)
         }
         d["day"] = ["date": today, "items": [Any](), "workouts": [Any]()] as JSON
@@ -248,6 +250,40 @@ final class Store {
         var history = list(d["history"])
         history.insert(entry, at: 0)
         d["history"] = Array(history.prefix(400))
+        mergeHistory(&d)
+    }
+
+    /// History keeps one entry per date. A day filed twice (two devices, the website's own filing, the late-night
+    /// rule) left two, and only one was ever shown: part of the day's food went missing from it.
+    static func mergeHistory(_ d: inout JSON) {
+        let history = list(d["history"])
+        var seen = Set<String>()
+        guard history.contains(where: { !seen.insert(str($0["date"])).inserted }) else { return }
+        var order: [String] = [], byDate: [String: JSON] = [:]
+        for h in history {
+            let date = str(h["date"])
+            if let e = byDate[date] { byDate[date] = joined(e, h) } else { order.append(date); byDate[date] = h }
+        }
+        d["history"] = order.compactMap { byDate[$0] }
+    }
+
+    /// Two entries for one date as one: every food and workout once, the totals worked out again.
+    static func joined(_ a: JSON, _ b: JSON) -> JSON {
+        func key(_ it: JSON) -> String { "\(str(it["name"]))|\(Int((num(it["kcal"]) ?? 0).rounded()))|\(str(it["addedAt"]))" }
+        func workoutKey(_ w: JSON) -> String { "\(str(w["name"]))|\(Int((num(w["minutes"]) ?? 0).rounded()))|\(Int((num(w["kcal"]) ?? 0).rounded()))" }
+        var items = list(a["items"]), keys = Set(items.map(key))
+        for it in list(b["items"]) where keys.insert(key(it)).inserted { items.append(it) }
+        var workouts = list(a["workouts"]), workoutKeys = Set(workouts.map(workoutKey))
+        for w in list(b["workouts"]) where workoutKeys.insert(workoutKey(w)).inserted { workouts.append(w) }
+        var p = 0.0, c = 0.0, f = 0.0
+        for it in items { if let m = FoodMath.macros(it, kcal: num(it["kcal"]) ?? 0) { p += m.p; c += m.c; f += m.f } }
+        var e = a
+        e["items"] = items
+        e["workouts"] = workouts
+        e["kcal"] = items.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }
+        e["burned"] = workouts.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }
+        e["p"] = Int(p.rounded()); e["c"] = Int(c.rounded()); e["f"] = Int(f.rounded())
+        return e
     }
 
     /// Quick add learns from what you add (the web app's rememberRecent, preset and meal counts).

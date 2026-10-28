@@ -1,4 +1,4 @@
-New in this build: the workout timer bar stays at the bottom after you lock the phone mid-workout.
+New in this build: past days show everything you ate; routines keep up with the changes you make in a workout; the timer bar stays put after locking the phone.
 
 Thanks for testing! Please just use it like a normal day:
 

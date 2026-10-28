@@ -216,7 +216,14 @@ extension Store {
 
     func startSession(_ routine: JSON?) {
         let s = LiveSession(startedAt: Double(nowMs()), name: str(routine?["name"]), routineId: (routine?["id"] as? String),
-                            exercises: list(routine?["exercises"]).map { liveExercise(str($0["exercise"]), sets: num($0["sets"]), reps: num($0["reps"]), kg: num($0["kg"])) })
+                            exercises: list(routine?["exercises"]).map { r in
+                                var e = liveExercise(str(r["exercise"]), sets: num(r["sets"]), reps: num(r["reps"]), kg: num(r["kg"]))
+                                // the routine says how many sets; the weights come from the last time you did it
+                                if let n = num(r["sets"]).map({ Int(max(1, min(8, $0))) }), let last = e.sets.last, e.sets.count != n {
+                                    e.sets = n < e.sets.count ? Array(e.sets.prefix(n)) : e.sets + (e.sets.count..<n).map { _ in LiveSet(reps: last.reps, kg: last.kg) }
+                                }
+                                return e
+                            })
         saveSession(s)
     }
 
@@ -258,6 +265,46 @@ extension Store {
         perform(["type": "routine", "routine": ["id": uid(), "name": name, "exercises": exercises] as JSON])
     }
     func deleteRoutine(_ id: String) { perform(["type": "deleteRoutine", "id": id, "at": nowMs()]) }
+
+    /// The routine as a finished session did it: every exercise named, in the order done, with its sets, and the
+    /// reps and weight of the sets ticked (or all of them), so next time starts from today.
+    static func routineExercises(_ s: LiveSession) -> [JSON] {
+        s.exercises.compactMap { e in
+            let name = e.name.trimmingCharacters(in: .whitespaces)
+            guard !name.isEmpty, !e.sets.isEmpty else { return nil }
+            let done = e.sets.filter(\.done), used = done.isEmpty ? e.sets : done
+            return ["exercise": name, "sets": e.sets.count, "reps": max(1, (used.reduce(0) { $0 + $1.reps } / Double(used.count)).rounded()),
+                    "kg": used.map(\.kg).max() ?? 0, "detail": e.sets.map { ["reps": $0.reps, "kg": $0.kg] as JSON }]
+        }
+    }
+
+    /// What a session changed in the routine it started from: exercises added or dropped, how many sets, the order,
+    /// the name. Weights and reps aren't changes; they move on every week and the routine just keeps up with them.
+    static func routineChanges(from routine: JSON, to exercises: [JSON], name: String) -> [String] {
+        let before = list(routine["exercises"]).map { (name: str($0["exercise"]), sets: Int(num($0["sets"]) ?? 0)) }
+        let after = exercises.map { (name: str($0["exercise"]), sets: Int(num($0["sets"]) ?? 0)) }
+        let was = Set(before.map { $0.name.lowercased() }), now = Set(after.map { $0.name.lowercased() })
+        var out: [String] = []
+        if !name.isEmpty, name.lowercased() != str(routine["name"]).lowercased() { out.append("Renamed to \(name)") }
+        for e in after where !was.contains(e.name.lowercased()) { out.append("Added \(e.name)") }
+        for e in before where !now.contains(e.name.lowercased()) { out.append("Dropped \(e.name)") }
+        for e in after {
+            if let b = before.first(where: { $0.name.lowercased() == e.name.lowercased() }), b.sets > 0, b.sets != e.sets {
+                out.append("\(e.name): \(e.sets) set\(e.sets == 1 ? "" : "s") (was \(b.sets))")
+            }
+        }
+        let keptBefore = before.map { $0.name.lowercased() }.filter(now.contains), keptAfter = after.map { $0.name.lowercased() }.filter(was.contains)
+        if keptBefore != keptAfter { out.append("A new order") }
+        return out
+    }
+
+    /// The routine changed in place: same id, so it stays where it was in the list, under its new name if it has one.
+    func updateRoutine(_ routine: JSON, name: String, exercises: [JSON]) {
+        var r = routine
+        r["name"] = name.isEmpty ? str(routine["name"]) : name
+        r["exercises"] = exercises
+        perform(["type": "updateRoutine", "routine": r])
+    }
     func setRest(_ seconds: Int) { perform(["type": "set", "key": "restSeconds", "value": max(15, min(600, seconds))], syncAfter: 2) }
 
     // MARK: the workout operations
@@ -305,6 +352,12 @@ extension Store {
             let r = dict(op["routine"]), name = str(r["name"]).lowercased()
             var rs = list(d["routines"]).filter { str($0["name"]).lowercased() != name }
             rs.insert(r, at: 0)
+            d["routines"] = Array(rs.prefix(12))
+        case "updateRoutine":
+            let r = dict(op["routine"]), id = str(r["id"]), name = str(r["name"]).lowercased()
+            guard !id.isEmpty, dict(d["tombs"])["routine:\(id)"] == nil else { return }
+            var rs = list(d["routines"]).filter { str($0["id"]) == id || str($0["name"]).lowercased() != name }
+            if let i = rs.firstIndex(where: { str($0["id"]) == id }) { rs[i] = r } else { rs.insert(r, at: 0) }
             d["routines"] = Array(rs.prefix(12))
         case "deleteRoutine":
             let id = str(op["id"])

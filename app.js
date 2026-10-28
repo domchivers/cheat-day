@@ -4,7 +4,7 @@
  * entered an API key in Settings). */
 "use strict";
 
-const APP_VERSION = "164";   // keep in step with ?v= in index.html and CACHE in sw.js
+const APP_VERSION = "167";   // keep in step with ?v= in index.html and CACHE in sw.js
 const STORE_KEY = "cheatday.v1";
 const CLAUDE_MODEL = "claude-opus-5";
 const RECENT_MAX = 15;
@@ -260,8 +260,27 @@ function archiveDay() {
   const m = sumMacros(state.day.items);
   state.history.unshift({ date: state.day.date, budget: budgetToday(), kcal: usedKcal(), items: state.day.items.map((it) => ({ ...basisOf(it), kcal: it.kcal, shareLabel: it.shareLabel, addedAt: it.addedAt || null, meal: it.meal || null })),
     p: Math.round(m.p), c: Math.round(m.c), f: Math.round(m.f), burned: burnedKcal(), workouts: (state.day.workouts || []).map((w) => ({ name: w.name, type: w.type || null, effort: w.effort || null, minutes: w.minutes, kcal: w.kcal, lifts: w.lifts || [] })) });
+  mergeHistory();
   state.history = state.history.slice(0, 400);
   state.history.slice(14).forEach((h) => { if (Array.isArray(h.items)) h.items.forEach((it) => { delete it.photo; }); });
+}
+/** One History entry per date: a day filed twice (two devices, the late-night rule) used to show only half its food. */
+function mergeHistory() {
+  const seen = new Map(), out = [];
+  const key = (it) => `${it.name || ""}|${Math.round(+it.kcal || 0)}|${it.addedAt || ""}`;
+  const wkey = (w) => `${w.name || ""}|${Math.round(+w.minutes || 0)}|${Math.round(+w.kcal || 0)}`;
+  for (const h of state.history) {
+    const e = seen.get(h.date);
+    if (!e) { seen.set(h.date, h); out.push(h); continue; }
+    const ik = new Set((e.items || []).map(key)), wk = new Set((e.workouts || []).map(wkey));
+    e.items = (e.items || []).concat((h.items || []).filter((it) => !ik.has(key(it))));
+    e.workouts = (e.workouts || []).concat((h.workouts || []).filter((w) => !wk.has(wkey(w))));
+    const m = sumMacros(e.items);
+    e.kcal = e.items.reduce((a, it) => a + (+it.kcal || 0), 0);
+    e.burned = e.workouts.reduce((a, w) => a + (+w.kcal || 0), 0);
+    e.p = Math.round(m.p); e.c = Math.round(m.c); e.f = Math.round(m.f);
+  }
+  state.history = out;
 }
 // ---- the small hours: between midnight and 5am the day only rolls over when you say so (or at 5am)
 const LATE_END = 5;
