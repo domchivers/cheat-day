@@ -133,8 +133,7 @@ struct SessionView: View {
                 let w = routineUpdate?.workout; routineUpdate = nil; offerShare(w)
             }
             Button("Keep it as it was", role: .cancel) { let w = routineUpdate?.workout; routineUpdate = nil; offerShare(w) }
-        } message: { Text((routineUpdate?.changes ?? []).joined(separator: "
-")) }
+        } message: { Text((routineUpdate?.changes ?? []).joined(separator: "\n")) }
         .confirmationDialog("Show your workouts on the feed?", isPresented: Binding(get: { askShare != nil }, set: { if !$0 && askShare != nil { answerShare(false) } }), titleVisibility: .visible) {
             Button("Yes, show them") { answerShare(true) }
             Button("No, keep them to myself", role: .cancel) { answerShare(false) }
