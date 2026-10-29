@@ -38,6 +38,11 @@ struct RecipeSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var version = "authentic"
     @State private var done: String?
+    @AppStorage("recipe.swaps") private var swapsJSON = "{}"   // "recipe|version|ingredient" → your own food
+    @AppStorage("pantry.scans") private var scansJSON = "[]"
+    @State private var swapping: SwapRef?
+    @State private var scanFor: (index: Int, mode: PantryScanSheet.Mode)?
+    @State private var scanMode: PantryScanSheet.Mode?
     private var store: Store { Store.shared }
     private var maker: RecipeMaker { RecipeMaker.shared }
     private var recipe: JSON? { maker.recipe(for: idea) }
@@ -70,13 +75,52 @@ struct RecipeSheet: View {
             .background(Theme.bg.ignoresSafeArea())
             .navigationTitle("Recipe").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .sheet(item: $swapping) { s in
+                SwapPicker(original: s.name, grams: s.grams, cupboard: PantryItem.Saved.load(scansJSON)) { item in
+                    setSwap(s.index, item); swapping = nil
+                } scan: { mode in
+                    swapping = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { scanFor = (s.index, mode); scanMode = mode }
+                }
+                .presentationDetents([.medium, .large])
+            }
+            .sheet(item: $scanMode) { m in
+                PantryScanSheet(mode: m) { items in
+                    // scanned here: into the cupboard too, and the first one in place of the ingredient
+                    let names = Set(items.map { $0.name.lowercased() })
+                    scansJSON = PantryItem.Saved.save(items + PantryItem.Saved.load(scansJSON).filter { !names.contains($0.name.lowercased()) })
+                    if let i = scanFor?.index, let first = items.first { setSwap(i, first) }
+                    scanFor = nil
+                }
+            }
         }
         .onAppear { maker.make(idea) }
     }
 
+    private var swaps: [String: PantryItem] { (try? JSONDecoder().decode([String: PantryItem].self, from: Data(swapsJSON.utf8))) ?? [:] }
+    private func swapKey(_ i: Int) -> String { "\(str(idea["name"]))|\(version)|\(i)" }
+    private func setSwap(_ i: Int, _ item: PantryItem?) {
+        var all = swaps
+        all[swapKey(i)] = item
+        withAnimation(.snappy) { swapsJSON = String(data: (try? JSONEncoder().encode(all)) ?? Data("{}".utf8), encoding: .utf8) ?? "{}" }
+    }
+
+    /// The recipe's ingredients with your own foods swapped in: same grams, your label's numbers.
+    private func applied(_ ings: [JSON]) -> [JSON] {
+        let s = swaps
+        return ings.enumerated().map { i, g in
+            guard let item = s[swapKey(i)], let grams = pos(g["grams"]) else { return g }
+            var x = g
+            x["swappedFrom"] = str(g["name"]); x["name"] = item.name; x["amount"] = "\(Fmt.int(grams)) g"
+            x["kcal"] = item.kcal100 * grams / 100
+            x["protein_g"] = (item.p100 ?? 0) * grams / 100; x["carbs_g"] = (item.c100 ?? 0) * grams / 100; x["fat_g"] = (item.f100 ?? 0) * grams / 100
+            return x
+        }
+    }
+
     @ViewBuilder private func content(_ r: JSON) -> some View {
         let v = dict(r[version])
-        let ings = list(v["ingredients"]), steps = v["steps"] as? [String] ?? []
+        let ings = applied(list(v["ingredients"])), steps = v["steps"] as? [String] ?? []
         let portions = max(1, num(r["portions"]) ?? 1)
         let k = ings.reduce(0) { $0 + (num($1["kcal"]) ?? 0) } / portions
         let p = ings.reduce(0) { $0 + (num($1["protein_g"]) ?? 0) } / portions
@@ -106,16 +150,40 @@ struct RecipeSheet: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14).background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
-        Eyebrow(text: "Ingredients").padding(.top, 4)
+        HStack {
+            Eyebrow(text: "Ingredients")
+            Spacer()
+            Text("tap ⇄ to use your own").font(.caption).foregroundStyle(.secondary)
+        }
+        .padding(.top, 4)
         VStack(spacing: 0) {
             ForEach(ings.indices, id: \.self) { i in
-                let g = ings[i]
-                HStack {
-                    Text(str(g["name"])).font(.subheadline)
+                let g = ings[i], from = str(g["swappedFrom"])
+                HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(str(g["name"])).font(.subheadline)
+                            if !from.isEmpty {
+                                Text("YOUR LABEL").font(.caption2.weight(.heavy)).foregroundStyle(Self.green)
+                                    .padding(.horizontal, 5).padding(.vertical, 1).background(Self.green.opacity(0.14), in: RoundedRectangle(cornerRadius: 4))
+                            }
+                        }
+                        if !from.isEmpty {
+                            Button { setSwap(i, nil) } label: { Text("instead of \(from.lowercased()) · undo").font(.caption).foregroundStyle(.secondary) }
+                                .buttonStyle(.plain)
+                        }
+                    }
                     Spacer()
                     Text(str(g["amount"]).isEmpty ? "\(Int(num(g["grams"]) ?? 0)) g" : str(g["amount"])).font(.subheadline.weight(.semibold))
+                    if let grams = pos(g["grams"]) {
+                        Button { swapping = SwapRef(index: i, name: from.isEmpty ? str(g["name"]) : from, grams: grams) } label: {
+                            Image(systemName: "arrow.left.arrow.right").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accent).frame(width: 34, height: 34)
+                        }
+                        .buttonStyle(.plain).accessibilityLabel("Swap \(str(g["name"])) for your own")
+                    }
                 }
-                .padding(.horizontal, 14).padding(.vertical, 9)
+                .padding(.leading, 14).padding(.trailing, 6).padding(.vertical, 5)
+                .background(from.isEmpty ? Color.clear : Self.green.opacity(0.07))
                 if i < ings.count - 1 { Divider().padding(.leading, 14) }
             }
         }
@@ -155,6 +223,8 @@ struct RecipeSheet: View {
         .padding(.top, 8)
     }
 
+    private static let green = Color(red: 0.36, green: 0.82, blue: 0.56)
+
     private func name(_ r: JSON) -> String { str(idea["name"]) + (version == "healthier" ? " (lighter)" : "") }
 
     private func stat(_ v: String, _ l: String) -> some View {
@@ -167,6 +237,46 @@ struct RecipeSheet: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { withAnimation { if done == t { done = nil } } }
     }
 
+}
+
+struct SwapRef: Identifiable { let index: Int; let name: String; let grams: Double; var id: Int { index } }
+
+/// What to swap an ingredient for: a food from your cupboard, or one scanned there and then. Keeps the grams.
+struct SwapPicker: View {
+    let original: String
+    let grams: Double
+    let cupboard: [PantryItem]
+    let pick: (PantryItem) -> Void
+    let scan: (PantryScanSheet.Mode) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if !cupboard.isEmpty {
+                    Section("From your cupboard") {
+                        ForEach(cupboard) { s in
+                            Button { pick(s) } label: {
+                                HStack(spacing: 10) {
+                                    FoodDot(name: s.name, size: 28)
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(s.name).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                                        Text("\(s.line) · \(Fmt.int(s.kcal100 * grams / 100)) kcal here").font(.caption).foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Section {
+                    Button { scan(.barcode) } label: { Label("Scan a barcode", systemImage: "barcode.viewfinder") }
+                    Button { scan(.photo) } label: { Label("Photo of a label", systemImage: "camera.fill") }
+                } footer: { Text("Keeps \(Fmt.int(grams)) g and uses your label's numbers, so what you log matches what you cook.") }
+            }
+            .navigationTitle("Swap \(original.lowercased())").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+        }
+    }
 }
 
 extension RecipeMaker {
