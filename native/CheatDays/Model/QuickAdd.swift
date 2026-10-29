@@ -139,7 +139,7 @@ extension Store {
     /// A saved meal as one food: a portion of it (the web app's mealBasis).
     func mealBasis(_ m: JSON) -> JSON {
         var kcal = 0.0, grams = 0.0
-        let items = list(m["items"])
+        let items = list(m["items"]).filter { $0["side"] as? Bool != true }   // sides (rice) are logged on their own
         for it in items {
             let k = num(it["kcal"]) ?? 0
             kcal += k

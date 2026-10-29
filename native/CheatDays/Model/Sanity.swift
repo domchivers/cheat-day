@@ -87,3 +87,32 @@ enum Sanity {
     /// Everyday amounts in grams, for the AI to use ("half the juice of a lemon" is 20 g, not 1 g).
     static let amounts = "Everyday amounts in grams: juice of 1 lemon 40 g, juice of half a lemon 20 g, juice of 1 lime 30 g, a squeeze 5 g, a splash of sauce or liquid 5 to 10 g, a pinch 0.5 g, 1 tbsp of liquid 15 g, 1 tsp 5 g."
 }
+
+/// Roughly what kind of food something is, so a swap offers like for like (beef for beef, not mayonnaise).
+enum FoodKind: String {
+    case meat, poultry, fish, dairy, grain, veg, fruit, sauce, sweet, other
+
+    static func of(_ name: String) -> FoodKind {
+        let n = name.lowercased()
+        func has(_ w: [String]) -> Bool { w.contains { n.contains($0) } }
+        if has(["sauce", "mayo", "ketchup", "dressing", "paste", "roux", "curry mix", "stock", "gravy", "oil", "butter", "vinegar", "soy"]) { return .sauce }
+        if has(["chicken", "turkey", "duck"]) { return .poultry }
+        if has(["beef", "steak", "chuck", "mince", "lamb", "pork", "bacon", "ham", "sausage", "brisket", "venison", "chorizo", "salami", "pepperoni"]) { return .meat }
+        if has(["salmon", "tuna", "cod", "fish", "prawn", "shrimp", "haddock", "barramundi", "basa"]) { return .fish }
+        if has(["milk", "yoghurt", "yogurt", "cheese", "cream", "skyr", "quark", "feta", "mozzarella"]) { return .dairy }
+        if has(["rice", "pasta", "noodle", "bread", "oats", "wrap", "tortilla", "couscous", "quinoa", "potato", "flour", "spaghetti", "penne"]) { return .grain }
+        if has(["chocolate", "biscuit", "cookie", "cake", "ice cream", "lolly", "candy", "sugar", "honey", "syrup"]) { return .sweet }
+        if has(["apple", "banana", "berry", "berries", "orange", "mango", "grape", "pear", "melon", "kiwi", "pineapple"]) { return .fruit }
+        if has(["carrot", "onion", "pepper", "capsicum", "broccoli", "spinach", "cabbage", "lettuce", "tomato", "corn", "pea", "bean",
+                "mushroom", "zucchini", "courgette", "celery", "cucumber", "kale", "cauliflower", "pumpkin", "squash"]) { return .veg }
+        return .other
+    }
+
+    /// Whether b is a sensible swap for a (anything goes when either is unknown; meat and poultry swap with each other).
+    static func swaps(_ a: String, _ b: String) -> Bool {
+        let x = of(a), y = of(b)
+        if x == .other || y == .other || x == y { return true }
+        let protein: Set<FoodKind> = [.meat, .poultry, .fish]
+        return protein.contains(x) && protein.contains(y)
+    }
+}

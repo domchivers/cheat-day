@@ -144,7 +144,8 @@ struct MealEditor: View {
                             FoodDot(name: str(it["name"]), size: 30)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(str(it["name"])).font(.subheadline.weight(.semibold))
-                                Text("\(Fmt.int(num(it["kcal"]) ?? 0)) kcal").font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                                Text("\(Fmt.int(num(it["kcal"]) ?? 0)) kcal\(it["side"] as? Bool == true ? " · served separately" : "")")
+                                    .font(.caption).foregroundStyle(it["side"] as? Bool == true ? Theme.heroLabel : .secondary).monospacedDigit()
                             }
                             Spacer()
                             HStack(spacing: 4) {
@@ -159,6 +160,10 @@ struct MealEditor: View {
                             Menu {
                                 Button { swapping = SwapRef(index: i, name: str(it["name"]), grams: Self.grams(it) ?? 0, portions: portions) } label: {
                                     Label("Swap for my own", systemImage: "arrow.left.arrow.right")
+                                }
+                                // rice and other sides: kept with the meal but out of its numbers, logged on their own
+                                Button { toggleSide(i) } label: {
+                                    Label(it["side"] as? Bool == true ? "Back in the pot" : "Served separately", systemImage: "square.split.2x1")
                                 }
                                 Button(role: .destructive) { remove(i) } label: { Label("Remove from meal", systemImage: "minus.circle") }
                             } label: {
@@ -179,13 +184,13 @@ struct MealEditor: View {
                     Button { picking = true } label: { Label("Add a food", systemImage: "plus.circle.fill") }
                 } header: { Text("Foods") } footer: {
                     if !items.isEmpty {
-                        let total = pos(meal["cookedGrams"]) ?? items.compactMap { Self.grams($0) }.reduce(0, +)
+                        let total = pos(meal["cookedGrams"]) ?? items.filter { $0["side"] as? Bool != true }.compactMap { Self.grams($0) }.reduce(0, +)
                         Text("Whole meal \(Fmt.int(total)) g\(meal["cookedGrams"] == nil ? "" : " cooked"), \(Fmt.int(per * portions)) kcal. A portion is \(Fmt.int(total / portions)) g: \(Fmt.int(per)) kcal, \(Int(num(basis["pServ"]) ?? 0))g protein. Type the grams to change an amount.")
                     }
                 }
                 if !items.isEmpty {
                     // cooked in bulk: weigh the finished pot and portions are weighed against it, not the raw weights
-                    let raw = items.map { (str($0["name"]), Self.grams($0) ?? 0) }
+                    let raw = items.filter { $0["side"] as? Bool != true }.map { (str($0["name"]), Self.grams($0) ?? 0) }
                     Section {
                         HStack {
                             Text("Finished pot")
@@ -202,6 +207,14 @@ struct MealEditor: View {
                             // way off what goes in: usually a side (rice) that's in the list but not in the pot
                             Label("That's a long way from the \(Fmt.int(est)) g this list would make. Is everything here in the pot? Rice or sides you serve separately should come out of the list (••• → Remove), or the calories per gram come out wrong.", systemImage: "exclamationmark.triangle.fill")
                                 .foregroundStyle(Theme.warn)
+                        }
+                        // calories per 100 g that don't make sense for the dish (a curry is usually 80 to 200)
+                        if let w = pos(meal["cookedGrams"]) {
+                            let per100 = per * portions / w * 100, r = CookedWeightCard.dishRange(str(meal["name"]))
+                            if per100 < r.lo * 0.8 || per100 > r.hi * 1.2 {
+                                Label("That makes \(Fmt.int(per100)) kcal per 100 g, \(per100 > r.hi ? "high" : "low") for \(r.label) (usually \(Fmt.int(r.lo))–\(Fmt.int(r.hi))). Check the weight: was it the whole pot, without the dish? Adding by the portion still counts right.", systemImage: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(Theme.warn)
+                            }
                         }
                         Text(meal["cookedGrams"] == nil
                              ? "Cooked it in bulk? Weigh it all once it's done (without the dish) and type it here, and the grams you put on your plate count right. About \(CookedWeight.estimate(raw).map { Fmt.int($0) } ?? "?") g is a guess from what goes in."
@@ -305,6 +318,12 @@ struct MealEditor: View {
     private func swap(_ i: Int, _ item: PantryItem) {
         var its = list(meal["items"]); guard i < its.count else { return }
         its[i] = item.ingredient(grams: Self.grams(its[i]), portions: num(meal["portions"]) ?? 1)
+        withAnimation { meal["items"] = its }
+    }
+
+    private func toggleSide(_ i: Int) {
+        var its = list(meal["items"]); guard i < its.count else { return }
+        its[i]["side"] = its[i]["side"] as? Bool == true ? nil : true
         withAnimation { meal["items"] = its }
     }
 

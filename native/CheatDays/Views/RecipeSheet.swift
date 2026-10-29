@@ -45,6 +45,7 @@ struct RecipeSheet: View {
     @AppStorage("recipe.cooked") private var cookedJSON = "{}"   // "recipe|version" → what the finished pot weighed
     @State private var addingFood = false
     @AppStorage("recipe.grams") private var gramsJSON = "{}"   // "recipe|version|ingredient" → the grams you use
+    @AppStorage("recipe.sides") private var sidesJSON = "[]"   // "recipe|version|ingredient" served on the side (rice)
     @State private var resizing: SwapRef?
     @State private var resizeText = ""
     @AppStorage("recipe.serves") private var servesJSON = "{}"   // "recipe|version" → {n, scale}: your portions
@@ -184,6 +185,14 @@ struct RecipeSheet: View {
         resizing = SwapRef(index: i, name: str(g["name"]), grams: num(g["grams"]) ?? 0, portions: 1)
     }
 
+    /// Ingredients served on the side: out of the pot (its numbers and cooked weight), logged on their own.
+    private var sides: Set<String> { Set((try? JSONDecoder().decode([String].self, from: Data(sidesJSON.utf8))) ?? []) }
+    private func setSide(_ i: Int, _ on: Bool) {
+        var all = sides
+        if on { all.insert(swapKey(i)) } else { all.remove(swapKey(i)) }
+        withAnimation(.snappy) { sidesJSON = String(data: (try? JSONEncoder().encode(Array(all))) ?? Data("[]".utf8), encoding: .utf8) ?? "[]" }
+    }
+
     private var ownGrams: [String: Double] { (try? JSONDecoder().decode([String: Double].self, from: Data(gramsJSON.utf8))) ?? [:] }
     private func setGrams(_ i: Int, _ g: Double?) {
         var all = ownGrams
@@ -205,7 +214,7 @@ struct RecipeSheet: View {
     /// portions per person.
     private func applied(_ ings: [JSON], portions: Double) -> [JSON] {
         let s = swaps, out = removed
-        let own = ownGrams
+        let own = ownGrams, side = sides
         return ings.enumerated().map { i, g0 in
             // your amount first (less carrot): everything about the ingredient scales with it, then any swap uses it
             var g = g0
@@ -216,6 +225,7 @@ struct RecipeSheet: View {
             }
             var x = g
             if out.contains(swapKey(i)) { x["removed"] = true }
+            if side.contains(swapKey(i)) { x["side"] = true }
             guard let item = s[swapKey(i)] else { return x }
             if item.byPortion, let k = item.portionKcal {
                 x["swappedFrom"] = str(g["name"]); x["name"] = item.name
@@ -243,7 +253,8 @@ struct RecipeSheet: View {
         let portions = sv?.n ?? base
         let factor = (sv?.scale ?? true) ? portions / base : 1   // scaled amounts, or the same pot split differently
         let ings = applied(scaled(list(v["ingredients"]), by: factor) + added, portions: portions), steps = v["steps"] as? [String] ?? []
-        let used = ings.filter { $0["removed"] as? Bool != true }   // what's in it: totals, logging and saving
+        // what's in the pot: totals, cooked weight, logging and saving (not what's removed or served on the side)
+        let used = ings.filter { $0["removed"] as? Bool != true && $0["side"] as? Bool != true }
         let k = used.reduce(0) { $0 + (num($1["kcal"]) ?? 0) } / portions
         let p = used.reduce(0) { $0 + (num($1["protein_g"]) ?? 0) } / portions
         let c = used.reduce(0) { $0 + (num($1["carbs_g"]) ?? 0) } / portions
@@ -312,7 +323,7 @@ struct RecipeSheet: View {
         }
         // after the method, as weighing the pot comes after cooking; it's also where you log, by the grams on your plate
         CookedWeightCard(kcal: k * portions, protein: p * portions, carbs: c * portions, fat: f * portions, portions: portions,
-                         estimate: estimate, weighed: Binding(get: { weighed }, set: { setWeighed($0) }),
+                         estimate: estimate, dish: str(idea["name"]), weighed: Binding(get: { weighed }, set: { setWeighed($0) }),
                          aimKcal: aim.kcal, aimProtein: aim.protein) { g, kc, pr, ca, fa in
             store.add(Assistant.basis(name: name(r), kcal: kc, grams: g, p: pr, c: ca, f: fa), kcal: kc, meal: meal)
             flash("Added \(Fmt.int(g)) g to \(meal.lowercased())")
@@ -401,6 +412,19 @@ struct RecipeSheet: View {
                         (Text("\(kcal) kcal · instead of \(from.lowercased()) · ").foregroundStyle(.secondary) + Text("undo").foregroundStyle(Theme.accent).bold()).font(.caption)
                     }
                     .buttonStyle(.plain)
+                } else if g["side"] as? Bool == true {
+                    // on the side: not in the pot's numbers; a portion's worth logs on its own
+                    let each = (num(g["kcal"]) ?? 0) / portions
+                    HStack(spacing: 6) {
+                        Text("served separately").font(.caption.weight(.semibold)).foregroundStyle(Theme.heroLabel)
+                        Button("Add \(Fmt.int(each)) kcal") {
+                            store.add(Assistant.basis(name: str(g["name"]), kcal: each, grams: num(g["grams"]).map { $0 / portions },
+                                                      p: (num(g["protein_g"]) ?? 0) / portions, c: (num(g["carbs_g"]) ?? 0) / portions,
+                                                      f: (num(g["fat_g"]) ?? 0) / portions), kcal: each, meal: meal)
+                            flash("Added \(str(g["name"]).lowercased()) to \(meal.lowercased())")
+                        }
+                        .font(.caption.weight(.bold)).foregroundStyle(Theme.accent).buttonStyle(.plain)
+                    }
                 } else {
                     Text("\(kcal) kcal").font(.caption).foregroundStyle(.secondary)
                 }
@@ -424,6 +448,10 @@ struct RecipeSheet: View {
                         Label("Swap for my own", systemImage: "arrow.left.arrow.right")
                     }
                     if !from.isEmpty { Button { setSwap(i, nil) } label: { Label("Undo the swap", systemImage: "arrow.uturn.backward") } }
+                    let isSide = g["side"] as? Bool == true
+                    Button { setSide(i, !isSide) } label: {
+                        Label(isSide ? "Back in the pot" : "Served separately", systemImage: isSide ? "arrow.uturn.backward" : "square.split.2x1")
+                    }
                     Button(role: .destructive) { setRemoved(i, true) } label: { Label("Remove from recipe", systemImage: "minus.circle") }
                 } label: {
                     Image(systemName: "ellipsis").font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent)
@@ -470,9 +498,14 @@ struct SwapPicker: View {
     var body: some View {
         NavigationStack {
             List {
-                // the cupboard first: a short list of what you've scanned, then everything you log
-                if !cupboard.isEmpty { section("From your cupboard", cupboard) }
-                if !foods.isEmpty { section("Foods you log", foods) }
+                // the cupboard first: a short list of what you've scanned, then everything you log; like for like only
+                // (beef for beef, rice for rice), so mayonnaise never turns up as a swap for steak
+                let mine = cupboard.filter { FoodKind.swaps(original, $0.name) }, logged = foods.filter { FoodKind.swaps(original, $0.name) }
+                if !mine.isEmpty { section("From your cupboard", mine) }
+                if !logged.isEmpty { section("Foods you log", logged) }
+                if mine.isEmpty && logged.isEmpty && !(cupboard.isEmpty && foods.isEmpty) {
+                    Section { Text("Nothing like \(original.lowercased()) in your foods yet. Scan one below.").font(.footnote).foregroundStyle(.secondary) }
+                }
                 Section {
                     Button { scan(.barcode) } label: { Label("Scan a barcode", systemImage: "barcode.viewfinder") }
                     Button { scan(.photo) } label: { Label("Photo of a label", systemImage: "camera.fill") }
