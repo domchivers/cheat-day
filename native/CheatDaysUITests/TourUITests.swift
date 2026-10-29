@@ -57,9 +57,9 @@ final class TourUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["434"].waitForExistence(timeout: 3))
 
         // down to the cooked weight card, after the method: the one way to log, by the grams on your plate
-        let add = app.buttons.containing(NSPredicate(format: "label BEGINSWITH %@", "Add 4")).firstMatch
-        for _ in 0..<4 where !add.isHittable { app.swipeUp() }
-        XCTAssertTrue(add.exists)
+        let addPlate = app.buttons.containing(NSPredicate(format: "label BEGINSWITH %@", "Add 4")).firstMatch
+        for _ in 0..<4 where !addPlate.isHittable { app.swipeUp() }
+        XCTAssertTrue(addPlate.exists)
         XCTAssertFalse(app.buttons.containing(NSPredicate(format: "label BEGINSWITH %@", "Log a portion")).firstMatch.exists)
         let cooked = XCTAttachment(screenshot: app.screenshot()); cooked.name = "recipe-cooked"; cooked.lifetime = .keepAlways; add(cooked)
     }
