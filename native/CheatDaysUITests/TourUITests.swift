@@ -31,6 +31,22 @@ final class TourUITests: XCTestCase {
         let a = XCTAttachment(screenshot: app.screenshot()); a.name = "plan-cupboard"; a.lifetime = .keepAlways; add(a)
     }
 
+    func testRecipeSwap() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-uitest-recipe"]
+        app.launch()
+        let swap = app.buttons["Swap Chicken thigh for your own"]
+        XCTAssertTrue(swap.waitForExistence(timeout: 5))
+        let before = XCTAttachment(screenshot: app.screenshot()); before.name = "recipe-before"; before.lifetime = .keepAlways; add(before)
+        swap.tap()
+        let pick = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Tesco Chicken breast fillets")).firstMatch
+        XCTAssertTrue(pick.waitForExistence(timeout: 3))
+        pick.tap()
+        XCTAssertTrue(app.staticTexts["YOUR LABEL"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["434"].exists, "total should be 434 kcal: 150 g at 106 from the label (159) + 230 + 37 + 8")
+        let after = XCTAttachment(screenshot: app.screenshot()); after.name = "recipe-swapped"; after.lifetime = .keepAlways; add(after)
+    }
+
     func testSignInScreens() {
         let app = XCUIApplication()
         app.launchArguments = ["-uitest-signin"]

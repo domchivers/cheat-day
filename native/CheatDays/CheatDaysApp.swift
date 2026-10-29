@@ -27,6 +27,7 @@ struct RootView: View {
         else if ProcessInfo.processInfo.arguments.contains("-uitest-tour") { TourHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-signin") { SignInView() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-plan") { PlanHarness() }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-recipe") { RecipeHarness() }
         else if Supabase.shared.session == nil { SignInView() } else { MainTabs() }
     }
 }
@@ -64,6 +65,27 @@ private struct PlanHarness: View {
         UserDefaults.standard.set("peppers, eggs, spinach", forKey: "pantry")
     }
     var body: some View { MealPlannerView() }
+}
+
+/// For the recipe swap UI test only: a written recipe and one cupboard food, no sign-in or AI.
+private struct RecipeHarness: View {
+    let idea: JSON
+    init() {
+        let chicken = PantryItem(basis: ["name": "Chicken breast fillets", "brand": "Tesco", "kcalPer100": 106.0, "p100": 24.0, "c100": 0.0, "f100": 1.5])
+        UserDefaults.standard.set(PantryItem.Saved.save([chicken].compactMap { $0 }), forKey: "pantry.scans")
+        UserDefaults.standard.set("{}", forKey: "recipe.swaps")
+        func ing(_ n: String, _ a: String, _ g: Double, _ k: Double, _ p: Double, _ c: Double, _ f: Double) -> JSON {
+            ["name": n, "amount": a, "grams": g, "kcal": k, "protein_g": p, "carbs_g": c, "fat_g": f]
+        }
+        let ings = [ing("Chicken thigh", "150 g", 150, 270, 26, 0, 18), ing("Basmati rice, cooked", "180 g", 180, 230, 5, 50, 1),
+                    ing("Red pepper", "1", 120, 37, 1, 7, 0), ing("Soy sauce", "1 tbsp", 15, 8, 1, 1, 0)]
+        idea = ["name": "Chicken and pepper rice bowl", "meal": "Dinner", "recipe": [
+            "cuisine": "Asian", "minutes": 15.0, "portions": 1.0,
+            "authentic": ["ingredients": ings, "steps": ["Cook the chicken.", "Add the peppers and rice.", "Season with soy."]] as JSON,
+            "healthier": ["ingredients": ings, "steps": ["Cook the chicken.", "Add the peppers and rice."], "changes": ["Less oil"]] as JSON
+        ] as JSON]
+    }
+    var body: some View { RecipeSheet(idea: idea) }
 }
 
 /// For the tour UI test only: the real tabs with the tour started on Today, no sign-in or sync.
