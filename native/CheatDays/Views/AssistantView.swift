@@ -173,6 +173,7 @@ struct AssistantView: View {
                     Text("\(Int(num(pt["grams"]) ?? 0)) g · \(Int(num(pt["kcal"]) ?? 0))").font(.caption).monospacedDigit().foregroundStyle(.secondary)
                 }
             }
+            flagList(e["flags"] as? [String] ?? [])
             let pending = !parts.isEmpty && parts.allSatisfy { str($0["src"]).isEmpty }   // not checked yet
             if pending { Label("Checking against the food database…", systemImage: "hourglass").font(.caption2).foregroundStyle(.secondary) }
             else { Text(checked > 0 ? "\(checked) of \(parts.count) parts checked against food databases\(num(e["aiKcal"]).map { " (the AI first said \(Int($0)) kcal)" } ?? ""). An estimate, not a label."
@@ -209,9 +210,17 @@ struct AssistantView: View {
         return panel {
             ForEach(acts.indices, id: \.self) { i in
                 let a = acts[i]
-                Label(describe(a), systemImage: ["add": "plus.circle", "remove": "minus.circle", "update": "pencil.circle", "workout": "figure.walk"][str(a["action"])] ?? "circle")
-                    .font(.subheadline)
+                VStack(alignment: .leading, spacing: 2) {
+                    Label(describe(a), systemImage: ["add": "plus.circle", "remove": "minus.circle", "update": "pencil.circle", "workout": "figure.walk"][str(a["action"])] ?? "circle")
+                        .font(.subheadline)
+                    // each change's numbers before it's made, so a slip shows at a glance
+                    if ["add", "update"].contains(str(a["action"])), let k = num(a["kcal"]) {
+                        Text("\(Fmt.int(k)) kcal · P \(Int(num(a["protein_g"]) ?? 0))g · C \(Int(num(a["carbs_g"]) ?? 0))g · F \(Int(num(a["fat_g"]) ?? 0))g")
+                            .font(.caption).monospacedDigit().foregroundStyle(.secondary).padding(.leading, 28)
+                    }
+                }
             }
+            flagList(edit["flags"] as? [String] ?? [])
             let key = "edit"
             Button {
                 let result = Assistant.apply(edit, meal: meal, store: store)
@@ -221,6 +230,17 @@ struct AssistantView: View {
             }
             .buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(.small).foregroundStyle(.black)
             .disabled(done[turn, default: ""].contains("\(turn)-\(key)"))
+        }
+    }
+
+    /// What the checks found: numbers fixed from the macros, or values that look wrong for that kind of food.
+    @ViewBuilder private func flagList(_ flags: [String]) -> some View {
+        if !flags.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(flags, id: \.self) { f in
+                    Label(f, systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(Theme.warn)
+                }
+            }
         }
     }
 

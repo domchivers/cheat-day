@@ -534,11 +534,24 @@ extension RecipeMaker {
         authentic: how it's really made in its home cuisine, true to the dish, with ingredients they can buy there. Short, clear method steps.
         healthier: the same dish with its character kept, lighter or higher in protein (less oil and butter, leaner cuts, more veg, swaps that taste close), and list the changes.
         If it's really a takeaway order or shop-bought, authentic is what to buy or order and how to put it together, healthier is the lighter choice.
-        Portions 1 to 4. Grams are as weighed; kcal and macros per ingredient from standard reference values, so they add up.
+        Portions 1 to 4. Grams are as weighed; kcal and macros per ingredient from standard reference values, so they add up, and each ingredient's kcal ≈ 4 × protein + 4 × carbs + 9 × fat.
+        \(Sanity.amounts) Use what's typical in \(Plan.country) (cuts, brands and portion sizes there).
         """
         // the quick models write a recipe fine; three tries at most, so it never hangs for minutes
         let a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: true, tries: 3)
         guard !list(dict(a["authentic"])["ingredients"]).isEmpty else { throw Gemini.Failure(message: "Couldn't write that recipe just now. Try again.") }
-        return a
+        // each ingredient's calories checked against its own protein, carbs and fat before the recipe is kept
+        var out = a
+        for v in ["authentic", "healthier"] {
+            var ver = dict(a[v])
+            ver["ingredients"] = list(ver["ingredients"]).map { g -> JSON in
+                var x = g
+                x["kcal"] = Sanity.check(name: str(g["name"]), grams: num(g["grams"]), kcal: num(g["kcal"]) ?? 0,
+                                         p: num(g["protein_g"]), c: num(g["carbs_g"]), f: num(g["fat_g"])).kcal
+                return x
+            }
+            out[v] = ver
+        }
+        return out
     }
 }

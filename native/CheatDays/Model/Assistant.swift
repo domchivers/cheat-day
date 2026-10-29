@@ -100,6 +100,9 @@ enum Assistant {
     - lighter: a lighter way to have something, with tips and the lighter serving's numbers.
     Hard rules:
     - If they give numbers themselves (calories, grams, protein), use exactly those numbers.
+    - Calories must fit the macros: kcal ≈ 4 × protein + 4 × carbs + 9 × fat (a little over for fibre or alcohol). Check every part before answering.
+    - \(Sanity.amounts) Meat and fish by weight, not "1 thigh": say the grams you assumed.
+    - For edit: never say a change is done, added or logged. Say it's ready and to tap Make these changes.
     - Only talk about foods actually in the conversation, their photos, their day or their meals. Never invent placeholders.
     - When several products are in the photos, give each its own numbers before recommending.
     - If you can't tell what something is, say so and ask rather than guessing.
@@ -143,22 +146,22 @@ enum Assistant {
                 }
                 // fall through: the online model works it out
             } else {
-                return local
+                return saneEdit(local)
             }
         }
         // simple questions go to the quick model with minimal thinking; recipes, plans and photos to the careful one
         var answer = try await Gemini.ask(schema: schema, parts: parts, quick: isSimple(last.text, hasPhotos: !pics.isEmpty))
         if groundNow, str(answer["kind"]) == "estimate", let e = answer["estimate"] as? JSON { answer["estimate"] = await ground(e) }
-        return answer
+        return saneEdit(answer)
     }
 
     /// A food-list or database number replaces the AI's only when it's in the same ballpark; a wildly different one means a wrong match.
     /// Except when the AI's own number is next to nothing (under 10 kcal per 100 g, like "2 kcal for 105 g of cabbage"): that's
     /// the AI being wrong, so the database wins.
-    static func plausible(_ db: Double?, aiKcal: Double, grams: Double) -> Bool {
-        guard let db else { return false }
-        let ai = grams > 0 ? aiKcal / grams * 100 : 0
-        return ai < 10 || (db >= ai * 0.55 && db <= ai * 1.8)
+    /// Now also by the kind of food (Sanity): when the two are far apart the one that fits wins, and a near-zero
+    /// database value (a per-gram number read as per 100 g) never replaces a real food.
+    static func plausible(_ db: Double?, aiKcal: Double, grams: Double, name: String = "") -> Bool {
+        Sanity.prefersDatabase(db, aiKcal: aiKcal, grams: grams, name: name)
     }
 
     /// One part with checked numbers per 100 g.
@@ -190,7 +193,7 @@ enum Assistant {
         var ask: [Int] = []
         for i in parts.indices {
             let x = parts[i], g = num(x["grams"]) ?? 0
-            if let row = FoodsDB.search(str(x["name"]), limit: 1).first, plausible(num(row["kcalPer100"]), aiKcal: num(x["kcal"]) ?? 0, grams: g) {
+            if let row = FoodsDB.search(str(x["name"]), limit: 1).first, plausible(num(row["kcalPer100"]), aiKcal: num(x["kcal"]) ?? 0, grams: g, name: str(x["name"])) {
                 parts[i] = checked(x, kcal100: num(row["kcalPer100"]) ?? 0, p100: num(row["p100"]), c100: num(row["c100"]), f100: num(row["f100"]), source: "list")
             } else { ask.append(i) }
         }
@@ -201,13 +204,58 @@ enum Assistant {
                 for (k, i) in ask.enumerated() where k < found.count {
                     guard let r = found[k] as? JSON else { continue }
                     let x = parts[i]
-                    if plausible(num(r["kcal100"]), aiKcal: num(x["kcal"]) ?? 0, grams: num(x["grams"]) ?? 0) {
+                    if plausible(num(r["kcal100"]), aiKcal: num(x["kcal"]) ?? 0, grams: num(x["grams"]) ?? 0, name: str(x["name"])) {
                         parts[i] = checked(x, kcal100: num(r["kcal100"]) ?? 0, p100: num(r["p100"]), c100: num(r["c100"]), f100: num(r["f100"]), source: "usda")
                     }
                 }
             }
         }
-        return totals(e, parts: parts)
+        return sane(totals(e, parts: parts))
+    }
+
+    /// Every part through Sanity: calories that don't fit the macros are fixed from them, odd values are flagged on
+    /// the card (and the totals added up again).
+    static func sane(_ e: JSON) -> JSON {
+        var parts = CheatDays.list(e["parts"]), flags: [String] = [], fixed = false
+        for i in parts.indices {
+            let x = parts[i], k = num(x["kcal"]) ?? 0
+            let r = Sanity.check(name: str(x["name"]), grams: num(x["grams"]), kcal: k, p: num(x["protein_g"]), c: num(x["carbs_g"]), f: num(x["fat_g"]))
+            if r.kcal != k { parts[i]["kcal"] = r.kcal; fixed = true }
+            flags += r.flags
+        }
+        var out = e
+        if fixed {
+            func sum(_ k: String) -> Double { parts.reduce(0) { $0 + (num($1[k]) ?? 0) } }
+            out["parts"] = parts; out["kcal_total"] = sum("kcal").rounded()
+        }
+        if parts.isEmpty {   // a plate with no parts: the plate itself
+            let r = Sanity.check(name: str(e["name"]), grams: num(e["portion_g"]), kcal: num(e["kcal_total"]) ?? 0,
+                                 p: num(e["protein_g"]), c: num(e["carbs_g"]), f: num(e["fat_g"]))
+            out["kcal_total"] = r.kcal; flags += r.flags
+        }
+        out["flags"] = flags
+        return out
+    }
+
+    /// Changes to today's list checked the same way, and the reply never says they're done before they are.
+    static func saneEdit(_ answer: JSON) -> JSON {
+        guard str(answer["kind"]) == "edit", var edit = answer["edit"] as? JSON else { return answer }
+        var acts = CheatDays.list(edit["actions"]), flags: [String] = []
+        for i in acts.indices where ["add", "update"].contains(str(acts[i]["action"])) {
+            let a = acts[i]
+            guard let k = num(a["kcal"]) else { continue }
+            let r = Sanity.check(name: str(a["name"]).isEmpty ? str(a["target"]) : str(a["name"]), grams: nil, kcal: k,
+                                 p: num(a["protein_g"]), c: num(a["carbs_g"]), f: num(a["fat_g"]))
+            acts[i]["kcal"] = r.kcal; flags += r.flags
+        }
+        edit["actions"] = acts; edit["flags"] = flags
+        var out = answer
+        out["edit"] = edit
+        let reply = str(answer["reply"])
+        if reply.range(of: #"\b(added|logged|removed|updated|changed|done)\b"#, options: [.regularExpression, .caseInsensitive]) != nil {
+            out["reply"] = "Ready to change: check it below and tap Make these changes to confirm."
+        }
+        return out
     }
 
     /// What an estimate, a suggestion or a lighter serving adds to the day as.
