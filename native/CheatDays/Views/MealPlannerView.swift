@@ -42,6 +42,8 @@ struct MealPlannerView: View {
     @State private var meal = Meals.byTime(Calendar.current.component(.hour, from: Date())) == "Snacks" ? "Dinner" : Meals.byTime(Calendar.current.component(.hour, from: Date()))
     @State private var cooking = ""
     @AppStorage("pantry") private var pantry = ""
+    @AppStorage("pantry.scans") private var scansJSON = "[]"   // foods scanned in, with their label numbers
+    @State private var scanning: PantryScanSheet.Mode?
     @State private var ideas: [JSON] = []
     @State private var busy = false
     @State private var problem: String?
@@ -74,6 +76,7 @@ struct MealPlannerView: View {
                     TextField("chicken, rice, peppers, eggs, feta", text: $pantry, axis: .vertical)
                         .lineLimit(2...4).focused($typing)
                         .padding(12).background(Theme.hero, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    cupboard
                     Button { typing = false; Task { await suggest() } } label: {
                         Label(busy ? "Thinking…" : pantry.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Give me ideas" : "What can I make?", systemImage: "sparkles")
                             .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 8)
@@ -99,12 +102,52 @@ struct MealPlannerView: View {
             .navigationTitle("Plan \(meal.lowercased())").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .sheet(item: $open) { r in RecipeSheet(idea: r.idea) }
+            .sheet(item: $scanning) { m in
+                PantryScanSheet(mode: m) { item in
+                    var all = scans.filter { $0.name.lowercased() != item.name.lowercased() }
+                    all.insert(item, at: 0)
+                    withAnimation { scansJSON = PantryItem.Saved.save(all) }
+                }
+            }
             .sheet(isPresented: $cheat) { CheatDayView().presentationDragIndicator(.visible) }
             .onAppear {
                 if cooking.isEmpty {
                     switch str(store.habits["cook"]) { case "love": cooking = Self.cookChoices[2]; case "hate": cooking = Self.cookChoices[0]; default: cooking = Self.cookChoices[1] }
                 }
             }
+        }
+    }
+
+    private var scans: [PantryItem] { PantryItem.Saved.load(scansJSON) }
+
+    /// Scan a barcode or snap a label to add a food with its real numbers; the ones you've added, to remove.
+    @ViewBuilder private var cupboard: some View {
+        HStack(spacing: 8) {
+            Button { typing = false; scanning = .barcode } label: {
+                Label("Scan a barcode", systemImage: "barcode.viewfinder").font(.subheadline.weight(.bold)).frame(maxWidth: .infinity).padding(.vertical, 10)
+                    .background(Theme.hero, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            Button { typing = false; scanning = .photo } label: {
+                Label("Photo of a label", systemImage: "camera.fill").font(.subheadline.weight(.bold)).frame(maxWidth: .infinity).padding(.vertical, 10)
+                    .background(Theme.hero, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+        }
+        .buttonStyle(.plain).foregroundStyle(Theme.accent)
+        ForEach(scans) { s in
+            HStack(spacing: 10) {
+                FoodDot(name: s.name, size: 28)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(s.name).font(.subheadline.weight(.semibold)).lineLimit(1)
+                    Text(s.line).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 4)
+                Button { withAnimation { scansJSON = PantryItem.Saved.save(scans.filter { $0.id != s.id }) } } label: {
+                    Image(systemName: "xmark").font(.caption.weight(.bold)).foregroundStyle(.secondary).frame(width: 30, height: 30)
+                }
+                .buttonStyle(.plain).accessibilityLabel("Remove \(s.name)")
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(Theme.hero, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
     }
 
@@ -147,6 +190,13 @@ struct MealPlannerView: View {
                         Text("\(Fmt.int(kcal)) kcal · \(Int(num(m["protein"]) ?? 0)) g protein\(num(m["minutes"]).map { " · \(Int($0)) min" } ?? "") · recipe")
                             .font(.caption).foregroundStyle(.secondary)
                         if !str(m["why"]).isEmpty { Text(str(m["why"])).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.leading) }
+                        if !str(m["uses"]).isEmpty { Text(str(m["uses"])).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.leading) }
+                        if m["fromLabels"] as? Bool == true {
+                            Text("FROM YOUR LABELS").font(.caption2.weight(.heavy)).foregroundStyle(Color(red: 0.36, green: 0.82, blue: 0.56))
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(Color(red: 0.36, green: 0.82, blue: 0.56).opacity(0.14), in: RoundedRectangle(cornerRadius: 5))
+                                .padding(.top, 2)
+                        }
                     }
                     Spacer(minLength: 0)
                 }
@@ -166,6 +216,28 @@ struct MealPlannerView: View {
         .background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
+    /// The scanned foods' parts worked out from their labels (grams × the printed numbers), not the AI's sums, and the
+    /// idea's totals added up from its ingredients; with the grams of each scanned food listed under the idea.
+    static func withLabels(_ idea: JSON, _ scanned: [PantryItem]) -> JSON {
+        let parts = list(idea["ingredients"])
+        guard !parts.isEmpty else { return idea }
+        var m = idea, k = 0.0, p = 0.0, c = 0.0, f = 0.0, used: [String] = []
+        for x in parts {
+            let g = num(x["grams"]) ?? 0, i = Int(num(x["label"]) ?? 0)
+            if i >= 1, i <= scanned.count, g > 0 {
+                let s = scanned[i - 1]
+                k += s.kcal100 * g / 100; p += (s.p100 ?? 0) * g / 100; c += (s.c100 ?? 0) * g / 100; f += (s.f100 ?? 0) * g / 100
+                used.append("\(Fmt.int(g)) g \(s.name)")
+            } else {
+                k += num(x["kcal"]) ?? 0; p += num(x["protein"]) ?? 0; c += num(x["carbs"]) ?? 0; f += num(x["fat"]) ?? 0
+            }
+        }
+        guard k > 0 else { return idea }
+        m["kcal"] = k.rounded(); m["protein"] = p.rounded(); m["carbs"] = c.rounded(); m["fat"] = f.rounded()
+        if !used.isEmpty { m["uses"] = used.joined(separator: ", "); m["fromLabels"] = true }
+        return m
+    }
+
     private func suggest() async {
         busy = true; problem = nil
         defer { busy = false }
@@ -175,13 +247,21 @@ struct MealPlannerView: View {
         let cook = cooking == Self.cookChoices[0] ? "No cooking: assembling, shop-bought or a microwave only."
                  : cooking == Self.cookChoices[2] ? "Happy to cook properly." : "Quick: 15 minutes or so."
         let have = pantry.trimmingCharacters(in: .whitespacesAndNewlines)
+        let scanned = scans
+        let ingredient: JSON = ["type": "object", "properties": [
+            "name": ["type": "string"] as JSON, "grams": ["type": "number"] as JSON,
+            "label": ["type": "integer", "description": "The number of the scanned food this is (1, 2…), or 0 if it isn't one"] as JSON,
+            "kcal": ["type": "number"] as JSON, "protein": ["type": "number"] as JSON, "carbs": ["type": "number"] as JSON, "fat": ["type": "number"] as JSON
+        ] as JSON, "required": ["name", "grams", "label", "kcal", "protein", "carbs", "fat"]]
         let schema: JSON = ["type": "object", "properties": [
             "ideas": ["type": "array", "items": ["type": "object", "properties": [
                 "name": ["type": "string"] as JSON, "kcal": ["type": "number"] as JSON, "protein": ["type": "number"] as JSON,
                 "carbs": ["type": "number"] as JSON, "fat": ["type": "number"] as JSON, "minutes": ["type": "number"] as JSON,
-                "why": ["type": "string", "description": "Under 14 words: why it suits them"] as JSON
-            ] as JSON, "required": ["name", "kcal", "protein", "carbs", "fat", "minutes", "why"]] as JSON] as JSON
+                "why": ["type": "string", "description": "Under 14 words: why it suits them"] as JSON,
+                "ingredients": ["type": "array", "items": ingredient] as JSON
+            ] as JSON, "required": ["name", "kcal", "protein", "carbs", "fat", "minutes", "why", "ingredients"]] as JSON] as JSON
         ] as JSON, "required": ["ideas"]]
+        let labels = scanned.enumerated().map { "\($0.offset + 1). \($0.element.prompt)" }.joined(separator: "\n")
         let prompt = """
         Suggest 3 \(meal.lowercased()) ideas for someone in \(Plan.country), one portion each.
         Size each idea for this one meal: about \(Int(target.kcal)) kcal (between \(Int(target.kcal - 120)) and \(Int(target.kcal + 60))), not the whole day's \(Int(left)) kcal left: they still have other meals and snacks to come.\(target.protein.map { " Aim for around \(Int($0)) g protein each." } ?? " Lean high in protein.")
@@ -189,11 +269,16 @@ struct MealPlannerView: View {
         Match that style: if it's mostly one cuisine (Asian dinners, say), stay in it and use the ingredients and dishes they clearly buy, just lighter or better balanced. One idea can be a healthier take on something they have often.
         Cuisines they like: \(cuisines.isEmpty ? "not said" : cuisines). \(cook)
         \(have.isEmpty ? "" : "They have in: \(have). Make the ideas mostly from that, plus staples like oil, salt, sauces and spices.")
+        \(labels.isEmpty ? "" : "They scanned these foods, with the numbers printed on their packs:\n\(labels)\nBuild the ideas around them where they fit, and for these use exactly those numbers.")
+        List every ingredient with its grams and its own kcal, protein, carbs and fat; set label to the scanned food's number when it is one.
         Real dish names, numbers from standard reference values.
         """
         do {
             let a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: true, tries: 3)
-            let got = list(a["ideas"]).map { i -> JSON in var c = i; c["meal"] = meal; return c }
+            let got = list(a["ideas"]).map { i -> JSON in
+                var c = i; c["meal"] = meal
+                return Self.withLabels(c, scanned)
+            }
             withAnimation(.snappy) { ideas = got }
             if got.isEmpty { problem = "No ideas came back. Try again." }
         } catch { problem = error.localizedDescription }
