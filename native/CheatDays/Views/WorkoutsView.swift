@@ -1,7 +1,8 @@
 import Charts
 import SwiftUI
 
-private struct DayBar: Identifiable { let id: String; let label: String; let kcal: Double; let today: Bool }
+private struct DayBar: Identifiable { let id: String; let label: String; let kcal: Double; let walk: Double; let today: Bool }
+private struct Segment: Identifiable { let id: String; let day: String; let kind: String; let kcal: Double }
 private struct PastRow: Identifiable { let id: String; let date: String; let workout: JSON }
 
 /// Workouts: the week, one big Start, routines, today's and past workouts, and every exercise.
