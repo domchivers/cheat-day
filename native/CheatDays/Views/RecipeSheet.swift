@@ -113,7 +113,10 @@ struct RecipeSheet: View {
             var x = g
             x["swappedFrom"] = str(g["name"]); x["name"] = item.name; x["amount"] = "\(Fmt.int(grams)) g"
             x["kcal"] = item.kcal100 * grams / 100
-            x["protein_g"] = (item.p100 ?? 0) * grams / 100; x["carbs_g"] = (item.c100 ?? 0) * grams / 100; x["fat_g"] = (item.f100 ?? 0) * grams / 100
+            // a macro the label didn't give keeps the recipe's own figure rather than counting as 0
+            if let p = item.p100 { x["protein_g"] = p * grams / 100 }
+            if let c = item.c100 { x["carbs_g"] = c * grams / 100 }
+            if let f = item.f100 { x["fat_g"] = f * grams / 100 }
             return x
         }
     }
@@ -169,7 +172,9 @@ struct RecipeSheet: View {
                             }
                         }
                         if !from.isEmpty {
-                            Button { setSwap(i, nil) } label: { Text("instead of \(from.lowercased()) · undo").font(.caption).foregroundStyle(.secondary) }
+                            Button { setSwap(i, nil) } label: {
+                                (Text("instead of \(from.lowercased()) · ").foregroundStyle(.secondary) + Text("undo").foregroundStyle(Theme.accent).bold()).font(.caption)
+                            }
                                 .buttonStyle(.plain)
                         }
                     }
@@ -183,7 +188,6 @@ struct RecipeSheet: View {
                     }
                 }
                 .padding(.leading, 14).padding(.trailing, 6).padding(.vertical, 5)
-                .background(from.isEmpty ? Color.clear : Self.green.opacity(0.07))
                 if i < ings.count - 1 { Divider().padding(.leading, 14) }
             }
         }
