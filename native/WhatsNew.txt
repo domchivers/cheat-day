@@ -1,4 +1,4 @@
-New in this build: recipes: change how many it serves (scale the amounts or split the same pot), add your own ingredients, and a cooked weight that tells you how much to eat; saved meals get a cooked weight too. Swiping is gone from recipes, so the page scrolls freely.
+New in this build: change how much of any recipe ingredient you use (tap its amount), and the calories follow.
 
 Thanks for testing! Please just use it like a normal day:
 

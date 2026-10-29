@@ -44,6 +44,9 @@ struct RecipeSheet: View {
     @AppStorage("recipe.added") private var addedJSON = "{}"   // "recipe|version" → ingredients you added (sweetcorn)
     @AppStorage("recipe.cooked") private var cookedJSON = "{}"   // "recipe|version" → what the finished pot weighed
     @State private var addingFood = false
+    @AppStorage("recipe.grams") private var gramsJSON = "{}"   // "recipe|version|ingredient" → the grams you use
+    @State private var resizing: SwapRef?
+    @State private var resizeText = ""
     @AppStorage("recipe.serves") private var servesJSON = "{}"   // "recipe|version" → {n, scale}: your portions
     @State private var swapping: SwapRef?
     @State private var scanFor: (index: Int, mode: PantryScanSheet.Mode)?
@@ -91,6 +94,17 @@ struct RecipeSheet: View {
                 .presentationDetents([.medium, .large])
             }
             .sheet(isPresented: $addingFood) { FoodPicker { item in add(item) } }
+            .alert(resizing.map { "How much \($0.name.lowercased())?" } ?? "", isPresented: Binding(get: { resizing != nil }, set: { if !$0 { resizing = nil } })) {
+                TextField("grams", text: $resizeText).keyboardType(.numberPad)
+                Button("Save") {
+                    if let r = resizing, let v = Double(resizeText.filter(\.isNumber)), v > 0 { setGrams(r.index, v) }
+                    resizing = nil
+                }
+                if let r = resizing, ownGrams[swapKey(r.index)] != nil {
+                    Button("Back to the recipe's") { setGrams(r.index, nil); resizing = nil }
+                }
+                Button("Cancel", role: .cancel) { resizing = nil }
+            } message: { Text("In grams. Its calories and the recipe's totals follow.") }
             .sheet(item: $scanMode) { m in
                 PantryScanSheet(mode: m) { items in
                     // scanned here: into the cupboard too, and the first one in place of the ingredient
@@ -165,6 +179,18 @@ struct RecipeSheet: View {
         if let d = try? JSONSerialization.data(withJSONObject: all) { cookedJSON = String(data: d, encoding: .utf8) ?? "{}" }
     }
 
+    private func startResize(_ g: JSON, _ i: Int) {
+        resizeText = pos(g["grams"]).map { Fmt.int($0) } ?? ""
+        resizing = SwapRef(index: i, name: str(g["name"]), grams: num(g["grams"]) ?? 0, portions: 1)
+    }
+
+    private var ownGrams: [String: Double] { (try? JSONDecoder().decode([String: Double].self, from: Data(gramsJSON.utf8))) ?? [:] }
+    private func setGrams(_ i: Int, _ g: Double?) {
+        var all = ownGrams
+        all[swapKey(i)] = g
+        withAnimation(.snappy) { gramsJSON = String(data: (try? JSONEncoder().encode(all)) ?? Data("{}".utf8), encoding: .utf8) ?? "{}" }
+    }
+
     private var removed: Set<String> { Set((try? JSONDecoder().decode([String].self, from: Data(removedJSON.utf8))) ?? []) }
     private func setRemoved(_ i: Int, _ out: Bool) {
         var all = removed
@@ -179,7 +205,15 @@ struct RecipeSheet: View {
     /// portions per person.
     private func applied(_ ings: [JSON], portions: Double) -> [JSON] {
         let s = swaps, out = removed
-        return ings.enumerated().map { i, g in
+        let own = ownGrams
+        return ings.enumerated().map { i, g0 in
+            // your amount first (less carrot): everything about the ingredient scales with it, then any swap uses it
+            var g = g0
+            if let mine = own[swapKey(i)], let was = pos(g0["grams"]) {
+                let f = mine / was
+                for k in ["kcal", "protein_g", "carbs_g", "fat_g"] { if let v = num(g0[k]) { g[k] = v * f } }
+                g["grams"] = mine; g["amount"] = "\(Fmt.int(mine)) g"; g["resized"] = true
+            }
             var x = g
             if out.contains(swapKey(i)) { x["removed"] = true }
             guard let item = s[swapKey(i)] else { return x }
@@ -376,8 +410,16 @@ struct RecipeSheet: View {
                 Button("Put back") { setRemoved(i, false) }.font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent).buttonStyle(.plain)
                     .padding(.trailing, 8)
             } else {
-                Text(str(g["amount"]).isEmpty ? "\(Int(num(g["grams"]) ?? 0)) g" : str(g["amount"])).font(.subheadline.weight(.semibold))
+                // tap the amount to change it
+                Button { startResize(g, i) } label: {
+                    Text(str(g["amount"]).isEmpty ? "\(Int(num(g["grams"]) ?? 0)) g" : str(g["amount"])).font(.subheadline.weight(.semibold))
+                        .foregroundStyle(g["resized"] as? Bool == true ? Theme.accent : .primary)
+                }
+                .buttonStyle(.plain).disabled(pos(g["grams"]) == nil)
                 Menu {
+                    if pos(g["grams"]) != nil {
+                        Button { startResize(g, i) } label: { Label("Change amount", systemImage: "scalemass") }
+                    }
                     Button { swapping = SwapRef(index: i, name: from.isEmpty ? str(g["name"]) : from, grams: num(g["grams"]) ?? 0, portions: portions) } label: {
                         Label("Swap for my own", systemImage: "arrow.left.arrow.right")
                     }
