@@ -298,14 +298,36 @@ extension View {
         }
     }
 
-    /// Number keyboards have no return key: a Done button above the keyboard puts it away (and keeps what was typed).
-    func keyboardDone() -> some View {
-        toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
-                    .fontWeight(.bold)
+    /// Marks a screen that types: the Done bar itself comes from KeyboardDone, on every field in the app. (SwiftUI's
+    /// keyboard toolbar went missing in sheets and on screens with more than one, so it's no longer used.)
+    func keyboardDone() -> some View { self }
+}
+
+/// A Done bar above every keyboard in the app: number keyboards have no return key, and this puts any keyboard away
+/// (keeping what was typed). Fitted to each text field as it starts editing, so no screen can miss it.
+@MainActor
+enum KeyboardDone {
+    static func install() {
+        for name in [UITextField.textDidBeginEditingNotification, UITextView.textDidBeginEditingNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { n in
+                let field = n.object
+                MainActor.assumeIsolated { attach(field) }
             }
         }
+    }
+
+    private static func attach(_ field: Any?) {
+        if let f = field as? UITextField, f.inputAccessoryView == nil { f.inputAccessoryView = bar(); f.reloadInputViews() }
+        else if let v = field as? UITextView, v.isEditable, v.inputAccessoryView == nil { v.inputAccessoryView = bar(); v.reloadInputViews() }
+    }
+
+    private static func bar() -> UIToolbar {
+        let t = UIToolbar(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
+        // no target: it goes to whichever field has the keyboard
+        let done = UIBarButtonItem(title: "Done", style: .done, target: nil, action: #selector(UIResponder.resignFirstResponder))
+        done.tintColor = UIColor(Theme.accent)
+        t.items = [UIBarButtonItem(systemItem: .flexibleSpace), done]
+        t.sizeToFit()
+        return t
     }
 }

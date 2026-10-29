@@ -81,6 +81,14 @@ final class TourUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Screenshot"].exists)
         XCTAssertTrue(app.buttons["Apple Health"].exists)
         let a = XCTAttachment(screenshot: app.screenshot()); a.name = "weigh-in"; a.lifetime = .keepAlways; add(a)
+        // a number keyboard has no return key: the Done bar above it puts it away
+        app.textFields.firstMatch.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        let done = app.buttons["Done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 2), "Done above the keyboard")
+        let k = XCTAttachment(screenshot: app.screenshot()); k.name = "keyboard-done"; k.lifetime = .keepAlways; add(k)
+        done.tap()
+        XCTAssertFalse(app.keyboards.firstMatch.waitForExistence(timeout: 1))
         app.buttons["Screenshot"].tap()
         let b = XCTAttachment(screenshot: app.screenshot()); b.name = "weigh-in-screenshot"; b.lifetime = .keepAlways; add(b)
     }

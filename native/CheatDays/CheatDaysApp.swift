@@ -10,6 +10,7 @@ enum AppConfig {
 @main
 struct CheatDaysApp: App {
     @UIApplicationDelegateAdaptor(PushDelegate.self) private var pushDelegate
+    init() { KeyboardDone.install() }
     var body: some Scene {
         WindowGroup {
             RootView()
