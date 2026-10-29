@@ -124,11 +124,11 @@ struct MealPlannerView: View {
     @ViewBuilder private var cupboard: some View {
         HStack(spacing: 8) {
             Button { typing = false; scanning = .barcode } label: {
-                Label("Scan a barcode", systemImage: "barcode.viewfinder").font(.subheadline.weight(.bold)).frame(maxWidth: .infinity).padding(.vertical, 10)
+                Label("Scan a barcode", systemImage: "barcode.viewfinder").font(.subheadline.weight(.bold)).lineLimit(1).minimumScaleFactor(0.75).frame(maxWidth: .infinity).padding(.vertical, 10)
                     .background(Theme.hero, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
             Button { typing = false; scanning = .photo } label: {
-                Label("Photo of a label", systemImage: "camera.fill").font(.subheadline.weight(.bold)).frame(maxWidth: .infinity).padding(.vertical, 10)
+                Label("Photo of a label", systemImage: "camera.fill").font(.subheadline.weight(.bold)).lineLimit(1).minimumScaleFactor(0.75).frame(maxWidth: .infinity).padding(.vertical, 10)
                     .background(Theme.hero, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
         }
@@ -142,7 +142,7 @@ struct MealPlannerView: View {
                 }
                 Spacer(minLength: 4)
                 Button { withAnimation { scansJSON = PantryItem.Saved.save(scans.filter { $0.id != s.id }) } } label: {
-                    Image(systemName: "xmark").font(.caption.weight(.bold)).foregroundStyle(.secondary).frame(width: 30, height: 30)
+                    Image(systemName: "xmark").font(.caption.weight(.bold)).foregroundStyle(.secondary).frame(width: 44, height: 44).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain).accessibilityLabel("Remove \(s.name)")
             }
