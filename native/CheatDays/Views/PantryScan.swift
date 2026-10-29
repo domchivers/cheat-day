@@ -139,7 +139,7 @@ struct PantryScanSheet: View {
                         .frame(maxWidth: .infinity).frame(height: 50)
                         .background(ready ? Theme.accent : Theme.hero, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
-                .buttonStyle(.plain).disabled(!ready).padding(.horizontal, 20).padding(.bottom, 8)
+                .buttonStyle(.plain).disabled(!ready || busy != nil).padding(.horizontal, 20).padding(.bottom, 8)   // wait for every photo to be read
             }
         }
     }

@@ -191,7 +191,7 @@ struct TodayView: View {
             .task(id: store.lastSynced) {
                 // once a day, after the first sync, unless it's turned off
                 guard dailyTipsOn, dailyTipsSeen != store.today, store.lastSynced != nil, !store.needsOnboarding, !store.needsHabits,
-                      !Tour.shared.pending, !Tour.shared.active,
+                      !Tour.shared.pending, !Tour.shared.active, !showPlanner, !showCheat, openIdea == nil, addChoice == nil, flow == nil,
                       let r = store.dailyReview else { return }
                 try? await Task.sleep(for: .seconds(0.8))
                 dailyTipsSeen = store.today

@@ -27,7 +27,7 @@ final class TourUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["Scan a barcode"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["Photo of a label"].exists)
-        XCTAssertTrue(app.staticTexts["Tesco Chicken breast fillets"].exists)
+        XCTAssertTrue(app.textFields.matching(NSPredicate(format: "value == %@", "Tesco Chicken breast fillets")).firstMatch.exists)
         let a = XCTAttachment(screenshot: app.screenshot()); a.name = "plan-cupboard"; a.lifetime = .keepAlways; add(a)
     }
 
