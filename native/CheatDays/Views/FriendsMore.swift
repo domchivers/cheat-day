@@ -48,10 +48,17 @@ final class Inbox {
     }
 
     func add(_ x: JSON) {
-        var b = dict(x["payload"])
-        if b.isEmpty { b = ["name": x["name"] ?? "", "kcalPerServing": x["kcal"] ?? 0, "unitLabel": "portion"] }
-        if str(b["name"]).isEmpty { b["name"] = x["name"] ?? "" }
-        Store.shared.add(b, kcal: num(x["kcal"]) ?? 0, meal: Meals.now)
+        // a sent recipe goes on as one portion of the meal; a sent food as the food it was (only its food fields, so
+        // nothing odd from the other phone or the website rides along into the diary)
+        if let m = meal(x) {
+            let b = Store.shared.mealBasis(m)
+            Store.shared.add(b, kcal: num(b["kcalPerServing"]) ?? num(x["kcal"]) ?? 0, meal: Meals.now)
+        } else {
+            var b = FoodMath.basisOf(dict(x["payload"]))
+            if pos(b["kcalPerServing"]) == nil && FoodMath.kcalPer100(b) == nil { b["kcalPerServing"] = num(x["kcal"]) ?? 0; b["unitLabel"] = "portion" }
+            if str(b["name"]).isEmpty { b["name"] = str(x["name"]) }
+            Store.shared.add(b, kcal: num(x["kcal"]) ?? pos(b["kcalPerServing"]) ?? 0, meal: Meals.now)
+        }
         settle(x, "added")
     }
 }

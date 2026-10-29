@@ -89,8 +89,10 @@ struct TodayView: View {
                             .padding(.vertical, 4)
                         }
                     }
-                    ForEach(Inbox.shared.items.indices, id: \.self) { i in
-                        let x = Inbox.shared.items[i]
+                    // by each send's id, not its position: adding one removes it, and a row drawn by position
+                    // then read past the end of the list and crashed the app
+                    ForEach(Inbox.shared.items.map { Line(id: str($0["id"]), item: $0) }) { line in
+                        let x = line.item
                         Section {
                             HStack(spacing: 12) {
                                 let recipe = Inbox.shared.meal(x)
