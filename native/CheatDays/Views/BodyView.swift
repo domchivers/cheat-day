@@ -216,7 +216,7 @@ struct BodyView: View {
                 PointMark(x: .value("Day", sel.date), y: .value(m.name, sel.value)).foregroundStyle(Theme.accent).symbolSize(90)
             }
         }
-        .chartYScale(domain: floor...(hi + pad))
+        .chartYScale(domain: floor...(hi + pad).rounded(.up))   // up to a whole number, so the top reading sits under a gridline
         .chartXSelection(value: $picked)
         .chartYAxis {
             AxisMarks(position: .trailing, values: .automatic(desiredCount: 3)) { v in
