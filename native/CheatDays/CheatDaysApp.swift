@@ -107,9 +107,9 @@ struct SignInView: View {
         let ready = !busy && !email.isEmpty && password.count >= (creating ? 6 : 1)
         ScrollView {
             VStack(spacing: 0) {
-                LogoMark().fill(Color(red: 0.91, green: 0.93, blue: 0.97)).frame(width: 104, height: 56).padding(.top, 90)
+                LogoMark().fill(Color(red: 0.91, green: 0.93, blue: 0.97)).frame(width: 94, height: 50).padding(.top, 90)
                     .accessibilityLabel("Cheat Days")
-                Text("Every day can feel like a cheat day.").font(.title3.weight(.semibold)).multilineTextAlignment(.center)
+                Text("Every day can feel like a cheat day.").font(.headline).lineLimit(1).minimumScaleFactor(0.8)
                     .padding(.top, 28)
                 Picker("", selection: $creating) { Text("Sign in").tag(false); Text("New account").tag(true) }
                     .pickerStyle(.segmented).controlSize(.large).padding(.top, 32)
