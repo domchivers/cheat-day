@@ -1,4 +1,4 @@
-New in this build: new ranks with the app logo (Starter, Steady, Committed, Strong, Elite and Legend). Breakfast, Lunch, Dinner and Snacks now sit near the top when adding or changing a food, and meal ideas on Today line up properly.
+New in this build: new ranks with the app logo (Starter, Steady, Committed, Strong, Elite and Legend). Breakfast, Lunch, Dinner and Snacks sit near the top when adding a food, meal ideas line up properly, and reordering a workout ends with a clear Done button.
 
 Thanks for testing! Please just use it like a normal day:
 

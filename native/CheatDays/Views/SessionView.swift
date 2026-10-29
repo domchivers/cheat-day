@@ -42,7 +42,7 @@ struct SessionView: View {
                     ForEach(s.exercises) { e in Label(e.name.isEmpty ? "Exercise" : e.name, systemImage: "dumbbell") }
                         .onMove { s.exercises.move(fromOffsets: $0, toOffset: $1) }
                         .onDelete { s.exercises.remove(atOffsets: $0) }
-                } header: { Text("Drag to reorder") }
+                } header: { Text("Drag to reorder, then tap Done") }
             } else {
                 ForEach($s.exercises) { $e in exerciseSection($e) }
             }
@@ -67,14 +67,21 @@ struct SessionView: View {
         .navigationTitle("Session")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button { withAnimation { reordering.toggle() } } label: { Label(reordering ? "Done reordering" : "Reorder exercises", systemImage: "arrow.up.arrow.down") }
-                    Button(role: .destructive) { confirmDiscard = true } label: { Label("Discard session", systemImage: "trash") }
-                } label: { Image(systemName: "ellipsis.circle") }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Finish") { prepareFinish() }.fontWeight(.bold)
+            // while reordering the only button is Done, so Finish can't be pressed by mistake to end the reorder
+            if reordering {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { withAnimation { reordering = false } }.fontWeight(.bold)
+                }
+            } else {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button { withAnimation { reordering = true } } label: { Label("Reorder exercises", systemImage: "arrow.up.arrow.down") }
+                        Button(role: .destructive) { confirmDiscard = true } label: { Label("Discard session", systemImage: "trash") }
+                    } label: { Image(systemName: "ellipsis.circle") }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Finish") { prepareFinish() }.fontWeight(.bold)
+                }
             }
         }
         .sheet(isPresented: $picking) {
