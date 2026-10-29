@@ -1,4 +1,4 @@
-New in this build: signing back in no longer repeats the welcome tour and scale setup.
+New in this build: signing back in goes straight to the app, without repeating the setup, tour or scale screens.
 
 Thanks for testing! Please just use it like a normal day:
 

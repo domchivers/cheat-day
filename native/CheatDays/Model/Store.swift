@@ -328,9 +328,25 @@ final class Store {
         }
     }
 
+    /// A sync already on its way: a second caller waits for it rather than going on with an unloaded record (after
+    /// signing in, the first-run checks ran before the account had come down).
+    private var inflight: Task<Void, Never>?
+
     func sync() async {
         guard Supabase.shared.session != nil else { return }
-        if syncing { scheduleSync(after: 1); return }
+        if let t = inflight { await t.value; return }
+        let t = Task { await syncNow() }
+        inflight = t
+        await t.value
+        inflight = nil
+    }
+
+    private func syncNow() async {
+        // a different account on this phone (or one signed out by an expired login): nothing of the last one carries over
+        let user = Supabase.shared.userId ?? ""
+        let last = UserDefaults.standard.string(forKey: "store.user") ?? ""
+        if !last.isEmpty && last != user { reset() }
+        UserDefaults.standard.set(user, forKey: "store.user")
         syncing = true
         defer { syncing = false }
         do {

@@ -135,8 +135,13 @@ struct MainTabs: View {
             if url.host == "add" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { NotificationCenter.default.post(name: .openAdd, object: nil) } }
         }
         .task {
-            await Store.shared.sync()
-            if Store.shared.needsOnboarding { onboarding = true } else if Store.shared.needsHabits { habits = true } else { afterSetup() }
+            await Store.shared.sync()   // waits for the account to come down, even if signing in started the sync
+            // signing back in to an existing account skips the plan and food setup (Me has both); new accounts get them
+            let returning = UserDefaults.standard.bool(forKey: "signin.returning")
+            UserDefaults.standard.set(false, forKey: "signin.returning")
+            if !returning && Store.shared.needsOnboarding { onboarding = true }
+            else if !returning && Store.shared.needsHabits { habits = true }
+            else { afterSetup() }
             await Store.shared.applyHelperChanges(); await Store.shared.pullBody(); await Reminders.reschedule(Store.shared)
             await HealthSync.pull()
             await FriendActivity.shared.load()
@@ -263,6 +268,7 @@ struct SignInView: View {
                 let d = UserDefaults.standard
                 if create || !d.bool(forKey: "tour.seen") { Tour.shared.pending = true }
                 if create || !d.bool(forKey: "scaleSetup.asked") { d.set(true, forKey: "scaleSetup.pending") }
+                d.set(!create, forKey: "signin.returning")   // an account that's been set up before goes straight in
                 await Store.shared.sync()
             }
         } catch {
