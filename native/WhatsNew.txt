@@ -1,4 +1,4 @@
-New in this build: in Plan, scan a barcode or snap a nutrition label to add foods from your cupboard; the meal ideas use their real numbers.
+New in this build: cupboard scanning in Plan stays open, asks you to name anything a label doesn't say, and adds several foods at once.
 
 Thanks for testing! Please just use it like a normal day:
 
