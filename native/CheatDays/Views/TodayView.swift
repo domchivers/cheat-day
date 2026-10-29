@@ -646,6 +646,7 @@ private struct SaveMealSheet: View {
             .scrollContentBackground(.hidden)
             .background(Theme.bg)
             .navigationTitle("Save as a meal")
+            .keyboardDone()
             .navigationBarTitleDisplayMode(.inline)
             .sensoryFeedback(.selection, trigger: picked)
             .toolbar {

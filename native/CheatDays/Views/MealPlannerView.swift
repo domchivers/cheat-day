@@ -106,6 +106,7 @@ struct MealPlannerView: View {
             }
             .background(Theme.bg.ignoresSafeArea())
             .navigationTitle("Plan \(meal.lowercased())").navigationBarTitleDisplayMode(.inline)
+            .keyboardDone()
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .sheet(item: $open) { r in RecipeSheet(idea: r.idea) }
             .sheet(item: $scanning) { m in

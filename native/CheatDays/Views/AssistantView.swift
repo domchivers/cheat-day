@@ -66,6 +66,7 @@ struct AssistantView: View {
             }
             .background(Theme.bg.ignoresSafeArea())
             .navigationTitle("Assistant")
+            .keyboardDone()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
