@@ -165,8 +165,8 @@ struct AssistantView: View {
             Text("\(Fmt.int(num(e["portion_g"]) ?? 0)) \(str(e["unit"]).isEmpty ? "g" : str(e["unit"]))").font(.caption).foregroundStyle(.secondary)
             macros(k, p, c, f)
             let parts = list(e["parts"]), checked = parts.filter { ["list", "usda"].contains(str($0["src"])) }.count
-            ForEach(keyed(parts)) { row in
-                let i = row.index, pt = row.item, ok = ["list", "usda"].contains(str(pt["src"]))
+            ForEach(keyed(parts)) { entry in
+                let i = entry.index, pt = entry.item, ok = ["list", "usda"].contains(str(pt["src"]))
                 HStack(spacing: 6) {
                     Image(systemName: ok ? "checkmark.seal.fill" : "sparkles").font(.caption2).foregroundStyle(ok ? Color.green : .secondary)
                     Text(str(pt["name"])).font(.caption)
@@ -209,8 +209,8 @@ struct AssistantView: View {
     private func editCard(_ edit: JSON, turn: UUID) -> some View {
         let acts = list(edit["actions"])
         return panel {
-            ForEach(keyed(acts)) { row in
-                let a = row.item
+            ForEach(keyed(acts)) { entry in
+                let a = entry.item
                 VStack(alignment: .leading, spacing: 2) {
                     Label(describe(a), systemImage: ["add": "plus.circle", "remove": "minus.circle", "update": "pencil.circle", "workout": "figure.walk"][str(a["action"])] ?? "circle")
                         .font(.subheadline)
@@ -390,8 +390,8 @@ struct ChatsList: View {
             List {
                 let chats = list(store.doc["chats"])
                 if chats.isEmpty { Text("No chats yet.").foregroundStyle(.secondary) }
-                ForEach(keyed(chats)) { row in
-                    let c = row.item
+                ForEach(keyed(chats)) { entry in
+                    let c = entry.item
                     Button { open(c) } label: {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(str(c["title"])).font(.subheadline.weight(.semibold)).lineLimit(2)
