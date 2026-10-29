@@ -9,17 +9,19 @@ struct Rank: Equatable {
     var tierName: String { Self.tiers[tier] }
     var name: String { step.map { "\(tierName) \(["I", "II", "III"][$0 - 1])" } ?? tierName }
 
-    /// The badge's logo and outline, cool slate up through the app's blues to violet, and gold for Legend.
+    /// The badge's logo and edge, cool slate up through the app's blues to violet, and gold for Legend.
     var color: Color { Self.colors[tier].0 }
-    /// The badge's tile.
-    var dark: Color { Self.colors[tier].1 }
-    private static let colors: [(Color, Color)] = [
-        (Color(red: 0.545, green: 0.608, blue: 0.690), Color(red: 0.106, green: 0.133, blue: 0.169)),
-        (Color(red: 0.357, green: 0.561, blue: 0.839), Color(red: 0.078, green: 0.133, blue: 0.227)),
-        (Color(red: 0.247, green: 0.714, blue: 0.851), Color(red: 0.051, green: 0.165, blue: 0.200)),
-        (Color(red: 0.486, green: 0.769, blue: 1.000), Color(red: 0.071, green: 0.188, blue: 0.290)),
-        (Color(red: 0.616, green: 0.549, blue: 0.941), Color(red: 0.133, green: 0.114, blue: 0.271)),
-        (Color(red: 0.949, green: 0.710, blue: 0.361), Color(red: 0.227, green: 0.165, blue: 0.051))
+    /// The top and bottom of the badge's fill.
+    var mid: Color { Self.colors[tier].1 }
+    var dark: Color { Self.colors[tier].2 }
+    private static func hex(_ v: Int) -> Color { Color(red: Double(v >> 16 & 255) / 255, green: Double(v >> 8 & 255) / 255, blue: Double(v & 255) / 255) }
+    private static let colors: [(Color, Color, Color)] = [
+        (hex(0x8B9BB0), hex(0x2A3442), hex(0x1A2029)),
+        (hex(0x6AA6FF), hex(0x1D3A66), hex(0x0F1D33)),
+        (hex(0x4FD1EA), hex(0x0F5466), hex(0x082A33)),
+        (hex(0x7CC4FF), hex(0x1B4F80), hex(0x0C2640)),
+        (hex(0xB39DFF), hex(0x3E2F8A), hex(0x1D1645)),
+        (hex(0xFFC95C), hex(0x8A5A12), hex(0x3D2806))
     ]
 
     /// The first level of each tier, for the ladder.

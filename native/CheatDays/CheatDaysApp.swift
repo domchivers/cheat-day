@@ -32,6 +32,7 @@ struct RootView: View {
         else if ProcessInfo.processInfo.arguments.contains("-uitest-weigh") { WeighInSheet() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-body") { BodyHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-walk") { WalkHarness() }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-ranks") { RanksHarness() }
         else if Supabase.shared.session == nil { SignInView() } else { MainTabs() }
     }
 }
@@ -94,6 +95,27 @@ private struct WalkHarness: View {
         Steps.shared.preview(days)
     }
     var body: some View { WorkoutsView() }
+}
+
+/// For the ranks screenshot only: every tier's badge with its steps, then the Ranks screen.
+private struct RanksHarness: View {
+    @State private var open = false
+    var body: some View {
+        VStack(spacing: 18) {
+            ForEach(0..<2, id: \.self) { row in
+                HStack(spacing: 22) {
+                    ForEach(0..<3, id: \.self) { col in
+                        let r = Rank(level: (row * 3 + col) * 3 + 1 + col % 3)
+                        VStack(spacing: 6) { RankBadge(rank: r, size: 84); RankSteps(rank: r, width: 50); Text(r.name).font(.caption.weight(.bold)).foregroundStyle(r.color) }
+                    }
+                }
+            }
+            HStack(spacing: 10) { ForEach(0..<6, id: \.self) { t in RankBadge(rank: Rank.first(ofTier: t), size: 16) } }
+            Button("Open ranks") { open = true }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity).background(Theme.bg)
+        .sheet(isPresented: $open) { RanksView() }
+    }
 }
 
 /// For the recipe swap UI test only: a written recipe and one cupboard food, no sign-in or AI.

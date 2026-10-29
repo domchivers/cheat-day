@@ -44,14 +44,24 @@ struct MeView: View {
             Button { ranks = true } label: {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(name).font(.title2.weight(.heavy)).foregroundStyle(.primary).lineLimit(1)
-                    HStack(spacing: 5) {
-                        RankBadge(rank: store.rank, size: 18)
-                        Text("\(store.rank.name) rank").font(.caption.weight(.semibold)).foregroundStyle(store.rank.color)
+                    // two small pills, each kept to one line (side by side they wrapped and looked squeezed)
+                    HStack(spacing: 6) {
+                        HStack(spacing: 5) {
+                            RankBadge(rank: store.rank, size: 16)
+                            Text(store.rank.name).font(.caption.weight(.bold)).foregroundStyle(store.rank.color)
+                        }
+                        .padding(.leading, 5).padding(.trailing, 9).padding(.vertical, 3)
+                        .background(store.rank.color.opacity(0.14), in: Capsule())
                         if streak > 1 {
-                            FluentIcon(emoji: "🔥", size: 14)
-                            Text("\(streak)-day streak").font(.caption.weight(.semibold)).foregroundStyle(.orange)
+                            HStack(spacing: 4) {
+                                FluentIcon(emoji: "🔥", size: 13)
+                                Text("\(streak) days").font(.caption.weight(.bold)).foregroundStyle(.orange)
+                            }
+                            .padding(.horizontal, 8).padding(.vertical, 3)
+                            .background(Color.orange.opacity(0.14), in: Capsule())
                         }
                     }
+                    .lineLimit(1).fixedSize()
                 }
             }
             .buttonStyle(.plain)

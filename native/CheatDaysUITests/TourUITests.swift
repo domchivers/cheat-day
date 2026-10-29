@@ -106,6 +106,18 @@ final class TourUITests: XCTestCase {
         let a = XCTAttachment(screenshot: app.screenshot()); a.name = "workouts-walking"; a.lifetime = .keepAlways; add(a)
     }
 
+    func testRankBadges() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-uitest-ranks"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Legend"].waitForExistence(timeout: 5))
+        let a = XCTAttachment(screenshot: app.screenshot()); a.name = "rank-badges"; a.lifetime = .keepAlways; add(a)
+        app.buttons["Open ranks"].tap()
+        XCTAssertTrue(app.staticTexts["The ladder"].waitForExistence(timeout: 3) || app.staticTexts["THE LADDER"].exists)
+        sleep(1)
+        let b = XCTAttachment(screenshot: app.screenshot()); b.name = "ranks-screen"; b.lifetime = .keepAlways; add(b)
+    }
+
     func testSignInScreens() {
         let app = XCUIApplication()
         app.launchArguments = ["-uitest-signin"]
