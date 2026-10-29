@@ -29,6 +29,7 @@ struct RootView: View {
         else if ProcessInfo.processInfo.arguments.contains("-uitest-plan") { PlanHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-recipe") { RecipeHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-scale") { ScaleSetupView {} }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-weigh") { WeighInSheet() }
         else if Supabase.shared.session == nil { SignInView() } else { MainTabs() }
     }
 }

@@ -73,6 +73,18 @@ final class TourUITests: XCTestCase {
         let a = XCTAttachment(screenshot: app.screenshot()); a.name = "scale-setup"; a.lifetime = .keepAlways; add(a)
     }
 
+    func testWeighInSheet() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-uitest-weigh"]
+        app.launch()
+        XCTAssertTrue(app.buttons["Type it"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Screenshot"].exists)
+        XCTAssertTrue(app.buttons["Apple Health"].exists)
+        let a = XCTAttachment(screenshot: app.screenshot()); a.name = "weigh-in"; a.lifetime = .keepAlways; add(a)
+        app.buttons["Screenshot"].tap()
+        let b = XCTAttachment(screenshot: app.screenshot()); b.name = "weigh-in-screenshot"; b.lifetime = .keepAlways; add(b)
+    }
+
     func testSignInScreens() {
         let app = XCUIApplication()
         app.launchArguments = ["-uitest-signin"]
