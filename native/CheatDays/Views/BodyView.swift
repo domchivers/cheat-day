@@ -217,7 +217,6 @@ struct BodyView: View {
             }
         }
         .chartYScale(domain: floor...(hi + pad))
-        .chartPlotStyle { $0.clipped() }   // nothing drawn outside the plot, an odd reading included
         .chartXSelection(value: $picked)
         .chartYAxis {
             AxisMarks(position: .trailing, values: .automatic(desiredCount: 3)) { v in
