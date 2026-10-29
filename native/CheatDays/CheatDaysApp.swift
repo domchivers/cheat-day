@@ -26,6 +26,7 @@ struct RootView: View {
         else if ProcessInfo.processInfo.arguments.contains("-uitest-session") { SessionHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-tour") { TourHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-signin") { SignInView() }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-plan") { PlanHarness() }
         else if Supabase.shared.session == nil { SignInView() } else { MainTabs() }
     }
 }
@@ -50,6 +51,19 @@ private struct SessionHarness: View {
             .tabItem { Label("Workouts", systemImage: "dumbbell") }
         }
     }
+}
+
+/// For the Plan screenshot only: the planner with two sample scanned foods in the cupboard, no sign-in.
+private struct PlanHarness: View {
+    init() {
+        let samples = [
+            PantryItem(basis: ["name": "Chicken breast fillets", "brand": "Tesco", "kcalPer100": 106.0, "p100": 24.0, "c100": 0.0, "f100": 1.5]),
+            PantryItem(basis: ["name": "Basmati rice pouch", "kcalPer100": 148.0, "p100": 3.0, "c100": 31.0, "f100": 1.2])
+        ].compactMap { $0 }
+        UserDefaults.standard.set(PantryItem.Saved.save(samples), forKey: "pantry.scans")
+        UserDefaults.standard.set("peppers, eggs, spinach", forKey: "pantry")
+    }
+    var body: some View { MealPlannerView() }
 }
 
 /// For the tour UI test only: the real tabs with the tour started on Today, no sign-in or sync.

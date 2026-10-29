@@ -21,6 +21,16 @@ final class TourUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Next"].waitForExistence(timeout: 1))
     }
 
+    func testPlanCupboard() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-uitest-plan"]
+        app.launch()
+        XCTAssertTrue(app.buttons["Scan a barcode"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Photo of a label"].exists)
+        XCTAssertTrue(app.staticTexts["Tesco Chicken breast fillets"].exists)
+        let a = XCTAttachment(screenshot: app.screenshot()); a.name = "plan-cupboard"; a.lifetime = .keepAlways; add(a)
+    }
+
     func testSignInScreens() {
         let app = XCUIApplication()
         app.launchArguments = ["-uitest-signin"]
