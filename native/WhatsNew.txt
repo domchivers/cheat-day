@@ -1,4 +1,4 @@
-New in this build: change how much of any recipe ingredient you use (tap its amount), and the calories follow.
+New in this build: cooked weight warns when the pot you weighed is far from what the ingredients make (often rice that's in the list but served separately).
 
 Thanks for testing! Please just use it like a normal day:
 

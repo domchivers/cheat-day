@@ -198,6 +198,11 @@ struct MealEditor: View {
                             Text("g").foregroundStyle(.secondary)
                         }
                     } header: { Text("Cooked weight") } footer: {
+                        if let w = pos(meal["cookedGrams"]), let est = CookedWeight.estimate(raw), w < est * 0.6 || w > est * 1.6 {
+                            // way off what goes in: usually a side (rice) that's in the list but not in the pot
+                            Label("That's a long way from the \(Fmt.int(est)) g this list would make. Is everything here in the pot? Rice or sides you serve separately should come out of the list (••• → Remove), or the calories per gram come out wrong.", systemImage: "exclamationmark.triangle.fill")
+                                .foregroundStyle(Theme.warn)
+                        }
                         Text(meal["cookedGrams"] == nil
                              ? "Cooked it in bulk? Weigh it all once it's done (without the dish) and type it here, and the grams you put on your plate count right. About \(CookedWeight.estimate(raw).map { Fmt.int($0) } ?? "?") g is a guess from what goes in."
                              : "Portions and grams you add now come from the cooked weight: cooking changes the water, not the calories.")

@@ -49,6 +49,11 @@ struct CookedWeightCard: View {
                 Text(weighed == nil ? "Weigh it once it's cooked, without the dish, and every number here becomes exact."
                                     : "Cooking changes the water, not the calories: a lighter pot means more calories per gram.")
                     .font(.caption).foregroundStyle(.secondary)
+                if let w = weighed, let est = estimate, w < est * 0.6 || w > est * 1.6 {
+                    // way off what goes in: usually a side (rice) in the ingredients but not in the pot
+                    Label("That's a long way from the ≈ \(Fmt.int(est)) g these ingredients make. Is everything listed in the pot? Remove rice or sides you serve separately.", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption).foregroundStyle(Theme.warn)
+                }
                 Divider()
                 row("A portion (1 of \(Fmt.int(portions)))", "\(weighed == nil ? "≈ " : "")\(Fmt.int(portion)) g · \(Fmt.int(kcal / portions)) kcal")
                 row("Per 100 g cooked", "\(Fmt.int(per100)) kcal · \(Fmt.int(p100)) g protein")
