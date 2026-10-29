@@ -110,7 +110,7 @@ private struct MealCheckHarness: View {
         check = s.mealCheck("Lunch")
     }
     var body: some View {
-        if let check { MealCheckSheet(check: check) } else { Text("No check") }
+        if let check { MealCheckSheet(check: check) {} } else { Text("No check") }
     }
 }
 

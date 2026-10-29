@@ -4,6 +4,8 @@ import SwiftUI
 /// its recipe). In the same style as the morning tips; turned off with them in Settings.
 struct MealCheckSheet: View {
     let check: MealCheck
+    /// Opens the planner, for when the ideas aren't in the cupboard.
+    var plan: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var open: IdeaRef?
 
@@ -17,6 +19,23 @@ struct MealCheckSheet: View {
                     if !check.ideas.isEmpty {
                         Eyebrow(text: check.meal == "Dinner" ? "Easy dinners to try" : "Try next time", color: Theme.heroLabel).padding(.top, 8)
                         ForEach(check.ideas.indices, id: \.self) { i in idea(check.ideas[i]) }
+                    }
+                    if let plan {
+                        Button(action: plan) {
+                            HStack(spacing: 12) {
+                                FluentIcon(emoji: "🛒", size: 26)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Don't have these in?").font(.subheadline.weight(.bold))
+                                    Text("Plan something from what's in your cupboard").font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                            }
+                            .padding(12)
+                            .background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
                     }
                     Text("Once after lunch and dinner, only when there's something to help with. You can turn these off in Settings.")
                         .font(.footnote).foregroundStyle(.secondary).padding(.top, 6)

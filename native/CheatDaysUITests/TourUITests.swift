@@ -132,6 +132,7 @@ final class TourUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.staticTexts["About your lunch"].waitForExistence(timeout: 5), "toast alone for lunch gets a word")
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "g protein")).firstMatch.exists)
+        XCTAssertTrue(app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "have these in")).firstMatch.exists, "the way to the planner")
         let a = XCTAttachment(screenshot: app.screenshot()); a.name = "meal-check"; a.lifetime = .keepAlways; add(a)
     }
 

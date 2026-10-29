@@ -201,7 +201,13 @@ struct TodayView: View {
                 dailyTipsSeen = store.today
                 daily = r
             }
-            .sheet(item: $mealCheck) { c in MealCheckSheet(check: c).presentationDetents([.medium, .large]) }
+            .sheet(item: $mealCheck) { c in
+                MealCheckSheet(check: c) {
+                    mealCheck = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { showPlanner = true }
+                }
+                .presentationDetents([.medium, .large])
+            }
             .task(id: "\(store.todayItems.count)|\(addChoice == nil)|\(editing == nil)|\(flow == nil)") {
                 // lunch or dinner just logged and every other sheet closed: a word about it, once, if it needs one
                 guard dailyTipsOn, offset == 0, addChoice == nil, editing == nil, flow == nil, daily == nil, mealCheck == nil, openIdea == nil,
