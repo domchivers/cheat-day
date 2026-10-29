@@ -136,10 +136,11 @@ struct MainTabs: View {
         }
         .task {
             await Store.shared.sync()   // waits for the account to come down, even if signing in started the sync
-            // signing back in to an existing account skips the plan and food setup (Me has both); new accounts get them
+            // signing back in skips the food setup (Me has it); the plan only shows for an account that's never had
+            // one or logged anything, and it has Skip for now
             let returning = UserDefaults.standard.bool(forKey: "signin.returning")
             UserDefaults.standard.set(false, forKey: "signin.returning")
-            if !returning && Store.shared.needsOnboarding { onboarding = true }
+            if Store.shared.needsOnboarding { onboarding = true }
             else if !returning && Store.shared.needsHabits { habits = true }
             else { afterSetup() }
             await Store.shared.applyHelperChanges(); await Store.shared.pullBody(); await Reminders.reschedule(Store.shared)

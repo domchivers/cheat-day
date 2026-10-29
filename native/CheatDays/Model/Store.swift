@@ -334,7 +334,12 @@ final class Store {
 
     func sync() async {
         guard Supabase.shared.session != nil else { return }
-        if let t = inflight { await t.value; return }
+        if let t = inflight {
+            await t.value
+            // anything logged while that one was on its way still goes up, rather than waiting for the next trigger
+            guard !pending.isEmpty else { return }
+            if inflight != nil { scheduleSync(after: 0.3); return }
+        }
         let t = Task { await syncNow() }
         inflight = t
         await t.value
