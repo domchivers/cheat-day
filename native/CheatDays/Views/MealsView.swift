@@ -125,6 +125,17 @@ struct MealEditor: View {
                 Section {
                     TextField("Meal name, like Chicken stir fry", text: Binding(get: { str(meal["name"]) }, set: { meal["name"] = $0 })).font(.headline)
                     Stepper("Makes \(Fmt.one(portions)) portion\(portions == 1 ? "" : "s")", value: Binding(get: { portions }, set: { meal["portions"] = $0 }), in: 1...20, step: 1)
+                } footer: {
+                    if !items.isEmpty {
+                        // the stepper splits the same food differently; these change every amount instead
+                        HStack(spacing: 14) {
+                            Text("Scale every amount:")
+                            if portions > 1 { Button("For 1 portion") { scaleAll(1 / portions) } }
+                            Button("Halve") { scaleAll(0.5) }
+                            Button("Double") { scaleAll(2) }
+                        }
+                        .font(.footnote.weight(.semibold)).buttonStyle(.borderless)
+                    }
                 }
                 Section {
                     ForEach(items.indices, id: \.self) { i in
@@ -168,8 +179,28 @@ struct MealEditor: View {
                     Button { picking = true } label: { Label("Add a food", systemImage: "plus.circle.fill") }
                 } header: { Text("Foods") } footer: {
                     if !items.isEmpty {
-                        let total = items.compactMap { Self.grams($0) }.reduce(0, +)
-                        Text("Whole meal \(Fmt.int(total)) g, \(Fmt.int(per * portions)) kcal. A portion is \(Fmt.int(total / portions)) g: \(Fmt.int(per)) kcal, \(Int(num(basis["pServ"]) ?? 0))g protein. Type the grams to change an amount.")
+                        let total = pos(meal["cookedGrams"]) ?? items.compactMap { Self.grams($0) }.reduce(0, +)
+                        Text("Whole meal \(Fmt.int(total)) g\(meal["cookedGrams"] == nil ? "" : " cooked"), \(Fmt.int(per * portions)) kcal. A portion is \(Fmt.int(total / portions)) g: \(Fmt.int(per)) kcal, \(Int(num(basis["pServ"]) ?? 0))g protein. Type the grams to change an amount.")
+                    }
+                }
+                if !items.isEmpty {
+                    // cooked in bulk: weigh the finished pot and portions are weighed against it, not the raw weights
+                    let raw = items.map { (str($0["name"]), Self.grams($0) ?? 0) }
+                    Section {
+                        HStack {
+                            Text("Finished pot")
+                            Spacer()
+                            TextField(CookedWeight.estimate(raw).map { "≈ \(Fmt.int($0))" } ?? "grams",
+                                      text: Binding(get: { pos(meal["cookedGrams"]).map { Fmt.int($0) } ?? "" },
+                                                    set: { let v = Double($0.filter(\.isNumber)) ?? 0; meal["cookedGrams"] = v > 0 ? v : nil }))
+                                .keyboardType(.numberPad).multilineTextAlignment(.trailing).frame(width: 90)
+                                .font(.subheadline.weight(.bold).monospacedDigit())
+                            Text("g").foregroundStyle(.secondary)
+                        }
+                    } header: { Text("Cooked weight") } footer: {
+                        Text(meal["cookedGrams"] == nil
+                             ? "Cooked it in bulk? Weigh it all once it's done (without the dish) and type it here, and the grams you put on your plate count right. About \(CookedWeight.estimate(raw).map { Fmt.int($0) } ?? "?") g is a guess from what goes in."
+                             : "Portions and grams you add now come from the cooked weight: cooking changes the water, not the calories.")
                     }
                 }
                 Section("Method (optional)") {
@@ -276,6 +307,21 @@ struct MealEditor: View {
         var its = list(meal["items"]); guard i < its.count else { return }
         its.remove(at: i)
         withAnimation { meal["items"] = its }
+    }
+
+    /// Every amount times f, with the portions and the cooked weight following (a curry for 4 made for 1).
+    private func scaleAll(_ f: Double) {
+        let its = list(meal["items"]).map { it -> JSON in
+            var x = it
+            x["kcal"] = Int(((num(it["kcal"]) ?? 0) * f).rounded())
+            if let g = Self.grams(it) { x["grams"] = (g * f).rounded() }
+            return x
+        }
+        withAnimation {
+            meal["items"] = its
+            meal["portions"] = max(1, ((num(meal["portions"]) ?? 1) * f).rounded())
+            if let c = pos(meal["cookedGrams"]) { meal["cookedGrams"] = (c * f).rounded() }
+        }
     }
 
     private func scale(_ i: Int, _ f: Double) {

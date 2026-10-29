@@ -41,8 +41,11 @@ struct RecipeSheet: View {
     @AppStorage("recipe.swaps") private var swapsJSON = "{}"   // "recipe|version|ingredient" → your own food
     @AppStorage("pantry.scans") private var scansJSON = "[]"
     @AppStorage("recipe.removed") private var removedJSON = "[]"   // "recipe|version|ingredient" left out
+    @AppStorage("recipe.added") private var addedJSON = "{}"   // "recipe|version" → ingredients you added (sweetcorn)
+    @AppStorage("recipe.cooked") private var cookedJSON = "{}"   // "recipe|version" → what the finished pot weighed
+    @State private var addingFood = false
+    @AppStorage("recipe.serves") private var servesJSON = "{}"   // "recipe|version" → {n, scale}: your portions
     @State private var swapping: SwapRef?
-    @GestureState(resetTransaction: Transaction(animation: .snappy)) private var dragging: (index: Int, x: CGFloat)? = nil
     @State private var scanFor: (index: Int, mode: PantryScanSheet.Mode)?
     @State private var scanMode: PantryScanSheet.Mode?
     private var store: Store { Store.shared }
@@ -87,6 +90,7 @@ struct RecipeSheet: View {
                 }
                 .presentationDetents([.medium, .large])
             }
+            .sheet(isPresented: $addingFood) { FoodPicker { item in add(item) } }
             .sheet(item: $scanMode) { m in
                 PantryScanSheet(mode: m) { items in
                     // scanned here: into the cupboard too, and the first one in place of the ingredient
@@ -106,6 +110,59 @@ struct RecipeSheet: View {
         var all = swaps
         all[swapKey(i)] = item
         withAnimation(.snappy) { swapsJSON = String(data: (try? JSONEncoder().encode(all)) ?? Data("{}".utf8), encoding: .utf8) ?? "{}" }
+    }
+
+    private var recipeKey: String { "\(str(idea["name"]))|\(version)" }
+
+    /// Ingredients you added to this recipe, as recipe ingredients (grams, kcal and macros).
+    private var added: [JSON] {
+        let all = (try? JSONSerialization.jsonObject(with: Data(addedJSON.utf8))) as? [String: Any]
+        return list(all?[recipeKey])
+    }
+    private func add(_ item: JSON) {
+        let k = num(item["kcal"]) ?? 0, g = num(item["grams"]) ?? FoodMath.amounts(item, kcal: k).grams
+        let m = FoodMath.macros(FoodMath.basisOf(item), kcal: k)
+        var ing: JSON = ["name": str(item["name"]), "kcal": k, "protein_g": m?.p ?? 0, "carbs_g": m?.c ?? 0, "fat_g": m?.f ?? 0, "added": true]
+        if let g { ing["grams"] = g; ing["amount"] = "\(Fmt.int(g)) g" } else { ing["amount"] = FoodMath.amountText(item, kcal: k) }
+        var all = ((try? JSONSerialization.jsonObject(with: Data(addedJSON.utf8))) as? [String: Any]) ?? [:]
+        all[recipeKey] = added + [ing]
+        if let d = try? JSONSerialization.data(withJSONObject: all) { withAnimation(.snappy) { addedJSON = String(data: d, encoding: .utf8) ?? "{}" } }
+    }
+
+    /// How many it serves for you, and whether the amounts scale with it or the same pot is split differently.
+    private var serves: (n: Double, scale: Bool)? {
+        guard let s = (((try? JSONSerialization.jsonObject(with: Data(servesJSON.utf8))) as? [String: Any])?[recipeKey]) as? [String: Any],
+              let n = pos(s["n"]) else { return nil }
+        return (n, s["scale"] as? Bool ?? true)
+    }
+    private func setServes(_ n: Double?, scale: Bool) {
+        var all = ((try? JSONSerialization.jsonObject(with: Data(servesJSON.utf8))) as? [String: Any]) ?? [:]
+        all[recipeKey] = n.map { ["n": $0, "scale": scale] as [String: Any] }
+        if let d = try? JSONSerialization.data(withJSONObject: all) { withAnimation(.snappy) { servesJSON = String(data: d, encoding: .utf8) ?? "{}" } }
+    }
+
+    /// Every amount times the factor (4 portions down to 1 is a quarter of each).
+    private func scaled(_ ings: [JSON], by f: Double) -> [JSON] {
+        guard f != 1 else { return ings }
+        return ings.map { g in
+            var x = g
+            for k in ["kcal", "protein_g", "carbs_g", "fat_g", "grams"] { if let v = num(g[k]) { x[k] = v * f } }
+            let amount = str(g["amount"])
+            let inGrams = amount.isEmpty || amount.range(of: #"^[\d.,]+\s?g$"#, options: .regularExpression) != nil   // "200 g", "200g"
+            if let grams = num(x["grams"]), inGrams {
+                x["amount"] = "\(Fmt.int(grams)) g"
+            } else if !amount.isEmpty {
+                x["amount"] = "\(amount) × \(Fmt.one(f))"
+            }
+            return x
+        }
+    }
+
+    private var weighed: Double? { (((try? JSONSerialization.jsonObject(with: Data(cookedJSON.utf8))) as? [String: Any])?[recipeKey]).flatMap { pos($0) } }
+    private func setWeighed(_ g: Double?) {
+        var all = ((try? JSONSerialization.jsonObject(with: Data(cookedJSON.utf8))) as? [String: Any]) ?? [:]
+        all[recipeKey] = g
+        if let d = try? JSONSerialization.data(withJSONObject: all) { cookedJSON = String(data: d, encoding: .utf8) ?? "{}" }
     }
 
     private var removed: Set<String> { Set((try? JSONDecoder().decode([String].self, from: Data(removedJSON.utf8))) ?? []) }
@@ -148,8 +205,10 @@ struct RecipeSheet: View {
 
     @ViewBuilder private func content(_ r: JSON) -> some View {
         let v = dict(r[version])
-        let portions = max(1, num(r["portions"]) ?? 1)
-        let ings = applied(list(v["ingredients"]), portions: portions), steps = v["steps"] as? [String] ?? []
+        let base = max(1, num(r["portions"]) ?? 1), sv = serves
+        let portions = sv?.n ?? base
+        let factor = (sv?.scale ?? true) ? portions / base : 1   // scaled amounts, or the same pot split differently
+        let ings = applied(scaled(list(v["ingredients"]), by: factor) + added, portions: portions), steps = v["steps"] as? [String] ?? []
         let used = ings.filter { $0["removed"] as? Bool != true }   // what's in it: totals, logging and saving
         let k = used.reduce(0) { $0 + (num($1["kcal"]) ?? 0) } / portions
         let p = used.reduce(0) { $0 + (num($1["protein_g"]) ?? 0) } / portions
@@ -172,6 +231,17 @@ struct RecipeSheet: View {
         .animation(.snappy, value: k)
         Text([num(r["minutes"]).map { "\(Int($0)) min" }, "serves \(Int(portions))", str(r["cuisine"]).isEmpty ? nil : str(r["cuisine"])].compactMap { $0 }.joined(separator: " · ") + " · per portion")
             .font(.footnote).foregroundStyle(.secondary)
+        servesControl(base: base, portions: portions, scale: sv?.scale ?? true)
+        // the finished pot: an estimate (the recipe's, or worked out from what goes in), or what you weighed
+        let estimate = pos(v["cookedGrams"]).map { $0 * factor } ?? CookedWeight.estimate(used.map { (str($0["name"]), num($0["grams"]) ?? 0) })
+        let aim = store.mealTarget(meal)
+        CookedWeightCard(kcal: k * portions, protein: p * portions, carbs: c * portions, fat: f * portions, portions: portions,
+                         estimate: estimate, weighed: Binding(get: { weighed }, set: { setWeighed($0) }),
+                         aimKcal: aim.kcal, aimProtein: aim.protein) { g, kc, pr, ca, fa in
+            store.add(Assistant.basis(name: name(r), kcal: kc, grams: g, p: pr, c: ca, f: fa), kcal: kc, meal: meal)
+            flash("Added \(Fmt.int(g)) g to \(meal.lowercased())")
+        }
+        .id(recipeKey)
         if version == "healthier", let changes = v["changes"] as? [String], !changes.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(changes, id: \.self) { ch in Label(ch, systemImage: "leaf.fill").font(.subheadline) }
@@ -183,14 +253,19 @@ struct RecipeSheet: View {
         HStack {
             Eyebrow(text: "Ingredients")
             Spacer()
-            Text("swipe left to remove").font(.caption).foregroundStyle(.secondary)
+            Text("tap ••• to swap or remove").font(.caption).foregroundStyle(.secondary)
         }
         .padding(.top, 4)
         VStack(spacing: 0) {
             ForEach(ings.indices, id: \.self) { i in
                 ingredientRow(ings[i], i, portions: portions)
-                if i < ings.count - 1 { Divider().padding(.leading, 14) }
+                Divider().padding(.leading, 14)
             }
+            Button { addingFood = true } label: {
+                Label("Add an ingredient", systemImage: "plus.circle.fill").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accent)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 14).padding(.vertical, 11)
+            }
+            .buttonStyle(.plain)
         }
         .background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -220,7 +295,9 @@ struct RecipeSheet: View {
                     it["id"] = uid(); it["kcal"] = Int((num(i["kcal"]) ?? 0).rounded()); it["grams"] = num(i["grams"]) ?? 0; it["unitLabel"] = "g"
                     return it
                 }
-                store.perform(["type": "saveMeal", "meal": ["id": uid(), "name": name(r), "portions": portions, "items": items, "steps": steps, "saved": true, "updatedAt": ISO.now()] as JSON])
+                var m: JSON = ["id": uid(), "name": name(r), "portions": portions, "items": items, "steps": steps, "saved": true, "updatedAt": ISO.now()]
+                if let weighed { m["cookedGrams"] = weighed }   // weighed once: leftovers weigh against the cooked pot
+                store.perform(["type": "saveMeal", "meal": m])
                 flash("Saved to your meals")
             } label: { Text("Save to my meals").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 6) }
             .buttonStyle(.bordered)
@@ -231,12 +308,46 @@ struct RecipeSheet: View {
 
     private static let green = Color(red: 0.36, green: 0.82, blue: 0.56)
 
-    /// One ingredient: its name and calories, the amount, and ••• for Swap or Remove; swipe left to remove too.
-    /// A removed one stays, greyed out, with Put back.
+    /// Serves: change how many portions, and whether every amount scales with it or the same pot makes bigger or
+    /// smaller portions. Back to the recipe's own number with Reset.
+    @ViewBuilder private func servesControl(base: Double, portions: Double, scale: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Serves").font(.subheadline.weight(.semibold))
+                Spacer()
+                if portions != base {
+                    Button("Reset to \(Fmt.int(base))") { setServes(nil, scale: true) }.font(.footnote.weight(.semibold)).foregroundStyle(Theme.accent).buttonStyle(.plain)
+                }
+                Stepper(value: Binding(get: { portions }, set: { setServes($0 == base ? nil : $0, scale: scale) }), in: 1...20, step: 1) {
+                    Text("\(Fmt.int(portions))").font(.headline.monospacedDigit())
+                }
+                .fixedSize()
+            }
+            if portions != base {
+                Picker("How", selection: Binding(get: { scale }, set: { setServes(portions, scale: $0) })) {
+                    Text("Scale the amounts").tag(true)
+                    Text("Same amounts").tag(false)
+                }
+                .pickerStyle(.segmented)
+                Text(scale ? "Every amount is for \(Fmt.int(portions)) portion\(portions == 1 ? "" : "s") now: the recipe was for \(Fmt.int(base))."
+                           : "The same pot as the recipe, split into \(Fmt.int(portions)): each portion is \(portions < base ? "bigger" : "smaller").")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .padding(14)
+        .background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    /// One ingredient: its name and calories, the amount, and ••• for Swap or Remove. No swiping: the page only
+    /// scrolls up and down. A removed one stays, greyed out, with Put back.
     @ViewBuilder private func ingredientRow(_ g: JSON, _ i: Int, portions: Double) -> some View {
+        ingredientContent(g, i, portions: portions)
+    }
+
+    /// An ingredient's name and calories, the amount, and ••• for Swap or Remove.
+    @ViewBuilder private func ingredientContent(_ g: JSON, _ i: Int, portions: Double) -> some View {
         let from = str(g["swappedFrom"]), out = g["removed"] as? Bool == true
         let kcal = Fmt.int(num(g["kcal"]) ?? 0)
-        let offset = dragging?.index == i ? min(0, dragging?.x ?? 0) : 0
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
@@ -279,22 +390,7 @@ struct RecipeSheet: View {
         .opacity(out ? 0.5 : 1)
         .padding(.leading, 14).padding(.trailing, 4).padding(.vertical, 4)
         .background(Theme.hero)
-        .offset(x: offset)
-        .background(alignment: .trailing) {
-            if offset < 0 {
-                Label("Remove", systemImage: "minus.circle.fill").labelStyle(.iconOnly).font(.title3).foregroundStyle(.white)
-                    .frame(width: max(0, -offset), alignment: .center).frame(maxHeight: .infinity).background(Color.red)
-            }
-        }
         .contentShape(Rectangle())
-        // the row follows the finger only while the swipe is sideways; the offset springs back by itself if the
-        // scroll takes the touch over (gesture state resets when a gesture is cancelled, onEnded isn't called then)
-        .simultaneousGesture(DragGesture(minimumDistance: 18).updating($dragging) { v, state, _ in
-            guard abs(v.translation.width) > abs(v.translation.height) * 1.5 else { return }
-            state = (i, v.translation.width)
-        }.onEnded { v in
-            if v.translation.width < -90 && abs(v.translation.width) > abs(v.translation.height) * 1.5 { setRemoved(i, true) }
-        }, including: out ? .subviews : .all)
         .sensoryFeedback(.impact, trigger: out)
     }
 
@@ -329,8 +425,9 @@ struct SwapPicker: View {
     var body: some View {
         NavigationStack {
             List {
-                if !foods.isEmpty { section("Foods you log", foods) }
+                // the cupboard first: a short list of what you've scanned, then everything you log
                 if !cupboard.isEmpty { section("From your cupboard", cupboard) }
+                if !foods.isEmpty { section("Foods you log", foods) }
                 Section {
                     Button { scan(.barcode) } label: { Label("Scan a barcode", systemImage: "barcode.viewfinder") }
                     Button { scan(.photo) } label: { Label("Photo of a label", systemImage: "camera.fill") }
@@ -378,7 +475,8 @@ extension RecipeMaker {
             "protein_g": ["type": "number"] as JSON, "carbs_g": ["type": "number"] as JSON, "fat_g": ["type": "number"] as JSON
         ] as JSON, "required": ["name", "amount", "grams", "kcal", "protein_g", "carbs_g", "fat_g"]] as JSON]
         let version: (Bool) -> JSON = { changes in
-            var props: JSON = ["ingredients": ing, "steps": ["type": "array", "items": ["type": "string"] as JSON] as JSON]
+            var props: JSON = ["ingredients": ing, "steps": ["type": "array", "items": ["type": "string"] as JSON] as JSON,
+                               "cookedGrams": ["type": "number", "description": "Roughly what the whole finished dish weighs once cooked, in grams (meat loses water, rice and pasta gain it)"] as JSON]
             if changes { props["changes"] = ["type": "array", "items": ["type": "string"] as JSON, "description": "What's different, under 12 words each, e.g. 'Half the butter, a splash of milk instead'"] as JSON }
             return ["type": "object", "properties": props, "required": changes ? ["ingredients", "steps", "changes"] : ["ingredients", "steps"]]
         }

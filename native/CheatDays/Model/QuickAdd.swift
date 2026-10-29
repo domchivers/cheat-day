@@ -145,6 +145,8 @@ extension Store {
             kcal += k
             if let g = num(it["grams"]) ?? FoodMath.amounts(it, kcal: k).grams { grams += g }
         }
+        // cooked once and weighed: grams of the finished dish, not of what went in (a braise loses a third, rice gains)
+        if let cooked = pos(m["cookedGrams"]) { grams = cooked }
         let mac = macros(items), portions = pos(m["portions"]) ?? 1
         var b: JSON = ["name": str(m["name"]).isEmpty ? "Meal" : str(m["name"]), "source": "meal", "mealId": str(m["id"]), "unit": "g",
                        "kcalPerServing": kcal / portions, "unitLabel": "portion",

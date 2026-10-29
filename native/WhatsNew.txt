@@ -1,4 +1,4 @@
-New in this build: Plan uses every food you scanned (each idea has at least one, high-protein ones first).
+New in this build: recipes: change how many it serves (scale the amounts or split the same pot), add your own ingredients, and a cooked weight that tells you how much to eat; saved meals get a cooked weight too. Swiping is gone from recipes, so the page scrolls freely.
 
 Thanks for testing! Please just use it like a normal day:
 
