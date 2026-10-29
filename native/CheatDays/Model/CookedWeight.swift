@@ -27,6 +27,10 @@ enum CookedWeight {
         return 0.9
     }
 
+    /// A weighed pot this far from what the ingredients make usually means something listed isn't in it (rice served
+    /// on the side), and then every gram would count wrong.
+    static func looksOff(weighed: Double, estimate: Double) -> Bool { weighed < estimate * 0.6 || weighed > estimate * 1.6 }
+
     /// The finished dish's weight from its ingredients (name and raw grams); nil when no grams are known.
     static func estimate(_ ingredients: [(name: String, grams: Double)]) -> Double? {
         let known = ingredients.filter { $0.grams > 0 }

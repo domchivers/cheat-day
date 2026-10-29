@@ -198,7 +198,7 @@ struct MealEditor: View {
                             Text("g").foregroundStyle(.secondary)
                         }
                     } header: { Text("Cooked weight") } footer: {
-                        if let w = pos(meal["cookedGrams"]), let est = CookedWeight.estimate(raw), w < est * 0.6 || w > est * 1.6 {
+                        if let w = pos(meal["cookedGrams"]), let est = CookedWeight.estimate(raw), CookedWeight.looksOff(weighed: w, estimate: est) {
                             // way off what goes in: usually a side (rice) that's in the list but not in the pot
                             Label("That's a long way from the \(Fmt.int(est)) g this list would make. Is everything here in the pot? Rice or sides you serve separately should come out of the list (••• → Remove), or the calories per gram come out wrong.", systemImage: "exclamationmark.triangle.fill")
                                 .foregroundStyle(Theme.warn)

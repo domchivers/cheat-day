@@ -19,4 +19,13 @@ final class CookedWeightTests: XCTestCase {
         XCTAssertEqual(CookedWeight.estimate([("Beef chuck", 600), ("Onion, sliced", 300), ("Japanese curry roux blocks", 100), ("Vegetable oil", 30)]), 740)
         XCTAssertNil(CookedWeight.estimate([("Salt", 0)]))
     }
+
+    func testAPotMissingTheRiceIsFlagged() throws {
+        // the owner's curry: 818 g chuck, 210 g carrots, 30 g roux, 750 g water and 450 g cooked rice listed,
+        // but only the curry weighed (515 g)
+        let est = try XCTUnwrap(CookedWeight.estimate([("Beef chuck steak", 818), ("Carrots", 210), ("S&B Golden Curry mix", 30),
+                                                      ("Water", 750), ("Rice, cooked", 450)]))
+        XCTAssertTrue(CookedWeight.looksOff(weighed: 515, estimate: est))
+        XCTAssertFalse(CookedWeight.looksOff(weighed: est * 0.9, estimate: est))
+    }
 }
