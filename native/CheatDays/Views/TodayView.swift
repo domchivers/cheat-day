@@ -44,7 +44,6 @@ struct TodayView: View {
     @State private var openIdea: IdeaRef?
     @State private var sendingItem: JSON?
     @State private var savingMeal: String?   // the meal whose foods are being saved as one
-    @State private var mealName = ""
     private var store: Store { Store.shared }
 
     private var date: String { DayKey.shift(store.today, days: offset) }
@@ -196,11 +195,13 @@ struct TodayView: View {
                 if let r = rankUp { RankUpView(rank: r) { rankUp = nil } }
             }
             .modifier(SendFoodDialog(item: $sendingItem) { note($0) })
-            .alert("Save as a meal", isPresented: Binding(get: { savingMeal != nil }, set: { if !$0 { savingMeal = nil } })) {
-                TextField("Name", text: $mealName)
-                Button("Save") { if let m = savingMeal { saveAsMeal(m) } }
-                Button("Cancel", role: .cancel) {}
-            } message: { Text("Next time it's one tap: it shows in Add with your saved meals.") }
+            .sheet(isPresented: Binding(get: { savingMeal != nil }, set: { if !$0 { savingMeal = nil } })) {
+                if let m = savingMeal {
+                    SaveMealSheet(name: "My \(m.lowercased())", foods: items.filter { Meals.of($0) == m }) { name, picked in
+                        saveAsMeal(m, name: name, picked: picked)
+                    }
+                }
+            }
             .onAppear { checkRank(); checkBadges() }
             .task { await Steps.shared.refresh() }
             .onChange(of: store.rank.level) { _, _ in checkRank() }
@@ -495,7 +496,7 @@ struct TodayView: View {
                     Spacer()
                     if offset == 0 && lines.count >= 2 {
                         // where Same as yesterday sits on an empty meal
-                        Button { mealName = "My \(meal.lowercased())"; savingMeal = meal } label: {
+                        Button { savingMeal = meal } label: {
                             HStack(spacing: 5) { Image(systemName: "bookmark"); Text("Save as meal") }.font(.caption.weight(.bold)).lineLimit(1).fixedSize()   // never squeezed to "Save as m…"
                         }
                         .accessibilityLabel("Save this \(meal.lowercased()) as a meal")
@@ -523,13 +524,13 @@ struct TodayView: View {
         }
     }
 
-    /// This meal's foods as one saved meal, at today's amounts, so it can be added again in one go.
-    private func saveAsMeal(_ meal: String) {
-        let its = items.filter { Meals.of($0) == meal }.map { it -> JSON in
+    /// The foods you ticked from this meal as one saved meal, at today's amounts, so it can be added again in one go.
+    private func saveAsMeal(_ meal: String, name: String, picked: Set<String>) {
+        let its = items.filter { Meals.of($0) == meal && picked.contains(str($0["id"])) }.map { it -> JSON in
             var c = it; c["id"] = uid(); c.removeValue(forKey: "meal"); c.removeValue(forKey: "addedAt"); return c
         }
         guard !its.isEmpty else { return }
-        let name = mealName.trimmingCharacters(in: .whitespaces)
+        let name = name.trimmingCharacters(in: .whitespaces)
         store.perform(["type": "saveMeal", "meal": ["id": uid(), "name": name.isEmpty ? "My \(meal.lowercased())" : name, "portions": 1,
                                                      "items": its, "saved": true, "updatedAt": ISO.now()] as JSON])
         note("Saved: find it in Add, under your meals")
@@ -590,6 +591,64 @@ struct FoodRow: View {
         }
         .contentShape(Rectangle())
         .padding(.vertical, 2)
+    }
+}
+
+/// Save as meal: a name, and tick which of the meal's foods go in (all of them to start).
+private struct SaveMealSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var name: String
+    let foods: [JSON]
+    var save: (String, Set<String>) -> Void
+    @State private var picked: Set<String>
+
+    init(name: String, foods: [JSON], save: @escaping (String, Set<String>) -> Void) {
+        _name = State(initialValue: name)
+        self.foods = foods
+        self.save = save
+        _picked = State(initialValue: Set(foods.map { str($0["id"]) }))
+    }
+
+    var body: some View {
+        let total = foods.filter { picked.contains(str($0["id"])) }.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }
+        NavigationStack {
+            List {
+                Section { TextField("Name", text: $name) } header: { Text("Name") }
+                Section {
+                    ForEach(foods.indices, id: \.self) { i in
+                        let id = str(foods[i]["id"]), on = picked.contains(id)
+                        Button {
+                            if on { picked.remove(id) } else { picked.insert(id) }
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: on ? "checkmark.circle.fill" : "circle").font(.title2)
+                                    .foregroundStyle(on ? Theme.accent : Color.secondary)
+                                FoodRow(item: foods[i])
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                } header: { Text("What's in it") } footer: { Text("Next time it's one tap: it shows in Add with your saved meals.") }
+            }
+            .scrollContentBackground(.hidden)
+            .background(Theme.bg)
+            .navigationTitle("Save as a meal")
+            .navigationBarTitleDisplayMode(.inline)
+            .sensoryFeedback(.selection, trigger: picked)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+            }
+            .safeAreaInset(edge: .bottom) {
+                Button { save(name, picked); dismiss() } label: {
+                    Text(picked.isEmpty ? "Tick at least one food" : "Save \(picked.count) food\(picked.count == 1 ? "" : "s") · \(Fmt.int(total)) kcal")
+                        .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 14)
+                }
+                .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 16)).tint(Theme.accent).foregroundStyle(.black)
+                .disabled(picked.isEmpty)
+                .padding(.horizontal, 20).padding(.bottom, 8)
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }
 
