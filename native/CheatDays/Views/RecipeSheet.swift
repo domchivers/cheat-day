@@ -235,13 +235,6 @@ struct RecipeSheet: View {
         // the finished pot: an estimate (the recipe's, or worked out from what goes in), or what you weighed
         let estimate = pos(v["cookedGrams"]).map { $0 * factor } ?? CookedWeight.estimate(used.map { (str($0["name"]), num($0["grams"]) ?? 0) })
         let aim = store.mealTarget(meal)
-        CookedWeightCard(kcal: k * portions, protein: p * portions, carbs: c * portions, fat: f * portions, portions: portions,
-                         estimate: estimate, weighed: Binding(get: { weighed }, set: { setWeighed($0) }),
-                         aimKcal: aim.kcal, aimProtein: aim.protein) { g, kc, pr, ca, fa in
-            store.add(Assistant.basis(name: name(r), kcal: kc, grams: g, p: pr, c: ca, f: fa), kcal: kc, meal: meal)
-            flash("Added \(Fmt.int(g)) g to \(meal.lowercased())")
-        }
-        .id(recipeKey)
         if version == "healthier", let changes = v["changes"] as? [String], !changes.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(changes, id: \.self) { ch in Label(ch, systemImage: "leaf.fill").font(.subheadline) }
@@ -283,12 +276,22 @@ struct RecipeSheet: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14).background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
+        // after the method, as weighing the pot comes after cooking; it's also where you log, by the grams on your plate
+        CookedWeightCard(kcal: k * portions, protein: p * portions, carbs: c * portions, fat: f * portions, portions: portions,
+                         estimate: estimate, weighed: Binding(get: { weighed }, set: { setWeighed($0) }),
+                         aimKcal: aim.kcal, aimProtein: aim.protein) { g, kc, pr, ca, fa in
+            store.add(Assistant.basis(name: name(r), kcal: kc, grams: g, p: pr, c: ca, f: fa), kcal: kc, meal: meal)
+            flash("Added \(Fmt.int(g)) g to \(meal.lowercased())")
+        }
+        .id(recipeKey)
         VStack(spacing: 10) {
-            Button {
-                store.add(Assistant.basis(name: name(r), kcal: k, grams: nil, p: p, c: c, f: f), kcal: k, meal: meal)
-                flash("Added to \(meal.lowercased())")
-            } label: { Text("Log a portion for \(meal.lowercased()) · \(Fmt.int(k)) kcal").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 6) }
-            .buttonStyle(.borderedProminent).foregroundStyle(.black)
+            if estimate == nil && weighed == nil {   // no weights to go on: log a portion instead
+                Button {
+                    store.add(Assistant.basis(name: name(r), kcal: k, grams: nil, p: p, c: c, f: f), kcal: k, meal: meal)
+                    flash("Added to \(meal.lowercased())")
+                } label: { Text("Log a portion for \(meal.lowercased()) · \(Fmt.int(k)) kcal").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 6) }
+                .buttonStyle(.borderedProminent).foregroundStyle(.black)
+            }
             Button {
                 let items: [JSON] = used.map { i in
                     var it = Assistant.basis(name: str(i["name"]), kcal: num(i["kcal"]) ?? 0, grams: num(i["grams"]), p: num(i["protein_g"]) ?? 0, c: num(i["carbs_g"]) ?? 0, f: num(i["fat_g"]) ?? 0)

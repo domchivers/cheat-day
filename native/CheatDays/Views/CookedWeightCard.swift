@@ -52,8 +52,9 @@ struct CookedWeightCard: View {
                 Divider()
                 row("A portion (1 of \(Fmt.int(portions)))", "\(weighed == nil ? "≈ " : "")\(Fmt.int(portion)) g · \(Fmt.int(kcal / portions)) kcal")
                 row("Per 100 g cooked", "\(Fmt.int(per100)) kcal · \(Fmt.int(p100)) g protein")
-                if let aimKcal, aimKcal > 0 { row("For your \(Fmt.int(aimKcal)) kcal aim", "\(Fmt.int(aimKcal / per100 * 100)) g") }
-                if let aimProtein, aimProtein > 0, p100 > 0 { row("For \(Fmt.int(aimProtein)) g protein", "\(Fmt.int(aimProtein / p100 * 100)) g") }
+                // never more than there is: past the whole pot, say so instead
+                if let aimKcal, aimKcal > 0 { row("For your \(Fmt.int(aimKcal)) kcal aim", upTo(aimKcal / per100 * 100, total)) }
+                if let aimProtein, aimProtein > 0, p100 > 0 { row("For \(Fmt.int(aimProtein)) g protein", upTo(aimProtein / p100 * 100, total)) }
                 Divider()
                 HStack {
                     Text("On your plate").font(.subheadline)
@@ -75,6 +76,10 @@ struct CookedWeightCard: View {
             .background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .onAppear { if let weighed { typed = Fmt.int(weighed) } }
         }
+    }
+
+    private func upTo(_ grams: Double, _ total: Double) -> String {
+        grams >= total ? "the whole pot (\(Fmt.int(total)) g)" : "\(Fmt.int(grams)) g"
     }
 
     private func row(_ l: String, _ v: String) -> some View {
