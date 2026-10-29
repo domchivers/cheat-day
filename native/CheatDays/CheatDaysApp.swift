@@ -100,16 +100,20 @@ struct SignInView: View {
     @State private var busy = false
     @State private var message: String?
     @State private var showPassword = false
+    @State private var creating = false
     @FocusState private var field: Int?
 
     var body: some View {
-        let ready = !busy && !email.isEmpty && !password.isEmpty
+        let ready = !busy && !email.isEmpty && password.count >= (creating ? 6 : 1)
         ScrollView {
             VStack(spacing: 0) {
                 LogoMark().fill(Color(red: 0.91, green: 0.93, blue: 0.97)).frame(width: 104, height: 56).padding(.top, 90)
                     .accessibilityLabel("Cheat Days")
                 Text("Every day can feel like a cheat day.").font(.title3.weight(.semibold)).multilineTextAlignment(.center)
                     .padding(.top, 28)
+                Picker("", selection: $creating) { Text("Sign in").tag(false); Text("New account").tag(true) }
+                    .pickerStyle(.segmented).controlSize(.large).padding(.top, 32)
+                    .onChange(of: creating) { _, _ in message = nil }
                 VStack(spacing: 12) {
                     box(icon: "envelope", on: field == 0) {
                         TextField("Email", text: $email)
@@ -118,27 +122,27 @@ struct SignInView: View {
                     }
                     box(icon: "lock", on: field == 1) {
                         Group {
-                            if showPassword { TextField("Password", text: $password).textInputAutocapitalization(.never).autocorrectionDisabled() }
-                            else { SecureField("Password", text: $password) }
+                            let prompt = creating ? "Choose a password" : "Password"
+                            if showPassword { TextField(prompt, text: $password).textInputAutocapitalization(.never).autocorrectionDisabled() }
+                            else { SecureField(prompt, text: $password) }
                         }
-                        .textContentType(.password).focused($field, equals: 1).submitLabel(.go).onSubmit { Task { await go(create: false) } }
+                        .textContentType(creating ? .newPassword : .password).focused($field, equals: 1).submitLabel(.go)
+                        .onSubmit { if ready { Task { await go(create: creating) } } }
                         Button { showPassword.toggle() } label: { Image(systemName: showPassword ? "eye.slash" : "eye").foregroundStyle(.secondary) }
                             .buttonStyle(.plain).accessibilityLabel(showPassword ? "Hide password" : "Show password")
                     }
+                    if creating && message == nil {
+                        Text("At least 6 characters").font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 4)
+                    }
                     if let message { Text(message).font(.footnote).foregroundStyle(Theme.warn).frame(maxWidth: .infinity, alignment: .leading) }
-                    Button { Task { await go(create: false) } } label: {
-                        Text(busy ? "Signing in…" : "Sign in").font(.headline).foregroundStyle(.black)
+                    Button { Task { await go(create: creating) } } label: {
+                        Text(busy ? (creating ? "Creating…" : "Signing in…") : (creating ? "Create account" : "Sign in")).font(.headline).foregroundStyle(.black)
                             .frame(maxWidth: .infinity).frame(height: 54)
                             .background(Theme.accent.opacity(ready ? 1 : 0.45), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
                     .buttonStyle(.plain).disabled(!ready).padding(.top, 6)
                 }
-                .padding(.top, 36)
-                HStack(spacing: 4) {
-                    Text("New here?").foregroundStyle(.secondary)
-                    Button("Create an account") { Task { await go(create: true) } }.fontWeight(.semibold).foregroundStyle(Theme.accent).disabled(busy)
-                }
-                .font(.subheadline).padding(.top, 22)
+                .padding(.top, 16)
             }
             .padding(.horizontal, 24)
         }
@@ -161,10 +165,6 @@ struct SignInView: View {
     }
 
     private func go(create: Bool) async {
-        if create && (email.isEmpty || password.count < 6) {
-            message = "Type your email and a password of at least 6 characters above, then tap Create an account."
-            return
-        }
         busy = true; message = nil
         defer { busy = false }
         do {
