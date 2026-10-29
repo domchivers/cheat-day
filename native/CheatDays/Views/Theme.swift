@@ -9,6 +9,8 @@ enum Theme {
     static let heroLabel = Color(red: 0.56, green: 0.73, blue: 0.87)
     static let track = Color(red: 0.11, green: 0.17, blue: 0.23)
     static let warn = Color(red: 0.95, green: 0.71, blue: 0.36)
+    /// Walking, beside workouts but not one of them.
+    static let walk = Color(red: 0.36, green: 0.82, blue: 0.56)
     /// Each meal's colour in the calorie bar.
     static func meal(_ meal: String) -> Color {
         switch meal {

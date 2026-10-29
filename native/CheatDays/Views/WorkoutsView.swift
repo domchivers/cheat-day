@@ -61,13 +61,17 @@ struct WorkoutsView: View {
                 Section {
                     Button { showActivity = true } label: { Label("Log a walk, run or class", systemImage: "figure.walk") }
                 }
-                if !store.todayWorkouts.isEmpty {
-                    Section("Today") {
+                let walked = Steps.shared.today
+                if !store.todayWorkouts.isEmpty || walked != nil {
+                    Section {
+                        if let walked { walkingRow(walked) }
                         ForEach(keyed(store.todayWorkouts)) { entry in
                             let w = entry.item
                             NavigationLink { WorkoutDetail(workout: w, date: store.today) } label: { WorkoutRow(workout: w, date: nil) }
                                 .swipeActions { Button(role: .destructive) { store.deleteWorkout(str(w["id"])) } label: { Label("Delete", systemImage: "trash") } }
                         }
+                    } header: { Text("Today") } footer: {
+                        if walked != nil { Text("Walking is counted from your steps and weight. It isn't a workout, so it doesn't add to your workout count, badges or budget.") }
                     }
                 }
                 if !store.routines.isEmpty {
@@ -107,7 +111,8 @@ struct WorkoutsView: View {
             .navigationTitle("Workouts")
             .scrollContentBackground(.hidden)
             .background(Theme.bg)
-            .refreshable { await store.sync() }
+            .refreshable { await store.sync(); await Steps.shared.refresh() }
+            .task { await Steps.shared.refresh() }
             .navigationDestination(isPresented: $showSession) { SessionView() }
             .sheet(isPresented: $building) { PlanBuilder() }
             .sheet(isPresented: $showActivity) { ActivitySheet().presentationDetents([.medium, .large]) }
@@ -131,17 +136,27 @@ struct WorkoutsView: View {
 
     private var weekCard: some View {
         let days = store.week
-        let bars = days.map { d in DayBar(id: d.date, label: String(DayKey.date(d.date).formatted(.dateTime.weekday(.narrow))), kcal: d.kcal, today: d.date == store.today) }
+        let bars = days.map { d in DayBar(id: d.date, label: String(DayKey.date(d.date).formatted(.dateTime.weekday(.narrow))), kcal: d.kcal,
+                                          walk: Steps.shared.kcal(on: d.date), today: d.date == store.today) }
         let total = days.reduce(0) { $0 + $1.kcal }, count = days.reduce(0) { $0 + $1.count }
+        let walked = bars.reduce(0) { $0 + $1.walk }
+        // walking at the bottom of each day, workouts on top; an empty day keeps a small grey stub
+        let segments = bars.flatMap { b -> [Segment] in
+            if b.kcal <= 0 && b.walk <= 0 { return [Segment(id: b.id + "-none", day: b.id, kind: "None", kcal: 4)] }
+            return [Segment(id: b.id + "-walk", day: b.id, kind: "Walking", kcal: b.walk), Segment(id: b.id + "-work", day: b.id, kind: "Workouts", kcal: b.kcal)].filter { $0.kcal > 0 }
+        }
         return VStack(alignment: .leading, spacing: 10) {
-            HStack {
+            HStack(alignment: .firstTextBaseline) {
                 Text("This week").font(.headline)
                 Spacer()
-                Text("\(count) workout\(count == 1 ? "" : "s") · \(Fmt.int(total)) kcal").font(.subheadline).foregroundStyle(.secondary)
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text("\(count) workout\(count == 1 ? "" : "s") · \(Fmt.int(total)) kcal").font(.subheadline).foregroundStyle(.secondary)
+                    if walked > 0 { Text("+ walking \(Fmt.int(walked)) kcal").font(.subheadline).foregroundStyle(Theme.walk) }
+                }
             }
-            Chart(bars) { b in
-                BarMark(x: .value("Day", b.id), y: .value("kcal", max(b.kcal, 4)))
-                    .foregroundStyle(b.kcal > 0 ? Theme.accent : Theme.track)
+            Chart(segments) { s in
+                BarMark(x: .value("Day", s.day), y: .value("kcal", s.kcal))
+                    .foregroundStyle(s.kind == "Walking" ? Theme.walk : s.kind == "Workouts" ? Theme.accent : Theme.track)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
             }
             .chartXAxis {
@@ -151,8 +166,36 @@ struct WorkoutsView: View {
             }
             .chartYAxis(.hidden)
             .frame(height: 110)
+            if walked > 0 {
+                HStack(spacing: 14) {
+                    key(Theme.accent, "Workouts")
+                    key(Theme.walk, "Walking")
+                }
+            }
         }
         .padding(.vertical, 6)
+    }
+
+    private func key(_ colour: Color, _ name: String) -> some View {
+        HStack(spacing: 5) {
+            RoundedRectangle(cornerRadius: 3).fill(colour).frame(width: 9, height: 9)
+            Text(name).font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    /// Today's walking: the steps Apple Health counted, as calories. Not a workout.
+    private func walkingRow(_ steps: Int) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "figure.walk")
+                .font(.system(size: 16, weight: .semibold)).foregroundStyle(Theme.walk)
+                .frame(width: 34, height: 34).background(Theme.walk.opacity(0.15), in: Circle())
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Walking").font(.body.weight(.semibold))
+                Text("\(steps.formatted()) steps · from Apple Health").font(.footnote).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text(Fmt.int(Steps.shared.kcal(on: DayKey.string(Date())))).font(.body.weight(.bold)).monospacedDigit().foregroundStyle(Theme.walk)
+        }
     }
 }
 

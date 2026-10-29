@@ -31,6 +31,7 @@ struct RootView: View {
         else if ProcessInfo.processInfo.arguments.contains("-uitest-scale") { ScaleSetupView {} }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-weigh") { WeighInSheet() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-body") { BodyHarness() }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-walk") { WalkHarness() }
         else if Supabase.shared.session == nil { SignInView() } else { MainTabs() }
     }
 }
@@ -82,6 +83,17 @@ private struct BodyHarness: View {
         s.perform(["type": "set", "key": "goalWeight", "value": 80.0])
     }
     var body: some View { NavigationStack { BodyView() } }
+}
+
+/// For the Workouts screenshot only: a week of steps from Apple Health, no sign-in.
+private struct WalkHarness: View {
+    init() {
+        let steps = [6100, 4800, 8300, 3900, 7400, 6900, 8240]
+        var days: [String: Int] = [:]
+        for (i, n) in steps.enumerated() { days[DayKey.shift(DayKey.string(Date()), days: i - 6)] = n }
+        Steps.shared.preview(days)
+    }
+    var body: some View { WorkoutsView() }
 }
 
 /// For the recipe swap UI test only: a written recipe and one cupboard food, no sign-in or AI.

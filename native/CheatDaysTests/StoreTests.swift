@@ -121,6 +121,12 @@ final class StoreTests: XCTestCase {
         XCTAssertEqual(num(list(d["history"])[0]["kcal"]), 700)
     }
 
+    func testWalkingCalories() {
+        XCTAssertEqual(Steps.kcal(steps: 8000, kg: 80), 256)
+        XCTAssertEqual(Steps.kcal(steps: 10000, kg: 60), 240)
+        XCTAssertEqual(Steps.kcal(steps: 0, kg: 80), 0)
+    }
+
     func testRecentKeepsFifteenPlusFavourites() {
         var d = record()
         d["favs"] = ["food 0|": ["on": true, "at": "x"] as JSON]

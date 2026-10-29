@@ -96,6 +96,16 @@ final class TourUITests: XCTestCase {
         let b = XCTAttachment(screenshot: app.screenshot()); b.name = "body-goals"; b.lifetime = .keepAlways; add(b)
     }
 
+    func testWalkingOnWorkouts() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-uitest-walk"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Walking"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["0 workouts · 0 kcal"].exists, "walking isn't counted as a workout")
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH %@", "+ walking")).firstMatch.exists)
+        let a = XCTAttachment(screenshot: app.screenshot()); a.name = "workouts-walking"; a.lifetime = .keepAlways; add(a)
+    }
+
     func testSignInScreens() {
         let app = XCUIApplication()
         app.launchArguments = ["-uitest-signin"]
