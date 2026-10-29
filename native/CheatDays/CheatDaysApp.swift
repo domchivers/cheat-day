@@ -107,14 +107,14 @@ struct SignInView: View {
         let ready = !busy && !email.isEmpty && password.count >= (creating ? 6 : 1)
         ScrollView {
             VStack(spacing: 0) {
-                LogoMark().fill(Color(red: 0.91, green: 0.93, blue: 0.97)).frame(width: 94, height: 50).padding(.top, 90)
+                LogoMark().fill(Color(red: 0.91, green: 0.93, blue: 0.97)).frame(width: 94, height: 50).padding(.top, 104)
                     .accessibilityLabel("Cheat Days")
-                Text("Every day can feel like a cheat day.").font(.headline).lineLimit(1).minimumScaleFactor(0.8)
-                    .padding(.top, 28)
+                Text("Every day can feel like a cheat day.").font(.subheadline).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
+                    .padding(.top, 24)
                 Picker("", selection: $creating) { Text("Sign in").tag(false); Text("New account").tag(true) }
-                    .pickerStyle(.segmented).controlSize(.large).padding(.top, 32)
+                    .pickerStyle(.segmented).controlSize(.small).padding(.top, 32)
                     .onChange(of: creating) { _, _ in message = nil }
-                VStack(spacing: 12) {
+                VStack(spacing: 10) {
                     box(icon: "envelope", on: field == 0) {
                         TextField("Email", text: $email)
                             .textContentType(.username).keyboardType(.emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -137,12 +137,12 @@ struct SignInView: View {
                     if let message { Text(message).font(.footnote).foregroundStyle(Theme.warn).frame(maxWidth: .infinity, alignment: .leading) }
                     Button { Task { await go(create: creating) } } label: {
                         Text(busy ? (creating ? "Creating…" : "Signing in…") : (creating ? "Create account" : "Sign in")).font(.headline).foregroundStyle(.black)
-                            .frame(maxWidth: .infinity).frame(height: 54)
-                            .background(Theme.accent.opacity(ready ? 1 : 0.45), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .frame(maxWidth: .infinity).frame(height: 48)
+                            .background(Theme.accent.opacity(ready ? 1 : 0.45), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
-                    .buttonStyle(.plain).disabled(!ready).padding(.top, 6)
+                    .buttonStyle(.plain).disabled(!ready).padding(.top, 8)
                 }
-                .padding(.top, 16)
+                .padding(.top, 18)
             }
             .padding(.horizontal, 24)
         }
@@ -151,15 +151,15 @@ struct SignInView: View {
         .background(Theme.bg.ignoresSafeArea())
     }
 
-    /// A text box on its own: an icon at the start, outlined blue while you're typing in it.
+    /// A text box on its own: an icon at the start, no outline until you're typing in it, then a blue one.
     private func box<Content: View>(icon: String, on: Bool, @ViewBuilder _ content: () -> Content) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: icon).foregroundStyle(.secondary).frame(width: 20)
+            Image(systemName: icon).font(.subheadline).foregroundStyle(.secondary).frame(width: 20)
             content()
         }
-        .padding(.horizontal, 16).frame(height: 54)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(on ? Theme.accent : Color.white.opacity(0.06), lineWidth: on ? 1.5 : 1))
+        .padding(.horizontal, 14).frame(height: 46)
+        .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay { if on { RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.accent, lineWidth: 1.5) } }
         .contentShape(Rectangle())
         .onTapGesture { field = icon == "envelope" ? 0 : 1 }
     }
