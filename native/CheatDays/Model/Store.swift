@@ -115,7 +115,7 @@ final class Store {
         item["shareLabel"] = Fmt.share(k, of: baseBudget(today))
         item["addedAt"] = ISO.now()
         if let meal, Meals.all.contains(meal) { item["meal"] = meal }
-        perform(["type": "add", "item": item])
+        perform(["type": "add", "item": item, "day": today])
         let id = str(item["id"])
         undo = Undo(ids: [id], label: "Added \(str(item["name"]).isEmpty ? "it" : str(item["name"]))", at: Date())
         return id
@@ -133,11 +133,11 @@ final class Store {
         undo = nil
     }
 
-    func delete(_ id: String) { perform(["type": "delete", "id": id, "at": nowMs()]) }
+    func delete(_ id: String) { perform(["type": "delete", "id": id, "at": nowMs(), "day": today]) }
 
     func edit(_ id: String, kcal: Double, meal: String) {
         let k = kcal.rounded()
-        perform(["type": "edit", "id": id, "kcal": Int(k), "shareLabel": Fmt.share(k, of: baseBudget(today)), "meal": meal])
+        perform(["type": "edit", "id": id, "kcal": Int(k), "shareLabel": Fmt.share(k, of: baseBudget(today)), "meal": meal, "day": today])
     }
 
     func setFavourite(_ entry: QuickEntry, on: Bool) {
@@ -166,6 +166,13 @@ final class Store {
 
     static func apply(_ op: JSON, to d: inout JSON, today: String) {
         ensureDay(&d, today: today)
+        // a food logged on a day that has since been filed (added last night, sent this morning) goes to that day,
+        // not into today: it used to leave a gap in the day it was eaten
+        let opDay = str(op["day"])
+        if ["add", "delete", "edit"].contains(str(op["type"])), !opDay.isEmpty, opDay < str(dict(d["day"])["date"]) {
+            applyToPast(op, date: opDay, in: &d)
+            return
+        }
         var day = dict(d["day"])
         var items = list(day["items"])
         switch str(op["type"]) {
@@ -234,6 +241,7 @@ final class Store {
         for it in items { if let m = FoodMath.macros(it, kcal: num(it["kcal"]) ?? 0) { p += m.p; c += m.c; f += m.f } }
         let filedItems: [JSON] = items.map { it in
             var b = FoodMath.basisOf(it)
+            b["id"] = it["id"] ?? NSNull()   // so a change sent late can still find it
             b["kcal"] = it["kcal"] ?? 0
             b["shareLabel"] = it["shareLabel"] ?? ""
             b["addedAt"] = it["addedAt"] ?? NSNull()
@@ -251,6 +259,53 @@ final class Store {
         history.insert(entry, at: 0)
         d["history"] = Array(history.prefix(400))
         mergeHistory(&d)
+    }
+
+    /// An add, delete or edit for a day that's already in History: done to that day's entry, its totals worked out again.
+    static func applyToPast(_ op: JSON, date: String, in d: inout JSON) {
+        var history = list(d["history"])
+        var i = history.firstIndex { str($0["date"]) == date }
+        if i == nil {
+            guard str(op["type"]) == "add" else { return }
+            let entry: JSON = ["date": date, "budget": baseBudget(date, in: d), "kcal": 0, "items": [Any](), "p": 0, "c": 0, "f": 0, "burned": 0, "workouts": [Any]()]
+            history.append(entry)
+            history.sort { str($0["date"]) > str($1["date"]) }
+            i = history.firstIndex { str($0["date"]) == date }
+        }
+        guard let h = i else { return }
+        var items = list(history[h]["items"])
+        let id = str(op["type"]) == "add" ? str(dict(op["item"])["id"]) : str(op["id"])
+        switch str(op["type"]) {
+        case "add":
+            let it = dict(op["item"])
+            guard !id.isEmpty, dict(d["tombs"])["item:\(id)"] == nil, !items.contains(where: { str($0["id"]) == id }) else { return }
+            // already filed there without its id (filed before ids were kept): the same food at the same moment
+            let at = str(it["addedAt"])
+            if !at.isEmpty, items.contains(where: { str($0["addedAt"]) == at && str($0["name"]) == str(it["name"]) }) { return }
+            var b = FoodMath.basisOf(it)
+            b["id"] = id
+            b["kcal"] = it["kcal"] ?? 0
+            b["shareLabel"] = it["shareLabel"] ?? ""
+            b["addedAt"] = it["addedAt"] ?? NSNull()
+            b["meal"] = it["meal"] ?? NSNull()
+            items.append(b)
+            rememberUse(it, in: &d)
+        case "delete":
+            items.removeAll { str($0["id"]) == id }
+            var tombs = dict(d["tombs"]); tombs["item:\(id)"] = op["at"] ?? nowMs(); d["tombs"] = tombs
+        case "edit":
+            guard let k = items.firstIndex(where: { str($0["id"]) == id }) else { return }
+            items[k]["kcal"] = op["kcal"]
+            items[k]["shareLabel"] = op["shareLabel"]
+            if let m = op["meal"] as? String { items[k]["meal"] = m }
+        default: return
+        }
+        var p = 0.0, c = 0.0, f = 0.0
+        for it in items { if let m = FoodMath.macros(it, kcal: num(it["kcal"]) ?? 0) { p += m.p; c += m.c; f += m.f } }
+        history[h]["items"] = items
+        history[h]["kcal"] = items.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }
+        history[h]["p"] = Int(p.rounded()); history[h]["c"] = Int(c.rounded()); history[h]["f"] = Int(f.rounded())
+        d["history"] = history
     }
 
     /// History keeps one entry per date. A day filed twice (two devices, the website's own filing, the late-night

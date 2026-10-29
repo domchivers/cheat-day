@@ -102,6 +102,25 @@ final class StoreTests: XCTestCase {
         XCTAssertEqual(num(filed[0]["kcal"]), 1300)
     }
 
+    func testDinnerSentTheNextMorningStaysOnItsDay() {
+        // dinner logged last night, the app closed before it synced; this morning it goes up on top of the cloud copy
+        var d = record()
+        var dinner = item("d1", "Curry", 900); dinner["meal"] = "dinner"
+        Store.apply(["type": "add", "item": dinner, "day": today], to: &d, today: "2026-10-10")
+        XCTAssertTrue(list(dict(d["day"])["items"]).isEmpty, "not in the new day")
+        let filed = list(d["history"])
+        XCTAssertEqual(filed.count, 1)
+        XCTAssertEqual(Set(list(filed[0]["items"]).map { str($0["name"]) }), ["Oats", "Curry"])
+        XCTAssertEqual(num(filed[0]["kcal"]), 1220)
+
+        // a change to that day sent late finds the food too
+        Store.apply(["type": "edit", "id": "d1", "kcal": 700, "shareLabel": "", "meal": "dinner", "day": today], to: &d, today: "2026-10-10")
+        XCTAssertEqual(num(list(d["history"])[0]["kcal"]), 1020)
+        Store.apply(["type": "delete", "id": "a1", "at": nowMs(), "day": today], to: &d, today: "2026-10-10")
+        XCTAssertEqual(list(list(d["history"])[0]["items"]).map { str($0["name"]) }, ["Curry"])
+        XCTAssertEqual(num(list(d["history"])[0]["kcal"]), 700)
+    }
+
     func testRecentKeepsFifteenPlusFavourites() {
         var d = record()
         d["favs"] = ["food 0|": ["on": true, "at": "x"] as JSON]

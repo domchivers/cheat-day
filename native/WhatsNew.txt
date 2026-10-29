@@ -1,4 +1,4 @@
-New in this build: weigh-ins made simple: Me shows a short summary with one Weigh in button (tap it for Body), one Weigh in sheet everywhere (type it, a screenshot, or Apple Health), goals and body fat together in Body, the same goal date everywhere, and a cleaner weight chart.
+New in this build: past days keep every meal. Food logged just before closing the app now stays on the day you ate it (it could land in the next day), and the Ask AI, photo and backup screens no longer cut a past day down to the meals they last saw.
 
 Thanks for testing! Please just use it like a normal day:
 
