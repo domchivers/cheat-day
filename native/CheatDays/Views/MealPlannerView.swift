@@ -283,7 +283,7 @@ struct MealPlannerView: View {
         Match that style: if it's mostly one cuisine (Asian dinners, say), stay in it and use the ingredients and dishes they clearly buy, just lighter or better balanced. One idea can be a healthier take on something they have often.
         Cuisines they like: \(cuisines.isEmpty ? "not said" : cuisines). \(cook)
         \(have.isEmpty ? "" : "They have in: \(have). Make the ideas mostly from that, plus staples like oil, salt, sauces and spices.")
-        \(labels.isEmpty ? "" : "They scanned these foods, with the numbers printed on their packs:\n\(labels)\nBuild the ideas around them where they fit, and for these use exactly those numbers.")
+        \(labels.isEmpty ? "" : "They scanned these foods, with the numbers printed on their packs:\n\(labels)\nEvery idea must use at least one of these, and between the ideas use each of them at least once\(have.isEmpty ? ": they're what they have in, so build the ideas from them" : ""). Lean on the highest-protein ones to reach the protein aim. For these use exactly those numbers.")
         List every ingredient with its grams and its own kcal, protein, carbs and fat; set label to the scanned food's number when it is one.
         Real dish names, numbers from standard reference values.
         """

@@ -1,4 +1,4 @@
-New in this build: saved meals work like recipes: swap any food for your own (or a scan) or remove it, from its ••• or a swipe.
+New in this build: Plan uses every food you scanned (each idea has at least one, high-protein ones first).
 
 Thanks for testing! Please just use it like a normal day:
 
