@@ -39,105 +39,140 @@ struct PantryItem: Codable, Identifiable, Hashable {
     }
 }
 
-/// Scan a barcode or photograph a label for the cupboard: no amounts, just the food and its numbers.
+/// Scan barcodes or photograph labels for the cupboard: no amounts, just each food and its numbers. Stays open so
+/// you can see what was read, name anything a label didn't say, and add several at once.
 struct PantryScanSheet: View {
     enum Mode: String, Identifiable { case barcode, photo; var id: String { rawValue } }
     let mode: Mode
-    let onItem: (PantryItem) -> Void
+    let onItems: ([PantryItem]) -> Void
     @Environment(\.dismiss) private var dismiss
+    @State private var found: [PantryItem] = []
     @State private var busy: String?
     @State private var problem: String?
     @State private var camera = false
-    @State private var picked: PhotosPickerItem?
+    @State private var picked: [PhotosPickerItem] = []
     @State private var typed = ""
+    @State private var scannerOpen = true
+    @FocusState private var naming: String?
+
+    private var ready: Bool { !found.isEmpty && found.allSatisfy { !$0.name.trimmingCharacters(in: .whitespaces).isEmpty } }
 
     var body: some View {
         NavigationStack {
             Group {
-                if let busy {
-                    VStack(spacing: 14) { ProgressView().controlSize(.large); Text(busy).foregroundStyle(.secondary) }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let problem {
-                    List {
-                        Section { VStack(alignment: .leading, spacing: 6) { Text("Couldn't use that").font(.title3.bold()); Text(problem).foregroundStyle(.secondary) }.padding(.vertical, 6) }
-                        Section { Button { self.problem = nil } label: { Label("Try again", systemImage: "arrow.clockwise") } }
-                    }
-                } else if mode == .barcode {
-                    barcode
-                } else {
-                    photo
-                }
+                if mode == .barcode && scannerOpen && busy == nil { scanner } else { list }
             }
             .navigationTitle(mode == .barcode ? "Scan a barcode" : "Photo of a label")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
             .fullScreenCover(isPresented: $camera) {
-                CameraPicker { img in camera = false; if let img { read(img) } }.ignoresSafeArea()
+                CameraPicker { img in camera = false; if let img { Task { await read(img) } } }.ignoresSafeArea()
             }
-            .onChange(of: picked) { _, item in
-                guard let item else { return }
+            .onChange(of: picked) { _, items in
+                guard !items.isEmpty else { return }
                 Task {
-                    if let data = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: data) { read(img) }
-                    picked = nil
+                    for item in items {
+                        if let data = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: data) { await read(img) }
+                    }
+                    picked = []
                 }
             }
+            .keyboardDone()
         }
     }
 
-    @ViewBuilder private var barcode: some View {
+    @ViewBuilder private var scanner: some View {
         if BarcodeScanner.camera != nil {
             ZStack(alignment: .bottom) {
-                BarcodeScanner { code in look(code) }.ignoresSafeArea(edges: .bottom)
+                BarcodeScanner { code in Task { await look(code) } }.ignoresSafeArea(edges: .bottom)
                 Text("Point at the barcode on the pack").font(.subheadline.weight(.bold)).padding(.horizontal, 16).padding(.vertical, 10)
                     .background(.ultraThinMaterial, in: Capsule()).padding(.bottom, 30)
             }
         } else {
             Form {
                 TextField("Barcode number", text: $typed).keyboardType(.numberPad)
-                Button("Look it up") { look(typed.filter(\.isNumber)) }.disabled(typed.filter(\.isNumber).count < 6)
+                Button("Look it up") { Task { await look(typed.filter(\.isNumber)); typed = "" } }.disabled(typed.filter(\.isNumber).count < 6)
             }
         }
     }
 
-    private var photo: some View {
+    /// What's been read so far, each with a name to check, and the ways to add more.
+    private var list: some View {
         List {
             Section {
-                Text("Take a photo of the nutrition table on the back. It's the most exact, and it's kept with the food for next time.")
-                    .foregroundStyle(.secondary).padding(.vertical, 4)
-            }
-            Section {
-                if UIImagePickerController.isSourceTypeAvailable(.camera) {
-                    Button { camera = true } label: { Label("Take a photo", systemImage: "camera.fill").font(.headline) }
+                if mode == .barcode {
+                    Button { problem = nil; scannerOpen = true } label: { Label(found.isEmpty ? "Scan a barcode" : "Scan another", systemImage: "barcode.viewfinder").font(.headline) }
+                } else {
+                    if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                        Button { problem = nil; camera = true } label: { Label(found.isEmpty ? "Take a photo" : "Take another", systemImage: "camera.fill").font(.headline) }
+                    }
+                    PhotosPicker(selection: $picked, maxSelectionCount: 10, matching: .images) { Label("Choose photos", systemImage: "photo.on.rectangle") }
                 }
-                PhotosPicker(selection: $picked, matching: .images) { Label("Choose from your photos", systemImage: "photo.on.rectangle") }
+            } footer: {
+                if mode == .photo && found.isEmpty { Text("Take a photo of the nutrition table on the back: it's the most exact. You can choose several photos at once.") }
+            }
+            if let busy { Section { HStack(spacing: 10) { ProgressView(); Text(busy).foregroundStyle(.secondary) } } }
+            if let problem { Section { Text(problem).font(.footnote).foregroundStyle(Theme.warn) } }
+            if !found.isEmpty {
+                Section {
+                    ForEach($found) { $item in
+                        VStack(alignment: .leading, spacing: 4) {
+                            TextField("What is it? e.g. Protein powder", text: $item.name).font(.body.weight(.semibold)).focused($naming, equals: item.id)
+                            HStack {
+                                Text(item.line).font(.caption).foregroundStyle(.secondary)
+                                Spacer()
+                                Button { withAnimation { found.removeAll { $0.id == item.id } } } label: { Image(systemName: "xmark").font(.caption.weight(.bold)).foregroundStyle(.secondary).frame(width: 36, height: 30) }
+                                    .buttonStyle(.borderless).accessibilityLabel("Don't add this")
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                } header: { Text(mode == .barcode ? "Scanned" : "Read from your photos") } footer: {
+                    if !ready { Text("Give each one a name to add them.") }
+                }
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            if !found.isEmpty {
+                Button { onItems(found); dismiss() } label: {
+                    Text("Add \(found.count) to your cupboard").font(.headline).foregroundStyle(ready ? Color.black : Theme.heroLabel)
+                        .frame(maxWidth: .infinity).frame(height: 50)
+                        .background(ready ? Theme.accent : Theme.hero, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain).disabled(!ready).padding(.horizontal, 20).padding(.bottom, 8)
             }
         }
     }
 
-    private func look(_ code: String) {
+    private func add(_ item: PantryItem) {
+        withAnimation { found.append(item) }
+        if item.name.trimmingCharacters(in: .whitespaces).isEmpty {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { naming = item.id }   // labels rarely say what they are
+        }
+    }
+
+    private func look(_ code: String) async {
         guard !code.isEmpty else { return }
+        scannerOpen = false; problem = nil
         busy = "Looking up \(code)…"
-        Task {
-            defer { busy = nil }
-            switch await OpenFoodFacts.lookup(code) {
-            case .found(let b):
-                if let item = PantryItem(basis: b) { onItem(item); dismiss() }
-                else { problem = "That one has no calories listed. Take a photo of its nutrition table instead." }
-            case .notFound: problem = "Barcode \(code) isn't in the database yet. Take a photo of its nutrition table instead."
-            case .failed(let why): problem = why
-            }
+        defer { busy = nil }
+        switch await OpenFoodFacts.lookup(code) {
+        case .found(let b):
+            if let item = PantryItem(basis: b) { add(item) }
+            else { problem = "Barcode \(code) has no calories listed. Use a photo of its nutrition table instead." }
+        case .notFound: problem = "Barcode \(code) isn't in the database yet. Use a photo of its nutrition table instead."
+        case .failed(let why): problem = why
         }
     }
 
-    private func read(_ img: UIImage) {
+    private func read(_ img: UIImage) async {
+        problem = nil
         busy = "Reading the label…"
-        Task {
-            defer { busy = nil }
-            do {
-                let r = try await LabelReader.read(img) { step in busy = step }
-                if let item = PantryItem(basis: r.item) { onItem(item); dismiss() }
-                else { problem = "Couldn't find calories per 100 g on that. Try a clearer photo of the table." }
-            } catch { problem = error.localizedDescription }
-        }
+        defer { busy = nil }
+        do {
+            let r = try await LabelReader.read(img) { step in busy = step }
+            if let item = PantryItem(basis: r.item) { add(item) }
+            else { problem = "Couldn't find calories per 100 g on one photo. Try a clearer photo of the table." }
+        } catch { problem = error.localizedDescription }
     }
 }

@@ -103,10 +103,10 @@ struct MealPlannerView: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .sheet(item: $open) { r in RecipeSheet(idea: r.idea) }
             .sheet(item: $scanning) { m in
-                PantryScanSheet(mode: m) { item in
-                    var all = scans.filter { $0.name.lowercased() != item.name.lowercased() }
-                    all.insert(item, at: 0)
-                    withAnimation { scansJSON = PantryItem.Saved.save(all) }
+                PantryScanSheet(mode: m) { items in
+                    // newest first; scanning the same food again replaces the old one
+                    let names = Set(items.map { $0.name.lowercased() })
+                    withAnimation { scansJSON = PantryItem.Saved.save(items + scans.filter { !names.contains($0.name.lowercased()) }) }
                 }
             }
             .sheet(isPresented: $cheat) { CheatDayView().presentationDragIndicator(.visible) }
@@ -137,7 +137,15 @@ struct MealPlannerView: View {
             HStack(spacing: 10) {
                 FoodDot(name: s.name, size: 28)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(s.name).font(.subheadline.weight(.semibold)).lineLimit(1)
+                    // tap the name to change it (a label photo often doesn't say what it is)
+                    TextField("Name it", text: Binding(get: { s.name }, set: { v in
+                        scansJSON = PantryItem.Saved.save(scans.map { x in
+                            var y = x
+                            if y.id == s.id { y.name = v }
+                            return y
+                        })
+                    }))
+                    .font(.subheadline.weight(.semibold))
                     Text(s.line).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 4)
