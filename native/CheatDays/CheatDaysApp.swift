@@ -149,9 +149,8 @@ struct SignInView: View {
                     }
                     box(icon: "lock", on: field == 1) {
                         Group {
-                            let prompt = creating ? "Choose a password" : "Password"
-                            if showPassword { TextField(prompt, text: $password).textInputAutocapitalization(.never).autocorrectionDisabled() }
-                            else { SecureField(prompt, text: $password) }
+                            if showPassword { TextField("Password", text: $password).textInputAutocapitalization(.never).autocorrectionDisabled() }
+                            else { SecureField("Password", text: $password) }
                         }
                         .textContentType(creating ? .newPassword : .password).focused($field, equals: 1).submitLabel(.go)
                         .onSubmit { if ready { Task { await go(create: creating) } } }
@@ -159,19 +158,17 @@ struct SignInView: View {
                             .buttonStyle(.plain).accessibilityLabel(showPassword ? "Hide password" : "Show password")
                     }
                     if let message { Text(message).font(.footnote).foregroundStyle(Theme.warn).frame(maxWidth: .infinity, alignment: .leading) }
-                    else {
-                        // there in both modes (just hidden for Sign in), so switching doesn't make the logo jump
-                        Text("At least 6 characters").font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 4)
-                            .opacity(creating ? 1 : 0)
-                    }
-                    Button { if ready { Task { await go(create: creating) } } } label: {
+                    Button {
+                        if ready { Task { await go(create: creating) } }
+                        else if creating && !email.isEmpty && !password.isEmpty { message = "Use at least 6 characters for your password." }
+                    } label: {
                         Text(busy ? (creating ? "Creating…" : "Signing in…") : (creating ? "Create account" : "Sign in"))
-                            .font(.subheadline.weight(.bold)).foregroundStyle(ready ? Color.black : Color.white.opacity(0.55))
+                            .font(.subheadline.weight(.bold)).foregroundStyle(ready ? Color.black : Theme.heroLabel)
                             .frame(maxWidth: .infinity).frame(height: 44)
-                            // until both boxes are filled: a quiet grey button whose label still reads
-                            .background(ready ? Theme.accent : Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            // until it can go: the calories panel's navy, its words still readable; then the bright blue
+                            .background(ready ? Theme.accent : Theme.hero, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
-                    .buttonStyle(.plain).padding(.top, 4)
+                    .buttonStyle(.plain)
                 }
                 .padding(.top, 26)
             }
