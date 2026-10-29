@@ -137,26 +137,26 @@ struct MainTabs: View {
         }
         .task {
             await Store.shared.sync()   // waits for the account to come down, even if signing in started the sync
-            // signing back in skips the food setup (Me has it); the plan only shows for an account that's never had
-            // one or logged anything, and it has Skip for now
-            let returning = UserDefaults.standard.bool(forKey: "signin.returning")
-            UserDefaults.standard.set(false, forKey: "signin.returning")
-            if Store.shared.needsOnboarding { onboarding = true }
-            else if !returning && Store.shared.needsHabits { habits = true }
+            // just signed in: the whole setup, each step with Skip; otherwise only what an account still needs
+            if UserDefaults.standard.bool(forKey: "signin.setup") || Store.shared.needsOnboarding { onboarding = true }
+            else if Store.shared.needsHabits { habits = true }
             else { afterSetup() }
             await Store.shared.applyHelperChanges(); await Store.shared.pullBody(); await Reminders.reschedule(Store.shared)
             await HealthSync.pull()
             await FriendActivity.shared.load()
             await Push.start()
         }
-        .fullScreenCover(isPresented: $onboarding, onDismiss: { if Store.shared.needsHabits { habits = true } else { afterSetup() } }) { OnboardingView(firstRun: true) { onboarding = false } }
-        .fullScreenCover(isPresented: $habits, onDismiss: { afterSetup() }) { HabitsView { habits = false } }
+        .fullScreenCover(isPresented: $onboarding, onDismiss: {
+            if UserDefaults.standard.bool(forKey: "signin.setup") || Store.shared.needsHabits { habits = true } else { afterSetup() }
+        }) { OnboardingView(firstRun: true) { onboarding = false } }
+        .fullScreenCover(isPresented: $habits, onDismiss: { UserDefaults.standard.set(false, forKey: "signin.setup"); afterSetup() }) { HabitsView { habits = false } }
         .fullScreenCover(isPresented: $scaleSetup, onDismiss: { Tour.shared.startIfPending() }) { ScaleSetupView { scaleSetup = false } }
         .overlay { TourOverlay() }   // the show-me tour, over everything including the tab bar
         .onChange(of: Tour.shared.pending) { _, now in
             // Settings' replay; a fresh sign-in waits for the first sync's onboarding check in .task instead
             let s = Store.shared
             if now && !onboarding && !habits && !scaleSetup && !UserDefaults.standard.bool(forKey: "scaleSetup.pending")
+                && !UserDefaults.standard.bool(forKey: "signin.setup")
                 && s.lastSynced != nil && !s.needsOnboarding && !s.needsHabits { Tour.shared.startIfPending() }
         }
         .onChange(of: phase) { _, now in
@@ -265,12 +265,12 @@ struct SignInView: View {
                 try await Supabase.shared.signIn(email: email.trimmingCharacters(in: .whitespaces), password: password)
             }
             if Supabase.shared.session != nil {
-                // a new account, or this phone's first sign-in: the show-me tour once the app's open, and before it,
-                // connecting a scale. Signing back in skips both (Settings can replay the tour)
+                // every sign-in goes through the whole setup (plan, food, scale, tour), each step skippable: an
+                // account that's set up before keeps its answers, so skipping changes nothing
                 let d = UserDefaults.standard
-                if create || !d.bool(forKey: "tour.seen") { Tour.shared.pending = true }
-                if create || !d.bool(forKey: "scaleSetup.asked") { d.set(true, forKey: "scaleSetup.pending") }
-                d.set(!create, forKey: "signin.returning")   // an account that's been set up before goes straight in
+                Tour.shared.pending = true
+                d.set(true, forKey: "scaleSetup.pending")
+                d.set(true, forKey: "signin.setup")
                 await Store.shared.sync()
             }
         } catch {
