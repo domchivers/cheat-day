@@ -18,6 +18,27 @@ struct PantryItem: Codable, Identifiable, Hashable {
     var portionF: Double?
     var byPortion: Bool { kcal100 <= 0 && (portionKcal ?? 0) > 0 }
 
+    /// The foods you log most, to swap in with your own numbers (your usual rice pouch, your yoghurt).
+    @MainActor static var yourFoods: [PantryItem] {
+        Array(Store.shared.quickEntries.filter { $0.kind == .recent || $0.kind == .meal }.prefix(20).compactMap { PantryItem(entry: $0) })
+    }
+
+    /// As an ingredient for a saved meal or recipe, in place of one: per 100 g keeps the grams; a portion food goes in
+    /// as one of your portions per portion of the meal.
+    func ingredient(grams: Double?, portions: Double) -> JSON {
+        let kcal: Double, p: Double, c: Double, f: Double, g: Double?
+        if byPortion {
+            kcal = (portionKcal ?? 0) * portions; p = (portionP ?? 0) * portions; c = (portionC ?? 0) * portions; f = (portionF ?? 0) * portions; g = nil
+        } else {
+            let w = grams ?? 100
+            kcal = kcal100 * w / 100; p = (p100 ?? 0) * w / 100; c = (c100 ?? 0) * w / 100; f = (f100 ?? 0) * w / 100; g = w
+        }
+        var it = Assistant.basis(name: name, kcal: kcal, grams: g, p: p, c: c, f: f)
+        it["id"] = uid(); it["kcal"] = Int(kcal.rounded())
+        if let g { it["grams"] = g; it["unitLabel"] = "g" }
+        return it
+    }
+
     /// One of the foods you log: per 100 g when it has that (the recipe keeps its amount), otherwise your usual portion.
     init?(entry e: QuickEntry) {
         if var item = PantryItem(basis: e.basis) { item.id = "food:" + e.key; self = item; return }

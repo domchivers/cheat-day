@@ -115,10 +115,7 @@ struct RecipeSheet: View {
         withAnimation(.snappy) { removedJSON = String(data: (try? JSONEncoder().encode(Array(all))) ?? Data("[]".utf8), encoding: .utf8) ?? "[]" }
     }
 
-    /// The foods you log most, to swap in with your own numbers (your usual rice pouch, your yoghurt).
-    private var yourFoods: [PantryItem] {
-        Array(store.quickEntries.filter { $0.kind == .recent || $0.kind == .meal }.prefix(20).compactMap { PantryItem(entry: $0) })
-    }
+    private var yourFoods: [PantryItem] { PantryItem.yourFoods }
 
     /// The recipe's ingredients with your own foods swapped in, and the ones you've taken out marked "removed".
     /// A food with numbers per 100 g keeps the recipe's grams; one you log by the portion goes in as one of your

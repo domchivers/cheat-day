@@ -110,6 +110,10 @@ struct MealEditor: View {
     @State private var portionsToAdd = 1.0
     @State private var gramsToAdd: Double?
     @State private var newStep = ""
+    @State private var swapping: SwapRef?
+    @State private var scanFor: Int?
+    @State private var scanMode: PantryScanSheet.Mode?
+    @AppStorage("pantry.scans") private var scansJSON = "[]"
     private var store: Store { Store.shared }
 
     var body: some View {
@@ -140,9 +144,27 @@ struct MealEditor: View {
                             }
                             .padding(.horizontal, 10).padding(.vertical, 6)
                             .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            // the same as a recipe's ingredients: swap in your own food, or take it out
+                            Menu {
+                                Button { swapping = SwapRef(index: i, name: str(it["name"]), grams: Self.grams(it) ?? 0, portions: portions) } label: {
+                                    Label("Swap for my own", systemImage: "arrow.left.arrow.right")
+                                }
+                                Button(role: .destructive) { remove(i) } label: { Label("Remove from meal", systemImage: "minus.circle") }
+                            } label: {
+                                Image(systemName: "ellipsis").font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent)
+                                    .frame(width: 30, height: 30).background(Theme.accent.opacity(0.12), in: Circle())
+                            }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel("Change \(str(it["name"]))")
+                        }
+                        .swipeActions(edge: .trailing) {
+                            Button(role: .destructive) { remove(i) } label: { Label("Remove", systemImage: "trash") }
+                            Button { swapping = SwapRef(index: i, name: str(it["name"]), grams: Self.grams(it) ?? 0, portions: portions) } label: {
+                                Label("Swap", systemImage: "arrow.left.arrow.right")
+                            }
+                            .tint(Theme.accent)
                         }
                     }
-                    .onDelete { idx in var its = items; its.remove(atOffsets: idx); meal["items"] = its }
                     Button { picking = true } label: { Label("Add a food", systemImage: "plus.circle.fill") }
                 } header: { Text("Foods") } footer: {
                     if !items.isEmpty {
@@ -204,6 +226,24 @@ struct MealEditor: View {
             .sheet(isPresented: $picking) {
                 FoodPicker { item in var its = list(meal["items"]); its.append(item); meal["items"] = its }
             }
+            .sheet(item: $swapping) { s in
+                SwapPicker(original: s.name, grams: s.grams, portions: s.portions, foods: PantryItem.yourFoods,
+                           cupboard: PantryItem.Saved.load(scansJSON)) { item in
+                    swap(s.index, item); swapping = nil
+                } scan: { mode in
+                    swapping = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { scanFor = s.index; scanMode = mode }
+                }
+                .presentationDetents([.medium, .large])
+            }
+            .sheet(item: $scanMode) { m in
+                PantryScanSheet(mode: m) { scanned in
+                    let names = Set(scanned.map { $0.name.lowercased() })
+                    scansJSON = PantryItem.Saved.save(scanned + PantryItem.Saved.load(scansJSON).filter { !names.contains($0.name.lowercased()) })
+                    if let i = scanFor, let first = scanned.first { swap(i, first) }
+                    scanFor = nil
+                }
+            }
         }
     }
 
@@ -223,6 +263,19 @@ struct MealEditor: View {
         else { it["kcalPer100"] = (num(it["kcal"]) ?? 0) / g * 100 }   // first weight for a portion-only food: its calories stay
         it["grams"] = g
         its[i] = it; meal["items"] = its
+    }
+
+    /// Your own food in place of an ingredient: same grams with its numbers per 100 g, or your portion per portion.
+    private func swap(_ i: Int, _ item: PantryItem) {
+        var its = list(meal["items"]); guard i < its.count else { return }
+        its[i] = item.ingredient(grams: Self.grams(its[i]), portions: num(meal["portions"]) ?? 1)
+        withAnimation { meal["items"] = its }
+    }
+
+    private func remove(_ i: Int) {
+        var its = list(meal["items"]); guard i < its.count else { return }
+        its.remove(at: i)
+        withAnimation { meal["items"] = its }
     }
 
     private func scale(_ i: Int, _ f: Double) {
