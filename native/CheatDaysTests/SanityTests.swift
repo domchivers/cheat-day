@@ -36,6 +36,21 @@ final class SanityTests: XCTestCase {
         XCTAssertFalse(Sanity.prefersDatabase(650, aiKcal: 195, grams: 150, name: "Cooked rice"))
     }
 
+    func testSwapsAreLikeForLike() {
+        XCTAssertTrue(FoodKind.swaps("Beef chuck steak", "Jindurra Station Beef Chuck"))
+        XCTAssertTrue(FoodKind.swaps("Chicken thigh", "Beef mince"))          // protein for protein
+        XCTAssertFalse(FoodKind.swaps("Beef chuck steak", "Kewpie mayo"))
+        XCTAssertFalse(FoodKind.swaps("Beef chuck steak", "S&B curry sauce mix"))
+        XCTAssertFalse(FoodKind.swaps("Beef chuck steak", "Greek yoghurt bowl"))
+        XCTAssertTrue(FoodKind.swaps("Jasmine rice, cooked", "SunRice sushi rice"))
+        XCTAssertEqual(FoodKind.of("Berg pepperoni"), .meat)
+    }
+
+    @MainActor func testADishsCaloriesPer100gRange() {
+        XCTAssertEqual(CookedWeightCard.dishRange("Hearty Beef and Carrot Curry").hi, 200)
+        XCTAssertEqual(CookedWeightCard.dishRange("Protein brownies").hi, 450)
+    }
+
     func testRangesByKind() {
         XCTAssertEqual(Sanity.range("Muscle Nation protein powder")?.label, "protein powder")
         XCTAssertEqual(Sanity.range("Beef chuck, raw")?.label, "raw beef chuck")

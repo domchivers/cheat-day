@@ -23,8 +23,13 @@ final class RecipeMaker {
         Task {
             defer { working.remove(name) }
             do {
-                let r = try await Self.write(idea)
+                // the ingredients and numbers first, so you can see it fits your day; the method follows
+                var r = try await Self.write(idea)
                 made[name] = r
+                if let steps = try? await Self.method(idea, r) {
+                    for v in ["authentic", "healthier"] { var ver = dict(r[v]); ver["steps"] = steps[v] ?? [String](); r[v] = ver }
+                    made[name] = r
+                }
                 Store.shared.keepRecipe(r, for: name)
             } catch { failed[name] = error.localizedDescription }
         }
@@ -307,6 +312,13 @@ struct RecipeSheet: View {
         }
         .background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        if steps.isEmpty && maker.working.contains(str(idea["name"])) {
+            // the ingredients came first; the method is on its way
+            Eyebrow(text: "Method").padding(.top, 4)
+            HStack(spacing: 10) { ProgressView(); Text("Writing the method…").foregroundStyle(.secondary) }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14).background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
         if !steps.isEmpty {
             Eyebrow(text: "Method").padding(.top, 4)
             VStack(alignment: .leading, spacing: 12) {
@@ -598,10 +610,10 @@ extension RecipeMaker {
             "protein_g": ["type": "number"] as JSON, "carbs_g": ["type": "number"] as JSON, "fat_g": ["type": "number"] as JSON
         ] as JSON, "required": ["name", "amount", "grams", "kcal", "protein_g", "carbs_g", "fat_g"]] as JSON]
         let version: (Bool) -> JSON = { changes in
-            var props: JSON = ["ingredients": ing, "steps": ["type": "array", "items": ["type": "string"] as JSON] as JSON,
+            var props: JSON = ["ingredients": ing,
                                "cookedGrams": ["type": "number", "description": "Roughly what the whole finished dish weighs once cooked, in grams (meat loses water, rice and pasta gain it)"] as JSON]
             if changes { props["changes"] = ["type": "array", "items": ["type": "string"] as JSON, "description": "What's different, under 12 words each, e.g. 'Half the butter, a splash of milk instead'"] as JSON }
-            return ["type": "object", "properties": props, "required": changes ? ["ingredients", "steps", "changes"] : ["ingredients", "steps"]]
+            return ["type": "object", "properties": props, "required": changes ? ["ingredients", "changes"] : ["ingredients"]]
         }
         let schema: JSON = ["type": "object", "properties": [
             "cuisine": ["type": "string"] as JSON, "minutes": ["type": "number"] as JSON, "portions": ["type": "number"] as JSON,
@@ -609,7 +621,7 @@ extension RecipeMaker {
         ] as JSON, "required": ["cuisine", "minutes", "portions", "authentic", "healthier"]]
         let prompt = """
         Write the recipe for "\(str(idea["name"]))" for someone in \(Plan.country) who \(Habits.cookText(str(store.habits["cook"]))).
-        authentic: how it's really made in its home cuisine, true to the dish, with ingredients they can buy there. Short, clear method steps.
+        authentic: how it's really made in its home cuisine, true to the dish, with ingredients they can buy there. Just the ingredients for now: the method comes after.
         healthier: the same dish with its character kept, lighter or higher in protein (less oil and butter, leaner cuts, more veg, swaps that taste close), and list the changes.
         If it's really a takeaway order or shop-bought, authentic is what to buy or order and how to put it together, healthier is the lighter choice.
         Portions 1 to 4. Grams are as weighed; kcal and macros per ingredient from standard reference values, so they add up, and each ingredient's kcal ≈ 4 × protein + 4 × carbs + 9 × fat.
@@ -631,5 +643,25 @@ extension RecipeMaker {
             out[v] = ver
         }
         return out
+    }
+
+    /// The method for both versions, written to the ingredients already shown.
+    static func method(_ idea: JSON, _ r: JSON) async throws -> [String: [String]] {
+        let steps: JSON = ["type": "array", "items": ["type": "string"] as JSON]
+        let schema: JSON = ["type": "object", "properties": ["authentic": steps, "healthier": steps] as JSON, "required": ["authentic", "healthier"]]
+        func uses(_ v: String) -> String {
+            list(dict(r[v])["ingredients"]).map { g in
+                let amount = str(g["amount"]).isEmpty ? "\(Int(num(g["grams"]) ?? 0)) g" : str(g["amount"])
+                return "\(amount) \(str(g["name"]))"
+            }.joined(separator: "; ")
+        }
+        let prompt = """
+        Short, clear method steps for "\(str(idea["name"]))", serves \(Int(num(r["portions"]) ?? 2)), about \(Int(num(r["minutes"]) ?? 30)) minutes.
+        authentic uses exactly: \(uses("authentic")).
+        healthier uses exactly: \(uses("healthier")).
+        Use only those ingredients and amounts.
+        """
+        let a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: true, tries: 3)
+        return ["authentic": a["authentic"] as? [String] ?? [], "healthier": a["healthier"] as? [String] ?? []]
     }
 }
