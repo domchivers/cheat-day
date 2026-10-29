@@ -109,7 +109,7 @@ struct SignInView: View {
             VStack(spacing: 0) {
                 LogoMark().fill(Color(red: 0.91, green: 0.93, blue: 0.97)).frame(width: 94, height: 50).padding(.top, 104)
                     .accessibilityLabel("Cheat Days")
-                Text("Every day can feel like a cheat day.").font(.subheadline).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
+                (Text("Every day can feel like a ") + Text("cheat day").bold().foregroundStyle(.primary) + Text(".")).font(.subheadline).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
                     .padding(.top, 24)
                 Picker("", selection: $creating) { Text("Sign in").tag(false); Text("New account").tag(true) }
                     .pickerStyle(.segmented).controlSize(.small).padding(.top, 32)
