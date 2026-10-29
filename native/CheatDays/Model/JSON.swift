@@ -87,3 +87,22 @@ enum Fmt {
         return "\(text)% of the day"
     }
 }
+
+/// A row of a list keyed by its own id rather than its position, so removing one (a swipe, a Remove button) can't
+/// leave a row reading past the end of the list, which crashed the app.
+struct Keyed: Identifiable {
+    let id: String
+    let index: Int
+    let item: JSON
+}
+
+/// Rows keyed by `key` (an id, a day), falling back to the position plus the name when a row has none.
+func keyed(_ items: [JSON], by key: String = "id") -> [Keyed] {
+    var seen = Set<String>()
+    return items.enumerated().map { i, x in
+        var id = str(x[key]).isEmpty ? "\(i)|\(str(x["name"]))" : str(x[key])
+        if seen.contains(id) { id += "|\(i)" }
+        seen.insert(id)
+        return Keyed(id: id, index: i, item: x)
+    }
+}

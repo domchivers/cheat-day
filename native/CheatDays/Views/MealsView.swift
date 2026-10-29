@@ -36,8 +36,8 @@ struct MealsView: View {
                 Section { Text("No saved meals yet. Build one, or save one of today's meals.").foregroundStyle(.secondary) }
             } else {
                 Section("Your meals") {
-                    ForEach(meals.indices, id: \.self) { i in
-                        let m = meals[i], basis = store.mealBasis(m), per = num(basis["kcalPerServing"]) ?? 0
+                    ForEach(keyed(meals)) { row in
+                        let m = row.item, basis = store.mealBasis(m), per = num(basis["kcalPerServing"]) ?? 0
                         Button { editing = m } label: {
                             HStack(spacing: 12) {
                                 FoodDot(name: str(m["name"]), size: 36)
@@ -138,8 +138,8 @@ struct MealEditor: View {
                     }
                 }
                 Section {
-                    ForEach(items.indices, id: \.self) { i in
-                        let it = items[i]
+                    ForEach(keyed(items)) { row in
+                        let i = row.index, it = row.item
                         HStack(spacing: 12) {
                             FoodDot(name: str(it["name"]), size: 30)
                             VStack(alignment: .leading, spacing: 1) {
@@ -422,8 +422,8 @@ struct FoodPicker: View {
                     if !r.mine.isEmpty { Section("Yours") { ForEach(r.mine) { e in row(e.name, e.detail, e.kcal) { pick(e.basis, kcal: e.kcal) } } } }
                     if !r.foods.isEmpty {
                         Section("Foods") {
-                            ForEach(r.foods.indices, id: \.self) { i in
-                                let b = r.foods[i], k = num(b["kcalPerServing"]) ?? num(b["kcalPer100"]) ?? 0
+                            ForEach(keyed(r.foods)) { row in
+                                let b = row.item, k = num(b["kcalPerServing"]) ?? num(b["kcalPer100"]) ?? 0
                                 row(str(b["name"]), FoodMath.amountText(b, kcal: k), k) { pick(b, kcal: k) }
                             }
                         }

@@ -158,9 +158,9 @@ struct FeedView: View {
                 .buttonStyle(.plain)
                 if let e = feed.error { Text(e).font(.footnote).foregroundStyle(Theme.warn) }
                 if feed.posts.isEmpty && !feed.loading { Text("Nothing in the feed yet. Share something, or add a friend.").foregroundStyle(.secondary).padding(.top, 30) }
-                ForEach(feed.posts.indices, id: \.self) { i in
-                    let pid = str(feed.posts[i]["id"])
-                    postCard(feed.posts[i]).id(pid)
+                ForEach(keyed(feed.posts)) { row in   // by post id: deleting one can't leave a row past the end
+                    let pid = str(row.item["id"])
+                    postCard(row.item).id(pid)
                         .overlay { if flash == pid { RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Theme.accent, lineWidth: 2.5).allowsHitTesting(false) } }
                 }
             }
@@ -239,8 +239,8 @@ struct FeedView: View {
                 }
             }
             if !all { Button("View all \(cm.count) comments") { opened.insert(id) }.font(.caption.weight(.semibold)).foregroundStyle(.secondary) }
-            ForEach(shown.indices, id: \.self) { j in
-                let c = shown[j]
+            ForEach(keyed(shown)) { row in
+                let c = row.item
                 HStack(alignment: .top) {
                     (Text(feed.name(str(c["user_id"])) + " ").bold() + Text(str(c["text"]))).font(.subheadline)
                     Spacer()

@@ -63,8 +63,8 @@ struct WorkoutsView: View {
                 }
                 if !store.todayWorkouts.isEmpty {
                     Section("Today") {
-                        ForEach(store.todayWorkouts.indices, id: \.self) { i in
-                            let w = store.todayWorkouts[i]
+                        ForEach(keyed(store.todayWorkouts)) { row in
+                            let w = row.item
                             NavigationLink { WorkoutDetail(workout: w, date: store.today) } label: { WorkoutRow(workout: w, date: nil) }
                                 .swipeActions { Button(role: .destructive) { store.deleteWorkout(str(w["id"])) } label: { Label("Delete", systemImage: "trash") } }
                         }
@@ -72,8 +72,8 @@ struct WorkoutsView: View {
                 }
                 if !store.routines.isEmpty {
                     Section("Your routines") {
-                        ForEach(store.routines.indices, id: \.self) { i in
-                            let r = store.routines[i]
+                        ForEach(keyed(store.routines)) { row in
+                            let r = row.item
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(str(r["name"])).font(.body.weight(.semibold))
@@ -200,8 +200,8 @@ struct WorkoutDetail: View {
                     stat("\(lifts.count)", "exercises")
                 }
             }
-            ForEach(lifts.indices, id: \.self) { i in
-                let l = lifts[i]
+            ForEach(keyed(lifts)) { row in
+                let l = row.item
                 Section {
                     let detail = list(l["detail"])
                     if detail.isEmpty {

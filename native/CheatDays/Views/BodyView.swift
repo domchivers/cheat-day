@@ -46,8 +46,8 @@ struct BodyView: View {
             if !rows.isEmpty {
                 let recent = Array(rows.reversed().prefix(60))
                 Section("Readings") {
-                    ForEach(recent.indices, id: \.self) { i in
-                        let r = recent[i]
+                    ForEach(keyed(recent, by: "day")) { row in
+                        let r = row.item
                         Button { entry = r } label: {
                             HStack {
                                 VStack(alignment: .leading, spacing: 1) {
