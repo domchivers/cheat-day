@@ -51,6 +51,7 @@ struct MealPlannerView: View {
     @State private var open: IdeaRef?
     @State private var cheat = false
     @FocusState private var typing: Bool
+    @FocusState private var naming: String?   // renaming a cupboard food
     private var store: Store { Store.shared }
 
     private static let cookChoices = ["No cooking", "Quick, 15 min", "Happy to cook"]
@@ -96,6 +97,11 @@ struct MealPlannerView: View {
                 guard t else { return }
                 // the keyboard would cover the button under the box: bring it up with the box
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { withAnimation { proxy.scrollTo(ideas.isEmpty ? "link" : "go", anchor: .bottom) } }
+            }
+            .onChange(of: naming) { _, n in
+                guard n != nil else { return }
+                // the same when renaming a cupboard food: the name and the button under it both stay in view
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { withAnimation { proxy.scrollTo("link", anchor: .bottom) } }
             }
             }
             .background(Theme.bg.ignoresSafeArea())
@@ -145,7 +151,7 @@ struct MealPlannerView: View {
                             return y
                         })
                     }))
-                    .font(.subheadline.weight(.semibold))
+                    .font(.subheadline.weight(.semibold)).focused($naming, equals: s.id).submitLabel(.done)
                     Text(s.line).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 4)
