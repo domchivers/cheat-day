@@ -10,6 +10,7 @@ struct WeighInSheet: View {
     @State private var picked: PhotosPickerItem?
     @State private var reading = false
     @State private var problem: String?
+    @State private var when = Date()   // when the scale took it: now, or the screenshot's date and time
     private var store: Store { Store.shared }
 
     init() {
@@ -39,6 +40,8 @@ struct WeighInSheet: View {
                 if let last = store.latestWeight {
                     Text("Last: \(Fmt.kg(last.kg)) kg, \(Store.when(last.day))").font(.subheadline).foregroundStyle(.secondary)
                 }
+                DatePicker("Weighed", selection: $when, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
+                    .font(.subheadline).padding(.horizontal, 40)
                 if !extra.isEmpty {
                     Text(BodyReader.fields.compactMap { f in f.0 == "weight" ? nil : pos(extra[f.0]).map { "\(f.1) \(String(format: "%.1f", $0))\(f.2 == "%" ? "%" : "")" } }.joined(separator: " · "))
                         .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.horizontal)
@@ -70,11 +73,12 @@ struct WeighInSheet: View {
 }
 
 extension WeighInSheet {
+    /// Saved on the day it was taken, with the time the scale took it (not when it was added here).
     fileprivate func save() {
-        if extra.isEmpty { store.weighIn(kg); return }
         var row = extra
         row["weight"] = Fmt.kg2(kg)
-        if row["day"] == nil { row["day"] = store.today }
+        row["day"] = DayKey.string(when)
+        row["takenAt"] = ISO8601DateFormatter().string(from: when)
         row["updatedAt"] = ISO.now()
         store.saveBody(row)
     }
@@ -86,7 +90,9 @@ extension WeighInSheet {
         do {
             let a = try await BodyReader.read(img)
             if let w = pos(a["weight"]) { kg = w; text = Fmt.kg(w) }
-            extra = a; extra.removeValue(forKey: "weight")
+            if let t = ISO.date(str(a["takenAt"])) { when = t }
+            else if let d = a["day"] as? String, d != store.today { when = DayKey.date(d).addingTimeInterval(8 * 3600) }   // the morning, when no time's shown
+            extra = a; extra.removeValue(forKey: "weight"); extra.removeValue(forKey: "takenAt")
         } catch { problem = error.localizedDescription }
     }
 }

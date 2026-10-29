@@ -82,12 +82,13 @@ extension Store {
         }
     }
 
-    /// kg a day over the last four weeks, ignoring unusual readings (the web app's weightTrend).
+    /// kg a day over the last four weeks (six when you weigh weekly, so there are enough points), ignoring unusual
+    /// readings (the web app's weightTrend).
     func weightTrend() -> (perDay: Double, n: Int)? {
         let wide = weights
         let odd = wide.count >= 4 ? Trend.fit(days: wide.map(\.day), values: wide.map(\.kg)).odd : Array(repeating: false, count: wide.count)
-        let since = DayKey.shift(DayKey.string(Date()), days: -28)
-        let pts = wide.indices.filter { !odd[$0] && wide[$0].day >= since }.map { wide[$0] }
+        let recent = wide.indices.filter { !odd[$0] && wide[$0].day >= DayKey.shift(DayKey.string(Date()), days: -28) }.map { wide[$0] }
+        let pts = recent.count >= 4 ? recent : wide.indices.filter { !odd[$0] && wide[$0].day >= DayKey.shift(DayKey.string(Date()), days: -42) }.map { wide[$0] }
         guard pts.count >= 3 else { return nil }
         let t0 = DayKey.date(pts[0].day).timeIntervalSince1970 / 86400
         let xs = pts.map { DayKey.date($0.day).timeIntervalSince1970 / 86400 - t0 }, ys = pts.map(\.kg)
@@ -124,9 +125,16 @@ extension Store {
         let todayKey = DayKey.string(Date())
         let week = Self.weekOf(todayKey), mon = DayKey.shift(week, days: -7), sun = DayKey.shift(week, days: -1)
         let dates = (0..<7).map { DayKey.shift(mon, days: $0) }
-        let recs = dates.compactMap { d in list(doc["history"]).first { str($0["date"]) == d && (num($0["kcal"]) ?? 0) > 0 } }
-        let good = recs.filter { h in guard let b = pos(h["budget"]) else { return true }; return (num(h["kcal"]) ?? 0) >= b * 0.6 }
-        let avg = good.isEmpty ? nil : (good.reduce(0) { $0 + (num($1["kcal"]) ?? 0) } / Double(good.count)).rounded()
+        // each day as the diary shows it, filed or not (a Sunday not yet filed when the check-in opens Monday was
+        // left out, and with it often the biggest day of the week); only a barely-logged day (under a third of its
+        // budget, a forgotten one) stays out of the average
+        let days = dates.compactMap { d -> (kcal: Double, budget: Double)? in
+            guard let p = pastDay(d), p.kcal > 0 else { return nil }
+            return (p.kcal, p.budget)
+        }
+        let good = days.filter { $0.budget <= 0 || $0.kcal >= $0.budget / 3 }
+        let avg = good.isEmpty ? nil : (good.reduce(0) { $0 + $1.kcal } / Double(good.count)).rounded()
+        let recs = dates.compactMap { d in list(doc["history"]).first { str($0["date"]) == d } }
         let workouts = recs.reduce(0) { $0 + list($1["workouts"]).count }
 
         let wide = weights
@@ -139,22 +147,23 @@ extension Store {
             func at(_ date: String) -> Double? {
                 let x = DayKey.date(date).timeIntervalSince1970 / 86400
                 guard let first = pts.first, let last = pts.last else { return nil }
-                if x <= first.x { return first.x - x <= 3 ? first.v : nil }
-                if x >= last.x { return x - last.x <= 3 ? last.v : nil }
+                if x <= first.x { return first.x - x <= 7 ? first.v : nil }   // weekly weigh-ins: a reading within the week will do
+                if x >= last.x { return x - last.x <= 7 ? last.v : nil }
                 guard let k = pts.firstIndex(where: { $0.x >= x }), k > 0 else { return nil }
                 let p0 = pts[k - 1], p1 = pts[k]
                 return p1.x == p0.x ? p1.v : p0.v + (p1.v - p0.v) * (x - p0.x) / (p1.x - p0.x)
             }
             if let s = at(DayKey.shift(mon, days: -1)), let e = at(sun) { change = ((e - s) * 10).rounded() / 10 }
         }
-        let since28 = DayKey.shift(todayKey, days: -28)
-        let weighins = wide.indices.filter { (wide.count < 4 || !odd[$0]) && wide[$0].day >= since28 }.count
+        // weighing once a week is enough: three weigh-ins over the last six weeks
+        let since42 = DayKey.shift(todayKey, days: -42)
+        let weighins = wide.indices.filter { (wide.count < 4 || !odd[$0]) && wide[$0].day >= since42 }.count
         let goodDays = wellLoggedDays(since: DayKey.shift(todayKey, days: -21)).count
         let learned = learnedBurn()
-        let enough = learned != nil && weighins >= 4
+        let enough = learned != nil && weighins >= 3
         var needs: [String] = []
         if goodDays < 10 { needs.append("\(10 - goodDays) more logged day\(10 - goodDays == 1 ? "" : "s")") }
-        if weighins < 4 { needs.append("\(4 - weighins) more weigh-in\(4 - weighins == 1 ? "" : "s")") }
+        if weighins < 3 { needs.append("\(3 - weighins) more weigh-in\(3 - weighins == 1 ? "" : "s")") }
         if needs.isEmpty && !enough { needs.append("weigh-ins spread over at least a week") }
         let plan = doc["plan"] as? JSON
         let want = plan.map { num($0["rate"]) ?? 0 }
@@ -167,7 +176,7 @@ extension Store {
             suggest = abs(d) < 50 ? now : ((now + d) / 10).rounded() * 10
         }
         let trend = weightTrend()
-        return CheckIn(week: week, mon: mon, sun: sun, logged: recs.count, avg: avg, workouts: workouts, change: change,
+        return CheckIn(week: week, mon: mon, sun: sun, logged: days.count, avg: avg, workouts: workouts, change: change,
                        burn: enough ? learned?.burn : nil, burnDays: learned?.days ?? 0, burnWeighins: learned?.weighins ?? 0, needs: needs,
                        pace: trend.map { ($0.perDay * 7 * 100).rounded() / 100 }, want: want, now: now, suggest: suggest)
     }

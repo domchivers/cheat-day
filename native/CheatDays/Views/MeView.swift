@@ -191,7 +191,9 @@ struct MeView: View {
     }
 
     private func statusLine(now: Double, goal: Double) -> some View {
-        let s = status(now: now, goal: goal), left = goal - now
+        let s = status(now: now, goal: goal)
+        // the date runs from the trend weight and the 4-week trend, not one reading and the latest change
+        let left = goal - (store.trendWeight ?? now)
         let date: String? = pace.flatMap { p -> String? in
             guard p != 0, (p < 0) == (left < 0) else { return nil }
             let days = Int(abs(left / p) * 7)

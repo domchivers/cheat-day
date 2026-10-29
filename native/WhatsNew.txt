@@ -1,4 +1,4 @@
-New in this build: tighter tracking: calories are checked against protein, carbs and fat, odd values for a food are flagged before you add them, everyday amounts (juice of half a lemon, a splash) come out right, and the assistant shows each change's numbers before you confirm. Cooked weight warns when a pot is far from what its ingredients make.
+New in this build: tighter tracking: calories are checked against protein, carbs and fat, odd values for a food are flagged before you add them, everyday amounts (juice of half a lemon, a splash) come out right, and the assistant shows each change's numbers before you confirm. Cooked weight warns when a pot is far from what its ingredients make. The weekly check-in counts every day (yesterday too, before it's filed) and works with weekly weigh-ins; weigh-ins keep the date and time the scale took them; goal dates come from your trend.
 
 Thanks for testing! Please just use it like a normal day:
 

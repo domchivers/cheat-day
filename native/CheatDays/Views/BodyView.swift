@@ -319,11 +319,20 @@ enum BodyReader {
         var props = JSON()
         for f in fields { props[f.0] = ["type": "number", "nullable": true, "description": "\(f.1)\(f.2.isEmpty ? "" : " in \(f.2)"), if shown, with its decimals"] as JSON }
         props["date"] = ["type": "string", "nullable": true, "description": "The reading's date as YYYY-MM-DD, if shown"] as JSON
+        props["time"] = ["type": "string", "nullable": true, "description": "The reading's time as HH:MM in 24-hour time, if shown"] as JSON
         let schema: JSON = ["type": "object", "properties": props, "required": Array(props.keys)]
         let a = try await Gemini.ask(schema: schema, parts: [part, ["text": "This is a screenshot from a smart scale's app. Read the body measurements shown, exactly as printed, decimals included. Leave anything not shown as null."]], quick: true)
         var out = JSON()
         for f in fields { if let v = pos(a[f.0]) { out[f.0] = Fmt.kg2(v) } }
         if let d = a["date"] as? String, DayKey.string(DayKey.date(d)) == d, DayKey.date(d) <= Date() { out["day"] = d }   // only a real date, never a guess
+        // and the time the scale took it, so it isn't shown as when the screenshot was added
+        if let day = out["day"] as? String, let t = a["time"] as? String {
+            let hm = t.split(separator: ":").compactMap { Int($0) }
+            if hm.count >= 2, (0..<24).contains(hm[0]), (0..<60).contains(hm[1]),
+               let at = Calendar.current.date(bySettingHour: hm[0], minute: hm[1], second: 0, of: DayKey.date(day)), at <= Date() {
+                out["takenAt"] = ISO8601DateFormatter().string(from: at)
+            }
+        }
         if fields.allSatisfy({ out[$0.0] == nil }) { throw Gemini.Failure(message: "Couldn't find any readings in that picture.") }
         return out
     }
