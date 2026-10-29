@@ -42,7 +42,7 @@ struct RecipeSheet: View {
     @AppStorage("pantry.scans") private var scansJSON = "[]"
     @AppStorage("recipe.removed") private var removedJSON = "[]"   // "recipe|version|ingredient" left out
     @State private var swapping: SwapRef?
-    @GestureState private var dragging: (index: Int, x: CGFloat)? = nil
+    @GestureState(resetTransaction: Transaction(animation: .snappy)) private var dragging: (index: Int, x: CGFloat)? = nil
     @State private var scanFor: (index: Int, mode: PantryScanSheet.Mode)?
     @State private var scanMode: PantryScanSheet.Mode?
     private var store: Store { Store.shared }
