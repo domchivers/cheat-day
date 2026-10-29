@@ -190,8 +190,8 @@ struct BodyView: View {
             ForEach(pts) { p in
                 PointMark(x: .value("Day", p.date), y: .value(m.name, p.value))
                     .symbol {
-                        if p.odd { Circle().strokeBorder(Color.white.opacity(0.5), lineWidth: 1).frame(width: 7, height: 7) }
-                        else { Circle().fill(Color.white.opacity(0.42)).frame(width: 5, height: 5) }
+                        if p.odd { Circle().strokeBorder(Color.white.opacity(0.6), lineWidth: 1.5).frame(width: 9, height: 9) }
+                        else { Circle().fill(Color.white.opacity(0.32)).frame(width: 6, height: 6) }
                     }
             }
             if let goal {
@@ -206,7 +206,7 @@ struct BodyView: View {
             if sel == nil, let end = line.last, let v = end.trend {
                 PointMark(x: .value("Day", end.date), y: .value("Trend", v)).foregroundStyle(Theme.accent.opacity(0.25)).symbolSize(260)
                 PointMark(x: .value("Day", end.date), y: .value("Trend", v)).foregroundStyle(Theme.accent).symbolSize(70)
-                    .annotation(position: .top, alignment: .trailing, spacing: 8) {
+                    .annotation(position: .top, alignment: .trailing, spacing: 14) {
                         Text(Fmt.kg(v)).font(.caption.weight(.heavy)).monospacedDigit()
                             .padding(.horizontal, 7).padding(.vertical, 3).background(Theme.hero, in: RoundedRectangle(cornerRadius: 6))
                     }
@@ -217,6 +217,7 @@ struct BodyView: View {
             }
         }
         .chartYScale(domain: floor...(hi + pad))
+        .chartPlotStyle { $0.clipped() }   // nothing drawn outside the plot, an odd reading included
         .chartXSelection(value: $picked)
         .chartYAxis {
             AxisMarks(position: .trailing, values: .automatic(desiredCount: 3)) { v in
@@ -240,7 +241,10 @@ struct BodyView: View {
     }
 
     private var goalCard: some View {
-        let goal = pos(store.doc["goalWeight"]), start = pos(dict(store.doc["goalStart"])["weight"])
+        // where the goal started: saved with it, or else the earliest reading of the last four months
+        let since = DayKey.shift(store.today, days: -120)
+        let earliest = store.bodyRows.first { str($0["day"]) >= since && pos($0["weight"]) != nil }.flatMap { pos($0["weight"]) }
+        let goal = pos(store.doc["goalWeight"]), start = pos(dict(store.doc["goalStart"])["weight"]) ?? earliest
         let now = store.latestWeight?.kg
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
