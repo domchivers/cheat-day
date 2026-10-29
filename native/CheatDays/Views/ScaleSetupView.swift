@@ -72,7 +72,7 @@ struct ScaleSetupView: View {
             Text("Weigh-ins come in by themselves, with body fat and lean mass if your scale measures them.")
                 .foregroundStyle(.secondary).multilineTextAlignment(.center)
             Text("Works with VeSync, Withings, Eufy, Renpho, Fitbit, Garmin and others, through Apple Health.")
-                .font(.footnote).foregroundStyle(.tertiary).multilineTextAlignment(.center)
+                .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
         }
     }
 
