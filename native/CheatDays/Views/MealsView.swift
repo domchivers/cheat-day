@@ -403,7 +403,7 @@ struct FoodPicker: View {
                 // your scanned foods (their own labels) come before any generic match
                 let q = query.trimmingCharacters(in: .whitespaces).lowercased()
                 let cupboard = PantryItem.Saved.load(UserDefaults.standard.string(forKey: "pantry.scans") ?? "[]")
-                    .filter { q.count < 2 || $0.name.lowercased().contains(q) || q.split(separator: " ").allSatisfy { w in $0.name.lowercased().contains(w) } }
+                    .filter { s in q.count < 2 || s.name.lowercased().contains(q) || q.split(separator: " ").allSatisfy { s.name.lowercased().contains($0) } }
                 if !cupboard.isEmpty {
                     Section("Your cupboard") {
                         ForEach(cupboard) { s in

@@ -51,6 +51,13 @@ final class SanityTests: XCTestCase {
         XCTAssertEqual(CookedWeightCard.dishRange("Protein brownies").hi, 450)
     }
 
+    func testABodyFatGoalsWeight() {
+        // 80 kg at 14.5% body fat, aiming for 13%: about 78 kg once a little lean loss is counted
+        let g = Store.fatGoal(weight: 80, fatPct: 14.5, target: 13)
+        XCTAssertEqual(g.weight, 78.2, accuracy: 0.15)
+        XCTAssertEqual(g.fat / g.weight, 0.13, accuracy: 0.001)
+    }
+
     func testRangesByKind() {
         XCTAssertEqual(Sanity.range("Muscle Nation protein powder")?.label, "protein powder")
         XCTAssertEqual(Sanity.range("Beef chuck, raw")?.label, "raw beef chuck")

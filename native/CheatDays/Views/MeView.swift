@@ -8,6 +8,8 @@ private struct WeightPoint: Identifiable { let id: String; let date: Date; let k
 struct MeView: View {
     @State private var weighing = false
     @State private var ranks = false
+    @State private var settingFat = false
+    @State private var fatText = ""
     private var store: Store { Store.shared }
 
     var body: some View {
@@ -164,6 +166,7 @@ struct MeView: View {
                 } else {
                     setGoal(suggest: now)
                 }
+                bodyFatLine(now: store.trendWeight ?? now)
             } else {
                 Text("Weigh in to start").font(.title3.bold())
                 Text("Your trend, progress and date to your goal show here once you've weighed in a few times.").font(.footnote).foregroundStyle(.secondary)
@@ -187,6 +190,51 @@ struct MeView: View {
             .frame(height: 6)
             Text("\(Fmt.kg(done)) kg \(goal < start ? "down" : "up") from \(Fmt.kg(start)) · \(Fmt.kg(abs(now - goal))) to go")
                 .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    /// Body fat beside the weight: the averaged %, fat and lean mass, and a body-fat goal's weight and date.
+    @ViewBuilder private func bodyFatLine(now: Double) -> some View {
+        if let bf = store.fatTrend {
+            let fatKg = now * bf.pct / 100
+            VStack(alignment: .leading, spacing: 4) {
+                Divider().padding(.vertical, 2)
+                HStack {
+                    Text("Body fat \(Fmt.one(bf.pct))%").font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Text("fat \(Fmt.one(fatKg)) kg · lean \(Fmt.one(now - fatKg)) kg").font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                }
+                Text("Averaged over your last \(bf.n) readings: scales read body fat roughly, so one reading means little.")
+                    .font(.caption2).foregroundStyle(.tertiary)
+                if let t = store.goalFat {
+                    let g = Store.fatGoal(weight: now, fatPct: bf.pct, target: t)
+                    let date: String? = pace.flatMap { p -> String? in
+                        let left = g.weight - now
+                        guard p != 0, (p < 0) == (left < 0), abs(left) >= 0.3 else { return nil }
+                        let days = Int(abs(left / p) * 7)
+                        guard days < 1500, let d = Calendar.current.date(byAdding: .day, value: days, to: Date()) else { return nil }
+                        return d.formatted(.dateTime.day().month(.wide))
+                    }
+                    Button { fatText = Fmt.one(t); settingFat = true } label: {
+                        Text(abs(g.weight - now) < 0.3 ? "\(Fmt.one(t))% body fat: you're about there."
+                             : "\(Fmt.one(t))% body fat ≈ \(Fmt.kg(g.weight)) kg\(date.map { ", around \($0)" } ?? "")")
+                            .font(.subheadline).foregroundStyle(Theme.accent)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Button("Set a body-fat goal") { fatText = ""; settingFat = true }.font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accent).buttonStyle(.plain)
+                }
+            }
+            .alert("Body-fat goal", isPresented: $settingFat) {
+                TextField("%", text: $fatText).keyboardType(.decimalPad)
+                Button("Save") {
+                    if let v = Double(fatText.replacingOccurrences(of: ",", with: ".")), v > 3, v < 50 {
+                        store.perform(["type": "set", "key": "goalFat", "value": v])
+                    }
+                }
+                if store.goalFat != nil { Button("Remove", role: .destructive) { store.perform(["type": "set", "key": "goalFat", "value": NSNull()]) } }
+                Button("Cancel", role: .cancel) {}
+            } message: { Text("The body fat % you're aiming for. It works out the weight that means, counting a little lean loss on the way.") }
         }
     }
 
