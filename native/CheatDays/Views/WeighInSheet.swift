@@ -74,7 +74,7 @@ struct WeighInSheet: View {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     TextField("kg", text: $text)
                         .keyboardType(.decimalPad).multilineTextAlignment(.center)
-                        .font(.system(size: 60, weight: .heavy, design: .rounded)).frame(maxWidth: 220)
+                        .font(.system(size: 60, weight: .heavy, design: .rounded)).fixedSize()   // sized to the number, so "kg" sits beside it
                         .onChange(of: text) { _, t in if let v = Double(t.replacingOccurrences(of: ",", with: ".")), v > 20, v < 400 { kg = v } }
                     Text("kg").font(.title2.weight(.bold)).foregroundStyle(.secondary)
                 }
@@ -108,7 +108,7 @@ struct WeighInSheet: View {
         HStack {
             Text(name)
             Spacer()
-            TextField("–", text: Binding(get: { others[key] ?? "" }, set: { others[key] = $0 }))
+            TextField("0.0", text: Binding(get: { others[key] ?? "" }, set: { others[key] = $0 }))
                 .keyboardType(.decimalPad).multilineTextAlignment(.trailing).frame(width: 80).font(.body.weight(.semibold))
             Text(unit).foregroundStyle(.secondary).frame(width: 44, alignment: .leading)
         }

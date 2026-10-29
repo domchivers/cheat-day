@@ -85,6 +85,17 @@ final class TourUITests: XCTestCase {
         let b = XCTAttachment(screenshot: app.screenshot()); b.name = "weigh-in-screenshot"; b.lifetime = .keepAlways; add(b)
     }
 
+    func testBodyChart() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-uitest-body"]
+        app.launch()
+        XCTAssertTrue(app.navigationBars["Body"].waitForExistence(timeout: 5))
+        sleep(1)
+        let a = XCTAttachment(screenshot: app.screenshot()); a.name = "body-chart"; a.lifetime = .keepAlways; add(a)
+        app.swipeUp()
+        let b = XCTAttachment(screenshot: app.screenshot()); b.name = "body-goals"; b.lifetime = .keepAlways; add(b)
+    }
+
     func testSignInScreens() {
         let app = XCUIApplication()
         app.launchArguments = ["-uitest-signin"]

@@ -30,6 +30,7 @@ struct RootView: View {
         else if ProcessInfo.processInfo.arguments.contains("-uitest-recipe") { RecipeHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-scale") { ScaleSetupView {} }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-weigh") { WeighInSheet() }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-body") { BodyHarness() }
         else if Supabase.shared.session == nil { SignInView() } else { MainTabs() }
     }
 }
@@ -67,6 +68,20 @@ private struct PlanHarness: View {
         UserDefaults.standard.set("peppers, eggs, spinach", forKey: "pantry")
     }
     var body: some View { MealPlannerView() }
+}
+
+/// For the Body screenshot only: ten weeks of weigh-ins (one odd) with body fat and a goal, no sign-in.
+private struct BodyHarness: View {
+    init() {
+        let s = Store.shared
+        let kg = [83.0, 83.2, 83.4, 84.6, 83.3, 83.1, 82.9, 82.4, 82.1, 82.0, 81.7, 81.4, 81.2, 80.9, 80.65]
+        for (i, w) in kg.enumerated() {
+            let day = DayKey.shift(DayKey.string(Date()), days: -(kg.count - 1 - i) * 5)
+            s.perform(["type": "body", "row": ["day": day, "weight": w, "fat": 17.4 - Double(i) * 0.08, "updatedAt": ISO.now()] as JSON])
+        }
+        s.perform(["type": "set", "key": "goalWeight", "value": 80.0])
+    }
+    var body: some View { NavigationStack { BodyView() } }
 }
 
 /// For the recipe swap UI test only: a written recipe and one cupboard food, no sign-in or AI.
