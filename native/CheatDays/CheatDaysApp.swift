@@ -99,38 +99,72 @@ struct SignInView: View {
     @State private var password = ""
     @State private var busy = false
     @State private var message: String?
+    @State private var showPassword = false
     @FocusState private var field: Int?
 
     var body: some View {
+        let ready = !busy && !email.isEmpty && !password.isEmpty
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                Image(systemName: "chart.pie.fill").font(.system(size: 54)).foregroundStyle(Theme.accent).padding(.top, 60)
-                Text("Cheat Days").font(.largeTitle.bold())
-                Text("Sign in with the same email and password as the Cheat Days website. Everything you've logged comes with you.")
-                    .foregroundStyle(.secondary)
+            VStack(spacing: 0) {
+                LogoMark().fill(Color(red: 0.91, green: 0.93, blue: 0.97)).frame(width: 104, height: 56).padding(.top, 90)
+                    .accessibilityLabel("Cheat Days")
+                Text("Every day can feel like a cheat day.").font(.title3.weight(.semibold)).multilineTextAlignment(.center)
+                    .padding(.top, 28)
                 VStack(spacing: 12) {
-                    TextField("Email", text: $email)
-                        .textContentType(.username).keyboardType(.emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled()
-                        .focused($field, equals: 0).submitLabel(.next).onSubmit { field = 1 }
-                    SecureField("Password", text: $password)
+                    box(icon: "envelope", on: field == 0) {
+                        TextField("Email", text: $email)
+                            .textContentType(.username).keyboardType(.emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled()
+                            .focused($field, equals: 0).submitLabel(.next).onSubmit { field = 1 }
+                    }
+                    box(icon: "lock", on: field == 1) {
+                        Group {
+                            if showPassword { TextField("Password", text: $password).textInputAutocapitalization(.never).autocorrectionDisabled() }
+                            else { SecureField("Password", text: $password) }
+                        }
                         .textContentType(.password).focused($field, equals: 1).submitLabel(.go).onSubmit { Task { await go(create: false) } }
+                        Button { showPassword.toggle() } label: { Image(systemName: showPassword ? "eye.slash" : "eye").foregroundStyle(.secondary) }
+                            .buttonStyle(.plain).accessibilityLabel(showPassword ? "Hide password" : "Show password")
+                    }
+                    if let message { Text(message).font(.footnote).foregroundStyle(Theme.warn).frame(maxWidth: .infinity, alignment: .leading) }
+                    Button { Task { await go(create: false) } } label: {
+                        Text(busy ? "Signing in…" : "Sign in").font(.headline).foregroundStyle(.black)
+                            .frame(maxWidth: .infinity).frame(height: 54)
+                            .background(Theme.accent.opacity(ready ? 1 : 0.45), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+                    .buttonStyle(.plain).disabled(!ready).padding(.top, 6)
                 }
-                .padding(16).background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18))
-                if let message { Text(message).font(.footnote).foregroundStyle(Theme.warn) }
-                Button { Task { await go(create: false) } } label: {
-                    Text(busy ? "Signing in…" : "Sign in").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 14)
+                .padding(.top, 36)
+                HStack(spacing: 4) {
+                    Text("New here?").foregroundStyle(.secondary)
+                    Button("Create an account") { Task { await go(create: true) } }.fontWeight(.semibold).foregroundStyle(Theme.accent).disabled(busy)
                 }
-                .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 16)).disabled(busy || email.isEmpty || password.isEmpty)
-                Button("Create an account") { Task { await go(create: true) } }
-                    .frame(maxWidth: .infinity).disabled(busy || email.isEmpty || password.count < 6)
+                .font(.subheadline).padding(.top, 22)
             }
             .padding(.horizontal, 24)
         }
+        .scrollBounceBehavior(.basedOnSize)
         .keyboardDone()
         .background(Theme.bg.ignoresSafeArea())
     }
 
+    /// A text box on its own: an icon at the start, outlined blue while you're typing in it.
+    private func box<Content: View>(icon: String, on: Bool, @ViewBuilder _ content: () -> Content) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon).foregroundStyle(.secondary).frame(width: 20)
+            content()
+        }
+        .padding(.horizontal, 16).frame(height: 54)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(on ? Theme.accent : Color.white.opacity(0.06), lineWidth: on ? 1.5 : 1))
+        .contentShape(Rectangle())
+        .onTapGesture { field = icon == "envelope" ? 0 : 1 }
+    }
+
     private func go(create: Bool) async {
+        if create && (email.isEmpty || password.count < 6) {
+            message = "Type your email and a password of at least 6 characters above, then tap Create an account."
+            return
+        }
         busy = true; message = nil
         defer { busy = false }
         do {
