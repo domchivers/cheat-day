@@ -279,6 +279,7 @@ struct TodayView: View {
                                 Text(e.name).font(.subheadline.weight(.semibold)).lineLimit(2)
                                 Text(e.detail.isEmpty ? "See the recipe" : "\(e.detail) · recipe").font(.caption).foregroundStyle(.secondary).lineLimit(1)
                             }
+                            .multilineTextAlignment(.leading)   // a button label centres wrapped lines otherwise
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
                         }
