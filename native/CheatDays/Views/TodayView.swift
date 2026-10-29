@@ -751,6 +751,9 @@ struct AmountView: View {
                 .frame(maxWidth: .infinity)
                 .listRowBackground(Color.clear)
             }
+            Section {
+                Picker("Meal", selection: $meal) { ForEach(Meals.all, id: \.self) { Text($0).tag($0) } }.pickerStyle(.segmented)
+            }
             if target.editId == nil, let s = Swaps.pick(for: name, kcal: kcal) {
                 Section {
                     HStack(spacing: 12) {
@@ -790,11 +793,11 @@ struct AmountView: View {
                 FixNumbers(id: id) { finish() }
             }
             Section {
-                Picker("Meal", selection: $meal) { ForEach(Meals.all, id: \.self) { Text($0).tag($0) } }.pickerStyle(.segmented)
                 Button { save() } label: {
                     Text(target.editId == nil ? "Add to \(meal)" : "Save").font(.headline).frame(maxWidth: .infinity)
                 }
                 .disabled(kcal <= 0)
+                .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }   // centred text would start the line halfway
                 if let id = target.editId {
                     Button(role: .destructive) { store.delete(id); finish() } label: { Text("Remove from today").frame(maxWidth: .infinity) }
                 }
