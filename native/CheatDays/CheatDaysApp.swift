@@ -158,17 +158,20 @@ struct SignInView: View {
                         Button { showPassword.toggle() } label: { Image(systemName: showPassword ? "eye.slash" : "eye").foregroundStyle(.secondary) }
                             .buttonStyle(.plain).accessibilityLabel(showPassword ? "Hide password" : "Show password")
                     }
-                    if creating && message == nil {
-                        Text("At least 6 characters").font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 4)
-                    }
                     if let message { Text(message).font(.footnote).foregroundStyle(Theme.warn).frame(maxWidth: .infinity, alignment: .leading) }
-                    Button { Task { await go(create: creating) } } label: {
-                        Text(busy ? (creating ? "Creating…" : "Signing in…") : (creating ? "Create account" : "Sign in")).font(.headline).foregroundStyle(.black)
-                            .frame(maxWidth: .infinity).frame(height: 44)
-                            .background(Theme.accent, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .opacity(ready ? 1 : 0.5)   // the whole button fades, so its label still reads
+                    else {
+                        // there in both modes (just hidden for Sign in), so switching doesn't make the logo jump
+                        Text("At least 6 characters").font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 4)
+                            .opacity(creating ? 1 : 0)
                     }
-                    .buttonStyle(.plain).disabled(!ready).padding(.top, 10)
+                    Button { if ready { Task { await go(create: creating) } } } label: {
+                        Text(busy ? (creating ? "Creating…" : "Signing in…") : (creating ? "Create account" : "Sign in"))
+                            .font(.subheadline.weight(.bold)).foregroundStyle(ready ? Color.black : Color.white.opacity(0.55))
+                            .frame(maxWidth: .infinity).frame(height: 44)
+                            // until both boxes are filled: a quiet grey button whose label still reads
+                            .background(ready ? Theme.accent : Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .buttonStyle(.plain).padding(.top, 4)
                 }
                 .padding(.top, 26)
             }
