@@ -51,7 +51,7 @@ final class SanityTests: XCTestCase {
         XCTAssertEqual(CookedWeightCard.dishRange("Protein brownies").hi, 450)
     }
 
-    func testABodyFatGoalsWeight() {
+    @MainActor func testABodyFatGoalsWeight() {
         // 80 kg at 14.5% body fat, aiming for 13%: about 78 kg once a little lean loss is counted
         let g = Store.fatGoal(weight: 80, fatPct: 14.5, target: 13)
         XCTAssertEqual(g.weight, 78.2, accuracy: 0.15)
