@@ -30,5 +30,16 @@ final class TourUITests: XCTestCase {
         app.buttons["New account"].tap()
         XCTAssertTrue(app.buttons["Create account"].waitForExistence(timeout: 2))
         let b = XCTAttachment(screenshot: app.screenshot()); b.name = "signin-new"; b.lifetime = .keepAlways; add(b)
+
+        // a new password: the 8-character line shows only while it's too short
+        let hint = app.staticTexts["At least 8 characters"]
+        XCTAssertFalse(hint.exists)
+        app.textFields["Email"].tap(); app.textFields["Email"].typeText("test@example.com")
+        let pw = app.secureTextFields["Password"]
+        pw.tap(); pw.typeText("abc")
+        XCTAssertTrue(hint.waitForExistence(timeout: 2))
+        let c = XCTAttachment(screenshot: app.screenshot()); c.name = "signin-short"; c.lifetime = .keepAlways; add(c)
+        pw.typeText("defgh")
+        XCTAssertFalse(hint.waitForExistence(timeout: 1))
     }
 }
