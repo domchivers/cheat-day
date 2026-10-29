@@ -165,7 +165,7 @@ struct MainTabs: View {
     private func afterSetup() {
         let d = UserDefaults.standard
         if d.bool(forKey: "scaleSetup.pending") {
-            d.set(false, forKey: "scaleSetup.pending")
+            d.set(false, forKey: "scaleSetup.pending"); d.set(true, forKey: "scaleSetup.asked")
             if HealthSync.available && !HealthSync.on { scaleSetup = true; return }
         }
         Tour.shared.startIfPending()
@@ -258,8 +258,11 @@ struct SignInView: View {
                 try await Supabase.shared.signIn(email: email.trimmingCharacters(in: .whitespaces), password: password)
             }
             if Supabase.shared.session != nil {
-                Tour.shared.pending = true   // the show-me tour once the app's open
-                UserDefaults.standard.set(true, forKey: "scaleSetup.pending")   // and before it, connecting a scale
+                // a new account, or this phone's first sign-in: the show-me tour once the app's open, and before it,
+                // connecting a scale. Signing back in skips both (Settings can replay the tour)
+                let d = UserDefaults.standard
+                if create || !d.bool(forKey: "tour.seen") { Tour.shared.pending = true }
+                if create || !d.bool(forKey: "scaleSetup.asked") { d.set(true, forKey: "scaleSetup.pending") }
                 await Store.shared.sync()
             }
         } catch {

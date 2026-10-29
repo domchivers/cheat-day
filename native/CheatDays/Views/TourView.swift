@@ -39,6 +39,7 @@ import UIKit
     func startIfPending() {
         guard pending, index == nil else { return }
         pending = false
+        UserDefaults.standard.set(true, forKey: "tour.seen")   // signing in again on this phone won't show it again
         NotificationCenter.default.post(name: .openTab, object: 0)
         NotificationCenter.default.post(name: .tourScrollTop, object: nil)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { self.index = self.firstShowable(from: 0) }
