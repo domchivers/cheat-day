@@ -1,4 +1,4 @@
-New in this build: in a recipe, tap ⇄ on any ingredient to swap in your own food (from your cupboard or a quick scan) so the calories match what you cook. Cupboard scanning in Plan stays open, asks you to name anything a label doesn't say, and adds several foods at once.
+New in this build: after signing in, connect your smart scale through Apple Health, and choose whether your old weigh-ins come in or you start fresh.
 
 Thanks for testing! Please just use it like a normal day:
 

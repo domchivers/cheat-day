@@ -47,6 +47,15 @@ final class TourUITests: XCTestCase {
         let after = XCTAttachment(screenshot: app.screenshot()); after.name = "recipe-swapped"; after.lifetime = .keepAlways; add(after)
     }
 
+    func testScaleSetupIntro() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-uitest-scale"]
+        app.launch()
+        XCTAssertTrue(app.buttons["Connect Apple Health"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Not now"].exists)
+        let a = XCTAttachment(screenshot: app.screenshot()); a.name = "scale-setup"; a.lifetime = .keepAlways; add(a)
+    }
+
     func testSignInScreens() {
         let app = XCUIApplication()
         app.launchArguments = ["-uitest-signin"]

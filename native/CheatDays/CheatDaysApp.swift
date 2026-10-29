@@ -28,6 +28,7 @@ struct RootView: View {
         else if ProcessInfo.processInfo.arguments.contains("-uitest-signin") { SignInView() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-plan") { PlanHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-recipe") { RecipeHarness() }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-scale") { ScaleSetupView {} }
         else if Supabase.shared.session == nil { SignInView() } else { MainTabs() }
     }
 }
@@ -111,6 +112,7 @@ struct MainTabs: View {
     @State private var tab = 0
     @State private var onboarding = false
     @State private var habits = false
+    @State private var scaleSetup = false
     @Environment(\.scenePhase) private var phase
 
     var body: some View {
@@ -134,19 +136,21 @@ struct MainTabs: View {
         }
         .task {
             await Store.shared.sync()
-            if Store.shared.needsOnboarding { onboarding = true } else if Store.shared.needsHabits { habits = true } else { Tour.shared.startIfPending() }
+            if Store.shared.needsOnboarding { onboarding = true } else if Store.shared.needsHabits { habits = true } else { afterSetup() }
             await Store.shared.applyHelperChanges(); await Store.shared.pullBody(); await Reminders.reschedule(Store.shared)
             await HealthSync.pull()
             await FriendActivity.shared.load()
             await Push.start()
         }
-        .fullScreenCover(isPresented: $onboarding, onDismiss: { if Store.shared.needsHabits { habits = true } else { Tour.shared.startIfPending() } }) { OnboardingView(firstRun: true) { onboarding = false } }
-        .fullScreenCover(isPresented: $habits, onDismiss: { Tour.shared.startIfPending() }) { HabitsView { habits = false } }
+        .fullScreenCover(isPresented: $onboarding, onDismiss: { if Store.shared.needsHabits { habits = true } else { afterSetup() } }) { OnboardingView(firstRun: true) { onboarding = false } }
+        .fullScreenCover(isPresented: $habits, onDismiss: { afterSetup() }) { HabitsView { habits = false } }
+        .fullScreenCover(isPresented: $scaleSetup, onDismiss: { Tour.shared.startIfPending() }) { ScaleSetupView { scaleSetup = false } }
         .overlay { TourOverlay() }   // the show-me tour, over everything including the tab bar
         .onChange(of: Tour.shared.pending) { _, now in
             // Settings' replay; a fresh sign-in waits for the first sync's onboarding check in .task instead
             let s = Store.shared
-            if now && !onboarding && !habits && s.lastSynced != nil && !s.needsOnboarding && !s.needsHabits { Tour.shared.startIfPending() }
+            if now && !onboarding && !habits && !scaleSetup && !UserDefaults.standard.bool(forKey: "scaleSetup.pending")
+                && s.lastSynced != nil && !s.needsOnboarding && !s.needsHabits { Tour.shared.startIfPending() }
         }
         .onChange(of: phase) { _, now in
             if now == .background { Store.shared.flush() }
@@ -154,6 +158,17 @@ struct MainTabs: View {
         .onChange(of: tab) { _, _ in
             if Store.shared.lastSynced.map({ Date().timeIntervalSince($0) > 60 }) ?? true { Task { await Store.shared.sync() } }
         }
+    }
+
+    /// Once sign-up and the food plan are done: connect a scale (first sign-in only, if there's Health and it isn't
+    /// on yet), then the show-me tour.
+    private func afterSetup() {
+        let d = UserDefaults.standard
+        if d.bool(forKey: "scaleSetup.pending") {
+            d.set(false, forKey: "scaleSetup.pending")
+            if HealthSync.available && !HealthSync.on { scaleSetup = true; return }
+        }
+        Tour.shared.startIfPending()
     }
 }
 
@@ -244,6 +259,7 @@ struct SignInView: View {
             }
             if Supabase.shared.session != nil {
                 Tour.shared.pending = true   // the show-me tour once the app's open
+                UserDefaults.standard.set(true, forKey: "scaleSetup.pending")   // and before it, connecting a scale
                 await Store.shared.sync()
             }
         } catch {

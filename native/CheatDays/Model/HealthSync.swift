@@ -31,10 +31,36 @@ enum HealthSync {
 
     /// Ask once for permission to read, then bring readings in. Returns how many days came in.
     static func connect() async throws -> Int {
+        try await authorize()
+        on = true
+        return await pull(force: true)
+    }
+
+    /// Weigh-ins before this aren't brought in ("start fresh"); nil brings in the history.
+    static var from: Date? {
+        get { UserDefaults.standard.object(forKey: "health.from") as? Date }
+        set { UserDefaults.standard.set(newValue, forKey: "health.from") }
+    }
+
+    /// Just the permission, so setup can ask about the history before anything comes in.
+    static func authorize() async throws {
         guard available else { throw APIError(status: 0, message: "Apple Health isn't available on this device.") }
         let types = Set(kinds.compactMap { HKObjectType.quantityType(forIdentifier: $0.0) as HKObjectType? })
         try await health.requestAuthorization(toShare: [], read: types.union([HKQuantityType(.stepCount)]))
         UserDefaults.standard.set(true, forKey: "health.stepsAsked")
+    }
+
+    /// How many weigh-ins Health has from the last 400 days, the earliest, and the latest (for setup to show).
+    static func history() async -> (count: Int, first: Date?, latest: HKQuantitySample?) {
+        guard let type = HKQuantityType.quantityType(forIdentifier: .bodyMass) else { return (0, nil, nil) }
+        let s = await samples(type, since: Calendar.current.date(byAdding: .day, value: -400, to: Date())!).sorted { $0.endDate < $1.endDate }
+        return (s.count, s.first?.endDate, s.last)
+    }
+
+    /// Setup's answer: bring in the history, or only weigh-ins from today on.
+    static func start(history: Bool) async -> Int {
+        from = history ? nil : Calendar.current.startOfDay(for: Date())
+        UserDefaults.standard.removeObject(forKey: "health.lastPull")
         on = true
         return await pull(force: true)
     }
@@ -46,7 +72,8 @@ enum HealthSync {
     static func pull(force: Bool = false) async -> Int {
         guard on, available else { return 0 }
         if !force, let last = lastPull, Date().timeIntervalSince(last) < 120 { return 0 }
-        let since = lastPull.map { $0.addingTimeInterval(-3 * 86400) } ?? Calendar.current.date(byAdding: .day, value: -400, to: Date())!
+        var since = lastPull.map { $0.addingTimeInterval(-3 * 86400) } ?? Calendar.current.date(byAdding: .day, value: -400, to: Date())!
+        if let from, from > since { since = from }   // started fresh: nothing from before then
         var byDay: [String: JSON] = [:]
         for k in kinds {
             guard let type = HKQuantityType.quantityType(forIdentifier: k.0) else { continue }
