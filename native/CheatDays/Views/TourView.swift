@@ -18,7 +18,7 @@ import UIKit
              text: "Tap Plan and tell it what's in the fridge. It suggests meals that fit what you've got left today. On your cheat day it plans the whole day."),
         Step(spot: .add, shape: .circle, pad: 5, title: "Add food",
              text: "Tap + to search, scan a barcode, snap a photo or just tell the assistant what you had."),
-        Step(spot: .meal, shape: .capsule, pad: 8, title: "Straight into a meal",
+        Step(spot: .meal, shape: .card(24), pad: 0, title: "Straight into a meal",
              text: "Or add to a meal here. Tap a food afterwards to change the amount; swipe left to remove it."),
         Step(spot: .workouts, shape: .capsule, pad: 2, title: "Workouts",
              text: "Start a routine and tick sets as you go. The rest timer runs on its own."),

@@ -134,14 +134,14 @@ struct SignInView: View {
         let ready = !busy && !email.isEmpty && password.count >= (creating ? 6 : 1)
         ScrollView {
             VStack(spacing: 0) {
-                LogoMark().fill(Color(red: 0.91, green: 0.93, blue: 0.97)).frame(width: 94, height: 50).padding(.top, 104)
+                LogoMark().fill(Color(red: 0.91, green: 0.93, blue: 0.97)).frame(width: 94, height: 50)
                     .accessibilityLabel("Cheat Days")
-                (Text("Every day can feel like a ") + Text("cheat day").bold() + Text(".")).font(.subheadline).lineLimit(1).minimumScaleFactor(0.8)
-                    .padding(.top, 24)
+                (Text("Every day can feel like a ") + Text("cheat day").bold() + Text(".")).font(.body).lineLimit(1).minimumScaleFactor(0.8)
+                    .padding(.top, 28)
                 Picker("", selection: $creating) { Text("Sign in").tag(false); Text("New account").tag(true) }
-                    .pickerStyle(.segmented).controlSize(.small).padding(.top, 32)
+                    .pickerStyle(.segmented).controlSize(.small).padding(.top, 44)
                     .onChange(of: creating) { _, _ in message = nil }
-                VStack(spacing: 10) {
+                VStack(spacing: 14) {
                     box(icon: "envelope", on: field == 0) {
                         TextField("Email", text: $email)
                             .textContentType(.username).keyboardType(.emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -164,14 +164,17 @@ struct SignInView: View {
                     if let message { Text(message).font(.footnote).foregroundStyle(Theme.warn).frame(maxWidth: .infinity, alignment: .leading) }
                     Button { Task { await go(create: creating) } } label: {
                         Text(busy ? (creating ? "Creating…" : "Signing in…") : (creating ? "Create account" : "Sign in")).font(.headline).foregroundStyle(.black)
-                            .frame(maxWidth: .infinity).frame(height: 48)
-                            .background(Theme.accent.opacity(ready ? 1 : 0.45), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .frame(maxWidth: .infinity).frame(height: 52)
+                            .background(Theme.accent, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .opacity(ready ? 1 : 0.5)   // the whole button fades, so its label still reads
                     }
-                    .buttonStyle(.plain).disabled(!ready).padding(.top, 8)
+                    .buttonStyle(.plain).disabled(!ready).padding(.top, 10)
                 }
-                .padding(.top, 18)
+                .padding(.top, 26)
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, 28)
+            .padding(.bottom, 40)   // a touch above the middle reads as centred
+            .containerRelativeFrame(.vertical)   // the whole block sits in the middle of the screen
         }
         .scrollBounceBehavior(.basedOnSize)
         .keyboardDone()
@@ -184,7 +187,7 @@ struct SignInView: View {
             Image(systemName: icon).font(.subheadline).foregroundStyle(.secondary).frame(width: 20)
             content()
         }
-        .padding(.horizontal, 14).frame(height: 46)
+        .padding(.horizontal, 16).frame(height: 52)
         .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay { if on { RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.accent, lineWidth: 1.5) } }
         .contentShape(Rectangle())

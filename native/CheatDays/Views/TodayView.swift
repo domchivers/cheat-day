@@ -498,8 +498,9 @@ struct TodayView: View {
                 if offset == 0 {
                     Button { addChoice = MealChoice(id: meal) } label: {
                         Label("Add \(meal.lowercased())", systemImage: "plus.circle.fill").foregroundStyle(Theme.accent)
-                            .modifier(TourSpotIf(spot: .meal, on: meal == Meals.all.first))
                     }
+                    // the tour outlines the whole row, so it's measured on the row's background, not the label
+                    .listRowBackground(Color(.secondarySystemGroupedBackground).modifier(TourSpotIf(spot: .meal, on: meal == Meals.all.first)))
                 }
             } header: {
                 HStack {
