@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// A rank's badge: the app's logo on an emblem of the tier's own shape (coin, tile, hexagon, shield, octagon, gold
-/// seal), filled top to bottom in the tier's colours with a bright edge. No glow: it sits flat on the page.
+/// A rank's badge: the app's logo on an emblem of the tier's own shape (coin, tile, hexagon, shield, octagon, eight-point
+/// star), filled top to bottom in the tier's colours with a bright edge. No glow: it sits flat on the page.
 struct RankBadge: View {
     let rank: Rank
     var size: CGFloat = 40
@@ -41,9 +41,9 @@ struct RankShape: Shape {
             g.addLine(to: p(12, 16)); g.closeSubpath()
             return g
         case 4: return poly([(33, 5), (67, 5), (95, 33), (95, 67), (67, 95), (33, 95), (5, 67), (5, 33)])
-        default:   // a gold seal: 12 notches round the edge
-            return poly((0..<24).map { i in
-                let a = Double(i) / 24 * 2 * .pi - .pi / 2, r: Double = i % 2 == 0 ? 47 : 41
+        default:   // an eight-point star, the step up from Elite's octagon
+            return poly((0..<16).map { i in
+                let a = Double(i) / 16 * 2 * .pi - .pi / 2, r: Double = i % 2 == 0 ? 49 : 37
                 return (CGFloat(50 + r * cos(a)), CGFloat(50 + r * sin(a)))
             })
         }
