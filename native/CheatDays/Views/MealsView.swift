@@ -400,6 +400,19 @@ struct FoodPicker: View {
                     if let busy { HStack(spacing: 8) { ProgressView(); Text(busy).font(.footnote).foregroundStyle(.secondary) } }
                     if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn) }
                 }
+                // your scanned foods (their own labels) come before any generic match
+                let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+                let cupboard = PantryItem.Saved.load(UserDefaults.standard.string(forKey: "pantry.scans") ?? "[]")
+                    .filter { q.count < 2 || $0.name.lowercased().contains(q) || q.split(separator: " ").allSatisfy { w in $0.name.lowercased().contains(w) } }
+                if !cupboard.isEmpty {
+                    Section("Your cupboard") {
+                        ForEach(cupboard) { s in
+                            let b: JSON = ["name": s.name, "source": "label", "unit": "g", "kcalPer100": s.kcal100,
+                                           "p100": s.p100 ?? 0, "c100": s.c100 ?? 0, "f100": s.f100 ?? 0, "servingSize": 100.0]
+                            row(s.name, s.line, s.kcal100) { pick(b, kcal: s.kcal100) }
+                        }
+                    }
+                }
                 if query.trimmingCharacters(in: .whitespaces).count < 2 {
                     Section("Your foods") {
                         ForEach(store.quickEntries.filter { $0.kind == .recent }.prefix(30)) { e in row(e.name, e.detail, e.kcal) { pick(e.basis, kcal: e.kcal) } }

@@ -91,6 +91,19 @@ struct AddSheet: View {
 
     @ViewBuilder private var results: some View {
         let found = store.search(settled)
+        // scanned foods with your own labels first, above anything generic
+        let q = settled.lowercased()
+        let cupboard = PantryItem.Saved.load(UserDefaults.standard.string(forKey: "pantry.scans") ?? "[]")
+            .filter { s in q.split(separator: " ").allSatisfy { s.name.lowercased().contains($0) } }
+        if !cupboard.isEmpty {
+            Section("Your cupboard") {
+                ForEach(cupboard) { s in
+                    let b: JSON = ["name": s.name, "source": "label", "unit": "g", "kcalPer100": s.kcal100,
+                                   "p100": s.p100 ?? 0, "c100": s.c100 ?? 0, "f100": s.f100 ?? 0, "servingSize": 100.0]
+                    row(QuickEntry(key: "pantry:" + s.id, basis: b, kcal: s.kcal100, detail: s.line, uses: 0, lastUsed: "", kind: .food))
+                }
+            }
+        }
         if !found.mine.isEmpty { Section("Things you've had") { ForEach(found.mine) { row($0) } } }
         if !found.foods.isEmpty {
             Section("Foods") {

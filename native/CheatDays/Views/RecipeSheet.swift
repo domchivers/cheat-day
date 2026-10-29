@@ -503,6 +503,7 @@ struct SwapPicker: View {
                 let mine = cupboard.filter { FoodKind.swaps(original, $0.name) }, logged = foods.filter { FoodKind.swaps(original, $0.name) }
                 if !mine.isEmpty { section("From your cupboard", mine) }
                 if !logged.isEmpty { section("Foods you log", logged) }
+                freshCuts
                 if mine.isEmpty && logged.isEmpty && !(cupboard.isEmpty && foods.isEmpty) {
                     Section { Text("Nothing like \(original.lowercased()) in your foods yet. Scan one below.").font(.footnote).foregroundStyle(.secondary) }
                 }
@@ -534,6 +535,50 @@ struct SwapPicker: View {
                 }
                 .disabled(!fits)
             }
+        }
+    }
+
+    /// Fresh meat often has no nutrition panel: pick how lean it looks instead (raw, per 100 g).
+    static let cuts: [(name: String, words: [String], levels: [(String, Double, Double)])] = [
+        ("Beef chuck", ["chuck", "steak", "beef", "brisket", "blade"], [("Lean", 155, 21), ("Typical", 200, 19), ("Fatty", 220, 18)]),
+        ("Beef mince", ["mince", "ground"], [("5-star", 132, 19.5), ("4-star", 170, 19), ("3-star", 220, 17.5)]),
+        ("Chicken thigh fillet", ["chicken", "thigh"], [("Lean", 115, 20), ("Typical", 125, 19), ("Fatty", 150, 18)]),
+        ("Pork shoulder", ["pork", "shoulder"], [("Lean", 150, 19), ("Typical", 190, 17), ("Fatty", 230, 16)])
+    ]
+
+    @ViewBuilder private var freshCuts: some View {
+        let kind = FoodKind.of(original)
+        if [.meat, .poultry].contains(kind) {
+            let n = original.lowercased()
+            let matching = Self.cuts.filter { $0.words.contains(where: { n.contains($0) }) }
+            Section {
+                ForEach(matching.isEmpty ? Self.cuts.map(\.name) : matching.map(\.name), id: \.self) { cutName in
+                    let cut = Self.cuts.first { $0.name == cutName }!
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(cut.name).font(.subheadline.weight(.semibold))
+                        HStack(spacing: 8) {
+                            ForEach(cut.levels, id: \.0) { lv in
+                                Button {
+                                    // fat from what's left once protein's counted (raw meat has next to no carbs)
+                                    let fat = max(0, (lv.1 - 4 * lv.2) / 9)
+                                    if let item = PantryItem(basis: ["name": "\(cut.name) (\(lv.0.lowercased()))", "kcalPer100": lv.1, "p100": lv.2, "c100": 0.0, "f100": (fat * 10).rounded() / 10]) {
+                                        pick(item)
+                                    }
+                                } label: {
+                                    VStack(spacing: 1) {
+                                        Text(lv.0).font(.caption.weight(.bold))
+                                        Text("\(Fmt.int(lv.1)) kcal · \(Fmt.int(lv.2))g P").font(.caption2).foregroundStyle(.secondary)
+                                    }
+                                    .frame(maxWidth: .infinity).padding(.vertical, 6)
+                                    .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            } header: { Text("Fresh, no label?") } footer: { Text("Raw, per 100 g. Lean is trimmed with little visible fat; fatty is well marbled.") }
         }
     }
 

@@ -757,7 +757,10 @@ struct AmountView: View {
         let c = FoodMath.conv(target.basis)
         conv = c
         _meal = State(initialValue: target.meal)
-        let start: Mode = c.countKcal != nil && (c.countLabel != "serving" || c.kcalPer100 == nil) ? .count : (c.kcalPer100 != nil ? .grams : .kcal)
+        // meat and fish start on Weigh: "1 thigh" is 100 g in one country and 180 g in another
+        let kind = FoodKind.of(str(target.basis["name"])), byWeight = [.meat, .poultry, .fish].contains(kind) && c.kcalPer100 != nil
+        let start: Mode = byWeight ? .grams
+            : c.countKcal != nil && (c.countLabel != "serving" || c.kcalPer100 == nil) ? .count : (c.kcalPer100 != nil ? .grams : .kcal)
         _mode = State(initialValue: start)
         let fallback = c.countKcal ?? c.kcalPer100.map { k in k * (pos(target.basis["servingSize"]) ?? 100) / 100 } ?? 0
         _kcal = State(initialValue: target.kcal ?? fallback)
@@ -818,6 +821,11 @@ struct AmountView: View {
                     if let note = target.note, !note.isEmpty {
                         Label(note, systemImage: "info.circle").font(.footnote).foregroundStyle(.secondary)
                             .multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
+                    }
+                    if let vary = brandsVary {
+                        Label("Brands vary a lot for \(vary). This is a typical one: scan your pack's barcode or label for exact numbers.", systemImage: "barcode.viewfinder")
+                            .font(.footnote).foregroundStyle(Theme.heroLabel)
+                            .multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 6)
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -881,6 +889,16 @@ struct AmountView: View {
         .animation(.snappy, value: kcal)
         .sensoryFeedback(.selection, trigger: kcal)
         .onAppear { syncTexts() }
+    }
+
+    /// A generic food whose brands differ a lot (cocoa from 228 to 423 kcal per 100 g): worth scanning yours.
+    private var brandsVary: String? {
+        guard str(target.basis["brand"]).isEmpty, !["barcode", "label", "manual", "meal"].contains(str(target.basis["source"])) else { return nil }
+        let n = name.lowercased()
+        let kinds: [(String, [String])] = [("cocoa", ["cocoa", "cacao"]), ("protein powder", ["protein powder", "whey", "protein shake"]),
+                                           ("cheese", ["cheese"]), ("yoghurt", ["yoghurt", "yogurt"]), ("granola", ["granola", "muesli"]),
+                                           ("bread", ["bread", "wrap"]), ("sausages", ["sausage"])]
+        return kinds.first { $0.1.contains(where: { n.contains($0) }) }?.0
     }
 
     private var perText: String? {
@@ -948,6 +966,11 @@ struct AmountView: View {
             tiles([1.0, 2, 3, 4].map { n in (Fmt.one(n), FoodMath.plural(n, label), n * each) })
             Stepper("\(Fmt.one(count)) \(FoodMath.plural(count, label))", onIncrement: { kcal = (count + 0.5) * each; syncTexts() },
                     onDecrement: { kcal = max(0.5, count - 0.5) * each; syncTexts() })
+            // the weight behind a count, so a bigger or smaller one can be weighed instead
+            if let k100 = conv.kcalPer100, k100 > 0 {
+                Text("1 \(label) ≈ \(Fmt.int(each / k100 * 100)) \(unit)\(Region.current == .uk ? "" : " (yours may differ: Weigh is exact)")")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             fitsNote
         }
     }

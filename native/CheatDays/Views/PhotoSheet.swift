@@ -125,15 +125,22 @@ struct ManualEntry: View {
     @State private var c = ""
     @State private var f = ""
     @State private var go: EditTarget?
+    @State private var kj = Region.current == .au   // Australian labels lead with kJ: type what's printed
 
     private func d(_ s: String) -> Double? { Double(s.replacingOccurrences(of: ",", with: ".")) }
+    /// The energy typed, in kcal (kJ ÷ 4.184).
+    private var kcalTyped: Double? { d(kcalText).map { kj ? $0 / 4.184 : $0 } }
 
     var body: some View {
         Form {
             Section { TextField("What is it?", text: $name).font(.headline) }
             Section {
                 Picker("Calories are", selection: $per) { Text("Per 100 \(unit)").tag(0); Text("For one").tag(1) }.pickerStyle(.segmented)
-                HStack { TextField("Calories", text: $kcalText).keyboardType(.decimalPad); Text("kcal").foregroundStyle(.secondary) }
+                HStack {
+                    TextField(kj ? "Energy" : "Calories", text: $kcalText).keyboardType(.decimalPad)
+                    Picker("Unit", selection: $kj) { Text("kcal").tag(false); Text("kJ").tag(true) }.pickerStyle(.segmented).frame(width: 110)
+                }
+                if kj, let k = kcalTyped, k > 0 { Text("= \(Fmt.int(k)) kcal").font(.caption).foregroundStyle(.secondary) }
                 if per == 1 {
                     TextField("One what? (slice, bar, serving)", text: $pieceName)
                     HStack { TextField("Weighs (optional)", text: $servingText).keyboardType(.decimalPad); Text(unit).foregroundStyle(.secondary) }
@@ -148,7 +155,7 @@ struct ManualEntry: View {
                 HStack { Text("Fat"); TextField("g", text: $f).keyboardType(.decimalPad).multilineTextAlignment(.trailing) }
             } header: { Text(per == 0 ? "Per 100 \(unit), optional" : "In one, optional") }
             Section {
-                Button("Next: how much") { next() }.font(.headline).frame(maxWidth: .infinity).disabled((d(kcalText) ?? 0) <= 0)
+                Button("Next: how much") { next() }.font(.headline).frame(maxWidth: .infinity).disabled((kcalTyped ?? 0) <= 0)
             }
         }
         .keyboardDone()
@@ -158,7 +165,7 @@ struct ManualEntry: View {
     }
 
     private func next() {
-        guard let k = d(kcalText), k > 0 else { return }
+        guard let k = kcalTyped.map({ ($0 * 10).rounded() / 10 }), k > 0 else { return }
         var b: JSON = ["source": "manual", "name": name.trimmingCharacters(in: .whitespaces).isEmpty ? "Something tasty" : name.trimmingCharacters(in: .whitespaces), "unit": unit]
         let serving = d(servingText)
         let hasMacros = d(p) != nil || d(c) != nil || d(f) != nil
