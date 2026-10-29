@@ -10,6 +10,23 @@ struct PantryItem: Codable, Identifiable, Hashable {
     var p100: Double?
     var c100: Double?
     var f100: Double?
+    /// A food you log by the portion (a microwave rice pouch): your usual portion and its numbers, when there's no per 100 g.
+    var portionKcal: Double?
+    var portionLabel: String?
+    var portionP: Double?
+    var portionC: Double?
+    var portionF: Double?
+    var byPortion: Bool { kcal100 <= 0 && (portionKcal ?? 0) > 0 }
+
+    /// One of the foods you log: per 100 g when it has that (the recipe keeps its amount), otherwise your usual portion.
+    init?(entry e: QuickEntry) {
+        if var item = PantryItem(basis: e.basis) { item.id = "food:" + e.key; self = item; return }
+        guard e.kcal > 0 else { return nil }
+        id = "food:" + e.key; name = e.name; kcal100 = 0
+        portionKcal = e.kcal
+        portionLabel = e.detail.isEmpty ? "portion" : e.detail
+        if let m = FoodMath.macros(e.basis, kcal: e.kcal) { portionP = m.p; portionC = m.c; portionF = m.f }
+    }
 
     /// From a looked-up or read food; nil when it has no calories per 100 g to go on.
     init?(basis b: JSON) {
@@ -26,7 +43,10 @@ struct PantryItem: Codable, Identifiable, Hashable {
         p100 = per100("p100", "pServ"); c100 = per100("c100", "cServ"); f100 = per100("f100", "fServ")
     }
 
-    var line: String { "\(Fmt.int(kcal100)) kcal\(p100.map { " · \(Fmt.int($0)) g protein" } ?? "") per 100 g" }
+    var line: String {
+        byPortion ? "your usual: \(portionLabel ?? "portion") · \(Fmt.int(portionKcal ?? 0)) kcal"
+                  : "\(Fmt.int(kcal100)) kcal\(p100.map { " · \(Fmt.int($0)) g protein" } ?? "") per 100 g"
+    }
 
     /// For the planner's prompt.
     var prompt: String {

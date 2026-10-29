@@ -75,6 +75,7 @@ private struct RecipeHarness: View {
         let chicken = PantryItem(basis: ["name": "Chicken breast fillets", "brand": "Tesco", "kcalPer100": 106.0, "p100": 24.0, "c100": 0.0, "f100": 1.5])
         UserDefaults.standard.set(PantryItem.Saved.save([chicken].compactMap { $0 }), forKey: "pantry.scans")
         UserDefaults.standard.set("{}", forKey: "recipe.swaps")
+        UserDefaults.standard.set("[]", forKey: "recipe.removed")
         func ing(_ n: String, _ a: String, _ g: Double, _ k: Double, _ p: Double, _ c: Double, _ f: Double) -> JSON {
             ["name": n, "amount": a, "grams": g, "kcal": k, "protein_g": p, "carbs_g": c, "fat_g": f]
         }

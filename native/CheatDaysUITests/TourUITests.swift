@@ -35,16 +35,26 @@ final class TourUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-uitest-recipe"]
         app.launch()
-        let swap = app.buttons["Swap Chicken thigh for your own"]
-        XCTAssertTrue(swap.waitForExistence(timeout: 5))
+        let menu = app.buttons["Change Chicken thigh"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 5))
         let before = XCTAttachment(screenshot: app.screenshot()); before.name = "recipe-before"; before.lifetime = .keepAlways; add(before)
-        swap.tap()
+        menu.tap()
+        app.buttons["Swap for my own"].tap()
         let pick = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Tesco Chicken breast fillets")).firstMatch
         XCTAssertTrue(pick.waitForExistence(timeout: 3))
         pick.tap()
-        XCTAssertTrue(app.staticTexts["YOUR LABEL"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["YOURS"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["434"].exists, "total should be 434 kcal: 150 g at 106 from the label (159) + 230 + 37 + 8")
         let after = XCTAttachment(screenshot: app.screenshot()); after.name = "recipe-swapped"; after.lifetime = .keepAlways; add(after)
+
+        // remove the soy sauce from its menu: 434 - 8 = 426, and it can be put back
+        app.buttons["Change Soy sauce"].tap()
+        app.buttons["Remove from recipe"].tap()
+        XCTAssertTrue(app.staticTexts["426"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Put back"].exists)
+        let removed = XCTAttachment(screenshot: app.screenshot()); removed.name = "recipe-removed"; removed.lifetime = .keepAlways; add(removed)
+        app.buttons["Put back"].tap()
+        XCTAssertTrue(app.staticTexts["434"].waitForExistence(timeout: 3))
     }
 
     func testScaleSetupIntro() {
