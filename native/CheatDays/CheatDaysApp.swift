@@ -74,7 +74,7 @@ private struct PlanHarness: View {
 private struct BodyHarness: View {
     init() {
         let s = Store.shared
-        let kg = [83.0, 83.2, 83.4, 84.6, 83.3, 83.1, 82.9, 82.4, 82.1, 82.0, 81.7, 81.4, 81.2, 80.9, 80.65]
+        let kg = [83.0, 83.2, 83.4, 87.4, 83.3, 83.1, 82.9, 82.4, 82.1, 82.0, 81.7, 81.4, 81.2, 80.9, 80.65]
         for (i, w) in kg.enumerated() {
             let day = DayKey.shift(DayKey.string(Date()), days: -(kg.count - 1 - i) * 5)
             s.perform(["type": "body", "row": ["day": day, "weight": w, "fat": 17.4 - Double(i) * 0.08, "updatedAt": ISO.now()] as JSON])
