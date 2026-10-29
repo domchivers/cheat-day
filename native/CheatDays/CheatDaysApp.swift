@@ -34,6 +34,7 @@ struct RootView: View {
         else if ProcessInfo.processInfo.arguments.contains("-uitest-body") { BodyHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-walk") { WalkHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-ranks") { RanksHarness() }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-mealcheck") { MealCheckHarness() }
         else if Supabase.shared.session == nil { SignInView() } else { MainTabs() }
     }
 }
@@ -96,6 +97,21 @@ private struct WalkHarness: View {
         Steps.shared.preview(days)
     }
     var body: some View { WorkoutsView() }
+}
+
+/// For the meal check screenshot only: toast logged for lunch, then the word about it, no sign-in.
+private struct MealCheckHarness: View {
+    let check: MealCheck?
+    init() {
+        let s = Store.shared
+        if !s.todayItems.contains(where: { str($0["name"]) == "Toast with butter" }) {
+            s.add(["name": "Toast with butter", "source": "manual", "kcalPerServing": 260, "pServ": 7, "cServ": 34, "fServ": 11], kcal: 260, meal: "Lunch")
+        }
+        check = s.mealCheck("Lunch")
+    }
+    var body: some View {
+        if let check { MealCheckSheet(check: check) } else { Text("No check") }
+    }
 }
 
 /// For the ranks screenshot only: every tier's badge with its steps, then the Ranks screen.

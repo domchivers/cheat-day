@@ -113,7 +113,7 @@ struct SettingsView: View {
     @ViewBuilder private var remindersPage: some View {
         Section {
             Toggle("Nudge at 2pm if nothing's logged", isOn: $lunch)
-            Toggle("Daily tips when you open the app", isOn: $dailyTips)
+            Toggle("Tips each morning and after meals", isOn: $dailyTips)
             Toggle("Weigh-in reminder", isOn: $weighOn)
             if weighOn { DatePicker("At", selection: $weighTime, displayedComponents: .hourAndMinute) }
             if !allowed {

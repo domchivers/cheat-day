@@ -126,6 +126,15 @@ final class TourUITests: XCTestCase {
         let b = XCTAttachment(screenshot: app.screenshot()); b.name = "ranks-screen"; b.lifetime = .keepAlways; add(b)
     }
 
+    func testMealCheck() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-uitest-mealcheck"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["About your lunch"].waitForExistence(timeout: 5), "toast alone for lunch gets a word")
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "g protein")).firstMatch.exists)
+        let a = XCTAttachment(screenshot: app.screenshot()); a.name = "meal-check"; a.lifetime = .keepAlways; add(a)
+    }
+
     func testSignInScreens() {
         let app = XCUIApplication()
         app.launchArguments = ["-uitest-signin"]
