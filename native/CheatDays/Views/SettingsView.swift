@@ -55,6 +55,9 @@ struct SettingsView: View {
                 NavigationLink { page("Your data") { dataPage } } label: { row("💾", "Your data and backups") }
             }
             Section {
+                Button { Tour.shared.pending = true } label: { row("📖", "Show me around") }.foregroundStyle(.primary)
+            }
+            Section {
                 Button("Sign out", role: .destructive) { confirmSignOut = true }.frame(maxWidth: .infinity)
             } footer: {
                 Text("Cheat Days \(Bundle.main.shortVersion)\(store.lastSynced.map { " · synced \($0.formatted(date: .omitted, time: .shortened))" } ?? "")")

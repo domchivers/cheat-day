@@ -52,8 +52,10 @@ struct TodayView: View {
 
     var body: some View {
         NavigationStack {
+            ScrollViewReader { proxy in
             List {
                 header
+                    .id("top")
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 0, trailing: 4))
                 if offset == 0 { LateNightCard() }
@@ -142,6 +144,11 @@ struct TodayView: View {
                 Color.clear.frame(height: 70).listRowBackground(Color.clear)
             }
             .listStyle(.insetGrouped)
+            .onReceive(NotificationCenter.default.publisher(for: .tourScrollTop)) { _ in
+                offset = 0
+                withAnimation { proxy.scrollTo("top", anchor: .top) }   // the tour points at the top of today
+            }
+            }
             .scrollContentBackground(.hidden)
             .background(Theme.bg)
             .refreshable { await store.sync() }
@@ -184,6 +191,7 @@ struct TodayView: View {
             .task(id: store.lastSynced) {
                 // once a day, after the first sync, unless it's turned off
                 guard dailyTipsOn, dailyTipsSeen != store.today, store.lastSynced != nil, !store.needsOnboarding, !store.needsHabits,
+                      !Tour.shared.pending, !Tour.shared.active,
                       let r = store.dailyReview else { return }
                 try? await Task.sleep(for: .seconds(0.8))
                 dailyTipsSeen = store.today
@@ -373,6 +381,7 @@ struct TodayView: View {
         .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.hero, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .tourSpot(.hero)
         .overlay(alignment: .topTrailing) { if offset == 0 { cheatButton.padding(.top, 10).padding(.trailing, 12) } }
         .animation(.snappy, value: eaten)
         .simultaneousGesture(DragGesture(minimumDistance: 40).onEnded { v in
@@ -424,6 +433,7 @@ struct TodayView: View {
         }
         .buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.regular)
         .tint(isToday ? Theme.warn : Theme.accent)
+        .tourSpot(.plan)
         .accessibilityLabel(isToday ? "Plan your cheat day" : "Plan a meal")
     }
 
@@ -488,6 +498,7 @@ struct TodayView: View {
                 if offset == 0 {
                     Button { addChoice = MealChoice(id: meal) } label: {
                         Label("Add \(meal.lowercased())", systemImage: "plus.circle.fill").foregroundStyle(Theme.accent)
+                            .modifier(TourSpotIf(spot: .meal, on: meal == Meals.all.first))
                     }
                 }
             } header: {
@@ -561,6 +572,7 @@ struct TodayView: View {
         Button { addChoice = MealChoice(id: Meals.now) } label: {
             Image(systemName: "plus").font(.title2.weight(.bold)).foregroundStyle(.black)
                 .frame(width: 62, height: 62).background(Theme.accent, in: Circle())
+                .tourSpot(.add)
                 .shadow(color: .black.opacity(0.4), radius: 14, y: 8)
         }
         .padding(.trailing, 22).padding(.bottom, 16)

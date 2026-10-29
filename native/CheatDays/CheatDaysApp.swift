@@ -24,6 +24,8 @@ struct RootView: View {
     var body: some View {
         if ProcessInfo.processInfo.arguments.contains("-uitest-assistant") { AssistantHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-session") { SessionHarness() }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-tour") { TourHarness() }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-signin") { SignInView() }
         else if Supabase.shared.session == nil { SignInView() } else { MainTabs() }
     }
 }
@@ -46,6 +48,25 @@ private struct SessionHarness: View {
                     ["Squat", "Leg press", "Calf raises"].map { n in LiveExercise(name: n, sets: (0..<4).map { _ in LiveSet(reps: 10, kg: 100) }) }))
             }
             .tabItem { Label("Workouts", systemImage: "dumbbell") }
+        }
+    }
+}
+
+/// For the tour UI test only: the real tabs with the tour started on Today, no sign-in or sync.
+private struct TourHarness: View {
+    @State private var tab = 0
+    var body: some View {
+        TabView(selection: $tab) {
+            TodayView().tabItem { Label("Today", systemImage: "sun.max.fill") }.tag(0)
+            Color.clear.tabItem { Label("Workouts", systemImage: "dumbbell.fill") }.tag(1)
+            Color.clear.tabItem { Label("Friends", systemImage: "person.2.fill") }.tag(2)
+            Color.clear.tabItem { Label("Me", systemImage: "person.crop.circle.fill") }.tag(3)
+        }
+        .overlay { TourOverlay() }
+        .task {
+            try? await Task.sleep(for: .seconds(1))
+            Tour.shared.pending = true
+            Tour.shared.startIfPending()
         }
     }
 }
@@ -77,14 +98,20 @@ struct MainTabs: View {
         }
         .task {
             await Store.shared.sync()
-            if Store.shared.needsOnboarding { onboarding = true } else if Store.shared.needsHabits { habits = true }
+            if Store.shared.needsOnboarding { onboarding = true } else if Store.shared.needsHabits { habits = true } else { Tour.shared.startIfPending() }
             await Store.shared.applyHelperChanges(); await Store.shared.pullBody(); await Reminders.reschedule(Store.shared)
             await HealthSync.pull()
             await FriendActivity.shared.load()
             await Push.start()
         }
-        .fullScreenCover(isPresented: $onboarding, onDismiss: { if Store.shared.needsHabits { habits = true } }) { OnboardingView(firstRun: true) { onboarding = false } }
-        .fullScreenCover(isPresented: $habits) { HabitsView { habits = false } }
+        .fullScreenCover(isPresented: $onboarding, onDismiss: { if Store.shared.needsHabits { habits = true } else { Tour.shared.startIfPending() } }) { OnboardingView(firstRun: true) { onboarding = false } }
+        .fullScreenCover(isPresented: $habits, onDismiss: { Tour.shared.startIfPending() }) { HabitsView { habits = false } }
+        .overlay { TourOverlay() }   // the show-me tour, over everything including the tab bar
+        .onChange(of: Tour.shared.pending) { _, now in
+            // Settings' replay; a fresh sign-in waits for the first sync's onboarding check in .task instead
+            let s = Store.shared
+            if now && !onboarding && !habits && s.lastSynced != nil && !s.needsOnboarding && !s.needsHabits { Tour.shared.startIfPending() }
+        }
         .onChange(of: phase) { _, now in
             if now == .background { Store.shared.flush() }
             if now == .active { Task { await Store.shared.sync(); await Store.shared.applyHelperChanges(); await Reminders.reschedule(Store.shared); await HealthSync.pull(); await Steps.shared.refresh(); await FriendActivity.shared.load() } } }
@@ -174,7 +201,10 @@ struct SignInView: View {
             } else {
                 try await Supabase.shared.signIn(email: email.trimmingCharacters(in: .whitespaces), password: password)
             }
-            if Supabase.shared.session != nil { await Store.shared.sync() }
+            if Supabase.shared.session != nil {
+                Tour.shared.pending = true   // the show-me tour once the app's open
+                await Store.shared.sync()
+            }
         } catch {
             message = error.localizedDescription == "Invalid login credentials" ? "Email or password isn't right." : error.localizedDescription
         }
