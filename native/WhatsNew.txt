@@ -1,4 +1,4 @@
-New in this build: recipes show the calories of each ingredient; remove one (••• or swipe left) or swap it for a food you already log, and the totals follow. Signing back in goes straight to the app.
+New in this build: saved meals work like recipes: swap any food for your own (or a scan) or remove it, from its ••• or a swipe.
 
 Thanks for testing! Please just use it like a normal day:
 

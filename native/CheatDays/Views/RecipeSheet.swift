@@ -42,7 +42,7 @@ struct RecipeSheet: View {
     @AppStorage("pantry.scans") private var scansJSON = "[]"
     @AppStorage("recipe.removed") private var removedJSON = "[]"   // "recipe|version|ingredient" left out
     @State private var swapping: SwapRef?
-    @State private var dragging: (index: Int, x: CGFloat)?
+    @GestureState private var dragging: (index: Int, x: CGFloat)? = nil
     @State private var scanFor: (index: Int, mode: PantryScanSheet.Mode)?
     @State private var scanMode: PantryScanSheet.Mode?
     private var store: Store { Store.shared }
@@ -287,12 +287,13 @@ struct RecipeSheet: View {
             }
         }
         .contentShape(Rectangle())
-        .simultaneousGesture(DragGesture(minimumDistance: 18).onChanged { v in
-            guard abs(v.translation.width) > abs(v.translation.height) else { return }
-            dragging = (i, v.translation.width)
+        // the row follows the finger only while the swipe is sideways; the offset springs back by itself if the
+        // scroll takes the touch over (gesture state resets when a gesture is cancelled, onEnded isn't called then)
+        .simultaneousGesture(DragGesture(minimumDistance: 18).updating($dragging) { v, state, _ in
+            guard abs(v.translation.width) > abs(v.translation.height) * 1.5 else { return }
+            state = (i, v.translation.width)
         }.onEnded { v in
-            if v.translation.width < -90 && abs(v.translation.width) > abs(v.translation.height) { setRemoved(i, true) }
-            withAnimation(.snappy) { dragging = nil }
+            if v.translation.width < -90 && abs(v.translation.width) > abs(v.translation.height) * 1.5 { setRemoved(i, true) }
         }, including: out ? .subviews : .all)
         .sensoryFeedback(.impact, trigger: out)
     }
