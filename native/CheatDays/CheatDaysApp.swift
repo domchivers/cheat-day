@@ -131,7 +131,7 @@ struct SignInView: View {
     @FocusState private var field: Int?
 
     var body: some View {
-        let ready = !busy && !email.isEmpty && password.count >= (creating ? 6 : 1)
+        let ready = !busy && !email.isEmpty && password.count >= (creating ? 8 : 1)   // 8, the same as changing it in Settings
         ScrollView {
             VStack(spacing: 0) {
                 LogoMark().fill(Color(red: 0.91, green: 0.93, blue: 0.97)).frame(width: 94, height: 50)
@@ -158,10 +158,12 @@ struct SignInView: View {
                             .buttonStyle(.plain).accessibilityLabel(showPassword ? "Hide password" : "Show password")
                     }
                     if let message { Text(message).font(.footnote).foregroundStyle(Theme.warn).frame(maxWidth: .infinity, alignment: .leading) }
-                    Button {
-                        if ready { Task { await go(create: creating) } }
-                        else if creating && !email.isEmpty && !password.isEmpty { message = "Use at least 6 characters for your password." }
-                    } label: {
+                    else if creating && !password.isEmpty && password.count < 8 {
+                        // only while a new password is too short; it goes at 8
+                        Text("At least 8 characters").font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.leading, 4).padding(.top, -6)
+                    }
+                    Button { if ready { Task { await go(create: creating) } } } label: {
                         Text(busy ? (creating ? "Creating…" : "Signing in…") : (creating ? "Create account" : "Sign in"))
                             .font(.subheadline.weight(.bold)).foregroundStyle(ready ? Color.black : Theme.heroLabel)
                             .frame(maxWidth: .infinity).frame(height: 44)
