@@ -164,7 +164,7 @@ struct SignInView: View {
                     if let message { Text(message).font(.footnote).foregroundStyle(Theme.warn).frame(maxWidth: .infinity, alignment: .leading) }
                     Button { Task { await go(create: creating) } } label: {
                         Text(busy ? (creating ? "Creating…" : "Signing in…") : (creating ? "Create account" : "Sign in")).font(.headline).foregroundStyle(.black)
-                            .frame(maxWidth: .infinity).frame(height: 52)
+                            .frame(maxWidth: .infinity).frame(height: 44)
                             .background(Theme.accent, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                             .opacity(ready ? 1 : 0.5)   // the whole button fades, so its label still reads
                     }
@@ -187,7 +187,7 @@ struct SignInView: View {
             Image(systemName: icon).font(.subheadline).foregroundStyle(.secondary).frame(width: 20)
             content()
         }
-        .padding(.horizontal, 16).frame(height: 52)
+        .padding(.horizontal, 16).frame(height: 50)
         .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay { if on { RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.accent, lineWidth: 1.5) } }
         .contentShape(Rectangle())
