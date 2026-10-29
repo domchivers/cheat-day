@@ -14,6 +14,16 @@ extension Store {
 
     var goalFat: Double? { pos(doc["goalFat"]) }
 
+    /// When the trend reaches a weight at the 4-week pace, worked out one way for Me and Body alike (they'd disagreed:
+    /// one from the latest reading, the other from the trend). Nil when the trend isn't heading there.
+    func reachDate(_ target: Double) -> Date? {
+        guard let now = trendWeight ?? latestWeight?.kg, let t = weightTrend() else { return nil }
+        let left = target - now, perWeek = t.perDay * 7
+        guard abs(left) >= 0.3, perWeek != 0, (perWeek < 0) == (left < 0) else { return nil }
+        let days = Int(abs(left / perWeek) * 7)
+        return days < 1500 ? Calendar.current.date(byAdding: .day, value: days, to: Date()) : nil
+    }
+
     /// Where a body-fat goal lands: the weight it means and how much of the change is fat. Some lean mass goes too
     /// on a cut, so a fifth of what's lost is counted as lean, not all fat.
     static func fatGoal(weight w: Double, fatPct: Double, target: Double, leanShare: Double = 0.2) -> (weight: Double, fat: Double, lean: Double) {

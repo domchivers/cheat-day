@@ -36,16 +36,16 @@ struct BodyView: View {
                     chart(points, m)
                         .onChange(of: metric) { _, _ in picked = nil }
                         .onChange(of: range) { _, _ in picked = nil }
+                    if metric == "weight" { summary }
                 }
                 .listRowSeparator(.hidden)
             }
-            if metric == "weight" { Section { goalCard } }
-            Section {
-                Button { entry = ["day": store.today] } label: { Label("Add a reading", systemImage: "plus.circle.fill").font(.headline) }
-            }
-            if !rows.isEmpty {
+            if metric == "weight" { Section { goalCard } header: { Text("Goals") } }
+            if rows.isEmpty {
+                Section { Button { entry = ["new": true, "day": "new"] } label: { Label("Weigh in", systemImage: "plus.circle.fill").font(.headline) } }
+            } else {
                 let recent = Array(rows.reversed().prefix(60))
-                Section("Readings") {
+                Section {
                     ForEach(keyed(recent, by: "day")) { reading in
                         let r = reading.item
                         Button { entry = r } label: {
@@ -61,6 +61,12 @@ struct BodyView: View {
                         }
                         .buttonStyle(.plain)
                         .swipeActions { Button(role: .destructive) { store.deleteBody(str(r["day"])) } label: { Label("Delete", systemImage: "trash") } }
+                    }
+                } header: {
+                    HStack {
+                        Text("Readings")
+                        Spacer()
+                        Button { entry = ["new": true, "day": "new"] } label: { Label("Weigh in", systemImage: "plus") }.font(.subheadline.weight(.semibold)).textCase(nil)
                     }
                 }
             }
@@ -78,7 +84,7 @@ struct BodyView: View {
         .refreshable { await store.pullBody(); await HealthSync.pull(force: true) }
         .task { await HealthSync.pull() }
         .sheet(item: Binding(get: { entry.map { EntryBox(row: $0) } }, set: { entry = $0?.row })) { b in
-            BodyEntrySheet(row: b.row) { entry = nil }.presentationDetents([.large])
+            if b.row["new"] as? Bool == true { WeighInSheet() } else { WeighInSheet(row: b.row) }
         }
     }
 
@@ -112,13 +118,36 @@ struct BodyView: View {
             }
             Spacer()
             if let change, pts.count > 1, sel == nil {
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("\(change > 0 ? "+" : change < 0 ? "−" : "")\(Fmt.one(abs(change)))\(m.unit.isEmpty || m.unit == "%" ? m.unit : " \(m.unit)")")
-                        .font(.title3.weight(.heavy)).foregroundStyle(m.key == "muscle" ? (change >= 0 ? Color.green : Theme.warn) : (change <= 0 ? Color.green : Theme.warn))
+                let good = m.key == "muscle" ? change >= 0 : change <= 0
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("\(change > 0 ? "↑ " : change < 0 ? "↓ " : "")\(Fmt.one(abs(change)))\(m.unit.isEmpty || m.unit == "%" ? m.unit : " \(m.unit)")")
+                        .font(.subheadline.weight(.heavy)).foregroundStyle(good ? Color.green : Theme.warn)
+                        .padding(.horizontal, 9).padding(.vertical, 4)
+                        .background((good ? Color.green : Theme.warn).opacity(0.15), in: Capsule())
                     Text(range > 400 ? "since you started" : "in \(rangeText)").font(.caption).foregroundStyle(.secondary)
                 }
             }
         }
+    }
+
+    /// Under the weight chart: the weekly rate (4-week trend), body fat, and when the goal's reached.
+    @ViewBuilder private var summary: some View {
+        let rate = store.weightTrend().map { $0.perDay * 7 }
+        let goal = pos(store.doc["goalWeight"])
+        HStack(spacing: 0) {
+            stat(rate.map { "\($0 < 0 ? "−" : "+")\(Fmt.kg2(abs($0))) kg" } ?? "–", "a week (4-wk trend)")
+            stat(store.fatTrend.map { "\(Fmt.one($0.pct))%" } ?? "–", "body fat")
+            stat(goal.flatMap { store.reachDate($0) }.map { $0.formatted(.dateTime.day().month(.abbreviated)) } ?? "–", goal.map { "to \(Fmt.kg($0)) kg" } ?? "no goal set")
+        }
+        .padding(.top, 4)
+    }
+
+    private func stat(_ v: String, _ l: String) -> some View {
+        VStack(spacing: 2) {
+            Text(v).font(.subheadline.weight(.heavy)).monospacedDigit()
+            Text(l).font(.caption2).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private var rangeText: String { [30: "a month", 90: "3 months", 180: "6 months", 365: "a year"][range] ?? "" }
@@ -139,27 +168,48 @@ struct BodyView: View {
         let line = pts.filter { $0.trend != nil }
         let sel = nearest(pts)
         return Chart {
+            // the trend leads: a soft fade under it, a faint glow along it; the daily readings stay small and quiet,
+            // unusual ones hollow, and today's end of the line is marked with its value
             ForEach(line) { p in
                 AreaMark(x: .value("Day", p.date), yStart: .value("Base", floor), yEnd: .value("Trend", p.trend ?? p.value))
-                    .foregroundStyle(LinearGradient(colors: [Theme.accent.opacity(0.16), Theme.accent.opacity(0.0)], startPoint: .top, endPoint: .bottom))
+                    .foregroundStyle(LinearGradient(colors: [Theme.accent.opacity(0.30), Theme.accent.opacity(0.0)], startPoint: .top, endPoint: .bottom))
                     .interpolationMethod(.monotone)
             }
             ForEach(line) { p in
-                LineMark(x: .value("Day", p.date), y: .value("Trend", p.trend ?? p.value))
+                LineMark(x: .value("Day", p.date), y: .value("Trend", p.trend ?? p.value), series: .value("Line", "glow"))
+                    .foregroundStyle(Theme.accent.opacity(0.22))
+                    .lineStyle(StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
+                    .interpolationMethod(.monotone)
+            }
+            ForEach(line) { p in
+                LineMark(x: .value("Day", p.date), y: .value("Trend", p.trend ?? p.value), series: .value("Line", "trend"))
                     .foregroundStyle(Theme.accent)
-                    .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                    .lineStyle(StrokeStyle(lineWidth: 2.6, lineCap: .round, lineJoin: .round))
                     .interpolationMethod(.monotone)
             }
             ForEach(pts) { p in
                 PointMark(x: .value("Day", p.date), y: .value(m.name, p.value))
-                    .foregroundStyle(p.odd ? Color.secondary.opacity(0.35) : Color.white.opacity(0.55))
-                    .symbolSize(p.odd ? 14 : 20)
+                    .symbol {
+                        if p.odd { Circle().strokeBorder(Color.white.opacity(0.5), lineWidth: 1).frame(width: 7, height: 7) }
+                        else { Circle().fill(Color.white.opacity(0.42)).frame(width: 5, height: 5) }
+                    }
             }
             if let goal {
                 RuleMark(y: .value("Goal", goal))
-                    .foregroundStyle(Color.green.opacity(0.75))
-                    .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
-                    .annotation(position: .top, alignment: .leading) { Text("Goal \(Fmt.kg(goal))").font(.caption2.weight(.bold)).foregroundStyle(.green) }
+                    .foregroundStyle(Color.green.opacity(0.8))
+                    .lineStyle(StrokeStyle(lineWidth: 1.2, dash: [5, 5]))
+                    .annotation(position: .bottom, alignment: .trailing) {
+                        Text("Goal \(Fmt.kg(goal))").font(.caption2.weight(.heavy)).foregroundStyle(.green)
+                            .padding(.horizontal, 7).padding(.vertical, 3).background(Color.green.opacity(0.15), in: Capsule())
+                    }
+            }
+            if sel == nil, let end = line.last, let v = end.trend {
+                PointMark(x: .value("Day", end.date), y: .value("Trend", v)).foregroundStyle(Theme.accent.opacity(0.25)).symbolSize(260)
+                PointMark(x: .value("Day", end.date), y: .value("Trend", v)).foregroundStyle(Theme.accent).symbolSize(70)
+                    .annotation(position: .top, alignment: .trailing, spacing: 8) {
+                        Text(Fmt.kg(v)).font(.caption.weight(.heavy)).monospacedDigit()
+                            .padding(.horizontal, 7).padding(.vertical, 3).background(Theme.hero, in: RoundedRectangle(cornerRadius: 6))
+                    }
             }
             if let sel {
                 RuleMark(x: .value("Picked", sel.date)).foregroundStyle(Color.white.opacity(0.3)).lineStyle(StrokeStyle(lineWidth: 1))
@@ -169,8 +219,8 @@ struct BodyView: View {
         .chartYScale(domain: floor...(hi + pad))
         .chartXSelection(value: $picked)
         .chartYAxis {
-            AxisMarks(position: .trailing, values: .automatic(desiredCount: 4)) { v in
-                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [2, 3])).foregroundStyle(Color.white.opacity(0.12))
+            AxisMarks(position: .trailing, values: .automatic(desiredCount: 3)) { v in
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.08))
                 AxisValueLabel { if let d = v.as(Double.self) { Text(Fmt.one(d)).font(.caption2).foregroundStyle(.secondary) } }
             }
         }
@@ -210,6 +260,7 @@ struct BodyView: View {
                 .frame(height: 8)
                 Text(goalLine(goal: goal, now: now)).font(.footnote).foregroundStyle(.secondary)
             }
+            BodyFatSummary(now: store.trendWeight ?? now ?? 0)
         }
         .padding(.vertical, 4)
     }
@@ -218,94 +269,13 @@ struct BodyView: View {
         let left = now - goal
         if abs(left) < 0.25 { return "You're there. Nice work." }
         var s = "\(Fmt.one(abs(left))) kg to go"
-        if let t = store.weightTrend(), t.perDay != 0, (t.perDay < 0) == (left > 0) {
-            let days = Int(abs(left / t.perDay))
-            if let d = Calendar.current.date(byAdding: .day, value: days, to: Date()), days < 1500 { s += ". At your current pace, around \(d.formatted(.dateTime.month(.wide).year()))." }
-        }
+        // the same date as Me: the trend weight at the 4-week pace
+        if let d = store.reachDate(goal) { s += ". At your current pace, around \(d.formatted(.dateTime.day().month(.wide)))." }
         return s
     }
 }
 
 private struct EntryBox: Identifiable { let row: JSON; var id: String { str(row["day"]) } }
-
-/// Add or change a day's reading. A screenshot of the scale's app can fill it in.
-struct BodyEntrySheet: View {
-    @State var row: JSON
-    var done: () -> Void
-    @State private var date = Date()
-    @State private var values: [String: String] = [:]
-    @State private var picked: PhotosPickerItem?
-    @State private var reading = false
-    @State private var problem: String?
-    private var store: Store { Store.shared }
-    private let fields: [(String, String, String)] = [
-        ("weight", "Weight", "kg"), ("fat", "Body fat", "%"), ("muscle", "Muscle", "kg"), ("water", "Water", "%"),
-        ("bone", "Bone", "kg"), ("visceral", "Visceral fat", "level"), ("age", "Body age", "years")
-    ]
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    DatePicker("Day", selection: $date, in: ...Date(), displayedComponents: .date)
-                    PhotosPicker(selection: $picked, matching: .images) {
-                        Label(reading ? "Reading the screenshot…" : "Fill in from a scale screenshot", systemImage: "sparkles")
-                    }
-                    .disabled(reading)
-                    if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn) }
-                }
-                Section {
-                    ForEach(fields, id: \.0) { f in
-                        HStack {
-                            Text(f.1)
-                            Spacer()
-                            TextField("–", text: Binding(get: { values[f.0] ?? "" }, set: { values[f.0] = $0 }))
-                                .keyboardType(.decimalPad).multilineTextAlignment(.trailing).frame(width: 90).font(.body.weight(.semibold))
-                            Text(f.2).foregroundStyle(.secondary).frame(width: 46, alignment: .leading)
-                        }
-                    }
-                } footer: { Text("Only weight is needed. Fill in whatever your scale shows.") }
-            }
-            .keyboardDone()
-            .navigationTitle("Reading")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { done() } }
-                ToolbarItem(placement: .confirmationAction) { Button("Save") { save() }.fontWeight(.bold).disabled(parsed.isEmpty) }
-            }
-            .onAppear {
-                date = DayKey.date(str(row["day"]).isEmpty ? store.today : str(row["day"]))
-                for f in fields { if let v = pos(row[f.0]) { values[f.0] = Fmt.kg(v) } }
-            }
-            .onChange(of: picked) { _, item in Task { await read(item) } }
-        }
-    }
-
-    private var parsed: JSON {
-        var out = JSON()
-        for f in fields { if let v = Double((values[f.0] ?? "").replacingOccurrences(of: ",", with: ".")), v > 0 { out[f.0] = Fmt.kg2(v) } }
-        return out
-    }
-
-    private func save() {
-        let day = DayKey.string(date)
-        if !str(row["day"]).isEmpty && str(row["day"]) != day { store.deleteBody(str(row["day"])) }   // moved to another day
-        var r = parsed; r["day"] = day; r["updatedAt"] = ISO.now()
-        store.saveBody(r)
-        done()
-    }
-
-    private func read(_ item: PhotosPickerItem?) async {
-        guard let item, let data = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: data) else { return }
-        reading = true; problem = nil
-        defer { reading = false }
-        do {
-            let a = try await BodyReader.read(img)
-            for f in fields { if let v = pos(a[f.0]) { values[f.0] = Fmt.kg(v) } }
-            if let d = a["day"] as? String { date = DayKey.date(d) }
-        } catch { problem = error.localizedDescription }
-    }
-}
 
 /// A screenshot of a scale's app: the measurements on it, and its date if it shows one.
 enum BodyReader {
@@ -397,5 +367,57 @@ struct ScaleConnectRow: View {
             on = true
             note = n > 0 ? "\(n) day\(n == 1 ? "" : "s") of readings came in." : "Connected. In your scale's app (in VeSync: Me, then Third-party services) turn on Apple Health, and weigh-ins arrive here."
         } catch { note = error.localizedDescription }
+    }
+}
+
+/// Body fat with the goals in Body: the averaged %, fat and lean mass, and a body-fat goal with the weight it
+/// means and when the trend gets there (the same date maths as the weight goal).
+struct BodyFatSummary: View {
+    let now: Double
+    @State private var setting = false
+    @State private var text = ""
+    private var store: Store { Store.shared }
+
+    var body: some View {
+        if let bf = store.fatTrend, now > 0 {
+            let fatKg = now * bf.pct / 100
+            VStack(alignment: .leading, spacing: 6) {
+                Divider().padding(.vertical, 2)
+                HStack {
+                    Text("Body fat \(Fmt.one(bf.pct))%").font(.headline)
+                    Spacer()
+                    Text("fat \(Fmt.one(fatKg)) kg · lean \(Fmt.one(now - fatKg)) kg").font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                }
+                Button {
+                    text = store.goalFat.map { Fmt.one($0) } ?? ""; setting = true
+                } label: {
+                    HStack {
+                        Text("Body-fat goal")
+                        Spacer()
+                        Text(store.goalFat.map { "\(Fmt.one($0))%" } ?? "Set").fontWeight(.semibold)
+                        Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
+                    }
+                }
+                .buttonStyle(.plain)
+                if let t = store.goalFat {
+                    let g = Store.fatGoal(weight: now, fatPct: bf.pct, target: t)
+                    Text(abs(g.weight - now) < 0.3 ? "You're about there."
+                         : "\(Fmt.one(t))% body fat ≈ \(Fmt.kg(g.weight)) kg\(store.reachDate(g.weight).map { ", around \($0.formatted(.dateTime.day().month(.wide)))" } ?? "").")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+                Text("Averaged over your last \(bf.n) readings: scales read body fat roughly, so one reading means little.")
+                    .font(.caption2).foregroundStyle(.tertiary)
+            }
+            .alert("Body-fat goal", isPresented: $setting) {
+                TextField("%", text: $text).keyboardType(.decimalPad)
+                Button("Save") {
+                    if let v = Double(text.replacingOccurrences(of: ",", with: ".")), v > 3, v < 50 {
+                        store.perform(["type": "set", "key": "goalFat", "value": v])
+                    }
+                }
+                if store.goalFat != nil { Button("Remove", role: .destructive) { store.perform(["type": "set", "key": "goalFat", "value": NSNull()]) } }
+                Button("Cancel", role: .cancel) {}
+            } message: { Text("The body fat % you're aiming for. It works out the weight that means, counting a little lean loss on the way.") }
+        }
     }
 }

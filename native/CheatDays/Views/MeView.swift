@@ -8,8 +8,7 @@ private struct WeightPoint: Identifiable { let id: String; let date: Date; let k
 struct MeView: View {
     @State private var weighing = false
     @State private var ranks = false
-    @State private var settingFat = false
-    @State private var fatText = ""
+    @State private var showBody = false
     private var store: Store { Store.shared }
 
     var body: some View {
@@ -27,7 +26,8 @@ struct MeView: View {
             .background(Theme.bg)
             .toolbar(.hidden, for: .navigationBar)
             .refreshable { await store.sync(); await store.pullBody() }
-            .sheet(isPresented: $weighing) { WeighInSheet().presentationDetents([.medium]) }
+            .sheet(isPresented: $weighing) { WeighInSheet() }
+            .navigationDestination(isPresented: $showBody) { BodyView() }
             .sheet(isPresented: $ranks) { RanksView() }
         }
     }
@@ -141,7 +141,6 @@ struct MeView: View {
     private var goalCard: some View {
         let pts = weights
         let now = store.lastWeighIn?.kg ?? pts.last?.kg   // the scale's own number; the trend is the small print
-        let start = pos(dict(store.doc["goalStart"])["weight"]) ?? pts.first?.kg
         return VStack(alignment: .leading, spacing: 10) {
             Eyebrow(text: goal == nil ? "Your weight" : "Your goal", color: Theme.heroLabel)
             if let now {
@@ -156,105 +155,39 @@ struct MeView: View {
                     }
                 }
                 if let w = store.lastWeighIn {
-                    let trend = store.trendWeight.flatMap { abs($0 - w.kg) >= 0.2 ? " · trend \(Fmt.kg($0)) kg" : nil } ?? ""
-                    Text("Weighed \(Store.whenTaken(day: w.day, at: w.at))\(trend)").font(.caption).foregroundStyle(.secondary)
+                    let fat = store.fatTrend.map { " · \(Fmt.one($0.pct))% body fat" } ?? ""
+                    Text("Weighed \(Store.whenTaken(day: w.day, at: w.at))\(fat)").font(.caption).foregroundStyle(.secondary)
                 }
-                NavigationLink { BodyView() } label: { miniChart }.buttonStyle(.plain)
-                if let goal {
-                    progress(start: start ?? now, now: now, goal: goal)
-                    statusLine(now: now, goal: goal)
-                } else {
-                    setGoal(suggest: now)
-                }
-                bodyFatLine(now: store.trendWeight ?? now)
+                miniChart
+                if let goal { statusLine(now: now, goal: goal) } else { setGoal(suggest: now) }
             } else {
                 Text("Weigh in to start").font(.title3.bold())
                 Text("Your trend, progress and date to your goal show here once you've weighed in a few times.").font(.footnote).foregroundStyle(.secondary)
             }
-            Button { weighing = true } label: { Label("Weigh in", systemImage: "scalemass.fill").font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity) }
-                .buttonStyle(.bordered).buttonBorderShape(.capsule)
+            Button { weighing = true } label: { Label("Weigh in", systemImage: "scalemass.fill").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 4) }
+                .buttonStyle(.borderedProminent).buttonBorderShape(.capsule).foregroundStyle(.black)
         }
         .padding(.vertical, 6)
-    }
-
-    private func progress(start: Double, now: Double, goal: Double) -> some View {
-        let total = abs(start - goal), done = max(0, min(total, total - abs(now - goal)))
-        let share = total > 0 ? done / total : 1
-        return VStack(alignment: .leading, spacing: 6) {
-            GeometryReader { g in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color(.tertiarySystemFill))
-                    Capsule().fill(Color.green).frame(width: max(6, g.size.width * share))
-                }
-            }
-            .frame(height: 6)
-            Text("\(Fmt.kg(done)) kg \(goal < start ? "down" : "up") from \(Fmt.kg(start)) · \(Fmt.kg(abs(now - goal))) to go")
-                .font(.caption).foregroundStyle(.secondary)
-        }
-    }
-
-    /// Body fat beside the weight: the averaged %, fat and lean mass, and a body-fat goal's weight and date.
-    @ViewBuilder private func bodyFatLine(now: Double) -> some View {
-        if let bf = store.fatTrend {
-            let fatKg = now * bf.pct / 100
-            VStack(alignment: .leading, spacing: 4) {
-                Divider().padding(.vertical, 2)
-                HStack {
-                    Text("Body fat \(Fmt.one(bf.pct))%").font(.subheadline.weight(.semibold))
-                    Spacer()
-                    Text("fat \(Fmt.one(fatKg)) kg · lean \(Fmt.one(now - fatKg)) kg").font(.caption).foregroundStyle(.secondary).monospacedDigit()
-                }
-                Text("Averaged over your last \(bf.n) readings: scales read body fat roughly, so one reading means little.")
-                    .font(.caption2).foregroundStyle(.tertiary)
-                if let t = store.goalFat {
-                    let g = Store.fatGoal(weight: now, fatPct: bf.pct, target: t)
-                    let date: String? = pace.flatMap { p -> String? in
-                        let left = g.weight - now
-                        guard p != 0, (p < 0) == (left < 0), abs(left) >= 0.3 else { return nil }
-                        let days = Int(abs(left / p) * 7)
-                        guard days < 1500, let d = Calendar.current.date(byAdding: .day, value: days, to: Date()) else { return nil }
-                        return d.formatted(.dateTime.day().month(.wide))
-                    }
-                    Button { fatText = Fmt.one(t); settingFat = true } label: {
-                        Text(abs(g.weight - now) < 0.3 ? "\(Fmt.one(t))% body fat: you're about there."
-                             : "\(Fmt.one(t))% body fat ≈ \(Fmt.kg(g.weight)) kg\(date.map { ", around \($0)" } ?? "")")
-                            .font(.subheadline).foregroundStyle(Theme.accent)
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    Button("Set a body-fat goal") { fatText = ""; settingFat = true }.font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accent).buttonStyle(.plain)
-                }
-            }
-            .alert("Body-fat goal", isPresented: $settingFat) {
-                TextField("%", text: $fatText).keyboardType(.decimalPad)
-                Button("Save") {
-                    if let v = Double(fatText.replacingOccurrences(of: ",", with: ".")), v > 3, v < 50 {
-                        store.perform(["type": "set", "key": "goalFat", "value": v])
-                    }
-                }
-                if store.goalFat != nil { Button("Remove", role: .destructive) { store.perform(["type": "set", "key": "goalFat", "value": NSNull()]) } }
-                Button("Cancel", role: .cancel) {}
-            } message: { Text("The body fat % you're aiming for. It works out the weight that means, counting a little lean loss on the way.") }
+        // a simple summary here; the chart, readings, goals and the scale are all in Body
+        .contentShape(Rectangle())
+        .onTapGesture { showBody = true }
+        .overlay(alignment: .topTrailing) {
+            HStack(spacing: 2) { Text("Body"); Image(systemName: "chevron.right") }.font(.caption.weight(.semibold)).foregroundStyle(.secondary).padding(.top, 8)
         }
     }
 
     private func statusLine(now: Double, goal: Double) -> some View {
         let s = status(now: now, goal: goal)
-        // the date runs from the trend weight and the 4-week trend, not one reading and the latest change
-        let left = goal - (store.trendWeight ?? now)
-        let date: String? = pace.flatMap { p -> String? in
-            guard p != 0, (p < 0) == (left < 0) else { return nil }
-            let days = Int(abs(left / p) * 7)
-            guard days < 1500, let d = Calendar.current.date(byAdding: .day, value: days, to: Date()) else { return nil }
-            return d.formatted(.dateTime.day().month(.wide))
-        }
+        // the same date Body shows: the trend weight at the 4-week pace
+        let date = store.reachDate(goal)?.formatted(.dateTime.day().month(.wide))
+        let toGo = " · \(Fmt.kg(abs(now - goal))) kg to go"
         let paceText = pace.map { "\($0 < 0 ? "−" : "+")\(Fmt.one(abs($0))) kg a week" } ?? ""
         let title: String, body: String, tint: Color
         switch s {
         case .there: title = "You're there."; body = "Time to switch your plan to keeping it steady."; tint = .green
         case .early: title = "Keep weighing in."; body = "A trend needs a week or two of weigh-ins before it can give a date."; tint = .gray
-        case .ahead: title = "Ahead of plan."; body = "\(Fmt.kg(goal)) kg around \(date ?? "soon")."; tint = .green
-        case .onTrack: title = "On track."; body = "\(Fmt.kg(goal)) kg around \(date ?? "soon")."; tint = .green
+        case .ahead: title = "Ahead of plan."; body = "\(Fmt.kg(goal)) kg around \(date ?? "soon")\(toGo)"; tint = .green
+        case .onTrack: title = "On track."; body = "\(Fmt.kg(goal)) kg around \(date ?? "soon")\(toGo)"; tint = .green
         case .behind: title = "Slower than planned."; body = date.map { "At \(paceText) you'd get there around \($0)." } ?? "Your weight's barely moving at the moment."; tint = Theme.warn
         case .wrongWay: title = "Going the wrong way."; body = "Your trend is \(paceText) at the moment. See how to get there below."; tint = Theme.warn
         }

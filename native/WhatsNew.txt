@@ -1,4 +1,4 @@
-New in this build: signing in walks through the whole setup again (plan, food, scale, tour), each step with Skip. Adding something a friend sent you no longer crashes, nor removing things from other lists. A Done button above the keyboard everywhere you type.
+New in this build: weigh-ins made simple: Me shows a short summary with one Weigh in button (tap it for Body), one Weigh in sheet everywhere (type it, a screenshot, or Apple Health), goals and body fat together in Body, the same goal date everywhere, and a cleaner weight chart.
 
 Thanks for testing! Please just use it like a normal day:
 
