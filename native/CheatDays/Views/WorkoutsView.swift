@@ -309,7 +309,7 @@ struct ActivitySheet: View {
                                     Label(a.name, systemImage: Activities.symbol(a.name)).font(.subheadline.weight(.bold))
                                         .padding(.horizontal, 12).padding(.vertical, 9)
                                         .background(type == a.name ? Theme.accent : Color(.tertiarySystemFill), in: Capsule())
-                                        .foregroundStyle(type == a.name ? Color.black : Color.primary)
+                                        .foregroundStyle(type == a.name ? Theme.onAccent : Color.primary)
                                 }
                                 .buttonStyle(.plain)
                             }

@@ -1079,7 +1079,7 @@ struct AmountView: View {
         Button(action: action) {
             Text(text).font(.subheadline.weight(.bold)).padding(.horizontal, 14).padding(.vertical, 9)
                 .background(on ? Theme.accent : Color(.tertiarySystemFill), in: Capsule())
-                .foregroundStyle(on ? Color.black : Color.primary)
+                .foregroundStyle(on ? Theme.onAccent : Color.primary)
         }
         .buttonStyle(.plain)
     }

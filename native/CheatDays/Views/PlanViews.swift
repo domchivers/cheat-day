@@ -51,11 +51,11 @@ struct PlanCard: View {
         let fill: Color = done ? Color.green.opacity(0.28) : isToday ? Theme.accent : planned ? Theme.track : Color(.tertiarySystemFill).opacity(0.5)
         return VStack(spacing: 3) {
             Text(Calendar.current.veryShortWeekdaySymbols[wd]).font(.caption2.weight(.bold))
-                .foregroundStyle(isToday && !done ? Color.black : Color.primary)
+                .foregroundStyle(isToday && !done ? Theme.onAccent : Color.primary)
             Group {
                 if done { Image(systemName: "checkmark").font(.caption2.weight(.heavy)).foregroundStyle(.green) }
                 else if cheat { PizzaIcon(size: 11).scaleEffect(y: -1) }
-                else if planned { Circle().fill(isToday ? Color.black : Theme.accent).frame(width: 5, height: 5) }
+                else if planned { Circle().fill(isToday ? Theme.onAccent : Theme.accent).frame(width: 5, height: 5) }
                 else { Color.clear.frame(width: 5, height: 5) }
             }
             .frame(height: 11)

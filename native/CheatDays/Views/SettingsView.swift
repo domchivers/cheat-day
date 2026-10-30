@@ -182,7 +182,7 @@ struct SettingsView: View {
                     Button { if on { if days.count > 1 { days.remove(d) } } else { days.insert(d) } } label: {
                         Text(Calendar.current.veryShortWeekdaySymbols[d]).font(.subheadline.weight(.bold)).frame(maxWidth: .infinity, minHeight: 36)
                             .background(on ? Theme.accent : Color(.tertiarySystemFill), in: Circle())
-                            .foregroundStyle(on ? Color.black : Color.primary)
+                            .foregroundStyle(on ? Theme.onAccent : Color.primary)
                     }
                     .buttonStyle(.plain)
                 }

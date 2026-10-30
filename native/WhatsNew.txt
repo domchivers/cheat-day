@@ -1,4 +1,4 @@
-New in this build: pick the app's colour in Settings → Colour: Plum (new), Ocean, Teal, Forest, Rust, Crimson, Gold, Berry, or the classic blue. It changes the buttons, links and the Left to eat panel straight away.
+New in this build: easier to read in every colour: selected chips, days and tabs now use white text on the deep colours.
 
 Thanks for testing! Please just use it like a normal day:
 

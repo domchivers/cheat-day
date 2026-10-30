@@ -33,7 +33,7 @@ struct Chip: View {
             Text(text).font(.subheadline.weight(.semibold))
                 .padding(.horizontal, 13).padding(.vertical, 8)
                 .background(on ? Theme.accent : Color(.tertiarySystemFill), in: Capsule())
-                .foregroundStyle(on ? Color.black : Color.primary)
+                .foregroundStyle(on ? Theme.onAccent : Color.primary)
         }
         .buttonStyle(.plain)
         .sensoryFeedback(.selection, trigger: on)
@@ -50,7 +50,7 @@ struct ChoiceCard: View {
     var body: some View {
         Button(action: tap) {
             HStack(spacing: 14) {
-                Image(systemName: symbol).font(.title3).foregroundStyle(on ? Color.black : Theme.accent)
+                Image(systemName: symbol).font(.title3).foregroundStyle(on ? Theme.onAccent : Theme.accent)
                     .frame(width: 42, height: 42).background(on ? Theme.accent : Theme.track, in: Circle())
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.headline)
@@ -368,7 +368,7 @@ struct OnboardingView: View {
                         Button { q.cheatDay = d } label: {
                             Text(Calendar.current.shortWeekdaySymbols[d].prefix(2)).font(.subheadline.weight(.bold)).frame(maxWidth: .infinity).padding(.vertical, 10)
                                 .background(q.cheatDay == d ? Theme.warn : Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                .foregroundStyle(q.cheatDay == d ? Color.black : Color.primary)
+                                .foregroundStyle(q.cheatDay == d ? Theme.onAccent : Color.primary)
                         }
                         .buttonStyle(.plain)
                     }

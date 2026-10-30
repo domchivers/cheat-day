@@ -292,7 +292,7 @@ struct SignInView: View {
                     }
                     Button { if ready { Task { await go(create: creating) } } } label: {
                         Text(busy ? (creating ? "Creating…" : "Signing in…") : (creating ? "Create account" : "Sign in"))
-                            .font(.subheadline.weight(.bold)).foregroundStyle(ready ? Color.black : Theme.heroLabel)
+                            .font(.subheadline.weight(.bold)).foregroundStyle(ready ? Theme.onAccent : Theme.heroLabel)
                             .frame(maxWidth: .infinity).frame(height: 44)
                             // until it can go: the calories panel's navy, its words still readable; then the bright blue
                             .background(ready ? Theme.accent : Theme.hero, in: RoundedRectangle(cornerRadius: 12, style: .continuous))

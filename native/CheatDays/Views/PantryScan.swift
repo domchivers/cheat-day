@@ -176,7 +176,7 @@ struct PantryScanSheet: View {
         .safeAreaInset(edge: .bottom) {
             if !found.isEmpty {
                 Button { onItems(found); dismiss() } label: {
-                    Text("Add \(found.count) to your cupboard").font(.headline).foregroundStyle(ready ? Color.black : Theme.heroLabel)
+                    Text("Add \(found.count) to your cupboard").font(.headline).foregroundStyle(ready ? Theme.onAccent : Theme.heroLabel)
                         .frame(maxWidth: .infinity).frame(height: 50)
                         .background(ready ? Theme.accent : Theme.hero, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }

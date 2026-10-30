@@ -232,7 +232,7 @@ struct CheatDayView: View {
                     Button { setupDay = d } label: {
                         Text(Calendar.current.shortWeekdaySymbols[d].prefix(2)).font(.subheadline.weight(.bold)).frame(maxWidth: .infinity).padding(.vertical, 10)
                             .background(setupDay == d ? Theme.warn : Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .foregroundStyle(setupDay == d ? Color.black : Color.primary)
+                            .foregroundStyle(setupDay == d ? Theme.onAccent : Color.primary)
                     }
                     .buttonStyle(.plain)
                 }
