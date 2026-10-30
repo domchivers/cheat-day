@@ -34,6 +34,7 @@ struct TodayView: View {
     @State private var showCheckIn = false
     @State private var showCheat = false
     @State private var showPlanner = false
+    @State private var plannerMeal: String?   // the meal to open the planner on (a reminder, or "Ideas for dinner")
     @State private var rankUp: Rank?
     @State private var badgeNote: String?
     @AppStorage("today.more") private var moreOpen = false
@@ -223,7 +224,15 @@ struct TodayView: View {
                 }
             }
             .sheet(isPresented: $showCheat) { CheatDayView().presentationDragIndicator(.visible) }
-            .sheet(isPresented: $showPlanner) { MealPlannerView().presentationDragIndicator(.visible) }
+            .sheet(isPresented: $showPlanner, onDismiss: { plannerMeal = nil }) { MealPlannerView(meal: plannerMeal).presentationDragIndicator(.visible) }
+            .onChange(of: Nav.shared.planMeal) { _, m in
+                // a meal reminder tapped: the planner on that meal, once whatever's open has closed
+                guard let m else { return }
+                Nav.shared.planMeal = nil
+                withAnimation { offset = 0 }
+                addChoice = nil; editing = nil; flow = nil; daily = nil; mealCheck = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { plannerMeal = m; showPlanner = true }
+            }
             .fullScreenCover(isPresented: Binding(get: { rankUp != nil }, set: { if !$0 { rankUp = nil } })) {
                 if let r = rankUp { RankUpView(rank: r) { rankUp = nil } }
             }
@@ -308,7 +317,7 @@ struct TodayView: View {
                 Text(a.title).font(.headline)
                 Text(a.detail).font(.footnote).foregroundStyle(.secondary)
                 if let meal = a.plan {
-                    Button { showPlanner = true } label: { Text("Ideas for \(meal.lowercased()) ›").font(.footnote.weight(.semibold)) }
+                    Button { plannerMeal = meal; showPlanner = true } label: { Text("Ideas for \(meal.lowercased()) ›").font(.footnote.weight(.semibold)) }
                         .buttonStyle(.borderless).foregroundStyle(Theme.accent).padding(.top, 2)
                 }
             }

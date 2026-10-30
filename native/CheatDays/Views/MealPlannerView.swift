@@ -39,7 +39,12 @@ extension Store {
 /// there is one), how much cooking you fancy and what's in the fridge, then ideas in your usual style to log or cook.
 struct MealPlannerView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var meal = Meals.byTime(Calendar.current.component(.hour, from: Date())) == "Snacks" ? "Dinner" : Meals.byTime(Calendar.current.component(.hour, from: Date()))
+    @State private var meal: String
+    /// The meal it's time for (dinner rather than snacks), or the one a reminder asked to plan.
+    init(meal: String? = nil) {
+        let now = Meals.byTime(Calendar.current.component(.hour, from: Date()))
+        _meal = State(initialValue: meal ?? (now == "Snacks" ? "Dinner" : now))
+    }
     @State private var cooking = ""
     @AppStorage("pantry") private var pantry = ""
     @AppStorage("pantry.scans") private var scansJSON = "[]"   // foods scanned in, with their label numbers
