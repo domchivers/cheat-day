@@ -43,7 +43,8 @@ enum Sanity {
             return Range(label: "eggs", lo: 125, hi: 210, proteinMax: 14)
         }
         if word(#"\b(bread|toast|buns?|rolls?|bagels?|baguette|sourdough|pitta|pita|crumpets?)\b"#)
-            && !has(["protein", "breadcrumb", "garlic bread", "sandwich", "pudding", "rolled", "spring roll", "sausage roll", "sushi", "cinnamon", "french toast"]) {
+            && !has(["protein", "breadcrumb", "garlic bread", "pudding", "rolled", "spring roll", "sausage roll", "sushi", "cinnamon", "french toast"])
+            && (!has(["sandwich"]) || has(["sandwich bread", "sandwich loaf"])) {   // a whole sandwich isn't just bread; sandwich bread is
             return Range(label: "bread", lo: 200, hi: 300, proteinMax: 13)
         }
         return nil
