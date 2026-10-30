@@ -340,6 +340,7 @@ final class Store {
         var p = 0.0, c = 0.0, f = 0.0
         for it in items { if let m = FoodMath.macros(it, kcal: num(it["kcal"]) ?? 0) { p += m.p; c += m.c; f += m.f } }
         var e = a
+        if let x = num(a["budget"]), let y = num(b["budget"]) { e["budget"] = max(x, y) }   // a day's raised calories survive a stale copy
         e["items"] = items
         e["workouts"] = workouts
         e["kcal"] = items.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }

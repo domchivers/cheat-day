@@ -91,7 +91,7 @@ struct RecipeSheet: View {
             .background(Theme.bg.ignoresSafeArea())
             .navigationTitle("Recipe").navigationBarTitleDisplayMode(.inline)
             .keyboardDone()   // the cooked weight and amount boxes use the number pad, which has no return key
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
             .sheet(item: $swapping) { s in
                 SwapPicker(original: s.name, grams: s.grams, portions: s.portions, foods: yourFoods,
                            cupboard: PantryItem.Saved.load(scansJSON)) { item in

@@ -332,7 +332,7 @@ struct ActivitySheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button("Add") { store.logActivity(type: type, name: name.trimmingCharacters(in: .whitespaces), minutes: minutes, effort: effort); dismiss() }
                         .fontWeight(.bold)
                 }

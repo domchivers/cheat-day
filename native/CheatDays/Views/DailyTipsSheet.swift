@@ -48,7 +48,7 @@ struct DailyTipsSheet: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { withAnimation { proxy.scrollTo("go", anchor: .bottom) } }
             }
             }
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Let's go") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Let's go") { dismiss() } } }
             .keyboardDone()
             .onAppear { if cooking.isEmpty { cooking = Self.cookChoice(str(store.habits["cook"])) } }
             .sheet(item: $open) { r in RecipeSheet(idea: r.idea) }

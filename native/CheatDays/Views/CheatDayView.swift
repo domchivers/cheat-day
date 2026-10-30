@@ -36,7 +36,7 @@ struct CheatDayView: View {
             .keyboardDone()
             .navigationTitle("Cheat day")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.fontWeight(.bold) } }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() }.fontWeight(.bold) } }
         }
     }
 

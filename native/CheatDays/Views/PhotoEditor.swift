@@ -87,7 +87,7 @@ struct PhotoEditor: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { done(render()); dismiss() }.fontWeight(.bold) }
+                ToolbarItem(placement: .topBarTrailing) { Button("Done") { done(render()); dismiss() }.fontWeight(.bold) }
             }
             .onChange(of: brightness) { _, _ in adjust() }
             .onChange(of: contrast) { _, _ in adjust() }

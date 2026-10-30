@@ -19,6 +19,17 @@ final class RepairTests: XCTestCase {
                                          ["name": "Workout: Chest, Shoulders & Triceps, 101 min", "kcal": -684] as JSON]] as JSON]
     }
 
+    func testARaisedBudgetComesBack() {
+        let h: [JSON] = [["date": "2026-10-18", "budget": 2500, "kcal": 2850] as JSON, ["date": "2026-10-19", "budget": 2350, "kcal": 2000] as JSON]
+        let s: [JSON] = [["day": "2026-10-18", "budget": 2850] as JSON, ["day": "2026-10-19", "budget": 2600] as JSON]
+        // the 19th wasn't over, so it's left alone
+        XCTAssertEqual(Store.lostBudgets(history: h, shared: s, before: "2026-10-30"), ["2026-10-18": 2850])
+        var d: JSON = ["history": h]
+        Store.applyRestore(["type": "restorePast", "date": "2026-10-18", "items": [Any](), "workouts": [Any](), "budget": 2850.0], to: &d)
+        XCTAssertEqual(num(list(d["history"])[0]["budget"]), 2850)
+        XCTAssertEqual(num(list(d["history"])[0]["kcal"]), 2850)
+    }
+
     func testFindsTheMissingDinner() {
         let found = Store.missingFood(history: history, shared: shared, since: "2026-07-01", before: "2026-10-30")
         XCTAssertEqual(found["2026-10-26"]?.items.map { str($0["name"]) }, ["Beef mince gyudon", "Rice"])

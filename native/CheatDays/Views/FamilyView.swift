@@ -155,7 +155,7 @@ private struct FamilyBudgetSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { done(nil) } }
-                ToolbarItem(placement: .confirmationAction) { Button(busy ? "Saving…" : "Save") { Task { await save() } }.fontWeight(.bold).disabled(busy) }
+                ToolbarItem(placement: .topBarTrailing) { Button(busy ? "Saving…" : "Save") { Task { await save() } }.fontWeight(.bold).disabled(busy) }
             }
             .onAppear {
                 if let c = current, let b = pos(c["budget"]) { base = b }

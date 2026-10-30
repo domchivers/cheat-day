@@ -49,6 +49,30 @@ extension Store {
         if days > 0 { notice = "Found food missing from \(days) past day\(days == 1 ? "" : "s") and put it back." }
     }
 
+    /// Runs once per account: a day whose calories were raised, then overwritten by a stale copy, gets them back,
+    /// so it doesn't show as over when it wasn't.
+    func repairBudgets() async {
+        let key = "repair.budget.v1."
+        guard let user = Supabase.shared.userId, lastSynced != nil, !UserDefaults.standard.bool(forKey: key + user),
+              let shared = try? await Supabase.shared.myDays() else { return }
+        for (date, budget) in Self.lostBudgets(history: list(doc["history"]), shared: shared, before: today) {
+            perform(["type": "restorePast", "date": date, "items": [Any](), "workouts": [Any](), "budget": budget], syncAfter: 1)
+        }
+        UserDefaults.standard.set(true, forKey: key + user)
+    }
+
+    /// Past days showing as over, whose shared summary had a higher budget that day.
+    static func lostBudgets(history: [JSON], shared: [JSON], before: String) -> [String: Double] {
+        var out: [String: Double] = [:]
+        for s in shared {
+            let date = str(s["day"])
+            guard date < before, let b = pos(s["budget"]), let h = history.first(where: { str($0["date"]) == date }),
+                  let have = num(h["budget"]), b > have, (num(h["kcal"]) ?? 0) > have else { continue }
+            out[date] = b
+        }
+        return out
+    }
+
     static func foodKey(_ it: JSON) -> String { "\(str(it["name"]).lowercased())|\(Int((num(it["kcal"]) ?? 0).rounded()))|\(str(it["addedAt"]))" }
 
     /// Per past date, the foods in its shared summary that History doesn't have, and how many workouts it's short.
@@ -76,6 +100,11 @@ extension Store {
         let date = str(op["date"])
         var history = list(d["history"])
         guard let i = history.firstIndex(where: { str($0["date"]) == date }) else { return }
+        if let b = num(op["budget"]) {   // only the budget: the day's food and totals stay as they are
+            history[i]["budget"] = max(b, num(history[i]["budget"]) ?? 0)
+            d["history"] = history
+            return
+        }
         var items = list(history[i]["items"]), have = Set(items.map(foodKey))
         for it in list(op["items"]) where have.insert(foodKey(it)).inserted {
             // the same food added at the same moment with another amount: it was changed that day, so it's updated

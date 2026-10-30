@@ -388,9 +388,8 @@ enum KeyboardDone {
             // SwiftUI focus can hold on: the window gives it up too
             field?.window?.endEditing(true)
         })
-        // a filled capsule (white text) on the deep colours; on a light one (classic blue) the text in the colour
-        // instead, since white on light blue was hard to read
-        done.style = Palette.current.onAccent == .white ? .done : .plain
+        // plain on every colour: the same glass capsule with the word in the accent, never a filled one
+        done.style = .plain
         done.tintColor = UIColor(Theme.accent)
         t.items = [UIBarButtonItem(systemItem: .flexibleSpace), done]
         t.sizeToFit()

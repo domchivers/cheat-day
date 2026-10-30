@@ -1,4 +1,4 @@
-New in this build: a food read off a nutrition table can be named when you add it to a meal or recipe, and renamed later with ••• then Rename. The + on Today is dark on the classic blue again.
+New in this build: every Done button now looks the same. Days that wrongly showed red after a restore are put right, including days you raised your calories. The old import link on Body is gone.
 
 Thanks for testing! Please just use it like a normal day:
 

@@ -267,7 +267,7 @@ function archiveDay() {
 /** One History entry per date: a day filed twice (two devices, the late-night rule) used to show only half its food. */
 function mergeHistory() { state.history = joinDays(state.history); }
 /** Entries for the same date joined into one: every food and workout once, the totals worked out again. */
-function joinDays(history) {
+function joinDays(history, tombs) {
   const seen = new Map(), out = [];
   const key = (it) => `${it.name || ""}|${Math.round(+it.kcal || 0)}|${it.addedAt || ""}`;
   const wkey = (w) => `${w.name || ""}|${Math.round(+w.minutes || 0)}|${Math.round(+w.kcal || 0)}`;
@@ -278,9 +278,18 @@ function joinDays(history) {
     const ik = new Set((e.items || []).map(key)), wk = new Set((e.workouts || []).map(wkey));
     e.items = (e.items || []).concat((h.items || []).filter((it) => !ik.has(key(it))));
     e.workouts = (e.workouts || []).concat((h.workouts || []).filter((w) => !wk.has(wkey(w))));
+    e.budget = Math.max(+e.budget || 0, +h.budget || 0);   // a day's raised calories survive a stale copy
     const m = sumMacros(e.items);
     e.kcal = e.items.reduce((a, it) => a + (+it.kcal || 0), 0);
     e.burned = e.workouts.reduce((a, w) => a + (+w.kcal || 0), 0);
+    e.p = Math.round(m.p); e.c = Math.round(m.c); e.f = Math.round(m.f);
+  }
+  // deleted on another device: a stale copy still holding it doesn't bring it back
+  if (tombs) for (const e of out) {
+    const items = (e.items || []).filter((it) => !(it.id && tombs[`item:${it.id}`]));
+    if (items.length === (e.items || []).length) continue;
+    const m = sumMacros(items);
+    e.items = items; e.kcal = items.reduce((a, it) => a + (+it.kcal || 0), 0);
     e.p = Math.round(m.p); e.c = Math.round(m.c); e.f = Math.round(m.f);
   }
   return out;
@@ -5655,7 +5664,7 @@ function mergeState(local, remote) {
   const nd = newer.day || { items: [] }, od = older.day || { items: [] };
   // past days: both copies' food for a date, not just the newer copy's. A screen that hadn't run for days filed its
   // half-logged day, counted as newer, and its half replaced the whole day everywhere
-  let history = joinDays((newer.history || []).concat(older.history || []));
+  let history = joinDays((newer.history || []).concat(older.history || []), tombs);
   if (ld.date === rd.date) {
     m.day = Object.assign({}, od, nd, { items: join(nd.items, od.items, (x) => x.id, "item"), workouts: join(nd.workouts, od.workouts, (x) => x.id, "wo") });
   } else {
@@ -5667,7 +5676,7 @@ function mergeState(local, remote) {
       const mac = sumMacros(earlier.items || []), burned = (earlier.workouts || []).reduce((a, w) => a + (w.kcal || 0), 0);
       const wb = m.dayBudgets && m.dayBudgets[new Date(earlier.date + "T12:00").getDay()];
       history.push({ date: earlier.date, budget: (wb > 0 ? wb : m.budget) + (m.eatBack ? burned : 0), kcal: (earlier.items || []).reduce((a, it) => a + (it.kcal || 0), 0), items: (earlier.items || []).map((it) => ({ ...basisOf(it), kcal: it.kcal, shareLabel: it.shareLabel, addedAt: it.addedAt || null, meal: it.meal || null })), p: Math.round(mac.p), c: Math.round(mac.c), f: Math.round(mac.f), burned, workouts: (earlier.workouts || []).map((w) => ({ name: w.name, type: w.type || null, effort: w.effort || null, minutes: w.minutes, kcal: w.kcal, lifts: w.lifts || [] })) });
-      history = joinDays(history);
+      history = joinDays(history, tombs);
     }
   }
   m.history = history.sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 400);

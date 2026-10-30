@@ -63,7 +63,7 @@ struct WeighInSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                if way == .type { ToolbarItem(placement: .confirmationAction) { Button("Save") { save(); dismiss() }.fontWeight(.bold) } }
+                if way == .type { ToolbarItem(placement: .topBarTrailing) { Button("Save") { save(); dismiss() }.fontWeight(.bold) } }
             }
         }
     }

@@ -162,7 +162,7 @@ struct RanksView: View {
             .background(Theme.bg)
             .navigationTitle("Ranks")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.fontWeight(.bold) } }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() }.fontWeight(.bold) } }
             .task { if friends.people.isEmpty { await friends.load() } }
         }
     }

@@ -325,7 +325,7 @@ struct ComposeSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                if what != nil { ToolbarItem(placement: .confirmationAction) { Button(busy ? "Posting…" : "Post") { post() }.fontWeight(.bold).disabled(busy) } }
+                if what != nil { ToolbarItem(placement: .topBarTrailing) { Button(busy ? "Posting…" : "Post") { post() }.fontWeight(.bold).disabled(busy) } }
             }
             .fullScreenCover(isPresented: $camera) { CameraPicker { img in camera = false; if let img { DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { editing = EditBox(image: img) } } }.ignoresSafeArea() }
             .onChange(of: picked) { _, item in Task { if let d = try? await item?.loadTransferable(type: Data.self), let img = UIImage(data: d) { editing = EditBox(image: img) } } }

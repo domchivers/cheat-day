@@ -69,7 +69,7 @@ struct SessionView: View {
         .toolbar {
             // while reordering the only button is Done, so Finish can't be pressed by mistake to end the reorder
             if reordering {
-                ToolbarItem(placement: .confirmationAction) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { withAnimation { reordering = false } }.fontWeight(.bold)
                 }
             } else {

@@ -34,7 +34,7 @@ struct ExercisePicker: View {
             .keyboardDone()
             .navigationTitle("Add an exercise")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.fontWeight(.bold) } }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() }.fontWeight(.bold) } }
             .onAppear { if store.pastWorkouts.isEmpty && store.routines.isEmpty { tab = .library } }
         }
     }

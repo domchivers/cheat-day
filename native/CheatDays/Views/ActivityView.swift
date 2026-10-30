@@ -123,7 +123,7 @@ struct ActivityView: View {
             .background(Theme.bg)
             .navigationTitle("Activity")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.fontWeight(.bold) } }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() }.fontWeight(.bold) } }
             .refreshable { await activity.load() }
             .task { await activity.load(); activity.seen = Date(); activity.clearSample() }   // opening it marks everything as seen
         }

@@ -204,7 +204,7 @@ struct AddFriendSheet: View {
             .keyboardDone()
             .navigationTitle("Add a friend")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
         }
     }
 }

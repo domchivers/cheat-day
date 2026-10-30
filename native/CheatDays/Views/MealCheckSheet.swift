@@ -43,7 +43,7 @@ struct MealCheckSheet: View {
                 .padding(20)
             }
             .background(Theme.bg.ignoresSafeArea())
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Got it") { dismiss() }.fontWeight(.bold) } }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Got it") { dismiss() }.fontWeight(.bold) } }
             .sheet(item: $open) { r in RecipeSheet(idea: r.idea) }
         }
     }

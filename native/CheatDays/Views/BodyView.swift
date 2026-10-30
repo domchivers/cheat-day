@@ -72,9 +72,6 @@ struct BodyView: View {
             }
             Section {
                 ScaleConnectRow()
-                NavigationLink { WebScreen(view: "body", pushed: true).navigationTitle("Other imports").navigationBarTitleDisplayMode(.inline) } label: {
-                    Label("Other imports (CSV, Shortcut)", systemImage: "link")
-                }
             } header: { Text("Your scale") } footer: { Text("Smart scale apps (VeSync, Withings, Eufy, Renpho, Fitbit, Garmin and more) save to Apple Health. Connect it and every weigh-in arrives on its own.") }
         }
         .scrollContentBackground(.hidden)

@@ -270,7 +270,7 @@ struct MealEditor: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { done() } }
-                ToolbarItem(placement: .confirmationAction) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button("Save") { save(); done() }.fontWeight(.bold)
                         .disabled(str(meal["name"]).trimmingCharacters(in: .whitespaces).isEmpty || items.isEmpty)
                 }
