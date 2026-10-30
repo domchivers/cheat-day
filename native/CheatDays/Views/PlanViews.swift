@@ -35,7 +35,7 @@ struct PlanCard: View {
             Group {
                 if prominent {
                     Button { start(t) } label: { Label(store.session == nil ? "Start \(t.name)" : "Back to your session", systemImage: "play.fill").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 4) }
-                        .buttonStyle(.borderedProminent).foregroundStyle(.black)
+                        .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
                 } else {
                     Button { start(t) } label: { Label("Do \(t.name) today instead", systemImage: "play").frame(maxWidth: .infinity) }
                         .buttonStyle(.bordered)
@@ -161,7 +161,7 @@ struct PlanBuilder: View {
                     Button { build() } label: {
                         Text("Build my plan").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 14)
                     }
-                    .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 18)).foregroundStyle(.black).padding(.top, 10)
+                    .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 18)).foregroundStyle(Theme.onAccent).padding(.top, 10)
                 }
                 .padding(.horizontal, 20).padding(.bottom, 30)
             }

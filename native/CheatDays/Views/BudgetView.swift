@@ -103,7 +103,7 @@ struct BudgetView: View {
             Button { personalise = true } label: {
                 Label(plan.isEmpty ? "Work out my plan" : "Personalise my plan", systemImage: "sparkles").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 4)
             }
-            .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 14)).foregroundStyle(.black)
+            .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 14)).foregroundStyle(Theme.onAccent)
         }
         .padding(.vertical, 6)
     }

@@ -100,7 +100,7 @@ struct CheatDayView: View {
             Button { Task { await make(next) } } label: {
                 Label(busy ? "Planning your day…" : "Plan my day", systemImage: "sparkles").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 14)
             }
-            .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 18)).foregroundStyle(.black)
+            .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 18)).foregroundStyle(Theme.onAccent)
             .disabled(busy).padding(.top, 8)
         }
     }
@@ -252,7 +252,7 @@ struct CheatDayView: View {
             } label: {
                 Text("Set my cheat day").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 14)
             }
-            .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 18)).foregroundStyle(.black).padding(.top, 8)
+            .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 18)).foregroundStyle(Theme.onAccent).padding(.top, 8)
         }
     }
 }

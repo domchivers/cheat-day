@@ -354,7 +354,7 @@ struct ScaleConnectRow: View {
                 Spacer()
                 if busy { ProgressView() }
                 else if on { Button("Turn off") { confirmOff = true }.font(.caption.weight(.semibold)).buttonStyle(.borderless).foregroundStyle(.secondary) }
-                else { Button("Connect") { Task { await connect() } }.buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(.small).foregroundStyle(.black) }
+                else { Button("Connect") { Task { await connect() } }.buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(.small).foregroundStyle(Theme.onAccent) }
             }
             if let note { Text(note).font(.caption).foregroundStyle(.secondary) }
         }

@@ -1,13 +1,51 @@
 import SwiftUI
 import UIKit
 
-/// The look from the prototype: near-black, one soft blue, rounded type.
+/// One colour for the app, picked in Settings: the accent (buttons, links, the + and the selected tab), the panel
+/// behind Left to eat and its label, the bar's track, dinner's colour in the bar, and the text on accent buttons.
+/// Everything else (the background, cards, other meals, warnings, ranks) stays the same whichever is picked.
+struct Palette: Identifiable {
+    let id: String, name: String
+    let accent: Color, hero: Color, heroLabel: Color, track: Color, dinner: Color
+    var snacks: Color? = nil   // pinks and reds move snacks off pink, so the bar still tells them apart
+    var onAccent: Color = .white
+
+    private static func hex(_ v: Int) -> Color { Color(red: Double(v >> 16 & 255) / 255, green: Double(v >> 8 & 255) / 255, blue: Double(v & 255) / 255) }
+    static let all: [Palette] = [
+        Palette(id: "plum", name: "Plum", accent: hex(0x6C3FE0), hero: hex(0x16102A), heroLabel: hex(0xA998DE), track: hex(0x21183D), dinner: hex(0x8A63F0)),
+        Palette(id: "ocean", name: "Ocean", accent: hex(0x2F6FE0), hero: hex(0x0D1626), heroLabel: hex(0x8FA9D6), track: hex(0x15233D), dinner: hex(0x5B8FF0)),
+        Palette(id: "teal", name: "Teal", accent: hex(0x0F8F8A), hero: hex(0x0C1B1C), heroLabel: hex(0x86BDB9), track: hex(0x122B2D), dinner: hex(0x2FB3AD)),
+        Palette(id: "forest", name: "Forest", accent: hex(0x2F9D6A), hero: hex(0x0F1A15), heroLabel: hex(0x8FB8A3), track: hex(0x18291F), dinner: hex(0x7FD3A8)),
+        Palette(id: "rust", name: "Rust", accent: hex(0xD0601C), hero: hex(0x1F130D), heroLabel: hex(0xD4A487), track: hex(0x311D12), dinner: hex(0xEC8443)),
+        Palette(id: "crimson", name: "Crimson", accent: hex(0xC8313F), hero: hex(0x200F11), heroLabel: hex(0xD39599), track: hex(0x311619), dinner: hex(0xE65663), snacks: hex(0xB99CFF)),
+        Palette(id: "gold", name: "Gold", accent: hex(0xB8860B), hero: hex(0x1D170B), heroLabel: hex(0xCDB27A), track: hex(0x2E240E), dinner: hex(0xE0AA35)),
+        Palette(id: "berry", name: "Berry", accent: hex(0xD6337A), hero: hex(0x1F1018), heroLabel: hex(0xD695B4), track: hex(0x2E1622), dinner: hex(0xE8559A), snacks: hex(0xB99CFF)),
+        Palette(id: "classic", name: "Classic blue", accent: Color(red: 0.49, green: 0.77, blue: 1.0), hero: Color(red: 0.06, green: 0.10, blue: 0.15),
+                heroLabel: Color(red: 0.56, green: 0.73, blue: 0.87), track: Color(red: 0.11, green: 0.17, blue: 0.23), dinner: Color(red: 0.49, green: 0.77, blue: 1.0), onAccent: .black)
+    ]
+    static let key = "theme"
+    static func named(_ id: String) -> Palette { all.first { $0.id == id } ?? all[0] }
+    /// Read through an observed object, so every screen showing a Theme colour redraws when it's changed.
+    static var current: Palette { named(ThemeChoice.shared.id) }
+}
+
+/// The colour picked, kept on the phone. Observed: views that read Theme's colours follow a change straight away.
+@Observable
+final class ThemeChoice {
+    static let shared = ThemeChoice()
+    var id: String { didSet { UserDefaults.standard.set(id, forKey: Palette.key) } }
+    private init() { id = UserDefaults.standard.string(forKey: Palette.key) ?? "plum" }
+}
+
+/// The look from the prototype: near-black, one accent colour (yours to pick), rounded type.
 enum Theme {
-    static let accent = Color(red: 0.49, green: 0.77, blue: 1.0)
+    static var accent: Color { Palette.current.accent }
+    /// Text and icons on an accent-coloured button.
+    static var onAccent: Color { Palette.current.onAccent }
     static let bg = Color(red: 0.027, green: 0.035, blue: 0.047)
-    static let hero = Color(red: 0.06, green: 0.10, blue: 0.15)
-    static let heroLabel = Color(red: 0.56, green: 0.73, blue: 0.87)
-    static let track = Color(red: 0.11, green: 0.17, blue: 0.23)
+    static var hero: Color { Palette.current.hero }
+    static var heroLabel: Color { Palette.current.heroLabel }
+    static var track: Color { Palette.current.track }
     static let warn = Color(red: 0.95, green: 0.71, blue: 0.36)
     /// Walking, beside workouts but not one of them.
     static let walk = Color(red: 0.36, green: 0.82, blue: 0.56)
@@ -16,8 +54,8 @@ enum Theme {
         switch meal {
         case "Breakfast": return Color(red: 0.98, green: 0.78, blue: 0.40)
         case "Lunch": return Color(red: 0.36, green: 0.82, blue: 0.62)
-        case "Dinner": return accent
-        default: return Color(red: 0.93, green: 0.55, blue: 0.70)
+        case "Dinner": return Palette.current.dinner
+        default: return Palette.current.snacks ?? Color(red: 0.93, green: 0.55, blue: 0.70)
         }
     }
     static let uiBackground = UIColor(red: 0.027, green: 0.035, blue: 0.047, alpha: 1)

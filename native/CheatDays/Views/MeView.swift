@@ -175,7 +175,7 @@ struct MeView: View {
                 Text("Your trend, progress and date to your goal show here once you've weighed in a few times.").font(.footnote).foregroundStyle(.secondary)
             }
             Button { weighing = true } label: { Label("Weigh in", systemImage: "scalemass.fill").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 4) }
-                .buttonStyle(.borderedProminent).buttonBorderShape(.capsule).foregroundStyle(.black)
+                .buttonStyle(.borderedProminent).buttonBorderShape(.capsule).foregroundStyle(Theme.onAccent)
         }
         .padding(.vertical, 6)
         // a simple summary here; the chart, readings, goals and the scale are all in Body
@@ -301,7 +301,7 @@ struct MeView: View {
                 .font(.subheadline)
             HStack(spacing: 10) {
                 Button { withAnimation { store.finishCheckIn(c, use: true) } } label: { Text("Use \(Fmt.int(newBase))").font(.subheadline.weight(.bold)).frame(maxWidth: .infinity).padding(.vertical, 4) }
-                    .buttonStyle(.borderedProminent).foregroundStyle(.black)
+                    .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
                 Button { withAnimation { store.finishCheckIn(c, use: false) } } label: { Text("Keep \(Fmt.int(base))").font(.subheadline.weight(.bold)).frame(maxWidth: .infinity).padding(.vertical, 4) }
                     .buttonStyle(.bordered)
             }

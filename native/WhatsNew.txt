@@ -1,4 +1,4 @@
-New in this build: food that went missing from past days (usually dinner and evening snacks) is found and put back, once, from what you logged that day. Nothing you deleted comes back.
+New in this build: pick the app's colour in Settings → Colour: Plum (new), Ocean, Teal, Forest, Rust, Crimson, Gold, Berry, or the classic blue. It changes the buttons, links and the Left to eat panel straight away.
 
 Thanks for testing! Please just use it like a normal day:
 

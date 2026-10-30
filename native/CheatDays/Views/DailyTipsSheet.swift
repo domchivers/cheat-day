@@ -87,7 +87,7 @@ struct DailyTipsSheet: View {
                 Label(pantry.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Give me ideas" : "What can I make?", systemImage: "sparkles")
                     .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 6)
             }
-            .buttonStyle(.borderedProminent).foregroundStyle(.black)
+            .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
             Text("Leave the fridge empty for ideas from anything. You can also snap your fridge in the chat.").font(.caption).foregroundStyle(.secondary)
                 .id("go")   // scrolled to with the keyboard up, so the button sits clear of it with room to spare
         }

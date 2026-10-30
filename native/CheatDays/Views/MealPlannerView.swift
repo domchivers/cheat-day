@@ -93,7 +93,7 @@ struct MealPlannerView: View {
                         Label(busy ? "Thinking…" : pantry.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Give me ideas" : "What can I make?", systemImage: "sparkles")
                             .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 8)
                     }
-                    .buttonStyle(.borderedProminent).foregroundStyle(.black).disabled(busy)
+                    .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent).disabled(busy)
                     .id("go")
                     if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn) }
                     ForEach(ideas.indices, id: \.self) { i in idea(ideas[i]) }

@@ -87,7 +87,7 @@ struct TodayView: View {
                                     .font(.footnote).foregroundStyle(.secondary)
                                 HStack(spacing: 10) {
                                     Button { Task { await Family.shared.answer(l, yes: true) } } label: { Text("Allow").font(.subheadline.weight(.bold)).frame(maxWidth: .infinity) }
-                                        .buttonStyle(.borderedProminent).foregroundStyle(.black)
+                                        .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
                                     Button { Task { await Family.shared.answer(l, yes: false) } } label: { Text("No thanks").font(.subheadline.weight(.bold)).frame(maxWidth: .infinity) }
                                         .buttonStyle(.bordered)
                                 }
@@ -113,9 +113,9 @@ struct TodayView: View {
                                     Menu {
                                         Button { withAnimation { Inbox.shared.save(x) }; note("Saved to your meals") } label: { Label("Save to my meals", systemImage: "book.closed") }
                                         Button { withAnimation { Inbox.shared.add(x) } } label: { Label("Have a portion today", systemImage: "plus.circle") }
-                                    } label: { Text("Save").font(.subheadline.weight(.bold)).padding(.horizontal, 12).padding(.vertical, 6).background(Theme.accent, in: Capsule()).foregroundStyle(.black) }
+                                    } label: { Text("Save").font(.subheadline.weight(.bold)).padding(.horizontal, 12).padding(.vertical, 6).background(Theme.accent, in: Capsule()).foregroundStyle(Theme.onAccent) }
                                 } else {
-                                    Button("Add") { withAnimation { Inbox.shared.add(x) } }.buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(.small).foregroundStyle(.black)
+                                    Button("Add") { withAnimation { Inbox.shared.add(x) } }.buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(.small).foregroundStyle(Theme.onAccent)
                                 }
                                 Button { withAnimation { Inbox.shared.settle(x, "dismissed") } } label: { Image(systemName: "xmark") }.buttonStyle(.borderless).foregroundStyle(.secondary)
                             }
@@ -642,7 +642,7 @@ struct TodayView: View {
 
     private var addButton: some View {
         Button { addChoice = MealChoice(id: Meals.now) } label: {
-            Image(systemName: "plus").font(.title2.weight(.bold)).foregroundStyle(.black)
+            Image(systemName: "plus").font(.title2.weight(.bold)).foregroundStyle(Theme.onAccent)
                 .frame(width: 62, height: 62).background(Theme.accent, in: Circle())
                 .tourSpot(.add)
                 .shadow(color: .black.opacity(0.4), radius: 14, y: 8)
@@ -728,7 +728,7 @@ private struct SaveMealSheet: View {
                     Text(picked.isEmpty ? "Tick at least one food" : "Save \(picked.count) food\(picked.count == 1 ? "" : "s") · \(Fmt.int(total)) kcal")
                         .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 14)
                 }
-                .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 16)).tint(Theme.accent).foregroundStyle(.black)
+                .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 16)).tint(Theme.accent).foregroundStyle(Theme.onAccent)
                 .disabled(picked.isEmpty)
                 .padding(.horizontal, 20).padding(.bottom, 8)
             }
@@ -773,7 +773,7 @@ private struct LateNightCard: View {
                 Text(body).font(.subheadline).foregroundStyle(.secondary)
                 HStack(spacing: 10) {
                     Button { withAnimation { onKeep() } } label: { Text(keep).font(.subheadline.weight(.bold)).frame(maxWidth: .infinity).padding(.vertical, 4) }
-                        .buttonStyle(.borderedProminent).foregroundStyle(.black)
+                        .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
                     Button { withAnimation { onNew() } } label: { Text(new).font(.subheadline.weight(.bold)).frame(maxWidth: .infinity).padding(.vertical, 4) }
                         .buttonStyle(.bordered)
                 }

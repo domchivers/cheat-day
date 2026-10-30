@@ -51,7 +51,7 @@ struct ScaleSetupView: View {
             if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn).multilineTextAlignment(.center).padding(.bottom, 10) }
             Button { Task { await next() } } label: {
                 Text(busy ? "One moment…" : step == .intro ? "Connect Apple Health" : step == .history ? "Continue" : "Show me around")
-                    .font(.headline).foregroundStyle(.black).frame(maxWidth: .infinity).frame(height: 50)
+                    .font(.headline).foregroundStyle(Theme.onAccent).frame(maxWidth: .infinity).frame(height: 50)
                     .background(Theme.accent, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
             .buttonStyle(.plain).disabled(busy)
@@ -131,7 +131,7 @@ struct ScaleSetupView: View {
 
     private func stepRow(_ n: Int, _ text: String) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            Text("\(n)").font(.footnote.weight(.heavy)).foregroundStyle(.black).frame(width: 22, height: 22).background(Theme.accent, in: Circle())
+            Text("\(n)").font(.footnote.weight(.heavy)).foregroundStyle(Theme.onAccent).frame(width: 22, height: 22).background(Theme.accent, in: Circle())
             Text(text).font(.subheadline).frame(maxWidth: .infinity, alignment: .leading)
         }
     }

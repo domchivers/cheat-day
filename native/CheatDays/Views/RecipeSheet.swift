@@ -325,7 +325,7 @@ struct RecipeSheet: View {
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(steps.indices, id: \.self) { i in
                     HStack(alignment: .top, spacing: 10) {
-                        Text("\(i + 1)").font(.footnote.weight(.heavy)).foregroundStyle(.black)
+                        Text("\(i + 1)").font(.footnote.weight(.heavy)).foregroundStyle(Theme.onAccent)
                             .frame(width: 22, height: 22).background(Theme.accent, in: Circle())
                         Text(steps[i]).font(.subheadline)
                     }
@@ -348,7 +348,7 @@ struct RecipeSheet: View {
                     store.add(Assistant.basis(name: name(r), kcal: k, grams: nil, p: p, c: c, f: f), kcal: k, meal: meal)
                     flash("Added to \(meal.lowercased())")
                 } label: { Text("Log a portion for \(meal.lowercased()) · \(Fmt.int(k)) kcal").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 6) }
-                .buttonStyle(.borderedProminent).foregroundStyle(.black)
+                .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
             }
             Button {
                 let items: [JSON] = used.map { i in

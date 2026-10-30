@@ -26,7 +26,7 @@ struct SettingsView: View {
             Section {
                 NavigationLink { page("Account") { accountPage } } label: {
                     HStack(spacing: 12) {
-                        Text(String(Supabase.shared.email.prefix(1)).uppercased()).font(.title3.weight(.heavy)).foregroundStyle(.black)
+                        Text(String(Supabase.shared.email.prefix(1)).uppercased()).font(.title3.weight(.heavy)).foregroundStyle(Theme.onAccent)
                             .frame(width: 44, height: 44).background(Theme.accent, in: Circle())
                         VStack(alignment: .leading, spacing: 2) {
                             Text(Supabase.shared.email).font(.body.weight(.semibold)).lineLimit(1)
@@ -41,6 +41,9 @@ struct SettingsView: View {
                     row("🔔", "Reminders", value: "\([lunch, dailyTips, weighOn].filter { $0 }.count) on")
                 }
                 NavigationLink { page("Friends and sharing") { friendsPage } } label: { row("👥", "Friends and sharing") }
+            }
+            Section {
+                NavigationLink { page("Colour") { colourPage } } label: { row("🎨", "Colour", value: Palette.current.name) }
             }
             Section {
                 NavigationLink { page("Portion sizes") { portionsPage } } label: {
@@ -108,6 +111,56 @@ struct SettingsView: View {
             .keyboardDone()
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
+    }
+
+    /// The app's colour: a preview of Left to eat, then every colour to pick from. Changes straight away.
+    @ViewBuilder private var colourPage: some View {
+        let p = Palette.current
+        Section {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("LEFT TO EAT").font(.caption2.weight(.heavy)).tracking(0.8).foregroundStyle(p.heroLabel)
+                    Spacer()
+                    Text("Plan").font(.caption.weight(.heavy)).padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(p.accent.opacity(0.2), in: Capsule()).foregroundStyle(p.accent)
+                }
+                Text("1,094").font(.system(size: 40, weight: .heavy, design: .rounded))
+                GeometryReader { g in
+                    HStack(spacing: 0) {
+                        Theme.meal("Breakfast").frame(width: g.size.width * 0.2)
+                        Theme.meal("Lunch").frame(width: g.size.width * 0.22)
+                        Theme.meal("Snacks").frame(width: g.size.width * 0.1)
+                        Theme.meal("Dinner").frame(width: g.size.width * 0.14)
+                        p.track
+                    }
+                    .clipShape(Capsule())
+                }
+                .frame(height: 8)
+                HStack {
+                    Text("Ideas for dinner ›").font(.footnote.weight(.semibold)).foregroundStyle(p.accent)
+                    Spacer()
+                    Image(systemName: "plus").font(.title3.weight(.bold)).foregroundStyle(p.onAccent)
+                        .frame(width: 44, height: 44).background(p.accent, in: Circle())
+                }
+            }
+            .padding(14)
+            .background(p.hero, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
+        }
+        Section {
+            ForEach(Palette.all) { c in
+                Button { withAnimation { ThemeChoice.shared.id = c.id } } label: {
+                    HStack(spacing: 12) {
+                        Circle().fill(c.accent).frame(width: 26, height: 26)
+                            .overlay(Circle().strokeBorder(.white.opacity(0.15), lineWidth: 1))
+                        Text(c.name).foregroundStyle(.primary)
+                        Spacer()
+                        if c.id == p.id { Image(systemName: "checkmark").font(.body.weight(.bold)).foregroundStyle(c.accent) }
+                    }
+                }
+                .accessibilityLabel(c.name + (c.id == p.id ? ", chosen" : ""))
+            }
+        } footer: { Text("Changes the buttons, links and the Left to eat panel. Only on this phone.") }
     }
 
     @ViewBuilder private var remindersPage: some View {

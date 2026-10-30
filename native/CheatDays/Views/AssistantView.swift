@@ -102,7 +102,7 @@ struct AssistantView: View {
                 if !t.images.isEmpty {
                     HStack { ForEach(t.images.indices, id: \.self) { i in Image(uiImage: t.images[i]).resizable().scaledToFill().frame(width: 70, height: 70).clipShape(RoundedRectangle(cornerRadius: 12)) } }
                 }
-                Text(t.text).font(.subheadline).padding(12).foregroundStyle(.black)
+                Text(t.text).font(.subheadline).padding(12).foregroundStyle(Theme.onAccent)
                     .background(Theme.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
@@ -154,7 +154,7 @@ struct AssistantView: View {
         } label: {
             Label(done[turn, default: ""].contains(tag) ? "Added" : label, systemImage: done[turn, default: ""].contains(tag) ? "checkmark" : "plus.circle.fill").font(.subheadline.weight(.bold))
         }
-        .buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(.small).foregroundStyle(.black)
+        .buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(.small).foregroundStyle(Theme.onAccent)
         .disabled(done[turn, default: ""].contains(tag))
     }
 
@@ -229,7 +229,7 @@ struct AssistantView: View {
             } label: {
                 Label(done[turn, default: ""].contains("\(turn)-\(key)") ? "Done" : "Make these changes", systemImage: done[turn, default: ""].contains("\(turn)-\(key)") ? "checkmark" : "checkmark.circle.fill").font(.subheadline.weight(.bold))
             }
-            .buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(.small).foregroundStyle(.black)
+            .buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(.small).foregroundStyle(Theme.onAccent)
             .disabled(done[turn, default: ""].contains("\(turn)-\(key)"))
         }
     }

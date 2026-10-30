@@ -92,7 +92,7 @@ struct CookedWeightCard: View {
                 } label: {
                     Text("Add \(Fmt.int(g)) g · \(Fmt.int(per100 * g / 100)) kcal").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 6)
                 }
-                .buttonStyle(.borderedProminent).foregroundStyle(.black)
+                .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
                 // when the weight looks wrong, a portion (the pot ÷ portions) is still right: it doesn't need grams
                 if off || oddPer100 {
                     Button {

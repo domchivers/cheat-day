@@ -164,7 +164,7 @@ struct OnboardingView: View {
                 .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 15)
         }
         .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 18))
-        .foregroundStyle(.black)
+        .foregroundStyle(Theme.onAccent)
         .padding(.horizontal, 20).padding(.vertical, 10)
         .background(Theme.bg)
     }

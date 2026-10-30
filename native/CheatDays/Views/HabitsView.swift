@@ -84,7 +84,7 @@ struct HabitsView: View {
             Text(nextLabel).font(.headline).frame(maxWidth: .infinity).padding(.vertical, 15)
         }
         .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 18))
-        .foregroundStyle(.black)
+        .foregroundStyle(Theme.onAccent)
         .padding(.horizontal, 20).padding(.vertical, 10)
         .background(Theme.bg)
     }
@@ -369,7 +369,7 @@ struct HabitsView: View {
     private func summary(_ h: Habit) -> some View {
         let (tag, tint): (String, Color) = h.plan == nil ? ("Keep", Theme.accent) : h.choice == "tweak" ? ("Tweak", Theme.warn) : ("Swap", Theme.heroLabel)
         return HStack(spacing: 10) {
-            Text(tag).font(.caption.weight(.bold)).foregroundStyle(.black)
+            Text(tag).font(.caption.weight(.bold)).foregroundStyle(Theme.onAccent)
                 .padding(.horizontal, 8).padding(.vertical, 3).background(tint, in: Capsule())
             VStack(alignment: .leading, spacing: 1) {
                 Text(h.name).font(.subheadline.weight(.semibold))
