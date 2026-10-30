@@ -293,15 +293,40 @@ struct TodayView: View {
         }
     }
 
+    private func hideButton(_ meal: String) -> some View {
+        Button { withAnimation { nudgeHidden = store.today + "|" + meal } } label: { Image(systemName: "xmark") }
+            .buttonStyle(.borderless).foregroundStyle(.secondary).font(.footnote.weight(.bold))
+            .accessibilityLabel("Hide")
+    }
+
+    /// A piece of advice in the weekly check-in's style: icon, headline, a line under it, and a link to plan the next
+    /// meal when there's something to do.
+    private func adviceRow(_ a: Advice, hide meal: String?) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            FluentIcon(emoji: a.icon, size: 26).padding(.top, 2)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(a.title).font(.headline)
+                Text(a.detail).font(.footnote).foregroundStyle(.secondary)
+                if let meal = a.plan {
+                    Button { showPlanner = true } label: { Text("Ideas for \(meal.lowercased()) ›").font(.footnote.weight(.semibold)) }
+                        .buttonStyle(.borderless).foregroundStyle(Theme.accent).padding(.top, 2)
+                }
+            }
+            Spacer(minLength: 0)
+            if let meal { hideButton(meal) }
+        }
+    }
+
     private func nudgeCard(_ n: Nudge) -> some View {
         Section {
+            if n.ideas.isEmpty, let a = n.advice {
+                adviceRow(a, hide: n.meal).padding(.vertical, 2)
+            } else {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(n.ideas.isEmpty ? "A thought" : "\(n.meal == "Snacks" ? "Snack time" : n.meal + " time"). Fancy one of these?").font(.headline)
+                    Text("\(n.meal == "Snacks" ? "Snack time" : n.meal + " time"). Fancy one of these?").font(.headline)
                     Spacer()
-                    Button { withAnimation { nudgeHidden = store.today + "|" + n.meal } } label: { Image(systemName: "xmark") }
-                        .buttonStyle(.borderless).foregroundStyle(.secondary).font(.footnote.weight(.bold))
-                        .accessibilityLabel("Hide")
+                    hideButton(n.meal)
                 }
                 ForEach(n.ideas) { e in
                     HStack(spacing: 12) {
@@ -328,11 +353,12 @@ struct TodayView: View {
                     }
                 }
                 if let a = n.advice {
-                    Label { Text(a).font(.footnote) } icon: { FluentIcon(emoji: "🎯", size: 18) }
-                        .foregroundStyle(.secondary)
+                    Divider()
+                    adviceRow(a, hide: nil)
                 }
             }
             .padding(.vertical, 4)
+            }
         }
     }
 
