@@ -141,10 +141,10 @@ struct WorkoutsView: View {
                                           walk: Steps.shared.kcal(on: d.date), today: d.date == store.today) }
         let total = days.reduce(0) { $0 + $1.kcal }, count = days.reduce(0) { $0 + $1.count }
         let walked = bars.reduce(0) { $0 + $1.walk }
-        // walking at the bottom of each day, workouts on top; an empty day keeps a small grey stub
+        // workouts at the bottom of each day, walking on top; an empty day keeps a small grey stub
         let segments = bars.flatMap { b -> [Segment] in
             if b.kcal <= 0 && b.walk <= 0 { return [Segment(id: b.id + "-none", day: b.id, kind: "None", kcal: 4)] }
-            return [Segment(id: b.id + "-walk", day: b.id, kind: "Walking", kcal: b.walk), Segment(id: b.id + "-work", day: b.id, kind: "Workouts", kcal: b.kcal)].filter { $0.kcal > 0 }
+            return [Segment(id: b.id + "-work", day: b.id, kind: "Workouts", kcal: b.kcal), Segment(id: b.id + "-walk", day: b.id, kind: "Walking", kcal: b.walk)].filter { $0.kcal > 0 }
         }
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {

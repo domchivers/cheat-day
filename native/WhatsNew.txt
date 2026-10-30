@@ -1,4 +1,4 @@
-New in this build: pick the app's colour in Settings → Colour (Plum, Ocean, Teal, Forest, Rust, Crimson, Gold, Berry). It stays the classic blue unless you change it, and selected chips read clearly in every colour.
+New in this build: pick the app's colour in Settings → Colour (Plum, Ocean, Teal, Forest, Rust, Crimson, Gold, Berry). It stays the classic blue unless you change it, and selected chips read clearly in every colour. Walking now sits on top of workouts in the week chart.
 
 Thanks for testing! Please just use it like a normal day:
 
