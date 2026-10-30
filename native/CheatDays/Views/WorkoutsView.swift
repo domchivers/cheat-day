@@ -55,7 +55,7 @@ struct WorkoutsView: View {
                         Button { store.startSession(nil); showSession = true } label: {
                             Label("Start a gym session", systemImage: "play.fill").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 6)
                         }
-                        .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 16))
+                        .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 16)).foregroundStyle(Theme.onAccent)
                         .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
                     }
                 }

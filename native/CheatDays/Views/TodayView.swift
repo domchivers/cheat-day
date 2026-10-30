@@ -161,7 +161,7 @@ struct TodayView: View {
             .background(Theme.bg)
             .refreshable { await store.sync() }
             .toolbar(.hidden, for: .navigationBar)
-            .overlay(alignment: .bottomTrailing) { if offset == 0 { addButton } }
+            .overlay(alignment: .bottomTrailing) { addButton }   // on a past day too: it adds to that day
             .overlay(alignment: .bottom) { if let u = store.undo { undoBanner(u) } }
             .task(id: store.undo) {
                 guard let u = store.undo else { return }
@@ -169,6 +169,13 @@ struct TodayView: View {
                 if store.undo == u { withAnimation(.snappy) { store.undo = nil } }
             }
             .sensoryFeedback(.success, trigger: store.todayItems.count)
+            .task(id: "\(addChoice == nil)|\(flow == nil)|\(editing == nil)") {
+                // a past day stays the one being filled in through the add sheet and the assistant it can open;
+                // once everything's closed (and stays closed a moment), adding goes back to today
+                guard addChoice == nil, flow == nil, editing == nil, store.logDay != nil else { return }
+                try? await Task.sleep(for: .seconds(1))
+                if !Task.isCancelled, addChoice == nil, flow == nil, editing == nil { store.logDay = nil }
+            }
             .sheet(item: $addChoice) { c in
                 AddSheet(meal: c.id) { f in
                     addChoice = nil
@@ -268,7 +275,7 @@ struct TodayView: View {
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
-            .onReceive(NotificationCenter.default.publisher(for: .openAdd)) { _ in withAnimation { offset = 0 }; addChoice = MealChoice(id: Meals.now) }
+            .onReceive(NotificationCenter.default.publisher(for: .openAdd)) { _ in withAnimation { offset = 0 }; store.logDay = nil; addChoice = MealChoice(id: Meals.now) }
             .onReceive(NotificationCenter.default.publisher(for: .webDone)) { _ in
                 guard flow != nil else { return }
                 flow = nil
@@ -548,14 +555,15 @@ struct TodayView: View {
         let lines = items.filter { Meals.of($0) == meal }.map { Line(id: str($0["id"]).isEmpty ? UUID().uuidString : str($0["id"]), item: $0) }
         let total = lines.reduce(0) { $0 + (num($1.item["kcal"]) ?? 0) }
         let again = offset == 0 && lines.isEmpty ? (store.pastDay(DayKey.shift(store.today, days: -1))?.items.filter { Meals.of($0) == meal } ?? []) : []
-        if offset == 0 || !lines.isEmpty {
+        do {
             Section {
                 ForEach(lines) { line in
                     Button { tap(line.item, meal: meal) } label: { FoodRow(item: line.item, hint: offset == 0 ? .open : .add) }
                         .buttonStyle(.plain)
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            if offset == 0 {
-                                Button(role: .destructive) { withAnimation { store.delete(line.id) } } label: { Label("Delete", systemImage: "trash") }
+                            // a past day's food can go too, if it has an id to find it by (filed since late October)
+                            if offset == 0 || !str(line.item["id"]).isEmpty {
+                                Button(role: .destructive) { withAnimation { store.delete(line.id, day: offset == 0 ? nil : date) } } label: { Label("Delete", systemImage: "trash") }
                             }
                         }
                         .swipeActions(edge: .leading) {
@@ -566,9 +574,10 @@ struct TodayView: View {
                         }
                         .transition(.move(edge: .leading).combined(with: .opacity))
                 }
-                if offset == 0 {
-                    Button { addChoice = MealChoice(id: meal) } label: {
-                        Label("Add \(meal.lowercased())", systemImage: "plus.circle.fill").foregroundStyle(Theme.accent)
+                do {
+                    // on a past day it goes on that day: for what was forgotten at the time
+                    Button { openAdd(meal) } label: {
+                        Label(offset == 0 ? "Add \(meal.lowercased())" : "Add \(meal.lowercased()) to \(Store.when(date))", systemImage: "plus.circle.fill").foregroundStyle(Theme.accent)
                     }
                     // the tour outlines the whole row, so it's measured on the row's background, not the label
                     .listRowBackground(Color(.secondarySystemGroupedBackground).modifier(TourSpotIf(spot: .meal, on: meal == Meals.all.first)))
@@ -601,7 +610,7 @@ struct TodayView: View {
             } footer: {
                 // the tip sits under the card, so the card keeps its rounded corners
                 if !lines.isEmpty && meal == Meals.all.first(where: { m in items.contains { Meals.of($0) == m } }) {
-                    Text(offset == 0 ? "Tap a food to change the amount. Swipe left to delete." : "Tap a food to add it to today.")
+                    Text(offset == 0 ? "Tap a food to change the amount. Swipe left to delete." : "Tap a food to add it to today. Swipe left to delete.")
                 }
             }
         }
@@ -640,8 +649,14 @@ struct TodayView: View {
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
+    /// The add sheet for a meal: on today, or on the past day being looked at (everything added then goes there).
+    private func openAdd(_ meal: String) {
+        store.logDay = offset == 0 ? nil : date
+        addChoice = MealChoice(id: meal)
+    }
+
     private var addButton: some View {
-        Button { addChoice = MealChoice(id: Meals.now) } label: {
+        Button { openAdd(offset == 0 ? Meals.now : "Dinner") } label: {
             Image(systemName: "plus").font(.title2.weight(.bold)).foregroundStyle(Theme.onAccent)
                 .frame(width: 62, height: 62).background(Theme.accent, in: Circle())
                 .tourSpot(.add)

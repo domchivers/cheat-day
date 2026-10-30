@@ -1,4 +1,4 @@
-New in this build: pick the app's colour in Settings → Colour (Plum, Ocean, Teal, Forest, Rust, Crimson, Gold, Berry). It stays the classic blue unless you change it, and selected chips read clearly in every colour. Walking now sits on top of workouts in the week chart.
+New in this build: add food to a past day you forgot to log: go back to that day on Today and use Add (or +), and it goes on that day. Foods on past days can be swiped away too. Buttons read better in the classic blue.
 
 Thanks for testing! Please just use it like a normal day:
 

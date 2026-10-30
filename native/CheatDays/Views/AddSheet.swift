@@ -43,7 +43,7 @@ struct AddSheet: View {
                 try? await Task.sleep(nanoseconds: 220_000_000)
                 if !Task.isCancelled { settled = query }
             }
-            .navigationTitle("Add to \(meal)")
+            .navigationTitle(store.logDay.map { "\(meal), \(Store.when($0))" } ?? "Add to \(meal)")   // a past day says which
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
             .navigationDestination(for: EditTarget.self) { t in AmountView(target: t) { dismiss() } }

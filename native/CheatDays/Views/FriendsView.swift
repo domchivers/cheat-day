@@ -36,7 +36,7 @@ struct FriendsView: View {
                             HStack {
                                 Text("\(r.name) wants to be friends").font(.subheadline)
                                 Spacer()
-                                Button("Accept") { Task { await model.accept(r) } }.buttonStyle(.borderedProminent).controlSize(.small)
+                                Button("Accept") { Task { await model.accept(r) } }.buttonStyle(.borderedProminent).controlSize(.small).foregroundStyle(Theme.onAccent)
                             }
                         }
                     }

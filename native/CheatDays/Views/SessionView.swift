@@ -168,7 +168,7 @@ struct SessionView: View {
                 Text(timerInterval: Date()...Date(timeIntervalSince1970: r / 1000), countsDown: true)
                     .font(.title2.weight(.heavy)).monospacedDigit().foregroundStyle(Theme.accent)
                 Button("+15") { nudge(15) }.buttonStyle(.bordered).controlSize(.small)
-                Button("Skip") { s.restUntil = nil }.buttonStyle(.borderedProminent).controlSize(.small)
+                Button("Skip") { s.restUntil = nil }.buttonStyle(.borderedProminent).controlSize(.small).foregroundStyle(Theme.onAccent)
             } else if let n = s.next {
                 Text("Next: \(s.exercises[n.ex].name.isEmpty ? "Exercise" : s.exercises[n.ex].name) · set \(n.set + 1)")
                     .font(.subheadline.weight(.semibold)).lineLimit(1)
