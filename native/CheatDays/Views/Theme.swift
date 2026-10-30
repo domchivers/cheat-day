@@ -303,6 +303,12 @@ extension View {
     func keyboardDone() -> some View { self }
 }
 
+extension UIResponder {
+    /// Whichever field has the keyboard, found by asking the first responder to name itself.
+    @MainActor static weak var current: UIResponder?
+    @objc func cdFindCurrent() { UIResponder.current = self }
+}
+
 /// A Done bar above every keyboard in the app: number keyboards have no return key, and this puts any keyboard away
 /// (keeping what was typed). Fitted to each text field as it starts editing, so no screen can miss it.
 @MainActor
@@ -314,15 +320,27 @@ enum KeyboardDone {
                 MainActor.assumeIsolated { attach(field) }
             }
         }
+        // and again as the keyboard comes up, in case SwiftUI put its own accessory back in between
+        NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated {
+                UIResponder.current = nil
+                UIApplication.shared.sendAction(#selector(UIResponder.cdFindCurrent), to: nil, from: nil, for: nil)
+                attach(UIResponder.current)
+            }
+        }
     }
 
+    private static let tag = 0xD0E   // marks our bar, so it's put on once
+    /// SwiftUI gives its text fields an (empty) accessory view of its own, so ours replaces whatever's there: nothing
+    /// in the app uses SwiftUI's keyboard toolbar any more.
     private static func attach(_ field: Any?) {
-        if let f = field as? UITextField, f.inputAccessoryView == nil { f.inputAccessoryView = bar(); f.reloadInputViews() }
-        else if let v = field as? UITextView, v.isEditable, v.inputAccessoryView == nil { v.inputAccessoryView = bar(); v.reloadInputViews() }
+        if let f = field as? UITextField, f.inputAccessoryView?.tag != tag { f.inputAccessoryView = bar(); f.reloadInputViews() }
+        else if let v = field as? UITextView, v.isEditable, v.inputAccessoryView?.tag != tag { v.inputAccessoryView = bar(); v.reloadInputViews() }
     }
 
     private static func bar() -> UIToolbar {
         let t = UIToolbar(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
+        t.tag = tag
         // no target: it goes to whichever field has the keyboard
         let done = UIBarButtonItem(title: "Done", style: .done, target: nil, action: #selector(UIResponder.resignFirstResponder))
         done.tintColor = UIColor(Theme.accent)
