@@ -49,6 +49,8 @@ struct RecipeSheet: View {
     @AppStorage("recipe.added") private var addedJSON = "{}"   // "recipe|version" → ingredients you added (sweetcorn)
     @AppStorage("recipe.cooked") private var cookedJSON = "{}"   // "recipe|version" → what the finished pot weighed
     @State private var addingFood = false
+    @State private var renaming: String?   // the name of a food you added, being renamed
+    @State private var renameText = ""
     @AppStorage("recipe.grams") private var gramsJSON = "{}"   // "recipe|version|ingredient" → the grams you use
     @AppStorage("recipe.sides") private var sidesJSON = "[]"   // "recipe|version|ingredient" served on the side (rice)
     @State private var resizing: SwapRef?
@@ -101,6 +103,11 @@ struct RecipeSheet: View {
                 .presentationDetents([.medium, .large])
             }
             .sheet(isPresented: $addingFood) { FoodPicker { item in add(item) } }
+            .alert("Rename", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+                TextField("What is it?", text: $renameText)
+                Button("Save") { if let old = renaming { renameAdded(old, renameText) }; renaming = nil }
+                Button("Cancel", role: .cancel) { renaming = nil }
+            }
             .alert(resizing.map { "How much \($0.name.lowercased())?" } ?? "", isPresented: Binding(get: { resizing != nil }, set: { if !$0 { resizing = nil } })) {
                 TextField("grams", text: $resizeText).keyboardType(.numberPad)
                 Button("Save") {
@@ -148,6 +155,16 @@ struct RecipeSheet: View {
         var all = ((try? JSONSerialization.jsonObject(with: Data(addedJSON.utf8))) as? [String: Any]) ?? [:]
         all[recipeKey] = added + [ing]
         if let d = try? JSONSerialization.data(withJSONObject: all) { withAnimation(.snappy) { addedJSON = String(data: d, encoding: .utf8) ?? "{}" } }
+    }
+    /// A food you added (one read off a nutrition table comes in nameless) gets a proper name.
+    private func renameAdded(_ old: String, _ name: String) {
+        let n = name.trimmingCharacters(in: .whitespaces)
+        var mine = added
+        guard !n.isEmpty, let i = mine.firstIndex(where: { str($0["name"]) == old }) else { return }
+        mine[i]["name"] = n
+        var all = ((try? JSONSerialization.jsonObject(with: Data(addedJSON.utf8))) as? [String: Any]) ?? [:]
+        all[recipeKey] = mine
+        if let d = try? JSONSerialization.data(withJSONObject: all) { addedJSON = String(data: d, encoding: .utf8) ?? "{}" }
     }
 
     /// How many it serves for you, and whether the amounts scale with it or the same pot is split differently.
@@ -454,6 +471,9 @@ struct RecipeSheet: View {
                 }
                 .buttonStyle(.plain).disabled(pos(g["grams"]) == nil)
                 Menu {
+                    if g["added"] as? Bool == true && from.isEmpty {
+                        Button { renameText = str(g["name"]); renaming = str(g["name"]) } label: { Label("Rename", systemImage: "pencil") }
+                    }
                     if pos(g["grams"]) != nil {
                         Button { startResize(g, i) } label: { Label("Change amount", systemImage: "scalemass") }
                     }

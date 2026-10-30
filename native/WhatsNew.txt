@@ -1,4 +1,4 @@
-New in this build: add food to a past day you forgot to log: go back to that day on Today and use Add (or +), and it goes on that day. Foods on past days can be swiped away too. Buttons read better in the classic blue.
+New in this build: a food read off a nutrition table can be named when you add it to a meal or recipe, and renamed later with ••• then Rename. The + on Today is dark on the classic blue again.
 
 Thanks for testing! Please just use it like a normal day:
 

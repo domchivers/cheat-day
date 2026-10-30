@@ -113,6 +113,8 @@ struct MealEditor: View {
     @State private var swapping: SwapRef?
     @State private var scanFor: Int?
     @State private var scanMode: PantryScanSheet.Mode?
+    @State private var renaming: Int?
+    @State private var renameText = ""
     @AppStorage("pantry.scans") private var scansJSON = "[]"
     private var store: Store { Store.shared }
 
@@ -158,6 +160,7 @@ struct MealEditor: View {
                             .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                             // the same as a recipe's ingredients: swap in your own food, or take it out
                             Menu {
+                                Button { renameText = str(it["name"]); renaming = i } label: { Label("Rename", systemImage: "pencil") }
                                 Button { swapping = SwapRef(index: i, name: str(it["name"]), grams: Self.grams(it) ?? 0, portions: portions) } label: {
                                     Label("Swap for my own", systemImage: "arrow.left.arrow.right")
                                 }
@@ -275,6 +278,11 @@ struct MealEditor: View {
             .sheet(isPresented: $picking) {
                 FoodPicker { item in var its = list(meal["items"]); its.append(item); meal["items"] = its }
             }
+            .alert("Rename", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+                TextField("What is it?", text: $renameText)
+                Button("Save") { if let i = renaming { rename(i, renameText) }; renaming = nil }
+                Button("Cancel", role: .cancel) { renaming = nil }
+            }
             .sheet(item: $swapping) { s in
                 SwapPicker(original: s.name, grams: s.grams, portions: s.portions, foods: PantryItem.yourFoods,
                            cupboard: PantryItem.Saved.load(scansJSON)) { item in
@@ -325,6 +333,13 @@ struct MealEditor: View {
         var its = list(meal["items"]); guard i < its.count else { return }
         its[i]["side"] = its[i]["side"] as? Bool == true ? nil : true
         withAnimation { meal["items"] = its }
+    }
+
+    private func rename(_ i: Int, _ name: String) {
+        var its = list(meal["items"]); guard i < its.count else { return }
+        let n = name.trimmingCharacters(in: .whitespaces); guard !n.isEmpty else { return }
+        its[i]["name"] = n
+        meal["items"] = its
     }
 
     private func remove(_ i: Int) {
@@ -510,11 +525,16 @@ private struct GramsStep: View {
     let kcal: Double
     var done: (JSON) -> Void
     @State private var text = ""
+    @State private var name = ""
     private var k100: Double { FoodMath.kcalPer100(basis) ?? 0 }
     private var grams: Double { Double(text.replacingOccurrences(of: ",", with: ".")) ?? 0 }
 
     var body: some View {
         Form {
+            // a nutrition table doesn't say what the food is: name it here (or change a scanned name)
+            Section {
+                TextField("What is it?", text: $name).font(.headline)
+            } header: { Text("Name") } footer: { Text("Left blank, it's called \"Scanned food\". You can rename it later with •••.") }
             Section {
                 HStack {
                     TextField("Grams", text: $text).keyboardType(.decimalPad).font(.title2.weight(.bold))
@@ -525,13 +545,16 @@ private struct GramsStep: View {
                         ForEach([25.0, 50, 100, 150, 200, 250], id: \.self) { g in Chip(text: "\(Fmt.int(g)) g", on: grams == g) { text = Fmt.int(g) } }
                     }
                 }
-            } header: { Text(str(basis["name"])) } footer: {
+            } header: { Text("How much") } footer: {
                 Text("\(Fmt.int(k100 * grams / 100)) kcal\(num(basis["p100"]).map { " · \(Fmt.one($0 * grams / 100))g protein" } ?? "")")
             }
             Section {
                 Button("Add to the meal") {
                     var item = FoodMath.basisOf(basis)
                     item["id"] = uid(); item["grams"] = grams; item["kcal"] = Int((k100 * grams / 100).rounded())
+                    let n = name.trimmingCharacters(in: .whitespaces)
+                    item["name"] = n.isEmpty ? "Scanned food" : n
+                    item.removeValue(forKey: "askName")
                     done(item)
                 }
                 .font(.headline).disabled(grams <= 0)
@@ -540,7 +563,10 @@ private struct GramsStep: View {
         .keyboardDone()
         .navigationTitle("How much?")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear { if text.isEmpty { text = Fmt.int((FoodMath.amounts(basis, kcal: kcal).grams ?? 100).rounded()) } }
+        .onAppear {
+            if text.isEmpty { text = Fmt.int((FoodMath.amounts(basis, kcal: kcal).grams ?? 100).rounded()) }
+            if name.isEmpty { name = str(basis["name"]) }
+        }
     }
 }
 

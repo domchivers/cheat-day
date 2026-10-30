@@ -657,11 +657,16 @@ struct TodayView: View {
 
     private var addButton: some View {
         Button { openAdd(offset == 0 ? Meals.now : "Dinner") } label: {
-            Image(systemName: "plus").font(.title2.weight(.bold)).foregroundStyle(Theme.onAccent)
-                .frame(width: 62, height: 62).background(Theme.accent, in: Circle())
-                .tourSpot(.add)
-                .shadow(color: .black.opacity(0.4), radius: 14, y: 8)
+            ZStack {
+                Circle().fill(Theme.accent)
+                Image(systemName: "plus").font(.title2.weight(.bold)).symbolRenderingMode(.monochrome).foregroundColor(Theme.onAccent)
+            }
+            .frame(width: 62, height: 62)
+            .tourSpot(.add)
+            .shadow(color: .black.opacity(0.4), radius: 14, y: 8)
         }
+        // plain: the default style tints the + itself, which left it white on classic's light blue
+        .buttonStyle(.plain)
         .padding(.trailing, 22).padding(.bottom, 16)
         .accessibilityLabel("Add food")
     }
