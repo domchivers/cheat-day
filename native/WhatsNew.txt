@@ -1,4 +1,4 @@
-New in this build: easier to read in every colour: selected chips, days and tabs now use white text on the deep colours.
+New in this build: pick the app's colour in Settings → Colour (Plum, Ocean, Teal, Forest, Rust, Crimson, Gold, Berry). It stays the classic blue unless you change it, and selected chips read clearly in every colour.
 
 Thanks for testing! Please just use it like a normal day:
 

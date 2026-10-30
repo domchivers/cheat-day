@@ -10,7 +10,7 @@ enum AppConfig {
 @main
 struct CheatDaysApp: App {
     @UIApplicationDelegateAdaptor(PushDelegate.self) private var pushDelegate
-    @AppStorage(Palette.key) private var theme = "plum"   // the colour picked in Settings, so the tint follows it
+    @AppStorage(Palette.key) private var theme = "classic"   // the colour picked in Settings, so the tint follows it
     init() { KeyboardDone.install() }
     var body: some Scene {
         WindowGroup {

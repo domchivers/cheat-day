@@ -11,7 +11,10 @@ struct Palette: Identifiable {
     var onAccent: Color = .white
 
     private static func hex(_ v: Int) -> Color { Color(red: Double(v >> 16 & 255) / 255, green: Double(v >> 8 & 255) / 255, blue: Double(v & 255) / 255) }
+    /// Classic blue first: it's what everyone has until they pick another.
     static let all: [Palette] = [
+        Palette(id: "classic", name: "Classic blue", accent: Color(red: 0.49, green: 0.77, blue: 1.0), hero: Color(red: 0.06, green: 0.10, blue: 0.15),
+                heroLabel: Color(red: 0.56, green: 0.73, blue: 0.87), track: Color(red: 0.11, green: 0.17, blue: 0.23), dinner: Color(red: 0.49, green: 0.77, blue: 1.0), onAccent: .black),
         Palette(id: "plum", name: "Plum", accent: hex(0x6C3FE0), hero: hex(0x16102A), heroLabel: hex(0xA998DE), track: hex(0x21183D), dinner: hex(0x8A63F0)),
         Palette(id: "ocean", name: "Ocean", accent: hex(0x2F6FE0), hero: hex(0x0D1626), heroLabel: hex(0x8FA9D6), track: hex(0x15233D), dinner: hex(0x5B8FF0)),
         Palette(id: "teal", name: "Teal", accent: hex(0x0F8F8A), hero: hex(0x0C1B1C), heroLabel: hex(0x86BDB9), track: hex(0x122B2D), dinner: hex(0x2FB3AD)),
@@ -19,9 +22,7 @@ struct Palette: Identifiable {
         Palette(id: "rust", name: "Rust", accent: hex(0xD0601C), hero: hex(0x1F130D), heroLabel: hex(0xD4A487), track: hex(0x311D12), dinner: hex(0xEC8443)),
         Palette(id: "crimson", name: "Crimson", accent: hex(0xC8313F), hero: hex(0x200F11), heroLabel: hex(0xD39599), track: hex(0x311619), dinner: hex(0xE65663), snacks: hex(0xB99CFF)),
         Palette(id: "gold", name: "Gold", accent: hex(0xB8860B), hero: hex(0x1D170B), heroLabel: hex(0xCDB27A), track: hex(0x2E240E), dinner: hex(0xE0AA35)),
-        Palette(id: "berry", name: "Berry", accent: hex(0xD6337A), hero: hex(0x1F1018), heroLabel: hex(0xD695B4), track: hex(0x2E1622), dinner: hex(0xE8559A), snacks: hex(0xB99CFF)),
-        Palette(id: "classic", name: "Classic blue", accent: Color(red: 0.49, green: 0.77, blue: 1.0), hero: Color(red: 0.06, green: 0.10, blue: 0.15),
-                heroLabel: Color(red: 0.56, green: 0.73, blue: 0.87), track: Color(red: 0.11, green: 0.17, blue: 0.23), dinner: Color(red: 0.49, green: 0.77, blue: 1.0), onAccent: .black)
+        Palette(id: "berry", name: "Berry", accent: hex(0xD6337A), hero: hex(0x1F1018), heroLabel: hex(0xD695B4), track: hex(0x2E1622), dinner: hex(0xE8559A), snacks: hex(0xB99CFF))
     ]
     static let key = "theme"
     static func named(_ id: String) -> Palette { all.first { $0.id == id } ?? all[0] }
@@ -34,7 +35,7 @@ struct Palette: Identifiable {
 final class ThemeChoice {
     static let shared = ThemeChoice()
     var id: String { didSet { UserDefaults.standard.set(id, forKey: Palette.key) } }
-    private init() { id = UserDefaults.standard.string(forKey: Palette.key) ?? "plum" }
+    private init() { id = UserDefaults.standard.string(forKey: Palette.key) ?? "classic" }
 }
 
 /// The look from the prototype: near-black, one accent colour (yours to pick), rounded type.
