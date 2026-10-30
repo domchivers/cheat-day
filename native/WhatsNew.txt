@@ -1,4 +1,4 @@
-New in this build: a planned meal and its recipe now show the same calories and protein (the recipe uses the idea's own ingredients, and protein can't go above what the food really has). Also: tips are about protein, not bread: toast or crumpets alone for lunch or dinner gets a word (eggs on toast or a ham sandwich is fine), and the tip card on Today is tidier, like the weekly check-in, with a link to ideas for your next meal.
+New in this build: when planning a meal you can set how much protein it should have, and each idea shows whether it really gets there (a green tick, or amber if what you have in can't reach it).
 
 Thanks for testing! Please just use it like a normal day:
 

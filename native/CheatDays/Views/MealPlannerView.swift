@@ -50,6 +50,7 @@ struct MealPlannerView: View {
     @State private var added: Set<String> = []
     @State private var open: IdeaRef?
     @State private var cheat = false
+    @State private var proteinSet: Double?   // the protein you asked for this meal; nil is your share of the day's goal
     @FocusState private var typing: Bool
     @FocusState private var naming: String?   // renaming a cupboard food
     private var store: Store { Store.shared }
@@ -58,6 +59,9 @@ struct MealPlannerView: View {
     private var left: Double { max(0, store.budgetToday - store.eaten) }
     private var proteinLeft: Double? { store.proteinGoal.map { max(0, $0 - store.macros(store.todayItems).p) } }
     private var history: [(name: String, days: Int, kcal: Double)] { store.mealHistory(meal) }
+    /// This meal's share of the protein goal, to the nearest 5 g (25 g without a goal).
+    private var proteinShare: Double { ((store.mealTarget(meal).protein ?? 25) / 5).rounded() * 5 }
+    private var proteinAim: Double { proteinSet ?? proteinShare }
 
     var body: some View {
         NavigationStack {
@@ -66,7 +70,7 @@ struct MealPlannerView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Picker("Meal", selection: $meal) { ForEach(["Breakfast", "Lunch", "Dinner"], id: \.self) { Text($0).tag($0) } }
                         .pickerStyle(.segmented)
-                        .onChange(of: meal) { _, _ in ideas = []; problem = nil }
+                        .onChange(of: meal) { _, _ in ideas = []; problem = nil; proteinSet = nil }
                     let t = store.mealTarget(meal)
                     Text("Aim for about \(Fmt.int(t.kcal)) kcal\(t.protein.map { " · \(Int($0)) g protein" } ?? "") · \(Fmt.int(left)) left today")
                         .font(.subheadline).foregroundStyle(.secondary)
@@ -78,6 +82,8 @@ struct MealPlannerView: View {
                         .lineLimit(2...4).focused($typing)
                         .padding(12).background(Theme.hero, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     cupboard
+                    Eyebrow(text: "Protein for this meal", color: Theme.heroLabel).padding(.top, 4)
+                    proteinRow
                     Button { typing = false; Task { await suggest() } } label: {
                         Label(busy ? "Thinking…" : pantry.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Give me ideas" : "What can I make?", systemImage: "sparkles")
                             .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 8)
@@ -166,6 +172,34 @@ struct MealPlannerView: View {
         }
     }
 
+    /// How much protein the ideas should reach, starting at this meal's share of the day's goal; 5 g a tap.
+    private var proteinRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Protein").font(.headline)
+                    Text("Your \(meal.lowercased()) share: \(Int(proteinShare)) g").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                (Text("\(Int(proteinAim))").font(.title2.weight(.heavy)) + Text(" g").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary))
+                    .monospacedDigit()
+                HStack(spacing: 0) {
+                    Button { proteinSet = max(5, proteinAim - 5) } label: { Image(systemName: "minus").frame(width: 40, height: 34) }
+                        .accessibilityLabel("Less protein")
+                    Divider().frame(height: 20)
+                    Button { proteinSet = min(120, proteinAim + 5) } label: { Image(systemName: "plus").frame(width: 40, height: 34) }
+                        .accessibilityLabel("More protein")
+                }
+                .buttonStyle(.plain).font(.body.weight(.bold))
+                .background(Theme.track, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            .padding(12)
+            .background(Theme.hero, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            Text("Ideas aim for at least this, counted from their real ingredients.").font(.caption).foregroundStyle(.secondary)
+        }
+        .sensoryFeedback(.selection, trigger: proteinAim)
+    }
+
     /// What you usually have at this meal, each with a lighter pick from the food list when there's a real saving.
     @ViewBuilder private var usual: some View {
         let top = history.filter { $0.days >= 2 }.prefix(3)
@@ -202,7 +236,13 @@ struct MealPlannerView: View {
                     FoodDot(name: name, size: 36)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(name).font(.subheadline.weight(.bold)).multilineTextAlignment(.leading)
-                        Text("\(Fmt.int(kcal)) kcal · \(Int(num(m["protein"]) ?? 0)) g protein\(num(m["minutes"]).map { " · \(Int($0)) min" } ?? "") · recipe")
+                        // the protein in green with a tick when it reaches what you asked for, amber when it falls short
+                        let p = num(m["protein"]) ?? 0, aim = num(m["aim"])
+                        let hit = aim.map { p >= $0 - 0.5 }
+                        (Text("\(Fmt.int(kcal)) kcal · ")
+                         + Text("\(Int(p.rounded())) g protein\(hit == true ? " ✓" : "")").fontWeight(hit == nil ? .regular : .bold)
+                            .foregroundStyle(hit == true ? Theme.walk : hit == false ? Theme.warn : Color.secondary)
+                         + Text("\(num(m["minutes"]).map { " · \(Int($0)) min" } ?? "") · recipe"))
                             .font(.caption).foregroundStyle(.secondary)
                         if !str(m["why"]).isEmpty { Text(str(m["why"])).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.leading) }
                         if !str(m["uses"]).isEmpty { Text(str(m["uses"])).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.leading) }
@@ -264,7 +304,7 @@ struct MealPlannerView: View {
     private func suggest() async {
         busy = true; problem = nil
         defer { busy = false }
-        let target = store.mealTarget(meal)
+        let target = store.mealTarget(meal), aim = proteinAim
         let had = history.prefix(20).map { "\($0.name) (\($0.days)×)" }.joined(separator: ", ")
         let cuisines = (store.habits["cuisines"] as? [String] ?? []).joined(separator: ", ")
         let cook = cooking == Self.cookChoices[0] ? "No cooking: assembling, shop-bought or a microwave only."
@@ -287,7 +327,8 @@ struct MealPlannerView: View {
         let labels = scanned.enumerated().map { "\($0.offset + 1). \($0.element.prompt)" }.joined(separator: "\n")
         let prompt = """
         Suggest 3 \(meal.lowercased()) ideas for someone in \(Plan.country), one portion each.
-        Size each idea for this one meal: about \(Int(target.kcal)) kcal (between \(Int(target.kcal - 120)) and \(Int(target.kcal + 60))), not the whole day's \(Int(left)) kcal left: they still have other meals and snacks to come.\(target.protein.map { " Aim for around \(Int($0)) g protein each." } ?? " Lean high in protein.")
+        Size each idea for this one meal: about \(Int(target.kcal)) kcal (between \(Int(target.kcal - 120)) and \(Int(target.kcal + 60))), not the whole day's \(Int(left)) kcal left: they still have other meals and snacks to come.
+        Each idea needs at least \(Int(aim)) g protein, from real portions of protein foods (meat, fish, eggs, dairy, beans, tofu): protein per ingredient must be its true standard value, never raised to reach the aim. If what they have in can't honestly get there, get as close as you can.
         What they've actually had for \(meal.lowercased()) over the last 4 weeks: \(had.isEmpty ? "nothing logged yet" : had).
         Match that style: if it's mostly one cuisine (Asian dinners, say), stay in it and use the ingredients and dishes they clearly buy, just lighter or better balanced. One idea can be a healthier take on something they have often.
         Cuisines they like: \(cuisines.isEmpty ? "not said" : cuisines). \(cook)
@@ -299,7 +340,7 @@ struct MealPlannerView: View {
         do {
             let a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: true, tries: 3)
             let got = list(a["ideas"]).map { i -> JSON in
-                var c = i; c["meal"] = meal
+                var c = i; c["meal"] = meal; c["aim"] = aim
                 return Self.withLabels(c, scanned)
             }
             withAnimation(.snappy) { ideas = got }

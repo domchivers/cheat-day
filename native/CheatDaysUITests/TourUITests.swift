@@ -29,6 +29,14 @@ final class TourUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Photo of a label"].exists)
         XCTAssertTrue(app.textFields.matching(NSPredicate(format: "value == %@", "Tesco Chicken breast fillets")).firstMatch.exists)
         let a = XCTAttachment(screenshot: app.screenshot()); a.name = "plan-cupboard"; a.lifetime = .keepAlways; add(a)
+
+        // the protein for this meal: starts at its share (25 g with no goal), 5 g a tap
+        let more = app.buttons["More protein"]
+        for _ in 0..<3 where !more.isHittable { app.swipeUp() }
+        XCTAssertTrue(more.exists)
+        XCTAssertTrue(app.staticTexts["Your dinner share: 25 g"].exists || app.staticTexts["Your lunch share: 25 g"].exists || app.staticTexts["Your breakfast share: 25 g"].exists)
+        more.tap(); more.tap()
+        let b = XCTAttachment(screenshot: app.screenshot()); b.name = "plan-protein"; b.lifetime = .keepAlways; add(b)
     }
 
     func testRecipeSwap() {
