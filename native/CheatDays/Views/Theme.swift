@@ -334,15 +334,21 @@ enum KeyboardDone {
     /// SwiftUI gives its text fields an (empty) accessory view of its own, so ours replaces whatever's there: nothing
     /// in the app uses SwiftUI's keyboard toolbar any more.
     private static func attach(_ field: Any?) {
-        if let f = field as? UITextField, f.inputAccessoryView?.tag != tag { f.inputAccessoryView = bar(); f.reloadInputViews() }
-        else if let v = field as? UITextView, v.isEditable, v.inputAccessoryView?.tag != tag { v.inputAccessoryView = bar(); v.reloadInputViews() }
+        if let f = field as? UITextField, f.inputAccessoryView?.tag != tag { f.inputAccessoryView = bar(for: f); f.reloadInputViews() }
+        else if let v = field as? UITextView, v.isEditable, v.inputAccessoryView?.tag != tag { v.inputAccessoryView = bar(for: v); v.reloadInputViews() }
     }
 
-    private static func bar() -> UIToolbar {
+    private static func bar(for field: UIView) -> UIToolbar {
         let t = UIToolbar(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
         t.tag = tag
-        // no target: it goes to whichever field has the keyboard
-        let done = UIBarButtonItem(title: "Done", style: .done, target: nil, action: #selector(UIResponder.resignFirstResponder))
+        // told which field it belongs to: the bar sits in the keyboard's window, outside the field's responder chain,
+        // so an action sent up the chain from it never reached the field
+        let done = UIBarButtonItem(title: "Done", style: .done, primaryAction: UIAction { [weak field] _ in
+            if let field, field.isFirstResponder { field.resignFirstResponder() }
+            else { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
+            // SwiftUI focus can hold on: the window gives it up too
+            field?.window?.endEditing(true)
+        })
         done.tintColor = UIColor(Theme.accent)
         t.items = [UIBarButtonItem(systemItem: .flexibleSpace), done]
         t.sizeToFit()
