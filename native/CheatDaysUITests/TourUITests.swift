@@ -88,7 +88,7 @@ final class TourUITests: XCTestCase {
         XCTAssertTrue(done.waitForExistence(timeout: 2), "Done above the keyboard")
         let k = XCTAttachment(screenshot: app.screenshot()); k.name = "keyboard-done"; k.lifetime = .keepAlways; add(k)
         done.tap()
-        XCTAssertFalse(app.keyboards.firstMatch.waitForExistence(timeout: 1))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 3), "Done puts the keyboard away")
         app.buttons["Screenshot"].tap()
         let b = XCTAttachment(screenshot: app.screenshot()); b.name = "weigh-in-screenshot"; b.lifetime = .keepAlways; add(b)
     }
