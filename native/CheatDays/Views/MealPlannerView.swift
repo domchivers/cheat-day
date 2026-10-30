@@ -236,18 +236,26 @@ struct MealPlannerView: View {
     static func withLabels(_ idea: JSON, _ scanned: [PantryItem]) -> JSON {
         let parts = list(idea["ingredients"])
         guard !parts.isEmpty else { return idea }
-        var m = idea, k = 0.0, p = 0.0, c = 0.0, f = 0.0, used: [String] = []
+        var m = idea, k = 0.0, p = 0.0, c = 0.0, f = 0.0, used: [String] = [], checked: [JSON] = []
         for x in parts {
             let g = num(x["grams"]) ?? 0, i = Int(num(x["label"]) ?? 0)
+            var y = x
             if i >= 1, i <= scanned.count, g > 0 {
                 let s = scanned[i - 1]
-                k += s.kcal100 * g / 100; p += (s.p100 ?? 0) * g / 100; c += (s.c100 ?? 0) * g / 100; f += (s.f100 ?? 0) * g / 100
+                y["kcal"] = (s.kcal100 * g / 100).rounded(); y["protein"] = (s.p100 ?? 0) * g / 100; y["carbs"] = (s.c100 ?? 0) * g / 100; y["fat"] = (s.f100 ?? 0) * g / 100
                 used.append("\(Fmt.int(g)) g \(s.name)")
             } else {
-                k += num(x["kcal"]) ?? 0; p += num(x["protein"]) ?? 0; c += num(x["carbs"]) ?? 0; f += num(x["fat"]) ?? 0
+                // the AI's own numbers, checked: protein no more than the food can have, calories that fit the macros
+                let name = str(x["name"]), pp = Sanity.protein(name: name, grams: g > 0 ? g : nil, p: num(x["protein"]) ?? 0)
+                y["protein"] = pp
+                y["kcal"] = Sanity.check(name: name, grams: g > 0 ? g : nil, kcal: num(x["kcal"]) ?? 0, p: pp, c: num(x["carbs"]), f: num(x["fat"])).kcal
             }
+            k += num(y["kcal"]) ?? 0; p += num(y["protein"]) ?? 0; c += num(y["carbs"]) ?? 0; f += num(y["fat"]) ?? 0
+            checked.append(y)
         }
         guard k > 0 else { return idea }
+        // the totals are the ingredients added up, and the recipe is written from these same ingredients
+        m["ingredients"] = checked
         m["kcal"] = k.rounded(); m["protein"] = p.rounded(); m["carbs"] = c.rounded(); m["fat"] = f.rounded()
         if !used.isEmpty { m["uses"] = used.joined(separator: ", "); m["fromLabels"] = true }
         return m

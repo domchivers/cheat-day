@@ -35,7 +35,25 @@ enum Sanity {
             return raw || !cooked ? Range(label: "raw beef chuck", lo: 140, hi: 240, proteinMax: 22.5)
                                   : Range(label: "cooked beef chuck", lo: 190, hi: 320, proteinMax: 33)
         }
+        // mayo before eggs: "whole-egg mayonnaise" is mayo
+        if has(["mayo", "aioli"]) { return has(["light", "lite", "low fat", "reduced"]) ? Range(label: "light mayonnaise", lo: 200, hi: 420, proteinMax: 2)
+                                                                                       : Range(label: "mayonnaise", lo: 560, hi: 740, proteinMax: 2) }
+        func word(_ p: String) -> Bool { n.range(of: p, options: .regularExpression) != nil }
+        if word(#"\beggs?\b"#) && !has(["noodle", "nog", "egg white", "pasta", "fried rice", "scotch"]) {
+            return Range(label: "eggs", lo: 125, hi: 210, proteinMax: 14)
+        }
+        if word(#"\b(bread|toast|buns?|rolls?|bagels?|baguette|sourdough|pitta|pita|crumpets?)\b"#)
+            && !has(["protein", "breadcrumb", "garlic bread", "sandwich", "pudding", "rolled", "spring roll", "sausage roll", "sushi", "cinnamon", "french toast"]) {
+            return Range(label: "bread", lo: 200, hi: 300, proteinMax: 13)
+        }
         return nil
+    }
+
+    /// Protein no more than that kind of food can have (an AI reaching for a protein aim wrote 45 g into an egg
+    /// sandwich); unchanged when there's no range or no weight to go on.
+    static func protein(name: String, grams: Double?, p: Double) -> Double {
+        guard let g = grams, g > 0, let r = range(name), p / g * 100 > r.proteinMax * 1.05 else { return p }
+        return (r.proteinMax * g / 100 * 10).rounded() / 10
     }
 
     static func energy(p: Double, c: Double, f: Double) -> Double { 4 * p + 4 * c + 9 * f }

@@ -620,9 +620,17 @@ extension RecipeMaker {
             "cuisine": ["type": "string"] as JSON, "minutes": ["type": "number"] as JSON, "portions": ["type": "number"] as JSON,
             "authentic": version(false), "healthier": version(true)
         ] as JSON, "required": ["cuisine", "minutes", "portions", "authentic", "healthier"]]
+        // an idea from the planner already has its ingredients (and the numbers shown on its card): the recipe keeps
+        // them, so opening it doesn't show a different meal with different calories
+        let given = list(idea["ingredients"]).map { g -> String in
+            "\(Int(num(g["grams"]) ?? 0)) g \(str(g["name"])) (\(Int(num(g["kcal"]) ?? 0)) kcal, \(Fmt.int(num(g["protein"]) ?? 0)) g protein, \(Fmt.int(num(g["carbs"]) ?? 0)) g carbs, \(Fmt.int(num(g["fat"]) ?? 0)) g fat)"
+        }
+        let base = given.isEmpty
+            ? "authentic: how it's really made in its home cuisine, true to the dish, with ingredients they can buy there."
+            : "authentic: exactly these ingredients, amounts and numbers, one portion (portions 1), adding only a pinch of salt or pepper if needed: \(given.joined(separator: "; ")). Give each a cook's amount for those grams."
         let prompt = """
         Write the recipe for "\(str(idea["name"]))" for someone in \(Plan.country) who \(Habits.cookText(str(store.habits["cook"]))).
-        authentic: how it's really made in its home cuisine, true to the dish, with ingredients they can buy there. Just the ingredients for now: the method comes after.
+        \(base) Just the ingredients for now: the method comes after.
         healthier: the same dish with its character kept, lighter or higher in protein (less oil and butter, leaner cuts, more veg, swaps that taste close), and list the changes.
         If it's really a takeaway order or shop-bought, authentic is what to buy or order and how to put it together, healthier is the lighter choice.
         Portions 1 to 4. Grams are as weighed; kcal and macros per ingredient from standard reference values, so they add up, and each ingredient's kcal ≈ 4 × protein + 4 × carbs + 9 × fat.
@@ -637,8 +645,10 @@ extension RecipeMaker {
             var ver = dict(a[v])
             ver["ingredients"] = list(ver["ingredients"]).map { g -> JSON in
                 var x = g
+                let p = num(g["protein_g"]).map { Sanity.protein(name: str(g["name"]), grams: num(g["grams"]), p: $0) }
+                if let p { x["protein_g"] = p }
                 x["kcal"] = Sanity.check(name: str(g["name"]), grams: num(g["grams"]), kcal: num(g["kcal"]) ?? 0,
-                                         p: num(g["protein_g"]), c: num(g["carbs_g"]), f: num(g["fat_g"])).kcal
+                                         p: p, c: num(g["carbs_g"]), f: num(g["fat_g"])).kcal
                 return x
             }
             out[v] = ver

@@ -63,5 +63,19 @@ final class SanityTests: XCTestCase {
         XCTAssertEqual(Sanity.range("Beef chuck, raw")?.label, "raw beef chuck")
         XCTAssertNil(Sanity.range("Berg pepperoni"))   // not a pepper
         XCTAssertNil(Sanity.range("Water"))
+        XCTAssertEqual(Sanity.range("Full-egg mayonnaise")?.label, "mayonnaise", "mayo, not eggs")
+        XCTAssertEqual(Sanity.range("Eggs")?.label, "eggs")
+        XCTAssertEqual(Sanity.range("White sandwich bread")?.label, "bread")
+        XCTAssertNil(Sanity.range("Eggplant"), "not an egg")
+        XCTAssertNil(Sanity.range("Rolled oats"), "not a roll")
+        XCTAssertNil(Sanity.range("Bunch of coriander"), "not a bun")
+    }
+
+    func testProteinNoMoreThanTheFoodHas() {
+        // the planner's egg sandwich: 2 large eggs (100 g) written down with 30 g protein
+        XCTAssertEqual(Sanity.protein(name: "Eggs", grams: 100, p: 30), 14)
+        XCTAssertEqual(Sanity.protein(name: "Eggs", grams: 100, p: 12.6), 12.6, "a real figure is kept")
+        XCTAssertEqual(Sanity.protein(name: "White bread", grams: 80, p: 20), 10.4)
+        XCTAssertEqual(Sanity.protein(name: "Mystery dish", grams: 300, p: 60), 60, "nothing to go on: unchanged")
     }
 }
