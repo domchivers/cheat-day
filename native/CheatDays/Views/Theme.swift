@@ -343,12 +343,13 @@ enum KeyboardDone {
         t.tag = tag
         // told which field it belongs to: the bar sits in the keyboard's window, outside the field's responder chain,
         // so an action sent up the chain from it never reached the field
-        let done = UIBarButtonItem(title: "Done", style: .done, primaryAction: UIAction { [weak field] _ in
+        let done = UIBarButtonItem(title: "Done", primaryAction: UIAction { [weak field] _ in
             if let field, field.isFirstResponder { field.resignFirstResponder() }
             else { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
             // SwiftUI focus can hold on: the window gives it up too
             field?.window?.endEditing(true)
         })
+        done.style = .done
         done.tintColor = UIColor(Theme.accent)
         t.items = [UIBarButtonItem(systemItem: .flexibleSpace), done]
         t.sizeToFit()
