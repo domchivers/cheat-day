@@ -43,6 +43,9 @@ struct TodayView: View {
     @AppStorage("dailyTips.seen") private var dailyTipsSeen = ""
     @State private var daily: DailyReview?
     @State private var mealCheck: MealCheck?
+    /// How long after the last food added to a meal before it's looked at: time to add the rest of it.
+    static let mealSettles: Double = 15 * 60
+    @Environment(\.scenePhase) private var phase
     @AppStorage("mealCheck.seen") private var mealCheckSeen = ""   // "date|Lunch|Dinner": each shown once a day
     @State private var openIdea: IdeaRef?
     @State private var sendingItem: JSON?
@@ -209,18 +212,26 @@ struct TodayView: View {
                 }
                 .presentationDetents([.medium, .large])
             }
-            .task(id: "\(store.todayItems.count)|\(addChoice == nil)|\(editing == nil)|\(flow == nil)") {
-                // lunch or dinner just logged and every other sheet closed: a word about it, once, if it needs one
-                guard dailyTipsOn, offset == 0, addChoice == nil, editing == nil, flow == nil, daily == nil, mealCheck == nil, openIdea == nil,
+            .task(id: "\(store.todayItems.count)|\(addChoice == nil)|\(editing == nil)|\(flow == nil)|\(daily == nil)|\(openIdea == nil)|\(showPlanner)|\(phase == .active)") {
+                // lunch or dinner logged and every other sheet closed: a word about it, once, if it needs one
+                guard dailyTipsOn, phase == .active, offset == 0, addChoice == nil, editing == nil, flow == nil, daily == nil, mealCheck == nil, openIdea == nil,
                       !showPlanner, !showCheat, !showCheckIn, !Tour.shared.active else { return }
                 try? await Task.sleep(for: .seconds(1))
-                guard !Task.isCancelled else { return }
-                let seen = mealCheckSeen.hasPrefix(store.today + "|") ? mealCheckSeen : store.today
-                let now = Meals.byTime(Calendar.current.component(.hour, from: Date()))
-                for meal in [now, "Lunch", "Dinner"] where !seen.contains("|" + meal) {
-                    // only a meal logged in the last few hours: not lunch brought up when the app's opened at night
-                    guard store.todayItems.contains(where: { Meals.of($0) == meal && (ISO.date(str($0["addedAt"])).map { Date().timeIntervalSince($0) < 3 * 3600 } ?? false) }) else { continue }
-                    if let c = store.mealCheck(meal) { mealCheckSeen = seen + "|" + meal; mealCheck = c; return }
+                while !Task.isCancelled {
+                    let seen = mealCheckSeen.hasPrefix(store.today + "|") ? mealCheckSeen : store.today
+                    let now = Meals.byTime(Calendar.current.component(.hour, from: Date()))
+                    var wait: Double?
+                    for meal in [now, "Lunch", "Dinner"] where !seen.contains("|" + meal) {
+                        guard let last = store.todayItems.filter({ Meals.of($0) == meal }).compactMap({ ISO.date(str($0["addedAt"])) }).max() else { continue }
+                        let age = Date().timeIntervalSince(last)
+                        // only a meal logged in the last few hours: not lunch brought up when the app's opened at night
+                        guard age < 3 * 3600 else { continue }
+                        // and once it's finished: a slice of toast with the eggs still to add isn't the meal yet
+                        if age < Self.mealSettles { wait = min(wait ?? .infinity, Self.mealSettles - age); continue }
+                        if let c = store.mealCheck(meal) { mealCheckSeen = seen + "|" + meal; mealCheck = c; return }
+                    }
+                    guard let w = wait else { return }
+                    try? await Task.sleep(for: .seconds(w + 1))   // anything added meanwhile starts this over
                 }
             }
             .sheet(isPresented: $showCheat) { CheatDayView().presentationDragIndicator(.visible) }

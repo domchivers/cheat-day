@@ -1,4 +1,4 @@
-New in this build: a reminder ahead of each meal (7am breakfast, 12pm lunch, 5pm dinner) so there's time to plan it: tap it and the planner opens on that meal. It skips a meal you've already logged, and cheat days.
+New in this build: the word after lunch or dinner waits until you've finished logging the meal (15 minutes after the last thing added), so toast with eggs still to add isn't judged on the toast.
 
 Thanks for testing! Please just use it like a normal day:
 
