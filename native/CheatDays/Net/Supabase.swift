@@ -66,6 +66,20 @@ final class Supabase {
         _ = try await rest("/rest/v1/days", method: "POST", body: [row], prefer: "resolution=merge-duplicates")
     }
 
+    /// My own shared day summaries, newest first (what friends saw of each day, as it ended).
+    func myDays() async throws -> [JSON] {
+        guard let id = userId else { return [] }
+        let d = try await rest("/rest/v1/days?user_id=eq.\(id)&select=day,kcal,items,updated_at&order=day.desc&limit=200")
+        return (try JSONSerialization.jsonObject(with: d) as? [JSON]) ?? []
+    }
+
+    /// The daily cloud snapshots of my record (kept by a database trigger), newest first.
+    func backups(limit: Int = 30) async throws -> [JSON] {
+        guard let id = userId else { return [] }
+        let d = try await rest("/rest/v1/cheatday_backups?user_id=eq.\(id)&select=created_at,data&order=created_at.desc&limit=\(limit)")
+        return (try JSONSerialization.jsonObject(with: d) as? [JSON]) ?? []
+    }
+
     /// A photo into the public "photos" bucket (the web app's uploadPhoto); returns its address.
     func uploadPhoto(_ jpeg: Data) async throws -> String {
         guard let id = userId else { throw APIError(status: 401, message: "Not signed in") }

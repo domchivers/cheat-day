@@ -216,6 +216,7 @@ final class Store {
             applyBadgeOp(op, to: &d)
             Assistant.applyChatOp(op, to: &d)
             Tweak.applyOp(op, to: &d)
+            applyRestore(op, to: &d)
         }
     }
 

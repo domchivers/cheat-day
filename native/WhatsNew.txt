@@ -1,4 +1,4 @@
-New in this build: the word after lunch or dinner waits until you've finished logging the meal (15 minutes after the last thing added), so toast with eggs still to add isn't judged on the toast.
+New in this build: food that went missing from past days (usually dinner and evening snacks) is found and put back, once, from what you logged that day. Nothing you deleted comes back.
 
 Thanks for testing! Please just use it like a normal day:
 

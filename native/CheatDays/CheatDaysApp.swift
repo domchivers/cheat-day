@@ -204,6 +204,7 @@ struct MainTabs: View {
         }
         .task {
             await Store.shared.sync()   // waits for the account to come down, even if signing in started the sync
+            Task { await Store.shared.repairHistory() }   // once per account: food lost from past days put back
             // just signed in: the whole setup, each step with Skip; otherwise only what an account still needs
             if UserDefaults.standard.bool(forKey: "signin.setup") || Store.shared.needsOnboarding { onboarding = true }
             else if Store.shared.needsHabits { habits = true }
