@@ -1,4 +1,4 @@
-New in this build: every Done button now looks the same. Days that wrongly showed red after a restore are put right, including days you raised your calories. The old import link on Body is gone.
+New in this build: cheat day planning is much better. What you type now counts, it plans the rest of today around what you have eaten, and you can log, open or swap each meal. Your body-fat goal also stays set.
 
 Thanks for testing! Please just use it like a normal day:
 

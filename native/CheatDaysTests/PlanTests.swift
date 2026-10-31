@@ -53,4 +53,24 @@ final class PlanTests: XCTestCase {
         XCTAssertEqual(num(dict(d["dayBudgets"])["6"]), 2600)
         XCTAssertEqual(str(dict(d["plan"])["spread"]), "cheat")
     }
+
+    func testWhatsTypedForACheatDayCounts() {
+        XCTAssertEqual(CheatPlan.whats(from: " Korean fried chicken wings, ceviche ,, "), ["Korean fried chicken wings", "Ceviche"])
+        XCTAssertEqual(CheatPlan.whats(from: "  "), [])
+    }
+
+    func testACheatDaySlotGoesUnderTheRightMeal() {
+        XCTAssertEqual(CheatPlan.meal(of: ["time": "08:30"]), "Breakfast")
+        XCTAssertEqual(CheatPlan.meal(of: ["time": "13:00"]), "Lunch")
+        XCTAssertEqual(CheatPlan.meal(of: ["time": "19:30"]), "Dinner")
+        XCTAssertEqual(CheatPlan.meal(of: ["time": "19:30", "extra": true]), "Snacks")
+    }
+
+    func testALoggedSlotCountsOnce() {
+        let slots: [JSON] = [["title": "Ceviche", "kcal": 540], ["title": "Wings", "kcal": 1250]]
+        let items: [JSON] = [["name": "Yoghurt", "kcal": 300], ["name": "ceviche", "kcal": 540]]
+        XCTAssertEqual(CheatPlan.total(slots: slots, logged: items), 2090)
+        XCTAssertTrue(CheatPlan.logged(slots[0], in: items))
+        XCTAssertFalse(CheatPlan.logged(slots[1], in: items))
+    }
 }
