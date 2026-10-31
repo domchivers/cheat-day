@@ -1,4 +1,4 @@
-New in this build: cheat day planning is now a conversation. Say what you fancy in your own words, see what is left to enjoy, and keep talking to change it.
+New in this build: cheat day plans and recipes now show the same calories, and the Add button no longer covers the box when you name a scanned food.
 
 Thanks for testing! Please just use it like a normal day:
 

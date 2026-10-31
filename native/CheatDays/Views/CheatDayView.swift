@@ -8,8 +8,39 @@ enum CheatPlan {
     }
 
     static func logged(_ slot: JSON, in items: [JSON]) -> Bool {
+        loggedItem(slot, in: items) != nil
+    }
+
+    /// What was really logged for a slot, the healthier version of its recipe included.
+    static func loggedItem(_ slot: JSON, in items: [JSON]) -> JSON? {
         let name = str(slot["title"]).lowercased()
-        return !name.isEmpty && items.contains { str($0["name"]).lowercased() == name }
+        guard !name.isEmpty else { return nil }
+        return items.first { let n = str($0["name"]).lowercased(); return n == name || n == name + " (lighter)" }
+    }
+
+    /// The slot takes the numbers its recipe adds up to, and keeps the recipe, so the plan and the recipe always
+    /// agree, your swaps included. Nil when nothing's changed. Protein is whole grams, as the recipe shows it.
+    static func following(_ slots: [JSON], title: String, recipe: JSON, kcal: Double, protein: Double, carbs: Double, fat: Double) -> [JSON]? {
+        guard let i = slots.firstIndex(where: { str($0["title"]) == title }) else { return nil }
+        func steps(_ r: JSON) -> Int { (dict(r["authentic"])["steps"] as? [String] ?? []).count }
+        let numbers: [(String, Double)] = [("kcal", kcal.rounded()), ("protein", protein.rounded(.down)), ("carbs", carbs.rounded(.down)), ("fat", fat.rounded(.down))]
+        let had = slots[i]["recipe"] as? JSON
+        if numbers.allSatisfy({ num(slots[i][$0.0]) == $0.1 }), let had, steps(had) == steps(recipe) { return nil }
+        var out = slots
+        for (k, v) in numbers { out[i][k] = v }
+        out[i]["recipe"] = recipe
+        return out
+    }
+
+    /// Talking to the planner rewrites the slots: one that's still there keeps its recipe and the numbers it came to.
+    static func keepingRecipes(_ new: [JSON], from old: [JSON]) -> [JSON] {
+        new.map { s in
+            guard let was = old.first(where: { str($0["title"]) == str(s["title"]) }), let r = was["recipe"] as? JSON else { return s }
+            var x = s
+            x["recipe"] = r
+            for k in ["kcal", "protein", "carbs", "fat"] { x[k] = was[k] ?? s[k] }
+            return x
+        }
     }
 
     /// The day's total: what's logged plus the slots still to come (a slot already logged counts once).
@@ -35,8 +66,10 @@ enum CheatPlan {
 
     /// A slot as an idea, for the recipe screen and for logging.
     static func idea(_ slot: JSON) -> JSON {
-        ["name": str(slot["title"]), "kcal": num(slot["kcal"]) ?? 0, "protein": num(slot["protein"]) ?? 0, "carbs": num(slot["carbs"]) ?? 0,
-         "fat": num(slot["fat"]) ?? 0, "why": str(slot["detail"]), "meal": meal(of: slot)]
+        var i: JSON = ["name": str(slot["title"]), "kcal": num(slot["kcal"]) ?? 0, "protein": num(slot["protein"]) ?? 0, "carbs": num(slot["carbs"]) ?? 0,
+                       "fat": num(slot["fat"]) ?? 0, "why": str(slot["detail"]), "meal": meal(of: slot), "saved": str(slot["saved"])]
+        if let r = slot["recipe"] { i["recipe"] = r }
+        return i
     }
 }
 
@@ -77,8 +110,18 @@ struct CheatDayView: View {
             .navigationTitle("Cheat day")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() }.fontWeight(.bold) } }
-            .sheet(item: $open) { r in RecipeSheet(idea: r.idea) }
+            .sheet(item: $open) { r in
+                // a saved meal keeps its own real numbers; anything else follows what its recipe adds up to
+                RecipeSheet(idea: r.idea, onNumbers: str(r.idea["saved"]).isEmpty ? { recipe, k, p, c, f in follow(r.id, recipe, k, p, c, f) } : nil)
+            }
         }
+    }
+
+    private func follow(_ title: String, _ recipe: JSON, _ k: Double, _ p: Double, _ c: Double, _ f: Double) {
+        guard let date = store.nextCheat?.date, var plan = store.cheatPlan(date),
+              let slots = CheatPlan.following(list(plan["slots"]), title: title, recipe: recipe, kcal: k, protein: p, carbs: c, fat: f) else { return }
+        plan["slots"] = slots
+        store.perform(["type": "cheatPlan", "date": date, "plan": plan])
     }
 
     private func label(_ t: String) -> some View {
@@ -204,7 +247,9 @@ struct CheatDayView: View {
 
     private func slotRow(_ s: JSON, isToday: Bool) -> some View {
         let isWorkout = s["workout"] as? Bool == true, title = str(s["title"])
-        let done = isToday && CheatPlan.logged(s, in: store.todayItems)
+        let eaten = isToday ? CheatPlan.loggedItem(s, in: store.todayItems) : nil, done = eaten != nil
+        // once logged, the amount you logged: it's what the day's total counts
+        let kcal = num(eaten?["kcal"]) ?? num(s["kcal"]) ?? 0, protein = eaten.map { store.macros([$0]).p } ?? num(s["protein"]) ?? 0
         return HStack(spacing: 12) {
             Button { if !isWorkout { open = IdeaRef(id: title, idea: CheatPlan.idea(s)) } } label: {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
@@ -212,8 +257,8 @@ struct CheatDayView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(title).font(.subheadline.weight(.bold)).multilineTextAlignment(.leading)
                         if !str(s["detail"]).isEmpty { Text(str(s["detail"])).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.leading) }
-                        if (num(s["kcal"]) ?? 0) > 0 {
-                            Text("\(Fmt.int(num(s["kcal"]) ?? 0)) kcal · \(Int(num(s["protein"]) ?? 0)) g protein").font(.caption.weight(.semibold)).monospacedDigit().padding(.top, 1)
+                        if kcal > 0 {
+                            Text("\(Fmt.int(kcal)) kcal · \(Int(protein)) g protein").font(.caption.weight(.semibold)).monospacedDigit().padding(.top, 1)
                         }
                     }
                     Spacer(minLength: 0)
@@ -335,7 +380,7 @@ struct CheatDayView: View {
         """
         do {
             var a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: false, tries: 4)
-            a["slots"] = CheatPlan.tidied(list(a["slots"]), saved: saved)
+            a["slots"] = CheatPlan.tidied(CheatPlan.keepingRecipes(list(a["slots"]), from: list(plan?["slots"])), saved: saved)
             a["at"] = ISO.now()
             a["chat"] = Array(list(plan?["chat"]).suffix(11)) + [["me": said] as JSON]
             store.perform(["type": "cheatPlan", "date": next.date, "plan": a])

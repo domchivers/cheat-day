@@ -174,13 +174,15 @@ struct PantryScanSheet: View {
             }
         }
         .safeAreaInset(edge: .bottom) {
-            if !found.isEmpty {
+            // away while a name's being typed: it would sit over the box with so little room above the keyboard
+            if !found.isEmpty && naming == nil {
                 Button { onItems(found); dismiss() } label: {
                     Text("Add \(found.count) to your cupboard").font(.headline).foregroundStyle(ready ? Theme.onAccent : Theme.heroLabel)
                         .frame(maxWidth: .infinity).frame(height: 50)
                         .background(ready ? Theme.accent : Theme.hero, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
-                .buttonStyle(.plain).disabled(!ready || busy != nil).padding(.horizontal, 20).padding(.bottom, 8)   // wait for every photo to be read
+                .buttonStyle(.plain).disabled(!ready || busy != nil).padding(.horizontal, 20).padding(.vertical, 8)   // wait for every photo to be read
+                .background(Color(.systemGroupedBackground))   // rows scrolling under it don't show through
             }
         }
     }

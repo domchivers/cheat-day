@@ -40,6 +40,8 @@ final class RecipeMaker {
 /// character (what changed, and the numbers for both). Written by the AI the first time, then kept with the idea.
 struct RecipeSheet: View {
     let idea: JSON
+    /// Told what a portion adds up to whenever it changes (the recipe, then kcal, protein, carbs, fat).
+    var onNumbers: ((JSON, Double, Double, Double, Double) -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var version = "authentic"
     @State private var done: String?
@@ -297,6 +299,7 @@ struct RecipeSheet: View {
         .contentTransition(.numericText())
         .animation(.snappy, value: version)
         .animation(.snappy, value: k)
+        .onChange(of: "\(Int(k))|\(Int(p))|\(Int(c))|\(Int(f))|\(steps.count)", initial: true) { onNumbers?(r, k, p, c, f) }
         Text([num(r["minutes"]).map { "\(Int($0)) min" }, "serves \(Int(portions))", str(r["cuisine"]).isEmpty ? nil : str(r["cuisine"])].compactMap { $0 }.joined(separator: " · ") + " · per portion")
             .font(.footnote).foregroundStyle(.secondary)
         servesControl(base: base, portions: portions, scale: sv?.scale ?? true)
@@ -648,9 +651,13 @@ extension RecipeMaker {
         let base = given.isEmpty
             ? "authentic: how it's really made in its home cuisine, true to the dish, with ingredients they can buy there."
             : "authentic: exactly these ingredients, amounts and numbers, one portion (portions 1), adding only a pinch of salt or pepper if needed: \(given.joined(separator: "; ")). Give each a cook's amount for those grams."
+        // an idea with numbers on its card but no ingredients: the recipe is sized to those numbers
+        let aim = given.isEmpty && (num(idea["kcal"]) ?? 0) > 0
+            ? " One authentic portion should come to about \(Int(num(idea["kcal"]) ?? 0)) kcal and \(Int(num(idea["protein"]) ?? 0)) g protein: choose realistic amounts that do."
+            : ""
         let prompt = """
         Write the recipe for "\(str(idea["name"]))" for someone in \(Plan.country) who \(Habits.cookText(str(store.habits["cook"]))).
-        \(base) Just the ingredients for now: the method comes after.
+        \(base)\(aim) Just the ingredients for now: the method comes after.
         healthier: the same dish with its character kept, lighter or higher in protein (less oil and butter, leaner cuts, more veg, swaps that taste close), and list the changes.
         If it's really a takeaway order or shop-bought, authentic is what to buy or order and how to put it together, healthier is the lighter choice.
         Portions 1 to 4. Grams are as weighed; kcal and macros per ingredient from standard reference values, so they add up, and each ingredient's kcal ≈ 4 × protein + 4 × carbs + 9 × fat.

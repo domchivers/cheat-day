@@ -70,6 +70,32 @@ final class PlanTests: XCTestCase {
         XCTAssertEqual(num(out[0]["kcal"]), 420)
     }
 
+    func testASlotFollowsItsRecipe() {
+        let recipe: JSON = ["portions": 2, "authentic": ["ingredients": [Any]()] as JSON]
+        let slots: [JSON] = [["title": "Ceviche", "kcal": 320, "protein": 34, "carbs": 20, "fat": 8], ["title": "Burger", "kcal": 700]]
+        let out = CheatPlan.following(slots, title: "Ceviche", recipe: recipe, kcal: 209.4, protein: 24.9, carbs: 16.2, fat: 5.5)
+        XCTAssertEqual(num(out?[0]["kcal"]), 209)
+        XCTAssertEqual(num(out?[0]["protein"]), 24)   // as the recipe shows it
+        XCTAssertEqual(num(out?[1]["kcal"]), 700)
+        XCTAssertNotNil(out?[0]["recipe"])
+        XCTAssertNil(CheatPlan.following(out ?? [], title: "Ceviche", recipe: recipe, kcal: 209.4, protein: 24.9, carbs: 16.2, fat: 5.5))   // no change, no save
+    }
+
+    func testChattingKeepsARecipeAndItsNumbers() {
+        let old: [JSON] = [["title": "Ceviche", "kcal": 209, "protein": 24, "carbs": 16, "fat": 5, "recipe": ["portions": 2] as JSON]]
+        let new: [JSON] = [["title": "Ceviche", "kcal": 320, "protein": 34, "carbs": 20, "fat": 8], ["title": "Brownie", "kcal": 300]]
+        let out = CheatPlan.keepingRecipes(new, from: old)
+        XCTAssertEqual(num(out[0]["kcal"]), 209)
+        XCTAssertNotNil(out[0]["recipe"])
+        XCTAssertEqual(num(out[1]["kcal"]), 300)
+    }
+
+    func testTheLighterVersionCountsAsLogged() {
+        let item: JSON = ["name": "Ceviche (lighter)", "kcal": 180]
+        XCTAssertEqual(num(CheatPlan.loggedItem(["title": "Ceviche"], in: [item])?["kcal"]), 180)
+        XCTAssertEqual(CheatPlan.total(slots: [["title": "Ceviche", "kcal": 320]], logged: [item]), 180)
+    }
+
     func testALoggedSlotCountsOnce() {
         let slots: [JSON] = [["title": "Ceviche", "kcal": 540], ["title": "Wings", "kcal": 1250]]
         let items: [JSON] = [["name": "Yoghurt", "kcal": 300], ["name": "ceviche", "kcal": 540]]
