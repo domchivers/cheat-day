@@ -81,7 +81,10 @@ struct AssistantView: View {
             .fullScreenCover(isPresented: $camera) { CameraPicker { img in camera = false; if let img { pending.append(img) } }.ignoresSafeArea() }
             .photosPicker(isPresented: $library, selection: $picked, maxSelectionCount: 4, matching: .images)
             .onChange(of: picked) { _, items in if !items.isEmpty { Task { await load(items) } } }
+            .onChange(of: showChats) { _, open in KeyboardDone.quiet = !open }   // past chats keep their Done
+            .onDisappear { KeyboardDone.quiet = false }
             .onAppear {
+                KeyboardDone.quiet = true   // a chat box: the send button's right there, and scrolling or tapping away closes it
                 live.open(fresh: !firstQuestion.isEmpty)
                 if !firstQuestion.isEmpty && turns.isEmpty { text = firstQuestion; send() }
             }
