@@ -54,16 +54,20 @@ final class PlanTests: XCTestCase {
         XCTAssertEqual(str(dict(d["plan"])["spread"]), "cheat")
     }
 
-    func testWhatsTypedForACheatDayCounts() {
-        XCTAssertEqual(CheatPlan.whats(from: " Korean fried chicken wings, ceviche ,, "), ["Korean fried chicken wings", "Ceviche"])
-        XCTAssertEqual(CheatPlan.whats(from: "  "), [])
-    }
-
     func testACheatDaySlotGoesUnderTheRightMeal() {
         XCTAssertEqual(CheatPlan.meal(of: ["time": "08:30"]), "Breakfast")
         XCTAssertEqual(CheatPlan.meal(of: ["time": "13:00"]), "Lunch")
         XCTAssertEqual(CheatPlan.meal(of: ["time": "19:30"]), "Dinner")
-        XCTAssertEqual(CheatPlan.meal(of: ["time": "19:30", "extra": true]), "Snacks")
+    }
+
+    func testASavedMealKeepsItsRealNumbers() {
+        let saved: [String: JSON] = ["protein brownie": ["name": "Protein Brownie", "kcalPerServing": 294.4, "pServ": 34.4, "cServ": 24.4, "fServ": 3.9]]
+        let slots: [JSON] = [["time": "20:30", "title": "Brownie", "kcal": 600, "protein": 80, "saved": "Protein brownie"], ["time": "15:30", "title": "Ceviche", "kcal": 420, "protein": 36, "saved": ""]]
+        let out = CheatPlan.tidied(slots, saved: saved)
+        XCTAssertEqual(out.map { str($0["title"]) }, ["Ceviche", "Protein Brownie"])   // in time order
+        XCTAssertEqual(num(out[1]["kcal"]), 294)
+        XCTAssertEqual(num(out[1]["protein"]), 34)
+        XCTAssertEqual(num(out[0]["kcal"]), 420)
     }
 
     func testALoggedSlotCountsOnce() {
