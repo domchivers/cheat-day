@@ -113,7 +113,7 @@ struct SessionView: View {
             Button("Finish") { finish() }
             Button("Keep going", role: .cancel) {}
         } message: {
-            Text("How many minutes did it take? Change it if the timer ran on.")
+            Text("How many minutes did it take? Change it if the timer ran on.\(s.startedDay < store.today ? " It'll be saved to \(DayKey.date(s.startedDay).formatted(.dateTime.weekday(.wide))), the day you started." : "")")
         }
         .confirmationDialog("Discard this session? Nothing will be logged.", isPresented: $confirmDiscard, titleVisibility: .visible) {
             Button("Discard", role: .destructive) { finished = true; Self.cancelIdleReminder(); store.saveSession(nil); dismiss() }
@@ -334,7 +334,9 @@ struct SessionView: View {
     }
 
     private func prepareFinish() {
-        minutesText = String(max(1, Int((Double(nowMs()) - s.startedAt) / 60000)))
+        // left running: the timer's figure means nothing, so go by the last ticked set
+        let end = s.looksForgotten ? (s.lastAt ?? s.startedAt) : Double(nowMs())
+        minutesText = String(max(1, Int((end - s.startedAt) / 60000)))
         finishing = true
     }
 
@@ -450,6 +452,8 @@ private struct ForgotToFinish: View {
                 Section {
                     Button { save(); finish(minutes) } label: { Text("Finish: \(minutes) min").font(.headline).frame(maxWidth: .infinity) }
                     Button("I'm still going") { dismiss() }.frame(maxWidth: .infinity)
+                } footer: {
+                    if session.startedDay < DayKey.string(Date()) { Text("It'll be saved to \(DayKey.date(session.startedDay).formatted(.dateTime.weekday(.wide))), the day you started.") }
                 }
             }
             .keyboardDone()

@@ -104,4 +104,22 @@ final class WorkoutTests: XCTestCase {
         XCTAssertEqual(Store.est(kg: 100, reps: 5), 117)
         XCTAssertEqual(Store.est(kg: 0, reps: 12), 0)
     }
+
+    func testALateFinishCountsOnTheDayItStarted() {
+        var d: JSON = ["budget": 2000, "day": ["date": "2026-10-31", "items": [Any](), "workouts": [Any]()] as JSON,
+                       "history": [["date": "2026-10-30", "budget": 2000, "kcal": 1500, "items": [Any](), "workouts": [Any]()] as JSON, ["date": "2026-10-28", "budget": 2000, "kcal": 1800] as JSON]]
+        let w: JSON = ["id": "w1", "type": "Gym weights", "name": "Legs", "minutes": 60, "kcal": 300, "lifts": [Any]()]
+        Store.apply(["type": "logWorkout", "workout": w, "date": "2026-10-30", "clearSession": true], to: &d, today: "2026-10-31")
+        Store.apply(["type": "logWorkout", "workout": w, "date": "2026-10-30"], to: &d, today: "2026-10-31")   // a retry: still once
+        XCTAssertTrue(list(dict(d["day"])["workouts"]).isEmpty)
+        XCTAssertEqual(list(list(d["history"])[0]["workouts"]).count, 1)
+        XCTAssertEqual(num(list(d["history"])[0]["burned"]), 300)
+        // a day with nothing logged is made, in order
+        Store.apply(["type": "logWorkout", "workout": ["id": "w2", "name": "Run", "kcal": 200, "lifts": [Any]()] as JSON, "date": "2026-10-29"], to: &d, today: "2026-10-31")
+        XCTAssertEqual(list(d["history"]).map { str($0["date"]) }, ["2026-10-30", "2026-10-29", "2026-10-28"])
+        // and it can be deleted from there
+        Store.apply(["type": "deleteWorkout", "id": "w1", "at": 5], to: &d, today: "2026-10-31")
+        XCTAssertTrue(list(list(d["history"])[0]["workouts"]).isEmpty)
+        XCTAssertEqual(num(list(d["history"])[0]["burned"]), 0)
+    }
 }

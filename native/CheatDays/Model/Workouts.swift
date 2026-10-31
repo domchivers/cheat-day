@@ -74,6 +74,8 @@ struct LiveSession: Equatable {
     }
 
     /// Nothing ticked for half an hour: probably forgot to finish.
+    /// The day it was started, the day it counts for.
+    var startedDay: String { DayKey.string(Date(timeIntervalSince1970: startedAt / 1000)) }
     var looksForgotten: Bool { Double(nowMs()) - (lastAt ?? startedAt) > 30 * 60_000 }
 
     init?(_ j: Any?) {
@@ -245,7 +247,11 @@ extension Store {
                           "detail": sets.map { ["reps": $0.reps, "kg": $0.kg] as JSON }])
         }
         let w = logged(type: "Gym weights", name: name, minutes: Double(minutes), effort: "moderate", lifts: lifts)
-        perform(["type": "logWorkout", "workout": w, "clearSession": true])
+        // it belongs to the day it was started, however late Finish gets tapped
+        var op: JSON = ["type": "logWorkout", "workout": w, "clearSession": true]
+        let started = s.startedDay
+        if started < today { op["date"] = started }
+        perform(op)
         WorkoutLive.update(nil, store: self)
         return w
     }
@@ -309,6 +315,24 @@ extension Store {
 
     // MARK: the workout operations
 
+    /// A workout onto a past day in History, which is made if that day had nothing logged. False if it's already there.
+    static func fileWorkout(_ w: JSON, on date: String, in d: inout JSON) -> Bool {
+        var history = list(d["history"])
+        let i: Int
+        if let found = history.firstIndex(where: { str($0["date"]) == date }) { i = found } else {
+            i = history.firstIndex { str($0["date"]) < date } ?? history.count   // newest first
+            history.insert(["date": date, "budget": baseBudget(date, in: d), "kcal": 0, "p": 0, "c": 0, "f": 0, "items": [Any](), "workouts": [Any]()] as JSON, at: i)
+        }
+        var wos = list(history[i]["workouts"])
+        guard !wos.contains(where: { str($0["id"]) == str(w["id"]) }) else { return false }
+        wos.append(w)
+        history[i]["workouts"] = wos
+        history[i]["burned"] = wos.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }
+        if d["eatBack"] as? Bool == true, let b = num(history[i]["budget"]) { history[i]["budget"] = b + (num(w["kcal"]) ?? 0) }
+        d["history"] = history
+        return true
+    }
+
     static func applyWorkoutOp(_ op: JSON, to d: inout JSON, today: String) {
         switch str(op["type"]) {
         case "session":
@@ -321,7 +345,10 @@ extension Store {
             if op["clearSession"] as? Bool == true { d["session"] = NSNull() }
             var day = dict(d["day"]), ws = list(day["workouts"])
             guard !id.isEmpty, dict(d["tombs"])["wo:\(id)"] == nil, !ws.contains(where: { str($0["id"]) == id }) else { return }
-            ws.append(w); day["workouts"] = ws; d["day"] = day
+            let date = str(op["date"])
+            if !date.isEmpty && date != str(day["date"]) {
+                guard fileWorkout(w, on: date, in: &d) else { return }
+            } else { ws.append(w); day["workouts"] = ws; d["day"] = day }
             // exercise records: last sets, best estimated one-rep max, best set (the web app's logWorkout)
             var records = dict(d["exercises"]); var pbs = 0
             for l in list(w["lifts"]) {
@@ -347,6 +374,15 @@ extension Store {
             var day = dict(d["day"])
             day["workouts"] = list(day["workouts"]).filter { str($0["id"]) != id }
             d["day"] = day
+            d["history"] = list(d["history"]).map { h in
+                guard list(h["workouts"]).contains(where: { str($0["id"]) == id }) else { return h }
+                var e = h, wos = list(h["workouts"])
+                let gone = wos.filter { str($0["id"]) == id }.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }
+                wos.removeAll { str($0["id"]) == id }
+                e["workouts"] = wos; e["burned"] = wos.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }
+                if d["eatBack"] as? Bool == true, let b = num(h["budget"]) { e["budget"] = max(0, b - gone) }
+                return e
+            }
             var tombs = dict(d["tombs"]); tombs["wo:\(id)"] = op["at"] ?? nowMs(); d["tombs"] = tombs
         case "routine":
             let r = dict(op["routine"]), name = str(r["name"]).lowercased()

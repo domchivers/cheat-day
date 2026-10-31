@@ -1,4 +1,4 @@
-New in this build: cheat day planning is much better. What you type now counts, it plans the rest of today around what you have eaten, and you can log, open or swap each meal. Your body-fat goal also stays set.
+New in this build: a workout you forget to finish now counts on the day you started it, not the day you tap Finish.
 
 Thanks for testing! Please just use it like a normal day:
 
