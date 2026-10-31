@@ -1,4 +1,4 @@
-New in this build: past workouts have their own page, you can remove anything from a cheat day plan, and the cheat day chat is less cluttered.
+New in this build: much more accurate calories and protein in recipes, and cheat day protein now matches the Today page.
 
 Thanks for testing! Please just use it like a normal day:
 
