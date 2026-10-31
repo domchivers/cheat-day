@@ -115,7 +115,8 @@ struct LiveSession: Equatable {
 extension Store {
     // MARK: reading
 
-    var session: LiveSession? { LiveSession(doc["session"]) }
+    /// The session under way. One already finished or discarded stays gone, even if a stale copy brings it back.
+    var session: LiveSession? { LiveSession(doc["session"]).flatMap { dict(doc["tombs"])["session:\(Int($0.startedAt))"] == nil ? $0 : nil } }
     var restSeconds: Int { max(15, min(600, Int(num(doc["restSeconds"]) ?? 90))) }
     var weightKg: Double { pos(doc["weightKg"]) ?? 75 }
     var routines: [JSON] { list(doc["routines"]) }
@@ -248,7 +249,7 @@ extension Store {
         }
         let w = logged(type: "Gym weights", name: name, minutes: Double(minutes), effort: "moderate", lifts: lifts)
         // it belongs to the day it was started, however late Finish gets tapped
-        var op: JSON = ["type": "logWorkout", "workout": w, "clearSession": true]
+        var op: JSON = ["type": "logWorkout", "workout": w, "clearSession": true, "sessionStart": Int(s.startedAt)]
         let started = s.startedDay
         if started < today { op["date"] = started }
         perform(op)
@@ -315,6 +316,11 @@ extension Store {
 
     // MARK: the workout operations
 
+    /// Marks a session as over, by when it started, so it can't reappear and be finished twice.
+    static func closeSession(_ startedAt: Double, in d: inout JSON) {
+        var tombs = dict(d["tombs"]); tombs["session:\(Int(startedAt))"] = nowMs(); d["tombs"] = tombs
+    }
+
     /// A workout onto a past day in History, which is made if that day had nothing logged. False if it's already there.
     static func fileWorkout(_ w: JSON, on date: String, in d: inout JSON) -> Bool {
         var history = list(d["history"])
@@ -336,13 +342,20 @@ extension Store {
     static func applyWorkoutOp(_ op: JSON, to d: inout JSON, today: String) {
         switch str(op["type"]) {
         case "session":
+            let next = LiveSession(op["session"])
+            if next == nil, let old = LiveSession(d["session"]) { closeSession(old.startedAt, in: &d) }
+            if let next, dict(d["tombs"])["session:\(Int(next.startedAt))"] != nil { return }
             d["session"] = op["session"] ?? NSNull()
         case "set":
             let key = str(op["key"])
             if ["restSeconds", "reminders", "weighDays", "shareDay", "onboarded", "goalWeight", "goalFat", "goalStart", "weekGoals", "notes", "dayKeep", "dayRolled", "shareWorkouts"].contains(key) { d[key] = op["value"] ?? NSNull() }
         case "logWorkout":
             let w = dict(op["workout"]), id = str(w["id"])
-            if op["clearSession"] as? Bool == true { d["session"] = NSNull() }
+            if op["clearSession"] as? Bool == true {
+                if let old = LiveSession(d["session"]) { closeSession(old.startedAt, in: &d) }
+                if let started = num(op["sessionStart"]) { closeSession(started, in: &d) }
+                d["session"] = NSNull()
+            }
             var day = dict(d["day"]), ws = list(day["workouts"])
             guard !id.isEmpty, dict(d["tombs"])["wo:\(id)"] == nil, !ws.contains(where: { str($0["id"]) == id }) else { return }
             let date = str(op["date"])

@@ -122,4 +122,23 @@ final class WorkoutTests: XCTestCase {
         XCTAssertTrue(list(list(d["history"])[0]["workouts"]).isEmpty)
         XCTAssertEqual(num(list(d["history"])[0]["burned"]), 0)
     }
+
+    func testAFinishedSessionCantComeBack() {
+        var d: JSON = ["day": ["date": "2026-10-31", "items": [Any](), "workouts": [Any]()] as JSON]
+        let live: JSON = ["startedAt": 1000, "name": "Back"]
+        Store.apply(["type": "session", "session": live], to: &d, today: "2026-10-31")
+        Store.apply(["type": "logWorkout", "workout": ["id": "w1", "name": "Back", "kcal": 300, "lifts": [Any]()] as JSON, "clearSession": true, "sessionStart": 1000], to: &d, today: "2026-10-31")
+        XCTAssertNotNil(dict(d["tombs"])["session:1000"])
+        // a late save of the same session doesn't reopen it
+        Store.apply(["type": "session", "session": live], to: &d, today: "2026-10-31")
+        XCTAssertTrue(d["session"] is NSNull)
+    }
+
+    func testACorrectedFoodStaysOff() {
+        var d: JSON = ["tombs": ["food:2026-10-30|low cal protein brownie|343": 1] as JSON, "day": ["date": "2026-10-31", "items": [Any]()] as JSON,
+                       "history": [["date": "2026-10-30", "kcal": 683, "items": [["name": "Low Cal Protein Brownie", "kcal": 343] as JSON, ["name": "Low Cal Protein Brownie", "kcal": 340] as JSON]] as JSON]]
+        Store.dropCorrectedFood(&d)
+        XCTAssertEqual(num(list(d["history"])[0]["kcal"]), 340)
+        XCTAssertEqual(list(list(d["history"])[0]["items"]).count, 1)
+    }
 }

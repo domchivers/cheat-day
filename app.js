@@ -77,7 +77,7 @@ function tomb(kind, id) {
   state.tombs = state.tombs && typeof state.tombs === "object" ? state.tombs : {};
   state.tombs[`${kind}:${id}`] = Date.now();
   const cutoff = Date.now() - 60 * 864e5;
-  for (const [k, t] of Object.entries(state.tombs)) if (t < cutoff) delete state.tombs[k];
+  for (const [k, t] of Object.entries(state.tombs)) if (t < cutoff && !k.startsWith("food:") && !k.startsWith("session:")) delete state.tombs[k];
 }
 const usedKcal = () => state.day.items.reduce((s, it) => s + it.kcal, 0);
 const burnedKcal = () => (state.day.workouts || []).reduce((s, w) => s + (w.kcal || 0), 0);
@@ -286,7 +286,8 @@ function joinDays(history, tombs) {
   }
   // deleted on another device: a stale copy still holding it doesn't bring it back
   if (tombs) for (const e of out) {
-    const items = (e.items || []).filter((it) => !(it.id && tombs[`item:${it.id}`]));
+    // older foods have no id, so a correction is also remembered by date, name and calories
+    const items = (e.items || []).filter((it) => !(it.id && tombs[`item:${it.id}`]) && !tombs[`food:${e.date}|${String(it.name || "").toLowerCase()}|${Math.round(+it.kcal || 0)}`]);
     if (items.length === (e.items || []).length) continue;
     const m = sumMacros(items);
     e.items = items; e.kcal = items.reduce((a, it) => a + (+it.kcal || 0), 0);
@@ -5657,6 +5658,8 @@ function mergeState(local, remote) {
   };
   const m = Object.assign({}, older, newer);   // settings and anything not listed below: newer copy
   m.tombs = tombs;
+  // a gym session that's finished or discarded doesn't come back from a stale copy
+  if (m.session && tombs[`session:${Math.round(m.session.startedAt)}`]) m.session = null;
   // the iPhone app's food and training answers, and cheat day plans: keep both sides' (a device without them mustn't wipe them)
   if (local.prefs || remote.prefs) m.prefs = Object.assign({}, older.prefs || {}, newer.prefs || {}, { cheatPlans: Object.assign({}, (older.prefs || {}).cheatPlans || {}, (newer.prefs || {}).cheatPlans || {}) });
   // today: same day -> join the items; different days -> keep the later day and file the earlier one in history

@@ -229,6 +229,7 @@ final class Store {
     /// A new day starts clean; the old one is filed in History first (the web app's archiveDay).
     static func ensureDay(_ d: inout JSON, today: String) {
         mergeHistory(&d)
+        dropCorrectedFood(&d)
         let day = dict(d["day"])
         if str(day["date"]) == today { return }
         let date = str(day["date"])
@@ -327,6 +328,26 @@ final class Store {
             if let e = byDate[date] { byDate[date] = joined(e, h) } else { order.append(date); byDate[date] = h }
         }
         d["history"] = order.compactMap { byDate[$0] }
+    }
+
+    /// A food corrected off a past day, remembered by date, name and calories (older foods have no id): if a stale copy
+    /// from the website has put it back, it comes off again.
+    static func dropCorrectedFood(_ d: inout JSON) {
+        let tombs = dict(d["tombs"])
+        guard tombs.keys.contains(where: { $0.hasPrefix("food:") }) else { return }
+        var history = list(d["history"]), changed = false
+        for i in history.indices {
+            let date = str(history[i]["date"]), items = list(history[i]["items"])
+            let kept = items.filter { tombs["food:\(date)|\(str($0["name"]).lowercased())|\(Int((num($0["kcal"]) ?? 0).rounded()))"] == nil }
+            guard kept.count != items.count else { continue }
+            var p = 0.0, c = 0.0, f = 0.0
+            for it in kept { if let m = FoodMath.macros(it, kcal: num(it["kcal"]) ?? 0) { p += m.p; c += m.c; f += m.f } }
+            history[i]["items"] = kept
+            history[i]["kcal"] = kept.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }
+            history[i]["p"] = Int(p.rounded()); history[i]["c"] = Int(c.rounded()); history[i]["f"] = Int(f.rounded())
+            changed = true
+        }
+        if changed { d["history"] = history }
     }
 
     /// Two entries for one date as one: every food and workout once, the totals worked out again.
