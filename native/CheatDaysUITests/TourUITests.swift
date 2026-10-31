@@ -15,7 +15,7 @@ final class TourUITests: XCTestCase {
             steps += 1
             if app.buttons["Done"].exists { app.buttons["Done"].tap(); break }
             app.buttons["Next"].tap()
-            XCTAssertLessThan(steps, 10, "the tour should end")
+            guard steps < 10 else { XCTFail("the tour should end"); break }   // stuck: stop, don't loop for ever
         }
         XCTAssertGreaterThanOrEqual(steps, 4, "at least the Today steps and the tabs show")
         XCTAssertFalse(app.buttons["Next"].waitForExistence(timeout: 1))

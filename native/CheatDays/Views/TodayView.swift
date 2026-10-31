@@ -225,6 +225,7 @@ struct TodayView: View {
                       !showPlanner, !showCheat, !showCheckIn, !Tour.shared.active else { return }
                 try? await Task.sleep(for: .seconds(1))
                 while !Task.isCancelled {
+                    if Tour.shared.active { return }   // it can start during the wait, and the check would cover it
                     let seen = mealCheckSeen.hasPrefix(store.today + "|") ? mealCheckSeen : store.today
                     let now = Meals.byTime(Calendar.current.component(.hour, from: Date()))
                     var wait: Double?

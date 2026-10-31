@@ -123,11 +123,13 @@ struct CheatDayView: View {
             .padding(.horizontal, 20).padding(.bottom, 20)
         }
         .safeAreaInset(edge: .bottom) {
-            Button { Task { await send(next: next, plan: nil) } } label: {
+            Button {
+                // an empty box: into it, rather than a button that does nothing
+                if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { typing = true } else { Task { await send(next: next, plan: nil) } }
+            } label: {
                 Label("Plan it with me", systemImage: "sparkles").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 14)
             }
             .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 18)).foregroundStyle(Theme.onAccent)
-            .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .padding(.horizontal, 20).padding(.vertical, 10).background(Theme.bg)
         }
     }
@@ -160,15 +162,6 @@ struct CheatDayView: View {
                     .opacity(busy ? 0.45 : 1)
                     .animation(.snappy, value: str(plan["at"]))
                     freeCard(room)
-                    HStack {
-                        Text("\(Fmt.int(kcal)) of \(Fmt.int(budget(next))) kcal").font(.subheadline.weight(.bold)).monospacedDigit()
-                        Spacer()
-                        if let goal = store.proteinGoal, protein > 0 {
-                            Label("\(Int(protein)) / \(Int(goal)) g protein", systemImage: protein >= goal * 0.95 ? "checkmark.circle.fill" : "circle")
-                                .font(.subheadline.weight(.bold)).monospacedDigit().foregroundStyle(protein >= goal * 0.95 ? Theme.walk : .secondary)
-                        }
-                    }
-                    .padding(.horizontal, 4).padding(.top, 2)
                     if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn).padding(.top, 4) }
                     Button("Start again") { draft = ""; problem = nil; starting = true }
                         .font(.subheadline).foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.top, 12).id("end")
@@ -179,7 +172,22 @@ struct CheatDayView: View {
                 if t { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { withAnimation { proxy.scrollTo("end", anchor: .bottom) } } }
             }
         }
-        .safeAreaInset(edge: .bottom) { dock(room, next: next, plan: plan) }
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 0) {
+                // always in view: the day's numbers, just above where you change them
+                HStack {
+                    Text("\(Fmt.int(kcal)) of \(Fmt.int(budget(next))) kcal").font(.footnote.weight(.bold)).monospacedDigit()
+                    Spacer()
+                    if let goal = store.proteinGoal, protein > 0 {
+                        Label("\(Int(protein)) / \(Int(goal)) g protein", systemImage: protein >= goal * 0.95 ? "checkmark.circle.fill" : "circle")
+                            .font(.footnote.weight(.bold)).monospacedDigit().foregroundStyle(protein >= goal * 0.95 ? Theme.walk : .secondary)
+                    }
+                }
+                .padding(.horizontal, 24).padding(.top, 10)
+                dock(room, next: next, plan: plan)
+            }
+            .background(Theme.bg)
+        }
         .sensoryFeedback(.success, trigger: str(plan["at"]))
     }
 
@@ -247,7 +255,7 @@ struct CheatDayView: View {
     }
 
     private func dock(_ room: Double, next: (date: String, kcal: Double, extra: Double), plan: JSON) -> some View {
-        let ideas = ["More protein", "Something sweet"] + (room >= 150 ? ["Ideas for the \(Fmt.int(room))"] : [])
+        let ideas = ["More protein", "Sweet treat"] + (room >= 150 ? ["Ideas for \(Fmt.int(room))"] : [])
         let empty = draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         return VStack(spacing: 8) {
             if empty && !typing && !busy {
