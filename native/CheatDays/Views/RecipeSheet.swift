@@ -302,6 +302,12 @@ struct RecipeSheet: View {
         .onChange(of: "\(Int(k))|\(Int(p))|\(Int(c))|\(Int(f))|\(steps.count)", initial: true) { onNumbers?(r, k, p, c, f) }
         Text([num(r["minutes"]).map { "\(Int($0)) min" }, "serves \(Int(portions))", str(r["cuisine"]).isEmpty ? nil : str(r["cuisine"])].compactMap { $0 }.joined(separator: " · ") + " · per portion")
             .font(.footnote).foregroundStyle(.secondary)
+        if let flags = v["flags"] as? [String], !flags.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(flags, id: \.self) { Label($0, systemImage: "exclamationmark.triangle.fill") }
+            }
+            .font(.caption).foregroundStyle(Theme.warn).frame(maxWidth: .infinity, alignment: .leading)
+        }
         servesControl(base: base, portions: portions, scale: sv?.scale ?? true)
         // the finished pot: an estimate (the recipe's, or worked out from what goes in), or what you weighed
         let estimate = pos(v["cookedGrams"]).map { $0 * factor } ?? CookedWeight.estimate(used.map { (str($0["name"]), num($0["grams"]) ?? 0) })
@@ -579,12 +585,15 @@ struct SwapPicker: View {
         ("Beef chuck", ["chuck", "steak", "beef", "brisket", "blade"], [("Lean", 155, 21), ("Typical", 200, 19), ("Fatty", 220, 18)]),
         ("Beef mince", ["mince", "ground"], [("5-star", 132, 19.5), ("4-star", 170, 19), ("3-star", 220, 17.5)]),
         ("Chicken thigh fillet", ["chicken", "thigh"], [("Lean", 115, 20), ("Typical", 125, 19), ("Fatty", 150, 18)]),
-        ("Pork shoulder", ["pork", "shoulder"], [("Lean", 150, 19), ("Typical", 190, 17), ("Fatty", 230, 16)])
+        ("Pork shoulder", ["pork", "shoulder"], [("Lean", 150, 19), ("Typical", 190, 17), ("Fatty", 230, 16)]),
+        ("Kingfish", ["kingfish", "king fish", "yellowtail", "hiramasa"], [("Lean", 125, 23), ("Typical", 146, 23), ("Fatty", 175, 22)]),
+        ("Salmon", ["salmon"], [("Lean", 150, 21), ("Typical", 208, 20), ("Fatty", 240, 19)]),
+        ("White fish", ["fish", "snapper", "barramundi", "flathead", "cod", "basa"], [("Lean", 85, 19), ("Typical", 100, 20), ("Fatty", 125, 19)])
     ]
 
     @ViewBuilder private var freshCuts: some View {
         let kind = FoodKind.of(original)
-        if [.meat, .poultry].contains(kind) {
+        if [.meat, .poultry, .fish].contains(kind) {
             let n = original.lowercased()
             let matching = Self.cuts.filter { $0.words.contains(where: { n.contains($0) }) }
             Section {
@@ -661,6 +670,7 @@ extension RecipeMaker {
         healthier: the same dish with its character kept, lighter or higher in protein (less oil and butter, leaner cuts, more veg, swaps that taste close), and list the changes.
         If it's really a takeaway order or shop-bought, authentic is what to buy or order and how to put it together, healthier is the lighter choice.
         Portions 1 to 4. Grams are as weighed; kcal and macros per ingredient from standard reference values, so they add up, and each ingredient's kcal ≈ 4 × protein + 4 × carbs + 9 × fat.
+        Raw meat and fish use their raw values, and never count oil for deep frying in full, only what's absorbed. If the dish's name promises something (a protein brownie), the ingredients must deliver it.
         \(Sanity.amounts) Use what's typical in \(Plan.country) (cuts, brands and portion sizes there).
         """
         // the quick models write a recipe fine; three tries at most, so it never hangs for minutes
@@ -670,14 +680,9 @@ extension RecipeMaker {
         var out = a
         for v in ["authentic", "healthier"] {
             var ver = dict(a[v])
-            ver["ingredients"] = list(ver["ingredients"]).map { g -> JSON in
-                var x = g
-                let p = num(g["protein_g"]).map { Sanity.protein(name: str(g["name"]), grams: num(g["grams"]), p: $0) }
-                if let p { x["protein_g"] = p }
-                x["kcal"] = Sanity.check(name: str(g["name"]), grams: num(g["grams"]), kcal: num(g["kcal"]) ?? 0,
-                                         p: p, c: num(g["carbs_g"]), f: num(g["fat_g"])).kcal
-                return x
-            }
+            let checked = FoodReference.checked(list(ver["ingredients"]))
+            ver["ingredients"] = checked.items
+            ver["flags"] = checked.flags
             out[v] = ver
         }
         return out

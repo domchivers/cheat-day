@@ -208,7 +208,7 @@ const FOODS = [
   ["Breadcrumbs", 350, 30, "portion", "g", "panko", 12, 68, 3],
   ["Sugar, brown", 380, 4, "teaspoon", "g", "soft light dark muscovado demerara", 0, 98, 0],
   ["Icing sugar", 389, 30, "portion", "g", "powdered confectioners", 0, 100, 0],
-  ["Cocoa powder", 228, 10, "tablespoon", "g", "", 20, 58, 14],
+  ["Cocoa powder", 327, 10, "tablespoon", "g", "", 20, 15, 21],
   ["Chocolate chips", 480, 30, "portion", "g", "", 4, 63, 24],
   ["Ground almonds", 579, 30, "portion", "g", "almond flour", 21, 22, 50],
   ["Desiccated coconut", 660, 20, "portion", "g", "", 7, 24, 65],

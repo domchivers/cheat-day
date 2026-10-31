@@ -193,16 +193,20 @@ enum Assistant {
         var ask: [Int] = []
         for i in parts.indices {
             let x = parts[i], g = num(x["grams"]) ?? 0
-            if let row = FoodsDB.search(str(x["name"]), limit: 1).first, plausible(num(row["kcalPer100"]), aiKcal: num(x["kcal"]) ?? 0, grams: g, name: str(x["name"])) {
+            if let e = FoodReference.match(str(x["name"])) {   // a species or cut we've checked: before any list or database
+                parts[i] = checked(x, kcal100: e.kcal, p100: e.p, c100: e.c, f100: e.f, source: "reference")
+            } else if let row = FoodsDB.search(str(x["name"]), limit: 1).first, plausible(num(row["kcalPer100"]), aiKcal: num(x["kcal"]) ?? 0, grams: g, name: str(x["name"])) {
                 parts[i] = checked(x, kcal100: num(row["kcalPer100"]) ?? 0, p100: num(row["p100"]), c100: num(row["c100"]), f100: num(row["f100"]), source: "list")
             } else { ask.append(i) }
         }
         if !ask.isEmpty {
             let names = ask.map { str(parts[$0]["usda_name"]).isEmpty ? str(parts[$0]["name"]) : str(parts[$0]["usda_name"]) }
-            if let res = try? await Supabase.shared.call("/functions/v1/food", body: ["foods": names], timeout: 8), res.1 == 200,
-               let j = (try? JSONSerialization.jsonObject(with: res.0)) as? JSON, let found = j["results"] as? [Any] {
-                for (k, i) in ask.enumerated() where k < found.count {
-                    guard let r = found[k] as? JSON else { continue }
+            for start in stride(from: 0, to: ask.count, by: 10) {   // the function takes 10 at a time
+                let batch = Array(ask[start..<min(start + 10, ask.count)]), asked = Array(names[start..<min(start + 10, ask.count)])
+                guard let res = try? await Supabase.shared.call("/functions/v1/food", body: ["foods": asked], timeout: 8), res.1 == 200,
+                      let j = (try? JSONSerialization.jsonObject(with: res.0)) as? JSON, let found = j["results"] as? [Any] else { continue }
+                for (k, i) in batch.enumerated() where k < found.count {
+                    guard let r = found[k] as? JSON, FoodReference.sameFood(asked: asked[k], got: str(r["name"])) else { continue }
                     let x = parts[i]
                     if plausible(num(r["kcal100"]), aiKcal: num(x["kcal"]) ?? 0, grams: num(x["grams"]) ?? 0, name: str(x["name"])) {
                         parts[i] = checked(x, kcal100: num(r["kcal100"]) ?? 0, p100: num(r["p100"]), c100: num(r["c100"]), f100: num(r["f100"]), source: "usda")

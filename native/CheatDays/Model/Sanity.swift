@@ -35,6 +35,13 @@ enum Sanity {
             return raw || !cooked ? Range(label: "raw beef chuck", lo: 140, hi: 240, proteinMax: 22.5)
                                   : Range(label: "cooked beef chuck", lo: 190, hi: 320, proteinMax: 33)
         }
+        func fishWord(_ p: String) -> Bool { n.range(of: p, options: .regularExpression) != nil }
+        if fishWord(#"\b(\w*fish|salmon|tuna|cod|snapper|barramundi|trout|basa|yellowtail|mackerel|hiramasa)\b"#)
+            && !has(["sauce", "oil", "cake", "finger", "battered", "crumbed", "stock", "pie", "curry", "burger"]) {
+            return raw || !cooked ? Range(label: "raw fish", lo: 70, hi: 260, proteinMax: 27)
+                                  : Range(label: "cooked fish", lo: 90, hi: 300, proteinMax: 33)
+        }
+        if has(["cocoa powder", "cacao powder"]) { return Range(label: "cocoa powder", lo: 200, hi: 450, proteinMax: 30) }
         // mayo before eggs: "whole-egg mayonnaise" is mayo
         if has(["mayo", "aioli"]) { return has(["light", "lite", "low fat", "reduced"]) ? Range(label: "light mayonnaise", lo: 200, hi: 420, proteinMax: 2)
                                                                                        : Range(label: "mayonnaise", lo: 560, hi: 740, proteinMax: 2) }
@@ -67,10 +74,14 @@ enum Sanity {
         var out = Result(kcal: kcal, flags: [])
         if p != nil || c != nil || f != nil {
             let pp = p ?? 0, cc = c ?? 0, ff = f ?? 0, e = energy(p: pp, c: cc, f: ff)
-            if e > 8 && kcal < e * 0.8 - 5 {
+            let n = name.lowercased()
+            // alcohol has energy the macros don't show; fibre-heavy foods have carbs that give little
+            let alcohol = n.range(of: #"\b(wine|beer|spirits?|vodka|gin|rum|whisky|sake|mirin|cider|liqueur|cocktail)\b"#, options: .regularExpression) != nil
+            let fibre = n.range(of: #"\b(cocoa|cacao|bran|chia|flax|linseed|psyllium|fibre)\b"#, options: .regularExpression) != nil
+            if e > 8 && kcal < e * 0.8 - 5 && !fibre {
                 out.kcal = e.rounded()
                 out.flags.append("\(name): \(Fmt.int(kcal)) kcal didn't fit its \(Fmt.int(pp)) g protein, \(Fmt.int(cc)) g carbs and \(Fmt.int(ff)) g fat, so it's \(Fmt.int(e)) kcal from those.")
-            } else if e > 0 && kcal > e * 1.6 + 25 && pp + cc + ff > 2 {
+            } else if e > 0 && kcal > e * 1.2 + 15 && pp + cc + ff > 2 && !alcohol {
                 out.flags.append("\(name): \(Fmt.int(kcal)) kcal is a lot more than its protein, carbs and fat make (\(Fmt.int(e))). Check it.")
             }
         }
@@ -117,7 +128,7 @@ enum FoodKind: String {
         if has(["sauce", "mayo", "ketchup", "dressing", "paste", "roux", "curry mix", "stock", "gravy", "oil", "butter", "vinegar", "soy"]) { return .sauce }
         if has(["chicken", "turkey", "duck"]) { return .poultry }
         if has(["beef", "steak", "chuck", "mince", "lamb", "pork", "bacon", "ham", "sausage", "brisket", "venison", "chorizo", "salami", "pepperoni"]) { return .meat }
-        if has(["salmon", "tuna", "cod", "fish", "prawn", "shrimp", "haddock", "barramundi", "basa"]) { return .fish }
+        if has(["salmon", "tuna", "cod", "fish", "prawn", "shrimp", "haddock", "barramundi", "basa", "snapper", "trout", "flathead", "yellowtail", "squid", "calamari"]) { return .fish }
         if has(["milk", "yoghurt", "yogurt", "cheese", "cream", "skyr", "quark", "feta", "mozzarella"]) { return .dairy }
         if has(["rice", "pasta", "noodle", "bread", "oats", "wrap", "tortilla", "couscous", "quinoa", "potato", "flour", "spaghetti", "penne"]) { return .grain }
         if has(["chocolate", "biscuit", "cookie", "cake", "ice cream", "lolly", "candy", "sugar", "honey", "syrup"]) { return .sweet }
