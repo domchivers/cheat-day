@@ -195,7 +195,7 @@ final class Store {
             var tombs = dict(d["tombs"])
             tombs["item:\(id)"] = op["at"] ?? nowMs()
             let cutoff = Double(nowMs()) - 60 * 864e5
-            for (k, t) in tombs where (num(t) ?? 0) < cutoff { tombs.removeValue(forKey: k) }
+            for (k, t) in tombs where (num(t) ?? 0) < cutoff && !k.hasPrefix("food:") && !k.hasPrefix("session:") { tombs.removeValue(forKey: k) }
             d["tombs"] = tombs
         case "edit":
             let id = str(op["id"])
