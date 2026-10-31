@@ -4,7 +4,7 @@ import Foundation
 /// used here (kingfish is yellowtail, not the king mackerel USDA calls kingfish). Used before any database, and on
 /// recipes, which otherwise never see one. Your own labels and scans never come through here.
 enum FoodReference {
-    struct Entry { let name: String; let all: [String]; let any: [String]; let not: [String]; let ok: [String]; let kcal, p, c, f: Double }
+    struct Entry { let name: String; let all: [String]; let any: [String]; let not: [String]; let ok: [String]; let kcal, p, c, f: Double; let yield: Double; let wholeYield: Double }
 
     static let entries: [Entry] = {
         guard let url = Bundle.main.url(forResource: "reference", withExtension: "json"), let d = try? Data(contentsOf: url),
@@ -12,7 +12,7 @@ enum FoodReference {
         return rows.compactMap { r in
             guard let v = r["v"] as? [Double], v.count == 4 else { return nil }
             func words(_ k: String) -> [String] { r[k] as? [String] ?? [] }
-            return Entry(name: str(r["n"]), all: words("all"), any: words("any"), not: words("not"), ok: words("ok"), kcal: v[0], p: v[1], c: v[2], f: v[3])
+            return Entry(name: str(r["n"]), all: words("all"), any: words("any"), not: words("not"), ok: words("ok"), kcal: v[0], p: v[1], c: v[2], f: v[3], yield: num(r["y"]) ?? 1, wholeYield: num(r["whole"]) ?? 1)
         }
     }()
 
@@ -41,10 +41,15 @@ enum FoodReference {
     /// An ingredient (kcal, protein_g, carbs_g, fat_g, grams) with the table's numbers if it was out, and whether it changed.
     static func corrected(_ g: JSON) -> (item: JSON, changed: Bool) {
         guard let grams = pos(g["grams"]), let e = match(str(g["name"])) else { return (g, false) }
-        let k100 = (num(g["kcal"]) ?? 0) / grams * 100
-        guard abs(k100 - e.kcal) / e.kcal > tolerance else { return (g, false) }
+        // weighed with the bones in, only what you eat counts
+        let n = str(g["name"]).lowercased(), boneless = n.contains("boneless") || n.contains("fillet")
+        let eaten = grams * (boneless ? 1 : n.contains("whole") ? e.wholeYield : e.yield)
+        let kcal = e.kcal * eaten / 100, protein = e.p * eaten / 100
+        let kcalOff = abs((num(g["kcal"]) ?? 0) - kcal) / kcal > tolerance
+        let proteinOff = e.p >= 5 && abs((num(g["protein_g"]) ?? 0) - protein) / protein > 0.2
+        guard kcalOff || proteinOff else { return (g, false) }
         var x = g
-        x["kcal"] = (e.kcal * grams / 100).rounded(); x["protein_g"] = e.p * grams / 100; x["carbs_g"] = e.c * grams / 100; x["fat_g"] = e.f * grams / 100
+        x["kcal"] = kcal.rounded(); x["protein_g"] = protein; x["carbs_g"] = e.c * eaten / 100; x["fat_g"] = e.f * eaten / 100
         return (x, true)
     }
 
@@ -67,6 +72,13 @@ enum FoodReference {
         return !["canned", "cooked", "puffed", "reduced fat", "low fat", "fat free", "dried", "frozen", "breaded", "fried"].contains { g.contains($0) && !a.contains($0) }
     }
 
+    /// A dish that says protein on the name should have some: at least a fifth of its calories.
+    static func protein(promisedBy dish: String, in items: [JSON]) -> String? {
+        let kcal = items.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }, p = items.reduce(0) { $0 + (num($1["protein_g"]) ?? 0) }
+        guard dish.lowercased().contains("protein"), kcal > 0, p * 4 / kcal < 0.2 else { return nil }
+        return "This is called (dish) but only (Int((p * 4 / kcal * 100).rounded()))% of its calories are protein."
+    }
+
     /// A whole recipe version's ingredients checked: the numbers put right, what's still odd flagged, and a note of how many changed.
     static func checked(_ ingredients: [JSON]) -> (items: [JSON], flags: [String]) {
         var flags: [String] = [], changed = 0
@@ -76,7 +88,8 @@ enum FoodReference {
             if fry.changed || table.changed { changed += 1 }
             let p = num(x["protein_g"]).map { Sanity.protein(name: str(x["name"]), grams: num(x["grams"]), p: $0) }
             if let p { x["protein_g"] = p }
-            let r = Sanity.check(name: str(x["name"]), grams: num(x["grams"]), kcal: num(x["kcal"]) ?? 0, p: p, c: num(x["carbs_g"]), f: num(x["fat_g"]))
+            // the table's own numbers don't need the kind-of-food ranges, and a bone-in weight would look wrong against them
+            let r = Sanity.check(name: str(x["name"]), grams: match(str(x["name"])) == nil ? num(x["grams"]) : nil, kcal: num(x["kcal"]) ?? 0, p: p, c: num(x["carbs_g"]), f: num(x["fat_g"]))
             x["kcal"] = r.kcal
             flags += r.flags
             return x

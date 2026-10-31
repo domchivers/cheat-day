@@ -682,7 +682,7 @@ extension RecipeMaker {
             var ver = dict(a[v])
             let checked = FoodReference.checked(list(ver["ingredients"]))
             ver["ingredients"] = checked.items
-            ver["flags"] = checked.flags
+            ver["flags"] = checked.flags + [FoodReference.protein(promisedBy: str(idea["name"]), in: checked.items)].compactMap { $0 }
             out[v] = ver
         }
         return out

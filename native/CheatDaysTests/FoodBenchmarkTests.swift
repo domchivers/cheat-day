@@ -55,4 +55,26 @@ final class FoodBenchmarkTests: XCTestCase {
     func testAlcoholIsntFlagged() {
         XCTAssertTrue(Sanity.check(name: "Dry red wine", grams: 250, kcal: 210, p: 0, c: 7, f: 0).flags.isEmpty)
     }
+
+    // round two: what the AI wrote for new dishes
+    func testCookedNumbersOnRawChickenAreFixed() {
+        XCTAssertEqual(num(out(ing("Chicken breast, skinless", 300, 495, 93, 0, 11))["kcal"]) ?? 0, 360, accuracy: 5)
+    }
+
+    func testProteinOffIsFixedToo() {
+        let steak = out(ing("Scotch Fillet Steak", 250, 650, 35, 0, 55))
+        XCTAssertEqual(num(steak["protein_g"]) ?? 0, 47.5, accuracy: 1)
+    }
+
+    func testBonesAndWholeFishDontCount() {
+        XCTAssertEqual(num(out(ing("Whole fresh Australian snapper", 700, 770, 133, 0, 20))["kcal"]) ?? 0, 315, accuracy: 5)
+        XCTAssertEqual(num(out(ing("Chicken drumsticks", 500, 860, 85, 0, 55))["kcal"]) ?? 0, 580, accuracy: 5)
+        XCTAssertEqual(num(out(ing("Boneless kingfish fillet", 100, 146, 23, 0, 5))["kcal"]), 146)
+    }
+
+    func testAProteinDishWithoutProteinIsFlagged() {
+        let items = [ing("Butter", 115, 828), ing("Sugar", 200, 800), ing("Eggs", 100, 143, 13, 1, 10)]
+        XCTAssertNotNil(FoodReference.protein(promisedBy: "Protein brownie", in: items))
+        XCTAssertNil(FoodReference.protein(promisedBy: "Brownie", in: items))
+    }
 }
