@@ -211,8 +211,8 @@ struct FeedView: View {
                     Menu { Button(role: .destructive) { Task { await feed.delete(p) } } label: { Label("Delete post", systemImage: "trash") } } label: { Image(systemName: "ellipsis").padding(8) }
                 }
             }
-            if let url = URL(string: str(p["photo"])), str(p["photo"]).hasPrefix("http") {
-                AsyncImage(url: url) { img in img.resizable().scaledToFit() } placeholder: { Theme.hero.frame(height: 300) }
+            if str(p["photo"]).hasPrefix("http") || str(p["photo"]).hasPrefix("data:image") {
+                FeedPhoto(src: str(p["photo"]))
                     .frame(maxWidth: .infinity, maxHeight: 560)
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
@@ -447,3 +447,35 @@ struct PostRecipeSheet: View {
 }
 
 private struct EditBox: Identifiable { let id = UUID(); let image: UIImage }
+
+/// A post's picture. SwiftUI's AsyncImage stays blank for good if scrolling cancels its download, as a long feed does;
+/// this one is kept once loaded, tries again when it comes back on screen, and retries a failed download.
+struct FeedPhoto: View {
+    let src: String
+    var fill = false
+    @State private var image: UIImage?
+    private static let cache = NSCache<NSString, UIImage>()
+
+    var body: some View {
+        Group {
+            if let image {
+                if fill { Image(uiImage: image).resizable().scaledToFill() } else { Image(uiImage: image).resizable().scaledToFit() }
+            } else if fill { Theme.hero } else { Theme.hero.frame(height: 300) }
+        }
+        .task(id: src) { await load() }
+    }
+
+    private func load() async {
+        if let kept = Self.cache.object(forKey: src as NSString) { image = kept; return }
+        guard let url = URL(string: src) else { return }
+        for attempt in 0..<3 {
+            if attempt > 0 { try? await Task.sleep(nanoseconds: UInt64(attempt) * 1_500_000_000) }
+            if Task.isCancelled { return }
+            if let (data, _) = try? await URLSession.shared.data(from: url), let got = UIImage(data: data) {
+                Self.cache.setObject(got, forKey: src as NSString)
+                image = got
+                return
+            }
+        }
+    }
+}

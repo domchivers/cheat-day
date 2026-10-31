@@ -151,7 +151,7 @@ struct ActivityView: View {
             Spacer(minLength: 0)
             if !it.id.hasPrefix("test-") { Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary).padding(.top, 10) }
             if let p = it.photo, let url = URL(string: p) {
-                AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { Theme.hero }
+                FeedPhoto(src: url.absoluteString, fill: true)
                     .frame(width: 46, height: 46).clipShape(RoundedRectangle(cornerRadius: 8))
             }
         }
