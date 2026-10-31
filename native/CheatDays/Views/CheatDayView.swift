@@ -226,7 +226,7 @@ struct CheatDayView: View {
                     Text("\(Fmt.int(kcal)) of \(Fmt.int(budget(next))) kcal").font(.footnote.weight(.bold)).monospacedDigit()
                     Spacer()
                     if let goal = store.proteinGoal, protein > 0 {
-                        Label("\(Int(protein)) / \(Int(goal)) g protein", systemImage: protein >= goal * 0.95 ? "checkmark.circle.fill" : "circle")
+                        Label("\(Int(protein.rounded())) / \(Int(goal)) g protein", systemImage: protein >= goal * 0.95 ? "checkmark.circle.fill" : "circle")
                             .font(.footnote.weight(.bold)).monospacedDigit().foregroundStyle(protein >= goal * 0.95 ? Theme.walk : .secondary)
                     }
                 }
@@ -269,7 +269,7 @@ struct CheatDayView: View {
                         if !str(s["detail"]).isEmpty { Text(str(s["detail"])).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.leading) }
                         if kcal > 0 || done {
                             ((done ? Text("✓ Logged · ").foregroundStyle(Theme.walk) : Text(""))
-                                + Text("\(Fmt.int(kcal)) kcal · \(Int(protein)) g protein"))
+                                + Text("\(Fmt.int(kcal)) kcal · \(Int(protein.rounded())) g protein"))
                                 .font(.caption.weight(.semibold)).monospacedDigit().padding(.top, 1)
                         }
                     }
@@ -377,7 +377,7 @@ struct CheatDayView: View {
         let prefs = dict(store.doc["prefs"])
         let avoid = (prefs["avoid"] as? [String] ?? []).joined(separator: ", ")
         let loves = (prefs["loves"] as? [String] ?? []).joined(separator: ", ")
-        let meals = saved.values.prefix(40).map { "\(str($0["name"])): \(Int(num($0["kcalPerServing"]) ?? 0)) kcal, \(Int(num($0["pServ"]) ?? 0)) g protein" }.joined(separator: "; ")
+        let meals = list(store.doc["meals"]).prefix(40).map { store.mealBasis($0) }.map { "\(str($0["name"])): \(Int(num($0["kcalPerServing"]) ?? 0)) kcal, \(Int(num($0["pServ"]) ?? 0)) g protein" }.joined(separator: "; ")
         let usual = store.mealHistory("Dinner").prefix(8).map(\.name).joined(separator: ", ")
         let earlier = list(plan?["chat"]).suffix(8).map { "They said: \(str($0["me"]))" }.joined(separator: "\n")
         let current = plan.map { list($0["slots"]).map { "\(str($0["time"])) \(str($0["title"])) (\(Int(num($0["kcal"]) ?? 0)) kcal, \(Int(num($0["protein"]) ?? 0)) g protein)" }.joined(separator: "\n") } ?? ""
@@ -398,7 +398,7 @@ struct CheatDayView: View {
         \(isToday ? "It's \(now) today: every slot's time is after \(now)." : "The day is \(when(next.date)).")
         \(had.isEmpty ? "" : "Already logged today, never list these: \(had).")
         About \(Int(room)) kcal are available for the slots.\(protein.map { " Protein still to reach today: \(Int($0)) g." } ?? "")
-        Their saved meals, with their real numbers: \(meals.isEmpty ? "none" : meals). If they mean one of these, use it, set saved to its exact name and use exactly those numbers.
+        Their saved meals, newest first, with their real numbers: \(meals.isEmpty ? "none" : meals). If they mean one of these ("my brownie"), use it, the newest that fits, set saved to its exact name and use exactly those numbers. Something added to a saved meal (a frosting) is its own slot, and the saved meal stays as it is.
         Foods they love: \(loves.isEmpty ? "not said" : loves). Never include: \(avoid.isEmpty ? "nothing" : avoid). What they often have for dinner: \(usual.isEmpty ? "not known" : usual).
         \(current.isEmpty ? "" : "The plan so far:\n\(current)\nKeep every slot exactly as it is unless they ask to change it, or a change they asked for can't work without it, and if so say so in reply.")
         \(earlier.isEmpty ? "" : "What they've said so far:\n\(earlier)")

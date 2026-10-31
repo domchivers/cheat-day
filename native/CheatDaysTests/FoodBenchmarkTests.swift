@@ -56,6 +56,14 @@ final class FoodBenchmarkTests: XCTestCase {
         XCTAssertTrue(Sanity.check(name: "Dry red wine", grams: 250, kcal: 210, p: 0, c: 7, f: 0).flags.isEmpty)
     }
 
+    func testAnOldMealWithoutMacrosStillHasProtein() {
+        let items: [JSON] = [["name": "Flour, plain", "kcal": 255, "grams": 70, "kcalPer100": 364], ["name": "Whey protein powder", "kcal": 95, "grams": 25, "kcalPer100": 380],
+                             ["name": "Cocoa powder", "kcal": 46, "grams": 20, "kcalPer100": 228], ["name": "Egg, raw", "kcal": 72, "grams": 50, "kcalPer100": 143]]
+        let b = Store.shared.mealBasis(["name": "Protein brownie", "portions": 1, "items": items])
+        XCTAssertGreaterThan(num(b["pServ"]) ?? 0, 25)
+        XCTAssertNil(Store.withMacros(["name": "Flour, plain", "kcal": 10, "grams": 70, "kcalPer100": 14])["p100"])   // not really flour by its calories
+    }
+
     // round two: what the AI wrote for new dishes
     func testCookedNumbersOnRawChickenAreFixed() {
         XCTAssertEqual(num(out(ing("Chicken breast, skinless", 300, 495, 93, 0, 11))["kcal"]) ?? 0, 360, accuracy: 5)
