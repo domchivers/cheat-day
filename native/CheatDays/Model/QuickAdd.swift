@@ -136,6 +136,21 @@ extension Store {
         return DayKey.date(date).formatted(.dateTime.day().month(.abbreviated))
     }
 
+    /// An ingredient saved before macros were kept: its protein, carbs and fat from the reference table or food list
+    /// (only if that's really the same food by calories), so an old meal doesn't count as no protein at all.
+    static func withMacros(_ it: JSON) -> JSON {
+        let kcal = num(it["kcal"]) ?? 0
+        guard kcal > 0, FoodMath.macros(it, kcal: kcal) == nil, let g = num(it["grams"]) ?? FoodMath.amounts(it, kcal: kcal).grams, g > 0 else { return it }
+        let name = str(it["name"])
+        var row: (k: Double, p: Double, c: Double, f: Double)?
+        if let e = FoodReference.match(name) { row = (e.kcal, e.p, e.c, e.f) }
+        else if let r = FoodsDB.search(name, limit: 1).first, let k = num(r["kcalPer100"]), let p = num(r["p100"]) { row = (k, p, num(r["c100"]) ?? 0, num(r["f100"]) ?? 0) }
+        guard let row, abs(kcal / g * 100 - row.k) / row.k < 0.35 else { return it }
+        var x = it
+        x["kcalPer100"] = kcal / g * 100; x["p100"] = row.p; x["c100"] = row.c; x["f100"] = row.f
+        return x
+    }
+
     /// A saved meal as one food: a portion of it (the web app's mealBasis).
     func mealBasis(_ m: JSON) -> JSON {
         var kcal = 0.0, grams = 0.0
@@ -147,7 +162,7 @@ extension Store {
         }
         // cooked once and weighed: grams of the finished dish, not of what went in (a braise loses a third, rice gains)
         if let cooked = pos(m["cookedGrams"]) { grams = cooked }
-        let mac = macros(items), portions = pos(m["portions"]) ?? 1
+        let mac = macros(items.map(Self.withMacros)), portions = pos(m["portions"]) ?? 1
         var b: JSON = ["name": str(m["name"]).isEmpty ? "Meal" : str(m["name"]), "source": "meal", "mealId": str(m["id"]), "unit": "g",
                        "kcalPerServing": kcal / portions, "unitLabel": "portion",
                        "pServ": mac.p / portions, "cServ": mac.c / portions, "fServ": mac.f / portions]

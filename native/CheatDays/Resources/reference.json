@@ -37,5 +37,6 @@
 {"n":"Lamb shoulder","all":["lamb","shoulder"],"v":[230,17,0,18]},
 {"n":"Lamb mince","all":["lamb","mince"],"v":[250,17,0,20]},
 {"n":"Cocoa powder","any":["cocoa"],"not":["drink","hot chocolate","cocoa butter","nibs"],"ok":["powder"],"v":[327,20,15,21]},
+{"n":"Whey protein powder","any":["whey"],"ok":["powder"],"v":[390,78,8,6]},
 {"n":"Brioche bun","any":["brioche"],"v":[340,9,50,11]}
 ]
