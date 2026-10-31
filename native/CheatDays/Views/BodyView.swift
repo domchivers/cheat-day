@@ -55,7 +55,7 @@ struct BodyView: View {
                                     if let t = ISO.date(str(r["takenAt"])) { Text(t.formatted(date: .omitted, time: .shortened)).font(.caption2).foregroundStyle(.secondary) }
                                 }
                                 Spacer()
-                                Text(Self.metrics.compactMap { x in pos(r[x.key]).map { "\(Fmt.kg($0))\(x.unit == "%" ? "%" : x.unit.isEmpty ? "" : " \(x.unit)")" } }.prefix(3).joined(separator: " · "))
+                                Text(Self.metrics.compactMap { x in pos(r[x.key]).map { x.unit == "%" ? "\(Fmt.dec($0))%" : "\(Fmt.kg($0))\(x.unit.isEmpty ? "" : " \(x.unit)")" } }.prefix(3).joined(separator: " · "))
                                     .font(.subheadline.weight(.semibold)).monospacedDigit().foregroundStyle(.secondary)
                             }
                         }
@@ -133,7 +133,7 @@ struct BodyView: View {
         let goal = pos(store.doc["goalWeight"])
         HStack(spacing: 0) {
             stat(rate.map { "\($0 < 0 ? "−" : "+")\(Fmt.kg2(abs($0))) kg" } ?? "–", "a week (4-wk trend)")
-            stat(store.fatTrend.map { "\(Fmt.one($0.pct))%" } ?? "–", "body fat")
+            stat(store.fatTrend.map { "\(Fmt.dec($0.pct))%" } ?? "–", "body fat")
             stat(goal.flatMap { store.reachDate($0) }.map { $0.formatted(.dateTime.day().month(.abbreviated)) } ?? "–", goal.map { "to \(Fmt.kg($0)) kg" } ?? "no goal set")
         }
         .padding(.top, 4)
@@ -384,7 +384,7 @@ struct BodyFatSummary: View {
             VStack(alignment: .leading, spacing: 6) {
                 Divider().padding(.vertical, 2)
                 HStack {
-                    Text("Body fat \(Fmt.one(bf.pct))%").font(.headline)
+                    Text("Body fat \(Fmt.dec(bf.pct))%").font(.headline)
                     Spacer()
                     Text("fat \(Fmt.one(fatKg)) kg · lean \(Fmt.one(now - fatKg)) kg").font(.caption).foregroundStyle(.secondary).monospacedDigit()
                 }
@@ -394,7 +394,7 @@ struct BodyFatSummary: View {
                     HStack {
                         Text("Body-fat goal")
                         Spacer()
-                        Text(store.goalFat.map { "\(Fmt.one($0))%" } ?? "Set").fontWeight(.semibold)
+                        Text(store.goalFat.map { "\(Fmt.dec($0))%" } ?? "Set").fontWeight(.semibold)
                         Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
                     }
                 }
@@ -402,7 +402,7 @@ struct BodyFatSummary: View {
                 if let t = store.goalFat {
                     let g = Store.fatGoal(weight: now, fatPct: bf.pct, target: t)
                     Text(abs(g.weight - now) < 0.3 ? "You're about there."
-                         : "\(Fmt.one(t))% body fat ≈ \(Fmt.kg(g.weight)) kg\(store.reachDate(g.weight).map { ", around \($0.formatted(.dateTime.day().month(.wide)))" } ?? "").")
+                         : "\(Fmt.dec(t))% body fat ≈ \(Fmt.kg(g.weight)) kg\(store.reachDate(g.weight).map { ", around \($0.formatted(.dateTime.day().month(.wide)))" } ?? "").")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Text("Averaged over your last \(bf.n) readings: scales read body fat roughly, so one reading means little.")

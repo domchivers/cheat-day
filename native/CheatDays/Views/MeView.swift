@@ -165,7 +165,7 @@ struct MeView: View {
                     }
                 }
                 if let w = store.lastWeighIn {
-                    let fat = store.fatTrend.map { " · \(Fmt.one($0.pct))% body fat" } ?? ""
+                    let fat = store.fatTrend.map { " · \(Fmt.dec($0.pct))% body fat" } ?? ""
                     Text("Weighed \(Store.whenTaken(day: w.day, at: w.at))\(fat)").font(.caption).foregroundStyle(.secondary)
                 }
                 miniChart
