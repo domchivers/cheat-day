@@ -2,7 +2,6 @@ import Charts
 import SwiftUI
 
 private struct DayBar: Identifiable { let id: String; let label: String; let kcal: Double; let walk: Double; let today: Bool }
-private struct Segment: Identifiable { let id: String; let day: String; let kind: String; let kcal: Double }
 private struct PastRow: Identifiable { let id: String; let date: String; let workout: JSON }
 
 /// Workouts: the week, one big Start, routines, today's and past workouts, and every exercise.
@@ -135,17 +134,18 @@ struct WorkoutsView: View {
         .padding(.vertical, 6)
     }
 
+    private static func barFill(_ b: DayBar) -> LinearGradient {
+        let all = b.kcal + b.walk, split = all > 0 ? b.kcal / all : 0
+        let low = all > 0 ? Theme.accent : Theme.track, high = all > 0 ? Theme.walk : Theme.track
+        return LinearGradient(stops: [.init(color: low, location: 0), .init(color: low, location: split), .init(color: high, location: split), .init(color: high, location: 1)], startPoint: .bottom, endPoint: .top)
+    }
+
     private var weekCard: some View {
         let days = store.week
         let bars = days.map { d in DayBar(id: d.date, label: String(DayKey.date(d.date).formatted(.dateTime.weekday(.narrow))), kcal: d.kcal,
                                           walk: Steps.shared.kcal(on: d.date), today: d.date == store.today) }
         let total = days.reduce(0) { $0 + $1.kcal }, count = days.reduce(0) { $0 + $1.count }
         let walked = bars.reduce(0) { $0 + $1.walk }
-        // workouts at the bottom of each day, walking on top; an empty day keeps a small grey stub
-        let segments = bars.flatMap { b -> [Segment] in
-            if b.kcal <= 0 && b.walk <= 0 { return [Segment(id: b.id + "-none", day: b.id, kind: "None", kcal: 4)] }
-            return [Segment(id: b.id + "-work", day: b.id, kind: "Workouts", kcal: b.kcal), Segment(id: b.id + "-walk", day: b.id, kind: "Walking", kcal: b.walk)].filter { $0.kcal > 0 }
-        }
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
                 Text("This week").font(.headline)
@@ -155,9 +155,10 @@ struct WorkoutsView: View {
                     if walked > 0 { Text("+ walking \(Fmt.int(walked)) kcal").font(.subheadline).foregroundStyle(Theme.walk) }
                 }
             }
-            Chart(segments) { s in
-                BarMark(x: .value("Day", s.day), y: .value("kcal", s.kcal))
-                    .foregroundStyle(s.kind == "Walking" ? Theme.walk : s.kind == "Workouts" ? Theme.accent : Theme.track)
+            // one bar a day: workouts from the bottom, the walking share in green on top; an empty day keeps a small grey stub
+            Chart(bars) { b in
+                BarMark(x: .value("Day", b.id), y: .value("kcal", b.kcal + b.walk > 0 ? b.kcal + b.walk : 4))
+                    .foregroundStyle(Self.barFill(b))
                     .clipShape(RoundedRectangle(cornerRadius: 6))
             }
             .chartXAxis {
