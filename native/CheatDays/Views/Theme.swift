@@ -369,10 +369,14 @@ enum KeyboardDone {
         }
     }
 
+    /// A chat box sitting right on the keyboard, with its own send button and tap-away: no bar between them.
+    static var quiet = false
+
     private static let tag = 0xD0E   // marks our bar, so it's put on once
     /// SwiftUI gives its text fields an (empty) accessory view of its own, so ours replaces whatever's there: nothing
     /// in the app uses SwiftUI's keyboard toolbar any more.
     private static func attach(_ field: Any?) {
+        guard !quiet else { return }
         if let f = field as? UITextField, f.inputAccessoryView?.tag != tag { f.inputAccessoryView = bar(for: f); f.reloadInputViews() }
         else if let v = field as? UITextView, v.isEditable, v.inputAccessoryView?.tag != tag { v.inputAccessoryView = bar(for: v); v.reloadInputViews() }
     }

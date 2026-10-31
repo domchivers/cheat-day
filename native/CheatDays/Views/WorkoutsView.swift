@@ -2,9 +2,8 @@ import Charts
 import SwiftUI
 
 private struct DayBar: Identifiable { let id: String; let label: String; let kcal: Double; let walk: Double; let today: Bool }
-private struct PastRow: Identifiable { let id: String; let date: String; let workout: JSON }
 
-/// Workouts: the week, one big Start, routines, today's and past workouts, and every exercise.
+/// Workouts: the week, one big Start, routines and today's, with past workouts and every exercise a tap away.
 struct WorkoutsView: View {
     @State private var showSession = false
     @State private var showActivity = false
@@ -96,17 +95,22 @@ struct WorkoutsView: View {
                         }
                     }
                 }
-                let past = store.pastWorkouts.prefix(20).map { PastRow(id: "\($0.date)-\($0.index)", date: $0.date, workout: $0.workout) }
-                if !past.isEmpty {
-                    Section("Past workouts") {
-                        ForEach(past) { p in
-                            NavigationLink { WorkoutDetail(workout: p.workout, date: p.date) } label: { WorkoutRow(workout: p.workout, date: p.date) }
+                Section {
+                    if let last = store.pastWorkouts.max(by: { $0.date < $1.date }) {
+                        NavigationLink { PastWorkoutsView() } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Past workouts")
+                                Text("Last: \(Store.when(last.date).capitalizedFirst) · \(str(last.workout["name"]))").font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                        }
+                    }
+                    NavigationLink { ExerciseBrowser() } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("All exercises")
+                            Text("Your bests and the library").font(.footnote).foregroundStyle(.secondary)
                         }
                     }
                 }
-                Section {
-                    NavigationLink { ExerciseBrowser() } label: { Label("All exercises", systemImage: "list.bullet.rectangle") }
-                } footer: { Text("Everything you've done, your bests, and a library to pick from.") }
             }
             .navigationTitle("Workouts")
             .scrollContentBackground(.hidden)
@@ -201,9 +205,58 @@ struct WorkoutsView: View {
     }
 }
 
+/// Every past workout, newest first, by the month.
+struct PastWorkoutsView: View {
+    private var store: Store { Store.shared }
+
+    var body: some View {
+        List {
+            ForEach(PastMonth.grouped(store.allPastWorkouts)) { m in
+                Section {
+                    ForEach(m.rows) { p in
+                        NavigationLink { WorkoutDetail(workout: p.workout, date: p.date) } label: {
+                            WorkoutRow(workout: p.workout, date: p.date, day: DayKey.date(p.date).formatted(.dateTime.weekday(.abbreviated).day()))
+                        }
+                    }
+                } header: {
+                    HStack {
+                        Text(m.title).textCase(nil)
+                        Spacer()
+                        Text("\(m.rows.count) workout\(m.rows.count == 1 ? "" : "s") · \(Fmt.int(m.kcal)) kcal").textCase(nil).monospacedDigit()
+                    }
+                }
+            }
+        }
+        .navigationTitle("Past workouts")
+        .navigationBarTitleDisplayMode(.inline)
+        .scrollContentBackground(.hidden)
+        .background(Theme.bg)
+    }
+}
+
+struct PastMonth: Identifiable {
+    struct Row: Identifiable { let id: String; let date: String; let workout: JSON }
+    let id: String   // 2026-10
+    let rows: [Row]
+    var kcal: Double { rows.reduce(0) { $0 + (num($1.workout["kcal"]) ?? 0) } }
+    /// The month's name, with the year once it isn't this year's.
+    var title: String {
+        let thisYear = id.prefix(4) == DayKey.string(Date()).prefix(4), date = DayKey.date(id + "-01")
+        return thisYear ? date.formatted(.dateTime.month(.wide)) : date.formatted(.dateTime.month(.wide).year())
+    }
+
+    static func grouped(_ past: [(date: String, index: Int, workout: JSON)]) -> [PastMonth] {
+        let rows = past.sorted { $0.date > $1.date }.map { Row(id: "\($0.date)-\($0.index)", date: $0.date, workout: $0.workout) }
+        return Dictionary(grouping: rows) { String($0.date.prefix(7)) }
+            .map { PastMonth(id: $0.key, rows: $0.value) }
+            .sorted { $0.id > $1.id }
+    }
+}
+
 struct WorkoutRow: View {
     let workout: JSON
     let date: String?
+    var day: String? = nil   // how to show the date, where the month's already said
     var body: some View {
         let lifts = list(workout["lifts"])
         let sets = lifts.reduce(0) { $0 + max(list($1["detail"]).count, Int(num($1["sets"]) ?? 0)) }
@@ -213,7 +266,7 @@ struct WorkoutRow: View {
                 .frame(width: 34, height: 34).background(Theme.hero, in: Circle())
             VStack(alignment: .leading, spacing: 2) {
                 Text(str(workout["name"])).font(.body.weight(.semibold))
-                Text([date.map { Store.when($0).capitalizedFirst }, "\(Int(num(workout["minutes"]) ?? 0)) min",
+                Text([day ?? date.map { Store.when($0).capitalizedFirst },"\(Int(num(workout["minutes"]) ?? 0)) min",
                       lifts.isEmpty ? nil : "\(lifts.count) exercise\(lifts.count == 1 ? "" : "s") · \(sets) sets"].compactMap { $0 }.joined(separator: " · "))
                     .font(.footnote).foregroundStyle(.secondary)
             }

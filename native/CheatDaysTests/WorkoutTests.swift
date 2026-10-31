@@ -6,6 +6,14 @@ import XCTest
 final class WorkoutTests: XCTestCase {
     private let today = "2026-10-09"
 
+    func testPastWorkoutsGoByTheMonth() {
+        let past: [(date: String, index: Int, workout: JSON)] = [(date: "2026-09-28", index: 0, workout: ["kcal": 480]), (date: "2026-10-30", index: 0, workout: ["kcal": 467]), (date: "2026-10-26", index: 0, workout: ["kcal": 684])]
+        let months = PastMonth.grouped(past)
+        XCTAssertEqual(months.map(\.id), ["2026-10", "2026-09"])
+        XCTAssertEqual(months[0].rows.map(\.date), ["2026-10-30", "2026-10-26"])
+        XCTAssertEqual(months[0].kcal, 1151)
+    }
+
     private func record() -> JSON {
         ["budget": 1650, "weightKg": 80,
          "day": ["date": today, "items": [Any](), "workouts": [Any]()] as JSON,

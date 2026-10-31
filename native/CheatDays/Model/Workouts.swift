@@ -148,10 +148,13 @@ extension Store {
     }
 
     /// Finished workouts from earlier days, newest first.
-    var pastWorkouts: [(date: String, index: Int, workout: JSON)] {
+    var pastWorkouts: [(date: String, index: Int, workout: JSON)] { pastWorkouts(days: 90) }
+    var allPastWorkouts: [(date: String, index: Int, workout: JSON)] { pastWorkouts(days: Int.max) }
+
+    private func pastWorkouts(days: Int) -> [(date: String, index: Int, workout: JSON)] {
         var out: [(String, Int, JSON)] = []
         if str(day["date"]) != today { for (k, w) in list(day["workouts"]).enumerated() { out.append((str(day["date"]), k, w)) } }
-        for h in list(doc["history"]).prefix(90) { for (k, w) in list(h["workouts"]).enumerated() { out.append((str(h["date"]), k, w)) } }
+        for h in list(doc["history"]).prefix(days) { for (k, w) in list(h["workouts"]).enumerated() { out.append((str(h["date"]), k, w)) } }
         return out.map { (date: $0.0, index: $0.1, workout: $0.2) }
     }
 

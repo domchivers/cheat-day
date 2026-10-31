@@ -1,4 +1,4 @@
-New in this build: cheat day plans and recipes now show the same calories, and the Add button no longer covers the box when you name a scanned food.
+New in this build: past workouts have their own page, you can remove anything from a cheat day plan, and the cheat day chat is less cluttered.
 
 Thanks for testing! Please just use it like a normal day:
 

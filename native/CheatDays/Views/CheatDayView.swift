@@ -211,10 +211,14 @@ struct CheatDayView: View {
                 }
                 .padding(.horizontal, 20).padding(.bottom, 12)
             }
+            .simultaneousGesture(TapGesture().onEnded { typing = false })   // tap away to put the keyboard down
             .onChange(of: typing) { _, t in
                 if t { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { withAnimation { proxy.scrollTo("end", anchor: .bottom) } } }
             }
         }
+        .onAppear { KeyboardDone.quiet = true }
+        .onDisappear { KeyboardDone.quiet = false }
+        .onChange(of: open?.id) { _, id in KeyboardDone.quiet = id == nil }   // a recipe's boxes keep their Done
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 0) {
                 // always in view: the day's numbers, just above where you change them
@@ -240,8 +244,14 @@ struct CheatDayView: View {
             Spacer()
             Text(Fmt.int(num(item["kcal"]) ?? 0)).font(.caption.weight(.bold)).monospacedDigit().foregroundStyle(.secondary)
             Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.walk)
+            if !str(item["id"]).isEmpty {
+                Menu {
+                    Button(role: .destructive) { withAnimation(.snappy) { store.delete(str(item["id"])) } } label: { Label("Remove from today", systemImage: "minus.circle") }
+                } label: { moreLabel }
+                .accessibilityLabel("Change \(str(item["name"]))")
+            }
         }
-        .padding(.horizontal, 14).padding(.vertical, 11)
+        .padding(.leading, 14).padding(.trailing, 8).padding(.vertical, 11)
         .background(Theme.hero.opacity(0.6), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
@@ -257,8 +267,10 @@ struct CheatDayView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(title).font(.subheadline.weight(.bold)).multilineTextAlignment(.leading)
                         if !str(s["detail"]).isEmpty { Text(str(s["detail"])).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.leading) }
-                        if kcal > 0 {
-                            Text("\(Fmt.int(kcal)) kcal · \(Int(protein)) g protein").font(.caption.weight(.semibold)).monospacedDigit().padding(.top, 1)
+                        if kcal > 0 || done {
+                            ((done ? Text("✓ Logged · ").foregroundStyle(Theme.walk) : Text(""))
+                                + Text("\(Fmt.int(kcal)) kcal · \(Int(protein)) g protein"))
+                                .font(.caption.weight(.semibold)).monospacedDigit().padding(.top, 1)
                         }
                     }
                     Spacer(minLength: 0)
@@ -266,19 +278,34 @@ struct CheatDayView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            if !isWorkout {
-                if done {
-                    Image(systemName: "checkmark.circle.fill").font(.system(size: 26)).foregroundStyle(Theme.walk).accessibilityLabel("Logged")
-                } else if isToday {
-                    Button { logSlot(s) } label: { Image(systemName: "plus.circle.fill").font(.system(size: 26)).foregroundStyle(Theme.accent).frame(width: 40, height: 40).contentShape(Rectangle()) }
-                        .buttonStyle(.borderless).accessibilityLabel("Add \(title) to \(CheatPlan.meal(of: s).lowercased())")
-                }
+            if !isWorkout && !done && isToday {
+                Button { logSlot(s) } label: { Image(systemName: "plus.circle.fill").font(.system(size: 26)).foregroundStyle(Theme.accent).frame(width: 40, height: 40).contentShape(Rectangle()) }
+                    .buttonStyle(.borderless).accessibilityLabel("Add \(title) to \(CheatPlan.meal(of: s).lowercased())")
             }
+            Menu {
+                if !isWorkout { Button { open = IdeaRef(id: title, idea: CheatPlan.idea(s)) } label: { Label("See the recipe", systemImage: "book") } }
+                Button(role: .destructive) { withAnimation(.snappy) { remove(s, logged: eaten) } } label: {
+                    Label(done ? "Remove from today and the plan" : "Remove from plan", systemImage: "minus.circle")
+                }
+            } label: { moreLabel }
+            .accessibilityLabel("Change \(title)")
         }
-        .padding(.horizontal, 14).padding(.vertical, 11)
+        .padding(.leading, 14).padding(.trailing, 8).padding(.vertical, 11)
         .background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .opacity(done ? 0.6 : 1)
         .transition(.opacity.combined(with: .move(edge: .bottom)))
+    }
+
+    private var moreLabel: some View {
+        Image(systemName: "ellipsis").font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent)
+            .frame(width: 30, height: 30).background(Theme.accent.opacity(0.12), in: Circle()).frame(width: 40, height: 40).contentShape(Rectangle())
+    }
+
+    /// Off the plan, and off today too if it was logged from it.
+    private func remove(_ s: JSON, logged: JSON?) {
+        if let id = logged.map({ str($0["id"]) }), !id.isEmpty { store.delete(id) }
+        guard let date = store.nextCheat?.date, var plan = store.cheatPlan(date) else { return }
+        plan["slots"] = list(plan["slots"]).filter { str($0["title"]) != str(s["title"]) }
+        store.perform(["type": "cheatPlan", "date": date, "plan": plan])
     }
 
     private func logSlot(_ s: JSON) {
