@@ -75,6 +75,8 @@ enum Fmt {
     }
     static func kg2(_ v: Double) -> Double { (v * 100).rounded() / 100 }
 
+    /// Always one decimal, for body fat: 16.0, never 16.
+    static func dec(_ v: Double) -> String { String(format: "%.1f", v) }
     static func one(_ v: Double) -> String {
         let r = (v * 10).rounded() / 10
         return r == r.rounded() ? String(Int(r)) : String(format: "%.1f", r)
