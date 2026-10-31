@@ -211,7 +211,10 @@ struct CheatDayView: View {
                 }
                 .padding(.horizontal, 20).padding(.bottom, 12)
             }
-            .simultaneousGesture(TapGesture().onEnded { typing = false })   // tap away to put the keyboard down
+            .simultaneousGesture(TapGesture().onEnded {   // tap away to put the keyboard down; straight to UIKit too, the focus flag can be stale
+                typing = false
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            })
             .onChange(of: typing) { _, t in
                 if t { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { withAnimation { proxy.scrollTo("end", anchor: .bottom) } } }
             }
