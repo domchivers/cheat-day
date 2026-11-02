@@ -9,7 +9,15 @@ struct WorkoutsView: View {
     @State private var showActivity = false
     @State private var confirmRoutineDelete: JSON?
     @State private var building = false
+    @State private var lookAlike: (keep: String, merge: String, keepCount: Int, mergeCount: Int)?
     private var store: Store { Store.shared }
+
+    /// Two names that look like one exercise: asks about the next pair, with the one used most as the name to keep.
+    private func checkNames() {
+        guard lookAlike == nil, !showSession, let (a, b) = ExerciseNames.firstPair(in: store.exerciseNames) else { return }
+        let na = store.sessions(of: a).count, nb = store.sessions(of: b).count
+        lookAlike = na >= nb ? (a, b, na, nb) : (b, a, nb, na)
+    }
 
     var body: some View {
         NavigationStack {
@@ -117,6 +125,13 @@ struct WorkoutsView: View {
             .background(Theme.bg)
             .refreshable { await store.sync(); await Steps.shared.refresh() }
             .task { await Steps.shared.refresh() }
+            .onAppear { checkNames() }
+            .confirmationDialog("Are these the same exercise?", isPresented: Binding(get: { lookAlike != nil }, set: { if !$0 { lookAlike = nil } }), titleVisibility: .visible, presenting: lookAlike) { pair in
+                Button("Merge into \(pair.keep)") { store.mergeExercise(pair.merge, into: pair.keep); lookAlike = nil; checkNames() }
+                Button("Keep them separate") { ExerciseNames.keepApart(pair.keep, pair.merge); lookAlike = nil }
+            } message: { pair in
+                Text("\(pair.keep) (\(pair.keepCount) workout\(pair.keepCount == 1 ? "" : "s")) and \(pair.merge) (\(pair.mergeCount) workout\(pair.mergeCount == 1 ? "" : "s")). Merging keeps all the history and your best sets under one name.")
+            }
             .navigationDestination(isPresented: $showSession) { SessionView() }
             .sheet(isPresented: $building) { PlanBuilder() }
             .sheet(isPresented: $showActivity) { ActivitySheet().presentationDetents([.medium, .large]) }

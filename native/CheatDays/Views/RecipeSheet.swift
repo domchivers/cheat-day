@@ -24,26 +24,73 @@ final class RecipeMaker {
             defer { working.remove(name) }
             do {
                 // the ingredients and numbers first, so you can see it fits your day; the method follows
-                var r = try await Self.write(idea)
+                let version = Self.firstVersion(idea)
+                var r = try await Self.write(idea, version: version)
                 made[name] = r
-                if let steps = try? await Self.method(idea, r) {
-                    for v in ["authentic", "healthier"] { var ver = dict(r[v]); ver["steps"] = steps[v] ?? [String](); r[v] = ver }
+                if let steps = try? await Self.method(idea, r, version: version) {
+                    var ver = dict(r[version]); ver["steps"] = steps; r[version] = ver
                     made[name] = r
                 }
                 Store.shared.keepRecipe(r, for: name)
             } catch { failed[name] = error.localizedDescription }
         }
     }
+
+    /// The other version, written when it's first asked for and then kept with the first. A healthier one that isn't
+    /// lighter isn't kept: the dish is already about as light as it gets.
+    func makeOther(_ idea: JSON, version: String) {
+        let name = str(idea["name"])
+        guard !working.contains(name), let first = recipe(for: idea), list(dict(first[version])["ingredients"]).isEmpty else { return }
+        let otherVersion = version == "healthier" ? "authentic" : "healthier"
+        working.insert(name); failed[name] = nil
+        Task {
+            defer { working.remove(name) }
+            do {
+                var written = try await Self.write(idea, version: version, other: dict(first[otherVersion]))
+                // the two share one "serves", so this one is brought to the first one's portions
+                let scale = (pos(first["portions"]) ?? 1) / (pos(written["portions"]) ?? 1)
+                if scale != 1 {
+                    var ver = dict(written[version])
+                    ver["ingredients"] = list(ver["ingredients"]).map { g -> JSON in
+                        var x = g
+                        for k in ["grams", "kcal", "protein_g", "carbs_g", "fat_g"] { if let v = num(g[k]) { x[k] = v * scale } }
+                        return x
+                    }
+                    if let c = pos(ver["cookedGrams"]) { ver["cookedGrams"] = c * scale }
+                    written[version] = ver
+                }
+                var r = first
+                if version == "healthier", !FoodReference.isLighter(dict(written[version]), than: dict(first[otherVersion])) {
+                    r["noLighter"] = true
+                } else {
+                    r[version] = written[version]
+                    made[name] = r
+                    if let steps = try? await Self.method(idea, r, version: version) {
+                        var ver = dict(r[version]); ver["steps"] = steps; r[version] = ver
+                    }
+                }
+                made[name] = r
+                Store.shared.keepRecipe(r, for: name)
+            } catch { failed[name] = error.localizedDescription }
+        }
+    }
 }
 
-/// A meal idea as something to follow: the authentic recipe as it's really made, and a healthier take that keeps its
-/// character (what changed, and the numbers for both). Written by the AI the first time, then kept with the idea.
+/// A meal idea as something to follow, in two versions: the healthier one, which keeps the dish's character, and the
+/// original as it's really made. Each is written by the AI when first needed, then kept with the idea.
 struct RecipeSheet: View {
     let idea: JSON
     /// Told what a portion adds up to whenever it changes (the recipe, then kcal, protein, carbs, fat).
     var onNumbers: ((JSON, Double, Double, Double, Double) -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
-    @State private var version = "authentic"
+    @State private var chosen: String?
+    /// The version on screen: what you tapped, else the one it opens on (for a recipe saved before it was written that way, whichever it has).
+    private var version: String {
+        let first = RecipeMaker.firstVersion(idea), r = recipe
+        if r?["noLighter"] as? Bool == true { return "authentic" }
+        if let chosen { return chosen }
+        return list(dict(r?[first])["ingredients"]).isEmpty && r != nil ? (first == "healthier" ? "authentic" : "healthier") : first
+    }
     @State private var done: String?
     @AppStorage("recipe.swaps") private var swapsJSON = "{}"   // "recipe|version|ingredient" → your own food
     @AppStorage("pantry.scans") private var scansJSON = "[]"
@@ -273,6 +320,34 @@ struct RecipeSheet: View {
     }
 
     @ViewBuilder private func content(_ r: JSON) -> some View {
+        if r["noLighter"] as? Bool == true {
+            Label("This one's already about as light as it gets.", systemImage: "leaf.fill").font(.footnote).foregroundStyle(.secondary)
+        } else {
+            let first = RecipeMaker.firstVersion(idea), second = first == "healthier" ? "authentic" : "healthier"
+            Picker("Version", selection: Binding(get: { version }, set: { chosen = $0 })) {
+                ForEach([first, second], id: \.self) { Text($0 == "healthier" ? "Healthier" : "Original").tag($0) }
+            }
+            .pickerStyle(.segmented)
+        }
+        if list(dict(r[version])["ingredients"]).isEmpty {
+            // not written yet: it's written now, once, and kept
+            let label = version == "healthier" ? "healthier" : "original"
+            if let problem {
+                Text(problem).font(.footnote).foregroundStyle(Theme.warn)
+                Button("Try again") { maker.makeOther(idea, version: version) }
+            } else {
+                HStack(spacing: 10) { ProgressView(); Text("Writing the \(label) version…").foregroundStyle(.secondary) }.padding(.top, 20)
+                    .onAppear { maker.makeOther(idea, version: version) }
+                    .id(version)
+                Text("Usually 10 to 20 seconds. You can close this: it keeps going and will be here when you come back.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+        } else {
+            written(r)
+        }
+    }
+
+    @ViewBuilder private func written(_ r: JSON) -> some View {
         let v = dict(r[version])
         let base = max(1, num(r["portions"]) ?? 1), sv = serves
         let portions = sv?.n ?? base
@@ -284,10 +359,6 @@ struct RecipeSheet: View {
         let p = used.reduce(0) { $0 + (num($1["protein_g"]) ?? 0) } / portions
         let c = used.reduce(0) { $0 + (num($1["carbs_g"]) ?? 0) } / portions
         let f = used.reduce(0) { $0 + (num($1["fat_g"]) ?? 0) } / portions
-        if !list(dict(r["healthier"])["ingredients"]).isEmpty {
-            Picker("Version", selection: $version) { Text("Authentic").tag("authentic"); Text("Healthier").tag("healthier") }
-                .pickerStyle(.segmented)
-        }
         HStack(spacing: 0) {
             stat(Fmt.int(k), "kcal")
             stat("\(Int(p))g", "protein")
@@ -509,7 +580,7 @@ struct RecipeSheet: View {
         .sensoryFeedback(.impact, trigger: out)
     }
 
-    private func name(_ r: JSON) -> String { str(idea["name"]) + (version == "healthier" ? " (lighter)" : "") }
+    private func name(_ r: JSON) -> String { str(idea["name"]) + (version == "healthier" && RecipeMaker.firstVersion(idea) == "authentic" ? " (lighter)" : "") }
 
     private func stat(_ v: String, _ l: String) -> some View {
         VStack(spacing: 2) { Text(v).font(.headline.weight(.heavy)).monospacedDigit(); Text(l).font(.caption2).foregroundStyle(.secondary) }
@@ -636,85 +707,80 @@ struct SwapPicker: View {
 }
 
 extension RecipeMaker {
-    static func write(_ idea: JSON) async throws -> JSON {
-        let store = Store.shared
+    /// The version a recipe opens on: a cheat day is a treat, so the real thing; every other meal the healthier one.
+    static func firstVersion(_ idea: JSON) -> String { idea["treat"] as? Bool == true ? "authentic" : "healthier" }
+
+    /// One version of a recipe. Without `other` it's the first one written; with it, the other way of making that dish.
+    static func write(_ idea: JSON, version: String, other: JSON? = nil) async throws -> JSON {
+        let store = Store.shared, healthier = version == "healthier"
         let ing: JSON = ["type": "array", "items": ["type": "object", "properties": [
             "name": ["type": "string"] as JSON, "amount": ["type": "string", "description": "How a cook measures it: '2 tbsp', '1 onion', '200 g'"] as JSON,
             "grams": ["type": "number"] as JSON, "kcal": ["type": "number"] as JSON,
             "protein_g": ["type": "number"] as JSON, "carbs_g": ["type": "number"] as JSON, "fat_g": ["type": "number"] as JSON
         ] as JSON, "required": ["name", "amount", "grams", "kcal", "protein_g", "carbs_g", "fat_g"]] as JSON]
-        let version: (Bool) -> JSON = { changes in
-            var props: JSON = ["ingredients": ing,
-                               "cookedGrams": ["type": "number", "description": "Roughly what the whole finished dish weighs once cooked, in grams (meat loses water, rice and pasta gain it)"] as JSON]
-            if changes { props["changes"] = ["type": "array", "items": ["type": "string"] as JSON, "description": "What's different, under 12 words each, e.g. 'Half the butter, a splash of milk instead'"] as JSON }
-            return ["type": "object", "properties": props, "required": changes ? ["ingredients", "changes"] : ["ingredients"]]
-        }
+        var props: JSON = ["ingredients": ing,
+                           "cookedGrams": ["type": "number", "description": "Roughly what the whole finished dish weighs once cooked, in grams (meat loses water, rice and pasta gain it)"] as JSON]
+        if healthier { props["changes"] = ["type": "array", "items": ["type": "string"] as JSON, "description": "What's lighter than the usual dish, under 12 words each, e.g. 'Half the butter, a splash of milk instead'"] as JSON }
         let schema: JSON = ["type": "object", "properties": [
             "cuisine": ["type": "string"] as JSON, "minutes": ["type": "number"] as JSON, "portions": ["type": "number"] as JSON,
-            "authentic": version(false), "healthier": version(true)
-        ] as JSON, "required": ["cuisine", "minutes", "portions", "authentic", "healthier"]]
-        // an idea from the planner already has its ingredients (and the numbers shown on its card): the recipe keeps
+            "recipe": ["type": "object", "properties": props, "required": healthier ? ["ingredients", "changes"] : ["ingredients"]] as JSON
+        ] as JSON, "required": ["cuisine", "minutes", "portions", "recipe"]]
+        // an idea from the planner already has its ingredients (and the numbers shown on its card): its first recipe keeps
         // them, so opening it doesn't show a different meal with different calories
-        let given = list(idea["ingredients"]).map { g -> String in
+        let given: [String] = (other != nil ? [] : list(idea["ingredients"])).map { g -> String in
             "\(Int(num(g["grams"]) ?? 0)) g \(str(g["name"])) (\(Int(num(g["kcal"]) ?? 0)) kcal, \(Fmt.int(num(g["protein"]) ?? 0)) g protein, \(Fmt.int(num(g["carbs"]) ?? 0)) g carbs, \(Fmt.int(num(g["fat"]) ?? 0)) g fat)"
         }
-        let base = given.isEmpty
-            ? "authentic: how it's really made in its home cuisine, true to the dish, with ingredients they can buy there."
-            : "authentic: exactly these ingredients, amounts and numbers, one portion (portions 1), adding only a pinch of salt or pepper if needed: \(given.joined(separator: "; ")). Give each a cook's amount for those grams."
-        // an idea with numbers on its card but no ingredients: the recipe is sized to those numbers
-        let aim = given.isEmpty && (num(idea["kcal"]) ?? 0) > 0
-            ? " One authentic portion should come to about \(Int(num(idea["kcal"]) ?? 0)) kcal and \(Int(num(idea["protein"]) ?? 0)) g protein: choose realistic amounts that do."
+        let lighter = "Keep the dish's character but make it lighter or higher in protein (less oil and butter, leaner cuts, more veg, swaps that taste close), with fewer calories than the usual dish, and list the changes."
+        let real = "How it's really made in its home cuisine, true to the dish, with ingredients they can buy there."
+        var base = healthier ? lighter : real
+        if !given.isEmpty { base = "Exactly these ingredients, amounts and numbers, one portion (portions 1), adding only a pinch of salt or pepper if needed: \(given.joined(separator: "; ")). Give each a cook's amount for those grams." }
+        if let other {
+            let uses = list(other["ingredients"]).map { "\(Int(num($0["grams"]) ?? 0)) g \(str($0["name"]))" }.joined(separator: "; ")
+            base += healthier ? " The usual version, which this must have fewer calories than: \(uses)." : " They already have a lighter version: \(uses). This is the richer, proper one."
+        }
+        // an idea with numbers on its card but no ingredients: its first recipe is sized to those numbers
+        let aim = other == nil && given.isEmpty && (num(idea["kcal"]) ?? 0) > 0
+            ? " One portion should come to about \(Int(num(idea["kcal"]) ?? 0)) kcal and \(Int(num(idea["protein"]) ?? 0)) g protein: choose realistic amounts that do."
             : ""
         let prompt = """
         Write the recipe for "\(str(idea["name"]))" for someone in \(Plan.country) who \(Habits.cookText(str(store.habits["cook"]))).
         \(base)\(aim) Just the ingredients for now: the method comes after.
-        healthier: the same dish with its character kept, lighter or higher in protein (less oil and butter, leaner cuts, more veg, swaps that taste close), and list the changes. It must have fewer calories than authentic.
-        If it's really a takeaway order or shop-bought, authentic is what to buy or order and how to put it together, healthier is the lighter choice.
+        If it's really a takeaway order or shop-bought, this is \(healthier ? "the lighter choice to buy or order" : "what to buy or order and how to put it together").
         Portions 1 to 4. Grams are as weighed; kcal and macros per ingredient from standard reference values, so they add up, and each ingredient's kcal ≈ 4 × protein + 4 × carbs + 9 × fat.
         Raw meat and fish use their raw values, and never count oil for deep frying in full, only what's absorbed. If the dish's name promises something (a protein brownie), the ingredients must deliver it.
         \(Sanity.amounts) Use what's typical in \(Plan.country) (cuts, brands and portion sizes there).
         """
+        func ingredients(_ a: JSON) -> [JSON] { list(dict(a["recipe"])["ingredients"]) }
+        func off(_ a: JSON) -> Bool { FoodReference.portionLooksOff(["portions": a["portions"] ?? 1, "authentic": dict(a["recipe"])]) }
         // Haiku writes a recipe fine; three tries at most on the fallback, so it never hangs for minutes
         var a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: true, tries: 3, job: "recipes")
-        guard !list(dict(a["authentic"])["ingredients"]).isEmpty else { throw Gemini.Failure(message: "Couldn't write that recipe just now. Try again.") }
+        guard !ingredients(a).isEmpty else { throw Gemini.Failure(message: "Couldn't write that recipe just now. Try again.") }
         // a portion far too big or small gets one more go on the careful model
-        if FoodReference.portionLooksOff(a), let better = try? await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: false, tries: 3, job: "careful"),
-           !list(dict(better["authentic"])["ingredients"]).isEmpty, !FoodReference.portionLooksOff(better) { a = better }
+        if off(a), let better = try? await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: false, tries: 3, job: "careful"),
+           !ingredients(better).isEmpty, !off(better) { a = better }
         // each ingredient's calories checked against its own protein, carbs and fat before the recipe is kept
-        var out = a
-        for v in ["authentic", "healthier"] {
-            var ver = dict(a[v])
-            var checked = FoodReference.checked(list(ver["ingredients"]))
-            if v == "authentic" { checked.items = FoodReference.keepingCard(checked.items, from: list(idea["ingredients"])) }
-            ver["ingredients"] = checked.items
-            ver["cookedGrams"] = CookedWeight.trusted(pos(ver["cookedGrams"]), checked.items.map { (str($0["name"]), num($0["grams"]) ?? 0) })
-            ver["flags"] = checked.flags + [FoodReference.protein(promisedBy: str(idea["name"]), in: checked.items)].compactMap { $0 }
-            out[v] = ver
-        }
-        // a dish that's already lean can come back "healthier" with more calories: then there's no healthier version to show
-        if !FoodReference.isLighter(dict(out["healthier"]), than: dict(out["authentic"])) {
-            var ver = dict(out["healthier"]); ver["ingredients"] = [JSON](); out["healthier"] = ver
-        }
-        return out
+        var ver = dict(a["recipe"])
+        var checked = FoodReference.checked(ingredients(a))
+        if other == nil { checked.items = FoodReference.keepingCard(checked.items, from: list(idea["ingredients"])) }
+        ver["ingredients"] = checked.items
+        ver["cookedGrams"] = CookedWeight.trusted(pos(ver["cookedGrams"]), checked.items.map { (str($0["name"]), num($0["grams"]) ?? 0) })
+        ver["flags"] = checked.flags + [FoodReference.protein(promisedBy: str(idea["name"]), in: checked.items)].compactMap { $0 }
+        return ["cuisine": a["cuisine"] ?? "", "minutes": a["minutes"] ?? 30, "portions": a["portions"] ?? 1, version: ver]
     }
 
-    /// The method for both versions, written to the ingredients already shown.
-    static func method(_ idea: JSON, _ r: JSON) async throws -> [String: [String]] {
-        let steps: JSON = ["type": "array", "items": ["type": "string"] as JSON]
-        let schema: JSON = ["type": "object", "properties": ["authentic": steps, "healthier": steps] as JSON, "required": ["authentic", "healthier"]]
-        func uses(_ v: String) -> String {
-            list(dict(r[v])["ingredients"]).map { g in
-                let amount = str(g["amount"]).isEmpty ? "\(Int(num(g["grams"]) ?? 0)) g" : str(g["amount"])
-                return "\(amount) \(str(g["name"]))"
-            }.joined(separator: "; ")
-        }
+    /// The method for one version, written to the ingredients already shown.
+    static func method(_ idea: JSON, _ r: JSON, version: String) async throws -> [String] {
+        let schema: JSON = ["type": "object", "properties": ["steps": ["type": "array", "items": ["type": "string"] as JSON] as JSON] as JSON, "required": ["steps"]]
+        let uses = list(dict(r[version])["ingredients"]).map { g -> String in
+            let amount = str(g["amount"]).isEmpty ? "\(Int(num(g["grams"]) ?? 0)) g" : str(g["amount"])
+            return "\(amount) \(str(g["name"]))"
+        }.joined(separator: "; ")
         let prompt = """
         Short, clear method steps for "\(str(idea["name"]))", serves \(Int(num(r["portions"]) ?? 2)), about \(Int(num(r["minutes"]) ?? 30)) minutes.
-        authentic uses exactly: \(uses("authentic")).
-        healthier uses exactly: \(uses("healthier")).
+        It uses exactly: \(uses).
         Use only those ingredients and amounts.
         """
         let a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: true, tries: 3, job: "recipes")
-        return ["authentic": a["authentic"] as? [String] ?? [],"healthier": a["healthier"] as? [String] ?? []]
+        return a["steps"] as? [String] ?? []
     }
 }

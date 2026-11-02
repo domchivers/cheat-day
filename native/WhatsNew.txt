@@ -1,4 +1,4 @@
-New in this build: meal ideas reach the protein you asked for, Healthier is always lighter, workouts start from what you did last time, and Cheat flies merge into Chest flies.
+New in this build: recipes open sooner, on Healthier first (cheat days on Original), and the app asks about exercise names that look like the same one.
 
 Thanks for testing! Please just use it like a normal day:
 

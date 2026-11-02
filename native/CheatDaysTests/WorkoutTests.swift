@@ -57,6 +57,22 @@ final class WorkoutTests: XCTestCase {
         XCTAssertEqual(num(rec["sets"]), 2, "the last sets of the more recent one")
     }
 
+    func testNamesThatLookLikeOneExercise() {
+        for (a, b) in [("Cheat flies", "Chest flies"), ("Cable ab crunch", "Cable ab crunches"), ("Leg curl", "Leg curls"), ("Lateral raises", "Lateral raisez")] {
+            XCTAssertTrue(ExerciseNames.similar(a, b), "\(a) / \(b)")
+        }
+        for (a, b) in [("Leg curl", "Arm curl"), ("Leg press", "Leg raise"), ("Bench press", "Bench press"), ("Chest press", "Chest flies"), ("Rows", "Row"), ("Squat 1", "Squat 2"), ("Bench press", "Incline bench press"), ("Lat pulldown", "Cable pulldown")] {
+            XCTAssertFalse(ExerciseNames.similar(a, b), "\(a) / \(b)")
+        }
+        XCTAssertEqual(ExerciseNames.firstPair(in: ["Rows", "Cheat flies", "RDL", "Chest flies"])?.1, "Chest flies")
+        XCTAssertNil(ExerciseNames.firstPair(in: ["Rows", "RDL", "Bench press"]))
+    }
+
+    func testARecipeOpensOnHealthierExceptOnACheatDay() {
+        XCTAssertEqual(RecipeMaker.firstVersion(["name": "Stir fry"]), "healthier")
+        XCTAssertEqual(RecipeMaker.firstVersion(CheatPlan.idea(["title": "Burger", "kcal": 700])), "authentic")
+    }
+
     func testSessionReadsAndWritesTheWebShape() {
         let s = LiveSession(record()["session"])
         XCTAssertNotNil(s)

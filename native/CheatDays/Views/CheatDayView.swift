@@ -67,7 +67,7 @@ enum CheatPlan {
     /// A slot as an idea, for the recipe screen and for logging.
     static func idea(_ slot: JSON) -> JSON {
         var i: JSON = ["name": str(slot["title"]), "kcal": num(slot["kcal"]) ?? 0, "protein": num(slot["protein"]) ?? 0, "carbs": num(slot["carbs"]) ?? 0,
-                       "fat": num(slot["fat"]) ?? 0, "why": str(slot["detail"]), "meal": meal(of: slot), "saved": str(slot["saved"])]
+                       "fat": num(slot["fat"]) ?? 0, "why": str(slot["detail"]), "meal": meal(of: slot), "saved": str(slot["saved"]), "treat": true]
         if let r = slot["recipe"] { i["recipe"] = r }
         return i
     }

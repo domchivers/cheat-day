@@ -13,6 +13,7 @@ struct SessionView: View {
     @State private var restOver = 0
     @State private var finished = false
     @State private var routineOffer: JSON?
+    @State private var namesAnswered = 0   // "It's new" answered: asks again with that one settled
     @State private var askShare: JSON?
     @State private var routineUpdate: RoutineUpdate?
     /// A session started from a routine that came out different: what changed, to ask whether the routine follows.
@@ -215,6 +216,23 @@ struct SessionView: View {
     private func exerciseSection(_ e: Binding<LiveExercise>) -> some View {
         let ex = e.wrappedValue
         Section {
+            if namesAnswered >= 0, let meant = store.exerciseItMayMean(ex.name) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Did you mean \(meant)?").font(.subheadline.weight(.bold))
+                    Text(store.lastLine(meant)).font(.footnote).foregroundStyle(.secondary)
+                    HStack {
+                        Button("Use \(meant)") {
+                            // its sets from last time too, unless you've already started on these
+                            let started = ex.sets.contains(where: \.done)
+                            e.wrappedValue.name = meant
+                            if !started { e.wrappedValue.sets = store.liveExercise(meant).sets }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        Button("It's new") { ExerciseNames.keepApart(ex.name, meant); namesAnswered += 1 }.buttonStyle(.bordered)
+                    }
+                    .font(.subheadline.weight(.semibold))
+                }
+            }
             if let t = planTarget(ex.name) {
                 Label(t.hint, systemImage: t.up ? "arrow.up.right.circle.fill" : "target")
                     .font(.footnote).foregroundStyle(t.up ? Color.green : .secondary).opacity(ex.complete ? 0.55 : 1)
