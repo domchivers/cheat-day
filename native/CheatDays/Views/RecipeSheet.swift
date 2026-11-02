@@ -687,7 +687,7 @@ extension RecipeMaker {
             let checked = FoodReference.checked(list(ver["ingredients"]))
             ver["ingredients"] = checked.items
             ver["cookedGrams"] = CookedWeight.trusted(pos(ver["cookedGrams"]), checked.items.map { (str($0["name"]), num($0["grams"]) ?? 0) })
-            ver["flags"] = checked.flags +[FoodReference.protein(promisedBy: str(idea["name"]), in: checked.items)].compactMap { $0 }
+            ver["flags"] = checked.flags + [FoodReference.protein(promisedBy: str(idea["name"]), in: checked.items)].compactMap { $0 }
             out[v] = ver
         }
         return out
