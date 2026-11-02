@@ -31,6 +31,13 @@ enum CookedWeight {
     /// on the side), and then every gram would count wrong.
     static func looksOff(weighed: Double, estimate: Double) -> Bool { weighed < estimate * 0.6 || weighed > estimate * 1.6 }
 
+    /// The AI's finished weight, or the ingredients' own estimate when the AI's is missing or far off (375 g of tacos from 1.3 kg of ingredients).
+    static func trusted(_ said: Double?, _ ingredients: [(name: String, grams: Double)]) -> Double? {
+        guard let est = estimate(ingredients) else { return said }
+        guard let said else { return est }
+        return looksOff(weighed: said, estimate: est) ? est : said
+    }
+
     /// The finished dish's weight from its ingredients (name and raw grams); nil when no grams are known.
     static func estimate(_ ingredients: [(name: String, grams: Double)]) -> Double? {
         let known = ingredients.filter { $0.grams > 0 }

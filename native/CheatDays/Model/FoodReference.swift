@@ -41,7 +41,8 @@ enum FoodReference {
 
     /// An ingredient (kcal, protein_g, carbs_g, fat_g, grams) with the table's numbers if it was out, and whether it changed.
     static func corrected(_ g: JSON) -> (item: JSON, changed: Bool) {
-        guard let grams = pos(g["grams"]), let e = match(str(g["name"])) else { return (g, false) }
+        guard let grams = pos(g["grams"]) else { return (g, false) }
+        guard let e = match(str(g["name"])) else { return correctedFromData(g, grams: grams) }
         // weighed with the bones in, only what you eat counts
         let n = str(g["name"]).lowercased(), boneless = n.contains("boneless") || n.contains("fillet")
         let eaten = grams * (boneless ? 1 : n.contains("whole") ? e.wholeYield : e.yield)
@@ -52,6 +53,24 @@ enum FoodReference {
         var x = g
         x["kcal"] = kcal.rounded(); x["protein_g"] = protein; x["carbs_g"] = e.c * eaten / 100; x["fat_g"] = e.f * eaten / 100
         return (x, true)
+    }
+
+    /// Any other ingredient against the Australian data. Far from the AI's number (under 40% or over 2.5 times) probably
+    /// means a wrong match rather than a wrong number, so that's left alone.
+    private static func correctedFromData(_ g: JSON, grams: Double) -> (item: JSON, changed: Bool) {
+        guard let f = AusFoods.find(str(g["name"])), f.kcal > 0 else { return (g, false) }
+        let said = num(g["kcal"]) ?? 0, kcal = f.kcal * grams / 100
+        guard said >= kcal * 0.4, said <= kcal * 2.5, abs(said - kcal) > max(kcal * tolerance, 15) else { return (g, false) }
+        var x = g
+        x["kcal"] = kcal.rounded(); x["protein_g"] = f.p * grams / 100; x["carbs_g"] = f.c * grams / 100; x["fat_g"] = f.f * grams / 100
+        return (x, true)
+    }
+
+    /// A recipe whose portion is far too big or too small to be right (its ingredients are for the wrong number of people).
+    static func portionLooksOff(_ recipe: JSON) -> Bool {
+        let kcal = list(dict(recipe["authentic"])["ingredients"]).reduce(0) { $0 + (num($1["kcal"]) ?? 0) }
+        let each = kcal / max(pos(recipe["portions"]) ?? 1, 1)
+        return each < 80 || each > 2500
     }
 
     /// Oil to fry in mostly stays in the pan: only what's absorbed counts (about an eighth).

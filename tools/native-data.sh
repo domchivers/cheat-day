@@ -8,6 +8,9 @@ const fs = require('fs');
 const run = (f, name) => new Function(fs.readFileSync(f, 'utf8') + ';return ' + name + ';')();
 fs.writeFileSync('native/CheatDays/Resources/foods.json', JSON.stringify(run('foods.js', 'FOODS')));
 fs.writeFileSync('native/CheatDays/Resources/presets.json', JSON.stringify(run('presets.js', 'PRESETS')));
+const foods = JSON.parse(fs.readFileSync('tools/ai-test/data/food-db.json', 'utf8')).map(({ name, source, kcal, p, c, f }) => ({ name, source, kcal, p, c, f }));
+fs.writeFileSync('native/CheatDays/Resources/aus-foods.json', JSON.stringify(foods));
+fs.copyFileSync('tools/ai-test/aliases.json', 'native/CheatDays/Resources/aus-aliases.json');
 "
 python3 - <<'EOF'
 import re

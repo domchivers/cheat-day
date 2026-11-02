@@ -1,4 +1,4 @@
-New in this build: scanned foods get a warning when their numbers do not add up, with a quick way to photograph the label.
+New in this build: recipes are written by Claude, with ingredient numbers checked against official Australian food data.
 
 Thanks for testing! Please just use it like a normal day:
 

@@ -7,6 +7,7 @@ const { jobs, split, parse } = require('./jobs.js');
 // $ per million tokens. Gemini's free tier costs nothing, and paid prices go in before the cost-per-user table.
 const MODELS = {
   haiku: { provider: 'claude', id: 'claude-haiku-5-5', input: 0.10, output: 0.50 },
+  'haiku-low': { provider: 'claude', id: 'claude-haiku-5-5', input: 0.10, output: 0.50, effort: 'low' },
   sonnet: { provider: 'claude', id: 'claude-sonnet-5-5', input: 2, output: 10 },
   opus: { provider: 'claude', id: 'claude-opus-5-5', input: 4, output: 20 },
   gemini: { provider: 'gemini', id: 'gemini-3.5-flash', input: 0, output: 0 },
@@ -25,7 +26,7 @@ async function askClaude(model, prompt, img, maxTokens) {
   const content = [];
   if (img) content.push({ type: 'image', source: { type: 'base64', media_type: img.mime, data: img.data } });
   content.push({ type: 'text', text: prompt });
-  const r = await anthropic.messages.create({ model: model.id, max_tokens: maxTokens, messages: [{ role: 'user', content }] });
+  const r = await anthropic.messages.create({ model: model.id, max_tokens: maxTokens, messages: [{ role: 'user', content }], ...(model.effort ? { output_config: { effort: model.effort } } : {}) });
   const text = r.content.filter(b => b.type === 'text').map(b => b.text).join('');
   return { text, stop: r.stop_reason, usage: { input: r.usage.input_tokens, output: r.usage.output_tokens } };
 }

@@ -43,8 +43,19 @@ enum Gemini {
 
     /// One structured answer: an image and a prompt in, JSON matching the schema out. It carries on for a while if
     /// you leave the app meanwhile (iOS gives about half a minute), so the answer is there when you come back.
-    static func ask(schema: JSON, parts: [JSON], quick: Bool = true, tries: Int = 99) async throws -> JSON {
-        try await BackgroundWork.run("AI") { try await askNow(schema: schema, parts: parts, quick: quick, tries: tries) }
+    /// With a job, Claude answers (the server picks its model for that job); if it can't, the free Gemini models do.
+    static func ask(schema: JSON, parts: [JSON], quick: Bool = true, tries: Int = 99, job: String? = nil) async throws -> JSON {
+        try await BackgroundWork.run("AI") {
+            if let job, let answer = await claude(job, schema: schema, parts: parts) { return answer }
+            return try await askNow(schema: schema, parts: parts, quick: quick, tries: tries)
+        }
+    }
+
+    private static func claude(_ job: String, schema: JSON, parts: [JSON]) async -> JSON? {
+        let body: JSON = ["parts": parts, "schema": schema, "maxTokens": 12000]
+        guard let (d, status) = try? await Supabase.shared.call("/functions/v1/ai?job=\(job)", body: body, timeout: 60), status == 200,
+              let reply = try? JSONSerialization.jsonObject(with: d) as? JSON, let data = str(reply["text"]).data(using: .utf8) else { return nil }
+        return try? JSONSerialization.jsonObject(with: data) as? JSON
     }
 
     private static func askNow(schema: JSON, parts: [JSON], quick: Bool, tries: Int) async throws -> JSON {

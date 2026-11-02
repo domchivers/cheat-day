@@ -60,10 +60,13 @@ async function askClaude(req: Request, user: { id: string }, job: string) {
   const started = Date.now();
   const client = new Anthropic({ apiKey: key, maxRetries: 1 });
   try {
+    // Haiku thinks at length over every ingredient's sums: a butter chicken took 31 s and most of 8,000 tokens by default,
+    // 18 s and half that at low effort, and the database corrects the numbers afterwards anyway
+    const config: any = { ...(model === HAIKU ? { effort: "low" } : {}), ...(schema ? { format: { type: "json_schema", schema: claudeSchema(schema) } } : {}) };
     const r = await client.messages.create({
-      model, max_tokens: Math.min(Number(maxTokens) || 4000, 8000),
+      model, max_tokens: Math.min(Number(maxTokens) || 4000, 12000),
       messages: [{ role: "user", content: claudeContent(parts) }],
-      ...(schema ? { output_config: { format: { type: "json_schema", schema: claudeSchema(schema) } } } : {}),
+      ...(Object.keys(config).length ? { output_config: config } : {}),
     } as any);
     const [pIn, pOut] = PRICES[model], input = r.usage.input_tokens, output = r.usage.output_tokens;
     await admin.from("ai_usage").insert({ user_id: user.id, job, model, input_tokens: input, output_tokens: output, cost: (input * pIn + output * pOut) / 1e6, ms: Date.now() - started, stop: r.stop_reason });
