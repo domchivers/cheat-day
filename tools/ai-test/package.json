@@ -1,0 +1,1 @@
+{ "name": "cheat-days-ai-test", "private": true, "description": "Scores AI models on Cheat Days jobs", "scripts": { "test": "node selftest.js" }, "dependencies": { "@anthropic-ai/sdk": "*" } }

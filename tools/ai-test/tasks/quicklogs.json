@@ -1,0 +1,341 @@
+{
+ "source": "FSANZ AFCD Release 3",
+ "tasks": [
+  {
+   "id": "log01",
+   "text": "200 g chicken breast, raw weight",
+   "sources": [
+    "F002594 Chicken, breast, lean flesh, raw 200 g"
+   ],
+   "kcal": 196,
+   "p": 45,
+   "c": 0,
+   "f": 1.6
+  },
+  {
+   "id": "log02",
+   "text": "150g raw atlantic salmon fillet",
+   "sources": [
+    "F007827 Salmon, Atlantic, fillet, raw 150 g"
+   ],
+   "kcal": 347,
+   "p": 30.8,
+   "c": 0,
+   "f": 25.1
+  },
+  {
+   "id": "log03",
+   "text": "250 g regular beef mince before cooking",
+   "sources": [
+    "F000678 Beef, mince, regular fat, raw 250 g"
+   ],
+   "kcal": 425,
+   "p": 56,
+   "c": 0,
+   "f": 22.3
+  },
+  {
+   "id": "log04",
+   "text": "200g raw flathead fillet",
+   "sources": [
+    "F003973 Flathead, fillet, raw 200 g"
+   ],
+   "kcal": 188,
+   "p": 42.2,
+   "c": 0,
+   "f": 2
+  },
+  {
+   "id": "log05",
+   "text": "300g raw rump steak",
+   "sources": [
+    "F000765 Beef, rump steak, untrimmed, raw 300 g"
+   ],
+   "kcal": 390,
+   "p": 60,
+   "c": 0,
+   "f": 16.8
+  },
+  {
+   "id": "log06",
+   "text": "2 large poached eggs (55 g each)",
+   "sources": [
+    "F003725 Egg, chicken, whole, poached 110 g"
+   ],
+   "kcal": 146,
+   "p": 14.4,
+   "c": 0.3,
+   "f": 9.7
+  },
+  {
+   "id": "log07",
+   "text": "2 hard boiled eggs, about 100g total, and 2 slices white toast, 60g total",
+   "sources": [
+    "F003721 Egg, chicken, whole, hard-boiled 100 g",
+    "F001541 Bread, from white flour, toasted 60 g"
+   ],
+   "kcal": 314,
+   "p": 18.9,
+   "c": 33.3,
+   "f": 11.1
+  },
+  {
+   "id": "log08",
+   "text": "250 ml full cream milk, weighs 258 g",
+   "sources": [
+    "F005634 Milk, cow, fluid, regular fat (~3.5%) 258 g"
+   ],
+   "kcal": 168,
+   "p": 8.5,
+   "c": 13.9,
+   "f": 8.8
+  },
+  {
+   "id": "log09",
+   "text": "a peeled banana, 120 g",
+   "sources": [
+    "F000262 Banana, cavendish, peeled, raw 120 g"
+   ],
+   "kcal": 114,
+   "p": 1.7,
+   "c": 23.9,
+   "f": 0.2
+  },
+  {
+   "id": "log10",
+   "text": "200g cooked white rice",
+   "sources": [
+    "F007661 Rice, white, boiled or rice cooker, no added salt 200 g"
+   ],
+   "kcal": 316,
+   "p": 6.2,
+   "c": 69.4,
+   "f": 0.4
+  },
+  {
+   "id": "log11",
+   "text": "300g boiled pasta, plain",
+   "sources": [
+    "F006456 Pasta, white wheat flour, boiled from dry, no added salt 300 g"
+   ],
+   "kcal": 411,
+   "p": 15.9,
+   "c": 78.6,
+   "f": 1.2
+  },
+  {
+   "id": "log12",
+   "text": "50g rolled oats, dry",
+   "sources": [
+    "F006143 Oats, rolled, uncooked 50 g"
+   ],
+   "kcal": 187,
+   "p": 6.1,
+   "c": 27.3,
+   "f": 4.8
+  },
+  {
+   "id": "log13",
+   "text": "40g cheddar",
+   "sources": [
+    "F002414 Cheese, cheddar, natural, regular fat 40 g"
+   ],
+   "kcal": 161,
+   "p": 9.8,
+   "c": 0.1,
+   "f": 13.4
+  },
+  {
+   "id": "log14",
+   "text": "10 g butter",
+   "sources": [
+    "F001973 Butter, plain, salted 10 g"
+   ],
+   "kcal": 73,
+   "p": 0.1,
+   "c": 0.1,
+   "f": 8.2
+  },
+  {
+   "id": "log15",
+   "text": "1 tbsp olive oil, 14 g",
+   "sources": [
+    "F006177 Oil, olive 14 g"
+   ],
+   "kcal": 124,
+   "p": 0,
+   "c": 0,
+   "f": 14
+  },
+  {
+   "id": "log16",
+   "text": "half a hass avocado, 80g flesh",
+   "sources": [
+    "F000162 Avocado, hass, raw 80 g"
+   ],
+   "kcal": 125,
+   "p": 1.3,
+   "c": 1.8,
+   "f": 11.7
+  },
+  {
+   "id": "log17",
+   "text": "30g smooth peanut butter",
+   "sources": [
+    "F006577 Peanut butter, smooth & crunchy, added sugar & salt 30 g"
+   ],
+   "kcal": 179,
+   "p": 6.7,
+   "c": 4.3,
+   "f": 14.9
+  },
+  {
+   "id": "log18",
+   "text": "200g cherry tomatoes",
+   "sources": [
+    "F009190 Tomato, cherry, raw 200 g"
+   ],
+   "kcal": 44,
+   "p": 1.8,
+   "c": 7,
+   "f": 0
+  },
+  {
+   "id": "log19",
+   "text": "150g boiled broccoli",
+   "sources": [
+    "F001900 Broccoli, fresh, boiled, drained 150 g"
+   ],
+   "kcal": 36,
+   "p": 4.4,
+   "c": 1.8,
+   "f": 0.5
+  },
+  {
+   "id": "log20",
+   "text": "a tablespoon of honey, 20 g",
+   "sources": [
+    "F004380 Honey 20 g"
+   ],
+   "kcal": 56,
+   "p": 0.1,
+   "c": 14.5,
+   "f": 0
+  },
+  {
+   "id": "log21",
+   "text": "375 ml can of cola, regular, about 390 g",
+   "sources": [
+    "F008402 Soft drink, cola flavour 390 g"
+   ],
+   "kcal": 191,
+   "p": 0,
+   "c": 48,
+   "f": 0.8
+  },
+  {
+   "id": "log22",
+   "text": "a 375 ml full strength beer, about 375 g",
+   "sources": [
+    "F000994 Beer, full strength (alcohol 4-4.9% v/v) 375 g"
+   ],
+   "kcal": 135,
+   "p": 1.5,
+   "c": 8.6,
+   "f": 0
+  },
+  {
+   "id": "log23",
+   "text": "150g glass of red wine",
+   "sources": [
+    "F009571 Wine, red 150 g"
+   ],
+   "kcal": 120,
+   "p": 0.3,
+   "c": 0.3,
+   "f": 0
+  },
+  {
+   "id": "log24",
+   "text": "large flat white, 350 g, full cream milk",
+   "sources": [
+    "F009796 Coffee, flat white/latte/cappuccino, from ground coffee beans, with regular fat cow's milk 350 g"
+   ],
+   "kcal": 165,
+   "p": 9.8,
+   "c": 11.9,
+   "f": 9.1
+  },
+  {
+   "id": "log25",
+   "text": "95g tin of tuna in brine, drained",
+   "sources": [
+    "F009285 Tuna, canned in brine, drained 95 g"
+   ],
+   "kcal": 123,
+   "p": 24.8,
+   "c": 0,
+   "f": 2.5
+  },
+  {
+   "id": "log26",
+   "text": "150g hot chips from a fish and chip shop",
+   "sources": [
+    "F007238 Potato, chips, regular, independent takeaway outlet, deep fried, blended oil, salted 150 g"
+   ],
+   "kcal": 357,
+   "p": 5.7,
+   "c": 42.3,
+   "f": 17.4
+  },
+  {
+   "id": "log27",
+   "text": "50g milk chocolate",
+   "sources": [
+    "F002929 Chocolate, milk 50 g"
+   ],
+   "kcal": 261,
+   "p": 3.8,
+   "c": 28,
+   "f": 15.3
+  },
+  {
+   "id": "log28",
+   "text": "2 beef sausages, 150g raw total",
+   "sources": [
+    "F008112 Sausage, beef, raw 150 g"
+   ],
+   "kcal": 354,
+   "p": 21.8,
+   "c": 4.4,
+   "f": 28.1
+  },
+  {
+   "id": "log29",
+   "text": "200g chicken breast raw, 150g cooked white rice and 100g boiled broccoli",
+   "sources": [
+    "F002594 Chicken, breast, lean flesh, raw 200 g",
+    "F007661 Rice, white, boiled or rice cooker, no added salt 150 g",
+    "F001900 Broccoli, fresh, boiled, drained 100 g"
+   ],
+   "kcal": 457,
+   "p": 52.6,
+   "c": 53.3,
+   "f": 2.2
+  },
+  {
+   "id": "log30",
+   "text": "2 poached eggs 110g, 60g toast, 80g avocado and 10g butter",
+   "sources": [
+    "F003725 Egg, chicken, whole, poached 110 g",
+    "F001541 Bread, from white flour, toasted 60 g",
+    "F000162 Avocado, hass, raw 80 g",
+    "F001973 Butter, plain, salted 10 g"
+   ],
+   "kcal": 523,
+   "p": 22.3,
+   "c": 34.7,
+   "f": 31.3
+  }
+ ]
+}

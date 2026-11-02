@@ -1,0 +1,455 @@
+{
+ "source": "Photos and numbers from Open Food Facts (ODbL / CC BY-SA), each confirmed by a blind reading of the photo",
+ "tasks": [
+  {
+   "id": "9310072021584",
+   "name": "Farmbake Cookies Chocolate Chip Fudge",
+   "photo": "photos/labels/9310072021584.jpg",
+   "kcal": 473,
+   "p": 5.2,
+   "c": 68.6,
+   "f": 19.2,
+   "printed": "1980 kJ per 100g"
+  },
+  {
+   "id": "9300650662414",
+   "name": "Peanut Butter",
+   "photo": "photos/labels/9300650662414.jpg",
+   "kcal": 619,
+   "p": 23.8,
+   "c": 13.2,
+   "f": 51.5,
+   "printed": "2590 kJ per 100g"
+  },
+  {
+   "id": "26341514",
+   "name": "Swiss style toasted Muesli",
+   "photo": "photos/labels/26341514.jpg",
+   "kcal": 394,
+   "p": 9.3,
+   "c": 54.8,
+   "f": 12.6,
+   "printed": "1650 kJ per 100g"
+  },
+  {
+   "id": "9300650028944",
+   "name": "Belvita Minis Chocolate",
+   "photo": "photos/labels/9300650028944.jpg",
+   "kcal": 445,
+   "p": 7.8,
+   "c": 66.4,
+   "f": 14.5,
+   "printed": "1860 kJ per 100g"
+  },
+  {
+   "id": "5018357013012",
+   "name": "Honey granola",
+   "photo": "photos/labels/5018357013012.jpg",
+   "kcal": 521,
+   "p": 13.7,
+   "c": 43.2,
+   "f": 31.3,
+   "printed": "2180 kJ per 100g"
+  },
+  {
+   "id": "00012775",
+   "name": "Bagel Chèvre miel pesto",
+   "photo": "photos/labels/00012775.jpg",
+   "kcal": 196,
+   "p": 9.6,
+   "c": 29.4,
+   "f": 4.1,
+   "printed": "196 kcal per 100g"
+  },
+  {
+   "id": "5060072971047",
+   "name": "Turmeric",
+   "photo": "photos/labels/5060072971047.jpg",
+   "kcal": 47,
+   "p": 3.3,
+   "c": 5.2,
+   "f": 1.2,
+   "printed": "195 kJ per 100g"
+  },
+  {
+   "id": "9310055102804",
+   "name": "Special K Nourrish",
+   "photo": "photos/labels/9310055102804.jpg",
+   "kcal": 392,
+   "p": 15.7,
+   "c": 58.4,
+   "f": 7.9,
+   "printed": "1640 kJ per 100g"
+  },
+  {
+   "id": "7616500666467",
+   "name": "Milk Fruit and Nuts chocolate",
+   "photo": "photos/labels/7616500666467.jpg",
+   "kcal": 528,
+   "p": 7.1,
+   "c": 56.1,
+   "f": 29.9,
+   "printed": "2210 kJ per 100g"
+  },
+  {
+   "id": "9310885115142",
+   "name": "Unhulled Tahini",
+   "photo": "photos/labels/9310885115142.jpg",
+   "kcal": 679,
+   "p": 19.2,
+   "c": 2.2,
+   "f": 61.5,
+   "printed": "2840 kJ per 100g"
+  },
+  {
+   "id": "9310645435541",
+   "name": "Boneless Whole Chicken « Herb & Garlic »",
+   "photo": "photos/labels/9310645435541.jpg",
+   "kcal": 142,
+   "p": 16.9,
+   "c": 1.1,
+   "f": 7.5,
+   "printed": "594 kJ per 100g"
+  },
+  {
+   "id": "26015637",
+   "name": "Indulge Coffee Mocha Gourmet Ice Cream",
+   "photo": "photos/labels/26015637.jpg",
+   "kcal": 239,
+   "p": 3.7,
+   "c": 23.9,
+   "f": 14.1,
+   "printed": "998 kJ per 100g"
+  },
+  {
+   "id": "22002143",
+   "name": "Regular soy milk",
+   "photo": "photos/labels/22002143.jpg",
+   "kcal": 64,
+   "p": 3.6,
+   "c": 5,
+   "f": 3.3,
+   "printed": "268 kJ per 100ml"
+  },
+  {
+   "id": "9300633628321",
+   "name": "custard creams",
+   "photo": "photos/labels/9300633628321.jpg",
+   "kcal": 502,
+   "p": 5.6,
+   "c": 66.4,
+   "f": 23.4,
+   "printed": "2100 kJ per 100g"
+  },
+  {
+   "id": "9313495005803",
+   "name": "Tortilla corn ancient grain chips",
+   "photo": "photos/labels/9313495005803.jpg",
+   "kcal": 480,
+   "p": 8.1,
+   "c": 50.1,
+   "f": 26.6,
+   "printed": "2010 kJ per 100g"
+  },
+  {
+   "id": "9315090207095",
+   "name": "Low Fat Milk",
+   "photo": "photos/labels/9315090207095.jpg",
+   "kcal": 47,
+   "p": 3.4,
+   "c": 4.9,
+   "f": 1.5,
+   "printed": "197 kJ per 100ml"
+  },
+  {
+   "id": "9300657245252",
+   "name": "Classic MAYO",
+   "photo": "photos/labels/9300657245252.jpg",
+   "kcal": 342,
+   "p": 0.4,
+   "c": 17.2,
+   "f": 30.2,
+   "printed": "1430 kJ per 100g"
+  },
+  {
+   "id": "9310653103432",
+   "name": "Strawberry Greek yogurt",
+   "photo": "photos/labels/9310653103432.jpg",
+   "kcal": 90,
+   "p": 7.2,
+   "c": 14.3,
+   "f": 0.5,
+   "printed": "376 kJ per 100g"
+  },
+  {
+   "id": "26224503",
+   "name": "Oat Milk",
+   "photo": "photos/labels/26224503.jpg",
+   "kcal": 54,
+   "p": 1.4,
+   "c": 8.8,
+   "f": 1.4,
+   "printed": "224 kJ per 100ml"
+  },
+  {
+   "id": "8851019710143",
+   "name": "Pocky chocolat",
+   "photo": "photos/labels/8851019710143.jpg",
+   "kcal": 488,
+   "p": 8.1,
+   "c": 68.9,
+   "f": 20.1,
+   "printed": "2040 kJ per 100g"
+  },
+  {
+   "id": "9318471000773",
+   "name": "Kids Roasted Fava Beans",
+   "photo": "photos/labels/9318471000773.jpg",
+   "kcal": 462,
+   "p": 25.5,
+   "c": 44.8,
+   "f": 17.3,
+   "printed": "1931 kJ per 100g"
+  },
+  {
+   "id": "9310174003112",
+   "name": "Fettuccine Carbonara",
+   "photo": "photos/labels/9310174003112.jpg",
+   "kcal": 159,
+   "p": 4.8,
+   "c": 18,
+   "f": 7.3,
+   "printed": "665 kJ per 100g"
+  },
+  {
+   "id": "9317224403717",
+   "name": "Low Gi prtotein wraps",
+   "photo": "photos/labels/9317224403717.jpg",
+   "kcal": 246,
+   "p": 10.3,
+   "c": 41.4,
+   "f": 2.6,
+   "printed": "1030 kJ per 100g"
+  },
+  {
+   "id": "9342580000553",
+   "name": "Pork sausages gourmet for everyday",
+   "photo": "photos/labels/9342580000553.jpg",
+   "kcal": 241,
+   "p": 13.3,
+   "c": 2.8,
+   "f": 19.9,
+   "printed": "1010 kJ per 100g"
+  },
+  {
+   "id": "9350007001021",
+   "name": "Sweet Potato Ginger soup",
+   "photo": "photos/labels/9350007001021.jpg",
+   "kcal": 48,
+   "p": 0.8,
+   "c": 8.5,
+   "f": 1.3,
+   "printed": "202 kJ per 100g"
+  },
+  {
+   "id": "9300633417918",
+   "name": "Lightly sparkling lime flavoured spring water",
+   "photo": "photos/labels/9300633417918.jpg",
+   "kcal": 0,
+   "p": 0,
+   "c": 0,
+   "f": 0,
+   "printed": "1 kJ per 100ml"
+  },
+  {
+   "id": "9310645273419",
+   "name": "Brioche Slider Buns",
+   "photo": "photos/labels/9310645273419.jpg",
+   "kcal": 356,
+   "p": 11.1,
+   "c": 47.6,
+   "f": 12.8,
+   "printed": "1490 kJ per 100g"
+  },
+  {
+   "id": "26330402",
+   "name": "Grandessa Signature Strawberry Premium Jam",
+   "photo": "photos/labels/26330402.jpg",
+   "kcal": 270,
+   "p": 0.4,
+   "c": 65,
+   "f": 0.2,
+   "printed": "1130 kJ per 100g"
+  },
+  {
+   "id": "9323975105251",
+   "name": "wholemeal sourdough",
+   "photo": "photos/labels/9323975105251.jpg",
+   "kcal": 237,
+   "p": 9.1,
+   "c": 43.3,
+   "f": 1.7,
+   "printed": "992 kJ per 100g"
+  },
+  {
+   "id": "9315991023886",
+   "name": "Tasty Cheese Rice Crackers",
+   "photo": "photos/labels/9315991023886.jpg",
+   "kcal": 495,
+   "p": 3.9,
+   "c": 63.9,
+   "f": 24.2,
+   "printed": "2070 kJ per 100g"
+  },
+  {
+   "id": "9300767092814",
+   "name": "Champagne leg ham",
+   "photo": "photos/labels/9300767092814.jpg",
+   "kcal": 107,
+   "p": 18.5,
+   "c": 2,
+   "f": 2.7,
+   "printed": "448 kJ per 100g"
+  },
+  {
+   "id": "9300657034719",
+   "name": "Spaghetti and Sausages",
+   "photo": "photos/labels/9300657034719.jpg",
+   "kcal": 93,
+   "p": 3.3,
+   "c": 13,
+   "f": 2.8,
+   "printed": "390 kJ per 100g"
+  },
+  {
+   "id": "9310885116187",
+   "name": "Choc Chip Crunchy Peanut Butter Natural Health Bars",
+   "photo": "photos/labels/9310885116187.jpg",
+   "kcal": 430,
+   "p": 17.1,
+   "c": 41.7,
+   "f": 24.5,
+   "printed": "1800 kJ per 100g"
+  },
+  {
+   "id": "9315596004006",
+   "name": "Orange juice",
+   "photo": "photos/labels/9315596004006.jpg",
+   "kcal": 42,
+   "p": 0.7,
+   "c": 8.8,
+   "f": 0.1,
+   "printed": "177 kJ per 100ml"
+  },
+  {
+   "id": "9300698501263",
+   "name": "Rocher",
+   "photo": "photos/labels/9300698501263.jpg",
+   "kcal": 591,
+   "p": 8.2,
+   "c": 44.4,
+   "f": 42.7,
+   "printed": "2474 kJ per 100g"
+  },
+  {
+   "id": "4088700063699",
+   "name": "Instant gravy mix",
+   "photo": "photos/labels/4088700063699.jpg",
+   "kcal": 40,
+   "p": 0.2,
+   "c": 9.2,
+   "f": 0.2,
+   "printed": "169 kJ per 100ml"
+  },
+  {
+   "id": "9335874001282",
+   "name": "Garlic bread",
+   "photo": "photos/labels/9335874001282.jpg",
+   "kcal": 339,
+   "p": 2.1,
+   "c": 43.9,
+   "f": 16.8,
+   "printed": "1420 kJ per 100g"
+  },
+  {
+   "id": "9310081130574",
+   "name": "Fish Fillets Moroccan",
+   "photo": "photos/labels/9310081130574.jpg",
+   "kcal": 88,
+   "p": 16.8,
+   "c": 1.8,
+   "f": 1.4,
+   "printed": "367 kJ per 100g"
+  },
+  {
+   "id": "9310232954042",
+   "name": "Double Shot Iced Coffee",
+   "photo": "photos/labels/9310232954042.jpg",
+   "kcal": 63,
+   "p": 3.3,
+   "c": 8.3,
+   "f": 1.8,
+   "printed": "265 kJ per 100ml"
+  },
+  {
+   "id": "9354853001211",
+   "name": "Steak - Meat Free",
+   "photo": "photos/labels/9354853001211.jpg",
+   "kcal": 199,
+   "p": 25.1,
+   "c": 18.5,
+   "f": 2.2,
+   "printed": "834 kJ per 100g"
+  },
+  {
+   "id": "9323966105161",
+   "name": "Lindor milk",
+   "photo": "photos/labels/9323966105161.jpg",
+   "kcal": 619,
+   "p": 4.9,
+   "c": 44,
+   "f": 47,
+   "printed": "2590 kJ per 100g"
+  },
+  {
+   "id": "5410976080428",
+   "name": "The original seashells",
+   "photo": "photos/labels/5410976080428.jpg",
+   "kcal": 555,
+   "p": 8.4,
+   "c": 48,
+   "f": 36,
+   "printed": "2324 kJ per 100g"
+  },
+  {
+   "id": "7825792228202",
+   "name": "Dark Chocolate Hot Cross Buns",
+   "photo": "photos/labels/7825792228202.jpg",
+   "kcal": 306,
+   "p": 6.3,
+   "c": 44.1,
+   "f": 11.3,
+   "printed": "1280 kJ per 100g"
+  },
+  {
+   "id": "9319133333857",
+   "name": "Oat slice Belgium Chocolate Brownie",
+   "photo": "photos/labels/9319133333857.jpg",
+   "kcal": 447,
+   "p": 7.3,
+   "c": 59,
+   "f": 19,
+   "printed": "1870 kJ per 100g"
+  },
+  {
+   "id": "9310645423326",
+   "name": "Choc Peanut Ice Cream",
+   "photo": "photos/labels/9310645423326.jpg",
+   "kcal": 151,
+   "p": 10,
+   "c": 16.1,
+   "f": 5,
+   "printed": "632 kJ per 100g"
+  }
+ ]
+}

@@ -1,0 +1,701 @@
+[
+ {
+  "id": "9310072021584",
+  "name": "Farmbake Cookies Chocolate Chip Fudge",
+  "brand": [
+   "Arnott's",
+   "farmbake"
+  ],
+  "photo": "photos/labels/9310072021584.jpg",
+  "kcal": 473,
+  "kj": 1980,
+  "p": 5.2,
+  "c": 68.6,
+  "f": 19.2
+ },
+ {
+  "id": "9300650662414",
+  "name": "Peanut Butter",
+  "brand": [
+   "Kraft"
+  ],
+  "photo": "photos/labels/9300650662414.jpg",
+  "kcal": 619,
+  "p": 23.8,
+  "c": 13.2,
+  "f": 51.5
+ },
+ {
+  "id": "26341514",
+  "name": "Swiss style toasted Muesli",
+  "brand": [
+   "Aldi"
+  ],
+  "photo": "photos/labels/26341514.jpg",
+  "kcal": 394.35946,
+  "kj": 1650,
+  "p": 9.4,
+  "c": 54.8,
+  "f": 12.6
+ },
+ {
+  "id": "9300650028944",
+  "name": "Belvita Minis Chocolate",
+  "brand": [
+   "Belvita"
+  ],
+  "photo": "photos/labels/9300650028944.jpg",
+  "kcal": 444,
+  "p": 7.8,
+  "c": 66.4,
+  "f": 14.5
+ },
+ {
+  "id": "5018357013012",
+  "name": "Honey granola",
+  "brand": [
+   "Dorset cereals"
+  ],
+  "photo": "photos/labels/5018357013012.jpg",
+  "kcal": 524,
+  "p": 13.7,
+  "c": 43.2,
+  "f": 31.3
+ },
+ {
+  "id": "00012775",
+  "name": "Bagel Chèvre miel pesto",
+  "photo": "photos/labels/00012775.jpg",
+  "kcal": 196,
+  "p": 9.6,
+  "c": 29.4,
+  "f": 4.1
+ },
+ {
+  "id": "5060072971047",
+  "name": "Turmeric",
+  "photo": "photos/labels/5060072971047.jpg",
+  "kcal": 47,
+  "p": 3.3,
+  "c": 5.2,
+  "f": 1.2
+ },
+ {
+  "id": "26170480",
+  "name": "Choc Hazelnut Product spread",
+  "brand": [
+   "Bramwells",
+   "Aldi"
+  ],
+  "photo": "photos/labels/26170480.jpg",
+  "kcal": 541,
+  "p": 5.7,
+  "c": 57.3,
+  "f": 30.7
+ },
+ {
+  "id": "9310055102804",
+  "name": "Special K Nourrish",
+  "brand": [
+   "Kellogg's"
+  ],
+  "photo": "photos/labels/9310055102804.jpg",
+  "kcal": 392,
+  "p": 15.7,
+  "c": 58.4,
+  "f": 7.9
+ },
+ {
+  "id": "7616500666467",
+  "name": "Milk Fruit and Nuts chocolate",
+  "brand": [
+   "Frey"
+  ],
+  "photo": "photos/labels/7616500666467.jpg",
+  "kcal": 528.2027,
+  "p": 7,
+  "c": 56,
+  "f": 30
+ },
+ {
+  "id": "9310885115142",
+  "name": "Unhulled Tahini",
+  "brand": [
+   "Mayver's"
+  ],
+  "photo": "photos/labels/9310885115142.jpg",
+  "kcal": 678,
+  "p": 19.2,
+  "c": 2.2,
+  "f": 61.5
+ },
+ {
+  "id": "9310645435541",
+  "name": "Boneless Whole Chicken « Herb & Garlic »",
+  "brand": [
+   "Coles"
+  ],
+  "photo": "photos/labels/9310645435541.jpg",
+  "kcal": 142,
+  "p": 16.9,
+  "c": 1.1,
+  "f": 7.5
+ },
+ {
+  "id": "26015637",
+  "name": "Indulge Coffee Mocha Gourmet Ice Cream",
+  "brand": [
+   "Monarc",
+   "Aldi"
+  ],
+  "photo": "photos/labels/26015637.jpg",
+  "kcal": 239,
+  "kj": 998,
+  "p": 3.7,
+  "c": 23.9,
+  "f": 14.1
+ },
+ {
+  "id": "22002143",
+  "name": "Regular soy milk",
+  "photo": "photos/labels/22002143.jpg",
+  "kcal": 64,
+  "p": 3.6,
+  "c": 5,
+  "f": 3.3
+ },
+ {
+  "id": "9300633628321",
+  "name": "custard creams",
+  "photo": "photos/labels/9300633628321.jpg",
+  "kcal": 503,
+  "p": 5.6,
+  "c": 66.4,
+  "f": 23.4
+ },
+ {
+  "id": "9313495005803",
+  "name": "Tortilla corn ancient grain chips",
+  "photo": "photos/labels/9313495005803.jpg",
+  "kcal": 481,
+  "p": 8.1,
+  "c": 50.1,
+  "f": 26.6
+ },
+ {
+  "id": "9315090207095",
+  "name": "Low Fat Milk",
+  "photo": "photos/labels/9315090207095.jpg",
+  "kcal": 47,
+  "p": 3.4,
+  "c": 4.9,
+  "f": 1.5
+ },
+ {
+  "id": "9300657245252",
+  "name": "Classic MAYO",
+  "brand": [
+   "Kraft"
+  ],
+  "photo": "photos/labels/9300657245252.jpg",
+  "kcal": 342,
+  "kj": 1430,
+  "p": 0.4,
+  "c": 17.2,
+  "f": 30.2
+ },
+ {
+  "id": "9310653103432",
+  "name": "Strawberry Greek yogurt",
+  "brand": [
+   "Chobani"
+  ],
+  "photo": "photos/labels/9310653103432.jpg",
+  "kcal": 90,
+  "p": 7.21,
+  "c": 14.3,
+  "f": 0.5
+ },
+ {
+  "id": "26224503",
+  "name": "Oat Milk",
+  "brand": [
+   "Inner Goodness"
+  ],
+  "photo": "photos/labels/26224503.jpg",
+  "kcal": 54,
+  "p": 1.4,
+  "c": 8.8,
+  "f": 1.4
+ },
+ {
+  "id": "8851019710143",
+  "name": "Pocky chocolat",
+  "brand": [
+   "Pocky"
+  ],
+  "photo": "photos/labels/8851019710143.jpg",
+  "kcal": 489,
+  "p": 8.1000003814697,
+  "c": 68.900001525879,
+  "f": 20.10000038147
+ },
+ {
+  "id": "93685559",
+  "name": "Caramello Koala",
+  "brand": [
+   "Cadbury"
+  ],
+  "photo": "photos/labels/93685559.jpg",
+  "kcal": 315,
+  "p": 21,
+  "c": 9,
+  "f": 3
+ },
+ {
+  "id": "9318471000773",
+  "name": "Kids Roasted Fava Beans",
+  "brand": [
+   "The Happy Snack Company"
+  ],
+  "photo": "photos/labels/9318471000773.jpg",
+  "kcal": 460,
+  "p": 25.333333333333,
+  "c": 44.666666666667,
+  "f": 17.333333333333
+ },
+ {
+  "id": "9310174003112",
+  "name": "Fettuccine Carbonara",
+  "brand": [
+   "McCain"
+  ],
+  "photo": "photos/labels/9310174003112.jpg",
+  "kcal": 158.93333333333,
+  "p": 4.8,
+  "c": 18,
+  "f": 7.3066666666667
+ },
+ {
+  "id": "9317224403717",
+  "name": "Low Gi prtotein wraps",
+  "brand": [
+   "Mission"
+  ],
+  "photo": "photos/labels/9317224403717.jpg",
+  "kcal": 246,
+  "kj": 1030,
+  "p": 10.3,
+  "c": 41.4,
+  "f": 2.6
+ },
+ {
+  "id": "9342580000553",
+  "name": "Pork sausages gourmet for everyday",
+  "photo": "photos/labels/9342580000553.jpg",
+  "kcal": 241.3958,
+  "p": 13.3,
+  "c": 2.8,
+  "f": 19.9
+ },
+ {
+  "id": "9350007001021",
+  "name": "Sweet Potato Ginger soup",
+  "brand": [
+   "Hart & Soul"
+  ],
+  "photo": "photos/labels/9350007001021.jpg",
+  "kcal": 48.5,
+  "p": 0.80000001192095,
+  "c": 8.5,
+  "f": 1.2999999523163
+ },
+ {
+  "id": "9300633417918",
+  "name": "Lightly sparkling lime flavoured spring water",
+  "brand": [
+   "Woolworths"
+  ],
+  "photo": "photos/labels/9300633417918.jpg",
+  "kcal": 0.286806892,
+  "p": 0,
+  "c": 0,
+  "f": 0
+ },
+ {
+  "id": "93203029",
+  "name": "Mint sauce",
+  "brand": [
+   "Cornwell's"
+  ],
+  "photo": "photos/labels/93203029.jpg",
+  "kcal": 71.701723333333,
+  "p": 3,
+  "c": 17.666666666667,
+  "f": 3
+ },
+ {
+  "id": "9300605099708",
+  "name": "Killer pythons",
+  "brand": [
+   "Nestlé"
+  ],
+  "photo": "photos/labels/9300605099708.jpg",
+  "kcal": 81.261947631836,
+  "p": 1.2000000476837,
+  "c": 18.39999961853,
+  "f": 0.89999997615814
+ },
+ {
+  "id": "26039046",
+  "name": "Vegetable Flavour Stock Powder",
+  "photo": "photos/labels/26039046.jpg",
+  "kcal": 4.8,
+  "p": 0.080000001192096,
+  "c": 1.039999961853,
+  "f": 0.080000001192096
+ },
+ {
+  "id": "9310645273419",
+  "name": "Brioche Slider Buns",
+  "brand": [
+   "Coles"
+  ],
+  "photo": "photos/labels/9310645273419.jpg",
+  "kcal": 357,
+  "p": 11.1,
+  "c": 47.6,
+  "f": 12.8
+ },
+ {
+  "id": "26330402",
+  "name": "Grandessa Signature Strawberry Premium Jam",
+  "photo": "photos/labels/26330402.jpg",
+  "kcal": 270.8732,
+  "p": 0.6667,
+  "c": 65.3333,
+  "f": 0.6667
+ },
+ {
+  "id": "9323975105251",
+  "name": "wholemeal sourdough",
+  "photo": "photos/labels/9323975105251.jpg",
+  "kcal": 237.28813559322,
+  "p": 9.1525423728814,
+  "c": 43.276836158192,
+  "f": 1.6949152542373
+ },
+ {
+  "id": "9311482007199",
+  "name": "Tasty cheese",
+  "photo": "photos/labels/9311482007199.jpg",
+  "kcal": 191,
+  "p": 25.8,
+  "c": 1,
+  "f": 8.3
+ },
+ {
+  "id": "9315991023886",
+  "name": "Tasty Cheese Rice Crackers",
+  "brand": [
+   "Vege Chips"
+  ],
+  "photo": "photos/labels/9315991023886.jpg",
+  "kcal": 494.2638,
+  "p": 4,
+  "c": 64,
+  "f": 24
+ },
+ {
+  "id": "9300767092814",
+  "name": "Champagne leg ham",
+  "brand": [
+   "D'orsogna"
+  ],
+  "photo": "photos/labels/9300767092814.jpg",
+  "kcal": 107.0746,
+  "p": 18.4,
+  "c": 2,
+  "f": 2.8
+ },
+ {
+  "id": "9310645401782",
+  "name": "Italian Whole Peeled Tomatos",
+  "brand": [
+   "Coles"
+  ],
+  "photo": "photos/labels/9310645401782.jpg",
+  "kcal": 23.1,
+  "p": 1.1,
+  "c": 3.9,
+  "f": 0.5
+ },
+ {
+  "id": "9300657034719",
+  "name": "Spaghetti and Sausages",
+  "brand": [
+   "Heinz"
+  ],
+  "photo": "photos/labels/9300657034719.jpg",
+  "kcal": 93.3,
+  "kj": 186,
+  "p": 3.29,
+  "c": 13,
+  "f": 2.81
+ },
+ {
+  "id": "0224103015741",
+  "name": "Corned Beef Silverside",
+  "brand": [
+   "Coles"
+  ],
+  "photo": "photos/labels/0224103015741.jpg",
+  "kcal": 112,
+  "p": 15.2,
+  "c": 6.4,
+  "f": 2.7
+ },
+ {
+  "id": "9310885116187",
+  "name": "Choc Chip Crunchy Peanut Butter Natural Health Bars",
+  "brand": [
+   "Mayver's"
+  ],
+  "photo": "photos/labels/9310885116187.jpg",
+  "kcal": 431,
+  "p": 17,
+  "c": 41.7,
+  "f": 24.7
+ },
+ {
+  "id": "9315596004006",
+  "name": "Orange juice",
+  "brand": [
+   "Spring Valley"
+  ],
+  "photo": "photos/labels/9315596004006.jpg",
+  "kcal": 42.319949333333,
+  "p": 0.69333333333333,
+  "c": 8.8,
+  "f": 0.10666666666667
+ },
+ {
+  "id": "9300633289317",
+  "name": "Basmati Rice",
+  "brand": [
+   "Woolworths"
+  ],
+  "photo": "photos/labels/9300633289317.jpg",
+  "kcal": 340,
+  "p": 7.29,
+  "c": 74,
+  "f": 1.43
+ },
+ {
+  "id": "9343594000041",
+  "name": "Burgerlicious Sauce",
+  "brand": [
+   "8Food"
+  ],
+  "photo": "photos/labels/9343594000041.jpg",
+  "kcal": 185,
+  "kj": 775,
+  "p": 5,
+  "c": 14.5,
+  "f": 13.5
+ },
+ {
+  "id": "9310645103327",
+  "name": "Australian carrot batons",
+  "brand": [
+   "Coles"
+  ],
+  "photo": "photos/labels/9310645103327.jpg",
+  "kcal": 44,
+  "p": 1,
+  "c": 6.6,
+  "f": 1
+ },
+ {
+  "id": "9300698501263",
+  "name": "Rocher",
+  "brand": [
+   "Ferrero"
+  ],
+  "photo": "photos/labels/9300698501263.jpg",
+  "kcal": 591.3,
+  "p": 8.2,
+  "c": 44.4,
+  "f": 42.7
+ },
+ {
+  "id": "4088700063699",
+  "name": "Instant gravy mix",
+  "brand": [
+   "Chefs Cupboard"
+  ],
+  "photo": "photos/labels/4088700063699.jpg",
+  "kcal": 40.5353728,
+  "kj": 169,
+  "p": 0.16,
+  "c": 9.28,
+  "f": 0.16
+ },
+ {
+  "id": "9335874001282",
+  "name": "Garlic bread",
+  "brand": [
+   "Gluten Free Bakehouse"
+  ],
+  "photo": "photos/labels/9335874001282.jpg",
+  "kcal": 339.33333333333,
+  "p": 2,
+  "c": 44,
+  "f": 16.666666666667
+ },
+ {
+  "id": "9310081130574",
+  "name": "Fish Fillets Moroccan",
+  "brand": [
+   "Birds Eye"
+  ],
+  "photo": "photos/labels/9310081130574.jpg",
+  "kcal": 87.76,
+  "p": 16.8,
+  "c": 1.44,
+  "f": 1.3599999999999999
+ },
+ {
+  "id": "9339687138821",
+  "name": "Cadbury milk chocolate chips hot cross buns",
+  "photo": "photos/labels/9339687138821.jpg",
+  "kcal": 0,
+  "p": 8,
+  "c": 48,
+  "f": 10
+ },
+ {
+  "id": "9310232954042",
+  "name": "Double Shot Iced Coffee",
+  "brand": [
+   "Masters"
+  ],
+  "photo": "photos/labels/9310232954042.jpg",
+  "kcal": 63.337,
+  "kj": 265,
+  "p": 3.3,
+  "c": 8.3,
+  "f": 1.8
+ },
+ {
+  "id": "9354853001211",
+  "name": "Steak - Meat Free",
+  "brand": [
+   "Get Plant’d"
+  ],
+  "photo": "photos/labels/9354853001211.jpg",
+  "kcal": 199,
+  "p": 25.2,
+  "c": 18.4,
+  "f": 2.4
+ },
+ {
+  "id": "9300633922641",
+  "name": "Woolworths Two Fruits in Tropical Jelly",
+  "brand": [
+   "Woolworths"
+  ],
+  "photo": "photos/labels/9300633922641.jpg",
+  "kcal": 75,
+  "p": 0.083333333333333,
+  "c": 17.666666666667,
+  "f": 0.083333333333333
+ },
+ {
+  "id": "9323966105161",
+  "name": "Lindor milk",
+  "brand": [
+   "Lindt"
+  ],
+  "photo": "photos/labels/9323966105161.jpg",
+  "kcal": 619,
+  "kj": 2590,
+  "p": 4.9,
+  "c": 44,
+  "f": 47
+ },
+ {
+  "id": "5410976080428",
+  "name": "The original seashells",
+  "brand": [
+   "Guylian"
+  ],
+  "photo": "photos/labels/5410976080428.jpg",
+  "kcal": 554,
+  "kj": 2324,
+  "p": 8.4,
+  "c": 48,
+  "f": 36
+ },
+ {
+  "id": "6921211105831",
+  "name": "Mini mentos rainbow",
+  "brand": [
+   "Mentos"
+  ],
+  "photo": "photos/labels/6921211105831.jpg",
+  "kcal": 42.345276872964,
+  "p": 0,
+  "c": 9.9891422366992,
+  "f": 0.2171552660152
+ },
+ {
+  "id": "7825792228202",
+  "name": "Dark Chocolate Hot Cross Buns",
+  "brand": [
+   "Sonoma"
+  ],
+  "photo": "photos/labels/7825792228202.jpg",
+  "kcal": 305,
+  "kj": 1280,
+  "p": 6.3,
+  "c": 44.1,
+  "f": 11.3
+ },
+ {
+  "id": "9355814000014",
+  "name": "Meetballs",
+  "brand": [
+   "Meet"
+  ],
+  "photo": "photos/labels/9355814000014.jpg",
+  "kcal": 210,
+  "p": 16.2,
+  "c": 10.5,
+  "f": 11.2
+ },
+ {
+  "id": "9319133333857",
+  "name": "Oat slice Belgium Chocolate Brownie",
+  "brand": [
+   "Carman's"
+  ],
+  "photo": "photos/labels/9319133333857.jpg",
+  "kcal": 447.28214285714,
+  "p": 7.4285714285714,
+  "c": 59.142857142857,
+  "f": 19.142857142857
+ },
+ {
+  "id": "9310645423326",
+  "name": "Choc Peanut Ice Cream",
+  "brand": [
+   "Perform"
+  ],
+  "photo": "photos/labels/9310645423326.jpg",
+  "kcal": 151,
+  "p": 10,
+  "c": 16.1,
+  "f": 5
+ }
+]

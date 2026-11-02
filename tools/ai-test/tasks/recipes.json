@@ -1,0 +1,698 @@
+{
+ "source": "Finished-dish check from FSANZ AUSNUT 2023 and AFCD Release 3",
+ "tasks": [
+  {
+   "id": "dish01",
+   "name": "Spaghetti bolognese",
+   "promise": false,
+   "range": [
+    114,
+    226
+   ],
+   "like": [
+    "F006393 Pasta dish, homemade, cooked unfilled pasta, homemade beef bolognese sauce & added vegetables 120",
+    "F010787 Pasta dish, homemade, vegan bolognese sauce 141",
+    "F010780 Pasta dish, commercial, vegan bolognese sauce 114",
+    "F006346 Pasta dish, commercial, bolognese sauce 142",
+    "F006425 Pasta, filled with meat, commercial, cooked without added sauce 226"
+   ]
+  },
+  {
+   "id": "dish02",
+   "name": "Beef lasagne",
+   "promise": false,
+   "range": [
+    137,
+    180
+   ],
+   "like": [
+    "F005146 Lasagne, beef, homemade 180",
+    "F005145 Lasagne, beef, commercial, purchased frozen, baked 137"
+   ]
+  },
+  {
+   "id": "dish03",
+   "name": "Beef and vegetable stir fry",
+   "promise": false,
+   "range": [
+    157,
+    180
+   ],
+   "like": [
+    "F008880 Stir-fry, homemade, beef, satay sauce 164",
+    "F008874 Stir-fry, homemade, beef 157",
+    "F008848 Stir-fry, commercial, beef, with nuts 180",
+    "F008847 Stir-fry, commercial, beef, satay sauce 165",
+    "F008844 Stir-fry, commercial, beef 157"
+   ]
+  },
+  {
+   "id": "dish04",
+   "name": "Chicken and vegetable stir fry",
+   "promise": false,
+   "range": [
+    154,
+    216
+   ],
+   "like": [
+    "F008892 Stir-fry, homemade, chicken, with nuts 180",
+    "F008891 Stir-fry, homemade, chicken, satay sauce 216",
+    "F008884 Stir-fry, homemade, chicken 157",
+    "F008854 Stir-fry, commercial, chicken, with nuts 178",
+    "F008853 Stir-fry, commercial, chicken, satay sauce 213",
+    "F008850 Stir-fry, commercial, chicken 154"
+   ]
+  },
+  {
+   "id": "dish05",
+   "name": "Butter chicken",
+   "promise": false,
+   "range": [
+    138,
+    166
+   ],
+   "like": [
+    "F003371 Curry, homemade, chicken, dairy based sauce 166",
+    "F003345 Curry, commercial, chicken, dairy based sauce 138"
+   ]
+  },
+  {
+   "id": "dish06",
+   "name": "Thai green chicken curry",
+   "promise": false,
+   "range": [
+    65,
+    166
+   ],
+   "like": [
+    "F003373 Curry, homemade, chicken, tomato based sauce 109",
+    "F003371 Curry, homemade, chicken, dairy based sauce 166",
+    "F003377 Curry, homemade, chicken, coconut milk sauce 157",
+    "F010750 Curry, commercial, chicken, tomato based sauce 108",
+    "F003345 Curry, commercial, chicken, dairy based sauce 138",
+    "F003344 Curry, commercial, chicken, coconut milk sauce 148",
+    "F008841 Stew, casserole or curry, chicken & vegetable, canned 65"
+   ]
+  },
+  {
+   "id": "dish07",
+   "name": "Beef massaman curry",
+   "promise": false,
+   "range": [
+    153,
+    261
+   ],
+   "like": [
+    "F003361 Curry, homemade, beef, tomato based sauce 153",
+    "F010722 Curry, homemade, beef, dairy based sauce 158",
+    "F003359 Curry, homemade, beef, coconut based sauce 184",
+    "F003342 Curry, commercial, beef, tomato based sauce 166",
+    "F010726 Curry, commercial, beef, dairy based sauce 175",
+    "F003341 Curry, commercial, beef, coconut based sauce 203",
+    "F003338 Curry puff, beef & vegetable, deep fried 261"
+   ]
+  },
+  {
+   "id": "dish08",
+   "name": "Lamb rogan josh",
+   "promise": false,
+   "range": [
+    168,
+    217
+   ],
+   "like": [
+    "F003395 Curry, homemade, lamb, tomato based sauce 168",
+    "F003393 Curry, homemade, lamb, dairy based sauce 171",
+    "F003392 Curry, homemade, lamb, coconut based sauce 198",
+    "F010720 Curry, commercial, lamb, tomato based sauce 180",
+    "F003347 Curry, commercial, lamb, dairy based sauce 187",
+    "F010715 Curry, commercial, lamb, coconut based sauce 217"
+   ]
+  },
+  {
+   "id": "dish09",
+   "name": "Chickpea and spinach curry",
+   "promise": false,
+   "range": [
+    119,
+    119
+   ],
+   "like": [
+    "F003336 Curry, homemade, chickpea/legumes 119",
+    "F010654 Curry, commercial, chickpea/legumes 119"
+   ]
+  },
+  {
+   "id": "dish10",
+   "name": "Chicken fried rice",
+   "promise": false,
+   "range": [
+    195,
+    207
+   ],
+   "like": [
+    "F007666 Rice, white, fried with bacon or ham, egg, prawns & vegetables 198",
+    "F007645 Rice, brown, fried, with vegetables 207",
+    "F007643 Rice, brown, fried with meat & vegetables 205",
+    "F007674 Rice, white, fried, with vegetables 201",
+    "F007664 Rice, white, fried with meat & vegetables 200",
+    "F007669 Special fried rice, commercial 195"
+   ]
+  },
+  {
+   "id": "dish11",
+   "name": "Pad thai with prawns",
+   "promise": false,
+   "range": null,
+   "like": []
+  },
+  {
+   "id": "dish12",
+   "name": "Beef burger with cheese",
+   "promise": false,
+   "range": [
+    178,
+    283
+   ],
+   "like": [
+    "F004358 Hamburger, white roll, beef patty, with cheese, onion, pickles & sauce, fast food chain 271",
+    "F004331 Hamburger, beef patty, cheese & salad, homemade 178",
+    "F004332 Hamburger, beef patty & cheese, homemade 246",
+    "F010490 Hamburger, with cheese, takeaway 274",
+    "F004352 Hamburger, beef patty, with cheese/bacon/egg & salad, fast food chain 221",
+    "F004356 Hamburger, beef patty, with cheese, lettuce, onion, pickles & tomato, fast food chain 255",
+    "F004357 Hamburger, beef patty, with cheese & lettuce, fast food chain 245",
+    "F004349 Hamburger, beef patty, with bacon, cheese & salad, fast food chain 275",
+    "F003882 Fish burger, with cheese, fast food chain 245",
+    "F002543 Chicken burger, crumbed chicken breast, with cheese & salad, fast food chain 248",
+    "F002540 Chicken burger, crumbed chicken breast, with bacon, cheese & salad, fast food chain 267",
+    "F002536 Chicken burger, chicken breast, with cheese & salad, fast food chain 283"
+   ]
+  },
+  {
+   "id": "dish13",
+   "name": "Chicken schnitzel",
+   "promise": false,
+   "range": [
+    207,
+    267
+   ],
+   "like": [
+    "F009790 Chicken, schnitzel, baked without fat 207",
+    "F002607 Chicken, schnitzel, breadcrumb coating, topped with tomato sauce & cheese (parmigiana) 219",
+    "F002763 Chicken, schnitzel, breadcrumb coating, deep fried 245",
+    "F002564 Chicken wrap, crumbed chicken breast, with salad, fast food chain 235",
+    "F002543 Chicken burger, crumbed chicken breast, with cheese & salad, fast food chain 248",
+    "F002540 Chicken burger, crumbed chicken breast, with bacon, cheese & salad, fast food chain 267",
+    "F002544 Chicken burger, crumbed chicken breast, with salad, fast food chain 263"
+   ]
+  },
+  {
+   "id": "dish14",
+   "name": "Fish and chips",
+   "promise": false,
+   "range": [
+    196,
+    245
+   ],
+   "like": [
+    "F003950 Fish, white flesh, battered, packaged frozen, baked, no added fat 196",
+    "F003955 Fish, white flesh, crumbed, takeaway outlet, deep fried 228",
+    "F003951 Fish, white flesh, battered, takeaway outlet, deep fried 245"
+   ]
+  },
+  {
+   "id": "dish15",
+   "name": "Salmon with roast vegetables",
+   "promise": false,
+   "range": [
+    258,
+    320
+   ],
+   "like": [
+    "F007848 Salmon, Pacific King, fillet, skinless, grilled, no added fat 307",
+    "F007826 Salmon, Atlantic, fillet, grilled, no added fat 258",
+    "F007843 Salmon, coated, baked, roasted, fried, grilled, BBQ'd or deep fried, added fat 320",
+    "F007844 Salmon, coated, baked, roasted, fried, grilled or BBQ'd, no added fat 297",
+    "F007836 Salmon, baked, roasted, fried, grilled, BBQ'd or deep fried, added fat 282",
+    "F007834 Salmon, baked, roasted, fried, grilled or BBQ'd, no added fat 260"
+   ]
+  },
+  {
+   "id": "dish16",
+   "name": "Grilled barramundi with salad",
+   "promise": false,
+   "range": [
+    171,
+    223
+   ],
+   "like": [
+    "F000385 Barramundi, aquacultured, fillet, grilled, no added fat 171",
+    "F000390 Barramundi, baked, roasted, fried, grilled, BBQ'd or deep fried, added fat 223"
+   ]
+  },
+  {
+   "id": "dish17",
+   "name": "Beef chilli con carne",
+   "promise": false,
+   "range": null,
+   "like": []
+  },
+  {
+   "id": "dish18",
+   "name": "Beef stew with potatoes",
+   "promise": false,
+   "range": [
+    110,
+    260
+   ],
+   "like": [
+    "F000935 Beef, strips, untrimmed, casseroled, no added fat 180",
+    "F000934 Beef, strips, lean, casseroled, no added fat 177",
+    "F000562 Beef, diced, untrimmed, casseroled, no added fat 185",
+    "F000559 Beef, diced, lean, casseroled, no added fat 179",
+    "F000526 Beef, casserole meat, boneless, chuck, untrimmed, casseroled, no added fat 260",
+    "F000522 Beef, casserole meat, boneless, chuck, lean, casseroled, no added fat 228",
+    "F000517 Beef, casserole meat, boneless or bone-in, shin, untrimmed, casseroled, no added fat 229",
+    "F000513 Beef, casserole meat, boneless or bone-in, shin, lean, casseroled, no added fat 163",
+    "F002315 Casserole, homemade, beef & mushroom, cream based sauce 159",
+    "F002327 Casserole, homemade, beef & kidney 142",
+    "F002320 Casserole, homemade, beef, tomato based sauce 110",
+    "F002322 Casserole, homemade, beef, gravy sauce 141"
+   ]
+  },
+  {
+   "id": "dish19",
+   "name": "Roast chicken with potatoes",
+   "promise": false,
+   "range": [
+    91,
+    103
+   ],
+   "like": [
+    "F004050 Ready meal, roast chicken & vegetables, energy controlled portion 103",
+    "F004061 Ready meal, roast chicken & vegetables 91"
+   ]
+  },
+  {
+   "id": "dish20",
+   "name": "Roast lamb leg",
+   "promise": false,
+   "range": [
+    229,
+    229
+   ],
+   "like": [
+    "F005018 Lamb, leg roast, untrimmed, roasted, no added fat 229"
+   ]
+  },
+  {
+   "id": "dish21",
+   "name": "Pork belly with rice",
+   "promise": false,
+   "range": [
+    384,
+    384
+   ],
+   "like": [
+    "F006860 Pork, belly, rind removed, baked, no added fat 384"
+   ]
+  },
+  {
+   "id": "dish22",
+   "name": "Sausages and mash",
+   "promise": false,
+   "range": [
+    218,
+    246
+   ],
+   "like": [
+    "F008107 Sausage, beef, grilled, no added fat 218",
+    "F008106 Sausage, beef, fried, no added fat 246"
+   ]
+  },
+  {
+   "id": "dish23",
+   "name": "Chicken caesar salad",
+   "promise": false,
+   "range": [
+    174,
+    180
+   ],
+   "like": [
+    "F007740 Salad, chicken caesar, made with lettuce, bacon, parmesan, croutons, egg & chicken, no added dressing 174",
+    "F007735 Salad, caesar, made with lettuce, bacon, parmesan, croutons & egg, no added dressing 180"
+   ]
+  },
+  {
+   "id": "dish24",
+   "name": "Greek salad",
+   "promise": false,
+   "range": [
+    63,
+    63
+   ],
+   "like": [
+    "F007781 Salad, greek, no added dressing 63"
+   ]
+  },
+  {
+   "id": "dish25",
+   "name": "Tuna pasta bake",
+   "promise": false,
+   "range": null,
+   "like": []
+  },
+  {
+   "id": "dish26",
+   "name": "Macaroni cheese",
+   "promise": false,
+   "range": [
+    167,
+    167
+   ],
+   "like": [
+    "F005259 Macaroni & cheese, homemade, cooked unfilled pasta, homemade cheese sauce 167"
+   ]
+  },
+  {
+   "id": "dish27",
+   "name": "Carbonara",
+   "promise": false,
+   "range": [
+    233,
+    260
+   ],
+   "like": [
+    "F010932 Pasta dish, homemade, carbonara sauce 233",
+    "F010931 Pasta dish, commercial, carbonara sauce 260"
+   ]
+  },
+  {
+   "id": "dish28",
+   "name": "Pesto pasta",
+   "promise": false,
+   "range": null,
+   "like": []
+  },
+  {
+   "id": "dish29",
+   "name": "Margherita pizza, homemade",
+   "promise": false,
+   "range": [
+    270,
+    287
+   ],
+   "like": [
+    "F006725 Pizza, cheese & tomato, commercial 285",
+    "F006730 Pizza, cheese, homemade 287",
+    "F006728 Pizza, cheese, purchased frozen 270",
+    "F006732 Pizza, cheese, takeaway, thin base 283"
+   ]
+  },
+  {
+   "id": "dish30",
+   "name": "Chicken quesadilla",
+   "promise": false,
+   "range": null,
+   "like": []
+  },
+  {
+   "id": "dish31",
+   "name": "Beef tacos",
+   "promise": false,
+   "range": [
+    145,
+    180
+   ],
+   "like": [
+    "F010551 Taco, soft, fish 162",
+    "F010552 Taco, soft, chicken 162",
+    "F010553 Taco, soft, beef 180",
+    "F010554 Taco, soft, beans 145"
+   ]
+  },
+  {
+   "id": "dish32",
+   "name": "Pumpkin soup",
+   "promise": false,
+   "range": [
+    42,
+    47
+   ],
+   "like": [
+    "F008639 Soup, pumpkin, homemade 46",
+    "F008641 Soup, pumpkin, commercial 47",
+    "F008642 Soup, pumpkin, ready to eat, canned 42"
+   ]
+  },
+  {
+   "id": "dish33",
+   "name": "Minestrone",
+   "promise": false,
+   "range": [
+    38,
+    62
+   ],
+   "like": [
+    "F008669 Soup, vegetable, homemade 38",
+    "F008605 Soup, minestrone, homemade 61",
+    "F008606 Soup, minestrone, commercial 62"
+   ]
+  },
+  {
+   "id": "dish34",
+   "name": "Chicken noodle soup",
+   "promise": false,
+   "range": [
+    52,
+    92
+   ],
+   "like": [
+    "F008588 Soup, laksa, beef, chicken or pork, with noodles, made with coconut milk 92",
+    "F008522 Soup, chicken & vegetable, with pasta or grains, homemade 66",
+    "F008520 Soup, chicken & vegetable, homemade 54",
+    "F008521 Soup, chicken, ready to eat, canned 52",
+    "F008518 Soup, chicken, commercial 84"
+   ]
+  },
+  {
+   "id": "dish35",
+   "name": "Vegetable omelette",
+   "promise": false,
+   "range": [
+    48,
+    166
+   ],
+   "like": [
+    "F009905 Omelette, chicken egg, white only, fried 48",
+    "F006211 Omelette, chicken egg, no added fat 129",
+    "F003694 Egg, chicken, scrambled or omelette, with vegetables 105",
+    "F003693 Egg, chicken, scrambled or omelette, with salmon or tuna 136",
+    "F010205 Egg, chicken, scrambled or omelette, with meat/chicken & vegetables 143",
+    "F003686 Egg, chicken, scrambled or omelette, with cheese 146",
+    "F003679 Egg, chicken, scrambled or omelette, with bacon 166"
+   ]
+  },
+  {
+   "id": "dish36",
+   "name": "Scrambled eggs on toast",
+   "promise": false,
+   "range": [
+    105,
+    261
+   ],
+   "like": [
+    "F003732 Egg, chicken, whole, scrambled, with regular fat cow's milk, no fat added 120",
+    "F003741 Egg, duck, scrambled, with cow's milk 156",
+    "F003739 Egg, chicken, yolk, scrambled, with cow's milk 261",
+    "F003694 Egg, chicken, scrambled or omelette, with vegetables 105",
+    "F003693 Egg, chicken, scrambled or omelette, with salmon or tuna 136",
+    "F010205 Egg, chicken, scrambled or omelette, with meat/chicken & vegetables 143",
+    "F003686 Egg, chicken, scrambled or omelette, with cheese 146",
+    "F003679 Egg, chicken, scrambled or omelette, with bacon 166"
+   ]
+  },
+  {
+   "id": "dish37",
+   "name": "Pancakes with maple syrup",
+   "promise": false,
+   "range": [
+    186,
+    260
+   ],
+   "like": [
+    "F006700 Pikelet or pancake, sweet, commercial 218",
+    "F006298 Pancake, plain, homemade 222",
+    "F003286 Crepe or pancake, savoury, filled with duck & vegetables, with sauce (Peking duck) 212",
+    "F003289 Crepe or pancake, savoury 187",
+    "F003288 Crepe or pancake, with butter & syrup, fast food chain 260",
+    "F010464 Crepe or pancake, added fruit, homemade 186",
+    "F003281 Crepe or pancake, plain, commercial 218",
+    "F003280 Crepe or pancake, gluten free 214",
+    "F003277 Crepe or pancake, buckwheat flour 204"
+   ]
+  },
+  {
+   "id": "dish38",
+   "name": "Porridge with banana",
+   "promise": false,
+   "range": [
+    82,
+    144
+   ],
+   "like": [
+    "F007143 Porridge, rolled oats mixed with sugar or honey & other flavours, prepared with cow's milk 140",
+    "F007156 Porridge, rolled oats, prepared with regular fat cow's milk 126",
+    "F007164 Porridge, rolled oats, prepared with water 89",
+    "F010293 Porridge, gluten free, made with dairy milk alternative 116",
+    "F010292 Porridge, gluten free, made with cow's milk 132",
+    "F010291 Porridge, gluten free, made with water 82",
+    "F010268 Porridge, oats mixed with sugar & nuts, made with dairy milk alternative 128",
+    "F010266 Porridge, oats mixed with sugar & nuts, made with cow's milk 144",
+    "F010267 Porridge, oats mixed with sugar & nuts, made with water 95",
+    "F010263 Porridge, oats mixed with dried fruit or flavours, made with dairy milk alternative 123",
+    "F010338 Porridge, oats mixed with dried fruit or flavours, made with cow's milk 139",
+    "F010339 Porridge, oats mixed with dried fruit or flavours, made with water 90"
+   ]
+  },
+  {
+   "id": "dish39",
+   "name": "Smashed avocado on toast",
+   "promise": false,
+   "range": null,
+   "like": []
+  },
+  {
+   "id": "dish40",
+   "name": "Protein smoothie",
+   "promise": true,
+   "range": [
+    49,
+    176
+   ],
+   "like": [
+    "F010011 Milkshake, made with dairy milk alternative 76",
+    "F008336 Smoothie, made with dairy milk alternative & added fruit 71",
+    "F008325 Smoothie, made with fruit juice & added fruit & nuts or seeds 145",
+    "F008324 Smoothie, made with fruit juice & added fruit 49",
+    "F008321 Smoothie, made with cow's milk & added fruit & nuts or seeds 176",
+    "F008319 Smoothie, made with cow's milk & added fruit 71",
+    "F010122 Milkshake, made with reduced fat cow's milk 76",
+    "F010121 Milkshake, made with regular fat cow's milk 93"
+   ]
+  },
+  {
+   "id": "dish41",
+   "name": "Protein brownie",
+   "promise": true,
+   "range": [
+    415,
+    461
+   ],
+   "like": [
+    "F008272 Slice, brownie, chocolate, with nuts, homemade 461",
+    "F008273 Slice, brownie, chocolate, without nuts, commercial 415"
+   ]
+  },
+  {
+   "id": "dish42",
+   "name": "Chocolate chip cookies",
+   "promise": false,
+   "range": [
+    473,
+    473
+   ],
+   "like": [
+    "F001174 Biscuit, sweet, chocolate chip, homemade from basic ingredients, fat not further defined 473",
+    "F001170 Biscuit, sweet, chocolate chip or coated 473"
+   ]
+  },
+  {
+   "id": "dish43",
+   "name": "Banana bread",
+   "promise": false,
+   "range": null,
+   "like": []
+  },
+  {
+   "id": "dish44",
+   "name": "Apple crumble",
+   "promise": false,
+   "range": [
+    208,
+    215
+   ],
+   "like": [
+    "F010461 Crumble, other/mixed fruit, baked 208",
+    "F003308 Crumble, apple, baked 215"
+   ]
+  },
+  {
+   "id": "dish45",
+   "name": "Pavlova",
+   "promise": false,
+   "range": [
+    218,
+    348
+   ],
+   "like": [
+    "F006526 Pavlova, topped with whipped cream & fresh fruit 218",
+    "F006525 Pavlova, topped with whipped cream 325",
+    "F006524 Pavlova, homemade 348",
+    "F006522 Pavlova, commercial 310"
+   ]
+  },
+  {
+   "id": "dish46",
+   "name": "Beef gyudon",
+   "promise": false,
+   "range": null,
+   "like": []
+  },
+  {
+   "id": "dish47",
+   "name": "Chicken katsu curry",
+   "promise": false,
+   "range": null,
+   "like": []
+  },
+  {
+   "id": "dish48",
+   "name": "Vietnamese beef pho",
+   "promise": false,
+   "range": null,
+   "like": []
+  },
+  {
+   "id": "dish49",
+   "name": "Bibimbap",
+   "promise": false,
+   "range": null,
+   "like": []
+  },
+  {
+   "id": "dish50",
+   "name": "Sushi rolls with salmon",
+   "promise": false,
+   "range": [
+    134,
+    164
+   ],
+   "like": [
+    "F010683 Sushi, nigiri or aburi, vegetable 134",
+    "F009014 Sushi, nigiri or aburi, tuna 142",
+    "F009010 Sushi, nigiri or aburi, salmon 164",
+    "F009007 Sushi, nigiri or aburi, prawn & other seafood 142",
+    "F010664 Sushi, nigiri or aburi, meat 148",
+    "F009001 Sushi, nigiri or aburi, fish 150",
+    "F009015 Sushi, vegetable 136",
+    "F009013 Sushi, tuna 156",
+    "F009009 Sushi, salmon 155",
+    "F009006 Sushi, prawn & other seafood 145",
+    "F009002 Sushi, fried bean curd (inari) 164",
+    "F009000 Sushi, fish 145"
+   ]
+  }
+ ]
+}
