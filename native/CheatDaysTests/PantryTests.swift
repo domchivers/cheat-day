@@ -60,6 +60,14 @@ final class PantryTests: XCTestCase {
         XCTAssertEqual(num(list(MealPlannerView.withLabels(idea(aim: 200), [])["ingredients"])[0]["grams"]), 270, "never more than a third extra")
     }
 
+    func testAHealthierVersionMustHaveFewerCalories() {
+        func version(_ kcal: Double) -> JSON { ["ingredients": [["kcal": kcal] as JSON]] }
+        XCTAssertFalse(FoodReference.isLighter(version(259), than: version(206)), "the owner's stir fry")
+        XCTAssertFalse(FoodReference.isLighter(version(206), than: version(206)))
+        XCTAssertTrue(FoodReference.isLighter(version(480), than: version(640)))
+        XCTAssertFalse(FoodReference.isLighter([:], than: version(640)))
+    }
+
     func testNoScansLeavesTheIdeaAsTheAIGaveIt() {
         let idea: JSON = ["name": "Omelette", "kcal": 400.0, "ingredients": [["name": "Eggs", "grams": 150.0, "label": 0, "kcal": 210.0, "protein": 18.0, "carbs": 1.0, "fat": 15.0]]]
         let m = MealPlannerView.withLabels(idea, [])

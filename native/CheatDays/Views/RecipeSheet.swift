@@ -668,7 +668,7 @@ extension RecipeMaker {
         let prompt = """
         Write the recipe for "\(str(idea["name"]))" for someone in \(Plan.country) who \(Habits.cookText(str(store.habits["cook"]))).
         \(base)\(aim) Just the ingredients for now: the method comes after.
-        healthier: the same dish with its character kept, lighter or higher in protein (less oil and butter, leaner cuts, more veg, swaps that taste close), and list the changes.
+        healthier: the same dish with its character kept, lighter or higher in protein (less oil and butter, leaner cuts, more veg, swaps that taste close), and list the changes. It must have fewer calories than authentic.
         If it's really a takeaway order or shop-bought, authentic is what to buy or order and how to put it together, healthier is the lighter choice.
         Portions 1 to 4. Grams are as weighed; kcal and macros per ingredient from standard reference values, so they add up, and each ingredient's kcal ≈ 4 × protein + 4 × carbs + 9 × fat.
         Raw meat and fish use their raw values, and never count oil for deep frying in full, only what's absorbed. If the dish's name promises something (a protein brownie), the ingredients must deliver it.
@@ -690,6 +690,10 @@ extension RecipeMaker {
             ver["cookedGrams"] = CookedWeight.trusted(pos(ver["cookedGrams"]), checked.items.map { (str($0["name"]), num($0["grams"]) ?? 0) })
             ver["flags"] = checked.flags + [FoodReference.protein(promisedBy: str(idea["name"]), in: checked.items)].compactMap { $0 }
             out[v] = ver
+        }
+        // a dish that's already lean can come back "healthier" with more calories: then there's no healthier version to show
+        if !FoodReference.isLighter(dict(out["healthier"]), than: dict(out["authentic"])) {
+            var ver = dict(out["healthier"]); ver["ingredients"] = [JSON](); out["healthier"] = ver
         }
         return out
     }

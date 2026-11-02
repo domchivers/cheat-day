@@ -77,6 +77,12 @@ enum FoodReference {
         }
     }
 
+    /// Whether a healthier version really has fewer calories than the original.
+    static func isLighter(_ healthier: JSON, than original: JSON) -> Bool {
+        func kcal(_ v: JSON) -> Double { list(v["ingredients"]).reduce(0) { $0 + (num($1["kcal"]) ?? 0) } }
+        return kcal(healthier) > 0 && kcal(healthier) < kcal(original)
+    }
+
     /// A recipe whose portion is far too big or too small to be right (its ingredients are for the wrong number of people).
     static func portionLooksOff(_ recipe: JSON) -> Bool {
         let kcal = list(dict(recipe["authentic"])["ingredients"]).reduce(0) { $0 + (num($1["kcal"]) ?? 0) }
