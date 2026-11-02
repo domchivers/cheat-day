@@ -180,17 +180,13 @@ extension Store {
 
     static func est(kg: Double, reps: Double) -> Double { kg > 0 ? (kg * (1 + reps / 30)).rounded() : 0 }
 
-    /// The sets of an exercise last time: from its record, else from the latest workout that kept them.
-    func lastSets(_ name: String) -> [(reps: Double, kg: Double)]? {
-        if let rec = exercise(name) {
-            let d = list(rec["detail"])
-            if !d.isEmpty { return d.map { (num($0["reps"]) ?? 0, num($0["kg"]) ?? 0) } }
-        }
-        for s in sessions(of: name) {
-            let d = list(s.lift["detail"])
-            if !d.isEmpty { return d.map { (num($0["reps"]) ?? 0, num($0["kg"]) ?? 0) } }
-        }
-        return nil
+    /// The sets of an exercise last time: from the latest workout that kept them, else from its record. Records have
+    /// been found weeks behind the workouts themselves, so the workouts come first.
+    func lastSets(_ name: String) -> [(reps: Double, kg: Double)]? { Self.lastSets(lifts: sessions(of: name).map(\.lift), record: exercise(name)) }
+
+    static func lastSets(lifts: [JSON], record: JSON?) -> [(reps: Double, kg: Double)]? {
+        let detail = lifts.lazy.map { list($0["detail"]) }.first { !$0.isEmpty } ?? list(record?["detail"])
+        return detail.isEmpty ? nil : detail.map { (num($0["reps"]) ?? 0, num($0["kg"]) ?? 0) }
     }
 
     func lastLine(_ name: String) -> String {
@@ -223,12 +219,8 @@ extension Store {
     func startSession(_ routine: JSON?) {
         let s = LiveSession(startedAt: Double(nowMs()), name: str(routine?["name"]), routineId: (routine?["id"] as? String),
                             exercises: list(routine?["exercises"]).map { r in
-                                var e = liveExercise(str(r["exercise"]), sets: num(r["sets"]), reps: num(r["reps"]), kg: num(r["kg"]))
-                                // the routine says how many sets; the weights come from the last time you did it
-                                if let n = num(r["sets"]).map({ Int(max(1, min(8, $0))) }), let last = e.sets.last, e.sets.count != n {
-                                    e.sets = n < e.sets.count ? Array(e.sets.prefix(n)) : e.sets + (e.sets.count..<n).map { _ in LiveSet(reps: last.reps, kg: last.kg) }
-                                }
-                                return e
+                                // the sets you did last time, however many; the routine's own count is for the first time
+                                liveExercise(str(r["exercise"]), sets: num(r["sets"]), reps: num(r["reps"]), kg: num(r["kg"]))
                             })
         saveSession(s)
     }

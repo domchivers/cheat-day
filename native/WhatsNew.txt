@@ -1,4 +1,4 @@
-New in this build: meal ideas and cheat day plans show est. calories until their recipe is written, and protein shows green or red against your aim.
+New in this build: workouts start from what you actually did last time, including how many sets.
 
 Thanks for testing! Please just use it like a normal day:
 

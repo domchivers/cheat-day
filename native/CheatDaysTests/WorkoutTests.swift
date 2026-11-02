@@ -23,6 +23,17 @@ final class WorkoutTests: XCTestCase {
          "recentWorkouts": [Any](), "routines": [Any](), "updatedAt": 1]
     }
 
+    func testLastTimesSetsComeFromTheLatestWorkoutNotAnOldRecord() {
+        func sets(_ pairs: [(Int, Int)]) -> [JSON] { pairs.map { ["reps": $0.0, "kg": $0.1] as JSON } }
+        // the owner's leg curl: the record was stuck on 3 sets, the latest workout had 4
+        let record: JSON = ["detail": sets([(26, 86), (22, 86), (17, 86)])]
+        let latest: JSON = ["detail": sets([(12, 45), (28, 86), (24, 86), (22, 86)])]
+        XCTAssertEqual(Store.lastSets(lifts: [latest], record: record)?.map(\.reps), [12, 28, 24, 22])
+        XCTAssertEqual(Store.lastSets(lifts: [["sets": 3] as JSON, latest], record: record)?.count, 4, "a workout without its sets is skipped")
+        XCTAssertEqual(Store.lastSets(lifts: [], record: record)?.count, 3, "the record if no workout kept them")
+        XCTAssertNil(Store.lastSets(lifts: [], record: nil))
+    }
+
     func testSessionReadsAndWritesTheWebShape() {
         let s = LiveSession(record()["session"])
         XCTAssertNotNil(s)
