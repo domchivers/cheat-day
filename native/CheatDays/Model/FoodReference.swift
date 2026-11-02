@@ -66,6 +66,17 @@ enum FoodReference {
         return (x, true)
     }
 
+    /// An idea's recipe keeps the numbers its card showed: each ingredient the idea listed, by name, whatever the AI wrote for it when asked to copy them.
+    static func keepingCard(_ items: [JSON], from card: [JSON]) -> [JSON] {
+        items.map { item in
+            guard let c = card.first(where: { str($0["name"]).lowercased() == str(item["name"]).lowercased() }), let kcal = num(c["kcal"]) else { return item }
+            var x = item
+            x["kcal"] = kcal; x["protein_g"] = num(c["protein"]) ?? 0; x["carbs_g"] = num(c["carbs"]) ?? 0; x["fat_g"] = num(c["fat"]) ?? 0
+            if let g = pos(c["grams"]) { x["grams"] = g }
+            return x
+        }
+    }
+
     /// A recipe whose portion is far too big or too small to be right (its ingredients are for the wrong number of people).
     static func portionLooksOff(_ recipe: JSON) -> Bool {
         let kcal = list(dict(recipe["authentic"])["ingredients"]).reduce(0) { $0 + (num($1["kcal"]) ?? 0) }

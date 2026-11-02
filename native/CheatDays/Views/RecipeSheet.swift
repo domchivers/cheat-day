@@ -684,7 +684,8 @@ extension RecipeMaker {
         var out = a
         for v in ["authentic", "healthier"] {
             var ver = dict(a[v])
-            let checked = FoodReference.checked(list(ver["ingredients"]))
+            var checked = FoodReference.checked(list(ver["ingredients"]))
+            if v == "authentic" { checked.items = FoodReference.keepingCard(checked.items, from: list(idea["ingredients"])) }
             ver["ingredients"] = checked.items
             ver["cookedGrams"] = CookedWeight.trusted(pos(ver["cookedGrams"]), checked.items.map { (str($0["name"]), num($0["grams"]) ?? 0) })
             ver["flags"] = checked.flags + [FoodReference.protein(promisedBy: str(idea["name"]), in: checked.items)].compactMap { $0 }

@@ -30,6 +30,21 @@ final class PantryTests: XCTestCase {
         XCTAssertEqual(m["fromLabels"] as? Bool, true)
     }
 
+    func testACardShowsWhatItsRecipeWillShow() {
+        // the card said 414 kcal, and its recipe 300 once the chicken was corrected from cooked to raw numbers
+        let idea: JSON = ["name": "Stir fry", "ingredients": [
+            ["name": "Chicken breast, skinless, raw", "grams": 200.0, "label": 0, "kcal": 330.0, "protein": 62.0, "carbs": 0.0, "fat": 7.0],
+            ["name": "Soy sauce", "grams": 15.0, "label": 0, "kcal": 8.0, "protein": 1.0, "carbs": 1.0, "fat": 0.0]
+        ]]
+        let m = MealPlannerView.withLabels(idea, [])
+        XCTAssertEqual(num(m["kcal"]), 204)   // 196 + 8
+        let written: [JSON] = [["name": "Chicken breast, skinless, raw", "grams": 180.0, "kcal": 250.0, "protein_g": 40.0, "carbs_g": 0.0, "fat_g": 3.0], ["name": "Salt", "grams": 1.0, "kcal": 0.0]]
+        let kept = FoodReference.keepingCard(written, from: list(m["ingredients"]))
+        XCTAssertEqual(num(kept[0]["kcal"]), 196)
+        XCTAssertEqual(num(kept[0]["grams"]), 200)
+        XCTAssertEqual(num(kept[1]["kcal"]), 0, "an added pinch of salt stays")
+    }
+
     func testNoScansLeavesTheIdeaAsTheAIGaveIt() {
         let idea: JSON = ["name": "Omelette", "kcal": 400.0, "ingredients": [["name": "Eggs", "grams": 150.0, "label": 0, "kcal": 210.0, "protein": 18.0, "carbs": 1.0, "fat": 15.0]]]
         let m = MealPlannerView.withLabels(idea, [])

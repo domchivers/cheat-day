@@ -290,10 +290,9 @@ struct MealPlannerView: View {
                 y["kcal"] = (s.kcal100 * g / 100).rounded(); y["protein"] = (s.p100 ?? 0) * g / 100; y["carbs"] = (s.c100 ?? 0) * g / 100; y["fat"] = (s.f100 ?? 0) * g / 100
                 used.append("\(Fmt.int(g)) g \(s.name)")
             } else {
-                // the AI's own numbers, checked: protein no more than the food can have, calories that fit the macros
-                let name = str(x["name"]), pp = Sanity.protein(name: name, grams: g > 0 ? g : nil, p: num(x["protein"]) ?? 0)
-                y["protein"] = pp
-                y["kcal"] = Sanity.check(name: name, grams: g > 0 ? g : nil, kcal: num(x["kcal"]) ?? 0, p: pp, c: num(x["carbs"]), f: num(x["fat"])).kcal
+                // the same checks a recipe gets, so its card and its recipe show the same numbers
+                let fixed = FoodReference.checked([["name": str(x["name"]), "amount": "", "grams": g, "kcal": num(x["kcal"]) ?? 0, "protein_g": num(x["protein"]) ?? 0, "carbs_g": num(x["carbs"]) ?? 0, "fat_g": num(x["fat"]) ?? 0]]).items[0]
+                y["kcal"] = num(fixed["kcal"]) ?? 0; y["protein"] = num(fixed["protein_g"]) ?? 0; y["carbs"] = num(fixed["carbs_g"]) ?? 0; y["fat"] = num(fixed["fat_g"]) ?? 0
             }
             k += num(y["kcal"]) ?? 0; p += num(y["protein"]) ?? 0; c += num(y["carbs"]) ?? 0; f += num(y["fat"]) ?? 0
             checked.append(y)

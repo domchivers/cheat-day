@@ -1,4 +1,4 @@
-New in this build: recipes are written by Claude, with ingredient numbers checked against official Australian food data.
+New in this build: a meal idea and its recipe now show the same calories and protein.
 
 Thanks for testing! Please just use it like a normal day:
 
