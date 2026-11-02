@@ -1,4 +1,4 @@
-New in this build: calories and macros for raw meat and fish now come from official Australian food data.
+New in this build: scanned foods get a warning when their numbers do not add up, with a quick way to photograph the label.
 
 Thanks for testing! Please just use it like a normal day:
 

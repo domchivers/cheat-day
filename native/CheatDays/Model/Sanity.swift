@@ -66,6 +66,21 @@ enum Sanity {
 
     static func energy(p: Double, c: Double, f: Double) -> Double { 4 * p + 4 * c + 9 * f }
 
+    /// A scanned food whose numbers don't add up (volunteers type these in): what to say about it, or nil when they fit.
+    /// Only ever a warning: the numbers stay as they are until the person checks the pack.
+    static func barcodeWarning(_ item: JSON) -> String? {
+        guard let kcal = pos(item["kcalPer100"]), let p = num(item["p100"]), let c = num(item["c100"]), let f = num(item["f100"]) else { return nil }
+        let per = "\(Fmt.int(kcal)) kcal per 100 \(str(item["unit"]) == "ml" ? "ml" : "g")", e = energy(p: p, c: c, f: f)
+        let n = str(item["name"]).lowercased()
+        func says(_ pattern: String) -> Bool { n.range(of: pattern, options: .regularExpression) != nil }
+        if p + c + f > 105 { return "It has more protein, carbs and fat than its weight. Barcode entries are added by volunteers, so this one may be wrong." }
+        // alcohol has energy the macros don't show; fibre and sugar alcohols count as carbs but give less
+        let alcohol = says(#"\b(wine|beer|spirits?|vodka|gin|rum|whisky|sake|mirin|cider|liqueur|cocktail|seltzer)\b"#)
+        let lowCarbEnergy = says(#"\b(cocoa|cacao|bran|chia|flax|linseed|psyllium|fibre|fiber|sugar.?free|no added sugar|diet|zero|protein bar)\b"#)
+        guard abs(kcal - e) > max(kcal * 0.2, 15), !(kcal > e && alcohol), !(kcal < e && lowCarbEnergy) else { return nil }
+        return "It says \(per), but its protein, carbs and fat \(kcal > e ? "only " : "")make about \(Fmt.int(e)). Barcode entries are added by volunteers, so this one may be wrong."
+    }
+
     struct Result { var kcal: Double; var flags: [String] }
 
     /// One food's numbers checked. Calories well under what its macros make are replaced by the macros' energy

@@ -844,8 +844,12 @@ struct AmountView: View {
     private let conv: FoodMath.Conv
     private var asksName: Bool { target.basis["askName"] as? Bool == true }
 
-    init(target: EditTarget, finish: @escaping () -> Void) {
+    /// Fresh from a barcode scan: shows the warning if its numbers don't add up, with this to photograph the label instead.
+    private let onLabelPhoto: (() -> Void)?
+
+    init(target: EditTarget, onLabelPhoto: (() -> Void)? = nil, finish: @escaping () -> Void) {
         self.target = target
+        self.onLabelPhoto = onLabelPhoto
         self.finish = finish
         let c = FoodMath.conv(target.basis)
         conv = c
@@ -893,6 +897,20 @@ struct AmountView: View {
                             if let per = perText { Text(per).font(.subheadline).foregroundStyle(.secondary) }
                         }
                         Spacer()
+                    }
+                    if let onLabelPhoto, let warning = Sanity.barcodeWarning(target.basis) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Check these numbers").font(.subheadline.weight(.bold)).foregroundStyle(Theme.warn)
+                            Text(warning).font(.footnote)
+                            Button { onLabelPhoto() } label: {
+                                Text("Photo of the label").font(.subheadline.weight(.bold)).frame(maxWidth: .infinity).padding(.vertical, 8)
+                            }
+                            .buttonStyle(.borderedProminent).tint(Theme.warn)
+                        }
+                        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Theme.warn.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.warn.opacity(0.5), lineWidth: 1))
+                        .padding(.top, 8)
                     }
                     Text(Fmt.int(kcal))
                         .font(.system(size: 56, weight: .heavy, design: .rounded))

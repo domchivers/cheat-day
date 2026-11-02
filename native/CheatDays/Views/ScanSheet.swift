@@ -24,7 +24,7 @@ struct ScanSheet: View {
                     VStack(spacing: 14) { ProgressView().controlSize(.large); Text("Looking up \(code)…").foregroundStyle(.secondary) }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .found(let t):
-                    AmountView(target: t) { onAdded() }
+                    AmountView(target: t, onLabelPhoto: { onFlow(WebFlow(view: "scan", opts: ["scan": "label", "meal": meal], title: "Photo")) }) { onAdded() }
                 case .notFound(let code):
                     problem("Not on Open Food Facts yet", "Barcode \(code) isn't in the database. Take a photo of the pack or its nutrition table instead, or type the numbers in.")
                 case .failed(let code, let why):

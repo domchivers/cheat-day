@@ -3,6 +3,19 @@ import XCTest
 
 /// The checks before numbers are logged, from real slips found while logging.
 final class SanityTests: XCTestCase {
+    func testABarcodeEntryThatDoesntAddUpIsWarnedAbout() {
+        func food(_ name: String, _ k: Double, _ p: Double, _ c: Double, _ f: Double) -> JSON { ["name": name, "kcalPer100": k, "p100": p, "c100": c, "f100": f, "unit": "g"] }
+        // real Open Food Facts entries: the Koala's label says 502 kcal
+        let koala = Sanity.barcodeWarning(food("Caramello Koala", 315, 21, 9, 3))
+        XCTAssertEqual(koala, "It says 315 kcal per 100 g, but its protein, carbs and fat only make about 147. Barcode entries are added by volunteers, so this one may be wrong.")
+        XCTAssertNil(Sanity.barcodeWarning(food("Low GI Protein Wraps", 246, 10.3, 41.4, 2.6)), "numbers that fit")
+        XCTAssertNotNil(Sanity.barcodeWarning(food("Too much", 400, 60, 40, 10)), "more than its own weight")
+        XCTAssertNotNil(Sanity.barcodeWarning(food("Plain biscuit", 200, 6, 60, 20)), "calories too low for its macros")
+        XCTAssertNil(Sanity.barcodeWarning(food("Red wine", 80, 0.2, 0.2, 0)), "alcohol's energy isn't in the macros")
+        XCTAssertNil(Sanity.barcodeWarning(food("Sugar free lollies", 200, 0, 90, 0)), "sugar alcohols give less energy")
+        XCTAssertNil(Sanity.barcodeWarning(["name": "No macros", "kcalPer100": 300]), "nothing to compare it with")
+    }
+
     func testCaloriesThatDontFitTheMacrosAreFixed() {
         // a cabbage salad card said 2 kcal with 5 g carbs
         let r = Sanity.check(name: "Cabbage salad", grams: 100, kcal: 2, p: 1, c: 5, f: 0)
