@@ -1,6 +1,6 @@
 #!/bin/bash
 # Build the iPhone app on this Mac and upload it to TestFlight (free; no cloud minutes).
-#   tools/mac-testflight.sh
+#   tools/mac-testflight.sh <commit>    the tested commit: stops unless that's exactly what would be uploaded
 # Uses the same Apple team as Bùbù: CHEAT_TEAM if set, otherwise BUBU_TEAM.
 # One-off setup:
 #   - Xcode signed in to the developer account (Xcode → Settings → Accounts)
@@ -15,7 +15,13 @@ if [ -z "$TEAM" ] && command -v zsh >/dev/null; then
 fi
 : "${TEAM:?Set CHEAT_TEAM (or BUBU_TEAM) to your Apple team ID (developer.apple.com → Membership details)}"
 cd "$(dirname "$0")/.."
+TESTED="${1:?Give the tested commit: tools/mac-testflight.sh <commit>}"
 git pull --ff-only
+# the pull can bring in newer, untested code: only ever upload what was tested
+if [ "$(git rev-parse HEAD)" != "$(git rev-parse --verify "$TESTED^{commit}")" ]; then
+  echo "Stopped: HEAD is $(git rev-parse --short HEAD), not the tested $TESTED. Nothing uploaded." >&2
+  exit 1
+fi
 command -v xcodegen >/dev/null || brew install xcodegen
 (cd native && xcodegen generate)
 
