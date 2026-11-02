@@ -1,4 +1,4 @@
-New in this build: a meal idea and its recipe now show the same calories and protein.
+New in this build: meal ideas and cheat day plans show est. calories until their recipe is written, and protein shows green or red against your aim.
 
 Thanks for testing! Please just use it like a normal day:
 

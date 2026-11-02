@@ -241,12 +241,13 @@ struct MealPlannerView: View {
                     FoodDot(name: name, size: 36)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(name).font(.subheadline.weight(.bold)).multilineTextAlignment(.leading)
-                        // the protein in green with a tick when it reaches what you asked for, amber when it falls short
+                        // the protein in green when it reaches what you asked for, red when it falls short; an estimate until its recipe is written
                         let p = num(m["protein"]) ?? 0, aim = num(m["aim"])
                         let hit = aim.map { p >= $0 - 0.5 }
-                        (Text("\(Fmt.int(kcal)) kcal · ")
-                         + Text("\(Int(p.rounded())) g protein\(hit == true ? " ✓" : "")").fontWeight(hit == nil ? .regular : .bold)
-                            .foregroundStyle(hit == true ? Theme.walk : hit == false ? Theme.warn : Color.secondary)
+                        let est = RecipeMaker.shared.recipe(for: m) == nil ? "est. " : ""
+                        (Text("\(est)\(Fmt.int(kcal)) kcal · ")
+                         + Text("\(est)\(Int(p.rounded())) g protein").fontWeight(hit == nil ? .regular : .bold)
+                            .foregroundStyle(hit == true ? Theme.walk : hit == false ? Color(red: 1, green: 0.42, blue: 0.38) : Color.secondary)
                          + Text("\(num(m["minutes"]).map { " · \(Int($0)) min" } ?? "") · recipe"))
                             .font(.caption).foregroundStyle(.secondary)
                         if !str(m["why"]).isEmpty { Text(str(m["why"])).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.leading) }
