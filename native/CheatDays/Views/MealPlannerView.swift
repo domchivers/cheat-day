@@ -299,6 +299,18 @@ struct MealPlannerView: View {
             checked.append(y)
         }
         guard k > 0 else { return idea }
+        // corrected numbers can leave it short of the protein you asked for: a little more of its main protein food,
+        // never more than a third extra, to the next 5 g. A scanned food stays as the AI portioned it
+        if let aim = num(idea["aim"]), p < aim - 0.5,
+           let i = checked.indices.filter({ (num(checked[$0]["label"]) ?? 0) == 0 && (num(checked[$0]["grams"]) ?? 0) > 0 }).max(by: { (num(checked[$0]["protein"]) ?? 0) < (num(checked[$1]["protein"]) ?? 0) }),
+           let had = pos(checked[i]["protein"]), let g = pos(checked[i]["grams"]) {
+            let wanted = g * min((had + aim - p) / had, 4.0 / 3), grams = (wanted / 5).rounded(.up) * 5, more = grams / g - 1
+            let x = checked[i], ek = (num(x["kcal"]) ?? 0) * more, ep = had * more, ec = (num(x["carbs"]) ?? 0) * more, ef = (num(x["fat"]) ?? 0) * more
+            checked[i]["grams"] = grams
+            checked[i]["kcal"] = ((num(x["kcal"]) ?? 0) + ek).rounded(); checked[i]["protein"] = had + ep
+            checked[i]["carbs"] = (num(x["carbs"]) ?? 0) + ec; checked[i]["fat"] = (num(x["fat"]) ?? 0) + ef
+            k += ek; p += ep; c += ec; f += ef
+        }
         // the totals are the ingredients added up, and the recipe is written from these same ingredients
         m["ingredients"] = checked
         m["kcal"] = k.rounded(); m["protein"] = p.rounded(); m["carbs"] = c.rounded(); m["fat"] = f.rounded()

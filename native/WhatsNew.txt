@@ -1,4 +1,4 @@
-New in this build: workouts start from what you did last time, and Cheat flies are merged into Chest flies.
+New in this build: meal ideas reach the protein you asked for, workouts start from what you did last time, and Cheat flies merge into Chest flies.
 
 Thanks for testing! Please just use it like a normal day:
 

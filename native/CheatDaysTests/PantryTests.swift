@@ -45,6 +45,21 @@ final class PantryTests: XCTestCase {
         XCTAssertEqual(num(kept[1]["kcal"]), 0, "an added pinch of salt stays")
     }
 
+    func testAnIdeaUnderItsProteinAimGetsABitMoreOfItsProteinFood() {
+        func idea(aim: Double) -> JSON {
+            ["name": "Stir fry", "aim": aim, "ingredients": [
+                ["name": "Chicken breast, skinless, raw", "grams": 200.0, "label": 0, "kcal": 196.0, "protein": 45.0, "carbs": 0.0, "fat": 1.6],
+                ["name": "Soy sauce", "grams": 15.0, "label": 0, "kcal": 8.0, "protein": 1.0, "carbs": 1.0, "fat": 0.0]
+            ]]
+        }
+        let m = MealPlannerView.withLabels(idea(aim: 50), [])
+        XCTAssertEqual(num(list(m["ingredients"])[0]["grams"]), 220)
+        XCTAssertGreaterThanOrEqual(num(m["protein"]) ?? 0, 50)
+        XCTAssertEqual(num(m["kcal"]), 224, "its calories follow")
+        XCTAssertEqual(num(list(MealPlannerView.withLabels(idea(aim: 45), []) ["ingredients"])[0]["grams"]), 200, "already there")
+        XCTAssertEqual(num(list(MealPlannerView.withLabels(idea(aim: 200), [])["ingredients"])[0]["grams"]), 270, "never more than a third extra")
+    }
+
     func testNoScansLeavesTheIdeaAsTheAIGaveIt() {
         let idea: JSON = ["name": "Omelette", "kcal": 400.0, "ingredients": [["name": "Eggs", "grams": 150.0, "label": 0, "kcal": 210.0, "protein": 18.0, "carbs": 1.0, "fat": 15.0]]]
         let m = MealPlannerView.withLabels(idea, [])
