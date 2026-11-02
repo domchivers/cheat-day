@@ -34,6 +34,29 @@ final class WorkoutTests: XCTestCase {
         XCTAssertNil(Store.lastSets(lifts: [], record: nil))
     }
 
+    func testRenamingAnExerciseMovesItsHistoryEverywhere() {
+        let cheat: JSON = ["exercise": "Cheat flies", "sets": 3, "reps": 12, "kg": 86]
+        var d: JSON = ["day": ["date": today, "workouts": [["id": "a", "lifts": [cheat]] as JSON]] as JSON,
+                       "history": [["date": "2026-10-01", "workouts": [["id": "b", "lifts": [cheat, ["exercise": "Rows"] as JSON]] as JSON]] as JSON],
+                       "recentWorkouts": [["key": "x", "lifts": [cheat]] as JSON],
+                       "routines": [["id": "r", "exercises": [cheat]] as JSON],
+                       "session": ["name": "Chest", "exercises": [["exercise": "Cheat flies", "sets": [Any]()] as JSON]] as JSON,
+                       "exercises": ["cheat flies": ["name": "Cheat flies", "best1rm": 120, "bestSet": ["kg": 90, "reps": 8] as JSON, "lastUsed": "2026-10-15", "sets": 3] as JSON,
+                                     "chest flies": ["name": "Chest flies", "best1rm": 110, "bestSet": ["kg": 86, "reps": 13] as JSON, "lastUsed": "2026-10-29", "sets": 2] as JSON] as JSON]
+        Store.apply(["type": "renameExercise", "from": "Cheat flies", "to": "Chest flies"], to: &d, today: today)
+        XCTAssertEqual(str(list(list(dict(d["day"])["workouts"])[0]["lifts"])[0]["exercise"]), "Chest flies")
+        let past = list(list(list(d["history"])[0]["workouts"])[0]["lifts"])
+        XCTAssertEqual(past.map { str($0["exercise"]) }, ["Chest flies", "Rows"], "another exercise is left alone")
+        XCTAssertEqual(str(list(list(d["recentWorkouts"])[0]["lifts"])[0]["exercise"]), "Chest flies")
+        XCTAssertEqual(str(list(list(d["routines"])[0]["exercises"])[0]["exercise"]), "Chest flies")
+        XCTAssertEqual(str(list(dict(d["session"])["exercises"])[0]["exercise"]), "Chest flies")
+        let records = dict(d["exercises"]), rec = dict(records["chest flies"])
+        XCTAssertNil(records["cheat flies"])
+        XCTAssertEqual(num(rec["best1rm"]), 120, "the better best")
+        XCTAssertEqual(num(dict(rec["bestSet"])["kg"]), 90)
+        XCTAssertEqual(num(rec["sets"]), 2, "the last sets of the more recent one")
+    }
+
     func testSessionReadsAndWritesTheWebShape() {
         let s = LiveSession(record()["session"])
         XCTAssertNotNil(s)

@@ -1,4 +1,4 @@
-New in this build: workouts start from what you actually did last time, including how many sets.
+New in this build: workouts start from what you did last time, and Cheat flies are merged into Chest flies.
 
 Thanks for testing! Please just use it like a normal day:
 

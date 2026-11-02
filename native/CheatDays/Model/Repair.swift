@@ -129,4 +129,50 @@ extension Store {
         history[i]["p"] = Int(p.rounded()); history[i]["c"] = Int(c.rounded()); history[i]["f"] = Int(f.rounded())
         d["history"] = history
     }
+
+    /// Runs once per account: "Cheat flies" was "Chest flies" autocorrected, so their history counted as two exercises.
+    func repairCheatFlies() {
+        let key = "repair.cheatFlies.v1."
+        guard let user = Supabase.shared.userId, lastSynced != nil, !UserDefaults.standard.bool(forKey: key + user) else { return }
+        perform(["type": "renameExercise", "from": "Cheat flies", "to": "Chest flies"], syncAfter: 1)
+        UserDefaults.standard.set(true, forKey: key + user)
+    }
+
+    /// One exercise's history moved onto another's name, everywhere it's kept. Records combine: the better bests, and
+    /// the last sets of whichever was done more recently.
+    static func renameExercise(from: String, to: String, in d: inout JSON) {
+        let old = from.lowercased()
+        func renamedLifts(_ w: JSON) -> JSON {
+            var x = w
+            if w["lifts"] != nil { x["lifts"] = list(w["lifts"]).map { l -> JSON in var y = l; if str(l["exercise"]).lowercased() == old { y["exercise"] = to }; return y } }
+            return x
+        }
+        func renamedDay(_ day: JSON) -> JSON { var x = day; if day["workouts"] != nil { x["workouts"] = list(day["workouts"]).map(renamedLifts) }; return x }
+        func renamedList(_ owner: JSON) -> JSON {
+            var x = owner
+            x["exercises"] = list(owner["exercises"]).map { e -> JSON in var y = e; if str(e["exercise"]).lowercased() == old { y["exercise"] = to }; return y }
+            return x
+        }
+        if d["day"] is JSON { d["day"] = renamedDay(dict(d["day"])) }
+        if d["history"] != nil { d["history"] = list(d["history"]).map(renamedDay) }
+        if d["recentWorkouts"] != nil { d["recentWorkouts"] = list(d["recentWorkouts"]).map(renamedLifts) }
+        if d["routines"] != nil { d["routines"] = list(d["routines"]).map(renamedList) }
+        if d["session"] is JSON { d["session"] = renamedList(dict(d["session"])) }
+
+        var records = dict(d["exercises"])
+        guard let gone = records.removeValue(forKey: old) as? JSON else { return }
+        let key = to.lowercased()
+        guard let kept = records[key] as? JSON else {
+            var moved = gone; moved["name"] = to; records[key] = moved; d["exercises"] = records
+            return
+        }
+        var merged = str(gone["lastUsed"]) > str(kept["lastUsed"]) ? gone : kept
+        merged["name"] = to
+        merged["best1rm"] = max(num(gone["best1rm"]) ?? 0, num(kept["best1rm"]) ?? 0)
+        let a = dict(gone["bestSet"]), b = dict(kept["bestSet"])
+        func score(_ s: JSON) -> (Double, Double) { (num(s["kg"]) ?? 0, num(s["reps"]) ?? 0) }
+        merged["bestSet"] = score(a) > score(b) ? gone["bestSet"] : kept["bestSet"]
+        records[key] = merged
+        d["exercises"] = records
+    }
 }

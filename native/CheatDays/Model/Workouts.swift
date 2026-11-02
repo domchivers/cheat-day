@@ -397,6 +397,8 @@ extension Store {
             var rs = list(d["routines"]).filter { str($0["name"]).lowercased() != name }
             rs.insert(r, at: 0)
             d["routines"] = Array(rs.prefix(12))
+        case "renameExercise":
+            renameExercise(from: str(op["from"]), to: str(op["to"]), in: &d)
         case "updateRoutine":
             let r = dict(op["routine"]), id = str(r["id"]), name = str(r["name"]).lowercased()
             guard !id.isEmpty, dict(d["tombs"])["routine:\(id)"] == nil else { return }

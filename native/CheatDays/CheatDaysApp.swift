@@ -208,6 +208,7 @@ struct MainTabs: View {
             Task {   // once per account: food lost from past days put back, then raised budgets
                 await Store.shared.repairHistory()
                 await Store.shared.repairBudgets()
+                Store.shared.repairCheatFlies()
             }
             // just signed in: the whole setup, each step with Skip; otherwise only what an account still needs
             if UserDefaults.standard.bool(forKey: "signin.setup") || Store.shared.needsOnboarding { onboarding = true }
