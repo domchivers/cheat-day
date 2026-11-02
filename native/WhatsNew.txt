@@ -1,4 +1,4 @@
-New in this build: much more accurate calories and protein in recipes, and cheat day protein now matches the Today page.
+New in this build: calories and macros for raw meat and fish now come from official Australian food data.
 
 Thanks for testing! Please just use it like a normal day:
 

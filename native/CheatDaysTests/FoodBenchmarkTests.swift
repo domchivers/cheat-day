@@ -11,13 +11,21 @@ final class FoodBenchmarkTests: XCTestCase {
 
     func testKingfishAndChuckComeOutRight() {
         let fish = out(ing("Kingfish fillet, skinless and boneless", 250, 257, 45, 0, 8))
-        XCTAssertEqual(num(fish["kcal"]) ?? 0, 365, accuracy: 10)
+        XCTAssertEqual(num(fish["kcal"]) ?? 0, 512, accuracy: 10)
         XCTAssertEqual(num(fish["protein_g"]) ?? 0, 57, accuracy: 2)
-        XCTAssertEqual(num(out(ing("Beef chuck steak", 818, 2045, 172, 0, 147))["kcal"]) ?? 0, 1636, accuracy: 10)
+        XCTAssertEqual(num(out(ing("Beef chuck steak", 818, 2045, 172, 0, 147))["kcal"]) ?? 0, 1472, accuracy: 10)
+    }
+
+    func testTheTableMatchesAustralianData() {
+        for (name, kcal) in [("Lamb mince", 144.0), ("Pork belly", 307), ("Chicken mince", 97), ("Sirloin steak", 143), ("Scotch fillet", 179), ("Beef mince", 183), ("Chicken breast", 98)] {
+            XCTAssertEqual(FoodReference.match(name)?.kcal, kcal, name)
+        }
+        XCTAssertEqual(FoodReference.match("Cocoa powder")?.kcal, 327, "the owner's own label stays")
+        XCTAssertTrue(FoodReference.checked([ing("Chicken breast", 100, 98, 22.5, 0, 0.8)]).flags.isEmpty, "the table's own number isn't flagged")
     }
 
     func testChickenThighFilletsAreRaw() {
-        XCTAssertEqual(num(out(ing("Chicken Thigh Fillets", 300, 630, 54, 0, 45))["kcal"]) ?? 0, 363, accuracy: 5)
+        XCTAssertEqual(num(out(ing("Chicken Thigh Fillets", 300, 630, 54, 0, 45))["kcal"]) ?? 0, 312, accuracy: 5)
         XCTAssertEqual(num(out(ing("Chicken thigh, skin on", 300, 630, 54, 0, 45))["kcal"]) ?? 0, 630, accuracy: 40)
     }
 
@@ -66,18 +74,18 @@ final class FoodBenchmarkTests: XCTestCase {
 
     // round two: what the AI wrote for new dishes
     func testCookedNumbersOnRawChickenAreFixed() {
-        XCTAssertEqual(num(out(ing("Chicken breast, skinless", 300, 495, 93, 0, 11))["kcal"]) ?? 0, 360, accuracy: 5)
+        XCTAssertEqual(num(out(ing("Chicken breast, skinless", 300, 495, 93, 0, 11))["kcal"]) ?? 0, 294, accuracy: 5)
     }
 
     func testProteinOffIsFixedToo() {
         let steak = out(ing("Scotch Fillet Steak", 250, 650, 35, 0, 55))
-        XCTAssertEqual(num(steak["protein_g"]) ?? 0, 47.5, accuracy: 1)
+        XCTAssertEqual(num(steak["protein_g"]) ?? 0, 56, accuracy: 1)
     }
 
     func testBonesAndWholeFishDontCount() {
-        XCTAssertEqual(num(out(ing("Whole fresh Australian snapper", 700, 770, 133, 0, 20))["kcal"]) ?? 0, 315, accuracy: 5)
-        XCTAssertEqual(num(out(ing("Chicken drumsticks", 500, 860, 85, 0, 55))["kcal"]) ?? 0, 580, accuracy: 5)
-        XCTAssertEqual(num(out(ing("Boneless kingfish fillet", 100, 146, 23, 0, 5))["kcal"]), 146)
+        XCTAssertEqual(num(out(ing("Whole fresh Australian snapper", 700, 770, 133, 0, 20))["kcal"]) ?? 0, 306, accuracy: 5)
+        XCTAssertEqual(num(out(ing("Chicken drumsticks", 500, 860, 85, 0, 55))["kcal"]) ?? 0, 554, accuracy: 5)
+        XCTAssertEqual(num(out(ing("Boneless kingfish fillet", 100, 146, 23, 0, 5))["kcal"]), 205)
     }
 
     func testAProteinDishWithoutProteinIsFlagged() {

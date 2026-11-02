@@ -1,7 +1,8 @@
 import Foundation
 
-/// Checked numbers per 100 g, raw, for the foods the AI and the US database get wrong: species and cuts, by the names
-/// used here (kingfish is yellowtail, not the king mackerel USDA calls kingfish). Used before any database, and on
+/// Numbers per 100 g, raw, for the foods the AI and the US database get wrong: species and cuts, by the names used here
+/// (kingfish is yellowtail, not the king mackerel USDA calls kingfish). From FSANZ's Australian Food Composition Database
+/// Release 3 (each row's "src"; rebuild with tools/ai-test/check-reference.js). Used before any database, and on
 /// recipes, which otherwise never see one. Your own labels and scans never come through here.
 enum FoodReference {
     struct Entry { let name: String; let all: [String]; let any: [String]; let not: [String]; let ok: [String]; let kcal, p, c, f: Double; let yield: Double; let wholeYield: Double }

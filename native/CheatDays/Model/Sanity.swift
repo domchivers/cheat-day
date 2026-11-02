@@ -24,21 +24,21 @@ enum Sanity {
             return Range(label: "leafy or non-starchy veg", lo: 10, hi: 60, proteinMax: 4.5)
         }
         if has(["chicken", "turkey"]) && !has(["nugget", "schnitzel", "kiev", "burger", "wrap", "sandwich", "curry", "soup", "pie", "skin"]) {
-            if raw { return Range(label: "raw chicken", lo: 105, hi: 220, proteinMax: 24.5) }
+            if raw { return Range(label: "raw chicken", lo: 90, hi: 225, proteinMax: 24.5) }
             return Range(label: "cooked chicken", lo: 140, hi: 270, proteinMax: 32)
         }
         if has(["mince", "ground beef"]) {
-            return raw || !cooked ? Range(label: "raw beef mince", lo: 120, hi: 270, proteinMax: 22.5)
+            return raw || !cooked ? Range(label: "raw beef mince", lo: 120, hi: 270, proteinMax: 24)
                                   : Range(label: "cooked beef mince", lo: 170, hi: 320, proteinMax: 30)
         }
         if has(["chuck", "brisket", "blade", "beef shin", "gravy beef"]) {
-            return raw || !cooked ? Range(label: "raw beef chuck", lo: 140, hi: 240, proteinMax: 22.5)
+            return raw || !cooked ? Range(label: "raw beef chuck", lo: 110, hi: 240, proteinMax: 24)
                                   : Range(label: "cooked beef chuck", lo: 190, hi: 320, proteinMax: 33)
         }
         func fishWord(_ p: String) -> Bool { n.range(of: p, options: .regularExpression) != nil }
         if fishWord(#"\b(\w*fish|salmon|tuna|cod|snapper|barramundi|trout|basa|yellowtail|mackerel|hiramasa)\b"#)
             && !has(["sauce", "oil", "cake", "finger", "battered", "crumbed", "stock", "pie", "curry", "burger"]) {
-            return raw || !cooked ? Range(label: "raw fish", lo: 70, hi: 260, proteinMax: 27)
+            return raw || !cooked ? Range(label: "raw fish", lo: 70, hi: 300, proteinMax: 27)
                                   : Range(label: "cooked fish", lo: 90, hi: 300, proteinMax: 33)
         }
         if has(["cocoa powder", "cacao powder"]) { return Range(label: "cocoa powder", lo: 200, hi: 450, proteinMax: 30) }

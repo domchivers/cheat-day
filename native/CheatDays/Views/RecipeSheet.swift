@@ -580,15 +580,16 @@ struct SwapPicker: View {
         }
     }
 
-    /// Fresh meat often has no nutrition panel: pick how lean it looks instead (raw, per 100 g).
+    /// Fresh meat often has no nutrition panel: pick how lean it looks instead (raw, per 100 g). From Australian data
+    /// (AFCD Release 3), except these with no entry to use: fatty chuck and pork shoulder, typical and fatty thigh, lean and fatty kingfish.
     static let cuts: [(name: String, words: [String], levels: [(String, Double, Double)])] = [
-        ("Beef chuck", ["chuck", "steak", "beef", "brisket", "blade"], [("Lean", 155, 21), ("Typical", 200, 19), ("Fatty", 220, 18)]),
-        ("Beef mince", ["mince", "ground"], [("5-star", 132, 19.5), ("4-star", 170, 19), ("3-star", 220, 17.5)]),
-        ("Chicken thigh fillet", ["chicken", "thigh"], [("Lean", 115, 20), ("Typical", 125, 19), ("Fatty", 150, 18)]),
-        ("Pork shoulder", ["pork", "shoulder"], [("Lean", 150, 19), ("Typical", 190, 17), ("Fatty", 230, 16)]),
-        ("Kingfish", ["kingfish", "king fish", "yellowtail", "hiramasa"], [("Lean", 125, 23), ("Typical", 146, 23), ("Fatty", 175, 22)]),
-        ("Salmon", ["salmon"], [("Lean", 150, 21), ("Typical", 208, 20), ("Fatty", 240, 19)]),
-        ("White fish", ["fish", "snapper", "barramundi", "flathead", "cod", "basa"], [("Lean", 85, 19), ("Typical", 100, 20), ("Fatty", 125, 19)])
+        ("Beef chuck", ["chuck", "steak", "beef", "brisket", "blade"], [("Lean", 124, 23), ("Typical", 180, 21.7), ("Fatty", 220, 20)]),
+        ("Beef mince", ["mince", "ground"], [("5-star", 129, 22.9), ("4-star", 170, 22.4), ("3-star", 183, 22.5)]),
+        ("Chicken thigh fillet", ["chicken", "thigh"], [("Lean", 104, 19.1), ("Typical", 125, 19), ("Fatty", 150, 18)]),
+        ("Pork shoulder", ["pork", "shoulder"], [("Lean", 107, 19.6), ("Typical", 182, 17.6), ("Fatty", 230, 16)]),
+        ("Kingfish", ["kingfish", "king fish", "yellowtail", "hiramasa"], [("Lean", 146, 23), ("Typical", 205, 22.9), ("Fatty", 240, 22)]),
+        ("Salmon", ["salmon"], [("Lean", 210, 22.3), ("Typical", 231, 20.5), ("Fatty", 275, 18.1)]),
+        ("White fish", ["fish", "snapper", "barramundi", "flathead", "cod", "basa"], [("Lean", 94, 21.1), ("Typical", 108, 19.2), ("Fatty", 125, 19.2)])
     ]
 
     @ViewBuilder private var freshCuts: some View {
