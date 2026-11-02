@@ -263,6 +263,8 @@ struct CheatDayView: View {
         let eaten = isToday ? CheatPlan.loggedItem(s, in: store.todayItems) : nil, done = eaten != nil
         // once logged, the amount you logged: it's what the day's total counts
         let kcal = num(eaten?["kcal"]) ?? num(s["kcal"]) ?? 0, protein = eaten.map { store.macros([$0]).p } ?? num(s["protein"]) ?? 0
+        // the planner's guess until its recipe is written; a saved meal and anything logged are real numbers
+        let est = !done && s["recipe"] == nil && str(s["saved"]).isEmpty ? "est. " : ""
         return HStack(spacing: 12) {
             Button { if !isWorkout { open = IdeaRef(id: title, idea: CheatPlan.idea(s)) } } label: {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
@@ -272,7 +274,7 @@ struct CheatDayView: View {
                         if !str(s["detail"]).isEmpty { Text(str(s["detail"])).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.leading) }
                         if kcal > 0 || done {
                             ((done ? Text("✓ Logged · ").foregroundStyle(Theme.walk) : Text(""))
-                                + Text("\(Fmt.int(kcal)) kcal · \(Int(protein.rounded())) g protein"))
+                                + Text("\(est)\(Fmt.int(kcal)) kcal · \(est)\(Int(protein.rounded())) g protein"))
                                 .font(.caption.weight(.semibold)).monospacedDigit().padding(.top, 1)
                         }
                     }
