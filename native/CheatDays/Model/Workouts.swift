@@ -108,6 +108,16 @@ struct LiveSession: Equatable {
         for (i, e) in exercises.enumerated() { if let j = e.sets.firstIndex(where: { !$0.done }) { return (i, j) } }
         return nil
     }
+    /// One exercise for another, in the same spot. Sets already ticked stay logged under the old one, with the new one straight after.
+    mutating func swap(_ id: UUID, with new: LiveExercise) {
+        guard let i = exercises.firstIndex(where: { $0.id == id }) else { return }
+        let done = exercises[i].sets.filter(\.done)
+        if done.isEmpty { exercises[i] = new } else {
+            exercises[i].sets = done
+            exercises.insert(new, at: i + 1)
+        }
+    }
+
     var setsDone: Int { exercises.reduce(0) { $0 + $1.sets.filter(\.done).count } }
     var volume: Double { exercises.reduce(0) { $0 + $1.sets.filter(\.done).reduce(0) { $0 + $1.reps * $1.kg } } }
 }

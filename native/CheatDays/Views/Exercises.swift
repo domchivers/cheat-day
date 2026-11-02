@@ -5,6 +5,8 @@ import SwiftUI
 struct ExercisePicker: View {
     enum Tab: String, CaseIterable { case past = "Past workouts", yours = "Yours", library = "Library" }
     let inSession: Set<String>
+    /// Set when this picks a replacement for that exercise, rather than adding: one pick and it closes.
+    var swapping: String? = nil
     let onAdd: ([LiveExercise]) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var tab: Tab = .past
@@ -32,7 +34,7 @@ struct ExercisePicker: View {
             }
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search exercises")
             .keyboardDone()
-            .navigationTitle("Add an exercise")
+            .navigationTitle(swapping.map { "Swap \($0)" } ?? "Add an exercise")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() }.fontWeight(.bold) } }
             .onAppear { if store.pastWorkouts.isEmpty && store.routines.isEmpty { tab = .library } }
@@ -77,8 +79,10 @@ struct ExercisePicker: View {
                 HStack {
                     VStack(alignment: .leading) { Text(g.title).font(.headline).foregroundStyle(.primary); Text(g.sub).font(.caption) }.textCase(nil)
                     Spacer()
-                    Button("Add all") { for l in g.lifts { add(str(l["exercise"]), detail: list(l["detail"]), template: l) } }
-                        .font(.caption.weight(.bold)).buttonStyle(.bordered).buttonBorderShape(.capsule).textCase(nil)
+                    if swapping == nil {
+                        Button("Add all") { for l in g.lifts { add(str(l["exercise"]), detail: list(l["detail"]), template: l) } }
+                            .font(.caption.weight(.bold)).buttonStyle(.bordered).buttonBorderShape(.capsule).textCase(nil)
+                    }
                 }
             }
         }
@@ -120,6 +124,7 @@ struct ExercisePicker: View {
         added.insert(name.lowercased())
         let e = store.liveExercise(name, sets: num(template?["sets"]), reps: num(template?["reps"]), kg: num(template?["kg"]), detail: detail)
         onAdd([e])
+        if swapping != nil { dismiss() }
     }
 }
 

@@ -150,3 +150,5 @@ My estimate for one full run: about $5 on Opus, $2.50 on Sonnet and under $0.50 
 Recipes passing: Sonnet 29/37, Opus 23/35, Haiku 22/39 (held back 9/10, 9/10, 7/12). Plans: 18, 18, 17 of 20. Labels: Sonnet and Opus 45, Haiku 43 of 45. Quick logs: 20, 21, 20 of 30.
 
 Starting allocation, pending the tasting sheet (`design/ai-tasting.html`; key in `tools/ai-test/results/tasting-key.json`): Sonnet for recipes and photos, Haiku for labels, quick logs and chat, plans decided by the tasting. Estimated cost: about $0.75 a month for usage like the owner's at test prompt sizes, $1.50 to $2.25 allowing for the app's longer prompts.
+
+**Owner's addition, 2 Nov 2026:** the Assistant uses your own foods. It searches saved meal ingredients, scans and logs on the phone, sends only matches to Claude, says where the numbers came from, and asks which one when unclear. Build it while moving chat to Claude, with a mockup of the reply first.

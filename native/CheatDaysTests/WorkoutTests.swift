@@ -73,6 +73,17 @@ final class WorkoutTests: XCTestCase {
         XCTAssertEqual(RecipeMaker.firstVersion(CheatPlan.idea(["title": "Burger", "kcal": 700])), "authentic")
     }
 
+    func testSwappingAnExerciseKeepsItsPlaceAndWhatsDone() {
+        func ex(_ name: String, done: Bool = false) -> LiveExercise { LiveExercise(name: name, sets: [LiveSet(reps: 8, kg: 20, done: done), LiveSet(reps: 8, kg: 20)]) }
+        var s = LiveSession(startedAt: 0, name: "", routineId: nil, exercises: [ex("A"), ex("B"), ex("C")])
+        s.swap(s.exercises[1].id, with: ex("New"))
+        XCTAssertEqual(s.exercises.map(\.name), ["A", "New", "C"], "the same spot")
+        s = LiveSession(startedAt: 0, name: "", routineId: nil, exercises: [ex("A"), ex("B", done: true), ex("C")])
+        s.swap(s.exercises[1].id, with: ex("New"))
+        XCTAssertEqual(s.exercises.map(\.name), ["A", "B", "New", "C"], "ticked sets stay, the new one straight after")
+        XCTAssertEqual(s.exercises[1].sets.count, 1, "only what was done")
+    }
+
     func testSessionReadsAndWritesTheWebShape() {
         let s = LiveSession(record()["session"])
         XCTAssertNotNil(s)

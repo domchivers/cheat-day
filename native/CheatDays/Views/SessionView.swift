@@ -6,6 +6,7 @@ struct SessionView: View {
     @State private var s: LiveSession
     @State private var reordering = false
     @State private var picking = false
+    @State private var swapOut: LiveExercise?
     @State private var confirmDiscard = false
     @State private var finishing = false
     @State private var minutesText = ""
@@ -87,6 +88,11 @@ struct SessionView: View {
         }
         .sheet(isPresented: $picking) {
             ExercisePicker(inSession: Set(s.exercises.map { $0.name.lowercased() })) { picked in s.exercises.append(contentsOf: picked) }
+        }
+        .sheet(item: $swapOut) { old in
+            ExercisePicker(inSession: Set(s.exercises.map { $0.name.lowercased() }), swapping: old.name) { picked in
+                if let new = picked.first { withAnimation { s.swap(old.id, with: new) } }
+            }
         }
         .onChange(of: s) { _, now in if !finished { store.saveSession(now) } }
         .sensoryFeedback(.success, trigger: s.setsDone)
@@ -261,6 +267,7 @@ struct SessionView: View {
                         .background(Theme.hero, in: Capsule()).foregroundStyle(Theme.accent).textCase(nil)
                 }
                 Menu {
+                    Button { swapOut = ex } label: { Label("Swap exercise", systemImage: "arrow.triangle.swap") }
                     Button(role: .destructive) { s.exercises.removeAll { $0.id == ex.id } } label: { Label("Remove exercise", systemImage: "trash") }
                 } label: { Image(systemName: "ellipsis").font(.headline).padding(6) }
             }
