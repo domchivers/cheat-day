@@ -133,10 +133,10 @@ func liftText(_ l: JSON) -> String {
     let d = list(l["detail"])
     if !d.isEmpty {
         let anyKg = d.contains { (num($0["kg"]) ?? 0) > 0 }
-        return d.map { s in ((num(s["kg"]) ?? 0) > 0 ? "\(Fmt.one(num(s["kg"]) ?? 0))×" : "") + Fmt.one(num(s["reps"]) ?? 0) }.joined(separator: ", ") + (anyKg ? " kg" : "")
+        return d.map { s in ((num(s["kg"]) ?? 0) > 0 ? "\(Fmt.kg(num(s["kg"]) ?? 0))×" : "") + Fmt.one(num(s["reps"]) ?? 0) }.joined(separator: ", ") + (anyKg ? " kg" : "")
     }
     let kg = num(l["kg"]) ?? 0
-    return "\(Fmt.one(num(l["sets"]) ?? 0))×\(Fmt.one(num(l["reps"]) ?? 0))" + (kg > 0 ? " @ \(Fmt.one(kg)) kg" : "")
+    return "\(Fmt.one(num(l["sets"]) ?? 0))×\(Fmt.one(num(l["reps"]) ?? 0))" + (kg > 0 ? " @ \(Fmt.kg(kg)) kg" : "")
 }
 
 /// Every exercise you've done, then the library. Tap one for its progress.
@@ -189,7 +189,7 @@ struct ExerciseDetail: View {
         List {
             Section {
                 HStack {
-                    stat(best.map { "\(Fmt.one(num($0["kg"]) ?? 0)) × \(Fmt.one(num($0["reps"]) ?? 0))" } ?? "–", "best set (kg × reps)")
+                    stat(best.map { "\(Fmt.kg(num($0["kg"]) ?? 0)) ×\(Fmt.one(num($0["reps"]) ?? 0))" } ?? "–", "best set (kg × reps)")
                     stat(top > 0 ? "\(Fmt.int(top)) kg" : "–", "est. one-rep max")
                     stat("\(ses.count)", "sessions")
                 }

@@ -410,7 +410,7 @@ struct PostRecipeSheet: View {
                     Section("Exercises") {
                         ForEach(list(m["lifts"]).indices, id: \.self) { i in
                             let l = list(m["lifts"])[i]
-                            Text("\(str(l["exercise"])) · \(Int(num(l["sets"]) ?? 3))×\(Int(num(l["reps"]) ?? 8))\((num(l["kg"]) ?? 0) > 0 ? " @ \(Fmt.one(num(l["kg"]) ?? 0)) kg" : "")").font(.subheadline)
+                            Text("\(str(l["exercise"])) · \(Int(num(l["sets"]) ?? 3))×\(Int(num(l["reps"]) ?? 8))\((num(l["kg"]) ?? 0) > 0 ? " @ \(Fmt.kg(num(l["kg"]) ?? 0)) kg" : "")").font(.subheadline)
                         }
                     }
                     Section {

@@ -74,6 +74,8 @@ enum Fmt {
         return s.hasSuffix("0") ? String(s.dropLast()) : s
     }
     static func kg2(_ v: Double) -> Double { (v * 100).rounded() / 100 }
+    /// A number as typed: "22.5", "22,5" (a comma keypad), "22." part way through, ".5".
+    static func typed(_ t: String) -> Double? { Double(t.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: ".")) }
 
     /// Always one decimal, for body fat: 16.0, never 16.
     static func dec(_ v: Double) -> String { String(format: "%.1f", v) }

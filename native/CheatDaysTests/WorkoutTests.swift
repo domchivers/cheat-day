@@ -34,6 +34,21 @@ final class WorkoutTests: XCTestCase {
         XCTAssertNil(Store.lastSets(lifts: [], record: nil))
     }
 
+    func testHalfKilosAreKeptAndShown() {
+        XCTAssertEqual(Fmt.typed("22.5"), 22.5)
+        XCTAssertEqual(Fmt.typed("22,5"), 22.5, "a comma keypad")
+        XCTAssertEqual(Fmt.typed("22."), 22, "part way through typing")
+        XCTAssertEqual(Fmt.typed(".5"), 0.5)
+        XCTAssertNil(Fmt.typed("."))
+        let s = LiveSession(startedAt: 0, name: "", routineId: nil, exercises: [LiveExercise(name: "Curl", sets: [LiveSet(reps: 10, kg: 12.5, done: true), LiveSet(reps: 8, kg: 11.25, done: true)])])
+        let back = LiveSession(s.json)
+        XCTAssertEqual(back?.exercises.first?.sets.map(\.kg), [12.5, 11.25], "the session keeps them")
+        let lift = Store.routineExercises(s)[0]
+        XCTAssertEqual(num(lift["kg"]), 12.5)
+        XCTAssertEqual(liftText(lift), "12.5×10, 11.25×8 kg")
+        XCTAssertEqual(Store.lastSets(lifts: [lift], record: nil)?.map(\.kg), [12.5, 11.25], "next time starts from them")
+    }
+
     func testRenamingAnExerciseMovesItsHistoryEverywhere() {
         let cheat: JSON = ["exercise": "Cheat flies", "sets": 3, "reps": 12, "kg": 86]
         var d: JSON = ["day": ["date": today, "workouts": [["id": "a", "lifts": [cheat]] as JSON]] as JSON,

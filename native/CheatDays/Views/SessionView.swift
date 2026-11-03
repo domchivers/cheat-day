@@ -413,8 +413,8 @@ struct SetRow: View {
         .opacity(set.done ? 0.45 : 1)
         .listRowBackground(isNext ? Theme.hero : Color(.secondarySystemGroupedBackground))
         .onAppear { repsText = Fmt.one(set.reps); kgText = set.kg > 0 ? Fmt.kg(set.kg) : "" }
-        .onChange(of: set.reps) { _, v in if Double(repsText.replacingOccurrences(of: ",", with: ".")) != v { repsText = Fmt.one(v) } }
-        .onChange(of: set.kg) { _, v in if Double(kgText.replacingOccurrences(of: ",", with: ".")) ?? 0 != v { kgText = v > 0 ? Fmt.kg(v) : "" } }
+        .onChange(of: set.reps) { _, v in if Fmt.typed(repsText) != v { repsText = Fmt.one(v) } }
+        .onChange(of: set.kg) { _, v in if Fmt.typed(kgText) ?? 0 != v { kgText = v > 0 ? Fmt.kg(v) : "" } }
     }
 
     private func box(_ text: Binding<String>, _ placeholder: String, field: String) -> some View {
@@ -429,7 +429,7 @@ struct SetRow: View {
         .padding(.horizontal, 10).padding(.vertical, 8)
         .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .onChange(of: text.wrappedValue) { _, t in
-            let v = Double(t.replacingOccurrences(of: ",", with: ".")) ?? 0
+            let v = Fmt.typed(t) ?? 0
             if field == "reps" { let old = set.reps; if v != old { set.reps = v; onEdit("reps", old, v) } }
             else { let old = set.kg; if v != old { set.kg = v; onEdit("kg", old, v) } }
         }
@@ -492,8 +492,8 @@ private struct ForgotToFinish: View {
 
     private func save() {
         guard didIt, let n = nextSet else { return }
-        session.exercises[n.ex].sets[n.set].reps = Double(reps.replacingOccurrences(of: ",", with: ".")) ?? session.exercises[n.ex].sets[n.set].reps
-        session.exercises[n.ex].sets[n.set].kg = Double(kg.replacingOccurrences(of: ",", with: ".")) ?? session.exercises[n.ex].sets[n.set].kg
+        session.exercises[n.ex].sets[n.set].reps = Fmt.typed(reps) ?? session.exercises[n.ex].sets[n.set].reps
+        session.exercises[n.ex].sets[n.set].kg = Fmt.typed(kg) ?? session.exercises[n.ex].sets[n.set].kg
         session.exercises[n.ex].sets[n.set].done = true
     }
 }
