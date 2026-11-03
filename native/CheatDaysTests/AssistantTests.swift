@@ -21,6 +21,31 @@ final class AssistantTests: XCTestCase {
         let props = dict(Assistant.schema["properties"])
         for k in ["reply", "kind", "estimate", "plan", "edit", "recipe", "lighter"] { XCTAssertNotNil(props[k], k) }
         XCTAssertEqual(dict(props["kind"])["enum"] as? [String], ["answer", "estimate", "plan", "edit", "recipe", "lighter"])
+        XCTAssertEqual(Assistant.schema["required"] as? [String], ["reply", "kind"])
+        let text = String(data: try! JSONSerialization.data(withJSONObject: Assistant.schema), encoding: .utf8)!
+        XCTAssertFalse(text.contains("nullable"), "Claude refuses a schema full of nulls as too large")
+    }
+
+    /// The owner's "110g cabbage, 170g cucumber": the AI's guesses (28 and 27 kcal, 6 g carbs each) put right from the food data.
+    @MainActor
+    func testFoodsAddedThroughAChangeAreChecked() async {
+        let answer: JSON = ["kind": "edit", "reply": "Got it, adding cabbage and cucumber.", "edit": ["actions": [
+            ["action": "add", "name": "Cabbage, raw", "grams": 110, "kcal": 28, "protein_g": 1.4, "carbs_g": 6.5, "fat_g": 0.1] as JSON,
+            ["action": "add", "name": "Cucumber, raw", "grams": 170, "kcal": 27, "protein_g": 1.1, "carbs_g": 5.8, "fat_g": 0.2] as JSON,
+            ["action": "remove", "target": "Toast", "name": "", "grams": 0, "kcal": 0] as JSON] as [Any]] as JSON]
+        let out = Assistant.saneEdit(await Assistant.groundEdit(answer))
+        let acts = list(dict(out["edit"])["actions"])
+        XCTAssertEqual(num(acts[0]["kcal"]), 26, "white cabbage, 24 kcal per 100 g")
+        XCTAssertEqual(num(acts[0]["carbs_g"]) ?? 0, 4.2, accuracy: 0.1)
+        XCTAssertEqual(num(acts[1]["kcal"]), 19, "cucumber, 11 kcal per 100 g")
+        XCTAssertEqual(str(acts[0]["src"]), "afcd")
+        XCTAssertEqual(str(acts[2]["action"]), "remove", "a removal is left alone")
+        XCTAssertFalse(str(out["reply"]).lowercased().contains("adding"), "nothing's on the list until it's tapped")
+    }
+
+    func testAnEstimateNeverSaysItsLogged() {
+        let out = Assistant.saneEdit(["kind": "estimate", "reply": "Half a teaspoon is about 22 kcal. Logging it now."])
+        XCTAssertTrue(str(out["reply"]).contains("tap Add"))
     }
 
     func testAnEstimateAddsWithItsServing() {

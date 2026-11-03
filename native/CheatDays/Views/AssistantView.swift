@@ -167,9 +167,9 @@ struct AssistantView: View {
             Text(str(e["name"])).font(.headline)
             Text("\(Fmt.int(num(e["portion_g"]) ?? 0)) \(str(e["unit"]).isEmpty ? "g" : str(e["unit"]))").font(.caption).foregroundStyle(.secondary)
             macros(k, p, c, f)
-            let parts = list(e["parts"]), checked = parts.filter { ["list", "usda"].contains(str($0["src"])) }.count
+            let parts = list(e["parts"]), checked = parts.filter { !["", "ai"].contains(str($0["src"])) }.count
             ForEach(keyed(parts)) { entry in
-                let i = entry.index, pt = entry.item, ok = ["list", "usda"].contains(str(pt["src"]))
+                let i = entry.index, pt = entry.item, ok = !["", "ai"].contains(str(pt["src"]))
                 HStack(spacing: 6) {
                     Image(systemName: ok ? "checkmark.seal.fill" : "sparkles").font(.caption2).foregroundStyle(ok ? Color.green : .secondary)
                     Text(str(pt["name"])).font(.caption)

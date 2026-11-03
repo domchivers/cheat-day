@@ -30,7 +30,7 @@ enum OnDevice {
         #if canImport(FoundationModels)
         if #available(iOS 26, *) {
             switch SystemLanguageModel.default.availability {
-            case .available: return "Quick questions and logging are answered on this iPhone, instantly and offline."
+            case .available: return "Small changes to a logged food (\"it was a large one\") are worked out on this iPhone, instantly and offline."
             case .unavailable(.deviceNotEligible): return "This iPhone can't run Apple Intelligence (iPhone 15 Pro or newer), so everything uses the online AI."
             case .unavailable(.appleIntelligenceNotEnabled): return "Turn on Apple Intelligence in the iPhone's Settings to use it."
             case .unavailable(.modelNotReady): return "Apple Intelligence is still downloading. It'll be used once it's ready."

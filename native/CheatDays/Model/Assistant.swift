@@ -29,19 +29,23 @@ enum Assistant {
         var images: [UIImage] = []
     }
 
-    private static func obj(_ props: JSON, nullable: Bool = false, desc: String = "") -> JSON {
+    private static func obj(_ props: JSON, desc: String = "") -> JSON {
         var o: JSON = ["type": "object", "properties": props, "required": Array(props.keys)]
-        if nullable { o["nullable"] = true }
         if !desc.isEmpty { o["description"] = desc }
         return o
     }
     private static let n: JSON = ["type": "number"]
     private static let s: JSON = ["type": "string"]
-    private static let nn: JSON = ["type": "number", "nullable": true]
-    private static let ns: JSON = ["type": "string", "nullable": true]
     private static func arr(_ items: JSON, desc: String = "") -> JSON { desc.isEmpty ? ["type": "array", "items": items] : ["type": "array", "items": items, "description": desc] }
 
-    static let schema: JSON = obj([
+    /// No nulls anywhere: with them Claude refuses the schema ("compiled grammar is too large"). Only reply and kind are
+    /// required, the answer for that kind comes along, and in a change an unused number is 0 and an unused word "".
+    static let schema: JSON = {
+        var o = full
+        o["required"] = ["reply", "kind"]
+        return o
+    }()
+    private static let full: JSON = obj([
         "reply": ["type": "string", "description": "What you'd say back, warm and short (one to three sentences). Always filled."] as JSON,
         "kind": ["type": "string", "enum": ["answer", "estimate", "plan", "edit", "recipe", "lighter"]] as JSON,
         "estimate": obj([
@@ -50,20 +54,21 @@ enum Assistant {
             "parts": arr(obj(["name": s, "usda_name": ["type": "string", "description": "the closest USDA FoodData Central SR Legacy description, e.g. 'Chicken, broilers or fryers, breast, meat only, cooked, roasted'"] as JSON,
                               "grams": ["type": "number", "description": "as eaten (cooked weight)"] as JSON, "kcal": n, "protein_g": n, "carbs_g": n, "fat_g": n]),
                           desc: "each component, including oil, butter and sauces as their own parts")
-        ], nullable: true, desc: "kind=estimate: a food or plate as one portion"),
+        ], desc: "kind=estimate: a food or plate as one portion"),
         "plan": obj(["suggestions": arr(obj(["name": s, "amount": s, "kcal": n, "protein_g": n, "carbs_g": n, "fat_g": n, "why": s]))],
-                    nullable: true, desc: "kind=plan: 3 to 5 things for the rest of today"),
+                    desc: "kind=plan: 3 to 5 things for the rest of today"),
         "edit": obj(["actions": arr(obj([
             "action": ["type": "string", "enum": ["add", "remove", "update", "workout"]] as JSON,
-            "target": ns, "name": ns, "kcal": nn, "protein_g": nn, "carbs_g": nn, "fat_g": nn,
-            "minutes": nn, "effort": ns, "activity": ns
-        ]))], nullable: true, desc: "kind=edit: changes to today's list or a workout to log"),
+            "target": s, "name": s, "grams": ["type": "number", "description": "for add and update: the amount in grams (ml for drinks)"] as JSON,
+            "kcal": n, "protein_g": n, "carbs_g": n, "fat_g": n,
+            "minutes": n, "effort": s, "activity": s
+        ]))], desc: "kind=edit: changes to today's list or a workout to log"),
         "recipe": obj([
             "name": s, "portions": n, "ingredients": arr(obj(["name": s, "grams": n, "kcal": n, "protein_g": n, "carbs_g": n, "fat_g": n])),
             "steps": arr(s), "notes": s
-        ], nullable: true, desc: "kind=recipe: a dish to cook and save as a meal"),
+        ], desc: "kind=recipe: a dish to cook and save as a meal"),
         "lighter": obj(["name": s, "tips": arr(s), "kcal_per_serving": n, "protein_g": n, "carbs_g": n, "fat_g": n],
-                       nullable: true, desc: "kind=lighter: a lighter way to have something")
+                       desc: "kind=lighter: a lighter way to have something")
     ])
 
     @MainActor
@@ -95,7 +100,7 @@ enum Assistant {
     Decide what they want and fill exactly one of estimate / plan / edit / recipe / lighter (leave the others null), or kind=answer for a plain question:
     - estimate: a food or plate to log, as one portion with honest kcal and macros, broken into parts (each component with its cooked grams; oil, butter and sauce as separate parts).
     - plan: 3 to 5 things for the rest of today that fit the calories left, close the protein gap as far as sensible, and leave room for one treat.
-    - edit: they're correcting today's list ("I only had 2 eggs", "remove the toast", "add a banana"): target is the name of the item on today's list to change or remove; for add and update give name and the new kcal and macros. Or logging exercise: action workout with activity (Walk, Run, Cycle, Swim, Gym weights, HIIT, Yoga / stretch, Football, Tennis / padel, Hike, Rowing, Elliptical, Dance, Boxing, Climbing), minutes and effort (easy, moderate, hard).
+    - edit: they're correcting today's list ("I only had 2 eggs", "remove the toast", "add a banana"), or naming several separate foods at once ("110g cabbage, 170g cucumber": one add each): target is the name of the item on today's list to change or remove; for add and update give the plain food name, its grams and the new kcal and macros. Or logging exercise: action workout with activity (Walk, Run, Cycle, Swim, Gym weights, HIIT, Yoga / stretch, Football, Tennis / padel, Hike, Rowing, Elliptical, Dance, Boxing, Climbing), minutes and effort (easy, moderate, hard).
     - recipe: a dish to cook with realistic ingredient amounts, kcal and macros per ingredient (standard reference values, so they add up), and short method steps. Respect any calorie limit they give.
     - lighter: a lighter way to have something, with tips and the lighter serving's numbers.
     Hard rules:
@@ -104,6 +109,7 @@ enum Assistant {
     - \(Sanity.amounts) Meat and fish by weight, not "1 thigh": say the grams you assumed.
     - For edit: never say a change is done, added or logged. Say it's ready and to tap Make these changes.
     - Only talk about foods actually in the conversation, their photos, their day or their meals. Never invent placeholders.
+    - Log only what their latest message (or its photos) names. Foods from earlier in the chat or already on today's list are dealt with: never add them again or fold them into a new estimate. "1/2 tsp sesame oil" is just the oil.
     - When several products are in the photos, give each its own numbers before recommending.
     - If you can't tell what something is, say so and ask rather than guessing.
     - Keep reply short, friendly and never preachy. It's a cheat-day app: treats are part of the plan.
@@ -134,25 +140,32 @@ enum Assistant {
         let pics = last.images.isEmpty ? (turns.dropLast().last { $0.me && !$0.images.isEmpty }?.images ?? []) : last.images
         var parts: [JSON] = pics.prefix(4).compactMap { Gemini.imagePart($0) }
         parts.append(["text": "You are the assistant inside a cheat-day food diary app called Cheat Days. \(context(store))\(earlier.isEmpty ? "" : "Recent conversation:\n\(earlier)\n")They now say: \"\(last.text)\"\(last.images.isEmpty && !pics.isEmpty ? " (about the photos from earlier)" : "")\n\n\(rules)"])
-        // quick jobs on the phone first (Apple Intelligence), when it has it; then the online models
-        if pics.isEmpty, isSimple(last.text, hasPhotos: false),
-           var local = await OnDevice.assistant(last.text, context: context(store) + (earlier.isEmpty ? "" : "Recent conversation:\n\(earlier)\n")) {
-            if str(local["kind"]) == "estimate", let e = local["estimate"] as? JSON {
-                let g = await ground(e), found = CheatDays.list(g["parts"])
-                let trusted = !found.isEmpty && found.allSatisfy { str($0["src"]) != "ai" && (num($0["grams"]) ?? 0) >= 3 }
-                if trusted {
-                    if groundNow { local["estimate"] = g }
-                    return local
-                }
-                // fall through: the online model works it out
-            } else {
-                return saneEdit(local)
-            }
-        }
-        // simple questions go to the quick model with minimal thinking; recipes, plans and photos to the careful one
-        var answer = try await Gemini.ask(schema: schema, parts: parts, quick: isSimple(last.text, hasPhotos: !pics.isEmpty))
+        // Claude for everything (Apple's on-device model made up foods: "1/2 tsp sesame oil" came back as roasted cauliflower).
+        // Simple logs and questions go to the quick model; photos, recipes and plans to the careful one.
+        let simple = isSimple(last.text, hasPhotos: !pics.isEmpty)
+        var answer = try await Gemini.ask(schema: schema, parts: parts, quick: simple, job: simple ? "logs" : pics.isEmpty ? "chat" : "photos")
         if groundNow, str(answer["kind"]) == "estimate", let e = answer["estimate"] as? JSON { answer["estimate"] = await ground(e) }
-        return saneEdit(answer)
+        return saneEdit(await groundEdit(answer))
+    }
+
+    /// Foods added through an edit checked like an estimate's parts: each one with grams against the food data.
+    @MainActor
+    static func groundEdit(_ answer: JSON) async -> JSON {
+        guard str(answer["kind"]) == "edit", var edit = answer["edit"] as? JSON else { return answer }
+        var acts = CheatDays.list(edit["actions"])
+        for i in acts.indices where ["add", "update"].contains(str(acts[i]["action"])) {
+            let a = acts[i], name = str(a["name"]).isEmpty ? str(a["target"]) : str(a["name"])
+            guard let g = pos(a["grams"]), let k = num(a["kcal"]) else { continue }
+            let part: JSON = ["name": name, "grams": g, "kcal": k, "protein_g": a["protein_g"] ?? 0, "carbs_g": a["carbs_g"] ?? 0, "fat_g": a["fat_g"] ?? 0]
+            let checked = await ground(["name": name, "kcal_total": k, "parts": [part]])
+            guard let p = CheatDays.list(checked["parts"]).first, str(p["src"]) != "ai" else { continue }
+            acts[i]["kcal"] = num(p["kcal"]); acts[i]["protein_g"] = num(p["protein_g"]); acts[i]["carbs_g"] = num(p["carbs_g"]); acts[i]["fat_g"] = num(p["fat_g"])
+            acts[i]["src"] = p["src"]
+        }
+        edit["actions"] = acts
+        var out = answer
+        out["edit"] = edit
+        return out
     }
 
     /// A food-list or database number replaces the AI's only when it's in the same ballpark; a wildly different one means a wrong match.
@@ -195,6 +208,9 @@ enum Assistant {
             let x = parts[i], g = num(x["grams"]) ?? 0
             if let e = FoodReference.match(str(x["name"])) {   // a species or cut we've checked: before any list or database
                 parts[i] = checked(x, kcal100: e.kcal, p100: e.p, c100: e.c, f100: e.f, source: "reference")
+            } else if let f = AusFoods.find(str(x["name"])), plausible(f.kcal, aiKcal: num(x["kcal"]) ?? 0, grams: g, name: str(x["name"])) {
+                // the official Australian numbers (AFCD, AUSNUT) before the app's list or the US database
+                parts[i] = checked(x, kcal100: f.kcal, p100: f.p, c100: f.c, f100: f.f, source: "afcd")
             } else if let row = FoodsDB.search(str(x["name"]), limit: 1).first, plausible(num(row["kcalPer100"]), aiKcal: num(x["kcal"]) ?? 0, grams: g, name: str(x["name"])) {
                 parts[i] = checked(x, kcal100: num(row["kcalPer100"]) ?? 0, p100: num(row["p100"]), c100: num(row["c100"]), f100: num(row["f100"]), source: "list")
             } else { ask.append(i) }
@@ -243,6 +259,12 @@ enum Assistant {
 
     /// Changes to today's list checked the same way, and the reply never says they're done before they are.
     static func saneEdit(_ answer: JSON) -> JSON {
+        // "Logging it now": an estimate isn't on the list until Add is tapped either
+        if str(answer["kind"]) == "estimate", saysDone(str(answer["reply"])) {
+            var out = answer
+            out["reply"] = "Here's my estimate: check it below and tap Add to put it on today's list."
+            return out
+        }
         guard str(answer["kind"]) == "edit", var edit = answer["edit"] as? JSON else { return answer }
         var acts = CheatDays.list(edit["actions"]), flags: [String] = []
         for i in acts.indices where ["add", "update"].contains(str(acts[i]["action"])) {
@@ -255,11 +277,12 @@ enum Assistant {
         edit["actions"] = acts; edit["flags"] = flags
         var out = answer
         out["edit"] = edit
-        let reply = str(answer["reply"])
-        if reply.range(of: #"\b(added|logged|removed|updated|changed|done)\b"#, options: [.regularExpression, .caseInsensitive]) != nil {
-            out["reply"] = "Ready to change: check it below and tap Make these changes to confirm."
-        }
+        if saysDone(str(answer["reply"])) { out["reply"] = "Ready to change: check it below and tap Make these changes to confirm." }
         return out
+    }
+
+    private static func saysDone(_ reply: String) -> Bool {
+        reply.range(of: #"\b(added|adding|logged|logging|removed|updated|changed|done)\b"#, options: [.regularExpression, .caseInsensitive]) != nil
     }
 
     /// What an estimate, a suggestion or a lighter serving adds to the day as.
@@ -289,7 +312,7 @@ enum Assistant {
                 guard let it = match, let k = num(a["kcal"]) else { done.append("Couldn't find \(target) to change"); continue }
                 store.edit(str(it["id"]), kcal: k, meal: Meals.of(it)); done.append("\(str(it["name"])) is now \(Int(k)) kcal")
             case "workout":
-                let type = str(a["activity"]).isEmpty ? "Walk" : str(a["activity"]), mins = num(a["minutes"]) ?? 30
+                let type = str(a["activity"]).isEmpty ? "Walk" : str(a["activity"]), mins = pos(a["minutes"]) ?? 30
                 store.logActivity(type: type, name: type, minutes: mins, effort: str(a["effort"]).isEmpty ? "moderate" : str(a["effort"]))
                 done.append("Logged \(type), \(Int(mins)) min")
             default: break

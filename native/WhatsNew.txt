@@ -1,4 +1,4 @@
-New in this build: swap an exercise for another in a workout, from its ••• menu. Half kilos (22.5) are kept and shown in full.
+New in this build: the assistant now checks foods against the official food data, and logs only what you just said (no more surprise cauliflower).
 
 Thanks for testing! Please just use it like a normal day:
 

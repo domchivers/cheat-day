@@ -214,7 +214,7 @@ struct SettingsView: View {
         Section {
             Toggle("Use Apple Intelligence for quick jobs", isOn: Binding(get: { OnDevice.allowed }, set: { OnDevice.allowed = $0 }))
                 .disabled(!OnDevice.ready)
-        } header: { Text("Assistant") } footer: { Text(OnDevice.status + " Photos, recipes and plans always use the online AI.") }
+        } header: { Text("Assistant") } footer: { Text(OnDevice.status + " The assistant always uses the online AI, which checks its numbers against food data.") }
         Section {
             TextField("Vegetarian, no dairy, I train in the mornings…", text: $notes, axis: .vertical).lineLimit(3...6)
         } header: { Text("About you") } footer: { Text("The assistant reads this before every answer.") }
