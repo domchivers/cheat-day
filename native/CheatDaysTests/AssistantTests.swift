@@ -88,6 +88,16 @@ final class AssistantTests: XCTestCase {
         XCTAssertEqual(FoodTable.uk.src, "cofid"); XCTAssertEqual(FoodTable.us.src, "usda"); XCTAssertEqual(FoodTable.au.src, "afcd")
     }
 
+    /// The owner's "Add it to today": the reply said "Tap Make these changes" but came without the changes, so no button.
+    func testAReplyWithoutItsCardIsCaught() {
+        XCTAssertTrue(Assistant.missingCard(["kind": "edit", "reply": "Tap Make these changes to confirm."]))
+        XCTAssertTrue(Assistant.missingCard(["kind": "edit", "reply": "", "edit": ["actions": [Any]()] as JSON]))
+        XCTAssertTrue(Assistant.missingCard(["kind": "estimate", "reply": ""]))
+        XCTAssertFalse(Assistant.missingCard(["kind": "answer", "reply": "Yes"]))
+        XCTAssertFalse(Assistant.missingCard(["kind": "edit", "reply": "", "edit": ["actions": [["action": "add", "name": "Watermelon", "grams": 280, "kcal": 87] as JSON]] as JSON]))
+        XCTAssertFalse(Assistant.missingCard(["kind": "estimate", "reply": "", "estimate": ["name": "Watermelon", "kcal_total": 87, "parts": [Any]()] as JSON]))
+    }
+
     func testAnEstimateNeverSaysItsLogged() {
         let out = Assistant.saneEdit(["kind": "estimate", "reply": "Half a teaspoon is about 22 kcal. Logging it now."])
         XCTAssertTrue(str(out["reply"]).contains("tap Add"))

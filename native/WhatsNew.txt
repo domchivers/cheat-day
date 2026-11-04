@@ -1,4 +1,4 @@
-New in this build: calories are checked against the official food tables for your country (Australia, the UK or the US), and every AI feature now uses Claude.
+New in this build: ask the assistant how much of something you can have and it gives you an Add button, and "Add it" always shows the button to tap.
 
 Thanks for testing! Please just use it like a normal day:
 

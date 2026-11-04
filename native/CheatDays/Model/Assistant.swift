@@ -103,7 +103,9 @@ enum Assistant {
     - edit: they're correcting today's list ("I only had 2 eggs", "remove the toast", "add a banana"), or naming several separate foods at once ("110g cabbage, 170g cucumber": one add each): target is the name of the item on today's list to change or remove; for add and update give the plain food name, its grams and the new kcal and macros. Or logging exercise: action workout with activity (Walk, Run, Cycle, Swim, Gym weights, HIIT, Yoga / stretch, Football, Tennis / padel, Hike, Rowing, Elliptical, Dance, Boxing, Climbing), minutes and effort (easy, moderate, hard).
     - recipe: a dish to cook with realistic ingredient amounts, kcal and macros per ingredient (standard reference values, so they add up), and short method steps. Respect any calorie limit they give.
     - lighter: a lighter way to have something, with tips and the lighter serving's numbers.
+    - "How much X can I have" (for some calories, or what's left): an estimate of that amount, so they can add it with one tap.
     Hard rules:
+    - The kind you pick must come with its filled object (kind=edit with edit.actions, kind=estimate with estimate, and so on): the app shows the buttons from it. Never mention a button the object doesn't make.
     - If they give numbers themselves (calories, grams, protein), use exactly those numbers.
     - Calories must fit the macros: kcal ≈ 4 × protein + 4 × carbs + 9 × fat (a little over for fibre or alcohol). Check every part before answering.
     - \(Sanity.amounts) Meat and fish by weight, not "1 thigh": say the grams you assumed.
@@ -144,6 +146,9 @@ enum Assistant {
         // Simple logs and questions go to the quick model; photos, recipes and plans to the careful one.
         let simple = isSimple(last.text, hasPhotos: !pics.isEmpty)
         var answer = try await Gemini.ask(schema: schema, parts: parts, quick: simple, job: simple ? "logs" : pics.isEmpty ? "chat" : "photos")
+        // "Tap Make these changes" with no changes to tap: the reply said edit but left the edit out. Asked once more.
+        if missingCard(answer) { answer = (try? await Gemini.ask(schema: schema, parts: parts, quick: simple, job: simple ? "logs" : pics.isEmpty ? "chat" : "photos")) ?? answer }
+        if missingCard(answer) { answer["kind"] = "answer" }
         if groundNow, str(answer["kind"]) == "estimate", let e = answer["estimate"] as? JSON { answer["estimate"] = await ground(e) }
         // a recipe's ingredients checked like the recipe screen's
         if str(answer["kind"]) == "recipe", var rc = answer["recipe"] as? JSON {
@@ -163,6 +168,20 @@ enum Assistant {
             "- \"\(x.said)\": \(x.food.name): \(Fmt.one(x.food.kcal)) kcal, protein \(Fmt.one(x.food.p)) g, carbs \(Fmt.one(x.food.c)) g, fat \(Fmt.one(x.food.f)) g"
         }.joined(separator: "\n")
         return "Food data for what they named, per 100 g, from the official food tables for \(Plan.country):\n\(lines)\nWhen one of these is the food they mean, use its numbers exactly (in answers too) and work amounts out from them; never a remembered value. Ignore any that's a different food from what they mean (raw versus cooked, a different dish).\n"
+    }
+
+    /// The answer's kind names a card (estimate, plan, edit, recipe, lighter) that isn't there, or has nothing in it.
+    static func missingCard(_ answer: JSON) -> Bool {
+        let kind = str(answer["kind"])
+        guard ["estimate", "plan", "edit", "recipe", "lighter"].contains(kind) else { return false }
+        guard let card = answer[kind] as? JSON else { return true }
+        switch kind {
+        case "estimate": return (num(card["kcal_total"]) ?? 0) <= 0 && CheatDays.list(card["parts"]).isEmpty
+        case "plan": return CheatDays.list(card["suggestions"]).isEmpty
+        case "edit": return CheatDays.list(card["actions"]).isEmpty
+        case "recipe": return CheatDays.list(card["ingredients"]).isEmpty
+        default: return str(card["name"]).isEmpty
+        }
     }
 
     /// "How much watermelon for my last 88 calories?": the calories they named, when they didn't name an amount too.

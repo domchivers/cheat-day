@@ -48,7 +48,7 @@ const swift = fs.readFileSync(path.join(__dirname, '../../native/CheatDays/Model
 const amounts = fs.readFileSync(path.join(__dirname, '../../native/CheatDays/Model/Sanity.swift'), 'utf8').match(/static let amounts = "([^"]*)"/)[1];
 const rules = swift.match(/static let rules = """\n([\s\S]*?)\n\s*"""/)[1].split('\n').map(l => l.trim()).join('\n').replace('\\(Sanity.amounts)', amounts);
 
-const context = 'They live in Australia: use the usual portion sizes there. Today: budget 1650 kcal, eaten 980 kcal ("Aldi BBQ whole chicken" 570 kcal, "Roasted Cauliflower" 113 kcal, "Weet-Bix" 297 kcal), 670 kcal left. Protein so far 74 g of 150 g, carbs 60 g, fat 40 g. Workouts today: none. Weight 82.4 kg.\nRecent days: none yet.\n';
+const context = 'They live in Australia: use the usual portion sizes there. Today: budget 1650 kcal, eaten 1562 kcal ("Aldi BBQ whole chicken" 570 kcal, "Roasted Cauliflower" 113 kcal, "Weet-Bix" 297 kcal, "Pasta bake" 582 kcal), 88 kcal left. Protein so far 74 g of 150 g, carbs 60 g, fat 40 g. Workouts today: none. Weight 82.4 kg.\nRecent days: none yet.\n';
 const stop = new Set("a an the and or with on in of for to my me i m s t had have has having ate eat eating some much many how what can is was it its this that these those last left calories calorie cals kcal grams gram g ml kg tsp tbsp cup cups slice slices piece pieces bowl plate good when cutting bulking remove add instead about just only plus also then dinner lunch breakfast snack today yesterday".split(' '));
 // the app's AusFoods.named + Assistant.foodData
 function foodData(text) {
@@ -63,11 +63,13 @@ function foodData(text) {
     "\nWhen one of these is the food they mean, use its numbers exactly (in answers too) and work amounts out from them; never a remembered value. Ignore any that's a different food from what they mean (raw versus cooked, a different dish).\n";
 }
 const cases = [
+  { say: 'How much watermelon can I have with the left over calories', earlier: '' },
+  { say: 'Add it to today', earlier: 'They: How much watermelon can I have with the left over calories\nYou: You can have about 280 g of watermelon (around 87 kcal). That uses up your 88 kcal left.' },
   { say: 'How much water melon to have for 88 calories', earlier: '' },
-  { say: 'I had 2 eggs on toast with butter and a flat white', earlier: '' },
+  // { say: 'I had 2 eggs on toast with butter and a flat white', earlier: '' },
   // { say: '1/2tsp sesame oil', earlier: 'They: roasted cauliflower 100g with some sesame oil\nYou: Here is your roasted cauliflower. [you worked out: Roasted Cauliflower, 113 kcal]' },
   // { say: 'Sesame oil - 1/2 tsp', earlier: '' },
-  { say: '110g cabbage, 170g cucumber', earlier: '' },
+  // { say: '110g cabbage, 170g cucumber', earlier: '' },
   // { say: 'is cucumber good when cutting?', earlier: '' },
 ];
 const PRICE = JSON.parse(source.match(/\[HAIKU\]: (\[[^\]]*\])/)[1]);
@@ -89,6 +91,7 @@ const PRICE = JSON.parse(source.match(/\[HAIKU\]: (\[[^\]]*\])/)[1]);
       console.log(`  ${name} ${g} g: ${k} kcal, P ${p} C ${cb} F ${f}\n${db}`);
     };
     if (a.estimate) a.estimate.parts.forEach(x => show(x.name, x.grams, x.kcal, x.protein_g, x.carbs_g, x.fat_g));
+    if (!a[a.kind] && a.kind !== "answer") console.log("  MISSING " + a.kind + " object");
     if (a.edit) a.edit.actions.forEach(x => show(x.name || x.target, x.grams, x.kcal, x.protein_g, x.carbs_g, x.fat_g));
   }
   fs.writeFileSync(ledgerFile, JSON.stringify(ledger, null, 1));
