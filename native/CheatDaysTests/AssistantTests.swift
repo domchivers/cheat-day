@@ -59,6 +59,18 @@ final class AssistantTests: XCTestCase {
         XCTAssertTrue(str(out["reply"]).contains("\(Int(num(fixed["portion_g"]) ?? 0)) grams"))
     }
 
+    /// Claude is handed the real numbers for what's named, not left to remember them; filler words find nothing.
+    func testTheFoodsNamedAreLookedUpFirst() {
+        let found = AusFoods.named(in: "I had 2 eggs on toast with butter and a flat white")
+        XCTAssertEqual(found.map { $0.said }, ["eggs", "toast", "butter", "flat white"])
+        XCTAssertEqual(found[1].food.name, "Bread, from white flour, toasted")
+        XCTAssertEqual(AusFoods.named(in: "How much water melon to have for 88 calories").map { $0.food.name }, ["Melon, watermelon, peeled, raw"])
+        XCTAssertEqual(AusFoods.named(in: "1/2tsp sesame oil").map { $0.food.name }, ["Oil, sesame"], "sesame oil, not oil and sesame seeds")
+        XCTAssertTrue(AusFoods.named(in: "what can I have for dinner with 500 left").isEmpty)
+        XCTAssertTrue(Assistant.foodData("How much water melon for 88 calories").contains("31 kcal"))
+        XCTAssertEqual(Assistant.foodData("what's left for today?"), "")
+    }
+
     func testAnEstimateNeverSaysItsLogged() {
         let out = Assistant.saneEdit(["kind": "estimate", "reply": "Half a teaspoon is about 22 kcal. Logging it now."])
         XCTAssertTrue(str(out["reply"]).contains("tap Add"))

@@ -49,11 +49,26 @@ const amounts = fs.readFileSync(path.join(__dirname, '../../native/CheatDays/Mod
 const rules = swift.match(/static let rules = """\n([\s\S]*?)\n\s*"""/)[1].split('\n').map(l => l.trim()).join('\n').replace('\\(Sanity.amounts)', amounts);
 
 const context = 'They live in Australia: use the usual portion sizes there. Today: budget 1650 kcal, eaten 980 kcal ("Aldi BBQ whole chicken" 570 kcal, "Roasted Cauliflower" 113 kcal, "Weet-Bix" 297 kcal), 670 kcal left. Protein so far 74 g of 150 g, carbs 60 g, fat 40 g. Workouts today: none. Weight 82.4 kg.\nRecent days: none yet.\n';
+const stop = new Set("a an the and or with on in of for to my me i m s t had have has having ate eat eating some much many how what can is was it its this that these those last left calories calorie cals kcal grams gram g ml kg tsp tbsp cup cups slice slices piece pieces bowl plate good when cutting bulking remove add instead about just only plus also then dinner lunch breakfast snack today yesterday".split(' '));
+// the app's AusFoods.named + Assistant.foodData
+function foodData(text) {
+  const chunks = text.toLowerCase().split(/[^a-z]+/).reduce((a, x) => { if (!x || stop.has(x)) a.push([]); else a[a.length - 1].push(x); return a; }, [[]]).filter(c => c.length), out = [];
+  for (const c of chunks) { const taken = new Set(); for (let n = Math.min(3, c.length); n >= 1; n--) for (let i = 0; i + n <= c.length; i++) {
+    if ([...Array(n).keys()].some(k => taken.has(i + k))) continue;
+    const said = c.slice(i, i + n).join(' '), f = resolve(said); if (!f) continue;
+    for (let k = 0; k < n; k++) taken.add(i + k); if (!out.some(o => o.f.name === f.name)) out.push({ said, f }); } }
+  if (!out.length) return '';
+  const one = x => String(Math.round(x * 10) / 10);
+  return 'Food data for what they named, per 100 g, from the official Australian food tables:\n' + out.map(o => `- "${o.said}": ${o.f.name}: ${one(o.f.kcal)} kcal, protein ${one(o.f.p)} g, carbs ${one(o.f.c)} g, fat ${one(o.f.f)} g`).join('\n') +
+    "\nWhen one of these is the food they mean, use its numbers exactly (in answers too) and work amounts out from them; never a remembered value. Ignore any that's a different food from what they mean (raw versus cooked, a different dish).\n";
+}
 const cases = [
-  { say: '1/2tsp sesame oil', earlier: 'They: roasted cauliflower 100g with some sesame oil\nYou: Here is your roasted cauliflower. [you worked out: Roasted Cauliflower, 113 kcal]' },
-  { say: 'Sesame oil - 1/2 tsp', earlier: '' },
+  { say: 'How much water melon to have for 88 calories', earlier: '' },
+  { say: 'I had 2 eggs on toast with butter and a flat white', earlier: '' },
+  // { say: '1/2tsp sesame oil', earlier: 'They: roasted cauliflower 100g with some sesame oil\nYou: Here is your roasted cauliflower. [you worked out: Roasted Cauliflower, 113 kcal]' },
+  // { say: 'Sesame oil - 1/2 tsp', earlier: '' },
   { say: '110g cabbage, 170g cucumber', earlier: '' },
-  { say: 'is cucumber good when cutting?', earlier: '' },
+  // { say: 'is cucumber good when cutting?', earlier: '' },
 ];
 const PRICE = JSON.parse(source.match(/\[HAIKU\]: (\[[^\]]*\])/)[1]);
 
@@ -61,7 +76,7 @@ const PRICE = JSON.parse(source.match(/\[HAIKU\]: (\[[^\]]*\])/)[1]);
   const client = new Anthropic({ baseURL: 'https://api.anthropic.com' });
   const ledgerFile = path.join(__dirname, 'results', 'ledger.json'), ledger = JSON.parse(fs.readFileSync(ledgerFile, 'utf8'));
   for (const c of cases) {
-    const text = `You are the assistant inside a cheat-day food diary app called Cheat Days. ${context}${c.earlier ? `Recent conversation:\n${c.earlier}\n` : ''}They now say: "${c.say}"\n\n${rules}`;
+    const text = `You are the assistant inside a cheat-day food diary app called Cheat Days. ${context}${c.earlier ? `Recent conversation:\n${c.earlier}\n` : ''}They now say: "${c.say}"\n${foodData(c.say)}\n${rules}`;
     const t0 = Date.now();
     const r = await client.messages.create({ model: 'claude-haiku-5-5', max_tokens: 4000, messages: [{ role: 'user', content: [{ type: 'text', text }] }],
       output_config: { effort: 'low', format: { type: 'json_schema', schema: claudeSchema(slim(schema)) } } });

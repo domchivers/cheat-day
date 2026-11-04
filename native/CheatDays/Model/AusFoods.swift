@@ -54,4 +54,28 @@ enum AusFoods {
         }
         return best?.food
     }
+
+    /// Words that split a message into the foods it names ("2 eggs on toast with butter": eggs | toast | butter).
+    private static let breaks: Set<String> = Set("a an the and or with on in of for to my me i m s t had have has having ate eat eating some much many how what can is was it its this that these those last left calories calorie cals kcal grams gram g ml kg tsp tbsp cup cups slice slices piece pieces bowl plate good when cutting bulking remove add instead about just only plus also then dinner lunch breakfast snack today yesterday".split(separator: " ").map(String.init))
+
+    /// The foods a typed message names, each with its data (longest names first, so "sesame oil" beats "oil").
+    static func named(in text: String) -> [(said: String, food: Food)] {
+        var chunks: [[String]] = [[]]
+        for w in text.lowercased().split(whereSeparator: { !($0.isASCII && $0.isLetter) }).map(String.init) {
+            if breaks.contains(w) { chunks.append([]) } else { chunks[chunks.count - 1].append(w) }
+        }
+        var out: [(said: String, food: Food)] = []
+        for c in chunks where !c.isEmpty {
+            var taken = Set<Int>()
+            for n in stride(from: min(3, c.count), through: 1, by: -1) {
+                for i in 0...(c.count - n) where !(i..<i + n).contains(where: taken.contains) {
+                    let said = c[i..<i + n].joined(separator: " ")
+                    guard let f = find(said) else { continue }
+                    taken.formUnion(i..<i + n)
+                    if !out.contains(where: { $0.food.name == f.name }) { out.append((said, f)) }
+                }
+            }
+        }
+        return out
+    }
 }

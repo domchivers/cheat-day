@@ -139,7 +139,7 @@ enum Assistant {
         // photos come along from the last message that had some, when this one has none
         let pics = last.images.isEmpty ? (turns.dropLast().last { $0.me && !$0.images.isEmpty }?.images ?? []) : last.images
         var parts: [JSON] = pics.prefix(4).compactMap { Gemini.imagePart($0) }
-        parts.append(["text": "You are the assistant inside a cheat-day food diary app called Cheat Days. \(context(store))\(earlier.isEmpty ? "" : "Recent conversation:\n\(earlier)\n")They now say: \"\(last.text)\"\(last.images.isEmpty && !pics.isEmpty ? " (about the photos from earlier)" : "")\n\n\(rules)"])
+        parts.append(["text": "You are the assistant inside a cheat-day food diary app called Cheat Days. \(context(store))\(earlier.isEmpty ? "" : "Recent conversation:\n\(earlier)\n")They now say: \"\(last.text)\"\(last.images.isEmpty && !pics.isEmpty ? " (about the photos from earlier)" : "")\n\(foodData(last.text))\n\(rules)"])
         // Claude for everything (Apple's on-device model made up foods: "1/2 tsp sesame oil" came back as roasted cauliflower).
         // Simple logs and questions go to the quick model; photos, recipes and plans to the careful one.
         let simple = isSimple(last.text, hasPhotos: !pics.isEmpty)
@@ -147,6 +147,17 @@ enum Assistant {
         if groundNow, str(answer["kind"]) == "estimate", let e = answer["estimate"] as? JSON { answer["estimate"] = await ground(e) }
         if groundNow, let target = calorieTarget(last.text) { answer = fitToCalories(answer, target: target) }
         return saneEdit(await groundEdit(answer))
+    }
+
+    /// The real numbers for the foods their message names, looked up before Claude answers so it works from them
+    /// instead of remembering (it said 30 kcal per 100 g of watermelon; the tables say 31).
+    static func foodData(_ text: String) -> String {
+        let found = AusFoods.named(in: text)
+        guard !found.isEmpty else { return "" }
+        let lines = found.map { x in
+            "- \"\(x.said)\": \(x.food.name): \(Fmt.one(x.food.kcal)) kcal, protein \(Fmt.one(x.food.p)) g, carbs \(Fmt.one(x.food.c)) g, fat \(Fmt.one(x.food.f)) g"
+        }.joined(separator: "\n")
+        return "Food data for what they named, per 100 g, from the official Australian food tables:\n\(lines)\nWhen one of these is the food they mean, use its numbers exactly (in answers too) and work amounts out from them; never a remembered value. Ignore any that's a different food from what they mean (raw versus cooked, a different dish).\n"
     }
 
     /// "How much watermelon for my last 88 calories?": the calories they named, when they didn't name an amount too.
