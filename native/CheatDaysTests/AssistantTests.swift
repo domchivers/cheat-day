@@ -71,6 +71,23 @@ final class AssistantTests: XCTestCase {
         XCTAssertEqual(Assistant.foodData("what's left for today?"), "")
     }
 
+    /// Each country has its own table and everyday names: "crisps" and "courgette" in the UK, "fries" and "zucchini" in the US.
+    func testEachCountryHasItsOwnFoodTable() {
+        XCTAssertEqual(FoodTable.uk.find("watermelon")?.name, "Melon, watermelon, flesh only")
+        XCTAssertEqual(FoodTable.uk.find("watermelon")?.kcal, 31)
+        XCTAssertEqual(FoodTable.uk.find("courgette")?.name, "Courgette, raw")
+        XCTAssertEqual(FoodTable.uk.find("crisps")?.name, "Potato crisps, fried in sunflower oil")
+        XCTAssertEqual(FoodTable.uk.find("banana")?.name, "Bananas, flesh only", "not banana bread")
+        XCTAssertEqual(FoodTable.uk.find("butter")?.name, "Butter, salted", "not butter beans")
+        XCTAssertEqual(FoodTable.us.find("watermelon")?.name, "Watermelon, raw")
+        XCTAssertEqual(FoodTable.us.find("zucchini")?.name, "Squash, summer, zucchini, includes skin, raw")
+        XCTAssertEqual(FoodTable.us.find("fries")?.name, "Fast foods, potato, french fried in vegetable oil")
+        XCTAssertEqual(FoodTable.us.find("milk")?.name, "Milk, whole, 3.25% milkfat, with added vitamin D")
+        XCTAssertEqual(FoodTable.uk.named(in: "2 eggs on toast and a cup of tea").map { $0.food.name },
+                       ["Eggs, chicken, whole, raw", "Bread, white, toasted", "Tea, infusion, average, with semi-skimmed milk"])
+        XCTAssertEqual(FoodTable.uk.src, "cofid"); XCTAssertEqual(FoodTable.us.src, "usda"); XCTAssertEqual(FoodTable.au.src, "afcd")
+    }
+
     func testAnEstimateNeverSaysItsLogged() {
         let out = Assistant.saneEdit(["kind": "estimate", "reply": "Half a teaspoon is about 22 kcal. Logging it now."])
         XCTAssertTrue(str(out["reply"]).contains("tap Add"))

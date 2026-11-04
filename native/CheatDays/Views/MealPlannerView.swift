@@ -355,7 +355,7 @@ struct MealPlannerView: View {
         Real dish names, numbers from standard reference values.
         """
         do {
-            let a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: true, tries: 3)
+            let a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: true, tries: 3, job: "plans")
             let got = list(a["ideas"]).map { i -> JSON in
                 var c = i; c["meal"] = meal; c["aim"] = aim
                 return Self.withLabels(c, scanned)

@@ -409,9 +409,10 @@ struct CheatDayView: View {
         \(earlier.isEmpty ? "" : "What they've said so far:\n\(earlier)")
         They now say: "\(said)"
         Rules. Plan ONLY what they asked for. Never fill the day or use up the calories unless they ask: unused calories are theirs to enjoy, and the app shows them. If they ask to leave an amount free, make the slots leave about that much. If they ask to reach their protein, reach it with what they asked for plus as little as possible, and say what you added. Only add a workout if they ask (workout true, kcal 0). If they ask for ideas, add them as slots. Name real dishes and orders. Numbers come from standard reference values, never raised to fit. Never suggest skipping meals or making up for it tomorrow.
+        \(Assistant.foodData(said))
         """
         do {
-            var a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: false, tries: 4)
+            var a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: false, tries: 4, job: "chat")
             a["slots"] = CheatPlan.tidied(CheatPlan.keepingRecipes(list(a["slots"]), from: list(plan?["slots"])), saved: saved)
             a["at"] = ISO.now()
             a["chat"] = Array(list(plan?["chat"]).suffix(11)) + [["me": said] as JSON]

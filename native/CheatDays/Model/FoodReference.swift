@@ -55,10 +55,10 @@ enum FoodReference {
         return (x, true)
     }
 
-    /// Any other ingredient against the Australian data. Far from the AI's number (under 40% or over 2.5 times) probably
+    /// Any other ingredient against their country's food table. Far from the AI's number (under 40% or over 2.5 times) probably
     /// means a wrong match rather than a wrong number, so that's left alone.
     private static func correctedFromData(_ g: JSON, grams: Double) -> (item: JSON, changed: Bool) {
-        guard let f = AusFoods.find(str(g["name"])), f.kcal > 0 else { return (g, false) }
+        guard let f = FoodTable.current.find(str(g["name"])), f.kcal > 0 else { return (g, false) }
         let said = num(g["kcal"]) ?? 0, kcal = f.kcal * grams / 100
         guard said >= kcal * 0.4, said <= kcal * 2.5, abs(said - kcal) > max(kcal * tolerance, 15) else { return (g, false) }
         var x = g

@@ -145,6 +145,11 @@ enum Assistant {
         let simple = isSimple(last.text, hasPhotos: !pics.isEmpty)
         var answer = try await Gemini.ask(schema: schema, parts: parts, quick: simple, job: simple ? "logs" : pics.isEmpty ? "chat" : "photos")
         if groundNow, str(answer["kind"]) == "estimate", let e = answer["estimate"] as? JSON { answer["estimate"] = await ground(e) }
+        // a recipe's ingredients checked like the recipe screen's
+        if str(answer["kind"]) == "recipe", var rc = answer["recipe"] as? JSON {
+            rc["ingredients"] = FoodReference.checked(CheatDays.list(rc["ingredients"])).items
+            answer["recipe"] = rc
+        }
         if groundNow, let target = calorieTarget(last.text) { answer = fitToCalories(answer, target: target) }
         return saneEdit(await groundEdit(answer))
     }
@@ -152,12 +157,12 @@ enum Assistant {
     /// The real numbers for the foods their message names, looked up before Claude answers so it works from them
     /// instead of remembering (it said 30 kcal per 100 g of watermelon; the tables say 31).
     static func foodData(_ text: String) -> String {
-        let found = AusFoods.named(in: text)
+        let found = FoodTable.current.named(in: text)
         guard !found.isEmpty else { return "" }
         let lines = found.map { x in
             "- \"\(x.said)\": \(x.food.name): \(Fmt.one(x.food.kcal)) kcal, protein \(Fmt.one(x.food.p)) g, carbs \(Fmt.one(x.food.c)) g, fat \(Fmt.one(x.food.f)) g"
         }.joined(separator: "\n")
-        return "Food data for what they named, per 100 g, from the official Australian food tables:\n\(lines)\nWhen one of these is the food they mean, use its numbers exactly (in answers too) and work amounts out from them; never a remembered value. Ignore any that's a different food from what they mean (raw versus cooked, a different dish).\n"
+        return "Food data for what they named, per 100 g, from the official food tables for \(Plan.country):\n\(lines)\nWhen one of these is the food they mean, use its numbers exactly (in answers too) and work amounts out from them; never a remembered value. Ignore any that's a different food from what they mean (raw versus cooked, a different dish).\n"
     }
 
     /// "How much watermelon for my last 88 calories?": the calories they named, when they didn't name an amount too.
@@ -249,9 +254,9 @@ enum Assistant {
             let x = parts[i], g = num(x["grams"]) ?? 0
             if let e = FoodReference.match(str(x["name"])) {   // a species or cut we've checked: before any list or database
                 parts[i] = checked(x, kcal100: e.kcal, p100: e.p, c100: e.c, f100: e.f, source: "reference")
-            } else if let f = AusFoods.find(str(x["name"])), plausible(f.kcal, aiKcal: num(x["kcal"]) ?? 0, grams: g, name: str(x["name"])) {
-                // the official Australian numbers (AFCD, AUSNUT) before the app's list or the US database
-                parts[i] = checked(x, kcal100: f.kcal, p100: f.p, c100: f.c, f100: f.f, source: "afcd")
+            } else if let f = FoodTable.current.find(str(x["name"])), plausible(f.kcal, aiKcal: num(x["kcal"]) ?? 0, grams: g, name: str(x["name"])) {
+                // the official numbers for their country (AFCD, CoFID or USDA SR Legacy) before the app's list or the US database
+                parts[i] = checked(x, kcal100: f.kcal, p100: f.p, c100: f.c, f100: f.f, source: FoodTable.current.src)
             } else if let row = FoodsDB.search(str(x["name"]), limit: 1).first, plausible(num(row["kcalPer100"]), aiKcal: num(x["kcal"]) ?? 0, grams: g, name: str(x["name"])) {
                 parts[i] = checked(x, kcal100: num(row["kcalPer100"]) ?? 0, p100: num(row["p100"]), c100: num(row["c100"]), f100: num(row["f100"]), source: "list")
             } else { ask.append(i) }

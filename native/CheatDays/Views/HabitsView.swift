@@ -419,7 +419,7 @@ struct HabitsView: View {
         \(withTips ? "Also give one tip per goal, the verdict on their whole day, and 3 meal ideas for each of Breakfast, Lunch, Dinner and Snacks (\(ideaBrief)). Ideas are real food they'd want, matched to how much they like cooking: authentic, familiar dishes, home-cooked or easy orders, close to what they already like, sized for one portion (breakfast about \(Int(store.budgetToday * 0.25)), lunch \(Int(store.budgetToday * 0.3)), dinner \(Int(store.budgetToday * 0.35)), snacks under \(Int(store.budgetToday * 0.12)) kcal) and honest kcal and macros." : "Tips and ideas can be empty; verdict good.")
         """
         do {
-            let a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: true)
+            let a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: true, job: "plans")
             var got: [String: JSON] = [:]
             for x in list(a["items"]) { got[str(x["id"])] = x }
             withAnimation {

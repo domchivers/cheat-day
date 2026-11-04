@@ -56,7 +56,7 @@ enum LabelReader {
         guard let imagePart = Gemini.imagePart(image) else { throw Failure(message: "Couldn't read that photo.") }
         var text = prompt
         if let c = ShopCountry.current { text += "\nThe person shops in \(c.name). If you have to estimate, use \(c.name)'s version of this product: the same brand's recipe and sizes can differ between countries." }
-        let p = try await Gemini.ask(schema: schema, parts: [imagePart, ["text": text]], quick: true)
+        let p = try await Gemini.ask(schema: schema, parts: [imagePart, ["text": text]], quick: true, job: "labels")
 
         let anyKcal = pos(p["kcal_per_100"]) ?? pos(p["kcal_per_serving"]) ?? pos(p["kcal_per_piece"])
         if str(p["photo_shows"]) == "neither" || anyKcal == nil {

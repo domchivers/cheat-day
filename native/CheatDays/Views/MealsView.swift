@@ -654,9 +654,10 @@ private struct IngredientAsk: View {
         let prompt = """
         Ingredients for a recipe, in \(Plan.country): "\(text)".
         List each ingredient with its weight in grams as used (raw unless it says cooked), and its calories, protein, carbs and fat for that weight, using standard reference values and the usual sizes there (a tablespoon of oil is about 14 g). If they give numbers themselves, use exactly those.
+        \(Assistant.foodData(text))
         """
         do {
-            let a = try await Gemini.ask(schema: Self.schema, parts: [["text": prompt]], quick: true)
+            let a = try await Gemini.ask(schema: Self.schema, parts: [["text": prompt]], quick: true, job: "recipes")
             let raw = CheatDays.list(a["items"]).filter { (num($0["grams"]) ?? 0) > 0 }
             guard !raw.isEmpty else { problem = "Couldn't work that out. Try saying each ingredient with an amount."; return }
             let checked = CheatDays.list(await Assistant.ground(["parts": raw])["parts"])

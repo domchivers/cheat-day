@@ -23,11 +23,14 @@ enum Tweak {
         let prompt = """
         A food logged in a calorie diary (in \(Plan.country)): \(now).
         The person says: "\(change)".
-        Give the food as it should be logged after that change, using standard reference values: if they say large, small, double, half, no sauce, extra cheese and so on, scale or adjust the calories and macros sensibly. If they give numbers, use exactly those. Keep the name short.
+        Give the food as it should be logged after that change: if they say large, small, double, half, no sauce, extra cheese and so on, scale or adjust the calories and macros sensibly. If they give numbers, use exactly those. Keep the name short.
+        \(Assistant.foodData(str(item["name"]) + ", " + change))
         """
+        // a change that names a food ("add cheese") is worked out from the food data, so it goes to Claude, not the phone's model
+        let namesFood = !FoodTable.current.named(in: change).isEmpty
         let a: JSON
-        if let local = await OnDevice.tweak(now, change: change) { a = local }
-        else { a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: true) }
+        if !namesFood, let local = await OnDevice.tweak(now, change: change) { a = local }
+        else { a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: true, job: "logs") }
         guard let k = pos(a["kcal"]) else { throw Gemini.Failure(message: "Couldn't work that change out. Try saying it another way.") }
         let p = num(a["protein_g"]) ?? 0, c = num(a["carbs_g"]) ?? 0, f = num(a["fat_g"]) ?? 0
         var b: JSON = ["name": str(a["name"]).isEmpty ? str(item["name"]) : str(a["name"]), "source": str(item["source"]).isEmpty ? "manual" : str(item["source"]),

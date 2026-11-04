@@ -1,4 +1,4 @@
-New in this build: the assistant looks up the real numbers for the foods you name before it answers, instead of going from memory.
+New in this build: calories are checked against the official food tables for your country (Australia, the UK or the US), and every AI feature now uses Claude.
 
 Thanks for testing! Please just use it like a normal day:
 

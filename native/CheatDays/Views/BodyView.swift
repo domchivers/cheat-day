@@ -291,7 +291,7 @@ enum BodyReader {
         props["date"] = ["type": "string", "nullable": true, "description": "The reading's date as YYYY-MM-DD, if shown"] as JSON
         props["time"] = ["type": "string", "nullable": true, "description": "The reading's time as HH:MM in 24-hour time, if shown"] as JSON
         let schema: JSON = ["type": "object", "properties": props, "required": Array(props.keys)]
-        let a = try await Gemini.ask(schema: schema, parts: [part, ["text": "This is a screenshot from a smart scale's app. Read the body measurements shown, exactly as printed, decimals included. Leave anything not shown as null."]], quick: true)
+        let a = try await Gemini.ask(schema: schema, parts: [part, ["text": "This is a screenshot from a smart scale's app. Read the body measurements shown, exactly as printed, decimals included. Leave anything not shown as null."]], quick: true, job: "labels")
         var out = JSON()
         for f in fields { if let v = pos(a[f.0]) { out[f.0] = Fmt.kg2(v) } }
         if let d = a["date"] as? String, DayKey.string(DayKey.date(d)) == d, DayKey.date(d) <= Date() { out["day"] = d }   // only a real date, never a guess

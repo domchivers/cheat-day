@@ -11,6 +11,11 @@ fs.writeFileSync('native/CheatDays/Resources/presets.json', JSON.stringify(run('
 const foods = JSON.parse(fs.readFileSync('tools/ai-test/data/food-db.json', 'utf8')).map(({ name, source, kcal, p, c, f }) => ({ name, source, kcal, p, c, f }));
 fs.writeFileSync('native/CheatDays/Resources/aus-foods.json', JSON.stringify(foods));
 fs.copyFileSync('tools/ai-test/aliases.json', 'native/CheatDays/Resources/aus-aliases.json');
+for (const c of ['uk', 'us']) {   // CoFID 2021 and USDA SR Legacy, built by tools/ai-test/build-country-db.js
+  const rows = JSON.parse(fs.readFileSync('tools/ai-test/data/' + c + '-foods.json', 'utf8')).map(({ name, source, kcal, p, c, f }) => ({ name, source, kcal, p, c, f }));
+  fs.writeFileSync('native/CheatDays/Resources/' + c + '-foods.json', JSON.stringify(rows));
+  fs.copyFileSync('tools/ai-test/' + c + '-aliases.json', 'native/CheatDays/Resources/' + c + '-aliases.json');
+}
 "
 python3 - <<'EOF'
 import re

@@ -316,9 +316,9 @@ struct OnboardingView: View {
             "protein": ["type": "number", "description": "Total protein in grams"] as JSON,
             "note": ["type": "string", "description": "One friendly sentence under 18 words on the easiest win, e.g. where protein could come from"] as JSON
         ] as JSON, "required": ["kcal", "protein", "note"]]
-        let prompt = "Estimate the calories and protein of this normal day of eating for an adult in \(Plan.country). Use typical portions and products from there.\n\(day)"
+        let prompt = "Estimate the calories and protein of this normal day of eating for an adult in \(Plan.country). Use typical portions and products from there.\n\(day)\n\(Assistant.foodData(day))"
         do {
-            let a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: true)
+            let a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: true, job: "quick")
             withAnimation { usualKcal = pos(a["kcal"]); usualProtein = pos(a["protein"]); usualNote = str(a["note"]) }
         } catch { problem = error.localizedDescription }
     }
@@ -513,7 +513,7 @@ struct OnboardingView: View {
         Make them feel like real food they'd crave, not diet food: home-cooked or takeaway orders, 350 to 700 kcal each, high in protein, using familiar dishes and products from there.
         """
         do {
-            let a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: true)
+            let a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: true, job: "plans")
             let got = list(a["meals"])
             withAnimation { ideas = got; ideasState = got.isEmpty ? 3 : 2 }
         } catch { ideasState = 3 }
