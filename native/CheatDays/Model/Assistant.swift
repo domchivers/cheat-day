@@ -145,7 +145,37 @@ enum Assistant {
         let simple = isSimple(last.text, hasPhotos: !pics.isEmpty)
         var answer = try await Gemini.ask(schema: schema, parts: parts, quick: simple, job: simple ? "logs" : pics.isEmpty ? "chat" : "photos")
         if groundNow, str(answer["kind"]) == "estimate", let e = answer["estimate"] as? JSON { answer["estimate"] = await ground(e) }
+        if groundNow, let target = calorieTarget(last.text) { answer = fitToCalories(answer, target: target) }
         return saneEdit(await groundEdit(answer))
+    }
+
+    /// "How much watermelon for my last 88 calories?": the calories they named, when they didn't name an amount too.
+    static func calorieTarget(_ text: String) -> Double? {
+        let t = text.lowercased()
+        guard t.range(of: #"\d\s*(g|grams?|ml|kg)\b"#, options: .regularExpression) == nil,
+              let r = t.range(of: #"(\d+(\.\d+)?)\s*(kcal|cals?|calories)\b"#, options: .regularExpression) else { return nil }
+        return Double(t[r].prefix { $0.isNumber || $0 == "." })
+    }
+
+    /// A one-food estimate whose checked numbers moved off the calories they asked for (265 g of watermelon is 82 kcal,
+    /// not 88): the grams change instead, so the answer is the amount that really gives those calories.
+    static func fitToCalories(_ answer: JSON, target: Double) -> JSON {
+        guard str(answer["kind"]) == "estimate", var e = answer["estimate"] as? JSON, target > 0 else { return answer }
+        var parts = CheatDays.list(e["parts"])
+        guard parts.count == 1, str(parts[0]["src"]) != "ai", let g = pos(parts[0]["grams"]), let k = pos(parts[0]["kcal"]),
+              abs(k - target) >= 2 else { return answer }
+        let f = target / k, newG = (g * f).rounded()
+        parts[0]["grams"] = newG; parts[0]["kcal"] = target
+        for m in ["protein_g", "carbs_g", "fat_g"] { parts[0][m] = (num(parts[0][m]) ?? 0) * f }
+        e["parts"] = parts; e["portion_g"] = newG; e["kcal_total"] = target
+        for m in ["protein_g", "carbs_g", "fat_g"] { e[m] = parts[0][m] }
+        var out = answer
+        out["estimate"] = e
+        let old = String(Int(g.rounded())), reply = str(answer["reply"])
+        out["reply"] = reply.range(of: "\\b\(old)\\b", options: .regularExpression) != nil
+            ? reply.replacingOccurrences(of: "\\b\(old)\\b", with: String(Int(newG)), options: .regularExpression)
+            : "That's about \(Int(newG)) g for \(Int(target)) kcal."
+        return out
     }
 
     /// Foods added through an edit checked like an estimate's parts: each one with grams against the food data.

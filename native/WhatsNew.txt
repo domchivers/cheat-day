@@ -1,4 +1,4 @@
-New in this build: the assistant now checks foods against the official food data, and logs only what you just said (no more surprise cauliflower).
+New in this build: ask "how much watermelon for my last 88 calories?" and the assistant gives the amount that really fits, checked against the official food data.
 
 Thanks for testing! Please just use it like a normal day:
 

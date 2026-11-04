@@ -43,6 +43,22 @@ final class AssistantTests: XCTestCase {
         XCTAssertFalse(str(out["reply"]).lowercased().contains("adding"), "nothing's on the list until it's tapped")
     }
 
+    /// The owner's "How much watermelon for my last 88 calories?": Claude said 265 g, the food data makes that 82 kcal,
+    /// so the grams move to the amount that's really 88.
+    @MainActor
+    func testHowMuchForSomeCaloriesGivesTheRightAmount() async {
+        XCTAssertEqual(Assistant.calorieTarget("How much watermelon for my last 88 calories? In grams"), 88)
+        XCTAssertNil(Assistant.calorieTarget("200g chips, 500 kcal"), "an amount of their own stays theirs")
+        let e: JSON = ["name": "Watermelon", "portion_g": 265, "unit": "g", "kcal_total": 88, "protein_g": 1.6, "carbs_g": 21, "fat_g": 0.4, "notes": "",
+                       "parts": [["name": "Watermelon", "usda_name": "Watermelon, raw", "grams": 265, "kcal": 88, "protein_g": 1.6, "carbs_g": 21, "fat_g": 0.4] as JSON]]
+        let answer: JSON = ["kind": "estimate", "reply": "That will get you about 265 grams of watermelon.", "estimate": await Assistant.ground(e)]
+        let out = Assistant.fitToCalories(answer, target: 88), fixed = dict(out["estimate"])
+        XCTAssertEqual(num(fixed["kcal_total"]), 88)
+        XCTAssertEqual(num(fixed["portion_g"]) ?? 0, 284, accuracy: 2, "AFCD watermelon, 31 kcal per 100 g")
+        XCTAssertEqual(num(fixed["carbs_g"]) ?? 0, 20.2, accuracy: 0.5)
+        XCTAssertTrue(str(out["reply"]).contains("\(Int(num(fixed["portion_g"]) ?? 0)) grams"))
+    }
+
     func testAnEstimateNeverSaysItsLogged() {
         let out = Assistant.saneEdit(["kind": "estimate", "reply": "Half a teaspoon is about 22 kcal. Logging it now."])
         XCTAssertTrue(str(out["reply"]).contains("tap Add"))
