@@ -168,7 +168,8 @@ struct AssistantView: View {
             Text(str(e["name"])).font(.headline)
             Text("\(Fmt.int(num(e["portion_g"]) ?? 0)) \(str(e["unit"]).isEmpty ? "g" : str(e["unit"]))").font(.caption).foregroundStyle(.secondary)
             macros(k, p, c, f)
-            let parts = list(e["parts"]), checked = parts.filter { !["", "ai"].contains(str($0["src"])) }.count
+            let parts = list(e["parts"]), checked = parts.filter { !["", "ai", "label", "them"].contains(str($0["src"])) }.count
+            let own = parts.filter { ["label", "them"].contains(str($0["src"])) }.count
             ForEach(keyed(parts)) { entry in
                 let i = entry.index, pt = entry.item, ok = !["", "ai"].contains(str(pt["src"]))
                 HStack(spacing: 6) {
@@ -181,6 +182,7 @@ struct AssistantView: View {
             flagList(e["flags"] as? [String] ?? [])
             let pending = !parts.isEmpty && parts.allSatisfy { str($0["src"]).isEmpty }   // not checked yet
             if pending { Label("Checking against the food database…", systemImage: "hourglass").font(.caption2).foregroundStyle(.secondary) }
+            else if own > 0, own == parts.count { Text("Worked out from your label or your numbers.").font(.caption2).foregroundStyle(.secondary) }
             else { Text(checked > 0 ? "\(checked) of \(parts.count) parts checked against food databases\(num(e["aiKcal"]).map { " (the AI first said \(Int($0)) kcal)" } ?? ""). An estimate, not a label."
                              : "The AI's estimate: none of the parts could be checked against a food database.")
                 .font(.caption2).foregroundStyle(.secondary) }

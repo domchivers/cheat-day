@@ -123,6 +123,21 @@ final class AssistantTests: XCTestCase {
         XCTAssertEqual(AusFoods.find("Sweet potato, roasted")?.name.hasPrefix("Sweet potato"), true)
     }
 
+    /// The owner's Portuguese chicken: 150 g cooked from its label is 245 kcal; a generic roast chicken made it 285.
+    @MainActor
+    func testALabelsNumbersAreKept() async {
+        let part: JSON = ["name": "Portuguese chilli & lemon chicken, roasted, off the bone", "usda_name": "Chicken, roasted", "grams": 150,
+                          "kcal": 245, "protein_g": 35, "carbs_g": 4, "fat_g": 8.4, "numbers_from": "label"]
+        let e = await Assistant.ground(["name": "Portuguese chicken", "kcal_total": 245, "parts": [part]])
+        XCTAssertEqual(num(e["kcal_total"]), 245)
+        XCTAssertEqual(str(list(e["parts"])[0]["src"]), "label")
+        let edit: JSON = ["kind": "edit", "reply": "", "edit": ["actions": [
+            ["action": "update", "target": "Portuguese chicken", "name": "Portuguese chicken, roasted", "grams": 150, "kcal": 245,
+             "protein_g": 35, "carbs_g": 4, "fat_g": 8.4, "numbers_from": "label"] as JSON] as [Any]] as JSON]
+        XCTAssertEqual(num(list(dict(await Assistant.groundEdit(edit)["edit"])["actions"])[0]["kcal"]), 245)
+        XCTAssertTrue(Assistant.rules.contains("numbers_from"))
+    }
+
     func testAnEstimateNeverSaysItsLogged() {
         let out = Assistant.saneEdit(["kind": "estimate", "reply": "Half a teaspoon is about 22 kcal. Logging it now."])
         XCTAssertTrue(str(out["reply"]).contains("tap Add"))

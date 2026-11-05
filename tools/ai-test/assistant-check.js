@@ -9,6 +9,7 @@ const { resolve } = require('./jobs.js');
 
 const n = { type: 'number' }, s = { type: 'string' }, nn = { type: 'number', nullable: true }, ns = { type: 'string', nullable: true };
 const obj = (props, nullable = false, desc = '') => ({ type: 'object', properties: props, required: Object.keys(props), ...(nullable ? { nullable: true } : {}), ...(desc ? { description: desc } : {}) });
+const from = { type: 'string', enum: ['label', 'them', 'estimate'], description: 'label: worked out from a nutrition label in the photos or chat; them: numbers they gave; estimate: otherwise' };
 const arr = (items, desc = '') => ({ type: 'array', items, ...(desc ? { description: desc } : {}) });
 const schema = obj({
   reply: { type: 'string', description: "What you'd say back, warm and short (one to three sentences). Always filled." },
@@ -16,13 +17,13 @@ const schema = obj({
   estimate: obj({
     name: s, portion_g: n, unit: { type: 'string', enum: ['g', 'ml'] }, kcal_total: n, protein_g: n, carbs_g: n, fat_g: n, notes: s,
     parts: arr(obj({ name: s, usda_name: { type: 'string', description: "the closest USDA FoodData Central SR Legacy description, e.g. 'Chicken, broilers or fryers, breast, meat only, cooked, roasted'" },
-      grams: { type: 'number', description: 'as eaten (cooked weight)' }, kcal: n, protein_g: n, carbs_g: n, fat_g: n }), 'each component, including oil, butter and sauces as their own parts'),
+      grams: { type: 'number', description: 'as eaten (cooked weight)' }, kcal: n, protein_g: n, carbs_g: n, fat_g: n, numbers_from: from }), 'each component, including oil, butter and sauces as their own parts'),
   }, true, 'kind=estimate: a food or plate as one portion'),
   plan: obj({ suggestions: arr(obj({ name: s, amount: s, kcal: n, protein_g: n, carbs_g: n, fat_g: n, why: s })) }, true, 'kind=plan: 3 to 5 things for the rest of today'),
   edit: obj({ actions: arr(obj({
     action: { type: 'string', enum: ['add', 'remove', 'update', 'workout'] },
     target: ns, name: ns, grams: { type: 'number', nullable: true, description: 'for add and update: the amount in grams (ml for drinks)' },
-    kcal: nn, protein_g: nn, carbs_g: nn, fat_g: nn, minutes: nn, effort: ns, activity: ns,
+    kcal: nn, protein_g: nn, carbs_g: nn, fat_g: nn, numbers_from: from, minutes: nn, effort: ns, activity: ns,
   })) }, true, "kind=edit: changes to today's list or a workout to log"),
   recipe: obj({ name: s, portions: n, ingredients: arr(obj({ name: s, grams: n, kcal: n, protein_g: n, carbs_g: n, fat_g: n })), steps: arr(s), notes: s }, true, 'kind=recipe: a dish to cook and save as a meal'),
   lighter: obj({ name: s, tips: arr(s), kcal_per_serving: n, protein_g: n, carbs_g: n, fat_g: n }, true, 'kind=lighter: a lighter way to have something'),
@@ -64,8 +65,12 @@ function foodData(text) {
 }
 // the owner's potato chat: a photo earlier, so the app sends these to Sonnet with the photo
 const potato = { model: 'claude-sonnet-5-5', image: 'results/potatoes.png' };
+const chicken = { model: 'claude-sonnet-5-5', image: 'results/chicken-label.jpg' };
 const cases = [
-  { say: 'Add to lunch', earlier: "They: 174 g, no skin\nYou: 174 g of peeled potato comes to about 101 kcal. Tap to add it." },
+  // the owner's Portuguese chicken: its label in the photo, 122 kcal per 100 g raw
+  { ...chicken, say: "Let's do 150g cooked", earlier: "They: What's this? (1 photo)\nYou: That's Aldi's Ready, Set... Cook! whole split chicken, Portuguese style chilli & lemon. Tell me how much you're having once it's cooked." },
+  { ...chicken, say: 'I had 190g off the bone, roasted', earlier: "They: What's this? (1 photo)\nYou: That's Aldi's Ready, Set... Cook! whole split chicken, Portuguese style chilli & lemon." },
+  // { say: 'Add to lunch', earlier: "They: 174 g, no skin\nYou: 174 g of peeled potato comes to about 101 kcal. Tap to add it." },
   // { ...potato, say: '174 g, no skin', earlier: "They: What's this? (1 photo)\nYou: That's a 2 kg bag of brushed potatoes from Aldi's The Good Stuff range, Australian grown. Want me to log a portion? Tell me roughly how many grams you're having, or how you're cooking them." },
   // { ...potato, say: 'Will pan fry, light oil spray and wiped off', earlier: "They: What's this? (1 photo)\nYou: That's a 2 kg bag of brushed potatoes.\nThey: 174 g, no skin\nYou: Got it, 174 g of peeled potato, which I've counted as plain boiled with no oil or butter. Tap to add it." },
   // { ...potato, say: "Let's just say no oil and give me the calories of the potato", earlier: "They: 174 g, no skin\nYou: Got it, 174 g of peeled potato. Tap to add it.\nThey: Will pan fry, light oil spray and wiped off\nYou: I've counted your 174 g of peeled potato pan-fried with just a trace of oil, so it's roughly 171 kcal. Tap to add it." },
@@ -87,7 +92,7 @@ const PRICE = JSON.parse(source.match(/\[HAIKU\]: (\[[^\]]*\])/)[1]);
     const text = `You are the assistant inside a cheat-day food diary app called Cheat Days. ${context}${c.earlier ? `Recent conversation:\n${c.earlier}\n` : ''}They now say: "${c.say}"\n${foodData(c.say)}\n${rules}`;
     const t0 = Date.now();
     const model = c.model || 'claude-haiku-5-5', sonnet = model.includes('sonnet');
-    const img = c.image ? [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: fs.readFileSync(path.join(__dirname, c.image)).toString('base64') } }] : [];
+    const img = c.image ? [{ type: 'image', source: { type: 'base64', media_type: c.image.endsWith('.jpg') ? 'image/jpeg' : 'image/png', data: fs.readFileSync(path.join(__dirname, c.image)).toString('base64') } }] : [];
     const r = await client.messages.create({ model, max_tokens: 4000, messages: [{ role: 'user', content: [...img, { type: 'text', text }] }],
       output_config: { ...(sonnet ? {} : { effort: 'low' }), format: { type: 'json_schema', schema: claudeSchema(slim(schema)) } } });
     const price = sonnet ? [2, 10] : PRICE;
@@ -100,7 +105,7 @@ const PRICE = JSON.parse(source.match(/\[HAIKU\]: (\[[^\]]*\])/)[1]);
       const d = resolve(name), db = d && g ? `   data: ${d.name} → ${Math.round(d.kcal * g / 100)} kcal, P ${(d.p * g / 100).toFixed(1)} C ${(d.c * g / 100).toFixed(1)} F ${(d.f * g / 100).toFixed(1)}` : '   data: no match';
       console.log(`  ${name} ${g} g: ${k} kcal, P ${p} C ${cb} F ${f}\n${db}`);
     };
-    if (a.estimate) a.estimate.parts.forEach(x => show(x.name, x.grams, x.kcal, x.protein_g, x.carbs_g, x.fat_g));
+    if (a.estimate) a.estimate.parts.forEach(x => console.log('  numbers_from: ' + x.numbers_from) || show(x.name, x.grams, x.kcal, x.protein_g, x.carbs_g, x.fat_g));
     if (!a[a.kind] && a.kind !== "answer") console.log("  MISSING " + a.kind + " object");
     if (a.edit) a.edit.actions.forEach(x => show(x.name || x.target, x.grams, x.kcal, x.protein_g, x.carbs_g, x.fat_g));
   }

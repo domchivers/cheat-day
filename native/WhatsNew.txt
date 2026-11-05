@@ -1,4 +1,4 @@
-New in this build: foods get the right icon, a potato is looked up as the potato you said (pan fried with no oil, not boiled), and the assistant calls your food what you called it.
+New in this build: when you show the assistant a nutrition label, its numbers stay: they are no longer swapped for a generic food from the database.
 
 Thanks for testing! Please just use it like a normal day:
 
