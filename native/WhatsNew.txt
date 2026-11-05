@@ -1,4 +1,4 @@
-New in this build: a week review on Today shows what you're doing well and, only when something's off, the one thing to change. Foods high in protein are never flagged for a swap.
+New in this build: a week review on Today shows what you're doing well and, only when something's off, the one thing to change. Every food can be weighed now, AI ones too: say once what a portion weighs and it's remembered.
 
 Thanks for testing! Please just use it like a normal day:
 

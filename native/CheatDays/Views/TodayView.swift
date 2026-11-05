@@ -850,8 +850,25 @@ struct AmountView: View {
     @State private var tweaking = false
     @State private var tweakNote: String?
     private var store: Store { Store.shared }
-    private let conv: FoodMath.Conv
+    private let baseConv: FoodMath.Conv
+    private let portionKcal: Double?   // what one portion is, when only that's known (an AI meal idea, a photo estimate)
+    @State private var portionText: String
     private var asksName: Bool { target.basis["askName"] as? Bool == true }
+
+    /// Weighs on every food: one with only "per portion" numbers asks once what a portion weighs (from the best guess),
+    /// remembered for that food, and a food with only calories counts its first amount as a portion.
+    private var conv: FoodMath.Conv {
+        var c = baseConv
+        if c.countKcal == nil, let k = portionKcal { c.countKcal = k; c.countLabel = "portion" }
+        if c.kcalPer100 == nil, let each = c.countKcal, let g = portionGrams { c.kcalPer100 = each / g * 100 }
+        return c
+    }
+    private var asksPortion: Bool { baseConv.kcalPer100 == nil && conv.countKcal != nil }
+    private var portionGrams: Double? { Fmt.typed(portionText).flatMap { $0 > 0 ? $0 : nil } }
+    private static let portionKey = "portion.grams"   // name → grams, what they said one portion weighs
+    static func rememberedPortion(_ name: String) -> Double? {
+        (UserDefaults.standard.dictionary(forKey: portionKey)?[name.lowercased()] as? Double).flatMap { $0 > 0 ? $0 : nil }
+    }
 
     /// Fresh from a barcode scan: shows the warning if its numbers don't add up, with this to photograph the label instead.
     private let onLabelPhoto: (() -> Void)?
@@ -861,7 +878,11 @@ struct AmountView: View {
         self.onLabelPhoto = onLabelPhoto
         self.finish = finish
         let c = FoodMath.conv(target.basis)
-        conv = c
+        baseConv = c
+        // a bare "Quick add" of calories has no food to weigh
+        portionKcal = c.countKcal == nil && str(target.basis["name"]) != "Quick add" ? target.kcal.flatMap { $0 > 0 ? $0 : nil } : nil
+        let guess = Self.rememberedPortion(str(target.basis["name"])) ?? pos(target.basis["portionGuess"])
+        _portionText = State(initialValue: guess.map { Fmt.int($0) } ?? "")
         _meal = State(initialValue: target.meal)
         // meat and fish start on Weigh: "1 thigh" is 100 g in one country and 180 g in another
         let kind = FoodKind.of(str(target.basis["name"])), byWeight = [.meat, .poultry, .fish].contains(kind) && c.kcalPer100 != nil
@@ -890,7 +911,7 @@ struct AmountView: View {
             Text(label).font(.subheadline).foregroundStyle(.secondary)
         }
     }
-    private var modes: [Mode] { [conv.countKcal != nil ? Mode.count : nil, conv.kcalPer100 != nil ? Mode.grams : nil, Mode.kcal].compactMap { $0 } }
+    private var modes: [Mode] { [conv.countKcal != nil ? Mode.count : nil, conv.kcalPer100 != nil || asksPortion ? Mode.grams : nil, Mode.kcal].compactMap { $0 } }
     private var unit: String { str(target.basis["unit"]).isEmpty ? "g" : str(target.basis["unit"]) }
     private var leftAfter: Double { leftBefore - kcal }
 
@@ -1096,6 +1117,18 @@ struct AmountView: View {
     }
 
     @ViewBuilder private var gramControls: some View {
+        if asksPortion {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("One \(conv.countLabel ?? "portion") weighs")
+                    Spacer()
+                    TextField("g", text: $portionText).keyboardType(.decimalPad).multilineTextAlignment(.trailing).frame(width: 80)
+                        .onChange(of: portionText) { _, _ in syncTexts() }   // still the same share of a portion; its grams follow
+                    Text("g").foregroundStyle(.secondary)
+                }
+                Text(portionNote).font(.caption).foregroundStyle(.secondary)
+            }
+        }
         if let k100 = conv.kcalPer100, k100 > 0 {
             let grams = kcal / k100 * 100
             let serving = pos(target.basis["servingSize"])
@@ -1130,6 +1163,13 @@ struct AmountView: View {
                 .foregroundStyle(on ? Theme.onAccent : Color.primary)
         }
         .buttonStyle(.plain)
+    }
+
+    private var portionNote: String {
+        let keep = "Weigh one plate once and put it here: it's kept for this food."
+        if Self.rememberedPortion(name) != nil { return "What you said last time. Change it if this one's different." }
+        if pos(target.basis["portionGuess"]) != nil { return "From the recipe's ingredients. " + keep }
+        return keep
     }
 
     private func nice(_ g: Double) -> Double { g < 50 ? (g / 5).rounded() * 5 : g < 200 ? (g / 10).rounded() * 10 : (g / 25).rounded() * 25 }
@@ -1169,6 +1209,15 @@ struct AmountView: View {
             basis["name"] = n.isEmpty ? "Scanned food" : n
         }
         basis.removeValue(forKey: "askName")
+        // a portion's weight they gave: kept for this food, and on the entry so it shows in grams
+        if asksPortion, let g = portionGrams, let each = conv.countKcal {
+            var known = UserDefaults.standard.dictionary(forKey: Self.portionKey) ?? [:]
+            known[name.lowercased()] = g
+            UserDefaults.standard.set(known, forKey: Self.portionKey)
+            if basis["kcalPerServing"] == nil { basis["kcalPerServing"] = each.rounded(); basis["unitLabel"] = conv.countLabel ?? "portion" }
+            basis["servingSize"] = g
+        }
+        basis.removeValue(forKey: "portionGuess")
         if let id = target.editId { store.edit(id, kcal: kcal, meal: meal) } else { store.add(basis, kcal: kcal, meal: meal) }
         finish()
     }

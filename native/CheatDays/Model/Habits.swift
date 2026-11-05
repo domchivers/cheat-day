@@ -123,8 +123,11 @@ extension Store {
             .sorted { ($0["picked"] as? Bool == true ? 1 : 0) > ($1["picked"] as? Bool == true ? 1 : 0) }
             .compactMap { m in
                 guard let kcal = pos(m["kcal"]) else { return nil }
-                let basis: JSON = ["name": str(m["name"]), "source": "quick", "unit": "g", "unitLabel": "portion", "kcalPerServing": kcal.rounded(),
+                var basis: JSON = ["name": str(m["name"]), "source": "quick", "unit": "g", "unitLabel": "portion", "kcalPerServing": kcal.rounded(),
                                    "pServ": num(m["protein"]) ?? 0, "cServ": num(m["carbs"]) ?? 0, "fServ": num(m["fat"]) ?? 0]
+                // the recipe's ingredients added up: a starting guess at what a portion weighs, for Weigh
+                let grams = list(m["ingredients"]).reduce(0) { $0 + (num($1["grams"]) ?? 0) }
+                if grams > 0 { basis["portionGuess"] = grams.rounded() }
                 return QuickEntry(key: "idea:" + str(m["name"]).lowercased(), basis: basis, kcal: kcal.rounded(), detail: str(m["why"]),
                                   uses: 0, lastUsed: "", kind: .preset)
             }
