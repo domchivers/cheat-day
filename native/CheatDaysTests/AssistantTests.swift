@@ -134,7 +134,8 @@ final class AssistantTests: XCTestCase {
         let edit: JSON = ["kind": "edit", "reply": "", "edit": ["actions": [
             ["action": "update", "target": "Portuguese chicken", "name": "Portuguese chicken, roasted", "grams": 150, "kcal": 245,
              "protein_g": 35, "carbs_g": 4, "fat_g": 8.4, "numbers_from": "label"] as JSON] as [Any]] as JSON]
-        XCTAssertEqual(num(list(dict(await Assistant.groundEdit(edit)["edit"])["actions"])[0]["kcal"]), 245)
+        let out = await Assistant.groundEdit(edit)
+        XCTAssertEqual(num(list(dict(out["edit"])["actions"])[0]["kcal"]), 245)
         XCTAssertTrue(Assistant.rules.contains("numbers_from"))
     }
 
