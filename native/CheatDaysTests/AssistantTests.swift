@@ -21,7 +21,8 @@ final class AssistantTests: XCTestCase {
         let props = dict(Assistant.schema["properties"])
         for k in ["reply", "kind", "estimate", "plan", "edit", "recipe", "lighter"] { XCTAssertNotNil(props[k], k) }
         XCTAssertEqual(dict(props["kind"])["enum"] as? [String], ["answer", "estimate", "plan", "edit", "recipe", "lighter"])
-        XCTAssertEqual(Assistant.schema["required"] as? [String], ["reply", "kind"])
+        XCTAssertEqual(Set(Assistant.schema["required"] as? [String] ?? []), ["reply", "kind", "estimate", "plan", "edit", "recipe", "lighter"],
+                       "every answer required: with them optional Claude sent an empty recipe and no estimate")
         let text = String(data: try! JSONSerialization.data(withJSONObject: Assistant.schema), encoding: .utf8)!
         XCTAssertFalse(text.contains("nullable"), "Claude refuses a schema full of nulls as too large")
     }
@@ -96,6 +97,20 @@ final class AssistantTests: XCTestCase {
         XCTAssertFalse(Assistant.missingCard(["kind": "answer", "reply": "Yes"]))
         XCTAssertFalse(Assistant.missingCard(["kind": "edit", "reply": "", "edit": ["actions": [["action": "add", "name": "Watermelon", "grams": 280, "kcal": 87] as JSON]] as JSON]))
         XCTAssertFalse(Assistant.missingCard(["kind": "estimate", "reply": "", "estimate": ["name": "Watermelon", "kcal_total": 87, "parts": [Any]()] as JSON]))
+    }
+
+    /// The owner's potato chat: what Claude really sent for "174 g, no skin" (an empty recipe, no estimate), and "Add to lunch".
+    func testThePotatoChatsMissingButtons() {
+        let sent: JSON = ["kind": "estimate", "reply": "Got it, 174 g of peeled potato. Tap to add it, and tell me if you're roasting them.\n",
+                          "recipe": ["name": "", "notes": "", "steps": [Any](), "portions": 0, "ingredients": [Any]()] as JSON]
+        XCTAssertTrue(Assistant.missingCard(sent))
+        XCTAssertEqual(Assistant.withoutButtons(str(sent["reply"])), "Got it, 174 g of peeled potato.")
+        XCTAssertEqual(Assistant.withoutButtons("About 2.5 g of oil, 18 kcal. Tap Add. Enjoy!"), "About 2.5 g of oil, 18 kcal. Enjoy!")
+        XCTAssertEqual(Assistant.withoutButtons("Tap to add it."), "Tap to add it.", "nothing left to say: kept as it was")
+        XCTAssertEqual(Assistant.withoutButtons("Yes, it's good when cutting."), "Yes, it's good when cutting.")
+        XCTAssertEqual(Meals.named(in: "Add to lunch"), "Lunch")
+        XCTAssertEqual(Meals.named(in: "log it as a snack"), "Snacks")
+        XCTAssertNil(Meals.named(in: "174 g, no skin"))
     }
 
     func testAnEstimateNeverSaysItsLogged() {

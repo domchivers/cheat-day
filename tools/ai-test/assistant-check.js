@@ -39,7 +39,7 @@ function slim(sc) {
     return out;
   };
   const out = strip(sc);
-  out.required = ['reply', 'kind'];
+  out.required = Object.keys(out.properties);   // as the app: every answer required (optional, Claude sent an empty recipe for a potato)
   return out;
 }
 
@@ -62,10 +62,16 @@ function foodData(text) {
   return 'Food data for what they named, per 100 g, from the official Australian food tables:\n' + out.map(o => `- "${o.said}": ${o.f.name}: ${one(o.f.kcal)} kcal, protein ${one(o.f.p)} g, carbs ${one(o.f.c)} g, fat ${one(o.f.f)} g`).join('\n') +
     "\nWhen one of these is the food they mean, use its numbers exactly (in answers too) and work amounts out from them; never a remembered value. Ignore any that's a different food from what they mean (raw versus cooked, a different dish).\n";
 }
+// the owner's potato chat: a photo earlier, so the app sends these to Sonnet with the photo
+const potato = { model: 'claude-sonnet-5-5', image: 'results/potatoes.png' };
 const cases = [
-  { say: 'How much watermelon can I have with the left over calories', earlier: '' },
-  { say: 'Add it to today', earlier: 'They: How much watermelon can I have with the left over calories\nYou: You can have about 280 g of watermelon (around 87 kcal). That uses up your 88 kcal left.' },
-  { say: 'How much water melon to have for 88 calories', earlier: '' },
+  { say: 'Add to lunch', earlier: "They: 174 g, no skin\nYou: 174 g of peeled potato comes to about 101 kcal. Tap to add it." },
+  // { ...potato, say: '174 g, no skin', earlier: "They: What's this? (1 photo)\nYou: That's a 2 kg bag of brushed potatoes from Aldi's The Good Stuff range, Australian grown. Want me to log a portion? Tell me roughly how many grams you're having, or how you're cooking them." },
+  // { ...potato, say: 'Will pan fry, light oil spray and wiped off', earlier: "They: What's this? (1 photo)\nYou: That's a 2 kg bag of brushed potatoes.\nThey: 174 g, no skin\nYou: Got it, 174 g of peeled potato, which I've counted as plain boiled with no oil or butter. Tap to add it." },
+  // { ...potato, say: "Let's just say no oil and give me the calories of the potato", earlier: "They: 174 g, no skin\nYou: Got it, 174 g of peeled potato. Tap to add it.\nThey: Will pan fry, light oil spray and wiped off\nYou: I've counted your 174 g of peeled potato pan-fried with just a trace of oil, so it's roughly 171 kcal. Tap to add it." },
+  // { say: 'How much watermelon can I have with the left over calories', earlier: '' },
+  // { say: 'Add it to today', earlier: 'They: How much watermelon can I have with the left over calories\nYou: You can have about 280 g of watermelon (around 87 kcal). That uses up your 88 kcal left.' },
+  // { say: 'How much water melon to have for 88 calories', earlier: '' },
   // { say: 'I had 2 eggs on toast with butter and a flat white', earlier: '' },
   // { say: '1/2tsp sesame oil', earlier: 'They: roasted cauliflower 100g with some sesame oil\nYou: Here is your roasted cauliflower. [you worked out: Roasted Cauliflower, 113 kcal]' },
   // { say: 'Sesame oil - 1/2 tsp', earlier: '' },
@@ -80,9 +86,13 @@ const PRICE = JSON.parse(source.match(/\[HAIKU\]: (\[[^\]]*\])/)[1]);
   for (const c of cases) {
     const text = `You are the assistant inside a cheat-day food diary app called Cheat Days. ${context}${c.earlier ? `Recent conversation:\n${c.earlier}\n` : ''}They now say: "${c.say}"\n${foodData(c.say)}\n${rules}`;
     const t0 = Date.now();
-    const r = await client.messages.create({ model: 'claude-haiku-5-5', max_tokens: 4000, messages: [{ role: 'user', content: [{ type: 'text', text }] }],
-      output_config: { effort: 'low', format: { type: 'json_schema', schema: claudeSchema(slim(schema)) } } });
-    const cost = (r.usage.input_tokens * PRICE[0] + r.usage.output_tokens * PRICE[1]) / 1e6;
+    const model = c.model || 'claude-haiku-5-5', sonnet = model.includes('sonnet');
+    const img = c.image ? [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: fs.readFileSync(path.join(__dirname, c.image)).toString('base64') } }] : [];
+    const r = await client.messages.create({ model, max_tokens: 4000, messages: [{ role: 'user', content: [...img, { type: 'text', text }] }],
+      output_config: { ...(sonnet ? {} : { effort: 'low' }), format: { type: 'json_schema', schema: claudeSchema(slim(schema)) } } });
+    const price = sonnet ? [2, 10] : PRICE;
+    const cost = (r.usage.input_tokens * price[0] + r.usage.output_tokens * price[1]) / 1e6;
+    console.log('  stop:', r.stop_reason, 'raw:', r.content.filter(b => b.type === 'text').map(b => b.text).join('').slice(0, 600));
     ledger.spent = +(ledger.spent + cost).toFixed(6); ledger.calls++;
     const a = JSON.parse(r.content.filter(b => b.type === 'text').map(b => b.text).join(''));
     console.log(`\n"${c.say}" → ${a.kind} (${((Date.now() - t0) / 1000).toFixed(1)} s, $${cost.toFixed(5)}): ${a.reply}`);

@@ -98,6 +98,14 @@ enum Meals {
         "Snacks": rx(#"\b(crisps|chocolate|biscuits?|cookies?|cake|brownie|sweets|nuts|popcorn|protein bar|flapjack|ice cream|donut|doughnut|muffin|beer|wine|cider|gin|vodka|whisky|rum|cocktail|jack daniel)\b"#)
     ]
 
+    /// The meal a message names ("add to lunch", "for my dinner", "as a snack"), if it names one.
+    static func named(in text: String) -> String? {
+        let t = text.lowercased()
+        for (m, w) in [("Breakfast", "breakfast|brekkie"), ("Lunch", "lunch"), ("Dinner", "dinner|tea tonight|supper"), ("Snacks", "snacks?")]
+        where t.range(of: "\\b(\(w))\\b", options: .regularExpression) != nil { return m }
+        return nil
+    }
+
     static func byTime(_ h: Int?) -> String {
         guard let h else { return "Snacks" }
         if h >= 4 && h < 11 { return "Breakfast" }

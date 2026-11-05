@@ -1,4 +1,4 @@
-New in this build: ask the assistant how much of something you can have and it gives you an Add button, and "Add it" always shows the button to tap.
+New in this build: when the assistant works out a food it always comes with its Add button, and "add it to lunch" adds it to lunch.
 
 Thanks for testing! Please just use it like a normal day:
 

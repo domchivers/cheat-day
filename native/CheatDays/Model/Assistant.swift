@@ -38,13 +38,10 @@ enum Assistant {
     private static let s: JSON = ["type": "string"]
     private static func arr(_ items: JSON, desc: String = "") -> JSON { desc.isEmpty ? ["type": "array", "items": items] : ["type": "array", "items": items, "description": desc] }
 
-    /// No nulls anywhere: with them Claude refuses the schema ("compiled grammar is too large"). Only reply and kind are
-    /// required, the answer for that kind comes along, and in a change an unused number is 0 and an unused word "".
-    static let schema: JSON = {
-        var o = full
-        o["required"] = ["reply", "kind"]
-        return o
-    }()
+    /// No nulls anywhere: with them Claude refuses the schema ("compiled grammar is too large"). Every answer is
+    /// required, the unused ones empty (an unused number 0, an unused word ""): with only reply and kind required,
+    /// Claude sent an empty recipe and no estimate for "174 g, no skin", so there was nothing to add.
+    static let schema: JSON = full
     private static let full: JSON = obj([
         "reply": ["type": "string", "description": "What you'd say back, warm and short (one to three sentences). Always filled."] as JSON,
         "kind": ["type": "string", "enum": ["answer", "estimate", "plan", "edit", "recipe", "lighter"]] as JSON,
@@ -97,7 +94,7 @@ enum Assistant {
     }
 
     static let rules = """
-    Decide what they want and fill exactly one of estimate / plan / edit / recipe / lighter (leave the others null), or kind=answer for a plain question:
+    Decide what they want and fill exactly one of estimate / plan / edit / recipe / lighter (leave the others empty), or kind=answer for a plain question:
     - estimate: a food or plate to log, as one portion with honest kcal and macros, broken into parts (each component with its cooked grams; oil, butter and sauce as separate parts).
     - plan: 3 to 5 things for the rest of today that fit the calories left, close the protein gap as far as sensible, and leave room for one treat.
     - edit: they're correcting today's list ("I only had 2 eggs", "remove the toast", "add a banana"), or naming several separate foods at once ("110g cabbage, 170g cucumber": one add each): target is the name of the item on today's list to change or remove; for add and update give the plain food name, its grams and the new kcal and macros. Or logging exercise: action workout with activity (Walk, Run, Cycle, Swim, Gym weights, HIIT, Yoga / stretch, Football, Tennis / padel, Hike, Rowing, Elliptical, Dance, Boxing, Climbing), minutes and effort (easy, moderate, hard).
@@ -148,7 +145,9 @@ enum Assistant {
         var answer = try await Gemini.ask(schema: schema, parts: parts, quick: simple, job: simple ? "logs" : pics.isEmpty ? "chat" : "photos")
         // "Tap Make these changes" with no changes to tap: the reply said edit but left the edit out. Asked once more.
         if missingCard(answer) { answer = (try? await Gemini.ask(schema: schema, parts: parts, quick: simple, job: simple ? "logs" : pics.isEmpty ? "chat" : "photos")) ?? answer }
-        if missingCard(answer) { answer["kind"] = "answer" }
+        if missingCard(answer) { answer["kind"] = "answer"; answer["reply"] = withoutButtons(str(answer["reply"])) }
+        // "Add to lunch": the buttons add to the meal they named, not the one the screen was opened for
+        if let m = Meals.named(in: last.text) { answer["meal"] = m }
         if groundNow, str(answer["kind"]) == "estimate", let e = answer["estimate"] as? JSON { answer["estimate"] = await ground(e) }
         // a recipe's ingredients checked like the recipe screen's
         if str(answer["kind"]) == "recipe", var rc = answer["recipe"] as? JSON {
@@ -182,6 +181,14 @@ enum Assistant {
         case "recipe": return CheatDays.list(card["ingredients"]).isEmpty
         default: return str(card["name"]).isEmpty
         }
+    }
+
+    /// A reply whose card never came: the sentences sending them to a button go, since there's no button.
+    static func withoutButtons(_ reply: String) -> String {
+        let sentences = reply.replacingOccurrences(of: #"(?<=[.!?])\s+"#, with: "\u{1}", options: .regularExpression)
+            .components(separatedBy: "\u{1}").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        let kept = sentences.filter { $0.range(of: #"\btap\b"#, options: [.regularExpression, .caseInsensitive]) == nil }
+        return kept.isEmpty || kept.count == sentences.count ? reply : kept.joined(separator: " ")
     }
 
     /// "How much watermelon for my last 88 calories?": the calories they named, when they didn't name an amount too.

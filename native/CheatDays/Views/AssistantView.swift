@@ -121,17 +121,17 @@ struct AssistantView: View {
     }
 
     @ViewBuilder private func card(_ r: JSON, turn: UUID) -> some View {
-        switch str(r["kind"]) {
+        let meal = str(r["meal"]).isEmpty ? self.meal : str(r["meal"])   // "add to lunch" adds to lunch        switch str(r["kind"]) {
         case "estimate":
-            if let e = r["estimate"] as? JSON { estimateCard(e, turn: turn) }
+            if let e = r["estimate"] as? JSON { estimateCard(e, turn: turn, meal: meal) }
         case "plan":
-            if let p = r["plan"] as? JSON { planCard(p, turn: turn) }
+            if let p = r["plan"] as? JSON { planCard(p, turn: turn, meal: str(r["meal"]).isEmpty ? Meals.now : meal) }
         case "edit":
-            if let e = r["edit"] as? JSON { editCard(e, turn: turn) }
+            if let e = r["edit"] as? JSON { editCard(e, turn: turn, meal: meal) }
         case "recipe":
-            if let rc = r["recipe"] as? JSON { recipeCard(rc, turn: turn) }
+            if let rc = r["recipe"] as? JSON { recipeCard(rc, turn: turn, meal: meal) }
         case "lighter":
-            if let l = r["lighter"] as? JSON { lighterCard(l, turn: turn) }
+            if let l = r["lighter"] as? JSON { lighterCard(l, turn: turn, meal: meal) }
         default: EmptyView()
         }
     }
@@ -161,7 +161,7 @@ struct AssistantView: View {
         .disabled(done[turn, default: ""].contains(tag))
     }
 
-    private func estimateCard(_ e: JSON, turn: UUID) -> some View {
+    private func estimateCard(_ e: JSON, turn: UUID, meal: String) -> some View {
         let k = num(e["kcal_total"]) ?? 0, p = num(e["protein_g"]) ?? 0, c = num(e["carbs_g"]) ?? 0, f = num(e["fat_g"]) ?? 0
         return panel {
             Text(str(e["name"])).font(.headline)
@@ -189,7 +189,7 @@ struct AssistantView: View {
         }
     }
 
-    private func planCard(_ plan: JSON, turn: UUID) -> some View {
+    private func planCard(_ plan: JSON, turn: UUID, meal: String) -> some View {
         panel {
             ForEach(list(plan["suggestions"]).indices, id: \.self) { i in
                 let s = list(plan["suggestions"])[i], k = num(s["kcal"]) ?? 0
@@ -201,7 +201,7 @@ struct AssistantView: View {
                     }
                     Text("\(str(s["amount"])) · \(str(s["why"]))").font(.caption).foregroundStyle(.secondary)
                     addButton("Add", key: "plan\(i)", turn: turn) {
-                        store.add(Assistant.basis(name: str(s["name"]), kcal: k, grams: nil, p: num(s["protein_g"]) ?? 0, c: num(s["carbs_g"]) ?? 0, f: num(s["fat_g"]) ?? 0), kcal: k, meal: Meals.now)
+                        store.add(Assistant.basis(name: str(s["name"]), kcal: k, grams: nil, p: num(s["protein_g"]) ?? 0, c: num(s["carbs_g"]) ?? 0, f: num(s["fat_g"]) ?? 0), kcal: k, meal: meal)
                     }
                 }
                 if i < list(plan["suggestions"]).count - 1 { Divider() }
@@ -209,7 +209,7 @@ struct AssistantView: View {
         }
     }
 
-    private func editCard(_ edit: JSON, turn: UUID) -> some View {
+    private func editCard(_ edit: JSON, turn: UUID, meal: String) -> some View {
         let acts = list(edit["actions"])
         return panel {
             ForEach(keyed(acts)) { entry in
@@ -259,7 +259,7 @@ struct AssistantView: View {
         }
     }
 
-    private func recipeCard(_ rc: JSON, turn: UUID) -> some View {
+    private func recipeCard(_ rc: JSON, turn: UUID, meal: String) -> some View {
         let ings = list(rc["ingredients"]), portions = max(1, num(rc["portions"]) ?? 1)
         let total = ings.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }
         let p = ings.reduce(0) { $0 + (num($1["protein_g"]) ?? 0) }, c = ings.reduce(0) { $0 + (num($1["carbs_g"]) ?? 0) }, f = ings.reduce(0) { $0 + (num($1["fat_g"]) ?? 0) }
@@ -290,7 +290,7 @@ struct AssistantView: View {
         }
     }
 
-    private func lighterCard(_ l: JSON, turn: UUID) -> some View {
+    private func lighterCard(_ l: JSON, turn: UUID, meal: String) -> some View {
         let k = num(l["kcal_per_serving"]) ?? 0
         return panel {
             Text(str(l["name"])).font(.headline)
