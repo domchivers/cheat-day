@@ -1,4 +1,4 @@
-New in this build: when the assistant works out a food it always comes with its Add button, and "add it to lunch" adds it to lunch.
+New in this build: foods get the right icon, a potato is looked up as the potato you said (pan fried with no oil, not boiled), and the assistant calls your food what you called it.
 
 Thanks for testing! Please just use it like a normal day:
 

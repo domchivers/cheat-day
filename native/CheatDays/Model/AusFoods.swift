@@ -40,7 +40,7 @@ final class FoodTable {
         self.aliases = named
     }
 
-    private static let filler: Set<String> = ["fresh", "chopped", "sliced", "diced", "large", "small", "medium", "finely", "peeled", "boneless", "skinless", "lean", "of", "and", "for", "to", "taste", "grated", "minced", "crushed", "dried", "ground", "whole", "extra", "virgin", "cubed", "thinly", "roughly", "optional"]
+    private static let filler: Set<String> = ["fresh", "chopped", "sliced", "diced", "large", "small", "medium", "finely", "peeled", "boneless", "skinless", "lean", "of", "and", "for", "to", "taste", "grated", "minced", "crushed", "dried", "ground", "whole", "extra", "virgin", "cubed", "thinly", "roughly", "optional", "brushed", "washed"]
 
     static func words(_ s: String) -> [String] {
         let plain = String(s.lowercased().map { $0.isASCII && $0.isLetter ? $0 : " " })
@@ -62,15 +62,40 @@ final class FoodTable {
         let first = name.split(whereSeparator: { $0 == "," || $0 == "(" }).first.map(String.init) ?? ""
         let want = Self.words(first)
         guard let head = want.last else { return nil }
-        if let named = aliases[want.joined(separator: " ")] { return named }
-        let cooked = name.range(of: "cooked|boiled|grilled|roast|fried|baked|steamed", options: [.regularExpression, .caseInsensitive]) != nil
+        let cooked = name.range(of: "cooked|boil|grill|roast|fried|fry|bake|steam", options: [.regularExpression, .caseInsensitive]) != nil
+        // "potato, boiled" isn't the raw potato its everyday name means
+        if let named = aliases[want.joined(separator: " ")], !(cooked && named.name.range(of: #"\braw\b|uncooked"#, options: [.regularExpression, .caseInsensitive]) != nil) { return named }
+        let hits = Self.narrow(name, rows.filter { r in
+            want.allSatisfy { r.words.contains($0) } && (r.kind.contains(head) || r.kind.contains(want[0]) || want.allSatisfy { r.lead.contains($0) })
+        }, want: want)
         var best: (rank: Int, food: Food)?
-        for r in rows where want.allSatisfy({ r.words.contains($0) }) {
-            guard r.kind.contains(head) || r.kind.contains(want[0]) || want.allSatisfy({ r.lead.contains($0) }) else { continue }
+        for r in hits {
             let rank = (r.raw == !cooked ? 0 : 100) + (r.food.main ? 0 : 20) + r.words.count * 2
             if rank < (best?.rank ?? .max) { best = (rank, r.food) }
         }
         return best?.food
+    }
+
+    /// How it's cooked counts ("pan fried, no oil" is the no-added-fat fried potato, not boiled), and a variety only when
+    /// they named it (the table lists potatoes as coliban, desiree, sebago…; a plain potato is the plain one). Each step
+    /// only when something's left. Same as narrow in tools/ai-test/jobs.js.
+    private static func narrow(_ name: String, _ hits: [Row], want: [String]) -> [Row] {
+        var n = name.lowercased()
+        for (said, row) in [("fry", "fried"), ("boil", "boiled"), ("bake", "baked"), ("grill", "grilled"), ("steam", "steamed")] {
+            n = n.replacingOccurrences(of: "\\b\(said)(ing)?\\b", with: row, options: .regularExpression)   // "will pan fry" is fried
+        }
+        var h = hits
+        func keep(_ test: (String) -> Bool) { let k = h.filter { test($0.food.name.lowercased()) }; if !k.isEmpty { h = k } }
+        func has(_ s: String, _ p: String) -> Bool { s.range(of: p, options: .regularExpression) != nil }
+        keep { words(String($0.split(separator: ",").first ?? "")) == want }   // a potato is a potato, not a sweet potato
+        for m in ["boiled", "fried", "baked", "roast", "grilled", "steamed", "microwaved"] where n.contains(m) { keep { $0.contains(m) } }
+        if has(n, #"\b(no|without)\s+(added\s+)?(oil|fat|butter)\b"#) { keep { $0.contains("no added fat") } }
+        else if has(n, #"\b(with|in)\s+(\w+\s+)?(oil|fat|butter)\b"#) { keep { $0.contains("added fat") && !$0.contains("no added fat") } }
+        keep { f in
+            guard let r = f.range(of: #"\b(coliban|desiree|sebago|pontiac|kipfler|nicola|new|pale skin|red skin)\b"#, options: .regularExpression) else { return true }
+            return n.contains(f[r])
+        }
+        return h
     }
 
     /// Words that split a message into the foods it names ("2 eggs on toast with butter": eggs | toast | butter).

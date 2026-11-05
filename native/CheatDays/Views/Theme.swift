@@ -140,29 +140,29 @@ enum FoodEmoji {
         // fast food and dishes
         ("🍕", ["pizza"]), ("🍔", ["burger", "cheeseburger", "big mac", "whopper"]), ("🌭", ["hot dog", "hotdog", "sausage roll"]), ("🍟", ["fries", "chips", "wedges", "hash brown"]),
         ("🌮", ["taco"]), ("🌯", ["burrito", "wrap", "kebab", "gyro", "souvlaki", "shawarma"]), ("🥙", ["pita", "falafel"]), ("🥪", ["sandwich", "sub", "toastie", "panini", "baguette", "roll"]),
-        ("🍣", ["sushi", "sashimi", "nigiri"]), ("🍱", ["bento"]), ("🥟", ["dumpling", "gyoza", "dim sum", "bao", "wonton"]), ("🍜", ["ramen", "pho", "noodle", "laksa", "udon", "pad thai", "chow mein", "soba"]),
+        ("🍣", ["sushi", "sashimi", "nigiri", "sushi roll", "hand roll", "kimbap"]), ("🍱", ["bento"]), ("🥟", ["dumpling", "gyoza", "dim sum", "bao", "wonton", "egg roll", "spring roll"]), ("🍜", ["ramen", "pho", "noodle", "laksa", "udon", "pad thai", "chow mein", "soba"]),
         ("🍝", ["pasta", "spaghetti", "lasagne", "lasagna", "bolognese", "carbonara", "penne", "mac and cheese", "macaroni", "gnocchi", "ravioli"]),
-        ("🍛", ["curry", "korma", "tikka", "butter chicken", "biryani", "dal", "dahl"]), ("🍚", ["rice", "risotto", "fried rice"]), ("🌶️", ["chilli sauce", "chili sauce", "hot sauce", "sweet chilli", "sriracha", "tabasco", "jalapeno", "peri peri"]), ("🥘", ["paella", "stew", "casserole", "chilli", "chili"]),
+        ("🍛", ["curry", "korma", "tikka", "butter chicken", "biryani", "dal", "dahl"]), ("🍚", ["rice", "risotto", "fried rice"]), ("🌶️", ["chilli sauce", "chili sauce", "hot sauce", "sweet chilli", "sriracha", "tabasco", "jalapeno", "jalapeño", "peri peri", "chilli", "chili", "chillies"]), ("🥘", ["paella", "stew", "casserole", "chilli con carne", "chili con carne"]),
         ("🍲", ["soup", "hot pot", "broth"]), ("🥗", ["salad", "poke", "buddha bowl", "slaw"]), ("🥧", ["pie", "quiche", "pasty"]), ("🫔", ["tamale", "enchilada"]),
         // meat, fish, eggs
-        ("🍗", ["chicken", "wings", "drumstick", "nugget", "schnitzel", "turkey"]), ("🥩", ["steak", "beef", "lamb", "mince", "pork", "veal"]), ("🥓", ["bacon", "ham", "prosciutto", "salami"]),
-        ("🍤", ["prawn", "shrimp", "tempura"]), ("🐟", ["salmon", "tuna", "fish", "cod", "barramundi", "sardine", "mackerel"]), ("🦐", ["seafood"]), ("🍳", ["omelette", "fried egg", "scrambled", "frittata"]), ("🥚", ["egg"]),
+        ("🍗", ["thigh steak", "chicken", "wings", "drumstick", "nugget", "schnitzel", "turkey"]), ("🥩", ["steak", "beef", "lamb", "mince", "pork", "veal"]), ("🥓", ["bacon", "ham", "prosciutto", "salami", "pepperoni"]),
+        ("🍤", ["prawn", "shrimp", "tempura"]), ("🐟", ["salmon", "tuna", "fish", "cod", "barramundi", "sardine", "mackerel", "kingfish", "ceviche"]), ("🦐", ["seafood"]), ("🍳", ["omelette", "fried egg", "scrambled", "frittata"]), ("🥚", ["egg"]),
         // bakery and breakfast
         ("🥞", ["pancake", "crepe", "pikelet"]), ("🧇", ["waffle"]), ("🥐", ["croissant", "pastry", "danish", "pain au"]), ("🥯", ["bagel"]), ("🍞", ["toast", "bread", "sourdough", "crumpet", "muffin english"]),
         ("🥣", ["cereal", "porridge", "oats", "oatmeal", "granola", "muesli", "weet-bix", "weetbix", "cornflakes"]),
         // sweets and snacks
         ("🍩", ["donut", "doughnut"]), ("🧁", ["cupcake", "muffin"]), ("🍰", ["cake", "cheesecake", "slice", "tart"]), ("🍪", ["cookie", "biscuit", "tim tam", "oreo"]), ("🍫", ["chocolate", "brownie", "kitkat", "kit kat", "snickers", "mars", "twix", "freddo", "dairy milk"]),
         ("🍦", ["ice cream", "gelato", "sundae", "frozen yoghurt", "froyo"]), ("🍬", ["lolly", "lollies", "sweets", "candy", "gummy", "jelly"]), ("🍿", ["popcorn"]), ("🥨", ["pretzel"]),
-        ("🥜", ["peanut", "nuts", "almond", "cashew", "walnut", "trail mix", "peanut butter"]), ("🍯", ["honey"]), ("🧀", ["cheese", "brie", "cheddar", "feta", "halloumi"]),
+        ("🥜", ["peanut", "nuts", "almond", "cashew", "walnut", "trail mix", "peanut butter"]), ("🍯", ["honey"]), ("🧀", ["pizza cheese", "cheese", "brie", "cheddar", "feta", "halloumi"]),
         ("🥫", ["baked beans", "beans"]), ("🍫", ["protein bar", "muesli bar", "bar"]), ("🥣", ["yoghurt", "yogurt", "skyr"]), ("🧈", ["butter", "margarine"]), ("🫒", ["olive", "oil"]),
         ("🫙", ["mayo", "mayonnaise", "aioli", "kewpie", "ketchup", "sauce", "dressing", "mustard", "relish", "pesto", "hummus", "houmous", "dip", "spread", "jam", "vegemite", "marmite", "nutella", "syrup"]),
         // fruit and veg
         ("🍌", ["banana"]), ("🍎", ["apple"]), ("🍊", ["orange", "mandarin"]), ("🍓", ["strawberr"]), ("🫐", ["blueberr", "berries", "berry"]), ("🍇", ["grape"]), ("🍉", ["watermelon"]), ("🍍", ["pineapple"]),
         ("🥭", ["mango"]), ("🍑", ["peach", "nectarine"]), ("🍐", ["pear"]), ("🥝", ["kiwi"]), ("🍒", ["cherr"]), ("🥑", ["avocado", "avo", "guacamole"]), ("🍅", ["tomato"]),
-        ("🥦", ["broccoli", "veg", "vegetable", "greens", "spinach", "kale", "zucchini", "beans green"]), ("🥕", ["carrot"]), ("🌽", ["corn"]), ("🥔", ["potato", "mash"]), ("🍠", ["sweet potato"]),
-        ("🍄", ["mushroom"]), ("🥒", ["cucumber"]), ("🫑", ["capsicum", "pepper"]), ("🧅", ["onion"]), ("🍋", ["lemon", "lime"]), ("🥥", ["coconut"]),
+        ("🥦", ["broccoli", "veg", "vegetable", "greens", "spinach", "kale", "zucchini", "beans green", "cabbage", "lettuce", "bok choy"]), ("🥕", ["carrot"]), ("🌽", ["corn"]), ("🥔", ["potato", "mash"]), ("🍠", ["sweet potato"]),
+        ("🍄", ["mushroom"]), ("🥒", ["cucumber", "pickle", "bread and butter", "bread & butter"]), ("🫑", ["capsicum", "pepper"]), ("🧅", ["onion"]), ("🍋", ["lemon", "lime"]), ("🥥", ["coconut"]),
         // general
-        ("🍽️", ["dinner", "lunch", "meal", "plate", "roast", "bowl"])
+        ("🍽️", ["dinner", "lunch", "meal", "plate", "bowl"])
     ]
 
     /// The bundled icon's name for an emoji (Fluent Emoji, flat style, MIT licence; added by tools/fluent.py).
@@ -170,18 +170,33 @@ enum FoodEmoji {
         "food-" + emoji.unicodeScalars.filter { $0.value != 0xFE0F }.map { String($0.value, radix: 16) }.joined(separator: "-")
     }
 
-    /// Phrases first ("dairy milk", "butter chicken", "sweet potato"), then single words in the table's order.
-    /// Whole words only, so steak isn't tea and rump isn't rum; longer words also match their plurals.
+    /// The food the name ends on, since that's the dish ("Beef and carrot curry" is a curry, "egg & cheese wrap" a wrap),
+    /// once the extras are gone: brackets, "with …", "no oil", and words like sliced or peeled ("Coliban potato, peeled,
+    /// boiled, no oil" is a potato, not oil). The longer phrase wins at the same place ("fried rice", "dairy milk").
+    /// Whole words only, plurals too, so steak isn't tea, water isn't watermelon and pepper isn't pepperoni.
     static func `for`(_ name: String) -> String? {
-        let n = name.lowercased()
-        func hit(_ w: String) -> Bool {
-            let esc = NSRegularExpression.escapedPattern(for: w.trimmingCharacters(in: .whitespaces))
-            let pattern = w.count <= 4 ? "\\b\(esc)(s|es)?\\b" : "\\b\(esc)"
-            return n.range(of: pattern, options: .regularExpression) != nil
+        var n = name.lowercased()
+        for (p, with) in [(#"\([^)]*\)"#, " "), (#"\s[—–]\s.*"#, ""), (#"\bwith\b.*"#, ""), (#"\+.*"#, ""), (#"\b(no|without)\s+[\w/]+"#, " "),
+                          (#"\b(raw|cooked|sliced|peeled|boiled|fresh|dry|dried|ground|whole|skinless|shredded|grated|chopped|diced|ripe|unsweetened|plain|skimmed|roasted|toasted|grilled|steamed)\b"#, " ")] {
+            n = n.replacingOccurrences(of: p, with: with, options: .regularExpression)
         }
-        for (e, words) in table where words.contains(where: { $0.contains(" ") && hit($0) }) { return e }
-        for (e, words) in table where words.contains(where: { !$0.contains(" ") && hit($0) }) { return e }
-        return nil
+        return last(in: n) ?? last(in: name.lowercased())
+    }
+
+    private static func last(in n: String) -> String? {
+        let ns = n as NSString
+        var best: (e: String, end: Int, len: Int)?
+        for (e, words) in table where e != "🍽️" || best == nil {   // the plate (bowl, meal) only when nothing else is named; it's last
+            for w in words {
+                let esc = NSRegularExpression.escapedPattern(for: w)
+                // "strawberr", "cherr": stems for berry and berries
+                guard let rx = try? NSRegularExpression(pattern: w.hasSuffix("rr") ? "\\b\(esc)" : "\\b\(esc)(s|es)?\\b"),
+                      let m = rx.matches(in: n, range: NSRange(location: 0, length: ns.length)).last else { continue }
+                let end = m.range.location + m.range.length
+                if best == nil || end > best!.end || (end == best!.end && m.range.length > best!.len) { best = (e, end, m.range.length) }
+            }
+        }
+        return best?.e
     }
 }
 

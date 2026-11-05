@@ -6,7 +6,7 @@ const within = (got, want, share, floor = 0) => typeof got === 'number' && Math.
 const atwater = x => 4 * (x.protein ?? x.protein_g ?? 0) + 4 * (x.carbs ?? x.carbs_g ?? 0) + 9 * (x.fat ?? x.fat_g ?? 0);
 
 // finds a food by its words: raw unless the name says cooked, Australian measured data first, the plainest name first
-const filler = new Set(['fresh', 'chopped', 'sliced', 'diced', 'large', 'small', 'medium', 'finely', 'peeled', 'boneless', 'skinless', 'lean', 'of', 'and', 'for', 'to', 'taste', 'grated', 'minced', 'crushed', 'dried', 'ground', 'whole', 'extra', 'virgin', 'cubed', 'thinly', 'roughly', 'optional']);
+const filler = new Set(['fresh', 'chopped', 'sliced', 'diced', 'large', 'small', 'medium', 'finely', 'peeled', 'boneless', 'skinless', 'lean', 'of', 'and', 'for', 'to', 'taste', 'grated', 'minced', 'crushed', 'dried', 'ground', 'whole', 'extra', 'virgin', 'cubed', 'thinly', 'roughly', 'optional', 'brushed', 'washed']);
 const words = s => s.toLowerCase().replace(/[^a-z ]/g, ' ').split(/\s+/).filter(w => w && !filler.has(w)).map(w => w.replace(/(oes|ies|s)$/, m => (m === 'ies' ? 'y' : m === 'oes' ? 'o' : '')));
 const index = food.map(f => ({ f, w: new Set(words(f.name)), raw: /\braw\b|uncooked/i.test(f.name) }));
 // the everyday name of a common ingredient comes first. Otherwise the food's own kind must be the ingredient's last
@@ -16,18 +16,34 @@ for (const [names, foodName] of JSON.parse(fs.readFileSync(path.join(__dirname, 
   const f = food.find(x => x.name.trim() === foodName); if (!f) throw new Error('alias has no food: ' + foodName);
   names.split('|').forEach(n => alias.set(words(n).join(' '), f));
 }
+// how it's cooked counts ("pan fried, no oil" is the no-added-fat fried potato, not boiled), and a variety only when
+// they named it (the table lists potatoes as coliban, desiree, sebago…; a plain potato is the plain one). Same in tables.js and FoodTable.
+const METHODS = ['boiled', 'fried', 'baked', 'roast', 'grilled', 'steamed', 'microwaved'];
+function narrow(name, hits, want) {
+  let n = name.toLowerCase();
+  for (const [said, row] of [['fry', 'fried'], ['boil', 'boiled'], ['bake', 'baked'], ['grill', 'grilled'], ['steam', 'steamed']])
+    n = n.replace(new RegExp(`\\b${said}(ing)?\\b`, 'g'), row);   // "will pan fry" is fried
+  let h = hits;
+  const keep = test => { const k = h.filter(x => test(x.f.name.toLowerCase())); if (k.length) h = k; };   // only when something's left
+  keep(f => words(f.split(',')[0]).join(' ') === want.join(' '));   // a potato is a potato, not a sweet potato
+  for (const m of METHODS) if (n.includes(m)) keep(f => f.includes(m));
+  if (/\b(no|without)\s+(added\s+)?(oil|fat|butter)\b/.test(n)) keep(f => f.includes('no added fat'));
+  else if (/\b(with|in)\s+(\w+\s+)?(oil|fat|butter)\b/.test(n)) keep(f => /added fat/.test(f) && !f.includes('no added fat'));
+  keep(f => { const v = f.match(/\b(coliban|desiree|sebago|pontiac|kipfler|nicola|new|pale skin|red skin)\b/); return !v || n.includes(v[1]); });
+  return h;
+}
 function resolve(name) {
   const want = words(name.split(/[,(]/)[0]);
   if (!want.length) return null;
-  const cooked = /cooked|boiled|grilled|roast|fried|baked|steamed/i.test(name);
+  const cooked = /cooked|boil|grill|roast|fried|fry|bake|steam/i.test(name);
   const named = alias.get(want.join(' '));
-  if (named) return named;
+  if (named && !(cooked && /\braw\b|uncooked/i.test(named.name))) return named;   // "potato, boiled" isn't the raw potato
   const head = want[want.length - 1];
-  const hits = index.filter(x => {
+  const hits = narrow(name, index.filter(x => {
     if (!want.every(w => x.w.has(w))) return false;
     const parts = x.f.name.split(','), kind = words(parts[0]), lead = words(parts.slice(0, 2).join(' '));
     return kind.includes(head) || kind.includes(want[0]) || want.every(w => lead.includes(w));   // "Salmon fillet", "Beef, rump steak"
-  });
+  }), want);
   if (!hits.length) return null;
   const rank = x => (x.raw === !cooked ? 0 : 100) + (x.f.source === 'AFCD3' ? 0 : 20) + x.w.size * 2;
   return hits.sort((a, b) => rank(a) - rank(b))[0].f;
@@ -124,4 +140,4 @@ const parse = text => {
   }
   throw new Error('no JSON');
 };
-module.exports = { jobs, split, parse, resolve, within, words };
+module.exports = { jobs, split, parse, resolve, within, words, narrow };

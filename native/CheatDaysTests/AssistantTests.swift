@@ -113,6 +113,16 @@ final class AssistantTests: XCTestCase {
         XCTAssertNil(Meals.named(in: "174 g, no skin"))
     }
 
+    /// The owner's brushed potatoes: a plain potato isn't a coliban, and "pan fried, no oil" isn't boiled.
+    func testAPotatoIsCookedTheWayTheySaid() {
+        XCTAssertEqual(AusFoods.find("potato")?.name, "Potato, peeled, raw")
+        XCTAssertEqual(AusFoods.find("Brushed potato, boiled")?.name, "Potato, peeled, boiled, microwaved or steamed, drained")
+        XCTAssertEqual(AusFoods.find("Potato, pan fry, no oil")?.kcal, 87, "the no-added-fat fried potato")
+        XCTAssertEqual(AusFoods.find("Potato, roasted with oil")?.kcal, 150)
+        XCTAssertEqual(AusFoods.find("Coliban potato, peeled, boiled")?.name, "Potato, coliban, peeled, boiled, drained", "a variety they named stays")
+        XCTAssertEqual(AusFoods.find("Sweet potato, roasted")?.name.hasPrefix("Sweet potato"), true)
+    }
+
     func testAnEstimateNeverSaysItsLogged() {
         let out = Assistant.saneEdit(["kind": "estimate", "reply": "Half a teaspoon is about 22 kcal. Logging it now."])
         XCTAssertTrue(str(out["reply"]).contains("tap Add"))
