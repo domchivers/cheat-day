@@ -37,8 +37,9 @@ enum Assistant {
     private static let n: JSON = ["type": "number"]
     private static let s: JSON = ["type": "string"]
     /// Where a food's numbers came from: a label in the chat (or their own numbers) is never swapped for a database's.
-    private static let from: JSON = ["type": "string", "enum": ["label", "them", "estimate"],
-                                     "description": "label: worked out from a nutrition label in the photos or chat; them: numbers they gave; estimate: otherwise"]
+    /// A branded product with no label to hand is looked up on the web; until then its numbers stay the AI's, never a generic food's.
+    private static let from: JSON = ["type": "string", "enum": ["label", "them", "brand", "estimate"],
+                                     "description": "label: worked out from a nutrition label in the photos or chat; them: numbers they gave; brand: a specific packaged product (brand and name) with no label to hand, your best guess; estimate: otherwise"]
     private static func arr(_ items: JSON, desc: String = "") -> JSON { desc.isEmpty ? ["type": "array", "items": items] : ["type": "array", "items": items, "description": desc] }
 
     /// No nulls anywhere: with them Claude refuses the schema ("compiled grammar is too large"). Every answer is
@@ -53,7 +54,8 @@ enum Assistant {
             "kcal_total": n, "protein_g": n, "carbs_g": n, "fat_g": n, "notes": s,
             "parts": arr(obj(["name": s, "usda_name": ["type": "string", "description": "the closest USDA FoodData Central SR Legacy description, e.g. 'Chicken, broilers or fryers, breast, meat only, cooked, roasted'"] as JSON,
                               "grams": ["type": "number", "description": "as eaten (cooked weight)"] as JSON, "kcal": n, "protein_g": n, "carbs_g": n, "fat_g": n,
-                              "numbers_from": from]),
+                              "numbers_from": from,
+                              "servings": ["type": "number", "description": "for a brand part: how many of its items or pack servings they had (1 stick = 1); 0 when they gave a weight"] as JSON]),
                           desc: "each component, including oil, butter and sauces as their own parts")
         ], desc: "kind=estimate: a food or plate as one portion"),
         "plan": obj(["suggestions": arr(obj(["name": s, "amount": s, "kcal": n, "protein_g": n, "carbs_g": n, "fat_g": n, "why": s]))],
@@ -109,6 +111,7 @@ enum Assistant {
     - The kind you pick must come with its filled object (kind=edit with edit.actions, kind=estimate with estimate, and so on): the app shows the buttons from it. Never mention a button the object doesn't make.
     - If they give numbers themselves (calories, grams, protein), use exactly those numbers.
     - A nutrition label in the photos or chat beats any food table: work from its per 100 g figures (a raw label eaten cooked: divide by the cooked weight left, about 0.75 for roasted meat) and set numbers_from to label. Keep using it for later amounts of the same food.
+    - A specific packaged product they name or show (a brand's ice block, bar, biscuit, drink) is one part, never split into ingredients. With no label in sight (a wrapper, the front of a pack): numbers_from brand, servings how many they had, its full brand and product name as the part's name, so the app can look its label up. Mention they can photograph the nutrition panel or scan the box's barcode for exact numbers.
     - Name foods the way they did ("Aldi brushed potato", not the food table's "Coliban potato"); the table is for the numbers.
     - Keep the cooking they said, and put it in each part's name so it's checked against the right food: "pan fried, no oil" is "Potato, pan fried, no oil", never boiled.
     - Calories must fit the macros: kcal ≈ 4 × protein + 4 × carbs + 9 × fat (a little over for fibre or alcohol). Check every part before answering.
@@ -239,6 +242,7 @@ enum Assistant {
                               "numbers_from": a["numbers_from"] ?? ""]
             let checked = await ground(["name": name, "kcal_total": k, "parts": [part]])
             guard let p = CheatDays.list(checked["parts"]).first, !["ai", "label", "them"].contains(str(p["src"])) else { continue }
+            if str(p["src"]) == "web" { acts[i]["grams"] = p["grams"] }
             acts[i]["kcal"] = num(p["kcal"]); acts[i]["protein_g"] = num(p["protein_g"]); acts[i]["carbs_g"] = num(p["carbs_g"]); acts[i]["fat_g"] = num(p["fat_g"])
             acts[i]["src"] = p["src"]
         }
@@ -267,6 +271,17 @@ enum Assistant {
         return x
     }
 
+    /// A brand part from the label found online: so many of its servings, or its weight at the label's rate.
+    static func fromLabel(_ part: JSON, _ label: JSON) -> JSON {
+        guard let serving = pos(label["serving_g"]), let kcal = pos(label["kcal"]) else { return part }
+        let n = pos(part["servings"]), grams = n.map { serving * $0 } ?? (pos(part["grams"]) ?? serving), f = grams / serving
+        var x = part
+        x["grams"] = grams.rounded(); x["kcal"] = (kcal * f).rounded()
+        for m in ["protein_g", "carbs_g", "fat_g"] { x[m] = (num(label[m]) ?? 0) * f }
+        x["src"] = "web"; x["source"] = label["source"] ?? ""
+        return x
+    }
+
     /// The plate's totals from its parts, once any part has been checked.
     static func totals(_ e: JSON, parts: [JSON]) -> JSON {
         guard parts.contains(where: { str($0["src"]) != "ai" }) else { var out = e; out["parts"] = parts; return out }
@@ -289,6 +304,12 @@ enum Assistant {
             // numbers from their label or their own words win: the Portuguese chicken's label (163 kcal per 100 g cooked)
             // was swapped for a generic roast chicken's 190
             if ["label", "them"].contains(str(x["numbers_from"])) { parts[i]["src"] = x["numbers_from"]; continue }
+            // a branded product: its own label from the web, or the AI's guess (44 kcal for a Monarc mango stick, label 43;
+            // generic frozen yogurt made it 57)
+            if str(x["numbers_from"]) == "brand" {
+                if let found = await Gemini.lookUpLabel(str(x["name"])) { parts[i] = fromLabel(x, found) }
+                continue
+            }
             if let e = FoodReference.match(str(x["name"])) {   // a species or cut we've checked: before any list or database
                 parts[i] = checked(x, kcal100: e.kcal, p100: e.p, c100: e.c, f100: e.f, source: "reference")
             } else if let f = FoodTable.current.find(str(x["name"])), plausible(f.kcal, aiKcal: num(x["kcal"]) ?? 0, grams: g, name: str(x["name"])) {

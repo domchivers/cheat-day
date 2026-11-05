@@ -19,6 +19,7 @@ struct AssistantView: View {
     @State private var library = false
     @State private var done: [UUID: String] = [:]
     @State private var showChats = false
+    @State private var viewing: Photos?
     @FocusState private var typing: Bool
     private var store: Store { Store.shared }
 
@@ -79,6 +80,7 @@ struct AssistantView: View {
             }
             .sheet(isPresented: $showChats) { ChatsList { c in turns = Assistant.turns(from: c); chatId = str(c["id"]); done = [:]; showChats = false } }
             .fullScreenCover(isPresented: $camera) { CameraPicker { img in camera = false; if let img { pending.append(img) } }.ignoresSafeArea() }
+            .fullScreenCover(item: $viewing) { PhotoViewer(photos: $0) }
             .photosPicker(isPresented: $library, selection: $picked, maxSelectionCount: 4, matching: .images)
             .onChange(of: picked) { _, items in if !items.isEmpty { Task { await load(items) } } }
             .onChange(of: showChats) { _, open in KeyboardDone.quiet = !open }   // past chats keep their Done
@@ -103,7 +105,12 @@ struct AssistantView: View {
         if t.me {
             VStack(alignment: .trailing, spacing: 6) {
                 if !t.images.isEmpty {
-                    HStack { ForEach(t.images.indices, id: \.self) { i in Image(uiImage: t.images[i]).resizable().scaledToFill().frame(width: 70, height: 70).clipShape(RoundedRectangle(cornerRadius: 12)) } }
+                    HStack { ForEach(t.images.indices, id: \.self) { i in
+                        Button { viewing = Photos(images: t.images, start: i) } label: {
+                            Image(uiImage: t.images[i]).resizable().scaledToFill().frame(width: 70, height: 70).clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                        .buttonStyle(.plain).accessibilityLabel("Photo \(i + 1), full screen")
+                    } }
                 }
                 Text(t.text).font(.subheadline).padding(12).foregroundStyle(Theme.onAccent)
                     .background(Theme.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -168,8 +175,9 @@ struct AssistantView: View {
             Text(str(e["name"])).font(.headline)
             Text("\(Fmt.int(num(e["portion_g"]) ?? 0)) \(str(e["unit"]).isEmpty ? "g" : str(e["unit"]))").font(.caption).foregroundStyle(.secondary)
             macros(k, p, c, f)
-            let parts = list(e["parts"]), checked = parts.filter { !["", "ai", "label", "them"].contains(str($0["src"])) }.count
+            let parts = list(e["parts"]), checked = parts.filter { !["", "ai", "label", "them", "web"].contains(str($0["src"])) }.count
             let own = parts.filter { ["label", "them"].contains(str($0["src"])) }.count
+            let web = parts.first { str($0["src"]) == "web" }
             ForEach(keyed(parts)) { entry in
                 let i = entry.index, pt = entry.item, ok = !["", "ai"].contains(str(pt["src"]))
                 HStack(spacing: 6) {
@@ -182,6 +190,7 @@ struct AssistantView: View {
             flagList(e["flags"] as? [String] ?? [])
             let pending = !parts.isEmpty && parts.allSatisfy { str($0["src"]).isEmpty }   // not checked yet
             if pending { Label("Checking against the food database…", systemImage: "hourglass").font(.caption2).foregroundStyle(.secondary) }
+            else if let web, parts.count == 1 { Text("From its label, found online: \(str(web["source"]))").font(.caption2).foregroundStyle(.secondary).lineLimit(3) }
             else if own > 0, own == parts.count { Text("Worked out from your label or your numbers.").font(.caption2).foregroundStyle(.secondary) }
             else { Text(checked > 0 ? "\(checked) of \(parts.count) parts checked against food databases\(num(e["aiKcal"]).map { " (the AI first said \(Int($0)) kcal)" } ?? ""). An estimate, not a label."
                              : "The AI's estimate: none of the parts could be checked against a food database.")
@@ -412,6 +421,48 @@ struct ChatsList: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
         }
+    }
+}
+
+private struct Photos: Identifiable { let id = UUID(); let images: [UIImage]; let start: Int }
+
+/// A chat photo tapped: full screen on black, swipe between them, pinch or double-tap to zoom, swipe down or ✕ to close.
+private struct PhotoViewer: View {
+    let photos: Photos
+    @Environment(\.dismiss) private var dismiss
+    @State private var page = 0
+    @State private var zoom: CGFloat = 1
+    @State private var pinch: CGFloat = 1
+    @State private var drop: CGFloat = 0
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.opacity(1 - min(abs(drop) / 400, 0.6)).ignoresSafeArea()
+            TabView(selection: $page) {
+                ForEach(photos.images.indices, id: \.self) { i in
+                    Image(uiImage: photos.images[i]).resizable().scaledToFit()
+                        .scaleEffect(i == page ? zoom * pinch : 1)
+                        .tag(i)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: photos.images.count > 1 ? .automatic : .never))
+            .offset(y: drop)
+            .gesture(MagnifyGesture().onChanged { pinch = $0.magnification }
+                .onEnded { _ in zoom = min(max(zoom * pinch, 1), 4); pinch = 1 })
+            .onTapGesture(count: 2) { withAnimation(.spring) { zoom = zoom > 1 ? 1 : 2.5 } }
+            // swipe down to close, only when not zoomed in
+            .simultaneousGesture(DragGesture().onChanged { v in if zoom == 1, abs(v.translation.height) > abs(v.translation.width) { drop = v.translation.height } }
+                .onEnded { _ in if drop > 120 { dismiss() } else { withAnimation(.spring) { drop = 0 } } })
+            .onChange(of: page) { _, _ in zoom = 1 }
+            Button { dismiss() } label: {
+                Image(systemName: "xmark").font(.headline).foregroundStyle(.white).frame(width: 44, height: 44)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+            .padding(.horizontal, 16).padding(.top, 8)
+            .accessibilityLabel("Close photo")
+        }
+        .onAppear { page = photos.start }
+        .statusBarHidden()
     }
 }
 

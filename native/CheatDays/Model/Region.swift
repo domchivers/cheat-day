@@ -8,6 +8,7 @@ enum Region: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     var name: String { switch self { case .uk: return "the UK"; case .au: return "Australia"; case .us: return "the US" } }
+    var code: String { switch self { case .uk: return "GB"; case .au: return "AU"; case .us: return "US" } }   // ISO, for web searches
     var label: String { switch self { case .uk: return "UK"; case .au: return "Australia"; case .us: return "US" } }
 
     /// Where the phone is: its time zone first (a Brit in Melbourne often keeps the UK region setting), then the

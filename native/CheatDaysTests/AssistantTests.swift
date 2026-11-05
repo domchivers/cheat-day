@@ -139,6 +139,21 @@ final class AssistantTests: XCTestCase {
         XCTAssertTrue(Assistant.rules.contains("numbers_from"))
     }
 
+    /// The owner's Monarc mango stick: the AI guessed 45 g; the label found online says one stick is 36 g, 43 kcal.
+    func testABrandsLabelFromTheWebIsUsedPerServing() {
+        let label: JSON = ["found": true, "serving_g": 36, "kcal": 43, "protein_g": 1.3, "carbs_g": 7.2, "fat_g": 0.9, "source": "Monarc, Woolworths listing"]
+        let stick: JSON = ["name": "Monarc Mini Mango Frozen Yogurt Stick", "grams": 45, "kcal": 44, "numbers_from": "brand", "servings": 1]
+        let one = Assistant.fromLabel(stick, label)
+        XCTAssertEqual(num(one["grams"]), 36); XCTAssertEqual(num(one["kcal"]), 43); XCTAssertEqual(str(one["src"]), "web")
+        var two = stick; two["servings"] = 2
+        XCTAssertEqual(num(Assistant.fromLabel(two, label)["kcal"]), 86)
+        var weighed = stick; weighed["servings"] = 0; weighed["grams"] = 72
+        XCTAssertEqual(num(Assistant.fromLabel(weighed, label)["kcal"]), 86, "a weight they gave stays, at the label's rate")
+        XCTAssertEqual(num(Assistant.fromLabel(stick, ["found": true, "serving_g": 0, "kcal": 0])["kcal"]), 44, "no usable label: the AI's guess stays")
+        let from = dict(dict(dict(dict(dict(Assistant.schema["properties"])["estimate"])["properties"])["parts"])["items"])
+        XCTAssertEqual(dict(dict(from["properties"])["numbers_from"])["enum"] as? [String], ["label", "them", "brand", "estimate"])
+    }
+
     func testAnEstimateNeverSaysItsLogged() {
         let out = Assistant.saneEdit(["kind": "estimate", "reply": "Half a teaspoon is about 22 kcal. Logging it now."])
         XCTAssertTrue(str(out["reply"]).contains("tap Add"))

@@ -14,7 +14,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 
 const HAIKU = "claude-haiku-5-5", SONNET = "claude-sonnet-5-5";
 // from the tests in tools/ai-test and the owner's side-by-side picks
-const MODELS: Record<string, string> = { recipes: HAIKU, plans: HAIKU, labels: HAIKU, logs: HAIKU, quick: HAIKU, chat: SONNET, photos: SONNET, careful: SONNET };
+const MODELS: Record<string, string> = { lookup: HAIKU, recipes: HAIKU, plans: HAIKU, labels: HAIKU, logs: HAIKU, quick: HAIKU, chat: SONNET, photos: SONNET, careful: SONNET };
 const PRICES: Record<string, [number, number]> = { [HAIKU]: [0.10, 0.50], [SONNET]: [2, 10] };   // $ per million tokens in and out
 
 function chosenModel(job: string): string | null {
@@ -46,7 +46,7 @@ async function askClaude(req: Request, user: { id: string }, job: string) {
   if (!key) return json({ error: "ANTHROPIC_API_KEY secret not set" }, 503);
   const model = chosenModel(job);
   if (!model) return json({ error: "Unknown job" }, 400);
-  const { parts, schema, maxTokens } = await req.json();
+  const { parts, schema, maxTokens, country } = await req.json();
   if (!Array.isArray(parts) || !parts.length || parts.length > 6) return json({ error: "Bad request" }, 400);
 
   // nobody can run up the bill: a limit per person per day, counted in the service-only table
@@ -67,9 +67,13 @@ async function askClaude(req: Request, user: { id: string }, job: string) {
       model, max_tokens: Math.min(Number(maxTokens) || 4000, 12000),
       messages: [{ role: "user", content: claudeContent(parts) }],
       ...(Object.keys(config).length ? { output_config: config } : {}),
+      // a packaged food's label looked up on the web: two searches at most, about a cent each
+      ...(job === "lookup" ? { tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 2,
+        user_location: { type: "approximate", country: ["AU", "GB", "US"].includes(country) ? country : "AU" } }] } : {}),
     } as any);
     const [pIn, pOut] = PRICES[model], input = r.usage.input_tokens, output = r.usage.output_tokens;
-    await admin.from("ai_usage").insert({ user_id: user.id, job, model, input_tokens: input, output_tokens: output, cost: (input * pIn + output * pOut) / 1e6, ms: Date.now() - started, stop: r.stop_reason });
+    const searches = (r.usage as any).server_tool_use?.web_search_requests ?? 0;
+    await admin.from("ai_usage").insert({ user_id: user.id, job, model, input_tokens: input, output_tokens: output, cost: (input * pIn + output * pOut) / 1e6 + searches * 0.01, ms: Date.now() - started, stop: r.stop_reason });
     const text = r.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
     if (r.stop_reason === "refusal") return json({ error: "refused" }, 422);
     if (r.stop_reason === "max_tokens") return json({ error: "too long" }, 502);

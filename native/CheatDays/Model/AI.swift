@@ -51,11 +51,31 @@ enum Gemini {
         }
     }
 
-    private static func claude(_ job: String, schema: JSON, parts: [JSON]) async -> JSON? {
-        let body: JSON = ["parts": parts, "schema": schema, "maxTokens": 12000]
+    private static func claude(_ job: String, schema: JSON, parts: [JSON], extra: JSON = [:]) async -> JSON? {
+        let body: JSON = ["parts": parts, "schema": schema, "maxTokens": 12000].merging(extra) { _, new in new }
         guard let (d, status) = try? await Supabase.shared.call("/functions/v1/ai?job=\(job)", body: body, timeout: 60), status == 200,
               let reply = try? JSONSerialization.jsonObject(with: d) as? JSON, let data = str(reply["text"]).data(using: .utf8) else { return nil }
         return try? JSONSerialization.jsonObject(with: data) as? JSON
+    }
+
+    private static let labelSchema: JSON = ["type": "object", "required": ["found", "serving_g", "kcal", "protein_g", "carbs_g", "fat_g", "source"], "properties": [
+        "found": ["type": "boolean"] as JSON, "serving_g": ["type": "number"] as JSON, "kcal": ["type": "number"] as JSON,
+        "protein_g": ["type": "number"] as JSON, "carbs_g": ["type": "number"] as JSON, "fat_g": ["type": "number"] as JSON,
+        "source": ["type": "string", "description": "where the label was found, one line"] as JSON] as JSON]
+    @MainActor private static var labels: [String: JSON] = [:]
+
+    /// A packaged product's nutrition label, looked up on the web by Claude (about 2 cents, a few seconds): per serving,
+    /// or nil when no real label turns up. Each product is looked up once per session.
+    @MainActor
+    static func lookUpLabel(_ product: String) async -> JSON? {
+        let key = product.lowercased().trimmingCharacters(in: .whitespaces)
+        guard !key.isEmpty else { return nil }
+        if let known = labels[key] { return known["found"] as? Bool == true ? known : nil }
+        let ask = "Find the nutrition panel for this packaged food sold in \(Plan.country): \"\(product)\". Give the numbers per serving exactly as its label says (the brand's own site or a supermarket listing), kcal from kJ ÷ 4.184 if only kJ is given. found false if you can't find a real label for this product."
+        guard let answer = await claude("lookup", schema: labelSchema, parts: [["text": ask]], extra: ["country": Region.current.code]) else { return nil }
+        labels[key] = answer
+        guard answer["found"] as? Bool == true, (num(answer["serving_g"]) ?? 0) > 0, (num(answer["kcal"]) ?? 0) > 0 else { return nil }
+        return answer
     }
 
     private static func askNow(schema: JSON, parts: [JSON], quick: Bool, tries: Int) async throws -> JSON {
