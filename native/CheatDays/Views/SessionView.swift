@@ -166,14 +166,16 @@ struct SessionView: View {
     // MARK: the bar that stays on screen
 
     private var timerBar: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             Text(Date(timeIntervalSince1970: s.startedAt / 1000), style: .timer)
                 .font(.headline.weight(.heavy)).monospacedDigit().foregroundStyle(.secondary)
             Spacer()
             if let r = s.restUntil, r > Double(nowMs()) {
-                Text("Rest").font(.subheadline.weight(.bold))
+                // no "Rest" word: −15 needed the room, and the blue countdown says it
                 Text(timerInterval: Date()...Date(timeIntervalSince1970: r / 1000), countsDown: true)
                     .font(.title2.weight(.heavy)).monospacedDigit().foregroundStyle(Theme.accent)
+                    .accessibilityLabel("Rest")
+                Button("−15") { nudge(-15) }.buttonStyle(.bordered).controlSize(.small)
                 Button("+15") { nudge(15) }.buttonStyle(.bordered).controlSize(.small)
                 Button("Skip") { s.restUntil = nil }.buttonStyle(.borderedProminent).controlSize(.small).foregroundStyle(Theme.onAccent)
             } else if let n = s.next {

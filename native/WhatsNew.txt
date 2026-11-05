@@ -1,4 +1,4 @@
-New in this build: a nutrition label you show the assistant keeps its numbers, a packaged product is looked up by its own label online instead of a generic food, and tapping a photo in the chat opens it full screen.
+New in this build: the rest timer at the bottom of a workout has −15 as well as +15.
 
 Thanks for testing! Please just use it like a normal day:
 
