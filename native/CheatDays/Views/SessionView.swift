@@ -169,7 +169,8 @@ struct SessionView: View {
         HStack(spacing: 8) {
             Text(Date(timeIntervalSince1970: s.startedAt / 1000), style: .timer)
                 .font(.headline.weight(.heavy)).monospacedDigit().foregroundStyle(.secondary)
-            Spacer()
+                .lineLimit(1).minimumScaleFactor(0.7)   // past an hour, or with big text, it shrinks before the buttons squash
+            Spacer(minLength: 0)
             if let r = s.restUntil, r > Double(nowMs()) {
                 // no "Rest" word: −15 needed the room, and the blue countdown says it
                 Text(timerInterval: Date()...Date(timeIntervalSince1970: r / 1000), countsDown: true)
