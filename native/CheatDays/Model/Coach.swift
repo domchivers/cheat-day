@@ -24,7 +24,7 @@ extension Store {
         let left = budgetToday - eaten
         let had = todayItems.contains { Meals.of($0) == meal }
         let ideas = had || left < 80 ? [] : Array(ideaEntries(for: meal).filter { $0.kcal <= left + 50 }.prefix(2))
-        let advice = coachAdvice(meal: meal, hour: hour)
+        let advice = weekReview == nil ? coachAdvice(meal: meal, hour: hour) : nil   // the week review speaks once there's a week
         guard !ideas.isEmpty || advice != nil else { return nil }
         return Nudge(meal: meal, ideas: ideas, advice: advice)
     }

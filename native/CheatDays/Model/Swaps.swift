@@ -39,7 +39,8 @@ extension Store {
         var seen: [String: (days: Set<String>, kcal: Double)] = [:]
         for h in list(doc["history"]).prefix(7) {
             for it in list(h["items"]) {
-                let n = str(it["name"]); guard let k = num(it["kcal"]), k > 60 else { continue }
+                // a protein-rich food (the owner's protein brownie) is helping, not something to swap
+                let n = str(it["name"]); guard let k = num(it["kcal"]), k > 60, !WeekReview.proteinRich(it) else { continue }
                 var e = seen[n, default: ([], 0)]
                 e.days.insert(str(h["date"]))
                 e.kcal = max(e.kcal, k)

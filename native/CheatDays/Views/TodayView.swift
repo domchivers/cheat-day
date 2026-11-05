@@ -39,6 +39,7 @@ struct TodayView: View {
     @State private var badgeNote: String?
     @AppStorage("today.more") private var moreOpen = false
     @AppStorage("nudge.hidden") private var nudgeHidden = ""   // "day|meal" of the card you closed
+    @AppStorage("review.hidden") private var reviewHidden = ""   // the day the week review was closed
     @AppStorage("dailyTips") private var dailyTipsOn = true
     @AppStorage("dailyTips.seen") private var dailyTipsSeen = ""
     @State private var daily: DailyReview?
@@ -125,6 +126,7 @@ struct TodayView: View {
                 Section { hero }
                     .listRowBackground(Color.clear)   // the panel draws its own card, so the trim and badge can sit on its top edge
                     .listRowInsets(EdgeInsets())
+                if offset == 0, reviewHidden != store.today, let r = store.weekReview { reviewCard(r) }
                 if offset == 0, let n = store.nudge, nudgeHidden != store.today + "|" + n.meal { nudgeCard(n) }
                 if offset == 0 && store.checkInDue {
                     let c = store.checkIn
@@ -342,6 +344,56 @@ struct TodayView: View {
             }
             Spacer(minLength: 0)
             if let meal { hideButton(meal) }
+        }
+    }
+
+    /// The week review: a headline, a tick or a warning for each goal, and what to keep or the one thing to change.
+    private func reviewCard(_ r: WeekReview) -> some View {
+        let good = r.rows.allSatisfy(\.ok)
+        return Section {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .center, spacing: 12) {
+                    FluentIcon(emoji: r.icon, size: 20)
+                        .frame(width: 36, height: 36)
+                        .background((good ? Theme.walk : Theme.accent).opacity(0.16), in: Circle())
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(r.title).font(.headline).lineLimit(2)
+                        Text("Your last 7 days").font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                    Button { withAnimation { reviewHidden = store.today } } label: {
+                        Image(systemName: "xmark").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                            .frame(width: 28, height: 28).background(Color.primary.opacity(0.06), in: Circle())
+                    }
+                    .buttonStyle(.borderless).accessibilityLabel("Hide for today")
+                }
+                VStack(spacing: 8) {
+                    ForEach(r.rows, id: \.label) { row in
+                        HStack(spacing: 10) {
+                            Image(systemName: row.ok ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                                .font(.body).foregroundStyle(row.ok ? Theme.walk : Theme.warn)
+                            Text(row.label).font(.subheadline.weight(.semibold))
+                            Spacer(minLength: 8)
+                            Text(row.value).font(.subheadline).monospacedDigit().foregroundStyle(.secondary)
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(r.tip).font(.footnote).fixedSize(horizontal: false, vertical: true)
+                    if let meal = r.plan {
+                        Button { plannerMeal = meal; showPlanner = true } label: {
+                            Text("Ideas for \(meal.lowercased()) ›").font(.footnote.weight(.semibold))
+                        }
+                        .buttonStyle(.borderless).foregroundStyle(Theme.accent)
+                    }
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .padding(.vertical, 6)
+            .accessibilityIdentifier("weekReview")
         }
     }
 
