@@ -7,24 +7,24 @@ struct WeekReviewCard: View {
     var hide: () -> Void = {}
     var plan: (String) -> Void = { _ in }
     @Environment(\.dynamicTypeSize) private var type
-    @ScaledMetric(relativeTo: .headline) private var circle: CGFloat = 36   // the icon and ✕ circles grow with the text
+    @ScaledMetric(relativeTo: .headline) private var circle: CGFloat = 36   // the icon and ✕ circles grow with the text, up to a cap so the title keeps its room
     @ScaledMetric(relativeTo: .caption) private var close: CGFloat = 28
 
     var body: some View {
         let r = review, good = r.rows.allSatisfy(\.ok), big = type.isAccessibilitySize
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: big ? .top : .center, spacing: 12) {
-                FluentIcon(emoji: r.icon, size: circle * 0.56)
-                    .frame(width: circle, height: circle)
+                FluentIcon(emoji: r.icon, size: min(circle, 48) * 0.56)
+                    .frame(width: min(circle, 48), height: min(circle, 48))
                     .background((good ? Theme.walk : Theme.warn).opacity(0.18), in: Circle())
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(r.title).font(.headline).lineLimit(2)
+                    Text(r.title).font(.headline).fixedSize(horizontal: false, vertical: true)
                     Text("Your last 7 days").font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 12)
                 Button(action: hide) {
                     Image(systemName: "xmark").font(.caption.weight(.bold)).foregroundStyle(.secondary)
-                        .frame(width: close, height: close).background(Color.primary.opacity(0.06), in: Circle())
+                        .frame(width: min(close, 40), height: min(close, 40)).background(Color.primary.opacity(0.06), in: Circle())
                 }
                 .buttonStyle(.borderless).foregroundStyle(.secondary).tint(.secondary).accessibilityLabel("Hide for today")
             }
