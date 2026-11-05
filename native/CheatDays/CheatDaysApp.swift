@@ -36,6 +36,7 @@ struct RootView: View {
         else if ProcessInfo.processInfo.arguments.contains("-uitest-walk") { WalkHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-ranks") { RanksHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-mealcheck") { MealCheckHarness() }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-review") { ReviewHarness() }
         else if Supabase.shared.session == nil { SignInView() } else { MainTabs() }
     }
 }
@@ -112,6 +113,26 @@ private struct MealCheckHarness: View {
     }
     var body: some View {
         if let check { MealCheckSheet(check: check) {} } else { Text("No check") }
+    }
+}
+
+/// For the week review screenshot only: both kinds of card in a list like Today's, with sample weeks, no sign-in.
+private struct ReviewHarness: View {
+    private let good = WeekReview(icon: "🎯", title: "On track this week", rows: [
+        .init(label: "Within budget", value: "6 of 7 days", ok: true), .init(label: "Protein goal hit", value: "5 of 7 days", ok: true),
+        .init(label: "Weight", value: "−0.4 kg a week", ok: true)],
+        tip: "Keep doing what you're doing. Your protein brownie's earning its place: 20 g protein for 190 kcal.")
+    private let short = WeekReview(icon: "🥚", title: "Nearly there: protein's short", rows: [
+        .init(label: "Within budget", value: "6 of 7 days", ok: true), .init(label: "Protein goal hit", value: "3 of 7 days", ok: false),
+        .init(label: "Weight", value: "−0.4 kg a week", ok: true)],
+        tip: "Dinners are where it drops: about 22 g on the short days. A chicken, fish or lean beef dinner would close the gap.", plan: "Dinner")
+    var body: some View {
+        List {
+            Section { WeekReviewCard(review: good) }
+            Section { WeekReviewCard(review: short) }
+            Section("Breakfast") { Text("Weet-Bix with milk") }
+        }
+        .scrollContentBackground(.hidden).background(Theme.bg)
     }
 }
 

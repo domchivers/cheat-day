@@ -347,53 +347,10 @@ struct TodayView: View {
         }
     }
 
-    /// The week review: a headline, a tick or a warning for each goal, and what to keep or the one thing to change.
     private func reviewCard(_ r: WeekReview) -> some View {
-        let good = r.rows.allSatisfy(\.ok)
-        return Section {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .center, spacing: 12) {
-                    FluentIcon(emoji: r.icon, size: 20)
-                        .frame(width: 36, height: 36)
-                        .background((good ? Theme.walk : Theme.accent).opacity(0.16), in: Circle())
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(r.title).font(.headline).lineLimit(2)
-                        Text("Your last 7 days").font(.caption).foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 0)
-                    Button { withAnimation { reviewHidden = store.today } } label: {
-                        Image(systemName: "xmark").font(.caption.weight(.bold)).foregroundStyle(.secondary)
-                            .frame(width: 28, height: 28).background(Color.primary.opacity(0.06), in: Circle())
-                    }
-                    .buttonStyle(.borderless).accessibilityLabel("Hide for today")
-                }
-                VStack(spacing: 8) {
-                    ForEach(r.rows, id: \.label) { row in
-                        HStack(spacing: 10) {
-                            Image(systemName: row.ok ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                                .font(.body).foregroundStyle(row.ok ? Theme.walk : Theme.warn)
-                            Text(row.label).font(.subheadline.weight(.semibold))
-                            Spacer(minLength: 8)
-                            Text(row.value).font(.subheadline).monospacedDigit().foregroundStyle(.secondary)
-                        }
-                        .accessibilityElement(children: .combine)
-                    }
-                }
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(r.tip).font(.footnote).fixedSize(horizontal: false, vertical: true)
-                    if let meal = r.plan {
-                        Button { plannerMeal = meal; showPlanner = true } label: {
-                            Text("Ideas for \(meal.lowercased()) ›").font(.footnote.weight(.semibold))
-                        }
-                        .buttonStyle(.borderless).foregroundStyle(Theme.accent)
-                    }
-                }
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-            .padding(.vertical, 6)
-            .accessibilityIdentifier("weekReview")
+        Section {
+            WeekReviewCard(review: r, hide: { withAnimation { reviewHidden = store.today } },
+                           plan: { meal in plannerMeal = meal; showPlanner = true })
         }
     }
 
