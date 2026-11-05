@@ -6,13 +6,16 @@ struct WeekReviewCard: View {
     let review: WeekReview
     var hide: () -> Void = {}
     var plan: (String) -> Void = { _ in }
+    @Environment(\.dynamicTypeSize) private var type
+    @ScaledMetric(relativeTo: .headline) private var circle: CGFloat = 36   // the icon and ✕ circles grow with the text
+    @ScaledMetric(relativeTo: .caption) private var close: CGFloat = 28
 
     var body: some View {
-        let r = review, good = r.rows.allSatisfy(\.ok)
+        let r = review, good = r.rows.allSatisfy(\.ok), big = type.isAccessibilitySize
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 12) {
-                FluentIcon(emoji: r.icon, size: 20)
-                    .frame(width: 36, height: 36)
+            HStack(alignment: big ? .top : .center, spacing: 12) {
+                FluentIcon(emoji: r.icon, size: circle * 0.56)
+                    .frame(width: circle, height: circle)
                     .background((good ? Theme.walk : Theme.warn).opacity(0.18), in: Circle())
                 VStack(alignment: .leading, spacing: 1) {
                     Text(r.title).font(.headline).lineLimit(2)
@@ -21,18 +24,27 @@ struct WeekReviewCard: View {
                 Spacer(minLength: 12)
                 Button(action: hide) {
                     Image(systemName: "xmark").font(.caption.weight(.bold)).foregroundStyle(.secondary)
-                        .frame(width: 28, height: 28).background(Color.primary.opacity(0.06), in: Circle())
+                        .frame(width: close, height: close).background(Color.primary.opacity(0.06), in: Circle())
                 }
                 .buttonStyle(.borderless).foregroundStyle(.secondary).tint(.secondary).accessibilityLabel("Hide for today")
             }
             VStack(spacing: 8) {
                 ForEach(r.rows, id: \.label) { row in
-                    HStack(spacing: 10) {
+                    HStack(alignment: big ? .firstTextBaseline : .center, spacing: 10) {
                         Image(systemName: row.ok ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
                             .font(.body).foregroundStyle(row.ok ? Theme.walk : Theme.warn)
-                        Text(row.label).font(.subheadline.weight(.semibold))
-                        Spacer(minLength: 8)
-                        Text(row.value).font(.subheadline.weight(.medium)).monospacedDigit().foregroundStyle(.primary.opacity(0.75))
+                        // at the biggest text sizes the value goes under its label, so neither wraps in a narrow column
+                        if big {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(row.label).font(.subheadline.weight(.semibold))
+                                Text(row.value).font(.subheadline.weight(.medium)).monospacedDigit().foregroundStyle(.primary.opacity(0.75))
+                            }
+                            Spacer(minLength: 0)
+                        } else {
+                            Text(row.label).font(.subheadline.weight(.semibold))
+                            Spacer(minLength: 8)
+                            Text(row.value).font(.subheadline.weight(.medium)).monospacedDigit().foregroundStyle(.primary.opacity(0.75))
+                        }
                     }
                     .accessibilityElement(children: .combine)
                 }
