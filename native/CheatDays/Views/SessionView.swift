@@ -13,6 +13,7 @@ struct SessionView: View {
     @State private var banner: String?
     @State private var restOver = 0
     @State private var finished = false
+    @State private var saving: Task<Void, Never>?
     @State private var routineOffer: JSON?
     @State private var namesAnswered = 0   // "It's new" answered: asks again with that one settled
     @State private var askShare: JSON?
@@ -94,7 +95,15 @@ struct SessionView: View {
                 if let new = picked.first { withAnimation { s.swap(old.id, with: new) } }
             }
         }
-        .onChange(of: s) { _, now in if !finished { store.saveSession(now) } }
+        // saved once typing pauses, not on every keystroke: each save redraws everything that reads the record, rewrites
+        // the widget and the lock screen, and with a real history that froze the screen while a weight was typed in
+        .onChange(of: s) { _, now in
+            guard !finished else { return }
+            saving?.cancel()
+            saving = Task { try? await Task.sleep(for: .milliseconds(600)); if !Task.isCancelled, !finished { store.saveSession(now) } }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in saveNow() }
+        .onDisappear { saveNow() }
         .sensoryFeedback(.success, trigger: s.setsDone)
         .sensoryFeedback(.warning, trigger: restOver)
         .overlay(alignment: .top) {
@@ -210,6 +219,13 @@ struct SessionView: View {
         } else {
             Stepper("Rest between sets \(mmss(store.restSeconds))", onIncrement: { store.setRest(store.restSeconds + 15) }, onDecrement: { store.setRest(store.restSeconds - 15) })
         }
+    }
+
+    /// Leaving the screen or the app: a save that was waiting for typing to pause happens now.
+    private func saveNow() {
+        guard let pending = saving else { return }
+        pending.cancel(); saving = nil
+        if !finished { store.saveSession(s) }
     }
 
     private func nudge(_ seconds: Double) {

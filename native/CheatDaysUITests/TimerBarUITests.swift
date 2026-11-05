@@ -54,4 +54,28 @@ final class TimerBarUITests: XCTestCase {
             XCTAssertEqual(list.frame.maxY, listBottom, accuracy: 2, "round \(round): list ends at \(list.frame.maxY), it started at \(listBottom)")
         }
     }
+
+    /// The owner's freeze: typing a set's weight while the rest timer ran. Ticks a set, types into the next set's
+    /// kg box, and checks every key lands quickly and the rest buttons still answer afterwards.
+    func testTypingASetDuringRestStaysResponsive() {
+        XCTAssertTrue(bar.waitForExistence(timeout: 5), "no timer bar")
+        let tick = app.buttons["Tick this set"].firstMatch
+        XCTAssertTrue(tick.waitForExistence(timeout: 4)); tick.tap()
+        XCTAssertTrue(app.buttons["+15"].waitForExistence(timeout: 3), "no rest running after a tick")
+        let box = app.textFields.matching(identifier: "box-kg").allElementsBoundByIndex.first { $0.isHittable && $0.frame.maxY < bar.frame.minY }
+        guard let box else { XCTFail("no kg box on screen"); return }
+        box.tap()
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 4), "no keyboard came up")
+        let started = Date()
+        for key in ["1", "4", "0", ".", "5"] { app.keys[key].tap() }
+        XCTAssertLessThan(Date().timeIntervalSince(started), 8, "five keys took too long: the screen is struggling")
+        XCTAssertTrue((box.value as? String ?? "").contains(".5"), "typed weight didn't land: \(box.value ?? "")")
+        app.buttons["Done"].firstMatch.tap()
+        _ = keyboard.waitForNonExistence(timeout: 3)
+        let minus = app.buttons["−15"].firstMatch
+        XCTAssertTrue(minus.waitForExistence(timeout: 3), "the rest bar's −15 is missing")
+        XCTAssertTrue(minus.isHittable, "the rest bar stopped answering")
+        minus.tap()
+        XCTAssertTrue(app.buttons["Skip"].firstMatch.isHittable)
+    }
 }

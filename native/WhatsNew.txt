@@ -1,4 +1,4 @@
-New in this build: the rest timer at the bottom of a workout has −15 as well as +15.
+New in this build: typing a set's weight or reps during a workout no longer freezes the screen.
 
 Thanks for testing! Please just use it like a normal day:
 
