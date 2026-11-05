@@ -121,7 +121,8 @@ struct AssistantView: View {
     }
 
     @ViewBuilder private func card(_ r: JSON, turn: UUID) -> some View {
-        let meal = str(r["meal"]).isEmpty ? self.meal : str(r["meal"])   // "add to lunch" adds to lunch        switch str(r["kind"]) {
+        let meal = str(r["meal"]).isEmpty ? self.meal : str(r["meal"])   // "add to lunch" adds to lunch
+        switch str(r["kind"]) {
         case "estimate":
             if let e = r["estimate"] as? JSON { estimateCard(e, turn: turn, meal: meal) }
         case "plan":
