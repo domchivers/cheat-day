@@ -23,7 +23,7 @@ struct WeekReviewCard: View {
                 }
                 Spacer(minLength: 12)
                 Button(action: hide) {
-                    Image(systemName: "xmark").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                    Image(systemName: "xmark").font(.system(size: min(close, 40) * 0.42, weight: .bold)).foregroundStyle(.secondary)
                         .frame(width: min(close, 40), height: min(close, 40)).background(Color.primary.opacity(0.06), in: Circle())
                 }
                 .buttonStyle(.borderless).foregroundStyle(.secondary).tint(.secondary).accessibilityLabel("Hide for today")
