@@ -68,7 +68,12 @@ const potato = { model: 'claude-sonnet-5-5', image: 'results/potatoes.png' };
 const chicken = { model: 'claude-sonnet-5-5', image: 'results/chicken-label.jpg' };
 const cases = [
   // the owner's Portuguese chicken: its label in the photo, 122 kcal per 100 g raw
-  { say: 'I had a Monarc mini mango frozen yogurt stick', earlier: '' },
+  // { say: 'I had a Monarc mini mango frozen yogurt stick', earlier: '' },
+  // the owner's "that chicken from dinner yesterday": yesterday by meal, the chicken the 8th item, as the app now sends it
+  { say: '150g of that cooked chicken we had for dinner yesterday', earlier: '', context: `They live in Australia: use the usual portion sizes there. Today: budget 2350 kcal, eaten 425 kcal (Breakfast: "Protein Yogurt Bowl" 295 g 425 kcal), 1925 kcal left. Protein so far 40 g of 180 g, carbs 30 g, fat 10 g. Workouts today: none. Weight 80 kg.
+Recent days, by meal (when they mention a past meal, find it here by the meal they name: yesterday's dinner is under Yesterday, Dinner):
+Yesterday (2026-11-05), 2350/2350 kcal: Breakfast: "Protein Yogurt Bowl" 295 g 425 kcal; Lunch: "Extra lean beef mince, cooked" 200 g 330 kcal, "Egg, raw" 50 g 72 kcal, "Egg white" 100 g 48 kcal, "Shredded pizza cheese" 30 g 105 kcal, "Kewpie light mayo" 15 g 50 kcal; Dinner: "Brown rice, cooked" 200 g 250 kcal, "Aldi BBQ whole chicken, cooked, deboned" 250 g 433 kcal, "Broccoli, steamed" 150 g 52 kcal; Snacks: "Protein brownie" 60 g 190 kcal
+` },
   // { ...chicken, say: "Let's do 150g cooked", earlier: "They: What's this? (1 photo)\nYou: That's Aldi's Ready, Set... Cook! whole split chicken, Portuguese style chilli & lemon. Tell me how much you're having once it's cooked." },
   // { ...chicken, say: 'I had 190g off the bone, roasted', earlier: "They: What's this? (1 photo)\nYou: That's Aldi's Ready, Set... Cook! whole split chicken, Portuguese style chilli & lemon." },
   // { say: 'Add to lunch', earlier: "They: 174 g, no skin\nYou: 174 g of peeled potato comes to about 101 kcal. Tap to add it." },
@@ -90,7 +95,7 @@ const PRICE = JSON.parse(source.match(/\[HAIKU\]: (\[[^\]]*\])/)[1]);
   const client = new Anthropic({ baseURL: 'https://api.anthropic.com' });
   const ledgerFile = path.join(__dirname, 'results', 'ledger.json'), ledger = JSON.parse(fs.readFileSync(ledgerFile, 'utf8'));
   for (const c of cases) {
-    const text = `You are the assistant inside a cheat-day food diary app called Cheat Days. ${context}${c.earlier ? `Recent conversation:\n${c.earlier}\n` : ''}They now say: "${c.say}"\n${foodData(c.say)}\n${rules}`;
+    const text = `You are the assistant inside a cheat-day food diary app called Cheat Days. ${c.context || context}${c.earlier ? `Recent conversation:\n${c.earlier}\n` : ''}They now say: "${c.say}"\n${foodData(c.say)}\n${rules}`;
     const t0 = Date.now();
     const model = c.model || 'claude-haiku-5-5', sonnet = model.includes('sonnet');
     const img = c.image ? [{ type: 'image', source: { type: 'base64', media_type: c.image.endsWith('.jpg') ? 'image/jpeg' : 'image/png', data: fs.readFileSync(path.join(__dirname, c.image)).toString('base64') } }] : [];

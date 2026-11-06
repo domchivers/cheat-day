@@ -1,4 +1,4 @@
-New in this build: a smarter weekly check-in. Pick a weigh-in day, mark odd weigh-ins, and it waits two weeks before changing your budget, leaving your treat day alone.
+New in this build: a smarter weekly check-in, and the assistant now sees your recent days meal by meal and your other chats, so "that chicken from dinner yesterday" is found.
 
 Thanks for testing! Please just use it like a normal day:
 

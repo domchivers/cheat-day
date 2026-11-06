@@ -74,15 +74,48 @@ enum Assistant {
                        desc: "kind=lighter: a lighter way to have something")
     ])
 
+    /// A day's foods by meal, each with its amount and kcal: "Breakfast: "Protein Yogurt Bowl" 295 g 425 kcal; Dinner: …".
+    /// Every item, so yesterday's dinner is there to find (it was the first six names only, and dinner fell off the end).
+    static func byMeal(_ items: [JSON]) -> String {
+        Meals.all.compactMap { m -> String? in
+            let its = items.filter { Meals.of($0) == m }
+            guard !its.isEmpty else { return nil }
+            return "\(m): " + its.map { it in
+                let k = num(it["kcal"]) ?? 0, a = FoodMath.amountText(it, kcal: k)
+                return "\"\(str(it["name"]))\"\(a.isEmpty ? "" : " \(a)") \(Int(k)) kcal"
+            }.joined(separator: ", ")
+        }.joined(separator: "; ")
+    }
+
+    /// What they said in other chats over the last 3 days, and what was worked out, so "that chicken" can be found.
+    /// Skip is the current chat's first message (it's in the conversation already).
     @MainActor
-    static func context(_ store: Store) -> String {
+    static func earlierChats(_ store: Store, skip: String) -> String {
+        let since = Date().addingTimeInterval(-3 * 86400)
+        return CheatDays.list(store.doc["chats"]).filter { c in
+            (ISO.date(str(c["when"])) ?? .distantPast) >= since && CheatDays.list(c["turns"]).first { str($0["role"]) == "me" }.map { str($0["text"]) } != skip
+        }.prefix(4).map { c -> String in
+            let when = ISO.date(str(c["when"])).map { $0.formatted(.dateTime.weekday(.wide).hour().minute()) } ?? ""
+            let lines = CheatDays.list(c["turns"]).compactMap { t -> String? in
+                if str(t["role"]) == "me" { return "they said \"\(str(t["text"]).prefix(160))\"" }
+                guard let e = dict(t["result"])["estimate"] as? JSON else { return nil }
+                return "you worked out \(str(e["name"])), \(Int(num(e["kcal_total"]) ?? 0)) kcal"
+            }.suffix(8)
+            return "\(when): " + lines.joined(separator: "; ")
+        }.joined(separator: "\n")
+    }
+
+    @MainActor
+    static func context(_ store: Store, skip: String = "") -> String {
         let items = store.todayItems
         let eaten = items.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }, m = store.macros(items)
-        let list = items.map { "\"\(str($0["name"]))\" \(Int(num($0["kcal"]) ?? 0)) kcal" }.joined(separator: ", ")
+        let list = byMeal(items)
         let past = (0..<3).compactMap { i -> String? in
             let d = DayKey.shift(store.today, days: -(i + 1)); guard let p = store.pastDay(d) else { return nil }
-            return "\(d): \(Int(p.kcal))/\(Int(p.budget)) kcal (\(p.items.prefix(6).map { str($0["name"]) }.joined(separator: ", ")))"
-        }.joined(separator: "; ")
+            let name = i == 0 ? "Yesterday" : DayKey.date(d).formatted(.dateTime.weekday(.wide))
+            return "\(name) (\(d)), \(Int(p.kcal))/\(Int(p.budget)) kcal: \(p.items.isEmpty ? "nothing logged" : byMeal(p.items))"
+        }.joined(separator: "\n")
+        let chats = earlierChats(store, skip: skip)
         let meals = Swift.Array(CheatDays.list(store.doc["meals"]).prefix(10)).map { str($0["name"]) }.joined(separator: ", ")
         let wk = store.todayWorkouts.map { "\(str($0["name"])) \(Int(num($0["minutes"]) ?? 0)) min" }.joined(separator: ", ")
         let notes = str(store.doc["notes"]).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -91,7 +124,8 @@ enum Assistant {
         var c = notes.isEmpty ? "" : "About this person, in their own words (respect it in every suggestion): \(notes)\n"
         c += "They live in \(Plan.country): use the usual portion sizes there (how big a chicken thigh, a steak, a slice of bread or a glass of wine typically is). Today: budget \(Int(store.budgetToday)) kcal, eaten \(Int(eaten)) kcal (\(list.isEmpty ? "nothing yet" : list)), \(Int(store.budgetToday - eaten)) kcal left. "
         c += "Protein so far \(Int(m.p)) g\(store.proteinGoal.map { " of \(Int($0)) g" } ?? ""), carbs \(Int(m.c)) g, fat \(Int(m.f)) g. Workouts today: \(wk.isEmpty ? "none" : wk). Weight \(Fmt.one(store.latestWeight?.kg ?? store.weightKg)) kg.\n"
-        c += "Recent days: \(past.isEmpty ? "none yet" : past).\n"
+        c += "Recent days, by meal (when they mention a past meal, find it here by the meal they name: yesterday's dinner is under Yesterday, Dinner):\n\(past.isEmpty ? "none yet" : past)\n"
+        if !chats.isEmpty { c += "Their other chats with you in the last 3 days (when they mention food from before, it may be here):\n\(chats)\n" }
         c += "Things they often have: \(store.quickEntries.prefix(8).map(\.name).joined(separator: ", ")). Their saved meals: \(meals.isEmpty ? "none" : meals).\n"
         if !loves.isEmpty || !avoid.isEmpty { c += "Foods they love: \(loves.isEmpty ? "not said" : loves). Never suggest: \(avoid.isEmpty ? "nothing" : avoid).\n" }
         c += store.habitsContext
@@ -148,7 +182,7 @@ enum Assistant {
         // photos come along from the last message that had some, when this one has none
         let pics = last.images.isEmpty ? (turns.dropLast().last { $0.me && !$0.images.isEmpty }?.images ?? []) : last.images
         var parts: [JSON] = pics.prefix(4).compactMap { Gemini.imagePart($0) }
-        parts.append(["text": "You are the assistant inside a cheat-day food diary app called Cheat Days. \(context(store))\(earlier.isEmpty ? "" : "Recent conversation:\n\(earlier)\n")They now say: \"\(last.text)\"\(last.images.isEmpty && !pics.isEmpty ? " (about the photos from earlier)" : "")\n\(foodData(last.text))\n\(rules)"])
+        parts.append(["text": "You are the assistant inside a cheat-day food diary app called Cheat Days. \(context(store, skip: turns.first { $0.me }?.text ?? ""))\(earlier.isEmpty ? "" : "Recent conversation:\n\(earlier)\n")They now say: \"\(last.text)\"\(last.images.isEmpty && !pics.isEmpty ? " (about the photos from earlier)" : "")\n\(foodData(last.text))\n\(rules)"])
         // Claude for everything (Apple's on-device model made up foods: "1/2 tsp sesame oil" came back as roasted cauliflower).
         // Simple logs and questions go to the quick model; photos, recipes and plans to the careful one.
         let simple = isSimple(last.text, hasPhotos: !pics.isEmpty)
