@@ -132,7 +132,7 @@ struct BudgetView: View {
     private func goalLine(_ plan: JSON) -> String {
         let rate = num(plan["rate"]) ?? 0
         switch str(plan["goal"]) {
-        case "lose", "cut": return "Losing \(Fmt.one(abs(rate))) kg a week"
+        case "lose", "cut": return "Losing \(Fmt.kg(abs(rate))) kg a week"   // 0.45, not rounded to 0.5
         case "recomp": return "Leaner and stronger"
         case "leanbulk", "bulk": return "Building muscle"
         default: return "Keeping steady"

@@ -89,7 +89,7 @@ enum Demo {
         var d: JSON = [
             "onboarded": true, "goalWeight": 78, "goalStart": ["weight": num(body.first?["weight"]) ?? 84.3, "day": str(body.first?["day"])] as JSON, "budget": 2350, "dayBudgets": ["6": 3250, "0": 2500] as JSON,
             "goals": ["p": 160, "c": 250, "f": 80] as JSON, "profile": ["sex": "m", "name": "Sam"] as JSON,
-            "plan": ["rate": -0.45, "tdee": 2950, "bmr": 1850, "kcal": 2500, "cheatDay": 6, "spread": "cheat",
+            "plan": ["goal": "lose", "pace": -0.45, "rate": -0.45, "tdee": 2950, "bmr": 1850, "kcal": 2500, "cheatDay": 6, "spread": "cheat",
                      "macros": ["p": 160, "c": 250, "f": 80] as JSON, "createdAt": ISO.now()] as JSON,
             "prefs": ["weighDay": 6] as JSON, "weightKg": 81.5,
             "day": ["date": today, "items": now, "workouts": [] as [JSON]] as JSON,
