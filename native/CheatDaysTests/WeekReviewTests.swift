@@ -63,7 +63,8 @@ final class WeekReviewTests: XCTestCase {
         let full = (0..<7).map { _ in day([food("Chicken breast", kcal: 1800, p100: 31, k100: 165, meal: "Dinner")]) }
         XCTAssertTrue(WeekReview.make(days: full, proteinGoal: 100, pace: -0.6, want: 0)?.tip.hasSuffix("You're eating your budget, so it's the budget that's too low. Monday's check-in will suggest a higher one.") == true)
         XCTAssertTrue(r?.tip.hasSuffix("Eat up to your budget, and if it carries on, Monday's check-in will raise it.") == true, r?.tip ?? "")
-        XCTAssertEqual(WeekReview.make(days: days, proteinGoal: 100, pace: -0.1, want: -0.5)?.title, "Weight's not moving")
+        XCTAssertEqual(WeekReview.make(days: days, proteinGoal: 100, pace: -0.02, want: -0.5)?.title, "Weight's not moving")
+        XCTAssertEqual(WeekReview.make(days: days, proteinGoal: 100, pace: -0.2, want: -0.5)?.title, "Losing slower than planned")
         XCTAssertEqual(WeekReview.make(days: days, proteinGoal: 100, pace: 0.2, want: -0.5)?.title, "Weight's going up")
     }
 

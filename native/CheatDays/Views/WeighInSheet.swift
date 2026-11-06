@@ -17,6 +17,7 @@ struct WeighInSheet: View {
     @State private var note: String?
     @State private var when: Date   // when the scale took it: now, or the screenshot's date and time
     @State private var checking = false
+    @State private var usual = true   // taken the usual way: off leaves it out of the trend
     private let editing: String?    // the day of a reading being changed
     private var store: Store { Store.shared }
 
@@ -36,6 +37,7 @@ struct WeighInSheet: View {
         var o: [String: String] = [:]
         if let row { for k in ["fat"] + Self.extras.map(\.key) { if let v = pos(row[k]) { o[k] = Fmt.kg(v) } } }
         _others = State(initialValue: o)
+        _usual = State(initialValue: (row?["usual"] as? Bool) != false)
         _more = State(initialValue: Self.extras.contains { o[$0.key] != nil })
     }
 
@@ -93,6 +95,12 @@ struct WeighInSheet: View {
         }
         Section {
             DatePicker("When", selection: $when, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
+            Toggle(isOn: $usual) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Usual weigh-in")
+                    Text("Fasted, after the toilet. Off and it won't move your trend.").font(.caption).foregroundStyle(.secondary)
+                }
+            }
             field("fat", "Body fat (optional)", "%")
             if more {
                 ForEach(Self.extras, id: \.key) { f in field(f.key, f.name, f.unit) }
@@ -160,6 +168,7 @@ extension WeighInSheet {
         row["day"] = day
         row["takenAt"] = ISO8601DateFormatter().string(from: when)
         row["updatedAt"] = ISO.now()
+        row["usual"] = usual
         store.saveBody(row)
     }
 

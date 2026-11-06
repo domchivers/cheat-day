@@ -314,7 +314,7 @@ extension Store {
         perform(["type": "body", "row": row])
         Task {
             guard let me = Supabase.shared.userId else { return }
-            var cloud = row; cloud.removeValue(forKey: "updatedAt"); cloud["user_id"] = me; cloud["updated_at"] = ISO.now()
+            var cloud = row; for k in ["updatedAt", "usual", "why"] { cloud.removeValue(forKey: k) }; cloud["user_id"] = me; cloud["updated_at"] = ISO.now()
             _ = try? await Supabase.shared.rest("/rest/v1/body_metrics?on_conflict=user_id,day", method: "POST", body: [cloud], prefer: "resolution=merge-duplicates")
         }
     }

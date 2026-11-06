@@ -26,7 +26,8 @@ struct WeekReview: Equatable {
     }
 
     /// Needs 3 logged days. Swap is the lighter pick for something they keep having, offered only when it's over budget.
-    static func make(days: [Day], proteinGoal: Double?, pace: Double?, want: Double?,
+    /// Tol and method are the check-in's: how far off the goal still counts as on it, and which weigh-ins the pace is from.
+    static func make(days: [Day], proteinGoal: Double?, pace: Double?, want: Double?, tol: Double = 0.12, method: String = "last 4 weeks",
                      swap: (food: String, saves: Double, pick: String, days: Int)? = nil) -> WeekReview? {
         let days = days.filter { !$0.items.isEmpty }
         guard days.count >= 3 else { return nil }
@@ -43,16 +44,15 @@ struct WeekReview: Equatable {
             rows.append(Row(label: "Protein goal hit", value: "\(n - short.count) of \(n) days", ok: proteinOK))
         }
 
-        // weight is judged on the 4-week trend, not these 7 days, so one salty weekend can't flag it; it's off when it's
-        // well short of the plan or well past it, either way
+        // weight is judged on the check-in's trend, not these 7 days, so one salty weekend can't flag it, and with the
+        // check-in's range either side of the goal, so the two never disagree
         var weightOK = true; let w = want ?? 0
+        let span = method.prefix(1).uppercased() + method.dropFirst()
         if let pace {
-            let slow = w < 0 ? pace > w / 3 : w > 0 ? pace < w / 3 : abs(pace) >= 0.25
-            let fast = w < 0 ? pace < w * 1.5 - 0.25 : w > 0 ? pace > w * 2 + 0.25 : false
-            weightOK = !slow && !fast
+            weightOK = !Adaptive.off(pace, want: w, tol: tol)
             let plan = w == 0 ? "steady" : "\(w > 0 ? "+" : "−")\(Fmt.kg(abs(w))) kg"
             rows.append(Row(label: "Weight", value: "\(pace > 0.05 ? "+" : pace < -0.05 ? "−" : "")\(Fmt.one(abs(pace))) kg a week", ok: weightOK,
-                            note: weightOK ? "Last 4 weeks" : "Last 4 weeks · plan \(plan)"))
+                            note: weightOK ? span : "\(span) · plan \(plan)"))
         }
 
         // all good: say so, and name something that's helping
@@ -90,23 +90,30 @@ struct WeekReview: Equatable {
                               tip: "\(name) are where it drops: about \(Int(low.avg.rounded())) g on the short days. \(idea) would close the gap.", plan: low.meal)
         }
         let pace = pace ?? 0, aim = w == 0 ? "holding steady" : "\(w < 0 ? "losing" : "gaining") \(Fmt.kg(abs(w))) kg a week"
-        if pace < 0 && pace < w {
-            // eating the whole budget (within 5%) and still losing means the budget's too low, not the eating
-            let ate = days.reduce(0) { $0 + $1.kcal }, allowed = days.reduce(0) { $0 + $1.budget }
-            let fix = allowed > 0 && ate >= allowed * 0.95
-                ? "You're eating your budget, so it's the budget that's too low. Monday's check-in will suggest a higher one."
-                : "Eat up to your budget, and if it carries on, Monday's check-in will raise it."
-            // on a plan to gain or hold, any real loss is the wrong way, not "faster"
-            return WeekReview(status: status, title: w > 0 ? "Losing instead of gaining" : w == 0 ? "Losing when you meant to hold" : "Losing faster than planned", rows: rows,
-                              tip: "You've lost \(Fmt.one(abs(pace))) kg a week over the last 4 weeks, and your plan is \(aim). Losing like this can cost muscle. \(fix)")
+        let over = method.hasPrefix("last 4") || method.hasPrefix("last 6") ? "over the \(method)" : "over your \(method)"
+        // eating the whole budget (within 5%) means the budget's the thing to change, not the eating
+        let ate = days.reduce(0) { $0 + $1.kcal }, allowed = days.reduce(0) { $0 + $1.budget }
+        let full = allowed > 0 && ate >= allowed * 0.95
+        if pace < w {
+            // under the goal's line: losing faster, losing on a plan to hold or gain, or gaining too slowly
+            let fix = full ? "You're eating your budget, so it's the budget that's too low. Monday's check-in will suggest a higher one."
+                           : "Eat up to your budget, and if it carries on, Monday's check-in will raise it."
+            if pace < -0.05 {
+                return WeekReview(status: status, title: w > 0 ? "Losing instead of gaining" : w == 0 ? "Losing when you meant to hold" : "Losing faster than planned", rows: rows,
+                                  tip: "You've lost \(Fmt.one(abs(pace))) kg a week \(over), and your plan is \(aim). Losing like this can cost muscle. \(fix)")
+            }
+            return WeekReview(status: status, title: pace > 0.05 ? "Gaining slower than planned" : "Weight's not moving", rows: rows,
+                              tip: "Your plan is \(aim). \(fix)")
         }
-        if pace > 0 && pace > w {
-            return WeekReview(status: status, title: "Weight's going up", rows: rows,
-                              tip: "You've gained \(Fmt.one(pace)) kg a week over the last 4 weeks, and your plan is \(aim). Your days look good on paper, so the gap is usually what doesn't get logged: drinks, bites and oil. Log everything for a week.")
+        // over the goal's line: losing too slowly, or going up
+        let fix = full ? "You're eating your budget, so either it's a little high or something isn't getting logged: drinks, bites and oil. Monday's check-in will lower it if it carries on."
+                       : "Your days look good on paper, so the gap is usually what doesn't get logged: drinks, bites and oil. Log everything for a week."
+        if pace > 0.05 {
+            return WeekReview(status: status, title: w > 0 ? "Gaining faster than planned" : w == 0 ? "Gaining when you meant to hold" : "Weight's going up", rows: rows,
+                              tip: "You've gained \(Fmt.one(pace)) kg a week \(over), and your plan is \(aim). \(fix)")
         }
-        return WeekReview(status: status, title: "Weight's not moving", rows: rows,
-                          tip: w > 0 ? "Your plan is \(aim), and you're on budget, so the budget itself is a little low. Monday's check-in will raise it once it has enough weigh-ins."
-                                     : "Your days look good on paper, so the gap is usually what doesn't get logged: drinks, bites and oil. Log everything for a week.")
+        return WeekReview(status: status, title: pace < -0.05 ? "Losing slower than planned" : "Weight's not moving", rows: rows,
+                          tip: "Your plan is \(aim). \(fix)")
     }
 
     /// The food that came up on the most days (3 or more) among those that pass the test, with its usual numbers.
@@ -137,6 +144,6 @@ extension Store {
         }
         let c = checkIn
         let s = weekSwap.map { (food: $0.food, saves: $0.pick.saves, pick: $0.pick.name, days: $0.days) }
-        return WeekReview.make(days: days, proteinGoal: proteinGoal, pace: c.pace, want: c.want, swap: s)
+        return WeekReview.make(days: days, proteinGoal: proteinGoal, pace: c.pace, want: c.want, tol: c.tol ?? 0.12, method: c.rate?.method ?? "last 4 weeks", swap: s)
     }
 }

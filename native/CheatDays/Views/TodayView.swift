@@ -126,6 +126,7 @@ struct TodayView: View {
                 Section { hero }
                     .listRowBackground(Color.clear)   // the panel draws its own card, so the trim and badge can sit on its top edge
                     .listRowInsets(EdgeInsets())
+                if offset == 0, let w = store.weighInToConfirm { Section { WeighInConfirmCard(day: w.day, kg: w.kg, at: w.at) } }
                 if offset == 0, reviewHidden != store.today, let r = store.weekReview { reviewCard(r) }
                 if offset == 0, let n = store.nudge, nudgeHidden != store.today + "|" + n.meal { nudgeCard(n) }
                 if offset == 0 && store.checkInDue {
@@ -801,13 +802,7 @@ private struct LateNightCard: View {
             VStack(alignment: .leading, spacing: 10) {
                 Label(title, systemImage: "moon.stars.fill").font(.headline).foregroundStyle(Theme.accent)
                 Text(body).font(.subheadline).foregroundStyle(.secondary)
-                HStack(spacing: 10) {
-                    Button { withAnimation { onKeep() } } label: { Text(keep).font(.subheadline.weight(.bold)).frame(maxWidth: .infinity).padding(.vertical, 4) }
-                        .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
-                    Button { withAnimation { onNew() } } label: { Text(new).font(.subheadline.weight(.bold)).frame(maxWidth: .infinity).padding(.vertical, 4) }
-                        .buttonStyle(.bordered)
-                }
-                .buttonBorderShape(.roundedRectangle(radius: 12))
+                ButtonPair(first: keep, second: new, onFirst: { withAnimation { onKeep() } }, onSecond: { withAnimation { onNew() } })
             }
             .padding(.vertical, 4)
         }

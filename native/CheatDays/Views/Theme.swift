@@ -116,6 +116,25 @@ struct FoodDot: View {
     }
 }
 
+/// Two side-by-side choices, the first filled: always the same height, words centred both ways, so when one label
+/// wraps to two lines the other doesn't sit short beside it.
+struct ButtonPair: View {
+    let first: String, second: String
+    var onFirst: () -> Void, onSecond: () -> Void
+    var body: some View {
+        HStack(spacing: 10) {
+            Button(action: onFirst) { label(first) }.buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
+            Button(action: onSecond) { label(second) }.buttonStyle(.bordered)
+        }
+        .buttonBorderShape(.roundedRectangle(radius: 12))
+        .fixedSize(horizontal: false, vertical: true)
+    }
+    private func label(_ s: String) -> some View {
+        Text(s).font(.subheadline.weight(.bold)).multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity, maxHeight: .infinity).padding(.vertical, 4)
+    }
+}
+
 /// One of the bundled Fluent icons by its emoji (the phone's own emoji if it isn't bundled).
 struct FluentIcon: View {
     let emoji: String

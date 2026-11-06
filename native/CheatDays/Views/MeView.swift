@@ -286,38 +286,20 @@ struct MeView: View {
     /// The weekly check-in's suggestion, when it's waiting and worth acting on.
     private var adjustment: CheckIn? {
         let c = store.checkIn
-        guard store.checkInDue, let s = c.suggest, abs(s - c.now) >= 50 else { return nil }
+        guard store.checkInDue, c.step != nil else { return nil }
         return c
     }
 
     private func adjustCard(_ c: CheckIn) -> some View {
-        let s = c.suggest ?? c.now, up = s > c.now
-        let base = pos(store.doc["budget"]) ?? c.now, ratio = c.now > 0 ? s / c.now : 1
-        let newBase = (base * ratio / 10).rounded() * 10
-        let cheat = store.cheatWeekday.map { _ in store.baseBudget(store.nextCheat?.date ?? store.today) * ratio }
+        let step = c.step ?? 0, treat = store.cheatWeekday.map { " Your \(Calendar.current.weekdaySymbols[$0]) treat day stays as it is." } ?? ""
         return VStack(alignment: .leading, spacing: 10) {
             Eyebrow(text: "Time to adjust?", color: Theme.warn)
-            Text(why(c, up: up) + " To stay on plan, \(up ? "go up" : "drop") to \(Fmt.int(newBase)) a day\(cheat.map { " (cheat day \(Fmt.int(($0 / 10).rounded() * 10)))" } ?? "").")
-                .font(.subheadline)
-            HStack(spacing: 10) {
-                Button { withAnimation { store.finishCheckIn(c, use: true) } } label: { Text("Use \(Fmt.int(newBase))").font(.subheadline.weight(.bold)).frame(maxWidth: .infinity).padding(.vertical, 4) }
-                    .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
-                Button { withAnimation { store.finishCheckIn(c, use: false) } } label: { Text("Keep \(Fmt.int(base))").font(.subheadline.weight(.bold)).frame(maxWidth: .infinity).padding(.vertical, 4) }
-                    .buttonStyle(.bordered)
-            }
-            .buttonBorderShape(.roundedRectangle(radius: 12))
+            Text(c.verdict + " That's \(step > 0 ? "+" : "−")\(Fmt.int(abs(step))) kcal a day.\(treat)").font(.subheadline)
+            ButtonPair(first: "Use it", second: "Keep my budget",
+                       onFirst: { withAnimation { store.finishCheckIn(c, use: true) } }, onSecond: { withAnimation { store.finishCheckIn(c, use: false) } })
             NavigationLink { CheckInView() } label: { Text("See the full check-in").font(.caption.weight(.semibold)) }
         }
         .padding(.vertical, 4)
-    }
-
-    private func why(_ c: CheckIn, up: Bool) -> String {
-        if let p = c.pace, let w = c.want {
-            return up ? "You're losing faster than planned (\(Fmt.one(abs(p))) kg a week against \(Fmt.one(abs(w))))."
-                      : "Your weight's moving slower than planned (\(Fmt.one(abs(p))) kg a week against \(Fmt.one(abs(w))))."
-        }
-        if let b = c.burn { return "You burn about \(Fmt.int(b)) a day, worked out from your logging and weigh-ins." }
-        return "Your numbers have changed."
     }
 
     // MARK: 4 the chart

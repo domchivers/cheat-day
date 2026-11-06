@@ -1,4 +1,4 @@
-New in this build: the week review knows when you're already eating your budget, and says when you're losing on a plan to hold or gain.
+New in this build: a smarter weekly check-in. Pick a weigh-in day, mark odd weigh-ins, and it waits two weeks before changing your budget, leaving your treat day alone.
 
 Thanks for testing! Please just use it like a normal day:
 

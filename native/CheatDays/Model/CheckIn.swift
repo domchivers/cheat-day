@@ -11,7 +11,12 @@ struct CheckIn {
     var pace: Double?              // kg a week over the last 4 weeks
     var want: Double?              // the plan's kg a week
     var now: Double                // average budget across the week
-    var suggest: Double?
+    var suggest: Double?           // the new daily average, only when it's worth acting on
+    var rate: Adaptive.Rate? = nil
+    var tol: Double? = nil         // kg a week either side of the goal that's still on it
+    var wellLogged = 0             // last week's days with at least half their budget logged
+    var step: Double? = nil        // kcal a day to add (or take off), when it's worth acting on
+    var verdict = ""               // what the check-in makes of it, in a line or two
 }
 
 enum Trend {
@@ -82,21 +87,8 @@ extension Store {
         }
     }
 
-    /// kg a day over the last four weeks (six when you weigh weekly, so there are enough points), ignoring unusual
-    /// readings (the web app's weightTrend).
-    func weightTrend() -> (perDay: Double, n: Int)? {
-        let wide = weights
-        let odd = wide.count >= 4 ? Trend.fit(days: wide.map(\.day), values: wide.map(\.kg)).odd : Array(repeating: false, count: wide.count)
-        let recent = wide.indices.filter { !odd[$0] && wide[$0].day >= DayKey.shift(DayKey.string(Date()), days: -28) }.map { wide[$0] }
-        let pts = recent.count >= 4 ? recent : wide.indices.filter { !odd[$0] && wide[$0].day >= DayKey.shift(DayKey.string(Date()), days: -42) }.map { wide[$0] }
-        guard pts.count >= 3 else { return nil }
-        let t0 = DayKey.date(pts[0].day).timeIntervalSince1970 / 86400
-        let xs = pts.map { DayKey.date($0.day).timeIntervalSince1970 / 86400 - t0 }, ys = pts.map(\.kg)
-        guard (xs.last ?? 0) >= 7 else { return nil }
-        let mx = xs.reduce(0, +) / Double(xs.count), my = ys.reduce(0, +) / Double(ys.count)
-        let num = xs.indices.reduce(0) { $0 + (xs[$1] - mx) * (ys[$1] - my) }, den = xs.reduce(0) { $0 + pow($1 - mx, 2) }
-        return den > 0 ? (num / den, pts.count) : nil
-    }
+    /// kg a day from the weigh-ins that count (Adaptive.rate): the weigh-in day's, or the last four weeks'.
+    func weightTrend() -> (perDay: Double, n: Int)? { weightRate().map { ($0.perDay, $0.used.count) } }
 
     /// Properly logged days; a finished week with fewer than five of them is left out.
     func wellLoggedDays(since: String) -> [JSON] {
@@ -117,6 +109,8 @@ extension Store {
         let eat = days.reduce(0) { $0 + (num($1["kcal"]) ?? 0) } / Double(days.count)
         var burn = eat - trend.perDay * Self.kcalPerKg
         if let est = pos(dict(doc["plan"])["tdee"]) { burn = max(est * 0.7, min(est * 1.3, burn)) }
+        // a third of the way to what this week says, from last check-in's figure, so one week can't swing it
+        if let before = pos(dict(doc["plan"])["learnedBurn"]) { burn = before * 0.7 + burn * 0.3 }
         return ((burn / 10).rounded() * 10, days.count, trend.n)
     }
 
@@ -168,24 +162,51 @@ extension Store {
         let plan = doc["plan"] as? JSON
         let want = plan.map { num($0["rate"]) ?? 0 }
         let now = averageBudget
-        var suggest: Double?
-        if enough, let learned, let want {
-            let floorK: Double = str(dict(doc["profile"])["sex"]) == "m" ? 1500 : 1200
-            let target = max(floorK, ((learned.burn + want * Self.kcalPerKg / 7) / 10).rounded() * 10)
-            let d = ((max(-200, min(200, target - now))) / 10).rounded() * 10
-            suggest = abs(d) < 50 ? now : ((now + d) / 10).rounded() * 10
+        let rate = weightRate(), wellLogged = days.filter { $0.budget > 0 && $0.kcal >= $0.budget * 0.5 }.count
+        let tol = want.map { Adaptive.tolerance(want: $0, kg: latestWeight?.kg ?? 75) }
+        var step: Double?, verdict = ""
+        if let want, let tol, let rate {
+            let pace = rate.perWeek, off = Adaptive.off(pace, want: want, tol: tol)
+            // a week ago's rate, worked out the same way: off then too means it's not one week's water
+            let before = weightRate(asOf: DayKey.shift(todayKey, days: -7)).map { Adaptive.off($0.perWeek, want: want, tol: tol) } ?? false
+            let far = Adaptive.farOff(pace, want: want, tol: tol)
+            let more = pace < want   // under the goal's line: losing faster, or not gaining enough, so more food
+            let which = want < 0 ? (more ? "Losing faster than your goal" : "Losing slower than your goal")
+                      : want > 0 ? (more ? "Gaining slower than your goal" : "Gaining faster than your goal")
+                      : (more ? "Losing when your goal is to hold" : "Gaining when your goal is to hold")
+            if !off {
+                verdict = "On track. Budget unchanged."
+            } else if let s = rate.swing, let last = rate.used.last {
+                verdict = "\(DayKey.date(last.day).formatted(.dateTime.weekday(.wide)))'s \(Fmt.kg(last.kg)) looks like a water swing, \(Fmt.one(abs(s))) kg \(s < 0 ? "under" : "over") your trend. Not changing anything on one reading. We'll check again next week."
+            } else if !before && !far {
+                verdict = "\(which) this week. Could be water, so nothing changes yet. We'll check again next week."
+            } else if wellLogged < 6 {
+                verdict = "Only \(wellLogged) of 7 days logged. Log every day this week so the check-in can tell what to change."
+            } else if enough, let learned {
+                let floorK: Double = str(dict(doc["profile"])["sex"]) == "m" ? 1500 : 1200
+                var target = max(floorK, pos(plan?["bmr"]).map { $0 * 1.3 } ?? 0, learned.burn + want * Self.kcalPerKg / 7)
+                if want < 0 { target = min(target, learned.burn - 200) }   // still a cut
+                step = Adaptive.step(target: target, now: now)
+                let why = before ? "for 2 weeks in a row" : "by a long way"
+                verdict = step == nil ? "Off your goal, but by less than 75 kcal a day. Budget unchanged."
+                    : "\(which) \(why). " + (more ? (pace < 0 ? "A little more food protects your muscle." : "A little more food gets it moving.")
+                                                  : (want > 0 ? "A little less food keeps the gain lean." : "A little less food gets it moving again."))
+            } else {
+                verdict = "Off your goal, but it needs \(needs.joined(separator: " and ")) before it can work out a new budget."
+            }
         }
-        let trend = weightTrend()
         return CheckIn(week: week, mon: mon, sun: sun, logged: days.count, avg: avg, workouts: workouts, change: change,
                        burn: enough ? learned?.burn : nil, burnDays: learned?.days ?? 0, burnWeighins: learned?.weighins ?? 0, needs: needs,
-                       pace: trend.map { ($0.perDay * 7 * 100).rounded() / 100 }, want: want, now: now, suggest: suggest)
+                       pace: rate.map { ($0.perWeek * 100).rounded() / 100 }, want: want, now: now, suggest: step.map { now + $0 },
+                       rate: rate, tol: tol, wellLogged: wellLogged, step: step, verdict: verdict)
     }
 
     var checkInDue: Bool { str(doc["checkInSeen"]) != checkIn.week && checkIn.logged > 0 }
 
     /// Use the suggestion (or just mark the check-in as seen).
     func finishCheckIn(_ c: CheckIn, use: Bool) {
-        perform(["type": "checkIn", "week": c.week, "use": use, "suggest": c.suggest ?? 0, "now": c.now, "burn": c.burn.map { $0 as Any } ?? NSNull(), "at": nowMs()])
+        perform(["type": "checkIn", "week": c.week, "use": use, "suggest": c.suggest ?? 0, "now": c.now, "burn": c.burn.map { $0 as Any } ?? NSNull(), "at": nowMs(),
+                 "step": c.step.map { $0 as Any } ?? NSNull(), "treat": cheatWeekday.map { $0 as Any } ?? NSNull()])
     }
 
     static func applyCheckInOp(_ op: JSON, to d: inout JSON) {
@@ -196,7 +217,21 @@ extension Store {
             plan?["lastCheckIn"] = op["at"] ?? nowMs()
             if let b = num(op["burn"]) { plan?["learnedBurn"] = b; plan?["learnedAt"] = op["at"] ?? nowMs() }
         }
-        if (op["use"] as? Bool) == true, let suggest = pos(op["suggest"]), let now = pos(op["now"]) {
+        // a step: the week's change goes on every day but the treat day
+        if (op["use"] as? Bool) == true, let step = num(op["step"]) {
+            var days: [Int: Int] = [:]
+            for (k, v) in dict(d["dayBudgets"]) { if let i = Int(k), let n = num(v) { days[i] = Int(n) } }
+            let out = Adaptive.spread(step, budget: Int(pos(d["budget"]) ?? 1600), days: days, treat: num(op["treat"]).map { Int($0) })
+            d["budget"] = out.budget
+            d["dayBudgets"] = Dictionary(uniqueKeysWithValues: out.days.map { (String($0.key), $0.value as Any) }) as JSON
+            if plan != nil {
+                plan?["kcal"] = Int(((num(op["now"]) ?? 0) + step).rounded())
+                if var macros = plan?["macros"] as? JSON, let c = num(macros["c"]) {
+                    macros["c"] = max(0, Int(c) + Int((step / 4).rounded())); plan?["macros"] = macros
+                    var goals = dict(d["goals"]); if goals["c"] != nil && !(goals["c"] is NSNull) { goals["c"] = macros["c"]; d["goals"] = goals }
+                }
+            }
+        } else if (op["use"] as? Bool) == true, let suggest = pos(op["suggest"]), let now = pos(op["now"]) {
             let ratio = suggest / now, diff = suggest - now
             func r10(_ v: Double) -> Int { Int((v / 10).rounded() * 10) }
             d["budget"] = r10((pos(d["budget"]) ?? 1600) * ratio)
