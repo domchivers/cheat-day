@@ -42,7 +42,7 @@ struct RootView: View {
         else if ProcessInfo.processInfo.arguments.contains("-uitest-checkin") { CheckInHarness(acting: false) }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-budget") { NavigationStack { BudgetView() } }
         else if ProcessInfo.processInfo.arguments.contains("-demo-checkin") { DemoRoot(checkIn: true) }
-        else if ProcessInfo.processInfo.arguments.contains("-demo") { DemoRoot(checkIn: false) }
+        else if ProcessInfo.processInfo.arguments.contains("-demo") || ProcessInfo.processInfo.arguments.contains("-demo-session") { DemoRoot(checkIn: false) }
         else if Supabase.shared.session == nil { SignInView() } else { MainTabs() }
     }
 }
@@ -211,7 +211,8 @@ private struct TourHarness: View {
 
 struct MainTabs: View {
     var demo = false   // the marketing record: no sync, no setup, no tour
-    @State private var tab = Int(UserDefaults.standard.string(forKey: "demo-tab") ?? "") ?? 0
+    var startTab = 0   // the demo's tab
+    @State private var tab = 0
     @State private var onboarding = false
     @State private var habits = false
     @State private var scaleSetup = false
@@ -237,7 +238,7 @@ struct MainTabs: View {
             if url.host == "add" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { NotificationCenter.default.post(name: .openAdd, object: nil) } }
         }
         .task {
-            if demo { return }
+            if demo { tab = startTab; return }
             await Store.shared.sync()   // waits for the account to come down, even if signing in started the sync
             Task {   // once per account: food lost from past days put back, then raised budgets
                 await Store.shared.repairHistory()
@@ -423,14 +424,17 @@ private struct CardsHarness: View {
     }
 }
 
-/// For marketing screenshots only (-demo, -demo-tab 0…3, -demo-checkin): the real app on a made-up four weeks.
+/// For marketing screenshots only (-demo, -demo-tab 0…3, -demo-session, -demo-checkin): the real app on a made-up four weeks.
 private struct DemoRoot: View {
     let checkIn: Bool
     init(checkIn: Bool) {
         self.checkIn = checkIn
-        MainActor.assumeIsolated { Store.shared.useDemo(Demo.doc()) }
+        let live = ProcessInfo.processInfo.arguments.contains("-demo-session")   // a legs session mid-rest, on Workouts
+        MainActor.assumeIsolated { Store.shared.useDemo(Demo.doc(session: live)) }
     }
     var body: some View {
-        if checkIn { NavigationStack { CheckInView() } } else { MainTabs(demo: true) }
+        let live = ProcessInfo.processInfo.arguments.contains("-demo-session")
+        if checkIn { NavigationStack { CheckInView() } }
+        else { MainTabs(demo: true, startTab: live ? 1 : Int(UserDefaults.standard.string(forKey: "demo-tab") ?? "") ?? 0) }
     }
 }

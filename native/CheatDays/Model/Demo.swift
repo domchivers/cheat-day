@@ -32,12 +32,37 @@ enum Demo {
         return d
     }
 
-    static func doc(today: String = DayKey.string(Date())) -> JSON {
+    /// Legs on Monday, push on Wednesday, pull on Friday, as Finish logs them.
+    private static let plan: [Int: (name: String, lifts: [(String, Int, Double, Double)])] = [
+        1: ("Legs", [("Squat", 3, 8, 100), ("Leg press", 3, 10, 180), ("Calf raises", 3, 15, 60)]),
+        3: ("Push", [("Bench press", 3, 8, 80), ("Overhead press", 3, 8, 50), ("Tricep pushdown", 3, 12, 30)]),
+        5: ("Pull", [("Deadlift", 3, 5, 140), ("Lat pulldown", 3, 10, 65), ("Barbell row", 3, 8, 70)])
+    ]
+
+    private static func workouts(_ date: String) -> [JSON] {
+        guard let w = plan[DayKey.weekday(date)] else { return [] }
+        let lifts = w.lifts.map { l -> JSON in
+            ["exercise": l.0, "sets": l.1, "reps": l.2, "kg": l.3, "detail": (0..<l.1).map { _ in ["reps": l.2, "kg": l.3] as JSON }]
+        }
+        return [["id": uid(), "type": "Gym weights", "name": w.name, "minutes": 55, "effort": "moderate", "kcal": 310, "lifts": lifts,
+                 "at": ISO8601DateFormatter().string(from: DayKey.date(date))]]
+    }
+
+    /// A legs session half done, resting between squat sets.
+    private static var liveSession: JSON {
+        let now = Date().timeIntervalSince1970 * 1000
+        let sets = { (n: Int, reps: Double, kg: Double, done: Int) in (0..<n).map { i in ["reps": reps, "kg": kg, "done": i < done, "pb": false] as JSON } }
+        return ["startedAt": Int(now - 32 * 60_000), "name": "Legs", "routineId": NSNull(), "restUntil": Int(now + 72_000), "lastAt": Int(now - 18_000),
+                "exercises": [["exercise": "Squat", "sets": sets(3, 8, 100, 2)], ["exercise": "Leg press", "sets": sets(3, 10, 180, 0)],
+                              ["exercise": "Calf raises", "sets": sets(3, 15, 60, 0)]]]
+    }
+
+    static func doc(today: String = DayKey.string(Date()), session: Bool = false) -> JSON {
         let budgets: [Int: Int] = [6: 3250, 0: 2500]
         let history: [JSON] = (1...28).map { i in
             let date = DayKey.shift(today, days: -i), items = day(date)
             return ["date": date, "items": items, "budget": budgets[DayKey.weekday(date)] ?? 2350,
-                    "kcal": items.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }, "workouts": [] as [JSON]]
+                    "kcal": items.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }, "workouts": workouts(date)]
         }
         // today so far: breakfast, lunch and a coffee
         let now = [item("Greek yoghurt bowl", 295, "Breakfast", today), item("Flat white", 300, "Breakfast", today),
@@ -55,8 +80,8 @@ enum Demo {
                 body.append(["day": mid, "weight": ((84.2 - 0.45 * Double(w) - 0.6) * 100).rounded() / 100, "updatedAt": ISO.now()])
             }
         }
-        return [
-            "onboarded": true, "budget": 2350, "dayBudgets": ["6": 3250, "0": 2500] as JSON,
+        var d: JSON = [
+            "onboarded": true, "goalWeight": 78, "goalStart": ["weight": num(body.first?["weight"]) ?? 84.3, "day": str(body.first?["day"])] as JSON, "budget": 2350, "dayBudgets": ["6": 3250, "0": 2500] as JSON,
             "goals": ["p": 160, "c": 250, "f": 80] as JSON, "profile": ["sex": "m", "name": "Sam"] as JSON,
             "plan": ["rate": -0.45, "tdee": 2950, "bmr": 1850, "kcal": 2500, "cheatDay": 6, "spread": "cheat",
                      "macros": ["p": 160, "c": 250, "f": 80] as JSON, "createdAt": ISO.now()] as JSON,
@@ -64,5 +89,7 @@ enum Demo {
             "day": ["date": today, "items": now, "workouts": [] as [JSON]] as JSON,
             "history": history, "body": body.sorted { str($0["day"]) < str($1["day"]) }
         ]
+        if session { d["session"] = liveSession }
+        return d
     }
 }
