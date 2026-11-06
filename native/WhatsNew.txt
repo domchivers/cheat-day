@@ -1,4 +1,4 @@
-New in this build: the check-in's suggested budget says what changes on each day, its buttons sit clear of the card, and the weigh-in day picker sits on its row.
+New in this build: the check-in finds the day you usually weigh in and counts only those weigh-ins, so a midweek reading can't skew your trend.
 
 Thanks for testing! Please just use it like a normal day:
 

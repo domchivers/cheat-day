@@ -64,10 +64,14 @@ struct BudgetView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Weigh-in day")
-                        Text("Only this day's weigh-ins count in the check-in").font(.caption).foregroundStyle(.secondary)
+                        Text(store.weighDaySetting == nil
+                             ? store.weighDay.map { "\(Calendar.current.weekdaySymbols[$0]), the day you usually weigh" } ?? "Every weigh-in counts until there's a usual day"
+                             : "Only this day's weigh-ins count in the check-in").font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Picker("Weigh-in day", selection: Binding(get: { store.weighDay ?? -1 }, set: { store.setWeighDay($0 < 0 ? nil : $0) })) {
+                    // -2 is Automatic (nothing stored), -1 is any day
+                    Picker("Weigh-in day", selection: Binding(get: { store.weighDaySetting ?? -2 }, set: { store.setWeighDay($0 == -2 ? nil : $0) })) {
+                        Text("Automatic").tag(-2)
                         Text("Any day").tag(-1)
                         ForEach([1, 2, 3, 4, 5, 6, 0], id: \.self) { d in Text(Calendar.current.weekdaySymbols[d]).tag(d) }
                     }

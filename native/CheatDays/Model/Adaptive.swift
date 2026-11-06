@@ -62,6 +62,16 @@ enum Adaptive {
         return rate
     }
 
+    /// The weekday they usually weigh on: 70% or more of the days with a usual weigh-in over the last 8 weeks (at least 4),
+    /// so a Saturday weigher's midweek readings stay off the line without them finding the setting. Nil for daily weighers.
+    static func usualDay(_ all: [Reading], end: String) -> Int? {
+        let days = Set(all.filter { $0.usual && $0.day <= end && $0.day > DayKey.shift(end, days: -56) }.map(\.day))
+        guard days.count >= 4 else { return nil }
+        let counts = Dictionary(grouping: days, by: DayKey.weekday).mapValues(\.count)
+        guard let best = counts.max(by: { ($0.value, -$0.key) < ($1.value, -$1.key) }), Double(best.value) >= Double(days.count) * 0.7 else { return nil }
+        return best.key
+    }
+
     /// How far from the goal still counts as on it, in kg a week: 0.15% of body weight losing, 0.1% holding or gaining.
     static func tolerance(want: Double, kg: Double) -> Double { kg * (want < 0 ? 0.0015 : 0.001) }
 
@@ -89,8 +99,13 @@ enum Adaptive {
 }
 
 extension Store {
-    /// The day of the week they weigh in on (0 Sunday … 6 Saturday), or nil when any day will do.
-    var weighDay: Int? { num(dict(doc["prefs"])["weighDay"]).map { Int($0) } }
+    /// What they picked: a weekday (0 Sunday … 6 Saturday), -1 for any day, or nil to let the app work it out.
+    var weighDaySetting: Int? { num(dict(doc["prefs"])["weighDay"]).map { Int($0) } }
+    /// The day of the week whose weigh-ins count, or nil when any day's do: their pick, or the day they usually weigh.
+    var weighDay: Int? {
+        if let s = weighDaySetting { return s < 0 ? nil : s }
+        return Adaptive.usualDay(weighReadings, end: today)
+    }
     func setWeighDay(_ d: Int?) { perform(["type": "weighDay", "day": d.map { $0 as Any } ?? NSNull()]) }
 
     var weighReadings: [Adaptive.Reading] {

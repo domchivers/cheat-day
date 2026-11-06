@@ -42,6 +42,22 @@ final class AdaptiveTests: XCTestCase {
         XCTAssertNil(Adaptive.rate(close, weighDay: nil, end: "2026-11-01"))
     }
 
+    /// The owner's export, 12 Sep to 31 Oct (the last reading of each day): nearly all Saturdays, one Thursday.
+    /// Saturday is found without the setting, and the rate drops from −0.59 (every weigh-in) to −0.45.
+    func testTheUsualDayIsFoundAndTheMidweekReadingLeftOut() {
+        let export = [("2026-09-12", 83.25), ("2026-09-19", 83.05), ("2026-09-26", 82.45), ("2026-10-03", 82.35), ("2026-10-10", 81.85),
+                      ("2026-10-17", 81.80), ("2026-10-24", 81.30), ("2026-10-29", 80.65), ("2026-10-31", 79.95)].map { Adaptive.Reading(day: $0.0, kg: $0.1) }
+        let end = "2026-11-06"
+        XCTAssertEqual(Adaptive.usualDay(export, end: end), 6)
+        XCTAssertEqual(Adaptive.rate(export, weighDay: nil, end: end)?.perWeek ?? 0, -0.59, accuracy: 0.01)
+        let r = Adaptive.rate(export, weighDay: Adaptive.usualDay(export, end: end), end: end)
+        XCTAssertEqual(r?.perWeek ?? 0, -0.45, accuracy: 0.01)
+        XCTAssertEqual(r?.method, "last 6 Saturdays")
+        // someone who weighs most days has no usual day
+        let daily = (0..<20).map { Adaptive.Reading(day: DayKey.shift(end, days: -$0), kg: 80) }
+        XCTAssertNil(Adaptive.usualDay(daily, end: end))
+    }
+
     /// Under 75 isn't worth it, and never more than 150 a day at once.
     func testTheStepHasADeadZoneAndACap() {
         XCTAssertNil(Adaptive.step(target: 2560, now: 2500))
