@@ -1,4 +1,4 @@
-New in this build: a smarter weekly check-in, and the assistant now sees your recent days meal by meal and your other chats, so "that chicken from dinner yesterday" is found.
+New in this build: the check-in's suggested budget says what changes on each day, its buttons sit clear of the card, and the weigh-in day picker sits on its row.
 
 Thanks for testing! Please just use it like a normal day:
 

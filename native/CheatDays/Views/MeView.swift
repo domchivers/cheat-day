@@ -294,7 +294,7 @@ struct MeView: View {
         let step = c.step ?? 0, treat = store.cheatWeekday.map { " Your \(Calendar.current.weekdaySymbols[$0]) treat day stays as it is." } ?? ""
         return VStack(alignment: .leading, spacing: 10) {
             Eyebrow(text: "Time to adjust?", color: Theme.warn)
-            Text(c.verdict + " That's \(step > 0 ? "+" : "−")\(Fmt.int(abs(step))) kcal a day.\(treat)").font(.subheadline)
+            Text(c.verdict + " That's \(step > 0 ? "+" : "−")\(Fmt.int(abs(step))) kcal a day on average.\(treat)").font(.subheadline)
             ButtonPair(first: "Use it", second: "Keep my budget",
                        onFirst: { withAnimation { store.finishCheckIn(c, use: true) } }, onSecond: { withAnimation { store.finishCheckIn(c, use: false) } })
             NavigationLink { CheckInView() } label: { Text("See the full check-in").font(.caption.weight(.semibold)) }

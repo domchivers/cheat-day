@@ -61,14 +61,17 @@ struct BudgetView: View {
                 }
                 .buttonStyle(.plain)
                 // the check-in counts this day's usual weigh-ins only, so a midweek reading can't move the trend
-                Picker(selection: Binding(get: { store.weighDay ?? -1 }, set: { store.setWeighDay($0 < 0 ? nil : $0) })) {
-                    Text("Any day").tag(-1)
-                    ForEach([1, 2, 3, 4, 5, 6, 0], id: \.self) { d in Text(Calendar.current.weekdaySymbols[d]).tag(d) }
-                } label: {
+                HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Weigh-in day")
                         Text("Only this day's weigh-ins count in the check-in").font(.caption).foregroundStyle(.secondary)
                     }
+                    Spacer()
+                    Picker("Weigh-in day", selection: Binding(get: { store.weighDay ?? -1 }, set: { store.setWeighDay($0 < 0 ? nil : $0) })) {
+                        Text("Any day").tag(-1)
+                        ForEach([1, 2, 3, 4, 5, 6, 0], id: \.self) { d in Text(Calendar.current.weekdaySymbols[d]).tag(d) }
+                    }
+                    .labelsHidden().pickerStyle(.menu)
                 }
                 Toggle(isOn: $eatBack) {
                     VStack(alignment: .leading, spacing: 2) {

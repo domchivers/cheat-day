@@ -18,7 +18,7 @@ struct CheckInView: View {
                 fact("Days logged", "\(c.wellLogged) of 7")
                 fact("You burn about", c.burn.map { "\(Fmt.int($0)) kcal" } ?? "not enough yet")
                 fact("Workouts", "\(c.workouts)")
-                fact("Budget", c.step.map { "\($0 > 0 ? "+" : "−")\(Fmt.int(abs($0))) a day" } ?? "No change")
+                fact("Budget", c.step.map { "\($0 > 0 ? "+" : "−")\(Fmt.int(abs($0))) a day on average" } ?? "No change")
             } header: { Text("Last week · \(range(c))") } footer: {
                 if c.burn == nil, !c.needs.isEmpty { Text("Working out what you burn needs \(c.needs.joined(separator: " and ")).") }
             }
@@ -35,7 +35,13 @@ struct CheckInView: View {
                 } header: { Text("This week, try") }
             }
             if let step = c.step {
-                Section { suggestion(c, step) } footer: { Text("Never more than 150 a day at once. Nothing changes unless you choose it.") }
+                Section { suggestion(c, step) }
+                // the choice in its own clear row under the card, not squeezed into its foot
+                Section {
+                    ButtonPair(first: "Use it", second: "Keep my budget",
+                               onFirst: { store.finishCheckIn(c, use: true); dismiss() }, onSecond: { store.finishCheckIn(c, use: false); dismiss() })
+                        .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
+                } footer: { Text("Never more than 150 a day on average at once. Nothing changes unless you choose it.").padding(.top, 6) }
             } else {
                 Section {
                     Button { store.finishCheckIn(c, use: false); dismiss() } label: { Text("Done").font(.headline).frame(maxWidth: .infinity) }
@@ -84,7 +90,7 @@ struct CheckInView: View {
     /// The readings that count, the line through them, and the ones left out in grey; a likely water swing as a ring.
     private func chart(_ r: Adaptive.Rate) -> some View {
         let fit = Adaptive.line(r.used), first = r.used.first.map { DayKey.date($0.day) } ?? Date()
-        let kgs = (r.used + r.left).map(\.kg), lo = (kgs.min() ?? 0) - 0.3, hi = (kgs.max() ?? 1) + 0.3
+        let kgs = (r.used + r.left).map(\.kg), lo = (kgs.min() ?? 0) - 0.6, hi = (kgs.max() ?? 1) + 0.3   // room under the lowest dot, so it clears the axis label
         return Chart {
             if let fit, let last = r.used.last {
                 ForEach([first, DayKey.date(last.day)], id: \.self) { d in
@@ -124,11 +130,17 @@ struct CheckInView: View {
         let groups = pairs.reduce(into: [[(Int, Int, Int)]]()) { g, p in
             if let last = g.last?.last, last.1 == p.1, last.2 == p.2, last.0 != treat, p.0 != treat { g[g.count - 1].append(p) } else { g.append([p]) }
         }
+        // the headline is what changes on the days that change; with a treat day kept, that's the week's change over six days
+        let per = Double(out.budget - base), sign = { (v: Double) in v > 0 ? "+" : "−" }
         VStack(alignment: .leading, spacing: 4) {
             Eyebrow(text: "Suggested budget", color: Theme.heroLabel)
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("\(step > 0 ? "+" : "−")\(Fmt.int(abs(step)))").font(.system(size: 40, weight: .heavy, design: .rounded))
-                Text("kcal a day").foregroundStyle(.secondary)
+                Text("\(sign(per))\(Fmt.int(abs(per)))").font(.system(size: 40, weight: .heavy, design: .rounded))
+                Text(treat == nil ? "kcal a day" : "kcal on your other days").foregroundStyle(.secondary)
+            }
+            if let t = treat {
+                Text("\(sign(step))\(Fmt.int(abs(step))) a day on average. Your \(Calendar.current.weekdaySymbols[t]) treat day stays as it is.")
+                    .font(.footnote).foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, 4)
@@ -142,9 +154,6 @@ struct CheckInView: View {
                     .fontWeight(.semibold).monospacedDigit().foregroundStyle(g[0].1 == g[0].2 ? .secondary : .primary)
             }
         }
-        ButtonPair(first: "Use it", second: "Keep my budget",
-                   onFirst: { store.finishCheckIn(c, use: true); dismiss() }, onSecond: { store.finishCheckIn(c, use: false); dismiss() })
-            .listRowBackground(Color.clear).listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 4, trailing: 0))
     }
 
     // MARK: bits

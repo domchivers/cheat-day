@@ -391,7 +391,7 @@ private struct CheckInHarness: View {
             + (acting ? [("2026-11-07", 79.75), ("2026-11-14", 79.20)] : [])
         let readings = sat.map { Adaptive.Reading(day: $0.0, kg: $0.1) } + [Adaptive.Reading(day: "2026-10-29", kg: 80.6)]
         let rate = Adaptive.rate(readings, weighDay: 6, end: acting ? "2026-11-15" : "2026-11-01")
-        let c = CheckIn(week: "2026-10-26", mon: "2026-10-26", sun: "2026-11-01", logged: 7, avg: 2500, workouts: 4, change: -0.6,
+        let c = CheckIn(week: acting ? "2026-11-09" : "2026-10-26", mon: acting ? "2026-11-09" : "2026-10-26", sun: acting ? "2026-11-15" : "2026-11-01", logged: 7, avg: 2500, workouts: 4, change: -0.6,
                         burn: 3080, burnDays: 21, burnWeighins: 5, needs: [], pace: rate.map(\.perWeek), want: -0.3, now: 2500,
                         suggest: acting ? 2625 : nil, rate: rate, tol: 0.12, wellLogged: 7, step: acting ? 125 : nil,
                         verdict: acting ? "Losing faster than your goal for 2 weeks in a row. A little more food protects your muscle."
