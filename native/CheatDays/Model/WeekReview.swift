@@ -92,7 +92,7 @@ struct WeekReview: Equatable {
         let pace = pace ?? 0, aim = w == 0 ? "holding steady" : "\(w < 0 ? "losing" : "gaining") \(Fmt.kg(abs(w))) kg a week"
         if pace < 0 && pace < w {
             // on a plan to gain or hold, any real loss is the wrong way, not "faster"
-            return WeekReview(status: status, title: w > 0 ? "Losing instead of gaining" : w == 0 ? "Losing when you're holding" : "Losing faster than planned", rows: rows,
+            return WeekReview(status: status, title: w > 0 ? "Losing instead of gaining" : w == 0 ? "Losing when you meant to hold" : "Losing faster than planned", rows: rows,
                               tip: "You've lost \(Fmt.one(abs(pace))) kg a week over the last 4 weeks, and your plan is \(aim). Losing like this can cost muscle, so eat up to your budget. If it carries on, Monday's check-in will raise it.")
         }
         if pace > 0 && pace > w {

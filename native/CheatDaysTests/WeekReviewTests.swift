@@ -58,6 +58,7 @@ final class WeekReviewTests: XCTestCase {
         // a loss on plan is fine, a stall on a losing plan is "not moving", and going up on it says so
         XCTAssertEqual(WeekReview.make(days: days, proteinGoal: 100, pace: -0.6, want: -0.5)?.title, "A good week")
         XCTAssertEqual(WeekReview.make(days: days, proteinGoal: 100, pace: -1.2, want: -0.5)?.title, "Losing faster than planned")
+        XCTAssertEqual(WeekReview.make(days: days, proteinGoal: 100, pace: -0.6, want: 0)?.title, "Losing when you meant to hold")
         XCTAssertEqual(WeekReview.make(days: days, proteinGoal: 100, pace: -0.1, want: -0.5)?.title, "Weight's not moving")
         XCTAssertEqual(WeekReview.make(days: days, proteinGoal: 100, pace: 0.2, want: -0.5)?.title, "Weight's going up")
     }
