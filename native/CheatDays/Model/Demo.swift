@@ -61,8 +61,14 @@ enum Demo {
         let budgets: [Int: Int] = [6: 3250, 0: 2500]
         let history: [JSON] = (1...28).map { i in
             let date = DayKey.shift(today, days: -i), items = day(date)
+            // the day's macros, as filing a day stores them (Me's week reads these, not the items)
+            let m = items.reduce((p: 0.0, c: 0.0, f: 0.0)) { t, it in
+                let g = (num(it["kcal"]) ?? 0) / (num(it["kcalPer100"]) ?? 1) * 100
+                return (t.p + (num(it["p100"]) ?? 0) * g / 100, t.c + (num(it["c100"]) ?? 0) * g / 100, t.f + (num(it["f100"]) ?? 0) * g / 100)
+            }
             return ["date": date, "items": items, "budget": budgets[DayKey.weekday(date)] ?? 2350,
-                    "kcal": items.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }, "workouts": workouts(date)]
+                    "kcal": items.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }, "workouts": workouts(date),
+                    "p": Int(m.p.rounded()), "c": Int(m.c.rounded()), "f": Int(m.f.rounded())]
         }
         // today so far: breakfast, lunch and a coffee
         let now = [item("Greek yoghurt bowl", 295, "Breakfast", today), item("Flat white", 300, "Breakfast", today),
