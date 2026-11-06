@@ -1,4 +1,4 @@
-New in this build: a cleaner week review card. It matches the rest of Today, the weight row says what it's measured against, and it tells you when you're losing faster than planned.
+New in this build: the week review says "Losing instead of gaining" when your plan is to gain, and its top line reads cleanly with very large text.
 
 Thanks for testing! Please just use it like a normal day:
 

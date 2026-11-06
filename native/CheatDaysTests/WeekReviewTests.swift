@@ -51,12 +51,13 @@ final class WeekReviewTests: XCTestCase {
     func testLosingOnAGainPlanSaysSo() {
         let days = (0..<7).map { _ in day([food("Chicken breast", kcal: 1500, p100: 31, k100: 165, meal: "Dinner")]) }
         let r = WeekReview.make(days: days, proteinGoal: 100, pace: -0.6, want: 0.25)
-        XCTAssertEqual(r?.title, "Losing faster than planned")
+        XCTAssertEqual(r?.title, "Losing instead of gaining")
         XCTAssertEqual(r?.status, "Nearly there")
         XCTAssertEqual(r?.rows.last, WeekReview.Row(label: "Weight", value: "−0.6 kg a week", ok: false, note: "Last 4 weeks · plan +0.25 kg"))
         XCTAssertTrue(r?.tip.hasPrefix("You've lost 0.6 kg a week over the last 4 weeks, and your plan is gaining 0.25 kg a week.") == true, r?.tip ?? "")
         // a loss on plan is fine, a stall on a losing plan is "not moving", and going up on it says so
         XCTAssertEqual(WeekReview.make(days: days, proteinGoal: 100, pace: -0.6, want: -0.5)?.title, "A good week")
+        XCTAssertEqual(WeekReview.make(days: days, proteinGoal: 100, pace: -1.2, want: -0.5)?.title, "Losing faster than planned")
         XCTAssertEqual(WeekReview.make(days: days, proteinGoal: 100, pace: -0.1, want: -0.5)?.title, "Weight's not moving")
         XCTAssertEqual(WeekReview.make(days: days, proteinGoal: 100, pace: 0.2, want: -0.5)?.title, "Weight's going up")
     }

@@ -12,9 +12,10 @@ struct WeekReviewCard: View {
         let r = review, good = r.rows.allSatisfy(\.ok), big = type.isAccessibilitySize, tint = good ? Theme.walk : Theme.warn
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Circle().fill(tint).frame(width: 8, height: 8)
-                    (Text(r.status).foregroundColor(tint) + Text(" · last 7 days").foregroundColor(.secondary))
+                // the dot sits on the first line; at the biggest sizes "last 7 days" gets its own line, so no "·" dangles
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Circle().fill(tint).frame(width: 8, height: 8).alignmentGuide(.firstTextBaseline) { $0[.bottom] }
+                    (Text(r.status).foregroundColor(tint) + Text(big ? "\nlast 7 days" : " · last 7 days").foregroundColor(.secondary))
                         .font(.caption.weight(.semibold)).textCase(.uppercase).tracking(0.6)
                 }
                 Text(r.title).font(.title3.weight(.bold)).fixedSize(horizontal: false, vertical: true)
