@@ -1,4 +1,4 @@
-New in this build: after a workout you're asked whether to post it to the feed (with a gym pic if you like), friends can see your workouts in your day if you turn it on in Settings, and the end-of-workout questions show every choice, including Just this once.
+New in this build: renaming an exercise mid-workout works smoothly; after a workout you're asked whether to post it to the feed (with a gym pic if you like), friends can see your workouts in your day if you turn it on in Settings, and the end-of-workout questions show every choice, including Just this once.
 
 Thanks for testing! Please just use it like a normal day:
 

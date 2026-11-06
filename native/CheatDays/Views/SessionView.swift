@@ -291,8 +291,7 @@ struct SessionView: View {
             .font(.subheadline.weight(.semibold))
         } header: {
             HStack(spacing: 8) {
-                TextField("Exercise", text: e.name).font(.headline).foregroundStyle(.primary).textCase(nil)
-                    .strikethrough(ex.complete)
+                ExerciseNameField(name: e.name).strikethrough(ex.complete)
                 if ex.complete {
                     Text("✓ Done").font(.caption.weight(.heavy)).padding(.horizontal, 8).padding(.vertical, 3)
                         .background(Theme.hero, in: Capsule()).foregroundStyle(Theme.accent).textCase(nil)
@@ -420,6 +419,30 @@ struct SessionView: View {
             else if changes.isEmpty { store.updateRoutine(r, name: str(r["name"]), exercises: exercises); offerShare(w) }
             else { DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { routineUpdate = RoutineUpdate(routine: r, name: name, exercises: exercises, changes: changes, workout: w) } }
         } else if !list(w["lifts"]).isEmpty { routineOffer = w } else { offerShare(w) }
+    }
+}
+
+/// An exercise's name, renamed in place. The new name lands when you're done typing: each keystroke used to
+/// change the section under it (last time, "did you mean"), which threw the cursor about mid-word.
+struct ExerciseNameField: View {
+    @Binding var name: String
+    @State private var draft = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        TextField("Exercise", text: $draft)
+            .font(.headline).foregroundStyle(.primary).textCase(nil)
+            .focused($focused)
+            .submitLabel(.done)
+            .onSubmit { commit() }
+            .onAppear { draft = name }
+            .onChange(of: focused) { _, on in if !on { commit() } }
+            .onChange(of: name) { _, v in if !focused { draft = v } }   // "Use …" or a swap renamed it
+    }
+
+    private func commit() {
+        let t = draft.trimmingCharacters(in: .whitespaces)
+        if t.isEmpty { draft = name } else if t != name { name = t }
     }
 }
 
