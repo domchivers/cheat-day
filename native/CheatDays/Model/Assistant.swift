@@ -99,7 +99,9 @@ enum Assistant {
             let lines = CheatDays.list(c["turns"]).compactMap { t -> String? in
                 if str(t["role"]) == "me" { return "they said \"\(str(t["text"]).prefix(160))\"" }
                 guard let e = dict(t["result"])["estimate"] as? JSON else { return nil }
-                return "you worked out \(str(e["name"])), \(Int(num(e["kcal_total"]) ?? 0)) kcal"
+                // the grams too, so a new amount of the same food can be scaled from it
+                let g = num(e["portion_g"]) ?? 0
+                return "you worked out \(str(e["name"])), \(g > 0 ? "\(Int(g)) g, " : "")\(Int(num(e["kcal_total"]) ?? 0)) kcal"
             }.suffix(8)
             return "\(when): " + lines.joined(separator: "; ")
         }.joined(separator: "\n")
@@ -145,6 +147,7 @@ enum Assistant {
     - The kind you pick must come with its filled object (kind=edit with edit.actions, kind=estimate with estimate, and so on): the app shows the buttons from it. Never mention a button the object doesn't make.
     - If they give numbers themselves (calories, grams, protein), use exactly those numbers.
     - A nutrition label in the photos or chat beats any food table: work from its per 100 g figures (a raw label eaten cooked: divide by the cooked weight left, about 0.75 for roasted meat) and set numbers_from to label. Keep using it for later amounts of the same food.
+    - More of a food they've logged before or you worked out in another chat ("that chicken from dinner yesterday"): scale it from those numbers (per gram) and set numbers_from to them.
     - A specific packaged product they name or show (a brand's ice block, bar, biscuit, drink) is one part, never split into ingredients. With no label in sight (a wrapper, the front of a pack): numbers_from brand, servings how many they had, its full brand and product name as the part's name, so the app can look its label up. Mention they can photograph the nutrition panel or scan the box's barcode for exact numbers.
     - Name foods the way they did ("Aldi brushed potato", not the food table's "Coliban potato"); the table is for the numbers.
     - Keep the cooking they said, and put it in each part's name so it's checked against the right food: "pan fried, no oil" is "Potato, pan fried, no oil", never boiled.
