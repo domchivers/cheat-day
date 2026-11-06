@@ -1,0 +1,36 @@
+<!doctype html>
+<!-- An Instagram post (1080×1350) from a real app screenshot: headline, line under it, the screenshot in a phone.
+     Pick the post with the hash: post.html#1 … #6. Screenshots go in shots/ (see render.sh). -->
+<html><head><meta charset="utf-8"><title>Cheat Days post</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1080px;height:1350px;overflow:hidden;font-family:-apple-system,"SF Pro Display","Segoe UI",system-ui,sans-serif;color:#fff;position:relative;
+ background:radial-gradient(900px 700px at 82% 12%,rgba(142,197,255,.24),transparent 60%),radial-gradient(800px 700px at 8% 92%,rgba(244,114,182,.15),transparent 60%),#070a10}
+.head{position:absolute;left:84px;right:84px;top:84px}
+.brand{display:flex;align-items:center;gap:18px;font-size:32px;font-weight:700}
+.brand img{width:64px;height:64px;border-radius:15px;box-shadow:0 0 0 1px rgba(255,255,255,.12)}
+h1{font-size:76px;line-height:1.04;font-weight:800;letter-spacing:-1.5px;margin-top:26px}
+h1 em{font-style:normal;background:linear-gradient(90deg,#8ec5ff,#c4a1ff);-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{font-size:32px;line-height:1.35;color:#a9b1bd;margin-top:20px;max-width:900px}
+.phone{position:absolute;left:50%;top:560px;width:600px;transform:translateX(-50%);border-radius:86px;padding:14px;background:#1c2129;
+ box-shadow:0 50px 140px rgba(0,0,0,.75),0 0 0 3px #2b313b}
+.phone img{display:block;width:100%;border-radius:72px}
+</style></head><body>
+<div class="head"><div class="brand"><img src="logo.png" alt="">Cheat Days</div><h1 id="h"></h1><div class="sub" id="s"></div></div>
+<div class="phone"><img id="shot" alt=""></div>
+<script>
+// one feature each; the shot is the file name in shots/ without .png
+const posts = {
+  1: ["A coach that says<br><em>what's working.</em>", "Each week: how you did against your goals, and one thing to try. Never nagging.", "1-today-top-promax"],
+  2: ["Log the usual<br><em>in one tap.</em>", "Same as yesterday, your saved meals, and every meal at a glance.", "2-today-meals-18pro"],
+  3: ["Know when<br><em>you'll get there.</em>", "Your goal weight, the date you'll hit it, and how far is left.", "3-me-goal-promax"],
+  4: ["Food and training,<br><em>one app.</em>", "Your week of workouts sits right next to what you ate.", "4-workouts-promax"],
+  5: ["Lift. Rest.<br><em>Log as you go.</em>", "A rest timer and last time's numbers, right where you need them.", "5-workout-rest-18pro"],
+  6: ["A budget that<br><em>learns from you.</em>", "Your real burn, from what you log and weigh. One salty weekend won't throw it.", "7-weekly-checkin-promax"]
+};
+const p = posts[location.hash.slice(1)] || posts[1];
+document.getElementById("h").innerHTML = p[0];
+document.getElementById("s").textContent = p[1];
+document.getElementById("shot").src = "shots/" + p[2] + ".png";
+</script>
+</body></html>
