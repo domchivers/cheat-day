@@ -41,6 +41,8 @@ struct RootView: View {
         else if ProcessInfo.processInfo.arguments.contains("-uitest-checkin-step") { CheckInHarness(acting: true) }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-checkin") { CheckInHarness(acting: false) }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-budget") { NavigationStack { BudgetView() } }
+        else if ProcessInfo.processInfo.arguments.contains("-demo-checkin") { DemoRoot(checkIn: true) }
+        else if ProcessInfo.processInfo.arguments.contains("-demo") { DemoRoot(checkIn: false) }
         else if Supabase.shared.session == nil { SignInView() } else { MainTabs() }
     }
 }
@@ -208,7 +210,8 @@ private struct TourHarness: View {
 }
 
 struct MainTabs: View {
-    @State private var tab = 0
+    var demo = false   // the marketing record: no sync, no setup, no tour
+    @State private var tab = Int(UserDefaults.standard.string(forKey: "demo-tab") ?? "") ?? 0
     @State private var onboarding = false
     @State private var habits = false
     @State private var scaleSetup = false
@@ -234,6 +237,7 @@ struct MainTabs: View {
             if url.host == "add" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { NotificationCenter.default.post(name: .openAdd, object: nil) } }
         }
         .task {
+            if demo { return }
             await Store.shared.sync()   // waits for the account to come down, even if signing in started the sync
             Task {   // once per account: food lost from past days put back, then raised budgets
                 await Store.shared.repairHistory()
@@ -416,5 +420,17 @@ private struct CardsHarness: View {
             }
         }
         .scrollContentBackground(.hidden).background(Theme.bg)
+    }
+}
+
+/// For marketing screenshots only (-demo, -demo-tab 0…3, -demo-checkin): the real app on a made-up four weeks.
+private struct DemoRoot: View {
+    let checkIn: Bool
+    init(checkIn: Bool) {
+        self.checkIn = checkIn
+        MainActor.assumeIsolated { Store.shared.useDemo(Demo.doc()) }
+    }
+    var body: some View {
+        if checkIn { NavigationStack { CheckInView() } } else { MainTabs(demo: true) }
     }
 }

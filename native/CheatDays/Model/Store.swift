@@ -15,6 +15,8 @@ final class Store {
     /// Goes up with every change to the record; derived lists are remembered per revision.
     @ObservationIgnored private(set) var rev = 0
     private func setDoc(_ d: JSON) { doc = d; rev &+= 1 }
+    /// For the marketing screenshots only: a made-up record, never synced (there's no sign-in).
+    func useDemo(_ d: JSON) { setDoc(d) }
     @ObservationIgnored private var memo: [String: (rev: Int, value: Any)] = [:]
     @ObservationIgnored private let io = DispatchQueue(label: "cheatdays.store.io", qos: .utility)
     @ObservationIgnored private var saveWork: DispatchWorkItem?
