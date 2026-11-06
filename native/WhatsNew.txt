@@ -1,4 +1,4 @@
-New in this build: the week review says "Losing instead of gaining" when your plan is to gain, and its top line reads cleanly with very large text.
+New in this build: the week review knows when you're already eating your budget, and says when you're losing on a plan to hold or gain.
 
 Thanks for testing! Please just use it like a normal day:
 

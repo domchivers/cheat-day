@@ -129,7 +129,7 @@ private struct ReviewHarness: View {
     private let fast = WeekReview(status: "Nearly there", title: "Losing instead of gaining", rows: [
         .init(label: "Within budget", value: "7 of 7 days", ok: true), .init(label: "Protein goal hit", value: "7 of 7 days", ok: true),
         .init(label: "Weight", value: "−0.6 kg a week", ok: false, note: "Last 4 weeks · plan +0.25 kg")],
-        tip: "You've lost 0.6 kg a week over the last 4 weeks, and your plan is gaining 0.25 kg a week. Losing like this can cost muscle, so eat up to your budget. If it carries on, Monday's check-in will raise it.")
+        tip: "You've lost 0.6 kg a week over the last 4 weeks, and your plan is gaining 0.25 kg a week. Losing like this can cost muscle. You're eating your budget, so it's the budget that's too low. Monday's check-in will suggest a higher one.")
     var body: some View {
         List {
             Section { WeekReviewCard(review: fast) }
