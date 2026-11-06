@@ -431,8 +431,9 @@ struct SetRow: View {
         }
         .opacity(set.done ? 0.45 : 1)
         .listRowBackground(isNext ? Theme.hero : Color(.secondarySystemGroupedBackground))
-        .onAppear { repsText = Fmt.one(set.reps); kgText = set.kg > 0 ? Fmt.kg(set.kg) : "" }
-        .onChange(of: set.reps) { _, v in if Fmt.typed(repsText) != v { repsText = Fmt.one(v) } }
+        // an emptied box stays empty, rather than turning into a 0 you have to delete
+        .onAppear { repsText = set.reps > 0 ? Fmt.one(set.reps) : ""; kgText = set.kg > 0 ? Fmt.kg(set.kg) : "" }
+        .onChange(of: set.reps) { _, v in if Fmt.typed(repsText) ?? 0 != v { repsText = v > 0 ? Fmt.one(v) : "" } }
         .onChange(of: set.kg) { _, v in if Fmt.typed(kgText) ?? 0 != v { kgText = v > 0 ? Fmt.kg(v) : "" } }
     }
 

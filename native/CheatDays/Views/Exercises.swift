@@ -22,8 +22,14 @@ struct ExercisePicker: View {
                 Section { Picker("Where from", selection: $tab) { ForEach(Tab.allCases, id: \.self) { Text($0.rawValue) } }.pickerStyle(.segmented) }
                 let q = query.trimmingCharacters(in: .whitespaces)
                 if !q.isEmpty && !allNames.contains(where: { $0.lowercased() == q.lowercased() }) {
+                    // once added it stays, ticked, so you can see it went in
+                    let isIn = added.contains(q.lowercased()) || inSession.contains(q.lowercased())
                     Section {
-                        Button { add(q.prefix(1).uppercased() + q.dropFirst(), detail: nil) } label: { Label("Add \"\(q)\" as a new exercise", systemImage: "plus.circle") }
+                        Button { add(q.prefix(1).uppercased() + q.dropFirst(), detail: nil) } label: {
+                            Label(isIn ? "Added \"\(q)\" to the session" : "Add \"\(q)\" as a new exercise", systemImage: isIn ? "checkmark.circle.fill" : "plus.circle")
+                                .contentTransition(.symbolEffect(.replace))
+                        }
+                        .disabled(isIn)
                     }
                 }
                 switch tab {
