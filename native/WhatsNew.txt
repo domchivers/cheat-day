@@ -1,4 +1,4 @@
-New in this build: the week review card's title no longer gets cut off with very large text.
+New in this build: a cleaner week review card. It matches the rest of Today, the weight row says what it's measured against, and it tells you when you're losing faster than planned.
 
 Thanks for testing! Please just use it like a normal day:
 

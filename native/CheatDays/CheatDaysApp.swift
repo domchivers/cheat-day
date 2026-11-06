@@ -118,16 +118,21 @@ private struct MealCheckHarness: View {
 
 /// For the week review screenshot only: both kinds of card in a list like Today's, with sample weeks, no sign-in.
 private struct ReviewHarness: View {
-    private let good = WeekReview(icon: "🎯", title: "On track this week", rows: [
+    private let good = WeekReview(status: "On track", title: "A good week", rows: [
         .init(label: "Within budget", value: "6 of 7 days", ok: true), .init(label: "Protein goal hit", value: "5 of 7 days", ok: true),
         .init(label: "Weight", value: "−0.4 kg a week", ok: true)],
         tip: "Keep doing what you're doing. Your protein brownie's earning its place: 20 g protein for 190 kcal.")
-    private let short = WeekReview(icon: "🥚", title: "Nearly there: protein's short", rows: [
+    private let short = WeekReview(status: "Nearly there", title: "Protein's short", rows: [
         .init(label: "Within budget", value: "6 of 7 days", ok: true), .init(label: "Protein goal hit", value: "3 of 7 days", ok: false),
         .init(label: "Weight", value: "−0.4 kg a week", ok: true)],
         tip: "Dinners are where it drops: about 22 g on the short days. A chicken, fish or lean beef dinner would close the gap.", plan: "Dinner")
+    private let fast = WeekReview(status: "Nearly there", title: "Losing faster than planned", rows: [
+        .init(label: "Within budget", value: "7 of 7 days", ok: true), .init(label: "Protein goal hit", value: "7 of 7 days", ok: true),
+        .init(label: "Weight", value: "−0.6 kg a week", ok: false, note: "Last 4 weeks · plan +0.25 kg")],
+        tip: "You've lost 0.6 kg a week over the last 4 weeks, and your plan is gaining 0.25 kg a week. Losing faster can cost muscle, so eat up to your budget. If it carries on, Monday's check-in will raise it.")
     var body: some View {
         List {
+            Section { WeekReviewCard(review: fast) }
             Section { WeekReviewCard(review: good) }
             Section { WeekReviewCard(review: short) }
             Section("Breakfast") { Text("Weet-Bix with milk") }

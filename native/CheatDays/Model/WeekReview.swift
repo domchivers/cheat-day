@@ -4,8 +4,8 @@ import Foundation
 /// fix when something isn't. It replaced "swap your protein brownie": a food was flagged for coming up often, even
 /// when it was helping and every goal was being hit.
 struct WeekReview: Equatable {
-    struct Row: Equatable { let label: String; let value: String; let ok: Bool }
-    let icon: String
+    struct Row: Equatable { let label: String; let value: String; let ok: Bool; var note: String? = nil }
+    let status: String       // the label over the headline: "On track", "Nearly there" or "Needs a look"
     let title: String
     let rows: [Row]
     let tip: String
@@ -43,11 +43,16 @@ struct WeekReview: Equatable {
             rows.append(Row(label: "Protein goal hit", value: "\(n - short.count) of \(n) days", ok: proteinOK))
         }
 
-        var weightOK = true
+        // weight is judged on the 4-week trend, not these 7 days, so one salty weekend can't flag it; it's off when it's
+        // well short of the plan or well past it, either way
+        var weightOK = true; let w = want ?? 0
         if let pace {
-            let w = want ?? 0
-            weightOK = w < 0 ? pace <= w / 3 : w > 0 ? pace >= w / 3 : abs(pace) < 0.25
-            rows.append(Row(label: "Weight", value: "\(pace > 0.05 ? "+" : pace < -0.05 ? "−" : "")\(Fmt.one(abs(pace))) kg a week", ok: weightOK))
+            let slow = w < 0 ? pace > w / 3 : w > 0 ? pace < w / 3 : abs(pace) >= 0.25
+            let fast = w < 0 ? pace < w * 1.5 - 0.25 : w > 0 ? pace > w * 2 + 0.25 : false
+            weightOK = !slow && !fast
+            let plan = w == 0 ? "steady" : "\(w > 0 ? "+" : "−")\(Fmt.kg(abs(w))) kg"
+            rows.append(Row(label: "Weight", value: "\(pace > 0.05 ? "+" : pace < -0.05 ? "−" : "")\(Fmt.one(abs(pace))) kg a week", ok: weightOK,
+                            note: weightOK ? "Last 4 weeks" : "Last 4 weeks · plan \(plan)"))
         }
 
         // all good: say so, and name something that's helping
@@ -56,10 +61,10 @@ struct WeekReview: Equatable {
             if let star = favourite(days, where: proteinRich) {
                 tip += " Your \(star.name.lowercased())'s earning its place: \(Int(star.p.rounded())) g protein for \(Int(star.kcal.rounded())) kcal."
             }
-            return WeekReview(icon: "🎯", title: "On track this week", rows: rows, tip: tip)
+            return WeekReview(status: "On track", title: "A good week", rows: rows, tip: tip)
         }
         let misses = [budgetOK, proteinOK, weightOK].filter { !$0 }.count
-        func titled(_ s: String) -> String { misses == 1 ? "Nearly there: \(s)" : s.prefix(1).uppercased() + s.dropFirst() }
+        let status = misses == 1 ? "Nearly there" : "Needs a look"
 
         if !budgetOK {
             let over = days.filter { $0.kcal > $0.budget + 50 }
@@ -70,7 +75,7 @@ struct WeekReview: Equatable {
             if let s = swap { tip = "Your \(s.food.lowercased()) came up \(s.days) days. \(s.pick) instead saves \(Fmt.int(s.saves)) kcal each time." }
             else if all > 0, snacks / all > 0.22 { tip = "Snacks are \(Int(snacks / all * 100))% of your food: the easiest place to trim." }
             else { tip = "The over days ran about \(Fmt.int(by)) kcal past budget: one lighter meal on those days would do it." }
-            return WeekReview(icon: "⚖️", title: titled("a few days over budget"), rows: rows, tip: tip)
+            return WeekReview(status: status, title: "A few days over budget", rows: rows, tip: tip)
         }
         if !proteinOK {
             // the main meal with the least protein on the short days
@@ -81,11 +86,21 @@ struct WeekReview: Equatable {
             let low = meals.min { $0.avg < $1.avg } ?? ("Dinner", 0)
             let name = low.meal == "Lunch" ? "Lunches" : low.meal + "s"
             let idea = low.meal == "Breakfast" ? "Eggs or Greek yoghurt" : "A chicken, fish or lean beef \(low.meal.lowercased())"
-            return WeekReview(icon: "🥚", title: titled("protein's short"), rows: rows,
+            return WeekReview(status: status, title: "Protein's short", rows: rows,
                               tip: "\(name) are where it drops: about \(Int(low.avg.rounded())) g on the short days. \(idea) would close the gap.", plan: low.meal)
         }
-        return WeekReview(icon: "📉", title: titled("weight's not moving"), rows: rows,
-                          tip: "Your days look good on paper, so the gap is usually what doesn't get logged: drinks, bites and oil. Log everything for a week.")
+        let pace = pace ?? 0, aim = w == 0 ? "holding steady" : "\(w < 0 ? "losing" : "gaining") \(Fmt.kg(abs(w))) kg a week"
+        if pace < 0 && pace < w {
+            return WeekReview(status: status, title: "Losing faster than planned", rows: rows,
+                              tip: "You've lost \(Fmt.one(abs(pace))) kg a week over the last 4 weeks, and your plan is \(aim). Losing faster can cost muscle, so eat up to your budget. If it carries on, Monday's check-in will raise it.")
+        }
+        if pace > 0 && pace > w {
+            return WeekReview(status: status, title: "Weight's going up", rows: rows,
+                              tip: "You've gained \(Fmt.one(pace)) kg a week over the last 4 weeks, and your plan is \(aim). Your days look good on paper, so the gap is usually what doesn't get logged: drinks, bites and oil. Log everything for a week.")
+        }
+        return WeekReview(status: status, title: "Weight's not moving", rows: rows,
+                          tip: w > 0 ? "Your plan is \(aim), and you're on budget, so the budget itself is a little low. Monday's check-in will raise it once it has enough weigh-ins."
+                                     : "Your days look good on paper, so the gap is usually what doesn't get logged: drinks, bites and oil. Log everything for a week.")
     }
 
     /// The food that came up on the most days (3 or more) among those that pass the test, with its usual numbers.
