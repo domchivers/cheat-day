@@ -42,6 +42,7 @@ struct RootView: View {
         else if ProcessInfo.processInfo.arguments.contains("-uitest-checkin") { CheckInHarness(acting: false) }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-budget") { NavigationStack { BudgetView() } }
         else if ProcessInfo.processInfo.arguments.contains("-demo-checkin") { DemoRoot(checkIn: true) }
+        else if ProcessInfo.processInfo.arguments.contains("-demo-budget") || ProcessInfo.processInfo.arguments.contains("-demo-weigh") { DemoRoot(checkIn: false) }
         else if ProcessInfo.processInfo.arguments.contains("-demo") || ProcessInfo.processInfo.arguments.contains("-demo-session") { DemoRoot(checkIn: false) }
         else if Supabase.shared.session == nil { SignInView() } else { MainTabs() }
     }
@@ -424,17 +425,20 @@ private struct CardsHarness: View {
     }
 }
 
-/// For marketing screenshots only (-demo, -demo-tab 0…3, -demo-session, -demo-checkin): the real app on a made-up four weeks.
+/// For marketing screenshots only (-demo, -demo-tab 0…3, -demo-session, -demo-checkin, -demo-budget, -demo-weigh): the real app on a made-up four weeks.
 private struct DemoRoot: View {
     let checkIn: Bool
     init(checkIn: Bool) {
         self.checkIn = checkIn
         let live = ProcessInfo.processInfo.arguments.contains("-demo-session")   // a legs session mid-rest, on Workouts
-        MainActor.assumeIsolated { Store.shared.useDemo(Demo.doc(session: live)) }
+        MainActor.assumeIsolated { Store.shared.useDemo(Demo.doc(session: live)); Friends.shared.useDemo() }
     }
     var body: some View {
         let live = ProcessInfo.processInfo.arguments.contains("-demo-session")
+        let args = ProcessInfo.processInfo.arguments
         if checkIn { NavigationStack { CheckInView() } }
+        else if args.contains("-demo-budget") { NavigationStack { BudgetView() } }   // the week with its treat day
+        else if args.contains("-demo-weigh") { WeighInSheet() }
         else { MainTabs(demo: true, startTab: live ? 1 : Int(UserDefaults.standard.string(forKey: "demo-tab") ?? "") ?? 0) }
     }
 }

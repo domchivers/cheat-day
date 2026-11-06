@@ -74,6 +74,28 @@ final class Friends {
         myCode = code; myName = name
     }
 
+    /// For marketing screenshots only (-demo): three made-up friends with this week's days. load() leaves them, as
+    /// there's no sign-in.
+    func useDemo() {
+        let today = DayKey.string(Date())
+        func days(_ budget: Double, _ eaten: [Double], _ foods: [(String, Double)]) -> [JSON] {
+            eaten.enumerated().map { i, k in
+                var d: JSON = ["day": DayKey.shift(today, days: -i), "budget": budget, "kcal": k, "updated_at": ISO.now()]
+                if i == 0 { d["items"] = foods.map { ["name": $0.0, "kcal": $0.1] as JSON } }
+                return d
+            }
+        }
+        people = [
+            Person(id: "demo-alex", friendship: "f1", name: "Alex", days: days(2100, [1480, 2050, 2180, 1990, 2600, 2070, 2010],
+                   [("Overnight oats", 420), ("Chicken caesar wrap", 560), ("Protein shake", 180)]), stats: ["streak": 23, "level": 3]),
+            Person(id: "demo-priya", friendship: "f2", name: "Priya", days: days(1750, [1210, 1700, 1690, 1820, 1650, 1740, 1600],
+                   [("Greek yoghurt and berries", 260), ("Dahl with rice", 610), ("Apple", 80)]), stats: ["streak": 41, "level": 4]),
+            Person(id: "demo-jordan", friendship: "f3", name: "Jordan", days: days(2600, [990, 2550, 2480, 2900, 2590, 2610, 2400],
+                   [("Bagel with eggs", 520), ("Iced latte", 190)]), stats: ["streak": 9, "level": 2])
+        ]
+        myName = "Sam"; myCode = "SAM-4821"
+    }
+
     func cheer(_ p: Person) async {
         cheered.insert(p.id)
         _ = try? await Supabase.shared.call("/functions/v1/push", body: ["action": "notify", "to": p.id, "kind": "react", "text": "your day", "emoji": "👏"] as JSON)
