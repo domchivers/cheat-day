@@ -490,7 +490,12 @@ final class Store {
     func publishDay() async {
         guard (doc["shareDay"] as? Bool) ?? true else { return }
         var items: [JSON] = todayItems.map { it -> JSON in ["name": str(it["name"]), "kcal": it["kcal"] ?? 0, "addedAt": it["addedAt"] ?? NSNull(), "meal": Meals.of(it)] }
-        items += todayWorkouts.map { w -> JSON in ["name": "Workout: \(str(w["name"])), \(Int(num(w["minutes"]) ?? 0)) min", "kcal": -Int((num(w["kcal"]) ?? 0).rounded())] }
+        items += todayWorkouts.map { w -> JSON in
+            var it: JSON = ["name": "Workout: \(str(w["name"])), \(Int(num(w["minutes"]) ?? 0)) min", "kcal": -Int((num(w["kcal"]) ?? 0).rounded())]
+            // chosen in Settings: friends see the exercises, and can start the workout or save it as a routine
+            if workoutsInDay { it["workout"] = w["name"] ?? ""; it["minutes"] = w["minutes"] ?? 0; it["lifts"] = w["lifts"] ?? [Any]() }
+            return it
+        }
         try? await Supabase.shared.publishDay(["day": today, "budget": budgetToday, "kcal": eaten, "items": items])
     }
 

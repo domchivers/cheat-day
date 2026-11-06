@@ -17,6 +17,8 @@ struct SessionView: View {
     @State private var routineOffer: JSON?
     @State private var namesAnswered = 0   // "It's new" answered: asks again with that one settled
     @State private var askShare: JSON?
+    @State private var stopAsking = false
+    @State private var composing: JSON?
     @State private var routineUpdate: RoutineUpdate?
     /// A session started from a routine that came out different: what changed, to ask whether the routine follows.
     struct RoutineUpdate { let routine: JSON; let name: String; let exercises: [JSON]; let changes: [String]; let workout: JSON }
@@ -131,10 +133,13 @@ struct SessionView: View {
         } message: {
             Text("How many minutes did it take? Change it if the timer ran on.\(s.startedDay < store.today ? " It'll be saved to \(DayKey.date(s.startedDay).formatted(.dateTime.weekday(.wide))), the day you started." : "")")
         }
-        .confirmationDialog("Discard this session? Nothing will be logged.", isPresented: $confirmDiscard, titleVisibility: .visible) {
+        // alerts rather than confirmation dialogs: on iOS 26 those are popovers that hide the cancel choice.
+        // Every button clears its own state, so the bindings' setters do nothing.
+        .alert("Discard this session?", isPresented: $confirmDiscard) {
             Button("Discard", role: .destructive) { finished = true; Self.cancelIdleReminder(); store.saveSession(nil); dismiss() }
-        }
-        .confirmationDialog("Save this as a routine, to start it again next time?", isPresented: Binding(get: { routineOffer != nil }, set: { if !$0, let w = routineOffer { routineOffer = nil; offerShare(w) } }), titleVisibility: .visible) {
+            Button("Keep going", role: .cancel) {}
+        } message: { Text("Nothing will be logged.") }
+        .alert("Save this as a routine?", isPresented: Binding(get: { routineOffer != nil }, set: { _ in })) {
             Button("Save as a routine") {
                 if let w = routineOffer {
                     store.saveRoutine(name: str(w["name"]), exercises: list(w["lifts"]).map { ["exercise": $0["exercise"] ?? "", "sets": $0["sets"] ?? 3, "reps": $0["reps"] ?? 8, "kg": $0["kg"] ?? 0] as JSON })
@@ -142,9 +147,9 @@ struct SessionView: View {
                 let w = routineOffer; routineOffer = nil; offerShare(w)
             }
             Button("Not now", role: .cancel) { let w = routineOffer; routineOffer = nil; offerShare(w) }
-        }
-        .confirmationDialog("You changed \(str(routineUpdate?.routine["name"])) today", isPresented: Binding(get: { routineUpdate != nil }, set: { if !$0, let u = routineUpdate { routineUpdate = nil; offerShare(u.workout) } }), titleVisibility: .visible) {
-            Button("Update the routine") {
+        } message: { Text("Start it again next time with one tap.") }
+        .alert("You changed \(str(routineUpdate?.routine["name"])) today", isPresented: Binding(get: { routineUpdate != nil }, set: { _ in })) {
+            Button("Update \(str(routineUpdate?.routine["name"]))") {
                 if let u = routineUpdate { store.updateRoutine(u.routine, name: u.name, exercises: u.exercises) }
                 let w = routineUpdate?.workout; routineUpdate = nil; offerShare(w)
             }
@@ -155,12 +160,19 @@ struct SessionView: View {
                 }
                 let w = routineUpdate?.workout; routineUpdate = nil; offerShare(w)
             }
-            Button("Keep it as it was", role: .cancel) { let w = routineUpdate?.workout; routineUpdate = nil; offerShare(w) }
+            // the routine stays as it was; today's workout is logged either way
+            Button("Just this once", role: .cancel) { let w = routineUpdate?.workout; routineUpdate = nil; offerShare(w) }
         } message: { Text((routineUpdate?.changes ?? []).joined(separator: "\n")) }
-        .confirmationDialog("Show your workouts on the feed?", isPresented: Binding(get: { askShare != nil }, set: { if !$0 && askShare != nil { answerShare(false) } }), titleVisibility: .visible) {
-            Button("Yes, show them") { answerShare(true) }
-            Button("No, keep them to myself", role: .cancel) { answerShare(false) }
-        } message: { Text("Friends would see each workout you finish and can react or do the same one. You can change this in Settings.") }
+        .alert("Post it to the feed?", isPresented: Binding(get: { askShare != nil }, set: { _ in })) {
+            Button("Post it") { answerShare(true) }
+            Button("Not this time", role: .cancel) { answerShare(false) }
+        } message: { Text("Add a gym pic and a caption if you like. Friends can react, start it or save it as a routine.") }
+        .alert("Stop asking?", isPresented: $stopAsking) {
+            Button("Stop asking") { store.perform(["type": "set", "key": "postWorkouts", "value": "never"]); store.perform(["type": "set", "key": "postSkips", "value": 0]); dismiss() }
+            Button("Keep asking", role: .cancel) { store.perform(["type": "set", "key": "postSkips", "value": 0]); dismiss() }
+        } message: { Text("You haven't posted your last 3 workouts. They'll stay off the feed and this won't pop up again. You can turn it back on in Settings.") }
+        // the post sheet with the workout attached, for a photo and a caption; the session closes after it
+        .sheet(isPresented: Binding(get: { composing != nil }, set: { if !$0 { composing = nil; dismiss() } })) { ComposeSheet(preset: composing) }
         .sheet(isPresented: $forgotten) {
             ForgotToFinish(session: $s) { minutes in
                 forgotten = false
@@ -362,19 +374,28 @@ struct SessionView: View {
 
     // MARK: finish
 
-    /// Done with the session: friends see the workout on the feed (unless that's turned off in Settings).
+    /// Done with the session: onto the feed as Settings says, asking each time unless it's Always or Never.
     private func offerShare(_ w: JSON?) {
         guard let w else { dismiss(); return }
-        if store.shareWorkoutsUnset { DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { askShare = w }; return }   // the first time only
-        if store.shareWorkouts { Task { try? await Feed.shared.post(ComposeSheet.workoutPost(w), photo: nil) } }
-        dismiss()
+        switch store.postWorkouts {
+        case "always": Task { try? await Feed.shared.post(ComposeSheet.workoutPost(w), photo: nil) }; dismiss()
+        case "never": dismiss()
+        default: DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { askShare = w }   // once the alert before it has gone
+        }
     }
 
+    /// Post it opens the post sheet; the third "Not this time" in a row offers to stop asking.
     private func answerShare(_ yes: Bool) {
-        store.perform(["type": "set", "key": "shareWorkouts", "value": yes])
-        if yes, let w = askShare { Task { try? await Feed.shared.post(ComposeSheet.workoutPost(w), photo: nil) } }
+        guard let w = askShare else { return }
         askShare = nil
-        dismiss()
+        if yes {
+            if store.postSkips > 0 { store.perform(["type": "set", "key": "postSkips", "value": 0]) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { composing = ComposeSheet.workoutPost(w) }
+            return
+        }
+        let skips = store.postSkips + 1
+        store.perform(["type": "set", "key": "postSkips", "value": skips])
+        if skips >= 3 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { stopAsking = true } } else { dismiss() }
     }
 
     private func prepareFinish() {
@@ -439,7 +460,7 @@ struct SetRow: View {
 
     private func box(_ text: Binding<String>, _ placeholder: String, field: String) -> some View {
         HStack(spacing: 4) {
-            TextField(placeholder, text: text)
+            TextField("–", text: text)   // the unit sits beside it, so an empty box doesn't read "kg kg"
                 .keyboardType(.decimalPad)
                 .accessibilityIdentifier("box-" + field)
                 .multilineTextAlignment(.trailing)

@@ -6,7 +6,9 @@ struct FriendsView: View {
     @State private var open: Set<String> = []
     @State private var adding = false
     @State private var showActivity = false
+    @State private var viewing: FriendWorkout?
     private var model: Friends { Friends.shared }
+    private struct FriendWorkout: Identifiable { let id = UUID(); let post: JSON; let by: String }
 
     var body: some View {
         NavigationStack {
@@ -21,6 +23,7 @@ struct FriendsView: View {
             .modifier(FriendsToolbar(unread: FriendActivity.shared.unread, showActivity: $showActivity, adding: $adding))
             .sheet(isPresented: $adding) { AddFriendSheet().presentationDetents([.medium]) }
             .sheet(isPresented: $showActivity) { ActivityView() }
+            .sheet(item: $viewing) { v in PostRecipeSheet(post: v.post, by: v.by) }
             .task { await model.load() }
         }
     }
@@ -103,7 +106,8 @@ struct FriendsView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Divider().padding(.vertical, 4)
                     let food = p.food
-                    if food.isEmpty { Text("Nothing shared today yet.").font(.footnote).foregroundStyle(.secondary) }
+                    let wos = p.workouts
+                    if food.isEmpty && wos.isEmpty { Text("Nothing shared today yet.").font(.footnote).foregroundStyle(.secondary) }
                     ForEach(Meals.all, id: \.self) { meal in
                         let its = food.filter { (str($0["meal"]).isEmpty ? Meals.of($0) : str($0["meal"])) == meal }
                         if !its.isEmpty {
@@ -118,6 +122,10 @@ struct FriendsView: View {
                             }
                         }
                     }
+                    if !wos.isEmpty {
+                        Text(wos.count == 1 ? "WORKOUT" : "WORKOUTS").font(.caption.weight(.bold)).foregroundStyle(.secondary).padding(.top, 4)
+                        ForEach(wos.indices, id: \.self) { i in workoutRow(wos[i], by: p.name) }
+                    }
                 }
                 .padding(.top, 8)
                 .transition(.opacity.combined(with: .offset(y: -10)))
@@ -127,6 +135,28 @@ struct FriendsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+
+    /// A workout they showed in their day: tap for the exercises, to start it or save it as a routine.
+    private func workoutRow(_ w: JSON, by name: String) -> some View {
+        let lifts = list(w["lifts"])
+        return Button {
+            viewing = FriendWorkout(post: ["kind": "workout", "name": w["workout"] ?? "", "kcal": abs(num(w["kcal"]) ?? 0),
+                                           "payload": ["minutes": w["minutes"] ?? 0, "lifts": lifts] as JSON], by: name)
+        } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack {
+                    Text(str(w["workout"])).font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Text("\(Int(num(w["minutes"]) ?? 0)) min\(lifts.isEmpty ? "" : " · \(lifts.count) exercise\(lifts.count == 1 ? "" : "s")")").font(.caption).foregroundStyle(.secondary)
+                    if !lifts.isEmpty { Image(systemName: "chevron.right").font(.caption2.weight(.bold)).foregroundStyle(.tertiary) }
+                }
+                if !lifts.isEmpty { Text(lifts.map { str($0["exercise"]) }.joined(separator: ", ")).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+            }
+            .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.hero, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain).disabled(lifts.isEmpty)
     }
 
     private func card(_ p: Friends.Person) -> some View {

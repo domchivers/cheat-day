@@ -195,8 +195,14 @@ struct SettingsView: View {
             Toggle("Share my day with friends", isOn: $share)
             Toggle("Notifications from friends", isOn: Binding(get: { Push.on }, set: { v in Task { await Push.setOn(v) } }))
             if Push.on { Button("Send a test notification") { Task { pushNote = await Push.test() } } }
-            Toggle("Show my workouts on the feed", isOn: Binding(get: { store.shareWorkouts }, set: { store.perform(["type": "set", "key": "shareWorkouts", "value": $0]) }))
-        } footer: { Text("Friends see your calories and what you had today.") }
+            Toggle("Show my workouts in my day", isOn: Binding(get: { store.workoutsInDay }, set: { store.perform(["type": "set", "key": "workoutsInDay", "value": $0]) }))
+                .disabled(!share)
+            Picker("Post workouts to the feed", selection: Binding(get: { store.postWorkouts }, set: {
+                store.perform(["type": "set", "key": "postWorkouts", "value": $0]); store.perform(["type": "set", "key": "postSkips", "value": 0])
+            })) {
+                Text("Ask each time").tag("ask"); Text("Always").tag("always"); Text("Never").tag("never")
+            }
+        } footer: { Text("Friends see your calories and what you had today, and your workouts if you show them: they can start one or save it as a routine. The feed is separate, for posts with a photo and a caption.") }
         .alert("Notifications", isPresented: Binding(get: { pushNote != nil }, set: { if !$0 { pushNote = nil } })) { Button("OK") {} } message: { Text(pushNote ?? "") }
     }
 

@@ -377,6 +377,8 @@ struct ComposeSheet: View {
 /// A post to take for yourself: a meal's recipe to save or have, a food to add, or a workout to do.
 struct PostRecipeSheet: View {
     let post: JSON
+    /// Who it's from, when it isn't a feed post (a workout in a friend's day).
+    var by: String? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var saved = false
     @State private var asking = false
@@ -389,7 +391,7 @@ struct PostRecipeSheet: View {
                 Section {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(str(post["name"])).font(.title2.bold())
-                        Text("Shared by \(Feed.shared.name(str(post["owner"])))").font(.caption).foregroundStyle(.secondary)
+                        Text("Shared by \(by ?? Feed.shared.name(str(post["owner"])))").font(.caption).foregroundStyle(.secondary)
                         Text("\(Fmt.int(num(post["kcal"]) ?? 0)) kcal\(num(macros["p"]).map { " · P \(Int($0))g C \(Int(num(macros["c"]) ?? 0))g F \(Int(num(macros["f"]) ?? 0))g" } ?? "")").font(.subheadline.weight(.semibold))
                     }
                 }
@@ -413,12 +415,15 @@ struct PostRecipeSheet: View {
                             Text("\(str(l["exercise"])) · \(Int(num(l["sets"]) ?? 3))×\(Int(num(l["reps"]) ?? 8))\((num(l["kg"]) ?? 0) > 0 ? " @ \(Fmt.kg(num(l["kg"]) ?? 0)) kg" : "")").font(.subheadline)
                         }
                     }
+                    let exercises = list(m["lifts"]).map { ["exercise": $0["exercise"] ?? "", "sets": $0["sets"] ?? 3, "reps": $0["reps"] ?? 8, "kg": $0["kg"] ?? 0] as JSON }
                     Section {
                         Button("Start this workout") {
-                            store.startSession(["name": post["name"] ?? "", "exercises": list(m["lifts"]).map { ["exercise": $0["exercise"] ?? "", "sets": $0["sets"] ?? 3, "reps": $0["reps"] ?? 8, "kg": $0["kg"] ?? 0] as JSON }])
+                            store.startSession(["name": post["name"] ?? "", "exercises": exercises])
                             dismiss()
                         }
-                        .disabled(store.session != nil || list(m["lifts"]).isEmpty)
+                        .disabled(store.session != nil || exercises.isEmpty)
+                        Button(saved ? "Saved to your routines" : "Save to my routines") { store.saveRoutine(name: str(post["name"]), exercises: exercises); saved = true }
+                            .disabled(saved || exercises.isEmpty)
                     } footer: { if store.session != nil { Text("Finish your current session first.") } }
                 } else {
                     Section {

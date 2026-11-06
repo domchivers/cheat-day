@@ -131,7 +131,9 @@ extension Friends.Person {
         return nil
     }
     var food: [JSON] { list(current?["items"]).filter { !str($0["name"]).hasPrefix("Workout: ") } }
-    var isActive: Bool { !food.isEmpty }
+    /// Workouts they chose to show in their day, with the exercises.
+    var workouts: [JSON] { list(current?["items"]).filter { $0["workout"] != nil } }
+    var isActive: Bool { !food.isEmpty || !workouts.isEmpty }
     var streak: Int { Int(num(stats?["streak"]) ?? 0) }
     var level: Int { Int(num(stats?["level"]) ?? 0) }
 
