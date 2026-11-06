@@ -1,4 +1,4 @@
-New in this build: the check-in finds the day you usually weigh in and counts only those weigh-ins, so a midweek reading can't skew your trend.
+New in this build: adding a new exercise by name now shows a tick, and clearing a reps box leaves it empty instead of 0.
 
 Thanks for testing! Please just use it like a normal day:
 
