@@ -13,11 +13,32 @@ enum Tweak {
 
     struct Result { let item: JSON; let reply: String }
 
+    /// Just a new amount ("150g", "change my portion to 150 g", "it was 200ml"): the grams, or nil for anything else.
+    /// "50g less rice" or "add 20g cheese" is a change to work out, not a new amount.
+    static func amount(_ change: String) -> Double? {
+        let t = change.lowercased()
+        guard !["less", "more", "extra", "add", "minus", "off", "plus", "half", "double", "and"].contains(where: { w in
+            t.range(of: "\\b\(w)\\b", options: .regularExpression) != nil }) else { return nil }
+        let all = NSRange(t.startIndex..., in: t)
+        guard (try? NSRegularExpression(pattern: "\\d+(?:[.,]\\d+)?"))?.numberOfMatches(in: t, range: all) == 1,
+              let m = (try? NSRegularExpression(pattern: "(\\d+(?:[.,]\\d+)?)\\s*(?:g|gram|grams|ml)\\b"))?.firstMatch(in: t, range: all),
+              let r = Range(m.range(at: 1), in: t) else { return nil }
+        return Double(t[r].replacingOccurrences(of: ",", with: ".")).flatMap { $0 > 0 ? $0 : nil }
+    }
+
     @MainActor
     static func ask(_ item: JSON, change: String) async throws -> Result {
         let kcal = num(item["kcal"]) ?? 0
         let m = FoodMath.macros(item, kcal: kcal)
         let grams = num(item["grams"]) ?? FoodMath.amounts(item, kcal: kcal).grams
+        // a new amount of a food whose weight is known is plain maths: 180 g to 150 g is five sixths of everything
+        // (the phone's model turned "change my portion to 150g" into 0.9 of a portion at 129 g)
+        if let g = amount(change), let have = grams, have > 0, kcal > 0 {
+            let r = g / have, k = kcal * r
+            let a: JSON = ["name": str(item["name"]), "kcal": k, "grams": g, "protein_g": (m?.p ?? 0) * r, "carbs_g": (m?.c ?? 0) * r, "fat_g": (m?.f ?? 0) * r,
+                           "reply": "Now \(Fmt.int(g)) \(str(item["unit"]) == "ml" ? "ml" : "g"): \(Fmt.int(k)) kcal instead of \(Fmt.int(kcal))."]
+            return try result(a, item)
+        }
         let now = "\"\(str(item["name"]))\": \(Int(kcal)) kcal" + (grams.map { ", \(Int($0)) g" } ?? "")
             + (m.map { ", protein \(Int($0.p)) g, carbs \(Int($0.c)) g, fat \(Int($0.f)) g" } ?? "")
         let prompt = """
@@ -27,10 +48,16 @@ enum Tweak {
         \(Assistant.foodData(str(item["name"]) + ", " + change))
         """
         // a change that names a food ("add cheese") is worked out from the food data, so it goes to Claude, not the phone's model
-        let namesFood = !FoodTable.current.named(in: change).isEmpty
+        // and so does one with numbers in it: the phone's model gets amounts wrong
+        let namesFood = !FoodTable.current.named(in: change).isEmpty, hasNumbers = change.contains(where: \.isNumber)
         let a: JSON
-        if !namesFood, let local = await OnDevice.tweak(now, change: change) { a = local }
+        if !namesFood, !hasNumbers, let local = await OnDevice.tweak(now, change: change) { a = local }
         else { a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: true, job: "logs") }
+        return try result(a, item)
+    }
+
+    /// The answer as a logged food's details.
+    private static func result(_ a: JSON, _ item: JSON) throws -> Result {
         guard let k = pos(a["kcal"]) else { throw Gemini.Failure(message: "Couldn't work that change out. Try saying it another way.") }
         let p = num(a["protein_g"]) ?? 0, c = num(a["carbs_g"]) ?? 0, f = num(a["fat_g"]) ?? 0
         var b: JSON = ["name": str(a["name"]).isEmpty ? str(item["name"]) : str(a["name"]), "source": str(item["source"]).isEmpty ? "manual" : str(item["source"]),
