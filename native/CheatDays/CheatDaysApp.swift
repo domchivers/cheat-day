@@ -37,6 +37,10 @@ struct RootView: View {
         else if ProcessInfo.processInfo.arguments.contains("-uitest-ranks") { RanksHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-mealcheck") { MealCheckHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-review") { ReviewHarness() }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-cards") { CardsHarness() }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-checkin-step") { CheckInHarness(acting: true) }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-checkin") { CheckInHarness(acting: false) }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-budget") { NavigationStack { BudgetView() } }
         else if Supabase.shared.session == nil { SignInView() } else { MainTabs() }
     }
 }
@@ -375,5 +379,42 @@ struct SignInView: View {
         } catch {
             message = error.localizedDescription == "Invalid login credentials" ? "Email or password isn't right." : error.localizedDescription
         }
+    }
+}
+
+/// For the check-in screenshots only: the owner's real Saturdays (and a Thursday), waiting on a water swing or,
+/// two weeks later, acting with a step. No sign-in.
+private struct CheckInHarness: View {
+    let acting: Bool
+    var body: some View {
+        let sat = [("2026-10-03", 82.35), ("2026-10-10", 81.85), ("2026-10-17", 81.80), ("2026-10-24", 81.30), ("2026-10-31", 79.95)]
+            + (acting ? [("2026-11-07", 79.75), ("2026-11-14", 79.20)] : [])
+        let readings = sat.map { Adaptive.Reading(day: $0.0, kg: $0.1) } + [Adaptive.Reading(day: "2026-10-29", kg: 80.6)]
+        let rate = Adaptive.rate(readings, weighDay: 6, end: acting ? "2026-11-15" : "2026-11-01")
+        let c = CheckIn(week: "2026-10-26", mon: "2026-10-26", sun: "2026-11-01", logged: 7, avg: 2500, workouts: 4, change: -0.6,
+                        burn: 3080, burnDays: 21, burnWeighins: 5, needs: [], pace: rate.map(\.perWeek), want: -0.3, now: 2500,
+                        suggest: acting ? 2625 : nil, rate: rate, tol: 0.12, wellLogged: 7, step: acting ? 125 : nil,
+                        verdict: acting ? "Losing faster than your goal for 2 weeks in a row. A little more food protects your muscle."
+                                        : "Saturday's 79.95 looks like a water swing, 1.1 kg under your trend. Not changing anything on one reading. We'll check again next week.")
+        NavigationStack { CheckInView(sample: c, week: (2350, [6: 3250, 0: 2500], 6)) }
+    }
+}
+
+/// For the card screenshots only: the weigh-in card both ways, and the paired buttons on the after-midnight card. No sign-in.
+private struct CardsHarness: View {
+    var body: some View {
+        List {
+            Section { WeighInConfirmCard(day: DayKey.string(Date()), kg: 79.95, at: Date()) }
+            Section { WeighInConfirmCard(day: DayKey.string(Date()), kg: 79.95, at: Date(), different: true, why: ["No toilet"]) }
+            Section {
+                VStack(alignment: .leading, spacing: 10) {
+                    Label("It's after midnight", systemImage: "moon.stars.fill").font(.headline).foregroundStyle(Theme.accent)
+                    Text("Still Thursday for you? Food you add goes on Thursday until you say, or until 5am.").font(.subheadline).foregroundStyle(.secondary)
+                    ButtonPair(first: "Keep it as Thursday", second: "Start Friday", onFirst: {}, onSecond: {})
+                }
+                .padding(.vertical, 4)
+            }
+        }
+        .scrollContentBackground(.hidden).background(Theme.bg)
     }
 }

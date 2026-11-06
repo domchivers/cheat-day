@@ -6,9 +6,11 @@ import SwiftUI
 struct CheckInView: View {
     @Environment(\.dismiss) private var dismiss
     private var store: Store { Store.shared }
+    var sample: CheckIn? = nil                                        // for the screenshot harness: a check-in and a week to show
+    var week: (budget: Int, days: [Int: Int], treat: Int?)? = nil
 
     var body: some View {
-        let c = store.checkIn
+        let c = sample ?? store.checkIn
         List {
             Section { trend(c) }
             Section {
@@ -114,8 +116,8 @@ struct CheckInView: View {
 
     /// The change as the week will look: days with the same before and after grouped ("Mon to Fri"), the treat day kept.
     @ViewBuilder private func suggestion(_ c: CheckIn, _ step: Double) -> some View {
-        let treat = store.cheatWeekday, now = dayBudgets
-        let base = Int(pos(store.doc["budget"]) ?? 1600)
+        let treat = week?.treat ?? store.cheatWeekday, now = week?.days ?? dayBudgets
+        let base = week?.budget ?? Int(pos(store.doc["budget"]) ?? 1600)
         let out = Adaptive.spread(step, budget: base, days: now, treat: treat)
         let order = [1, 2, 3, 4, 5, 6, 0]
         let pairs = order.map { d in (d, now[d] ?? base, out.days[d] ?? out.budget) }

@@ -9,6 +9,12 @@ struct WeighInConfirmCard: View {
     private var store: Store { Store.shared }
     static let reasons = ["Ate or drank first", "No toilet", "Different time", "Big night before"]
 
+    /// Different opens it on the reasons, for the screenshot harness.
+    init(day: String, kg: Double, at: Date?, different: Bool = false, why: Set<String> = []) {
+        self.day = day; self.kg = kg; self.at = at
+        _different = State(initialValue: different); _why = State(initialValue: why)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Eyebrow(text: "New weigh-in · \(Store.whenTaken(day: day, at: at))", color: .secondary)
