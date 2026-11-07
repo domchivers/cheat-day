@@ -234,15 +234,18 @@ struct AssistantView: View {
                              : "The AI's estimate: none of the parts could be checked against a food database.")
                 .font(.caption2).foregroundStyle(.secondary) }
             let tag = "\(turn)-est", added = done[turn, default: ""].contains(tag)
-            if e["size_unsure"] as? Bool == true, e["sizeAnswer"] == nil, !added {
-                // nothing in the photo showed its size: one tap says
+            if e["size_unsure"] as? Bool == true, !added {
+                // nothing in the photo showed its size: one tap says, and stays picked so it can be changed
+                let picked = str(e["sizeAnswer"])
                 VStack(alignment: .leading, spacing: 6) {
                     Text("How big was it?").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                     HStack(spacing: 8) {
                         ForEach(["Small", "Regular", "Large"], id: \.self) { name in
-                            Button { answerSize(turn, name, name == "Small" ? 0.75 : name == "Large" ? 1.3 : 1) } label: {
+                            let on = picked == name
+                            Button { answerSize(turn, name) } label: {
                                 Text(name).font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).frame(height: Self.control)
-                                    .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    .foregroundStyle(on ? Theme.onAccent : .primary)
+                                    .background(on ? Theme.accent : Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                             }
                             .buttonStyle(.plain)
                         }
@@ -356,7 +359,13 @@ struct AssistantView: View {
     }
 
     /// Small, Regular or Large for a plate the AI couldn't size: the whole plate scaled, and the question gone.
-    private func answerSize(_ turn: UUID, _ name: String, _ f: Double) {
+    /// Small, Regular or Large for a plate the AI couldn't size: the whole plate scaled from whatever was picked before
+    /// (Small then Large is ×1.3 / ×0.75), and the choice kept highlighted.
+    private func answerSize(_ turn: UUID, _ name: String) {
+        func factor(_ n: String) -> Double { n == "Small" ? 0.75 : n == "Large" ? 1.3 : 1 }
+        let was = str(estimate(turn)["sizeAnswer"])
+        guard was != name else { return }
+        let f = factor(name) / factor(was.isEmpty ? "Regular" : was)
         if f != 1 { scale(turn, by: f) }
         guard let t = turns.firstIndex(where: { $0.id == turn }), var r = turns[t].result, var e = r["estimate"] as? JSON else { return }
         e["sizeAnswer"] = name; r["estimate"] = e
