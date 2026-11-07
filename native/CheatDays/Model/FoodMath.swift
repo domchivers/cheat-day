@@ -3,7 +3,8 @@ import Foundation
 /// Ports of the web app's food maths, so both apps show the same numbers for the same item.
 enum FoodMath {
     static let basisKeys = ["name", "brand", "source", "unit", "unitLabel", "kcalPer100", "servingSize", "kcalPerServing",
-                            "packSize", "piecesPerPack", "image", "photo", "mealId", "p100", "c100", "f100", "pServ", "cServ", "fServ"]
+                            "packSize", "piecesPerPack", "image", "photo", "mealId", "p100", "c100", "f100", "pServ", "cServ", "fServ",
+                            "shop", "aiGrams", "aiKcal", "aiMatches"]   // an AI estimate's shop and first numbers, so a correction can be learnt from
 
     /// The parts of an item that describe the food itself (the web app's basisOf). Photos taken on the phone stay out.
     static func basisOf(_ item: JSON) -> JSON {

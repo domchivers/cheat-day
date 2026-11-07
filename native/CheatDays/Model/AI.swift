@@ -78,6 +78,19 @@ enum Gemini {
         return answer
     }
 
+    /// What a shop, café, bakery or chain publishes for one of its items (its website, a nutrition PDF, a delivery-app listing),
+    /// per item; nil when it doesn't publish any, which most small bakeries don't. Looked up once per session.
+    @MainActor
+    static func lookUpShopItem(shop: String, item: String) async -> JSON? {
+        let key = "shop: \(shop) | \(item)".lowercased()
+        if let known = labels[key] { return known["found"] as? Bool == true ? known : nil }
+        let ask = "Find the nutrition information that \"\(shop)\" (a shop, café, bakery or chain in \(Plan.country)) publishes for its \"\(item)\": per item as sold, exactly as they give it, kcal from kJ ÷ 4.184 if only kJ is given. Only the shop's own figures (its website, a nutrition PDF, or its listing on a delivery app); found false if they don't publish any. Never estimate."
+        guard let answer = await claude("lookup", schema: labelSchema, parts: [["text": ask]], extra: ["country": Region.current.code]) else { return nil }
+        labels[key] = answer
+        guard answer["found"] as? Bool == true, (num(answer["serving_g"]) ?? 0) > 0, (num(answer["kcal"]) ?? 0) > 0 else { return nil }
+        return answer
+    }
+
     private static func askNow(schema: JSON, parts: [JSON], quick: Bool, tries: Int) async throws -> JSON {
         let order = Array((quick ? lite + flash : flash + lite).filter { !spent().contains($0) }.prefix(tries))
         guard !order.isEmpty else { throw Failure(message: "Today's free AI allowance is used up. It comes back tomorrow morning.") }

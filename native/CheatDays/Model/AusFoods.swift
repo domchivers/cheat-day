@@ -76,6 +76,65 @@ final class FoodTable {
         return best?.food
     }
 
+    /// The tags the AI puts on a part, and the words in a table name that agree or disagree with each.
+    static let tagWords: [String: (yes: [String], no: [String])] = {
+        let cookedWords = ["cooked", "baked", "grilled", "fried", "roasted", "roast", "boiled", "steamed", "casseroled", "bbq", "microwaved"]
+        return [
+            // bought only rules out homemade: most bought food isn't called "commercial" in the tables
+            "homemade": (["homemade"], ["commercial", "purchased"]), "bought": ([], ["homemade"]),
+            "natural": (["natural"], ["processed"]), "processed": (["processed"], ["natural"]),
+            "raw": (["raw", "uncooked"], cookedWords), "cooked": (cookedWords, ["raw", "uncooked"]),
+            "skin on": (["skin"], []), "skin off": ([], ["skin"]),
+            "fried": (["fried"], []), "baked": (["baked", "roasted", "roast"], []), "grilled": (["grilled", "bbq"], []),
+            "boiled": (["boiled"], []), "steamed": (["steamed"], []),
+            "plain": (["plain", "unfilled"], ["filled", "filling"]), "filled": (["filled", "filling"], ["unfilled"]),
+            "coated": (["coated", "crumbed", "breadcrumb", "battered"], []), "reduced fat": (["reduced", "light", "lite"], []),
+        ]
+    }()
+    /// Words that make a row a special version of its food: chosen only when the name or a tag asks for it.
+    private static let special: Set<String> = ["processed", "reduced", "light", "lite", "flavoured", "coated", "crumbed", "breadcrumb", "battered",
+                                               "canned", "smoked", "marinated", "frozen", "vitamin", "free", "skin", "homemade"]
+
+    /// The food for a part the AI tagged (bought, natural, cooked, skin on, filled…): the everyday entry find gives, unless a
+    /// relative of it fits the name and tags clearly better (a "skin on" chicken is a with-skin entry, a bakery's cheese the
+    /// natural one, a "matcha cream cake" a cream-filled sponge). Untagged, it's find, unchanged.
+    func best(_ name: String, tags: [String]) -> Food? {
+        let base = find(name)
+        // how it's cooked says nothing about which cheese or cake it is (a "cooked" melted cheese found fried mozzarella)
+        let cooking: Set<String> = ["raw", "cooked", "fried", "baked", "grilled", "boiled", "steamed"]
+        let plain = [FoodKind.dairy, .sweet].contains(FoodKind.of(name))
+        let tags = tags.filter { Self.tagWords[$0] != nil && !(plain && cooking.contains($0)) }
+        guard !tags.isEmpty else { return base }
+        let first = name.split(whereSeparator: { $0 == "," || $0 == "(" }).first.map(String.init) ?? ""
+        let want = Self.words(first), all = Set(Self.words(name)), main = Set(want)
+        guard !want.isEmpty else { return base }
+        let asked = all.union(tags.flatMap { Self.tagWords[$0]!.yes })
+        let baseRow = base.flatMap { b in rows.first { $0.food.name == b.name } }
+        // relatives: the base's own kind (cheddar's other cheeses), or with no base, a kind the name names
+        let kinds = Set(baseRow?.kind ?? want)
+        /// How many tags a row agrees with, less the ones it goes against.
+        func fit(_ r: Row) -> Int {
+            tags.reduce(0) { n, t in let w = Self.tagWords[t]!; return n + (w.yes.contains(where: r.words.contains) ? 1 : 0) - (w.no.contains(where: r.words.contains) ? 1 : 0) }
+        }
+        func unasked(_ r: Row) -> Bool { r.words.contains { Self.special.contains($0) && !asked.contains($0) } }
+        func score(_ r: Row) -> Double {
+            // the food's own words count most; a descriptor ("skin" in "skin on") a little, and a row that's about it
+            // ("Chicken, skin") isn't the food
+            var s = 3 * Double(r.words.intersection(main).count) + Double(r.words.intersection(all.subtracting(main)).count)
+            if r.lead.contains(where: { all.contains($0) && !main.contains($0) }) { s -= 5 }
+            for t in tags { let w = Self.tagWords[t]!; if w.yes.contains(where: r.words.contains) { s += 4 }; if w.no.contains(where: r.words.contains) { s -= 6 } }
+            s -= 3 * Double(r.words.filter { Self.special.contains($0) && !asked.contains($0) }.count)
+            s -= 0.5 * Double(r.words.subtracting(all).subtracting(asked).count)
+            return s + (r.food.main ? 1 : 0) + (r.food.name == base?.name ? 2 : 0)
+        }
+        let pool = rows.filter { !Set($0.kind).isDisjoint(with: kinds) && (baseRow != nil || $0.words.intersection(all).count >= min(2, want.count)) }
+        guard let baseRow else { return pool.max(by: { score($0) < score($1) })?.food }
+        // a relative only when it fits more of the tags and isn't a special version nobody asked for
+        let fitted = pool.filter { !unasked($0) }.max { (fit($0), score($0)) < (fit($1), score($1)) }
+        guard let fitted, fit(fitted) > fit(baseRow) else { return base }
+        return fitted.food
+    }
+
     /// How it's cooked counts ("pan fried, no oil" is the no-added-fat fried potato, not boiled), and a variety only when
     /// they named it (the table lists potatoes as coliban, desiree, sebago…; a plain potato is the plain one). Each step
     /// only when something's left. Same as narrow in tools/ai-test/jobs.js.

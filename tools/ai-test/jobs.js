@@ -116,6 +116,11 @@ const jobs = {
     score: () => ({ pass: null, manual: true }),
   },
 };
+// the same plates with the app's photo sizing rule (Assistant.rules, 7 Nov 2026): sized against what's in the shot
+jobs.sized = {
+  ...jobs.plates,
+  prompt: () => `Estimate this plate of food. Size each food against something of known size in the shot before giving grams (a side plate is about 18 cm across, a dinner plate 27 cm, a mug 9 cm, a small takeaway box 12 cm inside, a fork 19 cm, a hand 9 cm wide). Never assume a standard portion: café items vary a lot. List each item you can see with your guess of its cooked weight, then the total for everything on the plate. ${JSON_ONLY} {"items":[{"name":string,"grams":number,"kcal":number}],"kcal":number,"protein":number,"carbs":number,"fat":number}`,
+};
 // the same plates, with what the person says is on them
 jobs.described = {
   ...jobs.plates, tasks: () => sheet('plates-described'),

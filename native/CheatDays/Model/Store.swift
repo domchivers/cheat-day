@@ -145,7 +145,19 @@ final class Store {
 
     func edit(_ id: String, kcal: Double, meal: String) {
         let k = kcal.rounded()
+        if let it = todayItems.first(where: { str($0["id"]) == id }), let c = Store.correction(it, newKcal: k) { perform(c) }
         perform(["type": "edit", "id": id, "kcal": Int(k), "shareLabel": Fmt.share(k, of: baseBudget(today)), "meal": meal, "day": today])
+    }
+
+    /// An AI estimate's amount changed after it was logged: what it said and what they made it, with the food's kind and
+    /// shop, kept for learning how far off photo estimates run (nothing reads them yet). Nil for anything else.
+    static func correction(_ item: JSON, newKcal: Double) -> JSON? {
+        guard str(item["source"]) == "claude", let aiG = pos(item["aiGrams"]), let was = pos(item["kcal"]), abs(was - newKcal) >= 1 else { return nil }
+        let per100 = pos(item["kcalPer100"])
+        let grams = per100.map { newKcal / $0 * 100 } ?? aiG * newKcal / was
+        return ["type": "correction", "row": ["at": ISO.now(), "name": item["name"] ?? "", "shop": item["shop"] ?? "", "kind": FoodKind.of(str(item["name"])).rawValue,
+                                             "change": "grams", "aiGrams": aiG, "grams": (grams * 10).rounded() / 10, "aiKcal": item["aiKcal"] ?? was, "kcal": newKcal,
+                                             "matches": item["aiMatches"] ?? ""] as JSON]
     }
 
     func setFavourite(_ entry: QuickEntry, on: Bool) {
@@ -215,6 +227,9 @@ final class Store {
                 var recent = list(d["recent"])
                 if !recent.contains(where: { str($0["key"]) == key }) { recent.insert(r, at: 0); d["recent"] = recent }
             }
+        case "correction":   // newest first, the last 300
+            var rows = list(d["corrections"]); rows.insert(dict(op["row"]), at: 0)
+            d["corrections"] = Array(rows.prefix(300))
         default:
             applyWorkoutOp(op, to: &d, today: today)
             applyHelperOp(op, to: &d, today: today)

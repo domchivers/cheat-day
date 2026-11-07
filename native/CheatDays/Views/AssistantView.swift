@@ -191,12 +191,20 @@ struct AssistantView: View {
             let pending = !parts.isEmpty && parts.allSatisfy { str($0["src"]).isEmpty }   // not checked yet
             if pending { Label("Checking against the food database…", systemImage: "hourglass").font(.caption2).foregroundStyle(.secondary) }
             else if let web, parts.count == 1 { Text("From its label, found online: \(str(web["source"]))").font(.caption2).foregroundStyle(.secondary).lineLimit(3) }
+            else if let web, parts.allSatisfy({ str($0["src"]) == "web" }) {   // every item from the shop's own published numbers
+                Text("From \(str(e["shop"]).isEmpty ? "the shop" : str(e["shop"]))'s own published numbers: \(str(web["source"]))").font(.caption2).foregroundStyle(.secondary).lineLimit(3)
+            }
             else if own > 0, own == parts.count { Text("Worked out from your label or your numbers.").font(.caption2).foregroundStyle(.secondary) }
             else { Text(checked > 0 ? "\(checked) of \(parts.count) parts checked against food databases\(num(e["aiKcal"]).map { " (the AI first said \(Int($0)) kcal)" } ?? ""). An estimate, not a label."
                              : "The AI's estimate: none of the parts could be checked against a food database.")
                 .font(.caption2).foregroundStyle(.secondary) }
             addButton("Add to \(meal.lowercased())", key: "est", turn: turn) {
-                store.add(Assistant.basis(name: str(e["name"]), kcal: k, grams: num(e["portion_g"]), unit: str(e["unit"]).isEmpty ? "g" : str(e["unit"]), p: p, c: c, f: f), kcal: k, meal: meal)
+                var b = Assistant.basis(name: str(e["name"]), kcal: k, grams: num(e["portion_g"]), unit: str(e["unit"]).isEmpty ? "g" : str(e["unit"]), p: p, c: c, f: f)
+                // what the AI made it, kept on the item so a later change of amount can be learnt from
+                if !str(e["shop"]).isEmpty { b["shop"] = str(e["shop"]) }
+                if let g = pos(e["portion_g"]) { b["aiGrams"] = g; b["aiKcal"] = k }
+                b["aiMatches"] = parts.map { "\(str($0["name"])) → \(str($0["match"]).isEmpty ? "unchecked" : str($0["match"]))" }.joined(separator: "; ")
+                store.add(b, kcal: k, meal: meal)
             }
         }
     }

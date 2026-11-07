@@ -1,4 +1,4 @@
-New in this build: Me and Body show the body fat from your latest weigh-in, the date to your goal says "any day now" when you're nearly there, and the weight chart's label shows the full number.
+New in this build: photo estimates size food against the plate, mug or box in the shot, foods are matched to the right entry (natural cheese, cream cakes, chicken with skin), a named shop's own numbers are looked up first, the same food from the same place starts from what you confirmed last time, and Me and Body show the body fat from your latest weigh-in, the date to your goal says "any day now" when you're nearly there, and the weight chart's label shows the full number.
 
 Thanks for testing! Please just use it like a normal day:
 
