@@ -86,6 +86,7 @@ struct CheatDayView: View {
     @State private var setupDay = 6
     @State private var setupSize = 1.3
     @FocusState private var typing: Bool
+    @State private var showEaten = false   // the day's food so far, opened from its one line
     private var store: Store { Store.shared }
     private static let starters = ["Leave room for snacks", "Something sweet", "Plan the whole day", "Eating out", "Go wild"]
 
@@ -102,6 +103,9 @@ struct CheatDayView: View {
                     ScrollView { setup.padding(.horizontal, 20).padding(.bottom, 30) }
                 }
             }
+            // the app's own keyboard room, like the assistant's: in this sheet SwiftUI only lifted the chat box over the
+            // keyboard once something was typed, so at first it sat hidden behind it
+            .keyboardLift()
             .animation(.snappy, value: starting)
             .animation(.snappy, value: busy)
             .scrollDismissesKeyboard(.interactively)
@@ -199,7 +203,11 @@ struct CheatDayView: View {
                     Eyebrow(text: when(next.date), color: Theme.warn).padding(.top, 8)
                     Text(str(plan["title"])).font(.title2.bold()).padding(.bottom, 2)
                     VStack(spacing: 8) {
-                        ForEach(extras.indices, id: \.self) { i in loggedRow(extras[i]) }
+                        // what's eaten already, folded into one line (a row each took most of the screen); tap to see them
+                        if extras.count > 1 {
+                            eatenRow(extras)
+                            if showEaten { ForEach(extras.indices, id: \.self) { i in loggedRow(extras[i]) } }
+                        } else { ForEach(extras.indices, id: \.self) { i in loggedRow(extras[i]) } }
                         ForEach(slots.indices, id: \.self) { i in slotRow(slots[i], isToday: next.date == store.today) }
                     }
                     .opacity(busy ? 0.45 : 1)
@@ -239,6 +247,24 @@ struct CheatDayView: View {
             .background(Theme.bg)
         }
         .sensoryFeedback(.success, trigger: str(plan["at"]))
+    }
+
+    private func eatenRow(_ items: [JSON]) -> some View {
+        let kcal = items.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }
+        return Button { withAnimation(.snappy) { showEaten.toggle() } } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.walk)
+                Text("Eaten so far").font(.subheadline.weight(.semibold))
+                Text("· \(items.count) foods").font(.subheadline).foregroundStyle(.secondary)
+                Spacer()
+                Text("\(Fmt.int(kcal)) kcal").font(.caption.weight(.bold)).monospacedDigit().foregroundStyle(.secondary)
+                Image(systemName: showEaten ? "chevron.up" : "chevron.down").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 12).contentShape(Rectangle())
+            .background(Theme.hero.opacity(0.6), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Eaten so far, \(items.count) foods, \(Fmt.int(kcal)) kcal. \(showEaten ? "Hide" : "Show") them")
     }
 
     private func loggedRow(_ item: JSON) -> some View {
