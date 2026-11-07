@@ -105,7 +105,9 @@ final class FoodTable {
         // and a "rare" one even when the name says it's cooked in the broth
         let first = name.split(whereSeparator: { $0 == "," || $0 == "(" }).first.map(String.init) ?? ""
         let rare = name.range(of: #"\brare\b"#, options: [.regularExpression, .caseInsensitive]) != nil
-        if let named = aliases[Self.words(name).joined(separator: " ")] ?? (rare ? aliases[Self.words(first).joined(separator: " ")] : nil) { return named }
+        // only when there's more than the first part: a plain "Cheese" goes through find and its tags as before (processed is processed)
+        let whole = Self.words(name).joined(separator: " "), lead = Self.words(first).joined(separator: " ")
+        if let named = (whole != lead ? aliases[whole] : nil) ?? (rare && whole != lead ? aliases[lead] : nil) { return named }
         let base = find(name)
         // how it's cooked says nothing about which cheese or cake it is (a "cooked" melted cheese found fried mozzarella)
         let cooking: Set<String> = ["raw", "cooked", "fried", "baked", "grilled", "boiled", "steamed"]
