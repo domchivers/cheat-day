@@ -151,7 +151,7 @@ final class Store {
 
     /// An AI estimate's amount changed after it was logged: what it said and what they made it, with the food's kind and
     /// shop, kept for learning how far off photo estimates run (nothing reads them yet). Nil for anything else.
-    static func correction(_ item: JSON, newKcal: Double) -> JSON? {
+    nonisolated static func correction(_ item: JSON, newKcal: Double) -> JSON? {
         guard str(item["source"]) == "claude", let aiG = pos(item["aiGrams"]), let was = pos(item["kcal"]), abs(was - newKcal) >= 1 else { return nil }
         let per100 = pos(item["kcalPer100"])
         let grams = per100.map { newKcal / $0 * 100 } ?? aiG * newKcal / was
