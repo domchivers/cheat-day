@@ -72,6 +72,9 @@ enum Assistant {
             "notes": s,   // no totals: added up from the parts (one more field and Claude refuses the format)
             "shop": ["type": "string", "description": "the shop, café, bakery or chain it's from, if they said or it shows (a logo, a bag); else empty"] as JSON,
             "size_unsure": ["type": "boolean", "description": "true when nothing in the photo shows how big it is, or you can't tell how dense it is"] as JSON,
+            // both checked against Claude's format limit with the biggest format the app sends (7 Nov)
+            "eaten_unsure": ["type": "boolean", "description": "true when the only photo shows it finished or part eaten and you can't tell how much they had (the parts are then the full serving)"] as JSON,
+            "side_sauce": ["type": "string", "description": "the one sauce or condiment usually served on the side with this that you left out because it isn't on the food and they didn't mention it, as a food name (\"Hoisin sauce\"); else empty"] as JSON,
             "shop_items": ["type": "string", "description": "with a shop: each thing as the shop sells it and how many, like \"Kabana croissant x1; Tiramisu cream cake bites x4\"; else empty"] as JSON,
             "parts": arr(obj(["name": s, "usda_name": ["type": "string", "description": "the closest USDA FoodData Central SR Legacy description, e.g. 'Chicken, broilers or fryers, breast, meat only, cooked, roasted'"] as JSON,
                               "grams": ["type": "number", "description": "as eaten (cooked weight)"] as JSON, "kcal": n, "protein_g": n, "carbs_g": n, "fat_g": n,
@@ -79,7 +82,7 @@ enum Assistant {
                               "size": ["type": "string", "description": "from a photo: the size you judged it at and what against, a few words (\"4 bites, about 5 × 5 × 4 cm, against the box\"); else empty"] as JSON,
                               "tags": ["type": "string", "description": "comma-separated, only these words and only those that apply: homemade, bought, natural, processed, raw, cooked, fried, baked, grilled, boiled, steamed, skin on, skin off, plain, filled, coated, reduced fat"] as JSON,
                               "servings": ["type": "number", "description": "for a brand part: how many of its items or pack servings they had (1 stick = 1); 0 when they gave a weight"] as JSON]),
-                          desc: "each component, including oil, butter and sauces as their own parts")
+                          desc: "each component, including oil, butter and the sauces in or on it as their own parts")
         ], desc: "kind=estimate: a food or plate as one portion"),
         "plan": obj(["suggestions": arr(obj(["name": s, "amount": s, "kcal": n, "protein_g": n, "carbs_g": n, "fat_g": n, "why": s]))],
                     desc: "kind=plan: 3 to 5 things for the rest of today"),
@@ -162,7 +165,7 @@ enum Assistant {
 
     static let rules = """
     Decide what they want and fill exactly one of estimate / plan / edit / recipe / lighter (leave the others empty), or kind=answer for a plain question:
-    - estimate: a food or plate to log, as one portion with honest kcal and macros, broken into parts (each component with its cooked grams; oil, butter and sauce as separate parts).
+    - estimate: a food or plate to log, as one portion with honest kcal and macros, broken into parts (each component with its cooked grams; oil, butter and the sauces in or on it as separate parts).
     - plan: 3 to 5 things for the rest of today that fit the calories left, close the protein gap as far as sensible, and leave room for one treat.
     - edit: they're correcting today's list ("I only had 2 eggs", "remove the toast", "add a banana"), or naming several separate foods at once ("110g cabbage, 170g cucumber": one add each): target is the name of the item on today's list to change or remove; for add and update give the plain food name, its grams and the new kcal and macros. Or logging exercise: action workout with activity (Walk, Run, Cycle, Swim, Gym weights, HIIT, Yoga / stretch, Football, Tennis / padel, Hike, Rowing, Elliptical, Dance, Boxing, Climbing), minutes and effort (easy, moderate, hard).
     - recipe: a dish to cook with realistic ingredient amounts, kcal and macros per ingredient (standard reference values, so they add up), and short method steps. Respect any calorie limit they give.
@@ -179,8 +182,10 @@ enum Assistant {
     - Calories must fit the macros: kcal ≈ 4 × protein + 4 × carbs + 9 × fat (a little over for fibre or alcohol). Check every part before answering.
     - \(Sanity.amounts) Meat and fish by weight, not "1 thigh": say the grams you assumed.
     - Photos: before giving grams, look over the whole scene for anything whose real size you know (cutlery, plates, cups, cans, bottles, sauce tubs, takeaway boxes and containers, chopsticks, a phone, a hand, a card, packaging, standard pieces like a chip or an egg) and size each food against it. Use more than one when you can and check they agree. A box or bowl of unknown size can be judged from the known things in it, and a tub's fill tells how much is in it. Never assume a standard portion: bakery and café items vary a lot, and a small croissant isn't a big one. With several photos, size from the one that shows the most around the food (the whole table, the plate, the mug) and use close-ups only to see what it is: close up, food looks bigger than it is. Put that in each part's size ("about 10 cm long, against the side plate"), and in reply say it in a few words. With nothing to size against, or when you can't tell how big or how dense it is, set size_unsure, say you assumed a regular size, and the app asks them small, regular or large.
+    - Leftovers: with several photos of one meal, one showing it finished or part eaten is the after photo. Grams are what they ate: the full amount less what's left, part by part (broth, noodles and meat each), and say it in that part's size ("about 150 g broth left, taken off"). Only a finished or part-eaten plate and no before photo: give the full serving's parts, set eaten_unsure, and the app asks how much they had.
+    - Side sauces and condiments (hoisin, sriracha, chilli sauce, soy, ketchup, mayo, a dressing on the side) only when they show on the food or they say they had them, never because the dish usually comes with them: leave them out and name the usual one in side_sauce, and the app offers it. A sauce that's part of the dish (a curry's sauce, ramen tare, a sauce poured over a rice bowl) is a part as usual.
     - Name each part as the food itself, with how it's cooked after a comma ("Cheese, melted", "Kabana", "Croissant, plain"), never where it sits ("melted cheese on the croissant"), so it's checked against the right food.
-    - Tag every part so it's matched to the right entry: homemade or bought (bakery, café, takeaway, packaged); natural or processed (cheese, meats); raw or cooked and how (fried, baked, grilled, boiled, steamed) for meat, fish, veg and grains; skin on or skin off; plain or filled; coated (crumbed, battered); reduced fat. Cheese on bakery or takeaway food is natural unless it looks like a processed slice.
+    - Tag every part so it's matched to the right entry: homemade or bought (bakery, café, takeaway, packaged); natural or processed (cheese, meats); raw or cooked and how (fried, baked, grilled, boiled, steamed) for meat, fish, veg and grains; skin on or skin off; plain or filled; coated (crumbed, battered); reduced fat. Cheese on bakery or takeaway food is natural unless it looks like a processed slice. Noodles and rice in a soup are boiled, never their dry weight. Thin raw beef slices in pho, hotpot or shabu shabu are "Rare beef", a lean cut. Roast, BBQ or rotisserie chicken is skin on unless the photo shows it off.
     - Looks like takeaway, delivery or a café or restaurant (takeaway boxes, branded packaging, a delivery bag, a menu) but they haven't said where from: still give your estimate, and in reply ask in a few words where it's from and what they ordered as it's named on the menu, so the shop's own numbers can be looked up. Ask once: if they've already said, or said they don't know, don't ask again.
     - Food from a named shop, café, bakery or chain (said, or a logo in the photo): fill shop and shop_items, and still break the parts down as usual (pastry, filling, cheese), with numbers_from estimate unless they gave numbers or showed a label. Never put the shop's name in a part's name. The app looks for the shop's own published numbers and uses them if it finds them.
     - For edit: never say a change is done, added or logged. Say it's ready and to tap Make these changes.
@@ -249,7 +254,7 @@ enum Assistant {
         // price); then the photos, then this person and this message
         var parts: [JSON] = [["text": "You are the assistant inside a cheat-day food diary app called Cheat Days.\n\(rules)", "cache": true]]
         parts += pics.prefix(4).compactMap { Gemini.imagePart($0) }
-        parts.append(["text": "\(context(store, skip: turns.first { $0.me }?.text ?? ""))\(earlier.isEmpty ? "" : "Recent conversation:\n\(earlier)\n")They now say: \"\(last.text)\"\(last.images.isEmpty && !pics.isEmpty ? " (about the photos from earlier)" : "")\n\(foodData(([last.text] + (seen?.foods ?? [])).joined(separator: ", ")))\(loggedBefore(store, text: ([last.text] + (seen?.foods ?? [])).joined(separator: " ")))"])
+        parts.append(["text": "\(context(store, skip: turns.first { $0.me }?.text ?? ""))\(earlier.isEmpty ? "" : "Recent conversation:\n\(earlier)\n")They now say: \"\(last.text)\"\(last.images.isEmpty && !pics.isEmpty ? " (about the photos from earlier)" : "")\n\(foodData(([last.text] + (seen?.foods ?? [])).joined(separator: ", ")))\(loggedBefore(store, text: ([last.text] + (seen?.foods ?? [])).joined(separator: " ")))\(corrections(CheatDays.list(store.doc["corrections"]), text: ([last.text] + (seen?.foods ?? [])).joined(separator: " ")))"])
         // Claude for everything (Apple's on-device model made up foods: "1/2 tsp sesame oil" came back as roasted cauliflower).
         // Simple logs and questions go to the quick model; photos, recipes and plans to the careful one.
         // a follow-up in a conversation stays with the careful model: after advice, "No they've been helping me lol" isn't a
@@ -279,6 +284,34 @@ enum Assistant {
     static func soundsLike(_ name: String, _ said: Set<String>) -> Bool {
         let w = Set(FoodTable.words(name)), shared = w.intersection(said)
         return shared.count >= 2 || (w.count <= 2 && shared.contains { $0.count >= 5 })
+    }
+
+    /// Their own changes to earlier estimates of foods like this one (grams made smaller, a match swapped, a sauce added),
+    /// newest first, so the AI leans their way before they have to correct it again. Nothing is trained: it's shown each time.
+    static func corrections(_ rows: [JSON], text: String) -> String {
+        // looser than soundsLike: any food word in common (the same kind of food is the point, and "pho" is short)
+        let said = Set(FoodTable.words(text).filter { $0.count >= 3 }).subtracting(["the", "had", "was", "its", "one", "two", "what", "this", "that",
+                                                                                      "with", "from", "have", "photo", "about", "just",
+                                                                                      "boiled", "cooked", "fried", "baked", "grilled", "raw", "roasted", "steamed", "melted"])
+        guard !said.isEmpty else { return "" }
+        func g(_ v: Any?) -> String { num(v).map { "\(Int($0.rounded())) g" } ?? "?" }
+        var lines: [String] = []
+        for r in rows where !Set(FoodTable.words(str(r["name"]) + " " + str(r["plate"]))).isDisjoint(with: said) {
+            let what = str(r["name"]) + (str(r["shop"]).isEmpty ? "" : " (\(str(r["shop"])))")
+            let line: String
+            switch str(r["change"]) {
+            case "grams" where r["aiGrams"] != nil: line = "\(what): you said \(g(r["aiGrams"])), they later changed it to \(g(r["grams"]))"
+            case "grams": line = "\(what): you said \(g(r["from"])), they made it \(g(r["to"]))"
+            case "match": line = "\(what): counted as \(str(r["from"])), they changed it to \(str(r["to"]))"
+            case "smaller", "bigger": line = "\(what): the whole plate made \(str(r["change"])), \(g(r["from"])) to \(g(r["to"]))"
+            case "part added": line = "\(what): they added it, \(g(r["to"]))"
+            default: continue   // "regular" agrees with the estimate
+            }
+            lines.append("- " + line)
+            if lines.count == 6 { break }
+        }
+        guard !lines.isEmpty else { return "" }
+        return "Their own corrections to your past estimates of foods like this (newest first):\n\(lines.joined(separator: "\n"))\nWhen this is the same kind of food, lean the way they corrected you, and say so in a few words; otherwise ignore them.\n"
     }
 
     /// Foods they've logged before that sound like this one (the #1000 Bread kabana croissant again), as they finally
@@ -406,6 +439,7 @@ enum Assistant {
         x["kcal"] = (g * kcal100 / 100).rounded()
         if let p100 { x["protein_g"] = g * p100 / 100; x["carbs_g"] = g * (c100 ?? 0) / 100; x["fat_g"] = g * (f100 ?? 0) / 100 }
         x["src"] = source
+        x["flagged"] = nil; x["swapped"] = nil   // a new entry's numbers are checked afresh
         if !match.isEmpty { x["match"] = match }   // the entry it was checked against, for the card and for corrections
         return x
     }
@@ -527,13 +561,37 @@ enum Assistant {
         return nil
     }
 
+    /// Parts with numbers from a food table, less any whose numbers still look wrong for that kind of food (the pho's
+    /// noodles showed "6 of 6 checked" beside a warning about them).
+    static func checkedCount(_ parts: [JSON]) -> Int {
+        parts.filter { !["", "ai", "label", "them", "web"].contains(str($0["src"])) && $0["flagged"] as? Bool != true }.count
+    }
+
+    /// A part checked against a table entry whose numbers don't fit that kind of food (rice noodles at 8 g protein a
+    /// 100 g): the closest other entry that does fit, with a line saying so; nil when the first was fine or none fits.
+    static func rematched(_ part: JSON, from first: FoodTable.Food, table: FoodTable = .current) -> JSON? {
+        let name = str(part["name"])
+        func wrong(_ x: JSON) -> Bool {
+            !Sanity.check(name: name, grams: num(x["grams"]), kcal: num(x["kcal"]) ?? 0, p: num(x["protein_g"]), c: num(x["carbs_g"]), f: num(x["fat_g"])).flags.isEmpty
+        }
+        guard wrong(part) else { return nil }
+        for alt in table.alternatives(name, tags: tags(part), matched: first.name, limit: 8).dropFirst() {
+            var x = checked(part, kcal100: alt.kcal, p100: alt.p, c100: alt.c, f100: alt.f, source: table.src, match: alt.name)
+            guard !wrong(x) else { continue }
+            x["swapped"] = "\(name): changed to \(alt.name), as the first match's numbers looked wrong for \(Sanity.range(name)?.label ?? "it")"
+            return x
+        }
+        return nil
+    }
+
     /// The lines under a reply saying what was checked ("3 of 3 parts checked against the food database").
     static func trail(_ e: JSON, shopFound: Bool) -> [String] {
         let parts = CheatDays.list(e["parts"])
-        let checked = parts.filter { !["", "ai", "label", "them", "web"].contains(str($0["src"])) }.count
+        let checked = checkedCount(parts)
         var t: [String] = []
         if !str(e["shopNote"]).isEmpty { t.append(str(e["shopNote"])) }
         else if checked > 0 { t.append("\(checked) of \(parts.count) part\(parts.count == 1 ? "" : "s") checked against the food database") }
+        t += parts.compactMap { str($0["swapped"]).isEmpty ? nil : str($0["swapped"]) }
         let shop = str(e["shop"])
         if !shop.isEmpty && !shopFound && !shopItems(str(e["shop_items"])).isEmpty { t.append("\(shop) doesn't publish its numbers") }
         return t
@@ -584,6 +642,7 @@ enum Assistant {
                 // the official numbers for their country (AFCD, CoFID or USDA SR Legacy) before the app's list or the US database,
                 // the entry chosen by the part's tags too (bought, natural, skin on…)
                 parts[i] = checked(x, kcal100: f.kcal, p100: f.p, c100: f.c, f100: f.f, source: FoodTable.current.src, match: f.name)
+                if let better = rematched(parts[i], from: f) { parts[i] = better }
             } else if let row = FoodsDB.search(str(x["name"]), limit: 1).first, plausible(num(row["kcalPer100"]), aiKcal: num(x["kcal"]) ?? 0, grams: g, name: str(x["name"])) {
                 parts[i] = checked(x, kcal100: num(row["kcalPer100"]) ?? 0, p100: num(row["p100"]), c100: num(row["c100"]), f100: num(row["f100"]), source: "list", match: str(row["name"]))
             } else { ask.append(i) }
@@ -614,12 +673,14 @@ enum Assistant {
             let x = parts[i], k = num(x["kcal"]) ?? 0
             let r = Sanity.check(name: str(x["name"]), grams: num(x["grams"]), kcal: k, p: num(x["protein_g"]), c: num(x["carbs_g"]), f: num(x["fat_g"]))
             if r.kcal != k { parts[i]["kcal"] = r.kcal; fixed = true }
+            if !r.flags.isEmpty { parts[i]["flagged"] = true }   // shown amber, and not counted as checked
             flags += r.flags
         }
         var out = e
+        if !parts.isEmpty { out["parts"] = parts }
         if fixed {
             func sum(_ k: String) -> Double { parts.reduce(0) { $0 + (num($1[k]) ?? 0) } }
-            out["parts"] = parts; out["kcal_total"] = sum("kcal").rounded()
+            out["kcal_total"] = sum("kcal").rounded()
         }
         if parts.isEmpty {   // a plate with no parts: the plate itself
             let r = Sanity.check(name: str(e["name"]), grams: num(e["portion_g"]), kcal: num(e["kcal_total"]) ?? 0,

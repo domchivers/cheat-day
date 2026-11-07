@@ -37,7 +37,9 @@ function resolve(name) {
   if (!want.length) return null;
   const cooked = /cooked|boil|grill|roast|fried|fry|bake|steam/i.test(name);
   const named = alias.get(want.join(' '));
-  if (named && !(cooked && /\braw\b|uncooked/i.test(named.name))) return named;   // "potato, boiled" isn't the raw potato
+  const dry = /\b(dry|dried|uncooked)\b/i.test(name);
+  // "potato, boiled" isn't the raw potato, and dried noodles aren't boiled ones
+  if (named && !(cooked && /\braw\b|uncooked/i.test(named.name)) && !(dry && /\b(boiled|cooked|drained)\b/i.test(named.name))) return named;
   const head = want[want.length - 1];
   const hits = narrow(name, index.filter(x => {
     if (!want.every(w => x.w.has(w))) return false;

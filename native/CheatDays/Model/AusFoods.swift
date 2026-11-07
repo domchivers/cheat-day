@@ -63,8 +63,10 @@ final class FoodTable {
         let want = Self.words(first)
         guard let head = want.last else { return nil }
         let cooked = name.range(of: "cooked|boil|grill|roast|fried|fry|bake|steam", options: [.regularExpression, .caseInsensitive]) != nil
-        // "potato, boiled" isn't the raw potato its everyday name means
-        if let named = aliases[want.joined(separator: " ")], !(cooked && named.name.range(of: #"\braw\b|uncooked"#, options: [.regularExpression, .caseInsensitive]) != nil) { return named }
+        // "potato, boiled" isn't the raw potato its everyday name means, and dried noodles aren't boiled ones
+        let dry = name.range(of: #"\b(dry|dried|uncooked)\b"#, options: [.regularExpression, .caseInsensitive]) != nil
+        if let named = aliases[want.joined(separator: " ")], !(cooked && named.name.range(of: #"\braw\b|uncooked"#, options: [.regularExpression, .caseInsensitive]) != nil),
+           !(dry && named.name.range(of: #"\b(boiled|cooked|drained)\b"#, options: [.regularExpression, .caseInsensitive]) != nil) { return named }
         let hits = Self.narrow(name, rows.filter { r in
             want.allSatisfy { r.words.contains($0) } && (r.kind.contains(head) || r.kind.contains(want[0]) || want.allSatisfy { r.lead.contains($0) })
         }, want: want)
@@ -99,13 +101,17 @@ final class FoodTable {
     /// relative of it fits the name and tags clearly better (a "skin on" chicken is a with-skin entry, a bakery's cheese the
     /// natural one, a "matcha cream cake" a cream-filled sponge). Untagged, it's find, unchanged.
     func best(_ name: String, tags: [String]) -> Food? {
+        // an everyday name for the whole thing ("Beef, rare" is pho's lean slices, not the plain beef find gives: mince),
+        // and a "rare" one even when the name says it's cooked in the broth
+        let first = name.split(whereSeparator: { $0 == "," || $0 == "(" }).first.map(String.init) ?? ""
+        let rare = name.range(of: #"\brare\b"#, options: [.regularExpression, .caseInsensitive]) != nil
+        if let named = aliases[Self.words(name).joined(separator: " ")] ?? (rare ? aliases[Self.words(first).joined(separator: " ")] : nil) { return named }
         let base = find(name)
         // how it's cooked says nothing about which cheese or cake it is (a "cooked" melted cheese found fried mozzarella)
         let cooking: Set<String> = ["raw", "cooked", "fried", "baked", "grilled", "boiled", "steamed"]
         let plain = [FoodKind.dairy, .sweet].contains(FoodKind.of(name))
         let tags = tags.filter { Self.tagWords[$0] != nil && !(plain && cooking.contains($0)) }
         guard !tags.isEmpty else { return base }
-        let first = name.split(whereSeparator: { $0 == "," || $0 == "(" }).first.map(String.init) ?? ""
         let want = Self.words(first), all = Set(Self.words(name)), main = Set(want)
         guard !want.isEmpty else { return base }
         let asked = all.union(tags.flatMap { Self.tagWords[$0]!.yes })
@@ -129,8 +135,12 @@ final class FoodTable {
         }
         let pool = rows.filter { !Set($0.kind).isDisjoint(with: kinds) && (baseRow != nil || $0.words.intersection(all).count >= min(2, want.count)) }
         guard let baseRow else { return pool.max(by: { score($0) < score($1) })?.food }
-        // a relative only when it fits more of the tags and isn't a special version nobody asked for
-        let fitted = pool.filter { !unasked($0) }.max { (fit($0), score($0)) < (fit($1), score($1)) }
+        // a relative only when it's still the food they named (the pho's rice noodles went to egg noodles for matching
+        // "plain" too: 166 kcal and 7.5 g protein a 100 g, not 119 and 2.5), fits more of the tags and isn't a special
+        // version nobody asked for. How it's cooked isn't the food: "cooked chicken" can be a baked one
+        let described = Set(Self.tagWords.values.flatMap { $0.yes + $0.no })
+        let named = main.intersection(baseRow.words).subtracting(described)
+        let fitted = pool.filter { !unasked($0) && named.isSubset(of: $0.words) }.max { (fit($0), score($0)) < (fit($1), score($1)) }
         guard let fitted, fit(fitted) > fit(baseRow) else { return base }
         return fitted.food
     }

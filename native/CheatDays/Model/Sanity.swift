@@ -12,20 +12,31 @@ enum Sanity {
         let n = name.lowercased()
         func has(_ w: [String]) -> Bool { w.contains { n.contains($0) } }
         let raw = has(["raw", "uncooked"])
-        let cooked = has(["cooked", "grilled", "roast", "bbq", "shredded", "fried", "baked", "braised", "rotisserie", "pulled"])
+        let cooked = has(["cooked", "grilled", "roast", "bbq", "shredded", "fried", "baked", "braised", "rotisserie", "pulled", "simmered", "stewed", "poached", "casseroled"])
         if has(["protein powder", "whey", "protein shake powder", "daily shake", "isolate"]) { return Range(label: "protein powder", lo: 340, hi: 420, proteinMax: 92) }
         if has(["water", "black coffee", "diet ", "zero sugar", "sweetener", "stevia", "monk fruit"]) { return nil }
-        if has(["rice", "pasta", "spaghetti", "noodle", "penne", "couscous"]) && (cooked || !raw && !has(["dry", "uncooked"])) {
+        // a clear soup's broth on its own (pho's, ramen's), not a stock cube or a whole bowl
+        if has(["broth", "stock", "consomm"]) && !has(["cube", "powder", "dry", "noodle", "rice", "pasta", "bone broth", "collagen"]) {
+            return Range(label: "broth", lo: 2, hi: 40, proteinMax: 5)
+        }
+        // a whole pho or ramen isn't plain noodles
+        if has(["rice", "pasta", "spaghetti", "noodle", "penne", "couscous"]) && !has(["soup", "broth", "pho", "ramen", "laksa"])
+            && (cooked || !raw && !has(["dry", "uncooked"])) {
             return Range(label: "cooked rice or pasta", lo: 95, hi: 190, proteinMax: 7)
         }
         if has(["cabbage", "lettuce", "spinach", "cucumber", "celery", "kale", "broccoli", "zucchini", "courgette", "tomato",
-                "capsicum", "bell pepper", "red pepper", "green pepper", "mushroom", "bok choy", "cauliflower", "salad leaves", "rocket", "asparagus", "green beans"])
+                "capsicum", "bell pepper", "red pepper", "green pepper", "mushroom", "bok choy", "cauliflower", "salad leaves", "rocket", "asparagus", "green beans",
+                "sprout", "herbs"])
             && !has(["chips", "crisps", "soup", "sauce", "dressing", "cheese", "pesto"]) {
             return Range(label: "leafy or non-starchy veg", lo: 10, hi: 60, proteinMax: 4.5)
         }
-        if has(["chicken", "turkey"]) && !has(["nugget", "schnitzel", "kiev", "burger", "wrap", "sandwich", "curry", "soup", "pie", "skin"]) {
+        if has(["chicken", "turkey"]) && !has(["nugget", "schnitzel", "kiev", "burger", "wrap", "sandwich", "curry", "soup", "broth", "stock", "pie", "skin"]) {
             if raw { return Range(label: "raw chicken", lo: 90, hi: 225, proteinMax: 24.5) }
             return Range(label: "cooked chicken", lo: 140, hi: 270, proteinMax: 32)
+        }
+        // pho's and hotpot's thin raw slices are lean cuts (round, topside: 100 to 140), never mince's 170
+        if has(["beef"]) && n.range(of: #"\brare\b"#, options: .regularExpression) != nil && !has(["mince", "burger", "steak"]) {
+            return Range(label: "rare lean beef", lo: 90, hi: 145, proteinMax: 24)
         }
         if has(["mince", "ground beef"]) {
             return raw || !cooked ? Range(label: "raw beef mince", lo: 120, hi: 270, proteinMax: 24)

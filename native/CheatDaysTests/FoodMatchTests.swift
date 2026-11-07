@@ -104,4 +104,75 @@ final class FoodMatchTests: XCTestCase {
         XCTAssertNil(Store.correction(item, newKcal: 360), "nothing changed")
         XCTAssertNil(Store.correction(["name": "Toast", "source": "manual", "kcal": 200], newKcal: 100), "only AI estimates")
     }
+
+    // Rock Pho's rare beef and brisket pho, 7 Nov: 793 kcal on the card, about 600 really
+
+    func testPhoNoodlesStayRiceNoodles() {
+        // "plain" matched egg noodles one tag better: 166 kcal and 7.5 g protein a 100 g, not 119 and 2.5
+        XCTAssertEqual(best("Rice noodles, boiled", ["bought", "boiled", "plain"]), "Noodle, rice stick, boiled, drained")
+        XCTAssertEqual(best("Pho noodles", ["boiled"]), "Noodle, rice stick, boiled, drained")
+        XCTAssertNil(FoodTable.au.find("Dried flat rice noodles (banh pho), uncooked"), "dried noodles aren't boiled ones")
+    }
+
+    func testRareBeefIsALeanCutNotMince() {
+        for n in ["Rare beef", "Beef, rare", "Rare beef, cooked in the broth"] {
+            let f = FoodTable.au.best(n, tags: ["raw"])
+            XCTAssertLessThanOrEqual(f?.kcal ?? 999, 140, n)
+            XCTAssertFalse(f?.name.contains("mince") ?? true, n)
+        }
+        XCTAssertEqual(Sanity.range("Rare beef")?.label, "rare lean beef")
+    }
+
+    func testAMatchThatFailsTheChecksIsSwappedAndSaysSo() {
+        // the egg noodles the pho was first given (alternatives starts with the entry it's told was matched)
+        let egg = FoodTable.au.alternatives("Rice noodles, boiled", tags: [], matched: "Noodle, wheat with egg, plain, boiled, no added fat")[0]
+        XCTAssertEqual(egg.kcal, 166)
+        let part = Assistant.checked(["name": "Rice noodles, boiled", "grams": 200, "tags": "boiled"], kcal100: egg.kcal, p100: egg.p, c100: egg.c, f100: egg.f, source: "afcd", match: egg.name)
+        let fixed = Assistant.rematched(part, from: egg, table: .au)
+        XCTAssertEqual(str(fixed?["match"]), "Noodle, rice stick, boiled, drained")
+        XCTAssertEqual(num(fixed?["kcal"]), 238)
+        XCTAssertTrue(str(fixed?["swapped"]).contains("changed to Noodle, rice stick"), str(fixed?["swapped"]))
+        let rice = FoodTable.au.find("Rice noodles, boiled")!
+        XCTAssertNil(Assistant.rematched(Assistant.checked(part, kcal100: rice.kcal, p100: rice.p, c100: rice.c, f100: rice.f, source: "afcd", match: rice.name), from: rice, table: .au), "a good match stays")
+        XCTAssertTrue(Assistant.trail(["parts": [fixed!]], shopFound: false).contains(str(fixed?["swapped"])), "the swap is said under the reply")
+    }
+
+    func testAPartWithAWarningIsNeverCountedAsChecked() {
+        let plate = Assistant.sane(["parts": [
+            ["name": "Rice noodles, boiled", "grams": 200, "kcal": 332, "protein_g": 15, "carbs_g": 60, "fat_g": 2, "src": "afcd"],
+            ["name": "Bean sprouts", "grams": 50, "kcal": 11, "protein_g": 1.5, "carbs_g": 1, "fat_g": 0.1, "src": "afcd"],
+        ] as [JSON]])
+        XCTAssertFalse((plate["flags"] as? [String] ?? []).isEmpty)
+        XCTAssertEqual(Assistant.checkedCount(list(plate["parts"])), 1)
+        XCTAssertEqual(Assistant.trail(plate, shopFound: false).first, "1 of 2 parts checked against the food database")
+    }
+
+    func testBrothAndWholeSoupsHaveTheirOwnRanges() {
+        XCTAssertEqual(Sanity.range("Beef broth")?.label, "broth")
+        XCTAssertNotEqual(Sanity.range("Beef pho with rice noodles, soup")?.label, "cooked rice or pasta", "a whole pho isn't plain noodles")
+        XCTAssertNil(Sanity.range("Bone broth"), "bone broth has more protein than a clear broth")
+        XCTAssertEqual(Sanity.range("Chicken broth")?.label, "broth", "chicken broth isn't chicken")
+    }
+
+    func testTheirCorrectionsForFoodsLikeThisAreShownToTheAI() {
+        let rows: [JSON] = [
+            ["name": "Rice noodles, boiled", "plate": "Rare beef & brisket pho", "shop": "Rock Pho", "change": "grams", "from": 250, "to": 180],
+            ["name": "Pho", "shop": "Rock Pho", "change": "grams", "aiGrams": 880.0, "grams": 700.0],
+            ["name": "Cheese, melted", "plate": "Kabana croissant", "change": "match", "from": "Cheese, processed", "to": "Cheese, cheddar, natural, regular fat"],
+            ["name": "Rice noodles, boiled", "plate": "Pho", "change": "regular", "from": 200, "to": 200],
+        ]
+        let text = Assistant.corrections(rows, text: "beef pho rice noodles")
+        XCTAssertTrue(text.contains("Rice noodles, boiled (Rock Pho): you said 250 g, they made it 180 g"), text)
+        XCTAssertTrue(text.contains("Pho (Rock Pho): you said 880 g, they later changed it to 700 g"), text)
+        XCTAssertFalse(text.contains("Cheese"), "not a food like this one")
+        XCTAssertFalse(text.contains("200 g"), "a regular size agrees with the estimate")
+        XCTAssertEqual(Assistant.corrections(rows, text: "chicken salad"), "")
+    }
+
+    func testTheSideSauceOfferAndHowMuchWasEaten() {
+        XCTAssertEqual(AssistantView.sauceFood("Hoisin sauce")?.name, "Sauce, hoi sin (hoisin), commercial")
+        XCTAssertEqual(AssistantView.eaten.map { $0.share }, [0.25, 0.5, 0.75, 1])
+        let props = dict(dict(dict(Assistant.schema["properties"])["estimate"])["properties"])
+        XCTAssertNotNil(props["eaten_unsure"]); XCTAssertNotNil(props["side_sauce"])
+    }
 }

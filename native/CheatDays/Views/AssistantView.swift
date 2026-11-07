@@ -210,14 +210,17 @@ struct AssistantView: View {
             Text((str(e["shop"]).isEmpty ? "" : "\(str(e["shop"])) · ") + "\(Fmt.int(num(e["portion_g"]) ?? 0)) \(str(e["unit"]).isEmpty ? "g" : str(e["unit"]))")
                 .font(.caption).foregroundStyle(.secondary)
             macros(k, p, c, f)
-            let parts = list(e["parts"]), checked = parts.filter { !["", "ai", "label", "them", "web"].contains(str($0["src"])) }.count
+            let parts = list(e["parts"]), checked = Assistant.checkedCount(parts)
             let own = parts.filter { ["label", "them"].contains(str($0["src"])) }.count
             let web = parts.first { str($0["src"]) == "web" }
             ForEach(keyed(parts)) { entry in
-                let i = entry.index, pt = entry.item, ok = !["", "ai"].contains(str(pt["src"])), key = "\(turn)-\(i)"
+                let i = entry.index, pt = entry.item, key = "\(turn)-\(i)"
+                let flagged = pt["flagged"] as? Bool == true, ok = !["", "ai"].contains(str(pt["src"])) && !flagged
                 Button { withAnimation(.snappy) { openPart = openPart == key ? nil : key } } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: ok ? "checkmark.seal.fill" : "sparkles").font(.caption2).foregroundStyle(ok ? Color.green : .secondary)
+                        // amber: its numbers still look wrong for that kind of food, so check it (the warning below says why)
+                        Image(systemName: flagged ? "exclamationmark.triangle.fill" : ok ? "checkmark.seal.fill" : "sparkles").font(.caption2)
+                            .foregroundStyle(flagged ? Theme.warn : ok ? Color.green : .secondary)
                         Text(str(pt["name"])).font(.caption).foregroundStyle(.primary).multilineTextAlignment(.leading)
                         Spacer()
                         Text("\(Int(num(pt["grams"]) ?? 0)) g · \(Int(num(pt["kcal"]) ?? 0))").font(.caption).monospacedDigit().foregroundStyle(.secondary)
@@ -242,20 +245,17 @@ struct AssistantView: View {
             let tag = "\(turn)-est", added = done[turn, default: ""].contains(tag)
             if e["size_unsure"] as? Bool == true, !added {
                 // nothing in the photo showed its size: one tap says, and stays picked so it can be changed
-                let picked = str(e["sizeAnswer"])
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("How big was it?").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                    HStack(spacing: 8) {
-                        ForEach(["Small", "Regular", "Large"], id: \.self) { name in
-                            let on = picked == name
-                            Button { answerSize(turn, name) } label: {
-                                Text(name).font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).frame(height: Self.control)
-                                    .foregroundStyle(on ? Theme.onAccent : .primary)
-                                    .background(on ? Theme.accent : Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
+                choiceRow("How big was it?", ["Small", "Regular", "Large"], picked: str(e["sizeAnswer"])) { answerSize(turn, $0) }
+            }
+            if e["eaten_unsure"] as? Bool == true, !added {
+                // only a finished or part-eaten plate: the parts are the full serving, scaled to how much they had
+                choiceRow("How much did you have?", Self.eaten.map { $0.name }, picked: str(e["eatenAnswer"]).isEmpty ? "All" : str(e["eatenAnswer"])) { answerEaten(turn, $0) }
+            }
+            let sauce = str(e["side_sauce"])
+            if !sauce.isEmpty, !added, e["sauceAdded"] as? Bool != true, let food = Self.sauceFood(sauce) {
+                // left out because it wasn't on the food: one tap puts the usual amount in
+                choiceRow("Had \(sauce.lowercased())?", ["None"] + Self.spoons.map { $0.name }, picked: "") { name in
+                    if let g = Self.spoons.first(where: { $0.name == name })?.grams { addSauce(turn, sauce, food, grams: g) } else { noSauce(turn) }
                 }
             }
             HStack(spacing: 10) {
@@ -289,6 +289,31 @@ struct AssistantView: View {
 
     /// Every button on the estimate card is this tall, with 12 pt corners.
     static let control: CGFloat = 40
+
+    /// A question on the card with a row of equal buttons, the picked one filled.
+    private func choiceRow(_ title: String, _ names: [String], picked: String, _ tap: @escaping (String) -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                ForEach(names, id: \.self) { name in
+                    let on = picked == name
+                    Button { tap(name) } label: {
+                        Text(name).font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8)
+                            .frame(maxWidth: .infinity).frame(height: Self.control)
+                            .foregroundStyle(on ? Theme.onAccent : .primary)
+                            .background(on ? Theme.accent : Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    static let eaten: [(name: String, share: Double)] = [("¼", 0.25), ("½", 0.5), ("¾", 0.75), ("All", 1)]
+    static let spoons: [(name: String, grams: Double)] = [("1 tsp", 5), ("1 tbsp", 15), ("2 tbsp", 30)]
+
+    /// The table's entry for a side sauce the AI named, so it can be added with real numbers (nil: no offer).
+    static func sauceFood(_ name: String) -> FoodTable.Food? { FoodTable.current.best(name, tags: ["bought"]) }
 
     /// A tapped part: the size the AI judged it at, the entry it was counted as (with Change), and its grams to type over.
     private func partDetail(_ pt: JSON, index i: Int, turn: UUID) -> some View {
@@ -399,6 +424,39 @@ struct AssistantView: View {
         var all = turns; all[t].result = r
         withAnimation(.snappy) { turns = all }
         if f == 1 { logCorrection(turn, "regular", part: ["name": str(e["name"])], from: num(e["portion_g"]) ?? 0, to: num(e["portion_g"]) ?? 0) }
+    }
+
+    /// ¼, ½, ¾ or All of a plate photographed after: every part scaled from whatever was picked before (All at first).
+    private func answerEaten(_ turn: UUID, _ name: String) {
+        func share(_ n: String) -> Double { Self.eaten.first { $0.name == n }?.share ?? 1 }
+        let was = str(estimate(turn)["eatenAnswer"])
+        guard was != name, was != "" || name != "All" else { return }
+        // not through scale: eating half isn't the AI sizing it wrong, so it isn't logged as a correction
+        let f = share(name) / share(was.isEmpty ? "All" : was)
+        change(turn) { parts in parts = parts.map { scaled($0, f) } }
+        guard let t = turns.firstIndex(where: { $0.id == turn }), var r = turns[t].result, var e = r["estimate"] as? JSON else { return }
+        e["eatenAnswer"] = name; r["estimate"] = e
+        var all = turns; all[t].result = r
+        withAnimation(.snappy) { turns = all }
+    }
+
+    /// The side sauce they did have, as its own checked part, and the offer gone.
+    private func addSauce(_ turn: UUID, _ name: String, _ food: FoodTable.Food, grams: Double) {
+        let part = Assistant.checked(["name": name, "grams": grams, "numbers_from": "estimate"], kcal100: food.kcal, p100: food.p, c100: food.c, f100: food.f,
+                                     source: FoodTable.current.src, match: food.name)
+        withAnimation(.snappy) { change(turn) { parts in parts.append(part) } }
+        guard let t = turns.firstIndex(where: { $0.id == turn }), var r = turns[t].result, var e = r["estimate"] as? JSON else { return }
+        e["sauceAdded"] = true; r["estimate"] = e
+        var all = turns; all[t].result = r; turns = all
+        logCorrection(turn, "part added", part: part, from: 0, to: grams)
+    }
+
+    /// None: the offer goes and nothing's added.
+    private func noSauce(_ turn: UUID) {
+        guard let t = turns.firstIndex(where: { $0.id == turn }), var r = turns[t].result, var e = r["estimate"] as? JSON else { return }
+        e["sauceAdded"] = true; r["estimate"] = e
+        var all = turns; all[t].result = r
+        withAnimation(.snappy) { turns = all }
     }
 
     private func setGrams(_ turn: UUID, index i: Int, to g: Double) {
