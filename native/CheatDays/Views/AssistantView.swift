@@ -21,6 +21,8 @@ struct AssistantView: View {
     @State private var showChats = false
     @State private var viewing: Photos?
     @State private var openPart: String?   // the estimate part showing its details ("turn-index")
+    @State private var stepsDone: [String] = []   // what the AI has done so far for this message, ticked
+    @State private var stepNow = "Thinking…"
     @State private var changing: PartRef?
     @FocusState private var typing: Bool
     private var store: Store { Store.shared }
@@ -43,7 +45,7 @@ struct AssistantView: View {
                             Flow { ForEach(chips, id: \.self) { c in Chip(text: c, on: false) { text = c; send() } } }
                         }
                         ForEach(turns) { t in turnView(t).id(t.id) }
-                        if busy { bot(HStack(spacing: 8) { ProgressView(); Text("Thinking…").foregroundStyle(.secondary) }).id("busy") }
+                        if busy { bot(progress).id("busy") }
                         if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn).padding(.horizontal, 4) }
                     }
                     .padding(16)
@@ -98,6 +100,28 @@ struct AssistantView: View {
 
     // MARK: bubbles
 
+    /// While the AI works: the steps done so far, ticked, and the one it's on.
+    private var progress: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            ForEach(stepsDone, id: \.self) { s in
+                Label { Text(s).foregroundStyle(.secondary) } icon: { Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(.green) }
+            }
+            Label { Text(stepNow).fontWeight(.semibold) } icon: { ProgressView().controlSize(.small) }
+        }
+        .animation(.snappy, value: stepsDone)
+    }
+
+    /// Under a reply: what was checked, once it's all done.
+    @ViewBuilder private func trailLines(_ lines: [String]) -> some View {
+        if !lines.isEmpty {
+            Divider().overlay(Color.white.opacity(0.08))
+            ForEach(lines, id: \.self) { s in
+                Label { Text(s).foregroundStyle(.secondary) } icon: { Image(systemName: "checkmark").font(.caption2.weight(.bold)).foregroundStyle(.green) }
+                    .font(.caption)
+            }
+        }
+    }
+
     private func bot<C: View>(_ content: C) -> some View {
         content.font(.subheadline).padding(12)
             .background(Theme.hero, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -121,7 +145,7 @@ struct AssistantView: View {
             .frame(maxWidth: .infinity, alignment: .trailing)
         } else {
             VStack(alignment: .leading, spacing: 10) {
-                bot(Text(t.text))
+                bot(VStack(alignment: .leading, spacing: 8) { Text(t.text); trailLines(t.result?["trail"] as? [String] ?? []) })
                 if str(t.result?["engine"]) == "device" {
                     Label("Answered on this iPhone", systemImage: "bolt.fill").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary).padding(.leading, 6)
                 }
@@ -210,6 +234,21 @@ struct AssistantView: View {
                              : "The AI's estimate: none of the parts could be checked against a food database.")
                 .font(.caption2).foregroundStyle(.secondary) }
             let tag = "\(turn)-est", added = done[turn, default: ""].contains(tag)
+            if e["size_unsure"] as? Bool == true, e["sizeAnswer"] == nil, !added {
+                // nothing in the photo showed its size: one tap says
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("How big was it?").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    HStack(spacing: 8) {
+                        ForEach(["Small", "Regular", "Large"], id: \.self) { name in
+                            Button { answerSize(turn, name, name == "Small" ? 0.75 : name == "Large" ? 1.3 : 1) } label: {
+                                Text(name).font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).frame(height: Self.control)
+                                    .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
             HStack(spacing: 10) {
                 // one clear Add, the full width left over; every control on the card 40 pt tall with the same corners
                 Button {
@@ -314,6 +353,16 @@ struct AssistantView: View {
         let before = num(estimate(turn)["portion_g"]) ?? 0
         change(turn) { parts in parts = parts.map { scaled($0, f) } }
         logCorrection(turn, f < 1 ? "smaller" : "bigger", part: ["name": str(estimate(turn)["name"])], from: before, to: num(estimate(turn)["portion_g"]) ?? 0)
+    }
+
+    /// Small, Regular or Large for a plate the AI couldn't size: the whole plate scaled, and the question gone.
+    private func answerSize(_ turn: UUID, _ name: String, _ f: Double) {
+        if f != 1 { scale(turn, by: f) }
+        guard let t = turns.firstIndex(where: { $0.id == turn }), var r = turns[t].result, var e = r["estimate"] as? JSON else { return }
+        e["sizeAnswer"] = name; r["estimate"] = e
+        var all = turns; all[t].result = r
+        withAnimation(.snappy) { turns = all }
+        if f == 1 { logCorrection(turn, "regular", part: ["name": str(e["name"])], from: num(e["portion_g"]) ?? 0, to: num(e["portion_g"]) ?? 0) }
     }
 
     private func setGrams(_ turn: UUID, index i: Int, to g: Double) {
@@ -501,14 +550,26 @@ struct AssistantView: View {
             store.perform(["type": "chat", "chat": Assistant.record(id: chatId, turns: turns)], syncAfter: 3)
             return
         }
+        let photos = pending.count
         turns.append(Assistant.Turn(me: true, text: t.isEmpty ? "What's this?" : t, images: pending))
         text = ""; pending = []; problem = nil; busy = true
+        // what it's doing, ticked off as it goes. The careful model's own work is one request, so its two steps are paced
+        // by time (sizing first, then the parts); reading, spotting and the checks are real
+        stepsDone = [photos > 0 ? "Read your message and \(photos) photo\(photos == 1 ? "" : "s")" : "Read your message"]
+        stepNow = photos > 0 ? "Looking at what's in the photos…" : "Working it out…"
         let store = self.store, live = self.live
         Task {
             defer { live.busy = false; live.used = Date() }
             do {
                 // the answer shows as soon as it's back; an estimate's parts are checked against the food database after
-                let r = try await Assistant.ask(live.turns, store: store, ground: false)
+                let r = try await Assistant.ask(live.turns, store: store, ground: false) { seen in
+                    stepsDone.append("Spotted \(seen.foods.prefix(4).joined(separator: ", "))\(seen.shop.isEmpty ? "" : " from \(seen.shop)")")
+                    stepNow = "Sizing each food against what's around it…"
+                    Task {
+                        try? await Task.sleep(for: .seconds(6))
+                        if busy, stepNow.hasPrefix("Sizing") { stepsDone.append("Sized each food"); stepNow = "Working out each part…" }
+                    }
+                }
                 let turn = Assistant.Turn(me: false, text: str(r["reply"]), result: r)
                 withAnimation(.snappy) { turns.append(turn) }
                 if str(r["kind"]) == "estimate", let e = r["estimate"] as? JSON {
@@ -519,9 +580,11 @@ struct AssistantView: View {
                         withAnimation { turns[i].result = res }
                     }
                     // then the shop's own published numbers, if it has any: only over a card nobody has changed yet
-                    if let shop = await Assistant.fromShop(checked), let i = turns.firstIndex(where: { $0.id == turn.id }),
-                       var res = turns[i].result, dict(res["estimate"])["aiPortion"] == nil, !done[turn.id, default: ""].contains("est") {
-                        res["estimate"] = shop
+                    let shop = await Assistant.fromShop(checked)
+                    if let i = turns.firstIndex(where: { $0.id == turn.id }), var res = turns[i].result {
+                        let untouched = dict(res["estimate"])["aiPortion"] == nil && !done[turn.id, default: ""].contains("est")
+                        if let shop, untouched { res["estimate"] = shop }
+                        res["trail"] = Assistant.trail(dict(res["estimate"]), shopFound: shop != nil && untouched)
                         withAnimation { turns[i].result = res }
                     }
                 }

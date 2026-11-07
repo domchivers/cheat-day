@@ -83,13 +83,22 @@ enum Gemini {
     @MainActor
     static func lookUpShopItem(shop: String, item: String) async -> JSON? {
         let key = "shop: \(shop) | \(item)".lowercased()
-        if let known = labels[key] { return known["found"] as? Bool == true ? known : nil }
-        let ask = "Find the nutrition information that \"\(shop)\" (a shop, café, bakery or chain in \(Plan.country)) publishes for its \"\(item)\": per item as sold, exactly as they give it, kcal from kJ ÷ 4.184 if only kJ is given. Only the shop's own figures (its website, a nutrition PDF, or its listing on a delivery app); found false if they don't publish any. Never estimate."
-        guard let answer = await claude("lookup", schema: labelSchema, parts: [["text": ask]], extra: ["country": Region.current.code]) else { return nil }
+        if let known = labels[key] { return hasNumbers(known) || (num(known["item_g"]) ?? 0) > 0 ? known : nil }
+        let ask = "Find the nutrition information that \"\(shop)\" (a shop, café, bakery or chain in \(Plan.country)) publishes for its \"\(item)\": per item as sold, exactly as they give it, kcal from kJ ÷ 4.184 if only kJ is given. Only the shop's own figures (its website, a nutrition PDF, or its listing on a delivery app); found false if they don't publish any. Never estimate. Separately, item_g: the weight of one item if the shop or a listing states it (\"85 g\"), else 0, even when there are no calories."
+        guard let answer = await claude("lookup", schema: shopSchema, parts: [["text": ask]], extra: ["country": Region.current.code]) else { return nil }
         labels[key] = answer
-        guard answer["found"] as? Bool == true, (num(answer["serving_g"]) ?? 0) > 0, (num(answer["kcal"]) ?? 0) > 0 else { return nil }
-        return answer
+        return hasNumbers(answer) || (num(answer["item_g"]) ?? 0) > 0 ? answer : nil
     }
+
+    /// A shop lookup that found its calories (not only its weight).
+    static func hasNumbers(_ a: JSON) -> Bool { a["found"] as? Bool == true && (num(a["serving_g"]) ?? 0) > 0 && (num(a["kcal"]) ?? 0) > 0 }
+
+    private static let shopSchema: JSON = {
+        var s = labelSchema, props = dict(s["properties"])
+        props["item_g"] = ["type": "number", "description": "one item's stated weight in grams, 0 if not stated"] as JSON
+        s["properties"] = props; s["required"] = (s["required"] as? [String] ?? []) + ["item_g"]
+        return s
+    }()
 
     private static func askNow(schema: JSON, parts: [JSON], quick: Bool, tries: Int) async throws -> JSON {
         let order = Array((quick ? lite + flash : flash + lite).filter { !spent().contains($0) }.prefix(tries))

@@ -54,6 +54,26 @@ final class FoodMatchTests: XCTestCase {
         XCTAssertTrue(Assistant.shopItems("").isEmpty)
     }
 
+    func testAShopsPlateIsCheckedAndItsNameKeptOffTheParts() {
+        // the 1.0.71 screenshot: "your numbers" with none given, and "#1000 Bread kabana croissant" judged as bread
+        let e: JSON = ["shop": "#1000 Bread", "parts": [
+            ["name": "#1000 Bread kabana croissant", "numbers_from": "them"],
+            ["name": "Tiramisu cream cake bites (#1000 Bread)", "numbers_from": "estimate"],
+            ["name": "#1000 Bread's kabana", "numbers_from": "them"]]]
+        let parts = list(Assistant.tidied(e, said: "Kabana croissant and tiramisu cream cake bites from #1000 bread", photos: true)["parts"])
+        XCTAssertEqual(parts.map { str($0["name"]) }, ["Kabana croissant", "Tiramisu cream cake bites", "Kabana"])
+        XCTAssertEqual(parts.map { str($0["numbers_from"]) }, ["estimate", "estimate", "estimate"], "the 1000 in the shop's name isn't a number they gave")
+        let given = list(Assistant.tidied(["parts": [["name": "Toast", "numbers_from": "them"]]], said: "toast, 180 kcal", photos: false)["parts"])
+        XCTAssertEqual(str(given.first?["numbers_from"]), "them")
+    }
+
+    func testTheTrailSaysWhatWasChecked() {
+        let e: JSON = ["shop": "#1000 Bread", "shop_items": "Kabana croissant x1", "parts": [["src": "afcd"], ["src": "afcd"], ["src": "ai"]]]
+        XCTAssertEqual(Assistant.trail(e, shopFound: false), ["2 of 3 parts checked against the food database", "#1000 Bread doesn't publish its numbers"])
+        var mine = e; mine["shopNote"] = "#1000 Bread's own published numbers"
+        XCTAssertEqual(Assistant.trail(mine, shopFound: true), ["#1000 Bread's own published numbers"])
+    }
+
     func testAChangedAIEstimateIsLoggedAsACorrection() {
         let item: JSON = ["name": "Kabana croissant", "source": "claude", "shop": "#1000 Bread", "kcalPer100": 300.0, "kcal": 360, "aiGrams": 120.0, "aiKcal": 360.0]
         let op = Store.correction(item, newKcal: 240)

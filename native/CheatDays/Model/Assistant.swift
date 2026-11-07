@@ -53,6 +53,7 @@ enum Assistant {
             "name": s, "portion_g": n, "unit": ["type": "string", "enum": ["g", "ml"]] as JSON,
             "kcal_total": n, "protein_g": n, "carbs_g": n, "fat_g": n, "notes": s,
             "shop": ["type": "string", "description": "the shop, café, bakery or chain it's from, if they said or it shows (a logo, a bag); else empty"] as JSON,
+            "size_unsure": ["type": "boolean", "description": "true when nothing in the photo shows how big it is, or you can't tell how dense it is"] as JSON,
             "shop_items": ["type": "string", "description": "with a shop: each thing as the shop sells it and how many, like \"Kabana croissant x1; Tiramisu cream cake bites x4\"; else empty"] as JSON,
             "parts": arr(obj(["name": s, "usda_name": ["type": "string", "description": "the closest USDA FoodData Central SR Legacy description, e.g. 'Chicken, broilers or fryers, breast, meat only, cooked, roasted'"] as JSON,
                               "grams": ["type": "number", "description": "as eaten (cooked weight)"] as JSON, "kcal": n, "protein_g": n, "carbs_g": n, "fat_g": n,
@@ -157,7 +158,7 @@ enum Assistant {
     - Keep the cooking they said, and put it in each part's name so it's checked against the right food: "pan fried, no oil" is "Potato, pan fried, no oil", never boiled.
     - Calories must fit the macros: kcal ≈ 4 × protein + 4 × carbs + 9 × fat (a little over for fibre or alcohol). Check every part before answering.
     - \(Sanity.amounts) Meat and fish by weight, not "1 thigh": say the grams you assumed.
-    - Photos: size each food against something of known size in the shot before giving grams (a side plate is about 18 cm across, a dinner plate 27 cm, a mug 9 cm, a small takeaway box 12 cm inside, a fork 19 cm, a hand 9 cm wide). Never assume a standard portion: bakery and café items vary a lot, and a small croissant isn't a big one. Put that in each part's size ("about 10 cm long, against the side plate"), and in reply say it in a few words. With nothing to size against, or when you can't tell how dense it is, say you assumed a regular size and ask if it was small, regular or large.
+    - Photos: size each food against something of known size in the shot before giving grams (a side plate is about 18 cm across, a dinner plate 27 cm, a mug 9 cm, a small takeaway box 12 cm inside, a fork 19 cm, a hand 9 cm wide). Never assume a standard portion: bakery and café items vary a lot, and a small croissant isn't a big one. With several photos, size from the one that shows the most around the food (the whole table, the plate, the mug) and use close-ups only to see what it is: close up, food looks bigger than it is. Put that in each part's size ("about 10 cm long, against the side plate"), and in reply say it in a few words. With nothing to size against, or when you can't tell how big or how dense it is, set size_unsure, say you assumed a regular size, and the app asks them small, regular or large.
     - Name each part as the food itself, with how it's cooked after a comma ("Cheese, melted", "Kabana", "Croissant, plain"), never where it sits ("melted cheese on the croissant"), so it's checked against the right food.
     - Tag every part so it's matched to the right entry: homemade or bought (bakery, café, takeaway, packaged); natural or processed (cheese, meats); raw or cooked and how (fried, baked, grilled, boiled, steamed) for meat, fish, veg and grains; skin on or skin off; plain or filled; coated (crumbed, battered); reduced fat. Cheese on bakery or takeaway food is natural unless it looks like a processed slice.
     - Food from a named shop, café, bakery or chain (said, or a logo in the photo): fill shop and shop_items, and still break the parts down as usual (pastry, filling, cheese), with numbers_from estimate unless they gave numbers or showed a label. Never put the shop's name in a part's name. The app looks for the shop's own published numbers and uses them if it finds them.
@@ -181,8 +182,12 @@ enum Assistant {
 
     /// Ask, then check an estimate's parts against the food list and database afterwards (`ground` false: the caller does it later).
     @MainActor
-    static func ask(_ turns: [Turn], store: Store, ground groundNow: Bool = true) async throws -> JSON {
+    static func ask(_ turns: [Turn], store: Store, ground groundNow: Bool = true, spotted: (@MainActor (Spotted) -> Void)? = nil) async throws -> JSON {
         guard let last = turns.last, last.me else { throw Gemini.Failure(message: "Nothing to ask.") }
+        // new photos: a quick look first at what's in them, so the food tables' numbers for those foods (not only the ones
+        // they typed) go along with the question, and a shop's logo is known early
+        var seen: Spotted?
+        if !last.images.isEmpty, let s = await spot(last.images, said: last.text) { seen = s; spotted?(s) }
         let earlier = turns.dropLast().suffix(8).map { t -> String in
             if t.me { return "They: \(t.text)" }
             var line = "You: \(t.text)"
@@ -193,7 +198,7 @@ enum Assistant {
         // photos come along from the last message that had some, when this one has none
         let pics = last.images.isEmpty ? (turns.dropLast().last { $0.me && !$0.images.isEmpty }?.images ?? []) : last.images
         var parts: [JSON] = pics.prefix(4).compactMap { Gemini.imagePart($0) }
-        parts.append(["text": "You are the assistant inside a cheat-day food diary app called Cheat Days. \(context(store, skip: turns.first { $0.me }?.text ?? ""))\(earlier.isEmpty ? "" : "Recent conversation:\n\(earlier)\n")They now say: \"\(last.text)\"\(last.images.isEmpty && !pics.isEmpty ? " (about the photos from earlier)" : "")\n\(foodData(last.text))\(loggedBefore(store, text: last.text))\n\(rules)"])
+        parts.append(["text": "You are the assistant inside a cheat-day food diary app called Cheat Days. \(context(store, skip: turns.first { $0.me }?.text ?? ""))\(earlier.isEmpty ? "" : "Recent conversation:\n\(earlier)\n")They now say: \"\(last.text)\"\(last.images.isEmpty && !pics.isEmpty ? " (about the photos from earlier)" : "")\n\(foodData(([last.text] + (seen?.foods ?? [])).joined(separator: ", ")))\(loggedBefore(store, text: last.text))\n\(rules)"])
         // Claude for everything (Apple's on-device model made up foods: "1/2 tsp sesame oil" came back as roasted cauliflower).
         // Simple logs and questions go to the quick model; photos, recipes and plans to the careful one.
         let simple = isSimple(last.text, hasPhotos: !pics.isEmpty)
@@ -343,6 +348,23 @@ enum Assistant {
         return x
     }
 
+    /// What a quick look at the photos found: the foods by everyday name, and a shop if they said one or a logo shows.
+    struct Spotted { let foods: [String]; let shop: String }
+
+    private static let spotSchema: JSON = ["type": "object", "required": ["foods", "shop"], "properties": [
+        "foods": ["type": "array", "items": ["type": "string"], "description": "each food or drink you can see, by its everyday name (\"croissant\", \"kabana\", \"cream cake\")"] as JSON,
+        "shop": ["type": "string", "description": "the shop, café or bakery if they said it or a logo or bag shows it; else empty"] as JSON] as JSON]
+
+    /// The quick model names what's in the photos (a second or two), before the careful one sizes it all.
+    @MainActor
+    static func spot(_ images: [UIImage], said: String) async -> Spotted? {
+        var parts: [JSON] = images.prefix(4).compactMap { Gemini.imagePart($0) }
+        parts.append(["text": "Someone logging food in a diary sent these photos and said: \"\(said)\". List the foods and drinks you can see, and the shop if they named one or a logo shows."])
+        guard let j = try? await Gemini.ask(schema: spotSchema, parts: parts, quick: true, job: "quick") else { return nil }
+        let foods = (j["foods"] as? [Any] ?? []).map { str($0) }.filter { !$0.isEmpty }
+        return foods.isEmpty ? nil : Spotted(foods: Array(foods.prefix(8)), shop: str(j["shop"]))
+    }
+
     /// An estimate's parts put straight before they're checked. "Their numbers" only when their message has a number in it,
     /// and "a label" only when there's a photo or they mention one: the #1000 Bread plate came back as "your numbers" with
     /// no numbers given, so nothing was checked. And the shop's name off each part ("#1000 Bread kabana croissant"
@@ -405,15 +427,45 @@ enum Assistant {
         let d = UserDefaults.standard, key = "shops.unpublished", none = d.dictionary(forKey: key) as? [String: Double] ?? [:]
         if let at = none[shop.lowercased()], Date().timeIntervalSince1970 - at < 60 * 86400 { return nil }
         let lookups = items.map { it in Task { await Gemini.lookUpShopItem(shop: shop, item: it.name) } }
-        var parts: [JSON] = []
-        for (it, task) in zip(items, lookups) {
-            guard let label = await task.value else {
-                var n = none; n[shop.lowercased()] = Date().timeIntervalSince1970; d.set(n, forKey: key)
-                return nil
-            }
-            parts.append(fromLabel(["name": it.name, "servings": it.count], label))
+        var found: [JSON?] = []
+        for task in lookups { found.append(await task.value) }
+        // every item's own numbers: the shop's figures replace the estimate
+        if found.allSatisfy({ $0.map(Gemini.hasNumbers) == true }) {
+            var out = sane(totals(e, parts: zip(items, found).map { it, label in fromLabel(["name": it.name, "servings": it.count], label!) }))
+            out["shopNote"] = "\(shop)'s own published numbers"
+            return out
         }
-        return sane(totals(e, parts: parts))
+        // one item whose weight the shop states: the plate sized to it, its parts' numbers kept
+        if items.count == 1, let w = found[0].flatMap({ pos($0["item_g"]) }), let now = pos(e["portion_g"]) {
+            let f = w * items[0].count / now
+            var out = e
+            out["parts"] = CheatDays.list(e["parts"]).map { p -> JSON in
+                var x = p
+                x["grams"] = ((num(p["grams"]) ?? 0) * f).rounded(); x["kcal"] = ((num(p["kcal"]) ?? 0) * f).rounded()
+                for m in ["protein_g", "carbs_g", "fat_g"] { if let v = num(p[m]) { x[m] = v * f } }
+                return x
+            }
+            let parts = CheatDays.list(out["parts"])
+            func sum(_ k: String) -> Double { parts.reduce(0) { $0 + (num($1[k]) ?? 0) } }
+            out["kcal_total"] = sum("kcal").rounded(); out["protein_g"] = sum("protein_g"); out["carbs_g"] = sum("carbs_g"); out["fat_g"] = sum("fat_g")
+            out["portion_g"] = sum("grams").rounded()
+            out["shopNote"] = "Sized from \(shop)'s listed weight (\(Fmt.int(w)) g each)"
+            return out
+        }
+        if found.allSatisfy({ $0 == nil }) { var n = none; n[shop.lowercased()] = Date().timeIntervalSince1970; d.set(n, forKey: key) }
+        return nil
+    }
+
+    /// The lines under a reply saying what was checked ("3 of 3 parts checked against the food database").
+    static func trail(_ e: JSON, shopFound: Bool) -> [String] {
+        let parts = CheatDays.list(e["parts"])
+        let checked = parts.filter { !["", "ai", "label", "them", "web"].contains(str($0["src"])) }.count
+        var t: [String] = []
+        if !str(e["shopNote"]).isEmpty { t.append(str(e["shopNote"])) }
+        else if checked > 0 { t.append("\(checked) of \(parts.count) part\(parts.count == 1 ? "" : "s") checked against the food database") }
+        let shop = str(e["shop"])
+        if !shop.isEmpty && !shopFound && !shopItems(str(e["shop_items"])).isEmpty { t.append("\(shop) doesn't publish its numbers") }
+        return t
     }
 
     /// A brand part from the label found online: so many of its servings, or its weight at the label's rate.
