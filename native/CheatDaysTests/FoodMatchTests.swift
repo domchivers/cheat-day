@@ -32,6 +32,14 @@ final class FoodMatchTests: XCTestCase {
         XCTAssertEqual(best("Potato, boiled", ["cooked", "boiled"]), FoodTable.au.find("Potato, boiled")?.name, "tags agreeing with find change nothing")
     }
 
+    func testChangeOffersTheMatchFirstThenItsKind() {
+        let matched = "Cake, sponge, filled with cream &/or jam & fruit"
+        let options = FoodTable.au.alternatives("Tiramisu cream cake", tags: ["bought", "filled"], matched: matched).map(\.name)
+        XCTAssertEqual(options.first, matched)
+        XCTAssertEqual(options.count, 4)
+        XCTAssertEqual(Set(options).count, 4, "no repeats")
+    }
+
     func testNoTagsIsFindUnchanged() {
         for n in ["Olive oil", "Chicken breast", "Cheese", "Basmati rice, cooked"] { XCTAssertEqual(best(n, []), FoodTable.au.find(n)?.name, n) }
     }

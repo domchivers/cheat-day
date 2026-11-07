@@ -135,6 +135,25 @@ final class FoodTable {
         return fitted.food
     }
 
+    /// For the card's Change: the entry a part was matched to first, then the closest others of the same kind by name
+    /// and tags (a cream sponge, a cream-filled cake, homemade tiramisu…).
+    func alternatives(_ name: String, tags: [String], matched: String, limit: Int = 4) -> [Food] {
+        let first = name.split(whereSeparator: { $0 == "," || $0 == "(" }).first.map(String.init) ?? ""
+        let want = Self.words(first), all = Set(Self.words(name)), main = Set(want)
+        let asked = all.union(tags.compactMap { Self.tagWords[$0]?.yes }.flatMap { $0 })
+        let chosen = rows.first { $0.food.name == matched }
+        let kinds = Set((chosen?.kind ?? []) + want)   // a "tiramisu cream cake" offers tiramisu as well as cakes
+        func score(_ r: Row) -> Double {
+            var s = 3 * Double(r.words.intersection(main).count) + Double(r.words.intersection(all).count)
+            s -= 2 * Double(r.words.filter { Self.special.contains($0) && !asked.contains($0) }.count)
+            return s - 0.3 * Double(r.words.subtracting(all).subtracting(asked).count) + (r.food.main ? 0.5 : 0)
+        }
+        let others = rows.filter { !Set($0.kind).isDisjoint(with: kinds) && $0.food.name != matched && !$0.words.isDisjoint(with: all) }
+            .sorted { score($0) > score($1) }.map(\.food)
+        var seen = Set<String>()
+        return Array(((chosen.map { [$0.food] } ?? []) + others).filter { seen.insert($0.name).inserted }.prefix(limit))
+    }
+
     /// How it's cooked counts ("pan fried, no oil" is the no-added-fat fried potato, not boiled), and a variety only when
     /// they named it (the table lists potatoes as coliban, desiree, sebago…; a plain potato is the plain one). Each step
     /// only when something's left. Same as narrow in tools/ai-test/jobs.js.

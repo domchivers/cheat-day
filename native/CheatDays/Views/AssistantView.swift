@@ -20,6 +20,8 @@ struct AssistantView: View {
     @State private var done: [UUID: String] = [:]
     @State private var showChats = false
     @State private var viewing: Photos?
+    @State private var openPart: String?   // the estimate part showing its details ("turn-index")
+    @State private var changing: PartRef?
     @FocusState private var typing: Bool
     private var store: Store { Store.shared }
 
@@ -81,6 +83,7 @@ struct AssistantView: View {
             .sheet(isPresented: $showChats) { ChatsList { c in turns = Assistant.turns(from: c); chatId = str(c["id"]); done = [:]; showChats = false } }
             .fullScreenCover(isPresented: $camera) { CameraPicker { img in camera = false; if let img { pending.append(img) } }.ignoresSafeArea() }
             .fullScreenCover(item: $viewing) { PhotoViewer(photos: $0) }
+            .sheet(item: $changing) { ref in MatchPicker(ref: ref) { food in setMatch(ref, to: food); changing = nil }.presentationDetents([.medium]) }
             .photosPicker(isPresented: $library, selection: $picked, maxSelectionCount: 4, matching: .images)
             .onChange(of: picked) { _, items in if !items.isEmpty { Task { await load(items) } } }
             .onChange(of: showChats) { _, open in KeyboardDone.quiet = !open }   // past chats keep their Done
@@ -179,13 +182,19 @@ struct AssistantView: View {
             let own = parts.filter { ["label", "them"].contains(str($0["src"])) }.count
             let web = parts.first { str($0["src"]) == "web" }
             ForEach(keyed(parts)) { entry in
-                let i = entry.index, pt = entry.item, ok = !["", "ai"].contains(str(pt["src"]))
-                HStack(spacing: 6) {
-                    Image(systemName: ok ? "checkmark.seal.fill" : "sparkles").font(.caption2).foregroundStyle(ok ? Color.green : .secondary)
-                    Text(str(pt["name"])).font(.caption)
-                    Spacer()
-                    Text("\(Int(num(pt["grams"]) ?? 0)) g · \(Int(num(pt["kcal"]) ?? 0))").font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                let i = entry.index, pt = entry.item, ok = !["", "ai"].contains(str(pt["src"])), key = "\(turn)-\(i)"
+                Button { withAnimation(.snappy) { openPart = openPart == key ? nil : key } } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: ok ? "checkmark.seal.fill" : "sparkles").font(.caption2).foregroundStyle(ok ? Color.green : .secondary)
+                        Text(str(pt["name"])).font(.caption).foregroundStyle(.primary).multilineTextAlignment(.leading)
+                        Spacer()
+                        Text("\(Int(num(pt["grams"]) ?? 0)) g · \(Int(num(pt["kcal"]) ?? 0))").font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                        Image(systemName: openPart == key ? "chevron.down" : "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+                    }
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                if openPart == key { partDetail(pt, index: i, turn: turn) }
             }
             flagList(e["flags"] as? [String] ?? [])
             let pending = !parts.isEmpty && parts.allSatisfy { str($0["src"]).isEmpty }   // not checked yet
@@ -198,15 +207,98 @@ struct AssistantView: View {
             else { Text(checked > 0 ? "\(checked) of \(parts.count) parts checked against food databases\(num(e["aiKcal"]).map { " (the AI first said \(Int($0)) kcal)" } ?? ""). An estimate, not a label."
                              : "The AI's estimate: none of the parts could be checked against a food database.")
                 .font(.caption2).foregroundStyle(.secondary) }
-            addButton("Add to \(meal.lowercased())", key: "est", turn: turn) {
-                var b = Assistant.basis(name: str(e["name"]), kcal: k, grams: num(e["portion_g"]), unit: str(e["unit"]).isEmpty ? "g" : str(e["unit"]), p: p, c: c, f: f)
-                // what the AI made it, kept on the item so a later change of amount can be learnt from
-                if !str(e["shop"]).isEmpty { b["shop"] = str(e["shop"]) }
-                if let g = pos(e["portion_g"]) { b["aiGrams"] = g; b["aiKcal"] = k }
-                b["aiMatches"] = parts.map { "\(str($0["name"])) → \(str($0["match"]).isEmpty ? "unchecked" : str($0["match"]))" }.joined(separator: "; ")
-                store.add(b, kcal: k, meal: meal)
+            let added = done[turn, default: ""].contains("\(turn)-est")
+            HStack(spacing: 8) {
+                addButton("Add to \(meal.lowercased())", key: "est", turn: turn) {
+                    var b = Assistant.basis(name: str(e["name"]), kcal: k, grams: num(e["portion_g"]), unit: str(e["unit"]).isEmpty ? "g" : str(e["unit"]), p: p, c: c, f: f)
+                    // what the AI made it, kept on the item so a later change of amount can be learnt from
+                    if !str(e["shop"]).isEmpty { b["shop"] = str(e["shop"]) }
+                    if let g = pos(e["aiPortion"]) ?? pos(e["portion_g"]) { b["aiGrams"] = g; b["aiKcal"] = num(e["aiPortionKcal"]) ?? k }
+                    b["aiMatches"] = parts.map { "\(str($0["name"])) → \(str($0["match"]).isEmpty ? "unchecked" : str($0["match"]))" }.joined(separator: "; ")
+                    store.add(b, kcal: k, meal: meal)
+                }
+                if !added && !parts.isEmpty {   // the whole plate a size down or up, every part with it
+                    Button { scale(turn, by: 0.75) } label: { Label("Smaller", systemImage: "minus").font(.subheadline.weight(.bold)) }
+                    Button { scale(turn, by: 1.3) } label: { Label("Bigger", systemImage: "plus").font(.subheadline.weight(.bold)) }
+                }
+            }
+            .buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.small)
+        }
+    }
+
+    /// A tapped part: the size the AI judged it at, the entry it was counted as (with Change), and its grams to type over.
+    private func partDetail(_ pt: JSON, index i: Int, turn: UUID) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if !str(pt["size"]).isEmpty { (Text("Sized: ") + Text(str(pt["size"])).foregroundStyle(.primary)).font(.caption) }
+            HStack(spacing: 4) {
+                (Text("Counted as: ") + Text(str(pt["match"]).isEmpty ? "the AI's own numbers" : str(pt["match"])).foregroundStyle(.primary)).font(.caption)
+                if !["label", "them", "web"].contains(str(pt["src"])) {
+                    Button("Change") { changing = PartRef(turn: turn, index: i, part: pt) }.font(.caption.weight(.bold))
+                }
+            }
+            HStack(spacing: 8) {
+                Text("Grams").font(.caption)
+                PartGrams(grams: num(pt["grams"]) ?? 0) { g in setGrams(turn, index: i, to: g) }
             }
         }
+        .foregroundStyle(.secondary)
+        .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    // MARK: changing an estimate before it's added
+
+    /// Changes a turn's estimate in place (parts, then the totals from them), remembering what the AI first said.
+    private func change(_ turn: UUID, _ edit: (inout [JSON]) -> Void) {
+        guard let t = turns.firstIndex(where: { $0.id == turn }), var r = turns[t].result, var e = r["estimate"] as? JSON else { return }
+        if e["aiPortion"] == nil { e["aiPortion"] = e["portion_g"] ?? 0; e["aiPortionKcal"] = e["kcal_total"] ?? 0 }
+        var parts = list(e["parts"])
+        edit(&parts)
+        func sum(_ k: String) -> Double { parts.reduce(0) { $0 + (num($1[k]) ?? 0) } }
+        e["parts"] = parts
+        e["kcal_total"] = sum("kcal").rounded(); e["protein_g"] = sum("protein_g"); e["carbs_g"] = sum("carbs_g"); e["fat_g"] = sum("fat_g")
+        e["portion_g"] = sum("grams").rounded()
+        r["estimate"] = e
+        var all = turns; all[t].result = r; turns = all
+    }
+
+    private func estimate(_ turn: UUID) -> JSON { dict(turns.first { $0.id == turn }?.result?["estimate"]) }
+
+    /// What changed, kept for learning how far off the AI runs (nothing reads it yet).
+    private func logCorrection(_ turn: UUID, _ change: String, part: JSON, from: Any, to: Any) {
+        let e = estimate(turn)
+        store.perform(["type": "correction", "row": ["at": ISO.now(), "name": str(part["name"]), "plate": str(e["name"]), "shop": str(e["shop"]),
+                                                    "kind": FoodKind.of(str(part["name"])).rawValue, "change": change, "from": from, "to": to,
+                                                    "match": str(part["match"]), "size": str(part["size"])] as JSON])
+    }
+
+    private func scaled(_ p: JSON, _ f: Double) -> JSON {
+        var x = p
+        x["grams"] = ((num(p["grams"]) ?? 0) * f).rounded(); x["kcal"] = ((num(p["kcal"]) ?? 0) * f).rounded()
+        for m in ["protein_g", "carbs_g", "fat_g"] { if let v = num(p[m]) { x[m] = v * f } }
+        return x
+    }
+
+    private func scale(_ turn: UUID, by f: Double) {
+        let before = num(estimate(turn)["portion_g"]) ?? 0
+        change(turn) { parts in parts = parts.map { scaled($0, f) } }
+        logCorrection(turn, f < 1 ? "smaller" : "bigger", part: ["name": str(estimate(turn)["name"])], from: before, to: num(estimate(turn)["portion_g"]) ?? 0)
+    }
+
+    private func setGrams(_ turn: UUID, index i: Int, to g: Double) {
+        let parts = list(estimate(turn)["parts"])
+        guard parts.indices.contains(i), let was = pos(parts[i]["grams"]), g > 0, abs(g - was) >= 1 else { return }
+        change(turn) { parts in parts[i] = scaled(parts[i], g / was); parts[i]["grams"] = g.rounded() }
+        logCorrection(turn, "grams", part: parts[i], from: was, to: g.rounded())
+    }
+
+    private func setMatch(_ ref: PartRef, to food: FoodTable.Food) {
+        let old = str(ref.part["match"])
+        change(ref.turn) { parts in
+            guard parts.indices.contains(ref.index) else { return }
+            parts[ref.index] = Assistant.checked(parts[ref.index], kcal100: food.kcal, p100: food.p, c100: food.c, f100: food.f, source: FoodTable.current.src, match: food.name)
+        }
+        logCorrection(ref.turn, "match", part: ref.part, from: old, to: food.name)
     }
 
     private func planCard(_ plan: JSON, turn: UUID, meal: String) -> some View {
@@ -433,6 +525,54 @@ struct ChatsList: View {
 }
 
 private struct Photos: Identifiable { let id = UUID(); let images: [UIImage]; let start: Int }
+
+/// One part of one turn's estimate, for Change.
+private struct PartRef: Identifiable { let id = UUID(); let turn: UUID; let index: Int; let part: JSON }
+
+/// Change: the entry a part was counted as, and the closest others of its kind, per 100 g.
+private struct MatchPicker: View {
+    let ref: PartRef
+    let pick: (FoodTable.Food) -> Void
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        let options = FoodTable.current.alternatives(str(ref.part["name"]), tags: Assistant.tags(ref.part), matched: str(ref.part["match"]))
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(options, id: \.name) { f in
+                        Button { pick(f) } label: {
+                            HStack {
+                                if f.name == str(ref.part["match"]) { Image(systemName: "checkmark").foregroundStyle(Theme.accent) }
+                                Text(f.name).foregroundStyle(.primary).multilineTextAlignment(.leading)
+                                Spacer()
+                                Text("\(Fmt.int(f.kcal)) kcal").font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                } header: { Text("\(str(ref.part["name"])) · \(Fmt.int(num(ref.part["grams"]) ?? 0)) g") }
+                  footer: { Text("Per 100 g, from the food table for \(Plan.country). Picking one redoes this part's numbers.") }
+            }
+            .navigationTitle("Which is it closest to?").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+        }
+    }
+}
+
+/// A part's grams to type over; saved when the box loses focus or Done is tapped.
+private struct PartGrams: View {
+    let grams: Double
+    let save: (Double) -> Void
+    @State private var text = ""
+    @FocusState private var focused: Bool
+    var body: some View {
+        TextField("–", text: $text).keyboardType(.numberPad).focused($focused).multilineTextAlignment(.center)
+            .font(.caption.weight(.bold)).monospacedDigit().frame(width: 56).padding(.vertical, 4)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8))
+            .onAppear { text = Fmt.int(grams) }
+            .onChange(of: grams) { _, g in if !focused { text = Fmt.int(g) } }
+            .onChange(of: focused) { _, on in if !on, let g = Fmt.typed(text) { save(g) } }
+    }
+}
 
 /// A chat photo tapped: full screen on black, swipe between them, pinch or double-tap to zoom, swipe down or ✕ to close.
 private struct PhotoViewer: View {
