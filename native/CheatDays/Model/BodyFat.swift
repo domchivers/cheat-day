@@ -24,6 +24,12 @@ extension Store {
         return days < 1500 ? Calendar.current.date(byAdding: .day, value: days, to: Date()) : nil
     }
 
+    /// The trend's within 0.3 kg of a weight: too close for reachDate to give a date, so "any day now".
+    func nearGoal(_ target: Double) -> Bool {
+        guard let now = trendWeight ?? latestWeight?.kg else { return false }
+        return abs(target - now) < 0.3
+    }
+
     /// Where a body-fat goal lands: the weight it means and how much of the change is fat. Some lean mass goes too
     /// on a cut, so a fifth of what's lost is counted as lean, not all fat.
     static func fatGoal(weight w: Double, fatPct: Double, target: Double, leanShare: Double = 0.2) -> (weight: Double, fat: Double, lean: Double) {

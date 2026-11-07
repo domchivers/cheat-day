@@ -133,8 +133,9 @@ struct BodyView: View {
         let goal = pos(store.doc["goalWeight"])
         HStack(spacing: 0) {
             stat(rate.map { "\($0 < 0 ? "−" : "+")\(Fmt.kg2(abs($0))) kg" } ?? "–", "a week (4-wk trend)")
-            stat(store.fatTrend.map { "\(Fmt.dec($0.pct))%" } ?? "–", "body fat")
-            stat(goal.flatMap { store.reachDate($0) }.map { $0.formatted(.dateTime.day().month(.abbreviated)) } ?? "–", goal.map { "to \(Fmt.kg($0)) kg" } ?? "no goal set")
+            stat(store.fatTrend.map { "\(Fmt.dec($0.pct))%" } ?? "–", "avg body fat")   // the last few readings, beside the trend
+            stat(goal.flatMap { store.reachDate($0) }.map { $0.formatted(.dateTime.day().month(.abbreviated)) }
+                 ?? (goal.map { store.nearGoal($0) } == true ? "any day" : "–"), goal.map { "to \(Fmt.kg($0)) kg" } ?? "no goal set")
         }
         .padding(.top, 4)
     }
@@ -204,7 +205,7 @@ struct BodyView: View {
                 PointMark(x: .value("Day", end.date), y: .value("Trend", v)).foregroundStyle(Theme.accent.opacity(0.25)).symbolSize(260)
                 PointMark(x: .value("Day", end.date), y: .value("Trend", v)).foregroundStyle(Theme.accent).symbolSize(70)
                     .annotation(position: .top, alignment: .trailing, spacing: 14) {
-                        Text(Fmt.kg(v)).font(.caption.weight(.heavy)).monospacedDigit()
+                        Text(Fmt.kg(v)).font(.caption.weight(.heavy)).monospacedDigit().lineLimit(1).fixedSize()   // never "80…."
                             .padding(.horizontal, 7).padding(.vertical, 3).background(Theme.hero, in: RoundedRectangle(cornerRadius: 6))
                     }
             }

@@ -165,7 +165,7 @@ struct MeView: View {
                     }
                 }
                 if let w = store.lastWeighIn {
-                    let fat = store.fatTrend.map { " · \(Fmt.dec($0.pct))% body fat" } ?? ""
+                    let fat = w.fat.map { " · \(Fmt.dec($0))% body fat" } ?? ""   // that reading's own, like its weight
                     Text("Weighed \(Store.whenTaken(day: w.day, at: w.at))\(fat)").font(.caption).foregroundStyle(.secondary)
                 }
                 miniChart
@@ -190,14 +190,15 @@ struct MeView: View {
         let s = status(now: now, goal: goal)
         // the same date Body shows: the trend weight at the 4-week pace
         let date = store.reachDate(goal)?.formatted(.dateTime.day().month(.wide))
+        let when = date.map { "around \($0)" } ?? (store.nearGoal(goal) ? "any day now" : "soon")
         let toGo = " · \(Fmt.kg(abs(now - goal))) kg to go"
         let paceText = pace.map { "\($0 < 0 ? "−" : "+")\(Fmt.one(abs($0))) kg a week" } ?? ""
         let title: String, body: String, tint: Color
         switch s {
         case .there: title = "You're there."; body = "Time to switch your plan to keeping it steady."; tint = .green
         case .early: title = "Keep weighing in."; body = "A trend needs a week or two of weigh-ins before it can give a date."; tint = .gray
-        case .ahead: title = "Ahead of plan."; body = "\(Fmt.kg(goal)) kg around \(date ?? "soon")\(toGo)"; tint = .green
-        case .onTrack: title = "On track."; body = "\(Fmt.kg(goal)) kg around \(date ?? "soon")\(toGo)"; tint = .green
+        case .ahead: title = "Ahead of plan."; body = "\(Fmt.kg(goal)) kg \(when)\(toGo)"; tint = .green
+        case .onTrack: title = "On track."; body = "\(Fmt.kg(goal)) kg \(when)\(toGo)"; tint = .green
         case .behind: title = "Slower than planned."; body = date.map { "At \(paceText) you'd get there around \($0)." } ?? "Your weight's barely moving at the moment."; tint = Theme.warn
         case .wrongWay: title = "Going the wrong way."; body = "Your trend is \(paceText) at the moment. See how to get there below."; tint = Theme.warn
         }

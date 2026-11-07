@@ -13,10 +13,10 @@ extension Store {
     }
 
     /// The latest weigh-in exactly as the scale read it, and when.
-    var lastWeighIn: (kg: Double, day: String, at: Date?)? {
+    var lastWeighIn: (kg: Double, day: String, at: Date?, fat: Double?)? {
         let todayKey = DayKey.string(Date())
         guard let r = bodyRows.last(where: { pos($0["weight"]) != nil && str($0["day"]) <= todayKey }) else { return nil }
-        return (pos(r["weight"]) ?? 0, str(r["day"]), ISO.date(str(r["takenAt"]).isEmpty ? str(r["updatedAt"]) : str(r["takenAt"])))
+        return (pos(r["weight"]) ?? 0, str(r["day"]), ISO.date(str(r["takenAt"]).isEmpty ? str(r["updatedAt"]) : str(r["takenAt"])), pos(r["fat"]))
     }
 
     /// The smoothed trend weight, worked out one way everywhere (the last 120 days of weigh-ins).
