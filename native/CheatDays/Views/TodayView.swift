@@ -513,17 +513,20 @@ struct TodayView: View {
     private var cheatButton: some View {
         let isToday = store.nextCheat?.date == store.today
         return Button { if isToday { showCheat = true } else { showPlanner = true } } label: {
-            // the same blue pill as Same as yesterday and Save as meal; on the cheat day the same pill in the beta pass's
-            // blue to lavender, like the cheat day screen
+            // a solid pill with the logo and the word cut out of it, the panel showing through, like the beta pass's
+            // BETA PASS: the app's blue, or on the cheat day the pass's blue to lavender with its glow
             HStack(spacing: 8) {
-                LogoMark().fill(isToday ? AnyShapeStyle(CheatDayView.tintGradient) : AnyShapeStyle(Theme.accent)).frame(width: 28, height: 15)
-                Text("Plan").font(.subheadline.weight(.bold))
-                    .foregroundStyle(isToday ? AnyShapeStyle(CheatDayView.tintGradient) : AnyShapeStyle(Theme.accent))
+                LogoMark().frame(width: 28, height: 15)
+                Text("Plan").font(.subheadline.weight(.heavy))
             }
-            .padding(.horizontal, 4).padding(.vertical, 2)
+            .foregroundStyle(.black).blendMode(.destinationOut)
+            .padding(.horizontal, 16).padding(.vertical, 9)
+            .background(Capsule().fill(isToday ? AnyShapeStyle(CheatDayView.tintGradient) : AnyShapeStyle(Theme.accent)))
+            .compositingGroup()
+            .shadow(color: isToday ? CheatDayView.tint.opacity(0.35) : .clear, radius: 9)
+            .contentShape(Capsule())
         }
-        .buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.regular)
-        .tint(isToday ? CheatDayView.tint : Theme.accent)
+        .buttonStyle(.plain)
         .tourSpot(.plan)
         .accessibilityLabel(isToday ? "Plan your cheat day" : "Plan a meal")
     }
