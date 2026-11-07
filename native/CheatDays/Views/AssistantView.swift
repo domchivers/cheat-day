@@ -45,7 +45,8 @@ struct AssistantView: View {
                             Flow { ForEach(chips, id: \.self) { c in Chip(text: c, on: false) { text = c; send() } } }
                         }
                         ForEach(turns) { t in turnView(t).id(t.id) }
-                        if busy { bot(progress).id("busy") }
+                        // only while their message is the last thing: once an answer's in, it never lingers under it
+                        if busy, turns.last?.me == true { bot(progress).id("busy") }
                         if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn).padding(.horizontal, 4) }
                     }
                     .padding(16)
@@ -607,8 +608,8 @@ struct AssistantView: View {
                 }
                 let turn = Assistant.Turn(me: false, text: str(r["reply"]), result: r)
                 withAnimation(.snappy) { turns.append(turn) }
+                busy = false   // the answer's in; the checks after it show on the card, not as "working"
                 if str(r["kind"]) == "estimate", let e = r["estimate"] as? JSON {
-                    busy = false
                     let checked = await Assistant.ground(e)
                     if let i = turns.firstIndex(where: { $0.id == turn.id }), var res = turns[i].result {
                         res["estimate"] = checked
