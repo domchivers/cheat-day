@@ -133,7 +133,7 @@ struct BodyView: View {
         let goal = pos(store.doc["goalWeight"])
         HStack(spacing: 0) {
             stat(rate.map { "\($0 < 0 ? "−" : "+")\(Fmt.kg2(abs($0))) kg" } ?? "–", "a week (4-wk trend)")
-            stat(store.fatTrend.map { "\(Fmt.dec($0.pct))%" } ?? "–", "avg body fat")   // the last few readings, beside the trend
+            stat(store.lastWeighIn?.fat.map { "\(Fmt.dec($0))%" } ?? "–", "body fat")   // the last weigh-in's own, like the number above
             stat(goal.flatMap { store.reachDate($0) }.map { $0.formatted(.dateTime.day().month(.abbreviated)) }
                  ?? (goal.map { store.nearGoal($0) } == true ? "any day" : "–"), goal.map { "to \(Fmt.kg($0)) kg" } ?? "no goal set")
         }

@@ -1,4 +1,4 @@
-New in this build: Me shows the body fat from your latest weigh-in, the date to your goal says "any day now" when you're nearly there, and the weight chart's label shows the full number.
+New in this build: Me and Body show the body fat from your latest weigh-in, the date to your goal says "any day now" when you're nearly there, and the weight chart's label shows the full number.
 
 Thanks for testing! Please just use it like a normal day:
 
