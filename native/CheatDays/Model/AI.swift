@@ -84,7 +84,7 @@ enum Gemini {
     static func lookUpShopItem(shop: String, item: String) async -> JSON? {
         let key = "shop: \(shop) | \(item)".lowercased()
         if let known = labels[key] { return hasNumbers(known) || (num(known["item_g"]) ?? 0) > 0 ? known : nil }
-        let ask = "Find the nutrition information that \"\(shop)\" (a shop, café, bakery or chain in \(Plan.country)) publishes for its \"\(item)\": per item as sold, exactly as they give it, kcal from kJ ÷ 4.184 if only kJ is given. Only the shop's own figures (its website, a nutrition PDF, or its listing on a delivery app); found false if they don't publish any. Never estimate. Separately, item_g: the weight of one item if the shop or a listing states it (\"85 g\"), else 0, even when there are no calories."
+        let ask = "Find the nutrition information that \"\(shop)\" (a shop, café, bakery or chain in \(Plan.country)) publishes for its \"\(item)\": per item as sold, exactly as they give it, kcal from kJ ÷ 4.184 if only kJ is given. Only the shop's own figures (its website, its menu, a nutrition PDF, or its listing on a delivery app such as Uber Eats, DoorDash or Menulog, where chains often show kJ); found false if they don't publish any. Never estimate. Separately, item_g: the weight of one item if the shop or a listing states it (\"85 g\"), else 0, even when there are no calories."
         guard let answer = await claude("lookup", schema: shopSchema, parts: [["text": ask]], extra: ["country": Region.current.code]) else { return nil }
         labels[key] = answer
         return hasNumbers(answer) || (num(answer["item_g"]) ?? 0) > 0 ? answer : nil
