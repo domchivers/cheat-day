@@ -62,7 +62,7 @@ final class FoodTable {
         let first = name.split(whereSeparator: { $0 == "," || $0 == "(" }).first.map(String.init) ?? ""
         let want = Self.words(first)
         guard let head = want.last else { return nil }
-        let cooked = name.range(of: "cooked|boil|grill|roast|fried|fry|bake|steam", options: [.regularExpression, .caseInsensitive]) != nil
+        let cooked = name.range(of: "cooked|boil|grill|roast|fried|fry|bake|steam|brais|stew|simmer|poach|casserol", options: [.regularExpression, .caseInsensitive]) != nil
         // "potato, boiled" isn't the raw potato its everyday name means, and dried noodles aren't boiled ones
         let dry = name.range(of: #"\b(dry|dried|uncooked)\b"#, options: [.regularExpression, .caseInsensitive]) != nil
         if let named = aliases[want.joined(separator: " ")], !(cooked && named.name.range(of: #"\braw\b|uncooked"#, options: [.regularExpression, .caseInsensitive]) != nil),

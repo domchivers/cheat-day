@@ -73,7 +73,7 @@ final class AusFoodsTests: XCTestCase {
         ("Eggplant (Thai or regular), cubed", "Eggplant, unpeeled, fresh, raw"),
         ("Eggs, large (2, edible portion)", "Egg, chicken, whole, raw"),
         ("Eggs, large, raw (2)", "Egg, chicken, whole, raw"),
-        ("Eggs, soft-poached or onsen-style (4 eggs, edible portion)", "Egg, chicken, whole, raw"),
+        ("Eggs, soft-poached or onsen-style (4 eggs, edible portion)", "Egg, chicken, whole, poached"),
         ("Eggs, whole, fried (4 x 55 g)", "Egg, chicken, whole, fried, no fat added"),
         ("Eggs, whole, raw (3 large Australian eggs, shelled)", "Egg, chicken, whole, raw"),
         ("Extra virgin olive oil (dough and drizzle)", "Oil, olive"),

@@ -21,7 +21,7 @@ function table(country) {
 function resolveIn(country, name) {
   const t = table(country), want = words(name.split(/[,(]/)[0]);
   if (!want.length) return null;
-  const named = t.alias.get(want.join(' ')), cooked = /cooked|boil|grill|roast|fried|fry|bake|steam/i.test(name);
+  const named = t.alias.get(want.join(' ')), cooked = /cooked|boil|grill|roast|fried|fry|bake|steam|brais|stew|simmer|poach|casserol/i.test(name);
   const dry = /\b(dry|dried|uncooked)\b/i.test(name);
   if (named && !(cooked && /\braw\b|uncooked/i.test(named.name)) && !(dry && /\b(boiled|cooked|drained)\b/i.test(named.name))) return named;
   const head = want[want.length - 1];

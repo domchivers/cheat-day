@@ -35,7 +35,7 @@ function narrow(name, hits, want) {
 function resolve(name) {
   const want = words(name.split(/[,(]/)[0]);
   if (!want.length) return null;
-  const cooked = /cooked|boil|grill|roast|fried|fry|bake|steam/i.test(name);
+  const cooked = /cooked|boil|grill|roast|fried|fry|bake|steam|brais|stew|simmer|poach|casserol/i.test(name);
   const named = alias.get(want.join(' '));
   const dry = /\b(dry|dried|uncooked)\b/i.test(name);
   // "potato, boiled" isn't the raw potato, and dried noodles aren't boiled ones
