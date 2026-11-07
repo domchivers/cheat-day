@@ -271,8 +271,11 @@ struct AssistantView: View {
                 .buttonStyle(.plain).disabled(added)
                 if !added && !parts.isEmpty {   // the whole plate a size down or up, every part with it
                     let start = pos(e["aiPortion"]) ?? pos(e["portion_g"]) ?? 1
-                    SizeStepper(value: "\(Int(((num(e["portion_g"]) ?? start) / start * 100).rounded()))%",
-                                less: { scale(turn, by: 0.75) }, more: { scale(turn, by: 1.3) })
+                    // 10% steps of what the AI first said (100, 90, 80…), or a percentage typed in the middle
+                    let pct = ((num(e["portion_g"]) ?? start) / start * 100).rounded()
+                    SizeStepper(less: { setPercent(turn, Self.step(pct, by: -10, min: 10)) }, more: { setPercent(turn, Self.step(pct, by: 10, min: 10)) }) {
+                        NumberBox(value: pct, unit: "%") { setPercent(turn, $0) }
+                    }
                 }
             }
         }
@@ -301,8 +304,10 @@ struct AssistantView: View {
             Divider()
             detailRow("Amount") {
                 // just this part a size down or up, or its grams typed in the middle
-                SizeStepper(less: { setGrams(turn, index: i, to: g * 0.75) }, more: { setGrams(turn, index: i, to: g * 1.3) }) {
-                    PartGrams(grams: g) { setGrams(turn, index: i, to: $0) }
+                // 10 g steps, 5 g under 50 g, landing on round numbers (97 → 90 → 80)
+                let by: Double = g < 50 ? 5 : 10
+                SizeStepper(less: { setGrams(turn, index: i, to: Self.step(g, by: -by, min: by)) }, more: { setGrams(turn, index: i, to: Self.step(g, by: by, min: by)) }) {
+                    NumberBox(value: g, unit: "g") { setGrams(turn, index: i, to: $0) }
                 }
             }
         }
@@ -350,6 +355,22 @@ struct AssistantView: View {
         x["grams"] = ((num(p["grams"]) ?? 0) * f).rounded(); x["kcal"] = ((num(p["kcal"]) ?? 0) * f).rounded()
         for m in ["protein_g", "carbs_g", "fat_g"] { if let v = num(p[m]) { x[m] = v * f } }
         return x
+    }
+
+    /// The next round number up or down: 97 down by 10 is 90, 90 down is 80, 97 up is 100. Never below the minimum.
+    static func step(_ v: Double, by d: Double, min lo: Double) -> Double {
+        let size = abs(d), onStep = (v / size).rounded() * size == v.rounded()
+        let next = d < 0 ? (onStep ? v.rounded() - size : (v / size).rounded(.down) * size)
+                         : (onStep ? v.rounded() + size : (v / size).rounded(.up) * size)
+        return max(lo, next)
+    }
+
+    /// The whole plate at a percentage of what the AI first said.
+    private func setPercent(_ turn: UUID, _ pct: Double) {
+        let e = estimate(turn), start = pos(e["aiPortion"]) ?? pos(e["portion_g"]) ?? 0, now = pos(e["portion_g"]) ?? 0
+        guard start > 0, now > 0, pct > 0 else { return }
+        let f = start * pct / 100 / now
+        if abs(f - 1) > 0.001 { scale(turn, by: f) }
     }
 
     private func scale(_ turn: UUID, by f: Double) {
@@ -695,22 +716,27 @@ extension SizeStepper where V == Text {
     }
 }
 
-/// A part's grams to type over; saved when the box loses focus or Done is tapped.
-private struct PartGrams: View {
-    let grams: Double
+/// The number in the middle of a − | + control, to type over (a part's grams, the plate's percentage): it looks like a
+/// box so it reads as typeable, and saves when the keyboard goes (a tap on the chat).
+private struct NumberBox: View {
+    let value: Double
+    let unit: String
     let save: (Double) -> Void
     @State private var text = ""
     @FocusState private var focused: Bool
     var body: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 1) {
             TextField("–", text: $text).keyboardType(.numberPad).focused($focused).multilineTextAlignment(.trailing).fixedSize()
-            Text("g").foregroundStyle(.secondary)
+            Text(unit).foregroundStyle(.secondary)
         }
         .font(.subheadline.weight(.bold)).monospacedDigit()
+        .padding(.horizontal, 8).padding(.vertical, 4)
+        .background(Color.white.opacity(focused ? 0.16 : 0.07), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay { if focused { RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Theme.accent, lineWidth: 1.5) } }
         .contentShape(Rectangle()).onTapGesture { focused = true }
-            .onAppear { text = Fmt.int(grams) }
-            .onChange(of: grams) { _, g in if !focused { text = Fmt.int(g) } }
-            .onChange(of: focused) { _, on in if !on, let g = Fmt.typed(text) { save(g) } }
+        .onAppear { text = Fmt.int(value) }
+        .onChange(of: value) { _, v in if !focused { text = Fmt.int(v) } }
+        .onChange(of: focused) { _, on in if !on, let v = Fmt.typed(text), v > 0 { save(v) } else if !on { text = Fmt.int(value) } }
     }
 }
 

@@ -76,6 +76,16 @@ final class FoodMatchTests: XCTestCase {
         XCTAssertEqual(str(again.first?["numbers_from"]), "them", "yesterday's logged numbers are theirs")
     }
 
+    func testMinusAndPlusLandOnRoundNumbers() {
+        XCTAssertEqual(AssistantView.step(100, by: -10, min: 10), 90)
+        XCTAssertEqual(AssistantView.step(97, by: -10, min: 10), 90, "off a step: down to the round one below")
+        XCTAssertEqual(AssistantView.step(97, by: 10, min: 10), 100)
+        XCTAssertEqual(AssistantView.step(130, by: 10, min: 10), 140)
+        XCTAssertEqual(AssistantView.step(45, by: -5, min: 5), 40)
+        XCTAssertEqual(AssistantView.step(10, by: -10, min: 10), 10, "never below the smallest step")
+        XCTAssertEqual(AssistantView.step(89, by: -10, min: 10), 80, "a plate at 89% after rounding goes to 80")
+    }
+
     func testTheTrailSaysWhatWasChecked() {
         let e: JSON = ["shop": "#1000 Bread", "shop_items": "Kabana croissant x1", "parts": [["src": "afcd"], ["src": "afcd"], ["src": "ai"]]]
         XCTAssertEqual(Assistant.trail(e, shopFound: false), ["2 of 3 parts checked against the food database", "#1000 Bread doesn't publish its numbers"])
