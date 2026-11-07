@@ -100,6 +100,11 @@ struct AssistantView: View {
 
     // MARK: bubbles
 
+    /// A reply's **bold** shown bold, its lines and "- " points kept as written.
+    static func rich(_ s: String) -> AttributedString {
+        (try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(s)
+    }
+
     /// While the AI works: the steps done so far, ticked, and the one it's on.
     private var progress: some View {
         VStack(alignment: .leading, spacing: 7) {
@@ -145,7 +150,7 @@ struct AssistantView: View {
             .frame(maxWidth: .infinity, alignment: .trailing)
         } else {
             VStack(alignment: .leading, spacing: 10) {
-                bot(VStack(alignment: .leading, spacing: 8) { Text(t.text); trailLines(t.result?["trail"] as? [String] ?? []) })
+                bot(VStack(alignment: .leading, spacing: 8) { Text(Self.rich(t.text)); trailLines(t.result?["trail"] as? [String] ?? []) })
                 if str(t.result?["engine"]) == "device" {
                     Label("Answered on this iPhone", systemImage: "bolt.fill").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary).padding(.leading, 6)
                 }

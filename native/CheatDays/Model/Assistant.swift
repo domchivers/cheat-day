@@ -65,7 +65,7 @@ enum Assistant {
     }
 
     private static let full: JSON = obj([
-        "reply": ["type": "string", "description": "What you'd say back, warm and short (one to three sentences). Always filled."] as JSON,
+        "reply": ["type": "string", "description": "What you'd say back, warm. Logging food or a change: one to three sentences. A question or advice: a proper answer (see the rules). Always filled."] as JSON,
         "kind": ["type": "string", "enum": ["answer", "estimate", "plan", "edit", "recipe", "lighter"]] as JSON,
         "estimate": obj([
             "name": s, "portion_g": n, "unit": ["type": "string", "enum": ["g", "ml"]] as JSON,
@@ -155,6 +155,7 @@ enum Assistant {
         c += "Things they often have: \(store.quickEntries.prefix(8).map(\.name).joined(separator: ", ")). Their saved meals: \(meals.isEmpty ? "none" : meals).\n"
         if !loves.isEmpty || !avoid.isEmpty { c += "Foods they love: \(loves.isEmpty ? "not said" : loves). Never suggest: \(avoid.isEmpty ? "nothing" : avoid).\n" }
         c += store.habitsContext
+        c += training(store)
         if let next = store.nextCheat { c += "Their next cheat day is \(next.date == store.today ? "today" : next.date), with \(Int(next.kcal)) kcal.\n" }
         return c
     }
@@ -187,7 +188,9 @@ enum Assistant {
     - Log only what their latest message (or its photos) names. Foods from earlier in the chat or already on today's list are dealt with: never add them again or fold them into a new estimate. "1/2 tsp sesame oil" is just the oil.
     - When several products are in the photos, give each its own numbers before recommending.
     - If you can't tell what something is, say so and ask rather than guessing.
-    - Keep reply short, friendly and never preachy. It's a cheat-day app: treats are part of the plan.
+    - Logging food or a change: keep reply short, friendly and never preachy. It's a cheat-day app: treats are part of the plan.
+    - A question or advice about food, training, recovery, sleep, weight or how to use the app: answer like a knowledgeable coach who knows them. Be specific to them, using their training, food, weight, goals and recent days above: if their own numbers point at a cause (a big jump in weight on that exercise, more sessions than usual, little sleep, a low-protein week), say so with their numbers. Never make numbers up. Give the likely causes and what to do now, as concrete steps with numbers (how much lighter, which swaps, how many days, what to try instead). Use short paragraphs or a few bullet points ("- "), with **bold** for the key points, up to about 200 words. Don't hedge everything; say what you'd do.
+    - Pain or injury: practical first steps and safer swaps for their own exercises, then the signs that mean seeing a physio or GP (sharp pain, swelling, locking or giving way, numbness, no better in a week or two). Never diagnose.
     """
 
     /// Words that mean a bigger job (worth the careful model): recipes, plans, comparisons, lighter versions.
@@ -197,7 +200,31 @@ enum Assistant {
     static func isSimple(_ text: String, hasPhotos: Bool) -> Bool {
         guard !hasPhotos else { return false }
         let t = text.lowercased()
-        return t.count <= 140 && !bigJobs.contains(where: { t.contains($0) })
+        // a question or advice needs the careful model ("Knees hurting from leg press, any recommendations?" got three
+        // vague sentences from the quick one); the quick one is for logging food
+        let asks = t.contains("?") || t.range(of: #"^(how|what|why|should|can|could|is|are|do|does|any|which|when|help|advice|tips?)\b"#, options: .regularExpression) != nil
+            || ["recommend", "advice", "should i", "hurt", "pain", "sore", "injur", "sleep", "tired", "plateau", "progress", "stuck"].contains { t.contains($0) }
+        return t.count <= 140 && !asks && !bigJobs.contains(where: { t.contains($0) })
+    }
+
+    /// Their training over the last three weeks, newest first, so advice can be about what they actually do
+    /// ("leg press 180 kg × 8, up from 140 two weeks ago").
+    @MainActor
+    static func training(_ store: Store) -> String {
+        let since = DayKey.shift(store.today, days: -21)
+        let days = [(store.today, store.todayWorkouts)] + CheatDays.list(store.doc["history"]).filter { str($0["date"]) >= since && str($0["date"]) < store.today }
+            .sorted { str($0["date"]) > str($1["date"]) }.map { (str($0["date"]), CheatDays.list($0["workouts"])) }
+        var lines: [String] = []
+        for (date, ws) in days {
+            for w in ws where lines.count < 14 {
+                let lifts = CheatDays.list(w["lifts"]).map { l -> String in
+                    let sets = CheatDays.list(l["detail"]).map { "\(Fmt.kg(num($0["kg"]) ?? 0))×\(Fmt.one(num($0["reps"]) ?? 0))" }
+                    return "\(str(l["exercise"])) " + (sets.isEmpty ? "\(Fmt.kg(num(l["kg"]) ?? 0)) kg × \(Fmt.one(num(l["reps"]) ?? 0)) × \(Fmt.one(num(l["sets"]) ?? 1))" : sets.joined(separator: ", ") + " kg")
+                }
+                lines.append("\(date) \(str(w["name"])), \(Int(num(w["minutes"]) ?? 0)) min\(lifts.isEmpty ? "" : ": " + lifts.joined(separator: "; "))")
+            }
+        }
+        return lines.isEmpty ? "" : "Their training, the last three weeks, newest first (kg × reps):\n\(lines.joined(separator: "\n"))\n"
     }
 
     /// Ask, then check an estimate's parts against the food list and database afterwards (`ground` false: the caller does it later).
