@@ -220,9 +220,6 @@ enum Assistant {
         return saneEdit(await groundEdit(answer))
     }
 
-    /// Foods they've logged before that sound like this one (the #1000 Bread kabana croissant again), as they finally
-    /// stood: grams and kcal after any changes they made, so the same thing from the same place starts from what they confirmed.
-    @MainActor
     /// A food's name shares two words with what they said or what the photos showed, or it's a short name ("Croissant",
     /// "Pad thai") whose one long word they used.
     static func soundsLike(_ name: String, _ said: Set<String>) -> Bool {
@@ -230,6 +227,9 @@ enum Assistant {
         return shared.count >= 2 || (w.count <= 2 && shared.contains { $0.count >= 5 })
     }
 
+    /// Foods they've logged before that sound like this one (the #1000 Bread kabana croissant again), as they finally
+    /// stood: grams and kcal after any changes they made, so the same thing from the same place starts from what they confirmed.
+    @MainActor
     static func loggedBefore(_ store: Store, text: String) -> String {
         let said = Set(FoodTable.words(text).filter { $0.count >= 4 })
         guard !said.isEmpty else { return "" }
