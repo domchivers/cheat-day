@@ -87,6 +87,10 @@ struct CheatDayView: View {
     @State private var setupSize = 1.3
     @FocusState private var typing: Bool
     @State private var showEaten = false   // the day's food so far, opened from its one line
+    /// The cheat day's own colours, the beta pass's blue to lavender (#8ec5ff to #c4a1ff): the day's name, what's
+    /// free to enjoy, the day picked. The owner wasn't a fan of the yellow.
+    static let tint = Color(red: 0.769, green: 0.631, blue: 1.0)
+    static let tintGradient = LinearGradient(colors: [Color(red: 0.557, green: 0.773, blue: 1.0), tint], startPoint: .leading, endPoint: .trailing)
     private var store: Store { Store.shared }
     private static let starters = ["Leave room for snacks", "Something sweet", "Plan the whole day", "Eating out", "Go wild"]
 
@@ -146,7 +150,7 @@ struct CheatDayView: View {
         let toGo = goal.map { max(0, $0 - store.macros(loggedItems(next)).p) }
         return ScrollView {
             VStack(alignment: .leading, spacing: 4) {
-                Eyebrow(text: when(next.date), color: Theme.warn).padding(.top, 8)
+                Eyebrow(text: when(next.date), color: Self.tint).padding(.top, 8)
                 Text("\(Fmt.int(max(0, budget(next) - eaten))) kcal \(eaten > 0 ? "left" : "to play with")").font(.title.weight(.heavy)).monospacedDigit()
                 Text((eaten > 0 ? "\(Fmt.int(eaten)) of \(Fmt.int(budget(next))) logged" : "\(Fmt.int(next.extra)) more than a normal day") + (toGo.map { " · \(Int($0)) g protein to go" } ?? ""))
                     .font(.footnote).foregroundStyle(.secondary)
@@ -200,7 +204,7 @@ struct CheatDayView: View {
                     }
                     if busy { CheatPlanStatus().padding(.vertical, 4) }
                     else if !str(plan["reply"]).isEmpty { Text(str(plan["reply"])).font(.subheadline).foregroundStyle(.secondary).padding(.top, 2) }
-                    Eyebrow(text: when(next.date), color: Theme.warn).padding(.top, 8)
+                    Eyebrow(text: when(next.date), color: Self.tint).padding(.top, 8)
                     Text(str(plan["title"])).font(.title2.bold()).padding(.bottom, 2)
                     VStack(spacing: 8) {
                         // what's eaten already, folded into one line (a row each took most of the screen); tap to see them
@@ -212,6 +216,12 @@ struct CheatDayView: View {
                     }
                     .opacity(busy ? 0.45 : 1)
                     .animation(.snappy, value: str(plan["at"]))
+                    let options = list(plan["options"])
+                    if !options.isEmpty && !busy {
+                        // for something open ("thinking more Chinese"): more to pick from, not counted until added
+                        Text("More to choose from").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).padding(.top, 8)
+                        VStack(spacing: 8) { ForEach(options.indices, id: \.self) { i in optionRow(options[i]) } }
+                    }
                     freeCard(room)
                     if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn).padding(.top, 4) }
                     Button("Start again") { draft = ""; problem = nil; starting = true }
@@ -247,6 +257,40 @@ struct CheatDayView: View {
             .background(Theme.bg)
         }
         .sensoryFeedback(.success, trigger: str(plan["at"]))
+    }
+
+    private func optionRow(_ o: JSON) -> some View {
+        HStack(spacing: 12) {
+            Button { open = IdeaRef(id: str(o["title"]), idea: CheatPlan.idea(o)) } label: {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(str(o["title"])).font(.subheadline.weight(.bold)).multilineTextAlignment(.leading)
+                    if !str(o["detail"]).isEmpty { Text(str(o["detail"])).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.leading) }
+                    Text("est. \(Fmt.int(num(o["kcal"]) ?? 0)) kcal · \(Int((num(o["protein"]) ?? 0).rounded())) g protein").font(.caption.weight(.semibold)).monospacedDigit()
+                }
+                .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            Button { withAnimation(.snappy) { choose(o) } } label: {
+                Label("Add", systemImage: "plus").font(.caption.weight(.heavy)).foregroundStyle(Theme.accent)
+                    .padding(.horizontal, 11).padding(.vertical, 7).background(Theme.accent.opacity(0.14), in: Capsule())
+            }
+            .buttonStyle(.plain).accessibilityLabel("Add \(str(o["title"])) to the plan")
+        }
+        .padding(.leading, 14).padding(.trailing, 10).padding(.vertical, 11)
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Color.white.opacity(0.12), lineWidth: 1))
+    }
+
+    /// A choice into the plan, after the last thing in it; the others stay to choose from.
+    private func choose(_ o: JSON) {
+        guard let date = store.nextCheat?.date, var plan = store.cheatPlan(date) else { return }
+        var slots = list(plan["slots"]), x = o
+        // 15 minutes after the last thing in the plan ("19:30" then "19:45"), never past midnight
+        let hm = (slots.last.map { str($0["time"]) } ?? "").split(separator: ":").compactMap { Int($0) }
+        if hm.count == 2 { let t = min(hm[0] * 60 + hm[1] + 15, 23 * 60 + 59); x["time"] = String(format: "%02d:%02d", t / 60, t % 60) }
+        slots.append(x)
+        plan["slots"] = slots
+        plan["options"] = list(plan["options"]).filter { str($0["title"]) != str(o["title"]) }
+        store.perform(["type": "cheatPlan", "date": date, "plan": plan])
     }
 
     private func eatenRow(_ items: [JSON]) -> some View {
@@ -349,11 +393,11 @@ struct CheatDayView: View {
     @ViewBuilder private func freeCard(_ room: Double) -> some View {
         if abs(room) >= 30 {
             VStack(alignment: .leading, spacing: 2) {
-                Text(room > 0 ? "\(Fmt.int(room)) kcal free to enjoy" : "\(Fmt.int(-room)) kcal over").font(.headline).monospacedDigit().foregroundStyle(Theme.warn)
+                Text(room > 0 ? "\(Fmt.int(room)) kcal free to enjoy" : "\(Fmt.int(-room)) kcal over").font(.headline).monospacedDigit().foregroundStyle(Self.tintGradient)
                 Text(room > 0 ? "Snacks, a drink, whatever you fancy." : "Ask to trim something if you'd like.").font(.caption).foregroundStyle(.secondary)
             }
             .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Theme.warn.opacity(0.7), style: StrokeStyle(lineWidth: 1.2, dash: [5, 4])))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Self.tintGradient.opacity(0.8), style: StrokeStyle(lineWidth: 1.2, dash: [5, 4])))
         }
     }
 
@@ -412,18 +456,20 @@ struct CheatDayView: View {
         let usual = store.mealHistory("Dinner").prefix(8).map(\.name).joined(separator: ", ")
         let earlier = list(plan?["chat"]).suffix(8).map { "They said: \(str($0["me"]))" }.joined(separator: "\n")
         let current = plan.map { list($0["slots"]).map { "\(str($0["time"])) \(str($0["title"])) (\(Int(num($0["kcal"]) ?? 0)) kcal, \(Int(num($0["protein"]) ?? 0)) g protein)" }.joined(separator: "\n") } ?? ""
+        let slot: JSON = ["type": "object", "properties": [
+            "time": ["type": "string", "description": "24-hour time like 15:30"] as JSON,
+            "title": ["type": "string"] as JSON,
+            "detail": ["type": "string", "description": "Under 12 words: what's in it. Empty for a saved meal"] as JSON,
+            "kcal": ["type": "number"] as JSON, "protein": ["type": "number"] as JSON, "carbs": ["type": "number"] as JSON, "fat": ["type": "number"] as JSON,
+            "workout": ["type": "boolean"] as JSON,
+            "saved": ["type": "string", "description": "The exact name of the saved meal this is, or empty"] as JSON
+        ] as JSON, "required": ["time", "title", "detail", "kcal", "protein", "carbs", "fat", "workout", "saved"]]
         let schema: JSON = ["type": "object", "properties": [
             "title": ["type": "string", "description": "A short title for the plan, from what's in it"] as JSON,
             "reply": ["type": "string", "description": "Under 20 words, friendly: what you did or changed"] as JSON,
-            "slots": ["type": "array", "items": ["type": "object", "properties": [
-                "time": ["type": "string", "description": "24-hour time like 15:30"] as JSON,
-                "title": ["type": "string"] as JSON,
-                "detail": ["type": "string", "description": "Under 12 words: what's in it. Empty for a saved meal"] as JSON,
-                "kcal": ["type": "number"] as JSON, "protein": ["type": "number"] as JSON, "carbs": ["type": "number"] as JSON, "fat": ["type": "number"] as JSON,
-                "workout": ["type": "boolean"] as JSON,
-                "saved": ["type": "string", "description": "The exact name of the saved meal this is, or empty"] as JSON
-            ] as JSON, "required": ["time", "title", "detail", "kcal", "protein", "carbs", "fat", "workout", "saved"]] as JSON] as JSON
-        ] as JSON, "required": ["title", "reply", "slots"]]
+            "slots": ["type": "array", "items": slot] as JSON,
+            "options": ["type": "array", "items": slot, "description": "For an open request: 3 more dishes to choose from, not in the plan. Empty when they named what they want"] as JSON
+        ] as JSON, "required": ["title", "reply", "slots", "options"]]
         let prompt = """
         You're planning a cheat day together with someone in \(Plan.country). It should feel like a treat, not a diet.
         \(isToday ? "It's \(now) today: every slot's time is after \(now)." : "The day is \(when(next.date)).")
@@ -434,12 +480,14 @@ struct CheatDayView: View {
         \(current.isEmpty ? "" : "The plan so far:\n\(current)\nKeep every slot exactly as it is unless they ask to change it, or a change they asked for can't work without it, and if so say so in reply.")
         \(earlier.isEmpty ? "" : "What they've said so far:\n\(earlier)")
         They now say: "\(said)"
-        Rules. Plan ONLY what they asked for. Never fill the day or use up the calories unless they ask: unused calories are theirs to enjoy, and the app shows them. If they ask to leave an amount free, make the slots leave about that much. If they ask to reach their protein, reach it with what they asked for plus as little as possible, and say what you added. Only add a workout if they ask (workout true, kcal 0). If they ask for ideas, add them as slots. Name real dishes and orders. Numbers come from standard reference values, never raised to fit. Never suggest skipping meals or making up for it tomorrow.
+        Rules. Plan ONLY what they asked for. Never fill the day or use up the calories unless they ask: unused calories are theirs to enjoy, and the app shows them. If they ask to leave an amount free, make the slots leave about that much. If they ask to reach their protein, reach it with what they asked for plus as little as possible, and say what you added. Only add a workout if they ask (workout true, kcal 0). If they ask for something open rather than naming dishes (a cuisine, a mood, "something sweet", "ideas"), put your one best pick in slots and 3 more real dishes of that kind in options for them to choose from; they aren't in the plan until they add one. When they name what they want, options is empty. Name real dishes and orders. Numbers come from standard reference values, never raised to fit. Never suggest skipping meals or making up for it tomorrow.
         \(Assistant.foodData(said))
         """
         do {
             var a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: false, tries: 4, job: "chat")
             a["slots"] = CheatPlan.tidied(CheatPlan.keepingRecipes(list(a["slots"]), from: list(plan?["slots"])), saved: saved)
+            let inPlan = Set(list(a["slots"]).map { str($0["title"]).lowercased() })
+            a["options"] = CheatPlan.tidied(list(a["options"]).filter { !inPlan.contains(str($0["title"]).lowercased()) }, saved: saved)
             a["at"] = ISO.now()
             a["chat"] = Array(list(plan?["chat"]).suffix(11)) + [["me": said] as JSON]
             store.perform(["type": "cheatPlan", "date": next.date, "plan": a])
@@ -463,7 +511,7 @@ struct CheatDayView: View {
                 ForEach([1, 2, 3, 4, 5, 6, 0], id: \.self) { d in
                     Button { setupDay = d } label: {
                         Text(Calendar.current.shortWeekdaySymbols[d].prefix(2)).font(.subheadline.weight(.bold)).frame(maxWidth: .infinity).padding(.vertical, 10)
-                            .background(setupDay == d ? Theme.warn : Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .background(setupDay == d ? AnyShapeStyle(Self.tintGradient) : AnyShapeStyle(Color(.tertiarySystemFill)), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                             .foregroundStyle(setupDay == d ? Theme.onAccent : Color.primary)
                     }
                     .buttonStyle(.plain)
@@ -472,7 +520,7 @@ struct CheatDayView: View {
             label("How big?")
             Picker("Size", selection: $setupSize) { Text("A bit more").tag(1.3); Text("Lots more").tag(1.5); Text("Go big").tag(1.7) }.pickerStyle(.segmented)
             VStack(spacing: 10) {
-                HStack { Text(Calendar.current.weekdaySymbols[setupDay]).foregroundStyle(.secondary); Spacer(); Text("\(Fmt.int(Double(cheat))) kcal").font(.title3.weight(.heavy)).foregroundStyle(Theme.warn) }
+                HStack { Text(Calendar.current.weekdaySymbols[setupDay]).foregroundStyle(.secondary); Spacer(); Text("\(Fmt.int(Double(cheat))) kcal").font(.title3.weight(.heavy)).foregroundStyle(Self.tintGradient) }
                 HStack { Text("Other days").foregroundStyle(.secondary); Spacer(); Text("\(Fmt.int(Double(everyday))) kcal").font(.title3.weight(.heavy)) }
             }
             .padding(16).background(Theme.hero, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
