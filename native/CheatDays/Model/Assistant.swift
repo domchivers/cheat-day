@@ -160,7 +160,7 @@ enum Assistant {
     - Photos: size each food against something of known size in the shot before giving grams (a side plate is about 18 cm across, a dinner plate 27 cm, a mug 9 cm, a small takeaway box 12 cm inside, a fork 19 cm, a hand 9 cm wide). Never assume a standard portion: bakery and café items vary a lot, and a small croissant isn't a big one. Put that in each part's size ("about 10 cm long, against the side plate"), and in reply say it in a few words. With nothing to size against, or when you can't tell how dense it is, say you assumed a regular size and ask if it was small, regular or large.
     - Name each part as the food itself, with how it's cooked after a comma ("Cheese, melted", "Kabana", "Croissant, plain"), never where it sits ("melted cheese on the croissant"), so it's checked against the right food.
     - Tag every part so it's matched to the right entry: homemade or bought (bakery, café, takeaway, packaged); natural or processed (cheese, meats); raw or cooked and how (fried, baked, grilled, boiled, steamed) for meat, fish, veg and grains; skin on or skin off; plain or filled; coated (crumbed, battered); reduced fat. Cheese on bakery or takeaway food is natural unless it looks like a processed slice.
-    - Food from a named shop, café, bakery or chain (said, or a logo in the photo): fill shop and shop_items, and still break the parts down as usual. The app looks for the shop's own published numbers and uses them if it finds them.
+    - Food from a named shop, café, bakery or chain (said, or a logo in the photo): fill shop and shop_items, and still break the parts down as usual (pastry, filling, cheese), with numbers_from estimate unless they gave numbers or showed a label. Never put the shop's name in a part's name. The app looks for the shop's own published numbers and uses them if it finds them.
     - For edit: never say a change is done, added or logged. Say it's ready and to tap Make these changes.
     - Only talk about foods actually in the conversation, their photos, their day or their meals. Never invent placeholders.
     - Log only what their latest message (or its photos) names. Foods from earlier in the chat or already on today's list are dealt with: never add them again or fold them into a new estimate. "1/2 tsp sesame oil" is just the oil.
@@ -203,6 +203,7 @@ enum Assistant {
         if missingCard(answer) { answer["kind"] = "answer"; answer["reply"] = withoutButtons(str(answer["reply"])) }
         // "Add to lunch": the buttons add to the meal they named, not the one the screen was opened for
         if let m = Meals.named(in: last.text) { answer["meal"] = m }
+        if let e = answer["estimate"] as? JSON { answer["estimate"] = tidied(e, said: last.text, photos: !pics.isEmpty) }
         if groundNow, str(answer["kind"]) == "estimate", let e = answer["estimate"] as? JSON { answer["estimate"] = await ground(e) }
         // a recipe's ingredients checked like the recipe screen's
         if str(answer["kind"]) == "recipe", var rc = answer["recipe"] as? JSON {
@@ -342,6 +343,32 @@ enum Assistant {
         return x
     }
 
+    /// An estimate's parts put straight before they're checked. "Their numbers" only when their message has a number in it,
+    /// and "a label" only when there's a photo or they mention one: the #1000 Bread plate came back as "your numbers" with
+    /// no numbers given, so nothing was checked. And the shop's name off each part ("#1000 Bread kabana croissant"
+    /// was judged as bread).
+    static func tidied(_ e: JSON, said: String, photos: Bool) -> JSON {
+        let shop = str(e["shop"]).trimmingCharacters(in: .whitespaces)
+        // "#1000 Bread" isn't a number they gave
+        let words = shop.isEmpty ? said : said.replacingOccurrences(of: shop, with: "", options: .caseInsensitive)
+        let gaveNumbers = words.range(of: #"\d"#, options: .regularExpression) != nil
+        let label = photos || said.lowercased().contains("label")
+        let shopPattern = NSRegularExpression.escapedPattern(for: shop) + #"(['’]s)?"#
+        var out = e
+        out["parts"] = CheatDays.list(e["parts"]).map { p -> JSON in
+            var x = p
+            if str(p["numbers_from"]) == "them" && !gaveNumbers || str(p["numbers_from"]) == "label" && !label { x["numbers_from"] = "estimate" }
+            if !shop.isEmpty {
+                let bare = str(p["name"]).replacingOccurrences(of: shopPattern, with: "", options: [.regularExpression, .caseInsensitive])
+                    .replacingOccurrences(of: "()", with: "").replacingOccurrences(of: #"\s{2,}"#, with: " ", options: .regularExpression)
+                    .trimmingCharacters(in: CharacterSet.whitespaces.union(CharacterSet(charactersIn: "-–·,()")))
+                if !bare.isEmpty { x["name"] = bare.prefix(1).uppercased() + bare.dropFirst() }
+            }
+            return x
+        }
+        return out
+    }
+
     /// A part's tags as the matcher reads them ("bought, natural" → ["bought", "natural"]).
     /// Written loosely ("cooked (baked)", "processed meat") they still count: each piece is a known tag or starts with one.
     static func tags(_ part: JSON) -> [String] {
@@ -370,13 +397,21 @@ enum Assistant {
     /// The shop's own published numbers for everything on the plate, when it publishes them for every item (a chain's
     /// nutrition page); nil otherwise, and the plate is checked part by part as usual.
     @MainActor
+    /// Runs after the card's own check, so it never holds the card up: every item looked up at once, and a shop that
+    /// published nothing isn't asked again for 60 days (most small bakeries, like #1000 Bread, publish nothing).
     static func fromShop(_ e: JSON) async -> JSON? {
         let shop = str(e["shop"]).trimmingCharacters(in: .whitespaces), items = shopItems(str(e["shop_items"]))
         guard !shop.isEmpty, !items.isEmpty, items.count <= 4 else { return nil }
+        let d = UserDefaults.standard, key = "shops.unpublished", none = d.dictionary(forKey: key) as? [String: Double] ?? [:]
+        if let at = none[shop.lowercased()], Date().timeIntervalSince1970 - at < 60 * 86400 { return nil }
+        let lookups = items.map { it in Task { await Gemini.lookUpShopItem(shop: shop, item: it.name) } }
         var parts: [JSON] = []
-        for it in items {
-            guard let label = await Gemini.lookUpShopItem(shop: shop, item: it.name) else { return nil }
-            parts.append(fromLabel(["name": "\(it.name) (\(shop))", "servings": it.count], label))
+        for (it, task) in zip(items, lookups) {
+            guard let label = await task.value else {
+                var n = none; n[shop.lowercased()] = Date().timeIntervalSince1970; d.set(n, forKey: key)
+                return nil
+            }
+            parts.append(fromLabel(["name": it.name, "servings": it.count], label))
         }
         return sane(totals(e, parts: parts))
     }
@@ -408,8 +443,6 @@ enum Assistant {
     static func ground(_ e: JSON) async -> JSON {
         var parts = CheatDays.list(e["parts"]).filter { (num($0["grams"]) ?? 0) > 0 }.map { p -> JSON in var x = p; x["src"] = "ai"; return x }
         guard !parts.isEmpty else { return e }
-        // a named shop's own figures beat any table, when it publishes them
-        if let shop = await fromShop(e) { return shop }
         var ask: [Int] = []
         for i in parts.indices {
             let x = parts[i], g = num(x["grams"]) ?? 0

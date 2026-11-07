@@ -176,7 +176,9 @@ struct AssistantView: View {
         let k = num(e["kcal_total"]) ?? 0, p = num(e["protein_g"]) ?? 0, c = num(e["carbs_g"]) ?? 0, f = num(e["fat_g"]) ?? 0
         return panel {
             Text(str(e["name"])).font(.headline)
-            Text("\(Fmt.int(num(e["portion_g"]) ?? 0)) \(str(e["unit"]).isEmpty ? "g" : str(e["unit"]))").font(.caption).foregroundStyle(.secondary)
+            // the shop once here, not in every part
+            Text((str(e["shop"]).isEmpty ? "" : "\(str(e["shop"])) · ") + "\(Fmt.int(num(e["portion_g"]) ?? 0)) \(str(e["unit"]).isEmpty ? "g" : str(e["unit"]))")
+                .font(.caption).foregroundStyle(.secondary)
             macros(k, p, c, f)
             let parts = list(e["parts"]), checked = parts.filter { !["", "ai", "label", "them", "web"].contains(str($0["src"])) }.count
             let own = parts.filter { ["label", "them"].contains(str($0["src"])) }.count
@@ -207,49 +209,72 @@ struct AssistantView: View {
             else { Text(checked > 0 ? "\(checked) of \(parts.count) parts checked against food databases\(num(e["aiKcal"]).map { " (the AI first said \(Int($0)) kcal)" } ?? ""). An estimate, not a label."
                              : "The AI's estimate: none of the parts could be checked against a food database.")
                 .font(.caption2).foregroundStyle(.secondary) }
-            let added = done[turn, default: ""].contains("\(turn)-est")
-            HStack(spacing: 8) {
-                addButton("Add to \(meal.lowercased())", key: "est", turn: turn) {
+            let tag = "\(turn)-est", added = done[turn, default: ""].contains(tag)
+            HStack(spacing: 10) {
+                // one clear Add, the full width left over; every control on the card 40 pt tall with the same corners
+                Button {
                     var b = Assistant.basis(name: str(e["name"]), kcal: k, grams: num(e["portion_g"]), unit: str(e["unit"]).isEmpty ? "g" : str(e["unit"]), p: p, c: c, f: f)
                     // what the AI made it, kept on the item so a later change of amount can be learnt from
                     if !str(e["shop"]).isEmpty { b["shop"] = str(e["shop"]) }
                     if let g = pos(e["aiPortion"]) ?? pos(e["portion_g"]) { b["aiGrams"] = g; b["aiKcal"] = num(e["aiPortionKcal"]) ?? k }
                     b["aiMatches"] = parts.map { "\(str($0["name"])) → \(str($0["match"]).isEmpty ? "unchecked" : str($0["match"]))" }.joined(separator: "; ")
                     store.add(b, kcal: k, meal: meal)
+                    withAnimation { done[turn, default: ""] += "|\(tag)" }
+                } label: {
+                    Label(added ? "Added" : "Add to \(meal.lowercased())", systemImage: added ? "checkmark" : "plus.circle.fill")
+                        .font(.subheadline.weight(.bold)).lineLimit(1).minimumScaleFactor(0.8)
+                        .frame(maxWidth: .infinity).frame(height: Self.control)
+                        .foregroundStyle(Theme.onAccent).background(Theme.accent.opacity(added ? 0.5 : 1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
+                .buttonStyle(.plain).disabled(added)
                 if !added && !parts.isEmpty {   // the whole plate a size down or up, every part with it
-                    Button { scale(turn, by: 0.75) } label: { Label("Smaller", systemImage: "minus").font(.subheadline.weight(.bold)) }
-                    Button { scale(turn, by: 1.3) } label: { Label("Bigger", systemImage: "plus").font(.subheadline.weight(.bold)) }
+                    let start = pos(e["aiPortion"]) ?? pos(e["portion_g"]) ?? 1
+                    SizeStepper(value: "\(Int(((num(e["portion_g"]) ?? start) / start * 100).rounded()))%",
+                                less: { scale(turn, by: 0.75) }, more: { scale(turn, by: 1.3) })
                 }
             }
-            .buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.small)
         }
     }
 
+    /// Every button on the estimate card is this tall, with 12 pt corners.
+    static let control: CGFloat = 40
+
     /// A tapped part: the size the AI judged it at, the entry it was counted as (with Change), and its grams to type over.
     private func partDetail(_ pt: JSON, index i: Int, turn: UUID) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if !str(pt["size"]).isEmpty { (Text("Sized: ") + Text(str(pt["size"])).foregroundStyle(.primary)).font(.caption) }
-            HStack(spacing: 4) {
-                (Text("Counted as: ") + Text(str(pt["match"]).isEmpty ? "the AI's own numbers" : str(pt["match"])).foregroundStyle(.primary)).font(.caption)
-                if !["label", "them", "web"].contains(str(pt["src"])) {
-                    Button("Change") { changing = PartRef(turn: turn, index: i, part: pt) }.font(.caption.weight(.bold))
+        let g = num(pt["grams"]) ?? 0, canChange = !["label", "them", "web"].contains(str(pt["src"]))
+        return VStack(spacing: 0) {
+            if !str(pt["size"]).isEmpty {
+                detailRow("Sized") { Text(str(pt["size"])).foregroundStyle(.primary).multilineTextAlignment(.trailing) }
+                Divider()
+            }
+            Button { if canChange { changing = PartRef(turn: turn, index: i, part: pt) } } label: {
+                detailRow("Counted as") {
+                    HStack(spacing: 6) {
+                        Text(str(pt["match"]).isEmpty ? "The AI's own numbers" : str(pt["match"])).foregroundStyle(.primary).multilineTextAlignment(.trailing)
+                        if canChange { Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary) }
+                    }
                 }
             }
-            HStack(spacing: 8) {
-                Text("Grams").font(.caption)
-                PartGrams(grams: num(pt["grams"]) ?? 0) { g in setGrams(turn, index: i, to: g) }
-                Spacer()
-                // just this part a size down or up, like the plate's Smaller and Bigger
-                let g = num(pt["grams"]) ?? 0
-                Button { setGrams(turn, index: i, to: g * 0.75) } label: { Image(systemName: "minus") }.accessibilityLabel("Smaller")
-                Button { setGrams(turn, index: i, to: g * 1.3) } label: { Image(systemName: "plus") }.accessibilityLabel("Bigger")
+            .buttonStyle(.plain).disabled(!canChange)
+            Divider()
+            detailRow("Amount") {
+                // just this part a size down or up, or its grams typed in the middle
+                SizeStepper(less: { setGrams(turn, index: i, to: g * 0.75) }, more: { setGrams(turn, index: i, to: g * 1.3) }) {
+                    PartGrams(grams: g) { setGrams(turn, index: i, to: $0) }
+                }
             }
-            .buttonStyle(.bordered).buttonBorderShape(.circle).controlSize(.mini)
         }
-        .foregroundStyle(.secondary)
-        .padding(10).frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .font(.caption)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func detailRow<V: View>(_ label: String, @ViewBuilder _ value: () -> V) -> some View {
+        HStack(spacing: 12) {
+            Text(label).foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+            value()
+        }
+        .padding(.horizontal, 12).frame(minHeight: 48).contentShape(Rectangle())
     }
 
     // MARK: changing an estimate before it's added
@@ -493,6 +518,12 @@ struct AssistantView: View {
                         res["estimate"] = checked
                         withAnimation { turns[i].result = res }
                     }
+                    // then the shop's own published numbers, if it has any: only over a card nobody has changed yet
+                    if let shop = await Assistant.fromShop(checked), let i = turns.firstIndex(where: { $0.id == turn.id }),
+                       var res = turns[i].result, dict(res["estimate"])["aiPortion"] == nil, !done[turn.id, default: ""].contains("est") {
+                        res["estimate"] = shop
+                        withAnimation { turns[i].result = res }
+                    }
                 }
                 store.perform(["type": "chat", "chat": Assistant.record(id: chatId, turns: turns)], syncAfter: 3)
             } catch { problem = error.localizedDescription }
@@ -564,6 +595,34 @@ private struct MatchPicker: View {
     }
 }
 
+/// − | value | + in one 40 pt control, the same as the Add button beside it: the plate's percentage, or a part's grams.
+private struct SizeStepper<V: View>: View {
+    let less: () -> Void
+    let more: () -> Void
+    @ViewBuilder let value: V
+    var body: some View {
+        HStack(spacing: 0) {
+            step("minus", "Smaller", less)
+            Divider().frame(height: 18)
+            value.font(.subheadline.weight(.bold)).monospacedDigit().padding(.horizontal, 10).frame(minWidth: 56)
+            Divider().frame(height: 18)
+            step("plus", "Bigger", more)
+        }
+        .frame(height: AssistantView.control)
+        .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+    private func step(_ icon: String, _ name: String, _ act: @escaping () -> Void) -> some View {
+        Button(action: act) { Image(systemName: icon).font(.subheadline.weight(.semibold)).frame(width: 40, height: AssistantView.control).contentShape(Rectangle()) }
+            .buttonStyle(.plain).foregroundStyle(.primary).accessibilityLabel(name)
+    }
+}
+
+extension SizeStepper where V == Text {
+    init(value: String, less: @escaping () -> Void, more: @escaping () -> Void) {
+        self.init(less: less, more: more) { Text(value) }
+    }
+}
+
 /// A part's grams to type over; saved when the box loses focus or Done is tapped.
 private struct PartGrams: View {
     let grams: Double
@@ -571,9 +630,12 @@ private struct PartGrams: View {
     @State private var text = ""
     @FocusState private var focused: Bool
     var body: some View {
-        TextField("–", text: $text).keyboardType(.numberPad).focused($focused).multilineTextAlignment(.center)
-            .font(.caption.weight(.bold)).monospacedDigit().frame(width: 56).padding(.vertical, 4)
-            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8))
+        HStack(spacing: 2) {
+            TextField("–", text: $text).keyboardType(.numberPad).focused($focused).multilineTextAlignment(.trailing).fixedSize()
+            Text("g").foregroundStyle(.secondary)
+        }
+        .font(.subheadline.weight(.bold)).monospacedDigit()
+        .contentShape(Rectangle()).onTapGesture { focused = true }
             .onAppear { text = Fmt.int(grams) }
             .onChange(of: grams) { _, g in if !focused { text = Fmt.int(g) } }
             .onChange(of: focused) { _, on in if !on, let g = Fmt.typed(text) { save(g) } }
