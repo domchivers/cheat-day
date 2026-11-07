@@ -27,6 +27,32 @@ final class AssistantTests: XCTestCase {
         XCTAssertFalse(text.contains("nullable"), "Claude refuses a schema full of nulls as too large")
     }
 
+    /// Claude refused the whole format as too large from 1.0.69 to 1.0.74 (every chat fell back to Gemini): a message only
+    /// ever gets some of the cards, never recipe and lighter together, and the plate's totals aren't asked for.
+    func testEachMessageGetsAFormatClaudeTakes() {
+        func kinds(_ s: JSON) -> [String] { dict(dict(s["properties"])["kind"])["enum"] as? [String] ?? [] }
+        func cards(_ s: JSON) -> Set<String> { Set(dict(s["properties"]).keys).subtracting(["reply", "kind"]) }
+        let photo = Assistant.format(photos: true, text: "Kabana croissant from #1000 Bread")
+        XCTAssertEqual(kinds(photo), ["answer", "estimate"])
+        XCTAssertEqual(cards(photo), ["estimate"])
+        XCTAssertFalse(kinds(Assistant.format(photos: false, text: "What fits the rest of today?")).contains("lighter"))
+        XCTAssertFalse(kinds(Assistant.format(photos: false, text: "A lighter version of my pasta")).contains("recipe"))
+        XCTAssertTrue(kinds(Assistant.format(photos: true, text: "A recipe like this")).contains("recipe"), "a photo asking for a recipe can have one")
+        for t in ["", "lighter", "recipe"] {
+            for p in [true, false] {
+                let s = Assistant.format(photos: p, text: t)
+                XCTAssertFalse(cards(s).isSuperset(of: ["recipe", "lighter"]), "\(t) \(p)")
+                XCTAssertEqual(Set(s["required"] as? [String] ?? []), Set(dict(s["properties"]).keys), "every answer required")
+                XCTAssertEqual(Set(kinds(s)), cards(s).union(["answer"]))
+            }
+        }
+        let est = dict(dict(dict(Assistant.schema["properties"])["estimate"])["properties"])
+        XCTAssertNil(est["kcal_total"], "totals are added up from the parts")
+        let plate = Assistant.tidied(["parts": [["name": "Toast", "grams": 40, "kcal": 100, "protein_g": 4], ["name": "Butter", "grams": 10, "kcal": 72, "protein_g": 0]]], said: "toast", photos: false)
+        XCTAssertEqual(num(plate["kcal_total"]), 172)
+        XCTAssertEqual(num(plate["portion_g"]), 50)
+    }
+
     /// The owner's "110g cabbage, 170g cucumber": the AI's guesses (28 and 27 kcal, 6 g carbs each) put right from the food data.
     @MainActor
     func testFoodsAddedThroughAChangeAreChecked() async {

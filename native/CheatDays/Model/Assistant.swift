@@ -45,13 +45,31 @@ enum Assistant {
     /// No nulls anywhere: with them Claude refuses the schema ("compiled grammar is too large"). Every answer is
     /// required, the unused ones empty (an unused number 0, an unused word ""): with only reply and kind required,
     /// Claude sent an empty recipe and no estimate for "174 g, no skin", so there was nothing to add.
+    /// Every card the assistant can answer with. Never sent whole: Claude refuses a format past a certain size ("The
+    /// compiled grammar is too large"). 1.0.69's tags and shop fields went one past it, so from then every chat quietly
+    /// fell back to the slower Gemini models. Each message gets only the cards it can need (`format(photos:text:)`),
+    /// and the plate's totals are added up here from its parts rather than asked for.
     static let schema: JSON = full
+
+    /// The cards for this message: a photo only an estimate (unless it asks for a recipe or plan), a lighter or healthier
+    /// version no recipe, anything else no lighter.
+    static func format(photos: Bool, text: String) -> JSON {
+        let t = text.lowercased()
+        var cards = ["estimate", "plan", "edit", "recipe", "lighter"]
+        if photos && !bigJobs.contains(where: { t.contains($0) }) { cards = ["estimate"] }
+        else if ["lighter", "healthier", "swap", "instead"].contains(where: { t.contains($0) }) { cards.removeAll { $0 == "recipe" } }
+        else { cards.removeAll { $0 == "lighter" } }
+        var props = dict(full["properties"]).filter { ["reply"].contains($0.key) || cards.contains($0.key) }
+        props["kind"] = ["type": "string", "enum": ["answer"] + cards] as JSON
+        return obj(props)
+    }
+
     private static let full: JSON = obj([
         "reply": ["type": "string", "description": "What you'd say back, warm and short (one to three sentences). Always filled."] as JSON,
         "kind": ["type": "string", "enum": ["answer", "estimate", "plan", "edit", "recipe", "lighter"]] as JSON,
         "estimate": obj([
             "name": s, "portion_g": n, "unit": ["type": "string", "enum": ["g", "ml"]] as JSON,
-            "kcal_total": n, "protein_g": n, "carbs_g": n, "fat_g": n, "notes": s,
+            "notes": s,   // no totals: added up from the parts (one more field and Claude refuses the format)
             "shop": ["type": "string", "description": "the shop, café, bakery or chain it's from, if they said or it shows (a logo, a bag); else empty"] as JSON,
             "size_unsure": ["type": "boolean", "description": "true when nothing in the photo shows how big it is, or you can't tell how dense it is"] as JSON,
             "shop_items": ["type": "string", "description": "with a shop: each thing as the shop sells it and how many, like \"Kabana croissant x1; Tiramisu cream cake bites x4\"; else empty"] as JSON,
@@ -203,9 +221,10 @@ enum Assistant {
         // Claude for everything (Apple's on-device model made up foods: "1/2 tsp sesame oil" came back as roasted cauliflower).
         // Simple logs and questions go to the quick model; photos, recipes and plans to the careful one.
         let simple = isSimple(last.text, hasPhotos: !pics.isEmpty)
-        var answer = try await Gemini.ask(schema: schema, parts: parts, quick: simple, job: simple ? "logs" : pics.isEmpty ? "chat" : "photos")
+        let shape = format(photos: !pics.isEmpty, text: last.text)
+        var answer = try await Gemini.ask(schema: shape, parts: parts, quick: simple, job: simple ? "logs" : pics.isEmpty ? "chat" : "photos")
         // "Tap Make these changes" with no changes to tap: the reply said edit but left the edit out. Asked once more.
-        if missingCard(answer) { answer = (try? await Gemini.ask(schema: schema, parts: parts, quick: simple, job: simple ? "logs" : pics.isEmpty ? "chat" : "photos")) ?? answer }
+        if missingCard(answer) { answer = (try? await Gemini.ask(schema: shape, parts: parts, quick: simple, job: simple ? "logs" : pics.isEmpty ? "chat" : "photos")) ?? answer }
         if missingCard(answer) { answer["kind"] = "answer"; answer["reply"] = withoutButtons(str(answer["reply"])) }
         // "Add to lunch": the buttons add to the meal they named, not the one the screen was opened for
         if let m = Meals.named(in: last.text) { answer["meal"] = m }
@@ -397,6 +416,13 @@ enum Assistant {
                 if !bare.isEmpty { x["name"] = bare.prefix(1).uppercased() + bare.dropFirst() }
             }
             return x
+        }
+        // the plate's totals from its parts: the format doesn't ask for them
+        let parts = CheatDays.list(out["parts"])
+        if !parts.isEmpty {
+            func sum(_ k: String) -> Double { parts.reduce(0) { $0 + (num($1[k]) ?? 0) } }
+            out["kcal_total"] = sum("kcal").rounded(); out["protein_g"] = sum("protein_g"); out["carbs_g"] = sum("carbs_g"); out["fat_g"] = sum("fat_g")
+            if (num(e["portion_g"]) ?? 0) <= 0 { out["portion_g"] = sum("grams").rounded() }
         }
         return out
     }
