@@ -25,11 +25,20 @@ struct ExercisePicker: View {
                     // once added it stays, ticked, so you can see it went in
                     let isIn = added.contains(q.lowercased()) || inSession.contains(q.lowercased())
                     Section {
-                        Button { add(q.prefix(1).uppercased() + q.dropFirst(), detail: nil) } label: {
-                            Label(isIn ? "Added \"\(q)\" to the session" : "Add \"\(q)\" as a new exercise", systemImage: isIn ? "checkmark.circle.fill" : "plus.circle")
-                                .contentTransition(.symbolEffect(.replace))
+                        // a new exercise: ticked, then the picker closes by itself (a tap on the tick does nothing). Not
+                        // .disabled, which faded the tick a beat later
+                        Button {
+                            guard !isIn else { return }
+                            add(q.prefix(1).uppercased() + q.dropFirst(), detail: nil)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { dismiss() }
+                        } label: {
+                            Label {
+                                Text(isIn ? "Added \"\(q)\" to the session" : "Add \"\(q)\" as a new exercise").foregroundStyle(.primary)
+                            } icon: {
+                                Image(systemName: isIn ? "checkmark.circle.fill" : "plus.circle").foregroundStyle(Theme.accent)
+                                    .contentTransition(.symbolEffect(.replace))
+                            }
                         }
-                        .disabled(isIn)
                     }
                 }
                 switch tab {
