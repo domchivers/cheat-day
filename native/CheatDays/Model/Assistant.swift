@@ -190,6 +190,7 @@ enum Assistant {
     - If you can't tell what something is, say so and ask rather than guessing.
     - Logging food or a change: keep reply short, friendly and never preachy. It's a cheat-day app: treats are part of the plan.
     - A question or advice about food, training, recovery, sleep, weight or how to use the app: answer like a knowledgeable coach who knows them. Be specific to them, using their training, food, weight, goals and recent days above: if their own numbers point at a cause (a big jump in weight on that exercise, more sessions than usual, little sleep, a low-protein week), say so with their numbers. Never make numbers up. Give the likely causes and what to do now, as concrete steps with numbers (how much lighter, which swaps, how many days, what to try instead). Use short paragraphs or a few bullet points ("- "), with **bold** for the key points, up to about 200 words. Don't hedge everything; say what you'd do.
+    - In a conversation, read their latest message against what came before: a correction ("those exercises are my rehab") changes your advice, so take it on board and answer the point they made rather than repeating yourself. Put each bullet point on its own line.
     - Pain or injury: practical first steps and safer swaps for their own exercises, then the signs that mean seeing a physio or GP (sharp pain, swelling, locking or giving way, numbness, no better in a week or two). Never diagnose.
     """
 
@@ -251,7 +252,10 @@ enum Assistant {
         parts.append(["text": "\(context(store, skip: turns.first { $0.me }?.text ?? ""))\(earlier.isEmpty ? "" : "Recent conversation:\n\(earlier)\n")They now say: \"\(last.text)\"\(last.images.isEmpty && !pics.isEmpty ? " (about the photos from earlier)" : "")\n\(foodData(([last.text] + (seen?.foods ?? [])).joined(separator: ", ")))\(loggedBefore(store, text: ([last.text] + (seen?.foods ?? [])).joined(separator: " ")))"])
         // Claude for everything (Apple's on-device model made up foods: "1/2 tsp sesame oil" came back as roasted cauliflower).
         // Simple logs and questions go to the quick model; photos, recipes and plans to the careful one.
-        let simple = isSimple(last.text, hasPhotos: !pics.isEmpty)
+        // a follow-up in a conversation stays with the careful model: after advice, "No they've been helping me lol" isn't a
+        // food log (the quick one misread it and ran its points together)
+        let talking = turns.dropLast().last { !$0.me }.map { str($0.result?["kind"]) == "answer" } ?? false   // a quick log's "Logged to…" has no result
+        let simple = !talking && isSimple(last.text, hasPhotos: !pics.isEmpty)
         let shape = format(photos: !pics.isEmpty, text: last.text)
         var answer = try await Gemini.ask(schema: shape, parts: parts, quick: simple, job: simple ? "logs" : pics.isEmpty ? "chat" : "photos")
         // "Tap Make these changes" with no changes to tap: the reply said edit but left the edit out. Asked once more.
