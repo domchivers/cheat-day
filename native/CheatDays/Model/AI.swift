@@ -101,6 +101,7 @@ enum Gemini {
     }()
 
     private static func askNow(schema: JSON, parts: [JSON], quick: Bool, tries: Int) async throws -> JSON {
+        let parts = parts.map { p -> JSON in var x = p; x["cache"] = nil; return x }   // Claude's cache mark means nothing to Gemini
         let order = Array((quick ? lite + flash : flash + lite).filter { !spent().contains($0) }.prefix(tries))
         guard !order.isEmpty else { throw Failure(message: "Today's free AI allowance is used up. It comes back tomorrow morning.") }
         var thinking: String? = quick ? "minimal" : "low"

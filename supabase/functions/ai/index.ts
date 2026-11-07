@@ -34,11 +34,12 @@ function claudeSchema(s: any): any {
   return nullable ? { anyOf: [out, { type: "null" }] } : out;
 }
 
-// the app's parts are a list of {text} and {inline_data}
+// the app's parts are a list of {text} and {inline_data}. A text part marked cache (the assistant's rules, the same for
+// everyone, sent first) is cached for 5 minutes: later requests read it at a tenth of the price, and a bit faster
 function claudeContent(parts: any[]): any[] {
   return parts.map((p) => p.inline_data
     ? { type: "image", source: { type: "base64", media_type: p.inline_data.mime_type, data: p.inline_data.data } }
-    : { type: "text", text: String(p.text ?? "") });
+    : { type: "text", text: String(p.text ?? ""), ...(p.cache ? { cache_control: { type: "ephemeral" } } : {}) });
 }
 
 async function askClaude(req: Request, user: { id: string }, job: string) {
@@ -73,7 +74,10 @@ async function askClaude(req: Request, user: { id: string }, job: string) {
     } as any);
     const [pIn, pOut] = PRICES[model], input = r.usage.input_tokens, output = r.usage.output_tokens;
     const searches = (r.usage as any).server_tool_use?.web_search_requests ?? 0;
-    await admin.from("ai_usage").insert({ user_id: user.id, job, model, input_tokens: input, output_tokens: output, cost: (input * pIn + output * pOut) / 1e6 + searches * 0.01, ms: Date.now() - started, stop: r.stop_reason });
+    // cached input: written at 1.25 times the price, read at a tenth (input_tokens counts only the rest)
+    const wrote = (r.usage as any).cache_creation_input_tokens ?? 0, read = (r.usage as any).cache_read_input_tokens ?? 0;
+    const cost = ((input + wrote * 1.25 + read * 0.1) * pIn + output * pOut) / 1e6 + searches * 0.01;
+    await admin.from("ai_usage").insert({ user_id: user.id, job, model, input_tokens: input + wrote + read, output_tokens: output, cost, ms: Date.now() - started, stop: r.stop_reason });
     const text = r.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
     if (r.stop_reason === "refusal") return json({ error: "refused" }, 422);
     if (r.stop_reason === "max_tokens") return json({ error: "too long" }, 502);
