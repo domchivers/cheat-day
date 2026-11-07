@@ -92,14 +92,14 @@ enum Assistant {
         }.joined(separator: "; ")
     }
 
-    /// What they said in other chats over the last 3 days, and what was worked out, so "that chicken" can be found.
+    /// What they said in other chats over the last week, and what was worked out, so "that chicken" can be found.
     /// Skip is the current chat's first message (it's in the conversation already).
     @MainActor
     static func earlierChats(_ store: Store, skip: String) -> String {
-        let since = Date().addingTimeInterval(-3 * 86400)
+        let since = Date().addingTimeInterval(-7 * 86400)
         return CheatDays.list(store.doc["chats"]).filter { c in
             (ISO.date(str(c["when"])) ?? .distantPast) >= since && CheatDays.list(c["turns"]).first { str($0["role"]) == "me" }.map { str($0["text"]) } != skip
-        }.prefix(4).map { c -> String in
+        }.prefix(6).map { c -> String in
             let when = ISO.date(str(c["when"])).map { $0.formatted(.dateTime.weekday(.wide).hour().minute()) } ?? ""
             let lines = CheatDays.list(c["turns"]).compactMap { t -> String? in
                 if str(t["role"]) == "me" { return "they said \"\(str(t["text"]).prefix(160))\"" }
@@ -117,9 +117,10 @@ enum Assistant {
         let items = store.todayItems
         let eaten = items.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }, m = store.macros(items)
         let list = byMeal(items)
-        let past = (0..<3).compactMap { i -> String? in
+        // the last week, so "same as Tuesday" or "what I had last weekend" can be found
+        let past = (0..<7).compactMap { i -> String? in
             let d = DayKey.shift(store.today, days: -(i + 1)); guard let p = store.pastDay(d) else { return nil }
-            let name = i == 0 ? "Yesterday" : DayKey.date(d).formatted(.dateTime.weekday(.wide))
+            let name = i == 0 ? "Yesterday" : i < 6 ? DayKey.date(d).formatted(.dateTime.weekday(.wide)) : "Last \(DayKey.date(d).formatted(.dateTime.weekday(.wide)))"
             return "\(name) (\(d)), \(Int(p.kcal))/\(Int(p.budget)) kcal: \(p.items.isEmpty ? "nothing logged" : byMeal(p.items))"
         }.joined(separator: "\n")
         let chats = earlierChats(store, skip: skip)
@@ -132,7 +133,7 @@ enum Assistant {
         c += "They live in \(Plan.country): use the usual portion sizes there (how big a chicken thigh, a steak, a slice of bread or a glass of wine typically is). Today: budget \(Int(store.budgetToday)) kcal, eaten \(Int(eaten)) kcal (\(list.isEmpty ? "nothing yet" : list)), \(Int(store.budgetToday - eaten)) kcal left. "
         c += "Protein so far \(Int(m.p)) g\(store.proteinGoal.map { " of \(Int($0)) g" } ?? ""), carbs \(Int(m.c)) g, fat \(Int(m.f)) g. Workouts today: \(wk.isEmpty ? "none" : wk). Weight \(Fmt.one(store.latestWeight?.kg ?? store.weightKg)) kg.\n"
         c += "Recent days, by meal (when they mention a past meal, find it here by the meal they name: yesterday's dinner is under Yesterday, Dinner):\n\(past.isEmpty ? "none yet" : past)\n"
-        if !chats.isEmpty { c += "Their other chats with you in the last 3 days (when they mention food from before, it may be here):\n\(chats)\n" }
+        if !chats.isEmpty { c += "Their other chats with you in the last week (when they mention food from before, it may be here):\n\(chats)\n" }
         c += "Things they often have: \(store.quickEntries.prefix(8).map(\.name).joined(separator: ", ")). Their saved meals: \(meals.isEmpty ? "none" : meals).\n"
         if !loves.isEmpty || !avoid.isEmpty { c += "Foods they love: \(loves.isEmpty ? "not said" : loves). Never suggest: \(avoid.isEmpty ? "nothing" : avoid).\n" }
         c += store.habitsContext
@@ -152,7 +153,7 @@ enum Assistant {
     - The kind you pick must come with its filled object (kind=edit with edit.actions, kind=estimate with estimate, and so on): the app shows the buttons from it. Never mention a button the object doesn't make.
     - If they give numbers themselves (calories, grams, protein), use exactly those numbers.
     - A nutrition label in the photos or chat beats any food table: work from its per 100 g figures (a raw label eaten cooked: divide by the cooked weight left, about 0.75 for roasted meat) and set numbers_from to label. Keep using it for later amounts of the same food.
-    - More of a food they've logged before or you worked out in another chat ("that chicken from dinner yesterday"): scale it from those numbers (per gram) and set numbers_from to them.
+    - More of a food they've logged before or you worked out in another chat ("that chicken from dinner yesterday", "same breakfast as Tuesday", "the pasta from last week"): find it in Recent days, their other chats, or the things they've logged before, scale it from those numbers (per gram), set numbers_from to them, and say which day it's from. If you can't find it, say so and ask rather than guessing.
     - A specific packaged product they name or show (a brand's ice block, bar, biscuit, drink) is one part, never split into ingredients. With no label in sight (a wrapper, the front of a pack): numbers_from brand, servings how many they had, its full brand and product name as the part's name, so the app can look its label up. Mention they can photograph the nutrition panel or scan the box's barcode for exact numbers.
     - Name foods the way they did ("Aldi brushed potato", not the food table's "Coliban potato"); the table is for the numbers.
     - Keep the cooking they said, and put it in each part's name so it's checked against the right food: "pan fried, no oil" is "Potato, pan fried, no oil", never boiled.
@@ -198,7 +199,7 @@ enum Assistant {
         // photos come along from the last message that had some, when this one has none
         let pics = last.images.isEmpty ? (turns.dropLast().last { $0.me && !$0.images.isEmpty }?.images ?? []) : last.images
         var parts: [JSON] = pics.prefix(4).compactMap { Gemini.imagePart($0) }
-        parts.append(["text": "You are the assistant inside a cheat-day food diary app called Cheat Days. \(context(store, skip: turns.first { $0.me }?.text ?? ""))\(earlier.isEmpty ? "" : "Recent conversation:\n\(earlier)\n")They now say: \"\(last.text)\"\(last.images.isEmpty && !pics.isEmpty ? " (about the photos from earlier)" : "")\n\(foodData(([last.text] + (seen?.foods ?? [])).joined(separator: ", ")))\(loggedBefore(store, text: last.text))\n\(rules)"])
+        parts.append(["text": "You are the assistant inside a cheat-day food diary app called Cheat Days. \(context(store, skip: turns.first { $0.me }?.text ?? ""))\(earlier.isEmpty ? "" : "Recent conversation:\n\(earlier)\n")They now say: \"\(last.text)\"\(last.images.isEmpty && !pics.isEmpty ? " (about the photos from earlier)" : "")\n\(foodData(([last.text] + (seen?.foods ?? [])).joined(separator: ", ")))\(loggedBefore(store, text: ([last.text] + (seen?.foods ?? [])).joined(separator: " ")))\n\(rules)"])
         // Claude for everything (Apple's on-device model made up foods: "1/2 tsp sesame oil" came back as roasted cauliflower).
         // Simple logs and questions go to the quick model; photos, recipes and plans to the careful one.
         let simple = isSimple(last.text, hasPhotos: !pics.isEmpty)
@@ -222,9 +223,16 @@ enum Assistant {
     /// Foods they've logged before that sound like this one (the #1000 Bread kabana croissant again), as they finally
     /// stood: grams and kcal after any changes they made, so the same thing from the same place starts from what they confirmed.
     @MainActor
+    /// A food's name shares two words with what they said or what the photos showed, or it's a short name ("Croissant",
+    /// "Pad thai") whose one long word they used.
+    static func soundsLike(_ name: String, _ said: Set<String>) -> Bool {
+        let w = Set(FoodTable.words(name)), shared = w.intersection(said)
+        return shared.count >= 2 || (w.count <= 2 && shared.contains { $0.count >= 5 })
+    }
+
     static func loggedBefore(_ store: Store, text: String) -> String {
         let said = Set(FoodTable.words(text).filter { $0.count >= 4 })
-        guard said.count >= 2 else { return "" }
+        guard !said.isEmpty else { return "" }
         let since = DayKey.shift(store.today, days: -180)
         let days = [(store.today, store.todayItems)] + CheatDays.list(store.doc["history"]).filter { str($0["date"]) >= since }
             .sorted { str($0["date"]) > str($1["date"]) }.map { (str($0["date"]), CheatDays.list($0["items"])) }
@@ -232,13 +240,13 @@ enum Assistant {
         for (date, items) in days {
             for it in items {
                 let name = str(it["name"]), key = name.lowercased()
-                guard !seen.contains(key), Set(FoodTable.words(name)).intersection(said).count >= 2, let kcal = pos(it["kcal"]) else { continue }
+                guard !seen.contains(key), soundsLike(name, said), let kcal = pos(it["kcal"]) else { continue }
                 seen.insert(key)
                 let g = pos(it["kcalPer100"]).map { kcal / $0 * 100 } ?? pos(it["servingSize"])
-                lines.append("- \(name): \(g.map { "\(Int($0.rounded())) g, " } ?? "")\(Int(kcal)) kcal (\(date))")
-                if lines.count == 3 { break }
+                lines.append("- \(name)\(str(it["shop"]).isEmpty ? "" : " (\(str(it["shop"])))"): \(g.map { "\(Int($0.rounded())) g, " } ?? "")\(Int(kcal)) kcal (\(date))")
+                if lines.count == 5 { break }
             }
-            if lines.count == 3 { break }
+            if lines.count == 5 { break }
         }
         guard !lines.isEmpty else { return "" }
         return "They've logged things like this before, as they confirmed them:\n\(lines.joined(separator: "\n"))\nIf it's the same food from the same place, start from those grams and say so; otherwise ignore them.\n"
@@ -373,7 +381,9 @@ enum Assistant {
         let shop = str(e["shop"]).trimmingCharacters(in: .whitespaces)
         // "#1000 Bread" isn't a number they gave
         let words = shop.isEmpty ? said : said.replacingOccurrences(of: shop, with: "", options: .caseInsensitive)
+        // a number, or a food from before ("same as yesterday", "that pasta again"), whose logged numbers are theirs
         let gaveNumbers = words.range(of: #"\d"#, options: .regularExpression) != nil
+            || words.range(of: #"\b(same|again|yesterday|last|before|earlier|usual|another|that|those|leftover|leftovers)\b"#, options: [.regularExpression, .caseInsensitive]) != nil
         let label = photos || said.lowercased().contains("label")
         let shopPattern = NSRegularExpression.escapedPattern(for: shop) + #"(['’]s)?"#
         var out = e

@@ -67,6 +67,15 @@ final class FoodMatchTests: XCTestCase {
         XCTAssertEqual(str(given.first?["numbers_from"]), "them")
     }
 
+    func testPastFoodsAreFoundAndTheirNumbersKept() {
+        let said = Set(FoodTable.words("croissant from the bakery again").filter { $0.count >= 4 })
+        XCTAssertTrue(Assistant.soundsLike("Croissant", said), "a short name by its one long word")
+        XCTAssertTrue(Assistant.soundsLike("Kabana croissant", said))
+        XCTAssertFalse(Assistant.soundsLike("Chicken and rice bowl", said))
+        let again = list(Assistant.tidied(["parts": [["name": "Porridge", "numbers_from": "them"]]], said: "same breakfast as yesterday", photos: false)["parts"])
+        XCTAssertEqual(str(again.first?["numbers_from"]), "them", "yesterday's logged numbers are theirs")
+    }
+
     func testTheTrailSaysWhatWasChecked() {
         let e: JSON = ["shop": "#1000 Bread", "shop_items": "Kabana croissant x1", "parts": [["src": "afcd"], ["src": "afcd"], ["src": "ai"]]]
         XCTAssertEqual(Assistant.trail(e, shopFound: false), ["2 of 3 parts checked against the food database", "#1000 Bread doesn't publish its numbers"])
