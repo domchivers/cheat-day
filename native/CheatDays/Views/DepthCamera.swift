@@ -81,7 +81,9 @@ final class DepthCameraModel: NSObject, AVCapturePhotoCaptureDelegate {
     private var done: ((UIImage?, DepthMeasure.Result?) -> Void)?
     /// The camera's field of view, for the photo callback (off the main queue) when the depth has no calibration.
     @ObservationIgnored private nonisolated(unsafe) var fov: Float?
-    var depth = false, failed = false, busy = false
+    var depth = false   // one per line: @Observable can't take several in one declaration
+    var failed = false
+    var busy = false
 
     func start() async {
         guard device == nil else { return }
