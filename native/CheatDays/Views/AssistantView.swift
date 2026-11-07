@@ -239,7 +239,13 @@ struct AssistantView: View {
             HStack(spacing: 8) {
                 Text("Grams").font(.caption)
                 PartGrams(grams: num(pt["grams"]) ?? 0) { g in setGrams(turn, index: i, to: g) }
+                Spacer()
+                // just this part a size down or up, like the plate's Smaller and Bigger
+                let g = num(pt["grams"]) ?? 0
+                Button { setGrams(turn, index: i, to: g * 0.75) } label: { Image(systemName: "minus") }.accessibilityLabel("Smaller")
+                Button { setGrams(turn, index: i, to: g * 1.3) } label: { Image(systemName: "plus") }.accessibilityLabel("Bigger")
             }
+            .buttonStyle(.bordered).buttonBorderShape(.circle).controlSize(.mini)
         }
         .foregroundStyle(.secondary)
         .padding(10).frame(maxWidth: .infinity, alignment: .leading)
