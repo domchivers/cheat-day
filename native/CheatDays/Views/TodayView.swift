@@ -513,15 +513,17 @@ struct TodayView: View {
     private var cheatButton: some View {
         let isToday = store.nextCheat?.date == store.today
         return Button { if isToday { showCheat = true } else { showPlanner = true } } label: {
-            // the same blue pill as Same as yesterday and Save as meal; orange on the cheat day
+            // the same blue pill as Same as yesterday and Save as meal; on the cheat day the same pill in the beta pass's
+            // blue to lavender, like the cheat day screen
             HStack(spacing: 8) {
-                LogoMark().fill(isToday ? Theme.warn : Theme.accent).frame(width: 28, height: 15)
+                LogoMark().fill(isToday ? AnyShapeStyle(CheatDayView.tintGradient) : AnyShapeStyle(Theme.accent)).frame(width: 28, height: 15)
                 Text("Plan").font(.subheadline.weight(.bold))
+                    .foregroundStyle(isToday ? AnyShapeStyle(CheatDayView.tintGradient) : AnyShapeStyle(Theme.accent))
             }
             .padding(.horizontal, 4).padding(.vertical, 2)
         }
         .buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.regular)
-        .tint(isToday ? Theme.warn : Theme.accent)
+        .tint(isToday ? CheatDayView.tint : Theme.accent)
         .tourSpot(.plan)
         .accessibilityLabel(isToday ? "Plan your cheat day" : "Plan a meal")
     }
