@@ -108,7 +108,9 @@ enum Takeaway {
         let days = [store.todayItems] + list(store.doc["history"]).filter { str($0["date"]) >= since }.sorted { str($0["date"]) > str($1["date"]) }.map { list($0["items"]) }
         for items in days {
             for it in items.reversed() {
-                guard let k100 = FoodMath.kcalPer100(it), let p = num(it["p100"]), p > 0 else { continue }
+                // packaged foods only: a "Protein Yogurt Bowl" they made isn't a yoghurt from the fridge
+                guard let k100 = FoodMath.kcalPer100(it), let p = num(it["p100"]), p > 0,
+                      ["barcode", "label", "manual"].contains(str(it["source"])) || !str(it["brand"]).isEmpty else { continue }
                 let src = str(it["source"])
                 take(home(name: str(it["name"]), kcal100: k100, p100: p, c100: num(it["c100"]) ?? 0, f100: num(it["f100"]) ?? 0,
                           serving: pos(it["servingSize"]).flatMap { $0 == 100 ? nil : $0 }, label: ["barcode", "label", "manual"].contains(src)))
@@ -146,7 +148,11 @@ enum Takeaway {
         }
         let wanted = want.isEmpty ? [] : matching(true).isEmpty ? matching(false) : matching(true)
         let mains = menu.filter { $0.kind == "main" && !lowProtein($0) }
-        let pool = wanted.isEmpty ? mains.filter { $0.kcal <= kcal + 10 } : wanted
+        let fitting = mains.filter { $0.kcal <= kcal + 10 }
+        // nothing fits what's left (196 kcal at 10 pm): the three smallest dishes, each saying how far over
+        let tooBig = wanted.isEmpty && fitting.isEmpty
+        let pool = !wanted.isEmpty ? wanted : tooBig ? Array(mains.sorted { $0.kcal < $1.kcal }.prefix(3)) : fitting
+        let over = !wanted.isEmpty || tooBig
         let low = menu.filter { $0.kind == "main" && lowProtein($0) }.sorted { $0.kcal < $1.kcal }
         let cheapest = mains.map(\.kcal).min() ?? 0
         let sides = menu.filter { $0.kind == "side" && $0.kcal + cheapest > kcal + 10 }.sorted { $0.kcal < $1.kcal }
@@ -160,15 +166,15 @@ enum Takeaway {
         var tried = 0, best: [Combo] = []
         for item in pool {
             let all = mixes.map { Combo(item: item, home: $0) }; tried += all.count
-            let fits = wanted.isEmpty ? all.filter { $0.kcal <= kcal + 10 } : all
-            if let b = pick(fits, kcal: kcal, protein: protein, over: !wanted.isEmpty) { best.append(b) }
+            let fits = over ? all : all.filter { $0.kcal <= kcal + 10 }
+            if let b = pick(fits, kcal: kcal, protein: protein, over: over) { best.append(b) }
         }
         guard !best.isEmpty else { return Picks(combos: [], low: low, sides: sides, tried: tried, meets: false) }
-        let first = pick(best, kcal: kcal, protein: protein, over: !wanted.isEmpty)!
+        let first = pick(best, kcal: kcal, protein: protein, over: over)!
         var out: [(Combo, String)] = [(first, "Best fit")]
         var rest = best.filter { $0.item != first.item }
         if let m = rest.filter({ $0.kcal <= kcal + 10 }).max(by: { $0.p < $1.p }), m.p > first.p + 2 { out.append((m, "Most protein")); rest.removeAll { $0.item == m.item } }
-        while out.count < 3, let n = pick(rest, kcal: kcal, protein: protein, over: !wanted.isEmpty) {
+        while out.count < 3, let n = pick(rest, kcal: kcal, protein: protein, over: over) {
             let note = n.item.kcal > first.item.kcal + 20 ? "More from " + place : n.grams(.dessert) > 0 && first.grams(.dessert) == 0 ? "With dessert" : ""
             out.append((n, note)); rest.removeAll { $0.item == n.item }
         }
@@ -362,7 +368,8 @@ enum Takeaway {
         guard let route = await Gemini.askClaude("quick", schema: routeSchema, parts: [["text": routeAsk(last.text, earlier: earlier, photo: page)]]),
               photo != nil || route["takeaway"] as? Bool == true else { return nil }
         let said = str(route["restaurant"]).trimmingCharacters(in: .whitespaces)
-        let name = said.isEmpty ? (photo?.shop ?? "") : said
+        // "gami Windsor" as "Gami Windsor": a word typed all in lower case gets its capital
+        let name = (said.isEmpty ? (photo?.shop ?? "") : said).split(separator: " ").map { w in w == w.lowercased() ? w.prefix(1).uppercased() + w.dropFirst() : String(w) }.joined(separator: " ")
         guard !name.isEmpty else { return nil }
         step?("Asked about \(name)", "Finding \(name)'s menu…")
         var seen = list(route["seen"]).filter { (num($0["kj"]) ?? 0) > 0 && !str($0["name"]).isEmpty }

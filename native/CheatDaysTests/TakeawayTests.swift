@@ -104,6 +104,15 @@ final class TakeawayTests: XCTestCase {
         XCTAssertTrue(Takeaway.has(page, "this burger"), "'this' isn't a word of the dish")
     }
 
+    /// 196 kcal left at 10 pm: not "nothing fits", but the smallest dishes, each saying how far over.
+    func testNothingFitsShowsTheSmallest() {
+        let p = Takeaway.plan(menu: gami, home: home, kcal: 196, protein: 10, place: "Gami")
+        XCTAssertEqual(p.combos.count, 3)
+        XCTAssertEqual(p.combos[0].0.item.name, "Chicken Burger (Original)", "the smallest dish first (545 kcal)")
+        XCTAssertEqual(p.combos[0].0.home.count, 0, "nothing from home on top of a dish that's already over")
+        XCTAssertEqual(Takeaway.json(p.combos[0].0, note: "", restaurant: "Gami", kcal: 196)["over"] as? Double, 349)
+    }
+
     /// Low-protein dishes and sides that can't fit with a dish are listed, never suggested.
     func testLowProteinAndSides() {
         let p = Takeaway.plan(menu: gami, home: home, kcal: 854, protein: 59)
