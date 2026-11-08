@@ -1,4 +1,4 @@
-﻿// The takeaway planner's two asks, as the app sends them: is this message choosing from a restaurant (Haiku, no tools),
+// The takeaway planner's two asks, as the app sends them: is this message choosing from a restaurant (Haiku, no tools),
 // and that restaurant's menu with what it publishes (Haiku with two web searches).  node menu-check.js [restaurant] [message]
 const fs = require('fs'), path = require('path'), Anthropic = require('@anthropic-ai/sdk').default;
 const restaurant = process.argv[2] || 'Gami', message = process.argv[3] || '854 left, want Gami for dinner. What should I get?';
@@ -17,7 +17,7 @@ const routeAsk = (msg, earlier, photo = '') => `A message to the assistant in a 
 ${earlier ? `The conversation so far:\n${earlier}\n` : ''}Their message: \"${msg}\"
 restaurant: its name as they wrote it, else empty. area: a suburb or city if they said one, else empty. want: menu items they say they want, in their words. avoid: foods they don't want or don't have in (\"milk\"), in their words. seen: dishes they quote from a menu or delivery app with their energy (\"Chicken Burger (2280 kJ)\"), each with its kJ (kcal × 4.184 if they gave kcal), else empty. kcal and protein: numbers they gave for what they have left or for this meal (\"854 left\" is kcal 854), else 0.`;
 const menuAsk = (r, area, want, seen = []) => `Find the current menu of \"${r}\"${area ? ` in ${area}` : ''}, a restaurant, takeaway or chain in Australia, and the nutrition it publishes. Look first at its listing on DoorDash, Uber Eats or Menulog, which has the full current menu and where chains put kJ in each item's name (\"Chicken Burger (2280 kJ)\"), then its own website or nutrition PDF.${want.length ? ` They want: ${want.join(', ')}. Make sure those dishes are in the list if it sells them, with the kJ its listing shows today, not an old menu's.` : ''}${seen.length ? ` They read these on its listing today: ${seen.join(', ')}. List each with exactly that kJ, and estimate its protein, carbs and fat for that energy.` : ''} List up to 30 of its items, mains first, each as one serving as sold (with its size or pieces in the name, \"Original tenders, 4 pcs\").
-For each item: published is full when the restaurant gives its calories and protein, energy when it gives only kJ or kcal, none when it gives nothing. kj: exactly as published, else 0. kcal: as published, else kJ Ã· 4.184, else your estimate. protein_g, carbs_g and fat_g: as published, else your honest estimate from what the item is and its usual portion. kind: main, side, drink or dessert.
+For each item: published is full when the restaurant gives its calories and protein, energy when it gives only kJ or kcal, none when it gives nothing. kj: exactly as published, else 0. kcal: as published, else kJ ÷ 4.184, else your estimate. protein_g, carbs_g and fat_g: as published, else your honest estimate from what the item is and its usual portion. kind: main, side, drink or dessert.
 found false if you can't find its menu at all. source: where the numbers came from, a few words. Open the restaurant's DoorDash or Uber Eats store page with web_fetch and read the kJ from the item names there. When sources disagree, the delivery listing is today's menu: use its number. Never guess a kJ: an item whose energy you didn't read on a page has kj 0 and published none.`;
 (async () => {
   const client = new Anthropic({ baseURL: 'https://api.anthropic.com' });
@@ -37,7 +37,7 @@ found false if you can't find its menu at all. source: where the numbers came fr
   for (const m of ['This burger for dinner', 'Had this for lunch']) console.log(m, '+ page →', JSON.stringify(await ask('route+photo', routeAsk(m, '', page), routeSchema)));
   for (const [m, e] of [[message, ''], ['854 left, want Gami for dinner. Chicken Burger (2280 kJ) with a shake and ice cream', ''], ['what should I get for dinner?', ''], ['had a gami chicken burger for lunch', ''],
                         ['No milk left, and I want the wings', `They asked: ${message}\nYou suggested from Gami: Chicken Burger + protein shake + Kenny's ice cream`]]) {
-    console.log(m, 'â†’', JSON.stringify(await ask('route', routeAsk(m, e), routeSchema)));
+    console.log(m, '→', JSON.stringify(await ask('route', routeAsk(m, e), routeSchema)));
   }
   if (process.argv[4] === 'route') return;
   const menu = await ask('menu', menuAsk(restaurant, '', (process.argv[5] || '').split(',').filter(Boolean), (process.argv[6] || '').split(';').filter(Boolean)), menuSchema,
