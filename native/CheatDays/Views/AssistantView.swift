@@ -655,7 +655,8 @@ struct AssistantView: View {
 
     /// On a photo the depth camera measured.
     private var measuredBadge: some View {
-        Label("measured", systemImage: "ruler").font(.system(size: 9, weight: .heavy)).labelStyle(.titleAndIcon)
+        // the word alone, on one line: with the ruler too it wrapped ("measu / red") on the 70 pt photo
+        Text("measured").font(.system(size: 9, weight: .heavy)).lineLimit(1).minimumScaleFactor(0.7)
             .padding(.horizontal, 4).padding(.vertical, 1).background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 6)).foregroundStyle(.white)
             .padding(3)
     }
