@@ -191,4 +191,31 @@ final class AssistantTests: XCTestCase {
         XCTAssertEqual(num(b["servingSize"]), 450)
         XCTAssertEqual(num(b["kcalPer100"]) ?? 0, 182.2, accuracy: 0.1)
     }
+
+    /// "Having half of each" is a share of the last card, worked out in the app; anything more is for the AI.
+    func testAShareOfTheLastEstimate() throws {
+        XCTAssertEqual(Assistant.portion("Having half of each")?.share, 0.5)
+        XCTAssertEqual(Assistant.portion("had a third")?.share ?? 0, 1 / 3.0, accuracy: 0.001)
+        XCTAssertEqual(Assistant.portion("2/3 of it")?.share ?? 0, 2 / 3.0, accuracy: 0.001)
+        XCTAssertEqual(Assistant.portion("Ate 75%")?.share, 0.75)
+        XCTAssertEqual(Assistant.portion("half")?.label, "half")
+        XCTAssertNil(Assistant.portion("Just half the rice"))   // one part: the AI's job
+        XCTAssertNil(Assistant.portion("Had mainly 2/3 of the fish"))
+        XCTAssertNil(Assistant.portion("No biscuit base"))
+
+        let card: JSON = ["kind": "estimate", "reply": "Two slices", "estimate": [
+            "name": "Pandan and tiramisu cheesecake", "kcal_total": 1017, "portion_g": 311, "aiPortion": 311, "aiKcal": 1019,
+            "parts": [["name": "Cheesecake, pandan", "grams": 85, "kcal": 264, "protein_g": 5, "carbs_g": 20, "fat_g": 18, "src": "AUSNUT2023"] as JSON,
+                      ["name": "Coconut, desiccated", "grams": 3, "kcal": 20, "protein_g": 0.2, "carbs_g": 0.2, "fat_g": 2, "src": "AUSNUT2023"] as JSON]] as JSON]
+        let half = try XCTUnwrap(Assistant.scaled(card, share: 0.5, label: "half"))
+        let e = half["estimate"] as! JSON, parts = CheatDays.list(e["parts"])
+        XCTAssertEqual(num(parts[0]["grams"]), 43); XCTAssertEqual(num(parts[0]["kcal"]), 132)
+        XCTAssertEqual(num(parts[1]["kcal"]), 10)   // toppings halved too
+        XCTAssertEqual(num(e["kcal_total"]), 142)   // from its parts
+        XCTAssertEqual(str(parts[0]["src"]), "AUSNUT2023")   // still checked
+        XCTAssertNil(e["aiPortion"])   // the card starts again from 100%
+        XCTAssertEqual(str(e["name"]), "Pandan and tiramisu cheesecake, half")
+        XCTAssertEqual(half["scaled"] as? Bool, true)
+        XCTAssertNil(Assistant.scaled(["kind": "answer", "reply": "Hi"], share: 0.5, label: "half"))
+    }
 }

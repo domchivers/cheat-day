@@ -230,6 +230,15 @@ final class Store {
         case "correction":   // newest first, the last 300
             var rows = list(d["corrections"]); rows.insert(dict(op["row"]), at: 0)
             d["corrections"] = Array(rows.prefix(300))
+        case "gaps":   // foods the food tables had nothing for (the basque cheesecake, oden): how often, newest first, the last 200
+            var rows = list(d["gaps"])
+            for n in (op["names"] as? [String] ?? []) where !n.isEmpty {
+                let i = rows.firstIndex { str($0["name"]).lowercased() == n.lowercased() }
+                var row: JSON = i.map { rows.remove(at: $0) } ?? ["name": n, "times": 0]
+                row["times"] = Int(num(row["times"]) ?? 0) + 1; row["at"] = str(op["at"])
+                rows.insert(row, at: 0)
+            }
+            d["gaps"] = Array(rows.prefix(200))
         default:
             applyWorkoutOp(op, to: &d, today: today)
             applyHelperOp(op, to: &d, today: today)

@@ -686,8 +686,11 @@ struct AssistantView: View {
                 let turn = Assistant.Turn(me: false, text: str(r["reply"]), result: r)
                 withAnimation(.snappy) { turns.append(turn) }
                 busy = false   // the answer's in; the checks after it show on the card, not as "working"
-                if str(r["kind"]) == "estimate", let e = r["estimate"] as? JSON {
+                if str(r["kind"]) == "estimate", r["scaled"] == nil, let e = r["estimate"] as? JSON {
                     let checked = await Assistant.ground(e)
+                    // the parts no food table had (the sparkle): kept, so the tables can be filled where they're used
+                    let gaps = CheatDays.list(checked["parts"]).filter { str($0["src"]) == "ai" }.map { str($0["name"]) }
+                    if !gaps.isEmpty { store.perform(["type": "gaps", "names": gaps, "at": ISO.now()]) }
                     if let i = turns.firstIndex(where: { $0.id == turn.id }), var res = turns[i].result {
                         res["estimate"] = checked
                         withAnimation { turns[i].result = res }

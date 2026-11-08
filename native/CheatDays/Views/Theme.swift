@@ -159,12 +159,12 @@ enum FoodEmoji {
         // fast food and dishes
         ("🍕", ["pizza"]), ("🍔", ["burger", "cheeseburger", "big mac", "whopper"]), ("🌭", ["hot dog", "hotdog", "sausage roll"]), ("🍟", ["fries", "chips", "wedges", "hash brown"]),
         ("🌮", ["taco"]), ("🌯", ["burrito", "wrap", "kebab", "gyro", "souvlaki", "shawarma"]), ("🥙", ["pita", "falafel"]), ("🥪", ["sandwich", "sub", "toastie", "panini", "baguette", "roll"]),
-        ("🍣", ["sushi", "sashimi", "nigiri", "sushi roll", "hand roll", "kimbap"]), ("🍱", ["bento"]), ("🥟", ["dumpling", "gyoza", "dim sum", "bao", "wonton", "egg roll", "spring roll"]), ("🍜", ["ramen", "pho", "noodle", "laksa", "udon", "pad thai", "chow mein", "soba"]),
+        ("🍣", ["sushi", "chirashi", "sashimi", "nigiri", "sushi roll", "hand roll", "kimbap"]), ("🍱", ["bento"]), ("🥟", ["dumpling", "gyoza", "dim sum", "bao", "wonton", "egg roll", "spring roll"]), ("🍜", ["ramen", "pho", "noodle", "laksa", "udon", "pad thai", "chow mein", "soba"]),
         ("🍝", ["pasta", "spaghetti", "lasagne", "lasagna", "bolognese", "carbonara", "penne", "mac and cheese", "macaroni", "gnocchi", "ravioli"]),
         ("🍛", ["curry", "korma", "tikka", "butter chicken", "biryani", "dal", "dahl"]), ("🍚", ["rice", "risotto", "fried rice"]), ("🌶️", ["chilli sauce", "chili sauce", "hot sauce", "sweet chilli", "sriracha", "tabasco", "jalapeno", "jalapeño", "peri peri", "chilli", "chili", "chillies"]), ("🥘", ["paella", "stew", "casserole", "chilli con carne", "chili con carne"]),
         ("🍲", ["soup", "hot pot", "broth"]), ("🥗", ["salad", "poke", "buddha bowl", "slaw"]), ("🥧", ["pie", "quiche", "pasty"]), ("🫔", ["tamale", "enchilada"]),
         // meat, fish, eggs
-        ("🍗", ["thigh steak", "chicken", "wings", "drumstick", "nugget", "schnitzel", "turkey"]), ("🥩", ["steak", "beef", "lamb", "mince", "pork", "veal"]), ("🥓", ["bacon", "ham", "prosciutto", "salami", "pepperoni"]),
+        ("🍗", ["thigh steak", "chicken", "wings", "drumstick", "nugget", "schnitzel", "turkey"]), ("🥩", ["steak", "beef", "wagyu", "lamb", "mince", "pork", "veal", "biltong", "jerky"]), ("🥓", ["bacon", "ham", "prosciutto", "salami", "pepperoni"]),
         ("🍤", ["prawn", "shrimp", "tempura"]), ("🐟", ["salmon", "tuna", "fish", "cod", "barramundi", "sardine", "mackerel", "kingfish", "ceviche"]), ("🦐", ["seafood"]), ("🍳", ["omelette", "fried egg", "scrambled", "frittata"]), ("🥚", ["egg"]),
         // bakery and breakfast
         ("🥞", ["pancake", "crepe", "pikelet"]), ("🧇", ["waffle"]), ("🥐", ["croissant", "pastry", "danish", "pain au"]), ("🥯", ["bagel"]), ("🍞", ["toast", "bread", "sourdough", "crumpet", "muffin english"]),
@@ -192,10 +192,12 @@ enum FoodEmoji {
     /// The food the name ends on, since that's the dish ("Beef and carrot curry" is a curry, "egg & cheese wrap" a wrap),
     /// once the extras are gone: brackets, "with …", "no oil", and words like sliced or peeled ("Coliban potato, peeled,
     /// boiled, no oil" is a potato, not oil). The longer phrase wins at the same place ("fried rice", "dairy milk").
+    /// "No …" goes to the next comma ("no side sauces" took a chirashi set to a sauce jar), and "slices" after a food is
+    /// how it's cut ("Biltong slices" was a cake; a caramel slice still is one).
     /// Whole words only, plurals too, so steak isn't tea, water isn't watermelon and pepper isn't pepperoni.
     static func `for`(_ name: String) -> String? {
         var n = name.lowercased()
-        for (p, with) in [(#"\([^)]*\)"#, " "), (#"\s[—–]\s.*"#, ""), (#"\bwith\b.*"#, ""), (#"\+.*"#, ""), (#"\b(no|without)\s+[\w/]+"#, " "),
+        for (p, with) in [(#"\([^)]*\)"#, " "), (#"\s[—–]\s.*"#, ""), (#"\bwith\b.*"#, ""), (#"\+.*"#, ""), (#"\b(no|without)\b[^,]*"#, " "), (#"(?<=\w)\s+slices?\b"#, " "),
                           (#"\b(raw|cooked|sliced|peeled|boiled|fresh|dry|dried|ground|whole|skinless|shredded|grated|chopped|diced|ripe|unsweetened|plain|skimmed|roasted|toasted|grilled|steamed)\b"#, " ")] {
             n = n.replacingOccurrences(of: p, with: with, options: .regularExpression)
         }

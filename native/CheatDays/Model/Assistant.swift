@@ -174,7 +174,8 @@ enum Assistant {
     Hard rules:
     - The kind you pick must come with its filled object (kind=edit with edit.actions, kind=estimate with estimate, and so on): the app shows the buttons from it. Never mention a button the object doesn't make.
     - If they give numbers themselves (calories, grams, protein), use exactly those numbers.
-    - A change to an estimate you just gave ("didn't use the dips", "less rice", "no dressing", "having half of each"): start from your parts and grams in Recent conversation, take out or change only what they said, and keep every other part exactly as it was (same name and grams), so the total moves only by what changed. Half of it is every part at half its grams, toppings too, never a fresh estimate. In reply say what came off and how much ("took off the soy and the miso dressing, about 45 kcal"). Never size the plate again.
+    - A change to an estimate you just gave ("didn't use the dips", "less rice", "no dressing", "having half of each"): start from your parts and grams in Recent conversation, take out or change only what they said, and keep every other part exactly as it was (same name and grams), so the total moves only by what changed. Half of it is every part at half its grams, toppings too, never a fresh estimate.
+    - When the photo could be two things that would change the calories a lot (a biscuit base or the cake's own baked crust, fried or grilled, cream or yoghurt, a full-sugar or diet drink) and they haven't said, work it out as the likelier one, say which you took it for, and end the reply with one short question asking which it was. Only for a real difference, never for small things. In reply say what came off and how much ("took off the soy and the miso dressing, about 45 kcal"). Never size the plate again.
     - A nutrition label in the photos or chat beats any food table: work from its per 100 g figures (a raw label eaten cooked: divide by the cooked weight left, about 0.75 for roasted meat) and set numbers_from to label. Keep using it for later amounts of the same food.
     - More of a food they've logged before or you worked out in another chat ("that chicken from dinner yesterday", "same breakfast as Tuesday", "the pasta from last week"): find it in Recent days, their other chats, or the things they've logged before, scale it from those numbers (per gram), set numbers_from to them, and say which day it's from. If you can't find it, say so and ask rather than guessing.
     - A specific packaged product they name or show (a brand's ice block, bar, biscuit, drink) is one part, never split into ingredients. With no label in sight (a wrapper, the front of a pack): numbers_from brand, servings how many they had, its full brand and product name as the part's name, so the app can look its label up. Mention they can photograph the nutrition panel or scan the box's barcode for exact numbers.
@@ -239,6 +240,8 @@ enum Assistant {
     @MainActor
     static func ask(_ turns: [Turn], store: Store, ground groundNow: Bool = true, spotted: (@MainActor (Spotted) -> Void)? = nil) async throws -> JSON {
         guard let last = turns.last, last.me else { throw Gemini.Failure(message: "Nothing to ask.") }
+        // "half of each" after an estimate: worked out here, exactly, with no waiting
+        if last.images.isEmpty, let p = portion(last.text), let r = turns.dropLast().last(where: { !$0.me })?.result, let out = scaled(r, share: p.share, label: p.label) { return out }
         // new photos: a quick look first at what's in them, so the food tables' numbers for those foods (not only the ones
         // they typed) go along with the question, and a shop's logo is known early
         var seen: Spotted?
@@ -376,6 +379,46 @@ enum Assistant {
             .components(separatedBy: "\u{1}").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         let kept = sentences.filter { $0.range(of: #"\btap\b"#, options: [.regularExpression, .caseInsensitive]) == nil }
         return kept.isEmpty || kept.count == sentences.count ? reply : kept.joined(separator: " ")
+    }
+
+    /// "Having half of each", "had a third", "2/3 of it", "75%": a share of the last estimate and nothing else, or nil.
+    /// Asked of the AI, "half of each" came back as a fresh estimate (529 kcal for half of 1,017, the toppings whole).
+    static func portion(_ text: String) -> (share: Double, label: String)? {
+        var t = " " + text.lowercased().replacingOccurrences(of: #"[.!,]"#, with: " ", options: .regularExpression) + " "
+        for w in ["i", "i'm", "im", "had", "have", "having", "ate", "eating", "only", "just", "about", "around", "roughly", "like", "of", "it", "that",
+                  "this", "each", "both", "them", "the", "one", "ones", "a", "an", "is", "was", "actually", "really", "ish", "oh", "ok", "okay"] {
+            t = t.replacingOccurrences(of: " \(w) ", with: " ").replacingOccurrences(of: " \(w) ", with: " ")
+        }
+        t = t.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+        let named: [String: (Double, String)] = ["half": (0.5, "half"), "1/2": (0.5, "half"), "third": (1 / 3.0, "a third"), "1/3": (1 / 3.0, "a third"),
+                                                 "two thirds": (2 / 3.0, "two thirds"), "2/3": (2 / 3.0, "two thirds"), "quarter": (0.25, "a quarter"),
+                                                 "1/4": (0.25, "a quarter"), "three quarters": (0.75, "three quarters"), "3/4": (0.75, "three quarters")]
+        if let n = named[t] { return (n.0, n.1) }
+        if let m = t.range(of: #"^\d{1,3}\s?%$"#, options: .regularExpression), let p = Double(t[m].filter(\.isNumber)), p > 0, p < 100 { return (p / 100, "\(Int(p))%") }
+        return nil
+    }
+
+    /// The last estimate at a share of itself, done here rather than asked of the AI: every part at that share of its
+    /// grams and numbers (toppings too), checked parts staying checked, the card starting again from 100%.
+    static func scaled(_ result: JSON, share f: Double, label: String) -> JSON? {
+        guard str(result["kind"]) == "estimate", var e = result["estimate"] as? JSON, !CheatDays.list(e["parts"]).isEmpty else { return nil }
+        let keys = ["grams", "kcal", "protein_g", "carbs_g", "fat_g"]
+        e["parts"] = CheatDays.list(e["parts"]).map { p -> JSON in
+            var x = p
+            for k in keys { if let v = num(p[k]) { x[k] = k == "grams" || k == "kcal" ? (v * f).rounded() : v * f } }
+            return x
+        }
+        for k in ["portion_g", "kcal_total", "protein_g", "carbs_g", "fat_g", "aiKcal"] { if let v = num(e[k]) { e[k] = k == "portion_g" || k == "kcal_total" || k == "aiKcal" ? (v * f).rounded() : v * f } }
+        let parts = CheatDays.list(e["parts"])
+        e["kcal_total"] = parts.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }
+        e["portion_g"] = parts.reduce(0) { $0 + (num($1["grams"]) ?? 0) }
+        e["aiPortion"] = nil; e["aiPortionKcal"] = nil
+        e["name"] = "\(str(e["name"])), \(label)"
+        var out = result
+        out["estimate"] = e
+        out["scaled"] = true   // already checked: the database and shop checks aren't run again over it
+        out["reply"] = "That's \(label) of every part, about \(Int(num(e["kcal_total"]) ?? 0)) kcal. Add this one instead of the full amount."
+        return out
     }
 
     /// "How much watermelon for my last 88 calories?": the calories they named, when they didn't name an amount too.

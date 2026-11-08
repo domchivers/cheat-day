@@ -24,6 +24,10 @@ final class FoodEmojiTests: XCTestCase {
     func testTheDishNotTheExtras() {
         XCTAssertEqual(FoodEmoji.for("Coliban potato, peeled, boiled, no oil"), "🥔")
         XCTAssertEqual(FoodEmoji.for("Cucumber, sliced"), "🥒")             // not a slice of cake
+        XCTAssertEqual(FoodEmoji.for("Biltong slices"), "🥩")               // nor biltong slices
+        XCTAssertEqual(FoodEmoji.for("Caramel slice"), "🍰")                // a slice by itself is one
+        XCTAssertEqual(FoodEmoji.for("Chirashi lunch set (2/3 fish, rice and sides) and 3 wagyu slices, no side sauces"), "🥩")   // not the sauce it didn't have
+        XCTAssertEqual(FoodEmoji.for("Chirashi bowl"), "🍣")
         XCTAssertEqual(FoodEmoji.for("Watermelon"), "🍉")                   // not water
         XCTAssertEqual(FoodEmoji.for("Crust Classic Pepperoni, high protein base"), "🥓")   // not a pepper
         XCTAssertEqual(FoodEmoji.for("Hearty Beef and Carrot Curry (1 portion, ¼ batch)"), "🍛")
