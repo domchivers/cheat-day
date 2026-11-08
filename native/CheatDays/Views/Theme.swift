@@ -157,7 +157,7 @@ enum FoodEmoji {
         ("🍻", ["beers", "round of beers", "jug of beer", "jug"]), ("🍺", ["beer", "lager", "ale", "cider", "stout", "pint"]), ("🍶", ["sake", "soju"]), ("🥂", ["champagne", "prosecco", "sparkling wine", "cava"]), ("🍾", ["bottle of champagne", "bottle of prosecco"]), ("🍷", ["wine", "rosé"]), ("🍹", ["pina colada", "piña colada", "mai tai", "daiquiri", "mojito", "tropical cocktail"]), ("🍸", ["cocktail", "martini", "margarita", "spritz", "gin", "vodka"]),
         ("🥃", ["whisky", "whiskey", "rum", "bourbon"]), ("🍼", ["formula", "baby bottle"]), ("🥛", ["milk", "lassi"]), ("🧃", ["juice"]), ("🧊", ["ice", "ice cubes"]), ("💧", ["water"]),
         // fast food and dishes
-        ("🍕", ["pizza", "calzone", "lahmacun", "pide", "manakish", "manoushe"]), ("🍔", ["burger", "cheeseburger", "big mac", "whopper", "sloppy joe"]), ("🌭", ["hot dog", "hotdog", "sausage roll", "corn dog", "sausage sizzle", "snag", "bratwurst", "frankfurt"]), ("🍟", ["fries", "chips", "wedges", "hash brown", "poutine", "loaded fries"]),
+        ("🍕", ["pizza", "calzone", "lahmacun", "pide", "manakish", "manoushe"]), ("🍔", ["burger", "cheeseburger", "big mac", "whopper", "sloppy joe"]), ("🌭", ["hot dog", "hotdog", "sausage roll", "corn dog", "sausage sizzle", "snag", "bratwurst", "frankfurt"]), ("🍟", ["fries", "chips", "crisps", "potato chips", "corn chips", "wedges", "hash brown", "poutine", "loaded fries"]),
         ("🌮", ["taco", "quesadilla", "nachos", "tostada", "pupusa", "fajita"]), ("🌯", ["burrito", "wrap", "kebab", "gyro", "souvlaki", "shawarma", "chimichanga", "piadina", "doner", "döner"]), ("🧆", ["falafel"]), ("🥙", ["pita"]), ("🥪", ["sandwich", "sub", "toastie", "panini", "roll", "banh mi", "bánh mì", "cheesesteak", "croque monsieur", "arepa", "jaffle", "cubano"]),
         ("🥡", ["takeaway box", "takeout box", "chinese takeaway"]), ("🍥", ["fish cake", "narutomaki", "naruto", "kamaboko"]), ("🍣", ["sushi", "chirashi", "kaisendon", "poke don", "sashimi", "nigiri", "sushi roll", "hand roll", "kimbap"]), ("🍱", ["bento"]), ("🥟", ["dumpling", "gyoza", "dim sum", "bao", "wonton", "egg roll", "spring roll", "siu mai", "shumai", "har gow", "xiao long bao", "potsticker", "dim sim", "rice paper roll", "summer roll", "samosa", "momo", "pakora", "bhaji", "empanada", "pierogi", "mandu"]), ("🍜", ["ramen", "pho", "noodle", "laksa", "udon", "pad thai", "chow mein", "soba", "yakisoba", "lo mein", "dan dan", "hor fun", "char kway teow", "mee goreng", "hokkien mee", "pad see ew", "boat noodle", "khao soi", "bun bo hue", "bun cha", "japchae", "jjajangmyeon", "naengmyeon", "vermicelli"]),
         ("🍝", ["pasta", "spaghetti", "lasagne", "lasagna", "bolognese", "carbonara", "penne", "mac and cheese", "macaroni", "gnocchi", "ravioli", "linguine", "fettuccine", "tagliatelle", "rigatoni", "orecchiette", "pappardelle", "fusilli", "macaroni cheese"]),
@@ -207,9 +207,15 @@ enum FoodEmoji {
         return last(in: n) ?? last(in: name.lowercased())
     }
 
+    /// Words that are usually a flavour: they pick the icon only when nothing else in the name is a food ("Turtle chips
+    /// matcha" was a cup of tea and "Sea salt & chardonnay wine vinegar crisps" a glass of wine; a strawberry is still one).
+    static let flavours: Set<String> = ["matcha", "coffee", "chocolate", "vanilla", "strawberr", "mango", "coconut", "honey", "lemon", "lime",
+                                        "orange", "banana", "ginger", "cherr", "peach", "apple", "blueberr", "berry", "wine", "salt", "cheese", "chilli", "chili",
+                                        "sweet chilli", "garlic", "onion", "tomato", "pepper", "olive", "peanut butter"]
+
     private static func last(in n: String) -> String? {
         let ns = n as NSString
-        var best: (e: String, end: Int, len: Int)?
+        var best: (e: String, end: Int, len: Int)?, food: (e: String, end: Int, len: Int)?
         for (e, words) in table where e != "🍽️" || best == nil {   // the plate (bowl, meal) only when nothing else is named; it's last
             for w in words {
                 let esc = NSRegularExpression.escapedPattern(for: w)
@@ -218,9 +224,10 @@ enum FoodEmoji {
                       let m = rx.matches(in: n, range: NSRange(location: 0, length: ns.length)).last else { continue }
                 let end = m.range.location + m.range.length
                 if best == nil || end > best!.end || (end == best!.end && m.range.length > best!.len) { best = (e, end, m.range.length) }
+                if !flavours.contains(w), food == nil || end > food!.end || (end == food!.end && m.range.length > food!.len) { food = (e, end, m.range.length) }
             }
         }
-        return best?.e
+        return (food ?? best)?.e
     }
 }
 

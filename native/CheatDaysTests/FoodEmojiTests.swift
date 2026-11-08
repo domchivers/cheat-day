@@ -10,6 +10,18 @@ final class FoodEmojiTests: XCTestCase {
         XCTAssertEqual(FoodEmoji.for("Flat white"), "☕️")
     }
 
+    /// A flavour picks the icon only when nothing else in the name is a food (from the owner's Today list).
+    func testTheFoodNotItsFlavour() {
+        XCTAssertEqual(FoodEmoji.for("Turtle chips matcha"), "🍟")                               // not a cup of tea
+        XCTAssertEqual(FoodEmoji.for("Sea Salt & Chardonnay Wine Vinegar Crisps"), "🍟")         // not a glass of wine
+        XCTAssertEqual(FoodEmoji.for("Mulled wine"), "🍷")
+        XCTAssertEqual(FoodEmoji.for("Chicken, honey glazed"), "🍗")
+        XCTAssertEqual(FoodEmoji.for("Strawberries"), "🍓")                                     // a flavour by itself is the fruit
+        XCTAssertEqual(FoodEmoji.for("Matcha"), "🍵")
+        XCTAssertEqual(FoodEmoji.for("Toast, cheese"), "🍞")
+        XCTAssertEqual(FoodEmoji.for("Purple potato donut (Happy Sky Bakery)"), "🍩")
+    }
+
     func testPhrasesAndOrder() {
         XCTAssertEqual(FoodEmoji.for("Dairy Milk"), "🍫")
         XCTAssertEqual(FoodEmoji.for("Butter chicken"), "🍛")
