@@ -59,6 +59,18 @@ final class FoodEmojiTests: XCTestCase {
         XCTAssertEqual(FoodEmoji.for("Tiramisu"), "🍰")
         XCTAssertEqual(FoodEmoji.for("Miso glazed salmon"), "🐟")   // miso is a soup only by itself
         XCTAssertEqual(FoodEmoji.for("Shakshuka"), "🍳")
+        // the last of the food and drink icons
+        XCTAssertEqual(FoodEmoji.for("Eggplant parmigiana"), "🍆")
+        XCTAssertEqual(FoodEmoji.for("Rockmelon"), "🍈")
+        XCTAssertEqual(FoodEmoji.for("Watermelon slices"), "🍉")        // not a melon
+        XCTAssertEqual(FoodEmoji.for("Pina colada"), "🍹")
+        XCTAssertEqual(FoodEmoji.for("Glass of prosecco"), "🥂")
+        XCTAssertEqual(FoodEmoji.for("Takoyaki"), "🐙")
+        XCTAssertEqual(FoodEmoji.for("Lime"), "🍋‍🟩")
+        XCTAssertEqual(FoodEmoji.for("Shiitake mushrooms"), "🍄‍🟫")
+        XCTAssertEqual(FoodEmoji.for("Mango sorbet"), "🍨")
+        XCTAssertEqual(FoodEmoji.for("Salt and pepper squid"), "🦑")    // not salt
+        XCTAssertEqual(FoodEmoji.for("Iced latte"), "☕️")               // not ice
         XCTAssertEqual(FoodEmoji.for("Watermelon"), "🍉")                   // not water
         XCTAssertEqual(FoodEmoji.for("Crust Classic Pepperoni, high protein base"), "🥓")   // not a pepper
         XCTAssertEqual(FoodEmoji.for("Hearty Beef and Carrot Curry (1 portion, ¼ batch)"), "🍛")

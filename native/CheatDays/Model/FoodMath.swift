@@ -138,15 +138,18 @@ enum Meals {
     static var now: String { byTime(Calendar.current.component(.hour, from: Date())) }
 
     /// The meal an estimate goes to when the screen was opened at snack time: one whose name says ("Chirashi lunch set")
-    /// goes there, and a meal-sized one (450 kcal or more) is a late lunch from 3 to 5 pm or a late dinner from 10 pm.
-    /// A chirashi set at 15:13 offered "Add to snacks".
+    /// goes there, and one that looks like a meal goes to the nearest mealtime: lunch until 4 pm, dinner from then, and
+    /// dinner late at night. A chirashi set at 15:13 offered "Add to snacks". Tapping it on Today moves it if that's wrong.
     static func forEstimate(_ e: JSON, opened: String, hour h: Int = Calendar.current.component(.hour, from: Date())) -> String {
         guard opened == "Snacks" else { return opened }
         let name = str(e["name"])
         if let m = named(in: name) { return m }
-        // a big slice of cake at 3:39 is still a snack
-        guard (num(e["kcal_total"]) ?? 0) >= 450, words["Snacks"]?.firstMatch(in: name, range: NSRange(name.startIndex..., in: name)) == nil else { return opened }
-        if h >= 15 && h < 17 { return "Lunch" }
+        // a meal: big, or a plate of several things; a big slice of cake at 3:39 is still a snack
+        let kcal = num(e["kcal_total"]) ?? 0, parts = CheatDays.list(e["parts"]).count
+        guard kcal >= 450 || (parts >= 3 && kcal >= 300),
+              words["Snacks"]?.firstMatch(in: name, range: NSRange(name.startIndex..., in: name)) == nil else { return opened }
+        if h >= 15 && h < 16 { return "Lunch" }
+        if h >= 16 && h < 17 { return "Dinner" }
         if h >= 22 || h < 4 { return "Dinner" }
         return opened
     }

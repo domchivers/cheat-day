@@ -55,8 +55,11 @@ final class MealsBudgetTests: XCTestCase {
         let set: JSON = ["name": "Chirashi lunch set and 3 wagyu slices", "kcal_total": 816]
         XCTAssertEqual(Meals.forEstimate(set, opened: "Snacks", hour: 15), "Lunch")   // its name says
         let bowl: JSON = ["name": "Chirashi bowl", "kcal_total": 816]
-        XCTAssertEqual(Meals.forEstimate(bowl, opened: "Snacks", hour: 16), "Lunch")   // a late lunch
+        XCTAssertEqual(Meals.forEstimate(bowl, opened: "Snacks", hour: 15), "Lunch")    // nearest mealtime: lunch till 4
+        XCTAssertEqual(Meals.forEstimate(bowl, opened: "Snacks", hour: 16), "Dinner")   // then dinner
         XCTAssertEqual(Meals.forEstimate(bowl, opened: "Snacks", hour: 23), "Dinner")
+        let plate: JSON = ["name": "Toast, eggs and avocado", "kcal_total": 380, "parts": [[:], [:], [:]] as [JSON]]
+        XCTAssertEqual(Meals.forEstimate(plate, opened: "Snacks", hour: 15), "Lunch")   // a plate of several things is a meal
         let bar: JSON = ["name": "Protein bar", "kcal_total": 220]
         XCTAssertEqual(Meals.forEstimate(bar, opened: "Snacks", hour: 15), "Snacks")
         let cake: JSON = ["name": "Pandan coconut and tiramisu cheesecake, half of each", "kcal_total": 529]
