@@ -21,22 +21,31 @@ final class TourUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Next"].waitForExistence(timeout: 1))
     }
 
-    func testPlanCupboard() {
+    /// The planner as a chat: what the meal should come to and an example of how to ask (25 g protein with no goal),
+    /// the scanned food as a chip, ＋ for a barcode or a label, and the example put in the box with a tap.
+    func testPlanChat() {
         let app = XCUIApplication()
         app.launchArguments = ["-uitest-plan"]
         app.launch()
-        XCTAssertTrue(app.buttons["Scan a barcode"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["Photo of a label"].exists)
-        XCTAssertTrue(app.textFields.matching(NSPredicate(format: "value == %@", "Tesco Chicken breast fillets")).firstMatch.exists)
-        let a = XCTAttachment(screenshot: app.screenshot()); a.name = "plan-cupboard"; a.lifetime = .keepAlways; add(a)
+        let intro = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "What do you fancy?")).firstMatch
+        XCTAssertTrue(intro.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Tesco Chicken breast fillets")).firstMatch.exists, "the scanned food as a chip")
+        let example = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "and 25 g protein:")).firstMatch
+        XCTAssertTrue(example.exists, "an example of how to ask, with the meal's own numbers")
+        let a = XCTAttachment(screenshot: app.screenshot()); a.name = "plan-chat"; a.lifetime = .keepAlways; add(a)
 
-        // the protein for this meal: starts at its share (25 g with no goal), 5 g a tap
-        let more = app.buttons["More protein"]
-        for _ in 0..<3 where !more.isHittable { app.swipeUp() }
-        XCTAssertTrue(more.exists)
-        XCTAssertTrue(app.staticTexts["Your dinner share: 25 g"].exists || app.staticTexts["Your lunch share: 25 g"].exists || app.staticTexts["Your breakfast share: 25 g"].exists)
-        more.tap(); more.tap()
-        let b = XCTAttachment(screenshot: app.screenshot()); b.name = "plan-protein"; b.lifetime = .keepAlways; add(b)
+        // ＋ offers the two ways to add a food you have
+        app.buttons["Add a food you have"].tap()
+        XCTAssertTrue(app.buttons["Scan a barcode"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Photo of a label"].exists)
+        let b = XCTAttachment(screenshot: app.screenshot()); b.name = "plan-add"; b.lifetime = .keepAlways; add(b)
+        intro.tap()   // away from the menu: closes it
+
+        // the example goes into the box with a tap
+        if example.waitForExistence(timeout: 2) { example.tap() }
+        let box = app.textFields.containing(NSPredicate(format: "value BEGINSWITH %@", "About")).firstMatch
+        XCTAssertTrue(box.waitForExistence(timeout: 3) || app.textViews.containing(NSPredicate(format: "value BEGINSWITH %@", "About")).firstMatch.exists, "the example is in the box")
+        let c = XCTAttachment(screenshot: app.screenshot()); c.name = "plan-example"; c.lifetime = .keepAlways; add(c)
     }
 
     func testRecipeSwap() {
