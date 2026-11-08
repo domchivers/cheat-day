@@ -21,6 +21,8 @@ final class FoodIcons {
     func icon(_ name: String, hint: String = "") -> String? {
         let k = Self.norm(name)
         guard !k.isEmpty else { return nil }
+        // a sauce, spread or dip is the jar, whatever the AI picked (it gave Kewpie light mayo the salt shaker)
+        if FoodEmoji.for(name) == "🫙" { return "🫙" }
         if let e = picked[k] { return e }
         if !asked.contains(k) {
             asked.insert(k)
@@ -59,7 +61,7 @@ final class FoodIcons {
         "properties": ["n": ["type": "number"] as JSON, "icon": ["type": "string", "enum": FoodEmoji.icons] as JSON] as JSON] as JSON] as JSON] as JSON]
 
     nonisolated static func prompt(_ foods: [(name: String, hint: String)]) -> String {
-        "Pick the icon that best shows each food in a food diary: what the food itself is, not a flavour or an ingredient in its name (matcha chips are crisps, not tea; mulled wine is wine). For a meal of several things, the main dish. Coffees, lattes and iced coffees are the coffee cup; yoghurt is the bowl. Answer with each food's number.\n"
+        "Pick the icon that best shows each food in a food diary: what the food itself is, not a flavour or an ingredient in its name (matcha chips are crisps, not tea; mulled wine is wine). For a meal of several things, the main dish. Coffees, lattes and iced coffees are the coffee cup; yoghurt is the bowl. Sauces, condiments, spreads and dips (mayo, ketchup, soy sauce, dressing, jam, hummus) are the jar; the salt shaker is only for salt. Answer with each food's number.\n"
             + foods.enumerated().map { i, f in "\(i + 1). \(f.name)" + (f.hint.isEmpty ? "" : " (food table entry: \(f.hint))") }.joined(separator: "\n")
     }
 

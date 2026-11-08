@@ -110,4 +110,12 @@ final class FoodEmojiTests: XCTestCase {
     func testUnknown() {
         XCTAssertNil(FoodEmoji.for("Quick add"))
     }
+
+    /// Kewpie light mayo showed the salt shaker the AI picked: a sauce is the jar whatever was picked.
+    @MainActor func testSaucesAreTheJar() {
+        XCTAssertEqual(FoodEmoji.for("Kewpie light mayo"), "🫙")
+        XCTAssertEqual(FoodIcons.shared.icon("Kewpie light mayo"), "🫙")
+        XCTAssertEqual(FoodIcons.shared.icon("HEINZ TOMATO KETCHUP"), "🫙")
+        XCTAssertTrue(FoodIcons.prompt([("Kewpie light mayo", "")]).contains("the salt shaker is only for salt"))
+    }
 }
