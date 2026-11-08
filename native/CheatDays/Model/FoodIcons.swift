@@ -31,7 +31,7 @@ final class FoodIcons {
         return (kind.isEmpty ? nil : FoodEmoji.for(kind)) ?? FoodEmoji.for(name)
     }
 
-    static func norm(_ s: String) -> String { s.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) }
+    nonisolated static func norm(_ s: String) -> String { s.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) }
 
     private func queue(_ k: String, _ name: String, _ hint: String) {
         waiting[k] = (name, hint)
@@ -54,11 +54,11 @@ final class FoodIcons {
         running = false
     }
 
-    static let schema: JSON = ["type": "object", "required": ["icons"], "properties": ["icons": ["type": "array", "items": [
+    nonisolated static let schema: JSON = ["type": "object", "required": ["icons"], "properties": ["icons": ["type": "array", "items": [
         "type": "object", "required": ["n", "icon"],
         "properties": ["n": ["type": "number"] as JSON, "icon": ["type": "string", "enum": FoodEmoji.icons] as JSON] as JSON] as JSON] as JSON] as JSON]
 
-    static func prompt(_ foods: [(name: String, hint: String)]) -> String {
+    nonisolated static func prompt(_ foods: [(name: String, hint: String)]) -> String {
         "Pick the icon that best shows each food in a food diary: what the food itself is, not a flavour or an ingredient in its name (matcha chips are crisps, not tea; mulled wine is wine). For a meal of several things, the main dish. Coffees, lattes and iced coffees are the coffee cup; yoghurt is the bowl. Answer with each food's number.\n"
             + foods.enumerated().map { i, f in "\(i + 1). \(f.name)" + (f.hint.isEmpty ? "" : " (food table entry: \(f.hint))") }.joined(separator: "\n")
     }
