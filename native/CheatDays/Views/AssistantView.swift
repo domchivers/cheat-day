@@ -94,7 +94,7 @@ struct AssistantView: View {
             }
             .fullScreenCover(item: $viewing) { PhotoViewer(photos: $0) }
             .sheet(item: $changing) { ref in MatchPicker(ref: ref) { food in setMatch(ref, to: food); changing = nil }.presentationDetents([.medium]) }
-            .photosPicker(isPresented: $library, selection: $picked, maxSelectionCount: 4, matching: .images)
+            .photosPicker(isPresented: $library, selection: $picked, maxSelectionCount: 4, matching: .images, preferredItemEncoding: .current)   // the file as taken: a converted copy loses its depth
             .onChange(of: picked) { _, items in if !items.isEmpty { Task { await load(items) } } }
             .onChange(of: showChats) { _, open in KeyboardDone.quiet = !open }   // past chats keep their Done
             .onDisappear { KeyboardDone.quiet = false }
@@ -662,7 +662,12 @@ struct AssistantView: View {
     }
 
     private func load(_ items: [PhotosPickerItem]) async {
-        for i in items { if let d = try? await i.loadTransferable(type: Data.self), let img = UIImage(data: d) { pending.append(img) } }
+        for i in items {
+            guard let d = try? await i.loadTransferable(type: Data.self), let img = UIImage(data: d) else { continue }
+            pending.append(img)
+            // a Portrait photo keeps its depth: measured like the app's own camera's
+            if let r = await Task.detached(operation: { DepthCameraModel.measure(file: d) }).value { sizes[ObjectIdentifier(img)] = r }
+        }
         picked = []
     }
 

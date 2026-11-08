@@ -1,4 +1,5 @@
 import AVFoundation
+import ImageIO
 import SwiftUI
 import UIKit
 
@@ -145,6 +146,23 @@ final class DepthCameraModel: NSObject, AVCapturePhotoCaptureDelegate {
             done?(img, measured)
             done = nil
         }
+    }
+
+    /// A photo from the library measured from the depth saved in it: the iPhone camera's Portrait mode keeps one in the
+    /// file (on phones with two cameras or LiDAR), so a plate snapped while out still gets its sizes later. Nil for a
+    /// photo without depth, which is most of them.
+    nonisolated static func measure(file: Data) -> DepthMeasure.Result? {
+        guard let src = CGImageSourceCreateWithData(file as CFData, nil) else { return nil }
+        let aux = CGImageSourceCopyAuxiliaryDataInfoAtIndex(src, 0, kCGImageAuxiliaryDataTypeDisparity)
+            ?? CGImageSourceCopyAuxiliaryDataInfoAtIndex(src, 0, kCGImageAuxiliaryDataTypeDepth)
+        guard let info = aux as? [AnyHashable: Any], let data = try? AVDepthData(fromDictionaryRepresentation: info) else { return nil }
+        let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any]
+        // stored as the sensor saw it, with the turn to show it upright in the orientation tag (6 and 8 are upright)
+        let turn = props?[kCGImagePropertyOrientation] as? Int ?? 1
+        // the lens from the 35 mm-equivalent focal length when the depth carries no calibration (36 mm across)
+        let f35 = (props?[kCGImagePropertyExifDictionary] as? [CFString: Any])?[kCGImagePropertyExifFocalLenIn35mmFilm] as? Double
+        let fov = f35.map { Float(2 * atan(36 / (2 * $0)) * 180 / .pi) }
+        return measure(data, portrait: turn == 6 || turn == 8, fov: fov)
     }
 
     /// The depth map in metres, and the lens it was seen through, measured. Disparity (the dual camera's) is turned into depth.
