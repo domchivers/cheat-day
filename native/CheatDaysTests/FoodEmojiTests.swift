@@ -22,6 +22,17 @@ final class FoodEmojiTests: XCTestCase {
         XCTAssertEqual(FoodEmoji.for("Purple potato donut (Happy Sky Bakery)"), "🍩")
     }
 
+    /// The AI picks from the app's own icons only, and is told the food table entry when there is one.
+    func testTheAIChoosesFromTheAppsIcons() {
+        XCTAssertGreaterThan(FoodEmoji.icons.count, 120)
+        XCTAssertEqual(Set(FoodEmoji.icons).count, FoodEmoji.icons.count)   // each once
+        XCTAssertTrue(FoodEmoji.icons.contains("🍟")); XCTAssertTrue(FoodEmoji.icons.contains("🍽️"))
+        let p = FoodIcons.prompt([("Turtle chips matcha", ""), ("Corn chips", "Snack, corn chips")])
+        XCTAssertTrue(p.contains("1. Turtle chips matcha\n2. Corn chips (food table entry: Snack, corn chips)"))
+        let icon = dict(dict(dict(dict(FoodIcons.schema["properties"])["icons"])["items"])["properties"])["icon"] as? JSON
+        XCTAssertEqual((icon?["enum"] as? [String])?.count, FoodEmoji.icons.count)
+    }
+
     func testPhrasesAndOrder() {
         XCTAssertEqual(FoodEmoji.for("Dairy Milk"), "🍫")
         XCTAssertEqual(FoodEmoji.for("Butter chicken"), "🍛")

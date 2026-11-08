@@ -95,10 +95,13 @@ enum Theme {
 struct FoodDot: View {
     let name: String
     var size: CGFloat = 34
+    /// The food table entry it was matched to, if any ("Snack, corn chips"): its kind leads.
+    var hint: String = ""
     var body: some View {
         let t = Theme.tone(name)
         Group {
-            if let e = FoodEmoji.for(name) {
+            // the AI's pick for this name once it has one (FoodIcons), the word rules until then
+            if let e = FoodIcons.shared.icon(name, hint: hint) {
                 // Microsoft's Fluent flat icon for it when we have one, else the phone's own emoji; no circle behind
                 if let img = UIImage(named: FoodEmoji.asset(e)) { Image(uiImage: img).resizable().scaledToFit().padding(size * 0.06) }
                 else { Text(e).font(.system(size: size * 0.78)) }
@@ -183,6 +186,9 @@ enum FoodEmoji {
         // general
         ("🍽️", ["dinner", "lunch", "meal", "plate", "bowl"])
     ]
+
+    /// Every icon a food can have, for the AI to choose from (FoodIcons).
+    static let icons: [String] = { var seen = Set<String>(); return table.map(\.0).filter { seen.insert($0).inserted } }()
 
     /// The bundled icon's name for an emoji (Fluent Emoji, flat style, MIT licence; added by tools/fluent.py).
     static func asset(_ emoji: String) -> String {

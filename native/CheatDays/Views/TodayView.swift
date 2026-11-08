@@ -695,7 +695,7 @@ struct FoodRow: View {
     var body: some View {
         let kcal = num(item["kcal"]) ?? 0
         HStack(spacing: 12) {
-            FoodDot(name: str(item["name"]))
+            FoodDot(name: str(item["name"]), hint: str(item["matched"]))
             VStack(alignment: .leading, spacing: 2) {
                 Text(str(item["name"])).font(.body.weight(.semibold)).lineLimit(2)
                 let detail = FoodMath.amountText(item, kcal: kcal)
