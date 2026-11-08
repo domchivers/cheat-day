@@ -142,8 +142,10 @@ enum Meals {
     /// A chirashi set at 15:13 offered "Add to snacks".
     static func forEstimate(_ e: JSON, opened: String, hour h: Int = Calendar.current.component(.hour, from: Date())) -> String {
         guard opened == "Snacks" else { return opened }
-        if let m = named(in: str(e["name"])) { return m }
-        guard (num(e["kcal_total"]) ?? 0) >= 450 else { return opened }
+        let name = str(e["name"])
+        if let m = named(in: name) { return m }
+        // a big slice of cake at 3:39 is still a snack
+        guard (num(e["kcal_total"]) ?? 0) >= 450, words["Snacks"]?.firstMatch(in: name, range: NSRange(name.startIndex..., in: name)) == nil else { return opened }
         if h >= 15 && h < 17 { return "Lunch" }
         if h >= 22 || h < 4 { return "Dinner" }
         return opened

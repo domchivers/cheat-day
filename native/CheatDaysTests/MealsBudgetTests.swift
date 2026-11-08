@@ -59,6 +59,8 @@ final class MealsBudgetTests: XCTestCase {
         XCTAssertEqual(Meals.forEstimate(bowl, opened: "Snacks", hour: 23), "Dinner")
         let bar: JSON = ["name": "Protein bar", "kcal_total": 220]
         XCTAssertEqual(Meals.forEstimate(bar, opened: "Snacks", hour: 15), "Snacks")
+        let cake: JSON = ["name": "Pandan coconut and tiramisu cheesecake, half of each", "kcal_total": 529]
+        XCTAssertEqual(Meals.forEstimate(cake, opened: "Snacks", hour: 15), "Snacks")   // big, but cake
         XCTAssertEqual(Meals.forEstimate(bowl, opened: "Breakfast", hour: 15), "Breakfast")   // opened for a meal: that meal
     }
 }
