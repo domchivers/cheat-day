@@ -218,4 +218,19 @@ final class AssistantTests: XCTestCase {
         XCTAssertEqual(half["scaled"] as? Bool, true)
         XCTAssertNil(Assistant.scaled(["kind": "answer", "reply": "Hi"], share: 0.5, label: "half"))
     }
+
+    /// "Ice cream Kenny's" after the burger card: the 220 g burger keeps its 579 kcal, only the changed part is new.
+    func testAFollowUpKeepsWhatItDidntChange() {
+        let before: JSON = ["parts": [["name": "Chicken burger, takeaway", "grams": 220, "kcal": 579, "protein_g": 30, "carbs_g": 50, "fat_g": 28, "src": "us", "match": "Chicken burger"],
+                                      ["name": "Ice cream, vanilla", "grams": 100, "kcal": 193, "protein_g": 3, "carbs_g": 22, "fat_g": 10, "src": "au"]]]
+        let now: JSON = ["parts": [["name": "Chicken burger, takeaway", "grams": 220, "kcal": 376, "protein_g": 25, "carbs_g": 40, "fat_g": 15, "src": "au"],
+                                   ["name": "Kenny's ice cream", "grams": 100, "kcal": 106, "protein_g": 7.2, "carbs_g": 11.6, "fat_g": 3.4, "src": "label"]]]
+        let kept = Assistant.keepingEarlier(now, before)
+        let parts = list(kept["parts"])
+        XCTAssertEqual(num(parts[0]["kcal"]), 579)
+        XCTAssertEqual(str(parts[0]["src"]), "us")
+        XCTAssertEqual(num(parts[1]["kcal"]), 106)
+        XCTAssertEqual(num(kept["kcal_total"]) ?? 0, 685, accuracy: 1)
+        XCTAssertEqual(num(list(Assistant.keepingEarlier(now, nil)["parts"])[0]["kcal"]), 376)
+    }
 }

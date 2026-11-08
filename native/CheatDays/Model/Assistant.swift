@@ -174,7 +174,7 @@ enum Assistant {
     Hard rules:
     - The kind you pick must come with its filled object (kind=edit with edit.actions, kind=estimate with estimate, and so on): the app shows the buttons from it. Never mention a button the object doesn't make.
     - If they give numbers themselves (calories, grams, protein), use exactly those numbers.
-    - A change to an estimate you just gave ("didn't use the dips", "less rice", "no dressing", "having half of each"): start from your parts and grams in Recent conversation, take out or change only what they said, and keep every other part exactly as it was (same name and grams), so the total moves only by what changed. Half of it is every part at half its grams, toppings too, never a fresh estimate.
+    - A change to an estimate you just gave ("didn't use the dips", "less rice", "no dressing", "having half of each"): start from your parts and grams in Recent conversation, take out or change only what they said, and keep every other part exactly as it was (same name and grams), so the total moves only by what changed. Half of it is every part at half its grams, toppings too, never a fresh estimate. Naming the brand or kind of one part ("Ice cream Kenny's", "it was Lurpak") renames just that part, with the same grams.
     - When the photo could be two things that would change the calories a lot (a biscuit base or the cake's own baked crust, fried or grilled, cream or yoghurt, a full-sugar or diet drink) and they haven't said, work it out as the likelier one, say which you took it for, and end the reply with one short question asking which it was. Only for a real difference, never for small things. In reply say what came off and how much ("took off the soy and the miso dressing, about 45 kcal"). Never size the plate again.
     - A nutrition label in the photos or chat beats any food table: work from its per 100 g figures (a raw label eaten cooked: divide by the cooked weight left, about 0.75 for roasted meat) and set numbers_from to label. Keep using it for later amounts of the same food.
     - More of a food they've logged before or you worked out in another chat ("that chicken from dinner yesterday", "same breakfast as Tuesday", "the pasta from last week"): find it in Recent days, their other chats, or the things they've logged before, scale it from those numbers (per gram), set numbers_from to them, and say which day it's from. If you can't find it, say so and ask rather than guessing.
@@ -682,6 +682,8 @@ enum Assistant {
             // numbers from their label or their own words win: the Portuguese chicken's label (163 kcal per 100 g cooked)
             // was swapped for a generic roast chicken's 190
             if ["label", "them"].contains(str(x["numbers_from"])) { parts[i]["src"] = x["numbers_from"]; continue }
+            // a food they logged from its own label: theirs, not the table's (Kenny's ice cream was counted as plain ice cream, 195 for 106)
+            if let y = await yours(str(x["name"])) { parts[i] = checked(x, kcal100: y.kcal100, p100: y.p100, c100: y.c100, f100: y.f100, source: "label", match: y.food); continue }
             // a branded product: its own label from the web, or the AI's guess (44 kcal for a Monarc mango stick, label 43;
             // generic frozen yogurt made it 57)
             if str(x["numbers_from"]) == "brand" {
@@ -723,6 +725,42 @@ enum Assistant {
             }
         }
         return sane(totals(e, parts: parts))
+    }
+
+    /// A food they've logged from its label or barcode, or scanned in, that this part is: every long word of the part's
+    /// name in its name ("Kenny's ice cream" is their "Kenny's salted caramel ice cream", "Chicken burger" isn't their
+    /// chicken breast), with its numbers per 100 g.
+    @MainActor static func yours(_ name: String) -> (food: String, kcal100: Double, p100: Double?, c100: Double?, f100: Double?)? {
+        let w = Set(FoodTable.words(name).filter { $0.count >= 4 })
+        guard w.count >= 2 else { return nil }
+        func fits(_ n: String) -> Bool { w.isSubset(of: Set(FoodTable.words(n))) }
+        for s in PantryItem.Saved.load(UserDefaults.standard.string(forKey: "pantry.scans") ?? "[]") where s.kcal100 > 0 && fits(s.name) {
+            return (s.name, s.kcal100, s.p100, s.c100, s.f100)
+        }
+        let store = Store.shared
+        let days = [store.todayItems] + CheatDays.list(store.doc["history"]).sorted { str($0["date"]) > str($1["date"]) }.prefix(180).map { CheatDays.list($0["items"]) }
+        for items in days {
+            for it in items where ["barcode", "label"].contains(str(it["source"])) && fits(str(it["name"])) {
+                if let k = FoodMath.kcalPer100(it) { return (str(it["name"]), k, num(it["p100"]), num(it["c100"]), num(it["f100"])) }
+            }
+        }
+        return nil
+    }
+
+    /// A follow-up's parts that it left as they were (same name, same grams) keep the earlier card's checked numbers:
+    /// "Ice cream Kenny's" turned the same 220 g burger from 579 kcal into 376 when it was checked again.
+    static func keepingEarlier(_ e: JSON, _ before: JSON?) -> JSON {
+        guard let before else { return e }
+        let old = CheatDays.list(before["parts"])
+        var kept = false
+        let parts = CheatDays.list(e["parts"]).map { p -> JSON in
+            guard let o = old.first(where: { str($0["name"]).lowercased() == str(p["name"]).lowercased() && abs((num($0["grams"]) ?? 0) - (num(p["grams"]) ?? 0)) < 1 }) else { return p }
+            var x = p
+            for k in ["kcal", "protein_g", "carbs_g", "fat_g", "src", "match"] { x[k] = o[k] }
+            kept = true
+            return x
+        }
+        return kept ? totals(e, parts: parts) : e
     }
 
     /// Every part through Sanity: calories that don't fit the macros are fixed from them, odd values are flagged on

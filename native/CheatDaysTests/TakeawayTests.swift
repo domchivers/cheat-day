@@ -72,6 +72,18 @@ final class TakeawayTests: XCTestCase {
         XCTAssertGreaterThan(Takeaway.json(best, note: "", restaurant: "Gami", kcal: 854)["over"] as? Double ?? 0, 10, "says how far over")
     }
 
+    /// "I'd like the chicken burger, with a shake and ice cream" (as Claude reads it): the burger, with a shake and ice cream from home.
+    func testBurgerWithAShakeAndIceCream() {
+        let menu = gami + [Takeaway.Item(name: "Strawberry milkshake", kind: "drink", tier: "energy", kcal: 400, p: 10, c: 60, f: 12)]
+        let p = Takeaway.plan(menu: menu, home: home, kcal: 854, protein: 59, want: ["chicken burger", "shake", "ice cream"], place: "Gami")
+        XCTAssertEqual(Set(p.combos.map(\.0.item.name)), ["Chicken Burger (Original)"], "only the burger, never the milkshake")
+        let best = p.combos[0].0
+        XCTAssertGreaterThan(best.grams(.powder), 0)
+        XCTAssertGreaterThan(best.grams(.dessert), 0)
+        XCTAssertGreaterThanOrEqual(best.p, 58.5)
+        XCTAssertLessThanOrEqual(best.kcal, 864)
+    }
+
     /// Low-protein dishes and sides that can't fit with a dish are listed, never suggested.
     func testLowProteinAndSides() {
         let p = Takeaway.plan(menu: gami, home: home, kcal: 854, protein: 59)
@@ -94,6 +106,9 @@ final class TakeawayTests: XCTestCase {
     func testWhichMessagesAreAsked() {
         XCTAssertTrue(Takeaway.mightBe("854 left, want Gami for dinner. What should I get?", after: nil))
         XCTAssertTrue(Takeaway.mightBe("what can I order from Nando's?", after: nil))
+        // no question mark: a wish, with the numbers left (this went to a plain estimate in 1.0.91)
+        XCTAssertTrue(Takeaway.mightBe("854 kcal and 59 g protein left, want Gami for dinner. I'd like the chicken burger, with a shake and ice cream", after: nil))
+        XCTAssertTrue(Takeaway.mightBe("fancy Guzman for lunch", after: nil))
         XCTAssertFalse(Takeaway.mightBe("had a gami chicken burger for lunch", after: nil))
         XCTAssertFalse(Takeaway.mightBe("2 eggs and toast", after: nil))
         let ta = Assistant.Turn(me: false, text: "", result: ["kind": "takeaway"])

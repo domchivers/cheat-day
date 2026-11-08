@@ -134,7 +134,17 @@ enum Takeaway {
             }
         }
         let menu = menu.filter { i in !avoid.contains { i.name.lowercased().contains($0) } }, home = home.filter { !avoided($0) }
-        let wanted = menu.filter { i in want.contains { w in words(w).contains { i.name.lowercased().contains($0) } } }
+        // dishes they asked for: "a shake and ice cream" in the same message are the foods from home, not a menu milkshake
+        // and "the chicken burger" is the burger, not every chicken dish: all its words, else any of them
+        func matching(_ all: Bool) -> [Item] {
+            menu.filter { i in
+                i.kind == "main" && want.contains { w in
+                    let ws = words(w), n = i.name.lowercased()
+                    return !ws.isEmpty && (all ? ws.allSatisfy { n.contains($0) } : ws.contains { n.contains($0) })
+                }
+            }
+        }
+        let wanted = want.isEmpty ? [] : matching(true).isEmpty ? matching(false) : matching(true)
         let mains = menu.filter { $0.kind == "main" && !lowProtein($0) }
         let pool = wanted.isEmpty ? mains.filter { $0.kcal <= kcal + 10 } : wanted
         let low = menu.filter { $0.kind == "main" && lowProtein($0) }.sorted { $0.kcal < $1.kcal }
@@ -252,8 +262,10 @@ enum Takeaway {
     static func mightBe(_ text: String, after last: Assistant.Turn?) -> Bool {
         if str(last?.result?["kind"]) == "takeaway" { return true }
         let t = " " + text.lowercased() + " "
+        // a question, or a wish ("854 left, want Gami for dinner. I'd like the chicken burger" has no question mark)
         let asks = t.contains("?") || t.range(of: #"^\s*(what|which|should|can|could|help)\b"#, options: .regularExpression) != nil
-        let place = t.range(of: #"\b(order|takeaway|takeout|take out|delivery|uber|doordash|menulog|deliveroo|menu|restaurant|from|at|get|grab)\b"#, options: .regularExpression) != nil
+            || t.range(of: #"\b(want|wanna|fancy|fancying|craving|feel like|i'?d like|i would like|thinking of|getting|ordering)\b"#, options: .regularExpression) != nil
+        let place = t.range(of: #"\b(order|takeaway|takeout|take out|delivery|uber|doordash|menulog|deliveroo|menu|restaurant|from|at|get|grab|left|for (dinner|lunch|tea|breakfast))\b"#, options: .regularExpression) != nil
         return asks && place
     }
 
