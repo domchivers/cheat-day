@@ -249,6 +249,8 @@ enum Assistant {
         // they typed) go along with the question, and a shop's logo is known early
         var seen: Spotted?
         if !last.images.isEmpty, let s = await spot(last.images, said: last.text) { seen = s; spotted?(s) }
+        // a delivery-app page in the photo, and they're choosing ("this burger for dinner"): the takeaway planner, with its kJ
+        if let s = seen, !s.listing.isEmpty, let t = await Takeaway.answer(turns, store: store, step: step, photo: s) { return t }
         let earlier = turns.dropLast().suffix(8).map { t -> String in
             if t.me { return "They: \(t.text)" }
             var line = "You: \(t.text)"
@@ -280,7 +282,11 @@ enum Assistant {
         if missingCard(answer) { answer["kind"] = "answer"; answer["reply"] = withoutButtons(str(answer["reply"])) }
         // "Add to lunch": the buttons add to the meal they named, not the one the screen was opened for
         if let m = Meals.named(in: last.text) { answer["meal"] = m }
-        if let e = answer["estimate"] as? JSON { answer["estimate"] = tidied(e, said: last.text, photos: !pics.isEmpty) }
+        if var e = answer["estimate"] as? JSON {
+            // logging from a menu page: its energy is the shop's own, not "doesn't publish its numbers"
+            if let s = seen, !s.listing.isEmpty { e["shopNote"] = "Energy from the kJ on \(s.shop.isEmpty ? "the menu" : s.shop + "'s") page in your photo" }
+            answer["estimate"] = tidied(e, said: last.text, photos: !pics.isEmpty)
+        }
         if groundNow, str(answer["kind"]) == "estimate", let e = answer["estimate"] as? JSON { answer["estimate"] = await ground(e) }
         // a recipe's ingredients checked like the recipe screen's
         if str(answer["kind"]) == "recipe", var rc = answer["recipe"] as? JSON {
@@ -497,20 +503,24 @@ enum Assistant {
     }
 
     /// What a quick look at the photos found: the foods by everyday name, and a shop if they said one or a logo shows.
-    struct Spotted { let foods: [String]; let shop: String }
+    struct Spotted { let foods: [String]; let shop: String; var listing: [JSON] = [] }
 
-    private static let spotSchema: JSON = ["type": "object", "required": ["foods", "shop"], "properties": [
+    private static let spotSchema: JSON = ["type": "object", "required": ["foods", "shop", "listing"], "properties": [
         "foods": ["type": "array", "items": ["type": "string"], "description": "each food or drink you can see, by its everyday name (\"croissant\", \"kabana\", \"cream cake\")"] as JSON,
-        "shop": ["type": "string", "description": "the shop, café or bakery if they said it or a logo or bag shows it; else empty"] as JSON] as JSON]
+        "shop": ["type": "string", "description": "the shop, café or bakery if they said it or a logo or bag shows it; else empty"] as JSON,
+        // tested on a DoorDash page in tools/ai-test/spot-check.js: Chicken Burger 2280, Gami Chips 3042, Cheese Snowy Chips 2550
+        "listing": ["type": "array", "description": "when a photo is a menu or a delivery-app page: each dish on it with the energy it shows, kJ as printed (kcal × 4.184 if it shows kcal); else empty",
+                    "items": ["type": "object", "required": ["name", "kj"], "properties": ["name": ["type": "string"] as JSON, "kj": ["type": "number"] as JSON] as JSON] as JSON] as JSON] as JSON]
 
     /// The quick model names what's in the photos (a second or two), before the careful one sizes it all.
     @MainActor
     static func spot(_ images: [UIImage], said: String) async -> Spotted? {
         var parts: [JSON] = images.prefix(4).compactMap { Gemini.imagePart($0) }
-        parts.append(["text": "Someone logging food in a diary sent these photos and said: \"\(said)\". List the foods and drinks you can see, and the shop if they named one or a logo shows."])
+        parts.append(["text": "Someone logging food in a diary sent these photos and said: \"\(said)\". List the foods and drinks you can see, and the shop if they named one or a logo shows. If a photo is a menu or a delivery-app page, list its dishes with the energy shown for each."])
         guard let j = try? await Gemini.ask(schema: spotSchema, parts: parts, quick: true, job: "quick") else { return nil }
         let foods = (j["foods"] as? [Any] ?? []).map { str($0) }.filter { !$0.isEmpty }
-        return foods.isEmpty ? nil : Spotted(foods: Array(foods.prefix(8)), shop: str(j["shop"]))
+        let listing = CheatDays.list(j["listing"]).filter { (num($0["kj"]) ?? 0) > 0 && !str($0["name"]).isEmpty }
+        return foods.isEmpty && listing.isEmpty ? nil : Spotted(foods: Array(foods.prefix(8)), shop: str(j["shop"]), listing: Array(listing.prefix(12)))
     }
 
     /// An estimate's parts put straight before they're checked. "Their numbers" only when their message has a number in it,

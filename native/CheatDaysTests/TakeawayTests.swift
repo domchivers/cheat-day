@@ -97,6 +97,11 @@ final class TakeawayTests: XCTestCase {
         XCTAssertEqual(out.first { $0.name.hasPrefix("Original wings") }!.p, 45, "860 kcal is close to 841: protein kept")
         XCTAssertTrue(out.contains { $0.name == "Cheese tteokbokki" && $0.kcal == 717 })
         XCTAssertEqual(Takeaway.dishes(["Chicken Burger", "shake", "ice cream"]), ["Chicken Burger"])
+        // a DoorDash page in a photo: "this burger" is the burger, and the chips on the page aren't added as a main
+        let page = Takeaway.withSeen(found, [["name": "Chicken Burger", "kj": 2280], ["name": "Gami Chips", "kj": 3042]], want: ["This burger"])
+        XCTAssertEqual(page.first { $0.name == "Chicken Burger" }?.kcal, 545)
+        XCTAssertFalse(page.contains { $0.name == "Gami Chips" })
+        XCTAssertTrue(Takeaway.has(page, "this burger"), "'this' isn't a word of the dish")
     }
 
     /// Low-protein dishes and sides that can't fit with a dish are listed, never suggested.

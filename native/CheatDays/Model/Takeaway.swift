@@ -191,7 +191,7 @@ enum Takeaway {
     }
 
     private static func words(_ s: String) -> [String] {
-        s.lowercased().components(separatedBy: CharacterSet.letters.inverted).filter { $0.count >= 4 && !["want", "some", "with", "have", "like", "the"].contains($0) }
+        s.lowercased().components(separatedBy: CharacterSet.letters.inverted).filter { $0.count >= 4 && !["want", "some", "with", "have", "like", "this", "that", "these", "those", "just"].contains($0) }
             .map { $0.hasSuffix("s") && $0.count > 4 ? String($0.dropLast()) : $0 }
     }
 
@@ -244,9 +244,9 @@ enum Takeaway {
             "kj": n, "kcal": n, "protein_g": n, "carbs_g": n, "fat_g": n] as JSON] as JSON] as JSON] as JSON]
 
     /// Kept word for word with tools/ai-test/menu-check.js, which tested them against Claude.
-    static func routeAsk(_ message: String, earlier: String) -> String {
+    static func routeAsk(_ message: String, earlier: String, photo: String = "") -> String {
         """
-        A message to the assistant in a food diary app. Is it about what to order or eat next from one particular restaurant, takeaway or chain: asking ("want Gami for dinner, what should I get?", "what can I have at Nando's for 700 kcal") or saying what they'd like from it ("854 left, want Gami for dinner, the chicken burger with a shake")? Food they already ate ("had a Gami burger for lunch"), or a recipe, is not. When the conversation so far was choosing from a restaurant, a reply changing that choice ("no milk left, I want the wings") counts too, with that restaurant.
+        A message to the assistant in a food diary app\(photo.isEmpty ? "" : ", with a photo of \(photo)"). Is it about what to order or eat next from one particular restaurant, takeaway or chain: asking ("want Gami for dinner, what should I get?", "what can I have at Nando's for 700 kcal") or saying what they'd like from it ("854 left, want Gami for dinner, the chicken burger with a shake")? Food they already ate ("had a Gami burger for lunch"), or a recipe, is not. When the conversation so far was choosing from a restaurant, a reply changing that choice ("no milk left, I want the wings") counts too, with that restaurant.
         \(earlier.isEmpty ? "" : "The conversation so far:\n\(earlier)\n")Their message: "\(message)"
         restaurant: its name as they wrote it, else empty. area: a suburb or city if they said one, else empty. want: menu items they say they want, in their words. avoid: foods they don't want or don't have in ("milk"), in their words. seen: dishes they quote from a menu or delivery app with their energy ("Chicken Burger (2280 kJ)"), each with its kJ (kcal × 4.184 if they gave kcal), else empty. kcal and protein: numbers they gave for what they have left or for this meal ("854 left" is kcal 854), else 0.
         """
@@ -310,7 +310,8 @@ enum Takeaway {
     /// The kJ they read off the listing themselves ("Chicken Burger (2280 kJ)") beat what the lookup found (6,888 kJ from an
     /// old menu): the dish takes their kJ, its protein kept and carbs and fat fitted to it; a dish the menu didn't have is
     /// added, its protein from the closest dish on the menu (a share of the energy like it), else 5 g per 100 kcal.
-    static func withSeen(_ menu: [Item], _ seen: [JSON]) -> [Item] {
+    /// With want, only the dishes they want are added (chips on the page aren't a main to build a meal on).
+    static func withSeen(_ menu: [Item], _ seen: [JSON], want: [String]? = nil) -> [Item] {
         var out = menu
         for s in seen {
             let name = str(s["name"]).replacingOccurrences(of: #"\s*[(\[]?\s*\d[\d,]*\s*kj\s*[)\]]?"#, with: "", options: [.regularExpression, .caseInsensitive])
@@ -321,7 +322,7 @@ enum Takeaway {
                 let it = out[i], near = abs(it.kcal - k) <= k * 0.15
                 let f = fitted(kcal: k, p: near ? it.p : it.p * k / max(it.kcal, 1), c: it.c, f: it.f)
                 out[i] = Item(name: it.name, kind: it.kind, tier: "energy", kcal: k, p: f.p, c: f.c, f: f.f)
-            } else {
+            } else if want.map({ w in dishes(w).contains { d in words(d).contains { name.lowercased().contains($0) } } }) ?? true {
                 let like = out.first { it in it.kind == "main" && ws.contains { it.name.lowercased().contains($0) } }
                 let p = like.map { $0.p / max($0.kcal, 1) * k } ?? k * 0.05
                 let f = fitted(kcal: k, p: p, c: like?.c ?? 0, f: like?.f ?? 0)
@@ -333,25 +334,36 @@ enum Takeaway {
 
     /// The answer to a takeaway question, or nil when it isn't one (or Claude can't be reached): the assistant answers.
     @MainActor
-    static func answer(_ turns: [Assistant.Turn], store: Store, step: (@MainActor (String, String) -> Void)?) async -> JSON? {
-        guard let last = turns.last, last.me, last.images.isEmpty else { return nil }
+    /// With a photo of a delivery-app page (Gami's Chicken Burger, 2280 kJ, on DoorDash), what the quick look read off it
+    /// goes along: its dishes' kJ win, and a dish named in the message ("this burger") is the one wanted.
+    static func answer(_ turns: [Assistant.Turn], store: Store, step: (@MainActor (String, String) -> Void)?, photo: Assistant.Spotted? = nil) async -> JSON? {
+        guard let last = turns.last, last.me, last.images.isEmpty || photo != nil else { return nil }
         let before = turns.dropLast().last { !$0.me }
-        guard mightBe(last.text, after: before) else { return nil }
+        guard photo != nil || mightBe(last.text, after: before) else { return nil }
         let earlier = turns.dropLast().suffix(6).map { t -> String in
             if t.me { return "They asked: \(t.text)" }
             if let ta = t.result?["takeaway"] as? JSON { return "You suggested from \(str(ta["restaurant"])): " + list(ta["combos"]).map { str($0["title"]) }.joined(separator: "; ") }
             return "You: \(t.text.prefix(200))"
         }.joined(separator: "\n")
-        guard let route = await Gemini.askClaude("quick", schema: routeSchema, parts: [["text": routeAsk(last.text, earlier: earlier)]]),
+        let page = photo.map { p in "a menu page\(p.shop.isEmpty ? "" : " from \(p.shop)") showing " + p.listing.map { "\(str($0["name"])) (\(Fmt.int(num($0["kj"]) ?? 0)) kJ)" }.joined(separator: ", ") } ?? ""
+        guard let route = await Gemini.askClaude("quick", schema: routeSchema, parts: [["text": routeAsk(last.text, earlier: earlier, photo: page)]]),
               route["takeaway"] as? Bool == true else { return nil }
-        let name = str(route["restaurant"]).trimmingCharacters(in: .whitespaces)
+        let said = str(route["restaurant"]).trimmingCharacters(in: .whitespaces)
+        let name = said.isEmpty ? (photo?.shop ?? "") : said
         guard !name.isEmpty else { return nil }
         step?("Asked about \(name)", "Finding \(name)'s menu…")
-        let seen = list(route["seen"]).filter { (num($0["kj"]) ?? 0) > 0 && !str($0["name"]).isEmpty }
-        guard let m = await menu(name, area: str(route["area"]), want: route["want"] as? [String] ?? [], seen: seen) else {
+        var seen = list(route["seen"]).filter { (num($0["kj"]) ?? 0) > 0 && !str($0["name"]).isEmpty }
+        for l in photo?.listing ?? [] where !seen.contains(where: { str($0["name"]).lowercased() == str(l["name"]).lowercased() }) { seen.append(l) }
+        var want = route["want"] as? [String] ?? []
+        // "this burger for dinner" with the page: the dish on it that the message names, else the page's first
+        if let p = photo, dishes(want).isEmpty, let first = p.listing.first {
+            let named = p.listing.first { l in words(str(l["name"])).contains { last.text.lowercased().contains($0) } }
+            want.append(str((named ?? first)["name"]))
+        }
+        guard let m = await menu(name, area: str(route["area"]), want: want, seen: seen) else {
             return ["kind": "answer", "reply": "I couldn't find \(name)'s menu online. Tell me what's on it (the names and kJ from the app you order on) and I'll put it together."]
         }
-        let menuItems = withSeen(items(m), seen), shown = name   // their own name for it reads better than "Gami Chicken (Gami Chicken & Beer)"
+        let menuItems = withSeen(items(m), seen, want: want), shown = name   // their own name for it reads better than "Gami Chicken (Gami Chicken & Beer)"
         let energyOnly = menuItems.filter { $0.tier == "energy" }.count * 2 >= menuItems.count, full = menuItems.allSatisfy { $0.tier == "full" }
         let every = menuItems.allSatisfy { $0.tier != "none" } ? "every item" : "most items"
         let found = full ? "Found \(shown)'s menu with its nutrition" : energyOnly ? "Found \(shown)'s menu: kJ on \(every)" : "Found \(shown)'s menu"
@@ -366,7 +378,7 @@ enum Takeaway {
         let pLeft = store.proteinGoal.map { max(0, $0 - store.macros(store.todayItems).p) }
         let kcal = pos(route["kcal"]) ?? (meal == "Dinner" ? left : share.kcal)
         let protein = pos(route["protein"]) ?? (meal == "Dinner" ? pLeft : share.protein).map { $0.rounded() } ?? 30
-        let want = route["want"] as? [String] ?? [], avoid = route["avoid"] as? [String] ?? []
+        let avoid = route["avoid"] as? [String] ?? []
         let p = plan(menu: menuItems, home: home, kcal: kcal, protein: protein, want: want, avoid: avoid, place: shown)
 
         var trail = [found]
