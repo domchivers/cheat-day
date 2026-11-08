@@ -84,6 +84,21 @@ final class TakeawayTests: XCTestCase {
         XCTAssertLessThanOrEqual(best.kcal, 864)
     }
 
+    /// The kJ they read on DoorDash beat the lookup's (an old menu's 6,888 kJ burger): the dish takes theirs, protein in
+    /// proportion when the sizes are far apart, kept when close; a dish the menu lacked is added.
+    func testTheirKilojoulesWin() {
+        let found = [Takeaway.Item(name: "Chicken Burger", kind: "main", tier: "energy", kcal: 1646, p: 42, c: 80, f: 105),
+                     Takeaway.Item(name: "Original wings, 8 pcs", kind: "main", tier: "energy", kcal: 841, p: 45, c: 40, f: 50)]
+        let out = Takeaway.withSeen(found, [["name": "Chicken Burger (2280 kJ)", "kj": 2280], ["name": "Original wings, 8 pcs", "kj": 3600], ["name": "Cheese tteokbokki", "kj": 3000]])
+        let burger = out.first { $0.name == "Chicken Burger" }!
+        XCTAssertEqual(burger.kcal, 545)
+        XCTAssertEqual(burger.p, 42 * 545 / 1646, accuracy: 0.1)
+        XCTAssertEqual(4 * burger.p + 4 * burger.c + 9 * burger.f, 545, accuracy: 0.5)
+        XCTAssertEqual(out.first { $0.name.hasPrefix("Original wings") }!.p, 45, "860 kcal is close to 841: protein kept")
+        XCTAssertTrue(out.contains { $0.name == "Cheese tteokbokki" && $0.kcal == 717 })
+        XCTAssertEqual(Takeaway.dishes(["Chicken Burger", "shake", "ice cream"]), ["Chicken Burger"])
+    }
+
     /// Low-protein dishes and sides that can't fit with a dish are listed, never suggested.
     func testLowProteinAndSides() {
         let p = Takeaway.plan(menu: gami, home: home, kcal: 854, protein: 59)
