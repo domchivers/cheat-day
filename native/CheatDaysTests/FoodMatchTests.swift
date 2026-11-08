@@ -183,5 +183,17 @@ final class FoodMatchTests: XCTestCase {
         XCTAssertEqual(FoodTable.dishes.best("Chocolate cheesecake, baked", tags: [])?.name, "Cheesecake, chocolate")
         XCTAssertEqual(FoodTable.dishes.best("Bibimbap", tags: [])?.name, "Bibimbap, Korean")
         XCTAssertNil(FoodTable.dishes.best("Basque cheesecake, pandan", tags: []))   // not there: left as the AI's guess
+        // a "with" after the dish doesn't make it another food
+        XCTAssertEqual(FoodTable.dishes.best("Swedish meatballs", tags: [])?.name, "Swedish meatballs with cream or white sauce")
+    }
+
+    /// Other countries' tables, after the country's own and the US dishes; a fallback can't add a word that makes it
+    /// another food (liver, flour, raw, potato, soup), as tools/ai-test/tables.js.
+    func testWorldTableFindsDishesButNotOtherFoods() {
+        XCTAssertEqual(FoodTable.world.best("Chicken tikka masala", tags: [])?.name, "Tikka masala w/ chicken")
+        XCTAssertEqual(FoodTable.world.best("Doner kebab", tags: [])?.name, "Doner kebab, flatbread filled with grilled poultry, salad and sauce")
+        XCTAssertNil(FoodTable.world.best("Pork dumplings, steamed", tags: []))   // not Palatine pork liver dumplings, nor potato ones
+        XCTAssertNil(FoodTable.world.best("Spätzle, cheese", tags: []))           // not spätzle flour
+        XCTAssertNotEqual(FoodTable.world.best("Goulash, beef", tags: [])?.name, "Goulash soup")
     }
 }

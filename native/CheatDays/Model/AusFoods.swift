@@ -12,7 +12,10 @@ final class FoodTable {
     static let us = FoodTable(foods: "us-foods", aliases: "us-aliases", main: "SRLegacy", src: "usda")
     /// Dishes as eaten (USDA FNDDS 2021-2023, public domain: "Pad Thai with chicken", "Cheesecake, chocolate"), for any
     /// country when its own table has no such dish, before the part is left as the AI's guess.
-    static let dishes = FoodTable(foods: "dishes-foods", aliases: "dishes-aliases", main: "FNDDS2021", src: "fndds")
+    static let dishes = FoodTable(foods: "dishes-foods", aliases: "dishes-aliases", main: "FNDDS2021", src: "fndds", strict: true)
+    /// Other countries' official tables (Germany, France, Norway, Denmark, Sweden, Switzerland; open licences, credited in Food data
+    /// sources), last before a part is left as the AI's guess: moussaka, quiche Lorraine, kebab meat, rösti.
+    static let world = FoodTable(foods: "world-foods", aliases: "world-aliases", main: "", src: "world", strict: true)
 
     /// The table for where they live (the Settings country).
     static var current: FoodTable { testing ?? table(for: Region.current) }
@@ -24,11 +27,28 @@ final class FoodTable {
 
     /// What a checked part's `src` says for this table.
     let src: String
+    /// A fallback table (the US dishes, the world tables): its entries mustn't add a word that makes them another food.
+    private let strict: Bool
+    /// Words that turn an entry into a different food when the name didn't say them: "Pork dumplings, steamed" found
+    /// Palatine pork liver dumplings, "Spätzle, cheese" spätzle flour, "Goulash, beef" the raw goulash meat.
+    private static let changers: Set<String> = ["liver", "flour", "powder", "mix", "dough", "concentrate", "seasoning", "stock", "raw", "uncooked", "dry", "dried", "substitute", "imitation", "diet"]
+    /// Another food in the entry's own name ("Potato dumpling w/ pork" for pork dumplings, "Goulash soup" for goulash).
+    private static let otherFoods: Set<String> = ["potato", "soup", "sauce", "salad", "bread", "rice", "pasta", "noodle", "cake", "pie", "pastry",
+                                                  "sandwich", "pizza", "juice", "drink", "dressing", "dip", "spread", "filling", "baby"]
+    /// Only the dish's own name counts for that, before "with" or "in" ("Swedish meatballs with cream or white sauce" is
+    /// still meatballs).
+    private func strayed(_ r: Row, from said: Set<String>) -> Bool {
+        let dish = (r.food.name.split(separator: ",").first.map(String.init) ?? "")
+            .components(separatedBy: CharacterSet(charactersIn: "(")).first ?? ""
+        let own = dish.replacingOccurrences(of: #"\s(with|w/|in)\s.*"#, with: "", options: [.regularExpression, .caseInsensitive])
+        return !r.words.subtracting(said).isDisjoint(with: Self.changers) || !Set(Self.words(own)).subtracting(said).isDisjoint(with: Self.otherFoods)
+    }
     private let rows: [Row]
     private let aliases: [String: Food]
 
-    private init(foods: String, aliases file: String, main: String, src: String) {
+    private init(foods: String, aliases file: String, main: String, src: String, strict: Bool = false) {
         self.src = src
+        self.strict = strict
         rows = ((Self.load(foods) as? [JSON]) ?? []).map { r in
             let name = str(r["name"]), parts = name.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
             let food = Food(name: name.trimmingCharacters(in: .whitespaces), main: str(r["source"]) == main, kcal: num(r["kcal"]) ?? 0, p: num(r["p"]) ?? 0, c: num(r["c"]) ?? 0, f: num(r["f"]) ?? 0)
@@ -70,8 +90,10 @@ final class FoodTable {
         let dry = name.range(of: #"\b(dry|dried|uncooked)\b"#, options: [.regularExpression, .caseInsensitive]) != nil
         if let named = aliases[want.joined(separator: " ")], !(cooked && named.name.range(of: #"\braw\b|uncooked"#, options: [.regularExpression, .caseInsensitive]) != nil),
            !(dry && named.name.range(of: #"\b(boiled|cooked|drained)\b"#, options: [.regularExpression, .caseInsensitive]) != nil) { return named }
+        let said = Set(Self.words(name))
         let hits = Self.narrow(name, rows.filter { r in
             want.allSatisfy { r.words.contains($0) } && (r.kind.contains(head) || r.kind.contains(want[0]) || want.allSatisfy { r.lead.contains($0) })
+                && !(strict && strayed(r, from: said))
         }, want: want)
         var best: (rank: Int, food: Food)?
         for r in hits {
@@ -138,7 +160,8 @@ final class FoodTable {
             s -= 0.5 * Double(r.words.subtracting(all).subtracting(asked).count)
             return s + (r.food.main ? 1 : 0) + (r.food.name == base?.name ? 2 : 0)
         }
-        let pool = rows.filter { !Set($0.kind).isDisjoint(with: kinds) && (baseRow != nil || $0.words.intersection(all).count >= min(2, want.count)) }
+        let pool = rows.filter { !Set($0.kind).isDisjoint(with: kinds) && (baseRow != nil || $0.words.intersection(all).count >= min(2, want.count))
+            && !(strict && strayed($0, from: asked)) }
         guard let baseRow else { return pool.max(by: { score($0) < score($1) })?.food }
         // a relative only when it's still the food they named (the pho's rice noodles went to egg noodles for matching
         // "plain" too: 166 kcal and 7.5 g protein a 100 g, not 119 and 2.5), fits more of the tags and isn't a special

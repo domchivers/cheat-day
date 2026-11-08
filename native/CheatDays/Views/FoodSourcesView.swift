@@ -7,6 +7,7 @@ struct FoodSourcesView: View {
         ("🇦🇺", "Australia", "Australian Food Composition Database (Release 3) and AUSNUT 2023, Food Standards Australia New Zealand (FSANZ), licensed by FSANZ under a licence based on Creative Commons Attribution-ShareAlike 3.0 Australia."),
         ("🇬🇧", "United Kingdom", "Composition of Foods Integrated Dataset (CoFID) 2021, McCance and Widdowson's The Composition of Foods. Open Government Licence v3.0."),
         ("🇺🇸", "United States", "USDA FoodData Central: SR Legacy and the Food and Nutrient Database for Dietary Studies (FNDDS) 2021–2023. Public domain."),
+        ("🇩🇪", "Germany", "Max Rubner-Institut (2025): Bundeslebensmittelschlüssel (BLS), Version 4.0, German Nutrient Database. Karlsruhe. doi.org/10.25826/Data20251217-134202-0. CC BY 4.0."),
         ("🇫🇷", "France", "ANSES. 2025. Ciqual French food composition table, ciqual.anses.fr. Licence Ouverte 2.0."),
         ("🇳🇴", "Norway", "The Norwegian Food Composition Table 2026. The Norwegian Food Safety Authority. www.matvaretabellen.no. CC BY 4.0."),
         ("🇩🇰", "Denmark", "The Danish Food Composition Database, Frida version 5.5, November 2025, National Food Institute, Technical University of Denmark. doi.org/10.11583/DTU.29500682. CC BY 4.0."),

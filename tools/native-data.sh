@@ -16,9 +16,12 @@ for (const c of ['uk', 'us']) {   // CoFID 2021 and USDA SR Legacy, built by too
   fs.writeFileSync('native/CheatDays/Resources/' + c + '-foods.json', JSON.stringify(rows));
   fs.copyFileSync('tools/ai-test/' + c + '-aliases.json', 'native/CheatDays/Resources/' + c + '-aliases.json');
 }
-// dishes as eaten (USDA FNDDS 2021-2023), every country's fallback; no aliases of its own
-const dishes = JSON.parse(fs.readFileSync('tools/ai-test/data/dishes-foods.json', 'utf8')).map(({ name, source, kcal, p, c, f }) => ({ name, source, kcal, p, c, f }));
-fs.writeFileSync('native/CheatDays/Resources/dishes-foods.json', JSON.stringify(dishes));
+// every country's fallbacks, no aliases of their own: dishes as eaten (USDA FNDDS 2021-2023, build-country-db.js), then
+// other countries' tables (build-world-db.js)
+for (const t of ['dishes', 'world']) {
+  const rows = JSON.parse(fs.readFileSync('tools/ai-test/data/' + t + '-foods.json', 'utf8')).map(({ name, source, kcal, p, c, f }) => ({ name, source, kcal, p, c, f }));
+  fs.writeFileSync('native/CheatDays/Resources/' + t + '-foods.json', JSON.stringify(rows));
+}
 "
 python3 - <<'EOF'
 import re
