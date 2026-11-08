@@ -10,6 +10,9 @@ final class FoodTable {
     static let au = FoodTable(foods: "aus-foods", aliases: "aus-aliases", main: "AFCD3", src: "afcd")
     static let uk = FoodTable(foods: "uk-foods", aliases: "uk-aliases", main: "CoFID2021", src: "cofid")
     static let us = FoodTable(foods: "us-foods", aliases: "us-aliases", main: "SRLegacy", src: "usda")
+    /// Dishes as eaten (USDA FNDDS 2021-2023, public domain: "Pad Thai with chicken", "Cheesecake, chocolate"), for any
+    /// country when its own table has no such dish, before the part is left as the AI's guess.
+    static let dishes = FoodTable(foods: "dishes-foods", aliases: "dishes-aliases", main: "FNDDS2021", src: "fndds")
 
     /// The table for where they live (the Settings country).
     static var current: FoodTable { testing ?? table(for: Region.current) }

@@ -692,6 +692,10 @@ enum Assistant {
                 // the entry chosen by the part's tags too (bought, natural, skin on…)
                 parts[i] = checked(x, kcal100: f.kcal, p100: f.p, c100: f.c, f100: f.f, source: FoodTable.current.src, match: f.name)
                 if let better = rematched(parts[i], from: f) { parts[i] = better }
+            } else if let f = FoodTable.dishes.best(str(x["name"]), tags: tags(x)), plausible(f.kcal, aiKcal: num(x["kcal"]) ?? 0, grams: g, name: str(x["name"])) {
+                // a dish their country's table doesn't have (biryani, pad thai, chocolate cheesecake): the US dish table
+                parts[i] = checked(x, kcal100: f.kcal, p100: f.p, c100: f.c, f100: f.f, source: FoodTable.dishes.src, match: f.name)
+                if let better = rematched(parts[i], from: f, table: .dishes) { parts[i] = better }
             } else if let row = FoodsDB.search(str(x["name"]), limit: 1).first, plausible(num(row["kcalPer100"]), aiKcal: num(x["kcal"]) ?? 0, grams: g, name: str(x["name"])) {
                 parts[i] = checked(x, kcal100: num(row["kcalPer100"]) ?? 0, p100: num(row["p100"]), c100: num(row["c100"]), f100: num(row["f100"]), source: "list", match: str(row["name"]))
             } else { ask.append(i) }

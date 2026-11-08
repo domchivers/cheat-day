@@ -175,4 +175,13 @@ final class FoodMatchTests: XCTestCase {
         let props = dict(dict(dict(Assistant.schema["properties"])["estimate"])["properties"])
         XCTAssertNotNil(props["eaten_unsure"]); XCTAssertNotNil(props["side_sauce"])
     }
+
+    /// Dishes no country table has: the US dish table (FNDDS), as tools/ai-test/tables.js finds them.
+    func testDishesTableFindsDishes() {
+        XCTAssertEqual(FoodTable.dishes.best("Chicken biryani", tags: [])?.name, "Biryani with chicken")
+        XCTAssertEqual(FoodTable.dishes.best("Pad thai with chicken", tags: [])?.name, "Pad Thai with chicken")
+        XCTAssertEqual(FoodTable.dishes.best("Chocolate cheesecake, baked", tags: [])?.name, "Cheesecake, chocolate")
+        XCTAssertEqual(FoodTable.dishes.best("Bibimbap", tags: [])?.name, "Bibimbap, Korean")
+        XCTAssertNil(FoodTable.dishes.best("Basque cheesecake, pandan", tags: []))   // not there: left as the AI's guess
+    }
 }

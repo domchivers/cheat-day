@@ -35,4 +35,20 @@ const us = csv('food.csv').filter(([id]) => values.get(id)?.kcal !== undefined).
   return { key: id, source: 'SRLegacy', name: name.trim(), kcal: Math.round(v.kcal), p: round(v.p || 0), c: round(v.c || 0), f: round(v.f || 0), fibre: round(v.fibre || 0), alcohol: round(v.alcohol || 0) };
 });
 out('us-foods.json', us);
-console.log(`UK ${uk.length}, US ${us.length}`);
+
+// Dishes as eaten (USDA FNDDS 2021-2023, public domain): the table every country falls back to when its own has no
+// such dish ("Pad Thai with chicken", "Cheesecake, chocolate"). data/raw/us/fndds/surveyDownload.json, from FoodData
+// Central's survey_food_json download.
+const fnddsFile = path.join(raw, 'us/fndds/surveyDownload.json');
+let dishes = [];
+if (fs.existsSync(fnddsFile)) {
+  const nums = { 208: 'kcal', 203: 'p', 205: 'c', 204: 'f', 291: 'fibre', 221: 'alcohol' };
+  dishes = JSON.parse(fs.readFileSync(fnddsFile, 'utf8')).SurveyFoods.map(d => {
+    const v = {};
+    for (const x of d.foodNutrients) { const k = nums[x.nutrient?.number]; if (k) v[k] = n(x.amount); }
+    return v.kcal === undefined ? null : { key: String(d.foodCode), source: 'FNDDS2021', name: d.description.trim(),
+      kcal: Math.round(v.kcal), p: round(v.p || 0), c: round(v.c || 0), f: round(v.f || 0), fibre: round(v.fibre || 0), alcohol: round(v.alcohol || 0) };
+  }).filter(Boolean).filter(d => !/^(milk, human|infant formula|baby)/i.test(d.name));
+  out('dishes-foods.json', dishes);
+}
+console.log(`UK ${uk.length}, US ${us.length}, dishes ${dishes.length}`);

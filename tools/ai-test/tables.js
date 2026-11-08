@@ -4,7 +4,7 @@
 const fs = require('fs'), path = require('path'), { narrow } = require('./jobs.js');
 const filler = new Set(['fresh', 'chopped', 'sliced', 'diced', 'large', 'small', 'medium', 'finely', 'peeled', 'boneless', 'skinless', 'lean', 'of', 'and', 'for', 'to', 'taste', 'grated', 'minced', 'crushed', 'dried', 'ground', 'whole', 'extra', 'virgin', 'cubed', 'thinly', 'roughly', 'optional', 'brushed', 'washed']);
 const words = s => s.toLowerCase().replace(/[^a-z ]/g, ' ').split(/\s+/).filter(w => w && !filler.has(w)).map(w => w.replace(/(oes|ies|s)$/, m => (m === 'ies' ? 'y' : m === 'oes' ? 'o' : '')));
-const files = { au: ['food-db.json', 'aliases.json', 'AFCD3'], uk: ['uk-foods.json', 'uk-aliases.json', 'CoFID2021'], us: ['us-foods.json', 'us-aliases.json', 'SRLegacy'] };
+const files = { au: ['food-db.json', 'aliases.json', 'AFCD3'], uk: ['uk-foods.json', 'uk-aliases.json', 'CoFID2021'], us: ['us-foods.json', 'us-aliases.json', 'SRLegacy'], dishes: ['dishes-foods.json', 'dishes-aliases.json', 'FNDDS2021'] };
 const tables = {};
 function table(country) {
   if (tables[country]) return tables[country];
