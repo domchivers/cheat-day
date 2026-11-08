@@ -57,5 +57,9 @@ final class DepthMeasureTests: XCTestCase {
         r.rough = true
         XCTAssertTrue(Assistant.measured([r]).contains("roughly"))
         XCTAssertEqual(Assistant.measured([nil, nil]), "")
+        // a library photo that wasn't measured says why, so the AI can tell them
+        let why = Assistant.measured([nil, r], unmeasured: ["no depth saved in it (a public.jpeg file)", ""])
+        XCTAssertTrue(why.contains("Photo 1 wasn't measured: no depth saved in it (a public.jpeg file)"))
+        XCTAssertTrue(why.contains("Photo 2, measured"))
     }
 }

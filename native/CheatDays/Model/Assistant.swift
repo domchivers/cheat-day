@@ -29,11 +29,17 @@ enum Assistant {
         var images: [UIImage] = []
         /// Each photo's sizes from the depth camera, in the same order (nil for one it couldn't measure, or from the library).
         var sizes: [DepthMeasure.Result?] = []
+        /// Why a library photo wasn't measured, in the same order ("" when it was, or there's nothing to say).
+        var unmeasured: [String] = []
     }
 
-    /// What the depth camera measured in these photos, for the AI ("" when none were measured).
-    static func measured(_ sizes: [DepthMeasure.Result?]) -> String {
-        let lines = sizes.prefix(4).enumerated().compactMap { i, r in r.map { DepthMeasure.describe($0, photo: i + 1) } }
+    /// What the depth camera measured in these photos, and why any from the library weren't, for the AI ("" when there's neither).
+    static func measured(_ sizes: [DepthMeasure.Result?], unmeasured: [String] = []) -> String {
+        let lines = (0..<min(4, max(sizes.count, unmeasured.count))).compactMap { i -> String? in
+            if i < sizes.count, let r = sizes[i] { return DepthMeasure.describe(r, photo: i + 1) }
+            if i < unmeasured.count, !unmeasured[i].isEmpty { return "Photo \(i + 1) wasn't measured: \(unmeasured[i]). Size it as usual; if they ask about the measuring, tell them this." }
+            return nil
+        }
         return lines.isEmpty ? "" : lines.joined(separator: "\n") + "\n"
     }
 
@@ -264,7 +270,7 @@ enum Assistant {
         // price); then the photos, then this person and this message
         var parts: [JSON] = [["text": "You are the assistant inside a cheat-day food diary app called Cheat Days.\n\(rules)", "cache": true]]
         parts += pics.prefix(4).compactMap { Gemini.imagePart($0) }
-        parts.append(["text": "\(measured(shot?.sizes ?? []))\(context(store, skip: turns.first { $0.me }?.text ?? ""))\(earlier.isEmpty ? "" : "Recent conversation:\n\(earlier)\n")They now say: \"\(last.text)\"\(last.images.isEmpty && !pics.isEmpty ? " (about the photos from earlier)" : "")\n\(foodData(([last.text] + (seen?.foods ?? [])).joined(separator: ", ")))\(loggedBefore(store, text: ([last.text] + (seen?.foods ?? [])).joined(separator: " ")))\(corrections(CheatDays.list(store.doc["corrections"]), text: ([last.text] + (seen?.foods ?? [])).joined(separator: " ")))"])
+        parts.append(["text": "\(measured(shot?.sizes ?? [], unmeasured: shot?.unmeasured ?? []))\(context(store, skip: turns.first { $0.me }?.text ?? ""))\(earlier.isEmpty ? "" : "Recent conversation:\n\(earlier)\n")They now say: \"\(last.text)\"\(last.images.isEmpty && !pics.isEmpty ? " (about the photos from earlier)" : "")\n\(foodData(([last.text] + (seen?.foods ?? [])).joined(separator: ", ")))\(loggedBefore(store, text: ([last.text] + (seen?.foods ?? [])).joined(separator: " ")))\(corrections(CheatDays.list(store.doc["corrections"]), text: ([last.text] + (seen?.foods ?? [])).joined(separator: " ")))"])
         // Claude for everything (Apple's on-device model made up foods: "1/2 tsp sesame oil" came back as roasted cauliflower).
         // Simple logs and questions go to the quick model; photos, recipes and plans to the careful one.
         // a follow-up in a conversation stays with the careful model: after advice, "No they've been helping me lol" isn't a

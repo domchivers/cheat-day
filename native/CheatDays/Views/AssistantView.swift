@@ -15,6 +15,7 @@ struct AssistantView: View {
     @State private var text = ""
     @State private var pending: [UIImage] = []
     @State private var sizes: [ObjectIdentifier: DepthMeasure.Result] = [:]   // the depth camera's, for each pending photo
+    @State private var unmeasured: [ObjectIdentifier: String] = [:]   // why a library photo had no sizes
     @State private var picked: [PhotosPickerItem] = []
     @State private var camera = false
     @State private var library = false
@@ -666,7 +667,8 @@ struct AssistantView: View {
             guard let d = try? await i.loadTransferable(type: Data.self), let img = UIImage(data: d) else { continue }
             pending.append(img)
             // a Portrait photo keeps its depth: measured like the app's own camera's
-            if let r = await Task.detached(operation: { DepthCameraModel.measure(file: d) }).value { sizes[ObjectIdentifier(img)] = r }
+            let (r, why) = await Task.detached(operation: { DepthCameraModel.measure(file: d) }).value
+            if let r { sizes[ObjectIdentifier(img)] = r } else { unmeasured[ObjectIdentifier(img)] = why }
         }
         picked = []
     }
@@ -686,8 +688,8 @@ struct AssistantView: View {
             return
         }
         let photos = pending.count
-        turns.append(Assistant.Turn(me: true, text: t.isEmpty ? "What's this?" : t, images: pending, sizes: pending.map { sizes[ObjectIdentifier($0)] }))
-        text = ""; pending = []; sizes = [:]; problem = nil; busy = true
+        turns.append(Assistant.Turn(me: true, text: t.isEmpty ? "What's this?" : t, images: pending, sizes: pending.map { sizes[ObjectIdentifier($0)] }, unmeasured: pending.map { unmeasured[ObjectIdentifier($0)] ?? "" }))
+        text = ""; pending = []; sizes = [:]; unmeasured = [:]; problem = nil; busy = true
         // what it's doing, ticked off as it goes. The careful model's own work is one request, so its two steps are paced
         // by time (sizing first, then the parts); reading, spotting and the checks are real
         stepsDone = [photos > 0 ? "Read your message and \(photos) photo\(photos == 1 ? "" : "s")" : "Read your message"]

@@ -150,19 +150,41 @@ final class DepthCameraModel: NSObject, AVCapturePhotoCaptureDelegate {
 
     /// A photo from the library measured from the depth saved in it: the iPhone camera's Portrait mode keeps one in the
     /// file (on phones with two cameras or LiDAR), so a plate snapped while out still gets its sizes later. Nil for a
-    /// photo without depth, which is most of them.
-    nonisolated static func measure(file: Data) -> DepthMeasure.Result? {
-        guard let src = CGImageSourceCreateWithData(file as CFData, nil) else { return nil }
+    /// photo without depth, which is most of them; then why, for the AI to say if asked (Portrait photos came through
+    /// unmeasured in 1.0.87, and this tells a file without its depth from depth that couldn't be measured).
+    nonisolated static func measure(file: Data) -> (DepthMeasure.Result?, String) {
+        guard let src = CGImageSourceCreateWithData(file as CFData, nil) else { return (nil, "the photo's file couldn't be read") }
+        let type = (CGImageSourceGetType(src) as String?) ?? "unknown"
         let aux = CGImageSourceCopyAuxiliaryDataInfoAtIndex(src, 0, kCGImageAuxiliaryDataTypeDisparity)
             ?? CGImageSourceCopyAuxiliaryDataInfoAtIndex(src, 0, kCGImageAuxiliaryDataTypeDepth)
-        guard let info = aux as? [AnyHashable: Any], let data = try? AVDepthData(fromDictionaryRepresentation: info) else { return nil }
+        guard let info = aux as? [AnyHashable: Any] else { return (nil, "no depth saved in it (a \(type) file)") }
+        guard let data = try? AVDepthData(fromDictionaryRepresentation: info) else { return (nil, "depth saved in it (a \(type) file) but it couldn't be read") }
         let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any]
         // stored as the sensor saw it, with the turn to show it upright in the orientation tag (6 and 8 are upright)
         let turn = props?[kCGImagePropertyOrientation] as? Int ?? 1
         // the lens from the 35 mm-equivalent focal length when the depth carries no calibration (36 mm across)
         let f35 = (props?[kCGImagePropertyExifDictionary] as? [CFString: Any])?[kCGImagePropertyExifFocalLenIn35mmFilm] as? Double
         let fov = f35.map { Float(2 * atan(36 / (2 * $0)) * 180 / .pi) }
-        return measure(data, portrait: turn == 6 || turn == 8, fov: fov)
+        if let r = measure(data, portrait: turn == 6 || turn == 8, fov: fov) { return (r, "") }
+        return (nil, "depth saved in it (a \(type) file, \(about(data))) but no table could be found in it\(f35 == nil && data.cameraCalibrationData == nil ? ", and the lens isn't known" : "")")
+    }
+
+    /// The depth map's size, how sure the camera was, and its nearest, middle and furthest readings in metres.
+    nonisolated static func about(_ data: AVDepthData) -> String {
+        let d = data.converting(toDepthDataType: kCVPixelFormatType_DepthFloat32), map = d.depthDataMap
+        let w = CVPixelBufferGetWidth(map), h = CVPixelBufferGetHeight(map)
+        CVPixelBufferLockBaseAddress(map, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(map, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(map) else { return "\(w) × \(h)" }
+        let row = CVPixelBufferGetBytesPerRow(map)
+        var v: [Float] = []
+        for y in stride(from: 0, to: h, by: 4) {
+            let line = (base + y * row).assumingMemoryBound(to: Float.self)
+            for x in stride(from: 0, to: w, by: 4) where line[x].isFinite && line[x] > 0 { v.append(line[x]) }
+        }
+        v.sort()
+        let range = v.isEmpty ? "no readings" : String(format: "%.2f, %.2f and %.2f m", v[0], v[v.count / 2], v[v.count - 1])
+        return "\(w) × \(h), \(data.depthDataAccuracy == .absolute ? "absolute" : "relative"), \(range)"
     }
 
     /// The depth map in metres, and the lens it was seen through, measured. Disparity (the dual camera's) is turned into depth.
