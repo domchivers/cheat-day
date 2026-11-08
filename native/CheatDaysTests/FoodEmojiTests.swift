@@ -34,6 +34,31 @@ final class FoodEmojiTests: XCTestCase {
         XCTAssertEqual(FoodEmoji.for("Oden broth, dashi"), "🍲")
         XCTAssertEqual(FoodEmoji.for("Chicken karaage"), "🍗")
         XCTAssertEqual(FoodEmoji.for("Edamame, shelled, boiled"), "🥦")
+    }
+
+    /// Dishes from the cuisines people eat out, each to an icon the app has.
+    func testOtherCuisines() {
+        XCTAssertEqual(FoodEmoji.for("Chicken tikka masala"), "🍛")
+        XCTAssertEqual(FoodEmoji.for("Masala dosa"), "🥞")
+        XCTAssertEqual(FoodEmoji.for("Masala chai"), "🍵")          // the drink, not the curry
+        XCTAssertEqual(FoodEmoji.for("Garlic naan"), "🍞")
+        XCTAssertEqual(FoodEmoji.for("Beef samosa"), "🥟")
+        XCTAssertEqual(FoodEmoji.for("Nasi lemak"), "🍚")
+        XCTAssertEqual(FoodEmoji.for("Char kway teow"), "🍜")
+        XCTAssertEqual(FoodEmoji.for("Tom yum soup"), "🍲")
+        XCTAssertEqual(FoodEmoji.for("Pork banh mi"), "🥪")
+        XCTAssertEqual(FoodEmoji.for("Prawn rice paper rolls"), "🥟")   // not a bread roll
+        XCTAssertEqual(FoodEmoji.for("Beef bulgogi"), "🥩")
+        XCTAssertEqual(FoodEmoji.for("Kimchi fried rice"), "🍚")
+        XCTAssertEqual(FoodEmoji.for("Chicken shawarma"), "🌯")
+        XCTAssertEqual(FoodEmoji.for("Lamb tagine"), "🥘")
+        XCTAssertEqual(FoodEmoji.for("Chicken parma"), "🍗")
+        XCTAssertEqual(FoodEmoji.for("Parma ham"), "🥓")
+        XCTAssertEqual(FoodEmoji.for("Beef empanada"), "🥟")
+        XCTAssertEqual(FoodEmoji.for("Churros"), "🍩")
+        XCTAssertEqual(FoodEmoji.for("Tiramisu"), "🍰")
+        XCTAssertEqual(FoodEmoji.for("Miso glazed salmon"), "🐟")   // miso is a soup only by itself
+        XCTAssertEqual(FoodEmoji.for("Shakshuka"), "🍳")
         XCTAssertEqual(FoodEmoji.for("Watermelon"), "🍉")                   // not water
         XCTAssertEqual(FoodEmoji.for("Crust Classic Pepperoni, high protein base"), "🥓")   // not a pepper
         XCTAssertEqual(FoodEmoji.for("Hearty Beef and Carrot Curry (1 portion, ¼ batch)"), "🍛")
