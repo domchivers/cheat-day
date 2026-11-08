@@ -760,7 +760,10 @@ enum Assistant {
             kept = true
             return x
         }
-        return kept ? totals(e, parts: parts) : e
+        guard kept else { return e }
+        var out = totals(e, parts: parts)
+        out["aiKcal"] = e["aiKcal"] ?? e["kcal_total"]   // still what the AI first said, for the card's note
+        return out
     }
 
     /// Every part through Sanity: calories that don't fit the macros are fixed from them, odd values are flagged on
