@@ -243,8 +243,9 @@ enum Assistant {
         guard let last = turns.last, last.me else { throw Gemini.Failure(message: "Nothing to ask.") }
         // "half of each" after an estimate: worked out here, exactly, with no waiting
         if last.images.isEmpty, let p = portion(last.text), let r = turns.dropLast().last(where: { !$0.me })?.result, let out = scaled(r, share: p.share, label: p.label) { return out }
-        // "what should I get from Gami?": the restaurant's menu with food from home, worked out by the app
-        if let t = await Takeaway.answer(turns, store: store, step: step) { return t }
+        // "what should I get from Gami?": the restaurant's menu with food from home, worked out by the app. Asked of every
+        // typed message, alongside the assistant's own answer below, so nothing waits for it
+        let takeaway: Task<JSON?, Never>? = last.images.isEmpty ? Task { await Takeaway.answer(turns, store: store, step: step) } : nil
         // new photos: a quick look first at what's in them, so the food tables' numbers for those foods (not only the ones
         // they typed) go along with the question, and a shop's logo is known early
         var seen: Spotted?
@@ -276,7 +277,9 @@ enum Assistant {
         let talking = turns.dropLast().last { !$0.me }.map { str($0.result?["kind"]) == "answer" } ?? false   // a quick log's "Logged to…" has no result
         let simple = !talking && isSimple(last.text, hasPhotos: !pics.isEmpty)
         let shape = format(photos: !pics.isEmpty, text: last.text)
-        var answer = try await Gemini.ask(schema: shape, parts: parts, quick: simple, job: simple ? "logs" : pics.isEmpty ? "chat" : "photos")
+        let first = Task { try await Gemini.ask(schema: shape, parts: parts, quick: simple, job: simple ? "logs" : pics.isEmpty ? "chat" : "photos") }
+        if let t = await takeaway?.value { first.cancel(); return t }
+        var answer = try await first.value
         // "Tap Make these changes" with no changes to tap: the reply said edit but left the edit out. Asked once more.
         if missingCard(answer) { answer = (try? await Gemini.ask(schema: shape, parts: parts, quick: simple, job: simple ? "logs" : pics.isEmpty ? "chat" : "photos")) ?? answer }
         if missingCard(answer) { answer["kind"] = "answer"; answer["reply"] = withoutButtons(str(answer["reply"])) }

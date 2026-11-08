@@ -140,19 +140,14 @@ final class TakeawayTests: XCTestCase {
         XCTAssertFalse(Takeaway.choosing("This burger"), "just naming it: a log, as before")
         // Claude called this "not takeaway" three times out of three, while naming Gami: the app's own check decides
         XCTAssertTrue(Takeaway.choosing("Want something from the gami in Windsor tomorrow, what's my options? Lunch thinking"))
-        XCTAssertTrue(Takeaway.mightBe("Want something from the gami in Windsor tomorrow, what's my options? Lunch thinking", after: nil))
     }
 
-    func testWhichMessagesAreAsked() {
-        XCTAssertTrue(Takeaway.mightBe("854 left, want Gami for dinner. What should I get?", after: nil))
-        XCTAssertTrue(Takeaway.mightBe("what can I order from Nando's?", after: nil))
-        // no question mark: a wish, with the numbers left (this went to a plain estimate in 1.0.91)
-        XCTAssertTrue(Takeaway.mightBe("854 kcal and 59 g protein left, want Gami for dinner. I'd like the chicken burger, with a shake and ice cream", after: nil))
-        XCTAssertTrue(Takeaway.mightBe("fancy Guzman for lunch", after: nil))
-        XCTAssertFalse(Takeaway.mightBe("had a gami chicken burger for lunch", after: nil))
-        XCTAssertFalse(Takeaway.mightBe("2 eggs and toast", after: nil))
-        let ta = Assistant.Turn(me: false, text: "", result: ["kind": "takeaway"])
-        XCTAssertTrue(Takeaway.mightBe("No milk left, and I want the wings", after: ta), "a reply to a takeaway answer")
+    /// Every typed message is asked: the ask reads choose, log or other however it's put (intent-check.js has the cases).
+    func testTheAskHasTheThreeIntents() {
+        let p = Takeaway.routeAsk("Gami tonight?", earlier: "")
+        XCTAssertTrue(p.contains("choose:") && p.contains("log:") && p.contains("other:"))
+        XCTAssertTrue(p.contains("Their message: \"Gami tonight?\""))
+        XCTAssertEqual(dict(Takeaway.routeSchema["properties"])["intent"].flatMap { $0 as? JSON }?["enum"] as? [String], ["choose", "log", "other"])
     }
 
     /// A food saved with 100 g as its "serving" shows per 100 g ("379 kcal per serving" was a protein powder's per 100 g).

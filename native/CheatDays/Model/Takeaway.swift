@@ -237,8 +237,10 @@ enum Takeaway {
     // MARK: asking
 
     private static let s: JSON = ["type": "string"], n: JSON = ["type": "number"]
-    static let routeSchema: JSON = ["type": "object", "required": ["takeaway", "restaurant", "area", "want", "avoid", "seen", "kcal", "protein"], "properties": [
-        "takeaway": ["type": "boolean"] as JSON, "restaurant": s, "area": s, "want": ["type": "array", "items": s] as JSON,
+    /// tools/ai-test/intent-check.js: 54 of 54 right over 18 ways of saying it (choose, log or other), where a yes/no
+    /// "is it takeaway" missed "tomorrow" and "I'd like…"
+    static let routeSchema: JSON = ["type": "object", "required": ["intent", "restaurant", "area", "want", "avoid", "seen", "kcal", "protein"], "properties": [
+        "intent": ["type": "string", "enum": ["choose", "log", "other"]] as JSON, "restaurant": s, "area": s, "want": ["type": "array", "items": s] as JSON,
         "avoid": ["type": "array", "items": s] as JSON,
         "seen": ["type": "array", "items": ["type": "object", "required": ["name", "kj"], "properties": ["name": s, "kj": n] as JSON] as JSON] as JSON,
         "kcal": n, "protein": n] as JSON]
@@ -249,10 +251,15 @@ enum Takeaway {
             "published": ["type": "string", "enum": ["full", "energy", "none"]] as JSON,
             "kj": n, "kcal": n, "protein_g": n, "carbs_g": n, "fat_g": n] as JSON] as JSON] as JSON] as JSON]
 
-    /// Kept word for word with tools/ai-test/menu-check.js, which tested them against Claude.
+    /// Kept word for word with the scripts that tested them against Claude: routeAsk with tools/ai-test/intent-check.js,
+    /// menuAsk with menu-check.js.
     static func routeAsk(_ message: String, earlier: String, photo: String = "") -> String {
         """
-        A message to the assistant in a food diary app\(photo.isEmpty ? "" : ", with a photo of \(photo)"). Is it about what to order or eat (now, later or another day) from one particular restaurant, takeaway or chain: asking ("want Gami for dinner, what should I get?", "what can I have at Nando's for 700 kcal") or saying what they'd like from it ("854 left, want Gami for dinner, the chicken burger with a shake")? Food they already ate ("had a Gami burger for lunch"), or a recipe, is not. When the conversation so far was choosing from a restaurant, a reply changing that choice ("no milk left, I want the wings") counts too, with that restaurant.\(photo.isEmpty ? "" : " With a photo of a menu or delivery-app page, naming a dish on it for a meal (\"this burger for dinner\") is choosing it, unless they say they had or ate it.")
+        A message to the assistant in a food diary app\(photo.isEmpty ? "" : ", with a photo of \(photo)"). What is it?
+        choose: they're deciding what to have from one particular restaurant, takeaway, café or chain, today or another day, however they put it ("Gami tonight?", "thinking Nando's for lunch tomorrow", "what's good at Guzman for 600 cals", "can I fit a Gami burger in today?", "heading to Maccas, what should I get", "want something from the Gami in Windsor tomorrow, what are my options", "I'd like the burger from Gami with a shake": what they'd like, not what they had).
+        log: they're telling you what they ate or are eating, to add it ("had a Gami burger for lunch", "Gami chicken burger", "just had Nando's"), or correcting a log.
+        other: anything else, including choosing food with no particular restaurant ("what should I have for dinner?") and questions.
+        When the conversation so far was choosing from a restaurant, a reply changing that choice ("no milk left, I want the wings") is choose, with that restaurant.\(photo.isEmpty ? "" : " With a photo of a menu or delivery-app page, naming a dish on it for a meal (\"this burger for dinner\") is choose, unless they say they had or ate it.")
         \(earlier.isEmpty ? "" : "The conversation so far:\n\(earlier)\n")Their message: "\(message)"
         restaurant: its name as they wrote it, else empty. area: a suburb or city if they said one, else empty. want: menu items they say they want, in their words. avoid: foods they don't want or don't have in ("milk"), in their words. seen: dishes they quote from a menu or delivery app with their energy ("Chicken Burger (2280 kJ)"), each with its kJ (kcal × 4.184 if they gave kcal), else empty. kcal and protein: numbers they gave for what they have left or for this meal ("854 left" is kcal 854), else 0.
         """
@@ -263,18 +270,6 @@ enum Takeaway {
         For each item: published is full when the restaurant gives its calories and protein, energy when it gives only kJ or kcal, none when it gives nothing. kj: exactly as published, else 0. kcal: as published, else kJ ÷ 4.184, else your estimate. protein_g, carbs_g and fat_g: as published, else your honest estimate from what the item is and its usual portion. kind: main, side, drink or dessert.
         found false if you can't find its menu at all. source: where the numbers came from, a few words. Open the restaurant's DoorDash or Uber Eats store page with web_fetch and read the kJ from the item names there. When sources disagree, the delivery listing is today's menu: use its number. Never guess a kJ: an item whose energy you didn't read on a page has kj 0 and published none.
         """
-    }
-
-    /// Worth asking whether it's a takeaway question: a question about getting or ordering something, or a reply to a
-    /// takeaway answer. Everything else goes straight to the assistant.
-    static func mightBe(_ text: String, after last: Assistant.Turn?) -> Bool {
-        if str(last?.result?["kind"]) == "takeaway" { return true }
-        let t = " " + text.lowercased() + " "
-        // a question, or a wish ("854 left, want Gami for dinner. I'd like the chicken burger" has no question mark)
-        let asks = t.contains("?") || t.range(of: #"^\s*(what|which|should|can|could|help)\b"#, options: .regularExpression) != nil
-            || t.range(of: #"\b(want|wanna|fancy|fancying|craving|feel like|i'?d like|i would like|thinking of|getting|ordering)\b"#, options: .regularExpression) != nil
-        let place = t.range(of: #"\b(order|takeaway|takeout|take out|delivery|uber|doordash|menulog|deliveroo|menu|restaurant|from|at|get|grab|left|for (dinner|lunch|tea|breakfast))\b"#, options: .regularExpression) != nil
-        return asks && place
     }
 
     /// The dishes they asked for, without the foods from home they named with them ("a shake and ice cream").
@@ -354,9 +349,8 @@ enum Takeaway {
     /// With a photo of a delivery-app page (Gami's Chicken Burger, 2280 kJ, on DoorDash), what the quick look read off it
     /// goes along: its dishes' kJ win, and a dish named in the message ("this burger") is the one wanted.
     static func answer(_ turns: [Assistant.Turn], store: Store, step: (@MainActor (String, String) -> Void)?, photo: Assistant.Spotted? = nil) async -> JSON? {
+        // every typed message is asked (no list of words to say first): it runs alongside the assistant's own answer
         guard let last = turns.last, last.me, last.images.isEmpty || photo != nil else { return nil }
-        let before = turns.dropLast().last { !$0.me }
-        guard photo != nil || mightBe(last.text, after: before) else { return nil }
         let earlier = turns.dropLast().suffix(6).map { t -> String in
             if t.me { return "They asked: \(t.text)" }
             if let ta = t.result?["takeaway"] as? JSON { return "You suggested from \(str(ta["restaurant"])): " + list(ta["combos"]).map { str($0["title"]) }.joined(separator: "; ") }
@@ -366,9 +360,8 @@ enum Takeaway {
         // with a menu page, choosing or logging is decided here: Claude called "this burger for dinner" a log one time in three
         if photo != nil, !choosing(last.text) { return nil }
         guard let route = await Gemini.askClaude("quick", schema: routeSchema, parts: [["text": routeAsk(last.text, earlier: earlier, photo: page)]]),
-              // Claude said no three times to "want something from the gami in Windsor tomorrow, what's my options?" while
-              // naming Gami: a restaurant named in a question or a wish (nothing they had) is enough
-              photo != nil || route["takeaway"] as? Bool == true || (!str(route["restaurant"]).isEmpty && choosing(last.text)) else { return nil }
+              // choose; or a restaurant named in a question or a wish, nothing they had, in case it's called something else
+              photo != nil || str(route["intent"]) == "choose" || (!str(route["restaurant"]).isEmpty && choosing(last.text)) else { return nil }
         let said = str(route["restaurant"]).trimmingCharacters(in: .whitespaces)
         // "gami Windsor" as "Gami Windsor": a word typed all in lower case gets its capital
         let name = (said.isEmpty ? (photo?.shop ?? "") : said).split(separator: " ").map { w in w == w.lowercased() ? w.prefix(1).uppercased() + w.dropFirst() : String(w) }.joined(separator: " ")
