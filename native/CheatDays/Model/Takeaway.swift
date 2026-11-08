@@ -407,8 +407,11 @@ enum Takeaway {
         if (num(first["over"]) ?? 0) > 10 { reply += " \(str(first["title"])) is \(Fmt.int(num(first["over"]) ?? 0)) kcal over what's left, but it's the closest:" }
         else if p.meets { reply += " \(str(first["title"])) gets you there:" }
         else { reply += " The closest gets you \(Fmt.int(top.p)) g of your \(Int(protein)) g protein:" }
-        // said plainly when the dish's own energy wasn't found, with the way to give it
-        if top.item.tier == "none" { reply += "\n\nI couldn't find the \(top.item.name)'s kJ on \(shown)'s listing, so that one is my estimate. Type the kJ the app you order on shows for it (\"\(top.item.name), 2,100 kJ\") or send a screenshot of it and I'll use that." }
+        // said first and plainly when the dish's own energy wasn't found, with the way to give it
+        if top.item.tier == "none" {
+            reply = "**I couldn't find the \(top.item.name)'s kJ on \(shown)'s listing, so its numbers are my estimate.** Type the kJ the app you order on shows for it (\"\(top.item.name), 2,100 kJ\") or send a screenshot of it and I'll use the real number.\n\n" + reply
+            trail.append("Couldn't find the \(top.item.name)'s kJ: estimated")
+        }
         if home.isEmpty { reply += "\n\nScan your protein powder or yoghurt (＋ in Plan a meal) and I can add them from home." }
         return ["kind": "takeaway", "reply": reply, "meal": meal, "trail": trail,
                 "takeaway": ["restaurant": shown, "source": str(m["source"]), "combos": combos, "aim": protein,
