@@ -26,6 +26,7 @@ struct AssistantView: View {
     @State private var stepNow = "Thinking…"
     @State private var changing: PartRef?
     @State private var openCombo: [UUID: Int] = [:]   // which of a takeaway answer's combos is open
+    @State private var cardEdits: [String: CardEdit] = [:]   // what's been changed on each takeaway combo ("turn-combo")
     @FocusState private var typing: Bool
     private var store: Store { Store.shared }
 
@@ -222,11 +223,19 @@ struct AssistantView: View {
                 let i = entry.index, pt = entry.item, key = "\(turn)-\(i)"
                 let flagged = pt["flagged"] as? Bool == true, ok = !["", "ai"].contains(str(pt["src"])) && !flagged
                 Button { withAnimation(.snappy) { openPart = openPart == key ? nil : key } } label: {
-                    HStack(spacing: 6) {
-                        // amber: its numbers still look wrong for that kind of food, so check it (the warning below says why)
-                        Image(systemName: flagged ? "exclamationmark.triangle.fill" : ok ? "checkmark.seal.fill" : "sparkles").font(.caption2)
-                            .foregroundStyle(flagged ? Theme.warn : ok ? Color.green : .secondary)
-                        Text(str(pt["name"])).font(.caption).foregroundStyle(.primary).multilineTextAlignment(.leading)
+                    HStack(spacing: 10) {
+                        // the food's own icon, with a small tick when it was checked against the food tables, amber when
+                        // its numbers still look wrong for that kind of food (the warning below says why), nothing when unchecked
+                        FoodDot(name: str(pt["name"]), size: 30, hint: str(pt["match"]))
+                            .overlay(alignment: .bottomTrailing) {
+                                if flagged || ok {
+                                    Image(systemName: flagged ? "exclamationmark" : "checkmark").font(.system(size: 7, weight: .black)).foregroundStyle(.black)
+                                        .frame(width: 13, height: 13).background(flagged ? Theme.warn : Color.green, in: Circle())
+                                        .overlay(Circle().stroke(Color(.secondarySystemGroupedBackground), lineWidth: 2)).offset(x: 3, y: 3)
+                                }
+                            }
+                            .accessibilityLabel(flagged ? "Check this one" : ok ? "Checked" : "Not checked")
+                        Text(str(pt["name"])).font(.subheadline.weight(.medium)).foregroundStyle(.primary).multilineTextAlignment(.leading)
                         Spacer()
                         Text("\(Int(num(pt["grams"]) ?? 0)) g · \(Int(num(pt["kcal"]) ?? 0))").font(.caption).monospacedDigit().foregroundStyle(.secondary)
                         Image(systemName: openPart == key ? "chevron.down" : "chevron.right").font(.caption2).foregroundStyle(.tertiary)
@@ -593,14 +602,15 @@ struct AssistantView: View {
         }
     }
 
-    /// A takeaway answer: the open combo with its lines (the dish, a shake, a dessert from home), where each number came
-    /// from, and one button to add them all; the other combos under it, a tap opening one instead; then the dishes low in
-    /// protein and the sides that won't fit with a dish.
+    /// A takeaway answer: the open combo with its lines (the dish, a shake, a dessert from home), one line saying where
+    /// the numbers came from, and one button to add it; ✕ takes a line off (↺ puts it back), ⇄ swaps the dish for another
+    /// from the menu, and when it's short of protein a shake from home is offered. The other combos are under it, a tap
+    /// opening one instead.
     @ViewBuilder private func takeawayCard(_ ta: JSON, turn: UUID, meal: String) -> some View {
         let combos = list(ta["combos"]), at = min(openCombo[turn] ?? 0, max(0, combos.count - 1)), aim = num(ta["aim"]) ?? 0
-        let place = str(ta["restaurant"])
+        let place = str(ta["restaurant"]), key = "\(turn)-\(at)", edit = cardEdits[key] ?? CardEdit()
         if !combos.isEmpty {
-            let c = combos[at]
+            let c = Takeaway.edited(combos[at], off: edit.off, dish: edit.dish, tip: edit.tip, restaurant: place, kcal: num(ta["kcal"]) ?? 9999)
             panel {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 2) {
@@ -611,25 +621,63 @@ struct AssistantView: View {
                     comboTotal(c, aim: aim).font(.subheadline.weight(.bold))
                 }
                 ForEach(list(c["lines"]).indices, id: \.self) { i in
-                    let l = list(c["lines"])[i]
-                    Divider()
-                    HStack(spacing: 10) {
-                        FoodDot(name: str(l["name"]), size: 30)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(str(l["name"])).font(.subheadline.weight(.semibold))
+                    let l = list(c["lines"])[i], off = l["off"] as? Bool == true
+                    HStack(spacing: 11) {
+                        FoodDot(name: str(l["name"]), size: 34)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(str(l["name"])).font(.subheadline.weight(.semibold)).strikethrough(off)
                             if !str(l["detail"]).isEmpty { Text(str(l["detail"])).font(.caption).foregroundStyle(.secondary) }
-                            sourceTag(str(l["tag"]), place: place)
                         }
                         Spacer(minLength: 4)
                         (Text(Fmt.int(num(l["kcal"]) ?? 0)).bold().foregroundStyle(.primary) + Text(" · \(Int((num(l["p"]) ?? 0).rounded())) g"))
                             .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                        // the dish: swap it for another from the menu, closest in size first
+                        if i == 0, !list(combos[at]["swaps"]).isEmpty {
+                            Menu {
+                                ForEach(list(combos[at]["swaps"]).indices, id: \.self) { j in
+                                    let s = list(combos[at]["swaps"])[j]
+                                    Button("\(str(s["name"]))  ·  \(Fmt.int(num(s["kcal"]) ?? 0)) kcal, \(Int((num(s["p"]) ?? 0).rounded())) g") {
+                                        withAnimation(.snappy) { var e = edit; e.dish = s; e.off.remove(0); cardEdits[key] = e }
+                                    }
+                                }
+                            } label: { lineButton("arrow.left.arrow.right") }
+                            .accessibilityLabel("Swap \(str(l["name"]))")
+                        }
+                        Button {
+                            withAnimation(.snappy) { var e = edit; if off { e.off.remove(i) } else { e.off.insert(i) }; cardEdits[key] = e }
+                        } label: { lineButton(off ? "arrow.uturn.backward" : "xmark") }
+                        .buttonStyle(.plain).accessibilityLabel(off ? "Put back \(str(l["name"]))" : "Take off \(str(l["name"]))")
                     }
+                    .opacity(off ? 0.4 : 1)
+                }
+                // short of protein with nothing from home asked for: one shake offered, a tap puts it in
+                if !edit.tip, let t = combos[at]["tip"] as? JSON {
+                    Button { withAnimation(.snappy) { var e = edit; e.tip = true; cardEdits[key] = e } } label: {
+                        HStack(spacing: 9) {
+                            FoodDot(name: "Protein shake", size: 26)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(str(t["text"])).font(.caption.weight(.semibold)).multilineTextAlignment(.leading)
+                                Text(str(t["more"])).font(.caption2).foregroundStyle(.secondary)
+                            }
+                            Spacer(minLength: 4)
+                            Text("Add").font(.caption.weight(.bold)).foregroundStyle(Theme.accent)
+                        }
+                        .padding(9).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Theme.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.accent.opacity(0.45), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+                    }
+                    .buttonStyle(.plain)
                 }
                 if (num(c["over"]) ?? 0) > 10 {
                     Text("\(Fmt.int(num(c["over"]) ?? 0)) kcal over what's left today").font(.caption).foregroundStyle(Theme.warn)
                 }
-                addButton("Add all to \(meal.lowercased())", key: "ta\(at)", turn: turn) {
-                    let foods = list(c["lines"]).flatMap { list($0["add"]) }.map { a -> JSON in
+                // where the numbers came from, said once; amber when the dish's kJ wasn't found
+                if !str(c["source"]).isEmpty {
+                    Text(str(c["source"])).font(.caption).foregroundStyle(c["warn"] as? Bool == true ? Theme.warn : .secondary)
+                }
+                let count = Int(num(c["count"]) ?? 0), all = count == list(c["lines"]).count
+                addButton(all ? "Add all to \(meal.lowercased())" : "Add \(count) to \(meal.lowercased())", key: "ta\(at)", turn: turn) {
+                    let foods = list(c["lines"]).filter { $0["off"] as? Bool != true }.flatMap { list($0["add"]) }.map { a -> JSON in
                         let g = pos(a["grams"])
                         var b = Assistant.basis(name: str(a["name"]), kcal: num(a["kcal"]) ?? 0, grams: g, unit: str(a["unit"]).isEmpty ? "g" : str(a["unit"]),
                                                 p: num(a["p"]) ?? 0, c: num(a["c"]) ?? 0, f: num(a["f"]) ?? 0)
@@ -644,10 +692,9 @@ struct AssistantView: View {
                 let o = combos[i]
                 Button { withAnimation(.snappy) { openCombo[turn] = i } } label: {
                     HStack(spacing: 10) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(str(o["title"])).font(.subheadline.weight(.bold)).multilineTextAlignment(.leading)
-                            if !str(o["note"]).isEmpty { Text(str(o["note"])).font(.caption).foregroundStyle(.secondary) }
-                        }
+                        // its foods' icons, overlapping a little, then its name
+                        HStack(spacing: -6) { ForEach(list(o["lines"]).indices, id: \.self) { j in FoodDot(name: str(list(o["lines"])[j]["name"]), size: 22) } }
+                        Text(str(o["title"])).font(.subheadline.weight(.bold)).multilineTextAlignment(.leading)
                         Spacer()
                         comboTotal(o, aim: aim).font(.caption.weight(.bold))
                         Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
@@ -659,40 +706,21 @@ struct AssistantView: View {
                 .buttonStyle(.plain).accessibilityHint("Shows this one")
             }
         }
-        skipList("LOW PROTEIN AT \(place.uppercased())", list(ta["low"]).map { (str($0["name"]), "\(Fmt.int(num($0["kcal"]) ?? 0)) kcal · about \(Int((num($0["p"]) ?? 0).rounded())) g") })
-        skipList("SIDES WON'T FIT WITH A DISH", list(ta["sides"]).map { (str($0["name"]), "\(Fmt.int(num($0["kcal"]) ?? 0)) kcal") })
+    }
+
+    /// What's been changed on a takeaway card: lines taken off, the dish swapped, the offered shake put in.
+    struct CardEdit { var off: Set<Int> = []; var dish: JSON?; var tip = false }
+
+    /// The small round ✕, ↺ and ⇄ on a takeaway card's lines.
+    private func lineButton(_ symbol: String) -> some View {
+        Image(systemName: symbol).font(.system(size: 11, weight: .bold)).foregroundStyle(.secondary)
+            .frame(width: 26, height: 26).background(Color(.tertiarySystemFill), in: Circle())
     }
 
     /// "851 kcal · 66 g", the protein green when it reaches the aim.
     private func comboTotal(_ c: JSON, aim: Double) -> Text {
         let p = num(c["p"]) ?? 0
         return Text("\(Fmt.int(num(c["kcal"]) ?? 0)) kcal · ") + Text("\(Int(p.rounded())) g").foregroundStyle(p >= aim - 0.5 ? Theme.walk : Theme.warn)
-    }
-
-    /// Where a line's numbers came from: the restaurant's own, its kJ with the protein estimated, an estimate, or home.
-    private func sourceTag(_ tag: String, place: String) -> some View {
-        let (word, colour): (String, Color) = switch tag {
-        case "full": ("\(place)'s menu".uppercased(), Theme.walk)
-        case "energy": ("\(place)'s kJ · protein est.".uppercased(), Theme.accent)
-        case "label": ("YOUR LABEL", Color(red: 0.78, green: 0.65, blue: 1))
-        case "log": ("FROM YOUR LOG", Color(red: 0.78, green: 0.65, blue: 1))
-        default: ("ESTIMATED", Theme.warn)
-        }
-        return Text(word).font(.caption2.weight(.heavy)).foregroundStyle(colour)
-            .padding(.horizontal, 6).padding(.vertical, 2).background(colour.opacity(0.14), in: RoundedRectangle(cornerRadius: 5))
-    }
-
-    @ViewBuilder private func skipList(_ title: String, _ rows: [(String, String)]) -> some View {
-        if !rows.isEmpty {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.caption2.weight(.heavy)).foregroundStyle(Theme.warn)
-                ForEach(rows.indices, id: \.self) { i in
-                    HStack { Text(rows[i].0).fontWeight(.semibold); Spacer(); Text(rows[i].1).foregroundStyle(.secondary).monospacedDigit() }.font(.caption)
-                }
-            }
-            .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        }
     }
 
     // MARK: composer

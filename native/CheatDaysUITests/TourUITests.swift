@@ -174,4 +174,24 @@ final class TourUITests: XCTestCase {
         pw.typeText("defgh")
         XCTAssertFalse(hint.waitForExistence(timeout: 1))
     }
+
+    /// The takeaway card the owner checks: just Gami with a shake offered, a combo with ✕ and ⇄, and the estimate card with icons.
+    func testTakeawayCards() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-uitest-takeaway"]
+        app.launch()
+        let off = app.buttons.containing(NSPredicate(format: "label BEGINSWITH %@", "Take off")).firstMatch
+        XCTAssertTrue(off.waitForExistence(timeout: 8), "the ✕ on a line")
+        XCTAssertTrue(app.buttons.containing(NSPredicate(format: "label BEGINSWITH %@", "Swap")).firstMatch.exists, "the ⇄ on the dish")
+        XCTAssertFalse(app.staticTexts["LOW PROTEIN AT GAMI"].exists)
+        let a = XCTAttachment(screenshot: app.screenshot()); a.name = "takeaway-lunch"; a.lifetime = .keepAlways; add(a)
+        app.swipeUp()
+        let b = XCTAttachment(screenshot: app.screenshot()); b.name = "takeaway-dinner"; b.lifetime = .keepAlways; add(b)
+        let drop = app.buttons.containing(NSPredicate(format: "label BEGINSWITH %@", "Take off")).allElementsBoundByIndex.last { $0.isHittable }
+        drop?.tap()
+        XCTAssertTrue(app.buttons.containing(NSPredicate(format: "label BEGINSWITH %@", "Put back")).firstMatch.waitForExistence(timeout: 3))
+        let c = XCTAttachment(screenshot: app.screenshot()); c.name = "takeaway-dropped"; c.lifetime = .keepAlways; add(c)
+        app.swipeUp()
+        let d = XCTAttachment(screenshot: app.screenshot()); d.name = "estimate-icons"; d.lifetime = .keepAlways; add(d)
+    }
 }

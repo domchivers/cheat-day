@@ -157,4 +157,46 @@ final class TakeawayTests: XCTestCase {
         XCTAssertEqual(c.kcalPer100, 379)
         XCTAssertEqual(FoodMath.conv(["name": "Protein powder", "unit": "g", "kcalPer100": 379, "servingSize": 30]).countKcal ?? 0, 113.7, accuracy: 0.1)
     }
+
+    /// "Want something from Gami tomorrow" came back with a shake and ice cream: home only when they bring it up.
+    func testHomeOnlyWhenAsked() {
+        XCTAssertFalse(Takeaway.asksForHome("want something from gami tomorrow, lunch"))
+        XCTAssertTrue(Takeaway.asksForHome("Gami for dinner with a shake and ice cream"))
+        XCTAssertTrue(Takeaway.asksForHome("no milk left, I want the wings"))
+        // only Gami named: dishes alone, and a shake offered when the best one is short of protein
+        let p = Takeaway.plan(menu: gami, home: [], kcal: 600, protein: 45, place: "Gami")
+        let r = Takeaway.result(p, home: [], tips: home, menu: gami, shown: "Gami", kcal: 600, protein: 45, meal: "Lunch", smallest: 545)
+        let c = list(dict(r["takeaway"])["combos"])[0]
+        XCTAssertEqual(list(c["lines"]).count, 1, "just the dish")
+        XCTAssertNotNil(c["tip"], "a shake offered, not added")
+        XCTAssertFalse(list(c["swaps"]).isEmpty, "other dishes to swap in")
+        XCTAssertFalse(str(r["reply"]).contains("Scan"), "no nudge to scan when a shake is on offer")
+    }
+
+    /// ✕, ⇄ and the offered shake: the totals, how far over, the count on the button and where the numbers came from follow.
+    func testEditingTheCard() {
+        let p = Takeaway.plan(menu: gami, home: home, kcal: 854, protein: 59, want: ["chicken burger"], place: "Gami")
+        let c = Takeaway.json(p.combos[0].0, note: "", restaurant: "Gami", kcal: 854)
+        let n = list(c["lines"]).count
+        XCTAssertGreaterThan(n, 1)
+        let off = Takeaway.edited(c, off: [n - 1], dish: nil, tip: false, restaurant: "Gami", kcal: 854)
+        XCTAssertEqual(num(off["count"]), Double(n - 1))
+        XCTAssertEqual(num(off["kcal"]) ?? 0, (num(c["kcal"]) ?? 0) - (num(list(c["lines"])[n - 1]["kcal"]) ?? 0), accuracy: 1.5)
+        // the burger swapped for the tenders: the title and the source line follow
+        let tenders: JSON = ["name": "Original tenders, 4 pcs", "tier": "energy", "kcal": 669, "p": 42, "c": 40, "f": 30]
+        let swapped = Takeaway.edited(c, off: [], dish: tenders, tip: false, restaurant: "Gami", kcal: 854)
+        XCTAssertTrue(str(swapped["title"]).hasPrefix("Original tenders"))
+        XCTAssertTrue(str(swapped["source"]).hasPrefix("Original tenders from Gami's kJ"))
+        XCTAssertEqual(str(list(swapped["lines"])[0]["name"]), "Original tenders, 4 pcs")
+        // the dish taken off: the source line is only the home foods
+        XCTAssertFalse(str(Takeaway.edited(c, off: [0], dish: nil, tip: false, restaurant: "Gami", kcal: 854)["source"]).contains("Gami"))
+        // the offered shake put in
+        let best = Takeaway.plan(menu: gami, home: [], kcal: 600, protein: 45).combos[0].0
+        var lone = Takeaway.json(best, note: "", restaurant: "Gami", kcal: 600)
+        let before = num(lone["p"]) ?? 0
+        lone["tip"] = Takeaway.tip(for: best, protein: 45, home: home)
+        let added = Takeaway.edited(lone, off: [], dish: nil, tip: true, restaurant: "Gami", kcal: 600)
+        XCTAssertEqual(list(added["lines"]).count, 2)
+        XCTAssertGreaterThan(num(added["p"]) ?? 0, before)
+    }
 }

@@ -30,6 +30,7 @@ struct CheatDaysApp: App {
 struct RootView: View {
     var body: some View {
         if ProcessInfo.processInfo.arguments.contains("-uitest-assistant") { AssistantHarness() }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-takeaway") { TakeawayHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-session") { SessionHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-tour") { TourHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-signin") { SignInView() }
@@ -72,6 +73,39 @@ private struct SessionHarness: View {
             }
             .tabItem { Label("Workouts", systemImage: "dumbbell") }
         }
+    }
+}
+
+/// For the takeaway screenshots only: the assistant open on three answers worked out here from Gami's 2026 kJ (no AI,
+/// no sign-in): just Gami for tomorrow's lunch with a shake offered, dinner with a shake and ice cream asked for, and a
+/// burger logged from its page with each part checked.
+private struct TakeawayHarness: View {
+    @State private var open = false
+    init() {
+        let rows: [(String, Double, Double)] = [("Spicy Chicken Cupbap", 2414, 30), ("Original tenders, 4 pcs", 2800, 42), ("Chicken Burger", 2280, 30),
+                                                ("Boneless Chicken", 3720, 50), ("Bibimbap", 2740, 28), ("Kimchi Fried Rice", 3053, 15)]
+        let menu = Takeaway.items(["items": rows.map { ["name": $0.0, "kind": "main", "published": "energy", "kj": $0.1, "kcal": 0, "protein_g": $0.2, "carbs_g": 50, "fat_g": 25] as JSON }])
+        let home = [Takeaway.home(name: "Milk Chocolate Protein Powder", kcal100: 380, p100: 69.3, c100: 16, f100: 4.3, serving: 30, label: true),
+                    Takeaway.home(name: "Pauls PLUS+ milk", kcal100: 68, p100: 6, c100: 5, f100: 1, serving: nil, label: true),
+                    Takeaway.home(name: "Kenny's ice cream", kcal100: 106, p100: 7.2, c100: 11.6, f100: 3.4, serving: nil, label: true)].compactMap { $0 }
+        let lunch = Takeaway.result(Takeaway.plan(menu: menu, home: [], kcal: 600, protein: 45, place: "Gami Windsor"), home: [], tips: home, menu: menu,
+                                    shown: "Gami Windsor", kcal: 600, protein: 45, meal: "Lunch", smallest: 545)
+        let dinner = Takeaway.result(Takeaway.plan(menu: menu, home: home, kcal: 854, protein: 59, want: ["chicken burger"], place: "Gami"), home: home, menu: menu,
+                                     shown: "Gami", kcal: 854, protein: 59, meal: "Dinner", smallest: 545)
+        func part(_ n: String, _ g: Double, _ k: Double, _ p: Double) -> JSON { ["name": n, "grams": g, "kcal": k, "protein_g": p, "carbs_g": 0, "fat_g": 0, "src": "au", "match": n] }
+        let burger: JSON = ["kind": "estimate", "meal": "Lunch", "trail": ["Energy from the kJ on Gami's page in your photo"],
+                            "estimate": ["name": "Gami chicken burger", "shop": "Gami", "portion_g": 255, "unit": "g", "kcal_total": 544, "protein_g": 28, "carbs_g": 60, "fat_g": 21,
+                                         "parts": [part("Burger bun, toasted", 85, 235, 7), part("Chicken fillet, crumbed, fried", 100, 223, 22), part("Coleslaw", 40, 42, 1), part("Creamy cheese sauce", 30, 44, 2)]] as JSON]
+        AssistantLive.shared.turns = [
+            Assistant.Turn(me: true, text: "want something from gami tomorrow, lunch"), Assistant.Turn(me: false, text: str(lunch["reply"]), result: lunch),
+            Assistant.Turn(me: true, text: "854 left, Gami for dinner, the chicken burger with a shake and ice cream"), Assistant.Turn(me: false, text: str(dinner["reply"]), result: dinner),
+            Assistant.Turn(me: true, text: "This burger for lunch"), Assistant.Turn(me: false, text: "The Gami chicken burger, sized to the 2,280 kJ on the page. Tap Add to put it on today's list.", result: burger)]
+        AssistantLive.shared.used = Date()
+    }
+    var body: some View {
+        Button("Open assistant") { open = true }.accessibilityIdentifier("openAssistant")
+            .sheet(isPresented: $open) { AssistantView(meal: "Lunch", firstQuestion: "") }
+            .onAppear { open = true }
     }
 }
 
