@@ -252,7 +252,7 @@ enum Takeaway {
     /// Kept word for word with tools/ai-test/menu-check.js, which tested them against Claude.
     static func routeAsk(_ message: String, earlier: String, photo: String = "") -> String {
         """
-        A message to the assistant in a food diary app\(photo.isEmpty ? "" : ", with a photo of \(photo)"). Is it about what to order or eat next from one particular restaurant, takeaway or chain: asking ("want Gami for dinner, what should I get?", "what can I have at Nando's for 700 kcal") or saying what they'd like from it ("854 left, want Gami for dinner, the chicken burger with a shake")? Food they already ate ("had a Gami burger for lunch"), or a recipe, is not. When the conversation so far was choosing from a restaurant, a reply changing that choice ("no milk left, I want the wings") counts too, with that restaurant.\(photo.isEmpty ? "" : " With a photo of a menu or delivery-app page, naming a dish on it for a meal (\"this burger for dinner\") is choosing it, unless they say they had or ate it.")
+        A message to the assistant in a food diary app\(photo.isEmpty ? "" : ", with a photo of \(photo)"). Is it about what to order or eat (now, later or another day) from one particular restaurant, takeaway or chain: asking ("want Gami for dinner, what should I get?", "what can I have at Nando's for 700 kcal") or saying what they'd like from it ("854 left, want Gami for dinner, the chicken burger with a shake")? Food they already ate ("had a Gami burger for lunch"), or a recipe, is not. When the conversation so far was choosing from a restaurant, a reply changing that choice ("no milk left, I want the wings") counts too, with that restaurant.\(photo.isEmpty ? "" : " With a photo of a menu or delivery-app page, naming a dish on it for a meal (\"this burger for dinner\") is choosing it, unless they say they had or ate it.")
         \(earlier.isEmpty ? "" : "The conversation so far:\n\(earlier)\n")Their message: "\(message)"
         restaurant: its name as they wrote it, else empty. area: a suburb or city if they said one, else empty. want: menu items they say they want, in their words. avoid: foods they don't want or don't have in ("milk"), in their words. seen: dishes they quote from a menu or delivery app with their energy ("Chicken Burger (2280 kJ)"), each with its kJ (kcal × 4.184 if they gave kcal), else empty. kcal and protein: numbers they gave for what they have left or for this meal ("854 left" is kcal 854), else 0.
         """
@@ -366,7 +366,9 @@ enum Takeaway {
         // with a menu page, choosing or logging is decided here: Claude called "this burger for dinner" a log one time in three
         if photo != nil, !choosing(last.text) { return nil }
         guard let route = await Gemini.askClaude("quick", schema: routeSchema, parts: [["text": routeAsk(last.text, earlier: earlier, photo: page)]]),
-              photo != nil || route["takeaway"] as? Bool == true else { return nil }
+              // Claude said no three times to "want something from the gami in Windsor tomorrow, what's my options?" while
+              // naming Gami: a restaurant named in a question or a wish (nothing they had) is enough
+              photo != nil || route["takeaway"] as? Bool == true || (!str(route["restaurant"]).isEmpty && choosing(last.text)) else { return nil }
         let said = str(route["restaurant"]).trimmingCharacters(in: .whitespaces)
         // "gami Windsor" as "Gami Windsor": a word typed all in lower case gets its capital
         let name = (said.isEmpty ? (photo?.shop ?? "") : said).split(separator: " ").map { w in w == w.lowercased() ? w.prefix(1).uppercased() + w.dropFirst() : String(w) }.joined(separator: " ")
@@ -396,8 +398,11 @@ enum Takeaway {
         let meal = Meals.named(in: last.text) ?? (hour < 11 ? "Breakfast" : hour < 16 ? "Lunch" : "Dinner")
         let left = max(0, store.budgetToday - store.eaten), share = store.mealTarget(meal)
         let pLeft = store.proteinGoal.map { max(0, $0 - store.macros(store.todayItems).p) }
-        let kcal = pos(route["kcal"]) ?? (meal == "Dinner" ? left : share.kcal)
-        let protein = pos(route["protein"]) ?? (meal == "Dinner" ? pLeft : share.protein).map { $0.rounded() } ?? 30
+        // for tomorrow: that meal's usual share of a whole day, not what's left tonight
+        let tomorrow = last.text.lowercased().contains("tomorrow")
+        let usual = ["Breakfast": 0.25, "Lunch": 0.30, "Dinner": 0.35][meal] ?? 0.3
+        let kcal = pos(route["kcal"]) ?? (tomorrow ? (store.budgetToday * usual / 10).rounded() * 10 : meal == "Dinner" ? left : share.kcal)
+        let protein = pos(route["protein"]) ?? (tomorrow ? store.proteinGoal.map { ($0 * usual).rounded() } : (meal == "Dinner" ? pLeft : share.protein).map { $0.rounded() }) ?? 30
         let avoid = route["avoid"] as? [String] ?? []
         let p = plan(menu: menuItems, home: home, kcal: kcal, protein: protein, want: want, avoid: avoid, place: shown)
 

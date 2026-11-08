@@ -138,6 +138,9 @@ final class TakeawayTests: XCTestCase {
         XCTAssertFalse(Takeaway.choosing("Had this for lunch"))
         XCTAssertFalse(Takeaway.choosing("ate this burger"))
         XCTAssertFalse(Takeaway.choosing("This burger"), "just naming it: a log, as before")
+        // Claude called this "not takeaway" three times out of three, while naming Gami: the app's own check decides
+        XCTAssertTrue(Takeaway.choosing("Want something from the gami in Windsor tomorrow, what's my options? Lunch thinking"))
+        XCTAssertTrue(Takeaway.mightBe("Want something from the gami in Windsor tomorrow, what's my options? Lunch thinking", after: nil))
     }
 
     func testWhichMessagesAreAsked() {
