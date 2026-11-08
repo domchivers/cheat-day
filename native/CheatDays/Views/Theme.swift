@@ -159,15 +159,15 @@ enum FoodEmoji {
         // fast food and dishes
         ("🍕", ["pizza"]), ("🍔", ["burger", "cheeseburger", "big mac", "whopper"]), ("🌭", ["hot dog", "hotdog", "sausage roll"]), ("🍟", ["fries", "chips", "wedges", "hash brown"]),
         ("🌮", ["taco"]), ("🌯", ["burrito", "wrap", "kebab", "gyro", "souvlaki", "shawarma"]), ("🥙", ["pita", "falafel"]), ("🥪", ["sandwich", "sub", "toastie", "panini", "baguette", "roll"]),
-        ("🍣", ["sushi", "chirashi", "sashimi", "nigiri", "sushi roll", "hand roll", "kimbap"]), ("🍱", ["bento"]), ("🥟", ["dumpling", "gyoza", "dim sum", "bao", "wonton", "egg roll", "spring roll"]), ("🍜", ["ramen", "pho", "noodle", "laksa", "udon", "pad thai", "chow mein", "soba"]),
+        ("🍣", ["sushi", "chirashi", "kaisendon", "poke don", "sashimi", "nigiri", "sushi roll", "hand roll", "kimbap"]), ("🍱", ["bento"]), ("🥟", ["dumpling", "gyoza", "dim sum", "bao", "wonton", "egg roll", "spring roll"]), ("🍜", ["ramen", "pho", "noodle", "laksa", "udon", "pad thai", "chow mein", "soba", "yakisoba"]),
         ("🍝", ["pasta", "spaghetti", "lasagne", "lasagna", "bolognese", "carbonara", "penne", "mac and cheese", "macaroni", "gnocchi", "ravioli"]),
-        ("🍛", ["curry", "korma", "tikka", "butter chicken", "biryani", "dal", "dahl"]), ("🍚", ["rice", "risotto", "fried rice"]), ("🌶️", ["chilli sauce", "chili sauce", "hot sauce", "sweet chilli", "sriracha", "tabasco", "jalapeno", "jalapeño", "peri peri", "chilli", "chili", "chillies"]), ("🥘", ["paella", "stew", "casserole", "chilli con carne", "chili con carne"]),
-        ("🍲", ["soup", "hot pot", "broth"]), ("🥗", ["salad", "poke", "buddha bowl", "slaw"]), ("🥧", ["pie", "quiche", "pasty"]), ("🫔", ["tamale", "enchilada"]),
+        ("🍛", ["curry", "korma", "tikka", "butter chicken", "biryani", "dal", "dahl"]), ("🍚", ["rice", "risotto", "fried rice", "donburi", "gyudon", "katsudon", "oyakodon", "onigiri"]), ("🌶️", ["chilli sauce", "chili sauce", "hot sauce", "sweet chilli", "sriracha", "tabasco", "jalapeno", "jalapeño", "peri peri", "chilli", "chili", "chillies"]), ("🥘", ["paella", "stew", "casserole", "chilli con carne", "chili con carne"]),
+        ("🍲", ["soup", "hot pot", "broth", "oden", "nabe", "sukiyaki", "shabu shabu"]), ("🥗", ["salad", "poke", "buddha bowl", "slaw"]), ("🥧", ["pie", "quiche", "pasty"]), ("🫔", ["tamale", "enchilada"]),
         // meat, fish, eggs
-        ("🍗", ["thigh steak", "chicken", "wings", "drumstick", "nugget", "schnitzel", "turkey"]), ("🥩", ["steak", "beef", "wagyu", "lamb", "mince", "pork", "veal", "biltong", "jerky"]), ("🥓", ["bacon", "ham", "prosciutto", "salami", "pepperoni"]),
+        ("🍗", ["thigh steak", "chicken", "wings", "drumstick", "nugget", "schnitzel", "turkey", "karaage", "yakitori"]), ("🥩", ["steak", "beef", "wagyu", "tonkatsu", "lamb", "mince", "pork", "veal", "biltong", "jerky"]), ("🥓", ["bacon", "ham", "prosciutto", "salami", "pepperoni"]),
         ("🍤", ["prawn", "shrimp", "tempura"]), ("🐟", ["salmon", "tuna", "fish", "cod", "barramundi", "sardine", "mackerel", "kingfish", "ceviche"]), ("🦐", ["seafood"]), ("🍳", ["omelette", "fried egg", "scrambled", "frittata"]), ("🥚", ["egg"]),
         // bakery and breakfast
-        ("🥞", ["pancake", "crepe", "pikelet"]), ("🧇", ["waffle"]), ("🥐", ["croissant", "pastry", "danish", "pain au"]), ("🥯", ["bagel"]), ("🍞", ["toast", "bread", "sourdough", "crumpet", "muffin english"]),
+        ("🥞", ["pancake", "crepe", "pikelet", "okonomiyaki"]), ("🧇", ["waffle"]), ("🥐", ["croissant", "pastry", "danish", "pain au"]), ("🥯", ["bagel"]), ("🍞", ["toast", "bread", "sourdough", "crumpet", "muffin english"]),
         ("🥣", ["cereal", "porridge", "oats", "oatmeal", "granola", "muesli", "weet-bix", "weetbix", "cornflakes"]),
         // sweets and snacks
         ("🍩", ["donut", "doughnut"]), ("🧁", ["cupcake", "muffin"]), ("🍰", ["cake", "cheesecake", "slice", "tart"]), ("🍪", ["cookie", "biscuit", "tim tam", "oreo"]), ("🍫", ["chocolate", "brownie", "kitkat", "kit kat", "snickers", "mars", "twix", "freddo", "dairy milk"]),
@@ -178,7 +178,7 @@ enum FoodEmoji {
         // fruit and veg
         ("🍌", ["banana"]), ("🍎", ["apple"]), ("🍊", ["orange", "mandarin"]), ("🍓", ["strawberr"]), ("🫐", ["blueberr", "berries", "berry"]), ("🍇", ["grape"]), ("🍉", ["watermelon"]), ("🍍", ["pineapple"]),
         ("🥭", ["mango"]), ("🍑", ["peach", "nectarine"]), ("🍐", ["pear"]), ("🥝", ["kiwi"]), ("🍒", ["cherr"]), ("🥑", ["avocado", "avo", "guacamole"]), ("🍅", ["tomato"]),
-        ("🥦", ["broccoli", "veg", "vegetable", "greens", "spinach", "kale", "zucchini", "beans green", "cabbage", "lettuce", "bok choy"]), ("🥕", ["carrot"]), ("🌽", ["corn"]), ("🥔", ["potato", "mash"]), ("🍠", ["sweet potato"]),
+        ("🥦", ["broccoli", "edamame", "veg", "vegetable", "greens", "spinach", "kale", "zucchini", "beans green", "cabbage", "lettuce", "bok choy"]), ("🥕", ["carrot"]), ("🌽", ["corn"]), ("🥔", ["potato", "mash"]), ("🍠", ["sweet potato"]),
         ("🍄", ["mushroom"]), ("🥒", ["cucumber", "pickle", "bread and butter", "bread & butter"]), ("🫑", ["capsicum", "pepper"]), ("🧅", ["onion"]), ("🍋", ["lemon", "lime"]), ("🥥", ["coconut"]),
         // general
         ("🍽️", ["dinner", "lunch", "meal", "plate", "bowl"])
@@ -201,6 +201,9 @@ enum FoodEmoji {
                           (#"\b(raw|cooked|sliced|peeled|boiled|fresh|dry|dried|ground|whole|skinless|shredded|grated|chopped|diced|ripe|unsweetened|plain|skimmed|roasted|toasted|grilled|steamed)\b"#, " ")] {
             n = n.replacingOccurrences(of: p, with: with, options: .regularExpression)
         }
+        // a set, combo or platter is the dish it's named for, not the last thing that came with it ("Chirashi lunch set
+        // … and 3 wagyu slices" is sushi, not a steak)
+        if let r = n.range(of: #"\b(set|combo|platter)\b"#, options: .regularExpression), let head = last(in: String(n[..<r.lowerBound])) { return head }
         return last(in: n) ?? last(in: name.lowercased())
     }
 

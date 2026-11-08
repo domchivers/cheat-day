@@ -26,8 +26,14 @@ final class FoodEmojiTests: XCTestCase {
         XCTAssertEqual(FoodEmoji.for("Cucumber, sliced"), "🥒")             // not a slice of cake
         XCTAssertEqual(FoodEmoji.for("Biltong slices"), "🥩")               // nor biltong slices
         XCTAssertEqual(FoodEmoji.for("Caramel slice"), "🍰")                // a slice by itself is one
-        XCTAssertEqual(FoodEmoji.for("Chirashi lunch set (2/3 fish, rice and sides) and 3 wagyu slices, no side sauces"), "🥩")   // not the sauce it didn't have
+        // a set is the dish it's named for: not the sauce it didn't have, nor the wagyu that came with it
+        XCTAssertEqual(FoodEmoji.for("Chirashi lunch set (2/3 fish, rice and sides) and 3 wagyu slices, no side sauces"), "🍣")
+        XCTAssertEqual(FoodEmoji.for("Burger combo, fries and a coke"), "🍔")
         XCTAssertEqual(FoodEmoji.for("Chirashi bowl"), "🍣")
+        XCTAssertEqual(FoodEmoji.for("Gyudon"), "🍚")
+        XCTAssertEqual(FoodEmoji.for("Oden broth, dashi"), "🍲")
+        XCTAssertEqual(FoodEmoji.for("Chicken karaage"), "🍗")
+        XCTAssertEqual(FoodEmoji.for("Edamame, shelled, boiled"), "🥦")
         XCTAssertEqual(FoodEmoji.for("Watermelon"), "🍉")                   // not water
         XCTAssertEqual(FoodEmoji.for("Crust Classic Pepperoni, high protein base"), "🥓")   // not a pepper
         XCTAssertEqual(FoodEmoji.for("Hearty Beef and Carrot Curry (1 portion, ¼ batch)"), "🍛")
