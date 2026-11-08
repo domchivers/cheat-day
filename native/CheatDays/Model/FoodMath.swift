@@ -96,7 +96,7 @@ enum Meals {
         "Breakfast": rx(#"\b(oats?|porridge|granola|muesli|cereal|cornflakes|weetabix|shreddies|bran flakes|toast|bagel|croissant|pain au|pancakes?|waffles?|crumpets?|eggs?|omelette|scrambled|bacon|full english|yogh?urt|smoothie|overnight oats)\b"#),
         "Lunch": rx(#"\b(sandwich|sarnie|wrap|panini|baguette|sub|salad|soup|toastie|meal deal|sushi|poke|burrito bowl)\b"#),
         "Dinner": rx(#"\b(curry|pasta|spaghetti|lasagne|bolognese|chilli|steak|roast|stir.?fry|risotto|pizza|burger|fajitas?|tacos?|casserole|stew|pie|salmon|noodles|kebab|shepherd'?s|cottage pie|fish and chips|dinner)\b"#),
-        "Snacks": rx(#"\b(crisps|chocolate|biscuits?|cookies?|cake|brownie|sweets|nuts|popcorn|protein bar|flapjack|ice cream|donut|doughnut|muffin|beer|wine|cider|gin|vodka|whisky|rum|cocktail|jack daniel)\b"#)
+        "Snacks": rx(#"\b(crisps|chocolate|biscuits?|cookies?|cakes?|cheesecakes?|cupcakes?|tiramisu|desserts?|tarts?|brownie|sweets|nuts|popcorn|protein bar|flapjack|ice cream|donut|doughnut|muffin|beer|wine|cider|gin|vodka|whisky|rum|cocktail|jack daniel)\b"#)
     ]
 
     /// The meal a message names ("add to lunch", "for my dinner", "as a snack"), if it names one.
