@@ -14,6 +14,7 @@ struct AssistantView: View {
     private var problem: String? { get { live.problem } nonmutating set { live.problem = newValue } }
     @State private var text = ""
     @State private var pending: [UIImage] = []
+    @State private var speech = Speech()
     @State private var picked: [PhotosPickerItem] = []
     @State private var camera = false
     @State private var library = false
@@ -590,45 +591,82 @@ struct AssistantView: View {
 
     // MARK: composer
 
+    /// One rounded box, like the Claude app's: waiting photos and quick notes on top, the words under them (growing to
+    /// about 8 lines, then scrolling inside), and a row of buttons along the bottom: ＋ for a photo, the microphone, send.
     private var composer: some View {
-        VStack(spacing: 8) {
+        let empty = text.trimmingCharacters(in: .whitespaces).isEmpty && pending.isEmpty
+        return VStack(alignment: .leading, spacing: 10) {
             if !pending.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack {
-                        // each photo by itself, removed by itself: a quick double tap can't take the wrong one or run past the end
-                        ForEach(pending, id: \.self) { img in
-                            Image(uiImage: img).resizable().scaledToFill().frame(width: 56, height: 56).clipShape(RoundedRectangle(cornerRadius: 10))
-                                .overlay(alignment: .topTrailing) { Button { pending.removeAll { $0 === img } } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.white, .black) }.offset(x: 5, y: -5) }
+                    HStack(spacing: 8) {
+                        // each photo by itself, removed by itself: a quick double tap can't take the wrong one or run past the end;
+                        // a tap on the photo opens it full screen before it's sent
+                        ForEach(Array(pending.enumerated()), id: \.element) { i, img in
+                            Button { viewing = Photos(images: pending, start: i) } label: {
+                                Image(uiImage: img).resizable().scaledToFill().frame(width: 58, height: 58).clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
+                            .buttonStyle(.plain).accessibilityLabel("Photo \(i + 1), full screen")
+                            .overlay(alignment: .topTrailing) {
+                                Button { pending.removeAll { $0 === img } } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.white, .black) }
+                                    .offset(x: 5, y: -5).accessibilityLabel("Remove photo \(i + 1)")
+                            }
                         }
                     }
-                    .padding(.top, 6)
+                    .padding(.top, 6).padding(.horizontal, 6)
                 }
                 // a note helps more than anything: what it is, where from, how much they had
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("A note helps: what it is, where it's from, how much you had.").font(.caption).foregroundStyle(.secondary)
-                    Flow { ForEach(Self.notes, id: \.self) { n in Chip(text: n, on: hasNote(n)) { toggleNote(n) } } }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 4)
+                Flow { ForEach(Self.notes, id: \.self) { n in Chip(text: n, on: hasNote(n)) { toggleNote(n) } } }.padding(.horizontal, 4)
             }
-            HStack(spacing: 10) {
+            TextField("Ask, or say what you ate", text: $text, axis: .vertical).lineLimit(1...8).focused($typing)
+                .accessibilityIdentifier("chatBox")
+                .submitLabel(.send).onSubmit { send() }
+                .padding(.horizontal, 8).padding(.top, 4)
+            HStack(spacing: 8) {
                 Menu {
                     Button { camera = true } label: { Label("Take a photo", systemImage: "camera") }
                     Button { library = true } label: { Label("Choose photos", systemImage: "photo.on.rectangle") }
-                } label: { Image(systemName: "camera.fill").font(.title3).foregroundStyle(Theme.accent).frame(width: 44, height: 44).composerGlass(Circle()) }
-                // the whole box takes the tap (not just the line of text), so the keyboard and Paste come up first time
-                TextField("Ask, or say what you ate", text: $text, axis: .vertical).lineLimit(1...5).focused($typing)
-                    .accessibilityIdentifier("chatBox")
-                    .submitLabel(.send).onSubmit { send() }
-                    .padding(.horizontal, 16).padding(.vertical, 11)
-                    .frame(minHeight: 44)
-                    .background { Color.clear.contentShape(Rectangle()).onTapGesture { typing = true } }   // behind the field, so its own cursor and Paste menu still work
-                    .composerGlass(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                Button { send() } label: { Image(systemName: "arrow.up.circle.fill").font(.system(size: 38)).foregroundStyle(Theme.accent) }
-                    .disabled(busy || (text.trimmingCharacters(in: .whitespaces).isEmpty && pending.isEmpty))
+                } label: { roundButton("plus") }
+                .accessibilityLabel("Add a photo")
+                if speech.listening {
+                    SpeechBars(level: speech.level).frame(maxWidth: .infinity)
+                    Button { speech.stop() } label: {
+                        RoundedRectangle(cornerRadius: 3).fill(.white).frame(width: 13, height: 13).frame(width: 40, height: 40).background(Color.red, in: Circle())
+                    }
+                    .accessibilityLabel("Stop listening")
+                } else {
+                    Spacer()
+                    Button { listen() } label: { roundButton("mic") }.accessibilityLabel("Speak")
+                    Button { send() } label: {
+                        Image(systemName: "arrow.up").font(.system(size: 18, weight: .bold)).frame(width: 40, height: 40)
+                            .foregroundStyle(empty ? Theme.onAccent.opacity(0.45) : Theme.onAccent)
+                            .background(Theme.accent.opacity(empty ? 0.4 : 1), in: Circle())
+                    }
+                    .disabled(busy || empty).accessibilityLabel("Send")
+                }
             }
         }
-        .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 8)
+        .padding(10)
+        // the whole box takes the tap (not just the line of text), so the keyboard comes up first time; behind the field,
+        // so its own cursor and Paste menu still work
+        .background { Color.clear.contentShape(Rectangle()).onTapGesture { typing = true } }
+        .composerGlass(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay(alignment: .top) {
+            if let p = speech.problem { Text(p).font(.caption).foregroundStyle(Theme.warn).padding(8).offset(y: -34) }
+        }
+        .padding(.horizontal, 10).padding(.top, 6).padding(.bottom, 8)
         .composerBar()
+        .onDisappear { speech.stop() }
+    }
+
+    private func roundButton(_ symbol: String) -> some View {
+        Image(systemName: symbol).font(.system(size: 17, weight: .semibold)).foregroundStyle(.primary)
+            .frame(width: 40, height: 40).background(Color.white.opacity(0.1), in: Circle())
+    }
+
+    /// Speaking: what's said goes after what's already typed, and keeps updating until they stop.
+    private func listen() {
+        let before = text.trimmingCharacters(in: .whitespaces)
+        Task { await speech.start { words in text = before.isEmpty ? words : before + " " + words } }
     }
 
     /// The quick notes under a waiting photo; a tap adds the words to the box, another takes them out.
@@ -650,6 +688,7 @@ struct AssistantView: View {
     }
 
     private func send() {
+        speech.stop()
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !busy, !t.isEmpty || !pending.isEmpty else { return }
         // foods with their numbers typed in: logged straight away, no waiting for the AI

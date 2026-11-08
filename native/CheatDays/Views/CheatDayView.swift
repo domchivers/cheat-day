@@ -78,6 +78,7 @@ enum CheatPlan {
 struct CheatDayView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var draft = ""
+    @State private var speech = Speech()
     @State private var starting = false
     @State private var busy = false
     @State private var sent: String?   // what you just asked, on screen while the answer comes
@@ -413,20 +414,46 @@ struct CheatDayView: View {
                     .padding(.horizontal, 20)
                 }
             }
-            HStack(alignment: .bottom, spacing: 8) {
-                TextField("Change anything…", text: $draft, axis: .vertical).lineLimit(1...4).focused($typing)
-                    .padding(.vertical, 6).padding(.leading, 6)
-                Button { typing = false; Task { await send(next: next, plan: plan) } } label: {
-                    Group {
-                        if busy { ProgressView().tint(Theme.onAccent) }
-                        else { Image(systemName: "arrow.up").font(.subheadline.weight(.bold)).foregroundStyle(Theme.onAccent) }
+            // the assistant's box: the words on top (up to about 8 lines), the microphone and send along the bottom
+            VStack(alignment: .leading, spacing: 10) {
+                TextField("Change anything…", text: $draft, axis: .vertical).lineLimit(1...8).focused($typing)
+                    .padding(.horizontal, 8).padding(.top, 4)
+                HStack(spacing: 8) {
+                    if speech.listening {
+                        SpeechBars(level: speech.level).frame(maxWidth: .infinity)
+                        Button { speech.stop() } label: {
+                            RoundedRectangle(cornerRadius: 3).fill(.white).frame(width: 13, height: 13).frame(width: 40, height: 40).background(Color.red, in: Circle())
+                        }
+                        .buttonStyle(.plain).accessibilityLabel("Stop listening")
+                    } else {
+                        Spacer()
+                        Button {
+                            let before = draft.trimmingCharacters(in: .whitespaces)
+                            Task { await speech.start { words in draft = before.isEmpty ? words : before + " " + words } }
+                        } label: {
+                            Image(systemName: "mic").font(.system(size: 17, weight: .semibold)).foregroundStyle(.primary)
+                                .frame(width: 40, height: 40).background(Color.white.opacity(0.1), in: Circle())
+                        }
+                        .buttonStyle(.plain).accessibilityLabel("Speak")
+                        Button { typing = false; speech.stop(); Task { await send(next: next, plan: plan) } } label: {
+                            Group {
+                                if busy { ProgressView().tint(Theme.onAccent) }
+                                else { Image(systemName: "arrow.up").font(.system(size: 18, weight: .bold)).foregroundStyle(Theme.onAccent) }
+                            }
+                            .frame(width: 40, height: 40).background(Theme.accent.opacity(empty && !busy ? 0.4 : 1), in: Circle())
+                        }
+                        .buttonStyle(.plain).disabled(empty || busy).accessibilityLabel("Send")
                     }
-                    .frame(width: 32, height: 32).background(Theme.accent.opacity(empty && !busy ? 0.4 : 1), in: Circle())
                 }
-                .buttonStyle(.plain).disabled(empty || busy).accessibilityLabel("Send")
             }
-            .padding(6).background(Theme.hero, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .padding(10)
+            .background { Color.clear.contentShape(Rectangle()).onTapGesture { typing = true } }
+            .background(Theme.hero, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .overlay(alignment: .top) {
+                if let p = speech.problem { Text(p).font(.caption).foregroundStyle(Theme.warn).padding(8).offset(y: -34) }
+            }
             .padding(.horizontal, 20)
+            .onDisappear { speech.stop() }
         }
         .padding(.top, 8).padding(.bottom, 8).background(Theme.bg)
     }
