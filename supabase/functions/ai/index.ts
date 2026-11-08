@@ -14,7 +14,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 
 const HAIKU = "claude-haiku-5-5", SONNET = "claude-sonnet-5-5";
 // from the tests in tools/ai-test and the owner's side-by-side picks
-const MODELS: Record<string, string> = { lookup: HAIKU, recipes: HAIKU, plans: HAIKU, labels: HAIKU, logs: HAIKU, quick: HAIKU, chat: SONNET, photos: SONNET, careful: SONNET };
+const MODELS: Record<string, string> = { lookup: HAIKU, menu: HAIKU, recipes: HAIKU, plans: HAIKU, labels: HAIKU, logs: HAIKU, quick: HAIKU, chat: SONNET, photos: SONNET, careful: SONNET };
 const PRICES: Record<string, [number, number]> = { [HAIKU]: [0.10, 0.50], [SONNET]: [2, 10] };   // $ per million tokens in and out
 
 function chosenModel(job: string): string | null {
@@ -71,6 +71,11 @@ async function askClaude(req: Request, user: { id: string }, job: string) {
       // a packaged food's label looked up on the web: two searches at most, about a cent each
       ...(job === "lookup" ? { tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 2,
         user_location: { type: "approximate", country: ["AU", "GB", "US"].includes(country) ? country : "AU" } }] } : {}),
+      // a restaurant's menu: three searches and up to three pages opened, so the kJ is read off its DoorDash or Uber Eats
+      // store page rather than a search snippet (an old PDF's 6,888 kJ burger is 2,280 kJ on DoorDash)
+      ...(job === "menu" ? { tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3,
+        user_location: { type: "approximate", country: ["AU", "GB", "US"].includes(country) ? country : "AU" } },
+        { type: "web_fetch_20250910", name: "web_fetch", max_uses: 3 }] } : {}),
     } as any);
     const [pIn, pOut] = PRICES[model], input = r.usage.input_tokens, output = r.usage.output_tokens;
     const searches = (r.usage as any).server_tool_use?.web_search_requests ?? 0;

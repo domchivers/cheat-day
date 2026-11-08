@@ -123,6 +123,14 @@ final class TakeawayTests: XCTestCase {
         XCTAssertEqual(home[0].amounts, [0, 15, 22.5, 30, 45], "half, three quarters, one and one and a half scoops")
     }
 
+    func testChoosingFromAMenuPage() {
+        XCTAssertTrue(Takeaway.choosing("This burger for dinner"))
+        XCTAssertTrue(Takeaway.choosing("what should I get?"))
+        XCTAssertFalse(Takeaway.choosing("Had this for lunch"))
+        XCTAssertFalse(Takeaway.choosing("ate this burger"))
+        XCTAssertFalse(Takeaway.choosing("This burger"), "just naming it: a log, as before")
+    }
+
     func testWhichMessagesAreAsked() {
         XCTAssertTrue(Takeaway.mightBe("854 left, want Gami for dinner. What should I get?", after: nil))
         XCTAssertTrue(Takeaway.mightBe("what can I order from Nando's?", after: nil))

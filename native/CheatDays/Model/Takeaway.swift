@@ -246,7 +246,7 @@ enum Takeaway {
     /// Kept word for word with tools/ai-test/menu-check.js, which tested them against Claude.
     static func routeAsk(_ message: String, earlier: String, photo: String = "") -> String {
         """
-        A message to the assistant in a food diary app\(photo.isEmpty ? "" : ", with a photo of \(photo)"). Is it about what to order or eat next from one particular restaurant, takeaway or chain: asking ("want Gami for dinner, what should I get?", "what can I have at Nando's for 700 kcal") or saying what they'd like from it ("854 left, want Gami for dinner, the chicken burger with a shake")? Food they already ate ("had a Gami burger for lunch"), or a recipe, is not. When the conversation so far was choosing from a restaurant, a reply changing that choice ("no milk left, I want the wings") counts too, with that restaurant.
+        A message to the assistant in a food diary app\(photo.isEmpty ? "" : ", with a photo of \(photo)"). Is it about what to order or eat next from one particular restaurant, takeaway or chain: asking ("want Gami for dinner, what should I get?", "what can I have at Nando's for 700 kcal") or saying what they'd like from it ("854 left, want Gami for dinner, the chicken burger with a shake")? Food they already ate ("had a Gami burger for lunch"), or a recipe, is not. When the conversation so far was choosing from a restaurant, a reply changing that choice ("no milk left, I want the wings") counts too, with that restaurant.\(photo.isEmpty ? "" : " With a photo of a menu or delivery-app page, naming a dish on it for a meal (\"this burger for dinner\") is choosing it, unless they say they had or ate it.")
         \(earlier.isEmpty ? "" : "The conversation so far:\n\(earlier)\n")Their message: "\(message)"
         restaurant: its name as they wrote it, else empty. area: a suburb or city if they said one, else empty. want: menu items they say they want, in their words. avoid: foods they don't want or don't have in ("milk"), in their words. seen: dishes they quote from a menu or delivery app with their energy ("Chicken Burger (2280 kJ)"), each with its kJ (kcal × 4.184 if they gave kcal), else empty. kcal and protein: numbers they gave for what they have left or for this meal ("854 left" is kcal 854), else 0.
         """
@@ -255,7 +255,7 @@ enum Takeaway {
         """
         Find the current menu of "\(restaurant)"\(area.isEmpty ? "" : " in \(area)"), a restaurant, takeaway or chain in \(Plan.country), and the nutrition it publishes. Look first at its listing on DoorDash, Uber Eats or Menulog, which has the full current menu and where chains put kJ in each item's name ("Chicken Burger (2280 kJ)"), then its own website or nutrition PDF.\(want.isEmpty ? "" : " They want: \(want.joined(separator: ", ")). Make sure those dishes are in the list if it sells them, with the kJ its listing shows today, not an old menu's.")\(seen.isEmpty ? "" : " They read these on its listing today: \(seen.joined(separator: ", ")). List each with exactly that kJ, and estimate its protein, carbs and fat for that energy.") List up to 30 of its items, mains first, each as one serving as sold (with its size or pieces in the name, "Original tenders, 4 pcs").
         For each item: published is full when the restaurant gives its calories and protein, energy when it gives only kJ or kcal, none when it gives nothing. kj: exactly as published, else 0. kcal: as published, else kJ ÷ 4.184, else your estimate. protein_g, carbs_g and fat_g: as published, else your honest estimate from what the item is and its usual portion. kind: main, side, drink or dessert.
-        found false if you can't find its menu at all. source: where the numbers came from, a few words.
+        found false if you can't find its menu at all. source: where the numbers came from, a few words. Open the restaurant's DoorDash or Uber Eats store page with web_fetch and read the kJ from the item names there. When sources disagree, the delivery listing is today's menu: use its number. Never guess a kJ: an item whose energy you didn't read on a page has kj 0 and published none.
         """
     }
 
@@ -282,6 +282,14 @@ enum Takeaway {
         return items.contains { i in ws.allSatisfy { i.name.lowercased().contains($0) } }
     }
 
+    /// With a photo of a menu page: choosing from it ("this burger for dinner", "what should I get?") rather than logging
+    /// what they had ("had this for lunch").
+    static func choosing(_ text: String) -> Bool {
+        let t = " " + text.lowercased() + " "
+        if t.range(of: #"\b(had|ate|eaten|just finished|was having)\b"#, options: .regularExpression) != nil { return false }
+        return t.contains("?") || t.range(of: #"\b(for (dinner|lunch|tea|breakfast|brekkie|tonight)|want|wanna|fancy|craving|i'?d like|should|what|which|can i|plan|order|ordering|getting|thinking)\b"#, options: .regularExpression) != nil
+    }
+
     /// A restaurant's menu, kept on the phone for a week, so asking again costs nothing; looked up again when a dish
     /// they ask for isn't on the one kept (Gami's 2026 PDF had no Chicken Burger; its DoorDash listing does).
     /// Asked again too when they quote a dish's kJ that the kept one doesn't have at about that energy, so its protein
@@ -299,7 +307,10 @@ enum Takeaway {
             }
         }
         if let k = kept[key], let at = num(k["at"]), Date().timeIntervalSince1970 - at < 7 * 86400, let m = k["menu"] as? JSON, matches(m) { return m }
-        guard let m = await Gemini.askClaude("lookup", schema: menuSchema, parts: [["text": menuAsk(restaurant, area: area, want: wanted, seen: quoted)]], extra: ["country": Region.current.code]),
+        // the menu job opens the delivery app's page; a server from before it has only the label lookup's two searches
+        let ask: [JSON] = [["text": menuAsk(restaurant, area: area, want: wanted, seen: quoted)]], country: JSON = ["country": Region.current.code]
+        let fetched = await Gemini.askClaude("menu", schema: menuSchema, parts: ask, extra: country)
+        guard let m = fetched != nil ? fetched : await Gemini.askClaude("lookup", schema: menuSchema, parts: ask, extra: country),
               m["found"] as? Bool == true, !items(m).isEmpty else { return nil }
         kept = kept.filter { Date().timeIntervalSince1970 - (num($0.value["at"]) ?? 0) < 7 * 86400 }
         kept[key] = ["at": Date().timeIntervalSince1970, "menu": m]
@@ -346,8 +357,10 @@ enum Takeaway {
             return "You: \(t.text.prefix(200))"
         }.joined(separator: "\n")
         let page = photo.map { p in "a menu page\(p.shop.isEmpty ? "" : " from \(p.shop)") showing " + p.listing.map { "\(str($0["name"])) (\(Fmt.int(num($0["kj"]) ?? 0)) kJ)" }.joined(separator: ", ") } ?? ""
+        // with a menu page, choosing or logging is decided here: Claude called "this burger for dinner" a log one time in three
+        if photo != nil, !choosing(last.text) { return nil }
         guard let route = await Gemini.askClaude("quick", schema: routeSchema, parts: [["text": routeAsk(last.text, earlier: earlier, photo: page)]]),
-              route["takeaway"] as? Bool == true else { return nil }
+              photo != nil || route["takeaway"] as? Bool == true else { return nil }
         let said = str(route["restaurant"]).trimmingCharacters(in: .whitespaces)
         let name = said.isEmpty ? (photo?.shop ?? "") : said
         guard !name.isEmpty else { return nil }
@@ -394,6 +407,8 @@ enum Takeaway {
         if (num(first["over"]) ?? 0) > 10 { reply += " \(str(first["title"])) is \(Fmt.int(num(first["over"]) ?? 0)) kcal over what's left, but it's the closest:" }
         else if p.meets { reply += " \(str(first["title"])) gets you there:" }
         else { reply += " The closest gets you \(Fmt.int(top.p)) g of your \(Int(protein)) g protein:" }
+        // said plainly when the dish's own energy wasn't found, with the way to give it
+        if top.item.tier == "none" { reply += "\n\nI couldn't find the \(top.item.name)'s kJ on \(shown)'s listing, so that one is my estimate. Type the kJ the app you order on shows for it (\"\(top.item.name), 2,100 kJ\") or send a screenshot of it and I'll use that." }
         if home.isEmpty { reply += "\n\nScan your protein powder or yoghurt (＋ in Plan a meal) and I can add them from home." }
         return ["kind": "takeaway", "reply": reply, "meal": meal, "trail": trail,
                 "takeaway": ["restaurant": shown, "source": str(m["source"]), "combos": combos, "aim": protein,

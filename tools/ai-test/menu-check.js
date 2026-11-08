@@ -13,12 +13,12 @@ const menuSchema = strict({ type: 'object', required: ['found', 'restaurant', 's
     name: s, kind: { type: 'string', enum: ['main', 'side', 'drink', 'dessert'] }, published: { type: 'string', enum: ['full', 'energy', 'none'] },
     kj: n, kcal: n, protein_g: n, carbs_g: n, fat_g: n } } } } });
 // kept word for word with Takeaway.swift
-const routeAsk = (msg, earlier, photo = '') => `A message to the assistant in a food diary app${photo ? `, with a photo of ${photo}` : ''}. Is it about what to order or eat next from one particular restaurant, takeaway or chain: asking (\"want Gami for dinner, what should I get?\", \"what can I have at Nando's for 700 kcal\") or saying what they'd like from it (\"854 left, want Gami for dinner, the chicken burger with a shake\")? Food they already ate (\"had a Gami burger for lunch\"), or a recipe, is not. When the conversation so far was choosing from a restaurant, a reply changing that choice (\"no milk left, I want the wings\") counts too, with that restaurant.
+const routeAsk = (msg, earlier, photo = '') => `A message to the assistant in a food diary app${photo ? `, with a photo of ${photo}` : ''}. Is it about what to order or eat next from one particular restaurant, takeaway or chain: asking (\"want Gami for dinner, what should I get?\", \"what can I have at Nando's for 700 kcal\") or saying what they'd like from it (\"854 left, want Gami for dinner, the chicken burger with a shake\")? Food they already ate (\"had a Gami burger for lunch\"), or a recipe, is not. When the conversation so far was choosing from a restaurant, a reply changing that choice (\"no milk left, I want the wings\") counts too, with that restaurant. With a photo of a menu or delivery-app page, naming a dish on it for a meal (\"this burger for dinner\") is choosing it, unless they say they had or ate it.
 ${earlier ? `The conversation so far:\n${earlier}\n` : ''}Their message: \"${msg}\"
 restaurant: its name as they wrote it, else empty. area: a suburb or city if they said one, else empty. want: menu items they say they want, in their words. avoid: foods they don't want or don't have in (\"milk\"), in their words. seen: dishes they quote from a menu or delivery app with their energy (\"Chicken Burger (2280 kJ)\"), each with its kJ (kcal × 4.184 if they gave kcal), else empty. kcal and protein: numbers they gave for what they have left or for this meal (\"854 left\" is kcal 854), else 0.`;
 const menuAsk = (r, area, want, seen = []) => `Find the current menu of \"${r}\"${area ? ` in ${area}` : ''}, a restaurant, takeaway or chain in Australia, and the nutrition it publishes. Look first at its listing on DoorDash, Uber Eats or Menulog, which has the full current menu and where chains put kJ in each item's name (\"Chicken Burger (2280 kJ)\"), then its own website or nutrition PDF.${want.length ? ` They want: ${want.join(', ')}. Make sure those dishes are in the list if it sells them, with the kJ its listing shows today, not an old menu's.` : ''}${seen.length ? ` They read these on its listing today: ${seen.join(', ')}. List each with exactly that kJ, and estimate its protein, carbs and fat for that energy.` : ''} List up to 30 of its items, mains first, each as one serving as sold (with its size or pieces in the name, \"Original tenders, 4 pcs\").
 For each item: published is full when the restaurant gives its calories and protein, energy when it gives only kJ or kcal, none when it gives nothing. kj: exactly as published, else 0. kcal: as published, else kJ Ã· 4.184, else your estimate. protein_g, carbs_g and fat_g: as published, else your honest estimate from what the item is and its usual portion. kind: main, side, drink or dessert.
-found false if you can't find its menu at all. source: where the numbers came from, a few words.`;
+found false if you can't find its menu at all. source: where the numbers came from, a few words. Open the restaurant's DoorDash or Uber Eats store page with web_fetch and read the kJ from the item names there. When sources disagree, the delivery listing is today's menu: use its number. Never guess a kJ: an item whose energy you didn't read on a page has kj 0 and published none.`;
 (async () => {
   const client = new Anthropic({ baseURL: 'https://api.anthropic.com' });
   const ledgerFile = path.join(__dirname, 'results', 'ledger.json'), ledger = JSON.parse(fs.readFileSync(ledgerFile, 'utf8'));
@@ -26,10 +26,11 @@ found false if you can't find its menu at all. source: where the numbers came fr
     const t0 = Date.now();
     const r = await client.messages.create({ model: 'claude-haiku-5-5', max_tokens: 12000, messages: [{ role: 'user', content }],
       ...(tools ? { tools } : {}), output_config: { effort: 'low', format: { type: 'json_schema', schema } } });
-    const searches = r.usage.server_tool_use?.web_search_requests ?? 0;
+    const searches = r.usage.server_tool_use?.web_search_requests ?? 0, fetches = r.usage.server_tool_use?.web_fetch_requests ?? 0;
+    for (const b of r.content) if (b.type === 'server_tool_use') console.log('  tool:', b.name, JSON.stringify(b.input).slice(0, 160)); else if (b.type === 'web_fetch_tool_result') console.log('  fetched:', b.content?.type, b.content?.error_code || b.content?.url || '');
     const cost = (r.usage.input_tokens * 0.1 + r.usage.output_tokens * 0.5) / 1e6 + searches * 0.01;
     ledger.spent = +(ledger.spent + cost).toFixed(6); ledger.calls++; fs.writeFileSync(ledgerFile, JSON.stringify(ledger, null, 1));
-    console.log(`\n== ${label}: ${r.stop_reason} ${((Date.now() - t0) / 1000).toFixed(1)} s $${cost.toFixed(4)} searches ${searches} in ${r.usage.input_tokens} out ${r.usage.output_tokens}`);
+    console.log(`\n== ${label}: ${r.stop_reason} ${((Date.now() - t0) / 1000).toFixed(1)} s $${cost.toFixed(4)} searches ${searches} fetches ${typeof fetches === 'undefined' ? 0 : fetches} in ${r.usage.input_tokens} out ${r.usage.output_tokens}`);
     return JSON.parse(r.content.filter(b => b.type === 'text').map(b => b.text).join(''));
   }
   const page = 'a menu page from Gami showing Chicken Burger (2280 kJ), Gami Chips (3042 kJ), Cheese Snowy Chips (2550 kJ)';
@@ -40,7 +41,7 @@ found false if you can't find its menu at all. source: where the numbers came fr
   }
   if (process.argv[4] === 'route') return;
   const menu = await ask('menu', menuAsk(restaurant, '', (process.argv[5] || '').split(',').filter(Boolean), (process.argv[6] || '').split(';').filter(Boolean)), menuSchema,
-    [{ type: 'web_search_20250305', name: 'web_search', max_uses: 2, user_location: { type: 'approximate', country: 'AU' } }]);
+    [{ type: 'web_search_20250305', name: 'web_search', max_uses: Number(process.env.SEARCHES || 3), user_location: { type: 'approximate', country: 'AU' } }, { type: 'web_fetch_20250910', name: 'web_fetch', max_uses: 3 }]);
   console.log(menu.found, menu.restaurant, '|', menu.source, '|', menu.items.length, 'items');
   for (const i of menu.items) console.log(`${i.kind.padEnd(7)} ${i.published.padEnd(6)} ${String(i.kj).padStart(5)} kJ ${String(Math.round(i.kcal)).padStart(5)} kcal P${i.protein_g} C${i.carbs_g} F${i.fat_g}  ${i.name}`);
   console.log(`Test spend so far: $${ledger.spent.toFixed(4)}`);
