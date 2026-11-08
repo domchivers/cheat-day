@@ -369,7 +369,7 @@ struct MealPlannerView: View {
             "kcal": ["type": "number"] as JSON, "protein": ["type": "number"] as JSON, "carbs": ["type": "number"] as JSON, "fat": ["type": "number"] as JSON
         ] as JSON, "required": ["name", "grams", "label", "kcal", "protein", "carbs", "fat"]]
         let schema: JSON = ["type": "object", "properties": [
-            "reply": ["type": "string", "description": "One short sentence introducing the ideas, in plain words"] as JSON,
+            "reply": ["type": "string", "description": "Under 15 words introducing the ideas, in plain words, e.g. 'Three quick Chinese-style ones, each about 500 kcal and 60 g protein:'. Nothing about sources or rounding"] as JSON,
             "aim": ["type": "number", "description": "The protein the ideas aim for, in grams"] as JSON,
             "ideas": ["type": "array", "items": ["type": "object", "properties": [
                 "name": ["type": "string"] as JSON, "kcal": ["type": "number"] as JSON, "protein": ["type": "number"] as JSON,
