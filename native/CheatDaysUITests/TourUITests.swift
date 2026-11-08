@@ -193,5 +193,9 @@ final class TourUITests: XCTestCase {
         let c = XCTAttachment(screenshot: app.screenshot()); c.name = "takeaway-dropped"; c.lifetime = .keepAlways; add(c)
         app.swipeUp()
         let d = XCTAttachment(screenshot: app.screenshot()); d.name = "estimate-icons"; d.lifetime = .keepAlways; add(d)
+        // places found in South Yarra, each a button that plans it (not tapped: that searches the web)
+        app.swipeUp()
+        XCTAssertTrue(app.buttons["Plan Zeus Street Greek"].waitForExistence(timeout: 3), "a found place to tap")
+        let e = XCTAttachment(screenshot: app.screenshot()); e.name = "takeaway-places"; e.lifetime = .keepAlways; add(e)
     }
 }

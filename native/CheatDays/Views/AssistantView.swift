@@ -179,6 +179,8 @@ struct AssistantView: View {
             if let l = r["lighter"] as? JSON { lighterCard(l, turn: turn, meal: meal) }
         case "takeaway":
             if let ta = r["takeaway"] as? JSON { takeawayCard(ta, turn: turn, meal: meal) }
+        case "places":
+            if let pl = r["places"] as? JSON { placesCard(pl) }
         default: EmptyView()
         }
     }
@@ -705,6 +707,37 @@ struct AssistantView: View {
                 }
                 .buttonStyle(.plain).accessibilityHint("Shows this one")
             }
+        }
+    }
+
+    /// Places found on the web: each with the dish that suits what's left, its numbers, and whether they're the place's
+    /// own kJ or estimated. A tap plans that place like naming it (its name is sent).
+    @ViewBuilder private func placesCard(_ pl: JSON) -> some View {
+        let aim = num(pl["protein"]) ?? 0
+        ForEach(list(pl["places"]).indices, id: \.self) { i in
+            let p = list(pl["places"])[i], pr = num(p["protein_g"]) ?? 0, estimated = str(p["published"]) == "none"
+            Button { text = str(p["name"]); send() } label: {
+                HStack(spacing: 11) {
+                    FoodDot(name: str(p["dish"]), size: 38)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(str(p["name"])).font(.subheadline.weight(.bold)).multilineTextAlignment(.leading)
+                        Text(str(p["dish"])).font(.caption.weight(.medium)).multilineTextAlignment(.leading)
+                        Text([str(p["area"]), str(p["cuisine"])].filter { !$0.isEmpty }.joined(separator: " · ")).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    Spacer(minLength: 4)
+                    VStack(alignment: .trailing, spacing: 2) {
+                        (Text("\(Fmt.int(num(p["kcal"]) ?? 0)) · ") + Text("\(Int(pr.rounded())) g").foregroundStyle(pr >= aim - 0.5 ? Theme.walk : Theme.warn))
+                            .font(.caption.weight(.bold)).monospacedDigit()
+                        Text(estimated ? "estimated" : str(p["published"]) == "full" ? "their numbers" : "their kJ")
+                            .font(.caption2).foregroundStyle(estimated ? Theme.warn : .secondary)
+                    }
+                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                }
+                .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).disabled(busy).accessibilityLabel("Plan \(str(p["name"]))")
         }
     }
 

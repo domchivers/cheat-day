@@ -142,12 +142,41 @@ final class TakeawayTests: XCTestCase {
         XCTAssertTrue(Takeaway.choosing("Want something from the gami in Windsor tomorrow, what's my options? Lunch thinking"))
     }
 
-    /// Every typed message is asked: the ask reads choose, log or other however it's put (intent-check.js has the cases).
-    func testTheAskHasTheThreeIntents() {
+    /// Every typed message is asked: the ask reads choose, find, log or other however it's put (find-check.js has the cases).
+    func testTheAskHasTheFourIntents() {
         let p = Takeaway.routeAsk("Gami tonight?", earlier: "")
-        XCTAssertTrue(p.contains("choose:") && p.contains("log:") && p.contains("other:"))
+        XCTAssertTrue(p.contains("choose:") && p.contains("find:") && p.contains("log:") && p.contains("other:"))
         XCTAssertTrue(p.contains("Their message: \"Gami tonight?\""))
-        XCTAssertEqual(dict(Takeaway.routeSchema["properties"])["intent"].flatMap { $0 as? JSON }?["enum"] as? [String], ["choose", "log", "other"])
+        XCTAssertEqual(dict(Takeaway.routeSchema["properties"])["intent"].flatMap { $0 as? JSON }?["enum"] as? [String], ["choose", "find", "log", "other"])
+    }
+
+    /// "Any good lunch spots in South Yarra?": the places the search found, their kJ winning, a dish with no energy read
+    /// on a page marked estimated, and a place on the list found again by a tap or by the router's "the Greek one".
+    func testFindingPlaces() {
+        let found: JSON = ["found": true, "places": [
+            ["name": "Spudbar", "area": "Chapel St", "cuisine": "Potato bowls", "dish": "The Chicken Power Bowl", "published": "full", "kj": 0, "kcal": 497, "protein_g": 46, "carbs_g": 40, "fat_g": 12],
+            ["name": "Zeus Street Greek", "area": "Chapel St", "cuisine": "Greek", "dish": "Chargrilled Chicken", "published": "energy", "kj": 2760, "kcal": 650, "protein_g": 50, "carbs_g": 60, "fat_g": 22],
+            ["name": "Wokinabox", "area": "South Yarra", "cuisine": "Asian", "dish": "The Satay", "published": "energy", "kj": 0, "kcal": 655, "protein_g": 40, "carbs_g": 70, "fat_g": 25],
+            ["name": "", "area": "", "cuisine": "", "dish": "", "published": "none", "kj": 0, "kcal": 0, "protein_g": 0, "carbs_g": 0, "fat_g": 0]] as [JSON]]
+        let r = Takeaway.places(found, area: "South Yarra", asked: "any good lunch spots in South Yarra?", meal: "Lunch", kcal: 700, protein: 45)
+        XCTAssertEqual(str(r["kind"]), "places")
+        let pl = dict(r["places"]), ps = list(pl["places"])
+        XCTAssertEqual(ps.count, 3, "the empty one dropped")
+        XCTAssertEqual(num(ps[1]["kcal"]), 660, "2760 kJ is 660 kcal, not the 650 it said")
+        XCTAssertEqual(str(ps[0]["published"]), "full")
+        XCTAssertEqual(str(ps[2]["published"]), "none", "no kJ read: estimated")
+        XCTAssertEqual(str(pl["asked"]), "any good lunch spots in South Yarra?")
+        XCTAssertEqual(str(Takeaway.place("Zeus Street Greek", in: pl)?["name"]), "Zeus Street Greek")
+        XCTAssertEqual(str(Takeaway.place("zeus street", in: pl)?["name"]), "Zeus Street Greek")
+        XCTAssertNil(Takeaway.place("Gami", in: pl))
+        // nothing found: said so, no list
+        XCTAssertEqual(str(Takeaway.places(["found": false, "places": [] as [JSON]], area: "Nowhere", asked: "", meal: "Lunch", kcal: 700, protein: 45)["kind"]), "answer")
+    }
+
+    /// "near me" or "near work" is nowhere to search; a suburb or a street is.
+    func testVagueAreas() {
+        for a in ["", "near me", "near work", "here", "home", "around me", "nearby"] { XCTAssertTrue(Takeaway.vague(a), a) }
+        for a in ["South Yarra", "Chapel St", "the city", "near Prahran"] { XCTAssertFalse(Takeaway.vague(a), a) }
     }
 
     /// A food saved with 100 g as its "serving" shows per 100 g ("379 kcal per serving" was a protein powder's per 100 g).

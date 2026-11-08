@@ -96,10 +96,20 @@ private struct TakeawayHarness: View {
         let burger: JSON = ["kind": "estimate", "meal": "Lunch", "trail": ["Energy from the kJ on Gami's page in your photo"],
                             "estimate": ["name": "Gami chicken burger", "shop": "Gami", "portion_g": 255, "unit": "g", "kcal_total": 544, "protein_g": 28, "carbs_g": 60, "fat_g": 21,
                                          "parts": [part("Burger bun, toasted", 85, 235, 7), part("Chicken fillet, crumbed, fried", 100, 223, 22), part("Coleslaw", 40, 42, 1), part("Creamy cheese sauce", 30, 44, 2)]] as JSON]
+        // what find-check.js's search found in South Yarra
+        func spot(_ n: String, _ a: String, _ c: String, _ d: String, _ pub: String, _ kj: Double, _ k: Double, _ p: Double) -> JSON {
+            ["name": n, "area": a, "cuisine": c, "dish": d, "published": pub, "kj": kj, "kcal": k, "protein_g": p, "carbs_g": 50, "fat_g": 20]
+        }
+        let places = Takeaway.places(["found": true, "places": [spot("Spudbar", "590 Chapel St", "Potato bowls", "The Chicken Power Bowl", "full", 0, 497, 46),
+                                                                spot("Zeus Street Greek", "670 Chapel St", "Greek", "Chargrilled Chicken", "energy", 2760, 660, 50),
+                                                                spot("Wokinabox", "South Yarra", "Asian", "The Satay", "energy", 2739, 655, 40),
+                                                                spot("Grill'd", "South Yarra", "Burgers", "Simply Grill'd", "none", 0, 605, 30)]],
+                                     area: "South Yarra", asked: "Any good lunch spots near me in South Yarra?", meal: "Lunch", kcal: 700, protein: 45)
         AssistantLive.shared.turns = [
             Assistant.Turn(me: true, text: "want something from gami tomorrow, lunch"), Assistant.Turn(me: false, text: str(lunch["reply"]), result: lunch),
             Assistant.Turn(me: true, text: "854 left, Gami for dinner, the chicken burger with a shake and ice cream"), Assistant.Turn(me: false, text: str(dinner["reply"]), result: dinner),
-            Assistant.Turn(me: true, text: "This burger for lunch"), Assistant.Turn(me: false, text: "The Gami chicken burger, sized to the 2,280 kJ on the page. Tap Add to put it on today's list.", result: burger)]
+            Assistant.Turn(me: true, text: "This burger for lunch"), Assistant.Turn(me: false, text: "The Gami chicken burger, sized to the 2,280 kJ on the page. Tap Add to put it on today's list.", result: burger),
+            Assistant.Turn(me: true, text: "Any good lunch spots near me in South Yarra that's healthy and high protein?"), Assistant.Turn(me: false, text: str(places["reply"]), result: places)]
         AssistantLive.shared.used = Date()
     }
     var body: some View {
