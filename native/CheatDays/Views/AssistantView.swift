@@ -173,7 +173,7 @@ struct AssistantView: View {
         let meal = str(r["meal"]).isEmpty ? self.meal : str(r["meal"])   // "add to lunch" adds to lunch
         switch str(r["kind"]) {
         case "estimate":
-            if let e = r["estimate"] as? JSON { estimateCard(e, turn: turn, meal: meal) }
+            if let e = r["estimate"] as? JSON { estimateCard(e, turn: turn, meal: str(r["meal"]).isEmpty ? Meals.forEstimate(e, opened: meal) : meal) }
         case "plan":
             if let p = r["plan"] as? JSON { planCard(p, turn: turn, meal: str(r["meal"]).isEmpty ? Meals.now : meal) }
         case "edit":

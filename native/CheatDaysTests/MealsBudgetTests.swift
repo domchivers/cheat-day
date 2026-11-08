@@ -50,4 +50,15 @@ final class MealsBudgetTests: XCTestCase {
         let meal: JSON = ["name": "Stir fry", "source": "meal", "kcalPer100": 130, "unitLabel": "portion", "kcalPerServing": 520, "servingSize": 400]
         XCTAssertEqual(FoodMath.amountText(meal, kcal: 260), "200 g")
     }
+
+    func testMealSizedEstimateAtSnackTimeIsAMeal() {
+        let set: JSON = ["name": "Chirashi lunch set and 3 wagyu slices", "kcal_total": 816]
+        XCTAssertEqual(Meals.forEstimate(set, opened: "Snacks", hour: 15), "Lunch")   // its name says
+        let bowl: JSON = ["name": "Chirashi bowl", "kcal_total": 816]
+        XCTAssertEqual(Meals.forEstimate(bowl, opened: "Snacks", hour: 16), "Lunch")   // a late lunch
+        XCTAssertEqual(Meals.forEstimate(bowl, opened: "Snacks", hour: 23), "Dinner")
+        let bar: JSON = ["name": "Protein bar", "kcal_total": 220]
+        XCTAssertEqual(Meals.forEstimate(bar, opened: "Snacks", hour: 15), "Snacks")
+        XCTAssertEqual(Meals.forEstimate(bowl, opened: "Breakfast", hour: 15), "Breakfast")   // opened for a meal: that meal
+    }
 }
