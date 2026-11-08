@@ -33,7 +33,7 @@ final class FoodEmojiTests: XCTestCase {
         XCTAssertEqual(FoodEmoji.for("Gyudon"), "🍚")
         XCTAssertEqual(FoodEmoji.for("Oden broth, dashi"), "🍲")
         XCTAssertEqual(FoodEmoji.for("Chicken karaage"), "🍗")
-        XCTAssertEqual(FoodEmoji.for("Edamame, shelled, boiled"), "🥦")
+        XCTAssertEqual(FoodEmoji.for("Edamame, shelled, boiled"), "🫛")
     }
 
     /// Dishes from the cuisines people eat out, each to an icon the app has.
@@ -41,7 +41,7 @@ final class FoodEmojiTests: XCTestCase {
         XCTAssertEqual(FoodEmoji.for("Chicken tikka masala"), "🍛")
         XCTAssertEqual(FoodEmoji.for("Masala dosa"), "🥞")
         XCTAssertEqual(FoodEmoji.for("Masala chai"), "🍵")          // the drink, not the curry
-        XCTAssertEqual(FoodEmoji.for("Garlic naan"), "🍞")
+        XCTAssertEqual(FoodEmoji.for("Garlic naan"), "🫓")
         XCTAssertEqual(FoodEmoji.for("Beef samosa"), "🥟")
         XCTAssertEqual(FoodEmoji.for("Nasi lemak"), "🍚")
         XCTAssertEqual(FoodEmoji.for("Char kway teow"), "🍜")
@@ -51,7 +51,7 @@ final class FoodEmojiTests: XCTestCase {
         XCTAssertEqual(FoodEmoji.for("Beef bulgogi"), "🥩")
         XCTAssertEqual(FoodEmoji.for("Kimchi fried rice"), "🍚")
         XCTAssertEqual(FoodEmoji.for("Chicken shawarma"), "🌯")
-        XCTAssertEqual(FoodEmoji.for("Lamb tagine"), "🥘")
+        XCTAssertEqual(FoodEmoji.for("Lamb tagine"), "🍲")
         XCTAssertEqual(FoodEmoji.for("Chicken parma"), "🍗")
         XCTAssertEqual(FoodEmoji.for("Parma ham"), "🥓")
         XCTAssertEqual(FoodEmoji.for("Beef empanada"), "🥟")
@@ -69,7 +69,7 @@ final class FoodEmojiTests: XCTestCase {
         XCTAssertEqual(FoodEmoji.for("Red chili, sliced"), "🌶️")
         XCTAssertEqual(FoodEmoji.for("Aldi Peri-Peri Chicken with Rice & Corn"), "🍗")
         XCTAssertEqual(FoodEmoji.for("Pizza Cheese Shredded"), "🧀")
-        XCTAssertEqual(FoodEmoji.for("Kimchi, Sliced Napa Cabbage"), "🥦")
+        XCTAssertEqual(FoodEmoji.for("Kimchi, Sliced Napa Cabbage"), "🥬")
     }
 
     func testUnknown() {
