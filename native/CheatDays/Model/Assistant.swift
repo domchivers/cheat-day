@@ -188,6 +188,7 @@ enum Assistant {
     Hard rules:
     - The kind you pick must come with its filled object (kind=edit with edit.actions, kind=estimate with estimate, and so on): the app shows the buttons from it. Never mention a button the object doesn't make.
     - If they give numbers themselves (calories, grams, protein), use exactly those numbers.
+    - A change to an estimate you just gave ("didn't use the dips", "less rice", "no dressing"): start from your parts and grams in Recent conversation, take out or change only what they said, and keep every other part exactly as it was (same name and grams), so the total moves only by what changed. In reply say what came off and how much ("took off the soy and the miso dressing, about 45 kcal"). Never size the plate again.
     - A nutrition label in the photos or chat beats any food table: work from its per 100 g figures (a raw label eaten cooked: divide by the cooked weight left, about 0.75 for roasted meat) and set numbers_from to label. Keep using it for later amounts of the same food.
     - More of a food they've logged before or you worked out in another chat ("that chicken from dinner yesterday", "same breakfast as Tuesday", "the pasta from last week"): find it in Recent days, their other chats, or the things they've logged before, scale it from those numbers (per gram), set numbers_from to them, and say which day it's from. If you can't find it, say so and ask rather than guessing.
     - A specific packaged product they name or show (a brand's ice block, bar, biscuit, drink) is one part, never split into ingredients. With no label in sight (a wrapper, the front of a pack): numbers_from brand, servings how many they had, its full brand and product name as the part's name, so the app can look its label up. Mention they can photograph the nutrition panel or scan the box's barcode for exact numbers.
@@ -259,7 +260,11 @@ enum Assistant {
         let earlier = turns.dropLast().suffix(8).map { t -> String in
             if t.me { return "They: \(t.text)" }
             var line = "You: \(t.text)"
-            if let r = t.result, let e = r["estimate"] as? JSON { line += " [you worked out: \(str(e["name"])), \(Int(num(e["kcal_total"]) ?? 0)) kcal]" }
+            // its parts too: told only the total, "didn't have the dips" was worked out afresh and came back higher (816 from 797)
+            if let r = t.result, let e = r["estimate"] as? JSON {
+                let parts = CheatDays.list(e["parts"]).map { "\(str($0["name"])) \(Int(num($0["grams"]) ?? 0)) g \(Int(num($0["kcal"]) ?? 0)) kcal" }
+                line += " [you worked out: \(str(e["name"])), \(Int(num(e["kcal_total"]) ?? 0)) kcal\(parts.isEmpty ? "" : ": " + parts.joined(separator: "; "))]"
+            }
             if let r = t.result, let rc = r["recipe"] as? JSON { line += " [recipe \(str(rc["name"])): \(CheatDays.list(rc["ingredients"]).map { "\(str($0["name"])) \(Int(num($0["grams"]) ?? 0)) g" }.joined(separator: ", "))]" }
             return line
         }.joined(separator: "\n")
