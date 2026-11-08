@@ -35,8 +35,9 @@ extension Store {
     }
 }
 
-/// The Plan button on a normal day: the meal it's time for, what you usually have then (with a lighter pick where
-/// there is one), how much cooking you fancy and what's in the fridge, then ideas in your usual style to log or cook.
+/// The Plan button on a normal day, as a chat: it says what the meal should come to and how to ask (with your own
+/// numbers and the foods you usually have), you say what you fancy, and ideas in your usual style come back as cards
+/// to log or cook. Reply to change them ("something spicier", "no rice"); the earlier ones stay above.
 struct MealPlannerView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var meal: String
@@ -45,78 +46,74 @@ struct MealPlannerView: View {
         let now = Meals.byTime(Calendar.current.component(.hour, from: Date()))
         _meal = State(initialValue: meal ?? (now == "Snacks" ? "Dinner" : now))
     }
+    /// One message: theirs, or the planner's with its ideas.
+    struct Turn: Identifiable { let id = UUID(); let me: Bool; var text: String; var ideas: [JSON] = [] }
+    @State private var turns: [Turn] = []
+    @State private var text = ""
     @State private var cooking = ""
-    @AppStorage("pantry") private var pantry = ""
     @AppStorage("pantry.scans") private var scansJSON = "[]"   // foods scanned in, with their label numbers
     @State private var scanning: PantryScanSheet.Mode?
-    @State private var ideas: [JSON] = []
     @State private var busy = false
+    @State private var stepsDone: [String] = []
+    @State private var stepNow = ""
     @State private var problem: String?
     @State private var added: Set<String> = []
     @State private var open: IdeaRef?
     @State private var cheat = false
-    @State private var proteinSet: Double?   // the protein you asked for this meal; nil is your share of the day's goal
+    @State private var speech = Speech()
     @FocusState private var typing: Bool
-    @FocusState private var naming: String?   // renaming a cupboard food
     private var store: Store { Store.shared }
 
     private static let cookChoices = ["No cooking", "Quick, 15 min", "Happy to cook"]
     private var left: Double { max(0, store.budgetToday - store.eaten) }
-    private var proteinLeft: Double? { store.proteinGoal.map { max(0, $0 - store.macros(store.todayItems).p) } }
     private var history: [(name: String, days: Int, kcal: Double)] { store.mealHistory(meal) }
     /// This meal's share of the protein goal, to the nearest 5 g (25 g without a goal).
     private var proteinShare: Double { ((store.mealTarget(meal).protein ?? 25) / 5).rounded() * 5 }
-    private var proteinAim: Double { proteinSet ?? proteinShare }
+    /// Two or three foods they often have at this meal, short names, for the chips and the example.
+    private var usual: [String] {
+        Array(history.filter { $0.days >= 2 }.prefix(3).map { h in
+            let n = h.name.components(separatedBy: CharacterSet(charactersIn: ",(")).first ?? h.name
+            return n.trimmingCharacters(in: .whitespaces)
+        })
+    }
+
+    /// How to ask, from their own numbers and foods: "About 660 kcal and 45 g protein: chicken breast, rice and
+    /// broccoli, Chinese style, 15 minutes."
+    private var example: String {
+        let t = store.mealTarget(meal)
+        let foods = usual.isEmpty ? ["chicken breast", "rice", "carrot", "cabbage"] : usual.map { $0.lowercased() }
+        let list = foods.count > 1 ? foods.dropLast().joined(separator: ", ") + " and " + foods.last! : foods[0]
+        let style = (store.habits["cuisines"] as? [String])?.first.map { "\($0) style" } ?? "Chinese style"
+        let time = cooking == Self.cookChoices[0] ? "no cooking" : cooking == Self.cookChoices[2] ? "happy to cook" : "15 minutes"
+        return "About \(Fmt.int(t.kcal)) kcal and \(Int(proteinShare)) g protein: \(list), \(style), \(time)."
+    }
 
     var body: some View {
         NavigationStack {
             ScrollViewReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    Picker("Meal", selection: $meal) { ForEach(["Breakfast", "Lunch", "Dinner"], id: \.self) { Text($0).tag($0) } }
-                        .pickerStyle(.segmented)
-                        .onChange(of: meal) { _, _ in ideas = []; problem = nil; proteinSet = nil }
-                    let t = store.mealTarget(meal)
-                    Text("Aim for about \(Fmt.int(t.kcal)) kcal\(t.protein.map { " · \(Int($0)) g protein" } ?? "") · \(Fmt.int(left)) left today")
-                        .font(.subheadline).foregroundStyle(.secondary)
-                    usual
-                    Eyebrow(text: "How much cooking?", color: Theme.heroLabel).padding(.top, 4)
-                    Flow { ForEach(Self.cookChoices, id: \.self) { c in Chip(text: c, on: cooking == c) { cooking = c } } }
-                    Eyebrow(text: "In your fridge and cupboard", color: Theme.heroLabel).padding(.top, 4)
-                    TextField("chicken, rice, peppers, eggs, feta", text: $pantry, axis: .vertical)
-                        .lineLimit(2...4).focused($typing)
-                        .padding(12).background(Theme.hero, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    cupboard
-                    Eyebrow(text: "Protein for this meal", color: Theme.heroLabel).padding(.top, 4)
-                    proteinRow
-                    Button { typing = false; Task { await suggest() } } label: {
-                        Label(busy ? "Thinking…" : pantry.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Give me ideas" : "What can I make?", systemImage: "sparkles")
-                            .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 8)
+                VStack(spacing: 0) {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 12) {
+                            HStack(spacing: 6) {
+                                ForEach(["Breakfast", "Lunch", "Dinner"], id: \.self) { m in Chip(text: m, on: meal == m) { meal = m } }
+                            }
+                            intro
+                            ForEach(turns) { t in turnView(t).id(t.id) }
+                            if busy { progress.id("busy") }
+                            if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn) }
+                            Button { cheat = true } label: { Label("Plan your cheat day instead", systemImage: "arrow.right").font(.subheadline.weight(.semibold)) }
+                                .frame(maxWidth: .infinity).padding(.top, 6)
+                        }
+                        .padding(16)
                     }
-                    .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent).disabled(busy)
-                    .id("go")
-                    if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn) }
-                    ForEach(ideas.indices, id: \.self) { i in idea(ideas[i]) }
-                    Button { cheat = true } label: { Label("Plan your cheat day", systemImage: "arrow.right").font(.subheadline.weight(.semibold)) }
-                        .frame(maxWidth: .infinity).padding(.top, 10)
-                        .id("link")
+                    .scrollDismissesKeyboard(.interactively)
+                    .onChange(of: turns.count) { _, _ in withAnimation { proxy.scrollTo(turns.last?.id, anchor: .top) } }
+                    .onChange(of: busy) { _, b in if b { withAnimation { proxy.scrollTo("busy", anchor: .bottom) } } }
+                    composer
                 }
-                .padding(20)
-            }
-            .scrollDismissesKeyboard(.interactively)
-            .onChange(of: typing) { _, t in
-                guard t else { return }
-                // the keyboard would cover the button under the box: bring it up with the box
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { withAnimation { proxy.scrollTo(ideas.isEmpty ? "link" : "go", anchor: .bottom) } }
-            }
-            .onChange(of: naming) { _, n in
-                guard n != nil else { return }
-                // the same when renaming a cupboard food: the name and the button under it both stay in view
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { withAnimation { proxy.scrollTo("link", anchor: .bottom) } }
-            }
             }
             .background(Theme.bg.ignoresSafeArea())
-            .navigationTitle("Plan \(meal.lowercased())").navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("Plan a meal").navigationBarTitleDisplayMode(.inline)
             .keyboardDone()
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
             .sheet(item: $open) { r in RecipeSheet(idea: r.idea) }
@@ -128,109 +125,140 @@ struct MealPlannerView: View {
                 }
             }
             .sheet(isPresented: $cheat) { CheatDayView().presentationDragIndicator(.visible) }
+            .onChange(of: meal) { _, _ in turns = []; problem = nil }
             .onAppear {
                 if cooking.isEmpty {
                     switch str(store.habits["cook"]) { case "love": cooking = Self.cookChoices[2]; case "hate": cooking = Self.cookChoices[0]; default: cooking = Self.cookChoices[1] }
                 }
             }
+            .onDisappear { speech.stop() }
         }
     }
 
     private var scans: [PantryItem] { PantryItem.Saved.load(scansJSON) }
 
-    /// Scan a barcode or snap a label to add a food with its real numbers; the ones you've added, to remove.
-    @ViewBuilder private var cupboard: some View {
-        HStack(spacing: 8) {
-            Button { typing = false; scanning = .barcode } label: {
-                Label("Scan a barcode", systemImage: "barcode.viewfinder").font(.subheadline.weight(.bold)).lineLimit(1).minimumScaleFactor(0.75).frame(maxWidth: .infinity).padding(.vertical, 10)
-                    .background(Theme.hero, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-            Button { typing = false; scanning = .photo } label: {
-                Label("Photo of a label", systemImage: "camera.fill").font(.subheadline.weight(.bold)).lineLimit(1).minimumScaleFactor(0.75).frame(maxWidth: .infinity).padding(.vertical, 10)
-                    .background(Theme.hero, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-        }
-        .buttonStyle(.plain).foregroundStyle(Theme.accent)
-        ForEach(scans) { s in
-            HStack(spacing: 10) {
-                FoodDot(name: s.name, size: 28)
-                VStack(alignment: .leading, spacing: 1) {
-                    // tap the name to change it (a label photo often doesn't say what it is)
-                    TextField("Name it", text: Binding(get: { s.name }, set: { v in
-                        scansJSON = PantryItem.Saved.save(scans.map { x in
-                            var y = x
-                            if y.id == s.id { y.name = v }
-                            return y
-                        })
-                    }))
-                    .font(.subheadline.weight(.semibold)).focused($naming, equals: s.id).submitLabel(.done)
-                    Text(s.line).font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 4)
-                Button { withAnimation { scansJSON = PantryItem.Saved.save(scans.filter { $0.id != s.id }) } } label: {
-                    Image(systemName: "xmark").font(.caption.weight(.bold)).foregroundStyle(.secondary).frame(width: 44, height: 44).contentShape(Rectangle())
-                }
-                .buttonStyle(.plain).accessibilityLabel("Remove \(s.name)")
-            }
-            .padding(.horizontal, 12).padding(.vertical, 8)
-            .background(Theme.hero, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        }
+    private func bubble<C: View>(_ content: C) -> some View {
+        content.font(.subheadline).padding(12)
+            .background(Theme.hero, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// How much protein the ideas should reach, starting at this meal's share of the day's goal; 5 g a tap.
-    private var proteinRow: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Protein").font(.headline)
-                    Text("Your \(meal.lowercased()) share: \(Int(proteinShare)) g").font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer()
-                (Text("\(Int(proteinAim))").font(.title2.weight(.heavy)) + Text(" g").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary))
-                    .monospacedDigit()
-                HStack(spacing: 0) {
-                    Button { proteinSet = max(5, proteinAim - 5) } label: { Image(systemName: "minus").frame(width: 40, height: 34) }
-                        .accessibilityLabel("Less protein")
-                    Divider().frame(height: 20)
-                    Button { proteinSet = min(120, proteinAim + 5) } label: { Image(systemName: "plus").frame(width: 40, height: 34) }
-                        .accessibilityLabel("More protein")
-                }
-                .buttonStyle(.plain).font(.body.weight(.bold))
-                .background(Theme.track, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    /// The planner's first message: what the meal should come to, and how to ask (a tap puts the example in the box).
+    @ViewBuilder private var intro: some View {
+        let t = store.mealTarget(meal)
+        bubble(VStack(alignment: .leading, spacing: 8) {
+            (Text("\(meal): about \(Fmt.int(t.kcal)) kcal and \(Int(proteinShare)) g protein").bold() + Text(" (\(Fmt.int(left)) left today). What do you fancy?"))
+            Text("Say what you have and how you'd like it. For example:").foregroundStyle(.secondary)
+            Button { text = example; typing = true } label: {
+                Text("“\(example)”").italic().multilineTextAlignment(.leading).foregroundStyle(Theme.accent)
             }
-            .padding(12)
-            .background(Theme.hero, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            Text("Ideas aim for at least this, counted from their real ingredients.").font(.caption).foregroundStyle(.secondary)
-        }
-        .sensoryFeedback(.selection, trigger: proteinAim)
-    }
-
-    /// What you usually have at this meal, each with a lighter pick from the food list when there's a real saving.
-    @ViewBuilder private var usual: some View {
-        let top = history.filter { $0.days >= 2 }.prefix(3)
-        if !top.isEmpty {
-            Eyebrow(text: "You usually have", color: Theme.heroLabel).padding(.top, 4)
-            VStack(spacing: 0) {
-                ForEach(Array(top.enumerated()), id: \.offset) { i, h in
-                    let pick = Swaps.pick(for: h.name, kcal: h.kcal)
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack {
-                            FoodDot(name: h.name, size: 26)
-                            Text(h.name).font(.subheadline.weight(.semibold)).lineLimit(1)
-                            Spacer()
-                            Text("\(h.days)× in 4 weeks").font(.caption).foregroundStyle(.secondary)
-                        }
-                        if let p = pick {
-                            Label("Try \(p.name): saves \(Fmt.int(p.saves)) kcal. \(p.why).", systemImage: "arrow.triangle.swap")
-                                .font(.caption).foregroundStyle(Theme.accent)
-                        }
+            .buttonStyle(.plain).accessibilityHint("Puts the example in the box")
+        })
+        // what they often have, and how much cooking: a tap adds it to what they're writing
+        if !usual.isEmpty { Flow { ForEach(usual, id: \.self) { u in Chip(text: u, on: text.localizedCaseInsensitiveContains(u)) { add(u) } } } }
+        Flow { ForEach(Self.cookChoices, id: \.self) { c in Chip(text: c, on: cooking == c) { cooking = c } } }
+        // the foods scanned in, with their label numbers: the ideas use them
+        if !scans.isEmpty {
+            Flow {
+                ForEach(scans) { s in
+                    HStack(spacing: 6) {
+                        Text("🏷 \(s.name)").font(.subheadline.weight(.semibold))
+                        Button { withAnimation { scansJSON = PantryItem.Saved.save(scans.filter { $0.id != s.id }) } } label: { Image(systemName: "xmark").font(.caption2.weight(.bold)) }
+                            .buttonStyle(.plain).foregroundStyle(.secondary).accessibilityLabel("Remove \(s.name)")
                     }
-                    .padding(12)
-                    if i < top.count - 1 { Divider().padding(.leading, 12) }
+                    .padding(.horizontal, 12).padding(.vertical, 8).background(Color(.tertiarySystemFill), in: Capsule())
                 }
             }
-            .background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
+    }
+
+    private func add(_ words: String) {
+        let t = text.trimmingCharacters(in: .whitespaces)
+        if t.localizedCaseInsensitiveContains(words) { return }
+        text = t.isEmpty ? words : "\(t), \(words.lowercased())"
+    }
+
+    @ViewBuilder private func turnView(_ t: Turn) -> some View {
+        if t.me {
+            Text(t.text).font(.subheadline).padding(12).foregroundStyle(Theme.onAccent)
+                .background(Theme.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        } else {
+            bubble(Text(t.text))
+            ForEach(t.ideas.indices, id: \.self) { i in idea(t.ideas[i]) }
+        }
+    }
+
+    /// What it's doing, ticked off as it goes, like the assistant.
+    private var progress: some View {
+        bubble(VStack(alignment: .leading, spacing: 7) {
+            ForEach(stepsDone, id: \.self) { s in
+                Label { Text(s).foregroundStyle(.secondary) } icon: { Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(.green) }
+            }
+            Label { Text(stepNow).fontWeight(.semibold) } icon: { ProgressView().controlSize(.small) }
+        }
+        .animation(.snappy, value: stepsDone))
+    }
+
+    /// The assistant's box: the words on top, ＋ to scan a barcode or photograph a label, the microphone and send.
+    private var composer: some View {
+        let empty = text.trimmingCharacters(in: .whitespaces).isEmpty
+        return VStack(alignment: .leading, spacing: 10) {
+            TextField(turns.isEmpty ? "What do you fancy?" : "Reply to change them…", text: $text, axis: .vertical).lineLimit(1...8).focused($typing)
+                .submitLabel(.send).onSubmit { send() }
+                .padding(.horizontal, 8).padding(.top, 4)
+            HStack(spacing: 8) {
+                Menu {
+                    Button { typing = false; scanning = .barcode } label: { Label("Scan a barcode", systemImage: "barcode.viewfinder") }
+                    Button { typing = false; scanning = .photo } label: { Label("Photo of a label", systemImage: "camera") }
+                } label: { round("plus") }
+                .accessibilityLabel("Add a food you have")
+                if speech.listening {
+                    SpeechBars(level: speech.level).frame(maxWidth: .infinity)
+                    Button { speech.stop() } label: {
+                        RoundedRectangle(cornerRadius: 3).fill(.white).frame(width: 13, height: 13).frame(width: 40, height: 40).background(Color.red, in: Circle())
+                    }
+                    .buttonStyle(.plain).accessibilityLabel("Stop listening")
+                } else {
+                    Spacer()
+                    Button {
+                        let before = text.trimmingCharacters(in: .whitespaces)
+                        Task { await speech.start { words in text = before.isEmpty ? words : before + " " + words } }
+                    } label: { round("mic") }
+                    .buttonStyle(.plain).accessibilityLabel("Speak")
+                    Button { send() } label: {
+                        Group {
+                            if busy { ProgressView().tint(Theme.onAccent) }
+                            else { Image(systemName: "arrow.up").font(.system(size: 18, weight: .bold)).foregroundStyle(Theme.onAccent) }
+                        }
+                        .frame(width: 40, height: 40).background(Theme.accent.opacity(empty && !busy ? 0.4 : 1), in: Circle())
+                    }
+                    .buttonStyle(.plain).disabled(empty || busy).accessibilityLabel("Send")
+                }
+            }
+        }
+        .padding(10)
+        .background { Color.clear.contentShape(Rectangle()).onTapGesture { typing = true } }
+        .background(Theme.hero, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay(alignment: .top) {
+            if let p = speech.problem { Text(p).font(.caption).foregroundStyle(Theme.warn).padding(8).offset(y: -34) }
+        }
+        .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 8)
+        .background(Theme.bg)
+    }
+
+    private func round(_ symbol: String) -> some View {
+        Image(systemName: symbol).font(.system(size: 17, weight: .semibold)).foregroundStyle(.primary)
+            .frame(width: 40, height: 40).background(Color.white.opacity(0.1), in: Circle())
+    }
+
+    private func send() {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty, !busy else { return }
+        speech.stop(); typing = false
+        turns.append(Turn(me: true, text: t))
+        text = ""
+        Task { await suggest(t) }
     }
 
     private func idea(_ m: JSON) -> some View {
@@ -318,50 +346,65 @@ struct MealPlannerView: View {
         return m
     }
 
-    private func suggest() async {
+    /// Ideas for what they asked, with the conversation so far: their own calories or protein when they gave them, this
+    /// meal's share otherwise; a reply changes the last ideas rather than starting again.
+    private func suggest(_ asked: String) async {
         busy = true; problem = nil
+        stepsDone = ["Read what you asked"]
+        stepNow = "Thinking up ideas in your usual style…"
         defer { busy = false }
-        let target = store.mealTarget(meal), aim = proteinAim
+        let target = store.mealTarget(meal), aim = proteinShare
         let had = history.prefix(20).map { "\($0.name) (\($0.days)×)" }.joined(separator: ", ")
         let cuisines = (store.habits["cuisines"] as? [String] ?? []).joined(separator: ", ")
         let cook = cooking == Self.cookChoices[0] ? "No cooking: assembling, shop-bought or a microwave only."
                  : cooking == Self.cookChoices[2] ? "Happy to cook properly." : "Quick: 15 minutes or so."
-        let have = pantry.trimmingCharacters(in: .whitespacesAndNewlines)
         let scanned = scans
+        // the conversation so far: what they asked, and the ideas given each time
+        let earlier = turns.dropLast().suffix(8).map { t -> String in
+            t.me ? "They asked: \(t.text)" : "You suggested: " + t.ideas.map { "\(str($0["name"])) (\(Int(num($0["kcal"]) ?? 0)) kcal)" }.joined(separator: "; ")
+        }.joined(separator: "\n")
         let ingredient: JSON = ["type": "object", "properties": [
             "name": ["type": "string"] as JSON, "grams": ["type": "number"] as JSON,
             "label": ["type": "integer", "description": "The number of the scanned food this is (1, 2…), or 0 if it isn't one"] as JSON,
             "kcal": ["type": "number"] as JSON, "protein": ["type": "number"] as JSON, "carbs": ["type": "number"] as JSON, "fat": ["type": "number"] as JSON
         ] as JSON, "required": ["name", "grams", "label", "kcal", "protein", "carbs", "fat"]]
         let schema: JSON = ["type": "object", "properties": [
+            "reply": ["type": "string", "description": "One short sentence introducing the ideas, in plain words"] as JSON,
+            "aim": ["type": "number", "description": "The protein the ideas aim for, in grams"] as JSON,
             "ideas": ["type": "array", "items": ["type": "object", "properties": [
                 "name": ["type": "string"] as JSON, "kcal": ["type": "number"] as JSON, "protein": ["type": "number"] as JSON,
                 "carbs": ["type": "number"] as JSON, "fat": ["type": "number"] as JSON, "minutes": ["type": "number"] as JSON,
                 "why": ["type": "string", "description": "Under 14 words: why it suits them"] as JSON,
                 "ingredients": ["type": "array", "items": ingredient] as JSON
             ] as JSON, "required": ["name", "kcal", "protein", "carbs", "fat", "minutes", "why", "ingredients"]] as JSON] as JSON
-        ] as JSON, "required": ["ideas"]]
+        ] as JSON, "required": ["reply", "aim", "ideas"]]
         let labels = scanned.enumerated().map { "\($0.offset + 1). \($0.element.prompt)" }.joined(separator: "\n")
         let prompt = """
         Suggest 3 \(meal.lowercased()) ideas for someone in \(Plan.country), one portion each.
-        Size each idea for this one meal: about \(Int(target.kcal)) kcal (between \(Int(target.kcal - 120)) and \(Int(target.kcal + 60))), not the whole day's \(Int(left)) kcal left: they still have other meals and snacks to come.
-        Each idea needs at least \(Int(aim)) g protein, from real portions of protein foods (meat, fish, eggs, dairy, beans, tofu): protein per ingredient must be its true standard value, never raised to reach the aim. If what they have in can't honestly get there, get as close as you can.
+        They said: "\(asked)"
+        \(earlier.isEmpty ? "" : "The conversation so far (their new message changes your last ideas: keep what they didn't ask to change):\n\(earlier)\n")
+        Size each idea for this one meal: about \(Int(target.kcal)) kcal (between \(Int(target.kcal - 120)) and \(Int(target.kcal + 60))), not the whole day's \(Int(left)) kcal left, and at least \(Int(aim)) g protein. If they give their own calories or protein in their message, use theirs instead, and set aim to the protein you're aiming for.
+        Protein comes from real portions of protein foods (meat, fish, eggs, dairy, beans, tofu): protein per ingredient must be its true standard value, never raised to reach the aim. If what they have in can't honestly get there, get as close as you can.
         What they've actually had for \(meal.lowercased()) over the last 4 weeks: \(had.isEmpty ? "nothing logged yet" : had).
-        Match that style: if it's mostly one cuisine (Asian dinners, say), stay in it and use the ingredients and dishes they clearly buy, just lighter or better balanced. One idea can be a healthier take on something they have often.
+        Match that style unless they ask for something else: if it's mostly one cuisine, stay in it and use the ingredients and dishes they clearly buy, just lighter or better balanced.
         Cuisines they like: \(cuisines.isEmpty ? "not said" : cuisines). \(cook)
-        \(have.isEmpty ? "" : "They have in: \(have). Make the ideas mostly from that, plus staples like oil, salt, sauces and spices.")
-        \(labels.isEmpty ? "" : "They scanned these foods, with the numbers printed on their packs:\n\(labels)\nEvery idea must use at least one of these, and between the ideas use each of them at least once\(have.isEmpty ? ": they're what they have in, so build the ideas from them" : ""). Lean on the highest-protein ones to reach the protein aim. For these use exactly those numbers.")
+        Foods they name are what they have in: build the ideas mostly from those, plus staples like oil, salt, sauces and spices.
+        \(labels.isEmpty ? "" : "They scanned these foods, with the numbers printed on their packs:\n\(labels)\nUse them where they fit, and lean on the highest-protein ones to reach the protein aim. For these use exactly those numbers.")
         List every ingredient with its grams and its own kcal, protein, carbs and fat; set label to the scanned food's number when it is one.
         Real dish names, numbers from standard reference values.
         """
         do {
             let a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: true, tries: 3, job: "plans")
+            stepsDone.append("Came up with \(list(a["ideas"]).count) ideas")
+            stepNow = "Checking each ingredient's numbers…"
+            let goal = pos(a["aim"]) ?? aim
             let got = list(a["ideas"]).map { i -> JSON in
-                var c = i; c["meal"] = meal; c["aim"] = aim
+                var c = i; c["meal"] = meal; c["aim"] = goal
                 return Self.withLabels(c, scanned)
             }
-            withAnimation(.snappy) { ideas = got }
-            if got.isEmpty { problem = "No ideas came back. Try again." }
+            if got.isEmpty { problem = "No ideas came back. Try again."; return }
+            let reply = str(a["reply"]).isEmpty ? "Here are three:" : str(a["reply"])
+            withAnimation(.snappy) { turns.append(Turn(me: false, text: reply, ideas: got)) }
         } catch { problem = error.localizedDescription }
     }
 }

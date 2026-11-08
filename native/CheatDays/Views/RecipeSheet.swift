@@ -136,7 +136,7 @@ struct RecipeSheet: View {
                         Text(problem).font(.footnote).foregroundStyle(Theme.warn)
                         Button("Try again") { maker.make(idea) }
                     } else {
-                        HStack(spacing: 10) { ProgressView(); Text("Writing the recipe…").foregroundStyle(.secondary) }.padding(.top, 20)
+                        RecipeSteps(done: 0, what: "").padding(.top, 8)
                         Text("Usually 10 to 20 seconds. You can close this: it keeps going and will be here when you come back.")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
@@ -342,7 +342,7 @@ struct RecipeSheet: View {
                 Text(problem).font(.footnote).foregroundStyle(Theme.warn)
                 Button("Try again") { maker.makeOther(idea, version: version) }
             } else {
-                HStack(spacing: 10) { ProgressView(); Text("Writing the \(label) version…").foregroundStyle(.secondary) }.padding(.top, 20)
+                RecipeSteps(done: 0, what: label).padding(.top, 8)
                     .onAppear { maker.makeOther(idea, version: version) }
                     .id(version)
                 Text("Usually 10 to 20 seconds. You can close this: it keeps going and will be here when you come back.")
@@ -419,9 +419,7 @@ struct RecipeSheet: View {
         if steps.isEmpty && (maker.working.contains(str(idea["name"])) || maker.working.contains(RecipeMaker.otherKey(str(idea["name"]), version))) {
             // the ingredients came first; the method is on its way
             Eyebrow(text: "Method").padding(.top, 4)
-            HStack(spacing: 10) { ProgressView(); Text("Writing the method…").foregroundStyle(.secondary) }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(14).background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            RecipeSteps(done: 2, what: "")
         }
         if !steps.isEmpty {
             Eyebrow(text: "Method").padding(.top, 4)
@@ -788,5 +786,31 @@ extension RecipeMaker {
         """
         let a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: true, tries: 3, job: "recipes")
         return a["steps"] as? [String] ?? []
+    }
+}
+
+/// A recipe being written, step by step like the assistant: the ingredients, their calories checked against their
+/// protein, carbs and fat, then the method. `done` is how many steps are finished.
+struct RecipeSteps: View {
+    let done: Int
+    /// "original" or "healthier" for the second version, "" for the first.
+    let what: String
+    var body: some View {
+        let steps = ["Choosing the ingredients" + (what.isEmpty ? "" : " for the \(what) version"), "Checking each one's calories against its protein, carbs and fat", "Writing the method"]
+        let past = ["Chose the ingredients", "Checked each one's calories against its protein, carbs and fat", "Wrote the method"]
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(steps.indices, id: \.self) { i in
+                if i < done {
+                    Label { Text(past[i]).foregroundStyle(.secondary) } icon: { Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(.green) }
+                } else if i == done {
+                    Label { Text(steps[i] + "…").fontWeight(.semibold) } icon: { ProgressView().controlSize(.small) }
+                } else {
+                    Label { Text(steps[i]).foregroundStyle(.tertiary) } icon: { Image(systemName: "circle").font(.caption2).foregroundStyle(.tertiary) }
+                }
+            }
+        }
+        .font(.subheadline)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14).background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
