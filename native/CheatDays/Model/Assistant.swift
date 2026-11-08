@@ -260,7 +260,7 @@ enum Assistant {
         // price); then the photos, then this person and this message
         var parts: [JSON] = [["text": "You are the assistant inside a cheat-day food diary app called Cheat Days.\n\(rules)", "cache": true]]
         parts += pics.prefix(4).compactMap { Gemini.imagePart($0) }
-        parts.append(["text": "\\(context(store, skip: turns.first { $0.me }?.text ?? ""))\(earlier.isEmpty ? "" : "Recent conversation:\n\(earlier)\n")They now say: \"\(last.text)\"\(last.images.isEmpty && !pics.isEmpty ? " (about the photos from earlier)" : "")\n\(foodData(([last.text] + (seen?.foods ?? [])).joined(separator: ", ")))\(loggedBefore(store, text: ([last.text] + (seen?.foods ?? [])).joined(separator: " ")))\(corrections(CheatDays.list(store.doc["corrections"]), text: ([last.text] + (seen?.foods ?? [])).joined(separator: " ")))"])
+        parts.append(["text": "\(context(store, skip: turns.first { $0.me }?.text ?? ""))\(earlier.isEmpty ? "" : "Recent conversation:\n\(earlier)\n")They now say: \"\(last.text)\"\(last.images.isEmpty && !pics.isEmpty ? " (about the photos from earlier)" : "")\n\(foodData(([last.text] + (seen?.foods ?? [])).joined(separator: ", ")))\(loggedBefore(store, text: ([last.text] + (seen?.foods ?? [])).joined(separator: " ")))\(corrections(CheatDays.list(store.doc["corrections"]), text: ([last.text] + (seen?.foods ?? [])).joined(separator: " ")))"])
         // Claude for everything (Apple's on-device model made up foods: "1/2 tsp sesame oil" came back as roasted cauliflower).
         // Simple logs and questions go to the quick model; photos, recipes and plans to the careful one.
         // a follow-up in a conversation stays with the careful model: after advice, "No they've been helping me lol" isn't a
