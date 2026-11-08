@@ -14,8 +14,6 @@ struct AssistantView: View {
     private var problem: String? { get { live.problem } nonmutating set { live.problem = newValue } }
     @State private var text = ""
     @State private var pending: [UIImage] = []
-    @State private var sizes: [ObjectIdentifier: DepthMeasure.Result] = [:]   // the depth camera's, for each pending photo
-    @State private var unmeasured: [ObjectIdentifier: String] = [:]   // why a library photo had no sizes
     @State private var picked: [PhotosPickerItem] = []
     @State private var camera = false
     @State private var library = false
@@ -86,16 +84,10 @@ struct AssistantView: View {
                 }
             }
             .sheet(isPresented: $showChats) { ChatsList { c in turns = Assistant.turns(from: c); chatId = str(c["id"]); done = [:]; showChats = false } }
-            .fullScreenCover(isPresented: $camera) {
-                DepthCamera { img, r, lib in
-                    camera = false
-                    if let img { pending.append(img); if let r { sizes[ObjectIdentifier(img)] = r } }
-                    if lib { DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { library = true } }
-                }
-            }
+            .fullScreenCover(isPresented: $camera) { CameraPicker { img in camera = false; if let img { pending.append(img) } }.ignoresSafeArea() }
             .fullScreenCover(item: $viewing) { PhotoViewer(photos: $0) }
             .sheet(item: $changing) { ref in MatchPicker(ref: ref) { food in setMatch(ref, to: food); changing = nil }.presentationDetents([.medium]) }
-            .photosPicker(isPresented: $library, selection: $picked, maxSelectionCount: 4, matching: .images, preferredItemEncoding: .current)   // the file as taken: a converted copy loses its depth
+            .photosPicker(isPresented: $library, selection: $picked, maxSelectionCount: 4, matching: .images)
             .onChange(of: picked) { _, items in if !items.isEmpty { Task { await load(items) } } }
             .onChange(of: showChats) { _, open in KeyboardDone.quiet = !open }   // past chats keep their Done
             .onDisappear { KeyboardDone.quiet = false }
@@ -149,7 +141,6 @@ struct AssistantView: View {
                     HStack { ForEach(t.images.indices, id: \.self) { i in
                         Button { viewing = Photos(images: t.images, start: i) } label: {
                             Image(uiImage: t.images[i]).resizable().scaledToFill().frame(width: 70, height: 70).clipShape(RoundedRectangle(cornerRadius: 12))
-                                .overlay(alignment: .bottomLeading) { if i < t.sizes.count, t.sizes[i] != nil { measuredBadge } }
                         }
                         .buttonStyle(.plain).accessibilityLabel("Photo \(i + 1), full screen")
                     } }
@@ -607,7 +598,6 @@ struct AssistantView: View {
                         // each photo by itself, removed by itself: a quick double tap can't take the wrong one or run past the end
                         ForEach(pending, id: \.self) { img in
                             Image(uiImage: img).resizable().scaledToFill().frame(width: 56, height: 56).clipShape(RoundedRectangle(cornerRadius: 10))
-                                .overlay(alignment: .bottomLeading) { if sizes[ObjectIdentifier(img)] != nil { measuredBadge } }
                                 .overlay(alignment: .topTrailing) { Button { pending.removeAll { $0 === img } } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.white, .black) }.offset(x: 5, y: -5) }
                         }
                     }
@@ -654,22 +644,8 @@ struct AssistantView: View {
         }
     }
 
-    /// On a photo the depth camera measured.
-    private var measuredBadge: some View {
-        // the word alone, on one line: with the ruler too it wrapped ("measu / red") on the 70 pt photo
-        Text("measured").font(.system(size: 9, weight: .heavy)).lineLimit(1).minimumScaleFactor(0.7)
-            .padding(.horizontal, 4).padding(.vertical, 1).background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 6)).foregroundStyle(.white)
-            .padding(3)
-    }
-
     private func load(_ items: [PhotosPickerItem]) async {
-        for i in items {
-            guard let d = try? await i.loadTransferable(type: Data.self), let img = UIImage(data: d) else { continue }
-            pending.append(img)
-            // a Portrait photo keeps its depth: measured like the app's own camera's
-            let (r, why) = await Task.detached(operation: { DepthCameraModel.measure(file: d) }).value
-            if let r { sizes[ObjectIdentifier(img)] = r } else { unmeasured[ObjectIdentifier(img)] = why }
-        }
+        for i in items { if let d = try? await i.loadTransferable(type: Data.self), let img = UIImage(data: d) { pending.append(img) } }
         picked = []
     }
 
@@ -688,8 +664,8 @@ struct AssistantView: View {
             return
         }
         let photos = pending.count
-        turns.append(Assistant.Turn(me: true, text: t.isEmpty ? "What's this?" : t, images: pending, sizes: pending.map { sizes[ObjectIdentifier($0)] }, unmeasured: pending.map { unmeasured[ObjectIdentifier($0)] ?? "" }))
-        text = ""; pending = []; sizes = [:]; unmeasured = [:]; problem = nil; busy = true
+        turns.append(Assistant.Turn(me: true, text: t.isEmpty ? "What's this?" : t, images: pending))
+        text = ""; pending = []; problem = nil; busy = true
         // what it's doing, ticked off as it goes. The careful model's own work is one request, so its two steps are paced
         // by time (sizing first, then the parts); reading, spotting and the checks are real
         stepsDone = [photos > 0 ? "Read your message and \(photos) photo\(photos == 1 ? "" : "s")" : "Read your message"]

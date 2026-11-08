@@ -27,20 +27,6 @@ enum Assistant {
         let text: String
         var result: JSON?
         var images: [UIImage] = []
-        /// Each photo's sizes from the depth camera, in the same order (nil for one it couldn't measure, or from the library).
-        var sizes: [DepthMeasure.Result?] = []
-        /// Why a library photo wasn't measured, in the same order ("" when it was, or there's nothing to say).
-        var unmeasured: [String] = []
-    }
-
-    /// What the depth camera measured in these photos, and why any from the library weren't, for the AI ("" when there's neither).
-    static func measured(_ sizes: [DepthMeasure.Result?], unmeasured: [String] = []) -> String {
-        let lines = (0..<min(4, max(sizes.count, unmeasured.count))).compactMap { i -> String? in
-            if i < sizes.count, let r = sizes[i] { return DepthMeasure.describe(r, photo: i + 1) }
-            if i < unmeasured.count, !unmeasured[i].isEmpty { return "Photo \(i + 1) wasn't measured: \(unmeasured[i]). Size it as usual; if they ask about the measuring, tell them this." }
-            return nil
-        }
-        return lines.isEmpty ? "" : lines.joined(separator: "\n") + "\n"
     }
 
     private static func obj(_ props: JSON, desc: String = "") -> JSON {
@@ -196,7 +182,7 @@ enum Assistant {
     - Keep the cooking they said, and put it in each part's name so it's checked against the right food: "pan fried, no oil" is "Potato, pan fried, no oil", never boiled.
     - Calories must fit the macros: kcal ≈ 4 × protein + 4 × carbs + 9 × fat (a little over for fibre or alcohol). Check every part before answering.
     - \(Sanity.amounts) Meat and fish by weight, not "1 thigh": say the grams you assumed.
-    - Photos: before giving grams, look over the whole scene for anything whose real size you know (cutlery, plates, cups, cans, bottles, sauce tubs, takeaway boxes and containers, chopsticks, a phone, a hand, a card, packaging, standard pieces like a chip or an egg) and size each food against it. Use more than one when you can and check they agree. A box or bowl of unknown size can be judged from the known things in it, and a tub's fill tells how much is in it. Never assume a standard portion: bakery and café items vary a lot, and a small croissant isn't a big one. With several photos, size from the one that shows the most around the food (the whole table, the plate, the mug) and use close-ups only to see what it is: close up, food looks bigger than it is. Put that in each part's size ("about 10 cm long, against the side plate"), and in reply say it in a few words. When a photo was measured with the phone's depth camera (said below the photos), those sizes are real: work out the plate, bowl or box and each food's width and height from them (how much of the table the photo covers tells you how big things in it are), check them against the known things, and say "measured" in the size ("measured: about 22 × 16 cm, 5 cm high"). The measured volume includes the plates and boxes, so never use it as the food's. With nothing to size against, or when you can't tell how big or how dense it is, set size_unsure, say you assumed a regular size, and the app asks them small, regular or large.
+    - Photos: before giving grams, look over the whole scene for anything whose real size you know (cutlery, plates, cups, cans, bottles, sauce tubs, takeaway boxes and containers, chopsticks, a phone, a hand, a card, packaging, standard pieces like a chip or an egg) and size each food against it. Use more than one when you can and check they agree. A box or bowl of unknown size can be judged from the known things in it, and a tub's fill tells how much is in it. Never assume a standard portion: bakery and café items vary a lot, and a small croissant isn't a big one. With several photos, size from the one that shows the most around the food (the whole table, the plate, the mug) and use close-ups only to see what it is: close up, food looks bigger than it is. Put that in each part's size ("about 10 cm long, against the side plate"), and in reply say it in a few words. With nothing to size against, or when you can't tell how big or how dense it is, set size_unsure, say you assumed a regular size, and the app asks them small, regular or large.
     - Leftovers: with several photos of one meal, one showing it finished or part eaten is the after photo. Grams are what they ate: the full amount less what's left, part by part (broth, noodles and meat each), and say it in that part's size ("about 150 g broth left, taken off"). Only a finished or part-eaten plate and no before photo: give the full serving's parts, set eaten_unsure, and the app asks how much they had.
     - For an estimate, never put calories, protein or other totals in reply: the app checks every part against the food tables and the card shows the checked numbers (a reply saying 1,140 kcal sat over a card showing 1,004).
     - Side sauces and condiments (hoisin, sriracha, chilli sauce, soy, ketchup, mayo, a dressing on the side) only when they show on the food or they say they had them, never because the dish usually comes with them: leave them out and name the usual one in side_sauce, and the app offers it. A sauce that's part of the dish (a curry's sauce, ramen tare, a sauce poured over a rice bowl) is a part as usual.
@@ -269,13 +255,12 @@ enum Assistant {
             return line
         }.joined(separator: "\n")
         // photos come along from the last message that had some, when this one has none
-        let shot = last.images.isEmpty ? turns.dropLast().last { $0.me && !$0.images.isEmpty } : last
-        let pics = shot?.images ?? []
+        let pics = last.images.isEmpty ? (turns.dropLast().last { $0.me && !$0.images.isEmpty }?.images ?? []) : last.images
         // the rules first, the same for everyone and marked to be cached (later requests read them at a tenth of the
         // price); then the photos, then this person and this message
         var parts: [JSON] = [["text": "You are the assistant inside a cheat-day food diary app called Cheat Days.\n\(rules)", "cache": true]]
         parts += pics.prefix(4).compactMap { Gemini.imagePart($0) }
-        parts.append(["text": "\(measured(shot?.sizes ?? [], unmeasured: shot?.unmeasured ?? []))\(context(store, skip: turns.first { $0.me }?.text ?? ""))\(earlier.isEmpty ? "" : "Recent conversation:\n\(earlier)\n")They now say: \"\(last.text)\"\(last.images.isEmpty && !pics.isEmpty ? " (about the photos from earlier)" : "")\n\(foodData(([last.text] + (seen?.foods ?? [])).joined(separator: ", ")))\(loggedBefore(store, text: ([last.text] + (seen?.foods ?? [])).joined(separator: " ")))\(corrections(CheatDays.list(store.doc["corrections"]), text: ([last.text] + (seen?.foods ?? [])).joined(separator: " ")))"])
+        parts.append(["text": "\\(context(store, skip: turns.first { $0.me }?.text ?? ""))\(earlier.isEmpty ? "" : "Recent conversation:\n\(earlier)\n")They now say: \"\(last.text)\"\(last.images.isEmpty && !pics.isEmpty ? " (about the photos from earlier)" : "")\n\(foodData(([last.text] + (seen?.foods ?? [])).joined(separator: ", ")))\(loggedBefore(store, text: ([last.text] + (seen?.foods ?? [])).joined(separator: " ")))\(corrections(CheatDays.list(store.doc["corrections"]), text: ([last.text] + (seen?.foods ?? [])).joined(separator: " ")))"])
         // Claude for everything (Apple's on-device model made up foods: "1/2 tsp sesame oil" came back as roasted cauliflower).
         // Simple logs and questions go to the quick model; photos, recipes and plans to the careful one.
         // a follow-up in a conversation stays with the careful model: after advice, "No they've been helping me lol" isn't a
