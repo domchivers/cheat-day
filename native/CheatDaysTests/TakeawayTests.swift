@@ -1,0 +1,110 @@
+import XCTest
+@testable import CheatDays
+
+/// The takeaway planner, with Gami's 2026 kJ (from its menu PDF, as in design's takeaway spec; protein estimated) and
+/// the foods from home in that session's log.
+final class TakeawayTests: XCTestCase {
+    private let gami: [Takeaway.Item] = {
+        let rows: [(String, Double, Double, String)] = [
+            ("Original tenders, 4 pcs", 2800, 42, "main"), ("Honey soy tenders, 4 pcs", 3219, 42, "main"), ("Soy garlic tenders, 4 pcs", 3428, 42, "main"),
+            ("Original boneless, 7 pcs", 3996, 50, "main"), ("Original wings, 8 pcs", 3520, 45, "main"), ("Chicken Burger (Original)", 2280, 30, "main"),
+            ("Saucy Burger", 2490, 30, "main"), ("Mad Gochujang chicken plate", 3560, 50, "main"), ("Honey Butter Garlic chicken plate", 3780, 50, "main"),
+            ("Bulgogi hot pot", 2300, 30, "main"), ("Bibimbap", 2740, 28, "main"), ("Beef bulgogi cup-bap", 2950, 28, "main"), ("Grilled chicken cup-bap", 3740, 40, "main"),
+            ("Kimchi fried rice", 3053, 15, "main"), ("Tteokbokki", 3354, 15, "main"), ("Kimchi pancake", 2541, 12, "main"), ("Japchae", 4183, 18, "main"),
+            ("Dumplings", 1095, 10, "side"), ("Corn ribs", 1030, 5, "side"), ("Gami chips", 3042, 8, "side"), ("Cheese Snowy chips", 2550, 8, "side")]
+        return Takeaway.items(["items": rows.map { ["name": $0.0, "kind": $0.3, "published": "energy", "kj": $0.1, "kcal": 0, "protein_g": $0.2, "carbs_g": 50, "fat_g": 25] as JSON }])
+    }()
+    private let home: [Takeaway.Home] = [
+        Takeaway.home(name: "Milk Chocolate Protein Powder", kcal100: 380, p100: 69.3, c100: 16, f100: 4.3, serving: 30, label: true)!,
+        Takeaway.home(name: "Pauls PLUS+ milk", kcal100: 68, p100: 6, c100: 5, f100: 1, serving: nil, label: true)!,
+        Takeaway.home(name: "Kenny's salted caramel ice cream", kcal100: 106, p100: 7.2, c100: 11.6, f100: 3.4, serving: nil, label: true)!,
+        Takeaway.home(name: "Lyttos Light Greek yoghurt", kcal100: 67, p100: 5.5, c100: 5, f100: 2, serving: nil, label: false)!]
+
+    /// "Chicken Burger (2280 kJ)": 545 kcal, the kJ taken out of the name, protein kept and carbs and fat fitted to it.
+    func testKilojoulesFromTheName() {
+        XCTAssertEqual(Takeaway.kj(in: "Chicken Burger (2280 kJ)"), 2280)
+        XCTAssertEqual(Takeaway.kj(in: "Japchae 4,183kJ"), 4183)
+        XCTAssertNil(Takeaway.kj(in: "Chicken Burger"))
+        let i = Takeaway.items(["items": [["name": "Chicken Burger (2280 kJ)", "kind": "main", "published": "none", "kj": 0, "kcal": 0, "protein_g": 30, "carbs_g": 50, "fat_g": 30] as JSON]])[0]
+        XCTAssertEqual(i.name, "Chicken Burger")
+        XCTAssertEqual(i.tier, "energy")
+        XCTAssertEqual(i.kcal, 545)
+        XCTAssertEqual(i.p, 30)
+        XCTAssertEqual(4 * i.p + 4 * i.c + 9 * i.f, 545, accuracy: 0.5)
+    }
+
+    /// 854 kcal and 59 g left: the best combo reaches the protein and lands within 854 (10 over at most), three different dishes.
+    func testGamiDinner() {
+        let p = Takeaway.plan(menu: gami, home: home, kcal: 854, protein: 59, place: "Gami")
+        XCTAssertEqual(p.combos.count, 3)
+        let best = p.combos[0].0
+        XCTAssertTrue(p.meets)
+        XCTAssertGreaterThanOrEqual(best.p, 58.5)
+        XCTAssertLessThanOrEqual(best.kcal, 864)
+        XCTAssertGreaterThanOrEqual(best.kcal, 794, "close to what's left, not far under")
+        XCTAssertEqual(Set(p.combos.map(\.0.item.name)).count, 3, "a different dish each")
+        // a shake and one more at most, and milk only in a shake
+        for (c, _) in p.combos {
+            XCTAssertLessThanOrEqual(c.home.filter { $0.0.kind != .milk }.count, 2)
+            if c.grams(.milk) > 0 { XCTAssertGreaterThan(c.grams(.powder), 0) }
+        }
+        // the card adds up: its totals are its lines
+        let j = Takeaway.json(best, note: "Best fit", restaurant: "Gami", kcal: 854)
+        XCTAssertEqual(list(j["lines"]).reduce(0) { $0 + (num($1["kcal"]) ?? 0) }, num(j["kcal"]) ?? 0, accuracy: 2)
+    }
+
+    /// With protein to spare, the spare goes on more food or dessert rather than more powder.
+    func testSpareProteinGoesOnTheFood() {
+        let p = Takeaway.plan(menu: gami, home: home, kcal: 854, protein: 40, place: "Gami")
+        let best = p.combos[0].0
+        XCTAssertGreaterThanOrEqual(best.p, 39.5)
+        XCTAssertEqual(best.grams(.powder), 0, "40 g is reached without a shake: the room goes on food")
+    }
+
+    /// "No milk left, and I want the wings": the wings even though they go over, with a water shake; "no milk" leaves the
+    /// Milk Chocolate powder alone.
+    func testWantedDishAndNoMilk() {
+        let p = Takeaway.plan(menu: gami, home: home, kcal: 854, protein: 59, want: ["the wings"], avoid: ["milk"], place: "Gami")
+        let best = p.combos[0].0
+        XCTAssertTrue(best.item.name.contains("wings"))
+        XCTAssertEqual(best.grams(.milk), 0)
+        XCTAssertGreaterThan(best.grams(.powder), 0)
+        XCTAssertGreaterThan(Takeaway.json(best, note: "", restaurant: "Gami", kcal: 854)["over"] as? Double ?? 0, 10, "says how far over")
+    }
+
+    /// Low-protein dishes and sides that can't fit with a dish are listed, never suggested.
+    func testLowProteinAndSides() {
+        let p = Takeaway.plan(menu: gami, home: home, kcal: 854, protein: 59)
+        XCTAssertTrue(p.low.contains { $0.name == "Tteokbokki" }, "15 g in 802 kcal is under 3 g per 100 kcal")
+        XCTAssertTrue(p.sides.contains { $0.name == "Gami chips" })
+        XCTAssertFalse(p.sides.contains { $0.name == "Corn ribs" }, "246 kcal fits with the burger")
+        for (c, _) in p.combos { XCTAssertEqual(c.item.kind, "main"); XCTAssertFalse(Takeaway.lowProtein(c.item)) }
+    }
+
+    func testHomeFoodKinds() {
+        XCTAssertEqual(Takeaway.kind("Milk Chocolate Protein Powder"), .powder)
+        XCTAssertEqual(Takeaway.kind("Pauls PLUS+ milk"), .milk)
+        XCTAssertEqual(Takeaway.kind("Kenny's salted caramel ice cream"), .dessert)
+        XCTAssertEqual(Takeaway.kind("Chobani Greek Yogurt"), .yoghurt)
+        XCTAssertNil(Takeaway.kind("Cadbury Dairy Milk Chocolate"))
+        XCTAssertNil(Takeaway.kind("Chicken breast"))
+        XCTAssertEqual(home[0].amounts, [0, 15, 22.5, 30, 45], "half, three quarters, one and one and a half scoops")
+    }
+
+    func testWhichMessagesAreAsked() {
+        XCTAssertTrue(Takeaway.mightBe("854 left, want Gami for dinner. What should I get?", after: nil))
+        XCTAssertTrue(Takeaway.mightBe("what can I order from Nando's?", after: nil))
+        XCTAssertFalse(Takeaway.mightBe("had a gami chicken burger for lunch", after: nil))
+        XCTAssertFalse(Takeaway.mightBe("2 eggs and toast", after: nil))
+        let ta = Assistant.Turn(me: false, text: "", result: ["kind": "takeaway"])
+        XCTAssertTrue(Takeaway.mightBe("No milk left, and I want the wings", after: ta), "a reply to a takeaway answer")
+    }
+
+    /// A food saved with 100 g as its "serving" shows per 100 g ("379 kcal per serving" was a protein powder's per 100 g).
+    func testHundredGramsIsNotAServing() {
+        let c = FoodMath.conv(["name": "Protein powder", "unit": "g", "kcalPer100": 379, "servingSize": 100])
+        XCTAssertNil(c.countKcal)
+        XCTAssertEqual(c.kcalPer100, 379)
+        XCTAssertEqual(FoodMath.conv(["name": "Protein powder", "unit": "g", "kcalPer100": 379, "servingSize": 30]).countKcal ?? 0, 113.7, accuracy: 0.1)
+    }
+}

@@ -25,6 +25,7 @@ struct AssistantView: View {
     @State private var stepsDone: [String] = []   // what the AI has done so far for this message, ticked
     @State private var stepNow = "Thinking…"
     @State private var changing: PartRef?
+    @State private var openCombo: [UUID: Int] = [:]   // which of a takeaway answer's combos is open
     @FocusState private var typing: Bool
     private var store: Store { Store.shared }
 
@@ -175,6 +176,8 @@ struct AssistantView: View {
             if let rc = r["recipe"] as? JSON { recipeCard(rc, turn: turn, meal: meal) }
         case "lighter":
             if let l = r["lighter"] as? JSON { lighterCard(l, turn: turn, meal: meal) }
+        case "takeaway":
+            if let ta = r["takeaway"] as? JSON { takeawayCard(ta, turn: turn, meal: meal) }
         default: EmptyView()
         }
     }
@@ -590,6 +593,108 @@ struct AssistantView: View {
         }
     }
 
+    /// A takeaway answer: the open combo with its lines (the dish, a shake, a dessert from home), where each number came
+    /// from, and one button to add them all; the other combos under it, a tap opening one instead; then the dishes low in
+    /// protein and the sides that won't fit with a dish.
+    @ViewBuilder private func takeawayCard(_ ta: JSON, turn: UUID, meal: String) -> some View {
+        let combos = list(ta["combos"]), at = min(openCombo[turn] ?? 0, max(0, combos.count - 1)), aim = num(ta["aim"]) ?? 0
+        let place = str(ta["restaurant"])
+        if !combos.isEmpty {
+            let c = combos[at]
+            panel {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        if !str(c["note"]).isEmpty { Text(str(c["note"]).uppercased()).font(.caption2.weight(.heavy)).foregroundStyle(Theme.accent) }
+                        Text(str(c["title"])).font(.subheadline.weight(.bold))
+                    }
+                    Spacer()
+                    comboTotal(c, aim: aim).font(.subheadline.weight(.bold))
+                }
+                ForEach(list(c["lines"]).indices, id: \.self) { i in
+                    let l = list(c["lines"])[i]
+                    Divider()
+                    HStack(spacing: 10) {
+                        FoodDot(name: str(l["name"]), size: 30)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(str(l["name"])).font(.subheadline.weight(.semibold))
+                            if !str(l["detail"]).isEmpty { Text(str(l["detail"])).font(.caption).foregroundStyle(.secondary) }
+                            sourceTag(str(l["tag"]), place: place)
+                        }
+                        Spacer(minLength: 4)
+                        (Text(Fmt.int(num(l["kcal"]) ?? 0)).bold().foregroundStyle(.primary) + Text(" · \(Int((num(l["p"]) ?? 0).rounded())) g"))
+                            .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                    }
+                }
+                if (num(c["over"]) ?? 0) > 10 {
+                    Text("\(Fmt.int(num(c["over"]) ?? 0)) kcal over what's left today").font(.caption).foregroundStyle(Theme.warn)
+                }
+                addButton("Add all to \(meal.lowercased())", key: "ta\(at)", turn: turn) {
+                    let foods = list(c["lines"]).flatMap { list($0["add"]) }.map { a -> JSON in
+                        let g = pos(a["grams"])
+                        var b = Assistant.basis(name: str(a["name"]), kcal: num(a["kcal"]) ?? 0, grams: g, unit: str(a["unit"]).isEmpty ? "g" : str(a["unit"]),
+                                                p: num(a["p"]) ?? 0, c: num(a["c"]) ?? 0, f: num(a["f"]) ?? 0)
+                        b["kcal"] = num(a["kcal"]) ?? 0
+                        if let g { b["grams"] = g }
+                        return b
+                    }
+                    store.addAll(foods, meal: meal, label: "Added \(str(c["title"]))")
+                }
+            }
+            ForEach(combos.indices.filter { $0 != at }, id: \.self) { i in
+                let o = combos[i]
+                Button { withAnimation(.snappy) { openCombo[turn] = i } } label: {
+                    HStack(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(str(o["title"])).font(.subheadline.weight(.bold)).multilineTextAlignment(.leading)
+                            if !str(o["note"]).isEmpty { Text(str(o["note"])).font(.caption).foregroundStyle(.secondary) }
+                        }
+                        Spacer()
+                        comboTotal(o, aim: aim).font(.caption.weight(.bold))
+                        Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                    }
+                    .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).accessibilityHint("Shows this one")
+            }
+        }
+        skipList("LOW PROTEIN AT \(place.uppercased())", list(ta["low"]).map { (str($0["name"]), "\(Fmt.int(num($0["kcal"]) ?? 0)) kcal · about \(Int((num($0["p"]) ?? 0).rounded())) g") })
+        skipList("SIDES WON'T FIT WITH A DISH", list(ta["sides"]).map { (str($0["name"]), "\(Fmt.int(num($0["kcal"]) ?? 0)) kcal") })
+    }
+
+    /// "851 kcal · 66 g", the protein green when it reaches the aim.
+    private func comboTotal(_ c: JSON, aim: Double) -> Text {
+        let p = num(c["p"]) ?? 0
+        return Text("\(Fmt.int(num(c["kcal"]) ?? 0)) kcal · ") + Text("\(Int(p.rounded())) g").foregroundStyle(p >= aim - 0.5 ? Theme.walk : Theme.warn)
+    }
+
+    /// Where a line's numbers came from: the restaurant's own, its kJ with the protein estimated, an estimate, or home.
+    private func sourceTag(_ tag: String, place: String) -> some View {
+        let (word, colour): (String, Color) = switch tag {
+        case "full": ("\(place)'s menu".uppercased(), Theme.walk)
+        case "energy": ("\(place)'s kJ · protein est.".uppercased(), Theme.accent)
+        case "label": ("YOUR LABEL", Color(red: 0.78, green: 0.65, blue: 1))
+        case "log": ("FROM YOUR LOG", Color(red: 0.78, green: 0.65, blue: 1))
+        default: ("ESTIMATED", Theme.warn)
+        }
+        return Text(word).font(.caption2.weight(.heavy)).foregroundStyle(colour)
+            .padding(.horizontal, 6).padding(.vertical, 2).background(colour.opacity(0.14), in: RoundedRectangle(cornerRadius: 5))
+    }
+
+    @ViewBuilder private func skipList(_ title: String, _ rows: [(String, String)]) -> some View {
+        if !rows.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.caption2.weight(.heavy)).foregroundStyle(Theme.warn)
+                ForEach(rows.indices, id: \.self) { i in
+                    HStack { Text(rows[i].0).fontWeight(.semibold); Spacer(); Text(rows[i].1).foregroundStyle(.secondary).monospacedDigit() }.font(.caption)
+                }
+            }
+            .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+    }
+
     // MARK: composer
 
     /// One rounded box, like the Claude app's: waiting photos and quick notes on top, the words under them (growing to
@@ -722,7 +827,7 @@ struct AssistantView: View {
                         try? await Task.sleep(for: .seconds(6))
                         if busy, stepNow.hasPrefix("Sizing") { stepsDone.append("Sized each food"); stepNow = "Working out each part…" }
                     }
-                }
+                } step: { did, now in stepsDone.append(did); stepNow = now }
                 let turn = Assistant.Turn(me: false, text: str(r["reply"]), result: r)
                 withAnimation(.snappy) { turns.append(turn) }
                 busy = false   // the answer's in; the checks after it show on the card, not as "working"

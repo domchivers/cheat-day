@@ -55,7 +55,8 @@ enum FoodMath {
             return Conv(kcalPer100: k100, countKcal: pack / pieces * k100 / 100, countLabel: label.isEmpty ? "piece" : label)
         }
         if let serv = pos(b["kcalPerServing"]) { return Conv(kcalPer100: k100, countKcal: serv, countLabel: label.isEmpty ? "serving" : label) }
-        if let size = pos(b["servingSize"]), let k100 { return Conv(kcalPer100: k100, countKcal: size * k100 / 100, countLabel: "serving") }
+        // 100 g is the per 100 g figure, not a serving (a protein powder showed "379 kcal per serving" for a 30 g scoop)
+        if let size = pos(b["servingSize"]), size != 100, let k100 { return Conv(kcalPer100: k100, countKcal: size * k100 / 100, countLabel: "serving") }
         return Conv(kcalPer100: k100, countKcal: nil, countLabel: nil)
     }
 

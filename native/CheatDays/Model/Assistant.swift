@@ -238,10 +238,13 @@ enum Assistant {
 
     /// Ask, then check an estimate's parts against the food list and database afterwards (`ground` false: the caller does it later).
     @MainActor
-    static func ask(_ turns: [Turn], store: Store, ground groundNow: Bool = true, spotted: (@MainActor (Spotted) -> Void)? = nil) async throws -> JSON {
+    static func ask(_ turns: [Turn], store: Store, ground groundNow: Bool = true, spotted: (@MainActor (Spotted) -> Void)? = nil,
+                    step: (@MainActor (String, String) -> Void)? = nil) async throws -> JSON {
         guard let last = turns.last, last.me else { throw Gemini.Failure(message: "Nothing to ask.") }
         // "half of each" after an estimate: worked out here, exactly, with no waiting
         if last.images.isEmpty, let p = portion(last.text), let r = turns.dropLast().last(where: { !$0.me })?.result, let out = scaled(r, share: p.share, label: p.label) { return out }
+        // "what should I get from Gami?": the restaurant's menu with food from home, worked out by the app
+        if let t = await Takeaway.answer(turns, store: store, step: step) { return t }
         // new photos: a quick look first at what's in them, so the food tables' numbers for those foods (not only the ones
         // they typed) go along with the question, and a shop's logo is known early
         var seen: Spotted?

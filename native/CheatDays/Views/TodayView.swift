@@ -1131,8 +1131,10 @@ struct AmountView: View {
         }
         if let k100 = conv.kcalPer100, k100 > 0 {
             let grams = kcal / k100 * 100
-            let serving = pos(target.basis["servingSize"])
-            let options: [Double] = serving.map { s in [s / 2, s, s * 1.5, s * 2].map { nice($0) } } ?? (unit == "ml" ? [100, 250, 330, 500] : [50, 100, 150, 200])
+            let serving = pos(target.basis["servingSize"]).flatMap { $0 == 100 ? nil : $0 }   // 100 g is the per 100 g figure
+            // a powder by the scoop: half, one, one and a half, two 30 g scoops
+            let powder = ["powder", "whey", "protein shake", "casein"].contains { name.lowercased().contains($0) }
+            let options: [Double] = serving.map { s in [s / 2, s, s * 1.5, s * 2].map { nice($0) } } ?? (unit == "ml" ? [100, 250, 330, 500] : powder ? [15, 30, 45, 60] : [50, 100, 150, 200])
             tiles(Array(Array(Set(options)).sorted().prefix(4)).map { g in (Fmt.one(g), unit, g * k100 / 100) })
             HStack {
                 TextField("Amount", text: $gramsText).keyboardType(.decimalPad)

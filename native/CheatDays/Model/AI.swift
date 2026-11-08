@@ -51,6 +51,11 @@ enum Gemini {
         }
     }
 
+    /// Claude alone, for a job that has no Gemini fallback (a menu looked up on the web): nil when it can't answer.
+    @MainActor static func askClaude(_ job: String, schema: JSON, parts: [JSON], extra: JSON = [:]) async -> JSON? {
+        await BackgroundWork.run("AI") { await claude(job, schema: schema, parts: parts, extra: extra) }
+    }
+
     private static func claude(_ job: String, schema: JSON, parts: [JSON], extra: JSON = [:]) async -> JSON? {
         let body: JSON = ["parts": parts, "schema": schema, "maxTokens": 12000].merging(extra) { _, new in new }
         guard let (d, status) = try? await Supabase.shared.call("/functions/v1/ai?job=\(job)", body: body, timeout: 60), status == 200,
