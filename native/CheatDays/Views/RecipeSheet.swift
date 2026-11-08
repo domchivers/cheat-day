@@ -38,13 +38,17 @@ final class RecipeMaker {
 
     /// The other version, written when it's first asked for and then kept with the first. A healthier one that isn't
     /// lighter isn't kept: the dish is already about as light as it gets.
+    /// Its own key, so the first version's method still being written can't stop it: switching to Original then
+    /// found the recipe "working", did nothing, and the spinner waited for good.
+    static func otherKey(_ name: String, _ version: String) -> String { "\(name)|\(version)" }
+
     func makeOther(_ idea: JSON, version: String) {
-        let name = str(idea["name"])
-        guard !working.contains(name), let first = recipe(for: idea), list(dict(first[version])["ingredients"]).isEmpty else { return }
+        let name = str(idea["name"]), key = Self.otherKey(name, version)
+        guard !working.contains(key), let first = recipe(for: idea), list(dict(first[version])["ingredients"]).isEmpty else { return }
         let otherVersion = version == "healthier" ? "authentic" : "healthier"
-        working.insert(name); failed[name] = nil
+        working.insert(key); failed[name] = nil
         Task {
-            defer { working.remove(name) }
+            defer { working.remove(key) }
             do {
                 var written = try await Self.write(idea, version: version, other: dict(first[otherVersion]))
                 // the two share one "serves", so this one is brought to the first one's portions
@@ -59,13 +63,15 @@ final class RecipeMaker {
                     if let c = pos(ver["cookedGrams"]) { ver["cookedGrams"] = c * scale }
                     written[version] = ver
                 }
-                var r = first
+                // the latest of the recipe, not the one this started from: the first version's method may have arrived since
+                var r = recipe(for: idea) ?? first
                 if version == "healthier", !FoodReference.isLighter(dict(written[version]), than: dict(first[otherVersion])) {
                     r["noLighter"] = true
                 } else {
                     r[version] = written[version]
                     made[name] = r
                     if let steps = try? await Self.method(idea, r, version: version) {
+                        r = recipe(for: idea) ?? r
                         var ver = dict(r[version]); ver["steps"] = steps; r[version] = ver
                     }
                 }
@@ -410,7 +416,7 @@ struct RecipeSheet: View {
         }
         .background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        if steps.isEmpty && maker.working.contains(str(idea["name"])) {
+        if steps.isEmpty && (maker.working.contains(str(idea["name"])) || maker.working.contains(RecipeMaker.otherKey(str(idea["name"]), version))) {
             // the ingredients came first; the method is on its way
             Eyebrow(text: "Method").padding(.top, 4)
             HStack(spacing: 10) { ProgressView(); Text("Writing the method…").foregroundStyle(.secondary) }

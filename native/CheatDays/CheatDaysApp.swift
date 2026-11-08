@@ -11,7 +11,12 @@ enum AppConfig {
 struct CheatDaysApp: App {
     @UIApplicationDelegateAdaptor(PushDelegate.self) private var pushDelegate
     @AppStorage(Palette.key) private var theme = "classic"   // the colour picked in Settings, so the tint follows it
-    init() { KeyboardDone.install() }
+    init() {
+        KeyboardDone.install()
+        // no scroll bars down the side of the screens; the assistant's chat keeps its own (a long conversation needs one)
+        UIScrollView.appearance().showsVerticalScrollIndicator = false
+        UIScrollView.appearance().showsHorizontalScrollIndicator = false
+    }
     var body: some Scene {
         WindowGroup {
             RootView()
