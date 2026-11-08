@@ -231,7 +231,9 @@ struct SettingsView: View {
             ShareLink(item: exportText, preview: SharePreview("Cheat Days data")) { Label("Export my data", systemImage: "square.and.arrow.up") }
             NavigationLink { WebScreen(view: "settings", pushed: true).navigationTitle("Backups").navigationBarTitleDisplayMode(.inline) } label: { Label("Backups and restore", systemImage: "clock.arrow.circlepath") }
         } header: { Text("Your data") } footer: { Text("Everything syncs to your account. Export gives you a copy of it all as a file. Daily backups and restoring stay on the website's page for now.") }
-        Section { EmptyView() } footer: { Text("Food icons: Fluent Emoji by Microsoft, MIT licence.") }
+        Section {
+            NavigationLink { FoodSourcesView() } label: { Label("Food data sources", systemImage: "books.vertical") }
+        } header: { Text("Credits") } footer: { Text("Food icons: Fluent Emoji by Microsoft, MIT licence.") }
     }
 
     @ViewBuilder private var familyPage: some View {
