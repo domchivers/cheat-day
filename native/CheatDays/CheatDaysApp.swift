@@ -199,7 +199,8 @@ private struct ReviewHarness: View {
 
 /// For the ranks screenshot only: every tier's badge with its steps, then the Ranks screen.
 private struct RanksHarness: View {
-    @State private var open = false, goals = false
+    @State private var open = false
+    @State private var goals = false
     var body: some View {
         VStack(spacing: 18) {
             ForEach(0..<2, id: \.self) { row in
