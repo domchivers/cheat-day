@@ -6,6 +6,7 @@ import SwiftUI
 struct AssistantView: View {
     let meal: String
     var firstQuestion = ""
+    var startCamera = false   // opened from a meal pop-up's +: the fridge or the plate
     @Environment(\.dismiss) private var dismiss
     private var live: AssistantLive { AssistantLive.shared }
     private var turns: [Assistant.Turn] { get { live.turns } nonmutating set { live.turns = newValue } }
@@ -124,8 +125,9 @@ struct AssistantView: View {
             .onDisappear { KeyboardDone.quiet = false }
             .onAppear {
                 KeyboardDone.quiet = true   // a chat box: the send button's right there, and scrolling or tapping away closes it
-                live.open(fresh: !firstQuestion.isEmpty)
-                if !firstQuestion.isEmpty && turns.isEmpty { text = firstQuestion; send() }
+                live.open(fresh: !firstQuestion.isEmpty || startCamera)
+                if startCamera { text = firstQuestion; camera = true }
+                else if !firstQuestion.isEmpty && turns.isEmpty { text = firstQuestion; send() }
             }
         }
     }

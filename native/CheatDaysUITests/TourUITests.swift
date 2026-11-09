@@ -163,9 +163,10 @@ final class TourUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-uitest-mealcheck"]
         app.launch()
-        XCTAssertTrue(app.staticTexts["About your lunch"].waitForExistence(timeout: 5), "toast alone for lunch gets a word")
+        XCTAssertTrue(app.staticTexts["About your lunch"].waitForExistence(timeout: 5), "toast alone for lunch gets a check")
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "g protein")).firstMatch.exists)
-        XCTAssertTrue(app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "have these in")).firstMatch.exists, "the way to the planner")
+        XCTAssertTrue(app.staticTexts["TO DO BETTER"].exists, "only 7 g protein, and the day behind")
+        XCTAssertTrue(app.textFields["Ask about it, or plan dinner"].exists, "the chat box, even after a meal")
         let a = XCTAttachment(screenshot: app.screenshot()); a.name = "meal-check"; a.lifetime = .keepAlways; add(a)
     }
 

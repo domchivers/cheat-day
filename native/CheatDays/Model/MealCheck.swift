@@ -1,22 +1,11 @@
 import Foundation
 
-/// A word after lunch or dinner, when it was light: hardly any protein (toast, crumpets, a biscuit) isn't really a main
-/// meal. How often that's happened this week, a fix for next time and two meals to try. Bread with something proper on
-/// it (eggs on toast, a ham sandwich) is fine. Worked out on the phone.
-struct MealCheck: Identifiable {
-    var id: String { meal }
-    let meal: String
-    let foods: String
-    let kcal: Double
-    var lines: [(icon: String, text: String)] = []
-    var ideas: [JSON] = []
-}
-
+/// What counts as a light lunch or dinner, as bread, and as veg: the check after a meal (MealPop.swift) uses these.
 extension Store {
     static let breadWords = #"\b(bread|toast|sandwich|bagel|wrap|baguette|roll|sourdough|crumpet|pitta|pita|muffin|scone|crackers?|crispbread|ryvita)s?\b"#
     static let vegWords = #"\b(veg|veggies|vegetables?|salad|tomato(es)?|broccoli|peppers?|carrots?|peas|beans|spinach|lettuce|cucumber|onions?|mushrooms?|courgette|zucchini|cabbage|sweetcorn|corn|kale|cauliflower|avocado|leeks?|celery|asparagus|green beans|sprouts|stir ?fry|soup|coleslaw|beetroot|rocket|squash|aubergine|eggplant)\b"#
 
-    private static func has(_ items: [JSON], _ pattern: String) -> Bool {
+    static func has(_ items: [JSON], _ pattern: String) -> Bool {
         items.contains { str($0["name"]).range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil }
     }
     /// Mostly bread: bread foods are most of the meal's calories.
@@ -60,42 +49,8 @@ extension Store {
     }
 
     /// "Toast with butter, 2 slices" → "toast with butter": short enough to name in a sentence.
-    private static func shortName(_ s: String) -> String {
+    static func shortName(_ s: String) -> String {
         s.split(separator: ",").first.map { $0.trimmingCharacters(in: .whitespaces).lowercased() } ?? ""
-    }
-
-    /// The check for a meal just logged today, or nil when it's a proper meal (or not lunch or dinner, or a cheat day).
-    func mealCheck(_ meal: String) -> MealCheck? {
-        guard meal == "Lunch" || meal == "Dinner", !isCheatDay(today) else { return nil }
-        let items = todayItems.filter { Meals.of($0) == meal }
-        guard isLight(items, meal: meal) else { return nil }
-        let kcal = items.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }
-        let p = Int(macros(items).p.rounded())
-        let names = items.map { str($0["name"]) }.filter { !$0.isEmpty }
-        let first = names.first.map { Self.shortName($0) } ?? "it"
-        let m = meal.lowercased()
-        var c = MealCheck(meal: meal, foods: names.prefix(2).joined(separator: ", ") + (names.count > 2 ? " and more" : ""), kcal: kcal)
-
-        c.lines.append(("🍽️", "\(first.prefix(1).uppercased() + first.dropFirst()) isn't really a \(m): only \(p) g protein. A main meal needs some to keep you full."))
-        let week = lightMainMeals(only: meal)
-        if week.light >= 3 { c.lines.append(("📅", "Light \(m)s \(week.light) times in the last \(week.of) \(meal == "Dinner" ? "nights" : "days").")) }
-        if meal == "Dinner", let goal = proteinGoal {
-            c.lines.append(("🥚", "You've had \(Int(macros(todayItems).p)) of \(Int(goal)) g protein today. Dinner is the best meal to catch up."))
-        }
-        if !Self.has(items, Self.vegWords) {
-            c.lines.append(("🥦", "No veg in it. A few cherry tomatoes, some salad or a handful of frozen peas on the side is an easy start."))
-        }
-        c.lines.append(("🎯", Self.breadHeavy(items)
-            ? "Next time, put something on it: eggs, beans, tuna or cheese turn \(first) into a meal."
-            : "Next time, add some protein: chicken, fish, eggs, beans, cheese or Greek yoghurt."))
-
-        // two meals to try: your own food plan's ideas first, the most protein, never another light one
-        let own = habitIdeas.filter { str($0["meal"]) == meal }
-        let pool = (own.isEmpty ? Self.easyMeals.filter { str($0["meal"]) == meal } : own)
-            .filter { (num($0["protein"]) ?? 0) >= Self.lightLimit(meal) }
-            .sorted { (num($0["protein"]) ?? 0) > (num($1["protein"]) ?? 0) }
-        c.ideas = Array(pool.prefix(2))
-        return c
     }
 
     /// Simple, familiar meals for when there's no food plan to pick from.

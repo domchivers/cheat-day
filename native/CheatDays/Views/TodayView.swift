@@ -26,7 +26,7 @@ private struct Line: Identifiable { let id: String; let item: JSON }
 
 struct TodayView: View {
     @State private var offset = 0
-    @State private var clock = TodayView.clockKey()   // the day and whether it's before 5am, so midnight and 5am redraw the page
+    @State private var clock = TodayView.clockKey()   // the day and the hour, so midnight, 5am and the meal times redraw the page
     @State private var addChoice: MealChoice?
     @State private var editing: EditTarget?
     @State private var flow: WebFlow?
@@ -36,26 +36,52 @@ struct TodayView: View {
     @State private var showCheat = false
     @State private var showPlanner = false
     @State private var plannerMeal: String?   // the meal to open the planner on (a reminder, or "Ideas for dinner")
+    @State private var plannerAsk: (text: String, cooking: String)?   // what was typed in a meal pop-up, asked as it opens
     @State private var rankUp: Rank?
     @State private var badgeNote: String?
     @AppStorage("today.more") private var moreOpen = false
     @AppStorage("nudge.hidden") private var nudgeHidden = ""   // "day|meal" of the card you closed
     @AppStorage("review.hidden") private var reviewHidden = ""   // the day the week review was closed
     @AppStorage("dailyTips") private var dailyTipsOn = true
-    @AppStorage("dailyTips.seen") private var dailyTipsSeen = ""
-    @State private var daily: DailyReview?
-    @State private var mealCheck: MealCheck?
+    @State private var pop: MealPop?
     /// How long after the last food added to a meal before it's looked at: time to add the rest of it.
     static let mealSettles: Double = 15 * 60
     @Environment(\.scenePhase) private var phase
-    @AppStorage("mealCheck.seen") private var mealCheckSeen = ""   // "date|Lunch|Dinner": each shown once a day
+    @AppStorage("mealPops.seen") private var popsSeen = ""   // "date|morning|before-Lunch|after-Lunch…": each once a day
     @State private var openIdea: IdeaRef?
     @State private var sendingItem: JSON?
     @State private var savingMeal: String?   // the meal whose foods are being saved as one
     private var store: Store { Store.shared }
 
-    static func clockKey(_ now: Date = Date()) -> String { "\(DayKey.string(now))|\(Calendar.current.component(.hour, from: now) < 5)" }
+    /// The day and the hour: midnight and 5am redraw the late-night card, and a new hour can bring a meal pop-up.
+    static func clockKey(_ now: Date = Date()) -> String { "\(DayKey.string(now))|\(Calendar.current.component(.hour, from: now))" }
     private func tickClock() { let k = Self.clockKey(); if k != clock { clock = k } }
+
+    /// The meal pop-up that's due now, or how long until one could be (a meal still settling).
+    private func duePop() -> (pop: MealPop?, wait: Double?) {
+        let seen = popsSeen.hasPrefix(store.today + "|") ? popsSeen : store.today
+        func done(_ k: String) -> Bool { seen.contains("|" + k) }
+        let h = Calendar.current.component(.hour, from: Date())
+        var wait: Double?
+        // after a meal first: it's the one being waited for
+        for meal in ["Lunch", "Dinner"] where !done("after-" + meal) {
+            guard let last = store.todayItems.filter({ Meals.of($0) == meal }).compactMap({ ISO.date(str($0["addedAt"])) }).max() else { continue }
+            let age = Date().timeIntervalSince(last)
+            // only a meal logged in the last few hours: not lunch brought up when the app's opened at night
+            guard age < 4 * 3600 else { continue }
+            // and once it's finished: a slice of toast with the eggs still to add isn't the meal yet
+            if age < Self.mealSettles { wait = min(wait ?? .infinity, Self.mealSettles - age); continue }
+            if let p = store.afterPop(meal) { return (p, nil) }
+        }
+        if h >= 5, h < 11, !done("morning"), let p = store.morningPop() { return (p, wait) }
+        if h >= 11, h < 14, !done("before-Lunch"), let p = store.beforePop("Lunch") { return (p, wait) }
+        if h >= 16, h < 20, !done("before-Dinner"), let p = store.beforePop("Dinner") { return (p, wait) }
+        return (nil, wait)
+    }
+    private func markSeen(_ key: String) {
+        let seen = popsSeen.hasPrefix(store.today + "|") ? popsSeen : store.today
+        popsSeen = seen + "|" + key
+    }
 
     private var date: String { DayKey.shift(store.today, days: offset) }
     private var items: [JSON] { offset == 0 ? store.todayItems : (store.pastDay(date)?.items ?? []) }
@@ -196,68 +222,50 @@ struct TodayView: View {
                     .presentationDragIndicator(.visible)
             }
             .sheet(item: $flow) { f in
-                if f.view == "ask" { AssistantView(meal: str(f.opts["meal"]).isEmpty ? Meals.now : str(f.opts["meal"]), firstQuestion: str(f.opts["q"])) }
+                if f.view == "ask" { AssistantView(meal: str(f.opts["meal"]).isEmpty ? Meals.now : str(f.opts["meal"]), firstQuestion: str(f.opts["q"]), startCamera: str(f.opts["camera"]) == "1") }
                 else { WebFlowSheet(flow: f) }
             }
             .sheet(isPresented: $showCheckIn) { NavigationStack { CheckInView() } }
-            .sheet(isPresented: Binding(get: { daily != nil }, set: { if !$0 { daily = nil } })) {
-                if let r = daily {
-                    DailyTipsSheet(review: r) { meal, q in
-                        daily = nil
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { flow = WebFlow(view: "ask", opts: ["meal": meal, "q": q], title: "Assistant") }
-                    }
-                    .presentationDetents([.medium, .large])
-                }
-            }
             .sheet(item: $openIdea) { r in RecipeSheet(idea: r.idea) }
-            .task(id: store.lastSynced) {
-                // once a day, after the first sync, unless it's turned off
-                guard dailyTipsOn, dailyTipsSeen != store.today, store.lastSynced != nil, !store.needsOnboarding, !store.needsHabits,
-                      !Tour.shared.pending, !Tour.shared.active, !showPlanner, !showCheat, openIdea == nil, addChoice == nil, flow == nil,
-                      let r = store.dailyReview else { return }
-                try? await Task.sleep(for: .seconds(0.8))
-                dailyTipsSeen = store.today
-                daily = r
-            }
-            .sheet(item: $mealCheck) { c in
-                MealCheckSheet(check: c) {
-                    mealCheck = nil
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { showPlanner = true }
+            .sheet(item: $pop) { p in
+                MealPopSheet(pop: p) { route in
+                    pop = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                        switch route {
+                        case let .plan(meal, text, cooking): plannerMeal = meal; plannerAsk = (text, cooking); showPlanner = true
+                        case let .ask(meal, text, camera): flow = WebFlow(view: "ask", opts: ["meal": meal, "q": text, "camera": camera ? "1" : ""], title: "Assistant")
+                        }
+                    }
                 }
-                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
             }
-            .task(id: "\(store.todayItems.count)|\(addChoice == nil)|\(editing == nil)|\(flow == nil)|\(daily == nil)|\(openIdea == nil)|\(showPlanner)|\(phase == .active)") {
-                // lunch or dinner logged and every other sheet closed: a word about it, once, if it needs one
-                guard dailyTipsOn, phase == .active, offset == 0, addChoice == nil, editing == nil, flow == nil, daily == nil, mealCheck == nil, openIdea == nil,
-                      !showPlanner, !showCheat, !showCheckIn, !Tour.shared.active else { return }
+            .task(id: "\(store.todayItems.count)|\(addChoice == nil)|\(editing == nil)|\(flow == nil)|\(pop == nil)|\(openIdea == nil)|\(showPlanner)|\(phase == .active)|\(clock)|\(store.lastSynced != nil)") {
+                // the meal pop-ups, once every other sheet's closed: the morning one, before lunch and dinner, after them
+                guard dailyTipsOn, phase == .active, offset == 0, addChoice == nil, editing == nil, flow == nil, pop == nil, openIdea == nil,
+                      !showPlanner, !showCheat, !showCheckIn, store.lastSynced != nil, !store.needsOnboarding, !store.needsHabits,
+                      !Tour.shared.pending, !Tour.shared.active else { return }
                 try? await Task.sleep(for: .seconds(1))
                 while !Task.isCancelled {
-                    if Tour.shared.active { return }   // it can start during the wait, and the check would cover it
-                    let seen = mealCheckSeen.hasPrefix(store.today + "|") ? mealCheckSeen : store.today
-                    let now = Meals.byTime(Calendar.current.component(.hour, from: Date()))
-                    var wait: Double?
-                    for meal in [now, "Lunch", "Dinner"] where !seen.contains("|" + meal) {
-                        guard let last = store.todayItems.filter({ Meals.of($0) == meal }).compactMap({ ISO.date(str($0["addedAt"])) }).max() else { continue }
-                        let age = Date().timeIntervalSince(last)
-                        // only a meal logged in the last few hours: not lunch brought up when the app's opened at night
-                        guard age < 3 * 3600 else { continue }
-                        // and once it's finished: a slice of toast with the eggs still to add isn't the meal yet
-                        if age < Self.mealSettles { wait = min(wait ?? .infinity, Self.mealSettles - age); continue }
-                        if let c = store.mealCheck(meal) { mealCheckSeen = seen + "|" + meal; mealCheck = c; return }
-                    }
-                    guard let w = wait else { return }
+                    if Tour.shared.active { return }   // it can start during the wait, and the pop-up would cover it
+                    let due = duePop()
+                    if let p = due.pop { markSeen(p.key); pop = p; return }
+                    guard let w = due.wait else { return }
                     try? await Task.sleep(for: .seconds(w + 1))   // anything added meanwhile starts this over
                 }
             }
             .sheet(isPresented: $showCheat) { CheatDayView().presentationDragIndicator(.visible) }
-            .sheet(isPresented: $showPlanner, onDismiss: { plannerMeal = nil }) { MealPlannerView(meal: plannerMeal).presentationDragIndicator(.visible) }
+            .sheet(isPresented: $showPlanner, onDismiss: { plannerMeal = nil; plannerAsk = nil }) {
+                MealPlannerView(meal: plannerMeal, ask: plannerAsk?.text, cooking: plannerAsk?.cooking).presentationDragIndicator(.visible)
+            }
             .onChange(of: Nav.shared.planMeal) { _, m in
-                // a meal reminder tapped: the planner on that meal, once whatever's open has closed
+                // a meal reminder tapped: that meal's pop-up (the planner when the meal's already in), once whatever's open has closed
                 guard let m else { return }
                 Nav.shared.planMeal = nil
                 withAnimation { offset = 0 }
-                addChoice = nil; editing = nil; flow = nil; daily = nil; mealCheck = nil
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { plannerMeal = m; showPlanner = true }
+                addChoice = nil; editing = nil; flow = nil; pop = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                    if dailyTipsOn, let p = store.beforePop(m) { markSeen(p.key); pop = p } else { plannerMeal = m; showPlanner = true }
+                }
             }
             .fullScreenCover(isPresented: Binding(get: { rankUp != nil }, set: { if !$0 { rankUp = nil } })) {
                 if let r = rankUp { RankUpView(rank: r) { rankUp = nil } }

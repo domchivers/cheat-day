@@ -171,7 +171,7 @@ struct SettingsView: View {
     @ViewBuilder private var remindersPage: some View {
         Section {
             Toggle("Plan each meal (7am, 12pm, 5pm)", isOn: $lunch)
-            Toggle("Tips each morning and after meals", isOn: $dailyTips)
+            Toggle("Pop-ups each morning, and before and after meals", isOn: $dailyTips)
             Toggle("Weigh-in reminder", isOn: $weighOn)
             if weighOn { DatePicker("At", selection: $weighTime, displayedComponents: .hourAndMinute) }
             if !allowed {

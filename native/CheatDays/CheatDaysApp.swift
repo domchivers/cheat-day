@@ -158,18 +158,18 @@ private struct WalkHarness: View {
     var body: some View { WorkoutsView() }
 }
 
-/// For the meal check screenshot only: toast logged for lunch, then the word about it, no sign-in.
+/// For the meal check screenshot only: toast logged for lunch, then the pop-up after it, no sign-in.
 private struct MealCheckHarness: View {
-    let check: MealCheck?
+    let check: MealPop?
     init() {
         let s = Store.shared
         if !s.todayItems.contains(where: { str($0["name"]) == "Toast with butter" }) {
             s.add(["name": "Toast with butter", "source": "manual", "kcalPerServing": 260, "pServ": 7, "cServ": 34, "fServ": 11], kcal: 260, meal: "Lunch")
         }
-        check = s.mealCheck("Lunch")
+        check = s.afterPop("Lunch")
     }
     var body: some View {
-        if let check { MealCheckSheet(check: check) {} } else { Text("No check") }
+        if let check { MealPopSheet(pop: check) { _ in } } else { Text("No check") }
     }
 }
 

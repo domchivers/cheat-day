@@ -41,10 +41,14 @@ extension Store {
 struct MealPlannerView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var meal: String
-    /// The meal it's time for (dinner rather than snacks), or the one a reminder asked to plan.
-    init(meal: String? = nil) {
+    /// The meal it's time for (dinner rather than snacks), or the one a reminder asked to plan; with what was typed in
+    /// a meal pop-up already asked, and its cooking time.
+    private let firstAsk: String?
+    init(meal: String? = nil, ask: String? = nil, cooking: String? = nil) {
         let now = Meals.byTime(Calendar.current.component(.hour, from: Date()))
         _meal = State(initialValue: meal ?? (now == "Snacks" ? "Dinner" : now))
+        _cooking = State(initialValue: cooking ?? "")
+        firstAsk = ask
     }
     /// One message: theirs, or the planner's with its ideas.
     struct Turn: Identifiable { let id = UUID(); let me: Bool; var text: String; var ideas: [JSON] = [] }
@@ -129,6 +133,7 @@ struct MealPlannerView: View {
                 if cooking.isEmpty {
                     switch str(store.habits["cook"]) { case "love": cooking = Self.cookChoices[2]; case "hate": cooking = Self.cookChoices[0]; default: cooking = Self.cookChoices[1] }
                 }
+                if let firstAsk, !firstAsk.isEmpty, turns.isEmpty { text = firstAsk; send() }
             }
             .onDisappear { speech.stop(); KeyboardDone.quiet = false }
         }
