@@ -31,7 +31,8 @@ struct AssistantView: View {
     @FocusState private var typing: Bool
     private var store: Store { Store.shared }
 
-    private let chips = ["What fits the rest of today?", "Make today healthier", "Healthier swaps for what I eat most", "A recipe under 600 kcal"]
+    private static let examples = ["What fits the rest of today?", "2 eggs on toast and a flat white", "Any healthy lunch spots near me?", "A recipe under 600 kcal", "Make today healthier"]
+    @State private var exampleAt = 0
 
     var body: some View {
         NavigationStack {
@@ -39,14 +40,33 @@ struct AssistantView: View {
               VStack(spacing: 0) {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
-                        bot(Text("**Ask me anything about your day.** Photograph a plate and tell me what it is, ask for a plan for the rest of today, a recipe that fits, a lighter version of something, or tell me what you actually ate and I'll fix the list."))
+                        // one line and one example at a time, like Plan a meal (a paragraph and four suggestion buttons
+                        // were too much); the examples fade to the next every 4 seconds, all laid out so the bubble
+                        // keeps the tallest one's height, and stay put once they're typing or talking
+                        bot(VStack(alignment: .leading, spacing: 8) {
+                            Text("**Ask me anything about your day.**")
+                            if turns.isEmpty {
+                                ZStack(alignment: .topLeading) {
+                                    ForEach(Self.examples.indices, id: \.self) { i in
+                                        Text("For example: “\(Self.examples[i])”").italic().foregroundStyle(.secondary)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .opacity(i == exampleAt % Self.examples.count ? 1 : 0).accessibilityHidden(i != exampleAt % Self.examples.count)
+                                    }
+                                }
+                            }
+                        })
+                        .task {
+                            while !Task.isCancelled {
+                                try? await Task.sleep(for: .seconds(4))
+                                if text.isEmpty && turns.isEmpty && !Task.isCancelled { withAnimation(.easeInOut(duration: 0.5)) { exampleAt += 1 } }
+                            }
+                        }
                         if turns.isEmpty {
                             HStack(spacing: 10) {
                                 Button { camera = true } label: { Label("Snap a plate", systemImage: "camera.fill").lineLimit(1).frame(maxWidth: .infinity) }
                                 Button { library = true } label: { Label("Photos", systemImage: "photo.on.rectangle").lineLimit(1).frame(maxWidth: .infinity) }
                             }
                             .buttonStyle(.bordered).buttonBorderShape(.roundedRectangle(radius: 14)).controlSize(.large)
-                            Flow { ForEach(chips, id: \.self) { c in Chip(text: c, on: false) { text = c; send() } } }
                         }
                         ForEach(turns) { t in turnView(t).id(t.id) }
                         // only while their message is the last thing: once an answer's in, it never lingers under it
