@@ -5,10 +5,11 @@ import SwiftUI
 @Observable @MainActor
 final class Feed {
     static let shared = Feed()
-    static let reacts = ["👍", "❤️", "🔥", "😋"]
+    static let reacts = ["❤️", "🔥", "😋", "💪", "👏"]   // ❤️ is the heart; the rest are a long press away
     private(set) var posts: [JSON] = []
     private(set) var reactions: [JSON] = []
     private(set) var comments: [JSON] = []
+    private(set) var commentLikes: [JSON] = []
     private(set) var names: [String: String] = [:]
     private(set) var loading = false
     var error: String?
@@ -30,6 +31,9 @@ final class Feed {
                 async let rx = rows("/rest/v1/reactions?post_id=in.(\(ids))&select=post_id,user_id,emoji")
                 async let cm = rows("/rest/v1/comments?post_id=in.(\(ids))&select=*&order=created_at.asc")
                 reactions = try await rx; comments = try await cm
+                // likes on comments: an empty list until the comment_likes table is set up
+                let cids = comments.map { str($0["id"]) }.joined(separator: ",")
+                commentLikes = cids.isEmpty ? [] : ((try? await rows("/rest/v1/comment_likes?comment_id=in.(\(cids))&select=comment_id,user_id")) ?? [])
             }
             let who = Set(posts.map { str($0["owner"]) } + comments.map { str($0["user_id"]) } + [me]).filter { !$0.isEmpty }
             if !who.isEmpty {
@@ -58,13 +62,44 @@ final class Feed {
         } catch { self.error = error.localizedDescription }
     }
 
-    func comment(_ post: JSON, _ text: String) async {
+    /// A comment, or a reply to one (which its writer hears about too).
+    func comment(_ post: JSON, _ text: String, replyTo: JSON? = nil) async {
         do {
-            let d = try await api.rest("/rest/v1/comments", method: "POST", body: [["post_id": post["id"] ?? "", "user_id": me, "text": text]], prefer: "return=representation")
+            var row: JSON = ["post_id": post["id"] ?? "", "user_id": me, "text": text]
+            if let r = replyTo { row["reply_to"] = r["id"] ?? NSNull() }
+            let d = try await api.rest("/rest/v1/comments", method: "POST", body: [row], prefer: "return=representation")
             comments += (try? JSONSerialization.jsonObject(with: d)) as? [JSON] ?? []
             notify(str(post["owner"]), kind: "comment", text: text, extra: ["post": str(post["id"])])
+            if let r = replyTo, str(r["user_id"]) != str(post["owner"]) { notify(str(r["user_id"]), kind: "reply", text: text, extra: ["post": str(post["id"])]) }
             Store.shared.perform(["type": "bump", "key": "commentCount"], syncAfter: 3)
         } catch { self.error = error.localizedDescription }
+    }
+
+    func likeComment(_ c: JSON) async {
+        let cid = str(c["id"]), mine = commentLikes.contains { str($0["comment_id"]) == cid && str($0["user_id"]) == me }
+        do {
+            if mine {
+                _ = try await api.rest("/rest/v1/comment_likes?comment_id=eq.\(cid)&user_id=eq.\(me)", method: "DELETE")
+                commentLikes.removeAll { str($0["comment_id"]) == cid && str($0["user_id"]) == me }
+            } else {
+                _ = try await api.rest("/rest/v1/comment_likes", method: "POST", body: [["comment_id": cid, "user_id": me]], prefer: "resolution=ignore-duplicates")
+                commentLikes.append(["comment_id": cid, "user_id": me])
+            }
+        } catch { self.error = "Comment likes aren't set up yet." }
+    }
+
+    /// Send a post to one friend: it's in their Activity, and they hear about it.
+    func share(_ post: JSON, to friend: String, note: String) async {
+        do {
+            _ = try await api.rest("/rest/v1/post_shares", method: "POST", body: [["post_id": post["id"] ?? "", "from_user": me, "to_user": friend, "note": note]])
+            notify(friend, kind: "share", text: note.isEmpty ? str(post["name"]) : note, extra: ["post": str(post["id"])])
+        } catch { self.error = "Sending posts isn't set up yet." }
+    }
+
+    /// A streak, a badge or a rank up, once they've said yes to sharing it.
+    func postMoment(emoji: String, title: String, detail: String, type: String) async {
+        try? await post(["kind": "moment", "name": title, "kcal": 0, "macros": [:] as JSON, "payload": [:] as JSON,
+                         "extra": ["emoji": emoji, "detail": detail, "type": type] as JSON], photo: nil)
     }
 
     func deleteComment(_ c: JSON) async {
@@ -134,46 +169,100 @@ final class Feed {
     }
 }
 
+/// The feed, as social apps do it now: friends' days as rings along the top, posts edge to edge with the numbers on
+/// the photo, one heart (double-tap the photo; hold the heart for the rest), comments in their own sheet, and moments
+/// (a streak, a badge, a rank up) that friends can cheer.
 struct FeedView: View {
+    /// A friend's ring tapped: their day, on People.
+    var showPerson: (String) -> Void = { _ in }
     @State private var composing = false
-    @State private var opened: Set<String> = []
-    @State private var drafts: [String: String] = [:]
     @State private var recipe: JSON?
     @State private var flash: String?
+    @State private var talking: PostBox?   // the post whose comments are open
+    @State private var sharing: PostBox?
+    @State private var picking: String?   // the post whose reactions are showing
+    @State private var burst: String?   // the post a double-tap just liked
     private var feed: Feed { Feed.shared }
+    private var friends: Friends { Friends.shared }
 
     var body: some View {
         ScrollViewReader { proxy in
         ScrollView {
-            LazyVStack(spacing: 16) {
-                Button { composing = true } label: {
-                    HStack(spacing: 12) {
-                        Text(String(feed.name(feed.me).prefix(1))).font(.headline.weight(.heavy)).foregroundStyle(Theme.accent).frame(width: 40, height: 40).background(Theme.hero, in: Circle())
-                        Text("Share a meal, a food or a workout").foregroundStyle(.secondary)
-                        Spacer()
-                        Image(systemName: "camera.fill").foregroundStyle(Theme.accent)
-                    }
-                    .padding(14).background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            LazyVStack(spacing: 0) {
+                rings
+                if let e = feed.error { Text(e).font(.footnote).foregroundStyle(Theme.warn).padding(.horizontal, 16).padding(.bottom, 8) }
+                if feed.posts.isEmpty && !feed.loading {
+                    Text("Nothing in the feed yet. Share something, or add a friend.").foregroundStyle(.secondary).padding(.top, 40)
                 }
-                .buttonStyle(.plain)
-                if let e = feed.error { Text(e).font(.footnote).foregroundStyle(Theme.warn) }
-                if feed.posts.isEmpty && !feed.loading { Text("Nothing in the feed yet. Share something, or add a friend.").foregroundStyle(.secondary).padding(.top, 30) }
                 ForEach(keyed(feed.posts)) { entry in   // by post id: deleting one can't leave a row past the end
                     let pid = str(entry.item["id"])
-                    postCard(entry.item).id(pid)
-                        .overlay { if flash == pid { RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Theme.accent, lineWidth: 2.5).allowsHitTesting(false) } }
+                    postView(entry.item).id(pid)
+                        .background { if flash == pid { Theme.accent.opacity(0.12).allowsHitTesting(false) } }
                 }
             }
-            .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 100)
+            .padding(.bottom, 120)
         }
+        .scrollIndicators(.hidden)
         .task(id: Nav.shared.focusPost) { await focus(proxy) }
         .onChange(of: feed.posts.count) { _, _ in Task { await focus(proxy) } }
         }
         .refreshable { await feed.load() }
         .task { if feed.posts.isEmpty { await feed.load() } }
         .overlay { if feed.loading && feed.posts.isEmpty { ProgressView() } }
+        .overlay(alignment: .bottomTrailing) {
+            Button { composing = true } label: {
+                Image(systemName: "plus").font(.system(size: 26, weight: .semibold)).foregroundStyle(Theme.onAccent)
+                    .frame(width: 58, height: 58).background(Theme.accent, in: Circle()).shadow(color: .black.opacity(0.35), radius: 10, y: 5)
+            }
+            .buttonStyle(.plain).accessibilityLabel("New post")
+            .padding(.trailing, 18).padding(.bottom, 96)
+        }
         .sheet(isPresented: $composing) { ComposeSheet() }
         .sheet(item: Binding(get: { recipe.map { PostBox(post: $0) } }, set: { recipe = $0?.post })) { b in PostRecipeSheet(post: b.post) }
+        .sheet(item: $talking) { b in CommentsSheet(post: b.post).presentationDetents([.medium, .large]).presentationDragIndicator(.visible) }
+        .sheet(item: $sharing) { b in SharePostSheet(post: b.post).presentationDetents([.medium, .large]) }
+    }
+
+    // MARK: friends' days along the top
+
+    private var rings: some View {
+        ScrollView(.horizontal) {
+            HStack(alignment: .top, spacing: 14) {
+                Button { composing = true } label: { ring(String(feed.name(feed.me).prefix(1)), "Your post", new: false, tag: nil, plus: true) }
+                    .buttonStyle(.plain)
+                ForEach(friends.people) { p in
+                    Button { showPerson(p.id) } label: { ring(String(p.name.prefix(1)).uppercased(), p.name, new: p.isActive, tag: p.streak > 1 ? "🔥 \(p.streak)" : nil, plus: false) }
+                        .buttonStyle(.plain).accessibilityLabel("\(p.name)'s day")
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 10)
+        }
+        .scrollIndicators(.hidden)
+    }
+
+    private func ring(_ letter: String, _ name: String, new: Bool, tag: String?, plus: Bool) -> some View {
+        VStack(spacing: 5) {
+            ZStack {
+                Circle().fill(new ? AnyShapeStyle(AngularGradient(colors: [Theme.accent, Theme.dinner, Theme.accent.opacity(0.6), Theme.accent], center: .center))
+                                  : AnyShapeStyle(Color(.tertiarySystemFill)))
+                Circle().fill(Theme.hero).padding(3.5)
+                Text(letter).font(.title3.weight(.heavy)).foregroundStyle(Theme.accent)
+            }
+            .frame(width: 62, height: 62)
+            .overlay(alignment: .bottomTrailing) {
+                if plus {
+                    Image(systemName: "plus").font(.system(size: 11, weight: .black)).foregroundStyle(Theme.onAccent)
+                        .frame(width: 21, height: 21).background(Theme.accent, in: Circle()).overlay(Circle().stroke(Theme.bg, lineWidth: 2))
+                }
+            }
+            .overlay(alignment: .bottom) {
+                if let tag {
+                    Text(tag).font(.system(size: 10, weight: .heavy)).foregroundStyle(.white).padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(Color.orange, in: Capsule()).overlay(Capsule().stroke(Theme.bg, lineWidth: 2)).offset(y: 6)
+                }
+            }
+            Text(name).font(.caption2).foregroundStyle(.secondary).lineLimit(1).frame(width: 66)
+        }
     }
 
     /// Scroll to the post a notification or Activity row pointed at (loading the feed first if it isn't there yet).
@@ -192,81 +281,381 @@ struct FeedView: View {
         withAnimation(.easeOut) { if flash == id { flash = nil } }
     }
 
-    private func postCard(_ p: JSON) -> some View {
-        let id = str(p["id"]), owner = str(p["owner"]), kind = str(p["kind"]), extra = dict(p["extra"]), macros = dict(p["macros"])
+    // MARK: a post
+
+    private func postView(_ p: JSON) -> some View {
+        let id = str(p["id"]), owner = str(p["owner"]), kind = str(p["kind"])
         let rx = feed.reactions.filter { str($0["post_id"]) == id }, cm = feed.comments.filter { str($0["post_id"]) == id }
-        let all = opened.contains(id) || cm.count <= 2, shown = all ? cm : Array(cm.suffix(2))
-        let amount: String = kind == "workout" ? "\(Int(num(extra["minutes"]) ?? 0)) min · \(list(dict(p["payload"])["lifts"]).count) exercises"
-            : kind == "meal" ? "\(Int(num(extra["portions"]) ?? 1)) portions · \(Fmt.int(num(p["kcal"]) ?? 0)) kcal each"
-            : (num(extra["grams"]).map { "\(Fmt.int($0)) \(str(extra["unit"]).isEmpty ? "g" : str(extra["unit"])) · " } ?? "") + "\(Fmt.int(num(p["kcal"]) ?? 0)) kcal"
-        return VStack(alignment: .leading, spacing: 10) {
+        let photo = str(p["photo"]).hasPrefix("http") || str(p["photo"]).hasPrefix("data:image")
+        return VStack(alignment: .leading, spacing: 0) {
+            Divider().opacity(0.4)
             HStack(spacing: 10) {
-                Text(String(feed.name(owner).prefix(1)).uppercased()).font(.subheadline.weight(.heavy)).foregroundStyle(Theme.accent).frame(width: 36, height: 36).background(Theme.hero, in: Circle())
+                avatar(owner, size: 34)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(feed.name(owner)).font(.subheadline.weight(.bold))
-                    Text(Feed.ago(str(p["created_at"])) + (kind == "meal" ? " · shared a meal" : kind == "workout" ? " · worked out" : "")).font(.caption).foregroundStyle(.secondary)
+                    Text(Self.what(p) + " · " + Feed.ago(str(p["created_at"]))).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
-                if owner == feed.me {
-                    Menu { Button(role: .destructive) { Task { await feed.delete(p) } } label: { Label("Delete post", systemImage: "trash") } } label: { Image(systemName: "ellipsis").padding(8) }
+                Menu {
+                    Button { sharing = PostBox(post: p) } label: { Label("Send to a friend", systemImage: "paperplane") }
+                    if owner == feed.me { Button(role: .destructive) { Task { await feed.delete(p) } } label: { Label("Delete post", systemImage: "trash") } }
+                } label: { Image(systemName: "ellipsis").foregroundStyle(.secondary).padding(10) }
+            }
+            .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 8)
+
+            Group {
+                if kind == "moment" { moment(p, rx: rx) }
+                else if photo { photoView(p) }
+                else { card(p) }
+            }
+            .onTapGesture(count: 2) { like(p, rx: rx) }
+            .overlay {
+                if burst == id {
+                    Image(systemName: "heart.fill").font(.system(size: 96)).foregroundStyle(.white).shadow(radius: 12)
+                        .transition(.scale(scale: 0.4).combined(with: .opacity)).allowsHitTesting(false)
                 }
             }
-            if str(p["photo"]).hasPrefix("http") || str(p["photo"]).hasPrefix("data:image") {
-                FeedPhoto(src: str(p["photo"]))
-                    .frame(maxWidth: .infinity, maxHeight: 560)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+            actions(p, rx: rx, comments: cm.count)
+            if !rx.isEmpty { likedBy(rx).padding(.horizontal, 14).padding(.top, 2) }
+            if !str(p["caption"]).isEmpty {
+                (Text(feed.name(owner) + " ").bold() + Text(str(p["caption"]))).font(.subheadline).padding(.horizontal, 14).padding(.top, 4)
             }
-            if !str(p["caption"]).isEmpty { (Text(feed.name(owner) + " ").bold() + Text(str(p["caption"]))).font(.subheadline) }
-            HStack(spacing: 10) {
-                FoodDot(name: str(p["name"]), size: 34)
-                VStack(alignment: .leading, spacing: 1) { Text(str(p["name"])).font(.subheadline.weight(.bold)); Text(amount).font(.caption).foregroundStyle(.secondary) }
-                Spacer()
-                Button(kind == "workout" ? "Do it" : kind == "meal" ? "Recipe" : "Have some") { recipe = p }.buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.small)
+            Button { talking = PostBox(post: p) } label: {
+                Text(cm.isEmpty ? "Add a comment…" : cm.count == 1 ? "View 1 comment" : "View all \(cm.count) comments")
+                    .font(.subheadline).foregroundStyle(.secondary)
             }
-            if let pv = num(macros["p"]) {
-                Text("P \(Int(pv))g · C \(Int(num(macros["c"]) ?? 0))g · F \(Int(num(macros["f"]) ?? 0))g").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-            }
-            HStack(spacing: 8) {
-                ForEach(Feed.reacts, id: \.self) { e in
-                    let n = rx.filter { str($0["emoji"]) == e }.count, on = rx.contains { str($0["emoji"]) == e && str($0["user_id"]) == feed.me }
-                    Button { Task { await feed.toggle(p, e) } } label: {
-                        Text(n > 0 ? "\(e) \(n)" : e).font(.subheadline).padding(.horizontal, 10).padding(.vertical, 6)
-                            .background(on ? Theme.accent.opacity(0.25) : Color(.tertiarySystemFill), in: Capsule())
-                            .overlay(Capsule().stroke(on ? Theme.accent : .clear, lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                    .sensoryFeedback(.selection, trigger: on)
-                }
-            }
-            if !all { Button("View all \(cm.count) comments") { opened.insert(id) }.font(.caption.weight(.semibold)).foregroundStyle(.secondary) }
-            ForEach(keyed(shown)) { entry in
-                let c = entry.item
-                HStack(alignment: .top) {
-                    (Text(feed.name(str(c["user_id"])) + " ").bold() + Text(str(c["text"]))).font(.subheadline)
-                    Spacer()
-                    if str(c["user_id"]) == feed.me { Button { Task { await feed.deleteComment(c) } } label: { Image(systemName: "xmark").font(.caption2) }.buttonStyle(.plain).foregroundStyle(.tertiary) }
-                }
-            }
-            HStack {
-                TextField("Add a comment…", text: Binding(get: { drafts[id] ?? "" }, set: { drafts[id] = $0 })).submitLabel(.send)
-                    .onSubmit { send(p) }
-                if !(drafts[id] ?? "").trimmingCharacters(in: .whitespaces).isEmpty { Button("Post") { send(p) }.font(.subheadline.weight(.bold)) }
-            }
-            .padding(.horizontal, 12).padding(.vertical, 8).background(Color(.tertiarySystemFill), in: Capsule())
+            .buttonStyle(.plain).padding(.horizontal, 14).padding(.top, 4).padding(.bottom, 14)
         }
-        .padding(14)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 
-    private func send(_ p: JSON) {
-        let id = str(p["id"]), t = (drafts[id] ?? "").trimmingCharacters(in: .whitespaces)
-        guard !t.isEmpty else { return }
-        drafts[id] = ""
-        Task { await feed.comment(p, String(t.prefix(300))) }
+    /// "Lunch", "Push day", "Snack": what the post is.
+    static func what(_ p: JSON) -> String {
+        switch str(p["kind"]) {
+        case "workout": return "Worked out"
+        case "meal": return "Shared a meal"
+        case "moment": return "A milestone"
+        default: let m = str(dict(p["extra"])["meal"]); return m.isEmpty ? "Shared a food" : (m == "Snacks" ? "Snack" : m)
+        }
+    }
+
+    private func numbers(_ p: JSON) -> (kcal: String, protein: String?) {
+        let kcal = num(p["kcal"]) ?? 0, pr = num(dict(p["macros"])["p"])
+        let each = str(p["kind"]) == "meal" ? " a portion" : ""
+        return ("\(Fmt.int(kcal)) kcal\(each)", pr.map { "\(Int($0)) g protein" })
+    }
+
+    private func photoView(_ p: JSON) -> some View {
+        let n = numbers(p)
+        return FeedPhoto(src: str(p["photo"]), fill: true)
+            .frame(maxWidth: .infinity).frame(height: 400).clipped()
+            .contentShape(Rectangle())
+            .overlay(alignment: .bottomLeading) {
+                HStack(spacing: 8) {
+                    Text(str(p["name"])).lineLimit(1)
+                    Text(n.kcal).foregroundStyle(.secondary)
+                    if let pr = n.protein { Text(pr).foregroundStyle(Theme.walk) }
+                }
+                .font(.caption.weight(.bold)).padding(.horizontal, 11).padding(.vertical, 7)
+                .background(.ultraThinMaterial, in: Capsule()).environment(\.colorScheme, .dark)
+                .padding(12)
+            }
+    }
+
+    /// No photo: the post as a card in the theme's colours, so the feed never looks empty.
+    private func card(_ p: JSON) -> some View {
+        let kind = str(p["kind"]), n = numbers(p)
+        let lifts = list(dict(p["payload"])["lifts"])
+        let kg = lifts.reduce(0.0) { $0 + (num($1["sets"]) ?? 0) * (num($1["reps"]) ?? 0) * (num($1["kg"]) ?? 0) }
+        return VStack(alignment: .leading, spacing: 8) {
+            Eyebrow(text: kind == "workout" ? "Workout" : kind == "meal" ? "Meal" : Self.what(p), color: Theme.heroLabel)
+            Text(str(p["name"])).font(.title2.weight(.heavy)).multilineTextAlignment(.leading)
+            if kind == "workout" {
+                HStack(spacing: 8) {
+                    tile("\(Int(num(dict(p["extra"])["minutes"]) ?? 0)) min", "time")
+                    tile("\(lifts.count)", lifts.count == 1 ? "exercise" : "exercises")
+                    if kg > 0 { tile(Fmt.int(kg), "kg lifted") }
+                }
+                .padding(.top, 4)
+            } else {
+                HStack(spacing: 8) {
+                    Text(n.kcal)
+                    if let pr = n.protein { Text("·"); Text(pr).foregroundStyle(Theme.walk) }
+                }
+                .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+            }
+        }
+        .padding(20).frame(maxWidth: .infinity, minHeight: kind == "workout" ? 190 : 140, alignment: .leading)
+        .background(alignment: .topTrailing) {
+            ZStack(alignment: .topTrailing) {
+                LinearGradient(colors: [Theme.hero, Theme.accent.opacity(0.28)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                FoodDot(name: kind == "workout" ? "Workout" : str(p["name"]), size: 110).opacity(0.28).offset(x: 18, y: -14)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .padding(.horizontal, 14)
+    }
+
+    private func tile(_ value: String, _ label: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(value).font(.headline.weight(.bold))
+            Text(label).font(.caption2).foregroundStyle(.secondary)
+        }
+        .padding(9).frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    /// A streak, a badge or a rank up, with a Cheer.
+    private func moment(_ p: JSON, rx: [JSON]) -> some View {
+        let x = dict(p["extra"]), cheered = rx.contains { str($0["emoji"]) == "🎉" && str($0["user_id"]) == feed.me }
+        return HStack(spacing: 14) {
+            FluentIcon(emoji: str(x["emoji"]).isEmpty ? "🏆" : str(x["emoji"]), size: 52)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(str(p["name"])).font(.headline)
+                if !str(x["detail"]).isEmpty { Text(str(x["detail"])).font(.caption).foregroundStyle(.secondary) }
+            }
+            Spacer(minLength: 0)
+            if str(p["owner"]) != feed.me {
+                Button { Task { await feed.toggle(p, "🎉") } } label: {
+                    Text(cheered ? "🎉 Cheered" : "🎉 Cheer").font(.subheadline.weight(.heavy)).foregroundStyle(.black)
+                        .padding(.horizontal, 13).padding(.vertical, 8).background(Color.orange.opacity(cheered ? 0.55 : 1), in: Capsule())
+                }
+                .buttonStyle(.plain).sensoryFeedback(.success, trigger: cheered)
+            }
+        }
+        .padding(16)
+        .background(LinearGradient(colors: [Color.orange.opacity(0.28), Color.pink.opacity(0.2)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                    in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .padding(.horizontal, 14)
+    }
+
+    // MARK: heart, comments, send, and what to do with it
+
+    private func like(_ p: JSON, rx: [JSON]) {
+        let id = str(p["id"])
+        if !rx.contains(where: { str($0["emoji"]) == "❤️" && str($0["user_id"]) == feed.me }) { Task { await feed.toggle(p, "❤️") } }
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.55)) { burst = id }
+        Task { try? await Task.sleep(for: .milliseconds(750)); withAnimation(.easeOut(duration: 0.25)) { if burst == id { burst = nil } } }
+    }
+
+    private func actions(_ p: JSON, rx: [JSON], comments: Int) -> some View {
+        let id = str(p["id"]), kind = str(p["kind"])
+        let mine = rx.filter { str($0["user_id"]) == feed.me }.map { str($0["emoji"]) }
+        let hearted = mine.contains("❤️"), other = mine.first { $0 != "❤️" && $0 != "🎉" }
+        return VStack(alignment: .leading, spacing: 0) {
+            if picking == id {
+                HStack(spacing: 14) {
+                    ForEach(Feed.reacts, id: \.self) { e in
+                        Button { picking = nil; Task { await feed.toggle(p, e) } } label: {
+                            Text(e).font(.system(size: 30)).scaleEffect(mine.contains(e) ? 1.2 : 1)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(Color(.secondarySystemBackground), in: Capsule())
+                .shadow(color: .black.opacity(0.35), radius: 12, y: 6)
+                .padding(.horizontal, 10).padding(.top, 8)
+                .transition(.scale(scale: 0.6, anchor: .bottomLeading).combined(with: .opacity))
+            }
+            HStack(spacing: 18) {
+                Group {
+                    if let other, !hearted { Text(other).font(.system(size: 22)) }
+                    else { Image(systemName: hearted ? "heart.fill" : "heart").foregroundStyle(hearted ? Color(red: 1, green: 0.3, blue: 0.4) : .primary) }
+                }
+                .font(.system(size: 23, weight: .medium))
+                .contentShape(Rectangle())
+                .onTapGesture { if picking == id { withAnimation(.snappy) { picking = nil } } else { Task { await feed.toggle(p, (hearted ? nil : other) ?? "❤️") } } }
+                .onLongPressGesture(minimumDuration: 0.3) { withAnimation(.snappy) { picking = picking == id ? nil : id } }
+                .sensoryFeedback(.selection, trigger: hearted)
+                .accessibilityLabel(hearted ? "Unlike" : "Like").accessibilityAddTraits(.isButton)
+                .accessibilityAction(named: "More reactions") { picking = id }
+                Button { talking = PostBox(post: p) } label: { Image(systemName: "bubble.right").font(.system(size: 22, weight: .medium)) }
+                    .buttonStyle(.plain).accessibilityLabel(comments == 0 ? "Comment" : "\(comments) comments")
+                Button { sharing = PostBox(post: p) } label: { Image(systemName: "paperplane").font(.system(size: 21, weight: .medium)) }
+                    .buttonStyle(.plain).accessibilityLabel("Send to a friend")
+                Spacer()
+                if kind != "moment" {
+                    Button { recipe = p } label: {
+                        Label(kind == "workout" ? "Do it" : kind == "meal" ? "Recipe" : "Have some", systemImage: kind == "workout" ? "play.fill" : "plus")
+                            .font(.subheadline.weight(.bold)).foregroundStyle(Theme.onAccent)
+                            .padding(.horizontal, 13).padding(.vertical, 7).background(Theme.accent, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 4)
+        }
+    }
+
+    /// Their faces, "Liked by Sam and 3 others", and the other reactions it got.
+    private func likedBy(_ rx: [JSON]) -> some View {
+        var people: [String] = []
+        for r in rx { let u = str(r["user_id"]); if !people.contains(u) { people.append(u) } }
+        let first = people.first { $0 != feed.me } ?? people[0]
+        let others = people.count - 1
+        var emojis: [String] = []
+        for r in rx { let e = str(r["emoji"]); if !emojis.contains(e) { emojis.append(e) } }
+        return HStack(spacing: 6) {
+            HStack(spacing: -7) { ForEach(people.prefix(3), id: \.self) { u in avatar(u, size: 20).overlay(Circle().stroke(Theme.bg, lineWidth: 2)) } }
+            (Text("Liked by ") + Text(feed.name(first)).bold() + Text(others > 0 ? " and " : "") + Text(others > 0 ? "\(others) other\(others == 1 ? "" : "s")" : "").bold())
+                .font(.subheadline).lineLimit(1)
+            Text(emojis.prefix(4).joined()).font(.caption)
+        }
+    }
+
+    private func avatar(_ id: String, size: CGFloat) -> some View {
+        Text(String(feed.name(id).prefix(1)).uppercased()).font(.system(size: size * 0.42, weight: .heavy)).foregroundStyle(Theme.accent)
+            .frame(width: size, height: size).background(Theme.hero, in: Circle())
     }
 }
 
-private struct PostBox: Identifiable { let post: JSON; var id: String { str(post["id"]) } }
+/// A badge just earned: "Share it with your friends?" Moments only go on the feed when they say yes.
+struct MomentAsk: ViewModifier {
+    @Binding var badge: Badge?
+    func body(content: Content) -> some View {
+        content.alert("Share it with your friends?", isPresented: Binding(get: { badge != nil }, set: { if !$0 { badge = nil } }), presenting: badge) { b in
+            Button("Share") { Task { await Feed.shared.postMoment(emoji: b.icon, title: "Earned \(b.name)", detail: b.how, type: "badge") } }
+            Button("Not now", role: .cancel) {}
+        } message: { b in Text("\(b.icon) \(b.name): \(b.how). It goes on the feed for friends to cheer.") }
+    }
+}
+
+struct PostBox: Identifiable { let post: JSON; var id: String { str(post["id"]) } }
+
+/// A post's comments: likes and replies, one-tap quick replies, and the box at the bottom.
+struct CommentsSheet: View {
+    let post: JSON
+    @State private var text = ""
+    @State private var replying: JSON?
+    @FocusState private var typing: Bool
+    private var feed: Feed { Feed.shared }
+    private var id: String { str(post["id"]) }
+    private static let quick = ["🔥", "😋", "💪", "Recipe?", "Looks good!"]
+
+    var body: some View {
+        let all = feed.comments.filter { str($0["post_id"]) == id }
+        let top = all.filter { c in str(c["reply_to"]).isEmpty || !all.contains { str($0["id"]) == str(c["reply_to"]) } }
+        NavigationStack {
+            VStack(spacing: 0) {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 16) {
+                        if all.isEmpty { Text("No comments yet. Say something nice.").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.top, 24) }
+                        ForEach(keyed(top)) { e in
+                            row(e.item, reply: false)
+                            ForEach(keyed(all.filter { str($0["reply_to"]) == str(e.item["id"]) })) { r in row(r.item, reply: true) }
+                        }
+                    }
+                    .padding(16)
+                }
+                .scrollDismissesKeyboard(.interactively)
+                VStack(alignment: .leading, spacing: 8) {
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 8) {
+                            ForEach(Self.quick, id: \.self) { q in
+                                Button { send(q) } label: { Text(q).font(.subheadline).padding(.horizontal, 12).padding(.vertical, 7).background(Color(.tertiarySystemFill), in: Capsule()) }
+                                    .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .scrollIndicators(.hidden)
+                    if let r = replying {
+                        HStack {
+                            Text("Replying to \(feed.name(str(r["user_id"])))").font(.caption).foregroundStyle(.secondary)
+                            Button { replying = nil } label: { Image(systemName: "xmark").font(.caption2.weight(.bold)) }.buttonStyle(.plain).foregroundStyle(.secondary)
+                        }
+                    }
+                    HStack(spacing: 8) {
+                        TextField(replying == nil ? "Add a comment for \(feed.name(str(post["owner"])))…" : "Your reply…", text: $text, axis: .vertical)
+                            .lineLimit(1...4).focused($typing).submitLabel(.send).onSubmit { send(text) }
+                        Button { send(text) } label: {
+                            Image(systemName: "arrow.up").font(.system(size: 15, weight: .bold)).foregroundStyle(Theme.onAccent)
+                                .frame(width: 32, height: 32).background(Theme.accent.opacity(text.trimmingCharacters(in: .whitespaces).isEmpty ? 0.4 : 1), in: Circle())
+                        }
+                        .buttonStyle(.plain).disabled(text.trimmingCharacters(in: .whitespaces).isEmpty).accessibilityLabel("Send")
+                    }
+                    .padding(.leading, 14).padding(.trailing, 6).padding(.vertical, 6)
+                    .composerGlass(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                }
+                .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 8)
+                .composerBar()
+            }
+            .navigationTitle("Comments").navigationBarTitleDisplayMode(.inline)
+            .onAppear { KeyboardDone.quiet = true }
+            .onDisappear { KeyboardDone.quiet = false }
+        }
+    }
+
+    private func row(_ c: JSON, reply: Bool) -> some View {
+        let cid = str(c["id"]), who = str(c["user_id"])
+        let likes = feed.commentLikes.filter { str($0["comment_id"]) == cid }
+        let liked = likes.contains { str($0["user_id"]) == feed.me }
+        return HStack(alignment: .top, spacing: 10) {
+            Text(String(feed.name(who).prefix(1)).uppercased()).font(.system(size: 12, weight: .heavy)).foregroundStyle(Theme.accent)
+                .frame(width: 30, height: 30).background(Theme.hero, in: Circle())
+            VStack(alignment: .leading, spacing: 3) {
+                (Text(feed.name(who) + " ").bold() + Text(str(c["text"]))).font(.subheadline)
+                HStack(spacing: 14) {
+                    Text(Feed.ago(str(c["created_at"])))
+                    if !likes.isEmpty { Text(likes.count == 1 ? "1 like" : "\(likes.count) likes") }
+                    Button("Reply") { replying = reply ? (feed.comments.first { str($0["id"]) == str(c["reply_to"]) } ?? c) : c; typing = true }.buttonStyle(.plain).fontWeight(.semibold)
+                    if who == feed.me { Button("Delete") { Task { await feed.deleteComment(c) } }.buttonStyle(.plain) }
+                }
+                .font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            Button { Task { await feed.likeComment(c) } } label: {
+                Image(systemName: liked ? "heart.fill" : "heart").font(.caption).foregroundStyle(liked ? Color(red: 1, green: 0.3, blue: 0.4) : .secondary).padding(6)
+            }
+            .buttonStyle(.plain).sensoryFeedback(.selection, trigger: liked).accessibilityLabel(liked ? "Unlike comment" : "Like comment")
+        }
+        .padding(.leading, reply ? 40 : 0)
+    }
+
+    private func send(_ t: String) {
+        let s = t.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !s.isEmpty else { return }
+        let to = replying
+        text = ""; replying = nil
+        Task { await feed.comment(post, String(s.prefix(300)), replyTo: to) }
+    }
+}
+
+/// Send a post to one friend, with a note: it's in their Activity, and a tap opens it.
+struct SharePostSheet: View {
+    let post: JSON
+    @Environment(\.dismiss) private var dismiss
+    @State private var note = ""
+    @State private var sent: Set<String> = []
+    private var feed: Feed { Feed.shared }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section { TextField("Add a note (optional)", text: $note) }
+                Section("Send to") {
+                    if Friends.shared.people.isEmpty { Text("Add a friend first.").foregroundStyle(.secondary) }
+                    ForEach(Friends.shared.people.filter { $0.id != str(post["owner"]) }) { p in
+                        HStack {
+                            Text(p.name)
+                            Spacer()
+                            Button(sent.contains(p.id) ? "Sent" : "Send") {
+                                sent.insert(p.id)
+                                Task { await feed.share(post, to: p.id, note: note.trimmingCharacters(in: .whitespacesAndNewlines)) }
+                            }
+                            .buttonStyle(.borderedProminent).controlSize(.small).foregroundStyle(Theme.onAccent).disabled(sent.contains(p.id))
+                        }
+                    }
+                }
+                if let e = feed.error { Text(e).font(.footnote).foregroundStyle(Theme.warn) }
+            }
+            .navigationTitle("Send \(str(post["name"]))").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
+        }
+    }
+}
+
 
 /// Share something: one of today's foods, a saved meal or today's workout, with a caption and an optional photo.
 struct ComposeSheet: View {
@@ -346,7 +735,7 @@ struct ComposeSheet: View {
     private func food(_ it: JSON) -> JSON {
         let m = store.macros([it]), k = num(it["kcal"]) ?? 0
         return ["kind": "food", "name": it["name"] ?? "", "kcal": Int(k), "macros": ["p": Int(m.p), "c": Int(m.c), "f": Int(m.f)] as JSON,
-                "payload": FoodMath.basisOf(it), "extra": ["grams": it["grams"] ?? NSNull(), "unit": it["unit"] ?? "g"] as JSON]
+                "payload": FoodMath.basisOf(it), "extra": ["grams": it["grams"] ?? NSNull(), "unit": it["unit"] ?? "g", "meal": Meals.of(it)] as JSON]
     }
     private func meal(_ m: JSON) -> JSON {
         let b = store.mealBasis(m), n = num(m["portions"]) ?? 1

@@ -39,6 +39,7 @@ struct TodayView: View {
     @State private var plannerAsk: (text: String, cooking: String)?   // what was typed in a meal pop-up, asked as it opens
     @State private var rankUp: Rank?
     @State private var badgeNote: String?
+    @State private var momentAsk: Badge?   // a badge just earned: share it?
     @AppStorage("today.more") private var moreOpen = false
     @AppStorage("nudge.hidden") private var nudgeHidden = ""   // "day|meal" of the card you closed
     @AppStorage("review.hidden") private var reviewHidden = ""   // the day the week review was closed
@@ -268,9 +269,10 @@ struct TodayView: View {
                 }
             }
             .fullScreenCover(isPresented: Binding(get: { rankUp != nil }, set: { if !$0 { rankUp = nil } })) {
-                if let r = rankUp { RankUpView(rank: r) { rankUp = nil } }
+                if let r = rankUp { RankUpView(rank: r, done: { rankUp = nil }, share: { Task { await Feed.shared.postMoment(emoji: "⭐️", title: "Ranked up to \(r.name)", detail: "A new rank in Cheat Days", type: "rank") } }) }
             }
             .modifier(SendFoodDialog(item: $sendingItem) { note($0) })
+            .modifier(MomentAsk(badge: $momentAsk))
             .sheet(isPresented: Binding(get: { savingMeal != nil }, set: { if !$0 { savingMeal = nil } })) {
                 if let m = savingMeal {
                     SaveMealSheet(name: "My \(m.lowercased())", foods: items.filter { Meals.of($0) == m }) { name, picked in
@@ -559,7 +561,11 @@ struct TodayView: View {
         let xp = fresh.reduce(0) { $0 + $1.xp }
         let text = "\(first.icon) \(fresh.count > 1 ? "\(fresh.count) achievements" : first.name) · +\(xp) XP"
         withAnimation(.snappy) { badgeNote = text }
-        Task { try? await Task.sleep(nanoseconds: 3_500_000_000); withAnimation { if badgeNote == text { badgeNote = nil } } }
+        Task {
+            try? await Task.sleep(nanoseconds: 3_500_000_000); withAnimation { if badgeNote == text { badgeNote = nil } }
+            // then ask whether to put it on the feed: moments never post by themselves
+            if !Friends.shared.people.isEmpty, addChoice == nil, flow == nil, pop == nil { momentAsk = first }
+        }
     }
 
     /// A new rank since last time: celebrate it once. The first time, just remember where they are.

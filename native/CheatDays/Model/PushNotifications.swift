@@ -45,7 +45,7 @@ extension Notification.Name {
 @Observable @MainActor
 final class Nav {
     static let shared = Nav()
-    var friendsSeg = 0
+    var friendsSeg = 1   // the feed first
     var focusPost: String?
     /// The meal a reminder asked to plan: Today opens the planner on it.
     var planMeal: String?

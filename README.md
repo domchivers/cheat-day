@@ -570,6 +570,10 @@ create policy "comments read" on public.comments for select to authenticated usi
 create policy "comments own" on public.comments for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid() and public.can_see_post(post_id));
 ```
 
+Likes and replies on comments, and sending a post to one friend (the app's feed): run
+`supabase/feed_v2.sql` once in the SQL Editor, and redeploy the `push` function for the
+"replied" and "sent you a post" notifications. Without it the app's feed still works; those three just don't.
+
 ## Macros
 
 Everything carries protein, carbs and fat where they're known: the built-in food

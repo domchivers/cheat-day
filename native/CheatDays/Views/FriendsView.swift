@@ -13,9 +13,9 @@ struct FriendsView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                Picker("Show", selection: $nav.friendsSeg) { Text("People").tag(0); Text("Feed").tag(1) }
+                Picker("Show", selection: $nav.friendsSeg) { Text("Feed").tag(1); Text("People").tag(0) }
                     .pickerStyle(.segmented).padding(.horizontal, 16).padding(.vertical, 8)
-                if nav.friendsSeg == 0 { people } else { FeedView() }
+                if nav.friendsSeg == 0 { people } else { FeedView { id in open.insert(id); withAnimation { nav.friendsSeg = 0 } } }
             }
             .background(Theme.bg)
             .keyboardDone()

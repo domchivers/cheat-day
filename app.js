@@ -3713,7 +3713,7 @@ function drawFeed() {
   for (const p of feed.posts) {
     const card = document.createElement("article"); card.className = "card post";
     const meal = p.kind === "meal", wo = p.kind === "workout", ex = p.extra || {}, n = ex.portions || 1, lifts = wo ? ((p.payload || {}).lifts || []) : [];
-    const amt = wo ? `${ex.minutes || (p.payload || {}).minutes || "?"} min · ${lifts.length} exercise${lifts.length === 1 ? "" : "s"}` : meal ? `${n} portion${n === 1 ? "" : "s"} · ${fmt(p.kcal)} kcal each` : (ex.grams != null ? `${ex.grams} ${ex.unit || "g"}` : "1 serving");
+    const amt = p.kind === "moment" ? esc(ex.detail || "A milestone") : wo ? `${ex.minutes || (p.payload || {}).minutes || "?"} min · ${lifts.length} exercise${lifts.length === 1 ? "" : "s"}` : meal ? `${n} portion${n === 1 ? "" : "s"} · ${fmt(p.kcal)} kcal each` : (ex.grams != null ? `${ex.grams} ${ex.unit || "g"}` : "1 serving");
     const mine = p.owner === me, who = mine ? "You" : feedName(p.owner);
     const rx = feed.reactions.filter((r) => r.post_id === p.id);
     const cm = feed.comments.filter((x) => x.post_id === p.id);

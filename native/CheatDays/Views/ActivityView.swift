@@ -40,7 +40,8 @@ final class FriendActivity {
         let since = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-14 * 86400))
         async let postsQ = rows("/rest/v1/posts?select=*&created_at=gte.\(since)&order=created_at.desc&limit=60")
         async let sendsQ = rows("/rest/v1/sends?to_user=eq.\(me)&select=*&order=created_at.desc&limit=30")
-        let posts = await postsQ, sends = await sendsQ
+        async let sharesQ = rows("/rest/v1/post_shares?to_user=eq.\(me)&select=*&order=created_at.desc&limit=30")   // empty until set up
+        let posts = await postsQ, sends = await sendsQ, shares = await sharesQ
         let mine = posts.filter { str($0["owner"]) == me }
         let myIds = mine.map { str($0["id"]) }.joined(separator: ",")
         var reactions: [JSON] = [], comments: [JSON] = []
@@ -51,7 +52,7 @@ final class FriendActivity {
         }
         // names for everyone involved
         var names = Dictionary(uniqueKeysWithValues: Friends.shared.people.map { ($0.id, $0.name) })
-        let who = Set(posts.map { str($0["owner"]) } + reactions.map { str($0["user_id"]) } + comments.map { str($0["user_id"]) } + sends.map { str($0["from_user"]) })
+        let who = Set(posts.map { str($0["owner"]) } + reactions.map { str($0["user_id"]) } + comments.map { str($0["user_id"]) } + sends.map { str($0["from_user"]) } + shares.map { str($0["from_user"]) })
             .filter { !$0.isEmpty && $0 != me && names[$0] == nil }
         if !who.isEmpty {
             for p in await rows("/rest/v1/profiles?user_id=in.(\(who.joined(separator: ",")))&select=user_id,display_name") { names[str(p["user_id"])] = str(p["display_name"]) }
@@ -76,11 +77,18 @@ final class FriendActivity {
             out.append(Item(id: "s-\(str(s["id"]))", kind: .sent, who: name(str(s["from_user"])), at: date(s["created_at"]),
                             text: "sent you \(str(s["name"]))", detail: "\(Int(num(s["kcal"]) ?? 0)) kcal\(str(s["status"]) == "new" ? " · waiting on Today" : "")", photo: nil))
         }
+        for s in shares {
+            let pid = str(s["post_id"]), p = posts.first { str($0["id"]) == pid }
+            out.append(Item(id: "f-\(str(s["id"]))", kind: .post, who: name(str(s["from_user"])), at: date(s["created_at"]),
+                            text: "sent you a post", detail: str(s["note"]).isEmpty ? str(p?["name"]) : "“\(str(s["note"]))”",
+                            photo: str(p?["photo"]).hasPrefix("http") ? str(p?["photo"]) : nil, post: pid))
+        }
         for p in posts where str(p["owner"]) != me {
             let kind = str(p["kind"])
-            let what = kind == "workout" ? "logged a workout" : kind == "meal" ? "shared a meal" : "had"
+            let what = kind == "workout" ? "logged a workout" : kind == "meal" ? "shared a meal" : kind == "moment" ? "hit a milestone" : "had"
             let extra = dict(p["extra"])
-            let detail = kind == "workout" ? "\(str(p["name"])) · \(Int(num(extra["minutes"]) ?? 0)) min" : "\(str(p["name"])) · \(Int(num(p["kcal"]) ?? 0)) kcal"
+            let detail = kind == "workout" ? "\(str(p["name"])) · \(Int(num(extra["minutes"]) ?? 0)) min"
+                : kind == "moment" ? str(p["name"]) : "\(str(p["name"])) · \(Int(num(p["kcal"]) ?? 0)) kcal"
             out.append(Item(id: "p-\(str(p["id"]))", kind: .post, who: name(str(p["owner"])), at: date(p["created_at"]),
                             text: what, detail: (str(p["caption"]).isEmpty ? "" : "“\(str(p["caption"]))” · ") + detail,
                             photo: str(p["photo"]).hasPrefix("http") ? str(p["photo"]) : nil, post: str(p["id"])))
