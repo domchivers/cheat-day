@@ -158,7 +158,7 @@ struct SettingsView: View {
                     HStack(spacing: 12) {
                         Circle().fill(c.accentFill).frame(width: 26, height: 26)
                             .overlay(Circle().strokeBorder(.white.opacity(0.15), lineWidth: 1))
-                        Text(c.name).foregroundStyle(.primary)
+                        Text(c.name).foregroundStyle(Color.primary)   // the plain colour: .primary inside a button took the tint
                         Spacer()
                         if c.id == p.id { Image(systemName: "checkmark").font(.body.weight(.bold)).foregroundStyle(c.accent) }
                     }
