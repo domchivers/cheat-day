@@ -15,9 +15,7 @@ enum Demo {
         let f = foods[name] ?? (100, 0, 0, 0)
         return ["id": uid(), "name": name, "kcal": Int((f.k * grams / 100).rounded()), "kcalPer100": f.k, "p100": f.p, "c100": f.c, "f100": f.f,
                 "unit": name == "Pale ale" || name == "Flat white" ? "ml" : "g", "source": "search", "meal": meal,
-                // at the meal's time, a few minutes apart, as when typed in one by one (the same moment made a dish)
-                "addedAt": ISO8601DateFormatter().string(from: DayKey.date(date).addingTimeInterval(
-                    (["Breakfast": 8.0, "Lunch": 12.5, "Snacks": 15.5][meal] ?? 19.0) * 3600 + Double(name.count) * 60))]
+                "addedAt": ISO8601DateFormatter().string(from: DayKey.date(date))]
     }
 
     private static func day(_ date: String) -> [JSON] {

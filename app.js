@@ -258,7 +258,7 @@ document.addEventListener("click", (e) => {
 function archiveDay() {
   if (!state.day.items.length && !(state.day.workouts || []).length) return;
   const m = sumMacros(state.day.items);
-  state.history.unshift({ date: state.day.date, budget: budgetToday(), kcal: usedKcal(), items: state.day.items.map((it) => ({ ...basisOf(it), kcal: it.kcal, shareLabel: it.shareLabel, addedAt: it.addedAt || null, meal: it.meal || null, dish: it.dish || null, dishName: it.dishName || null, undished: it.undished || null })),
+  state.history.unshift({ date: state.day.date, budget: budgetToday(), kcal: usedKcal(), items: state.day.items.map((it) => ({ ...basisOf(it), kcal: it.kcal, shareLabel: it.shareLabel, addedAt: it.addedAt || null, meal: it.meal || null })),
     p: Math.round(m.p), c: Math.round(m.c), f: Math.round(m.f), burned: burnedKcal(), workouts: (state.day.workouts || []).map((w) => ({ name: w.name, type: w.type || null, effort: w.effort || null, minutes: w.minutes, kcal: w.kcal, lifts: w.lifts || [] })) });
   mergeHistory();
   state.history = state.history.slice(0, 400);
@@ -5678,7 +5678,7 @@ function mergeState(local, remote) {
     if ((earlier.items || []).length || (earlier.workouts || []).length) {
       const mac = sumMacros(earlier.items || []), burned = (earlier.workouts || []).reduce((a, w) => a + (w.kcal || 0), 0);
       const wb = m.dayBudgets && m.dayBudgets[new Date(earlier.date + "T12:00").getDay()];
-      history.push({ date: earlier.date, budget: (wb > 0 ? wb : m.budget) + (m.eatBack ? burned : 0), kcal: (earlier.items || []).reduce((a, it) => a + (it.kcal || 0), 0), items: (earlier.items || []).map((it) => ({ ...basisOf(it), kcal: it.kcal, shareLabel: it.shareLabel, addedAt: it.addedAt || null, meal: it.meal || null, dish: it.dish || null, dishName: it.dishName || null, undished: it.undished || null })), p: Math.round(mac.p), c: Math.round(mac.c), f: Math.round(mac.f), burned, workouts: (earlier.workouts || []).map((w) => ({ name: w.name, type: w.type || null, effort: w.effort || null, minutes: w.minutes, kcal: w.kcal, lifts: w.lifts || [] })) });
+      history.push({ date: earlier.date, budget: (wb > 0 ? wb : m.budget) + (m.eatBack ? burned : 0), kcal: (earlier.items || []).reduce((a, it) => a + (it.kcal || 0), 0), items: (earlier.items || []).map((it) => ({ ...basisOf(it), kcal: it.kcal, shareLabel: it.shareLabel, addedAt: it.addedAt || null, meal: it.meal || null })), p: Math.round(mac.p), c: Math.round(mac.c), f: Math.round(mac.f), burned, workouts: (earlier.workouts || []).map((w) => ({ name: w.name, type: w.type || null, effort: w.effort || null, minutes: w.minutes, kcal: w.kcal, lifts: w.lifts || [] })) });
       history = joinDays(history, tombs);
     }
   }

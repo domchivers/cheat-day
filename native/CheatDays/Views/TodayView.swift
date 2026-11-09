@@ -51,10 +51,6 @@ struct TodayView: View {
     @State private var openIdea: IdeaRef?
     @State private var sendingItem: JSON?
     @State private var savingMeal: String?   // the meal whose foods are being saved as one
-    @State private var openDishes: Set<String> = []   // dishes showing their foods
-    @State private var deletingDish: Dishes.Dish?
-    @State private var renaming: Dishes.Dish?
-    @State private var renameText = ""
     private var store: Store { Store.shared }
 
     private var date: String { DayKey.shift(store.today, days: offset) }
@@ -295,22 +291,6 @@ struct TodayView: View {
                     withAnimation(.snappy) { offset = 0 }
                 }
             } message: { Text("\(Fmt.int(num(pastItem?["kcal"]) ?? 0)) kcal, the same amount as that day") }
-            // a whole dish off asks first (Undo still puts it back)
-            .confirmationDialog("Delete all \(deletingDish?.items.count ?? 0) foods?", isPresented: Binding(get: { deletingDish != nil }, set: { if !$0 { deletingDish = nil } }), titleVisibility: .visible) {
-                Button("Delete", role: .destructive) {
-                    if let d = deletingDish { withAnimation(.snappy) { store.deleteDish(d.items, name: d.name, day: offset == 0 ? nil : date) } }
-                    deletingDish = nil
-                }
-            } message: { Text("\(deletingDish?.name ?? ""), \(Fmt.int(deletingDish?.kcal ?? 0)) kcal, comes off \(Meals.of(deletingDish?.items.first ?? [:]).lowercased()).") }
-            .alert("Rename dish", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
-                TextField("Name", text: $renameText)
-                Button("Cancel", role: .cancel) { renaming = nil }
-                Button("Save") {
-                    let n = renameText.trimmingCharacters(in: .whitespaces)
-                    if let d = renaming, !n.isEmpty { store.setDish(d.ids, name: n, day: offset == 0 ? nil : date) }
-                    renaming = nil
-                }
-            }
         }
     }
 
@@ -593,14 +573,22 @@ struct TodayView: View {
         let again = offset == 0 && lines.isEmpty ? (store.pastDay(DayKey.shift(store.today, days: -1))?.items.filter { Meals.of($0) == meal } ?? []) : []
         do {
             Section {
-                // foods added together show as one dish, its foods a tap away
-                ForEach(Dishes.rows(lines.map(\.item), meal: meal)) { row in
-                    switch row {
-                    case .food(let it): foodLine(it, meal: meal)
-                    case .dish(let d):
-                        dishRow(d, meal: meal)
-                        if openDishes.contains(d.id) { ForEach(d.items.indices, id: \.self) { i in foodLine(d.items[i], meal: meal, slim: true) } }
-                    }
+                ForEach(lines) { line in
+                    Button { tap(line.item, meal: meal) } label: { FoodRow(item: line.item, hint: offset == 0 ? .open : .add) }
+                        .buttonStyle(.plain)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            // a past day's food can go too, if it has an id to find it by (filed since late October)
+                            if offset == 0 || !str(line.item["id"]).isEmpty {
+                                Button(role: .destructive) { withAnimation { store.delete(line.id, day: offset == 0 ? nil : date) } } label: { Label("Delete", systemImage: "trash") }
+                            }
+                        }
+                        .swipeActions(edge: .leading) {
+                            Button { sendingItem = line.item } label: { Label("Send", systemImage: "paperplane.fill") }.tint(Theme.accent)
+                        }
+                        .contextMenu {
+                            Button { sendingItem = line.item } label: { Label("Send to a friend", systemImage: "paperplane") }
+                        }
+                        .transition(.move(edge: .leading).combined(with: .opacity))
                 }
                 do {
                     // on a past day it goes on that day: for what was forgotten at the time
@@ -627,7 +615,7 @@ struct TodayView: View {
                     } else if !again.isEmpty {
                         let kcal = again.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }
                         Button {
-                            withAnimation(.snappy) { store.addAll(again, meal: meal, label: "Added yesterday's \(meal.lowercased())", dish: "Yesterday's \(meal.lowercased())") }
+                            withAnimation(.snappy) { store.addAll(again, meal: meal, label: "Added yesterday's \(meal.lowercased())") }
                         } label: {
                             HStack(spacing: 5) { Image(systemName: "arrow.counterclockwise"); Text("Same as yesterday · \(Fmt.int(kcal))") }.font(.caption.weight(.bold)).lineLimit(1)
                         }
@@ -641,74 +629,6 @@ struct TodayView: View {
                     Text(offset == 0 ? "Tap a food to change the amount. Swipe left to delete." : "Tap a food to add it to today. Swipe left to delete.")
                 }
             }
-        }
-    }
-
-    /// One food on a meal: a tap opens How much (or, on a past day, adds it to today), a swipe deletes or sends it.
-    /// Inside an open dish it's a slim one-line row.
-    private func foodLine(_ item: JSON, meal: String, slim: Bool = false) -> some View {
-        let id = str(item["id"])
-        return Button { tap(item, meal: meal) } label: {
-            if slim { DishFoodRow(item: item) } else { FoodRow(item: item, hint: offset == 0 ? .open : .add) }
-        }
-        .buttonStyle(.plain)
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            // a past day's food can go too, if it has an id to find it by (filed since late October)
-            if offset == 0 || !id.isEmpty {
-                Button(role: .destructive) { withAnimation { store.delete(id, day: offset == 0 ? nil : date) } } label: { Label("Delete", systemImage: "trash") }
-            }
-        }
-        .swipeActions(edge: .leading) {
-            Button { sendingItem = item } label: { Label("Send", systemImage: "paperplane.fill") }.tint(Theme.accent)
-        }
-        .contextMenu {
-            Button { sendingItem = item } label: { Label("Send to a friend", systemImage: "paperplane") }
-        }
-        .transition(.move(edge: .leading).combined(with: .opacity))
-    }
-
-    /// A dish: its first foods' icons, its name, how many and their protein, the total. A tap only opens or closes it
-    /// (nothing changes); Rename, Save as meal, Split and Delete are in its ••• menu, and a swipe to delete asks first.
-    private func dishRow(_ d: Dishes.Dish, meal: String) -> some View {
-        let open = openDishes.contains(d.id)
-        let p = d.items.reduce(0.0) { $0 + (FoodMath.macros($1, kcal: num($1["kcal"]) ?? 0)?.p ?? 0) }
-        return HStack(spacing: 10) {
-            Button { withAnimation(.snappy) { if open { openDishes.remove(d.id) } else { openDishes.insert(d.id) } } } label: {
-                HStack(spacing: 12) {
-                    // three small icons, so the name keeps room (four at 30 pt wrapped it and its details to three lines)
-                    HStack(spacing: -11) {
-                        ForEach(Array(d.items.prefix(3).enumerated()), id: \.offset) { _, it in
-                            FoodDot(name: str(it["name"]), size: 26).background(Circle().fill(Color(.secondarySystemGroupedBackground)))
-                        }
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(d.name).font(.body.weight(.semibold)).lineLimit(2)
-                        Text("\(d.items.count) foods" + (p >= 1 ? " · \(Int(p.rounded())) g protein" : "")).font(.footnote).foregroundStyle(.secondary)
-                            .lineLimit(1).minimumScaleFactor(0.85)
-                    }
-                    Spacer(minLength: 6)
-                    Text(Fmt.int(d.kcal)).font(.body.weight(.bold)).monospacedDigit()
-                    Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary).rotationEffect(.degrees(open ? 90 : 0))
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("\(d.name), \(d.items.count) foods, \(Fmt.int(d.kcal)) kcal")
-            .accessibilityHint(open ? "Hides its foods" : "Shows its foods")
-            Menu {
-                Button { renameText = d.name; renaming = d } label: { Label("Rename", systemImage: "pencil") }
-                if offset == 0 { Button { saveAsMeal(meal, name: d.name, picked: Set(d.ids)) } label: { Label("Save as meal", systemImage: "bookmark") } }
-                Button { withAnimation(.snappy) { store.setDish(d.ids, name: nil, day: offset == 0 ? nil : date) } } label: { Label("Split into foods", systemImage: "square.split.1x2") }
-                Button(role: .destructive) { deletingDish = d } label: { Label("Delete dish", systemImage: "trash") }
-            } label: {
-                Image(systemName: "ellipsis").font(.footnote.weight(.bold)).foregroundStyle(.secondary)
-                    .frame(width: 30, height: 30).background(Color(.tertiarySystemFill), in: Circle())
-            }
-            .accessibilityLabel("More for \(d.name)")
-        }
-        .padding(.vertical, 2)
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button { deletingDish = d } label: { Label("Delete", systemImage: "trash") }.tint(.red)
         }
     }
 
@@ -791,23 +711,6 @@ struct FoodRow: View {
         }
         .contentShape(Rectangle())
         .padding(.vertical, 2)
-    }
-}
-
-/// A food inside an open dish: one slim line, indented, with its amount only when it's a real one (not "1 portion").
-struct DishFoodRow: View {
-    let item: JSON
-    var body: some View {
-        let kcal = num(item["kcal"]) ?? 0, amount = FoodMath.amountText(item, kcal: kcal)
-        HStack(spacing: 10) {
-            FoodDot(name: str(item["name"]), size: 26, hint: str(item["matched"]))
-            Text(str(item["name"])).font(.subheadline).lineLimit(1)
-            if !amount.isEmpty && amount != "1 portion" { Text(amount).font(.footnote).foregroundStyle(.secondary).lineLimit(1) }
-            Spacer(minLength: 6)
-            Text(Fmt.int(kcal)).font(.subheadline.weight(.semibold)).monospacedDigit()
-        }
-        .padding(.leading, 22)
-        .contentShape(Rectangle())
     }
 }
 
