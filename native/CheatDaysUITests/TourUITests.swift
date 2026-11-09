@@ -30,8 +30,10 @@ final class TourUITests: XCTestCase {
         let intro = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "What do you fancy?")).firstMatch
         XCTAssertTrue(intro.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Fresh Farm Chicken breast fillets")).firstMatch.exists, "the scanned food as a chip")
-        let example = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "and 25 g protein:")).firstMatch
-        XCTAssertTrue(example.exists, "an example of how to ask, with the meal's own numbers")
+        XCTAssertTrue(intro.label.contains("25 g protein"), "the meal's own numbers, 25 g with no goal")
+        let example = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Something high protein")).firstMatch
+        XCTAssertTrue(example.exists, "an example of how to ask, with its Use button")
+        XCTAssertTrue(app.buttons["Cooking: Quick, 15 min"].exists, "how much cooking, as one button")
         let a = XCTAttachment(screenshot: app.screenshot()); a.name = "plan-chat"; a.lifetime = .keepAlways; add(a)
 
         // ＋ offers the two ways to add a food you have
@@ -43,8 +45,8 @@ final class TourUITests: XCTestCase {
 
         // the example goes into the box with a tap
         if example.waitForExistence(timeout: 2) { example.tap() }
-        let box = app.textFields.containing(NSPredicate(format: "value BEGINSWITH %@", "About")).firstMatch
-        XCTAssertTrue(box.waitForExistence(timeout: 3) || app.textViews.containing(NSPredicate(format: "value BEGINSWITH %@", "About")).firstMatch.exists, "the example is in the box")
+        let box = app.textFields.containing(NSPredicate(format: "value BEGINSWITH %@", "Something")).firstMatch
+        XCTAssertTrue(box.waitForExistence(timeout: 3) || app.textViews.containing(NSPredicate(format: "value BEGINSWITH %@", "Something")).firstMatch.exists, "the example is in the box")
         let c = XCTAttachment(screenshot: app.screenshot()); c.name = "plan-example"; c.lifetime = .keepAlways; add(c)
     }
 

@@ -303,15 +303,6 @@ enum Takeaway {
         return i == "choose" && str(r["restaurant"]).isEmpty ? "other" : i
     }
 
-    /// The restaurant they last asked the planner about ("Gami Windsor"), from the menus kept on the phone, for Plan a
-    /// meal's example; nil when they haven't, so the app never names a restaurant itself.
-    static func recent() -> String? {
-        let kept = (UserDefaults.standard.dictionary(forKey: "takeaway.menus") as? [String: JSON]) ?? [:]
-        guard let key = kept.max(by: { (num($0.value["at"]) ?? 0) < (num($1.value["at"]) ?? 0) })?.key,
-              let name = key.split(separator: "|").first, !name.isEmpty else { return nil }
-        return name.split(separator: " ").map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
-    }
-
     /// The dishes they asked for, without the foods from home they named with them ("a shake and ice cream").
     static func dishes(_ want: [String]) -> [String] {
         want.filter { w in kind(w) == nil && !["shake", "milk", "ice cream", "yoghurt", "yogurt"].contains { w.lowercased().contains($0) } && !words(w).isEmpty }

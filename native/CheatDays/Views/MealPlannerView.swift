@@ -36,7 +36,7 @@ extension Store {
 }
 
 /// The Plan button on a normal day, as a chat: it says what the meal should come to and how to ask (with your own
-/// numbers and the foods you usually have), you say what you fancy, and ideas in your usual style come back as cards
+/// numbers, and how much cooking), you say what you fancy, and ideas in your usual style come back as cards
 /// to log or cook. Reply to change them ("something spicier", "no rice"); the earlier ones stay above.
 struct MealPlannerView: View {
     @Environment(\.dismiss) private var dismiss
@@ -69,31 +69,15 @@ struct MealPlannerView: View {
     private var history: [(name: String, days: Int, kcal: Double)] { store.mealHistory(meal) }
     /// This meal's share of the protein goal, to the nearest 5 g (25 g without a goal).
     private var proteinShare: Double { ((store.mealTarget(meal).protein ?? 25) / 5).rounded() * 5 }
-    /// Two or three foods they often have at this meal, short names, for the chips and the example.
-    private var usual: [String] {
-        Array(history.filter { $0.days >= 2 }.prefix(3).map { h in
-            let n = h.name.components(separatedBy: CharacterSet(charactersIn: ",(")).first ?? h.name
-            return n.trimmingCharacters(in: .whitespaces)
-        })
-    }
-
-    /// How to ask, from their own numbers and foods: "About 660 kcal and 45 g protein: chicken breast, rice and
-    /// broccoli, Chinese style, 15 minutes."
+    /// How to ask, kept simple (a list of their own foods read oddly, "white sandwich, kewpie light mayo…"): the meal's
+    /// numbers are above it and the cooking time is its own button. "Something high protein, Chinese style."
     private var example: String {
-        let t = store.mealTarget(meal)
-        let foods = usual.isEmpty ? ["chicken breast", "rice", "carrot", "cabbage"] : usual.map { $0.lowercased() }
-        let list = foods.count > 1 ? foods.dropLast().joined(separator: ", ") + " and " + foods.last! : foods[0]
-        let style = (store.habits["cuisines"] as? [String])?.first.map { "\($0) style" } ?? "Chinese style"
-        let time = cooking == Self.cookChoices[0] ? "no cooking" : cooking == Self.cookChoices[2] ? "happy to cook" : "15 minutes"
-        return "About \(Fmt.int(t.kcal)) kcal and \(Int(proteinShare)) g protein: \(list), \(style), \(time)."
+        let style = (store.habits["cuisines"] as? [String])?.first.map { ", \($0) style" } ?? ""
+        return "Something high protein\(style)."
     }
 
-    /// The examples the intro fades between: a recipe from their foods, a takeaway from a restaurant they've asked the
-    /// planner about (none named by the app itself), and places near them.
-    private var examples: [String] {
-        let m = meal.lowercased()
-        return [example] + (Takeaway.recent().map { ["\($0) for \(m), what should I get?"] } ?? []) + ["Any healthy \(m) spots near me?"]
-    }
+    /// The examples the intro fades between: a recipe, and places near them. No restaurant named.
+    private var examples: [String] { [example, "Any healthy \(meal.lowercased()) spots near me?"] }
     @State private var exampleAt = 0
     /// A takeaway or places question sent here: the Assistant answers it, where its cards live.
     struct Asking: Identifiable { let id = UUID(); let q: String }
@@ -163,23 +147,36 @@ struct MealPlannerView: View {
         let t = store.mealTarget(meal)
         bubble(VStack(alignment: .leading, spacing: 8) {
             (Text("\(meal): about \(Fmt.int(t.kcal)) kcal and \(Int(proteinShare)) g protein").bold() + Text(" (\(Fmt.int(left)) left today). What do you fancy?"))
-            Text("For example, tap to use it:").foregroundStyle(.secondary)
-            // one at a time, fading to the next every 4 seconds; all laid out at once so the bubble keeps the tallest one's height
+            Text("Try:").foregroundStyle(.secondary)
+            // one at a time, fading to the next every 4 seconds; all laid out at once so the box keeps the tallest one's
+            // height. A Use button, not dots: dots looked like a swipe, and a tap put it in the box instead
             let all = examples, at = exampleAt % all.count
             Button { text = all[at]; typing = true } label: {
-                ZStack(alignment: .topLeading) {
-                    ForEach(all.indices, id: \.self) { i in
-                        Text("“\(all[i])”").italic().multilineTextAlignment(.leading).foregroundStyle(Theme.accent)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .opacity(i == at ? 1 : 0).accessibilityHidden(i != at)
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    ZStack(alignment: .topLeading) {
+                        ForEach(all.indices, id: \.self) { i in
+                            Text("“\(all[i])”").italic().multilineTextAlignment(.leading).foregroundStyle(Theme.accent)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .opacity(i == at ? 1 : 0).accessibilityHidden(i != at)
+                        }
                     }
+                    Text("Use").font(.caption.weight(.bold)).foregroundStyle(Theme.accent)
+                        .padding(.horizontal, 9).padding(.vertical, 4).background(Theme.accent.opacity(0.16), in: Capsule())
                 }
+                .padding(10)
+                .background(Theme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.accent.opacity(0.25)))
             }
             .buttonStyle(.plain).accessibilityHint("Puts the example in the box")
-            HStack(spacing: 5) {
-                ForEach(all.indices, id: \.self) { i in Circle().fill(i == at ? Theme.accent : Color(.tertiaryLabel)).frame(width: 6, height: 6) }
+            // how much cooking: one small button, its three choices in a menu
+            Menu {
+                Picker("Cooking", selection: $cooking) { ForEach(Self.cookChoices, id: \.self) { Text($0).tag($0) } }
+            } label: {
+                Label { Text(cooking) + Text(" ") + Text(Image(systemName: "chevron.down")).font(.caption2) } icon: { Image(systemName: "timer") }
+                    .font(.footnote.weight(.semibold)).foregroundStyle(.primary)
+                    .padding(.horizontal, 12).padding(.vertical, 7).background(Color(.tertiarySystemFill), in: Capsule())
             }
-            .accessibilityHidden(true)
+            .accessibilityLabel("Cooking: \(cooking)")
         })
         // they've started typing or asking: the example stays put (and still for the planner's UI test, which taps it)
         .task(id: meal) {
@@ -189,9 +186,6 @@ struct MealPlannerView: View {
                 if text.isEmpty && turns.isEmpty && !Task.isCancelled { withAnimation(.easeInOut(duration: 0.5)) { exampleAt += 1 } }
             }
         }
-        // what they often have, and how much cooking: a tap adds it to what they're writing
-        if !usual.isEmpty { Flow { ForEach(usual, id: \.self) { u in Chip(text: u, on: text.localizedCaseInsensitiveContains(u)) { add(u) } } } }
-        Flow { ForEach(Self.cookChoices, id: \.self) { c in Chip(text: c, on: cooking == c) { cooking = c } } }
         // the foods scanned in, with their label numbers: the ideas use them
         if !scans.isEmpty {
             Flow {
@@ -205,12 +199,6 @@ struct MealPlannerView: View {
                 }
             }
         }
-    }
-
-    private func add(_ words: String) {
-        let t = text.trimmingCharacters(in: .whitespaces)
-        if t.localizedCaseInsensitiveContains(words) { return }
-        text = t.isEmpty ? words : "\(t), \(words.lowercased())"
     }
 
     @ViewBuilder private func turnView(_ t: Turn) -> some View {
@@ -274,12 +262,12 @@ struct MealPlannerView: View {
         }
         .padding(10)
         .background { Color.clear.contentShape(Rectangle()).onTapGesture { typing = true } }
-        .background(Theme.hero, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .composerGlass(RoundedRectangle(cornerRadius: 26, style: .continuous))   // the assistant's box
         .overlay(alignment: .top) {
             if let p = speech.problem { Text(p).font(.caption).foregroundStyle(Theme.warn).padding(8).offset(y: -34) }
         }
-        .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 8)
-        .background(Theme.bg)
+        .padding(.horizontal, 10).padding(.top, 6).padding(.bottom, 8)
+        .composerBar()
     }
 
     private func round(_ symbol: String) -> some View {

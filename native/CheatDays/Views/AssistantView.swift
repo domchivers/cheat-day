@@ -1074,8 +1074,8 @@ private struct PhotoViewer: View {
     }
 }
 
-/// The chat box: on iOS 26 it floats in the same glass as the keyboard; before that, a material bar.
-private extension View {
+/// The chat box (the assistant's and Plan a meal's): on iOS 26 it floats in the same glass as the keyboard; before that, a material bar.
+extension View {
     @ViewBuilder func composerGlass(_ shape: some Shape) -> some View {
         if #available(iOS 26, *) { glassEffect(.regular.interactive(), in: shape) }
         else { background(Color(.secondarySystemBackground), in: shape) }
