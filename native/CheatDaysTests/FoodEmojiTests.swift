@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 @testable import CheatDays
 
 /// Food icons: whole words only, phrases before single words, the more specific food first.
@@ -117,5 +118,12 @@ final class FoodEmojiTests: XCTestCase {
         XCTAssertEqual(FoodIcons.shared.icon("Kewpie light mayo"), "🫙")
         XCTAssertEqual(FoodIcons.shared.icon("HEINZ TOMATO KETCHUP"), "🫙")
         XCTAssertTrue(FoodIcons.prompt([("Kewpie light mayo", "")]).contains("the salt shaker is only for salt"))
+    }
+
+    /// Every badge has its own icon (🔥 was on three, 🎯 🥇 👑 🗓️ on two), and its Fluent art is in the app.
+    func testBadgesHaveTheirOwnIcons() {
+        let icons = Badge.all.map(\.icon)
+        XCTAssertEqual(Set(icons).count, icons.count, "shared: \(Dictionary(grouping: icons) { $0 }.filter { $0.value.count > 1 }.keys.sorted())")
+        for b in Badge.all { XCTAssertNotNil(UIImage(named: FoodEmoji.asset(b.icon)), "no Fluent icon for \(b.name) \(b.icon)") }
     }
 }
