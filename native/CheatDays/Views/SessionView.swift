@@ -221,12 +221,14 @@ struct SessionView: View {
                 Text("Rest").font(.headline)
                 Text(timerInterval: Date()...Date(timeIntervalSince1970: r / 1000), countsDown: true)
                     .font(.title2.weight(.heavy)).monospacedDigit().foregroundStyle(Theme.accent)
-                Spacer()
-                Button("−15") { nudge(-15) }
-                Button("+15") { nudge(15) }
-                Button("Skip") { s.restUntil = nil }
+                Spacer(minLength: 4)
+                Button("−15") { nudge(-15) }.buttonStyle(.bordered)
+                Button("+15") { nudge(15) }.buttonStyle(.bordered)
+                // the same filled Skip as the bar at the foot, and never wrapped ("Ski" over "p")
+                Button("Skip") { s.restUntil = nil }.buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent).fixedSize()
             }
-            .buttonStyle(.bordered)
+            .lineLimit(1).fixedSize(horizontal: false, vertical: true)
+            .controlSize(.small)
             .listRowBackground(Theme.hero)
         } else {
             Stepper("Rest between sets \(mmss(store.restSeconds))", onIncrement: { store.setRest(store.restSeconds + 15) }, onDecrement: { store.setRest(store.restSeconds - 15) })
