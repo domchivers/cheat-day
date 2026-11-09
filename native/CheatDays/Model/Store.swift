@@ -154,11 +154,11 @@ final class Store {
     }
 
     /// The dish tag a food had, applied to a filed copy (History keeps it so past days show their dishes too).
-    static func keepDish(_ from: JSON, in to: inout JSON) {
+    nonisolated static func keepDish(_ from: JSON, in to: inout JSON) {
         if !str(from["dish"]).isEmpty { to["dish"] = from["dish"]; to["dishName"] = from["dishName"] ?? "" }
         if from["undished"] as? Bool == true { to["undished"] = true }
     }
-    static func renameDish(_ items: inout [JSON], ids: [String], name: Any?) {
+    nonisolated static func renameDish(_ items: inout [JSON], ids: [String], name: Any?) {
         for i in items.indices where ids.contains(str(items[i]["id"])) {
             if let n = name as? String, !n.isEmpty {
                 if str(items[i]["dish"]).isEmpty { items[i]["dish"] = ids.first ?? "" }   // grouped by time until now: given a tag
