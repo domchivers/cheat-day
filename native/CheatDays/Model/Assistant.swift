@@ -244,8 +244,13 @@ enum Assistant {
         // "half of each" after an estimate: worked out here, exactly, with no waiting
         if last.images.isEmpty, let p = portion(last.text), let r = turns.dropLast().last(where: { !$0.me })?.result, let out = scaled(r, share: p.share, label: p.label) { return out }
         // "what should I get from Gami?": the restaurant's menu with food from home, worked out by the app. Asked of every
-        // typed message, alongside the assistant's own answer below, so nothing waits for it
-        let takeaway: Task<JSON?, Never>? = last.images.isEmpty ? Task { await Takeaway.answer(turns, store: store, step: step) } : nil
+        // typed message; the careful answer below waits for its decision (a couple of seconds), quick logs don't
+        let decision = Takeaway.Decision()
+        let takeaway: Task<JSON?, Never>? = last.images.isEmpty ? Task {
+            let r = await Takeaway.answer(turns, store: store, step: step, decided: decision)
+            decision.set(r != nil)
+            return r
+        } : nil
         // new photos: a quick look first at what's in them, so the food tables' numbers for those foods (not only the ones
         // they typed) go along with the question, and a shop's logo is known early
         var seen: Spotted?
@@ -277,6 +282,9 @@ enum Assistant {
         let talking = turns.dropLast().last { !$0.me }.map { str($0.result?["kind"]) == "answer" } ?? false   // a quick log's "Logged to…" has no result
         let simple = !talking && isSimple(last.text, hasPhotos: !pics.isEmpty)
         let shape = format(photos: !pics.isEmpty, text: last.text)
+        // a takeaway or places question isn't also sent to the careful model, which was charged even when the planner's
+        // card won: its decision first, up to 4 seconds (the quick check takes about 2.6). Quick logs cost next to nothing
+        if let takeaway, !simple, await decision.wait(4), let t = await takeaway.value { return t }
         let first = Task { try await Gemini.ask(schema: shape, parts: parts, quick: simple, job: simple ? "logs" : pics.isEmpty ? "chat" : "photos") }
         if let t = await takeaway?.value { first.cancel(); return t }
         var answer = try await first.value

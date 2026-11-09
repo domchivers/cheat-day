@@ -384,11 +384,29 @@ enum Takeaway {
         return out
     }
 
+    /// Whether the planner is taking a message, known as soon as it decides (before its menu search): the assistant's
+    /// careful answer was being paid for (3.8¢) even when the planner's card won.
+    @MainActor final class Decision {
+        private var value: Bool?, waiting: [CheckedContinuation<Bool, Never>] = []
+        func set(_ v: Bool) {
+            guard value == nil else { return }
+            value = v; answer(v)
+        }
+        /// true when the planner took it; false when it didn't, or hasn't decided within the wait
+        func wait(_ seconds: Double) async -> Bool {
+            if let value { return value }
+            Task { try? await Task.sleep(for: .seconds(seconds)); self.answer(false) }
+            return await withCheckedContinuation { waiting.append($0) }
+        }
+        private func answer(_ v: Bool) { let w = waiting; waiting = []; for c in w { c.resume(returning: v) } }
+    }
+
     /// The answer to a takeaway question, or nil when it isn't one (or Claude can't be reached): the assistant answers.
     @MainActor
     /// With a photo of a delivery-app page (Gami's Chicken Burger, 2280 kJ, on DoorDash), what the quick look read off it
     /// goes along: its dishes' kJ win, and a dish named in the message ("this burger") is the one wanted.
-    static func answer(_ turns: [Assistant.Turn], store: Store, step: (@MainActor (String, String) -> Void)?, photo: Assistant.Spotted? = nil) async -> JSON? {
+    static func answer(_ turns: [Assistant.Turn], store: Store, step: (@MainActor (String, String) -> Void)?, photo: Assistant.Spotted? = nil,
+                       decided: Decision? = nil) async -> JSON? {
         // every typed message is asked (no list of words to say first): it runs alongside the assistant's own answer
         guard let last = turns.last, last.me, last.images.isEmpty || photo != nil else { return nil }
         let earlier = turns.dropLast().suffix(6).map { t -> String in
@@ -403,11 +421,11 @@ enum Takeaway {
             // a place on the list, tapped (its whole name is sent): planned with no asking. Anything more ("had Grill'd")
             // goes to the router, which says whether it's choosing
             if let pl = shown, let p = list(pl["places"]).first(where: { str($0["name"]).lowercased() == said.lowercased() }) {
-                return await chosen(p, from: pl, store: store, step: step)
+                decided?.set(true); return await chosen(p, from: pl, store: store, step: step)
             }
             // "Whereabouts?" answered with a suburb: the search they asked for, there
             if let w = turns.dropLast().last(where: { !$0.me })?.result?["whereabouts"] as? JSON, said.split(separator: " ").count <= 5, !said.contains("?") {
-                return await find(area: said, want: w["want"] as? [String] ?? [], asked: str(w["asked"]), kcal: nil, protein: nil, store: store, step: step)
+                decided?.set(true); return await find(area: said, want: w["want"] as? [String] ?? [], asked: str(w["asked"]), kcal: nil, protein: nil, store: store, step: step)
             }
         }
         let page = photo.map { p in "a menu page\(p.shop.isEmpty ? "" : " from \(p.shop)") showing " + p.listing.map { "\(str($0["name"])) (\(Fmt.int(num($0["kj"]) ?? 0)) kJ)" }.joined(separator: ", ") } ?? ""
@@ -418,11 +436,11 @@ enum Takeaway {
               photo != nil || ["choose", "find"].contains(str(route["intent"])) || (!str(route["restaurant"]).isEmpty && choosing(last.text)) else { return nil }
         // "any good lunch spots in South Yarra?": places found on the web, each with the dish that suits them
         if photo == nil, str(route["intent"]) == "find", str(route["restaurant"]).isEmpty {
-            return await find(area: str(route["area"]), want: route["want"] as? [String] ?? [], asked: last.text, kcal: pos(route["kcal"]), protein: pos(route["protein"]), store: store, step: step)
+            decided?.set(true); return await find(area: str(route["area"]), want: route["want"] as? [String] ?? [], asked: last.text, kcal: pos(route["kcal"]), protein: pos(route["protein"]), store: store, step: step)
         }
         let named = str(route["restaurant"]).trimmingCharacters(in: .whitespaces)
         // "the poke one": a place from the list, with its dish's kJ
-        if photo == nil, let pl = shown, !named.isEmpty, let p = place(named, in: pl) { return await chosen(p, from: pl, store: store, step: step) }
+        if photo == nil, let pl = shown, !named.isEmpty, let p = place(named, in: pl) { decided?.set(true); return await chosen(p, from: pl, store: store, step: step) }
         // "gami Windsor" as "Gami Windsor": a word typed all in lower case gets its capital
         let name = (named.isEmpty ? (photo?.shop ?? "") : named).split(separator: " ").map { w in w == w.lowercased() ? w.prefix(1).uppercased() + w.dropFirst() : String(w) }.joined(separator: " ")
         guard !name.isEmpty else { return nil }
@@ -434,7 +452,7 @@ enum Takeaway {
             let named = p.listing.first { l in words(str(l["name"])).contains { last.text.lowercased().contains($0) } }
             want.append(str((named ?? first)["name"]))
         }
-        return await choose(name, area: str(route["area"]), want: want, seen: seen, avoid: route["avoid"] as? [String] ?? [], said: last.text, earlier: earlier,
+        decided?.set(true); return await choose(name, area: str(route["area"]), want: want, seen: seen, avoid: route["avoid"] as? [String] ?? [], said: last.text, earlier: earlier,
                             kcal: pos(route["kcal"]), protein: pos(route["protein"]), meal: nil, store: store, step: step)
     }
 
