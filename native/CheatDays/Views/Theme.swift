@@ -13,7 +13,7 @@ struct Palette: Identifiable {
     var gradient: [Color]? = nil
     /// The Left to eat panel: the gradient's dark (or, in light mode, pale) version, or the plain panel colour.
     var heroFill: AnyShapeStyle {
-        gradient == nil ? AnyShapeStyle(hero) : AnyShapeStyle(LinearGradient(colors: [Self.both(0xE4F0FD, 0x13233B), Self.both(0xEEF0FD, 0x1D1D3F)], startPoint: .topLeading, endPoint: .bottomTrailing))
+        gradient == nil ? AnyShapeStyle(hero) : AnyShapeStyle(LinearGradient(colors: [Self.both(0xD5E6FB, 0x13233B), Self.both(0xE2DDFB, 0x1D1D3F)], startPoint: .topLeading, endPoint: .bottomTrailing))
     }
     /// The + and the swatch in Settings: the gradient, or the accent.
     var accentFill: AnyShapeStyle {
@@ -26,10 +26,11 @@ struct Palette: Identifiable {
     static func both(_ light: UIColor, _ dark: UIColor) -> Color { Color(uiColor: UIColor { $0.userInterfaceStyle == .light ? light : dark }) }
     static func both(_ light: Int, _ dark: Int) -> Color { both(ui(light), ui(dark)) }
     /// The same hue, more saturated and darker: a pastel accent that reads on white.
-    private static func deeper(_ c: UIColor, saturation s: CGFloat = 1.35, brightness b: CGFloat = 0.78) -> UIColor {
+    // (Nov 2026: the first light version's buttons were "a little too dark": 0.78 brightness and +0.15 saturation)
+    private static func deeper(_ c: UIColor, saturation s: CGFloat = 1.25, brightness b: CGFloat = 0.88) -> UIColor {
         var h: CGFloat = 0, sa: CGFloat = 0, br: CGFloat = 0, a: CGFloat = 0
         c.getHue(&h, saturation: &sa, brightness: &br, alpha: &a)
-        return UIColor(hue: h, saturation: min(1, sa * s + 0.15), brightness: br * b, alpha: a)
+        return UIColor(hue: h, saturation: min(1, sa * s + 0.1), brightness: br * b, alpha: a)
     }
     /// A little of the colour over a pale base: the light-mode panel and bar track.
     private static func tint(_ c: UIColor, _ amount: CGFloat, over base: UIColor) -> UIColor {
@@ -43,9 +44,10 @@ struct Palette: Identifiable {
         let a = UIColor(accent), white = UIColor.white
         return Palette(id: id, name: name,
                        accent: Self.both(Self.deeper(a), a),
-                       hero: Self.both(Self.tint(a, 0.13, over: white), UIColor(hero)),
+                       // the panel a clear tint of the colour (13% read as almost white), its track a step deeper
+                       hero: Self.both(Self.tint(a, 0.24, over: white), UIColor(hero)),
                        heroLabel: Self.both(Self.deeper(a, saturation: 1.3, brightness: 0.55), UIColor(heroLabel)),
-                       track: Self.both(Self.tint(a, 0.22, over: UIColor(white: 0.9, alpha: 1)), UIColor(track)),
+                       track: Self.both(Self.tint(a, 0.34, over: UIColor(white: 0.9, alpha: 1)), UIColor(track)),
                        dinner: Self.both(Self.deeper(UIColor(dinner), saturation: 1.2, brightness: 0.88), UIColor(dinner)),
                        snacks: snacks, onAccent: Self.both(white, UIColor(onAccent)),
                        gradient: gradient.map { g in g.map { Self.both(Self.deeper(UIColor($0), saturation: 1.25, brightness: 0.92), UIColor($0)) } })
