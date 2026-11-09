@@ -1,12 +1,14 @@
 import XCTest
 @testable import CheatDays
 
-/// The achievements match the website's: same list and XP, and earning only ever adds.
+/// The achievements: the website's 73 first, the same and with the same XP, then the app's own 27 (Nov 2026, harder
+/// steps and one to five years), every one with its XP; and earning only ever adds.
 @MainActor
 final class BadgeTests: XCTestCase {
     func testTheListMatchesTheWebsite() {
-        XCTAssertEqual(Badge.all.count, 73)
-        XCTAssertEqual(Set(Badge.all.map(\.id)).count, 73)
+        XCTAssertEqual(Badge.all.count, 100)
+        XCTAssertEqual(Set(Badge.all.map(\.id)).count, 100)
+        XCTAssertEqual(Badge.all.prefix(73).last?.id, "perfect5", "the website's 73 come first, as they were")
         for b in Badge.all { XCTAssertEqual(XPRules.badges[b.id], b.xp, b.id) }
     }
 
