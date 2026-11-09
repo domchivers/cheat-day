@@ -116,22 +116,25 @@ struct MealPlannerView: View {
             .navigationTitle("Plan a meal").navigationBarTitleDisplayMode(.inline)
             .keyboardDone()
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
-            .sheet(item: $open) { r in RecipeSheet(idea: r.idea) }
-            .sheet(item: $scanning) { m in
+            // a chat box: no Done bar (the send button's right there); the sheets it opens keep theirs (a recipe's number pads)
+            .sheet(item: $open, onDismiss: { KeyboardDone.quiet = true }) { r in RecipeSheet(idea: r.idea) }
+            .sheet(item: $scanning, onDismiss: { KeyboardDone.quiet = true }) { m in
                 PantryScanSheet(mode: m) { items in
                     // newest first; scanning the same food again replaces the old one
                     let names = Set(items.map { $0.name.lowercased() })
                     withAnimation { scansJSON = PantryItem.Saved.save(items + scans.filter { !names.contains($0.name.lowercased()) }) }
                 }
             }
-            .sheet(isPresented: $cheat) { CheatDayView().presentationDragIndicator(.visible) }
+            .sheet(isPresented: $cheat, onDismiss: { KeyboardDone.quiet = true }) { CheatDayView().presentationDragIndicator(.visible) }
+            .onChange(of: open == nil && scanning == nil) { _, none in if !none { KeyboardDone.quiet = false } }
             .onChange(of: meal) { _, _ in turns = []; problem = nil }
             .onAppear {
+                KeyboardDone.quiet = true
                 if cooking.isEmpty {
                     switch str(store.habits["cook"]) { case "love": cooking = Self.cookChoices[2]; case "hate": cooking = Self.cookChoices[0]; default: cooking = Self.cookChoices[1] }
                 }
             }
-            .onDisappear { speech.stop() }
+            .onDisappear { speech.stop(); KeyboardDone.quiet = false }
         }
     }
 
