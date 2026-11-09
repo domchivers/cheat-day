@@ -61,6 +61,9 @@ enum QuickLog {
     private static let askWords: Set<String> = ["what", "whats", "what's", "how", "can", "could", "should", "is", "are", "was", "why", "when", "which",
         "give", "make", "plan", "suggest", "recipe", "find", "tell", "do", "does", "i", "im", "i'm", "my", "help", "compare", "would", "will"]
 
+    private static let wishWords: Set<String> = ["want", "wanna", "need", "around", "about", "roughly", "approx", "aim", "aiming", "target", "goal", "left",
+        "it", "that", "this", "these", "those", "from", "more", "less", "fit", "get", "hit", "reach", "enough", "much", "many", "if"]
+
     /// A message that's just foods with their numbers, to log straight away. Nil for anything that reads like a question
     /// or a request ("is 600 kcal a lot for lunch?"), which goes to the AI.
     static func instant(_ text: String) -> [Line]? {
@@ -68,6 +71,10 @@ enum QuickLog {
         guard !t.isEmpty, !t.contains("?") else { return nil }
         let first = t.lowercased().split(whereSeparator: { !$0.isLetter && $0 != "'" }).first.map(String.init) ?? ""
         guard !askWords.contains(first) else { return nil }
+        // a wish or a follow-up, anywhere in it: "Want around 60g protein from it" was logged as a food called "Want
+        // around from it" with 60 g protein. These go to the AI, which logs real foods anyway, just not instantly
+        let words = Set(t.lowercased().split(whereSeparator: { !$0.isLetter && $0 != "'" }).map(String.init))
+        guard words.isDisjoint(with: wishWords) else { return nil }
         let lines = t.components(separatedBy: CharacterSet(charactersIn: "\n;")).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         let parsed = lines.compactMap(parseLine)
         guard !parsed.isEmpty, parsed.count == lines.count,

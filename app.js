@@ -5685,7 +5685,11 @@ function mergeState(local, remote) {
   m.history = history.sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 400);
   m.favs = Object.assign({}, older.favs || {}); for (const [k, v] of Object.entries(newer.favs || {})) { const o = m.favs[k]; if (!o || String(v && v.at || "") >= String(o.at || "")) m.favs[k] = v; }
   m.recent = trimRecent(join(newer.recent, older.recent, (r) => r.key, "recent").sort((a, b) => String(b.lastUsed || "").localeCompare(String(a.lastUsed || ""))), m.favs);
-  m.meals = join(newer.meals, older.meals, (x) => x.id, "meal");
+  // a meal on both sides: the copy edited last (its own updatedAt), not the newer record's. A stale copy here that
+  // was touched for anything else (a new day, a scale import) counted as newer and put an old Low Cal Brownie back
+  const lastEdit = {};
+  for (const x of (older.meals || []).concat(newer.meals || [])) if (x && x.id != null && String(x.updatedAt || "") >= String((lastEdit[x.id] || {}).updatedAt || "")) lastEdit[x.id] = x;
+  m.meals = join(newer.meals, older.meals, (x) => x.id, "meal").map((x) => lastEdit[x.id] || x);
   m.chats = join(newer.chats, older.chats, (x) => x.id, "chat");
   m.routines = join(newer.routines, older.routines, (x) => x.id, "routine");
   m.recentWorkouts = join(newer.recentWorkouts, older.recentWorkouts, (x) => x.key);

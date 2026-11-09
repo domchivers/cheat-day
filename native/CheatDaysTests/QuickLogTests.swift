@@ -34,4 +34,14 @@ final class QuickLogTests: XCTestCase {
         XCTAssertNotNil(QuickLog.instant("2 pancakes 350 kcal"))
         XCTAssertEqual(QuickLog.parseLine("2 pancakes 350 kcal")?.p, nil)       // "pancakes" isn't protein
     }
+
+    /// "Want around 60g protein from it", after asking about 918 g of chicken, was logged as a food called "Want around
+    /// from it": a wish or a follow-up goes to the AI, with the chat
+    func testWishesAndFollowUpsGoToTheAI() {
+        XCTAssertNil(QuickLog.instant("Want around 60g protein from it"))
+        XCTAssertNil(QuickLog.instant("need 40g protein"))
+        XCTAssertNil(QuickLog.instant("about 500 kcal of that"))
+        XCTAssertNotNil(QuickLog.instant("protein shake 250 cal 40p"))
+        XCTAssertNotNil(QuickLog.instant("chicken sandwich - 600 kcal - 60p 30f 10c"))
+    }
 }

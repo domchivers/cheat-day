@@ -858,8 +858,12 @@ struct AssistantView: View {
         speech.stop()
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !busy, !t.isEmpty || !pending.isEmpty else { return }
-        // foods with their numbers typed in: logged straight away, no waiting for the AI
-        if pending.isEmpty, let lines = QuickLog.instant(t) {
+        // foods with their numbers typed in: logged straight away, no waiting for the AI. Not in the middle of a
+        // conversation: after asking about 918 g of chicken, "Want around 60g protein from it" means a portion of that
+        // chicken, so it goes to the AI with the chat (a quick log's own "Logged to…" reply has no result, so logging
+        // several in a row still works)
+        let talking = turns.last.map { !$0.me && $0.result != nil } ?? false
+        if pending.isEmpty, !talking, let lines = QuickLog.instant(t) {
             let ids = lines.map { store.add(QuickLog.basis($0), kcal: $0.kcal, meal: meal) }
             if ids.count > 1 { store.undo = Store.Undo(ids: ids, label: "Added \(ids.count) foods", at: Date()) }
             turns.append(Assistant.Turn(me: true, text: t))
