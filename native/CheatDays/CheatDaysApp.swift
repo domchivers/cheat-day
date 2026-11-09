@@ -123,7 +123,7 @@ private struct TakeawayHarness: View {
 private struct PlanHarness: View {
     init() {
         let samples = [
-            PantryItem(basis: ["name": "Chicken breast fillets", "brand": "Tesco", "kcalPer100": 106.0, "p100": 24.0, "c100": 0.0, "f100": 1.5]),
+            PantryItem(basis: ["name": "Chicken breast fillets", "brand": "Fresh Farm", "kcalPer100": 106.0, "p100": 24.0, "c100": 0.0, "f100": 1.5]),
             PantryItem(basis: ["name": "Basmati rice pouch", "kcalPer100": 148.0, "p100": 3.0, "c100": 31.0, "f100": 1.2])
         ].compactMap { $0 }
         UserDefaults.standard.set(PantryItem.Saved.save(samples), forKey: "pantry.scans")
@@ -222,7 +222,7 @@ private struct RanksHarness: View {
 private struct RecipeHarness: View {
     let idea: JSON
     init() {
-        let chicken = PantryItem(basis: ["name": "Chicken breast fillets", "brand": "Tesco", "kcalPer100": 106.0, "p100": 24.0, "c100": 0.0, "f100": 1.5])
+        let chicken = PantryItem(basis: ["name": "Chicken breast fillets", "brand": "Fresh Farm", "kcalPer100": 106.0, "p100": 24.0, "c100": 0.0, "f100": 1.5])
         UserDefaults.standard.set(PantryItem.Saved.save([chicken].compactMap { $0 }), forKey: "pantry.scans")
         UserDefaults.standard.set("{}", forKey: "recipe.swaps")
         UserDefaults.standard.set("[]", forKey: "recipe.removed")

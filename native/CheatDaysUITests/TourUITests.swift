@@ -29,7 +29,7 @@ final class TourUITests: XCTestCase {
         app.launch()
         let intro = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "What do you fancy?")).firstMatch
         XCTAssertTrue(intro.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Tesco Chicken breast fillets")).firstMatch.exists, "the scanned food as a chip")
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Fresh Farm Chicken breast fillets")).firstMatch.exists, "the scanned food as a chip")
         let example = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "and 25 g protein:")).firstMatch
         XCTAssertTrue(example.exists, "an example of how to ask, with the meal's own numbers")
         let a = XCTAttachment(screenshot: app.screenshot()); a.name = "plan-chat"; a.lifetime = .keepAlways; add(a)
@@ -57,7 +57,7 @@ final class TourUITests: XCTestCase {
         let before = XCTAttachment(screenshot: app.screenshot()); before.name = "recipe-before"; before.lifetime = .keepAlways; add(before)
         menu.tap()
         app.buttons["Swap for my own"].tap()
-        let pick = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Tesco Chicken breast fillets")).firstMatch
+        let pick = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Fresh Farm Chicken breast fillets")).firstMatch
         XCTAssertTrue(pick.waitForExistence(timeout: 3))
         pick.tap()
         XCTAssertTrue(app.staticTexts["YOURS"].waitForExistence(timeout: 3))
