@@ -202,7 +202,7 @@ struct BadgeCoin: View {
             .grayscale(got ? 0 : 1).opacity(got ? 1 : 0.4)
         }
         .frame(width: size, height: size)
-        .shadow(color: got ? Color(red: 0.66, green: 0.7, blue: 1).opacity(0.35) : .clear, radius: size * 0.16)
+        .shadow(color: got ? Color(red: 0.66, green: 0.7, blue: 1).opacity(0.175) : .clear, radius: size * 0.16)   // the glow, halved (Nov 2026)
         .accessibilityHidden(true)
     }
 }
