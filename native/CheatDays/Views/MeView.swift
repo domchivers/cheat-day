@@ -93,7 +93,7 @@ struct MeView: View {
             ("📖", "Meals", meals == 0 ? "Recipes you save" : "\(meals) saved", AnyView(MealsView())),
             ("🥗", "Food habits", store.habitItems.isEmpty ? "Keep, tweak or swap" : "\(store.habitItems.filter { $0.plan != nil }.count) changes", AnyView(HabitsView())),
             ("🗓️", "History", "Past days", AnyView(HistoryView())),
-            ("🏆", "Badges", "\(store.seenBadges.count) of \(Badge.all.count)", AnyView(GoalsView()))
+            ("🏆", "Badges", "\(store.earnedBadges) of \(Badge.all.count)", AnyView(GoalsView()))
         ]
         if store.isHelper { items.append(("👨‍👩‍👧", "Family", "People you help", AnyView(FamilyView()))) }
         return LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {

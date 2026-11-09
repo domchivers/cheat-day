@@ -211,13 +211,17 @@ struct BadgeCoin: View {
     }
 }
 
-/// A badge in a grid: its coin at the top, two lines kept for the name and one for the count, so a row lines up when a
-/// name wraps or a count shows (the grid centred cells of different heights, and the coins sat at different heights).
+/// A badge in a grid: its coin at the top, then the name with its count straight under it, in a label area of the
+/// same height for every cell, so a row's coins line up (the grid centred cells of different heights) and a count
+/// doesn't sit a line below a one-line name.
 func badgeCell(_ b: Badge, got: Bool, progress: Double = 0, count: String? = nil) -> some View {
     VStack(spacing: 6) {
         BadgeCoin(badge: b, size: 58, got: got, progress: progress)
-        Text(b.name).font(.caption2.weight(.semibold)).lineLimit(2, reservesSpace: true).multilineTextAlignment(.center).foregroundStyle(got ? .primary : .secondary)
-        Text(count ?? " ").font(.caption2).monospacedDigit().foregroundStyle(.tertiary)
+        VStack(spacing: 1) {
+            Text(b.name).font(.caption2.weight(.semibold)).lineLimit(2).multilineTextAlignment(.center).foregroundStyle(got ? .primary : .secondary)
+            if let count { Text(count).font(.caption2).monospacedDigit().foregroundStyle(.tertiary) }
+        }
+        .frame(maxWidth: .infinity, minHeight: 40, alignment: .top)
     }
     .frame(maxWidth: .infinity, alignment: .top)
 }

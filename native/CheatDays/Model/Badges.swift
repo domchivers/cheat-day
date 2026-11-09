@@ -194,6 +194,13 @@ extension Store {
     }
 
     /// Everything the achievements count, like the website's badgeStats.
+    /// How many badges are earned, the same count everywhere: recorded ones and any the stats already reach (the Me
+    /// tile counted only recorded ones and said 0 of 100 while Goals and badges said 18).
+    var earnedBadges: Int {
+        let seen = seenBadges, stats = badgeStats
+        return Badge.all.filter { seen.contains($0.id) || $0.earned(stats) }.count
+    }
+
     var badgeStats: [String: Double] {
         cached("badgeStats") {
             let hist = list(doc["history"]).map { (date: str($0["date"]), f: dayFacts(str($0["date"]))) }
