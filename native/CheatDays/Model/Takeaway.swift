@@ -444,17 +444,31 @@ enum Takeaway {
         return a.isEmpty || ["me", "here", "work", "home", "my place", "the office", "office", "uni", "my work", "my house", "nearby"].contains(a)
     }
 
+    /// "near me", "nearby" or nowhere said: where they are now. ("near work" isn't: they may not be there.)
+    static func here(_ area: String) -> Bool {
+        let a = area.lowercased().trimmingCharacters(in: .whitespaces).replacingOccurrences(of: #"^(near|around|by|close to)\s+"#, with: "", options: .regularExpression)
+        return ["", "me", "here", "nearby"].contains(a)
+    }
+
     /// Places to eat somewhere, found on the web (the menu job's search), each with the one dish that suits what's left.
     @MainActor static func find(area said: String, want: [String], asked: String, kcal: Double?, protein: Double?, store: Store,
                                 step: (@MainActor (String, String) -> Void)?) async -> JSON {
         let d = UserDefaults.standard
-        let area = vague(said) ? (d.string(forKey: "takeaway.area") ?? "") : said.trimmingCharacters(in: .whitespaces)
+        var area = said.trimmingCharacters(in: .whitespaces), located = false
+        if vague(said) {
+            // "near me" or nowhere said: the suburb they're in (location asked for the first time); "near work": the last area
+            if here(said), !Locator.shared.refused {
+                step?("Asked for places near you", "Finding your suburb…")
+                if let s = await Locator.shared.suburb() { area = s; located = true }
+            }
+            if !located { area = d.string(forKey: "takeaway.area") ?? "" }
+        }
         guard !area.isEmpty else {
             return ["kind": "answer", "reply": "Whereabouts? Tell me the suburb or street and I'll find places there.", "whereabouts": ["want": want, "asked": asked] as JSON]
         }
-        d.set(area, forKey: "takeaway.area")
+        if !located { d.set(area, forKey: "takeaway.area") }   // a suburb they typed, for "near work" later
         let a = aim(store, said: asked), k = kcal ?? a.kcal, p = protein ?? a.protein
-        step?("Asked for places in \(area)", "Searching the web for places in \(area)…")
+        step?(located ? "You're in \(area)" : "Asked for places in \(area)", "Searching the web for places in \(area)…")
         let ask: [JSON] = [["text": findAsk(area, want: want, meal: a.meal, kcal: k, protein: p)]]
         guard let r = await Gemini.askClaude("menu", schema: findSchema, parts: ask, extra: ["country": Region.current.code]) else {
             return ["kind": "answer", "reply": "I couldn't search for places just now. Try again in a minute, or name a place and I'll check its menu."]

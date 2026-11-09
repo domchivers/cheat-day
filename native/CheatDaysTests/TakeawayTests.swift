@@ -177,6 +177,9 @@ final class TakeawayTests: XCTestCase {
     func testVagueAreas() {
         for a in ["", "near me", "near work", "here", "home", "around me", "nearby"] { XCTAssertTrue(Takeaway.vague(a), a) }
         for a in ["South Yarra", "Chapel St", "the city", "near Prahran"] { XCTAssertFalse(Takeaway.vague(a), a) }
+        // where they are now (their suburb from the phone) for "near me"; not for "near work", where they may not be
+        for a in ["", "near me", "around me", "nearby", "here"] { XCTAssertTrue(Takeaway.here(a), a) }
+        for a in ["near work", "home", "South Yarra"] { XCTAssertFalse(Takeaway.here(a), a) }
     }
 
     /// A food saved with 100 g as its "serving" shows per 100 g ("379 kcal per serving" was a protein powder's per 100 g).
