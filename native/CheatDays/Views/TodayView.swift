@@ -675,14 +675,16 @@ struct TodayView: View {
         return HStack(spacing: 10) {
             Button { withAnimation(.snappy) { if open { openDishes.remove(d.id) } else { openDishes.insert(d.id) } } } label: {
                 HStack(spacing: 12) {
-                    HStack(spacing: -10) {
-                        ForEach(Array(d.items.prefix(4).enumerated()), id: \.offset) { _, it in
-                            FoodDot(name: str(it["name"]), size: 30).background(Circle().fill(Color(.secondarySystemGroupedBackground)))
+                    // three small icons, so the name keeps room (four at 30 pt wrapped it and its details to three lines)
+                    HStack(spacing: -11) {
+                        ForEach(Array(d.items.prefix(3).enumerated()), id: \.offset) { _, it in
+                            FoodDot(name: str(it["name"]), size: 26).background(Circle().fill(Color(.secondarySystemGroupedBackground)))
                         }
                     }
                     VStack(alignment: .leading, spacing: 2) {
                         Text(d.name).font(.body.weight(.semibold)).lineLimit(2)
                         Text("\(d.items.count) foods" + (p >= 1 ? " · \(Int(p.rounded())) g protein" : "")).font(.footnote).foregroundStyle(.secondary)
+                            .lineLimit(1).minimumScaleFactor(0.85)
                     }
                     Spacer(minLength: 6)
                     Text(Fmt.int(d.kcal)).font(.body.weight(.bold)).monospacedDigit()
