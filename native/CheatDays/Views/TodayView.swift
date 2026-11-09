@@ -698,7 +698,9 @@ struct FoodRow: View {
             FoodDot(name: str(item["name"]), hint: str(item["matched"]))
             VStack(alignment: .leading, spacing: 2) {
                 Text(str(item["name"])).font(.body.weight(.semibold)).lineLimit(2)
-                let detail = FoodMath.amountText(item, kcal: kcal)
+                // a meal added as one from the assistant says what's in it, not "1 portion"
+                let parts = (item["ingredients"] as? [String]) ?? []
+                let detail = parts.count > 1 ? "\(parts.count) ingredients" : FoodMath.amountText(item, kcal: kcal)
                 if !detail.isEmpty { Text(detail).font(.footnote).foregroundStyle(.secondary) }
             }
             Spacer(minLength: 8)

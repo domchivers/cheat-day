@@ -165,8 +165,7 @@ enum Assistant {
 
     static let rules = """
     Decide what they want and fill exactly one of estimate / plan / edit / recipe / lighter (leave the others empty), or kind=answer for a plain question:
-    - estimate: a food or plate to log, as one portion with honest kcal and macros, broken into parts (each component with its cooked grams; oil, butter and the sauces in or on it as separate parts).
-    - plan: 3 to 5 things for the rest of today that fit the calories left, close the protein gap as far as sensible, and leave room for one treat.
+    - estimate: a food or plate to log, as one portion with honest kcal and macros, broken into parts (each component with its cooked grams; oil, butter and the sauces in or on it as separate parts).    - plan: 3 to 5 things for the rest of today that fit the calories left, close the protein gap as far as sensible, and leave room for one treat.
     - edit: they're correcting today's list ("I only had 2 eggs", "remove the toast", "add a banana"), or naming several separate foods at once ("110g cabbage, 170g cucumber": one add each): target is the name of the item on today's list to change or remove; for add and update give the plain food name, its grams and the new kcal and macros. Or logging exercise: action workout with activity (Walk, Run, Cycle, Swim, Gym weights, HIIT, Yoga / stretch, Football, Tennis / padel, Hike, Rowing, Elliptical, Dance, Boxing, Climbing), minutes and effort (easy, moderate, hard).
     - recipe: a dish to cook with realistic ingredient amounts, kcal and macros per ingredient (standard reference values, so they add up), and short method steps. Respect any calorie limit they give.
     - lighter: a lighter way to have something, with tips and the lighter serving's numbers.
@@ -293,6 +292,11 @@ enum Assistant {
         if missingCard(answer) { answer["kind"] = "answer"; answer["reply"] = withoutButtons(str(answer["reply"])) }
         // "Add to lunch": the buttons add to the meal they named, not the one the screen was opened for
         if let m = Meals.named(in: last.text) { answer["meal"] = m }
+        // foods only to add show as a meal card (Add as a meal, or + for one at a time), not Make these changes
+        let acts = CheatDays.list(dict(answer["edit"])["actions"])
+        if str(answer["kind"]) == "edit", acts.count >= 2, acts.allSatisfy({ str($0["action"]) == "add" }) {
+            answer["reply"] = str(answer["reply"]).replacingOccurrences(of: "Make these changes", with: "Add as a meal (or + for one at a time)")
+        }
         if var e = answer["estimate"] as? JSON {
             // logging from a menu page: its energy is the shop's own, not "doesn't publish its numbers"
             if let s = seen, !s.listing.isEmpty { e["shopNote"] = "Energy from the kJ on \(s.shop.isEmpty ? "the menu" : s.shop + "'s") page in your photo" }

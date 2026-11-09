@@ -26,6 +26,8 @@ struct AssistantView: View {
     @State private var stepNow = "Thinking…"
     @State private var changing: PartRef?
     @State private var amount: EditTarget?   // a typed food's How much, from its card
+    @State private var addedFoods: [String: Set<Int>] = [:]   // a meal card's foods put on one at a time
+    @State private var mealNames: [String: String] = [:]   // what a meal card's foods are called, as one
     @State private var openCombo: [UUID: Int] = [:]   // which of a takeaway answer's combos is open
     @State private var cardEdits: [String: CardEdit] = [:]   // what's been changed on each takeaway combo ("turn-combo")
     @FocusState private var typing: Bool
@@ -538,8 +540,86 @@ struct AssistantView: View {
         }
     }
 
-    private func editCard(_ edit: JSON, turn: UUID, meal: String) -> some View {
+    @ViewBuilder private func editCard(_ edit: JSON, turn: UUID, meal: String) -> some View {
         let acts = list(edit["actions"])
+        // only foods to add, two or more (a dinner's ingredients): each can go on by itself, or the lot as one meal
+        if acts.count >= 2, acts.allSatisfy({ str($0["action"]) == "add" }) { mealCard(acts, flags: edit["flags"] as? [String] ?? [], turn: turn, meal: meal) }
+        else { changesCard(edit, acts: acts, turn: turn, meal: meal) }
+    }
+
+    /// Foods to add, as a meal or one at a time: a + on each puts just that one on (it turns into a tick); Add as a meal
+    /// puts the rest on as one food, named as they like (the meal to start), with their totals; Add separately puts each
+    /// on as its own row, as Make these changes did.
+    private func mealCard(_ acts: [JSON], flags: [String], turn: UUID, meal: String) -> some View {
+        let key = turn.uuidString, gone = addedFoods[key] ?? [], all = done[turn, default: ""].contains("|meal")
+        let left = acts.indices.filter { !gone.contains($0) && !all }
+        let k = left.reduce(0.0) { $0 + (num(acts[$1]["kcal"]) ?? 0) }, p = left.reduce(0.0) { $0 + (num(acts[$1]["protein_g"]) ?? 0) }
+        return panel {
+            ForEach(acts.indices, id: \.self) { i in
+                let a = acts[i], on = gone.contains(i) || all
+                HStack(spacing: 11) {
+                    FoodDot(name: str(a["name"]), size: 30)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(str(a["name"])).font(.subheadline.weight(.semibold))
+                        Text("\(Fmt.int(num(a["kcal"]) ?? 0)) kcal · P \(Int(num(a["protein_g"]) ?? 0))g · C \(Int(num(a["carbs_g"]) ?? 0))g · F \(Int(num(a["fat_g"]) ?? 0))g")
+                            .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 6)
+                    Button {
+                        store.add(Self.food(a), kcal: num(a["kcal"]) ?? 0, meal: meal)
+                        withAnimation(.snappy) { addedFoods[key, default: []].insert(i) }
+                    } label: {
+                        Image(systemName: on ? "checkmark" : "plus").font(.system(size: 17, weight: .bold)).foregroundStyle(on ? Color.black : Theme.onAccent)
+                            .frame(width: 36, height: 36).background(on ? AnyShapeStyle(Theme.walk) : Theme.accentFill, in: Circle())
+                    }
+                    .buttonStyle(.plain).disabled(on)
+                    .accessibilityLabel(on ? "\(str(a["name"])) added" : "Add \(str(a["name"])) on its own")
+                }
+            }
+            flagList(flags)
+            if !left.isEmpty {
+                HStack(spacing: 8) {
+                    Text("Name").foregroundStyle(.secondary)
+                    TextField(meal, text: Binding(get: { mealNames[key] ?? "" }, set: { mealNames[key] = $0 })).submitLabel(.done)
+                }
+                .font(.subheadline).padding(.horizontal, 12).padding(.vertical, 9)
+                .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                (Text(gone.isEmpty ? "" : "The other \(left.count): ").foregroundStyle(.secondary) + Text("\(Fmt.int(k)) kcal").bold() + Text(" · \(Int(p.rounded())) g protein").foregroundStyle(.secondary))
+                    .font(.footnote)
+                HStack(spacing: 8) {
+                    Button {
+                        let name = (mealNames[key] ?? "").trimmingCharacters(in: .whitespaces)
+                        store.add(Self.meal(left.map { acts[$0] }, name: name.isEmpty ? meal : name), kcal: k, meal: meal)
+                        withAnimation(.snappy) { done[turn, default: ""] += "|meal" }
+                    } label: { Label("Add as a meal", systemImage: "plus.circle.fill").font(.subheadline.weight(.bold)) }
+                    .buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(.small).foregroundStyle(Theme.onAccent)
+                    Button {
+                        let ids = left.map { store.add(Self.food(acts[$0]), kcal: num(acts[$0]["kcal"]) ?? 0, meal: meal) }
+                        if ids.count > 1 { store.undo = Store.Undo(ids: ids, label: "Added \(ids.count) foods", at: Date()) }
+                        withAnimation(.snappy) { done[turn, default: ""] += "|meal" }
+                    } label: { Text("Add separately").font(.subheadline.weight(.bold)) }
+                    .buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.small)
+                }
+            } else {
+                Label("All added", systemImage: "checkmark.circle.fill").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.walk)
+            }
+        }
+    }
+
+    /// One food to add, as an edit card describes it.
+    private static func food(_ a: JSON) -> JSON {
+        Assistant.basis(name: str(a["name"]), kcal: num(a["kcal"]) ?? 0, grams: nil, p: num(a["protein_g"]) ?? 0, c: num(a["carbs_g"]) ?? 0, f: num(a["fat_g"]) ?? 0)
+    }
+
+    /// Several foods as one: their totals under one name, and the foods named on it ("8 ingredients" on Today).
+    private static func meal(_ acts: [JSON], name: String) -> JSON {
+        func sum(_ k: String) -> Double { acts.reduce(0) { $0 + (num($1[k]) ?? 0) } }
+        var b = Assistant.basis(name: name, kcal: sum("kcal"), grams: nil, p: sum("protein_g"), c: sum("carbs_g"), f: sum("fat_g"))
+        b["ingredients"] = acts.map { str($0["name"]) }
+        return b
+    }
+
+    private func changesCard(_ edit: JSON, acts: [JSON], turn: UUID, meal: String) -> some View {
         return panel {
             ForEach(keyed(acts)) { entry in
                 let a = entry.item
