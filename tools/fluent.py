@@ -18,12 +18,18 @@ s = io.open(THEME, encoding="utf-8").read()
 part = s[s.index("enum FoodEmoji"):s.index("static func `for`")]
 # the food table's emoji, plus the ones the app uses elsewhere (Me page tiles, settings)
 EXTRA = ["🔥", "🎯", "📈", "📖", "🗓️", "🏆", "👨‍👩‍👧", "⚙️", "🔔", "👥", "✨", "🏡", "💾", "🔑", "📸", "💪", "👋", "🍽️", "⚖️"]
-emojis = list(dict.fromkeys(re.findall(r'\("([^"]+)", \[', part) + EXTRA))
+# and every badge's icon (Badges.swift: B("id", "Group", "stat", "🌱", …)), so the badges match the food icons
+badges = io.open(os.path.join(ROOT, "native", "CheatDays", "Model", "Badges.swift"), encoding="utf-8").read()
+BADGES = re.findall(r'B\("[^"]*", "[^"]*", "[^"]*", "([^"]+)"', badges)
+emojis = list(dict.fromkeys(re.findall(r'\("([^"]+)", \[', part) + EXTRA + BADGES))
 
 tree = json.loads(get("https://api.github.com/repos/microsoft/fluentui-emoji/git/trees/main?recursive=1"))["tree"]
 paths = [t["path"] for t in tree]
 metas = [p for p in paths if p.startswith("assets/") and p.endswith("/metadata.json") and p.count("/") == 2]
 flats = {p.split("/")[1]: p for p in paths if re.match(r"assets/[^/]+/Flat/[^/]+_flat\.svg$", p)}
+# people and hands (💪 🏃 👩‍🍳) come in skin tones: their default yellow one
+for p in paths:
+    if re.match(r"assets/[^/]+/Default/Flat/[^/]+_flat_default\.svg$", p): flats.setdefault(p.split("/")[1], p)
 
 # which folder holds which emoji: read each folder's metadata (unicode field), only for folders with a flat svg
 want = {code(e): e for e in emojis}
