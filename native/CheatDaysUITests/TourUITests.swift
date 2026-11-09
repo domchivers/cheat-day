@@ -22,7 +22,7 @@ final class TourUITests: XCTestCase {
     }
 
     /// The planner as a chat: what the meal should come to and an example of how to ask (25 g protein with no goal),
-    /// the scanned food as a chip, ＋ for a barcode or a label, and the example put in the box with a tap.
+    /// the cooking time as one button, the scanned food as a chip, and ＋ for a barcode or a label.
     func testPlanChat() {
         let app = XCUIApplication()
         app.launchArguments = ["-uitest-plan"]
@@ -31,8 +31,7 @@ final class TourUITests: XCTestCase {
         XCTAssertTrue(intro.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Fresh Farm Chicken breast fillets")).firstMatch.exists, "the scanned food as a chip")
         XCTAssertTrue(intro.label.contains("25 g protein"), "the meal's own numbers, 25 g with no goal")
-        let example = app.buttons.containing(NSPredicate(format: "label CONTAINS %@", "Something high protein")).firstMatch
-        XCTAssertTrue(example.exists, "an example of how to ask, with its Use button")
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Something high protein")).firstMatch.exists, "an example of how to ask")
         XCTAssertTrue(app.buttons["Cooking: Quick, 15 min"].exists, "how much cooking, as one button")
         let a = XCTAttachment(screenshot: app.screenshot()); a.name = "plan-chat"; a.lifetime = .keepAlways; add(a)
 
@@ -42,12 +41,6 @@ final class TourUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Photo of a label"].exists)
         let b = XCTAttachment(screenshot: app.screenshot()); b.name = "plan-add"; b.lifetime = .keepAlways; add(b)
         intro.tap()   // away from the menu: closes it
-
-        // the example goes into the box with a tap
-        if example.waitForExistence(timeout: 2) { example.tap() }
-        let box = app.textFields.containing(NSPredicate(format: "value BEGINSWITH %@", "Something")).firstMatch
-        XCTAssertTrue(box.waitForExistence(timeout: 3) || app.textViews.containing(NSPredicate(format: "value BEGINSWITH %@", "Something")).firstMatch.exists, "the example is in the box")
-        let c = XCTAttachment(screenshot: app.screenshot()); c.name = "plan-example"; c.lifetime = .keepAlways; add(c)
     }
 
     func testRecipeSwap() {

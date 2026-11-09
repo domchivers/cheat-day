@@ -147,27 +147,16 @@ struct MealPlannerView: View {
         let t = store.mealTarget(meal)
         bubble(VStack(alignment: .leading, spacing: 8) {
             (Text("\(meal): about \(Fmt.int(t.kcal)) kcal and \(Int(proteinShare)) g protein").bold() + Text(" (\(Fmt.int(left)) left today). What do you fancy?"))
-            Text("Try:").foregroundStyle(.secondary)
-            // one at a time, fading to the next every 4 seconds; all laid out at once so the box keeps the tallest one's
-            // height. A Use button, not dots: dots looked like a swipe, and a tap put it in the box instead
+            // just an example to read, one at a time, fading to the next every 4 seconds (no dots, which looked like a
+            // swipe, and no tap to use it); all laid out at once so the bubble keeps the tallest one's height
             let all = examples, at = exampleAt % all.count
-            Button { text = all[at]; typing = true } label: {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    ZStack(alignment: .topLeading) {
-                        ForEach(all.indices, id: \.self) { i in
-                            Text("“\(all[i])”").italic().multilineTextAlignment(.leading).foregroundStyle(Theme.accent)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .opacity(i == at ? 1 : 0).accessibilityHidden(i != at)
-                        }
-                    }
-                    Text("Use").font(.caption.weight(.bold)).foregroundStyle(Theme.accent)
-                        .padding(.horizontal, 9).padding(.vertical, 4).background(Theme.accent.opacity(0.16), in: Capsule())
+            ZStack(alignment: .topLeading) {
+                ForEach(all.indices, id: \.self) { i in
+                    Text("For example: “\(all[i])”").italic().multilineTextAlignment(.leading).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .opacity(i == at ? 1 : 0).accessibilityHidden(i != at)
                 }
-                .padding(10)
-                .background(Theme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.accent.opacity(0.25)))
             }
-            .buttonStyle(.plain).accessibilityHint("Puts the example in the box")
             // how much cooking: one small button, its three choices in a menu
             Menu {
                 Picker("Cooking", selection: $cooking) { ForEach(Self.cookChoices, id: \.self) { Text($0).tag($0) } }
@@ -178,7 +167,7 @@ struct MealPlannerView: View {
             }
             .accessibilityLabel("Cooking: \(cooking)")
         })
-        // they've started typing or asking: the example stays put (and still for the planner's UI test, which taps it)
+        // they've started typing or asking: the example stays put (and still for the planner's UI test, which reads it)
         .task(id: meal) {
             guard !ProcessInfo.processInfo.arguments.contains("-uitest-plan") else { return }
             while !Task.isCancelled {
