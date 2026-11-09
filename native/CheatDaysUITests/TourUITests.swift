@@ -138,6 +138,27 @@ final class TourUITests: XCTestCase {
         let b = XCTAttachment(screenshot: app.screenshot()); b.name = "ranks-screen"; b.lifetime = .keepAlways; add(b)
     }
 
+    /// Goals and badges: the week as tiles, the streak and rank, and all the badges as coins.
+    func testGoalsAndBadges() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-uitest-ranks"]
+        app.launch()
+        XCTAssertTrue(app.buttons["Open goals"].waitForExistence(timeout: 5))
+        app.buttons["Open goals"].tap()
+        XCTAssertTrue(app.buttons["Change targets"].waitForExistence(timeout: 4), "targets behind one button")
+        let a = XCTAttachment(screenshot: app.screenshot()); a.name = "goals-screen"; a.lifetime = .keepAlways; add(a)
+        app.buttons["Change targets"].tap()
+        XCTAssertTrue(app.staticTexts["Weekly targets"].waitForExistence(timeout: 3))
+        let b = XCTAttachment(screenshot: app.screenshot()); b.name = "goals-targets"; b.lifetime = .keepAlways; add(b)
+        app.buttons["Done"].tap()
+        let all = app.buttons.containing(NSPredicate(format: "label BEGINSWITH %@", "All badges")).firstMatch
+        if !all.waitForExistence(timeout: 3) { app.swipeUp() }
+        XCTAssertTrue(all.waitForExistence(timeout: 3), "all badges a tap away")
+        all.tap()
+        XCTAssertTrue(app.navigationBars["Badges"].waitForExistence(timeout: 3))
+        let c = XCTAttachment(screenshot: app.screenshot()); c.name = "all-badges"; c.lifetime = .keepAlways; add(c)
+    }
+
     func testMealCheck() {
         let app = XCUIApplication()
         app.launchArguments = ["-uitest-mealcheck"]

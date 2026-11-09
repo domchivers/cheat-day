@@ -47,11 +47,10 @@ struct GoalsView: View {
                     ForEach(next, id: \.badge.id) { n in
                         Button { shown = n.badge } label: {
                             HStack(spacing: 13) {
-                                FluentIcon(emoji: n.badge.icon, size: 40).grayscale(1).opacity(0.45)
+                                BadgeCoin(badge: n.badge, size: 46, got: false, progress: n.now / n.badge.target)
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(n.badge.name).font(.body.weight(.semibold))
                                     Text("\(n.badge.how) · \(Fmt.int(max(0, n.badge.target - n.now))) left").font(.footnote).foregroundStyle(.secondary)
-                                    bar(n.now / n.badge.target)
                                 }
                             }
                             .padding(.vertical, 2).contentShape(Rectangle())
@@ -173,12 +172,46 @@ struct GoalsView: View {
     }
 }
 
-/// A badge in a grid: its Fluent icon, in colour once earned and grey until then, with its name.
-func badgeCell(_ b: Badge, got: Bool, progress: String? = nil) -> some View {
+/// A badge as a coin: its picture on navy, rimmed bronze, silver or gold by how hard it is (its XP: 25–50, 100–200,
+/// 400 and up). One not earned yet is grey, with a blue ring for how close it is. The picture is the badge's own art
+/// (design/badge-art, drawn in the food icons' Fluent style) once it's in, and its Fluent icon until then.
+struct BadgeCoin: View {
+    let badge: Badge
+    var size: CGFloat = 58
+    var got = true
+    var progress: Double = 0
+    private var rim: [Color] {
+        let hex = { (v: Int) in Color(red: Double(v >> 16 & 255) / 255, green: Double(v >> 8 & 255) / 255, blue: Double(v & 255) / 255) }
+        return badge.xp >= 400 ? [hex(0xFFF0B8), hex(0xF2B94A), hex(0x8A5A12)] : badge.xp >= 100 ? [hex(0xFFFFFF), hex(0xB7C3D3), hex(0x5D6A7C)] : [hex(0xF3C29A), hex(0xB9733F), hex(0x6B3D1C)]
+    }
+    var body: some View {
+        ZStack {
+            Circle().fill(got ? AnyShapeStyle(LinearGradient(colors: rim, startPoint: .top, endPoint: .bottom)) : AnyShapeStyle(Color(white: 0.17)))
+            Circle().fill(RadialGradient(colors: got ? [Color(red: 0.14, green: 0.2, blue: 0.29), Color(red: 0.06, green: 0.09, blue: 0.14)] : [Color(white: 0.14), Color(white: 0.09)],
+                                         center: UnitPoint(x: 0.5, y: 0.3), startRadius: 0, endRadius: size * 0.55))
+                .padding(size * 0.075)
+            if !got && progress > 0 {
+                Circle().trim(from: 0, to: min(1, progress)).stroke(Theme.accent, style: StrokeStyle(lineWidth: max(2, size * 0.05), lineCap: .round))
+                    .rotationEffect(.degrees(-90)).padding(size * 0.025)
+            }
+            Group {
+                if let art = UIImage(named: "badge-\(badge.id)") { Image(uiImage: art).resizable().scaledToFit() }
+                else { FluentIcon(emoji: badge.icon, size: size * 0.52) }
+            }
+            .frame(width: size * 0.56, height: size * 0.56)
+            .grayscale(got ? 0 : 1).opacity(got ? 1 : 0.4)
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
+    }
+}
+
+/// A badge in a grid: its coin, with its name.
+func badgeCell(_ b: Badge, got: Bool, progress: Double = 0, count: String? = nil) -> some View {
     VStack(spacing: 5) {
-        FluentIcon(emoji: b.icon, size: 46).grayscale(got ? 0 : 1).opacity(got ? 1 : 0.4)
+        BadgeCoin(badge: b, size: 58, got: got, progress: progress)
         Text(b.name).font(.caption2.weight(.semibold)).lineLimit(2).multilineTextAlignment(.center).foregroundStyle(got ? .primary : .secondary)
-        if let progress { Text(progress).font(.caption2).monospacedDigit().foregroundStyle(.tertiary) }
+        if let count { Text(count).font(.caption2).monospacedDigit().foregroundStyle(.tertiary) }
     }
     .frame(maxWidth: .infinity)
 }
@@ -197,7 +230,9 @@ struct AllBadgesView: View {
                         ForEach(all) { b in
                             let got = seen.contains(b.id) || b.earned(stats)
                             Button { shown = b } label: {
-                                badgeCell(b, got: got, progress: !got && b.target > 1 ? "\(Fmt.int(min(stats[b.stat] ?? 0, b.target)))/\(Fmt.int(b.target))" : nil)
+                                let now = min(stats[b.stat] ?? 0, b.target)
+                                badgeCell(b, got: got, progress: b.target > 1 ? now / b.target : 0,
+                                          count: !got && b.target > 1 ? "\(Fmt.int(now))/\(Fmt.int(b.target))" : nil)
                             }
                             .buttonStyle(.plain)
                         }
@@ -218,7 +253,7 @@ struct BadgeSheet: View {
     let badge: Badge, stats: [String: Double], got: Bool
     var body: some View {
         VStack(spacing: 12) {
-            FluentIcon(emoji: badge.icon, size: 96).grayscale(got ? 0 : 1).opacity(got ? 1 : 0.45).padding(.top, 28)
+            BadgeCoin(badge: badge, size: 112, got: got, progress: badge.target > 1 ? min(stats[badge.stat] ?? 0, badge.target) / badge.target : 0).padding(.top, 28)
             Text(badge.name).font(.title2.bold())
             Text(badge.how).foregroundStyle(.secondary)
             if got { Label("Earned · +\(badge.xp) XP", systemImage: "checkmark.seal.fill").font(.headline).foregroundStyle(Theme.walk) }

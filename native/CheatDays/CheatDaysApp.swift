@@ -199,7 +199,7 @@ private struct ReviewHarness: View {
 
 /// For the ranks screenshot only: every tier's badge with its steps, then the Ranks screen.
 private struct RanksHarness: View {
-    @State private var open = false
+    @State private var open = false, goals = false
     var body: some View {
         VStack(spacing: 18) {
             ForEach(0..<2, id: \.self) { row in
@@ -211,10 +211,17 @@ private struct RanksHarness: View {
                 }
             }
             HStack(spacing: 10) { ForEach(0..<6, id: \.self) { t in RankBadge(rank: Rank.first(ofTier: t), size: 16) } }
+            // badge coins: bronze, silver and gold earned, and one on its way
+            HStack(spacing: 14) {
+                ForEach(["first", "streak30", "streak365"], id: \.self) { id in if let b = Badge.all.first(where: { $0.id == id }) { BadgeCoin(badge: b, size: 58) } }
+                if let b = Badge.all.first(where: { $0.id == "days100" }) { BadgeCoin(badge: b, size: 58, got: false, progress: 0.53) }
+            }
             Button("Open ranks") { open = true }
+            Button("Open goals") { goals = true }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity).background(Theme.bg)
         .sheet(isPresented: $open) { RanksView() }
+        .sheet(isPresented: $goals) { NavigationStack { GoalsView() } }
     }
 }
 
