@@ -17,7 +17,7 @@ struct MeView: View {
                 VStack(spacing: 14) {
                     header
                     card(Theme.hero) { goalCard }
-                    if let c = adjustment { card(Color(red: 0.13, green: 0.11, blue: 0.07)) { adjustCard(c) } }
+                    if let c = adjustment { card(Palette.both(0xFBF1E1, 0x211C12)) { adjustCard(c) } }
                     card { weekCard }
                     tiles
                 }

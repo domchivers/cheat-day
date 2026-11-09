@@ -185,8 +185,8 @@ struct BadgeCoin: View {
     private var dots: Int { badge.xp >= 400 ? 4 : badge.xp >= 200 ? 3 : badge.xp >= 100 ? 2 : 1 }
     var body: some View {
         ZStack {
-            Circle().fill(got ? AnyShapeStyle(LinearGradient(colors: Self.rim, startPoint: .topLeading, endPoint: .bottomTrailing)) : AnyShapeStyle(Color(white: 0.17)))
-            Circle().fill(RadialGradient(colors: got ? [Color(red: 0.17, green: 0.18, blue: 0.37), Color(red: 0.04, green: 0.07, blue: 0.13)] : [Color(white: 0.14), Color(white: 0.09)],
+            Circle().fill(got ? AnyShapeStyle(LinearGradient(colors: Self.rim, startPoint: .topLeading, endPoint: .bottomTrailing)) : AnyShapeStyle(Palette.both(0xD9DDE3, 0x2B2B2B)))
+            Circle().fill(RadialGradient(colors: got ? [Color(red: 0.17, green: 0.18, blue: 0.37), Color(red: 0.04, green: 0.07, blue: 0.13)] : [Palette.both(0xF1F3F6, 0x242424), Palette.both(0xE4E7EC, 0x171717)],
                                          center: UnitPoint(x: 0.5, y: 0.28), startRadius: 0, endRadius: size * 0.6))
                 .padding(size * 0.08)
             if got {

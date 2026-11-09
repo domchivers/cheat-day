@@ -188,8 +188,8 @@ struct BodyView: View {
             ForEach(pts) { p in
                 PointMark(x: .value("Day", p.date), y: .value(m.name, p.value))
                     .symbol {
-                        if p.odd { Circle().strokeBorder(Color.white.opacity(0.6), lineWidth: 1.5).frame(width: 9, height: 9) }
-                        else { Circle().fill(Color.white.opacity(0.32)).frame(width: 6, height: 6) }
+                        if p.odd { Circle().strokeBorder(Color.primary.opacity(0.6), lineWidth: 1.5).frame(width: 9, height: 9) }
+                        else { Circle().fill(Color.primary.opacity(0.32)).frame(width: 6, height: 6) }
                     }
             }
             if let goal {
@@ -210,7 +210,7 @@ struct BodyView: View {
                     }
             }
             if let sel {
-                RuleMark(x: .value("Picked", sel.date)).foregroundStyle(Color.white.opacity(0.3)).lineStyle(StrokeStyle(lineWidth: 1))
+                RuleMark(x: .value("Picked", sel.date)).foregroundStyle(Color.primary.opacity(0.3)).lineStyle(StrokeStyle(lineWidth: 1))
                 PointMark(x: .value("Day", sel.date), y: .value(m.name, sel.value)).foregroundStyle(Theme.accent).symbolSize(90)
             }
         }

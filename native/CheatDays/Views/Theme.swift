@@ -11,9 +11,9 @@ struct Palette: Identifiable {
     var onAccent: Color = .white
     /// The Gradient theme's blue to violet (the app icon's): on the Left to eat panel and the +, the accent its middle.
     var gradient: [Color]? = nil
-    /// The Left to eat panel: the gradient's dark version, or the plain panel colour.
+    /// The Left to eat panel: the gradient's dark (or, in light mode, pale) version, or the plain panel colour.
     var heroFill: AnyShapeStyle {
-        gradient == nil ? AnyShapeStyle(hero) : AnyShapeStyle(LinearGradient(colors: [Self.hex(0x13233B), Self.hex(0x1D1D3F)], startPoint: .topLeading, endPoint: .bottomTrailing))
+        gradient == nil ? AnyShapeStyle(hero) : AnyShapeStyle(LinearGradient(colors: [Self.both(0xE4F0FD, 0x13233B), Self.both(0xEEF0FD, 0x1D1D3F)], startPoint: .topLeading, endPoint: .bottomTrailing))
     }
     /// The + and the swatch in Settings: the gradient, or the accent.
     var accentFill: AnyShapeStyle {
@@ -21,8 +21,39 @@ struct Palette: Identifiable {
     }
 
     private static func hex(_ v: Int) -> Color { Color(red: Double(v >> 16 & 255) / 255, green: Double(v >> 8 & 255) / 255, blue: Double(v & 255) / 255) }
+    private static func ui(_ v: Int) -> UIColor { UIColor(red: CGFloat(v >> 16 & 255) / 255, green: CGFloat(v >> 8 & 255) / 255, blue: CGFloat(v & 255) / 255, alpha: 1) }
+    /// One colour for light mode and another for dark, following whichever is on.
+    static func both(_ light: UIColor, _ dark: UIColor) -> Color { Color(uiColor: UIColor { $0.userInterfaceStyle == .light ? light : dark }) }
+    static func both(_ light: Int, _ dark: Int) -> Color { both(ui(light), ui(dark)) }
+    /// The same hue, more saturated and darker: a pastel accent that reads on white.
+    private static func deeper(_ c: UIColor, saturation s: CGFloat = 1.35, brightness b: CGFloat = 0.78) -> UIColor {
+        var h: CGFloat = 0, sa: CGFloat = 0, br: CGFloat = 0, a: CGFloat = 0
+        c.getHue(&h, saturation: &sa, brightness: &br, alpha: &a)
+        return UIColor(hue: h, saturation: min(1, sa * s + 0.15), brightness: br * b, alpha: a)
+    }
+    /// A little of the colour over a pale base: the light-mode panel and bar track.
+    private static func tint(_ c: UIColor, _ amount: CGFloat, over base: UIColor) -> UIColor {
+        var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0, r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
+        c.getRed(&r1, green: &g1, blue: &b1, alpha: &a1); base.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+        return UIColor(red: r2 + (r1 - r2) * amount, green: g2 + (g1 - g2) * amount, blue: b2 + (b1 - b2) * amount, alpha: 1)
+    }
+    /// Each colour as its dark-mode self and a light-mode one worked out from it: the accent deeper so links and
+    /// buttons read on white (with white text on them), the panel and track a pale tint of the accent, dinner deeper.
+    private var forBothModes: Palette {
+        let a = UIColor(accent), white = UIColor.white
+        return Palette(id: id, name: name,
+                       accent: Self.both(Self.deeper(a), a),
+                       hero: Self.both(Self.tint(a, 0.13, over: white), UIColor(hero)),
+                       heroLabel: Self.both(Self.deeper(a, saturation: 1.3, brightness: 0.55), UIColor(heroLabel)),
+                       track: Self.both(Self.tint(a, 0.22, over: UIColor(white: 0.9, alpha: 1)), UIColor(track)),
+                       dinner: Self.both(Self.deeper(UIColor(dinner), saturation: 1.2, brightness: 0.88), UIColor(dinner)),
+                       snacks: snacks, onAccent: Self.both(white, UIColor(onAccent)),
+                       gradient: gradient.map { g in g.map { Self.both(Self.deeper(UIColor($0), saturation: 1.25, brightness: 0.92), UIColor($0)) } })
+    }
     /// Classic blue first: it's what everyone has until they pick another.
-    static let all: [Palette] = [
+    static let all: [Palette] = night.map(\.forBothModes)
+    /// The colours as they're picked, for the dark look.
+    private static let night: [Palette] = [
         Palette(id: "classic", name: "Classic blue", accent: Color(red: 0.49, green: 0.77, blue: 1.0), hero: Color(red: 0.06, green: 0.10, blue: 0.15),
                 heroLabel: Color(red: 0.56, green: 0.73, blue: 0.87), track: Color(red: 0.11, green: 0.17, blue: 0.23), dinner: Color(red: 0.49, green: 0.77, blue: 1.0), onAccent: .black),
         // the app icon's blue to violet
@@ -54,21 +85,29 @@ final class ThemeChoice {
     private init() { id = UserDefaults.standard.string(forKey: Palette.key) ?? "classic" }
 }
 
+/// Dark (as the app has always been), light, or whichever the phone is set to; picked with the colour in Settings.
+enum Appearance {
+    static let key = "appearance"
+    static let choices: [(id: String, name: String)] = [("dark", "Dark"), ("light", "Light"), ("system", "Match phone")]
+    static func scheme(_ id: String) -> ColorScheme? { id == "light" ? .light : id == "system" ? nil : .dark }
+}
+
 /// The look from the prototype: near-black, one accent colour (yours to pick), rounded type.
 enum Theme {
     static var accent: Color { Palette.current.accent }
     /// Text and icons on an accent-coloured button.
     static var onAccent: Color { Palette.current.onAccent }
-    static let bg = Color(red: 0.027, green: 0.035, blue: 0.047)
+    static let bg = Color(uiColor: uiBackground)
     static var hero: Color { Palette.current.hero }
     /// The Left to eat panel and the +: the Gradient theme's gradient, else the plain colours.
     static var heroFill: AnyShapeStyle { Palette.current.heroFill }
     static var accentFill: AnyShapeStyle { Palette.current.accentFill }
     static var heroLabel: Color { Palette.current.heroLabel }
     static var track: Color { Palette.current.track }
-    static let warn = Color(red: 0.95, green: 0.71, blue: 0.36)
+    // deeper in light mode, so they read on white
+    static let warn = Palette.both(0xC27A12, 0xF2B55C)
     /// Walking, beside workouts but not one of them.
-    static let walk = Color(red: 0.36, green: 0.82, blue: 0.56)
+    static let walk = Palette.both(0x1F9A57, 0x5CD18F)
     /// Each meal's colour in the calorie bar.
     static func meal(_ meal: String) -> Color {
         switch meal {
@@ -78,7 +117,8 @@ enum Theme {
         default: return Palette.current.snacks ?? Color(red: 0.93, green: 0.55, blue: 0.70)
         }
     }
-    static let uiBackground = UIColor(red: 0.027, green: 0.035, blue: 0.047, alpha: 1)
+    /// Near-black, or a soft grey-white in light mode.
+    static let uiBackground = UIColor { $0.userInterfaceStyle == .light ? UIColor(red: 0.953, green: 0.961, blue: 0.976, alpha: 1) : UIColor(red: 0.027, green: 0.035, blue: 0.047, alpha: 1) }
 
     static func tone(_ name: String) -> (bg: Color, fg: Color) {
         switch toneKey(name) {

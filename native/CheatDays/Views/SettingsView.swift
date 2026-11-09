@@ -19,6 +19,7 @@ struct SettingsView: View {
     private var store: Store { Store.shared }
     private let order = [1, 2, 3, 4, 5, 6, 0]
     @AppStorage("dailyTips") private var dailyTips = true
+    @AppStorage(Appearance.key) private var appearance = "dark"
 
     var body: some View {
         let helpers = Family.shared.helpers.count
@@ -116,6 +117,10 @@ struct SettingsView: View {
     /// The app's colour: a preview of Left to eat, then every colour to pick from. Changes straight away.
     @ViewBuilder private var colourPage: some View {
         let p = Palette.current
+        Section {
+            Picker("Look", selection: $appearance) { ForEach(Appearance.choices, id: \.id) { Text($0.name).tag($0.id) } }
+                .pickerStyle(.segmented).listRowBackground(Color.clear).listRowInsets(EdgeInsets())
+        }
         Section {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {

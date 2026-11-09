@@ -424,7 +424,7 @@ struct TodayView: View {
                             }
                         }
                         if eaten > budget, budget > 0 {
-                            Rectangle().fill(.white).frame(width: 2).offset(x: g.size.width * budget / scale - 1)
+                            Rectangle().fill(Color.primary).frame(width: 2).offset(x: g.size.width * budget / scale - 1)
                         }
                     }
                 }

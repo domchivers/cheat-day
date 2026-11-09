@@ -11,6 +11,7 @@ enum AppConfig {
 struct CheatDaysApp: App {
     @UIApplicationDelegateAdaptor(PushDelegate.self) private var pushDelegate
     @AppStorage(Palette.key) private var theme = "classic"   // the colour picked in Settings, so the tint follows it
+    @AppStorage(Appearance.key) private var appearance = "dark"   // dark as it's always been, until light or the phone's is picked
     init() {
         KeyboardDone.install()
         // no scroll bars down the side of the screens; the assistant's chat keeps its own (a long conversation needs one)
@@ -20,7 +21,7 @@ struct CheatDaysApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
-                .preferredColorScheme(.dark)
+                .preferredColorScheme(Appearance.scheme(appearance))
                 .fontDesign(.rounded)
                 .tint(Palette.named(theme).accent)
         }
