@@ -175,7 +175,7 @@ final class TourUITests: XCTestCase {
         XCTAssertFalse(hint.waitForExistence(timeout: 1))
     }
 
-    /// The takeaway card the owner checks: just Gami with a shake offered, a combo with ✕ and ⇄, and the estimate card with icons.
+    /// The takeaway card the owner checks: just one restaurant with a shake offered, a combo with ✕ and ⇄, and the estimate card with icons.
     func testTakeawayCards() {
         let app = XCUIApplication()
         app.launchArguments = ["-uitest-takeaway"]
@@ -183,7 +183,7 @@ final class TourUITests: XCTestCase {
         let off = app.buttons.containing(NSPredicate(format: "label BEGINSWITH %@", "Take off")).firstMatch
         XCTAssertTrue(off.waitForExistence(timeout: 8), "the ✕ on a line")
         XCTAssertTrue(app.buttons.containing(NSPredicate(format: "label BEGINSWITH %@", "Swap")).firstMatch.exists, "the ⇄ on the dish")
-        XCTAssertFalse(app.staticTexts["LOW PROTEIN AT GAMI"].exists)
+        XCTAssertFalse(app.staticTexts["LOW PROTEIN AT SEOUL CHICKEN PRAHRAN"].exists)
         let a = XCTAttachment(screenshot: app.screenshot()); a.name = "takeaway-lunch"; a.lifetime = .keepAlways; add(a)
         app.swipeUp()
         let b = XCTAttachment(screenshot: app.screenshot()); b.name = "takeaway-dinner"; b.lifetime = .keepAlways; add(b)
@@ -195,7 +195,7 @@ final class TourUITests: XCTestCase {
         let d = XCTAttachment(screenshot: app.screenshot()); d.name = "estimate-icons"; d.lifetime = .keepAlways; add(d)
         // places found in South Yarra, each a button that plans it (not tapped: that searches the web)
         app.swipeUp()
-        XCTAssertTrue(app.buttons["Plan Zeus Street Greek"].waitForExistence(timeout: 3), "a found place to tap")
+        XCTAssertTrue(app.buttons["Plan Olive Street Greek"].waitForExistence(timeout: 3), "a found place to tap")
         let e = XCTAttachment(screenshot: app.screenshot()); e.name = "takeaway-places"; e.lifetime = .keepAlways; add(e)
     }
 }

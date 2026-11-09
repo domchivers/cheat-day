@@ -88,6 +88,17 @@ struct MealPlannerView: View {
         return "About \(Fmt.int(t.kcal)) kcal and \(Int(proteinShare)) g protein: \(list), \(style), \(time)."
     }
 
+    /// The examples the intro fades between: a recipe from their foods, a takeaway from a restaurant they've asked the
+    /// planner about (none named by the app itself), and places near them.
+    private var examples: [String] {
+        let m = meal.lowercased()
+        return [example] + (Takeaway.recent().map { ["\($0) for \(m), what should I get?"] } ?? []) + ["Any healthy \(m) spots near me?"]
+    }
+    @State private var exampleAt = 0
+    /// A takeaway or places question sent here: the Assistant answers it, where its cards live.
+    struct Asking: Identifiable { let id = UUID(); let q: String }
+    @State private var asking: Asking?
+
     var body: some View {
         NavigationStack {
             ScrollViewReader { proxy in
@@ -126,6 +137,7 @@ struct MealPlannerView: View {
                 }
             }
             .sheet(isPresented: $cheat, onDismiss: { KeyboardDone.quiet = true }) { CheatDayView().presentationDragIndicator(.visible) }
+            .sheet(item: $asking, onDismiss: { KeyboardDone.quiet = true }) { a in AssistantView(meal: meal, firstQuestion: a.q) }
             .onChange(of: open == nil && scanning == nil) { _, none in if !none { KeyboardDone.quiet = false } }
             .onChange(of: meal) { _, _ in turns = []; problem = nil }
             .onAppear {
@@ -151,12 +163,32 @@ struct MealPlannerView: View {
         let t = store.mealTarget(meal)
         bubble(VStack(alignment: .leading, spacing: 8) {
             (Text("\(meal): about \(Fmt.int(t.kcal)) kcal and \(Int(proteinShare)) g protein").bold() + Text(" (\(Fmt.int(left)) left today). What do you fancy?"))
-            Text("Say what you have and how you'd like it. For example:").foregroundStyle(.secondary)
-            Button { text = example; typing = true } label: {
-                Text("“\(example)”").italic().multilineTextAlignment(.leading).foregroundStyle(Theme.accent)
+            Text("For example, tap to use it:").foregroundStyle(.secondary)
+            // one at a time, fading to the next every 4 seconds; all laid out at once so the bubble keeps the tallest one's height
+            let all = examples, at = exampleAt % all.count
+            Button { text = all[at]; typing = true } label: {
+                ZStack(alignment: .topLeading) {
+                    ForEach(all.indices, id: \.self) { i in
+                        Text("“\(all[i])”").italic().multilineTextAlignment(.leading).foregroundStyle(Theme.accent)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .opacity(i == at ? 1 : 0).accessibilityHidden(i != at)
+                    }
+                }
             }
             .buttonStyle(.plain).accessibilityHint("Puts the example in the box")
+            HStack(spacing: 5) {
+                ForEach(all.indices, id: \.self) { i in Circle().fill(i == at ? Theme.accent : Color(.tertiaryLabel)).frame(width: 6, height: 6) }
+            }
+            .accessibilityHidden(true)
         })
+        // they've started typing or asking: the example stays put (and still for the planner's UI test, which taps it)
+        .task(id: meal) {
+            guard !ProcessInfo.processInfo.arguments.contains("-uitest-plan") else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(4))
+                if text.isEmpty && turns.isEmpty && !Task.isCancelled { withAnimation(.easeInOut(duration: 0.5)) { exampleAt += 1 } }
+            }
+        }
         // what they often have, and how much cooking: a tap adds it to what they're writing
         if !usual.isEmpty { Flow { ForEach(usual, id: \.self) { u in Chip(text: u, on: text.localizedCaseInsensitiveContains(u)) { add(u) } } } }
         Flow { ForEach(Self.cookChoices, id: \.self) { c in Chip(text: c, on: cooking == c) { cooking = c } } }
@@ -259,9 +291,18 @@ struct MealPlannerView: View {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty, !busy else { return }
         speech.stop(); typing = false
-        turns.append(Turn(me: true, text: t))
+        let mine = Turn(me: true, text: t)
+        turns.append(mine)
         text = ""
-        Task { await suggest(t) }
+        let ideas = Task { await suggest(t) }
+        // "Gami for lunch, what should I get?" or "any lunch spots near me?": asked alongside the ideas; the Assistant
+        // answers it with its takeaway or places card, over this screen
+        Task {
+            guard let i = await Takeaway.intent(t), i == "choose" || i == "find", turns.last?.id == mine.id else { return }   // not once ideas are in
+            ideas.cancel()
+            withAnimation(.snappy) { turns.removeAll { $0.id == mine.id } }
+            asking = Asking(q: t)
+        }
     }
 
     private func idea(_ m: JSON) -> some View {
@@ -398,6 +439,7 @@ struct MealPlannerView: View {
         """
         do {
             let a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: true, tries: 3, job: "plans")
+            if Task.isCancelled { return }   // a takeaway question: the Assistant has it
             stepsDone.append("Came up with \(list(a["ideas"]).count) ideas")
             stepNow = "Checking each ingredient's numbers…"
             let goal = pos(a["aim"]) ?? aim
@@ -408,6 +450,6 @@ struct MealPlannerView: View {
             if got.isEmpty { problem = "No ideas came back. Try again."; return }
             let reply = str(a["reply"]).isEmpty ? "Here are three:" : str(a["reply"])
             withAnimation(.snappy) { turns.append(Turn(me: false, text: reply, ideas: got)) }
-        } catch { problem = error.localizedDescription }
+        } catch { if !Task.isCancelled { problem = error.localizedDescription } }
     }
 }

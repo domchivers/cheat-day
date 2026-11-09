@@ -76,8 +76,8 @@ private struct SessionHarness: View {
     }
 }
 
-/// For the takeaway screenshots only: the assistant open on three answers worked out here from Gami's 2026 kJ (no AI,
-/// no sign-in): just Gami for tomorrow's lunch with a shake offered, dinner with a shake and ice cream asked for, and a
+/// For the takeaway screenshots only: the assistant open on three answers worked out here from a made-up restaurant's kJ (no AI,
+/// no sign-in): just Seoul Chicken for tomorrow's lunch with a shake offered, dinner with a shake and ice cream asked for, and a
 /// burger logged from its page with each part checked.
 private struct TakeawayHarness: View {
     @State private var open = false
@@ -86,29 +86,29 @@ private struct TakeawayHarness: View {
                                                 ("Boneless Chicken", 3720, 50), ("Bibimbap", 2740, 28), ("Kimchi Fried Rice", 3053, 15)]
         let menu = Takeaway.items(["items": rows.map { ["name": $0.0, "kind": "main", "published": "energy", "kj": $0.1, "kcal": 0, "protein_g": $0.2, "carbs_g": 50, "fat_g": 25] as JSON }])
         let home = [Takeaway.home(name: "Milk Chocolate Protein Powder", kcal100: 380, p100: 69.3, c100: 16, f100: 4.3, serving: 30, label: true),
-                    Takeaway.home(name: "Pauls PLUS+ milk", kcal100: 68, p100: 6, c100: 5, f100: 1, serving: nil, label: true),
-                    Takeaway.home(name: "Kenny's ice cream", kcal100: 106, p100: 7.2, c100: 11.6, f100: 3.4, serving: nil, label: true)].compactMap { $0 }
-        let lunch = Takeaway.result(Takeaway.plan(menu: menu, home: [], kcal: 600, protein: 45, place: "Gami Windsor"), home: [], tips: home, menu: menu,
-                                    shown: "Gami Windsor", kcal: 600, protein: 45, meal: "Lunch", smallest: 545)
-        let dinner = Takeaway.result(Takeaway.plan(menu: menu, home: home, kcal: 854, protein: 59, want: ["chicken burger"], place: "Gami"), home: home, menu: menu,
-                                     shown: "Gami", kcal: 854, protein: 59, meal: "Dinner", smallest: 545)
+                    Takeaway.home(name: "High protein milk", kcal100: 68, p100: 6, c100: 5, f100: 1, serving: nil, label: true),
+                    Takeaway.home(name: "Protein ice cream", kcal100: 106, p100: 7.2, c100: 11.6, f100: 3.4, serving: nil, label: true)].compactMap { $0 }
+        let lunch = Takeaway.result(Takeaway.plan(menu: menu, home: [], kcal: 600, protein: 45, place: "Seoul Chicken Prahran"), home: [], tips: home, menu: menu,
+                                    shown: "Seoul Chicken Prahran", kcal: 600, protein: 45, meal: "Lunch", smallest: 545)
+        let dinner = Takeaway.result(Takeaway.plan(menu: menu, home: home, kcal: 854, protein: 59, want: ["chicken burger"], place: "Seoul Chicken"), home: home, menu: menu,
+                                     shown: "Seoul Chicken", kcal: 854, protein: 59, meal: "Dinner", smallest: 545)
         func part(_ n: String, _ g: Double, _ k: Double, _ p: Double) -> JSON { ["name": n, "grams": g, "kcal": k, "protein_g": p, "carbs_g": 0, "fat_g": 0, "src": "au", "match": n] }
-        let burger: JSON = ["kind": "estimate", "meal": "Lunch", "trail": ["Energy from the kJ on Gami's page in your photo"],
-                            "estimate": ["name": "Gami chicken burger", "shop": "Gami", "portion_g": 255, "unit": "g", "kcal_total": 544, "protein_g": 28, "carbs_g": 60, "fat_g": 21,
+        let burger: JSON = ["kind": "estimate", "meal": "Lunch", "trail": ["Energy from the kJ on Seoul Chicken's page in your photo"],
+                            "estimate": ["name": "Seoul Chicken burger", "shop": "Seoul Chicken", "portion_g": 255, "unit": "g", "kcal_total": 544, "protein_g": 28, "carbs_g": 60, "fat_g": 21,
                                          "parts": [part("Burger bun, toasted", 85, 235, 7), part("Chicken fillet, crumbed, fried", 100, 223, 22), part("Coleslaw", 40, 42, 1), part("Creamy cheese sauce", 30, 44, 2)]] as JSON]
-        // what find-check.js's search found in South Yarra
+        // made-up places, the way the search gives them
         func spot(_ n: String, _ a: String, _ c: String, _ d: String, _ pub: String, _ kj: Double, _ k: Double, _ p: Double) -> JSON {
             ["name": n, "area": a, "cuisine": c, "dish": d, "published": pub, "kj": kj, "kcal": k, "protein_g": p, "carbs_g": 50, "fat_g": 20]
         }
-        let places = Takeaway.places(["found": true, "places": [spot("Spudbar", "590 Chapel St", "Potato bowls", "The Chicken Power Bowl", "full", 0, 497, 46),
-                                                                spot("Zeus Street Greek", "670 Chapel St", "Greek", "Chargrilled Chicken", "energy", 2760, 660, 50),
-                                                                spot("Wokinabox", "South Yarra", "Asian", "The Satay", "energy", 2739, 655, 40),
-                                                                spot("Grill'd", "South Yarra", "Burgers", "Simply Grill'd", "none", 0, 605, 30)]],
+        let places = Takeaway.places(["found": true, "places": [spot("Spud Shack", "Chapel St", "Potato bowls", "The Chicken Power Bowl", "full", 0, 497, 46),
+                                                                spot("Olive Street Greek", "Chapel St", "Greek", "Chargrilled Chicken", "energy", 2760, 660, 50),
+                                                                spot("Wok in a Hurry", "South Yarra", "Asian", "The Satay", "energy", 2739, 655, 40),
+                                                                spot("Burger Yard", "South Yarra", "Burgers", "Classic chicken burger", "none", 0, 605, 30)]],
                                      area: "South Yarra", asked: "Any good lunch spots near me in South Yarra?", meal: "Lunch", kcal: 700, protein: 45)
         AssistantLive.shared.turns = [
-            Assistant.Turn(me: true, text: "want something from gami tomorrow, lunch"), Assistant.Turn(me: false, text: str(lunch["reply"]), result: lunch),
-            Assistant.Turn(me: true, text: "854 left, Gami for dinner, the chicken burger with a shake and ice cream"), Assistant.Turn(me: false, text: str(dinner["reply"]), result: dinner),
-            Assistant.Turn(me: true, text: "This burger for lunch"), Assistant.Turn(me: false, text: "The Gami chicken burger, sized to the 2,280 kJ on the page. Tap Add to put it on today's list.", result: burger),
+            Assistant.Turn(me: true, text: "want something from seoul chicken tomorrow, lunch"), Assistant.Turn(me: false, text: str(lunch["reply"]), result: lunch),
+            Assistant.Turn(me: true, text: "854 left, Seoul Chicken for dinner, the chicken burger with a shake and ice cream"), Assistant.Turn(me: false, text: str(dinner["reply"]), result: dinner),
+            Assistant.Turn(me: true, text: "This burger for lunch"), Assistant.Turn(me: false, text: "The Seoul Chicken burger, sized to the 2,280 kJ on the page. Tap Add to put it on today's list.", result: burger),
             Assistant.Turn(me: true, text: "Any good lunch spots near me in South Yarra that's healthy and high protein?"), Assistant.Turn(me: false, text: str(places["reply"]), result: places)]
         AssistantLive.shared.used = Date()
     }
