@@ -714,7 +714,7 @@ struct AssistantView: View {
                         if let g { b["grams"] = g }
                         return b
                     }
-                    store.addAll(foods, meal: meal, label: "Added \(str(c["title"]))")
+                    store.addAll(foods, meal: meal, label: "Added \(str(c["title"]))", dish: str(c["title"]))
                 }
             }
             ForEach(combos.indices.filter { $0 != at }, id: \.self) { i in

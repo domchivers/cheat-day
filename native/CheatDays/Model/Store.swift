@@ -24,7 +24,12 @@ final class Store {
     private(set) var syncing = false
     private(set) var lastSynced: Date?
     /// The last food (or foods) added, for Today's "Added … · Undo" banner.
-    struct Undo: Equatable { let ids: [String]; let label: String; let at: Date; var day: String? = nil }
+    struct Undo: Equatable {
+        let ids: [String]; let label: String; let at: Date; var day: String? = nil
+        /// Foods taken off (a whole dish): Undo puts these back, rather than taking the ids off
+        var restore: [JSON] = []
+        static func == (a: Undo, b: Undo) -> Bool { a.ids == b.ids && a.label == b.label && a.at == b.at && a.day == b.day }
+    }
     /// A past day being filled in (opened from that day on Today): what's added goes there instead of today.
     @ObservationIgnored var logDay: String?
     var undo: Undo?
@@ -110,8 +115,12 @@ final class Store {
 
     // MARK: changing
 
+    /// A dish: foods added together in one go (an estimate's Add, a takeaway's Add all, yesterday's meal again), shown
+    /// on Today as one row. Kept on each food, not in its basis, so a food re-added from recents doesn't rejoin it.
+    struct Dish { let id: String, name: String }
+
     @discardableResult
-    func add(_ basis: JSON, kcal: Double, meal: String?) -> String {
+    func add(_ basis: JSON, kcal: Double, meal: String?, dish: Dish? = nil) -> String {
         let k = kcal.rounded()
         // a past day being filled in, if one is open; otherwise today
         let day = logDay.flatMap { $0 < today ? $0 : nil } ?? today
@@ -121,6 +130,7 @@ final class Store {
         item["shareLabel"] = Fmt.share(k, of: baseBudget(day))
         item["addedAt"] = ISO.now()
         if let meal, Meals.all.contains(meal) { item["meal"] = meal }
+        if let dish { item["dish"] = dish.id; item["dishName"] = dish.name }
         perform(["type": "add", "item": item, "day": day])
         let id = str(item["id"])
         let name = str(item["name"]).isEmpty ? "it" : str(item["name"])
@@ -128,16 +138,50 @@ final class Store {
         return id
     }
 
-    /// Several foods at once (yesterday's breakfast again); one Undo takes them all back.
-    func addAll(_ items: [JSON], meal: String, label: String) {
-        let ids = items.map { add(FoodMath.basisOf($0), kcal: num($0["kcal"]) ?? 0, meal: meal) }
+    /// Several foods at once (yesterday's breakfast again); one Undo takes them all back. Two or more, with a dish
+    /// name, go on as one dish.
+    @discardableResult
+    func addAll(_ items: [JSON], meal: String, label: String, dish name: String? = nil) -> [String] {
+        let dish = items.count > 1 ? name.flatMap { $0.isEmpty ? nil : Dish(id: uid(), name: $0) } : nil
+        let ids = items.map { add(FoodMath.basisOf($0), kcal: num($0["kcal"]) ?? 0, meal: meal, dish: dish) }
         undo = Undo(ids: ids, label: label, at: Date(), day: undo?.day)
+        return ids
+    }
+
+    /// Rename a dish (its foods' ids), or split it back into separate foods (name nil).
+    func setDish(_ ids: [String], name: String?, day: String? = nil) {
+        perform(["type": "dish", "ids": ids, "name": name ?? NSNull(), "day": day ?? today])
+    }
+
+    /// The dish tag a food had, applied to a filed copy (History keeps it so past days show their dishes too).
+    static func keepDish(_ from: JSON, in to: inout JSON) {
+        if !str(from["dish"]).isEmpty { to["dish"] = from["dish"]; to["dishName"] = from["dishName"] ?? "" }
+        if from["undished"] as? Bool == true { to["undished"] = true }
+    }
+    static func renameDish(_ items: inout [JSON], ids: [String], name: Any?) {
+        for i in items.indices where ids.contains(str(items[i]["id"])) {
+            if let n = name as? String, !n.isEmpty {
+                if str(items[i]["dish"]).isEmpty { items[i]["dish"] = ids.first ?? "" }   // grouped by time until now: given a tag
+                items[i]["dishName"] = n
+            } else { items[i].removeValue(forKey: "dish"); items[i].removeValue(forKey: "dishName"); items[i]["undished"] = true }
+        }
     }
 
     func undoLast() {
         guard let u = undo else { return }
-        u.ids.forEach { delete($0, day: u.day) }
+        if u.restore.isEmpty { u.ids.forEach { delete($0, day: u.day) } }
+        else {
+            // back as they were, under new ids (the old ones are tombstoned), still one dish
+            for it in u.restore { var c = it; c["id"] = uid(); perform(["type": "add", "item": c, "day": u.day ?? today]) }
+        }
         undo = nil
+    }
+
+    /// A whole dish off at once, with one Undo that puts it all back.
+    func deleteDish(_ items: [JSON], name: String, day: String? = nil) {
+        let ids = items.map { str($0["id"]) }
+        ids.forEach { delete($0, day: day) }
+        undo = Undo(ids: ids, label: "Deleted \(name)", at: Date(), day: day, restore: items)
     }
 
     /// Takes a food off today, or off a past day when one's given.
@@ -189,7 +233,7 @@ final class Store {
         // a food logged on a day that has since been filed (added last night, sent this morning) goes to that day,
         // not into today: it used to leave a gap in the day it was eaten
         let opDay = str(op["day"])
-        if ["add", "delete", "edit"].contains(str(op["type"])), !opDay.isEmpty, opDay < str(dict(d["day"])["date"]) {
+        if ["add", "delete", "edit", "dish"].contains(str(op["type"])), !opDay.isEmpty, opDay < str(dict(d["day"])["date"]) {
             applyToPast(op, date: opDay, in: &d)
             return
         }
@@ -217,6 +261,9 @@ final class Store {
             items[i]["kcal"] = op["kcal"]
             items[i]["shareLabel"] = op["shareLabel"]
             if let m = op["meal"] as? String { items[i]["meal"] = m }
+            day["items"] = items; d["day"] = day
+        case "dish":
+            renameDish(&items, ids: (op["ids"] as? [String]) ?? [], name: op["name"])
             day["items"] = items; d["day"] = day
         case "fav":
             var favs = dict(d["favs"])
@@ -281,6 +328,7 @@ final class Store {
             b["shareLabel"] = it["shareLabel"] ?? ""
             b["addedAt"] = it["addedAt"] ?? NSNull()
             b["meal"] = it["meal"] ?? NSNull()
+            keepDish(it, in: &b)
             return b
         }
         let filedWorkouts: [JSON] = workouts.map { w in
@@ -323,6 +371,7 @@ final class Store {
             b["shareLabel"] = it["shareLabel"] ?? ""
             b["addedAt"] = it["addedAt"] ?? NSNull()
             b["meal"] = it["meal"] ?? NSNull()
+            keepDish(it, in: &b)
             items.append(b)
             rememberUse(it, in: &d)
         case "delete":
@@ -333,6 +382,8 @@ final class Store {
             items[k]["kcal"] = op["kcal"]
             items[k]["shareLabel"] = op["shareLabel"]
             if let m = op["meal"] as? String { items[k]["meal"] = m }
+        case "dish":
+            renameDish(&items, ids: (op["ids"] as? [String]) ?? [], name: op["name"])
         default: return
         }
         var p = 0.0, c = 0.0, f = 0.0

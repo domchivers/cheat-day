@@ -852,6 +852,10 @@ enum Assistant {
     @MainActor
     static func apply(_ edit: JSON, meal: String, store: Store) -> [String] {
         var done: [String] = []
+        // two or more foods added by one edit (a dinner's nine ingredients) go on as one dish, named after the meal
+        // until it's renamed
+        let adds = CheatDays.list(edit["actions"]).filter { str($0["action"]) == "add" }.count
+        let dish = adds >= 2 ? Store.Dish(id: uid(), name: str(edit["name"])) : nil
         for a in CheatDays.list(edit["actions"]) {
             let target = str(a["target"]).lowercased(), name = str(a["name"])
             let match = store.todayItems.last { !target.isEmpty && str($0["name"]).lowercased().contains(target) }
@@ -859,7 +863,7 @@ enum Assistant {
             switch str(a["action"]) {
             case "add":
                 guard let k = num(a["kcal"]), !name.isEmpty else { continue }
-                store.add(basis(name: name, kcal: k, grams: nil, p: num(a["protein_g"]) ?? 0, c: num(a["carbs_g"]) ?? 0, f: num(a["fat_g"]) ?? 0), kcal: k, meal: meal)
+                store.add(basis(name: name, kcal: k, grams: nil, p: num(a["protein_g"]) ?? 0, c: num(a["carbs_g"]) ?? 0, f: num(a["fat_g"]) ?? 0), kcal: k, meal: meal, dish: dish)
                 done.append("Added \(name)")
             case "remove":
                 guard let it = match else { done.append("Couldn't find \(target) to remove"); continue }
