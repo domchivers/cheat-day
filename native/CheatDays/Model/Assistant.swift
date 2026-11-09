@@ -279,7 +279,7 @@ enum Assistant {
         // Simple logs and questions go to the quick model; photos, recipes and plans to the careful one.
         // a follow-up in a conversation stays with the careful model: after advice, "No they've been helping me lol" isn't a
         // food log (the quick one misread it and ran its points together)
-        let talking = turns.dropLast().last { !$0.me }.map { str($0.result?["kind"]) == "answer" } ?? false   // a quick log's "Logged to…" has no result
+        let talking = turns.dropLast().last { !$0.me }.map { str($0.result?["kind"]) == "answer" } ?? false   // a typed food's card is "quick", not an answer
         let simple = !talking && isSimple(last.text, hasPhotos: !pics.isEmpty)
         let shape = format(photos: !pics.isEmpty, text: last.text)
         // a takeaway or places question isn't also sent to the careful model, which was charged even when the planner's

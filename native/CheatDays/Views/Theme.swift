@@ -9,20 +9,36 @@ struct Palette: Identifiable {
     let accent: Color, hero: Color, heroLabel: Color, track: Color, dinner: Color
     var snacks: Color? = nil   // pinks and reds move snacks off pink, so the bar still tells them apart
     var onAccent: Color = .white
+    /// The Gradient theme's blue to violet (the app icon's): on the Left to eat panel and the +, the accent its middle.
+    var gradient: [Color]? = nil
+    /// The Left to eat panel: the gradient's dark version, or the plain panel colour.
+    var heroFill: AnyShapeStyle {
+        gradient == nil ? AnyShapeStyle(hero) : AnyShapeStyle(LinearGradient(colors: [Self.hex(0x13233B), Self.hex(0x1D1D3F)], startPoint: .topLeading, endPoint: .bottomTrailing))
+    }
+    /// The + and the swatch in Settings: the gradient, or the accent.
+    var accentFill: AnyShapeStyle {
+        gradient.map { AnyShapeStyle(LinearGradient(colors: $0, startPoint: .topLeading, endPoint: .bottomTrailing)) } ?? AnyShapeStyle(accent)
+    }
 
     private static func hex(_ v: Int) -> Color { Color(red: Double(v >> 16 & 255) / 255, green: Double(v >> 8 & 255) / 255, blue: Double(v & 255) / 255) }
     /// Classic blue first: it's what everyone has until they pick another.
     static let all: [Palette] = [
         Palette(id: "classic", name: "Classic blue", accent: Color(red: 0.49, green: 0.77, blue: 1.0), hero: Color(red: 0.06, green: 0.10, blue: 0.15),
                 heroLabel: Color(red: 0.56, green: 0.73, blue: 0.87), track: Color(red: 0.11, green: 0.17, blue: 0.23), dinner: Color(red: 0.49, green: 0.77, blue: 1.0), onAccent: .black),
-        Palette(id: "plum", name: "Plum", accent: hex(0x6C3FE0), hero: hex(0x16102A), heroLabel: hex(0xA998DE), track: hex(0x21183D), dinner: hex(0x8A63F0)),
-        Palette(id: "ocean", name: "Ocean", accent: hex(0x2F6FE0), hero: hex(0x0D1626), heroLabel: hex(0x8FA9D6), track: hex(0x15233D), dinner: hex(0x5B8FF0)),
-        Palette(id: "teal", name: "Teal", accent: hex(0x0F8F8A), hero: hex(0x0C1B1C), heroLabel: hex(0x86BDB9), track: hex(0x122B2D), dinner: hex(0x2FB3AD)),
-        Palette(id: "forest", name: "Forest", accent: hex(0x2F9D6A), hero: hex(0x0F1A15), heroLabel: hex(0x8FB8A3), track: hex(0x18291F), dinner: hex(0x7FD3A8)),
-        Palette(id: "rust", name: "Rust", accent: hex(0xD0601C), hero: hex(0x1F130D), heroLabel: hex(0xD4A487), track: hex(0x311D12), dinner: hex(0xEC8443)),
-        Palette(id: "crimson", name: "Crimson", accent: hex(0xC8313F), hero: hex(0x200F11), heroLabel: hex(0xD39599), track: hex(0x311619), dinner: hex(0xE65663), snacks: hex(0xB99CFF)),
-        Palette(id: "gold", name: "Gold", accent: hex(0xB8860B), hero: hex(0x1D170B), heroLabel: hex(0xCDB27A), track: hex(0x2E240E), dinner: hex(0xE0AA35)),
-        Palette(id: "berry", name: "Berry", accent: hex(0xD6337A), hero: hex(0x1F1018), heroLabel: hex(0xD695B4), track: hex(0x2E1622), dinner: hex(0xE8559A), snacks: hex(0xB99CFF))
+        // the app icon's blue to violet
+        Palette(id: "gradient", name: "Gradient", accent: hex(0xA9B4FF), hero: hex(0x181D3D), heroLabel: hex(0xA9B8E6), track: hex(0x23284A), dinner: hex(0xA9B4FF),
+                onAccent: hex(0x10141A), gradient: [hex(0x8EC5FF), hex(0xC4A1FF)]),
+        // the rest softened into Classic blue's range (Nov 2026: "too strong"), light accents with dark text on them;
+        // the ids stay, so a colour already picked becomes its softer one. Dinner keeps clear of breakfast's yellow and
+        // lunch's green in the bar
+        Palette(id: "plum", name: "Lavender", accent: hex(0xB4A5FF), hero: hex(0x17142B), heroLabel: hex(0xAFA4DC), track: hex(0x231E3F), dinner: hex(0xB4A5FF), onAccent: hex(0x10141A)),
+        Palette(id: "ocean", name: "Periwinkle", accent: hex(0x93B2FF), hero: hex(0x0F1628), heroLabel: hex(0x9DB0DA), track: hex(0x1A2442), dinner: hex(0x93B2FF), onAccent: hex(0x10141A)),
+        Palette(id: "teal", name: "Aqua", accent: hex(0x7FD4CD), hero: hex(0x0C1B1C), heroLabel: hex(0x8FC2BD), track: hex(0x163032), dinner: hex(0x93B2FF), onAccent: hex(0x10141A)),
+        Palette(id: "forest", name: "Mint", accent: hex(0x94D8B0), hero: hex(0x0F1A15), heroLabel: hex(0x9BC2AC), track: hex(0x1A2C22), dinner: hex(0x8EC5FF), onAccent: hex(0x10141A)),
+        Palette(id: "rust", name: "Peach", accent: hex(0xF5B78F), hero: hex(0x1F150F), heroLabel: hex(0xD7B19A), track: hex(0x33241A), dinner: hex(0xF5B78F), onAccent: hex(0x10141A)),
+        Palette(id: "crimson", name: "Coral", accent: hex(0xF4A0A6), hero: hex(0x201112), heroLabel: hex(0xD6A3A7), track: hex(0x35191C), dinner: hex(0xF4A0A6), snacks: hex(0xB99CFF), onAccent: hex(0x10141A)),
+        Palette(id: "gold", name: "Honey", accent: hex(0xEBCB7C), hero: hex(0x1D180C), heroLabel: hex(0xCDB683), track: hex(0x30280F), dinner: hex(0xF5B78F), onAccent: hex(0x10141A)),
+        Palette(id: "berry", name: "Blossom", accent: hex(0xF2A6C9), hero: hex(0x1F1119), heroLabel: hex(0xD5A6BD), track: hex(0x341B29), dinner: hex(0xF2A6C9), snacks: hex(0xB99CFF), onAccent: hex(0x10141A))
     ]
     static let key = "theme"
     static func named(_ id: String) -> Palette { all.first { $0.id == id } ?? all[0] }
@@ -45,6 +61,9 @@ enum Theme {
     static var onAccent: Color { Palette.current.onAccent }
     static let bg = Color(red: 0.027, green: 0.035, blue: 0.047)
     static var hero: Color { Palette.current.hero }
+    /// The Left to eat panel and the +: the Gradient theme's gradient, else the plain colours.
+    static var heroFill: AnyShapeStyle { Palette.current.heroFill }
+    static var accentFill: AnyShapeStyle { Palette.current.accentFill }
     static var heroLabel: Color { Palette.current.heroLabel }
     static var track: Color { Palette.current.track }
     static let warn = Color(red: 0.95, green: 0.71, blue: 0.36)

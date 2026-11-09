@@ -25,6 +25,7 @@ struct AssistantView: View {
     @State private var stepsDone: [String] = []   // what the AI has done so far for this message, ticked
     @State private var stepNow = "Thinking…"
     @State private var changing: PartRef?
+    @State private var amount: EditTarget?   // a typed food's How much, from its card
     @State private var openCombo: [UUID: Int] = [:]   // which of a takeaway answer's combos is open
     @State private var cardEdits: [String: CardEdit] = [:]   // what's been changed on each takeaway combo ("turn-combo")
     @FocusState private var typing: Bool
@@ -91,9 +92,13 @@ struct AssistantView: View {
             .fullScreenCover(isPresented: $camera) { CameraPicker { img in camera = false; if let img { pending.append(img) } }.ignoresSafeArea() }
             .fullScreenCover(item: $viewing) { PhotoViewer(photos: $0) }
             .sheet(item: $changing) { ref in MatchPicker(ref: ref) { food in setMatch(ref, to: food); changing = nil }.presentationDetents([.medium]) }
+            .sheet(item: $amount) { t in
+                NavigationStack { AmountView(target: t) { amount = nil } }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
+            }
             .photosPicker(isPresented: $library, selection: $picked, maxSelectionCount: 4, matching: .images)
             .onChange(of: picked) { _, items in if !items.isEmpty { Task { await load(items) } } }
             .onChange(of: showChats) { _, open in KeyboardDone.quiet = !open }   // past chats keep their Done
+            .onChange(of: amount == nil) { _, none in KeyboardDone.quiet = none }   // and How much, for its number pad
             .onDisappear { KeyboardDone.quiet = false }
             .onAppear {
                 KeyboardDone.quiet = true   // a chat box: the send button's right there, and scrolling or tapping away closes it
@@ -181,6 +186,8 @@ struct AssistantView: View {
             if let ta = r["takeaway"] as? JSON { takeawayCard(ta, turn: turn, meal: meal) }
         case "places":
             if let pl = r["places"] as? JSON { placesCard(pl) }
+        case "quick":
+            quickCard(list(r["foods"]), turn: turn, meal: meal)
         default: EmptyView()
         }
     }
@@ -710,6 +717,40 @@ struct AssistantView: View {
         }
     }
 
+    /// Foods typed with their numbers ("protein shake 250 cal 40p"), read on the phone: shown with Add, so nothing goes
+    /// on Today until they choose to. A tap on a food (or Change, for one) opens How much for it instead.
+    @ViewBuilder private func quickCard(_ foods: [JSON], turn: UUID, meal: String) -> some View {
+        let lines = foods.map { QuickLog.Line(name: str($0["name"]), kcal: num($0["kcal"]) ?? 0, p: num($0["p"]), c: num($0["c"]), f: num($0["f"])) }
+        panel {
+            ForEach(lines.indices, id: \.self) { i in
+                let l = lines[i]
+                Button { amount = EditTarget(basis: QuickLog.basis(l), kcal: l.kcal, editId: nil, meal: meal) } label: {
+                    HStack(spacing: 11) {
+                        FoodDot(name: l.name, size: 34)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(l.name).font(.subheadline.weight(.semibold))
+                            Text(([ "\(Fmt.int(l.kcal)) kcal"] + [l.p.map { "\(Fmt.int($0)) g protein" }, l.c.map { "\(Fmt.int($0)) g carbs" }, l.f.map { "\(Fmt.int($0)) g fat" }].compactMap { $0 }).joined(separator: " · "))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).accessibilityHint("Change the amount")
+            }
+            HStack(spacing: 8) {
+                addButton(lines.count == 1 ? "Add to \(meal.lowercased())" : lines.count == 2 ? "Add both to \(meal.lowercased())" : "Add all to \(meal.lowercased())", key: "quick", turn: turn) {
+                    let ids = lines.map { store.add(QuickLog.basis($0), kcal: $0.kcal, meal: meal) }
+                    if ids.count > 1 { store.undo = Store.Undo(ids: ids, label: "Added \(ids.count) foods", at: Date()) }
+                }
+                if lines.count == 1, let l = lines.first {
+                    Button("Change") { amount = EditTarget(basis: QuickLog.basis(l), kcal: l.kcal, editId: nil, meal: meal) }
+                        .buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.small)
+                }
+            }
+        }
+    }
+
     /// Places found on the web: each with the dish that suits what's left, its numbers, and whether they're the place's
     /// own kJ or estimated. A tap plans that place like naming it (its name is sent).
     @ViewBuilder private func placesCard(_ pl: JSON) -> some View {
@@ -858,17 +899,16 @@ struct AssistantView: View {
         speech.stop()
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !busy, !t.isEmpty || !pending.isEmpty else { return }
-        // foods with their numbers typed in: logged straight away, no waiting for the AI. Not in the middle of a
-        // conversation: after asking about 918 g of chicken, "Want around 60g protein from it" means a portion of that
-        // chicken, so it goes to the AI with the chat (a quick log's own "Logged to…" reply has no result, so logging
-        // several in a row still works)
-        let talking = turns.last.map { !$0.me && $0.result != nil } ?? false
+        // foods with their numbers typed in: read here, no waiting for the AI, and shown with Add (nothing goes on Today
+        // until they tap it). Not in the middle of a conversation: after asking about 918 g of chicken, "Want around
+        // 60g protein from it" means a portion of that chicken, so it goes to the AI with the chat. After one of these
+        // cards it still reads the next one, so several can be typed in a row
+        let talking = turns.last.map { !$0.me && $0.result != nil && str($0.result?["kind"]) != "quick" } ?? false
         if pending.isEmpty, !talking, let lines = QuickLog.instant(t) {
-            let ids = lines.map { store.add(QuickLog.basis($0), kcal: $0.kcal, meal: meal) }
-            if ids.count > 1 { store.undo = Store.Undo(ids: ids, label: "Added \(ids.count) foods", at: Date()) }
             turns.append(Assistant.Turn(me: true, text: t))
-            let list = lines.map(QuickLog.summary).joined(separator: "\n")
-            withAnimation(.snappy) { turns.append(Assistant.Turn(me: false, text: "Logged to \(meal.lowercased()):\n\(list)\nSwipe it on Today to change or delete.")) }
+            let foods: [JSON] = lines.map { ["name": $0.name, "kcal": $0.kcal, "p": $0.p ?? NSNull(), "c": $0.c ?? NSNull(), "f": $0.f ?? NSNull()] }
+            let reply = lines.count == 1 ? "Here's what I read. Add it, or tell me if it's not right." : "Here's what I read. Add them, or tell me if they're not right."
+            withAnimation(.snappy) { turns.append(Assistant.Turn(me: false, text: reply, result: ["kind": "quick", "meal": meal, "foods": foods])) }
             text = ""; problem = nil
             store.perform(["type": "chat", "chat": Assistant.record(id: chatId, turns: turns)], syncAfter: 3)
             return

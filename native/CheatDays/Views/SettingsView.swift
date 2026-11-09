@@ -140,18 +140,18 @@ struct SettingsView: View {
                     Text("Ideas for dinner ›").font(.footnote.weight(.semibold)).foregroundStyle(p.accent)
                     Spacer()
                     Image(systemName: "plus").font(.title3.weight(.bold)).foregroundStyle(p.onAccent)
-                        .frame(width: 44, height: 44).background(p.accent, in: Circle())
+                        .frame(width: 44, height: 44).background(p.accentFill, in: Circle())
                 }
             }
             .padding(14)
-            .background(p.hero, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(p.heroFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
         }
         Section {
             ForEach(Palette.all) { c in
                 Button { withAnimation { ThemeChoice.shared.id = c.id } } label: {
                     HStack(spacing: 12) {
-                        Circle().fill(c.accent).frame(width: 26, height: 26)
+                        Circle().fill(c.accentFill).frame(width: 26, height: 26)
                             .overlay(Circle().strokeBorder(.white.opacity(0.15), lineWidth: 1))
                         Text(c.name).foregroundStyle(.primary)
                         Spacer()

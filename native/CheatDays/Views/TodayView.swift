@@ -469,7 +469,7 @@ struct TodayView: View {
         }
         .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.hero, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .background(Theme.heroFill, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
         .tourSpot(.hero)
         .overlay(alignment: .topTrailing) { if offset == 0 { cheatButton.padding(.top, 10).padding(.trailing, 12) } }
         .animation(.snappy, value: eaten)
@@ -674,7 +674,7 @@ struct TodayView: View {
     private var addButton: some View {
         Button { openAdd(offset == 0 ? Meals.now : "Dinner") } label: {
             ZStack {
-                Circle().fill(Theme.accent)
+                Circle().fill(Theme.accentFill)
                 Image(systemName: "plus").font(.title2.weight(.bold)).symbolRenderingMode(.monochrome).foregroundColor(Theme.onAccent)
             }
             .frame(width: 62, height: 62)
