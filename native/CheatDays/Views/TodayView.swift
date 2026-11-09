@@ -26,6 +26,7 @@ private struct Line: Identifiable { let id: String; let item: JSON }
 
 struct TodayView: View {
     @State private var offset = 0
+    @State private var clock = TodayView.clockKey()   // the day and whether it's before 5am, so midnight and 5am redraw the page
     @State private var addChoice: MealChoice?
     @State private var editing: EditTarget?
     @State private var flow: WebFlow?
@@ -53,6 +54,9 @@ struct TodayView: View {
     @State private var savingMeal: String?   // the meal whose foods are being saved as one
     private var store: Store { Store.shared }
 
+    static func clockKey(_ now: Date = Date()) -> String { "\(DayKey.string(now))|\(Calendar.current.component(.hour, from: now) < 5)" }
+    private func tickClock() { let k = Self.clockKey(); if k != clock { clock = k } }
+
     private var date: String { DayKey.shift(store.today, days: offset) }
     private var items: [JSON] { offset == 0 ? store.todayItems : (store.pastDay(date)?.items ?? []) }
     private var budget: Double { offset == 0 ? store.budgetToday : (store.pastDay(date)?.budget ?? store.baseBudget(date)) }
@@ -65,7 +69,7 @@ struct TodayView: View {
                     .id("top")
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 0, trailing: 4))
-                if offset == 0 { LateNightCard() }
+                if offset == 0 { LateNightCard(clock: clock) }
                 if let n = store.notice {
                     Section {
                         HStack(alignment: .top, spacing: 10) {
@@ -279,6 +283,10 @@ struct TodayView: View {
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
+            // the late-night card is read from the clock, which the page doesn't watch: it only showed after a day back and forward
+            .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { _ in tickClock() }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in tickClock() }
+            .onChange(of: phase) { _, p in if p == .active { tickClock() } }
             .onReceive(NotificationCenter.default.publisher(for: .openAdd)) { _ in withAnimation { offset = 0 }; store.logDay = nil; addChoice = MealChoice(id: Meals.now) }
             .onReceive(NotificationCenter.default.publisher(for: .webDone)) { _ in
                 guard flow != nil else { return }
@@ -778,6 +786,7 @@ private struct SaveMealSheet: View {
 /// How much: count, weigh or calories, with the meal, then add (or save a change).
 /// After midnight: still yesterday, or a new day? Food stays on yesterday until you say, or until 5am.
 private struct LateNightCard: View {
+    var clock: String   // changes at midnight and 5am, so the card is asked again
     private var store: Store { Store.shared }
     private func name(_ d: String) -> String { DayKey.date(d).formatted(.dateTime.weekday(.wide)) }
 
