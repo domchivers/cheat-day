@@ -11,7 +11,7 @@ struct Badge: Identifiable {
     let how: String
     let xp: Int
 
-    static let groups = ["Logging", "Budget", "Nutrition", "Workouts", "Body", "Social", "Level up"]
+    static let groups = ["Logging", "Budget", "Nutrition", "Workouts", "Body", "Social", "Level up", "Time"]
 
     private static func B(_ id: String, _ group: String, _ stat: String, _ icon: String, _ name: String, _ target: Double, _ how: String, _ xp: Int) -> Badge {
         Badge(id: id, group: group, stat: stat, icon: icon, name: name, target: target, how: how, xp: xp)
@@ -92,6 +92,35 @@ struct Badge: Identifiable {
         B("goal50", "Level up", "weeklyWins", "🗓️", "Relentless", 50, "Finish 50 weekly goals", 100),
         B("perfect1", "Level up", "perfectWeeks", "💫", "Perfect week", 1, "Finish every weekly goal in one week", 25),
         B("perfect5", "Level up", "perfectWeeks", "🌈", "Perfect month", 5, "Have 5 perfect weeks", 50),
+        // 27 more (Nov 2026: 43 of 73 earned in 50 days was too quick): harder steps of the ones above, and time with
+        // the app, one to five years, five the last
+        B("days500", "Logging", "daysLogged", "🧾", "Half a thousand", 500, "Log 500 days", 400),
+        B("days1000", "Logging", "daysLogged", "📜", "The long haul", 1000, "Log 1,000 days", 800),
+        B("streak60", "Logging", "streak", "⛰️", "Two months strong", 60, "Log 60 days in a row", 200),
+        B("streak200", "Logging", "streak", "🗻", "Mountain top", 200, "Log 200 days in a row", 400),
+        B("ud200", "Budget", "underDays", "🪴", "Two hundred good days", 200, "200 days on budget", 400),
+        B("ud365", "Budget", "underDays", "🌲", "A year of good days", 365, "365 days on budget", 800),
+        B("cheat10", "Budget", "overDays", "🍩", "Treat yourself", 10, "Have 10 cheat days", 50),
+        B("protein100", "Nutrition", "proteinDays", "🍳", "Protein habit", 100, "Hit your protein goal 100 times", 200),
+        B("protein250", "Nutrition", "proteinDays", "🐂", "Strong as an ox", 250, "Hit your protein goal 250 times", 400),
+        B("foods250", "Nutrition", "foods", "🗺️", "World of food", 250, "Log 250 different foods", 200),
+        B("ask50", "Nutrition", "askItems", "🤖", "Right-hand helper", 50, "Log 50 things through the assistant", 100),
+        B("wo200", "Workouts", "workouts", "🎽", "Two hundred club", 200, "Log 200 workouts", 400),
+        B("wo365", "Workouts", "workouts", "🏟️", "A year of training", 365, "Log 365 workouts", 800),
+        B("min6000", "Workouts", "workoutMins", "⌛", "Hundred hours in", 6000, "Train for 100 hours in total", 400),
+        B("burn50k", "Workouts", "burned", "💥", "Inferno", 50000, "Burn 50,000 kcal in workouts", 400),
+        B("pb50", "Workouts", "pbs", "🏔️", "Peak performer", 50, "Beat 50 lifting PBs", 400),
+        B("weigh100", "Body", "weighins", "📏", "Measured", 100, "Record 100 weigh-ins", 200),
+        B("lost15", "Body", "lost", "🦋", "Fifteen down", 15, "Lose 15 kg", 400),
+        B("lost20", "Body", "lost", "🥳", "Twenty down", 20, "Lose 20 kg", 800),
+        B("lvl50", "Level up", "level", "🚩", "Level 50", 50, "Reach level 50", 800),
+        B("perfect10", "Level up", "perfectWeeks", "📅", "Perfect ten", 10, "Have 10 perfect weeks", 200),
+        B("perfect52", "Level up", "perfectWeeks", "🌞", "A perfect year", 52, "Have 52 perfect weeks", 800),
+        B("year1", "Time", "memberDays", "🕯️", "One year in", 365, "A year since your first log", 400),
+        B("year2", "Time", "memberDays", "🎂", "Two years in", 730, "Two years since your first log", 800),
+        B("year3", "Time", "memberDays", "🥂", "Three years in", 1095, "Three years since your first log", 800),
+        B("year4", "Time", "memberDays", "🎆", "Four years in", 1460, "Four years since your first log", 800),
+        B("year5", "Time", "memberDays", "🏛️", "Five years in", 1825, "Five years since your first log: the last one", 800),
     ]
 
     func earned(_ stats: [String: Double]) -> Bool { target > 0 ? (stats[stat] ?? 0) >= target : (stats[stat] ?? 0) > 0 }
@@ -208,6 +237,8 @@ extension Store {
                 "askItems": Double(allItems.filter { str($0["source"]) == "claude" }.count),
                 "earlyBird": b(hours.contains { $0 < 8 }), "nightOwl": b(hours.contains { $0 >= 22 }), "comeback": b(comeback),
                 "level": Double(Rank.level(for: totalXP)), "weeklyWins": Double(wins.count),
+                // days since the first day they logged, for the one-to-five-year badges
+                "memberDays": Double(loggedDates.first.map { Calendar.current.dateComponents([.day], from: DayKey.date($0), to: DayKey.date(today)).day ?? 0 } ?? 0),
                 "perfectWeeks": Double(byWeek.values.filter { $0 >= active }.count), "rests": Double(si.rests.count)
             ]
         }

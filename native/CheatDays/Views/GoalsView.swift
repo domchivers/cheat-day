@@ -172,24 +172,28 @@ struct GoalsView: View {
     }
 }
 
-/// A badge as a coin: its picture on navy, rimmed bronze, silver or gold by how hard it is (its XP: 25–50, 100–200,
-/// 400 and up). One not earned yet is grey, with a blue ring for how close it is. The picture is the badge's own art
-/// (design/badge-art, drawn in the food icons' Fluent style) once it's in, and its Fluent icon until then.
+/// A badge as a coin in the app's own colours: its picture on deep indigo inside the icon's blue-to-violet gradient,
+/// with one to four dots for how hard it was (its XP: up to 50, 100, 200, 400 and up) and a soft glow. One not earned
+/// yet is grey, with a blue ring for how close it is. (Bronze, silver and gold rims didn't fit the app's look.) The
+/// picture is the badge's own art once there is one, and its Fluent icon (the food icons' set) until then.
 struct BadgeCoin: View {
     let badge: Badge
     var size: CGFloat = 58
     var got = true
     var progress: Double = 0
-    private var rim: [Color] {
-        let hex = { (v: Int) in Color(red: Double(v >> 16 & 255) / 255, green: Double(v >> 8 & 255) / 255, blue: Double(v & 255) / 255) }
-        return badge.xp >= 400 ? [hex(0xFFF0B8), hex(0xF2B94A), hex(0x8A5A12)] : badge.xp >= 100 ? [hex(0xFFFFFF), hex(0xB7C3D3), hex(0x5D6A7C)] : [hex(0xF3C29A), hex(0xB9733F), hex(0x6B3D1C)]
-    }
+    private static let rim = [Color(red: 0.84, green: 0.92, blue: 1), Color(red: 0.56, green: 0.77, blue: 1), Color(red: 0.77, green: 0.63, blue: 1)]
+    private var dots: Int { badge.xp >= 400 ? 4 : badge.xp >= 200 ? 3 : badge.xp >= 100 ? 2 : 1 }
     var body: some View {
         ZStack {
-            Circle().fill(got ? AnyShapeStyle(LinearGradient(colors: rim, startPoint: .top, endPoint: .bottom)) : AnyShapeStyle(Color(white: 0.17)))
-            Circle().fill(RadialGradient(colors: got ? [Color(red: 0.14, green: 0.2, blue: 0.29), Color(red: 0.06, green: 0.09, blue: 0.14)] : [Color(white: 0.14), Color(white: 0.09)],
-                                         center: UnitPoint(x: 0.5, y: 0.3), startRadius: 0, endRadius: size * 0.55))
-                .padding(size * 0.075)
+            Circle().fill(got ? AnyShapeStyle(LinearGradient(colors: Self.rim, startPoint: .topLeading, endPoint: .bottomTrailing)) : AnyShapeStyle(Color(white: 0.17)))
+            Circle().fill(RadialGradient(colors: got ? [Color(red: 0.17, green: 0.18, blue: 0.37), Color(red: 0.04, green: 0.07, blue: 0.13)] : [Color(white: 0.14), Color(white: 0.09)],
+                                         center: UnitPoint(x: 0.5, y: 0.28), startRadius: 0, endRadius: size * 0.6))
+                .padding(size * 0.08)
+            if got {
+                Circle().strokeBorder(.white.opacity(0.14), lineWidth: 1).padding(size * 0.08)
+                HStack(spacing: size * 0.04) { ForEach(0..<dots, id: \.self) { _ in Circle().fill(.white.opacity(0.9)).frame(width: size * 0.07, height: size * 0.07) } }
+                    .offset(y: size * 0.4)
+            }
             if !got && progress > 0 {
                 Circle().trim(from: 0, to: min(1, progress)).stroke(Theme.accent, style: StrokeStyle(lineWidth: max(2, size * 0.05), lineCap: .round))
                     .rotationEffect(.degrees(-90)).padding(size * 0.025)
@@ -202,18 +206,20 @@ struct BadgeCoin: View {
             .grayscale(got ? 0 : 1).opacity(got ? 1 : 0.4)
         }
         .frame(width: size, height: size)
+        .shadow(color: got ? Color(red: 0.66, green: 0.7, blue: 1).opacity(0.35) : .clear, radius: size * 0.16)
         .accessibilityHidden(true)
     }
 }
 
-/// A badge in a grid: its coin, with its name.
+/// A badge in a grid: its coin at the top, two lines kept for the name and one for the count, so a row lines up when a
+/// name wraps or a count shows (the grid centred cells of different heights, and the coins sat at different heights).
 func badgeCell(_ b: Badge, got: Bool, progress: Double = 0, count: String? = nil) -> some View {
-    VStack(spacing: 5) {
+    VStack(spacing: 6) {
         BadgeCoin(badge: b, size: 58, got: got, progress: progress)
-        Text(b.name).font(.caption2.weight(.semibold)).lineLimit(2).multilineTextAlignment(.center).foregroundStyle(got ? .primary : .secondary)
-        if let count { Text(count).font(.caption2).monospacedDigit().foregroundStyle(.tertiary) }
+        Text(b.name).font(.caption2.weight(.semibold)).lineLimit(2, reservesSpace: true).multilineTextAlignment(.center).foregroundStyle(got ? .primary : .secondary)
+        Text(count ?? " ").font(.caption2).monospacedDigit().foregroundStyle(.tertiary)
     }
-    .frame(maxWidth: .infinity)
+    .frame(maxWidth: .infinity, alignment: .top)
 }
 
 /// Every badge, by group, with how many of each group are earned.

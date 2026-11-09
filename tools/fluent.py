@@ -21,7 +21,8 @@ EXTRA = ["🔥", "🎯", "📈", "📖", "🗓️", "🏆", "👨‍👩‍👧"
 # and every badge's icon (Badges.swift: B("id", "Group", "stat", "🌱", …)), so the badges match the food icons
 badges = io.open(os.path.join(ROOT, "native", "CheatDays", "Model", "Badges.swift"), encoding="utf-8").read()
 BADGES = re.findall(r'B\("[^"]*", "[^"]*", "[^"]*", "([^"]+)"', badges)
-emojis = list(dict.fromkeys(re.findall(r'\("([^"]+)", \[', part) + EXTRA + BADGES))
+# and any given on the command line (python tools/fluent.py 🕯️ 🎂), to try in a mockup before they're used
+emojis = list(dict.fromkeys(re.findall(r'\("([^"]+)", \[', part) + EXTRA + BADGES + sys.argv[1:]))
 
 tree = json.loads(get("https://api.github.com/repos/microsoft/fluentui-emoji/git/trees/main?recursive=1"))["tree"]
 paths = [t["path"] for t in tree]

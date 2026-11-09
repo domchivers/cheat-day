@@ -42,7 +42,11 @@ enum XPRules {
         "foods25": 25, "foods100": 50, "scan1": 25, "scan25": 50, "photo1": 25, "photo25": 50, "meal1": 25, "meal10": 50, "recipe1": 25, "ask1": 25, "wo1": 25, "wo10": 50, "wo25": 100,
         "wo50": 200, "wo100": 400, "min600": 25, "min3000": 50, "burn10k": 25, "pb": 25, "pb10": 50, "pb25": 100, "routine1": 25, "weigh1": 25, "weigh10": 50, "weigh50": 100,
         "lost1": 25, "lost5": 50, "lost10": 100, "friend1": 25, "friend5": 50, "post1": 25, "post10": 50, "post50": 100, "react10": 25, "comment10": 25, "send1": 25, "lvl5": 25,
-        "lvl10": 50, "lvl20": 100, "goal": 25, "goal10": 50, "goal50": 100, "perfect1": 25, "perfect5": 50, "early": 50, "owl": 50, "comeback": 50, "weekend": 50, "goalset": 50, "goalhit": 50
+        "lvl10": 50, "lvl20": 100, "goal": 25, "goal10": 50, "goal50": 100, "perfect1": 25, "perfect5": 50, "early": 50, "owl": 50, "comeback": 50, "weekend": 50, "goalset": 50, "goalhit": 50,
+        // the 27 added in the app (Nov 2026), worth as much as their badges say
+        "days500": 400, "days1000": 800, "streak60": 200, "streak200": 400, "ud200": 400, "ud365": 800, "cheat10": 50, "protein100": 200, "protein250": 400,
+        "foods250": 200, "ask50": 100, "wo200": 400, "wo365": 800, "min6000": 400, "burn50k": 400, "pb50": 400, "weigh100": 200, "lost15": 400, "lost20": 800,
+        "lvl50": 800, "perfect10": 200, "perfect52": 800, "year1": 400, "year2": 800, "year3": 800, "year4": 800, "year5": 800
     ]
     static let ways: [(String, String)] = [
         ("Log any food in a day", "+\(log)"), ("Each food you log (up to \(itemCap) a day)", "+\(item)"), ("Finish a day under budget", "+\(under)"),
