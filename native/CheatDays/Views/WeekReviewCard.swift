@@ -56,11 +56,12 @@ struct WeekReviewCard: View {
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            // closing it sits at the foot, out of the headline's way
+            // closing it sits at the foot, out of the headline's way, on the left: on the right the floating + sat
+            // on top of it whenever the card was at the bottom of the screen
             HStack {
-                Spacer()
                 Button(action: hide) { Text("Hide for today").font(.footnote.weight(.medium)) }
                     .buttonStyle(.borderless).foregroundStyle(.secondary)
+                Spacer()
             }
         }
         .padding(.vertical, 6)
