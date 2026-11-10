@@ -473,7 +473,8 @@ struct StoryEditor: View {
     private func place(_ o: JSON) {
         remember(); UIImpactFeedbackGenerator(style: .soft).impactOccurred()
         var n = o
-        n["id"] = UUID().uuidString.prefix(8).lowercased(); n["x"] = 0.5; n["y"] = 0.55 + Double(items.count % 3) * 0.06; n["scale"] = 1.0; n["rotation"] = 0.0
+        n["id"] = UUID().uuidString.prefix(8).lowercased(); n["x"] = 0.5; n["y"] = 0.55 + Double(items.count % 3) * 0.06; n["rotation"] = 0.0
+        n["scale"] = ["poll", "question"].contains(str(o["type"])) ? 0.9 : 0.75
         withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) { items.append(n) }
     }
 
@@ -733,13 +734,13 @@ struct StickerSheet: View {
                 ForEach(shown, id: \.id) { s in
                     // the sticker laid out at its own size first, then shrunk: squeezed into the tile it was cut short
                     // ("54-day str…") and spilled into its neighbours; and the tile itself takes the tap (it didn't)
+                    // the tile is the size; the sticker sits over it, so a wide one (the poll) can't widen its column
                     Button { pick(s.id) } label: {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(.tertiarySystemFill).opacity(0.5))
-                            StoryItem(o: s.sample).fixedSize().scaleEffect(0.52).allowsHitTesting(false)
-                        }
-                        .frame(height: 104).clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(.tertiarySystemFill).opacity(0.5))
+                            .frame(maxWidth: .infinity).frame(height: 104)
+                            .overlay { StoryItem(o: s.sample).fixedSize().scaleEffect(0.5).allowsHitTesting(false) }
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
                     .buttonStyle(.plain)
                 }

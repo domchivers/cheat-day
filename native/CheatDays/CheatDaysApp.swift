@@ -175,17 +175,17 @@ private struct HonorsHarness: View {
 private struct StickersHarness: View {
     @State private var tray = true
     private static let all: [JSON] = [
-        ["type": "food", "name": "Eggs on sourdough", "kcal": 410, "p": 33, "style": 0, "x": 0.3, "y": 0.1],
-        ["type": "food", "name": "Chicken bowl", "kcal": 520, "p": 42, "style": 1, "x": 0.72, "y": 0.1],
-        ["type": "macros", "p": 120, "c": 180, "f": 55, "kcal": 1652, "x": 0.5, "y": 0.21],
-        ["type": "ring", "eaten": 1240, "budget": 2350, "x": 0.5, "y": 0.32],
-        ["type": "left", "kcal": 1110, "x": 0.3, "y": 0.42], ["type": "streak", "days": 54, "x": 0.72, "y": 0.42],
-        ["type": "steps", "steps": 8421, "x": 0.3, "y": 0.5], ["type": "rank", "level": 10, "x": 0.72, "y": 0.5],
-        ["type": "cheat", "days": 4, "x": 0.27, "y": 0.61], ["type": "workout", "name": "Push day", "minutes": 52, "detail": "6 exercises", "x": 0.72, "y": 0.61],
-        ["type": "poll", "q": "Cheat day or not?", "a": "Yes", "b": "No", "x": 0.5, "y": 0.72],
-        ["type": "question", "q": "Ask me anything", "x": 0.5, "y": 0.84],
-        ["type": "time", "text": "15:40", "x": 0.2, "y": 0.94], ["type": "place", "text": "South Yarra", "x": 0.5, "y": 0.94],
-        ["type": "hashtag", "text": "mealprep", "x": 0.82, "y": 0.94]]
+        ["type": "food", "name": "Eggs on sourdough", "kcal": 410, "p": 33, "style": 0, "scale": 0.62, "x": 0.3, "y": 0.1],
+        ["type": "food", "name": "Chicken bowl", "kcal": 520, "p": 42, "style": 1, "scale": 0.62, "x": 0.72, "y": 0.1],
+        ["type": "macros", "p": 120, "c": 180, "f": 55, "kcal": 1652, "scale": 0.62, "x": 0.5, "y": 0.21],
+        ["type": "ring", "eaten": 1240, "budget": 2350, "scale": 0.62, "x": 0.5, "y": 0.32],
+        ["type": "left", "kcal": 1110, "scale": 0.62, "x": 0.3, "y": 0.42], ["type": "streak", "days": 54, "scale": 0.62, "x": 0.72, "y": 0.42],
+        ["type": "steps", "steps": 8421, "scale": 0.62, "x": 0.3, "y": 0.5], ["type": "rank", "level": 10, "scale": 0.62, "x": 0.72, "y": 0.5],
+        ["type": "cheat", "days": 4, "scale": 0.62, "x": 0.27, "y": 0.61], ["type": "workout", "name": "Push day", "minutes": 52, "detail": "6 exercises", "scale": 0.62, "x": 0.72, "y": 0.61],
+        ["type": "poll", "q": "Cheat day or not?", "a": "Yes", "b": "No", "scale": 0.62, "x": 0.5, "y": 0.72],
+        ["type": "question", "q": "Ask me anything", "scale": 0.62, "x": 0.5, "y": 0.84],
+        ["type": "time", "text": "15:40", "scale": 0.62, "x": 0.2, "y": 0.94], ["type": "place", "text": "South Yarra", "scale": 0.62, "x": 0.5, "y": 0.94],
+        ["type": "hashtag", "text": "mealprep", "scale": 0.62, "x": 0.82, "y": 0.94]]
     var body: some View {
         ZStack {
             LinearGradient(colors: [Color(red: 0.4, green: 0.25, blue: 0.15), Color(red: 0.12, green: 0.08, blue: 0.06)], startPoint: .top, endPoint: .bottom).ignoresSafeArea()
