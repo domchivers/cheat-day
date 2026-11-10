@@ -138,7 +138,7 @@ enum Assistant {
                 return "you said \"\(plain.prefix(480))\""
             }.suffix(10)
             return "\(when): " + lines.joined(separator: "; ")
-        }.joined(separator: "\n").prefix(7000).description
+        }.joined(separator: "\n").prefix(9000).description
     }
 
     @MainActor
