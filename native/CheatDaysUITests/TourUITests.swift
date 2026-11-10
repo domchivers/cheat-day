@@ -217,6 +217,15 @@ final class TourUITests: XCTestCase {
         let b = XCTAttachment(screenshot: app.screenshot()); b.name = "editor-food"; b.lifetime = .keepAlways; add(b)
     }
 
+    /// Apple's food and day symbols in the tab bar style, for choosing the Today icon.
+    func testTabIcons() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-uitest-tabicons"]
+        app.launch()
+        sleep(2)
+        let a = XCTAttachment(screenshot: app.screenshot()); a.name = "tab-icons"; a.lifetime = .keepAlways; add(a)
+    }
+
     /// A profile's tag and label line, and the sheet of all the tags.
     func testProfileTags() {
         let app = XCUIApplication()

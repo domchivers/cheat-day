@@ -46,6 +46,7 @@ struct RootView: View {
         else if ProcessInfo.processInfo.arguments.contains("-uitest-stickers") { StickersHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-honors") { HonorsHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-editor") { EditorHarness() }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-tabicons") { TabIconsHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-review") { ReviewHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-cards") { CardsHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-checkin-step") { CheckInHarness(acting: true) }
@@ -173,6 +174,37 @@ private struct HonorsHarness: View {
 }
 
 /// For the sticker screenshots only: the tray as it opens, then every sticker on a story, no sign-in.
+/// For choosing the Today tab's icon only: Apple's food and day symbols, each in a tab bar beside the others.
+private struct TabIconsHarness: View {
+    static let names = ["fork.knife", "fork.knife.circle.fill", "takeoutbag.and.cup.and.straw.fill", "frying.pan.fill", "carrot.fill",
+                        "leaf.fill", "flame.fill", "cup.and.saucer.fill", "birthday.cake.fill", "fish.fill", "basket.fill",
+                        "refrigerator.fill", "scalemass.fill", "chart.pie.fill", "list.bullet.clipboard.fill", "sun.max.fill"]
+    var body: some View {
+        ScrollView {
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+                ForEach(Array(Self.names.enumerated()), id: \.offset) { i, n in
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("\(i + 1) · \(n)").font(.caption2.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.6)
+                        HStack(spacing: 0) {
+                            Image(systemName: n).font(.system(size: 21, weight: .semibold)).foregroundStyle(Theme.accent)
+                                .frame(width: 54, height: 38).background(Color.white.opacity(0.14), in: Capsule())
+                            Spacer()
+                            Image(systemName: "dumbbell.fill").font(.system(size: 19, weight: .semibold))
+                            Spacer()
+                            Image(systemName: "person.2.fill").font(.system(size: 19, weight: .semibold))
+                            Spacer()
+                        }
+                        .padding(5).background(Color(white: 0.16), in: Capsule())
+                    }
+                }
+            }
+            .padding(14)
+        }
+        .background(Color.black.ignoresSafeArea())
+        .preferredColorScheme(.dark)
+    }
+}
+
 /// For the editor test only: the real story editor on a plain photo, to add, move and pinch stickers.
 private struct EditorHarness: View {
     private static let photo = UIGraphicsImageRenderer(size: CGSize(width: 1080, height: 1920)).image { c in
