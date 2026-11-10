@@ -132,7 +132,8 @@ enum Assistant {
             guard !its.isEmpty else { return nil }
             return "\(m): " + its.map { it in
                 let k = num(it["kcal"]) ?? 0, a = FoodMath.amountText(it, kcal: k)
-                return "\"\(str(it["name"]))\"\(a.isEmpty ? "" : " \(a)") \(Int(k)) kcal"
+                let made = (it["ingredients"] as? [String] ?? []).filter { !$0.isEmpty }
+                return "\"\(str(it["name"]))\"\(a.isEmpty ? "" : " \(a)") \(Int(k)) kcal\(made.isEmpty ? "" : " (made of " + made.joined(separator: ", ") + ")")"
             }.joined(separator: ", ")
         }.joined(separator: "; ")
     }
@@ -366,6 +367,14 @@ enum Assistant {
         let acts = CheatDays.list(dict(answer["edit"])["actions"])
         if str(answer["kind"]) == "edit", acts.count >= 2, acts.allSatisfy({ str($0["action"]) == "add" }) {
             answer["reply"] = str(answer["reply"]).replacingOccurrences(of: "Make these changes", with: "Add as a meal (or + for one at a time)")
+        }
+        if str(answer["kind"]) == "edit", acts.count == 1, let a = acts.first, str(a["action"]) == "add", let g = pos(a["grams"]), num(a["kcal"]) != nil {
+            let part: JSON = ["name": str(a["name"]), "grams": g, "kcal": num(a["kcal"]) ?? 0, "protein_g": num(a["protein_g"]) ?? 0,
+                              "carbs_g": num(a["carbs_g"]) ?? 0, "fat_g": num(a["fat_g"]) ?? 0, "numbers_from": a["numbers_from"] ?? "estimate"]
+            answer["kind"] = "estimate"
+            answer["estimate"] = ["name": str(a["name"]), "portion_g": g, "unit": "g", "notes": "", "parts": [part]] as JSON
+            answer["reply"] = str(answer["reply"]).replacingOccurrences(of: "Tap Make these changes to add it.", with: "Tap Add to put it on.")
+                .replacingOccurrences(of: "Make these changes", with: "Add")
         }
         if var e = answer["estimate"] as? JSON {
             // logging from a menu page: its energy is the shop's own, not "doesn't publish its numbers"
@@ -869,8 +878,11 @@ enum Assistant {
             let x = parts[i], k = num(x["kcal"]) ?? 0
             let r = Sanity.check(name: str(x["name"]), grams: num(x["grams"]), kcal: k, p: num(x["protein_g"]), c: num(x["carbs_g"]), f: num(x["fat_g"]))
             if r.kcal != k { parts[i]["kcal"] = r.kcal; fixed = true }
-            if !r.flags.isEmpty { parts[i]["flagged"] = true }   // shown amber, and not counted as checked
-            flags += r.flags
+            // chicken boiled down to 60% of its weight really has 37 g protein per 100 g: theirs, so not "more than chicken has"
+            let own = ["them", "label"].contains(str(x["numbers_from"]))
+            let fl = own ? r.flags.filter { !$0.contains("per 100 g") } : r.flags
+            if !fl.isEmpty { parts[i]["flagged"] = true }   // shown amber, and not counted as checked
+            flags += fl
         }
         var out = e
         if !parts.isEmpty { out["parts"] = parts }
