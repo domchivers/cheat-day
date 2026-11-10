@@ -34,6 +34,15 @@ struct ExploreView: View {
             let side = (geo.size.width - 4) / 3
             ScrollView {
                 VStack(spacing: 0) {
+                    // its own search box: Friends has no navigation bar to hang one from
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                        TextField("Search people or foods", text: $q).autocorrectionDisabled()
+                        if !q.isEmpty { Button { q = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }.buttonStyle(.plain) }
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 9)
+                    .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .padding(.horizontal, 14).padding(.top, 10)
                     ScrollView(.horizontal) {
                         HStack(spacing: 7) { ForEach(Self.chips, id: \.self) { c in Chip(text: c, on: chip == c) { withAnimation(.snappy) { chip = c } } } }
                             .padding(.horizontal, 14).padding(.vertical, 8)
@@ -51,7 +60,6 @@ struct ExploreView: View {
             }
             .refreshable { await follows.loadExplore() }
         }
-        .searchable(text: $q, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search people or foods")
         .task(id: q) {
             try? await Task.sleep(for: .milliseconds(300))
             if !Task.isCancelled { people = q.count >= 2 ? await follows.search(q) : [] }

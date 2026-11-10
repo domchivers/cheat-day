@@ -209,6 +209,8 @@ struct FeedView: View {
     @State private var picking: String?   // the post whose reactions are showing
     @State private var burst: String?   // the post a double-tap just liked
     @State private var profileOf: String?
+    @State private var story: StoryStart?
+    struct StoryStart: Identifiable { let id = UUID(); let people: [String]; let at: Int }
     private var feed: Feed { Feed.shared }
     private var friends: Friends { Friends.shared }
 
@@ -243,7 +245,7 @@ struct FeedView: View {
                     .frame(width: 58, height: 58).background(Theme.accent, in: Circle()).shadow(color: .black.opacity(0.35), radius: 10, y: 5)
             }
             .buttonStyle(.plain).accessibilityLabel("New post")
-            .padding(.trailing, 18).padding(.bottom, 96)
+            .padding(.trailing, 18).padding(.bottom, 12)   // just above the tab bar
             }
         }
         .sheet(isPresented: $composing) { ComposeSheet() }
@@ -251,6 +253,7 @@ struct FeedView: View {
         .sheet(item: $talking) { b in CommentsSheet(post: b.post).presentationDetents([.medium, .large]).presentationDragIndicator(.visible) }
         .sheet(item: $sharing) { b in SharePostSheet(post: b.post).presentationDetents([.medium, .large]) }
         .navigationDestination(item: $profileOf) { id in ProfileView(id: id) }
+        .fullScreenCover(item: $story) { s in StoryView(people: s.people, at: s.at) }
     }
 
     // MARK: friends' days along the top
@@ -258,11 +261,21 @@ struct FeedView: View {
     private var rings: some View {
         ScrollView(.horizontal) {
             HStack(alignment: .top, spacing: 14) {
-                Button { composing = true } label: { ring(feed.me, "Your post", new: false, tag: nil, plus: true) }
-                    .buttonStyle(.plain)
-                ForEach(friends.people) { p in
-                    Button { showPerson(p.id) } label: { ring(p.id, p.name, new: p.isActive, tag: p.streak > 1 ? "\(p.streak)" : nil, plus: false) }
-                        .buttonStyle(.plain).accessibilityLabel("\(p.name)'s day")
+                // yours: your day as friends see it, or a new post when there's nothing yet
+                let mine = StoryView.has(feed.me)
+                Button { if mine { story = StoryStart(people: [feed.me], at: 0) } else { composing = true } } label: {
+                    ring(feed.me, "Your story", new: mine && !StoryView.seen(feed.me), tag: nil, plus: true)
+                }
+                .buttonStyle(.plain)
+                // only friends with something today, the ones you haven't watched first
+                let withStory = friends.people.filter { StoryView.has($0.id) }
+                let order = withStory.filter { !StoryView.seen($0.id) } + withStory.filter { StoryView.seen($0.id) }
+                ForEach(order.indices, id: \.self) { i in
+                    let p = order[i]
+                    Button { story = StoryStart(people: order.map(\.id), at: i) } label: {
+                        ring(p.id, p.name, new: !StoryView.seen(p.id), tag: p.streak > 1 ? "\(p.streak)" : nil, plus: false)
+                    }
+                    .buttonStyle(.plain).accessibilityLabel("\(p.name)'s story")
                 }
             }
             .padding(.horizontal, 16).padding(.vertical, 10)
@@ -720,7 +733,37 @@ struct ComposeSheet: View {
     @State private var camera = false
     @State private var busy = false
     @State private var problem: String?
+    @State private var search = ""
     private var store: Store { Store.shared }
+
+    private func matches(_ name: String) -> Bool { search.isEmpty || name.localizedCaseInsensitiveContains(search) }
+    /// The last 30 days, newest first: today's, then History's.
+    private var days: [(date: String, items: [JSON], workouts: [JSON])] {
+        let since = DayKey.shift(store.today, days: -30)
+        let past = list(store.doc["history"]).filter { str($0["date"]) >= since && str($0["date"]) < store.today }
+            .map { (date: str($0["date"]), items: list($0["items"]), workouts: list($0["workouts"])) }.sorted { $0.date > $1.date }
+        return [(date: store.today, items: store.todayItems, workouts: store.todayWorkouts)] + past
+    }
+    /// Each food once, the latest time it was had.
+    private var recentFoods: [JSON] {
+        var seen = Set<String>(), out: [JSON] = []
+        for d in days { for it in d.items.reversed() where matches(str(it["name"])) && seen.insert(str(it["name"]).lowercased()).inserted { var x = it; x["_date"] = d.date; out.append(x) } }
+        return Array(out.prefix(search.isEmpty ? 25 : 60))
+    }
+    private var savedMeals: [JSON] {
+        Array(list(store.doc["meals"]).filter { $0["saved"] as? Bool == true && matches(str($0["name"])) }.prefix(search.isEmpty ? 12 : 60))
+    }
+    private var recentWorkouts: [JSON] {
+        var out: [JSON] = []
+        for d in days { for w in d.workouts.reversed() where matches(str(w["name"])) { var x = w; x["_date"] = d.date; out.append(x) } }
+        return Array(out.prefix(search.isEmpty ? 12 : 40))
+    }
+    private func when(_ v: Any?) -> String {
+        let d = str(v)
+        if d == store.today { return "today" }
+        if d == DayKey.shift(store.today, days: -1) { return "yesterday" }
+        return DayKey.date(d).formatted(.dateTime.day().month(.abbreviated))
+    }
 
     var body: some View {
         NavigationStack {
@@ -743,22 +786,24 @@ struct ComposeSheet: View {
                     }
                     if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn) }
                 } else {
-                    let items = store.todayItems
+                    // anything from the last month, not just today: foods, meals and recipes, workouts; search to narrow it
+                    let items = recentFoods, meals = savedMeals, wos = recentWorkouts
                     if !items.isEmpty {
-                        Section("Today") { ForEach(items.indices, id: \.self) { i in pickRow(str(items[i]["name"]), "\(Int(num(items[i]["kcal"]) ?? 0)) kcal") { what = food(items[i]) } } }
+                        Section("Foods") { ForEach(items.indices, id: \.self) { i in pickRow(str(items[i]["name"]), "\(Int(num(items[i]["kcal"]) ?? 0)) kcal · \(when(items[i]["_date"]))") { what = food(items[i]) } } }
                     }
-                    let meals = list(store.doc["meals"]).filter { $0["saved"] as? Bool == true }.prefix(8)
                     if !meals.isEmpty {
-                        Section("Your meals") { ForEach(Array(meals).indices, id: \.self) { i in let m = Array(meals)[i]; pickRow(str(m["name"]), "\(Fmt.int(num(store.mealBasis(m)["kcalPerServing"]) ?? 0)) kcal a portion") { what = meal(m) } } }
+                        Section("Meals and recipes") { ForEach(meals.indices, id: \.self) { i in let m = meals[i]; pickRow(str(m["name"]), "\(Fmt.int(num(store.mealBasis(m)["kcalPerServing"]) ?? 0)) kcal a portion") { what = meal(m) } } }
                     }
-                    let wos = store.todayWorkouts
                     if !wos.isEmpty {
-                        Section("Today's workouts") { ForEach(wos.indices, id: \.self) { i in pickRow(str(wos[i]["name"]), "\(Int(num(wos[i]["minutes"]) ?? 0)) min") { what = workout(wos[i]) } } }
+                        Section("Workouts") { ForEach(wos.indices, id: \.self) { i in pickRow(str(wos[i]["name"]), "\(Int(num(wos[i]["minutes"]) ?? 0)) min · \(when(wos[i]["_date"]))") { what = workout(wos[i]) } } }
                     }
-                    if items.isEmpty && meals.isEmpty && wos.isEmpty { Text("Log a food, save a meal or finish a workout, then share it here.").foregroundStyle(.secondary) }
+                    if items.isEmpty && meals.isEmpty && wos.isEmpty {
+                        Text(search.isEmpty ? "Log a food, save a meal or finish a workout, then share it here." : "Nothing called that.").foregroundStyle(.secondary)
+                    }
                 }
             }
             .keyboardDone()
+            .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search foods, meals and workouts")
             .onAppear { if what == nil, let preset { what = preset } }
             .navigationTitle(what == nil ? "What are you sharing?" : "New post")
             .navigationBarTitleDisplayMode(.inline)

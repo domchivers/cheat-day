@@ -15,8 +15,7 @@ struct FriendsView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                Picker("Show", selection: $nav.friendsSeg) { Text("Feed").tag(1); Text("Explore").tag(2); Text("People").tag(0) }
-                    .pickerStyle(.segmented).padding(.horizontal, 16).padding(.vertical, 8)
+                header
                 switch nav.friendsSeg {
                 case 0: people
                 case 2: ExploreView()
@@ -25,8 +24,7 @@ struct FriendsView: View {
             }
             .background(Theme.bg)
             .keyboardDone()
-            .navigationTitle("Friends")
-            .modifier(FriendsToolbar(unread: FriendActivity.shared.unread, chats: Messages.shared.unread, showActivity: $showActivity, adding: $adding, showMessages: $showMessages, showMe: Binding(get: { profileOf == Profiles.shared.me }, set: { profileOf = $0 ? Profiles.shared.me : nil })))
+            .toolbar(.hidden, for: .navigationBar)   // its own slim top: the title and icons in one row, then text tabs
             .navigationDestination(isPresented: $showMessages) { MessagesView() }
             .navigationDestination(item: $profileOf) { id in ProfileView(id: id) }
             .navigationDestination(item: $nav.chatWith) { id in ChatView(friend: id) }
@@ -37,6 +35,58 @@ struct FriendsView: View {
             .sheet(item: $viewing) { v in PostRecipeSheet(post: v.post, by: v.by) }
             .task { await model.load(); await Profiles.shared.load(model.people.map(\.id)); await Messages.shared.load(); await Follows.shared.load() }
         }
+    }
+
+    /// "Friends" and the icons in one row, then Feed · Explore · People as text tabs: a third of the height the big
+    /// title, the toolbar row and the segmented picker took.
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Text("Friends").font(.system(size: 30, weight: .heavy))
+                Spacer()
+                round("bell.fill", count: FriendActivity.shared.unread) { showActivity = true }
+                    .accessibilityLabel("Activity, \(FriendActivity.shared.unread) new")
+                round("paperplane", count: Messages.shared.unread) { showMessages = true }
+                    .accessibilityLabel("Messages, \(Messages.shared.unread) unread")
+                round("person.badge.plus", count: 0) { adding = true }.accessibilityLabel("Add a friend")
+                Button { profileOf = Profiles.shared.me } label: { Avatar(id: Profiles.shared.me, size: 36) }
+                    .buttonStyle(.plain).accessibilityLabel("Your profile")
+            }
+            .padding(.horizontal, 16).padding(.top, 6)
+            HStack(spacing: 24) {
+                tab("Feed", 1); tab("Explore", 2); tab("People", 0)
+                Spacer()
+            }
+            .padding(.horizontal, 18).padding(.top, 10)
+            Divider().opacity(0.6)
+        }
+    }
+
+    private func round(_ symbol: String, count: Int, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 16, weight: .semibold)).foregroundStyle(Theme.accent)
+                .frame(width: 38, height: 38).background(Color(.tertiarySystemFill), in: Circle())
+                .overlay(alignment: .topTrailing) {
+                    if count > 0 {
+                        Text("\(min(count, 99))").font(.system(size: 10, weight: .heavy)).foregroundStyle(.white)
+                            .padding(.horizontal, 4).frame(minWidth: 17, minHeight: 17).background(Color.red, in: Capsule()).offset(x: 4, y: -3)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func tab(_ title: String, _ tag: Int) -> some View {
+        let on = nav.friendsSeg == tag
+        return Button { withAnimation(.snappy) { nav.friendsSeg = tag } } label: {
+            VStack(spacing: 7) {
+                Text(title).font(.headline).foregroundStyle(on ? .primary : .secondary)
+                Capsule().fill(on ? Color.primary : .clear).frame(height: 2.5)
+            }
+            .fixedSize(horizontal: true, vertical: false)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 
     /// Cards in a scroll view rather than a list: an opened card grows downwards with its corners intact, and the ones below slide down.
@@ -263,76 +313,3 @@ struct AddFriendSheet: View {
     }
 }
 
-/// The bell and add-friend buttons. On iOS 26 the new-activity count sits over the bell's top-right corner;
-/// before that, a red dot drawn into the button.
-private struct FriendsToolbar: ViewModifier {
-    let unread: Int
-    let chats: Int
-    @Binding var showActivity: Bool
-    @Binding var adding: Bool
-    @Binding var showMessages: Bool
-    @Binding var showMe: Bool
-
-    func body(content: Content) -> some View {
-        if #available(iOS 26, *) {
-            content.toolbar {
-                // its own glass circle (not the toolbar's shared one, which clips) so the count can sit over the corner
-                ToolbarItem(placement: .topBarLeading) {
-                    bell(Image(systemName: "bell.fill").font(.system(size: 17, weight: .semibold))
-                        .frame(width: 44, height: 44).glassEffect(.regular, in: Circle())
-                        .overlay(alignment: .topTrailing) {
-                            if unread > 0 {
-                                Text("\(min(unread, 99))").font(.system(size: 11, weight: .heavy)).foregroundStyle(.white)
-                                    .padding(.horizontal, 5).frame(minWidth: 19, minHeight: 19).background(Color.red, in: Capsule())
-                                    .offset(x: 5, y: -5)
-                            }
-                        })
-                    .buttonStyle(.plain)
-                }
-                .sharedBackgroundVisibility(.hidden)
-                ToolbarItem(placement: .topBarTrailing) { messages }
-                ToolbarItem(placement: .topBarTrailing) { add }
-                ToolbarItem(placement: .topBarTrailing) { me }
-            }
-        } else {
-            content.toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    bell(ZStack(alignment: .topTrailing) {
-                        Image(systemName: "bell.fill").padding(.top, 6).padding(.trailing, 9)
-                        if unread > 0 {
-                            Text("\(min(unread, 99))").font(.system(size: 10, weight: .heavy)).foregroundStyle(.white)
-                                .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 16).background(Color.red, in: Capsule())
-                        }
-                    }
-                    .frame(minWidth: 34, minHeight: 30))
-                }
-                ToolbarItem(placement: .topBarTrailing) { messages }
-                ToolbarItem(placement: .topBarTrailing) { add }
-                ToolbarItem(placement: .topBarTrailing) { me }
-            }
-        }
-    }
-
-    private func bell(_ label: some View) -> some View {
-        Button { showActivity = true } label: { label }.accessibilityLabel("Activity, \(unread) new")
-    }
-    private var add: some View {
-        Button { adding = true } label: { Image(systemName: "person.badge.plus") }.accessibilityLabel("Add a friend")
-    }
-    /// Messages, with how many chats have something unread.
-    private var messages: some View {
-        Button { showMessages = true } label: {
-            Image(systemName: "paperplane")
-                .overlay(alignment: .topTrailing) {
-                    if chats > 0 {
-                        Text("\(min(chats, 99))").font(.system(size: 10, weight: .heavy)).foregroundStyle(.white)
-                            .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 16).background(Color.red, in: Capsule()).offset(x: 9, y: -8)
-                    }
-                }
-        }
-        .accessibilityLabel("Messages, \(chats) unread")
-    }
-    private var me: some View {
-        Button { showMe = true } label: { Avatar(id: Profiles.shared.me, size: 28) }.accessibilityLabel("Your profile")
-    }
-}
