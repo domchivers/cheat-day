@@ -105,6 +105,13 @@ final class Profiles {
         return await save(["avatar": url])
     }
 
+    /// The whole photo behind your round one, kept on this phone so Move photo can reframe it later.
+    static var original: UIImage? {
+        get { (try? Data(contentsOf: originalURL)).flatMap(UIImage.init(data:)) }
+        set { if let d = newValue.flatMap({ Feed.prepare($0) }) { try? d.write(to: originalURL) } }
+    }
+    private static var originalURL: URL { FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("avatar-original.jpg") }
+
     /// The green dot: when I was last on the app.
     func touch() async {
         guard !me.isEmpty else { return }

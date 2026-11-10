@@ -314,6 +314,7 @@ struct EditProfileView: View {
     @State private var pinned: [String] = []
     @State private var showWeek = true
     @State private var isPrivate = true
+    @State private var framing: CropBox?   // a photo being moved and zoomed in the circle
     @State private var picked: PhotosPickerItem?
     @State private var camera = false
     @State private var busy = false
@@ -334,6 +335,9 @@ struct EditProfileView: View {
                             HStack(spacing: 18) {
                                 Button { camera = true } label: { Label("Camera", systemImage: "camera") }.buttonStyle(.borderless)
                                 PhotosPicker(selection: $picked, matching: .images) { Label("Library", systemImage: "photo") }.buttonStyle(.borderless)
+                                if !profiles.avatar(profiles.me).isEmpty {
+                                    Button { Task { await reframe() } } label: { Label("Move", systemImage: "arrow.up.and.down.and.arrow.left.and.right") }.buttonStyle(.borderless)
+                                }
                             }
                             .font(.subheadline)
                         }
@@ -356,7 +360,14 @@ struct EditProfileView: View {
                         .onChange(of: bio) { _, b in if b.count > 150 { bio = String(b.prefix(150)) } }
                 }
                 Section {
-                    ForEach(tags, id: \.self) { t in Text(t) }.onDelete { tags.remove(atOffsets: $0) }
+                    // each one can be changed in place, or taken off with the red minus
+                    ForEach(tags.indices, id: \.self) { i in
+                        HStack {
+                            TextField("Tag", text: Binding(get: { i < tags.count ? tags[i] : "" }, set: { if i < tags.count { tags[i] = String($0.prefix(24)) } }))
+                            Button { withAnimation { _ = tags.remove(at: i) } } label: { Image(systemName: "minus.circle.fill").foregroundStyle(.red) }
+                                .buttonStyle(.borderless).accessibilityLabel("Remove tag")
+                        }
+                    }
                     if tags.count < 3 {
                         HStack {
                             TextField("Add a tag", text: $newTag)
@@ -400,7 +411,8 @@ struct EditProfileView: View {
                 tags = p?.tags ?? []; pinned = p?.pinned ?? []; showWeek = p?.showWeek ?? true; isPrivate = p?.isPrivate ?? true
             }
             .onChange(of: picked) { _, item in Task { if let d = try? await item?.loadTransferable(type: Data.self), let img = UIImage(data: d) { await photo(img) } } }
-            .fullScreenCover(isPresented: $camera) { CameraPicker { img in camera = false; if let img { Task { await photo(img) } } }.ignoresSafeArea() }
+            .fullScreenCover(isPresented: $camera) { CameraPicker { img in camera = false; if let img { DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { Task { await photo(img) } } } }.ignoresSafeArea() }
+            .fullScreenCover(item: $framing) { box in AvatarCropView(image: box.image) { out in framing = nil; if let out { Task { await upload(out) } } } }
         }
     }
 
@@ -412,7 +424,18 @@ struct EditProfileView: View {
     private func toggle(_ id: String) {
         if let i = pinned.firstIndex(of: id) { pinned.remove(at: i) } else if pinned.count < 4 { pinned.append(id) }
     }
+    /// A new photo: frame it in the circle first.
     private func photo(_ img: UIImage) async {
+        Profiles.original = img
+        framing = CropBox(image: img)
+    }
+    /// Move and zoom the photo you have: the whole one if this phone kept it, else the round one.
+    private func reframe() async {
+        if let o = Profiles.original { framing = CropBox(image: o); return }
+        guard let url = URL(string: profiles.avatar(profiles.me)), let (d, _) = try? await URLSession.shared.data(from: url), let img = UIImage(data: d) else { return }
+        framing = CropBox(image: img)
+    }
+    private func upload(_ img: UIImage) async {
         busy = true; defer { busy = false }
         if !(await profiles.setPhoto(img)) { problem = profiles.error }
     }
@@ -426,7 +449,7 @@ struct EditProfileView: View {
             taken = false
             let change: JSON = ["display_name": name.trimmingCharacters(in: .whitespaces).isEmpty ? Friends.shared.myName : name.trimmingCharacters(in: .whitespaces),
                                 "username": u.isEmpty ? NSNull() : u, "bio": bio.trimmingCharacters(in: .whitespacesAndNewlines),
-                                "tags": tags, "pinned": pinned, "show_week": showWeek, "private": isPrivate, "privacy_chosen": true]
+                                "tags": tags.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }, "pinned": pinned, "show_week": showWeek, "private": isPrivate, "privacy_chosen": true]
             if await profiles.save(change) { dismiss() } else { problem = profiles.error }
         }
     }
@@ -622,6 +645,77 @@ struct FindPeopleView: View {
                 .buttonStyle(.borderedProminent).controlSize(.small)
                 .tint(st == .none ? Theme.accent : Color(.tertiarySystemFill)).foregroundStyle(st == .none ? Theme.onAccent : .primary)
             }
+        }
+    }
+}
+
+struct CropBox: Identifiable { let id = UUID(); let image: UIImage }
+
+/// Move and zoom a photo in the circle, the way it'll show on your profile. Drag to move, pinch to zoom.
+struct AvatarCropView: View {
+    let image: UIImage
+    var done: (UIImage?) -> Void
+    @State private var scale: CGFloat = 1
+    @State private var lastScale: CGFloat = 1
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+
+    var body: some View {
+        GeometryReader { g in
+            let side = min(g.size.width, g.size.height) - 48
+            let fill = side / max(1, min(image.size.width, image.size.height))
+            let w = image.size.width * fill * scale, h = image.size.height * fill * scale
+            ZStack {
+                Color.black.ignoresSafeArea()
+                Image(uiImage: image).resizable().frame(width: w, height: h).offset(offset)
+                // dim everything outside the circle
+                Path { p in
+                    p.addRect(CGRect(origin: .zero, size: g.size))
+                    p.addEllipse(in: CGRect(x: (g.size.width - side) / 2, y: (g.size.height - side) / 2, width: side, height: side))
+                }
+                .fill(Color.black.opacity(0.6), style: FillStyle(eoFill: true)).allowsHitTesting(false)
+                Circle().stroke(.white.opacity(0.85), lineWidth: 2).frame(width: side, height: side).allowsHitTesting(false)
+                VStack {
+                    Text("Move and zoom").font(.headline).foregroundStyle(.white).padding(.top, 20)
+                    Spacer()
+                    HStack {
+                        Button("Cancel") { done(nil) }.foregroundStyle(.white)
+                        Spacer()
+                        Button("Choose") { done(crop(side: side, fill: fill)) }.fontWeight(.bold).foregroundStyle(Theme.accent)
+                    }
+                    .font(.headline).padding(.horizontal, 28).padding(.bottom, 30)
+                }
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture()
+                    .onChanged { v in offset = clamp(CGSize(width: lastOffset.width + v.translation.width, height: lastOffset.height + v.translation.height), w: w, h: h, side: side) }
+                    .onEnded { _ in lastOffset = offset }
+                    .simultaneously(with: MagnificationGesture()
+                        .onChanged { m in
+                            scale = min(5, max(1, lastScale * m))
+                            offset = clamp(offset, w: image.size.width * fill * scale, h: image.size.height * fill * scale, side: side)
+                        }
+                        .onEnded { _ in lastScale = scale; lastOffset = offset })
+            )
+        }
+        .statusBarHidden()
+    }
+
+    /// Keep the circle covered: the photo can't be moved past its edges.
+    private func clamp(_ o: CGSize, w: CGFloat, h: CGFloat, side: CGFloat) -> CGSize {
+        let mx = max(0, (w - side) / 2), my = max(0, (h - side) / 2)
+        return CGSize(width: min(mx, max(-mx, o.width)), height: min(my, max(-my, o.height)))
+    }
+
+    /// What's inside the circle, as a 640 px square.
+    private func crop(side: CGFloat, fill: CGFloat) -> UIImage {
+        let s = fill * scale, visible = side / s
+        let cx = image.size.width / 2 - offset.width / s, cy = image.size.height / 2 - offset.height / s
+        let x0 = cx - visible / 2, y0 = cy - visible / 2, k = 640 / visible
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1
+        return UIGraphicsImageRenderer(size: CGSize(width: 640, height: 640), format: format).image { _ in
+            image.draw(in: CGRect(x: -x0 * k, y: -y0 * k, width: image.size.width * k, height: image.size.height * k))
         }
     }
 }
