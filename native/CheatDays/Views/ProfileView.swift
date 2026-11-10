@@ -51,11 +51,13 @@ struct ProfileView: View {
                     Image(systemName: "square.grid.3x3").tag(0)
                     Image(systemName: "trophy").tag(1)
                     if person != nil { Image(systemName: "fork.knife").tag(2) }   // their food today, like the Today tab
+                    if home && isMe { Image(systemName: "chart.line.uptrend.xyaxis").tag(3) }   // Progress: only you see it
                 }
                 .pickerStyle(.segmented).padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 8)
                 switch tab {
                 case 1: badges.padding(.horizontal, 16)
                 case 2: today.padding(.horizontal, 16)
+                case 3: ProgressDashboard().padding(.horizontal, 16).padding(.top, 4)
                 default: grid
                 }
                 }
@@ -161,7 +163,6 @@ struct ProfileView: View {
             if let bio = p?.bio, !bio.isEmpty { Text(bio).font(.subheadline).padding(.top, 4) }
             else if isMe { Button("Add a bio") { editing = true }.font(.subheadline).padding(.top, 4) }
             buttons.padding(.top, 13)
-            if home && isMe { progressCard.padding(.top, 12) }
             if !isMe, p?.showWeek ?? true, let person { week(person).padding(.top, 12) }
             let pins = (p?.pinned ?? []).compactMap { pid in Badge.all.first { $0.id == pid } }
             if !pins.isEmpty {
@@ -204,30 +205,6 @@ struct ProfileView: View {
         }
     }
 
-
-    /// Your weight and goal, the week and your rank in a line, opening everything Me used to show.
-    private var progressCard: some View {
-        let kg = store.lastWeighIn?.kg ?? store.latestWeight?.kg, goal = pos(store.doc["goalWeight"])
-        let week = store.weekDates.map(store.dayFacts).filter(\.logged), ok = week.filter(store.underBudget).count
-        var bits: [String] = []
-        if let kg { bits.append(goal.map { "\(Fmt.kg(kg)) → \(Fmt.kg($0)) kg" } ?? "\(Fmt.kg(kg)) kg") }
-        if !week.isEmpty { bits.append("\(ok) of \(week.count) on budget") }
-        bits.append(store.rank.name)
-        return NavigationLink { ProgressDashboard() } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "chart.line.uptrend.xyaxis").font(.system(size: 18, weight: .semibold)).foregroundStyle(Theme.accent)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Your progress").font(.subheadline.weight(.bold)).foregroundStyle(.primary)
-                    Text(bits.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                }
-                Spacer(minLength: 4)
-                Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
-            }
-            .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        }
-        .buttonStyle(.plain)
-    }
 
     private func pill(_ title: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {

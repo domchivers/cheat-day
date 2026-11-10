@@ -10,7 +10,7 @@ struct MeView: View {
 }
 
 /// Your goal and weight, the week, and Plan, Body, Meals and Food habits: what the Me tab showed before it became
-/// your profile. Opened from Your progress on it. Only ever yours: weight is never on a profile anyone else sees.
+/// your profile, now its Progress tab. Only ever yours: weight is never on a profile anyone else sees.
 struct ProgressDashboard: View {
     @State private var weighing = false
     @State private var ranks = false
@@ -18,24 +18,16 @@ struct ProgressDashboard: View {
     private var store: Store { Store.shared }
 
     var body: some View {
-        Group {
-            ScrollView {
-                VStack(spacing: 14) {
-                    header
-                    card(Theme.hero) { goalCard }
-                    if let c = adjustment { card(Palette.both(0xFBF1E1, 0x211C12)) { adjustCard(c) } }
-                    card { weekCard }
-                    tiles
-                }
-                .padding(.horizontal, 16).padding(.bottom, 30)
-            }
-            .background(Theme.bg)
-            .navigationTitle("Your progress").navigationBarTitleDisplayMode(.inline)
-            .refreshable { await store.sync(); await store.pullBody() }
-            .sheet(isPresented: $weighing) { WeighInSheet() }
-            .navigationDestination(isPresented: $showBody) { BodyView() }
-            .sheet(isPresented: $ranks) { RanksView() }
+        // inside the profile's own scroll, under its tabs: no header (the profile is the header) and no scroll of its own
+        VStack(spacing: 14) {
+            card(Theme.hero) { goalCard }
+            if let c = adjustment { card(Palette.both(0xFBF1E1, 0x211C12)) { adjustCard(c) } }
+            card { weekCard }
+            tiles
         }
+        .sheet(isPresented: $weighing) { WeighInSheet() }
+        .navigationDestination(isPresented: $showBody) { BodyView() }
+        .sheet(isPresented: $ranks) { RanksView() }
     }
 
     // MARK: you
