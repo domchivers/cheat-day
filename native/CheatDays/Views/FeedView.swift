@@ -238,7 +238,7 @@ struct FeedView: View {
                 Button { composing = true } label: { ring(feed.me, "Your post", new: false, tag: nil, plus: true) }
                     .buttonStyle(.plain)
                 ForEach(friends.people) { p in
-                    Button { showPerson(p.id) } label: { ring(p.id, p.name, new: p.isActive, tag: p.streak > 1 ? "🔥 \(p.streak)" : nil, plus: false) }
+                    Button { showPerson(p.id) } label: { ring(p.id, p.name, new: p.isActive, tag: p.streak > 1 ? "\(p.streak)" : nil, plus: false) }
                         .buttonStyle(.plain).accessibilityLabel("\(p.name)'s day")
                 }
             }
@@ -247,10 +247,13 @@ struct FeedView: View {
         .scrollIndicators(.hidden)
     }
 
+    private static let rim = [Color(red: 0.84, green: 0.92, blue: 1), Color(red: 0.56, green: 0.77, blue: 1), Color(red: 0.77, green: 0.63, blue: 1)]
+
     private func ring(_ who: String, _ name: String, new: Bool, tag: String?, plus: Bool) -> some View {
         VStack(spacing: 5) {
             ZStack {
-                Circle().fill(new ? AnyShapeStyle(AngularGradient(colors: [Theme.accent, Theme.meal("Snacks"), Theme.meal("Breakfast"), Theme.accent], center: .center))
+                // the badge coins' rim: something logged today
+                Circle().fill(new ? AnyShapeStyle(AngularGradient(colors: Self.rim + [Self.rim[0]], center: .center, startAngle: .degrees(-90), endAngle: .degrees(270)))
                                   : AnyShapeStyle(Color(.tertiarySystemFill)))
                 Circle().fill(Theme.hero).padding(3.5)
                 Avatar(id: who, size: 53)
@@ -260,12 +263,13 @@ struct FeedView: View {
                 if plus {
                     Image(systemName: "plus").font(.system(size: 11, weight: .black)).foregroundStyle(Theme.onAccent)
                         .frame(width: 21, height: 21).background(Theme.accent, in: Circle()).overlay(Circle().stroke(Theme.bg, lineWidth: 2))
-                }
-            }
-            .overlay(alignment: .bottom) {
-                if let tag {
-                    Text(tag).font(.system(size: 10, weight: .heavy)).foregroundStyle(.white).padding(.horizontal, 5).padding(.vertical, 1)
-                        .background(Color.orange, in: Capsule()).overlay(Capsule().stroke(Theme.bg, lineWidth: 2)).offset(y: 6)
+                } else if let tag {
+                    // their streak, where your ring has its +
+                    HStack(spacing: 1) { FluentIcon(emoji: "🔥", size: 11); Text(tag).font(.system(size: 10, weight: .heavy)).foregroundStyle(.white) }
+                        .padding(.horizontal, 4).frame(minWidth: 21, minHeight: 21)
+                        .background(Color(red: 0.95, green: 0.45, blue: 0.15), in: Capsule()).overlay(Capsule().stroke(Theme.bg, lineWidth: 2))
+                        .offset(x: 4)
+                        .accessibilityLabel("\(tag) day streak")
                 }
             }
             Text(name).font(.caption2).foregroundStyle(.secondary).lineLimit(1).frame(width: 66)
