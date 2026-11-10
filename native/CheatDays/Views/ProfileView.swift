@@ -47,13 +47,16 @@ struct ProfileView: View {
                     }
                     .frame(maxWidth: .infinity).padding(.top, 44)
                 } else {
+                // only posts on someone else's profile: no tabs to choose between
+                if person != nil || (home && isMe) {
                 Picker("Show", selection: $tab) {
                     Image(systemName: "square.grid.3x3").tag(0)
-                    Image(systemName: "trophy").tag(1)
+                    // no badges tab (pinned badges show under the bio); Progress is yours alone
                     if person != nil { Image(systemName: "fork.knife").tag(2) }   // their food today, like the Today tab
                     if home && isMe { Image(systemName: "chart.line.uptrend.xyaxis").tag(3) }   // Progress: only you see it
                 }
                 .pickerStyle(.segmented).padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 8)
+                } else { Divider().padding(.top, 16).padding(.bottom, 2) }
                 switch tab {
                 case 1: badges.padding(.horizontal, 16)
                 case 2: today.padding(.horizontal, 16)
