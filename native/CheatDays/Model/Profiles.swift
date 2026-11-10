@@ -281,7 +281,7 @@ struct HonorsSheet: View {
             List {
                 ForEach(Honor.all) { h in
                     HStack(spacing: 12) {
-                        HStack(spacing: 5) { Text(h.icon).accessibilityHidden(true); HonorText(honor: h) }.frame(width: 112, alignment: .leading)
+                        HonorText(honor: h).frame(width: 96, alignment: .leading)   // no icons: just the word, as on the profile
                         VStack(alignment: .leading, spacing: 2) {
                             Text(h.what).font(.subheadline.weight(.semibold))
                             Text(h.how).font(.caption).foregroundStyle(.secondary)
