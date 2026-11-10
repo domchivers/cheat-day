@@ -19,7 +19,7 @@ struct AssistantView: View {
     @State private var picked: [PhotosPickerItem] = []
     @State private var camera = false
     @State private var library = false
-    @State private var done: [UUID: String] = [:]
+    private var done: [UUID: String] { get { live.done } nonmutating set { live.done = newValue } }
     @State private var showChats = false
     @State private var viewing: Photos?
     @State private var openPart: String?   // the estimate part showing its details ("turn-index")
@@ -27,8 +27,10 @@ struct AssistantView: View {
     @State private var stepNow = "Thinking…"
     @State private var changing: PartRef?
     @State private var amount: EditTarget?   // a typed food's How much, from its card
-    @State private var addedFoods: [String: Set<Int>] = [:]   // a meal card's foods put on one at a time
-    @State private var mealNames: [String: String] = [:]   // what a meal card's foods are called, as one
+    private var addedFoods: [String: Set<Int>] { get { live.addedFoods } nonmutating set { live.addedFoods = newValue } }   // a meal card's foods put on one at a time
+    private var mealNames: [String: String] { get { live.mealNames } nonmutating set { live.mealNames = newValue } }   // what a meal card's foods are called, as one
+    @State private var keeping: Task<Void, Never>?
+    @State private var keptKey = ""
     @State private var openCombo: [UUID: Int] = [:]   // which of a takeaway answer's combos is open
     @State private var cardEdits: [String: CardEdit] = [:]   // what's been changed on each takeaway combo ("turn-combo")
     @FocusState private var typing: Bool
@@ -106,12 +108,19 @@ struct AssistantView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
-                        Button { turns = []; chatId = uid(); done = [:] } label: { Label("New chat", systemImage: "square.and.pencil") }
+                        Button { turns = []; chatId = uid(); done = [:]; addedFoods = [:]; mealNames = [:] } label: { Label("New chat", systemImage: "square.and.pencil") }
                         Button { showChats = true } label: { Label("Past chats", systemImage: "clock.arrow.circlepath") }
                     } label: { Image(systemName: "ellipsis.circle") }
                 }
             }
-            .sheet(isPresented: $showChats) { ChatsList { c in turns = Assistant.turns(from: c); chatId = str(c["id"]); done = [:]; showChats = false } }
+            .sheet(isPresented: $showChats) { ChatsList { c in live.show(c); keptKey = cardsKey; showChats = false } }
+            // what's done on the cards (grams changed, a sauce added, Add as a meal…) is saved too, not just the messages:
+            // a chat where a meal was built on the cards came back from Past chats without any of it
+            .onChange(of: cardsKey) { _, k in
+                guard k != keptKey, !turns.isEmpty, !busy else { return }
+                keeping?.cancel()
+                keeping = Task { try? await Task.sleep(for: .seconds(1.5)); guard !Task.isCancelled else { return }; keptKey = k; live.keep(store) }
+            }
             .fullScreenCover(isPresented: $camera) { CameraPicker { img in camera = false; if let img { pending.append(img) } }.ignoresSafeArea() }
             .fullScreenCover(item: $viewing) { PhotoViewer(photos: $0) }
             .sheet(item: $changing) { ref in MatchPicker(ref: ref) { food in setMatch(ref, to: food); changing = nil }.presentationDetents([.medium]) }
@@ -416,6 +425,15 @@ struct AssistantView: View {
         e["portion_g"] = sum("grams").rounded()
         r["estimate"] = e
         var all = turns; all[t].result = r; turns = all
+    }
+
+    /// Changes when anything on a card does, to know when to save the chat again.
+    private var cardsKey: String {
+        let cards = turns.map { t -> String in
+            let e = dict(t.result?["estimate"])
+            return "\(t.id)\(num(e["kcal_total"]) ?? 0)/\(num(e["portion_g"]) ?? 0)/\(list(e["parts"]).count)/\(str(e["sizeAnswer"]))\(str(e["eatenAnswer"]))\(e["sauceAdded"] != nil)"
+        }
+        return cards.joined(separator: ",") + "\(done.sorted { $0.key.uuidString < $1.key.uuidString }.map(\.value))\(addedFoods.mapValues { $0.sorted() }.sorted { $0.key < $1.key }.map { "\($0.key)\($0.value)" })\(mealNames.sorted { $0.key < $1.key }.map(\.value))"
     }
 
     private func estimate(_ turn: UUID) -> JSON { dict(turns.first { $0.id == turn }?.result?["estimate"]) }
@@ -1012,7 +1030,7 @@ struct AssistantView: View {
             let reply = lines.count == 1 ? "Here's what I read. Add it, or tell me if it's not right." : "Here's what I read. Add them, or tell me if they're not right."
             withAnimation(.snappy) { turns.append(Assistant.Turn(me: false, text: reply, result: ["kind": "quick", "meal": meal, "foods": foods])) }
             text = ""; problem = nil
-            store.perform(["type": "chat", "chat": Assistant.record(id: chatId, turns: turns)], syncAfter: 3)
+            live.keep(store); keptKey = cardsKey
             return
         }
         let photos = pending.count
@@ -1058,7 +1076,7 @@ struct AssistantView: View {
                         withAnimation { turns[i].result = res }
                     }
                 }
-                store.perform(["type": "chat", "chat": Assistant.record(id: chatId, turns: turns)], syncAfter: 3)
+                live.keep(store); keptKey = cardsKey
             } catch { problem = error.localizedDescription }
         }
     }

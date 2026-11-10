@@ -12,11 +12,35 @@ final class AssistantLive {
     var busy = false
     var problem: String?
     var used = Date()
+    /// What's been done on the cards (Added, Add as a meal, the foods put on one at a time, the meal's name): kept with
+    /// the chat, so closing the assistant or opening the chat again later shows them as they were left
+    var done: [UUID: String] = [:]
+    var addedFoods: [String: Set<Int>] = [:]
+    var mealNames: [String: String] = [:]
 
     func open(fresh: Bool) {
         if busy { return }
-        if fresh || Date().timeIntervalSince(used) > 20 * 60 { turns = []; chatId = uid(); problem = nil }
+        if fresh || Date().timeIntervalSince(used) > 20 * 60 { turns = []; chatId = uid(); problem = nil; done = [:]; addedFoods = [:]; mealNames = [:] }
         used = Date()
+    }
+
+    /// A past chat back on screen, with its cards as they were left.
+    func show(_ chat: JSON) {
+        let t = Assistant.turns(from: chat), rows = CheatDays.list(chat["turns"])
+        var d: [UUID: String] = [:], a: [String: Set<Int>] = [:], n: [String: String] = [:]
+        for (turn, row) in zip(t, rows) {
+            let k = turn.id.uuidString
+            if let x = row["done"] as? String, !x.isEmpty { d[turn.id] = x.replacingOccurrences(of: "{turn}", with: k) }
+            if let x = row["added"] as? [Any] { a[k] = Set(x.compactMap { num($0).map { Int($0) } }) }
+            if let x = row["mealName"] as? String, !x.isEmpty { n[k] = x }
+        }
+        turns = t; chatId = str(chat["id"]); done = d; addedFoods = a; mealNames = n; problem = nil
+    }
+
+    /// The chat as it is now, cards and all, into the record.
+    func keep(_ store: Store) {
+        guard !turns.isEmpty else { return }
+        store.perform(["type": "chat", "chat": Assistant.record(id: chatId, turns: turns, done: done, added: addedFoods, names: mealNames)], syncAfter: 3)
     }
 }
 
@@ -139,11 +163,18 @@ enum Assistant {
         // the chats about what they're asking about first ("the chicken I cooked yesterday" finds the one where the chicken
         // was boiled down and worked out), then the latest: only the six newest went, and a busy day pushed it out
         let words = Set(said.lowercased().split { !$0.isLetter }.map(String.init).filter { $0.count >= 4 && !Self.everyday.contains($0) })
-        let about = week.filter { c in
-            let text = CheatDays.list(c["turns"]).map { str($0["text"]).lowercased() }.joined(separator: " ")
-            return words.contains { text.contains($0) }
+        // the best matches, not just the newest: a day of chicken questions pushed out the one chat where the boiled
+        // weight (918 g down to 553 g) was given. More of the same words first, then weights they gave ("553g")
+        func score(_ c: JSON) -> Int {
+            let mine = CheatDays.list(c["turns"]).filter { str($0["role"]) == "me" }.map { str($0["text"]).lowercased() }.joined(separator: " ")
+            let all = CheatDays.list(c["turns"]).map { str($0["text"]).lowercased() }.joined(separator: " ")
+            let hits = words.filter { all.contains($0) }.count
+            let grams = (try? NSRegularExpression(pattern: #"\d+(\.\d+)?\s?(g|kg|grams?)\b"#))?.numberOfMatches(in: mine, range: NSRange(mine.startIndex..., in: mine)) ?? 0
+            return hits * 10 + min(grams, 5)
         }
-        let picked = about.isEmpty ? Array(week.prefix(2)) : Array(about.prefix(3))
+        let about = week.enumerated().map { (i: $0.offset, c: $0.element, s: score($0.element)) }.filter { $0.s >= 10 }
+            .sorted { $0.s != $1.s ? $0.s > $1.s : $0.i < $1.i }.map(\.c)
+        let picked = about.isEmpty ? Array(week.prefix(2)) : Array(about.prefix(4))
         return picked.map { c -> String in
             let when = ISO.date(str(c["when"])).map { $0.formatted(.dateTime.weekday(.wide).hour().minute()) } ?? ""
             let lines = CheatDays.list(c["turns"]).compactMap { t -> String? in
@@ -207,6 +238,7 @@ enum Assistant {
     - If they give numbers themselves (calories, grams, protein), use exactly those numbers.
     - A change to an estimate you just gave ("didn't use the dips", "less rice", "no dressing", "having half of each"): start from your parts and grams in Recent conversation, take out or change only what they said, and keep every other part exactly as it was (same name and grams), so the total moves only by what changed. Half of it is every part at half its grams, toppings too, never a fresh estimate. Naming the brand or kind of one part ("Ice cream Kenny's", "it was Lurpak") renames just that part, with the same grams.
     - When the photo could be two things that would change the calories a lot (a biscuit base or the cake's own baked crust, fried or grilled, cream or yoghurt, a full-sugar or diet drink) and they haven't said, work it out as the likelier one, say which you took it for, and end the reply with one short question asking which it was. Only for a real difference, never for small things. In reply say what came off and how much ("took off the soy and the miso dressing, about 45 kcal"). Never size the plate again.
+    - Food they cooked in a batch and weighed raw and then cooked ("918 g chicken breast, boiled, now 553 g"), in this chat or another: work per 100 g cooked from the raw batch's totals divided by the cooked weight (918 g raw at 22.5 g protein per 100 g is 206.6 g protein; over 553 g cooked that's 37.4 g per 100 g cooked), and use that for any amount of it, set numbers_from to them, and say it's from that batch. Never put raw per-100 g numbers on cooked food. If they gave the raw weight but not the cooked one, say you need the cooked weight rather than guessing.
     - A nutrition label in the photos or chat beats any food table: work from its per 100 g figures (a raw label eaten cooked: divide by the cooked weight left, about 0.75 for roasted meat) and set numbers_from to label. Keep using it for later amounts of the same food.
     - More of a food they've logged before or you worked out in another chat ("that chicken from dinner yesterday", "same breakfast as Tuesday", "the pasta from last week"): find it in Recent days, their other chats, or the things they've logged before, scale it from those numbers (per gram), set numbers_from to them, and say which day it's from. If you can't find it, say so and ask rather than guessing.
     - A specific packaged product they name or show (a brand's ice block, bar, biscuit, drink) is one part, never split into ingredients. With no label in sight (a wrapper, the front of a pack): numbers_from brand, servings how many they had, its full brand and product name as the part's name, so the app can look its label up. Mention they can photograph the nutrition panel or scan the box's barcode for exact numbers.
@@ -914,12 +946,16 @@ enum Assistant {
     }
 
     /// A chat as kept in the record (text and results, never photos), like the website's saveChat.
-    static func record(id: String, turns: [Turn]) -> JSON {
+    static func record(id: String, turns: [Turn], done: [UUID: String] = [:], added: [String: Set<Int>] = [:], names: [String: String] = [:]) -> JSON {
         let first = turns.first { $0.me }?.text ?? "Chat"
         return ["id": id, "title": String(first.prefix(60)), "when": ISO.now(),
                 "turns": turns.suffix(40).map { t -> JSON in
                     var j: JSON = ["role": t.me ? "me" : "bot", "text": t.text + (t.images.isEmpty ? "" : " (\(t.images.count) photo\(t.images.count == 1 ? "" : "s"))")]
                     if let r = t.result { j["result"] = r; j["kind"] = r["kind"] ?? "answer" }
+                    // the cards' ticks name the turn, which gets a new id when the chat's opened again
+                    if let d = done[t.id], !d.isEmpty { j["done"] = d.replacingOccurrences(of: t.id.uuidString, with: "{turn}") }
+                    if let a = added[t.id.uuidString], !a.isEmpty { j["added"] = a.sorted() }
+                    if let n = names[t.id.uuidString], !n.isEmpty { j["mealName"] = n }
                     return j
                 }]
     }
