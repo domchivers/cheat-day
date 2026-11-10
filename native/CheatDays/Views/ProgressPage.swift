@@ -6,10 +6,14 @@ import SwiftUI
 struct ProgressPage: View {
     @State private var range = 30
     @State private var weighing = false
+    @State private var metric = "weight"
+    @State private var picked: Date?   // a day held on the chart
+    @State private var editing: JSON?   // a reading being changed
     private var store: Store { Store.shared }
     private static let ranges: [(label: String, days: Int)] = [("1W", 7), ("1M", 30), ("3M", 90), ("6M", 180), ("1Y", 365), ("All", 100_000)]
 
     private struct Point: Identifiable { let id: String; let date: Date; let kg: Double; let trend: Double }
+    private struct Reading: Identifiable { let row: JSON; var id: String { str(row["day"]) } }
 
     var body: some View {
         NavigationStack {
@@ -19,11 +23,15 @@ struct ProgressPage: View {
                     top.padding(.horizontal, 18).padding(.top, 14)
                     chartCard.padding(.horizontal, 14).padding(.top, 14)
                     if store.checkInDue { checkInRow.padding(.horizontal, 14).padding(.top, 10) }
+                    section("Your plan")
+                    planCard.padding(.horizontal, 14)
                     section("This week")
                     weekCard.padding(.horizontal, 14)
                     smallCards.padding(.horizontal, 14).padding(.top, 10)
-                    section("More")
-                    more.padding(.horizontal, 14)
+                    weighInsHeader
+                    weighIns.padding(.horizontal, 14)
+                    section("Food")
+                    food.padding(.horizontal, 14)
                 }
                 .padding(.bottom, 110)
             }
@@ -31,6 +39,7 @@ struct ProgressPage: View {
             .toolbar(.hidden, for: .navigationBar)
             .refreshable { await store.sync(); await store.pullBody() }
             .sheet(isPresented: $weighing) { WeighInSheet() }
+            .sheet(item: Binding(get: { editing.map { Reading(row: $0) } }, set: { editing = $0?.row })) { r in WeighInSheet(row: r.row) }
         }
     }
 
@@ -40,8 +49,11 @@ struct ProgressPage: View {
         HStack(spacing: 8) {
             Text("Progress").font(.system(size: 30, weight: .heavy))
             Spacer()
-            round("scalemass.fill") { weighing = true }.accessibilityLabel("Weigh in")
-            NavigationLink { BudgetView() } label: { roundLabel("target") }.buttonStyle(.plain).accessibilityLabel("Your plan")
+            Button { weighing = true } label: {
+                Label("Weigh in", systemImage: "plus").font(.subheadline.weight(.heavy)).foregroundStyle(Theme.onAccent)
+                    .padding(.horizontal, 14).padding(.vertical, 9).background(Theme.accent, in: Capsule())
+            }
+            .buttonStyle(.plain)
         }
         .padding(.horizontal, 16).padding(.top, 6)
     }
@@ -103,7 +115,7 @@ struct ProgressPage: View {
     /// Weigh-ins and the smoothed trend through them, in the range picked.
     private var points: [Point] {
         let rows = store.bodyRows.compactMap { r -> (String, Double)? in
-            guard let kg = pos(r["weight"]), str(r["day"]) <= store.today else { return nil }
+            guard let kg = pos(r[metric]), str(r["day"]) <= store.today else { return nil }
             return (str(r["day"]), kg)
         }.sorted { $0.0 < $1.0 }
         guard !rows.isEmpty else { return [] }
@@ -114,13 +126,36 @@ struct ProgressPage: View {
 
     private var chartCard: some View {
         let pts = points
-        let vals = pts.map(\.trend) + pts.map(\.kg) + (goal.map { [$0] } ?? [])
+        let goalLine = metric == "weight" ? goal : nil
+        let vals = pts.map(\.trend) + pts.map(\.kg) + (goalLine.map { [$0] } ?? [])
         let lo = vals.min() ?? 0, hi = vals.max() ?? 1, pad = max(0.5, (hi - lo) * 0.25)   // room above and below the line
         return VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Your weight").font(.subheadline.weight(.bold))
-                Spacer()
-                Text(rangeName).font(.footnote).foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                let have = BodyView.metrics.filter { m in store.bodyRows.contains { pos($0[m.key]) != nil } }
+                if have.count > 1 {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(have.prefix(4), id: \.key) { m in
+                                Button { withAnimation(.easeInOut(duration: 0.25)) { metric = m.key; picked = nil } } label: {
+                                    Text(m.name).font(.footnote.weight(.bold)).foregroundStyle(metric == m.key ? Theme.onAccent : .secondary)
+                                        .padding(.horizontal, 10).padding(.vertical, 5)
+                                        .background(metric == m.key ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Color(.tertiarySystemFill)), in: Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                } else {
+                    Text("Your weight").font(.subheadline.weight(.bold))
+                }
+                Spacer(minLength: 6)
+                // a held day's number, or what holding does
+                if let sel = selected(pts) {
+                    Text("\(sel.date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)))  ").font(.footnote).foregroundStyle(.secondary)
+                        + Text(value(sel.kg)).font(.footnote.weight(.bold))
+                } else {
+                    Text(pts.count >= 2 ? "Hold to see a day" : rangeName).font(.footnote).foregroundStyle(.secondary)
+                }
             }
             .padding(.horizontal, 14)
             if pts.count >= 2, let first = pts.first, let last = pts.last {
@@ -144,7 +179,11 @@ struct ProgressPage: View {
                             .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
                             .foregroundStyle(LinearGradient(colors: [Theme.accent.opacity(0.35), Theme.accent.opacity(0.9), Theme.accent], startPoint: .leading, endPoint: .trailing))
                     }
-                    if let goal {
+                    if let sel = selected(pts) {
+                        RuleMark(x: .value("Held", sel.date)).foregroundStyle(.white.opacity(0.25)).lineStyle(StrokeStyle(lineWidth: 1))
+                        PointMark(x: .value("Held", sel.date), y: .value("Reading", sel.kg)).symbolSize(60).foregroundStyle(Theme.accent)
+                    }
+                    if let goal = goalLine {
                         RuleMark(y: .value("Goal", goal)).foregroundStyle(.white.opacity(0.16)).lineStyle(StrokeStyle(lineWidth: 1))
                             .annotation(position: .bottom, alignment: .trailing) {
                                 Text("Goal \(Fmt.kg(goal)) kg").font(.caption2.weight(.semibold)).foregroundStyle(.secondary).padding(.trailing, 12)
@@ -173,8 +212,11 @@ struct ProgressPage: View {
                 }
                 .chartXScale(domain: x0...x1)
                 .chartPlotStyle { $0.padding(.horizontal, 0) }
+                .chartXSelection(value: $picked)
                 .frame(height: 170)
-                .animation(.snappy, value: range)
+                // a fade from one range to the next: reshaping the line between them looked messy
+                .id("\(range)|\(metric)")
+                .transition(.opacity)
             } else {
                 VStack(spacing: 10) {
                     Image(systemName: "chart.line.uptrend.xyaxis").font(.system(size: 28)).foregroundStyle(.tertiary)
@@ -186,7 +228,7 @@ struct ProgressPage: View {
             }
             HStack(spacing: 0) {
                 ForEach(Self.ranges, id: \.days) { r in
-                    Button { withAnimation(.snappy) { range = r.days } } label: {
+                    Button { picked = nil; withAnimation(.easeInOut(duration: 0.25)) { range = r.days } } label: {
                         Text(r.label).font(.footnote.weight(.bold)).foregroundStyle(range == r.days ? Theme.onAccent : .secondary)
                             .padding(.horizontal, 11).padding(.vertical, 6)
                             .background(range == r.days ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Color.clear), in: Capsule())
@@ -205,6 +247,16 @@ struct ProgressPage: View {
     private var rangeName: String {
         switch range { case 7: "Last week"; case 30: "Last month"; case 90: "Last 3 months"; case 180: "Last 6 months"; case 365: "Last year"; default: "Since you started" }
     }
+    /// The reading nearest the day held on the chart.
+    private func selected(_ pts: [Point]) -> Point? {
+        guard let picked else { return nil }
+        return pts.min { abs($0.date.timeIntervalSince(picked)) < abs($1.date.timeIntervalSince(picked)) }
+    }
+    private func value(_ v: Double) -> String {
+        let unit = BodyView.metrics.first { $0.key == metric }?.unit ?? ""
+        return unit == "%" ? "\(Fmt.dec(v))%" : "\(Fmt.kg(v))\(unit.isEmpty ? "" : " " + unit)"
+    }
+
     private func mid(_ a: Date, _ b: Date) -> Date { Date(timeIntervalSince1970: (a.timeIntervalSince1970 + b.timeIntervalSince1970) / 2) }
 
     // MARK: the week
@@ -294,23 +346,83 @@ struct ProgressPage: View {
         .padding(14).background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
-    // MARK: everything else
+    // MARK: your plan, weigh-ins and food
 
     private func section(_ t: String) -> some View {
         Text(t).font(.headline.weight(.heavy)).foregroundStyle(.secondary).padding(.horizontal, 18).padding(.top, 22).padding(.bottom, 8)
     }
 
-    private var more: some View {
-        let meals = CheatDays.list(store.doc["meals"]).count
-        let weighIns = store.bodyRows.filter { pos($0["weight"]) != nil }.count
+    /// The budget a day and the cheat day, which set everything else: tap to change them.
+    private var planCard: some View {
         let base = pos(store.doc["budget"]) ?? store.baseBudget(store.today)
+        let cheat = store.cheatWeekday.map { Calendar.current.weekdaySymbols[$0] } ?? "None"
+        return NavigationLink { BudgetView() } label: {
+            HStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Budget").font(.footnote).foregroundStyle(.secondary)
+                    (Text(Fmt.int(base)).font(.title3.weight(.heavy)) + Text(" a day").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)).foregroundStyle(.primary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading).padding(14)
+                Divider().frame(height: 40)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Cheat day").font(.footnote).foregroundStyle(.secondary)
+                    Text(cheat).font(.title3.weight(.heavy)).foregroundStyle(.primary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading).padding(14)
+                Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary).padding(.trailing, 14)
+            }
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Your plan: \(Fmt.int(base)) a day, cheat day \(cheat)")
+    }
+
+    private var weighInsHeader: some View {
+        HStack {
+            Text("Weigh-ins").font(.headline.weight(.heavy)).foregroundStyle(.secondary)
+            Spacer()
+            NavigationLink { BodyView() } label: { Text("See all").font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent) }
+        }
+        .padding(.horizontal, 18).padding(.top, 22).padding(.bottom, 8)
+    }
+
+    /// The last three readings; tap one to change it. Everything else about your body (every reading, the scale) is
+    /// behind See all.
+    private var weighIns: some View {
+        let recent = Array(store.bodyRows.filter { pos($0["weight"]) != nil }.sorted { str($0["day"]) > str($1["day"]) }.prefix(3))
+        return VStack(spacing: 0) {
+            if recent.isEmpty {
+                Button { weighing = true } label: {
+                    HStack { Text("No weigh-ins yet").foregroundStyle(.secondary); Spacer(); Text("Weigh in").font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent) }
+                        .padding(14)
+                }
+                .buttonStyle(.plain)
+            }
+            ForEach(recent.indices, id: \.self) { i in
+                let r = recent[i]
+                Button { editing = r } label: {
+                    HStack {
+                        Text(DayKey.date(str(r["day"])).formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))).font(.body.weight(.semibold)).foregroundStyle(.primary)
+                        Spacer()
+                        Text(([pos(r["weight"]).map { "\(Fmt.kg($0)) kg" }, pos(r["fat"]).map { "\(Fmt.dec($0))%" }].compactMap { $0 }).joined(separator: " · "))
+                            .font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 12).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                if i < recent.count - 1 { Divider().padding(.leading, 14) }
+            }
+        }
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    private var food: some View {
+        let meals = CheatDays.list(store.doc["meals"]).count
+        let changes = store.habitItems.filter { $0.plan != nil }.count
         var rows: [(icon: String, title: String, value: String, to: AnyView)] = [
-            ("target", "Plan", "\(Fmt.int(base)) a day", AnyView(BudgetView())),
-            ("scalemass.fill", "Body and weigh-ins", weighIns == 0 ? "" : "\(weighIns)", AnyView(BodyView())),
             ("book.closed.fill", "Meals", meals == 0 ? "" : "\(meals) saved", AnyView(MealsView())),
-            ("checkmark", "Food habits", "", AnyView(HabitsView())),
+            ("checkmark", "Food habits", changes == 0 ? "" : "\(changes) change\(changes == 1 ? "" : "s")", AnyView(HabitsView())),
             ("clock.arrow.circlepath", "History", "", AnyView(HistoryView())),
-            ("trophy.fill", "Badges", "\(store.earnedBadges) of \(Badge.all.count)", AnyView(GoalsView())),
         ]
         if store.isHelper { rows.append(("person.2.fill", "Family", "", AnyView(FamilyView()))) }
         return VStack(spacing: 0) {
