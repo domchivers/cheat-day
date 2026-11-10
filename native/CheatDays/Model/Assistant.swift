@@ -133,7 +133,9 @@ enum Assistant {
                 // protein per 100 g cooked, was only in the answer, so the next day it couldn't be found
                 let said = str(t["text"])
                 guard said.range(of: #"\d"#, options: .regularExpression) != nil else { return nil }
-                return "you said \"\(said.replacingOccurrences(of: "\n", with: " ").prefix(260))\""
+                // without the bold marks, and long enough for the working: the 37.4 g per 100 g came 330 characters in
+                let plain = said.replacingOccurrences(of: "**", with: "").replacingOccurrences(of: "\n", with: " ")
+                return "you said \"\(plain.prefix(480))\""
             }.suffix(10)
             return "\(when): " + lines.joined(separator: "; ")
         }.joined(separator: "\n").prefix(7000).description
