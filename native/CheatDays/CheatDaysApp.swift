@@ -348,6 +348,7 @@ private struct TourHarness: View {
         TabView(selection: $tab) {
             TodayView().tabItem { Image(uiImage: TabGlyph.make("fork.knife")).accessibilityLabel("Today") }.tag(0)
             Color.clear.tabItem { Image(uiImage: TabGlyph.make("dumbbell.fill")).accessibilityLabel("Workouts") }.tag(1)
+            Color.clear.tabItem { Image(uiImage: TabGlyph.make("chart.line.uptrend.xyaxis")).accessibilityLabel("Progress") }.tag(4)
             Color.clear.tabItem { Image(uiImage: TabGlyph.make("person.2.fill")).accessibilityLabel("Friends") }.tag(2)
             Color.clear.tabItem { Image(uiImage: TabGlyph.make("person.crop.circle.fill")).accessibilityLabel("Me") }.tag(3)
         }
@@ -376,6 +377,9 @@ struct MainTabs: View {
                 .tabItem { Image(uiImage: TabGlyph.make("fork.knife")).accessibilityLabel("Today") }.tag(0)
             WorkoutsView()
                 .tabItem { Image(uiImage: TabGlyph.make("dumbbell.fill")).accessibilityLabel("Workouts") }.tag(1)
+            // Progress, its own tab (it was a tab inside your profile); tag 4 so the others keep their numbers
+            ProgressTab()
+                .tabItem { Image(uiImage: TabGlyph.make("chart.line.uptrend.xyaxis")).accessibilityLabel("Progress") }.tag(4)
             FriendsView()
                 .tabItem { Image(uiImage: TabGlyph.make("person.2.fill")).accessibilityLabel("Friends") }.tag(2)
                 .badge(FriendActivity.shared.unread)
@@ -609,7 +613,7 @@ enum TabGlyph {
         if let m = made[name] { return m }
         guard let sym = UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: 60, weight: .semibold)) else { return UIImage() }
         // the dumbbell is so wide that at full height it looked bigger than the rest
-        let height = name == "dumbbell.fill" ? height * 0.88 : name == "person.crop.circle.fill" ? height * 1.2 : height   // the Me circle as big as your photo
+        let height = name == "dumbbell.fill" ? height * 0.88 : name == "person.crop.circle.fill" ? height * 1.08 : height   // the Me circle as big as your photo
         let k = height / sym.size.height, size = CGSize(width: (sym.size.width * k).rounded(), height: height)
         let out = UIGraphicsImageRenderer(size: size).image { _ in sym.withTintColor(.black).draw(in: CGRect(origin: .zero, size: size)) }
         .withRenderingMode(.alwaysTemplate)

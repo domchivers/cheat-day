@@ -57,14 +57,12 @@ struct ProfileView: View {
                     if isMe || posts.contains(where: { Feed.video($0) != nil }) { Image(systemName: "play.rectangle").tag(4) }   // videos, like reels
                     // no badges tab (pinned badges show under the bio); Progress is yours alone
                     if person != nil { Image(systemName: "fork.knife").tag(2) }   // their food today, like the Today tab
-                    if isMe { Image(systemName: "chart.line.uptrend.xyaxis").tag(3) }   // Progress: only you see it
                 }
                 .pickerStyle(.segmented).padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 8)
                 } else { Divider().padding(.top, 16).padding(.bottom, 2) }
                 switch tab {
                 case 1: badges.padding(.horizontal, 16)
                 case 2: today.padding(.horizontal, 16)
-                case 3: ProgressDashboard().padding(.horizontal, 16).padding(.top, 4)
                 case 4: grid(posts.filter { Feed.video($0) != nil }, empty: isMe ? "Your videos show here. Tap ＋ on your photo, then Post, and pick a video." : "No videos yet.")
                 default: grid(posts, empty: isMe ? "Your posts show here. Tap ＋ on your photo to share one." : "No posts yet.")
                 }

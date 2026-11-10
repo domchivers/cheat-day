@@ -9,6 +9,18 @@ struct MeView: View {
     var body: some View { NavigationStack { ProfileView(id: Profiles.shared.me, home: true) } }
 }
 
+/// The Progress tab: your goal and weight, the week, Plan, Body, Meals and Food habits.
+struct ProgressTab: View {
+    var body: some View {
+        NavigationStack {
+            ScrollView { ProgressDashboard().padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 110) }
+                .background(Theme.bg)
+                .navigationTitle("Progress").navigationBarTitleDisplayMode(.large)
+                .refreshable { await Store.shared.sync(); await Store.shared.pullBody() }
+        }
+    }
+}
+
 /// Your goal and weight, the week, and Plan, Body, Meals and Food habits: what the Me tab showed before it became
 /// your profile, now its Progress tab. Only ever yours: weight is never on a profile anyone else sees.
 struct ProgressDashboard: View {
