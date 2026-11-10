@@ -22,11 +22,11 @@ final class Follows {
     }
 
     func load() async {
+        defer { loaded = true }   // a failed or signed-out load still ends the wait, so the button shows Follow
         guard !me.isEmpty else { return }
         mine = (try? await rows("/rest/v1/follows?follower=eq.\(me)&select=*")) ?? []
         ofMe = (try? await rows("/rest/v1/follows?followee=eq.\(me)&select=*&order=created_at.desc")) ?? []
         blocked = Set(((try? await rows("/rest/v1/blocks?blocker=eq.\(me)&select=blocked")) ?? []).map { str($0["blocked"]) })
-        loaded = true
         await Profiles.shared.load(mine.map { str($0["followee"]) } + ofMe.map { str($0["follower"]) })
     }
 

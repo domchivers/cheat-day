@@ -30,6 +30,8 @@ final class Friends {
     }
 
     func load() async {
+        // done either way, even offline or signed out: the Follow button waits for this, and it mustn't spin forever
+        defer { loaded = true }
         guard let me = Supabase.shared.userId else { return }
         loading = true
         defer { loading = false }
@@ -57,7 +59,6 @@ final class Friends {
             }
             people = ps.sorted { ($0.isActive ? 0 : 1, $0.name) < ($1.isActive ? 0 : 1, $1.name) }
             requests = rs
-            loaded = true
             error = nil
         } catch {
             self.error = error.localizedDescription
