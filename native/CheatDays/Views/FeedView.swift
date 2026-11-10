@@ -250,7 +250,7 @@ struct FeedView: View {
     private static let rim = [Color(red: 0.84, green: 0.92, blue: 1), Color(red: 0.56, green: 0.77, blue: 1), Color(red: 0.77, green: 0.63, blue: 1)]
 
     private func ring(_ who: String, _ name: String, new: Bool, tag: String?, plus: Bool) -> some View {
-        VStack(spacing: 5) {
+        VStack(spacing: 10) {
             ZStack {
                 // the badge coins' rim: something logged today
                 Circle().fill(new ? AnyShapeStyle(AngularGradient(colors: Self.rim + [Self.rim[0]], center: .center, startAngle: .degrees(-90), endAngle: .degrees(270)))
@@ -263,12 +263,14 @@ struct FeedView: View {
                 if plus {
                     Image(systemName: "plus").font(.system(size: 11, weight: .black)).foregroundStyle(Theme.onAccent)
                         .frame(width: 21, height: 21).background(Theme.accent, in: Circle()).overlay(Circle().stroke(Theme.bg, lineWidth: 2))
-                } else if let tag {
-                    // their streak, where your ring has its +
-                    // no pill or outline: the flame and the number, with a dark glow so it reads over the ring
+                }
+            }
+            .overlay(alignment: .bottom) {
+                if !plus, let tag {
+                    // centred on the ring's bottom, no pill or outline: the flame and the number, with a dark glow so it reads over the ring
                     HStack(spacing: 1) { FluentIcon(emoji: "🔥", size: 13); Text(tag).font(.system(size: 12, weight: .black)).foregroundStyle(Color(red: 1, green: 0.7, blue: 0.36)) }
                         .shadow(color: Theme.bg, radius: 1.5).shadow(color: Theme.bg, radius: 3).shadow(color: .black.opacity(0.6), radius: 1, y: 1)
-                        .offset(x: -1, y: 2)
+                        .offset(y: 8)
                         .accessibilityLabel("\(tag) day streak")
                 }
             }
