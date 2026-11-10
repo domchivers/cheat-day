@@ -15,6 +15,7 @@ struct StoryView: View {
     @State private var slide = 0
     @State private var progress: Double = 0
     @State private var paused = false
+    @State private var profileOf: String?   // the poster's profile, open over the story
     @State private var reply = ""
     @State private var drag: CGFloat = 0
     @State private var sent = false
@@ -88,6 +89,9 @@ struct StoryView: View {
         .gesture(DragGesture().onChanged { v in if v.translation.height > 0 { drag = v.translation.height; paused = true } }
             .onEnded { v in if v.translation.height > 120 { dismiss() } else { withAnimation(.snappy) { drag = 0 }; paused = false } })
         .statusBarHidden()
+        .sheet(isPresented: Binding(get: { profileOf != nil }, set: { if !$0 { profileOf = nil } })) {
+            if let id = profileOf { NavigationStack { ProfileView(id: id) } }
+        }
         .overlay(alignment: .top) {
             if let failed {
                 Text(failed).font(.footnote.weight(.semibold)).foregroundStyle(.white).padding(.horizontal, 14).padding(.vertical, 9)
@@ -102,7 +106,7 @@ struct StoryView: View {
             if case .snap(let st)? = now { if highlight == nil { Stories.shared.watch(st) }; if str(st["kind"]) == "video" { length = max(3, num(st["seconds"]) ?? 15) } }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(50))
-                if paused || typing || seenBy != nil || adding != nil || managing != nil { continue }
+                if paused || typing || profileOf != nil || seenBy != nil || adding != nil || managing != nil { continue }
                 progress += 0.05 / length
                 if progress >= 1 { next(); return }
             }
@@ -125,8 +129,15 @@ struct StoryView: View {
 
     private var header: some View {
         HStack(spacing: 9) {
-            Avatar(id: who, size: 32)
-            Text(highlight.map { str($0["title"]).isEmpty ? "Highlight" : str($0["title"]) } ?? (isMe ? "Your day" : Feed.shared.name(who))).font(.subheadline.weight(.bold)).foregroundStyle(.white)
+            // their photo and name open their profile (the story waits)
+            Button { profileOf = who } label: {
+                HStack(spacing: 9) {
+                    Avatar(id: who, size: 32)
+                    Text(highlight.map { str($0["title"]).isEmpty ? "Highlight" : str($0["title"]) } ?? (isMe ? "Your day" : Feed.shared.name(who))).font(.subheadline.weight(.bold)).foregroundStyle(.white)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).accessibilityIdentifier("story-author")
             Text("today").font(.subheadline).foregroundStyle(.white.opacity(0.65))
             Spacer()
             Button { dismiss() } label: { Image(systemName: "xmark").font(.system(size: 18, weight: .semibold)).foregroundStyle(.white).padding(8) }

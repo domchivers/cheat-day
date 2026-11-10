@@ -15,6 +15,7 @@ struct MessagesView: View {
             if let e = messages.error { Text(e).font(.footnote).foregroundStyle(Theme.warn) }
             if messages.chats.isEmpty && messages.error == nil {
                 Text("No messages yet. Tap ✎ to message a friend.").foregroundStyle(.secondary)
+                    .listRowBackground(Color.clear).listRowSeparator(.hidden)
             }
             ForEach(chats) { c in
                 Button { chatWith = c.id } label: { row(c) }
@@ -30,8 +31,12 @@ struct MessagesView: View {
         .task { await messages.load() }
         .refreshable { await messages.load() }
         .navigationDestination(item: $chatWith) { id in ChatView(friend: id) }
-        .confirmationDialog("Message…", isPresented: $picking) {
-            ForEach(Friends.shared.people) { p in Button(p.name) { chatWith = p.id } }
+        .sheet(isPresented: $picking) {
+            NewMessageSheet { id in
+                picking = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { chatWith = id }   // once the sheet's gone
+            }
+            .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
         }
     }
 
@@ -51,6 +56,45 @@ struct MessagesView: View {
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
+    }
+}
+
+/// Who to message: your friends, with their photo and @name, and a search.
+struct NewMessageSheet: View {
+    var pick: (String) -> Void
+    @State private var q = ""
+    @Environment(\.dismiss) private var dismiss
+    private var profiles: Profiles { Profiles.shared }
+
+    var body: some View {
+        let all = Friends.shared.people.filter { p in
+            q.isEmpty || p.name.localizedCaseInsensitiveContains(q) || profiles.handle(p.id).localizedCaseInsensitiveContains(q)
+        }
+        NavigationStack {
+            List {
+                if Friends.shared.people.isEmpty {
+                    Text("Add a friend first: scan each other's code in Friends.").foregroundStyle(.secondary)
+                }
+                ForEach(all) { p in
+                    Button { pick(p.id) } label: {
+                        HStack(spacing: 12) {
+                            Avatar(id: p.id, size: 44)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(profiles.all[p.id]?.name ?? p.name).font(.subheadline.weight(.bold)).foregroundStyle(.primary)
+                                if !profiles.handle(p.id).isEmpty { Text(profiles.handle(p.id)).font(.caption).foregroundStyle(.secondary) }
+                            }
+                            Spacer()
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .listStyle(.plain)
+            .searchable(text: $q, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search friends")
+            .navigationTitle("New message").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+        }
     }
 }
 

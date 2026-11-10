@@ -10,6 +10,7 @@ final class Follows {
     private(set) var ofMe: [JSON] = []     // rows where I'm the followee
     private(set) var blocked: Set<String> = []
     private(set) var explore: [JSON] = []
+    private(set) var loaded = false   // who I follow has come down at least once: until then the button waits
     private(set) var exploring = false
     var error: String?
     private var api: Supabase { Supabase.shared }
@@ -25,6 +26,7 @@ final class Follows {
         mine = (try? await rows("/rest/v1/follows?follower=eq.\(me)&select=*")) ?? []
         ofMe = (try? await rows("/rest/v1/follows?followee=eq.\(me)&select=*&order=created_at.desc")) ?? []
         blocked = Set(((try? await rows("/rest/v1/blocks?blocker=eq.\(me)&select=blocked")) ?? []).map { str($0["blocked"]) })
+        loaded = true
         await Profiles.shared.load(mine.map { str($0["followee"]) } + ofMe.map { str($0["follower"]) })
     }
 
@@ -43,11 +45,12 @@ final class Follows {
     func follow(_ id: String) async {
         guard id != me, state(id) == .none else { return }
         let isPublic = Profiles.shared.all[id].map { !$0.isPrivate } ?? false
-        let status = isPublic ? "accepted" : "pending"
+        let friend = Friends.shared.people.contains { $0.id == id }
+        let status = isPublic || friend ? "accepted" : "pending"
         do {
             _ = try await api.rest("/rest/v1/follows", method: "POST", body: [["follower": me, "followee": id, "status": status]])
             mine.append(["follower": me, "followee": id, "status": status])
-            notify(id, isPublic ? "follow" : "follow_request")
+            notify(id, isPublic || friend ? "follow" : "follow_request")
             error = nil
         } catch { self.error = "Couldn't follow: following needs setting up (supabase/followers_explore.sql)." }
     }

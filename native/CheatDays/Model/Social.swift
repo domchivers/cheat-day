@@ -16,6 +16,7 @@ final class Friends {
     struct Request: Identifiable { let id: String; let from: String; let name: String }
 
     private(set) var people: [Person] = []
+    private(set) var loaded = false   // the list has come down at least once
     private(set) var requests: [Request] = []
     private(set) var myCode = ""
     private(set) var myName = ""
@@ -56,6 +57,7 @@ final class Friends {
             }
             people = ps.sorted { ($0.isActive ? 0 : 1, $0.name) < ($1.isActive ? 0 : 1, $1.name) }
             requests = rs
+            loaded = true
             error = nil
         } catch {
             self.error = error.localizedDescription

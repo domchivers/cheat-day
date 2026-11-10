@@ -117,6 +117,8 @@ struct ProfileView: View {
     }
 
     private func reload() async {
+        if !Friends.shared.loaded { await Friends.shared.load() }
+        if !follows.loaded { await follows.load() }
         await Task { await profiles.load([id], force: true) }.value
         if let got = await profiles.posts(of: id) { posts = got; await Feed.shared.loadExtras(got) }
         if let c = await Task(operation: { await follows.counts(id) }).value { counts = c }
@@ -195,14 +197,17 @@ struct ProfileView: View {
             } else {
                 // Follow (or Following) and Message, like Instagram; no Cheer. Becoming friends is scanning each other's
                 // code, never a button here, and messages are between friends
-                let st = follows.state(id)
+                let st = follows.state(id), known = follows.loaded && Friends.shared.loaded
                 Button { Task { if st == .none { await follows.follow(id) } else { await follows.unfollow(id) }; counts = await follows.counts(id) } } label: {
-                    Text(st == .following ? "Following" : st == .requested ? "Requested" : follows.followsMe(id) ? "Follow back" : "Follow")
-                        .font(.subheadline.weight(.bold)).foregroundStyle(st == .none ? Theme.onAccent : .primary)
+                    Group {
+                        if known { Text(st == .following ? "Following" : st == .requested ? "Requested" : follows.followsMe(id) ? "Follow back" : "Follow") }
+                        else { Text("Follow").hidden().overlay { ProgressView().controlSize(.small) } }
+                    }
+                        .font(.subheadline.weight(.bold)).foregroundStyle(st == .none && known ? Theme.onAccent : .primary)
                         .frame(maxWidth: .infinity).padding(.vertical, 9)
-                        .background(st == .none ? Theme.accent : Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12))
+                        .background(st == .none && known ? Theme.accent : Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plain).disabled(!known)
                 pill("Message") { if person != nil { chatting = true } else { friendsOnly = true } }
             }
         }
