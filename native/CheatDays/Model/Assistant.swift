@@ -113,14 +113,28 @@ enum Assistant {
         }.joined(separator: "; ")
     }
 
+    /// Words in nearly every message, which say nothing about which food it's about.
+    static let everyday: Set<String> = ["what", "when", "much", "many", "have", "had", "going", "with", "from", "that", "this", "these", "those",
+        "for", "lunch", "dinner", "breakfast", "snack", "today", "yesterday", "aiming", "protein", "calories", "kcal", "grams", "some",
+        "should", "could", "would", "like", "want", "about", "make", "cook", "cooked", "made", "there", "their", "your", "just", "need"]
+
     /// What they said in other chats over the last week, and what was worked out, so "that chicken" can be found.
     /// Skip is the current chat's first message (it's in the conversation already).
     @MainActor
     static func earlierChats(_ store: Store, skip: String) -> String {
         let since = Date().addingTimeInterval(-7 * 86400)
-        return CheatDays.list(store.doc["chats"]).filter { c in
+        let week = CheatDays.list(store.doc["chats"]).filter { c in
             (ISO.date(str(c["when"])) ?? .distantPast) >= since && CheatDays.list(c["turns"]).first { str($0["role"]) == "me" }.map { str($0["text"]) } != skip
-        }.prefix(6).map { c -> String in
+        }
+        // the chats about what they're asking about first ("the chicken I cooked yesterday" finds the one where the chicken
+        // was boiled down and worked out), then the latest: only the six newest went, and a busy day pushed it out
+        let words = Set(skip.lowercased().split { !$0.isLetter }.map(String.init).filter { $0.count >= 4 && !Self.everyday.contains($0) })
+        let about = week.filter { c in
+            let said = CheatDays.list(c["turns"]).map { str($0["text"]).lowercased() }.joined(separator: " ")
+            return words.contains { said.contains($0) }
+        }
+        let picked = Array((about.prefix(4) + week.filter { c in !about.prefix(4).contains { str($0["id"]) == str(c["id"]) } }).prefix(8))
+        return picked.map { c -> String in
             let when = ISO.date(str(c["when"])).map { $0.formatted(.dateTime.weekday(.wide).hour().minute()) } ?? ""
             let lines = CheatDays.list(c["turns"]).compactMap { t -> String? in
                 if str(t["role"]) == "me" { return "they said \"\(str(t["text"]).prefix(200))\"" }
