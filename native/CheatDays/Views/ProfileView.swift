@@ -327,6 +327,7 @@ struct EditProfileView: View {
     @State private var framing: CropBox?   // a photo being moved and zoomed in the circle
     @State private var picked: PhotosPickerItem?
     @State private var camera = false
+    @State private var library = false
     @State private var busy = false
     @State private var taken = false
     @State private var problem: String?
@@ -340,17 +341,23 @@ struct EditProfileView: View {
                 Section {
                     HStack {
                         Spacer()
-                        VStack(spacing: 10) {
-                            Avatar(id: profiles.me, size: 96)
-                            HStack(spacing: 18) {
-                                Button { camera = true } label: { Label("Camera", systemImage: "camera") }.buttonStyle(.borderless)
-                                PhotosPicker(selection: $picked, matching: .images) { Label("Library", systemImage: "photo") }.buttonStyle(.borderless)
-                                if !profiles.avatar(profiles.me).isEmpty {
-                                    Button { Task { await reframe() } } label: { Label("Move", systemImage: "arrow.up.and.down.and.arrow.left.and.right") }.buttonStyle(.borderless)
-                                }
+                        Menu {
+                            Button { camera = true } label: { Label("Take a photo", systemImage: "camera") }
+                            Button { library = true } label: { Label("Choose from library", systemImage: "photo.on.rectangle") }
+                            if !profiles.avatar(profiles.me).isEmpty {
+                                Button { Task { await reframe() } } label: { Label("Move and zoom", systemImage: "arrow.up.and.down.and.arrow.left.and.right") }
                             }
-                            .font(.subheadline)
+                        } label: {
+                            Avatar(id: profiles.me, size: 96)
+                                .padding(4).overlay(Circle().stroke(Theme.accent, lineWidth: 3))
+                                .overlay(alignment: .bottomTrailing) {
+                                    Image(systemName: "camera.fill").font(.system(size: 14, weight: .bold)).foregroundStyle(Theme.onAccent)
+                                        .frame(width: 32, height: 32).background(Theme.accent, in: Circle())
+                                        .overlay(Circle().stroke(Color(.secondarySystemGroupedBackground), lineWidth: 3))
+                                }
                         }
+                        .accessibilityLabel("Change your photo")
+                        .padding(.vertical, 6)
                         Spacer()
                     }
                 }
@@ -406,6 +413,7 @@ struct EditProfileView: View {
                 if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn) }
             }
             .navigationTitle("Edit profile").navigationBarTitleDisplayMode(.inline)
+            .photosPicker(isPresented: $library, selection: $picked, matching: .images)
             .keyboardDone()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -680,6 +688,7 @@ struct AvatarCropView: View {
             ZStack {
                 Color.black.ignoresSafeArea()
                 Image(uiImage: image).resizable().frame(width: w, height: h).offset(offset)
+                    .frame(width: g.size.width, height: g.size.height).clipped()
                 // dim everything outside the circle
                 Path { p in
                     p.addRect(CGRect(origin: .zero, size: g.size))
@@ -698,6 +707,7 @@ struct AvatarCropView: View {
                     .font(.headline).padding(.horizontal, 28).padding(.bottom, 30)
                 }
             }
+            .frame(width: g.size.width, height: g.size.height)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture()
