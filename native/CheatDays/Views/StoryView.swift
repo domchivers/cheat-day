@@ -109,14 +109,18 @@ struct StoryView: View {
         .padding(.horizontal, 6)
     }
 
-    /// Tap the left third for back, the rest for next; hold anywhere to pause.
+    /// Tap the left side to go back, the right side to go forward; hold anywhere to pause. One view reads where
+    /// the tap was, so the hold to pause can't swallow the taps.
     private var taps: some View {
-        HStack(spacing: 0) {
-            Color.clear.contentShape(Rectangle()).frame(maxWidth: .infinity).onTapGesture { back() }
-            Color.clear.contentShape(Rectangle()).frame(maxWidth: .infinity).onTapGesture { next() }
-                .frame(maxWidth: .infinity).layoutPriority(1)
+        GeometryReader { g in
+            Color.clear.contentShape(Rectangle())
+                .onTapGesture(coordinateSpace: .local) { p in if p.x < g.size.width * 0.4 { back() } else { next() } }
+                .onLongPressGesture(minimumDuration: 0.25, perform: {}, onPressingChanged: { paused = $0 })
         }
-        .onLongPressGesture(minimumDuration: 0.25, perform: {}, onPressingChanged: { paused = $0 })
+        .accessibilityElement()
+        .accessibilityLabel("Story")
+        .accessibilityAction(named: "Next") { next() }
+        .accessibilityAction(named: "Back") { back() }
     }
 
     @ViewBuilder private func content(_ s: Slide) -> some View {
