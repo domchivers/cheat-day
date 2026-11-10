@@ -235,6 +235,15 @@ struct Honor: Identifiable {
     let colors: [Color]
     let ink: Color
     var onFeed: Bool { rank <= 2 }
+    /// Its colours as text on the dark screen: the darker ones (Alpha's purple, First 1,000's grey) lifted so they read.
+    var shade: LinearGradient {
+        let c: [Color] = switch id {
+        case "alpha": [Color(red: 0.72, green: 0.52, blue: 1), Color(red: 0.86, green: 0.7, blue: 1)]
+        case "first1000": [Color(red: 0.68, green: 0.72, blue: 0.8), Color(red: 0.86, green: 0.89, blue: 0.94)]
+        default: colors
+        }
+        return LinearGradient(colors: c, startPoint: .leading, endPoint: .trailing)
+    }
 
     static let all: [Honor] = [
         Honor(id: "founder", title: "Founder", icon: "👑", what: "Made Cheat Days", how: "Only one.", rarity: "1 of 1", rank: 0,
@@ -253,21 +262,11 @@ struct Honor: Identifiable {
     static func find(_ id: String) -> Honor? { all.first { $0.id == id } }
 }
 
-/// A tag as a pill: full size on profiles, small beside names on the feed.
-struct HonorPill: View {
+/// A tag as a line of text in its colours, where Instagram has its grey "Artist": no pill.
+struct HonorText: View {
     let honor: Honor
-    var small = false
     var body: some View {
-        HStack(spacing: small ? 3 : 4) {
-            Text(honor.icon).font(.system(size: small ? 9 : 11)).accessibilityHidden(true)   // read once, as the title
-            Text(honor.title).font(.system(size: small ? 10 : 12, weight: .heavy, design: .rounded))
-        }
-        .foregroundStyle(honor.ink).lineLimit(1).fixedSize()
-        .padding(.leading, small ? 5 : 7).padding(.trailing, small ? 7 : 9).padding(.vertical, small ? 2 : 3.5)
-        .background(LinearGradient(colors: honor.colors, startPoint: .leading, endPoint: .trailing), in: Capsule())
-        .overlay(Capsule().stroke(.white.opacity(0.18), lineWidth: 0.5))
-        .shadow(color: honor.id == "founder" ? honor.colors[1].opacity(0.45) : .clear, radius: small ? 4 : 7)
-        .accessibilityLabel(honor.title)
+        Text(honor.title).font(.subheadline.weight(.bold)).foregroundStyle(honor.shade).lineLimit(1).fixedSize()
     }
 }
 
@@ -281,7 +280,7 @@ struct HonorsSheet: View {
             List {
                 ForEach(Honor.all) { h in
                     HStack(spacing: 12) {
-                        HonorPill(honor: h).frame(width: 104, alignment: .leading)
+                        HStack(spacing: 5) { Text(h.icon).accessibilityHidden(true); HonorText(honor: h) }.frame(width: 112, alignment: .leading)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(h.what).font(.subheadline.weight(.semibold))
                             Text(h.how).font(.caption).foregroundStyle(.secondary)
@@ -293,6 +292,7 @@ struct HonorsSheet: View {
                     .opacity(theirs.isEmpty || theirs.contains(h.id) ? 1 : 0.55)
                 }
             }
+            .contentMargins(.top, 4, for: .scrollContent)   // the list starts just under the title
             .navigationTitle(name.isEmpty ? "Tags" : "\(name)'s tags").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
         }

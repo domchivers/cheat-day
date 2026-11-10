@@ -140,14 +140,10 @@ struct ProfileView: View {
             if !profiles.handle(id).isEmpty { Text(profiles.handle(id)).font(.subheadline).foregroundStyle(.secondary) }
             // their tag on its own line under the name (tap it for all of theirs), then their label in grey where
             // Instagram has "Artist", then the bio
-            if let h = p?.shownHonor { Button { honorsOpen = true } label: { HonorPill(honor: h) }.buttonStyle(.plain).accessibilityLabel(h.title).padding(.top, 5) }
+            if let h = p?.shownHonor { Button { honorsOpen = true } label: { HonorText(honor: h) }.buttonStyle(.plain).accessibilityLabel(h.title).padding(.top, 2) }
             if let l = p?.label, !l.isEmpty { Text(l).font(.subheadline).foregroundStyle(.secondary).lineLimit(1).padding(.top, 3) }
             if let bio = p?.bio, !bio.isEmpty { Text(bio).font(.subheadline).padding(.top, 4) }
             else if isMe { Button("Add a bio") { editing = true }.font(.subheadline).padding(.top, 4) }
-            if let tags = p?.tags, !tags.isEmpty {
-                Flow { ForEach(tags, id: \.self) { t in Text(t).font(.caption.weight(.bold)).padding(.horizontal, 10).padding(.vertical, 5).background(Color(.tertiarySystemFill), in: Capsule()) } }
-                    .padding(.top, 9)
-            }
             buttons.padding(.top, 13)
             if !isMe, p?.showWeek ?? true, let person { week(person).padding(.top, 12) }
             let pins = (p?.pinned ?? []).compactMap { pid in Badge.all.first { $0.id == pid } }
@@ -377,7 +373,7 @@ struct EditProfileView: View {
                 if !(profiles.mine?.honors ?? []).isEmpty {
                     Section {
                         let mine = (profiles.mine?.honors ?? []).compactMap(Honor.find)
-                        Flow { ForEach(mine) { h in HonorPill(honor: h) } }
+                        Flow { ForEach(mine) { h in HonorText(honor: h).padding(.trailing, 8) } }
                         Picker("Beside my name", selection: $topHonor) {
                             ForEach(mine) { h in Text(h.title).tag(h.id) }
                         }
@@ -388,23 +384,6 @@ struct EditProfileView: View {
                     TextField("A line about you", text: $bio, axis: .vertical).lineLimit(2...4)
                         .onChange(of: bio) { _, b in if b.count > 150 { bio = String(b.prefix(150)) } }
                 }
-                Section {
-                    // each one can be changed in place, or taken off with the red minus
-                    ForEach(tags.indices, id: \.self) { i in
-                        HStack {
-                            TextField("Tag", text: Binding(get: { i < tags.count ? tags[i] : "" }, set: { if i < tags.count { tags[i] = String($0.prefix(24)) } }))
-                            Button { withAnimation { _ = tags.remove(at: i) } } label: { Image(systemName: "minus.circle.fill").foregroundStyle(.red) }
-                                .buttonStyle(.borderless).accessibilityLabel("Remove tag")
-                        }
-                    }
-                    if tags.count < 3 {
-                        HStack {
-                            TextField("Add a tag", text: $newTag)
-                            Button("Add") { add(newTag) }.disabled(newTag.trimmingCharacters(in: .whitespaces).isEmpty)
-                        }
-                        Flow { ForEach(Self.suggestions.filter { !tags.contains($0) }, id: \.self) { s in Chip(text: s, on: false) { add(s) } } }
-                    }
-                } header: { Text("Tags") } footer: { Text("Up to 3, about what you're into. Nothing about weight shows on your profile.") }
                 Section {
                     // the ones pinned, each with a minus; then a page of everything earned to pick from
                     let pins = pinned.compactMap { pid in Badge.all.first { $0.id == pid } }

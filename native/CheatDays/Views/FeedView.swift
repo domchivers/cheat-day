@@ -366,9 +366,10 @@ struct FeedView: View {
                     HStack(spacing: 10) {
                         avatar(owner, size: 34)
                         VStack(alignment: .leading, spacing: 1) {
-                            HStack(spacing: 5) {
+                            if let h = Profiles.shared.all[owner]?.shownHonor, h.onFeed {
+                                Text(feed.name(owner)).font(.subheadline.weight(.bold)).foregroundStyle(h.shade)
+                            } else {
                                 Text(feed.name(owner)).font(.subheadline.weight(.bold)).foregroundStyle(.primary)
-                                if let h = Profiles.shared.all[owner]?.shownHonor, h.onFeed { HonorPill(honor: h, small: true) }
                             }
                             Text(Self.what(p) + " · " + Feed.ago(str(p["created_at"]))).font(.caption).foregroundStyle(.secondary)
                         }
