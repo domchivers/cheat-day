@@ -11,6 +11,8 @@ struct StoryEditor: View {
     let video: URL?
     /// 9:16 for a story; 4:5 for a feed post, which gets everything baked into its photo.
     var aspect: CGFloat = StoryArt.aspect
+    /// An Aa story (words on a colour): open on writing, with the keyboard up.
+    var startWriting = false
     var close: () -> Void
     var posted: () -> Void = {}
     /// A feed post: the finished photo, with everything on it, instead of sharing to a story.
@@ -53,6 +55,7 @@ struct StoryEditor: View {
     @State private var length: Double = 0
     @State private var range: ClosedRange<Double> = 0...30
     @State private var frames: [UIImage] = []
+    @State private var poster: UIImage?   // the video's first frame, shown while the player gets going
     // sheets
     @State private var stickers = false
     @State private var food = false
@@ -107,6 +110,7 @@ struct StoryEditor: View {
         } message: { Text("Your text, stickers and drawing will be lost.") }
         .statusBarHidden()
         .task { await prepare() }
+        .task { if startWriting { try? await Task.sleep(for: .milliseconds(350)); newText(); size = 40 } }
         .onChange(of: filter) { _, f in Task { await refilter(f) } }
         .sheet(isPresented: $stickers) {
             StickerSheet(forPost: forPost, pick: { id in stickers = false; add(id) }, place: { o in stickers = false; place(o) })
@@ -136,7 +140,8 @@ struct StoryEditor: View {
         ZStack {
             Color(white: 0.08)
             if let video {
-                LoopingVideo(url: video, paused: mode == .text, muted: muted, filter: filter, range: length > 0 ? range : nil)
+                if let poster { Image(uiImage: poster).resizable().scaledToFill().frame(width: cw, height: ch).clipped() }
+                LoopingVideo(url: video, paused: mode == .text, muted: muted, filter: filter, range: length > 0 && mode != .trim ? range : nil)
             } else if let shown = preview ?? work ?? image {
                 // the photo moves on its own too, and tells the editor only when the finger lifts
                 BackgroundPhoto(image: shown, cw: cw, ch: ch, scale: bgScale, offset: bgOffset, movable: mode == .none || mode == .filters,
@@ -513,25 +518,37 @@ struct StoryEditor: View {
 
     private func prepare() async {
         if let image {
-            // 1440 on the long side is more than the 1080 × 1920 that's shared, and a tenth of a camera photo's pixels
-            let long = max(image.size.width, image.size.height), k = min(1, 1920 / long)
-            work = k < 1 ? (image.preparingThumbnail(of: CGSize(width: image.size.width * k, height: image.size.height * k)) ?? image) : image
-            let small = image.preparingThumbnail(of: CGSize(width: 140, height: 140 / image.size.width * image.size.height)) ?? image
-            var t: [String: UIImage] = [:]
-            for f in StoryArt.filters { t[f] = StoryArt.filtered(small, f) }
-            thumbs = t
+            // made off the main thread: shrinking a camera photo there held the screen black while the editor opened
+            let src = image
+            let (w, t) = await Task.detached(priority: .userInitiated) { () -> (UIImage, [String: UIImage]) in
+                let long = max(src.size.width, src.size.height), k = min(1, 1920 / long)
+                let w = k < 1 ? (src.preparingThumbnail(of: CGSize(width: src.size.width * k, height: src.size.height * k)) ?? src) : src
+                let small = src.preparingThumbnail(of: CGSize(width: 140, height: 140 / src.size.width * src.size.height)) ?? src
+                var t: [String: UIImage] = [:]
+                for f in StoryArt.filters { t[f] = StoryArt.filtered(small, f) }
+                return (w, t)
+            }.value
+            work = w; thumbs = t
         }
         if let video {
             let asset = AVURLAsset(url: video)
             length = (try? await asset.load(.duration).seconds) ?? 0
             range = 0...min(length, 30)
             let gen = AVAssetImageGenerator(asset: asset); gen.appliesPreferredTrackTransform = true; gen.maximumSize = CGSize(width: 160, height: 160)
+            // its first frame straight away, behind the player, so there's never a black screen while it loads
+            let big = AVAssetImageGenerator(asset: asset); big.appliesPreferredTrackTransform = true; big.maximumSize = CGSize(width: 1080, height: 1920)
+            if let cg = try? await big.image(at: .zero).image { poster = UIImage(cgImage: cg) }
             var got: [UIImage] = []
             for i in 0..<8 {
                 if let cg = try? await gen.image(at: CMTime(seconds: length * Double(i) / 8, preferredTimescale: 600)).image { got.append(UIImage(cgImage: cg)) }
             }
             frames = got
-            if let first = got.first { for f in StoryArt.filters { thumbs[f] = StoryArt.filtered(first, f) } }
+            if let first = got.first {
+                let t = await Task.detached(priority: .userInitiated) { () -> [String: UIImage] in
+                    var t: [String: UIImage] = [:]; for f in StoryArt.filters { t[f] = StoryArt.filtered(first, f) }; return t
+                }.value
+                thumbs = t
+            }
         }
     }
 
@@ -644,6 +661,8 @@ struct StickerSheet: View {
     @State private var limited = false
     @State private var loading = false
     private var store: Store { Store.shared }
+    /// Trending stickers and GIFs, kept while the app's open: switching to the tab was a wait every time.
+    @MainActor static var kept: [String: [JSON]] = [:]
 
     static var latestBadge: String? { (Store.shared.doc["seenBadges"] as? [String])?.last }
     /// Days until the cheat day, 0 on it; nil when there isn't one.
@@ -698,8 +717,10 @@ struct StickerSheet: View {
             .scrollDismissesKeyboard(.immediately)
         }
         .padding(.horizontal, 16).padding(.top, 16)
+        .task { if !forPost, Self.kept[gifKind] == nil { await loadGifs() } }   // ready before the tab's opened
         .task(id: "\(tab)|\(q)|\(gifKind)") {
             guard tab == 2 else { return }
+            if q.isEmpty, let k = Self.kept[gifKind] { gifs = k; return }
             try? await Task.sleep(for: .milliseconds(q.isEmpty ? 0 : 450))   // when typing stops, not every letter: 100 calls an hour
             if !Task.isCancelled { await loadGifs() }
         }
@@ -710,10 +731,15 @@ struct StickerSheet: View {
         return VStack(alignment: .leading, spacing: 14) {
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                 ForEach(shown, id: \.id) { s in
+                    // the sticker laid out at its own size first, then shrunk: squeezed into the tile it was cut short
+                    // ("54-day str…") and spilled into its neighbours; and the tile itself takes the tap (it didn't)
                     Button { pick(s.id) } label: {
-                        StoryItem(o: s.sample).scaleEffect(0.5).frame(maxWidth: .infinity).frame(height: 104).clipped()
-                            .background(Color(.tertiarySystemFill).opacity(0.5), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                            .allowsHitTesting(false)
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(.tertiarySystemFill).opacity(0.5))
+                            StoryItem(o: s.sample).fixedSize().scaleEffect(0.52).allowsHitTesting(false)
+                        }
+                        .frame(height: 104).clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
                     .buttonStyle(.plain)
                 }
@@ -758,7 +784,8 @@ struct StickerSheet: View {
                 ForEach(gifs.indices, id: \.self) { i in
                     let g = gifs[i]
                     Button { place(["type": "gif", "url": g["url"] ?? "", "w": g["w"] ?? 200, "h": g["h"] ?? 200]) } label: {
-                        AnimatedGIF(url: str(g["url"])).frame(height: 96).frame(maxWidth: .infinity)
+                        // GIPHY's 100-pixel copy in the grid (the 200 one is placed): a quarter of the frames to decode
+                        AnimatedGIF(url: str(g["url"]).replacingOccurrences(of: "/200w.gif", with: "/100w.gif"), maxPixel: 200).frame(height: 96).frame(maxWidth: .infinity)
                             .background(gifKind == "stickers" ? Color.clear : Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10))
                             .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
@@ -776,6 +803,7 @@ struct StickerSheet: View {
               let r = (try? JSONSerialization.jsonObject(with: d)) as? JSON else { limited = true; return }
         gifs = CheatDays.list(r["items"])
         limited = r["limited"] as? Bool ?? false
+        if q.isEmpty && !gifs.isEmpty { Self.kept[gifKind] = gifs }
     }
 
     private static let emoji = ["😋", "🔥", "💪", "🥗", "🍕", "🎉", "🥵", "🤤", "🏋️", "🍳", "🍰", "👏", "😮‍💨", "🥑", "🍜", "🍣", "🥩", "🍓", "☕️", "🥤", "🏃", "🧘", "⚡️", "✨", "❤️", "😂", "🙌", "🤯", "😴", "🍫"]

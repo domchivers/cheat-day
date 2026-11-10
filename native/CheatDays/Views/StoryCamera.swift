@@ -10,6 +10,8 @@ import SwiftUI
 struct StoryCamera: View {
     var captured: (UIImage?, URL?) -> Void
     var close: () -> Void
+    /// Aa: a story that's just words on a colour, opened straight into writing.
+    var wordsOnly: (UIImage) -> Void = { _ in }
     @State private var cam = CameraRig()
     @State private var recording = false
     @State private var started: Date?
@@ -85,11 +87,11 @@ struct StoryCamera: View {
             }
             HStack {
                 Spacer()
-                Button { captured(Self.colourCard(), nil) } label: {
-                    Text("Aa").font(.system(size: 18, weight: .heavy)).foregroundStyle(.white).frame(width: 44, height: 44).background(.black.opacity(0.35), in: Circle())
+                // the same plain white icon as the flash above it (it was a dark circle, and didn't belong)
+                Button { textOnly() } label: {
+                    Text("Aa").font(.system(size: 21, weight: .bold)).foregroundStyle(.white).shadow(color: .black.opacity(0.35), radius: 3).padding(12)
                 }
                 .accessibilityLabel("A text story")
-                .padding(.trailing, 12)
             }
             Spacer()
         }
@@ -183,16 +185,22 @@ struct StoryCamera: View {
         picked = nil
     }
 
-    /// A text story's background: one of the app's gradients, picked at random.
+    private func textOnly() { UIImpactFeedbackGenerator(style: .light).impactOccurred(); wordsOnly(Self.colourCard()) }
+
+    /// A text story's background: one of six of the app's gradients, three colours each, with a soft glow, like
+    /// Instagram's Create (two flat colours looked basic).
     static func colourCard() -> UIImage {
-        let pairs: [(UIColor, UIColor)] = [(UIColor(red: 0.11, green: 0.18, blue: 0.32, alpha: 1), UIColor(red: 0.42, green: 0.32, blue: 0.75, alpha: 1)),
-                                           (UIColor(red: 1, green: 0.45, blue: 0.35, alpha: 1), UIColor(red: 0.85, green: 0.3, blue: 0.6, alpha: 1)),
-                                           (UIColor(red: 0.2, green: 0.6, blue: 0.5, alpha: 1), UIColor(red: 0.1, green: 0.25, blue: 0.4, alpha: 1))]
-        let p = pairs.randomElement()!
+        func c(_ hex: Int) -> UIColor { UIColor(red: CGFloat((hex >> 16) & 255) / 255, green: CGFloat((hex >> 8) & 255) / 255, blue: CGFloat(hex & 255) / 255, alpha: 1) }
+        let sets: [[Int]] = [[0x1B2F52, 0x4A3A8C, 0xC4A1FF], [0xFF6B3D, 0xE0457B, 0x8A3FB8], [0x0F3D3E, 0x2A8C7A, 0x8CD9B6],
+                             [0x101828, 0x2B3F7A, 0x8CC4FF], [0x3A1C4A, 0xB0447A, 0xF2C66B], [0x0B0D12, 0x26304A, 0x5C6B9A]]
+        let cols = sets.randomElement()!.map { c($0).cgColor }
         let format = UIGraphicsImageRendererFormat(); format.scale = 1
         return UIGraphicsImageRenderer(size: CGSize(width: 1080, height: 1920), format: format).image { ctx in
-            let g = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: [p.0.cgColor, p.1.cgColor] as CFArray, locations: [0, 1])!
-            ctx.cgContext.drawLinearGradient(g, start: .zero, end: CGPoint(x: 1080, y: 1920), options: [])
+            let space = CGColorSpaceCreateDeviceRGB()
+            let g = CGGradient(colorsSpace: space, colors: cols as CFArray, locations: [0, 0.55, 1])!
+            ctx.cgContext.drawLinearGradient(g, start: CGPoint(x: 0, y: 0), end: CGPoint(x: 1080, y: 1920), options: [])
+            let glow = CGGradient(colorsSpace: space, colors: [UIColor.white.withAlphaComponent(0.18).cgColor, UIColor.white.withAlphaComponent(0).cgColor] as CFArray, locations: [0, 1])!
+            ctx.cgContext.drawRadialGradient(glow, startCenter: CGPoint(x: 780, y: 520), startRadius: 0, endCenter: CGPoint(x: 780, y: 520), endRadius: 900, options: [])
         }
     }
 }
@@ -305,7 +313,10 @@ final class CameraRig: NSObject {
 
 extension CameraRig: AVCapturePhotoCaptureDelegate, AVCaptureFileOutputRecordingDelegate {
     nonisolated func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
-        guard let d = photo.fileDataRepresentation(), let img = UIImage(data: d) else { return }
+        guard let d = photo.fileDataRepresentation(), let full = UIImage(data: d) else { return }
+        // a 12-megapixel photo drawn on screen held the editor black; 1920 on the long side is plenty
+        let long = max(full.size.width, full.size.height), k = min(1, 1920 / long)
+        let img = k < 1 ? (full.preparingThumbnail(of: CGSize(width: full.size.width * k, height: full.size.height * k)) ?? full) : full
         Task { @MainActor in self.photo = img }
     }
     nonisolated func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo url: URL, from connections: [AVCaptureConnection], error: Error?) {

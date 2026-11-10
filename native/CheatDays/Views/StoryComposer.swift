@@ -11,13 +11,17 @@ struct StoryComposer: View {
     @State private var camera = false
     @State private var picked: PhotosPickerItem?
     @State private var loading = false
+    @State private var words = false   // an Aa story: the editor opens on writing
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
             // straight into the camera, as Instagram opens (the in-between Camera / Library screen is gone)
-            if image == nil && video == nil { StoryCamera(captured: { img, url in image = img; video = url }, close: { dismiss() }) }
-            else { StoryEditor(image: image, video: video, close: { image = nil; video = nil }, posted: { dismiss() }) }
+            if image == nil && video == nil {
+                StoryCamera(captured: { img, url in words = false; image = img; video = url }, close: { dismiss() },
+                            wordsOnly: { card in words = true; image = card; video = nil })
+            }
+            else { StoryEditor(image: image, video: video, startWriting: words, close: { image = nil; video = nil; words = false }, posted: { dismiss() }) }
         }
         .statusBarHidden()
         .fullScreenCover(isPresented: $camera) {

@@ -387,6 +387,8 @@ struct StoryLayer: View {
 /// frames ImageIO reads out of it.
 struct AnimatedGIF: UIViewRepresentable {
     let url: String
+    /// The largest side to decode frames at: the tray's small tiles needn't decode every frame full size.
+    var maxPixel: Int = 400
     private static let cache = NSCache<NSString, UIImage>()
 
     func makeUIView(context: Context) -> UIImageView {
@@ -399,23 +401,26 @@ struct AnimatedGIF: UIViewRepresentable {
 
     private func load(into v: UIImageView) {
         v.accessibilityIdentifier = url
-        if let kept = Self.cache.object(forKey: url as NSString) { v.image = kept; v.startAnimating(); return }
+        let key = "\(url)|\(maxPixel)"
+        if let kept = Self.cache.object(forKey: key as NSString) { v.image = kept; v.startAnimating(); return }
         guard let u = URL(string: url) else { return }
-        let want = url
-        Task.detached {
-            guard let (d, _) = try? await URLSession.shared.data(from: u), let img = Self.animated(d) else { return }
-            Self.cache.setObject(img, forKey: want as NSString)
+        let want = url, px = maxPixel
+        Task.detached(priority: .userInitiated) {
+            guard let (d, _) = try? await URLSession.shared.data(from: u), let img = Self.animated(d, maxPixel: px) else { return }
+            Self.cache.setObject(img, forKey: key as NSString)
             await MainActor.run { if v.accessibilityIdentifier == want { v.image = img; v.startAnimating() } }
         }
     }
 
-    static func animated(_ data: Data) -> UIImage? {
+    static func animated(_ data: Data, maxPixel: Int = 400) -> UIImage? {
         guard let src = CGImageSourceCreateWithData(data as CFData, nil) else { return UIImage(data: data) }
         let n = CGImageSourceGetCount(src)
         guard n > 1 else { return UIImage(data: data) }
         var frames: [UIImage] = [], total = 0.0
         for i in 0..<n {
-            guard let cg = CGImageSourceCreateImageAtIndex(src, i, nil) else { continue }
+            let opts: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: maxPixel,
+                                         kCGImageSourceCreateThumbnailWithTransform: true]
+            guard let cg = CGImageSourceCreateThumbnailAtIndex(src, i, opts as CFDictionary) ?? CGImageSourceCreateImageAtIndex(src, i, nil) else { continue }
             let props = CGImageSourceCopyPropertiesAtIndex(src, i, nil) as? [CFString: Any]
             let gif = props?[kCGImagePropertyGIFDictionary] as? [CFString: Any]
             let delay = (gif?[kCGImagePropertyGIFUnclampedDelayTime] as? Double) ?? (gif?[kCGImagePropertyGIFDelayTime] as? Double) ?? 0.1
