@@ -197,6 +197,7 @@ final class TourUITests: XCTestCase {
         sleep(1)
         XCTAssertGreaterThan(placed.frame.width, moved.width * 1.2, "a pinch makes it bigger")
         let a = XCTAttachment(screenshot: app.screenshot()); a.name = "editor-moved"; a.lifetime = .keepAlways; add(a)
+        let z = XCTAttachment(screenshot: placed.screenshot()); z.name = "editor-sticker-closeup"; z.lifetime = .keepAlways; add(z)   // at full resolution: is the bigger text sharp?
 
         stickers.tap()
         XCTAssertTrue(app.buttons["3D"].waitForExistence(timeout: 3))

@@ -885,6 +885,12 @@ struct PlacedItem: View {
     @State private var told = ""
     @State private var upright = false
 
+    /// A twist only counts past 10 degrees, so pinching to resize doesn't tilt it too.
+    private func turned(_ a: Angle) -> Double {
+        let d = a.degrees
+        return abs(d) < 10 ? 0 : d - (d > 0 ? 10 : -10)
+    }
+
     /// A turn snapped to straight (0, 90, 180, 270) when it's within 4 degrees.
     private func snapped(_ deg: Double) -> (Double, Bool) {
         let q = (deg / 90).rounded() * 90
@@ -911,7 +917,7 @@ struct PlacedItem: View {
             .overlay(Color.black.opacity(0.001))
             .contentShape(Rectangle())
             .scaleEffect(eff)
-            .rotationEffect(.degrees(snapped(rotation + twist.degrees).0))
+            .rotationEffect(.degrees(snapped(rotation + turned(twist)).0))
             .accessibilityElement(children: .ignore).accessibilityIdentifier("placed-" + str(o["type"])).accessibilityAddTraits(.isButton)
             .position(x: at.x * cw, y: at.y * ch)
             .opacity(hidden ? 0 : (dim ? 0.45 : 1))
@@ -937,10 +943,10 @@ struct PlacedItem: View {
                         .onEnded { v in commit(["scale": min(4, max(0.3, scale * Double(v.magnification)))]); told = ""; ended() },
                     RotateGesture().updating($twist) { v, s, _ in s = v.rotation }
                         .onChanged { v in
-                            let on = snapped(rotation + v.rotation.degrees).1
+                            let on = snapped(rotation + turned(v.rotation)).1
                             if on != upright { upright = on; if on { UIImpactFeedbackGenerator(style: .light).impactOccurred() } }
                         }
-                        .onEnded { v in commit(["rotation": snapped(rotation + v.rotation.degrees).0]); told = ""; upright = false; ended() })))
+                        .onEnded { v in commit(["rotation": snapped(rotation + turned(v.rotation)).0]); told = ""; upright = false; ended() })))
     }
 }
 
