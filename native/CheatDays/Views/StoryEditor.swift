@@ -836,6 +836,8 @@ struct PollMaker: View {
                 Section("Answers") { TextField("First answer", text: $a); TextField("Second answer", text: $b) }
             }
             .navigationTitle("Poll").navigationBarTitleDisplayMode(.inline)
+            .onAppear { KeyboardDone.quiet = false }
+            .onDisappear { KeyboardDone.quiet = true }   // back in the editor, which has none
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
@@ -860,6 +862,8 @@ struct MentionPicker: View {
                 .buttonStyle(.plain)
             }
             .navigationTitle("Mention").navigationBarTitleDisplayMode(.inline)
+            .onAppear { KeyboardDone.quiet = false }
+            .onDisappear { KeyboardDone.quiet = true }   // back in the editor, which has none
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }
     }

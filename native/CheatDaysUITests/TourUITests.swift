@@ -229,6 +229,14 @@ final class TourUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Label"].waitForExistence(timeout: 3), "the label's own page")
         sleep(1)
         let b = XCTAttachment(screenshot: app.screenshot()); b.name = "edit-profile-label"; b.lifetime = .keepAlways; add(b)
+        // the bio: typing in it has a Done to leave by (it had none, so it couldn't be left)
+        app.navigationBars["Label"].buttons.firstMatch.tap()
+        app.staticTexts["Lifting, eating, building the app 💪"].tap()
+        XCTAssertTrue(app.navigationBars["Bio"].waitForExistence(timeout: 3))
+        sleep(1)
+        XCTAssertTrue(app.keyboards.firstMatch.exists, "the bio box takes the keyboard")
+        XCTAssertGreaterThanOrEqual(app.buttons.matching(identifier: "Done").count, 2, "Done on the keyboard and at the top")
+        let c = XCTAttachment(screenshot: app.screenshot()); c.name = "edit-profile-bio"; c.lifetime = .keepAlways; add(c)
     }
 
     /// Apple's food and day symbols in the tab bar style, for choosing the Today icon.

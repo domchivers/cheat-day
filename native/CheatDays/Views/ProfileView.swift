@@ -438,6 +438,7 @@ struct EditProfileView: View {
                 ToolbarItem(placement: .topBarTrailing) { Button(busy ? "Saving…" : "Save") { save() }.fontWeight(.bold).disabled(busy) }
             }
             .onAppear {
+                KeyboardDone.quiet = false
                 let p = profiles.mine
                 name = p?.name ?? Friends.shared.myName; username = p?.username ?? ""; bio = p?.bio ?? ""
                 tags = p?.tags ?? []; pinned = p?.pinned ?? []; showWeek = p?.showWeek ?? true; isPrivate = p?.isPrivate ?? true
@@ -819,6 +820,7 @@ struct FieldPage: View {
     var lines = false
     var footer = ""
     @FocusState private var on: Bool
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         Form {
@@ -847,7 +849,9 @@ struct FieldPage: View {
             }
         }
         .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
-        .onAppear { on = true }
+        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { on = false; dismiss() }.fontWeight(.bold) } }
+        // a chat box elsewhere can't take the keyboard's Done away from these (the bio had none, so it couldn't be left)
+        .onAppear { KeyboardDone.quiet = false; on = true }
     }
 }
 
