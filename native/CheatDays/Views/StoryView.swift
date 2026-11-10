@@ -9,6 +9,8 @@ struct StoryView: View {
     /// A highlight from a profile: just its stories, kept after their 24 hours.
     var highlight: JSON? = nil
     @State private var adding: JSON?   // your story going into a highlight
+    @State private var managing: JSON?   // your story's options are open
+    @State private var failed: String?
     @Environment(\.dismiss) private var dismiss
     @State private var slide = 0
     @State private var progress: Double = 0
@@ -86,6 +88,13 @@ struct StoryView: View {
         .gesture(DragGesture().onChanged { v in if v.translation.height > 0 { drag = v.translation.height; paused = true } }
             .onEnded { v in if v.translation.height > 120 { dismiss() } else { withAnimation(.snappy) { drag = 0 }; paused = false } })
         .statusBarHidden()
+        .overlay(alignment: .top) {
+            if let failed {
+                Text(failed).font(.footnote.weight(.semibold)).foregroundStyle(.white).padding(.horizontal, 14).padding(.vertical, 9)
+                    .background(Color.red.opacity(0.85), in: Capsule()).padding(.top, 70)
+                    .task { try? await Task.sleep(for: .seconds(3)); self.failed = nil }
+            }
+        }
         .task(id: "\(at)|\(slide)") {
             progress = 0
             let now = slides.indices.contains(slide) ? slides[slide] : nil
@@ -93,7 +102,7 @@ struct StoryView: View {
             if case .snap(let st)? = now { if highlight == nil { Stories.shared.watch(st) }; if str(st["kind"]) == "video" { length = max(3, num(st["seconds"]) ?? 15) } }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(50))
-                if paused || typing || seenBy != nil || adding != nil { continue }
+                if paused || typing || seenBy != nil || adding != nil || managing != nil { continue }
                 progress += 0.05 / length
                 if progress >= 1 { next(); return }
             }
@@ -219,14 +228,26 @@ struct StoryView: View {
                     }
                     Spacer()
                     Text(str(st["audience"]) == "friends" ? "Close friends" : "Your story").font(.caption.weight(.bold)).foregroundStyle(.white.opacity(0.6))
-                    Menu {
-                        Button { adding = st } label: { Label("Add to highlight", systemImage: "heart.circle") }
-                        Button(role: .destructive) { Task { await Stories.shared.delete(st); if slides.isEmpty { dismiss() } else { slide = min(slide, slides.count - 1) } } } label: { Label("Delete this story", systemImage: "trash") }
-                    } label: { Image(systemName: "ellipsis").font(.title3).foregroundStyle(.white).padding(10) }
+                    // a dialog that pauses the story: a menu kept playing, moved to the next slide, and its Delete did nothing
+                    Button { managing = st } label: { Image(systemName: "ellipsis").font(.title3).foregroundStyle(.white).padding(10) }
+                        .accessibilityLabel("Story options")
                 }
                 .frame(height: 44).padding(.horizontal, 8)
                 .sheet(item: Binding(get: { seenBy.map { PostBox(post: $0) } }, set: { seenBy = $0?.post })) { b in SeenBySheet(story: b.post).presentationDetents([.medium, .large]) }
                 .sheet(item: Binding(get: { adding.map { PostBox(post: $0) } }, set: { adding = $0?.post })) { b in AddToHighlight(story: b.post).presentationDetents([.medium, .large]) }
+                .confirmationDialog("Your story", isPresented: Binding(get: { managing != nil }, set: { if !$0 { managing = nil } }), presenting: managing) { m in
+                    Button("Add to highlight") { managing = nil; DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { adding = m } }
+                    Button("Delete this story", role: .destructive) {
+                        managing = nil
+                        Task {
+                            if await Stories.shared.delete(m) {
+                                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                                if slides.isEmpty { dismiss() } else { slide = min(slide, slides.count - 1); progress = 0 }
+                            } else { failed = "Couldn't delete it. Check your connection and try again." }
+                        }
+                    }
+                    Button("Cancel", role: .cancel) { managing = nil }
+                }
             } else {
                 Text("Your day, as friends see it").font(.footnote).foregroundStyle(.white.opacity(0.6)).frame(height: 44)
             }

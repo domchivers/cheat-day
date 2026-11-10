@@ -67,9 +67,14 @@ final class Stories {
         _ = try? await api.rest("/rest/v1/story_views", method: "POST", body: [["story_id": id, "viewer": me, "reaction": emoji]], prefer: "resolution=merge-duplicates")
     }
 
-    func delete(_ story: JSON) async {
-        _ = try? await api.rest("/rest/v1/stories?id=eq.\(str(story["id"]))&owner=eq.\(me)", method: "DELETE")
-        all.removeAll { str($0["id"]) == str(story["id"]) }
+    /// Take a story down; false if the server didn't (it stays, rather than vanishing here and coming back).
+    @discardableResult
+    func delete(_ story: JSON) async -> Bool {
+        do {
+            _ = try await api.rest("/rest/v1/stories?id=eq.\(str(story["id"]))&owner=eq.\(me)", method: "DELETE")
+            all.removeAll { str($0["id"]) == str(story["id"]) }
+            return true
+        } catch { self.error = error.localizedDescription; return false }
     }
 
     /// Upload the picture (already framed and filtered) or the video (trimmed, filtered, with or without its sound),
