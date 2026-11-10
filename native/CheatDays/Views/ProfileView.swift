@@ -138,14 +138,10 @@ struct ProfileView: View {
             }
             .padding(.top, 12)
             if !profiles.handle(id).isEmpty { Text(profiles.handle(id)).font(.subheadline).foregroundStyle(.secondary) }
-            // their tag and their label on one line, where Instagram has "Artist"; tap the tag for all of theirs
-            if p?.shownHonor != nil || !(p?.label ?? "").isEmpty {
-                HStack(spacing: 6) {
-                    if let h = p?.shownHonor { Button { honorsOpen = true } label: { HonorPill(honor: h) }.buttonStyle(.plain) }
-                    if let l = p?.label, !l.isEmpty { Text(l).font(.subheadline).foregroundStyle(.secondary).lineLimit(1) }
-                }
-                .padding(.top, 4)
-            }
+            // their tag on its own line under the name (tap it for all of theirs), then their label in grey where
+            // Instagram has "Artist", then the bio
+            if let h = p?.shownHonor { Button { honorsOpen = true } label: { HonorPill(honor: h) }.buttonStyle(.plain).padding(.top, 5) }
+            if let l = p?.label, !l.isEmpty { Text(l).font(.subheadline).foregroundStyle(.secondary).lineLimit(1).padding(.top, 3) }
             if let bio = p?.bio, !bio.isEmpty { Text(bio).font(.subheadline).padding(.top, 4) }
             else if isMe { Button("Add a bio") { editing = true }.font(.subheadline).padding(.top, 4) }
             if let tags = p?.tags, !tags.isEmpty {
