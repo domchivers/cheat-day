@@ -15,6 +15,8 @@ struct ProfileView: View {
     @State private var openAt: Int?   // a post tapped in the grid: the posts from there, as on the feed
     @State private var chatting = false
     @State private var friendsOnly = false   // Message on someone who isn't a friend yet
+    @State private var composing = false   // adding to your story
+    @State private var watching = false   // your story, from your photo
     @State private var listing: String?   // "followers" or "following", open
     @State private var reporting = false
     @State private var removing = false
@@ -102,6 +104,8 @@ struct ProfileView: View {
             FeedView(only: posts, startAt: posts.indices.contains(i) ? str(posts[i]["id"]) : nil).navigationTitle("Posts").navigationBarTitleDisplayMode(.inline)
         }
         .navigationDestination(isPresented: $chatting) { ChatView(friend: id) }
+        .fullScreenCover(isPresented: $composing) { StoryComposer() }
+        .fullScreenCover(isPresented: $watching) { StoryView(people: [id], at: 0) }
         .navigationDestination(item: $listing) { which in FollowListView(id: id, which: which) }
         .alert("Messages are for friends", isPresented: $friendsOnly) { Button("OK", role: .cancel) {} } message: {
             Text("Scan each other's code in Add a friend, then you can message.")
@@ -134,12 +138,17 @@ struct ProfileView: View {
             HStack(spacing: 18) {
                 Avatar(id: id, size: 86, ring: true, dot: !isMe)
                     .overlay(alignment: .bottomTrailing) {
+                        // + adds to your story, like Instagram; your photo is changed in Edit profile
                         if isMe {
-                            Image(systemName: "camera.fill").font(.system(size: 11, weight: .bold)).foregroundStyle(Theme.onAccent)
-                                .frame(width: 26, height: 26).background(Theme.accent, in: Circle()).overlay(Circle().stroke(Theme.bg, lineWidth: 2))
+                            Button { composing = true } label: {
+                                Image(systemName: "plus").font(.system(size: 13, weight: .heavy)).foregroundStyle(Theme.onAccent)
+                                    .frame(width: 26, height: 26).background(Theme.accent, in: Circle()).overlay(Circle().stroke(Theme.bg, lineWidth: 2))
+                            }
+                            .buttonStyle(.plain).accessibilityLabel("Add to your story")
                         }
                     }
-                    .onTapGesture { if isMe { editing = true } }
+                    // your photo plays your story if there is one, else starts one
+                    .onTapGesture { if isMe { if Stories.shared.of(id).isEmpty { composing = true } else { watching = true } } }
                 HStack {
                     count(locked ? "–" : "\(posts.count)", posts.count == 1 ? "post" : "posts")
                     // tap either for the people
