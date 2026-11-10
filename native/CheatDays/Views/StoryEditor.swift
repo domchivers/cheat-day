@@ -884,11 +884,33 @@ struct PlacedItem: View {
     @GestureState private var twist: Angle = .zero
     @State private var told = ""
     @State private var upright = false
+    @State private var resizing = false   // a real pinch under way: a small twist then is the fingers wobbling
+    // the sticker drawn as a picture at the size it's shown: scaled up as it was, it went soft and fuzzy
+    @State private var sharp: UIImage?
+    @State private var sharpFor = ""
+    @Environment(\.displayScale) private var displayScale
 
-    /// A twist only counts past 10 degrees, so pinching to resize doesn't tilt it too.
+    /// A twist only counts past 10 degrees (25 while it's being pinched bigger or smaller), so resizing doesn't tilt it.
     private func turned(_ a: Angle) -> Double {
-        let d = a.degrees
-        return abs(d) < 10 ? 0 : d - (d > 0 ? 10 : -10)
+        let d = a.degrees, dead: Double = resizing ? 25 : 10
+        return abs(d) < dead ? 0 : d - (d > 0 ? dead : -dead)
+    }
+
+    /// What it looks like and how big, for knowing when to draw it again (where it is and its turn don't matter).
+    private var lookKey: String {
+        var look = o
+        for k in ["x", "y", "rotation"] { look[k] = nil }
+        let data = (try? JSONSerialization.data(withJSONObject: look, options: [.sortedKeys])) ?? Data()
+        return (String(data: data, encoding: .utf8) ?? "") + "\(cw)"
+    }
+
+    private var drawn: Bool { str(o["type"]) != "gif" }   // a GIF moves, so it stays live
+
+    private func draw() -> UIImage? {
+        let r = ImageRenderer(content: StoryItem(o: o).environment(\.colorScheme, .dark))
+        r.proposedSize = ProposedViewSize(width: StoryArt.design, height: nil)
+        r.scale = min(9, displayScale * max(1, scale * cw / StoryArt.design))
+        return r.uiImage
     }
 
     /// A turn snapped to straight (0, 90, 180, 270) when it's within 4 degrees.
@@ -912,7 +934,9 @@ struct PlacedItem: View {
 
     var body: some View {
         let at = place(drag), k = cw / StoryArt.design, eff = min(4, max(0.3, scale * Double(pinch))) * k
-        StoryItem(o: o)
+        Group {
+            if drawn, let sharp, sharpFor == lookKey { Image(uiImage: sharp) } else { StoryItem(o: o) }
+        }
             .padding(34 / max(0.2, eff))   // about 34 points on screen at any size
             .overlay(Color.black.opacity(0.001))
             .contentShape(Rectangle())
@@ -923,6 +947,7 @@ struct PlacedItem: View {
             .opacity(hidden ? 0 : (dim ? 0.45 : 1))
             .animation(.snappy(duration: 0.18), value: dim)
             .onTapGesture { tap() }
+            .task(id: lookKey) { if drawn { let k = lookKey; sharp = draw(); sharpFor = k } }
             .gesture(SimultaneousGesture(
                 DragGesture(minimumDistance: 2)
                     .updating($drag) { v, s, _ in s = v.translation }
@@ -939,8 +964,11 @@ struct PlacedItem: View {
                     },
                 SimultaneousGesture(
                     MagnifyGesture().updating($pinch) { v, s, _ in s = v.magnification }
-                        .onChanged { _ in if told.isEmpty { told = "pinch"; began() } }
-                        .onEnded { v in commit(["scale": min(4, max(0.3, scale * Double(v.magnification)))]); told = ""; ended() },
+                        .onChanged { v in
+                            if told.isEmpty { told = "pinch"; began() }
+                            if abs(v.magnification - 1) > 0.12 { resizing = true }
+                        }
+                        .onEnded { v in commit(["scale": min(4, max(0.3, scale * Double(v.magnification)))]); told = ""; DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { resizing = false }; ended() },
                     RotateGesture().updating($twist) { v, s, _ in s = v.rotation }
                         .onChanged { v in
                             let on = snapped(rotation + turned(v.rotation)).1

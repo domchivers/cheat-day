@@ -143,7 +143,8 @@ struct StoryItem: View {
         .padding(.horizontal, 15).padding(.vertical, 11)
         .background {
             switch style {
-            case 1: RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.ultraThinMaterial).environment(\.colorScheme, .dark)
+            case 1: RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.black.opacity(0.38))
+                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(.white.opacity(0.22), lineWidth: 1))
             case 2: RoundedRectangle(cornerRadius: 18, style: .continuous).fill(LinearGradient(colors: [Color(red: 0.11, green: 0.18, blue: 0.32), Color(red: 0.17, green: 0.13, blue: 0.31)], startPoint: .topLeading, endPoint: .bottomTrailing))
             default: RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.white)
             }
@@ -297,7 +298,7 @@ struct StoryItem: View {
             .font(.system(size: 18, weight: .heavy, design: .rounded)).foregroundStyle(fg).lineLimit(1)
             .padding(.horizontal, 15).padding(.vertical, 10)
             .background {
-                if glass { Capsule().fill(.ultraThinMaterial).environment(\.colorScheme, .dark) } else { Capsule().fill(bg) }
+                if glass { Capsule().fill(Color.black.opacity(0.38)).overlay(Capsule().stroke(.white.opacity(0.22), lineWidth: 1)) } else { Capsule().fill(bg) }
             }
             .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
     }
