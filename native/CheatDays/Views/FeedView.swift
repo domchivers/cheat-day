@@ -28,7 +28,9 @@ final class Feed {
             // friends, people I follow, and me: public profiles can be read by anyone now, and those belong in Explore
             if Friends.shared.people.isEmpty { await Friends.shared.load() }
             await Follows.shared.load()
-            let owners = Set([me] + Friends.shared.people.map(\.id) + Follows.shared.following).filter { !$0.isEmpty }
+            // real accounts only: the demo's made-up friends ("demo-alex") aren't ids the server can read
+            let owners = Set([me] + Friends.shared.people.map(\.id) + Follows.shared.following).filter { UUID(uuidString: $0) != nil }
+            guard !owners.isEmpty else { posts = []; return }
             posts = try await rows("/rest/v1/posts?owner=in.(\(owners.joined(separator: ",")))&select=*&order=created_at.desc&limit=40")
             let ids = posts.map { str($0["id"]) }.joined(separator: ",")
             if !ids.isEmpty {

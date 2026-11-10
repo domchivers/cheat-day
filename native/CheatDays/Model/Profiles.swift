@@ -48,7 +48,7 @@ final class Profiles {
 
     /// These people's profiles (and mine), kept for the session; again when asked.
     func load(_ ids: [String], force: Bool = false) async {
-        let want = Set(ids + [me]).filter { !$0.isEmpty && (force || all[$0] == nil) }
+        let want = Set(ids + [me]).filter { UUID(uuidString: $0) != nil && (force || all[$0] == nil) }
         guard !want.isEmpty else { return }
         for r in (try? await rows("/rest/v1/profiles?user_id=in.(\(want.joined(separator: ",")))&select=*")) ?? [] {
             all[str(r["user_id"])] = Profile(r)
