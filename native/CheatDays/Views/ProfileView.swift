@@ -4,7 +4,7 @@ import PhotosUI
 import SwiftUI
 
 /// Someone's profile, social-app style: photo, counts, name and @username, bio, tags and pinned badges, then their
-/// posts as a grid. Yours has Edit and Share; a friend's has Message, Cheer, their week and their day. Never weight.
+/// posts as a grid. Yours has Edit and Share; anyone else's has Follow and Message, and a friend's their week and their day. Never weight.
 struct ProfileView: View {
     let id: String
     @State private var posts: [JSON] = []
@@ -12,6 +12,7 @@ struct ProfileView: View {
     @State private var editing = false
     @State private var openAt: Int?   // a post tapped in the grid: the posts from there, as on the feed
     @State private var chatting = false
+    @State private var friendsOnly = false   // Message on someone who isn't a friend yet
     @State private var reporting = false
     @State private var removing = false
     @State private var showCode = false
@@ -46,7 +47,7 @@ struct ProfileView: View {
                 Picker("Show", selection: $tab) {
                     Image(systemName: "square.grid.3x3").tag(0)
                     Image(systemName: "trophy").tag(1)
-                    if person != nil { Image(systemName: "sun.max").tag(2) }
+                    if person != nil { Image(systemName: "fork.knife").tag(2) }   // their food today, like the Today tab
                 }
                 .pickerStyle(.segmented).padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 8)
                 switch tab {
@@ -88,6 +89,9 @@ struct ProfileView: View {
             FeedView(only: posts, startAt: posts.indices.contains(i) ? str(posts[i]["id"]) : nil).navigationTitle("Posts").navigationBarTitleDisplayMode(.inline)
         }
         .navigationDestination(isPresented: $chatting) { ChatView(friend: id) }
+        .alert("Messages are for friends", isPresented: $friendsOnly) { Button("OK", role: .cancel) {} } message: {
+            Text("Scan each other's code in Add a friend, then you can message.")
+        }
         .confirmationDialog("Report \(p?.name ?? "them")?", isPresented: $reporting, titleVisibility: .visible) {
             ForEach(["Spam", "Something hurtful", "Pretending to be someone", "Something else"], id: \.self) { r in
                 Button(r) { Task { await profiles.report(id, reason: r) } }
@@ -171,8 +175,9 @@ struct ProfileView: View {
             if isMe {
                 pill("Edit profile") { editing = true }
                 pill("Share profile") { showCode = true }
-            } else if person == nil {
-                // not a friend: follow (or ask to), and the full friendship as well
+            } else {
+                // Follow (or Following) and Message, like Instagram; no Cheer. Becoming friends is scanning each other's
+                // code, never a button here, and messages are between friends
                 let st = follows.state(id)
                 Button { Task { if st == .none { await follows.follow(id) } else { await follows.unfollow(id) }; counts = await follows.counts(id) } } label: {
                     Text(st == .following ? "Following" : st == .requested ? "Requested" : follows.followsMe(id) ? "Follow back" : "Follow")
@@ -181,19 +186,7 @@ struct ProfileView: View {
                         .background(st == .none ? Theme.accent : Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12))
                 }
                 .buttonStyle(.plain)
-                if let code = p?.friendCode, !code.isEmpty {
-                    pill(friendNote ?? "Add friend") { Task { friendNote = await Friends.shared.add(code: code) } }.disabled(friendNote != nil)
-                }
-            } else {
-                Button { chatting = true } label: {
-                    Label("Message", systemImage: "bubble.left.fill").font(.subheadline.weight(.bold)).foregroundStyle(Theme.onAccent)
-                        .frame(maxWidth: .infinity).padding(.vertical, 9).background(Theme.accent, in: RoundedRectangle(cornerRadius: 12))
-                }
-                .buttonStyle(.plain)
-                if let person {
-                    let done = Friends.shared.cheered.contains(person.id)
-                    pill(done ? "🎉 Cheered" : "🎉 Cheer") { Task { await Friends.shared.cheer(person) } }.disabled(done)
-                }
+                pill("Message") { if person != nil { chatting = true } else { friendsOnly = true } }
             }
         }
     }
