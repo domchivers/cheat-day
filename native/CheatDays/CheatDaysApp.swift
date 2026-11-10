@@ -346,10 +346,10 @@ private struct TourHarness: View {
     @State private var tab = 0
     var body: some View {
         TabView(selection: $tab) {
-            TodayView().tabItem { Image(systemName: "fork.knife").accessibilityLabel("Today") }.tag(0)
-            Color.clear.tabItem { Image(systemName: "dumbbell.fill").accessibilityLabel("Workouts") }.tag(1)
-            Color.clear.tabItem { Image(systemName: "person.2.fill").accessibilityLabel("Friends") }.tag(2)
-            Color.clear.tabItem { Image(systemName: "person.crop.circle.fill").accessibilityLabel("Me") }.tag(3)
+            TodayView().tabItem { Image(uiImage: TabGlyph.make("fork.knife")).accessibilityLabel("Today") }.tag(0)
+            Color.clear.tabItem { Image(uiImage: TabGlyph.make("dumbbell.fill")).accessibilityLabel("Workouts") }.tag(1)
+            Color.clear.tabItem { Image(uiImage: TabGlyph.make("person.2.fill")).accessibilityLabel("Friends") }.tag(2)
+            Color.clear.tabItem { Image(uiImage: TabGlyph.make("person.crop.circle.fill")).accessibilityLabel("Me") }.tag(3)
         }
         .overlay { TourOverlay() }
         .task {
@@ -373,17 +373,17 @@ struct MainTabs: View {
         TabView(selection: $tab) {
             // icons only, no words under them; Today is the food log, so a plate rather than a sun
             TodayView()
-                .tabItem { Image(systemName: "fork.knife").accessibilityLabel("Today") }.tag(0)
+                .tabItem { Image(uiImage: TabGlyph.make("fork.knife")).accessibilityLabel("Today") }.tag(0)
             WorkoutsView()
-                .tabItem { Image(systemName: "dumbbell.fill").accessibilityLabel("Workouts") }.tag(1)
+                .tabItem { Image(uiImage: TabGlyph.make("dumbbell.fill")).accessibilityLabel("Workouts") }.tag(1)
             FriendsView()
-                .tabItem { Image(systemName: "person.2.fill").accessibilityLabel("Friends") }.tag(2)
+                .tabItem { Image(uiImage: TabGlyph.make("person.2.fill")).accessibilityLabel("Friends") }.tag(2)
                 .badge(FriendActivity.shared.unread)
             MeView()
                 .tabItem {
                     // your photo, once you've added one
                     if let icon = tab == 3 ? Profiles.shared.meIconOn : Profiles.shared.meIcon { Image(uiImage: icon).renderingMode(.original).accessibilityLabel("Me") }
-                    else { Image(systemName: "person.crop.circle.fill").accessibilityLabel("Me") }
+                    else { Image(uiImage: TabGlyph.make("person.crop.circle.fill")).accessibilityLabel("Me") }
                 }.tag(3)
         }
         .sensoryFeedback(.selection, trigger: tab)
@@ -598,5 +598,20 @@ private struct DemoRoot: View {
         else if args.contains("-demo-budget") { NavigationStack { BudgetView() } }   // the week with its treat day
         else if args.contains("-demo-weigh") { WeighInSheet() }
         else { MainTabs(demo: true, startTab: live ? 1 : Int(UserDefaults.standard.string(forKey: "demo-tab") ?? "") ?? 0) }
+    }
+}
+
+/// A tab icon drawn to one height, so the wide ones (the dumbbell, the two people) stand as tall as the fork and
+/// knife and your photo, rather than being shrunk to fit their width.
+enum TabGlyph {
+    @MainActor private static var made: [String: UIImage] = [:]
+    @MainActor static func make(_ name: String, height: CGFloat = 26) -> UIImage {
+        if let m = made[name] { return m }
+        guard let sym = UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: 60, weight: .semibold)) else { return UIImage() }
+        let k = height / sym.size.height, size = CGSize(width: (sym.size.width * k).rounded(), height: height)
+        let out = UIGraphicsImageRenderer(size: size).image { _ in sym.withTintColor(.black).draw(in: CGRect(origin: .zero, size: size)) }
+            .withRenderingMode(.alwaysTemplate)
+        made[name] = out
+        return out
     }
 }
