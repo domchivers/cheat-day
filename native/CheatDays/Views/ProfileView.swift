@@ -73,13 +73,11 @@ struct ProfileView: View {
             }
         }
         .task {
-            await profiles.load([id], force: true)
-            posts = await profiles.posts(of: id)
-            counts = await follows.counts(id)
+            await reload()
             if isMe, profiles.mine?.privacyChosen == false { choosing = true }
         }
         .sheet(isPresented: $choosing) { PrivacyChoiceSheet().interactiveDismissDisabled() }
-        .refreshable { await profiles.load([id], force: true); posts = await profiles.posts(of: id) }
+        .refreshable { await reload() }
         .sheet(isPresented: $editing) { EditProfileView() }
         .sheet(isPresented: $showCode) { MyCodeSheet().presentationDetents([.large]) }
         .sheet(item: $opened) { b in PostRecipeSheet(post: b.post) }
@@ -92,6 +90,12 @@ struct ProfileView: View {
         .confirmationDialog("Remove \(person?.name ?? "them") as a friend?", isPresented: $removing, titleVisibility: .visible) {
             Button("Remove", role: .destructive) { Task { if let person { await profiles.removeFriend(person) }; dismiss() } }
         } message: { Text("You'll stop seeing each other's days, posts and messages.") }
+    }
+
+    private func reload() async {
+        await Task { await profiles.load([id], force: true) }.value
+        if let got = await profiles.posts(of: id) { posts = got }
+        if let c = await Task(operation: { await follows.counts(id) }).value { counts = c }
     }
 
     // MARK: the top
@@ -263,9 +267,15 @@ struct ProfileView: View {
         if list.isEmpty {
             Text(isMe ? "Badges you earn show here." : "They haven't pinned any badges.").font(.subheadline).foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.top, 30)
         } else {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 14) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), alignment: .top), count: 4), spacing: 14) {
                 ForEach(list, id: \.id) { b in
-                    VStack(spacing: 4) { BadgeCoin(badge: b, size: 58); Text(b.name).font(.caption2).foregroundStyle(.secondary).lineLimit(2).multilineTextAlignment(.center) }
+                    // the name gets room for two lines in every cell, so a long one doesn't push its coin up
+                    VStack(spacing: 4) {
+                        BadgeCoin(badge: b, size: 58)
+                        Text(b.name).font(.caption2).foregroundStyle(.secondary).lineLimit(2).multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity, minHeight: 30, alignment: .top)
+                    }
+                    .frame(maxHeight: .infinity, alignment: .top)
                 }
             }
             .padding(.top, 8)

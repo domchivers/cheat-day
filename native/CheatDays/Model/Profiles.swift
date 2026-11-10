@@ -111,8 +111,10 @@ final class Profiles {
         _ = try? await api.rest("/rest/v1/profiles?user_id=eq.\(me)", method: "PATCH", body: ["seen_at": ISO.now()])
     }
 
-    func posts(of id: String) async -> [JSON] {
-        (try? await rows("/rest/v1/posts?owner=eq.\(id)&select=*&order=created_at.desc&limit=60")) ?? []
+    /// Their posts, or nil when it couldn't load (so what's showing stays). Run outside the caller's task: pull to
+    /// refresh cancels its own, and a cancelled request came back as no posts at all.
+    func posts(of id: String) async -> [JSON]? {
+        await Task { try? await rows("/rest/v1/posts?owner=eq.\(id)&select=*&order=created_at.desc&limit=60") }.value
     }
 
     func removeFriend(_ p: Friends.Person) async {
