@@ -49,7 +49,7 @@ struct FriendsView: View {
                 round("paperplane", count: Messages.shared.unread) { showMessages = true }
                     .accessibilityLabel("Messages, \(Messages.shared.unread) unread")
                 round("person.badge.plus", count: 0) { adding = true }.accessibilityLabel("Add a friend")
-                Button { profileOf = Profiles.shared.me } label: { Avatar(id: Profiles.shared.me, size: 36) }
+                Button { NotificationCenter.default.post(name: .openTab, object: 3) } label: { Avatar(id: Profiles.shared.me, size: 36) }   // your profile is the Me tab, not a second copy here
                     .buttonStyle(.plain).accessibilityLabel("Your profile")
             }
             .padding(.horizontal, 16).padding(.top, 6)

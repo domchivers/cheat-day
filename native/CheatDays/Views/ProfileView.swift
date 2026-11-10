@@ -7,7 +7,7 @@ import SwiftUI
 /// posts as a grid. Yours has Edit and Share; anyone else's has Follow and Message, and a friend's their week and their day. Never weight.
 struct ProfileView: View {
     let id: String
-    /// The Me tab: your own profile, with Your progress under the bio and Settings at the top.
+    /// The Me tab. Your own profile looks the same wherever it opens (Progress tab, Settings at the top).
     var home = false
     @State private var posts: [JSON] = []
     @State private var tab = 0
@@ -48,12 +48,12 @@ struct ProfileView: View {
                     .frame(maxWidth: .infinity).padding(.top, 44)
                 } else {
                 // only posts on someone else's profile: no tabs to choose between
-                if person != nil || (home && isMe) {
+                if person != nil || isMe {
                 Picker("Show", selection: $tab) {
                     Image(systemName: "square.grid.3x3").tag(0)
                     // no badges tab (pinned badges show under the bio); Progress is yours alone
                     if person != nil { Image(systemName: "fork.knife").tag(2) }   // their food today, like the Today tab
-                    if home && isMe { Image(systemName: "chart.line.uptrend.xyaxis").tag(3) }   // Progress: only you see it
+                    if isMe { Image(systemName: "chart.line.uptrend.xyaxis").tag(3) }   // Progress: only you see it
                 }
                 .pickerStyle(.segmented).padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 8)
                 } else { Divider().padding(.top, 16).padding(.bottom, 2) }
@@ -71,7 +71,7 @@ struct ProfileView: View {
         .navigationTitle(p.map { $0.username.isEmpty ? $0.name : "@\($0.username)" } ?? "")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if home {
+            if isMe {
                 ToolbarItem(placement: .topBarTrailing) {
                     NavigationLink { SettingsView() } label: { Image(systemName: "gearshape") }.accessibilityLabel("Settings")
                 }
