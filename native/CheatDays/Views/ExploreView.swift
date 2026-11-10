@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Explore, the public feed: public profiles' posts as a grid (some tiles tall, like Instagram's), most liked and
-/// newest first, with chips to narrow it and a search for people and foods. Tap one to scroll the posts from there.
+/// newest first, with a search for people and foods. Tap one to scroll the posts from there.
 /// Private profiles never show here, and nobody's day, week, food log or weight does.
 struct ExploreView: View {
     @State private var chip = "For you"
@@ -42,12 +42,8 @@ struct ExploreView: View {
                     }
                     .padding(.horizontal, 12).padding(.vertical, 9)
                     .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .padding(.horizontal, 14).padding(.top, 10)
-                    ScrollView(.horizontal) {
-                        HStack(spacing: 7) { ForEach(Self.chips, id: \.self) { c in Chip(text: c, on: chip == c) { withAnimation(.snappy) { chip = c } } } }
-                            .padding(.horizontal, 14).padding(.vertical, 8)
-                    }
-                    .scrollIndicators(.hidden)
+                    .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 8)
+                    // no filter chips under the search (the owner: they looked cheap); the search narrows it
                     if !people.isEmpty { peopleRow.padding(.bottom, 8) }
                     if let e = follows.error { Text(e).font(.footnote).foregroundStyle(Theme.warn).padding(16) }
                     else if shown.isEmpty && !follows.exploring {
