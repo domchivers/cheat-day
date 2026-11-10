@@ -229,6 +229,7 @@ struct FeedView: View {
     @State private var burst: String?   // the post a double-tap just liked
     @State private var profileOf: String?
     @State private var story: StoryStart?
+    @State private var profileAfterStory: String?   // a name tapped in a story: their page opens once the story has closed
     @State private var posting = false   // making a story
     @State private var askMine = false
     struct StoryStart: Identifiable { let id = UUID(); let people: [String]; let at: Int }
@@ -275,7 +276,9 @@ struct FeedView: View {
         .sheet(item: $talking) { b in CommentsSheet(post: b.post).presentationDetents([.medium, .large]).presentationDragIndicator(.visible) }
         .sheet(item: $sharing) { b in SharePostSheet(post: b.post).presentationDetents([.medium, .large]) }
         .navigationDestination(item: $profileOf) { id in ProfileView(id: id) }
-        .fullScreenCover(item: $story) { s in StoryView(people: s.people, at: s.at) }
+        .fullScreenCover(item: $story, onDismiss: { if let p = profileAfterStory { profileAfterStory = nil; profileOf = p } }) { s in
+            StoryView(people: s.people, at: s.at, onProfile: { profileAfterStory = $0 })
+        }
         .fullScreenCover(isPresented: $posting) { StoryComposer() }
         .task { if only == nil { await Stories.shared.load() } }
     }
