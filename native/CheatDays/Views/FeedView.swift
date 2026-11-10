@@ -265,10 +265,10 @@ struct FeedView: View {
                         .frame(width: 21, height: 21).background(Theme.accent, in: Circle()).overlay(Circle().stroke(Theme.bg, lineWidth: 2))
                 } else if let tag {
                     // their streak, where your ring has its +
-                    HStack(spacing: 1) { FluentIcon(emoji: "🔥", size: 11); Text(tag).font(.system(size: 10, weight: .heavy)).foregroundStyle(.white) }
-                        .padding(.horizontal, 4).frame(minWidth: 21, minHeight: 21)
-                        .background(Color(red: 0.95, green: 0.45, blue: 0.15), in: Capsule()).overlay(Capsule().stroke(Theme.bg, lineWidth: 2))
-                        .offset(x: 4)
+                    // no pill or outline: the flame and the number, with a dark glow so it reads over the ring
+                    HStack(spacing: 1) { FluentIcon(emoji: "🔥", size: 13); Text(tag).font(.system(size: 12, weight: .black)).foregroundStyle(Color(red: 1, green: 0.7, blue: 0.36)) }
+                        .shadow(color: Theme.bg, radius: 1.5).shadow(color: Theme.bg, radius: 3).shadow(color: .black.opacity(0.6), radius: 1, y: 1)
+                        .offset(x: -1, y: 2)
                         .accessibilityLabel("\(tag) day streak")
                 }
             }
