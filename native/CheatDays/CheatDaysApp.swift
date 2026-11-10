@@ -611,8 +611,19 @@ enum TabGlyph {
         let weight: UIImage.SymbolWeight = name == "fork.knife" ? .black : .semibold
         guard let sym = UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: 60, weight: weight)) else { return UIImage() }
         let k = height / sym.size.height, size = CGSize(width: (sym.size.width * k).rounded(), height: height)
-        let out = UIGraphicsImageRenderer(size: size).image { _ in sym.withTintColor(.black).draw(in: CGRect(origin: .zero, size: size)) }
-            .withRenderingMode(.alwaysTemplate)
+        // the fork and knife are thin lines even at the heaviest weight: drawn again a little to each side, so the
+        // strokes thicken and it weighs as much as the solid dumbbell and people beside it
+        let fat: CGFloat = name == "fork.knife" ? 1.3 : 0
+        let out = UIGraphicsImageRenderer(size: size).image { _ in
+            let tinted = sym.withTintColor(.black), box = CGRect(origin: .zero, size: size).insetBy(dx: fat, dy: fat)
+            if fat > 0 {
+                for a in stride(from: 0.0, to: 2 * Double.pi, by: Double.pi / 8) {
+                    tinted.draw(in: box.offsetBy(dx: fat * CGFloat(cos(a)), dy: fat * CGFloat(sin(a))))
+                }
+            }
+            tinted.draw(in: box)
+        }
+        .withRenderingMode(.alwaysTemplate)
         made[name] = out
         return out
     }
