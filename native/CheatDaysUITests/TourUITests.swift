@@ -173,6 +173,18 @@ final class TourUITests: XCTestCase {
         let c = XCTAttachment(screenshot: app.screenshot()); c.name = "stickers-story"; c.lifetime = .keepAlways; add(c)
     }
 
+    /// A profile's tag and label line, and the sheet of all the tags.
+    func testProfileTags() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-uitest-honors"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Founder of Cheat Days"].waitForExistence(timeout: 5), "the label under the name")
+        sleep(1)
+        let a = XCTAttachment(screenshot: app.screenshot()); a.name = "profile-tags"; a.lifetime = .keepAlways; add(a)
+        app.buttons["Founder"].firstMatch.tap(); sleep(1)
+        let b = XCTAttachment(screenshot: app.screenshot()); b.name = "profile-tags-sheet"; b.lifetime = .keepAlways; add(b)
+    }
+
     func testMealCheck() {
         let app = XCUIApplication()
         app.launchArguments = ["-uitest-mealcheck"]

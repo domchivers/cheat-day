@@ -15,6 +15,7 @@ struct ProfileView: View {
     @State private var reporting = false
     @State private var removing = false
     @State private var showCode = false
+    @State private var honorsOpen = false
     @State private var counts: (followers: Int, following: Int)?
     @State private var choosing = false   // public or private, the first time you see your profile
     @State private var friendNote: String?
@@ -82,6 +83,7 @@ struct ProfileView: View {
         .refreshable { await reload() }
         .sheet(isPresented: $editing) { EditProfileView() }
         .sheet(isPresented: $showCode) { MyCodeSheet().presentationDetents([.large]) }
+        .sheet(isPresented: $honorsOpen) { HonorsSheet(theirs: p?.honors ?? [], name: isMe ? "Your" : (p?.name ?? "")).presentationDetents([.medium, .large]) }
         .navigationDestination(item: $openAt) { i in
             FeedView(only: posts, startAt: posts.indices.contains(i) ? str(posts[i]["id"]) : nil).navigationTitle("Posts").navigationBarTitleDisplayMode(.inline)
         }
@@ -136,6 +138,14 @@ struct ProfileView: View {
             }
             .padding(.top, 12)
             if !profiles.handle(id).isEmpty { Text(profiles.handle(id)).font(.subheadline).foregroundStyle(.secondary) }
+            // their tag and their label on one line, where Instagram has "Artist"; tap the tag for all of theirs
+            if p?.shownHonor != nil || !(p?.label ?? "").isEmpty {
+                HStack(spacing: 6) {
+                    if let h = p?.shownHonor { Button { honorsOpen = true } label: { HonorPill(honor: h) }.buttonStyle(.plain) }
+                    if let l = p?.label, !l.isEmpty { Text(l).font(.subheadline).foregroundStyle(.secondary).lineLimit(1) }
+                }
+                .padding(.top, 4)
+            }
             if let bio = p?.bio, !bio.isEmpty { Text(bio).font(.subheadline).padding(.top, 4) }
             else if isMe { Button("Add a bio") { editing = true }.font(.subheadline).padding(.top, 4) }
             if let tags = p?.tags, !tags.isEmpty {
@@ -318,6 +328,10 @@ struct EditProfileView: View {
     @State private var pinned: [String] = []
     @State private var showWeek = true
     @State private var isPrivate = true
+    @State private var label = ""
+    @State private var topHonor = ""
+    @State private var showHonors = true
+    private static let labels = ["Personal trainer", "Athlete", "Home cook", "Chef", "Nutritionist", "Bodybuilder", "Runner", "Powerlifter", "Creator", "Student"]
     @State private var framing: CropBox?   // a photo being moved and zoomed in the circle
     @State private var picked: PhotosPickerItem?
     @State private var camera = false
@@ -358,6 +372,21 @@ struct EditProfileView: View {
                 } footer: {
                     if taken { Text("That @name is taken.").foregroundStyle(Theme.warn) }
                     else { Text("3 to 20 letters, numbers, dots or underscores. Friends can find you by it.") }
+                }
+                Section {
+                    TextField("Founder of Cheat Days, Personal trainer…", text: $label)
+                        .onChange(of: label) { _, l in if l.count > 30 { label = String(l.prefix(30)) } }
+                    Flow { ForEach(Self.labels.filter { $0 != label }, id: \.self) { s in Chip(text: s, on: false) { label = s } } }
+                } header: { Text("Label") } footer: { Text("In grey under your name, like Instagram's. Pick one or write your own.") }
+                if !(profiles.mine?.honors ?? []).isEmpty {
+                    Section {
+                        let mine = (profiles.mine?.honors ?? []).compactMap(Honor.find)
+                        Flow { ForEach(mine) { h in HonorPill(honor: h) } }
+                        Picker("Beside my name", selection: $topHonor) {
+                            ForEach(mine) { h in Text(h.title).tag(h.id) }
+                        }
+                        Toggle("Show my tags", isOn: $showHonors)
+                    } header: { Text("Tags") } footer: { Text("Tags are given, not chosen: Founder, Alpha, First 100 and the rest. Pick which one shows by your name.") }
                 }
                 Section("Bio") {
                     TextField("A line about you", text: $bio, axis: .vertical).lineLimit(2...4)
@@ -411,6 +440,8 @@ struct EditProfileView: View {
                 let p = profiles.mine
                 name = p?.name ?? Friends.shared.myName; username = p?.username ?? ""; bio = p?.bio ?? ""
                 tags = p?.tags ?? []; pinned = p?.pinned ?? []; showWeek = p?.showWeek ?? true; isPrivate = p?.isPrivate ?? true
+                label = p?.label ?? ""; showHonors = p?.showHonors ?? true
+                topHonor = p?.shownHonor?.id ?? p?.honors.first ?? ""
             }
             .onChange(of: picked) { _, item in Task { if let d = try? await item?.loadTransferable(type: Data.self), let img = UIImage(data: d) { await photo(img) } } }
             .fullScreenCover(isPresented: $camera) { CameraPicker { img in camera = false; if let img { DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { Task { await photo(img) } } } }.ignoresSafeArea() }
@@ -449,11 +480,13 @@ struct EditProfileView: View {
             if !u.isEmpty, u.count < 3 { problem = "An @name needs at least 3 characters."; return }
             if !u.isEmpty, let why = Profiles.problem(u, username: true) { problem = why; return }
             if let why = Profiles.problem(name, username: false) { problem = why; return }
+            if let why = Profiles.problem(label, username: false) { problem = why.replacingOccurrences(of: "name", with: "label"); return }
             if !u.isEmpty, await profiles.taken(u) { taken = true; return }
             taken = false
             let change: JSON = ["display_name": name.trimmingCharacters(in: .whitespaces).isEmpty ? Friends.shared.myName : name.trimmingCharacters(in: .whitespaces),
                                 "username": u.isEmpty ? NSNull() : u, "bio": bio.trimmingCharacters(in: .whitespacesAndNewlines),
-                                "tags": tags.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }, "pinned": pinned, "show_week": showWeek, "private": isPrivate, "privacy_chosen": true]
+                                "tags": tags.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }, "pinned": pinned, "show_week": showWeek, "private": isPrivate, "privacy_chosen": true,
+                                "label": label.trimmingCharacters(in: .whitespaces), "top_honor": topHonor, "show_honors": showHonors]
             if await profiles.save(change) { dismiss() } else { problem = profiles.error }
         }
     }

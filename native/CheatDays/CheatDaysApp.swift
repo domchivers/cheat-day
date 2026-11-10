@@ -44,6 +44,7 @@ struct RootView: View {
         else if ProcessInfo.processInfo.arguments.contains("-uitest-ranks") { RanksHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-mealcheck") { MealCheckHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-stickers") { StickersHarness() }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-honors") { HonorsHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-review") { ReviewHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-cards") { CardsHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-checkin-step") { CheckInHarness(acting: true) }
@@ -157,6 +158,17 @@ private struct WalkHarness: View {
         Steps.shared.preview(days)
     }
     var body: some View { WorkoutsView() }
+}
+
+/// For the profile tag screenshots only: a made-up profile with the Founder tag and a label, no sign-in.
+private struct HonorsHarness: View {
+    static let id = "00000000-0000-4000-8000-000000000001"
+    init() {
+        Profiles.shared.keep([Profiles.Profile(["user_id": Self.id, "display_name": "Dom Chivers", "username": "domchivers", "label": "Founder of Cheat Days",
+                                                "bio": "Lifting, eating, building the app 💪", "tags": ["💪 Lifting", "Eating"], "honors": ["founder", "alpha", "first100"],
+                                                "top_honor": "founder", "show_honors": true, "private": false, "privacy_chosen": true])])
+    }
+    var body: some View { NavigationStack { ProfileView(id: Self.id) } }
 }
 
 /// For the sticker screenshots only: the tray as it opens, then every sticker on a story, no sign-in.

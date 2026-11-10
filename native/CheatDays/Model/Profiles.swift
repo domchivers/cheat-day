@@ -20,6 +20,18 @@ final class Profiles {
         var isPrivate: Bool
         var privacyChosen: Bool
         var friendCode: String
+        /// What they call themselves, in grey under the name ("Founder of Cheat Days", "Personal trainer").
+        var label: String
+        /// Tags given to them (Founder, Alpha, First 100…), the one they show by their name, and whether to show them.
+        var honors: [String]
+        var topHonor: String
+        var showHonors: Bool
+        /// The tag beside their name: the one they chose, or their rarest.
+        var shownHonor: Honor? {
+            guard showHonors else { return nil }
+            let mine = honors.compactMap(Honor.find)
+            return mine.first { $0.id == topHonor } ?? mine.min { $0.rank < $1.rank }
+        }
         /// On the app in the last five minutes: the green dot.
         var online: Bool { seenAt.map { Date().timeIntervalSince($0) < 300 } ?? false }
 
@@ -29,6 +41,7 @@ final class Profiles {
             showWeek = r["show_week"] as? Bool ?? true; seenAt = ISO.date(str(r["seen_at"]))
             isPrivate = r["private"] as? Bool ?? true; privacyChosen = r["privacy_chosen"] as? Bool ?? true   // true until the column exists: don't ask
             friendCode = str(r["friend_code"])
+            label = str(r["label"]); honors = r["honors"] as? [String] ?? []; topHonor = str(r["top_honor"]); showHonors = r["show_honors"] as? Bool ?? true
         }
     }
 
@@ -206,5 +219,82 @@ struct Avatar: View {
         if let p = Friends.shared.people.first(where: { $0.id == id }) { return p.name }
         if let n = Profiles.shared.all[id]?.name, !n.isEmpty { return n }
         return Feed.shared.name(id)
+    }
+}
+
+/// A tag someone's been given, never chosen: Founder, Team, Alpha, Beta, First 100, First 1,000. Coloured by how rare
+/// it is; the rarest (Founder, Team, Alpha) also show small beside the name on posts and comments.
+struct Honor: Identifiable {
+    let id: String
+    let title: String
+    let icon: String
+    let what: String
+    let how: String
+    let rarity: String
+    let rank: Int          // 0 rarest
+    let colors: [Color]
+    let ink: Color
+    var onFeed: Bool { rank <= 2 }
+
+    static let all: [Honor] = [
+        Honor(id: "founder", title: "Founder", icon: "👑", what: "Made Cheat Days", how: "Only one.", rarity: "1 of 1", rank: 0,
+              colors: [Color(red: 0.97, green: 0.84, blue: 0.45), Color(red: 0.95, green: 0.7, blue: 0.24), Color(red: 1, green: 0.95, blue: 0.72), Color(red: 0.85, green: 0.59, blue: 0.16)], ink: Color(red: 0.16, green: 0.1, blue: 0)),
+        Honor(id: "team", title: "Team", icon: "✦", what: "Works on Cheat Days", how: "Given by the founder.", rarity: "Rare", rank: 1,
+              colors: [Color(red: 0.55, green: 0.77, blue: 1), Color(red: 0.77, green: 0.63, blue: 1)], ink: Color(red: 0.04, green: 0.05, blue: 0.07)),
+        Honor(id: "alpha", title: "Alpha", icon: "🧪", what: "Tested the very first builds", how: "Before the beta. No more will be given.", rarity: "Rare", rank: 2,
+              colors: [Color(red: 0.36, green: 0.16, blue: 0.53), Color(red: 0.61, green: 0.3, blue: 0.79)], ink: .white),
+        Honor(id: "first100", title: "First 100", icon: "💯", what: "One of the first 100 to join", how: "Counted by when the account was made.", rarity: "Rare", rank: 3,
+              colors: [Color(red: 1, green: 0.6, blue: 0.55), Color(red: 1, green: 0.42, blue: 0.53), Color(red: 1, green: 0.6, blue: 0.67)], ink: Color(red: 0.16, green: 0.05, blue: 0.09)),
+        Honor(id: "beta", title: "Beta", icon: "🧭", what: "Tested Cheat Days before launch", how: "Joined during the beta.", rarity: "Uncommon", rank: 4,
+              colors: [Color(red: 0.36, green: 0.78, blue: 1), Color(red: 0.55, green: 0.94, blue: 0.88)], ink: Color(red: 0.02, green: 0.13, blue: 0.2)),
+        Honor(id: "first1000", title: "First 1,000", icon: "🎖️", what: "One of the first 1,000 to join", how: "The 900 after the first 100.", rarity: "Uncommon", rank: 5,
+              colors: [Color(red: 0.36, green: 0.4, blue: 0.47), Color(red: 0.54, green: 0.58, blue: 0.66)], ink: .white),
+    ]
+    static func find(_ id: String) -> Honor? { all.first { $0.id == id } }
+}
+
+/// A tag as a pill: full size on profiles, small beside names on the feed.
+struct HonorPill: View {
+    let honor: Honor
+    var small = false
+    var body: some View {
+        HStack(spacing: small ? 3 : 4) {
+            Text(honor.icon).font(.system(size: small ? 9 : 11))
+            Text(honor.title).font(.system(size: small ? 10 : 12, weight: .heavy, design: .rounded))
+        }
+        .foregroundStyle(honor.ink).lineLimit(1).fixedSize()
+        .padding(.leading, small ? 5 : 7).padding(.trailing, small ? 7 : 9).padding(.vertical, small ? 2 : 3.5)
+        .background(LinearGradient(colors: honor.colors, startPoint: .leading, endPoint: .trailing), in: Capsule())
+        .overlay(Capsule().stroke(.white.opacity(0.18), lineWidth: 0.5))
+        .shadow(color: honor.id == "founder" ? honor.colors[1].opacity(0.45) : .clear, radius: small ? 4 : 7)
+        .accessibilityLabel(honor.title)
+    }
+}
+
+/// Every tag there is, rarest first, with how it's earned; theirs marked.
+struct HonorsSheet: View {
+    let theirs: [String]
+    let name: String
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(Honor.all) { h in
+                    HStack(spacing: 12) {
+                        HonorPill(honor: h).frame(width: 104, alignment: .leading)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(h.what).font(.subheadline.weight(.semibold))
+                            Text(h.how).font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 4)
+                        if theirs.contains(h.id) { Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.accent) }
+                        else { Text(h.rarity.uppercased()).font(.caption2.weight(.heavy)).foregroundStyle(.secondary) }
+                    }
+                    .opacity(theirs.isEmpty || theirs.contains(h.id) ? 1 : 0.55)
+                }
+            }
+            .navigationTitle(name.isEmpty ? "Tags" : "\(name)'s tags").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
+        }
     }
 }
