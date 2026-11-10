@@ -264,7 +264,7 @@ struct ProfileView: View {
         let cols = Array(repeating: GridItem(.flexible(), spacing: 2), count: 3)
         return Group {
             if posts.isEmpty {
-                Text(isMe ? "Your posts show here. Tap ＋ on the feed to share one." : "No posts yet.")
+                Text(isMe ? "Your posts show here. Tap ＋ on your photo to share one." : "No posts yet.")
                     .font(.subheadline).foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.top, 30)
             } else {
                 LazyVGrid(columns: cols, spacing: 2) {
