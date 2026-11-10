@@ -83,7 +83,7 @@ struct ProfileView: View {
         .sheet(isPresented: $editing) { EditProfileView() }
         .sheet(isPresented: $showCode) { MyCodeSheet().presentationDetents([.large]) }
         .navigationDestination(item: $openAt) { i in
-            FeedView(only: Array(posts[min(i, max(0, posts.count - 1))...])).navigationTitle("Posts").navigationBarTitleDisplayMode(.inline)
+            FeedView(only: posts, startAt: posts.indices.contains(i) ? str(posts[i]["id"]) : nil).navigationTitle("Posts").navigationBarTitleDisplayMode(.inline)
         }
         .navigationDestination(isPresented: $chatting) { ChatView(friend: id) }
         .confirmationDialog("Report \(p?.name ?? "them")?", isPresented: $reporting, titleVisibility: .visible) {
@@ -245,7 +245,7 @@ struct ProfileView: View {
         return Button { openAt = posts.firstIndex { str($0["id"]) == str(post["id"]) } } label: {
             Color.clear.aspectRatio(1, contentMode: .fit)
                 .overlay {
-                    if photo.hasPrefix("http") { FeedPhoto(src: photo, fill: true) }
+                    if Feed.hasPhoto(post) { FeedPhoto(src: photo, fill: true) }
                     else {
                         ZStack {
                             LinearGradient(colors: [Theme.hero, Theme.accent.opacity(0.3)], startPoint: .topLeading, endPoint: .bottomTrailing)

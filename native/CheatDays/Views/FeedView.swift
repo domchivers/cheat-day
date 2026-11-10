@@ -64,6 +64,10 @@ final class Feed {
         await Profiles.shared.load(cm.map { str($0["user_id"]) })
     }
 
+    /// A post with a picture: an address, or (posts from the website) the picture kept in the row as data:image.
+    /// The profile grid only knew addresses, so the ramen showed as an icon there and as a photo on the feed.
+    static func hasPhoto(_ p: JSON) -> Bool { let s = str(p["photo"]); return s.hasPrefix("http") || s.hasPrefix("data:image") }
+
     func name(_ id: String) -> String {
         id == me ? "You" : ((names[id] ?? Profiles.shared.all[id]?.name ?? Friends.shared.people.first { $0.id == id }?.name).flatMap { $0.isEmpty ? nil : $0 } ?? "Someone")
     }
@@ -201,6 +205,8 @@ struct FeedView: View {
     var showPerson: (String) -> Void = { _ in }
     /// Just these posts (Explore's, from the one tapped on), without the rings or the +.
     var only: [JSON]? = nil
+    /// The post to open on, from a profile's grid.
+    var startAt: String? = nil
     @State private var composing = false
     @State private var recipe: JSON?
     @State private var flash: String?
@@ -235,6 +241,7 @@ struct FeedView: View {
         }
         .scrollIndicators(.hidden)
         .task(id: Nav.shared.focusPost) { await focus(proxy) }
+        .task { if let startAt { try? await Task.sleep(for: .milliseconds(80)); proxy.scrollTo(startAt, anchor: .top) } }
         .onChange(of: feed.posts.count) { _, _ in Task { await focus(proxy) } }
         }
         .refreshable { if only == nil { await feed.load(); await Stories.shared.load() } }
@@ -351,7 +358,7 @@ struct FeedView: View {
     private func postView(_ p: JSON) -> some View {
         let id = str(p["id"]), owner = str(p["owner"]), kind = str(p["kind"])
         let rx = feed.reactions.filter { str($0["post_id"]) == id }, cm = feed.comments.filter { str($0["post_id"]) == id }
-        let photo = str(p["photo"]).hasPrefix("http") || str(p["photo"]).hasPrefix("data:image")
+        let photo = Feed.hasPhoto(p)
         return VStack(alignment: .leading, spacing: 0) {
             Divider().opacity(0.4)
             HStack(spacing: 10) {
@@ -404,8 +411,17 @@ struct FeedView: View {
             if !str(p["caption"]).isEmpty {
                 (Text(feed.name(owner) + " ").bold() + Text(str(p["caption"]))).font(.subheadline).padding(.horizontal, 14).padding(.top, 4)
             }
+            if !cm.isEmpty {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(keyed(Array(cm.suffix(2)))) { e in
+                        (Text(feed.name(str(e.item["user_id"])) + " ").bold() + Text(str(e.item["text"]))).font(.subheadline).lineLimit(2)
+                    }
+                }
+                .padding(.horizontal, 14).padding(.top, 4)
+                .contentShape(Rectangle()).onTapGesture { talking = PostBox(post: p) }
+            }
             Button { talking = PostBox(post: p) } label: {
-                Text(cm.isEmpty ? "Add a comment…" : cm.count == 1 ? "View 1 comment" : "View all \(cm.count) comments")
+                Text(cm.isEmpty ? "Add a comment…" : cm.count <= 2 ? "Add a comment…" : "View all \(cm.count) comments")
                     .font(.subheadline).foregroundStyle(.secondary)
             }
             .buttonStyle(.plain).padding(.horizontal, 14).padding(.top, 4).padding(.bottom, 14)

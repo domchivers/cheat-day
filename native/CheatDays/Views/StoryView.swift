@@ -162,7 +162,7 @@ struct StoryView: View {
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         case .post(let p):
             ZStack(alignment: .bottomLeading) {
-                if str(p["photo"]).hasPrefix("http") { FeedPhoto(src: str(p["photo"]), fill: true) }
+                if Feed.hasPhoto(p) { FeedPhoto(src: str(p["photo"]), fill: true) }
                 else {
                     LinearGradient(colors: [Theme.hero, Theme.accent.opacity(0.35)], startPoint: .topLeading, endPoint: .bottomTrailing)
                     FoodDot(name: str(p["kind"]) == "workout" ? "Workout" : str(p["name"]), size: 150).frame(maxWidth: .infinity, maxHeight: .infinity)

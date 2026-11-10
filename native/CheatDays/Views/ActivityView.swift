@@ -82,7 +82,7 @@ final class FriendActivity {
             let pid = str(s["post_id"]), p = posts.first { str($0["id"]) == pid }
             out.append(Item(id: "f-\(str(s["id"]))", kind: .post, who: name(str(s["from_user"])), at: date(s["created_at"]),
                             text: "sent you a post", detail: str(s["note"]).isEmpty ? str(p?["name"]) : "“\(str(s["note"]))”",
-                            photo: str(p?["photo"]).hasPrefix("http") ? str(p?["photo"]) : nil, post: pid))
+                            photo: p.map(Feed.hasPhoto) == true ? str(p?["photo"]) : nil, post: pid))
         }
         let close = Set(Friends.shared.people.map(\.id) + Follows.shared.following)   // not every public post there is
         for f in Follows.shared.followers {
@@ -96,7 +96,7 @@ final class FriendActivity {
                 : kind == "moment" ? str(p["name"]) : "\(str(p["name"])) · \(Int(num(p["kcal"]) ?? 0)) kcal"
             out.append(Item(id: "p-\(str(p["id"]))", kind: .post, who: name(str(p["owner"])), at: date(p["created_at"]),
                             text: what, detail: (str(p["caption"]).isEmpty ? "" : "“\(str(p["caption"]))” · ") + detail,
-                            photo: str(p["photo"]).hasPrefix("http") ? str(p["photo"]) : nil, post: str(p["id"])))
+                            photo: Feed.hasPhoto(p) ? str(p["photo"]) : nil, post: str(p["id"])))
         }
         for r in Friends.shared.requests {
             out.append(Item(id: "q-\(r.id)", kind: .request, who: r.name, at: Date(), text: "wants to be friends", detail: "", photo: nil))

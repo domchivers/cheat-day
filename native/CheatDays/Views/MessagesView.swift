@@ -161,7 +161,7 @@ struct ChatView: View {
 
     private func postCard(_ p: JSON) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            if str(p["photo"]).hasPrefix("http") { FeedPhoto(src: str(p["photo"]), fill: true).frame(width: 220, height: 130).clipped() }
+            if Feed.hasPhoto(p) { FeedPhoto(src: str(p["photo"]), fill: true).frame(width: 220, height: 130).clipped() }
             else { ZStack { LinearGradient(colors: [Theme.hero, Theme.accent.opacity(0.3)], startPoint: .topLeading, endPoint: .bottomTrailing); FoodDot(name: str(p["name"]), size: 56) }.frame(width: 220, height: 110) }
             VStack(alignment: .leading, spacing: 2) {
                 Text(str(p["name"])).font(.subheadline.weight(.bold)).lineLimit(1)

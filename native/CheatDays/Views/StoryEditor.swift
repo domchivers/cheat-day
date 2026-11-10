@@ -24,14 +24,13 @@ struct StoryEditor: View {
     @State private var current: [CGPoint] = []
     @State private var filter = "Normal"
     @State private var preview: UIImage?
+    @State private var work: UIImage?   // the photo at screen size: filtering and drawing a 4000-pixel one lagged
     @State private var thumbs: [String: UIImage] = [:]
     // the photo itself, pinched and moved
     @State private var bgScale: CGFloat = 1
     @State private var bgOffset: CGSize = .zero
-    @State private var bgStart: (CGFloat, CGSize) = (1, .zero)
     // something placed, being moved
     @State private var active: Int?
-    @State private var start: (x: Double, y: Double, s: Double, r: Double) = (0.5, 0.5, 1, 0)
     @State private var snapX = false
     @State private var snapY = false
     @State private var overBin = false
@@ -106,11 +105,22 @@ struct StoryEditor: View {
             Color(white: 0.08)
             if let video {
                 LoopingVideo(url: video, paused: mode == .text, muted: muted, filter: filter, range: length > 0 ? range : nil)
-            } else if let shown = preview ?? image {
-                Image(uiImage: shown).resizable().scaledToFill().frame(width: cw, height: ch)
-                    .scaleEffect(bgScale).offset(bgOffset).frame(width: cw, height: ch).clipped()
+            } else if let shown = preview ?? work ?? image {
+                // the photo moves on its own too, and tells the editor only when the finger lifts
+                BackgroundPhoto(image: shown, cw: cw, ch: ch, scale: bgScale, offset: bgOffset, movable: mode == .none || mode == .filters,
+                                commit: { sc, off in
+                                    if sc <= 1.01 { withAnimation(.snappy) { bgScale = 1; bgOffset = .zero } } else { bgScale = sc; bgOffset = off }
+                                },
+                                swipe: { nextFilter($0) })
             }
-            Color.clear.contentShape(Rectangle()).gesture(backgroundGesture(cw)).simultaneousGesture(backgroundPinch)
+            if video != nil {
+                // a video can't be zoomed, but swiping across it still changes the filter
+                Color.clear.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 20).onEnded { v in
+                    guard abs(v.translation.width) > 50, abs(v.translation.width) > abs(v.translation.height) else { return }
+                    nextFilter(v.translation.width < 0 ? 1 : -1)
+                })
+                .allowsHitTesting(mode == .none || mode == .filters)
+            }
             StoryDrawing(strokes: strokes + (current.isEmpty ? [] : [stroke(current, cw, ch)]))
             ForEach(items.indices, id: \.self) { i in placed(i, cw, ch) }
             if snapX { Rectangle().fill(Color.yellow.opacity(0.9)).frame(width: 1.5).allowsHitTesting(false) }
@@ -130,46 +140,21 @@ struct StoryEditor: View {
 
     /// Something placed: drag, pinch and twist at once; tap text to edit it, tap a food sticker for its next look.
     private func placed(_ i: Int, _ cw: CGFloat, _ ch: CGFloat) -> some View {
-        let o = items[i], k = cw / StoryArt.design
-        return StoryItem(o: o)
-            .scaleEffect((num(o["scale"]) ?? 1) * k)
-            .rotationEffect(.degrees(num(o["rotation"]) ?? 0))
-            .position(x: (num(o["x"]) ?? 0.5) * cw, y: (num(o["y"]) ?? 0.5) * ch)
-            .opacity(editing == i ? 0 : (active == i && overBin ? 0.5 : 1))
-            .onTapGesture { tapped(i) }
-            .gesture(SimultaneousGesture(
-                DragGesture(minimumDistance: 2, coordinateSpace: .local)
-                    .onChanged { v in moving(i, by: v.translation, at: v.location, cw, ch) }
-                    .onEnded { _ in dropped(i) },
-                SimultaneousGesture(
-                    MagnifyGesture().onChanged { m in grab(i); items[i]["scale"] = min(4.0, max(0.3, start.s * Double(m.magnification))) }.onEnded { _ in dropped(i) },
-                    RotateGesture().onChanged { r in grab(i); items[i]["rotation"] = start.r + r.rotation.degrees }.onEnded { _ in dropped(i) })))
+        PlacedItem(o: items[i], cw: cw, ch: ch, hidden: editing == i, dim: active == i && overBin,
+                   tap: { tapped(i) },
+                   began: { if active != i { active = i } },
+                   report: { sx, sy, bin in
+                       if sx != snapX || sy != snapY { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+                       if bin != overBin { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
+                       snapX = sx; snapY = sy; overBin = bin
+                   },
+                   commit: { change in guard items.indices.contains(i) else { return }; for (k, v) in change { items[i][k] = v } },
+                   ended: { dropped(i) })
             .allowsHitTesting(mode == .none)
     }
 
-    private func grab(_ i: Int) {
-        guard active != i else { return }
-        active = i
-        start = (num(items[i]["x"]) ?? 0.5, num(items[i]["y"]) ?? 0.5, num(items[i]["scale"]) ?? 1, num(items[i]["rotation"]) ?? 0)
-    }
-
-    private func moving(_ i: Int, by t: CGSize, at p: CGPoint, _ cw: CGFloat, _ ch: CGFloat) {
-        grab(i)
-        var x: Double = start.x + Double(t.width / cw), y: Double = start.y + Double(t.height / ch)
-        // snap to the middle, with a line and a tap
-        let sx = abs(x - 0.5) < 0.025, sy = abs(y - 0.5) < 0.02
-        if sx { x = 0.5 }; if sy { y = 0.5 }
-        if sx != snapX || sy != snapY { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
-        snapX = sx; snapY = sy
-        items[i]["x"] = min(1, max(0, x)); items[i]["y"] = min(1, max(0, y))
-        let bin = CGPoint(x: cw / 2, y: ch - 70), here = CGPoint(x: x * cw, y: y * ch)
-        let near = hypot(here.x - bin.x, here.y - bin.y) < 70
-        if near != overBin { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
-        overBin = near
-    }
-
     private func dropped(_ i: Int) {
-        if overBin, items.indices.contains(i) { withAnimation(.snappy) { _ = items.remove(at: i) } }
+        if overBin, items.indices.contains(i) { UINotificationFeedbackGenerator().notificationOccurred(.warning); withAnimation(.snappy) { _ = items.remove(at: i) } }
         active = nil; overBin = false; snapX = false; snapY = false
     }
 
@@ -186,26 +171,12 @@ struct StoryEditor: View {
         }
     }
 
-    /// One finger on the photo: move it once it's zoomed, otherwise swipe through the filters.
-    private func backgroundGesture(_ cw: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 10)
-            .onChanged { v in
-                guard mode == .none || mode == .filters, video == nil, bgScale > 1.01 else { return }
-                bgOffset = CGSize(width: bgStart.1.width + v.translation.width, height: bgStart.1.height + v.translation.height)
-            }
-            .onEnded { v in
-                if bgScale > 1.01 && video == nil { bgStart.1 = bgOffset; return }
-                guard abs(v.translation.width) > 50, abs(v.translation.width) > abs(v.translation.height) else { return }
-                let i = StoryArt.filters.firstIndex(of: filter) ?? 0
-                let next = (i + (v.translation.width < 0 ? 1 : -1) + StoryArt.filters.count) % StoryArt.filters.count
-                withAnimation(.easeOut(duration: 0.2)) { filter = StoryArt.filters[next] }
-                flash(StoryArt.filters[next])
-            }
-    }
-    private var backgroundPinch: some Gesture {
-        MagnifyGesture()
-            .onChanged { m in guard video == nil, mode == .none, active == nil else { return }; bgScale = min(4, max(1, bgStart.0 * m.magnification)) }
-            .onEnded { _ in bgStart.0 = bgScale; if bgScale <= 1.01 { withAnimation(.snappy) { bgOffset = .zero }; bgStart.1 = .zero } }
+    private func nextFilter(_ step: Int) {
+        let i = StoryArt.filters.firstIndex(of: filter) ?? 0
+        let next = StoryArt.filters[(i + step + StoryArt.filters.count) % StoryArt.filters.count]
+        UISelectionFeedbackGenerator().selectionChanged()
+        withAnimation(.easeOut(duration: 0.2)) { filter = next }
+        flash(next)
     }
 
     // MARK: tools along the top
@@ -226,7 +197,7 @@ struct StoryEditor: View {
                 }
                 Menu {
                     if image != nil { Button { Task { await save() } } label: { Label("Save to Photos", systemImage: "square.and.arrow.down") } }
-                    if bgScale > 1.01 || bgOffset != .zero { Button { withAnimation { bgScale = 1; bgOffset = .zero; bgStart = (1, .zero) } } label: { Label("Reset the photo", systemImage: "arrow.counterclockwise") } }
+                    if bgScale > 1.01 || bgOffset != .zero { Button { withAnimation { bgScale = 1; bgOffset = .zero } } label: { Label("Reset the photo", systemImage: "arrow.counterclockwise") } }
                     if !items.isEmpty || !strokes.isEmpty { Button(role: .destructive) { items = []; strokes = [] } label: { Label("Clear everything", systemImage: "trash") } }
                 } label: { roundLabel("ellipsis") }
             case .text:
@@ -390,7 +361,10 @@ struct StoryEditor: View {
     private func drawCatcher(_ cw: CGFloat, _ ch: CGFloat) -> some View {
         Color.clear.contentShape(Rectangle())
             .gesture(DragGesture(minimumDistance: 0)
-                .onChanged { v in current.append(v.location) }
+                .onChanged { v in
+                    if let last = current.last, hypot(last.x - v.location.x, last.y - v.location.y) < 2.5 { return }
+                    current.append(v.location)
+                }
                 .onEnded { _ in if !current.isEmpty { strokes.append(stroke(current, cw, ch)) }; current = [] })
     }
 
@@ -477,6 +451,9 @@ struct StoryEditor: View {
 
     private func prepare() async {
         if let image {
+            // 1440 on the long side is more than the 1080 × 1920 that's shared, and a tenth of a camera photo's pixels
+            let long = max(image.size.width, image.size.height), k = min(1, 1920 / long)
+            work = k < 1 ? (image.preparingThumbnail(of: CGSize(width: image.size.width * k, height: image.size.height * k)) ?? image) : image
             let small = image.preparingThumbnail(of: CGSize(width: 140, height: 140 / image.size.width * image.size.height)) ?? image
             var t: [String: UIImage] = [:]
             for f in StoryArt.filters { t[f] = StoryArt.filtered(small, f) }
@@ -497,15 +474,14 @@ struct StoryEditor: View {
     }
 
     private func refilter(_ f: String) async {
-        guard let image else { return }
-        let src = image
+        guard let src = work ?? image else { return }
         preview = f == "Normal" ? nil : await Task.detached { StoryArt.filtered(src, f) }.value
     }
 
     /// The photo as framed (zoom, position, filter), 1080 wide (1920 high for a story); what's placed on it stays
     /// sharp as its own layer.
     private func framedPhoto(_ cw: CGFloat) -> UIImage? {
-        guard let base = preview ?? image else { return nil }
+        guard let base = preview ?? work ?? image else { return nil }
         let ch = cw / aspect, k = 1080 / cw, oh = (1080 / aspect).rounded()
         let fill = max(cw / base.size.width, ch / base.size.height) * bgScale
         let w = base.size.width * fill, h = base.size.height * fill
@@ -687,5 +663,105 @@ struct MentionPicker: View {
             .navigationTitle("Mention").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }
+    }
+}
+
+/// One thing placed on the story, moved on its own. While a finger's on it only it redraws: before, every drag frame
+/// changed the editor's list, and the whole editor (every sticker, the drawing, the photo) redrew sixty times a second.
+/// The editor hears only when a snap line or the bin should change, and the final place when the finger lifts.
+struct PlacedItem: View {
+    let o: JSON
+    let cw: CGFloat
+    let ch: CGFloat
+    var hidden: Bool
+    var dim: Bool
+    var tap: () -> Void
+    var began: () -> Void
+    var report: (_ snapX: Bool, _ snapY: Bool, _ bin: Bool) -> Void
+    var commit: (JSON) -> Void
+    var ended: () -> Void
+    @GestureState private var drag: CGSize = .zero
+    @GestureState private var pinch: CGFloat = 1
+    @GestureState private var twist: Angle = .zero
+    @State private var told = ""
+
+    private var bx: Double { num(o["x"]) ?? 0.5 }
+    private var by: Double { num(o["y"]) ?? 0.5 }
+    private var scale: Double { num(o["scale"]) ?? 1 }
+    private var rotation: Double { num(o["rotation"]) ?? 0 }
+
+    /// Where it is with the finger's move, snapped to the middle when it's close.
+    private func place(_ t: CGSize) -> (x: Double, y: Double, sx: Bool, sy: Bool) {
+        var x = bx + Double(t.width / cw), y = by + Double(t.height / ch)
+        let sx = abs(x - 0.5) < 0.025, sy = abs(y - 0.5) < 0.02
+        if sx { x = 0.5 }; if sy { y = 0.5 }
+        return (min(1, max(0, x)), min(1, max(0, y)), sx, sy)
+    }
+
+    var body: some View {
+        let at = place(drag), k = cw / StoryArt.design
+        StoryItem(o: o)
+            .scaleEffect(min(4, max(0.3, scale * Double(pinch))) * k)
+            .rotationEffect(.degrees(rotation) + twist)
+            .position(x: at.x * cw, y: at.y * ch)
+            .opacity(hidden ? 0 : (dim ? 0.45 : 1))
+            .animation(.snappy(duration: 0.18), value: dim)
+            .onTapGesture { tap() }
+            .gesture(SimultaneousGesture(
+                DragGesture(minimumDistance: 2)
+                    .updating($drag) { v, s, _ in s = v.translation }
+                    .onChanged { v in
+                        let p = place(v.translation)
+                        let bin = hypot(p.x * cw - cw / 2, p.y * ch - (ch - 70)) < 70
+                        let now = "\(p.sx)\(p.sy)\(bin)"
+                        if told.isEmpty { began() }
+                        if now != told { told = now; report(p.sx, p.sy, bin) }
+                    }
+                    .onEnded { v in
+                        let p = place(v.translation)
+                        commit(["x": p.x, "y": p.y]); told = ""; ended()
+                    },
+                SimultaneousGesture(
+                    MagnifyGesture().updating($pinch) { v, s, _ in s = v.magnification }
+                        .onChanged { _ in if told.isEmpty { told = "pinch"; began() } }
+                        .onEnded { v in commit(["scale": min(4, max(0.3, scale * Double(v.magnification)))]); told = ""; ended() },
+                    RotateGesture().updating($twist) { v, s, _ in s = v.rotation }
+                        .onEnded { v in commit(["rotation": rotation + v.rotation.degrees]); told = ""; ended() })))
+    }
+}
+
+/// The photo behind a story: pinch to zoom, then drag to move it; while it isn't zoomed, a swipe across changes the
+/// filter. Like a placed sticker it moves on its own and tells the editor only when the finger lifts.
+struct BackgroundPhoto: View {
+    let image: UIImage
+    let cw: CGFloat
+    let ch: CGFloat
+    let scale: CGFloat
+    let offset: CGSize
+    var movable: Bool
+    var commit: (CGFloat, CGSize) -> Void
+    var swipe: (Int) -> Void
+    @GestureState private var drag: CGSize = .zero
+    @GestureState private var pinch: CGFloat = 1
+
+    var body: some View {
+        let zoomed = scale > 1.01, live = min(4, max(1, scale * pinch))
+        Image(uiImage: image).resizable().scaledToFill().frame(width: cw, height: ch)
+            .scaleEffect(live)
+            .offset(x: offset.width + (zoomed ? drag.width : 0), y: offset.height + (zoomed ? drag.height : 0))
+            .frame(width: cw, height: ch).clipped()
+            .contentShape(Rectangle())
+            .gesture(SimultaneousGesture(
+                DragGesture(minimumDistance: 10)
+                    .updating($drag) { v, s, _ in s = v.translation }
+                    .onEnded { v in
+                        if zoomed { commit(scale, CGSize(width: offset.width + v.translation.width, height: offset.height + v.translation.height)); return }
+                        guard abs(v.translation.width) > 50, abs(v.translation.width) > abs(v.translation.height) else { return }
+                        swipe(v.translation.width < 0 ? 1 : -1)
+                    },
+                MagnifyGesture()
+                    .updating($pinch) { v, s, _ in s = v.magnification }
+                    .onEnded { v in commit(min(4, max(1, scale * v.magnification)), offset) }))
+            .allowsHitTesting(movable)
     }
 }

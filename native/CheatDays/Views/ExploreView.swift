@@ -119,7 +119,7 @@ struct ExploreView: View {
         let pr = num(dict(p["macros"])["p"])
         return Button { opened = i } label: {
             ZStack {
-                if photo.hasPrefix("http") { FeedPhoto(src: photo, fill: true) }
+                if Feed.hasPhoto(p) { FeedPhoto(src: photo, fill: true) }
                 else {
                     LinearGradient(colors: [Theme.hero, Theme.accent.opacity(0.3)], startPoint: .topLeading, endPoint: .bottomTrailing)
                     FoodDot(name: kind == "workout" ? "Workout" : str(p["name"]), size: h > w ? 70 : 48)
