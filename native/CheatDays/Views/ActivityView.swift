@@ -27,7 +27,7 @@ final class FriendActivity {
         get { seenAt }
         set { UserDefaults.standard.set(newValue, forKey: "activity.seen"); seenAt = newValue }
     }
-    var unread: Int { items.filter { $0.at > seen }.count }
+    var unread: Int { items.filter { $0.at > seen }.count + Follows.shared.requests.count }
 
     private func rows(_ path: String) async -> [JSON] {
         guard let d = try? await api.rest(path) else { return [] }
@@ -40,6 +40,7 @@ final class FriendActivity {
         let since = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-14 * 86400))
         async let postsQ = rows("/rest/v1/posts?select=*&created_at=gte.\(since)&order=created_at.desc&limit=60")
         async let sendsQ = rows("/rest/v1/sends?to_user=eq.\(me)&select=*&order=created_at.desc&limit=30")
+        await Follows.shared.load()
         async let sharesQ = rows("/rest/v1/post_shares?to_user=eq.\(me)&select=*&order=created_at.desc&limit=30")   // empty until set up
         let posts = await postsQ, sends = await sendsQ, shares = await sharesQ
         let mine = posts.filter { str($0["owner"]) == me }
@@ -52,7 +53,7 @@ final class FriendActivity {
         }
         // names for everyone involved
         var names = Dictionary(uniqueKeysWithValues: Friends.shared.people.map { ($0.id, $0.name) })
-        let who = Set(posts.map { str($0["owner"]) } + reactions.map { str($0["user_id"]) } + comments.map { str($0["user_id"]) } + sends.map { str($0["from_user"]) } + shares.map { str($0["from_user"]) })
+        let who = Set(posts.map { str($0["owner"]) } + reactions.map { str($0["user_id"]) } + comments.map { str($0["user_id"]) } + sends.map { str($0["from_user"]) } + shares.map { str($0["from_user"]) } + Follows.shared.ofMe.map { str($0["follower"]) })
             .filter { !$0.isEmpty && $0 != me && names[$0] == nil }
         if !who.isEmpty {
             for p in await rows("/rest/v1/profiles?user_id=in.(\(who.joined(separator: ",")))&select=user_id,display_name") { names[str(p["user_id"])] = str(p["display_name"]) }
@@ -83,7 +84,11 @@ final class FriendActivity {
                             text: "sent you a post", detail: str(s["note"]).isEmpty ? str(p?["name"]) : "“\(str(s["note"]))”",
                             photo: str(p?["photo"]).hasPrefix("http") ? str(p?["photo"]) : nil, post: pid))
         }
-        for p in posts where str(p["owner"]) != me {
+        let close = Set(Friends.shared.people.map(\.id) + Follows.shared.following)   // not every public post there is
+        for f in Follows.shared.followers {
+            out.append(Item(id: "fo-\(str(f["follower"]))", kind: .request, who: name(str(f["follower"])), at: date(f["created_at"]), text: "started following you", detail: "", photo: nil))
+        }
+        for p in posts where str(p["owner"]) != me && close.contains(str(p["owner"])) {
             let kind = str(p["kind"])
             let what = kind == "workout" ? "logged a workout" : kind == "meal" ? "shared a meal" : kind == "moment" ? "hit a milestone" : "had"
             let extra = dict(p["extra"])
@@ -120,6 +125,24 @@ struct ActivityView: View {
             List {
                 if activity.items.isEmpty && !activity.loading {
                     Text("Nothing yet. Reactions, comments, food sent to you and friends' posts show up here.").foregroundStyle(.secondary)
+                }
+                // follow requests on top, with Accept and ✕
+                ForEach(Follows.shared.requests.map { str($0["follower"]) }, id: \.self) { who in
+                    HStack(spacing: 12) {
+                        NavigationLink { ProfileView(id: who) } label: {
+                            HStack(spacing: 12) {
+                                Avatar(id: who, size: 40)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    (Text(Feed.shared.name(who)).bold() + Text(" wants to follow you")).font(.subheadline)
+                                    if !Profiles.shared.handle(who).isEmpty { Text(Profiles.shared.handle(who)).font(.caption).foregroundStyle(.secondary) }
+                                }
+                            }
+                        }
+                        Spacer(minLength: 4)
+                        Button("Accept") { Task { await Follows.shared.accept(who) } }.buttonStyle(.borderedProminent).controlSize(.small).foregroundStyle(Theme.onAccent)
+                        Button { Task { await Follows.shared.remove(who) } } label: { Image(systemName: "xmark") }.buttonStyle(.bordered).controlSize(.small).accessibilityLabel("Decline")
+                    }
+                    .listRowBackground(Theme.hero)
                 }
                 ForEach(activity.items) { it in
                     Button { go(it) } label: { row(it) }

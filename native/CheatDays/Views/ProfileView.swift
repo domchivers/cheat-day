@@ -15,27 +15,42 @@ struct ProfileView: View {
     @State private var reporting = false
     @State private var removing = false
     @State private var showCode = false
+    @State private var counts: (followers: Int, following: Int)?
+    @State private var choosing = false   // public or private, the first time you see your profile
+    @State private var friendNote: String?
     @Environment(\.dismiss) private var dismiss
     private var profiles: Profiles { Profiles.shared }
     private var store: Store { Store.shared }
     private var isMe: Bool { id == profiles.me }
     private var person: Friends.Person? { Friends.shared.people.first { $0.id == id } }
     private var p: Profiles.Profile? { profiles.all[id] }
+    private var follows: Follows { Follows.shared }
+    /// A private profile you're not a friend of and don't follow: name, photo, bio and counts only.
+    private var locked: Bool { !isMe && person == nil && (p?.isPrivate ?? true) && follows.state(id) != .following }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 header.padding(.horizontal, 18).padding(.top, 8)
+                if locked {
+                    VStack(spacing: 8) {
+                        Image(systemName: "lock.fill").font(.system(size: 34)).foregroundStyle(.secondary)
+                        Text("This profile is private").font(.headline)
+                        Text("Follow \(p?.name ?? "them") to see their posts.").font(.subheadline).foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity).padding(.top, 44)
+                } else {
                 Picker("Show", selection: $tab) {
                     Image(systemName: "square.grid.3x3").tag(0)
                     Image(systemName: "trophy").tag(1)
-                    if !isMe { Image(systemName: "sun.max").tag(2) }
+                    if person != nil { Image(systemName: "sun.max").tag(2) }
                 }
                 .pickerStyle(.segmented).padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 8)
                 switch tab {
                 case 1: badges.padding(.horizontal, 16)
                 case 2: today.padding(.horizontal, 16)
                 default: grid
+                }
                 }
             }
             .padding(.bottom, 110)
@@ -44,12 +59,15 @@ struct ProfileView: View {
         .navigationTitle(p.map { $0.username.isEmpty ? $0.name : "@\($0.username)" } ?? "")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if !isMe, let person {
+            if !isMe {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button { profiles.toggleMute(id) } label: { Label(profiles.muted.contains(id) ? "Unmute their posts" : "Mute their posts", systemImage: "speaker.slash") }
+                        if follows.followsMe(id) { Button { Task { await follows.remove(id) } } label: { Label("Remove as a follower", systemImage: "person.fill.xmark") } }
                         Button { reporting = true } label: { Label("Report", systemImage: "flag") }
-                        Button(role: .destructive) { removing = true } label: { Label("Remove \(person.name)", systemImage: "person.badge.minus") }
+                        if follows.blocked.contains(id) { Button { Task { await follows.unblock(id) } } label: { Label("Unblock", systemImage: "hand.raised.slash") } }
+                        else { Button(role: .destructive) { Task { await follows.block(id); dismiss() } } label: { Label("Block", systemImage: "hand.raised") } }
+                        if let person { Button(role: .destructive) { removing = true } label: { Label("Remove \(person.name) as a friend", systemImage: "person.badge.minus") } }
                     } label: { Image(systemName: "ellipsis") }
                 }
             }
@@ -57,7 +75,10 @@ struct ProfileView: View {
         .task {
             await profiles.load([id], force: true)
             posts = await profiles.posts(of: id)
+            counts = await follows.counts(id)
+            if isMe, profiles.mine?.privacyChosen == false { choosing = true }
         }
+        .sheet(isPresented: $choosing) { PrivacyChoiceSheet().interactiveDismissDisabled() }
         .refreshable { await profiles.load([id], force: true); posts = await profiles.posts(of: id) }
         .sheet(isPresented: $editing) { EditProfileView() }
         .sheet(isPresented: $showCode) { MyCodeSheet().presentationDetents([.large]) }
@@ -90,13 +111,15 @@ struct ProfileView: View {
                     }
                     .onTapGesture { if isMe { editing = true } }
                 HStack {
-                    count("\(posts.count)", posts.count == 1 ? "post" : "posts")
-                    count(isMe ? "\(Friends.shared.people.count)" : "\(level)", isMe ? "friends" : "level")
-                    count("\(streak)", "day streak", fire: streak > 1)
+                    count(locked ? "–" : "\(posts.count)", posts.count == 1 ? "post" : "posts")
+                    count("\(counts?.followers ?? 0)", counts?.followers == 1 ? "follower" : "followers")
+                    count("\(counts?.following ?? 0)", "following")
                 }
             }
             HStack(spacing: 8) {
                 Text(name).font(.title3.weight(.heavy))
+                if p?.isPrivate == true { Image(systemName: "lock.fill").font(.caption).foregroundStyle(.secondary) }
+                if streak > 1 { HStack(spacing: 2) { FluentIcon(emoji: "🔥", size: 14); Text("\(streak)").font(.subheadline.weight(.heavy)).foregroundStyle(.orange) } }
                 if level > 0 {
                     let r = Rank(level: level)
                     HStack(spacing: 4) { RankBadge(rank: r, size: 14); Text(r.name).font(.caption.weight(.bold)) }
@@ -104,6 +127,7 @@ struct ProfileView: View {
                 }
             }
             .padding(.top, 12)
+            if !profiles.handle(id).isEmpty { Text(profiles.handle(id)).font(.subheadline).foregroundStyle(.secondary) }
             if let bio = p?.bio, !bio.isEmpty { Text(bio).font(.subheadline).padding(.top, 4) }
             else if isMe { Button("Add a bio") { editing = true }.font(.subheadline).padding(.top, 4) }
             if let tags = p?.tags, !tags.isEmpty {
@@ -137,6 +161,19 @@ struct ProfileView: View {
             if isMe {
                 pill("Edit profile") { editing = true }
                 pill("Share profile") { showCode = true }
+            } else if person == nil {
+                // not a friend: follow (or ask to), and the full friendship as well
+                let st = follows.state(id)
+                Button { Task { if st == .none { await follows.follow(id) } else { await follows.unfollow(id) }; counts = await follows.counts(id) } } label: {
+                    Text(st == .following ? "Following" : st == .requested ? "Requested" : follows.followsMe(id) ? "Follow back" : "Follow")
+                        .font(.subheadline.weight(.bold)).foregroundStyle(st == .none ? Theme.onAccent : .primary)
+                        .frame(maxWidth: .infinity).padding(.vertical, 9)
+                        .background(st == .none ? Theme.accent : Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+                if let code = p?.friendCode, !code.isEmpty {
+                    pill(friendNote ?? "Add friend") { Task { friendNote = await Friends.shared.add(code: code) } }.disabled(friendNote != nil)
+                }
             } else {
                 Button { chatting = true } label: {
                     Label("Message", systemImage: "bubble.left.fill").font(.subheadline.weight(.bold)).foregroundStyle(Theme.onAccent)
@@ -266,6 +303,7 @@ struct EditProfileView: View {
     @State private var newTag = ""
     @State private var pinned: [String] = []
     @State private var showWeek = true
+    @State private var isPrivate = true
     @State private var picked: PhotosPickerItem?
     @State private var camera = false
     @State private var busy = false
@@ -334,6 +372,9 @@ struct EditProfileView: View {
                     }
                     .scrollIndicators(.hidden)
                 } header: { Text("Pinned badges") } footer: { Text("Up to 4, on your profile.") }
+                Section {
+                    Toggle("Private profile", isOn: $isPrivate)
+                } footer: { Text(isPrivate ? "People ask to follow you, and you say yes or no. Friends see your day and posts either way." : "Anyone can follow you and see your posts and badges, and they can show on Explore. Your day, week and food log stay friends only.") }
                 Section { Toggle("Friends see my week", isOn: $showWeek) } footer: { Text("The seven dots for on budget or over, on your profile. Messages are friends only.") }
                 if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn) }
             }
@@ -346,7 +387,7 @@ struct EditProfileView: View {
             .onAppear {
                 let p = profiles.mine
                 name = p?.name ?? Friends.shared.myName; username = p?.username ?? ""; bio = p?.bio ?? ""
-                tags = p?.tags ?? []; pinned = p?.pinned ?? []; showWeek = p?.showWeek ?? true
+                tags = p?.tags ?? []; pinned = p?.pinned ?? []; showWeek = p?.showWeek ?? true; isPrivate = p?.isPrivate ?? true
             }
             .onChange(of: picked) { _, item in Task { if let d = try? await item?.loadTransferable(type: Data.self), let img = UIImage(data: d) { await photo(img) } } }
             .fullScreenCover(isPresented: $camera) { CameraPicker { img in camera = false; if let img { Task { await photo(img) } } }.ignoresSafeArea() }
@@ -375,7 +416,7 @@ struct EditProfileView: View {
             taken = false
             let change: JSON = ["display_name": name.trimmingCharacters(in: .whitespaces).isEmpty ? Friends.shared.myName : name.trimmingCharacters(in: .whitespaces),
                                 "username": u.isEmpty ? NSNull() : u, "bio": bio.trimmingCharacters(in: .whitespacesAndNewlines),
-                                "tags": tags, "pinned": pinned, "show_week": showWeek]
+                                "tags": tags, "pinned": pinned, "show_week": showWeek, "private": isPrivate, "privacy_chosen": true]
             if await profiles.save(change) { dismiss() } else { problem = profiles.error }
         }
     }
@@ -474,5 +515,103 @@ struct QRScanView: View {
         if let u = URL(string: s), u.scheme == "cheatdays", u.host == "friend" { let c = u.lastPathComponent; return c.isEmpty || c == "/" ? nil : c }
         let t = s.trimmingCharacters(in: .whitespaces).uppercased()
         return t.range(of: #"^[A-Z]{3}-\d{4}$"#, options: .regularExpression) != nil ? t : nil
+    }
+}
+
+/// The last step of setting up your profile: who can see your posts. Asked once; Edit profile changes it.
+struct PrivacyChoiceSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var isPrivate = true
+    @State private var busy = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Who can see your posts?").font(.title.bold()).padding(.top, 30)
+            Text("Friends always see your day and your posts. This is about everyone else.").foregroundStyle(.secondary)
+            option(true, "lock.fill", "Private", "People ask to follow you, and you say yes or no. Until then they see only your name, photo and bio.")
+            option(false, "globe", "Public", "Anyone can follow you and see your posts and badges, and your posts can show on Explore. Your day, your week and your food log stay friends only.")
+            Text("You can change this any time in Edit profile.").font(.footnote).foregroundStyle(.secondary)
+            Spacer()
+            Button {
+                busy = true
+                Task { _ = await Profiles.shared.save(["private": isPrivate, "privacy_chosen": true]); busy = false; dismiss() }
+            } label: { Text(busy ? "Saving…" : "Done").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 14) }
+            .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 16)).foregroundStyle(Theme.onAccent).disabled(busy)
+        }
+        .padding(20)
+        .background(Theme.bg.ignoresSafeArea())
+    }
+
+    private func option(_ value: Bool, _ icon: String, _ title: String, _ text: String) -> some View {
+        Button { isPrivate = value } label: {
+            HStack(alignment: .top, spacing: 14) {
+                Image(systemName: icon).font(.title2).foregroundStyle(Theme.accent).frame(width: 30)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title).font(.headline)
+                    Text(text).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.leading)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: isPrivate == value ? "checkmark.circle.fill" : "circle").font(.title3).foregroundStyle(isPrivate == value ? Theme.accent : .secondary)
+            }
+            .padding(16)
+            .background(Theme.hero, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(isPrivate == value ? Theme.accent : .clear, lineWidth: 2))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Find people: by @name or name, and below that people your friends follow.
+struct FindPeopleView: View {
+    @State private var q = ""
+    @State private var found: [Profiles.Profile] = []
+    @State private var suggested: [(id: String, via: String, n: Int)] = []
+    private var follows: Follows { Follows.shared }
+
+    var body: some View {
+        List {
+            if !found.isEmpty { Section("Results") { ForEach(found, id: \.id) { p in row(p.id, detail: Profiles.shared.handle(p.id)) } } }
+            else if q.count >= 2 { Text("No one by that name.").foregroundStyle(.secondary) }
+            if !suggested.isEmpty {
+                Section("From your friends") {
+                    ForEach(suggested, id: \.id) { s in
+                        row(s.id, detail: "Followed by \(Feed.shared.name(s.via))\(s.n > 1 ? " and \(s.n - 1) more" : "")")
+                    }
+                }
+            }
+            if let e = follows.error { Text(e).font(.footnote).foregroundStyle(Theme.warn) }
+        }
+        .searchable(text: $q, placement: .navigationBarDrawer(displayMode: .always), prompt: "@name or name")
+        .task(id: q) {
+            try? await Task.sleep(for: .milliseconds(300))
+            if !Task.isCancelled { found = await follows.search(q) }
+        }
+        .task { await follows.load(); suggested = await follows.suggestions() }
+        .navigationTitle("Find people").navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func row(_ id: String, detail: String) -> some View {
+        let st = follows.state(id), friend = Friends.shared.people.contains { $0.id == id }
+        return HStack(spacing: 12) {
+            NavigationLink { ProfileView(id: id) } label: {
+                HStack(spacing: 12) {
+                    Avatar(id: id, size: 44)
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 4) {
+                            Text(Profiles.shared.all[id]?.name ?? Feed.shared.name(id)).font(.subheadline.weight(.bold))
+                            if Profiles.shared.all[id]?.isPrivate == true { Image(systemName: "lock.fill").font(.caption2).foregroundStyle(.secondary) }
+                        }
+                        if !detail.isEmpty { Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                    }
+                }
+            }
+            if !friend {
+                Button(st == .following ? "Following" : st == .requested ? "Requested" : "Follow") {
+                    Task { if st == .none { await follows.follow(id) } else { await follows.unfollow(id) } }
+                }
+                .buttonStyle(.borderedProminent).controlSize(.small)
+                .tint(st == .none ? Theme.accent : Color(.tertiarySystemFill)).foregroundStyle(st == .none ? Theme.onAccent : .primary)
+            }
+        }
     }
 }

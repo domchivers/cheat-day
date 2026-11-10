@@ -15,9 +15,13 @@ struct FriendsView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                Picker("Show", selection: $nav.friendsSeg) { Text("Feed").tag(1); Text("People").tag(0) }
+                Picker("Show", selection: $nav.friendsSeg) { Text("Feed").tag(1); Text("Explore").tag(2); Text("People").tag(0) }
                     .pickerStyle(.segmented).padding(.horizontal, 16).padding(.vertical, 8)
-                if nav.friendsSeg == 0 { people } else { FeedView { id in open.insert(id); withAnimation { nav.friendsSeg = 0 } } }
+                switch nav.friendsSeg {
+                case 0: people
+                case 2: ExploreView()
+                default: FeedView { id in open.insert(id); withAnimation { nav.friendsSeg = 0 } }
+                }
             }
             .background(Theme.bg)
             .keyboardDone()
@@ -28,10 +32,10 @@ struct FriendsView: View {
             .navigationDestination(item: $nav.chatWith) { id in ChatView(friend: id) }
             .onChange(of: nav.addCode) { _, c in if c != nil { adding = true } }
             .onAppear { if nav.addCode != nil { adding = true } }
-            .sheet(isPresented: $adding) { AddFriendSheet().presentationDetents([.medium]) }
+            .sheet(isPresented: $adding) { AddFriendSheet().presentationDetents([.medium, .large]) }
             .sheet(isPresented: $showActivity) { ActivityView() }
             .sheet(item: $viewing) { v in PostRecipeSheet(post: v.post, by: v.by) }
-            .task { await model.load(); await Profiles.shared.load(model.people.map(\.id)); await Messages.shared.load() }
+            .task { await model.load(); await Profiles.shared.load(model.people.map(\.id)); await Messages.shared.load(); await Follows.shared.load() }
         }
     }
 
@@ -239,6 +243,7 @@ struct AddFriendSheet: View {
                     }
                     .disabled(busy || code.trimmingCharacters(in: .whitespaces).count < 4)
                     Button { scanning = true } label: { Label("Scan their QR code", systemImage: "qrcode.viewfinder") }
+                    NavigationLink { FindPeopleView() } label: { Label("Find people by @name", systemImage: "magnifyingglass") }
                 } footer: { if let message { Text(message) } }
             }
             .keyboardDone()

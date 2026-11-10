@@ -577,6 +577,9 @@ Likes and replies on comments, and sending a post to one friend (the app's feed)
 Profiles (a photo, @username, bio, tags, pinned badges; never weight) and one-to-one messages between friends:
 run `supabase/profiles_messages.sql` once in the SQL Editor and redeploy `push` (for message notifications).
 
+Followers (one-way; private profiles approve each one), blocking, and Explore (public profiles' posts): run
+`supabase/followers_explore.sql` once in the SQL Editor and redeploy `push` (for follow notifications).
+
 ## Macros
 
 Everything carries protein, carbs and fat where they're known: the built-in food

@@ -16,6 +16,10 @@ final class Profiles {
         var pinned: [String]
         var showWeek: Bool
         var seenAt: Date?
+        /// Private (the default): followers ask first. Friends see everything either way.
+        var isPrivate: Bool
+        var privacyChosen: Bool
+        var friendCode: String
         /// On the app in the last five minutes: the green dot.
         var online: Bool { seenAt.map { Date().timeIntervalSince($0) < 300 } ?? false }
 
@@ -23,6 +27,8 @@ final class Profiles {
             id = str(r["user_id"]); name = str(r["display_name"]); username = str(r["username"]); avatar = str(r["avatar"])
             bio = str(r["bio"]); tags = r["tags"] as? [String] ?? []; pinned = r["pinned"] as? [String] ?? []
             showWeek = r["show_week"] as? Bool ?? true; seenAt = ISO.date(str(r["seen_at"]))
+            isPrivate = r["private"] as? Bool ?? true; privacyChosen = r["privacy_chosen"] as? Bool ?? true   // true until the column exists: don't ask
+            friendCode = str(r["friend_code"])
         }
     }
 
@@ -50,6 +56,8 @@ final class Profiles {
     }
 
     func avatar(_ id: String) -> String { all[id]?.avatar ?? "" }
+    /// Profiles a search already fetched.
+    func keep(_ ps: [Profile]) { for p in ps { all[p.id] = p } }
 
     private func makeIcon() async {
         let src = mine?.avatar ?? ""

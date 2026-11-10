@@ -25,7 +25,11 @@ final class Feed {
         loading = true; error = nil
         defer { loading = false }
         do {
-            posts = try await rows("/rest/v1/posts?select=*&order=created_at.desc&limit=40")
+            // friends, people I follow, and me: public profiles can be read by anyone now, and those belong in Explore
+            if Friends.shared.people.isEmpty { await Friends.shared.load() }
+            await Follows.shared.load()
+            let owners = Set([me] + Friends.shared.people.map(\.id) + Follows.shared.following).filter { !$0.isEmpty }
+            posts = try await rows("/rest/v1/posts?owner=in.(\(owners.joined(separator: ",")))&select=*&order=created_at.desc&limit=40")
             let ids = posts.map { str($0["id"]) }.joined(separator: ",")
             if !ids.isEmpty {
                 async let rx = rows("/rest/v1/reactions?post_id=in.(\(ids))&select=post_id,user_id,emoji")
@@ -43,6 +47,19 @@ final class Feed {
                 }
             }
         } catch { self.error = error.localizedDescription }
+    }
+
+    /// Reactions and comments for posts that aren't in the feed (Explore's), added to what's here.
+    func loadExtras(_ more: [JSON]) async {
+        let ids = more.map { str($0["id"]) }.filter { id in !posts.contains { str($0["id"]) == id } }
+        guard !ids.isEmpty else { return }
+        let list = ids.joined(separator: ",")
+        let rx = (try? await rows("/rest/v1/reactions?post_id=in.(\(list))&select=post_id,user_id,emoji")) ?? []
+        let cm = (try? await rows("/rest/v1/comments?post_id=in.(\(list))&select=*&order=created_at.asc")) ?? []
+        let have = Set(ids)
+        reactions.removeAll { have.contains(str($0["post_id"])) }; reactions += rx
+        comments.removeAll { have.contains(str($0["post_id"])) }; comments += cm
+        await Profiles.shared.load(cm.map { str($0["user_id"]) })
     }
 
     func name(_ id: String) -> String {
@@ -180,6 +197,8 @@ final class Feed {
 struct FeedView: View {
     /// A friend's ring tapped: their day, on People.
     var showPerson: (String) -> Void = { _ in }
+    /// Just these posts (Explore's, from the one tapped on), without the rings or the +.
+    var only: [JSON]? = nil
     @State private var composing = false
     @State private var recipe: JSON?
     @State private var flash: String?
@@ -195,12 +214,12 @@ struct FeedView: View {
         ScrollViewReader { proxy in
         ScrollView {
             LazyVStack(spacing: 0) {
-                rings
+                if only == nil { rings }
                 if let e = feed.error { Text(e).font(.footnote).foregroundStyle(Theme.warn).padding(.horizontal, 16).padding(.bottom, 8) }
-                if feed.posts.isEmpty && !feed.loading {
+                if only == nil && feed.posts.isEmpty && !feed.loading {
                     Text("Nothing in the feed yet. Share something, or add a friend.").foregroundStyle(.secondary).padding(.top, 40)
                 }
-                ForEach(keyed(feed.posts.filter { !Profiles.shared.muted.contains(str($0["owner"])) })) { entry in   // by post id: deleting one can't leave a row past the end
+                ForEach(keyed((only ?? feed.posts).filter { !Profiles.shared.muted.contains(str($0["owner"])) && !Follows.shared.blocked.contains(str($0["owner"])) })) { entry in   // by post id: deleting one can't leave a row past the end
                     let pid = str(entry.item["id"])
                     postView(entry.item).id(pid)
                         .background { if flash == pid { Theme.accent.opacity(0.12).allowsHitTesting(false) } }
@@ -212,16 +231,18 @@ struct FeedView: View {
         .task(id: Nav.shared.focusPost) { await focus(proxy) }
         .onChange(of: feed.posts.count) { _, _ in Task { await focus(proxy) } }
         }
-        .refreshable { await feed.load() }
-        .task { if feed.posts.isEmpty { await feed.load() } }
-        .overlay { if feed.loading && feed.posts.isEmpty { ProgressView() } }
+        .refreshable { if only == nil { await feed.load() } }
+        .task { if only == nil && feed.posts.isEmpty { await feed.load() } }
+        .overlay { if only == nil && feed.loading && feed.posts.isEmpty { ProgressView() } }
         .overlay(alignment: .bottomTrailing) {
+            if only == nil {
             Button { composing = true } label: {
                 Image(systemName: "plus").font(.system(size: 26, weight: .semibold)).foregroundStyle(Theme.onAccent)
                     .frame(width: 58, height: 58).background(Theme.accent, in: Circle()).shadow(color: .black.opacity(0.35), radius: 10, y: 5)
             }
             .buttonStyle(.plain).accessibilityLabel("New post")
             .padding(.trailing, 18).padding(.bottom, 96)
+            }
         }
         .sheet(isPresented: $composing) { ComposeSheet() }
         .sheet(item: Binding(get: { recipe.map { PostBox(post: $0) } }, set: { recipe = $0?.post })) { b in PostRecipeSheet(post: b.post) }
@@ -314,8 +335,21 @@ struct FeedView: View {
                 }
                 .buttonStyle(.plain)
                 Spacer()
+                // someone from Explore: follow them from here
+                if owner != feed.me, !friends.people.contains(where: { $0.id == owner }) {
+                    let st = Follows.shared.state(owner)
+                    if st != .following {
+                        Button(st == .requested ? "Requested" : "Follow") { Task { if st == .none { await Follows.shared.follow(owner) } else { await Follows.shared.unfollow(owner) } } }
+                            .font(.caption.weight(.heavy)).buttonStyle(.borderedProminent).controlSize(.small)
+                            .tint(st == .none ? Theme.accent : Color(.tertiarySystemFill)).foregroundStyle(st == .none ? Theme.onAccent : .primary)
+                    }
+                }
                 Menu {
                     Button { sharing = PostBox(post: p) } label: { Label("Send to a friend", systemImage: "paperplane") }
+                    if owner != feed.me {
+                        Button { Profiles.shared.toggleMute(owner) } label: { Label("Hide posts from \(feed.name(owner))", systemImage: "eye.slash") }
+                        Button { Task { await Profiles.shared.report(owner, reason: "Post: \(str(p["id"]))") } } label: { Label("Report post", systemImage: "flag") }
+                    }
                     if owner == feed.me { Button(role: .destructive) { Task { await feed.delete(p) } } label: { Label("Delete post", systemImage: "trash") } }
                 } label: { Image(systemName: "ellipsis").foregroundStyle(.secondary).padding(10) }
             }

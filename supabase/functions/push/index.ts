@@ -161,6 +161,8 @@ async function handle(req: Request): Promise<Response> {
       : body.kind === "reply" ? { title: `${who} replied to you`, body: what || "on a post" }
       : body.kind === "share" ? { title: `${who} sent you a post`, body: what || "Tap to see it" }
       : body.kind === "message" ? { title: who, body: what || "Sent you a message" }
+      : body.kind === "follow" ? { title: `${who} started following you`, body: "Tap to see their profile" }
+      : body.kind === "follow_request" ? { title: `${who} wants to follow you`, body: "Accept or decline in Activity" }
       : { title: `${who} reacted ${String(body.emoji || "").slice(0, 4)}`, body: what ? `to ${what}` : "to your post" };
     const n = await sendToUser(to, { ...msg, tag: `social-${body.kind || "react"}`, post: String(body.post || "").slice(0, 64) }, "social");
     return json({ ok: true, sent: n });
