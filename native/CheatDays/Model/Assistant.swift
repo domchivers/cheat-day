@@ -123,14 +123,20 @@ enum Assistant {
         }.prefix(6).map { c -> String in
             let when = ISO.date(str(c["when"])).map { $0.formatted(.dateTime.weekday(.wide).hour().minute()) } ?? ""
             let lines = CheatDays.list(c["turns"]).compactMap { t -> String? in
-                if str(t["role"]) == "me" { return "they said \"\(str(t["text"]).prefix(160))\"" }
-                guard let e = dict(t["result"])["estimate"] as? JSON else { return nil }
-                // the grams too, so a new amount of the same food can be scaled from it
-                let g = num(e["portion_g"]) ?? 0
-                return "you worked out \(str(e["name"])), \(g > 0 ? "\(Int(g)) g, " : "")\(Int(num(e["kcal_total"]) ?? 0)) kcal"
-            }.suffix(8)
+                if str(t["role"]) == "me" { return "they said \"\(str(t["text"]).prefix(200))\"" }
+                if let e = dict(t["result"])["estimate"] as? JSON {
+                    // the grams too, so a new amount of the same food can be scaled from it
+                    let g = num(e["portion_g"]) ?? 0
+                    return "you worked out \(str(e["name"])), \(g > 0 ? "\(Int(g)) g, " : "")\(Int(num(e["kcal_total"]) ?? 0)) kcal"
+                }
+                // your own answers with numbers in: a batch of chicken boiled from 918 g raw to 553 g, at 37.4 g
+                // protein per 100 g cooked, was only in the answer, so the next day it couldn't be found
+                let said = str(t["text"])
+                guard said.range(of: #"\d"#, options: .regularExpression) != nil else { return nil }
+                return "you said \"\(said.replacingOccurrences(of: "\n", with: " ").prefix(260))\""
+            }.suffix(10)
             return "\(when): " + lines.joined(separator: "; ")
-        }.joined(separator: "\n")
+        }.joined(separator: "\n").prefix(7000).description
     }
 
     @MainActor
