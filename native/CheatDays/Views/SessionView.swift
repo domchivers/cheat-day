@@ -181,7 +181,7 @@ struct SessionView: View {
             }
             .presentationDetents([.medium, .large])
         }
-        .onAppear { if s.looksForgotten && s.setsDone > 0 { forgotten = true } }
+        .onAppear { KeyboardDone.quiet = false; if s.looksForgotten && s.setsDone > 0 { forgotten = true } }   // its number pads always have Done
     }
 
     // MARK: the bar that stays on screen

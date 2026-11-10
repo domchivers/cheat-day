@@ -387,6 +387,7 @@ struct MainTabs: View {
                 }.tag(3)
         }
         .sensoryFeedback(.selection, trigger: tab)
+        .onChange(of: tab) { _, _ in KeyboardDone.quiet = false }   // a chat box left open in another tab can't take Done away from this one
         .onReceive(NotificationCenter.default.publisher(for: .openTab)) { n in if let t = n.object as? Int { tab = t } }
         .onOpenURL { url in
             guard url.scheme == "cheatdays" else { return }

@@ -153,7 +153,9 @@ struct ChatView: View {
                 if !Task.isCancelled { await messages.refresh() }
             }
         }
-        .onDisappear { messages.closeChat() }
+        // the chat box has no Done bar; leaving puts it back for every other keyboard (it stayed off after a chat,
+        // and the workout's number pads lost their Done)
+        .onDisappear { messages.closeChat(); KeyboardDone.quiet = false }
         .onAppear { KeyboardDone.quiet = true }
         .sheet(item: $opened, onDismiss: { KeyboardDone.quiet = true }) { b in PostRecipeSheet(post: b.post) }
         .sheet(isPresented: $choosing) { ShareThingSheet { kind, payload in Task { await messages.send(to: friend, kind: kind, payload: payload) } } }
