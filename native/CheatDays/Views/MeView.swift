@@ -6,13 +6,19 @@ private struct WeightPoint: Identifiable { let id: String; let date: Date; let k
 /// Me: your weight against your goal, what it takes to get there, a nudge when the plan needs adjusting,
 /// the weight chart, then the rest of the app in a short list.
 struct MeView: View {
+    var body: some View { NavigationStack { ProfileView(id: Profiles.shared.me, home: true) } }
+}
+
+/// Your goal and weight, the week, and Plan, Body, Meals and Food habits: what the Me tab showed before it became
+/// your profile. Opened from Your progress on it. Only ever yours: weight is never on a profile anyone else sees.
+struct ProgressDashboard: View {
     @State private var weighing = false
     @State private var ranks = false
     @State private var showBody = false
     private var store: Store { Store.shared }
 
     var body: some View {
-        NavigationStack {
+        Group {
             ScrollView {
                 VStack(spacing: 14) {
                     header
@@ -24,7 +30,7 @@ struct MeView: View {
                 .padding(.horizontal, 16).padding(.bottom, 30)
             }
             .background(Theme.bg)
-            .toolbar(.hidden, for: .navigationBar)
+            .navigationTitle("Your progress").navigationBarTitleDisplayMode(.inline)
             .refreshable { await store.sync(); await store.pullBody() }
             .sheet(isPresented: $weighing) { WeighInSheet() }
             .navigationDestination(isPresented: $showBody) { BodyView() }
@@ -38,8 +44,7 @@ struct MeView: View {
         let name = Friends.shared.myName.isEmpty ? "Me" : Friends.shared.myName
         let streak = store.streakInfo.days
         return HStack(spacing: 12) {
-            NavigationLink { ProfileView(id: Profiles.shared.me) } label: { Avatar(id: Profiles.shared.me, size: 48) }
-                .buttonStyle(.plain).accessibilityLabel("Your profile")
+            Avatar(id: Profiles.shared.me, size: 48)
             Button { ranks = true } label: {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(name).font(.title2.weight(.heavy)).foregroundStyle(.primary).lineLimit(1)

@@ -7,6 +7,8 @@ import SwiftUI
 /// posts as a grid. Yours has Edit and Share; anyone else's has Follow and Message, and a friend's their week and their day. Never weight.
 struct ProfileView: View {
     let id: String
+    /// The Me tab: your own profile, with Your progress under the bio and Settings at the top.
+    var home = false
     @State private var posts: [JSON] = []
     @State private var tab = 0
     @State private var editing = false
@@ -63,6 +65,11 @@ struct ProfileView: View {
         .navigationTitle(p.map { $0.username.isEmpty ? $0.name : "@\($0.username)" } ?? "")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            if home {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink { SettingsView() } label: { Image(systemName: "gearshape") }.accessibilityLabel("Settings")
+                }
+            }
             if !isMe {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
@@ -149,6 +156,7 @@ struct ProfileView: View {
             if let bio = p?.bio, !bio.isEmpty { Text(bio).font(.subheadline).padding(.top, 4) }
             else if isMe { Button("Add a bio") { editing = true }.font(.subheadline).padding(.top, 4) }
             buttons.padding(.top, 13)
+            if home && isMe { progressCard.padding(.top, 12) }
             if !isMe, p?.showWeek ?? true, let person { week(person).padding(.top, 12) }
             let pins = (p?.pinned ?? []).compactMap { pid in Badge.all.first { $0.id == pid } }
             if !pins.isEmpty {
@@ -192,6 +200,30 @@ struct ProfileView: View {
     }
 
 
+    /// Your weight and goal, the week and your rank in a line, opening everything Me used to show.
+    private var progressCard: some View {
+        let kg = store.lastWeighIn?.kg ?? store.latestWeight?.kg, goal = pos(store.doc["goalWeight"])
+        let week = store.weekDates.map(store.dayFacts).filter(\.logged), ok = week.filter(store.underBudget).count
+        var bits: [String] = []
+        if let kg { bits.append(goal.map { "\(Fmt.kg(kg)) → \(Fmt.kg($0)) kg" } ?? "\(Fmt.kg(kg)) kg") }
+        if !week.isEmpty { bits.append("\(ok) of \(week.count) on budget") }
+        bits.append(store.rank.name)
+        return NavigationLink { ProgressDashboard() } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "chart.line.uptrend.xyaxis").font(.system(size: 18, weight: .semibold)).foregroundStyle(Theme.accent)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Your progress").font(.subheadline.weight(.bold)).foregroundStyle(.primary)
+                    Text(bits.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
+            }
+            .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
     private func pill(_ title: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title).font(.subheadline.weight(.bold)).frame(maxWidth: .infinity).padding(.vertical, 9)
@@ -203,19 +235,23 @@ struct ProfileView: View {
     private func week(_ person: Friends.Person) -> some View {
         let w = person.week, ok = w.filter { $0 == 1 }.count
         let days = (0..<7).reversed().map { DayKey.date(DayKey.shift(DayKey.string(Date()), days: -$0)).formatted(.dateTime.weekday(.narrow)) }
-        return VStack(alignment: .leading, spacing: 8) {
-            (Text("This week").bold() + Text(" · \(ok) of 7 on budget").foregroundStyle(.secondary)).font(.subheadline)
-            HStack(spacing: 7) {
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("THIS WEEK").font(.caption2.weight(.heavy)).tracking(1.4).foregroundStyle(.secondary)
+                Spacer()
+                (Text("\(ok)").font(.subheadline.weight(.heavy)) + Text(" of 7 on budget").font(.subheadline).foregroundStyle(.secondary))
+            }
+            HStack(spacing: 0) {
                 ForEach(w.indices, id: \.self) { i in
-                    Text(days[i]).font(.caption2.weight(.heavy))
-                        .foregroundStyle(w[i] == 1 ? Theme.walk : w[i] == 0 ? .secondary : Theme.warn)
-                        .frame(width: 30, height: 30)
-                        .background((w[i] == 1 ? Theme.walk : w[i] == 0 ? Color.gray : Theme.warn).opacity(w[i] == 0 ? 0.15 : 0.22), in: Circle())
+                    VStack(spacing: 6) {
+                        Circle().fill(w[i] == 1 ? Theme.walk : w[i] == 0 ? Color(.tertiarySystemFill) : Theme.warn).frame(width: 9, height: 9)
+                        Text(days[i]).font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
                 }
             }
         }
-        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: the tabs
