@@ -766,6 +766,7 @@ struct ComposeSheet: View {
     @State private var busy = false
     @State private var problem: String?
     @State private var search = ""
+    @State private var shelf = 0   // Foods, Meals, Workouts: one list at a time, or all three when searching
     private var store: Store { Store.shared }
 
     private func matches(_ name: String) -> Bool { search.isEmpty || name.localizedCaseInsensitiveContains(search) }
@@ -820,17 +821,26 @@ struct ComposeSheet: View {
                 } else {
                     // anything from the last month, not just today: foods, meals and recipes, workouts; search to narrow it
                     let items = recentFoods, meals = savedMeals, wos = recentWorkouts
-                    if !items.isEmpty {
+                    // one list at a time: three long ones stacked meant scrolling past every food to reach a workout
+                    if search.isEmpty {
+                        Picker("Show", selection: $shelf) {
+                            Text("Foods").tag(0); Text("Meals").tag(1); Text("Workouts").tag(2)
+                        }
+                        .pickerStyle(.segmented).listRowBackground(Color.clear).listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                    }
+                    if !items.isEmpty && (!search.isEmpty || shelf == 0) {
                         Section("Foods") { ForEach(items.indices, id: \.self) { i in pickRow(str(items[i]["name"]), "\(Int(num(items[i]["kcal"]) ?? 0)) kcal · \(when(items[i]["_date"]))") { what = food(items[i]) } } }
                     }
-                    if !meals.isEmpty {
+                    if !meals.isEmpty && (!search.isEmpty || shelf == 1) {
                         Section("Meals and recipes") { ForEach(meals.indices, id: \.self) { i in let m = meals[i]; pickRow(str(m["name"]), "\(Fmt.int(num(store.mealBasis(m)["kcalPerServing"]) ?? 0)) kcal a portion") { what = meal(m) } } }
                     }
-                    if !wos.isEmpty {
+                    if !wos.isEmpty && (!search.isEmpty || shelf == 2) {
                         Section("Workouts") { ForEach(wos.indices, id: \.self) { i in pickRow(str(wos[i]["name"]), "\(Int(num(wos[i]["minutes"]) ?? 0)) min · \(when(wos[i]["_date"]))") { what = workout(wos[i]) } } }
                     }
-                    if items.isEmpty && meals.isEmpty && wos.isEmpty {
-                        Text(search.isEmpty ? "Log a food, save a meal or finish a workout, then share it here." : "Nothing called that.").foregroundStyle(.secondary)
+                    let none = search.isEmpty ? [items, meals, wos][shelf].isEmpty : (items.isEmpty && meals.isEmpty && wos.isEmpty)
+                    if none {
+                        Text(!search.isEmpty ? "Nothing called that." : ["Log a food and it's here to share.", "Save a meal or recipe and it's here to share.", "Finish a workout and it's here to share."][shelf])
+                            .foregroundStyle(.secondary)
                     }
                 }
             }

@@ -60,6 +60,8 @@ struct StoryEditor: View {
     @State private var mentioning = false
     @State private var note: String?
     @State private var canvasWidth: CGFloat = 360
+    @State private var history: [(items: [JSON], strokes: [JSON])] = []   // for Undo, newest last
+    @State private var leaving = false   // ✕ with changes: ask first
     private var stories: Stories { Stories.shared }
 
     var body: some View {
@@ -73,6 +75,20 @@ struct StoryEditor: View {
                     .overlay(alignment: .top) { topBar.padding(12) }
                     .overlay(alignment: mode == .text ? .top : .bottom) { tray(cw).padding(mode == .text ? .top : .bottom, mode == .text ? 64 : 12) }
                     .overlay(alignment: .leading) { if mode == .text || mode == .draw { sizeSlider.padding(.leading, 8) } }
+                    .overlay {
+                        if stories.posting {
+                            ZStack {
+                                Color.black.opacity(0.55)
+                                VStack(spacing: 12) {
+                                    ProgressView().controlSize(.large).tint(.white)
+                                    Text(video != nil ? "Sharing your video…" : "Sharing your story…").font(.headline).foregroundStyle(.white)
+                                }
+                            }
+                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            .transition(.opacity)
+                        }
+                    }
+                    .animation(.easeOut(duration: 0.2), value: stories.posting)
                 bottomBar.frame(width: cw)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -83,6 +99,10 @@ struct StoryEditor: View {
         .background(Color.black.ignoresSafeArea())
         .onAppear { KeyboardDone.quiet = true }
         .onDisappear { KeyboardDone.quiet = false }
+        .confirmationDialog("Discard your edits?", isPresented: $leaving, titleVisibility: .visible) {
+            Button("Discard", role: .destructive) { close() }
+            Button("Keep editing", role: .cancel) {}
+        } message: { Text("Your text, stickers and drawing will be lost.") }
         .statusBarHidden()
         .task { await prepare() }
         .onChange(of: filter) { _, f in Task { await refilter(f) } }
@@ -142,7 +162,7 @@ struct StoryEditor: View {
     private func placed(_ i: Int, _ cw: CGFloat, _ ch: CGFloat) -> some View {
         PlacedItem(o: items[i], cw: cw, ch: ch, hidden: editing == i, dim: active == i && overBin,
                    tap: { tapped(i) },
-                   began: { if active != i { active = i } },
+                   began: { if active != i { remember(); active = i } },
                    report: { sx, sy, bin in
                        if sx != snapX || sy != snapY { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
                        if bin != overBin { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
@@ -154,7 +174,7 @@ struct StoryEditor: View {
     }
 
     private func dropped(_ i: Int) {
-        if overBin, items.indices.contains(i) { UINotificationFeedbackGenerator().notificationOccurred(.warning); withAnimation(.snappy) { _ = items.remove(at: i) } }
+        if overBin, items.indices.contains(i) { UINotificationFeedbackGenerator().notificationOccurred(.warning); withAnimation(.snappy(duration: 0.25)) { _ = items.remove(at: i) } }
         active = nil; overBin = false; snapX = false; snapY = false
     }
 
@@ -166,7 +186,9 @@ struct StoryEditor: View {
             color = str(o["color"]).isEmpty ? "FFFFFF" : str(o["color"]); highlight = o["bg"] as? Bool ?? false
             align = str(o["align"]).isEmpty ? "center" : str(o["align"]); glow = o["glow"] as? Bool ?? false; size = num(o["size"]) ?? 30
             mode = .text; typing = true
-        case "food": items[i]["style"] = (Int(num(o["style"]) ?? 0) + 1) % 3
+        case "food":
+            remember(); UISelectionFeedbackGenerator().selectionChanged()
+            withAnimation(.snappy(duration: 0.2)) { items[i]["style"] = (Int(num(o["style"]) ?? 0) + 1) % 3 }
         default: break
         }
     }
@@ -182,10 +204,11 @@ struct StoryEditor: View {
     // MARK: tools along the top
 
     @ViewBuilder private var topBar: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 5) {
             switch mode {
             case .none:
-                round("xmark") { close() }.accessibilityLabel("Back")
+                round("xmark") { if edited { leaving = true } else { close() } }.accessibilityLabel("Back")
+                if !history.isEmpty { round("arrow.uturn.backward") { undo() }.accessibilityLabel("Undo") }
                 Spacer()
                 round("textformat") { newText() }.accessibilityLabel("Text")
                 round("face.smiling") { stickers = true }.accessibilityLabel("Stickers")
@@ -198,7 +221,7 @@ struct StoryEditor: View {
                 Menu {
                     if image != nil { Button { Task { await save() } } label: { Label("Save to Photos", systemImage: "square.and.arrow.down") } }
                     if bgScale > 1.01 || bgOffset != .zero { Button { withAnimation { bgScale = 1; bgOffset = .zero } } label: { Label("Reset the photo", systemImage: "arrow.counterclockwise") } }
-                    if !items.isEmpty || !strokes.isEmpty { Button(role: .destructive) { items = []; strokes = [] } label: { Label("Clear everything", systemImage: "trash") } }
+                    if !items.isEmpty || !strokes.isEmpty { Button(role: .destructive) { remember(); withAnimation { items = []; strokes = [] } } label: { Label("Clear everything", systemImage: "trash") } }
                 } label: { roundLabel("ellipsis") }
             case .text:
                 Spacer()
@@ -209,7 +232,7 @@ struct StoryEditor: View {
                 round(glow ? "sparkles" : "sparkle") { glow.toggle() }.accessibilityLabel("Glow")
                 Button("Done") { finishText() }.font(.headline).foregroundStyle(.white).padding(.leading, 6)
             case .draw:
-                round("arrow.uturn.backward") { if !strokes.isEmpty { strokes.removeLast() } }.disabled(strokes.isEmpty).accessibilityLabel("Undo")
+                round("arrow.uturn.backward") { undo() }.disabled(history.isEmpty).opacity(history.isEmpty ? 0.4 : 1).accessibilityLabel("Undo")
                 Spacer()
                 Button("Done") { mode = .none }.font(.headline).foregroundStyle(.white)
             case .filters, .trim:
@@ -219,12 +242,24 @@ struct StoryEditor: View {
         }
     }
 
+    /// Before a change: what it was, for Undo (thirty steps back).
+    private func remember() {
+        history.append((items, strokes))
+        if history.count > 30 { history.removeFirst() }
+    }
+    private func undo() {
+        guard let last = history.popLast() else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(.snappy(duration: 0.22)) { items = last.items; strokes = last.strokes }
+    }
+    private var edited: Bool { !items.isEmpty || !strokes.isEmpty || filter != "Normal" || bgScale > 1.01 }
+
     private func round(_ symbol: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) { roundLabel(symbol) }.buttonStyle(.plain)
     }
     private func roundLabel(_ symbol: String) -> some View {
         Image(systemName: symbol).font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
-            .frame(width: 36, height: 36).background(.black.opacity(0.45), in: Circle())
+            .frame(width: 34, height: 34).background(.black.opacity(0.45), in: Circle())
     }
 
     // MARK: what sits along the bottom of the story for each tool
@@ -332,20 +367,26 @@ struct StoryEditor: View {
     private func textEditor(_ cw: CGFloat) -> some View {
         ZStack {
             Color.black.opacity(0.45).onTapGesture { finishText() }
-            let o: JSON = ["type": "text", "text": draft.isEmpty ? " " : draft, "font": font, "color": color, "bg": highlight, "align": align, "glow": glow, "size": size]
-            ZStack {
-                StoryItem(o: o).scaleEffect(cw / StoryArt.design).allowsHitTesting(false)
-                TextField("", text: $draft, axis: .vertical).focused($typing)
-                    .font(StoryArt.font(font, size * cw / StoryArt.design)).foregroundStyle(.clear).tint(.white)
-                    .multilineTextAlignment(align == "left" ? .leading : align == "right" ? .trailing : .center)
-                    .frame(maxWidth: 330 * cw / StoryArt.design)
-            }
-            .offset(y: -cw * 0.25)
+            let k = cw / StoryArt.design, glows = glow || font == "neon"
+            TextField("", text: $draft, prompt: Text("Type something").foregroundStyle(.white.opacity(0.5)), axis: .vertical)
+                .focused($typing)
+                .font(StoryArt.font(font, size * k))
+                .foregroundStyle(highlight ? StoryArt.onColor(color) : StoryArt.color(color))
+                .tint(highlight ? StoryArt.onColor(color) : .white)
+                .multilineTextAlignment(align == "left" ? .leading : align == "right" ? .trailing : .center)
+                .padding(.horizontal, highlight ? 12 * k : 0).padding(.vertical, highlight ? 6 * k : 0)
+                .background { if highlight { RoundedRectangle(cornerRadius: 10 * k, style: .continuous).fill(StoryArt.color(color)) } }
+                .shadow(color: glows ? StoryArt.color(color).opacity(0.9) : (highlight ? .clear : .black.opacity(0.45)), radius: glows ? 10 * k : 4 * k)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: 330 * k)
+                .offset(y: -cw * 0.25)
+                .animation(.snappy(duration: 0.2), value: highlight)
         }
     }
 
     private func finishText() {
         let t = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !t.isEmpty || editing != nil { remember() }
         let o: [String: Any] = ["type": "text", "text": String(t.prefix(200)), "font": font, "color": color, "bg": highlight, "align": align, "glow": glow, "size": size]
         if let i = editing, items.indices.contains(i) {
             if t.isEmpty { items.remove(at: i) } else { items[i].merge(o) { _, n in n } }
@@ -365,7 +406,7 @@ struct StoryEditor: View {
                     if let last = current.last, hypot(last.x - v.location.x, last.y - v.location.y) < 2.5 { return }
                     current.append(v.location)
                 }
-                .onEnded { _ in if !current.isEmpty { strokes.append(stroke(current, cw, ch)) }; current = [] })
+                .onEnded { _ in if !current.isEmpty { remember(); strokes.append(stroke(current, cw, ch)) }; current = [] })
     }
 
     private func stroke(_ pts: [CGPoint], _ cw: CGFloat, _ ch: CGFloat) -> JSON {
@@ -405,6 +446,7 @@ struct StoryEditor: View {
     }
 
     private func place(_ o: JSON) {
+        remember(); UIImpactFeedbackGenerator(style: .soft).impactOccurred()
         var n = o
         n["id"] = UUID().uuidString.prefix(8).lowercased(); n["x"] = 0.5; n["y"] = 0.55 + Double(items.count % 3) * 0.06; n["scale"] = 1.0; n["rotation"] = 0.0
         withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) { items.append(n) }
@@ -684,6 +726,13 @@ struct PlacedItem: View {
     @GestureState private var pinch: CGFloat = 1
     @GestureState private var twist: Angle = .zero
     @State private var told = ""
+    @State private var upright = false
+
+    /// A turn snapped to straight (0, 90, 180, 270) when it's within 4 degrees.
+    private func snapped(_ deg: Double) -> (Double, Bool) {
+        let q = (deg / 90).rounded() * 90
+        return abs(deg - q) < 4 ? (q, true) : (deg, false)
+    }
 
     private var bx: Double { num(o["x"]) ?? 0.5 }
     private var by: Double { num(o["y"]) ?? 0.5 }
@@ -702,7 +751,7 @@ struct PlacedItem: View {
         let at = place(drag), k = cw / StoryArt.design
         StoryItem(o: o)
             .scaleEffect(min(4, max(0.3, scale * Double(pinch))) * k)
-            .rotationEffect(.degrees(rotation) + twist)
+            .rotationEffect(.degrees(snapped(rotation + twist.degrees).0))
             .position(x: at.x * cw, y: at.y * ch)
             .opacity(hidden ? 0 : (dim ? 0.45 : 1))
             .animation(.snappy(duration: 0.18), value: dim)
@@ -726,7 +775,11 @@ struct PlacedItem: View {
                         .onChanged { _ in if told.isEmpty { told = "pinch"; began() } }
                         .onEnded { v in commit(["scale": min(4, max(0.3, scale * Double(v.magnification)))]); told = ""; ended() },
                     RotateGesture().updating($twist) { v, s, _ in s = v.rotation }
-                        .onEnded { v in commit(["rotation": rotation + v.rotation.degrees]); told = ""; ended() })))
+                        .onChanged { v in
+                            let on = snapped(rotation + v.rotation.degrees).1
+                            if on != upright { upright = on; if on { UIImpactFeedbackGenerator(style: .light).impactOccurred() } }
+                        }
+                        .onEnded { v in commit(["rotation": snapped(rotation + v.rotation.degrees).0]); told = ""; upright = false; ended() })))
     }
 }
 
