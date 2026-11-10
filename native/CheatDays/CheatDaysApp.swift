@@ -609,7 +609,7 @@ private struct DemoRoot: View {
 /// knife and your photo, rather than being shrunk to fit their width.
 enum TabGlyph {
     @MainActor private static var made: [String: UIImage] = [:]
-    @MainActor static func make(_ name: String, height: CGFloat = 30) -> UIImage {   // the fork and knife's own size in the bar
+    @MainActor static func make(_ name: String, height: CGFloat = 25.5) -> UIImage {   // the fork and knife's own size in the bar
         if let m = made[name] { return m }
         guard let sym = UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: 60, weight: .semibold)) else { return UIImage() }
         // the dumbbell is so wide that at full height it looked bigger than the rest
