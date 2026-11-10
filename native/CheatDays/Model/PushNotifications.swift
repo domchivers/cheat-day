@@ -6,6 +6,9 @@ import UserNotifications
 final class PushDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        // a message can be answered from its notification
+        let reply = UNTextInputNotificationAction(identifier: "reply", title: "Reply", options: [], textInputButtonTitle: "Send", textInputPlaceholder: "Message")
+        UNUserNotificationCenter.current().setNotificationCategories([UNNotificationCategory(identifier: "message", actions: [reply], intentIdentifiers: [])])
         return true
     }
 
@@ -26,6 +29,12 @@ final class PushDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCen
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         let info = response.notification.request.content.userInfo
         let kind = info["kind"] as? String ?? "", post = info["post"] as? String ?? ""
+        // Reply, typed on the notification itself: sent without opening the app
+        if let r = response as? UNTextInputNotificationResponse, r.actionIdentifier == "reply", post.hasPrefix("chat:") {
+            let text = r.userText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty { await Messages.shared.send(to: String(post.dropFirst(5)), text: text) }
+            return
+        }
         await MainActor.run {
             if kind == "plan" { Nav.shared.plan(info["meal"] as? String ?? "Lunch"); return }   // a meal reminder: its planner
             if kind.contains("message"), post.hasPrefix("chat:") { Nav.shared.chat(String(post.dropFirst(5))); Task { await Messages.shared.load() }; return }
@@ -50,6 +59,8 @@ final class Nav {
     var focusPost: String?
     /// A message notification tapped: that chat, on Friends.
     var chatWith: String?
+    /// A friend's QR code scanned with the Camera app: Add a friend, with their code in.
+    var addCode: String?
     /// The meal a reminder asked to plan: Today opens the planner on it.
     var planMeal: String?
 

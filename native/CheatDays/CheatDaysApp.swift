@@ -287,7 +287,11 @@ struct MainTabs: View {
                 .tabItem { Label("Friends", systemImage: "person.2.fill") }.tag(2)
                 .badge(FriendActivity.shared.unread)
             MeView()
-                .tabItem { Label("Me", systemImage: "person.crop.circle.fill") }.tag(3)
+                .tabItem {
+                    // your photo, once you've added one
+                    if let icon = Profiles.shared.meIcon { Label { Text("Me") } icon: { Image(uiImage: icon).renderingMode(.original) } }
+                    else { Label("Me", systemImage: "person.crop.circle.fill") }
+                }.tag(3)
         }
         .sensoryFeedback(.selection, trigger: tab)
         .onReceive(NotificationCenter.default.publisher(for: .openTab)) { n in if let t = n.object as? Int { tab = t } }
@@ -295,6 +299,8 @@ struct MainTabs: View {
             guard url.scheme == "cheatdays" else { return }
             tab = 0
             if url.host == "add" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { NotificationCenter.default.post(name: .openAdd, object: nil) } }
+            // cheatdays://friend/DOM-1234, from a friend's QR code
+            if url.host == "friend", !url.lastPathComponent.isEmpty, url.lastPathComponent != "/" { tab = 2; Nav.shared.addCode = url.lastPathComponent }
         }
         .task {
             if demo { tab = startTab; return }

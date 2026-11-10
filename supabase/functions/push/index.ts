@@ -47,8 +47,8 @@ async function sendApns(endpoint: string, payload: { title: string; body: string
   const host = Deno.env.get("APNS_SANDBOX") === "1" ? "api.sandbox.push.apple.com" : "api.push.apple.com";   // TestFlight and App Store builds use the main one
   const r = await fetch(`https://${host}/3/device/${device}`, {
     method: "POST",
-    headers: { authorization: `bearer ${jwt}`, "apns-topic": topic, "apns-push-type": "alert", "apns-priority": "10", ...(payload.tag ? { "apns-collapse-id": payload.tag.slice(0, 64) } : {}) },
-    body: JSON.stringify({ aps: { alert: { title: payload.title, body: payload.body }, sound: "default" }, kind: payload.tag || "", post: payload.post || "" }),
+    headers: { authorization: `bearer ${jwt}`, "apns-topic": topic, "apns-push-type": "alert", "apns-priority": "10", ...(payload.tag && payload.tag !== "social-message" ? { "apns-collapse-id": payload.tag.slice(0, 64) } : {}) },
+    body: JSON.stringify({ aps: { alert: { title: payload.title, body: payload.body }, sound: "default", ...(payload.tag === "social-message" ? { category: "message" } : {}) }, kind: payload.tag || "", post: payload.post || "" }),
   });
   const why = r.ok ? "" : await r.text().catch(() => "");
   console.log(`apns: ${r.status} ${why} (${host}, ${topic}, …${device.slice(-6)})`);

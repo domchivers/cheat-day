@@ -26,7 +26,10 @@ final class Profiles {
         }
     }
 
-    private(set) var all: [String: Profile] = [:]
+    private(set) var all: [String: Profile] = [:] { didSet { if mine?.avatar != iconFor { Task { await makeIcon() } } } }
+    /// The Me tab's icon: your photo, round.
+    private(set) var meIcon: UIImage?
+    private var iconFor: String?
     var error: String?
     private var api: Supabase { Supabase.shared }
     var me: String { api.userId ?? "" }
@@ -47,6 +50,20 @@ final class Profiles {
     }
 
     func avatar(_ id: String) -> String { all[id]?.avatar ?? "" }
+
+    private func makeIcon() async {
+        let src = mine?.avatar ?? ""
+        iconFor = src
+        guard src.hasPrefix("http"), let url = URL(string: src), let (d, _) = try? await URLSession.shared.data(from: url), let img = UIImage(data: d) else { meIcon = nil; return }
+        let side: CGFloat = 28
+        let round = UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { _ in
+            UIBezierPath(ovalIn: CGRect(x: 0, y: 0, width: side, height: side)).addClip()
+            let s = max(side / img.size.width, side / img.size.height)
+            let w = img.size.width * s, h = img.size.height * s
+            img.draw(in: CGRect(x: (side - w) / 2, y: (side - h) / 2, width: w, height: h))
+        }
+        if iconFor == src { meIcon = round.withRenderingMode(.alwaysOriginal) }
+    }
     func handle(_ id: String) -> String { all[id].map { $0.username.isEmpty ? "" : "@\($0.username)" } ?? "" }
 
     /// A username as typed, made valid: lower case, letters, numbers, dots and underscores, 3 to 20 long.

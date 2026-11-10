@@ -26,6 +26,8 @@ struct FriendsView: View {
             .navigationDestination(isPresented: $showMessages) { MessagesView() }
             .navigationDestination(item: $profileOf) { id in ProfileView(id: id) }
             .navigationDestination(item: $nav.chatWith) { id in ChatView(friend: id) }
+            .onChange(of: nav.addCode) { _, c in if c != nil { adding = true } }
+            .onAppear { if nav.addCode != nil { adding = true } }
             .sheet(isPresented: $adding) { AddFriendSheet().presentationDetents([.medium]) }
             .sheet(isPresented: $showActivity) { ActivityView() }
             .sheet(item: $viewing) { v in PostRecipeSheet(post: v.post, by: v.by) }
@@ -213,9 +215,10 @@ struct FriendsView: View {
 
 struct AddFriendSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var code = ""
+    @State private var code = Nav.shared.addCode ?? ""
     @State private var message: String?
     @State private var busy = false
+    @State private var scanning = false
     private var model: Friends { Friends.shared }
 
     var body: some View {
@@ -235,12 +238,22 @@ struct AddFriendSheet: View {
                         Task { message = await model.add(code: code); busy = false }
                     }
                     .disabled(busy || code.trimmingCharacters(in: .whitespaces).count < 4)
+                    Button { scanning = true } label: { Label("Scan their QR code", systemImage: "qrcode.viewfinder") }
                 } footer: { if let message { Text(message) } }
             }
             .keyboardDone()
             .navigationTitle("Add a friend")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
+            .onAppear { Nav.shared.addCode = nil }
+            .fullScreenCover(isPresented: $scanning) {
+                QRScanView { found in
+                    scanning = false
+                    code = found
+                    busy = true
+                    Task { message = await model.add(code: found); busy = false }
+                }
+            }
         }
     }
 }

@@ -91,21 +91,24 @@ struct ScanSheet: View {
 /// picture kept zooming in and out and took seconds to settle. Calls back once with the first code it reads.
 struct BarcodeScanner: UIViewControllerRepresentable {
     let onCode: (String) -> Void
+    /// The codes on food packs, or [.qr] for a friend's code.
+    var types: [AVMetadataObject.ObjectType] = [.ean13, .ean8, .upce, .itf14, .code128]
 
     static var camera: AVCaptureDevice? { AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) }
 
-    func makeUIViewController(context: Context) -> ScannerController { ScannerController(onCode: onCode) }
+    func makeUIViewController(context: Context) -> ScannerController { ScannerController(onCode: onCode, types: types) }
     func updateUIViewController(_ vc: ScannerController, context: Context) {}
     static func dismantleUIViewController(_ vc: ScannerController, coordinator: ()) { vc.stop() }
 
     final class ScannerController: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
         private let onCode: (String) -> Void
+        private let types: [AVMetadataObject.ObjectType]
         private let session = AVCaptureSession()
         private let queue = DispatchQueue(label: "scanner.session")
         private var preview: AVCaptureVideoPreviewLayer?
         private var done = false
 
-        init(onCode: @escaping (String) -> Void) { self.onCode = onCode; super.init(nibName: nil, bundle: nil) }
+        init(onCode: @escaping (String) -> Void, types: [AVMetadataObject.ObjectType]) { self.onCode = onCode; self.types = types; super.init(nibName: nil, bundle: nil) }
         required init?(coder: NSCoder) { fatalError() }
 
         override func viewDidLoad() {
@@ -135,9 +138,8 @@ struct BarcodeScanner: UIViewControllerRepresentable {
             if session.canAddOutput(output) {
                 session.addOutput(output)
                 output.setMetadataObjectsDelegate(self, queue: .main)
-                // only the codes on food packs
-                let wanted: [AVMetadataObject.ObjectType] = [.ean13, .ean8, .upce, .itf14, .code128]
-                output.metadataObjectTypes = wanted.filter { output.availableMetadataObjectTypes.contains($0) }
+                // only the codes asked for: food packs, or a friend's QR code
+                output.metadataObjectTypes = types.filter { output.availableMetadataObjectTypes.contains($0) }
             }
             session.commitConfiguration()
             if (try? device.lockForConfiguration()) != nil {

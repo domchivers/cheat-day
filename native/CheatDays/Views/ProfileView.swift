@@ -1,3 +1,5 @@
+import AVFoundation
+import CoreImage
 import PhotosUI
 import SwiftUI
 
@@ -12,6 +14,7 @@ struct ProfileView: View {
     @State private var chatting = false
     @State private var reporting = false
     @State private var removing = false
+    @State private var showCode = false
     @Environment(\.dismiss) private var dismiss
     private var profiles: Profiles { Profiles.shared }
     private var store: Store { Store.shared }
@@ -57,6 +60,7 @@ struct ProfileView: View {
         }
         .refreshable { await profiles.load([id], force: true); posts = await profiles.posts(of: id) }
         .sheet(isPresented: $editing) { EditProfileView() }
+        .sheet(isPresented: $showCode) { MyCodeSheet().presentationDetents([.large]) }
         .sheet(item: $opened) { b in PostRecipeSheet(post: b.post) }
         .navigationDestination(isPresented: $chatting) { ChatView(friend: id) }
         .confirmationDialog("Report \(p?.name ?? "them")?", isPresented: $reporting, titleVisibility: .visible) {
@@ -132,8 +136,7 @@ struct ProfileView: View {
         HStack(spacing: 8) {
             if isMe {
                 pill("Edit profile") { editing = true }
-                ShareLink(item: shareText) { Text("Share profile").font(.subheadline.weight(.bold)).frame(maxWidth: .infinity).padding(.vertical, 9).background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12)) }
-                    .buttonStyle(.plain)
+                pill("Share profile") { showCode = true }
             } else {
                 Button { chatting = true } label: {
                     Label("Message", systemImage: "bubble.left.fill").font(.subheadline.weight(.bold)).foregroundStyle(Theme.onAccent)
@@ -148,10 +151,6 @@ struct ProfileView: View {
         }
     }
 
-    private var shareText: String {
-        let handle = p.map { $0.username.isEmpty ? "" : " (@\($0.username))" } ?? ""
-        return "Add me on Cheat Days\(handle): my friend code is \(Friends.shared.myCode)"
-    }
 
     private func pill(_ title: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -379,5 +378,101 @@ struct EditProfileView: View {
                                 "tags": tags, "pinned": pinned, "show_week": showWeek]
             if await profiles.save(change) { dismiss() } else { problem = profiles.error }
         }
+    }
+}
+
+/// Your QR code: friends scan it with the app (Add a friend) or the Camera app, which opens Cheat Days on Add a
+/// friend with your code in. Your friend code and @name to send as well.
+struct MyCodeSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var scanning = false
+    @State private var message: String?
+    private var profiles: Profiles { Profiles.shared }
+    private var code: String { Friends.shared.myCode }
+    private var link: String { "cheatdays://friend/" + code }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 16) {
+                Spacer()
+                VStack(spacing: 14) {
+                    Avatar(id: profiles.me, size: 64)
+                    VStack(spacing: 2) {
+                        Text(Friends.shared.myName).font(.title3.weight(.heavy))
+                        if !profiles.handle(profiles.me).isEmpty { Text(profiles.handle(profiles.me)).font(.subheadline).foregroundStyle(.secondary) }
+                    }
+                    if let qr = Self.qr(link) {
+                        Image(uiImage: qr).interpolation(.none).resizable().scaledToFit().frame(width: 220, height: 220)
+                            .padding(14).background(.white, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    }
+                    Text(code).font(.title2.weight(.heavy)).monospaced()
+                }
+                .padding(24).frame(maxWidth: .infinity)
+                .background(Theme.hero, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+                .padding(.horizontal, 24)
+                Text("Friends scan it in Add a friend, or with their iPhone's camera.").font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.horizontal, 30)
+                Spacer()
+                HStack(spacing: 10) {
+                    ShareLink(item: "Add me on Cheat Days\(profiles.handle(profiles.me).isEmpty ? "" : " (\(profiles.handle(profiles.me)))"): my friend code is \(code)") {
+                        Label("Share", systemImage: "square.and.arrow.up").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 12)
+                            .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 14))
+                    }
+                    Button { scanning = true } label: {
+                        Label("Scan theirs", systemImage: "qrcode.viewfinder").font(.headline).foregroundStyle(Theme.onAccent).frame(maxWidth: .infinity).padding(.vertical, 12)
+                            .background(Theme.accent, in: RoundedRectangle(cornerRadius: 14))
+                    }
+                }
+                .buttonStyle(.plain).padding(.horizontal, 20)
+                if let message { Text(message).font(.footnote).foregroundStyle(.secondary) }
+            }
+            .padding(.bottom, 16)
+            .background(Theme.bg.ignoresSafeArea())
+            .navigationTitle("Your code").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
+            .fullScreenCover(isPresented: $scanning) {
+                QRScanView { found in
+                    scanning = false
+                    Task { message = await Friends.shared.add(code: found) }
+                }
+            }
+        }
+    }
+
+    static func qr(_ text: String) -> UIImage? {
+        guard let f = CIFilter(name: "CIQRCodeGenerator") else { return nil }
+        f.setValue(Data(text.utf8), forKey: "inputMessage")
+        f.setValue("M", forKey: "inputCorrectionLevel")
+        guard let out = f.outputImage?.transformed(by: CGAffineTransform(scaleX: 10, y: 10)),
+              let cg = CIContext().createCGImage(out, from: out.extent) else { return nil }
+        return UIImage(cgImage: cg)
+    }
+}
+
+/// The camera reading a friend's QR code: calls back with their friend code.
+struct QRScanView: View {
+    var found: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var wrong = false
+
+    var body: some View {
+        ZStack {
+            BarcodeScanner(onCode: { s in
+                if let c = Self.code(s) { found(c) } else { wrong = true }
+            }, types: [.qr]).ignoresSafeArea()
+            RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(.white.opacity(0.85), lineWidth: 3).frame(width: 240, height: 240)
+            VStack {
+                HStack { Spacer(); Button("Cancel") { dismiss() }.font(.headline).foregroundStyle(.white).padding(20) }
+                Spacer()
+                Text(wrong ? "That isn't a Cheat Days code." : "Point at your friend's code").font(.headline).foregroundStyle(.white)
+                    .padding(.horizontal, 16).padding(.vertical, 10).background(.black.opacity(0.55), in: Capsule()).padding(.bottom, 50)
+            }
+        }
+    }
+
+    /// "cheatdays://friend/DOM-1234", or a bare code.
+    static func code(_ s: String) -> String? {
+        if let u = URL(string: s), u.scheme == "cheatdays", u.host == "friend" { let c = u.lastPathComponent; return c.isEmpty || c == "/" ? nil : c }
+        let t = s.trimmingCharacters(in: .whitespaces).uppercased()
+        return t.range(of: #"^[A-Z]{3}-\d{4}$"#, options: .regularExpression) != nil ? t : nil
     }
 }
