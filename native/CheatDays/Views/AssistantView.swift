@@ -942,6 +942,7 @@ struct AssistantView: View {
                     }
                     .padding(.top, 6).padding(.horizontal, 6)
                 }
+                .frame(height: 70)   // a set height: a sideways scroller takes whatever height it's offered
             }
             // return is a new line, shown as the plain return key: it said "send" but only went down a line
             TextField("Ask, or say what you ate", text: $text, axis: .vertical).lineLimit(1...5).focused($typing)
@@ -972,6 +973,9 @@ struct AssistantView: View {
             }
         }
         .padding(10)
+        // its full height always (the photos and up to 5 lines): with a photo in, the chat above won the space and
+        // the words were squashed to two lines under the photo
+        .fixedSize(horizontal: false, vertical: true)
         // the whole box takes the tap (not just the line of text), so the keyboard comes up first time; behind the field,
         // so its own cursor and Paste menu still work
         .background { Color.clear.contentShape(Rectangle()).onTapGesture { typing = true } }
