@@ -81,15 +81,19 @@ final class Supabase {
     }
 
     /// A photo into the public "photos" bucket (the web app's uploadPhoto); returns its address.
-    func uploadPhoto(_ jpeg: Data) async throws -> String {
+    func uploadPhoto(_ jpeg: Data) async throws -> String { try await upload(jpeg, ext: "jpg", type: "image/jpeg") }
+
+    /// Any file into the same bucket: a story's video as mp4.
+    func upload(_ data: Data, ext: String, type: String) async throws -> String {
+        let jpeg = data
         guard let id = userId else { throw APIError(status: 401, message: "Not signed in") }
-        let path = "\(id)/\(UUID().uuidString.lowercased()).jpg"
+        let path = "\(id)/\(UUID().uuidString.lowercased()).\(ext)"
         func attempt() async throws -> (Data, HTTPURLResponse) {
             guard let url = URL(string: SupabaseConfig.url.absoluteString + "/storage/v1/object/photos/" + path) else { throw APIError(status: 0, message: "Bad address") }
-            var req = URLRequest(url: url, timeoutInterval: 40)
+            var req = URLRequest(url: url, timeoutInterval: ext == "jpg" ? 40 : 120)
             req.httpMethod = "POST"
             req.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
-            req.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+            req.setValue(type, forHTTPHeaderField: "Content-Type")
             req.setValue("false", forHTTPHeaderField: "x-upsert")
             req.setValue("31536000", forHTTPHeaderField: "cache-control")
             if let t = session?.access_token { req.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization") }

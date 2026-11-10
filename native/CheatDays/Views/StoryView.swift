@@ -16,7 +16,8 @@ struct StoryView: View {
     @FocusState private var typing: Bool
     private static let seconds = 5.0
 
-    enum Slide { case post(JSON), meal(String, [JSON]), workout(JSON) }
+    enum Slide { case snap(JSON), post(JSON), meal(String, [JSON]), workout(JSON) }
+    @State private var seenBy: JSON?   // your own snap's "Seen by" list
 
     private var who: String { people[min(at, people.count - 1)] }
     private var slides: [Slide] { Self.slides(for: who) }
@@ -27,7 +28,8 @@ struct StoryView: View {
         let today = DayKey.string(Date())
         let posts = Feed.shared.posts.filter { str($0["owner"]) == id && str($0["kind"]) != "moment" && String(str($0["created_at"]).prefix(10)) == today }
             .sorted { str($0["created_at"]) < str($1["created_at"]) }
-        var out: [Slide] = posts.map { .post($0) }
+        // stories they posted come first, then today's posts, meals and workouts
+        var out: [Slide] = Stories.shared.of(id).map { .snap($0) } + posts.map { .post($0) }
         let food: [JSON], workouts: [JSON]
         if id == Profiles.shared.me { food = Store.shared.todayItems; workouts = Store.shared.todayWorkouts.map { ["name": $0["name"] ?? "", "workout": $0] } }
         else if let p = Friends.shared.people.first(where: { $0.id == id }) { food = p.food; workouts = p.workouts }
@@ -45,7 +47,9 @@ struct StoryView: View {
 
     /// What was in it when last watched, so new things colour the ring again.
     static func signature(_ id: String) -> String { "\(DayKey.string(Date()))|\(slides(for: id).count)" }
-    static func seen(_ id: String) -> Bool { (UserDefaults.standard.dictionary(forKey: "stories.seen")?[id] as? String) == signature(id) }
+    static func seen(_ id: String) -> Bool {
+        !Stories.shared.unwatched(id) && (UserDefaults.standard.dictionary(forKey: "stories.seen")?[id] as? String) == signature(id)
+    }
     static func markSeen(_ id: String) {
         var d = UserDefaults.standard.dictionary(forKey: "stories.seen") ?? [:]
         d[id] = signature(id); UserDefaults.standard.set(d, forKey: "stories.seen")
@@ -74,10 +78,13 @@ struct StoryView: View {
         .statusBarHidden()
         .task(id: "\(at)|\(slide)") {
             progress = 0
+            let now = slides.indices.contains(slide) ? slides[slide] : nil
+            var length = Self.seconds
+            if case .snap(let st)? = now { Stories.shared.watch(st); if str(st["kind"]) == "video" { length = max(3, num(st["seconds"]) ?? 15) } }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(50))
-                if paused || typing { continue }
-                progress += 0.05 / Self.seconds
+                if paused || typing || seenBy != nil { continue }
+                progress += 0.05 / length
                 if progress >= 1 { next(); return }
             }
         }
@@ -125,6 +132,12 @@ struct StoryView: View {
 
     @ViewBuilder private func content(_ s: Slide) -> some View {
         switch s {
+        case .snap(let st):
+            ZStack {
+                if str(st["kind"]) == "video", let url = URL(string: str(st["media"])) { LoopingVideo(url: url, paused: paused || seenBy != nil) }
+                else { FeedPhoto(src: str(st["media"]), fill: true) }
+                StoryOverlays(items: list(st["overlays"]))
+            }
         case .post(let p):
             ZStack(alignment: .bottomLeading) {
                 if str(p["photo"]).hasPrefix("http") { FeedPhoto(src: str(p["photo"]), fill: true) }
@@ -180,7 +193,23 @@ struct StoryView: View {
 
     @ViewBuilder private func footer(_ s: Slide) -> some View {
         if isMe {
-            Text("Your day, as friends see it").font(.footnote).foregroundStyle(.white.opacity(0.6)).frame(height: 44)
+            if case .snap(let st) = s {
+                // yours: who's watched it, and take it down early
+                HStack {
+                    Button { seenBy = st } label: {
+                        Label("Seen by \(Stories.shared.viewers(st).count)", systemImage: "eye").font(.subheadline.weight(.bold)).foregroundStyle(.white)
+                    }
+                    Spacer()
+                    Text(str(st["audience"]) == "friends" ? "Close friends" : "Your story").font(.caption.weight(.bold)).foregroundStyle(.white.opacity(0.6))
+                    Menu {
+                        Button(role: .destructive) { Task { await Stories.shared.delete(st); if slides.isEmpty { dismiss() } else { slide = min(slide, slides.count - 1) } } } label: { Label("Delete this story", systemImage: "trash") }
+                    } label: { Image(systemName: "ellipsis").font(.title3).foregroundStyle(.white).padding(10) }
+                }
+                .frame(height: 44).padding(.horizontal, 8)
+                .sheet(item: Binding(get: { seenBy.map { PostBox(post: $0) } }, set: { seenBy = $0?.post })) { b in SeenBySheet(story: b.post).presentationDetents([.medium, .large]) }
+            } else {
+                Text("Your day, as friends see it").font(.footnote).foregroundStyle(.white.opacity(0.6)).frame(height: 44)
+            }
         } else {
             HStack(spacing: 12) {
                 TextField("", text: $reply, prompt: Text(sent ? "Sent" : "Send \(Feed.shared.name(who)) a message…").foregroundStyle(.white.opacity(0.7)))
@@ -188,6 +217,9 @@ struct StoryView: View {
                     .padding(.horizontal, 16).padding(.vertical, 11)
                     .overlay(Capsule().stroke(.white.opacity(0.55), lineWidth: 1.5))
                 switch s {
+                case .snap(let st):
+                    Button { Task { await Stories.shared.react(st, "❤️") } } label: { Image(systemName: "heart").font(.system(size: 24)).foregroundStyle(.white) }
+                        .accessibilityLabel("Like")
                 case .post(let p):
                     let liked = Feed.shared.reactions.contains { str($0["post_id"]) == str(p["id"]) && str($0["user_id"]) == Feed.shared.me && str($0["emoji"]) == "❤️" }
                     Button { Task { await Feed.shared.toggle(p, "❤️") } } label: {
@@ -220,5 +252,29 @@ struct StoryView: View {
     }
     private func back() {
         if slide > 0 { slide -= 1 } else if at > 0 { at -= 1; slide = 0 } else { progress = 0 }
+    }
+}
+
+/// Who's watched one of your stories, and how they reacted.
+struct SeenBySheet: View {
+    let story: JSON
+    var body: some View {
+        NavigationStack {
+            List {
+                let v = Stories.shared.viewers(story)
+                if v.isEmpty { Text("No one yet.").foregroundStyle(.secondary) }
+                ForEach(v.indices, id: \.self) { i in
+                    let who = str(v[i]["viewer"])
+                    HStack(spacing: 12) {
+                        Avatar(id: who, size: 36)
+                        Text(Feed.shared.name(who)).font(.subheadline.weight(.semibold))
+                        Spacer()
+                        if !str(v[i]["reaction"]).isEmpty { Text(str(v[i]["reaction"])).font(.title3) }
+                    }
+                }
+            }
+            .navigationTitle("Seen by \(Stories.shared.viewers(story).count)").navigationBarTitleDisplayMode(.inline)
+            .task { await Stories.shared.load() }
+        }
     }
 }

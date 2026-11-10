@@ -210,6 +210,8 @@ struct FeedView: View {
     @State private var burst: String?   // the post a double-tap just liked
     @State private var profileOf: String?
     @State private var story: StoryStart?
+    @State private var posting = false   // making a story
+    @State private var askMine = false
     struct StoryStart: Identifiable { let id = UUID(); let people: [String]; let at: Int }
     private var feed: Feed { Feed.shared }
     private var friends: Friends { Friends.shared }
@@ -235,7 +237,7 @@ struct FeedView: View {
         .task(id: Nav.shared.focusPost) { await focus(proxy) }
         .onChange(of: feed.posts.count) { _, _ in Task { await focus(proxy) } }
         }
-        .refreshable { if only == nil { await feed.load() } }
+        .refreshable { if only == nil { await feed.load(); await Stories.shared.load() } }
         .task { if only == nil && feed.posts.isEmpty { await feed.load() } }
         .overlay { if only == nil && feed.loading && feed.posts.isEmpty { ProgressView() } }
         .overlay(alignment: .bottomTrailing) {
@@ -254,6 +256,8 @@ struct FeedView: View {
         .sheet(item: $sharing) { b in SharePostSheet(post: b.post).presentationDetents([.medium, .large]) }
         .navigationDestination(item: $profileOf) { id in ProfileView(id: id) }
         .fullScreenCover(item: $story) { s in StoryView(people: s.people, at: s.at) }
+        .fullScreenCover(isPresented: $posting) { StoryComposer() }
+        .task { if only == nil { await Stories.shared.load() } }
     }
 
     // MARK: friends' days along the top
@@ -263,10 +267,14 @@ struct FeedView: View {
             HStack(alignment: .top, spacing: 14) {
                 // yours: your day as friends see it, or a new post when there's nothing yet
                 let mine = StoryView.has(feed.me)
-                Button { if mine { story = StoryStart(people: [feed.me], at: 0) } else { composing = true } } label: {
-                    ring(feed.me, "Your story", new: mine && !StoryView.seen(feed.me), tag: nil, plus: true)
+                Button { if mine { askMine = true } else { posting = true } } label: {
+                    ring(feed.me, "Your story", new: mine && !Stories.shared.of(feed.me).isEmpty, tag: nil, plus: true)
                 }
                 .buttonStyle(.plain)
+                .confirmationDialog("Your story", isPresented: $askMine) {
+                    Button("Add to your story") { posting = true }
+                    Button("View your story") { story = StoryStart(people: [feed.me], at: 0) }
+                }
                 // only friends with something today, the ones you haven't watched first
                 let withStory = friends.people.filter { StoryView.has($0.id) }
                 let order = withStory.filter { !StoryView.seen($0.id) } + withStory.filter { StoryView.seen($0.id) }
@@ -276,6 +284,13 @@ struct FeedView: View {
                         ring(p.id, p.name, new: !StoryView.seen(p.id), tag: p.streak > 1 ? "\(p.streak)" : nil, plus: false)
                     }
                     .buttonStyle(.plain).accessibilityLabel("\(p.name)'s story")
+                }
+                // people you follow (not friends) who've posted a story: their snaps only, never their day
+                let followed = Follows.shared.following.filter { f in !friends.people.contains { $0.id == f } && !Stories.shared.of(f).isEmpty }
+                ForEach(followed.indices, id: \.self) { i in
+                    let f = followed[i]
+                    Button { story = StoryStart(people: followed, at: i) } label: { ring(f, Feed.shared.name(f), new: Stories.shared.unwatched(f), tag: nil, plus: false) }
+                        .buttonStyle(.plain).accessibilityLabel("\(Feed.shared.name(f))'s story")
                 }
             }
             .padding(.horizontal, 16).padding(.vertical, 10)

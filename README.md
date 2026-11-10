@@ -580,6 +580,10 @@ run `supabase/profiles_messages.sql` once in the SQL Editor and redeploy `push` 
 Followers (one-way; private profiles approve each one), blocking, and Explore (public profiles' posts): run
 `supabase/followers_explore.sql` once in the SQL Editor and redeploy `push` (for follow notifications).
 
+Stories people post (a photo or a video up to 30 seconds, for 24 hours, with text and food stickers; Close
+friends or Your story; who's seen each one): run `supabase/stories.sql` once. Videos go in the `photos` bucket as
+mp4: if its allowed types are limited to images, add `video/mp4` (Storage → photos → Edit bucket).
+
 ## Macros
 
 Everything carries protein, carbs and fat where they're known: the built-in food
