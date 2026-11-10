@@ -355,61 +355,46 @@ struct EditProfileView: View {
                                         .frame(width: 32, height: 32).background(Theme.accent, in: Circle())
                                         .overlay(Circle().stroke(Color(.secondarySystemGroupedBackground), lineWidth: 3))
                                 }
+                                .frame(maxWidth: .infinity)
+                                .overlay(alignment: .bottom) { Text("Edit picture").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accent).offset(y: 30) }
+                                .padding(.bottom, 30)
                         }
                         .accessibilityLabel("Change your photo")
-                        .padding(.vertical, 6)
+                        .padding(.top, 6)
                         Spacer()
                     }
                 }
                 Section {
-                    TextField("Name", text: $name)
-                    HStack(spacing: 2) {
-                        Text("@").foregroundStyle(.secondary)
-                        TextField("username", text: $username).textInputAutocapitalization(.never).autocorrectionDisabled()
-                            .onChange(of: username) { _, u in let c = Profiles.clean(u); if c != u { username = c } }
-                    }
-                } footer: {
-                    if taken { Text("That @name is taken.").foregroundStyle(Theme.warn) }
-                    else { Text("3 to 20 letters, numbers, dots or underscores. Friends can find you by it.") }
-                }
-                Section {
-                    TextField("Founder of Cheat Days, Personal trainer…", text: $label)
-                        .onChange(of: label) { _, l in if l.count > 30 { label = String(l.prefix(30)) } }
-                    Flow { ForEach(Self.labels.filter { $0 != label }, id: \.self) { s in Chip(text: s, on: false) { label = s } } }
-                } header: { Text("Label") } footer: { Text("In grey under your name, like Instagram's. Pick one or write your own.") }
-                if !(profiles.mine?.honors ?? []).isEmpty {
-                    Section {
-                        let mine = (profiles.mine?.honors ?? []).compactMap(Honor.find)
-                        Flow { ForEach(mine) { h in HonorText(honor: h).padding(.trailing, 8) } }
-                        Picker("Beside my name", selection: $topHonor) {
-                            ForEach(mine) { h in Text(h.title).tag(h.id) }
-                        }
-                        Toggle("Show my tags", isOn: $showHonors)
-                    } header: { Text("Tags") } footer: { Text("Tags are given, not chosen: Founder, Alpha, First 100 and the rest. Pick which one shows by your name.") }
-                }
-                Section("Bio") {
-                    TextField("A line about you", text: $bio, axis: .vertical).lineLimit(2...4)
-                        .onChange(of: bio) { _, b in if b.count > 150 { bio = String(b.prefix(150)) } }
-                }
-                Section {
-                    // the ones pinned, each with a minus; then a page of everything earned to pick from
-                    let pins = pinned.compactMap { pid in Badge.all.first { $0.id == pid } }
-                    if pins.isEmpty { Text("None pinned yet.").foregroundStyle(.secondary) }
-                    ForEach(pins, id: \.id) { b in
-                        HStack(spacing: 12) {
-                            BadgeCoin(badge: b, size: 36)
-                            Text(b.name)
-                            Spacer()
-                            Button { withAnimation { pinned.removeAll { $0 == b.id } } } label: { Image(systemName: "minus.circle.fill").foregroundStyle(.red) }
-                                .buttonStyle(.borderless).accessibilityLabel("Unpin \(b.name)")
+                    NavigationLink { FieldPage(title: "Name", text: $name, placeholder: "Your name", limit: 30) } label: { row("Name", name) }
+                    NavigationLink {
+                        FieldPage(title: "Username", text: $username, placeholder: "username", limit: 20, prefix: "@", clean: Profiles.clean,
+                                  footer: "3 to 20 letters, numbers, dots or underscores. Friends can find you by it.")
+                    } label: { row("Username", username.isEmpty ? "" : "@" + username) }
+                    NavigationLink {
+                        FieldPage(title: "Label", text: $label, placeholder: "Founder of Cheat Days, Personal trainer…", limit: 30, chips: Self.labels,
+                                  footer: "In grey under your name, like Instagram's.")
+                    } label: { row("Label", label) }
+                    NavigationLink { FieldPage(title: "Bio", text: $bio, placeholder: "A line about you", limit: 150, lines: true) } label: { row("Bio", bio) }
+                } footer: { if taken { Text("That @name is taken.").foregroundStyle(Theme.warn) } }
+                Section("On your profile") {
+                    let mine = (profiles.mine?.honors ?? []).compactMap(Honor.find)
+                    if !mine.isEmpty {
+                        NavigationLink { HonorPickPage(mine: mine, top: $topHonor, show: $showHonors) } label: {
+                            HStack {
+                                Text("Your tag").frame(width: 96, alignment: .leading)
+                                if showHonors, let h = mine.first(where: { $0.id == topHonor }) ?? mine.first { HonorText(honor: h) } else { Text("Hidden").foregroundStyle(.secondary) }
+                                Spacer(minLength: 0)
+                            }
                         }
                     }
-                    NavigationLink { PinBadgesView(pinned: $pinned) } label: { Label(pins.isEmpty ? "Choose badges" : "Change badges", systemImage: "pin") }
-                } header: { Text("Pinned badges") } footer: { Text("Up to 4, on your profile.") }
+                    NavigationLink { PinBadgesView(pinned: $pinned) } label: { row("Badges", pinned.isEmpty ? "None pinned" : "\(pinned.count) pinned", quiet: true) }
+                }
                 Section {
                     Toggle("Private profile", isOn: $isPrivate)
-                } footer: { Text(isPrivate ? "People ask to follow you, and you say yes or no. Friends see your day and posts either way." : "Anyone can follow you and see your posts and badges, and they can show on Explore. Your day, week and food log stay friends only.") }
-                Section { Toggle("Friends see my week", isOn: $showWeek) } footer: { Text("The seven dots for on budget or over, on your profile. Messages are friends only.") }
+                    Toggle("Friends see my week", isOn: $showWeek)
+                } header: { Text("Privacy") } footer: {
+                    Text(isPrivate ? "People ask to follow you. Your food log is always friends only." : "Anyone can follow you and see your posts. Your food log is always friends only.")
+                }
                 if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn) }
             }
             .navigationTitle("Edit profile").navigationBarTitleDisplayMode(.inline)
@@ -429,6 +414,15 @@ struct EditProfileView: View {
             .onChange(of: picked) { _, item in Task { if let d = try? await item?.loadTransferable(type: Data.self), let img = UIImage(data: d) { await photo(img) } } }
             .fullScreenCover(isPresented: $camera) { CameraPicker { img in camera = false; if let img { DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { Task { await photo(img) } } } }.ignoresSafeArea() }
             .fullScreenCover(item: $framing) { box in AvatarCropView(image: box.image) { out in framing = nil; if let out { Task { await upload(out) } } } }
+        }
+    }
+
+    /// One row: what it is, then what it's set to (grey when it's empty).
+    private func row(_ k: String, _ v: String, quiet: Bool = false) -> some View {
+        HStack {
+            Text(k).frame(width: 96, alignment: .leading)
+            Text(v.isEmpty ? "Add" : v).foregroundStyle(v.isEmpty || quiet ? .secondary : .primary).lineLimit(1)
+            Spacer(minLength: 0)
         }
     }
 
@@ -776,5 +770,80 @@ struct PinBadgesView: View {
         }
         .background(Theme.bg)
         .navigationTitle("Pin badges").navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// One thing to type, on its own page from Edit profile: the box, how many letters are left, and for a label the
+/// ready-made ones to pick.
+struct FieldPage: View {
+    let title: String
+    @Binding var text: String
+    var placeholder = ""
+    var limit = 30
+    var prefix = ""
+    var clean: ((String) -> String)? = nil
+    var chips: [String] = []
+    var lines = false
+    var footer = ""
+    @FocusState private var on: Bool
+
+    var body: some View {
+        Form {
+            Section {
+                HStack(spacing: 2) {
+                    if !prefix.isEmpty { Text(prefix).foregroundStyle(.secondary) }
+                    TextField(placeholder, text: $text, axis: lines ? .vertical : .horizontal).lineLimit(lines ? 3...6 : 1...1).focused($on)
+                        .textInputAutocapitalization(prefix.isEmpty ? .sentences : .never).autocorrectionDisabled(!prefix.isEmpty)
+                        .onChange(of: text) { _, t in
+                            var t2 = clean?(t) ?? t
+                            if t2.count > limit { t2 = String(t2.prefix(limit)) }
+                            if t2 != t { text = t2 }
+                        }
+                }
+            } footer: {
+                HStack(alignment: .top) {
+                    Text(footer)
+                    Spacer()
+                    Text("\(text.count) / \(limit)").monospacedDigit()
+                }
+            }
+            if !chips.isEmpty {
+                Section("Or pick one") {
+                    Flow { ForEach(chips, id: \.self) { c in Chip(text: c, on: c == text) { text = c } } }
+                }
+            }
+        }
+        .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
+        .onAppear { on = true }
+    }
+}
+
+/// Which of your tags shows by your name, or none.
+struct HonorPickPage: View {
+    let mine: [Honor]
+    @Binding var top: String
+    @Binding var show: Bool
+
+    var body: some View {
+        Form {
+            Section {
+                ForEach(mine) { h in
+                    Button { top = h.id; show = true } label: {
+                        HStack {
+                            HonorText(honor: h)
+                            Text(h.what).font(.subheadline).foregroundStyle(.secondary)
+                            Spacer()
+                            if show && top == h.id { Image(systemName: "checkmark").foregroundStyle(Theme.accent) }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+                Button { show = false } label: {
+                    HStack { Text("Don't show a tag"); Spacer(); if !show { Image(systemName: "checkmark").foregroundStyle(Theme.accent) } }
+                }
+                .buttonStyle(.plain)
+            } footer: { Text("Tags are given, not chosen. Pick which one shows by your name.") }
+        }
+        .navigationTitle("Your tag").navigationBarTitleDisplayMode(.inline)
     }
 }

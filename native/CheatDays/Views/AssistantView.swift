@@ -68,8 +68,8 @@ struct AssistantView: View {
                         }
                         if turns.isEmpty {
                             HStack(spacing: 10) {
-                                Button { typing = false; camera = true } label: { Label("Snap a plate", systemImage: "camera.fill").lineLimit(1).frame(maxWidth: .infinity) }
-                                Button { typing = false; library = true } label: { Label("Photos", systemImage: "photo.on.rectangle").lineLimit(1).frame(maxWidth: .infinity) }
+                                Button { openPhotos(camera: true) } label: { Label("Snap a plate", systemImage: "camera.fill").lineLimit(1).frame(maxWidth: .infinity) }
+                                Button { openPhotos(camera: false) } label: { Label("Photos", systemImage: "photo.on.rectangle").lineLimit(1).frame(maxWidth: .infinity) }
                             }
                             .buttonStyle(.bordered).buttonBorderShape(.roundedRectangle(radius: 14)).controlSize(.large)
                         }
@@ -950,8 +950,8 @@ struct AssistantView: View {
                 .padding(.horizontal, 8).padding(.top, 4)
             HStack(spacing: 8) {
                 Menu {
-                    Button { typing = false; camera = true } label: { Label("Take a photo", systemImage: "camera") }
-                    Button { typing = false; library = true } label: { Label("Choose photos", systemImage: "photo.on.rectangle") }
+                    Button { openPhotos(camera: true) } label: { Label("Take a photo", systemImage: "camera") }
+                    Button { openPhotos(camera: false) } label: { Label("Choose photos", systemImage: "photo.on.rectangle") }
                 } label: { roundButton("plus") }
                 .accessibilityLabel("Add a photo")
                 if speech.listening {
@@ -986,6 +986,15 @@ struct AssistantView: View {
         .padding(.horizontal, 10).padding(.top, 6).padding(.bottom, 8)
         .composerBar()
         .onDisappear { speech.stop() }
+    }
+
+    /// The camera or the photo library, once the keyboard's down: opened while it was still sliding away, the first
+    /// tap or two did nothing.
+    private func openPhotos(camera cam: Bool) {
+        let wasTyping = typing
+        typing = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + (wasTyping ? 0.35 : 0.05)) { if cam { camera = true } else { library = true } }
     }
 
     private func roundButton(_ symbol: String) -> some View {
@@ -1254,7 +1263,7 @@ private struct PhotoViewer: View {
 /// The chat box (the assistant's and Plan a meal's): on iOS 26 it floats in the same glass as the keyboard; before that, a material bar.
 extension View {
     @ViewBuilder func composerGlass(_ shape: some Shape) -> some View {
-        if #available(iOS 26, *) { glassEffect(.regular.interactive(), in: shape) }
+        if #available(iOS 26, *) { glassEffect(.regular, in: shape) }
         else { background(Color(.secondarySystemBackground), in: shape) }
     }
     @ViewBuilder func composerBar() -> some View {
