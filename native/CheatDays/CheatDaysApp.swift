@@ -607,9 +607,7 @@ enum TabGlyph {
     @MainActor private static var made: [String: UIImage] = [:]
     @MainActor static func make(_ name: String, height: CGFloat = 26) -> UIImage {
         if let m = made[name] { return m }
-        // the fork and knife are thin lines: drawn heavier so they weigh the same as the solid dumbbell and people
-        let weight: UIImage.SymbolWeight = name == "fork.knife" ? .black : .semibold
-        guard let sym = UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: 60, weight: weight)) else { return UIImage() }
+        guard let sym = UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: 60, weight: .semibold)) else { return UIImage() }
         let k = height / sym.size.height, size = CGSize(width: (sym.size.width * k).rounded(), height: height)
         // the fork and knife are thin lines even at the heaviest weight: drawn again a little to each side, so the
         // strokes thicken and it weighs as much as the solid dumbbell and people beside it
