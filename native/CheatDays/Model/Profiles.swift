@@ -79,7 +79,7 @@ final class Profiles {
         iconFor = src
         guard src.hasPrefix("http"), let url = URL(string: src), let (d, _) = try? await URLSession.shared.data(from: url), let img = UIImage(data: d) else { meIcon = nil; meIconOn = nil; return }
         func icon(ring: Bool) -> UIImage {
-            let side: CGFloat = 26, inset: CGFloat = ring ? 3.5 : 1.5
+            let side: CGFloat = 30, inset: CGFloat = ring ? 3.5 : 1.5   // as tall as the other tab icons
             return UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { ctx in
                 let photo = CGRect(x: inset, y: inset, width: side - inset * 2, height: side - inset * 2)
                 ctx.cgContext.saveGState()
