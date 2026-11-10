@@ -252,21 +252,22 @@ struct Honor: Identifiable {
               colors: [Color(red: 0.55, green: 0.77, blue: 1), Color(red: 0.77, green: 0.63, blue: 1)], ink: Color(red: 0.04, green: 0.05, blue: 0.07)),
         Honor(id: "alpha", title: "Alpha", icon: "🧪", what: "Tested the very first builds", how: "Before the beta. No more will be given.", rarity: "Rare", rank: 2,
               colors: [Color(red: 0.36, green: 0.16, blue: 0.53), Color(red: 0.61, green: 0.3, blue: 0.79)], ink: .white),
-        Honor(id: "first100", title: "First 100", icon: "💯", what: "One of the first 100 to join", how: "Counted by when the account was made.", rarity: "Rare", rank: 3,
+        Honor(id: "first100", title: "#100", icon: "💯", what: "One of the first 100 to join", how: "Counted by when the account was made.", rarity: "Rare", rank: 3,
               colors: [Color(red: 1, green: 0.6, blue: 0.55), Color(red: 1, green: 0.42, blue: 0.53), Color(red: 1, green: 0.6, blue: 0.67)], ink: Color(red: 0.16, green: 0.05, blue: 0.09)),
         Honor(id: "beta", title: "Beta", icon: "🧭", what: "Tested Cheat Days before launch", how: "Joined during the beta.", rarity: "Uncommon", rank: 4,
               colors: [Color(red: 0.36, green: 0.78, blue: 1), Color(red: 0.55, green: 0.94, blue: 0.88)], ink: Color(red: 0.02, green: 0.13, blue: 0.2)),
-        Honor(id: "first1000", title: "First 1,000", icon: "🎖️", what: "One of the first 1,000 to join", how: "The 900 after the first 100.", rarity: "Uncommon", rank: 5,
+        Honor(id: "first1000", title: "#1000", icon: "🎖️", what: "One of the first 1,000 to join", how: "The 900 after the first 100.", rarity: "Uncommon", rank: 5,
               colors: [Color(red: 0.36, green: 0.4, blue: 0.47), Color(red: 0.54, green: 0.58, blue: 0.66)], ink: .white),
     ]
     static func find(_ id: String) -> Honor? { all.first { $0.id == id } }
 }
 
-/// A tag as a line of text in its colours, where Instagram has its grey "Artist": no pill.
+/// A tag as a line of text in its colours, where Instagram has its grey "Artist": small spaced capitals, no pill.
 struct HonorText: View {
     let honor: Honor
     var body: some View {
-        Text(honor.title).font(.subheadline.weight(.bold)).foregroundStyle(honor.shade).lineLimit(1).fixedSize()
+        Text(honor.title.uppercased()).font(.system(size: 12, weight: .heavy)).tracking(1.6)
+            .foregroundStyle(honor.shade).lineLimit(1).fixedSize().accessibilityLabel(honor.title)
     }
 }
 
