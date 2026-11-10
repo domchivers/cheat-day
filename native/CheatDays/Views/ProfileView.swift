@@ -15,6 +15,7 @@ struct ProfileView: View {
     @State private var openAt: Int?   // a post tapped in the grid: the posts from there, as on the feed
     @State private var chatting = false
     @State private var friendsOnly = false   // Message on someone who isn't a friend yet
+    @State private var listing: String?   // "followers" or "following", open
     @State private var reporting = false
     @State private var removing = false
     @State private var showCode = false
@@ -96,6 +97,7 @@ struct ProfileView: View {
             FeedView(only: posts, startAt: posts.indices.contains(i) ? str(posts[i]["id"]) : nil).navigationTitle("Posts").navigationBarTitleDisplayMode(.inline)
         }
         .navigationDestination(isPresented: $chatting) { ChatView(friend: id) }
+        .navigationDestination(item: $listing) { which in FollowListView(id: id, which: which) }
         .alert("Messages are for friends", isPresented: $friendsOnly) { Button("OK", role: .cancel) {} } message: {
             Text("Scan each other's code in Add a friend, then you can message.")
         }
@@ -133,8 +135,11 @@ struct ProfileView: View {
                     .onTapGesture { if isMe { editing = true } }
                 HStack {
                     count(locked ? "–" : "\(posts.count)", posts.count == 1 ? "post" : "posts")
+                    // tap either for the people
                     count("\(counts?.followers ?? 0)", counts?.followers == 1 ? "follower" : "followers")
+                        .contentShape(Rectangle()).onTapGesture { if !locked { listing = "followers" } }
                     count("\(counts?.following ?? 0)", "following")
+                        .contentShape(Rectangle()).onTapGesture { if !locked { listing = "following" } }
                 }
             }
             HStack(spacing: 8) {
@@ -874,5 +879,37 @@ struct HonorPickPage: View {
             } footer: { Text("Tags are given, not chosen. Pick which one shows by your name.") }
         }
         .navigationTitle("Your tag").navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// Someone's followers, or who they follow: a tap opens that person's profile.
+struct FollowListView: View {
+    let id: String
+    let which: String
+    @State private var ids: [String]?
+    private var profiles: Profiles { Profiles.shared }
+
+    var body: some View {
+        List {
+            if let ids {
+                if ids.isEmpty { Text(which == "followers" ? "No followers yet." : "Not following anyone yet.").foregroundStyle(.secondary) }
+                ForEach(ids, id: \.self) { u in
+                    NavigationLink { ProfileView(id: u) } label: {
+                        HStack(spacing: 12) {
+                            Avatar(id: u, size: 44)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(profiles.all[u]?.name ?? "").font(.subheadline.weight(.bold))
+                                if !profiles.handle(u).isEmpty { Text(profiles.handle(u)).font(.caption).foregroundStyle(.secondary) }
+                            }
+                        }
+                    }
+                }
+            } else {
+                ProgressView().frame(maxWidth: .infinity)
+            }
+        }
+        .navigationTitle(which == "followers" ? "Followers" : "Following").navigationBarTitleDisplayMode(.inline)
+        .task { ids = await Follows.shared.list(id, which) }
+        .refreshable { ids = await Follows.shared.list(id, which) }
     }
 }

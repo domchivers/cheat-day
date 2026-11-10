@@ -84,6 +84,14 @@ final class Follows {
         return (Int(num(r["followers"]) ?? 0), Int(num(r["following"]) ?? 0))
     }
 
+    /// Someone's followers or who they follow ("followers" or "following"), newest first.
+    func list(_ id: String, _ which: String) async -> [String] {
+        let got = (try? await rows("/rest/v1/rpc/follow_list", method: "POST", body: ["u": id, "which": which])) ?? []
+        let ids = got.map { str($0["user_id"]) }.filter { !$0.isEmpty }
+        await Profiles.shared.load(ids)
+        return ids
+    }
+
     /// People by @name or name.
     func search(_ q: String) async -> [Profiles.Profile] {
         let t = q.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "@", with: "")
