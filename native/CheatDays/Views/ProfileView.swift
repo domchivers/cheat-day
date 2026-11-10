@@ -51,9 +51,10 @@ struct ProfileView: View {
                     .frame(maxWidth: .infinity).padding(.top, 44)
                 } else {
                 // only posts on someone else's profile: no tabs to choose between
-                if person != nil || isMe {
+                if person != nil || isMe || posts.contains(where: { Feed.video($0) != nil }) {
                 Picker("Show", selection: $tab) {
                     Image(systemName: "square.grid.3x3").tag(0)
+                    if isMe || posts.contains(where: { Feed.video($0) != nil }) { Image(systemName: "play.rectangle").tag(4) }   // videos, like reels
                     // no badges tab (pinned badges show under the bio); Progress is yours alone
                     if person != nil { Image(systemName: "fork.knife").tag(2) }   // their food today, like the Today tab
                     if isMe { Image(systemName: "chart.line.uptrend.xyaxis").tag(3) }   // Progress: only you see it
@@ -64,7 +65,8 @@ struct ProfileView: View {
                 case 1: badges.padding(.horizontal, 16)
                 case 2: today.padding(.horizontal, 16)
                 case 3: ProgressDashboard().padding(.horizontal, 16).padding(.top, 4)
-                default: grid
+                case 4: grid(posts.filter { Feed.video($0) != nil }, empty: isMe ? "Your videos show here. Tap ＋ on your photo, then Post, and pick a video." : "No videos yet.")
+                default: grid(posts, empty: isMe ? "Your posts show here. Tap ＋ on your photo to share one." : "No posts yet.")
                 }
                 }
             }
@@ -283,15 +285,14 @@ struct ProfileView: View {
 
     // MARK: the tabs
 
-    private var grid: some View {
+    private func grid(_ shown: [JSON], empty: String) -> some View {
         let cols = Array(repeating: GridItem(.flexible(), spacing: 2), count: 3)
         return Group {
-            if posts.isEmpty {
-                Text(isMe ? "Your posts show here. Tap ＋ on your photo to share one." : "No posts yet.")
-                    .font(.subheadline).foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.top, 30)
+            if shown.isEmpty {
+                Text(empty).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(.top, 30).padding(.horizontal, 24)
             } else {
                 LazyVGrid(columns: cols, spacing: 2) {
-                    ForEach(keyed(posts)) { e in cell(e.item) }
+                    ForEach(keyed(shown)) { e in cell(e.item) }
                 }
             }
         }
@@ -313,6 +314,9 @@ struct ProfileView: View {
                     }
                 }
                 .clipped()
+                .overlay(alignment: .topTrailing) {
+                    if Feed.video(post) != nil { Image(systemName: "play.fill").font(.system(size: 12, weight: .bold)).foregroundStyle(.white).shadow(radius: 3).padding(7) }
+                }
                 .overlay(alignment: .bottomLeading) {
                     if !label.isEmpty {
                         Text(label).font(.system(size: 10, weight: .heavy)).foregroundStyle(.white)

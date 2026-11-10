@@ -1,5 +1,7 @@
+import AVFoundation
 import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The friends feed: posts, reactions and comments, from the same tables as the website.
 @Observable @MainActor
@@ -66,6 +68,12 @@ final class Feed {
 
     /// A post with a picture: an address, or (posts from the website) the picture kept in the row as data:image.
     /// The profile grid only knew addresses, so the ramen showed as an icon there and as a photo on the feed.
+    /// A video post's clip (its photo is the first frame, for grids and while it loads).
+    static func video(_ p: JSON) -> URL? {
+        let v = str(dict(p["extra"])["video"])
+        return v.hasPrefix("http") ? URL(string: v) : nil
+    }
+
     static func hasPhoto(_ p: JSON) -> Bool { let s = str(p["photo"]); return s.hasPrefix("http") || s.hasPrefix("data:image") }
 
     func name(_ id: String) -> String {
@@ -140,9 +148,14 @@ final class Feed {
         catch { self.error = error.localizedDescription }
     }
 
-    func post(_ row: JSON, photo: UIImage?) async throws {
+    func post(_ row: JSON, photo: UIImage?, video: URL? = nil) async throws {
         var r = row
         r["owner"] = me
+        // a video: up to 30 seconds as mp4 into the same bucket as stories' videos; its first frame is the photo
+        if let video {
+            let (mp4, _) = try await Stories.compress(video)
+            var x = dict(r["extra"]); x["video"] = try await api.upload(mp4, ext: "mp4", type: "video/mp4"); r["extra"] = x
+        }
         if let photo, let jpeg = Self.prepare(photo) { r["photo"] = (try? await api.uploadPhoto(jpeg)) ?? NSNull() }
         // a workout that's already on the feed (posted when it finished): add the photo and caption to that post instead
         if str(r["kind"]) == "workout", let existing = await sameWorkout(str(r["name"])) {
@@ -451,7 +464,9 @@ struct FeedView: View {
     private func photoView(_ p: JSON) -> some View {
         let n = numbers(p)
         return FeedPhoto(src: str(p["photo"]), fill: true)
-            .frame(maxWidth: .infinity).frame(height: 400).clipped()
+            .frame(maxWidth: .infinity).frame(height: 400)
+            .overlay { if let v = Feed.video(p) { FeedVideo(url: v) } }   // under the name and numbers
+            .clipped()
             .contentShape(Rectangle())
             .overlay(alignment: .bottomLeading) {
                 HStack(spacing: 8) {
@@ -757,6 +772,26 @@ struct SharePostSheet: View {
 
 
 /// Share something: one of today's foods, a saved meal or today's workout, with a caption and an optional photo.
+/// A video post on the feed: plays on a loop while it's on screen, muted until the speaker's tapped.
+struct FeedVideo: View {
+    let url: URL
+    @State private var muted = true
+    @State private var showing = false
+    var body: some View {
+        LoopingVideo(url: url, paused: !showing, muted: muted)
+            .allowsHitTesting(false)
+            .onAppear { showing = true }
+            .onDisappear { showing = false }
+            .overlay(alignment: .topTrailing) {
+                Button { muted.toggle() } label: {
+                    Image(systemName: muted ? "speaker.slash.fill" : "speaker.wave.2.fill").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                        .frame(width: 32, height: 32).background(.black.opacity(0.45), in: Circle())
+                }
+                .buttonStyle(.plain).padding(10).accessibilityLabel(muted ? "Sound on" : "Sound off")
+            }
+    }
+}
+
 struct ComposeSheet: View {
     var preset: JSON? = nil
     @Environment(\.dismiss) private var dismiss
@@ -765,6 +800,7 @@ struct ComposeSheet: View {
     @State private var editing: EditBox?
     @State private var source: UIImage?   // the photo before editing, to edit again from
     @State private var photo: UIImage?
+    @State private var movie: URL?   // a video post: the clip; photo is its first frame
     @State private var picked: PhotosPickerItem?
     @State private var camera = false
     @State private var busy = false
@@ -811,14 +847,17 @@ struct ComposeSheet: View {
                         TextField("Say something about it", text: $caption, axis: .vertical).lineLimit(2...5)
                     }
                     Section {
-                        if let photo {
+                        if let movie {
+                            LoopingVideo(url: movie, muted: true).frame(height: 320).frame(maxWidth: .infinity).clipShape(RoundedRectangle(cornerRadius: 14))
+                            Text("Up to the first 30 seconds are posted.").font(.caption).foregroundStyle(.secondary)
+                        } else if let photo {
                             Image(uiImage: photo).resizable().scaledToFit().frame(maxHeight: 320).frame(maxWidth: .infinity).clipShape(RoundedRectangle(cornerRadius: 14))
                             Button { editing = EditBox(image: source ?? photo) } label: { Label("Edit photo", systemImage: "crop.rotate") }.buttonStyle(.borderless)
                         }
                         HStack(spacing: 18) {
                             Button { camera = true } label: { Label(photo == nil ? "Snap a pic" : "Retake", systemImage: "camera.fill") }.buttonStyle(.borderless)
-                            PhotosPicker(selection: $picked, matching: .images) { Label("Library", systemImage: "photo") }.buttonStyle(.borderless)
-                            if photo != nil { Button("Remove", role: .destructive) { photo = nil }.buttonStyle(.borderless) }
+                            PhotosPicker(selection: $picked, matching: .any(of: [.images, .videos])) { Label("Library", systemImage: "photo") }.buttonStyle(.borderless)
+                            if photo != nil || movie != nil { Button("Remove", role: .destructive) { photo = nil; movie = nil }.buttonStyle(.borderless) }
                         }
                     }
                     if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn) }
@@ -858,12 +897,31 @@ struct ComposeSheet: View {
                 if what != nil { ToolbarItem(placement: .topBarTrailing) { Button(busy ? "Posting…" : "Post") { post() }.fontWeight(.bold).disabled(busy) } }
             }
             .fullScreenCover(isPresented: $camera) { CameraPicker { img in camera = false; if let img { DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { editing = EditBox(image: img) } } }.ignoresSafeArea() }
-            .onChange(of: picked) { _, item in Task { if let d = try? await item?.loadTransferable(type: Data.self), let img = UIImage(data: d) { editing = EditBox(image: img) } } }
+            .onChange(of: picked) { _, item in
+                Task {
+                    guard let item else { return }
+                    // a video: kept as it is, with its first frame as the photo
+                    if item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }), let m = try? await item.loadTransferable(type: PickedMovie.self) {
+                        movie = m.url; photo = await Self.firstFrame(m.url); source = nil
+                    } else if let d = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: d) {
+                        movie = nil; editing = EditBox(image: img)
+                    }
+                }
+            }
             // the story editor, in the feed's 4:5: text, stickers, drawing and filters baked into the photo
             .fullScreenCover(item: $editing) { e in
                 StoryEditor(image: e.image, video: nil, aspect: 4.0 / 5.0, close: { editing = nil }, finish: { out in photo = out; source = e.image; editing = nil })
             }
         }
+    }
+
+    /// A video's first frame, the right way up.
+    static func firstFrame(_ url: URL) async -> UIImage? {
+        let g = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+        g.appliesPreferredTrackTransform = true
+        g.maximumSize = CGSize(width: 1440, height: 1440)
+        guard let (cg, _) = try? await g.image(at: .zero) else { return nil }
+        return UIImage(cgImage: cg)
     }
 
     private func pickRow(_ name: String, _ detail: String, tap: @escaping () -> Void) -> some View {
@@ -901,7 +959,7 @@ struct ComposeSheet: View {
         busy = true; problem = nil
         Task {
             defer { busy = false }
-            do { try await Feed.shared.post(row, photo: photo); dismiss() }
+            do { try await Feed.shared.post(row, photo: photo, video: movie); dismiss() }
             catch { problem = "Couldn't post: \(error.localizedDescription)" }
         }
     }
