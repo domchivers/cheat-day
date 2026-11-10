@@ -166,14 +166,20 @@ enum Assistant {
         // the best matches, not just the newest: a day of chicken questions pushed out the one chat where the boiled
         // weight (918 g down to 553 g) was given. More of the same words first, then weights they gave ("553g")
         func score(_ c: JSON) -> Int {
-            let mine = CheatDays.list(c["turns"]).filter { str($0["role"]) == "me" }.map { str($0["text"]).lowercased() }.joined(separator: " ")
-            let all = CheatDays.list(c["turns"]).map { str($0["text"]).lowercased() }.joined(separator: " ")
-            let hits = words.filter { all.contains($0) }.count
-            let grams = (try? NSRegularExpression(pattern: #"\d+(\.\d+)?\s?(g|kg|grams?)\b"#))?.numberOfMatches(in: mine, range: NSRange(mine.startIndex..., in: mine)) ?? 0
+            let turns: [JSON] = CheatDays.list(c["turns"])
+            let mine: String = turns.filter { str($0["role"]) == "me" }.map { str($0["text"]).lowercased() }.joined(separator: " ")
+            let all: String = turns.map { str($0["text"]).lowercased() }.joined(separator: " ")
+            let hits: Int = words.filter { all.contains($0) }.count
+            let grams: Int = (try? NSRegularExpression(pattern: #"\d+(\.\d+)?\s?(g|kg|grams?)\b"#))?.numberOfMatches(in: mine, range: NSRange(mine.startIndex..., in: mine)) ?? 0
             return hits * 10 + min(grams, 5)
         }
-        let about = week.enumerated().map { (i: $0.offset, c: $0.element, s: score($0.element)) }.filter { $0.s >= 10 }
-            .sorted { $0.s != $1.s ? $0.s > $1.s : $0.i < $1.i }.map(\.c)
+        var scored: [(i: Int, c: JSON, s: Int)] = []
+        for (i, c) in week.enumerated() {
+            let s = score(c)
+            if s >= 10 { scored.append((i: i, c: c, s: s)) }
+        }
+        scored.sort { (a, b) -> Bool in a.s != b.s ? a.s > b.s : a.i < b.i }
+        let about: [JSON] = scored.map { $0.c }
         let picked = about.isEmpty ? Array(week.prefix(2)) : Array(about.prefix(4))
         return picked.map { c -> String in
             let when = ISO.date(str(c["when"])).map { $0.formatted(.dateTime.weekday(.wide).hour().minute()) } ?? ""
