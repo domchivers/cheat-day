@@ -115,7 +115,7 @@ struct ProgressPage: View {
     private var chartCard: some View {
         let pts = points
         let vals = pts.map(\.trend) + pts.map(\.kg) + (goal.map { [$0] } ?? [])
-        let lo = vals.min() ?? 0, hi = vals.max() ?? 1, pad = max(0.4, (hi - lo) * 0.18)
+        let lo = vals.min() ?? 0, hi = vals.max() ?? 1, pad = max(0.5, (hi - lo) * 0.25)   // room above and below the line
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Your weight").font(.subheadline.weight(.bold))
@@ -147,10 +147,9 @@ struct ProgressPage: View {
                     }
                     // today: a white dot with a soft halo and the number above it
                     PointMark(x: .value("Day", last.date), y: .value("Trend", last.trend)).symbolSize(420).foregroundStyle(Theme.accent.opacity(0.22))
+                    // no number on it: the trend there is a touch off the scale's number in big type above, and two
+                    // different weights side by side looked like a mistake
                     PointMark(x: .value("Day", last.date), y: .value("Trend", last.trend)).symbolSize(70).foregroundStyle(.white)
-                        .annotation(position: .topLeading, spacing: 4) {
-                            Text(Fmt.kg(last.trend)).font(.footnote.weight(.bold)).foregroundStyle(.white)
-                        }
                 }
                 .chartYScale(domain: (lo - pad)...(hi + pad))
                 .chartYAxis(.hidden)
@@ -159,11 +158,13 @@ struct ProgressPage: View {
                         AxisValueLabel {
                             if let d = v.as(Date.self) {
                                 Text(Calendar.current.isDate(d, inSameDayAs: last.date) && last.id == store.today ? "Today" : d.formatted(.dateTime.day().month(.abbreviated)))
-                                    .font(.caption2).foregroundStyle(.tertiary)
+                                    .font(.caption2).foregroundStyle(.secondary)
                             }
                         }
                     }
                 }
+                // a little room at each end so the first weigh-in and today's dot (with its glow) aren't cut by the card
+                .chartXScale(range: .plotDimension(startPadding: 6, endPadding: 20))
                 .chartPlotStyle { $0.padding(.horizontal, 0) }
                 .frame(height: 170)
                 .animation(.snappy, value: range)
