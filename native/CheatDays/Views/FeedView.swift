@@ -243,7 +243,7 @@ struct FeedView: View {
     private func ring(_ letter: String, _ name: String, new: Bool, tag: String?, plus: Bool) -> some View {
         VStack(spacing: 5) {
             ZStack {
-                Circle().fill(new ? AnyShapeStyle(AngularGradient(colors: [Theme.accent, Theme.dinner, Theme.accent.opacity(0.6), Theme.accent], center: .center))
+                Circle().fill(new ? AnyShapeStyle(AngularGradient(colors: [Theme.accent, Theme.meal("Snacks"), Theme.meal("Breakfast"), Theme.accent], center: .center))
                                   : AnyShapeStyle(Color(.tertiarySystemFill)))
                 Circle().fill(Theme.hero).padding(3.5)
                 Text(letter).font(.title3.weight(.heavy)).foregroundStyle(Theme.accent)
