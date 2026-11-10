@@ -608,6 +608,8 @@ enum TabGlyph {
     @MainActor static func make(_ name: String, height: CGFloat = 30) -> UIImage {   // the fork and knife's own size in the bar
         if let m = made[name] { return m }
         guard let sym = UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: 60, weight: .semibold)) else { return UIImage() }
+        // the dumbbell is so wide that at full height it looked bigger than the rest
+        let height = name == "dumbbell.fill" ? height * 0.88 : height
         let k = height / sym.size.height, size = CGSize(width: (sym.size.width * k).rounded(), height: height)
         let out = UIGraphicsImageRenderer(size: size).image { _ in sym.withTintColor(.black).draw(in: CGRect(origin: .zero, size: size)) }
         .withRenderingMode(.alwaysTemplate)
