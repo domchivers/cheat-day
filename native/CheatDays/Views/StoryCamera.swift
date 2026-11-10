@@ -1,0 +1,409 @@
+import AVFoundation
+import Photos
+import PhotosUI
+import SwiftUI
+
+/// Adding to a story opens here, Instagram's way: the camera live and full screen. Tap the shutter for a photo, hold
+/// it to film (up to 30 seconds, a red ring filling; slide up while holding to zoom). Flash, flip (or double-tap),
+/// .5 / 1× / 2 and pinch to zoom. Your latest photo sits bottom left: it and a swipe up open your recent photos and
+/// videos. Aa starts a story that's just text on a colour.
+struct StoryCamera: View {
+    var captured: (UIImage?, URL?) -> Void
+    var close: () -> Void
+    @State private var cam = CameraRig()
+    @State private var recording = false
+    @State private var started: Date?
+    @State private var elapsed: Double = 0
+    @State private var pressing = false
+    @State private var zoomStart: CGFloat = 1
+    @State private var recents = false
+    @State private var picked: PhotosPickerItem?
+    @State private var library = false
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            VStack(spacing: 0) {
+                ZStack {
+                    if cam.denied {
+                        VStack(spacing: 12) {
+                            Image(systemName: "camera.fill").font(.largeTitle).foregroundStyle(.white.opacity(0.6))
+                            Text("Allow the camera in Settings to take photos and videos for your story.").font(.subheadline).foregroundStyle(.white.opacity(0.8))
+                                .multilineTextAlignment(.center).padding(.horizontal, 40)
+                            Button("Open Settings") { if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) } }.font(.headline)
+                        }
+                    } else {
+                        CameraPreview(session: cam.session)
+                            .gesture(MagnifyGesture().onChanged { m in cam.zoom(to: zoomStart * m.magnification) }.onEnded { _ in zoomStart = cam.zoomFactor })
+                            .onTapGesture(count: 2) { cam.flip() }
+                    }
+                    if recording {
+                        Text(String(format: "0:%02d", Int(elapsed))).font(.subheadline.weight(.heavy)).foregroundStyle(.white)
+                            .padding(.horizontal, 10).padding(.vertical, 4).background(Color.red, in: RoundedRectangle(cornerRadius: 8))
+                            .frame(maxHeight: .infinity, alignment: .top).padding(.top, 14)
+                    } else {
+                        controlsTop
+                    }
+                    VStack(spacing: 18) {
+                        Spacer()
+                        if !recording && !cam.denied { zoomButtons }
+                        shutter
+                    }
+                    .padding(.bottom, 22)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .gesture(DragGesture(minimumDistance: 40).onEnded { v in if v.translation.height < -60 && !recording { recents = true } })
+                bottomBar.frame(height: 92)
+            }
+        }
+        .statusBarHidden()
+        .task { await cam.start() }
+        .onDisappear { cam.stop() }
+        .sheet(isPresented: $recents) {
+            RecentMedia { img, url in recents = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { captured(img, url) } } more: {
+                recents = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { library = true }
+            }
+            .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
+        }
+        .photosPicker(isPresented: $library, selection: $picked, matching: .any(of: [.images, .videos]))
+        .onChange(of: picked) { _, item in Task { await load(item) } }
+        .onChange(of: cam.finishedMovie) { _, url in if let url { captured(nil, url) } }
+        .onChange(of: cam.photo) { _, img in if let img { captured(img, nil) } }
+    }
+
+    private var controlsTop: some View {
+        VStack {
+            HStack {
+                Button { close() } label: { Image(systemName: "xmark").font(.system(size: 22, weight: .semibold)).foregroundStyle(.white).padding(12) }
+                    .accessibilityLabel("Close")
+                Spacer()
+                Button { cam.cycleFlash() } label: {
+                    Image(systemName: cam.flash == .on ? "bolt.fill" : cam.flash == .auto ? "bolt.badge.automatic.fill" : "bolt.slash.fill")
+                        .font(.system(size: 20, weight: .semibold)).foregroundStyle(cam.flash == .on ? .yellow : .white).padding(12)
+                }
+                .accessibilityLabel("Flash")
+            }
+            HStack {
+                Spacer()
+                Button { captured(Self.colourCard(), nil) } label: {
+                    Text("Aa").font(.system(size: 18, weight: .heavy)).foregroundStyle(.white).frame(width: 44, height: 44).background(.black.opacity(0.35), in: Circle())
+                }
+                .accessibilityLabel("A text story")
+                .padding(.trailing, 12)
+            }
+            Spacer()
+        }
+        .padding(.top, 8)
+    }
+
+    private var zoomButtons: some View {
+        HStack(spacing: 8) {
+            ForEach(cam.stops, id: \.self) { z in
+                let on = abs(cam.shownZoom - z) < 0.05 || (z == cam.stops.last && cam.shownZoom > z)
+                Button { withAnimation(.snappy) { cam.zoom(shown: z) }; zoomStart = cam.zoomFactor } label: {
+                    Text(on ? (z < 1 ? ".5×" : "\(Int(z))×") : (z < 1 ? ".5" : "\(Int(z))"))
+                        .font(.system(size: on ? 13 : 11, weight: .heavy)).foregroundStyle(on ? .yellow : .white)
+                        .frame(width: on ? 40 : 32, height: on ? 40 : 32).background(.black.opacity(0.45), in: Circle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    /// Tap for a photo; hold for a video, slide up while holding to zoom in.
+    private var shutter: some View {
+        ZStack {
+            Circle().stroke(.white.opacity(recording ? 0.25 : 1), lineWidth: 6).frame(width: recording ? 96 : 82, height: recording ? 96 : 82)
+            if recording {
+                Circle().trim(from: 0, to: elapsed / 30).stroke(Color.red, style: StrokeStyle(lineWidth: 6, lineCap: .round)).rotationEffect(.degrees(-90))
+                    .frame(width: 96, height: 96)
+                RoundedRectangle(cornerRadius: 10).fill(Color.red).frame(width: 40, height: 40)
+            } else {
+                Circle().fill(.white).frame(width: pressing ? 60 : 66, height: pressing ? 60 : 66)
+            }
+        }
+        .animation(.snappy(duration: 0.2), value: recording)
+        .contentShape(Circle().inset(by: -10))
+        .gesture(DragGesture(minimumDistance: 0)
+            .onChanged { v in
+                if !pressing {
+                    pressing = true
+                    let at = Date(); started = at
+                    // held a moment: it's a video
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        guard pressing, started == at, !recording else { return }
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        cam.startMovie(); recording = true; elapsed = 0; zoomStart = cam.zoomFactor
+                        tick(at)
+                    }
+                }
+                if recording { cam.zoom(to: zoomStart * max(1, 1 + (-v.translation.height) / 120)) }
+            }
+            .onEnded { _ in
+                pressing = false
+                if recording { cam.stopMovie(); recording = false }
+                else if !cam.denied { UIImpactFeedbackGenerator(style: .light).impactOccurred(); cam.takePhoto() }
+            })
+        .accessibilityLabel("Shutter").accessibilityHint("Tap for a photo, hold to film")
+    }
+
+    private func tick(_ at: Date) {
+        guard recording, started == at else { return }
+        elapsed = Date().timeIntervalSince(at)
+        if elapsed >= 30 { cam.stopMovie(); recording = false; pressing = false; return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { tick(at) }
+    }
+
+    private var bottomBar: some View {
+        HStack {
+            Button { recents = true } label: {
+                Group {
+                    if let t = cam.latest { Image(uiImage: t).resizable().scaledToFill() } else { Image(systemName: "photo.on.rectangle").foregroundStyle(.white).font(.title3) }
+                }
+                .frame(width: 44, height: 44).clipShape(RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).stroke(.white, lineWidth: 2))
+            }
+            .accessibilityLabel("Your photos")
+            Spacer()
+            Text("STORY").font(.subheadline.weight(.heavy)).foregroundStyle(.white)
+            Spacer()
+            Button { cam.flip() } label: {
+                Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 19, weight: .semibold)).foregroundStyle(.white)
+                    .frame(width: 44, height: 44).background(Color(white: 0.15), in: Circle())
+            }
+            .accessibilityLabel("Flip camera")
+        }
+        .padding(.horizontal, 26)
+        .opacity(recording ? 0 : 1)
+    }
+
+    private func load(_ item: PhotosPickerItem?) async {
+        guard let item else { return }
+        if item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }), let m = try? await item.loadTransferable(type: PickedMovie.self) { captured(nil, m.url) }
+        else if let d = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: d) { captured(img, nil) }
+        picked = nil
+    }
+
+    /// A text story's background: one of the app's gradients, picked at random.
+    static func colourCard() -> UIImage {
+        let pairs: [(UIColor, UIColor)] = [(UIColor(red: 0.11, green: 0.18, blue: 0.32, alpha: 1), UIColor(red: 0.42, green: 0.32, blue: 0.75, alpha: 1)),
+                                           (UIColor(red: 1, green: 0.45, blue: 0.35, alpha: 1), UIColor(red: 0.85, green: 0.3, blue: 0.6, alpha: 1)),
+                                           (UIColor(red: 0.2, green: 0.6, blue: 0.5, alpha: 1), UIColor(red: 0.1, green: 0.25, blue: 0.4, alpha: 1))]
+        let p = pairs.randomElement()!
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1
+        return UIGraphicsImageRenderer(size: CGSize(width: 1080, height: 1920), format: format).image { ctx in
+            let g = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: [p.0.cgColor, p.1.cgColor] as CFArray, locations: [0, 1])!
+            ctx.cgContext.drawLinearGradient(g, start: .zero, end: CGPoint(x: 1080, y: 1920), options: [])
+        }
+    }
+}
+
+/// The camera itself: photos, videos with sound, the back cameras' zoom range (ultra wide when there is one), flash and flip.
+@Observable @MainActor
+final class CameraRig: NSObject {
+    let session = AVCaptureSession()
+    private let photos = AVCapturePhotoOutput()
+    private let movies = AVCaptureMovieFileOutput()
+    private let queue = DispatchQueue(label: "story.camera")
+    private var device: AVCaptureDevice?
+    private var input: AVCaptureDeviceInput?
+    var front = false
+    var flash: AVCaptureDevice.FlashMode = .off
+    var denied = false
+    var latest: UIImage?
+    var photo: UIImage?
+    var finishedMovie: URL?
+    /// The zoom shown on the buttons: 1 is the main camera, 0.5 the ultra wide.
+    private(set) var shownZoom: CGFloat = 1
+    private(set) var zoomFactor: CGFloat = 1
+    private var mainFactor: CGFloat = 1   // the device zoom factor that is "1×"
+    var stops: [CGFloat] { mainFactor > 1 && !front ? [0.5, 1, 2] : [1, 2] }
+
+    func start() async {
+        let video = await AVCaptureDevice.requestAccess(for: .video)
+        guard video else { denied = true; return }
+        _ = await AVCaptureDevice.requestAccess(for: .audio)
+        await loadLatest()
+        configure()
+    }
+
+    func stop() { let s = session; queue.async { if s.isRunning { s.stopRunning() } } }
+
+    private func camera(front: Bool) -> AVCaptureDevice? {
+        if front { return AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front) }
+        return AVCaptureDevice.default(.builtInTripleCamera, for: .video, position: .back)
+            ?? AVCaptureDevice.default(.builtInDualWideCamera, for: .video, position: .back)
+            ?? AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
+    }
+
+    private func configure() {
+        guard let dev = camera(front: front) else { return }
+        let s = session, ph = photos, mv = movies
+        let main: CGFloat = dev.isVirtualDevice && dev.constituentDevices.contains(where: { $0.deviceType == .builtInUltraWideCamera })
+            ? CGFloat(truncating: dev.virtualDeviceSwitchOverVideoZoomFactors.first ?? 1) : 1
+        mainFactor = main
+        queue.async {
+            s.beginConfiguration()
+            s.sessionPreset = .high
+            for i in s.inputs { s.removeInput(i) }
+            if let vi = try? AVCaptureDeviceInput(device: dev), s.canAddInput(vi) { s.addInput(vi) }
+            if let mic = AVCaptureDevice.default(for: .audio), let ai = try? AVCaptureDeviceInput(device: mic), s.canAddInput(ai) { s.addInput(ai) }
+            if !s.outputs.contains(ph), s.canAddOutput(ph) { s.addOutput(ph) }
+            if !s.outputs.contains(mv), s.canAddOutput(mv) { s.addOutput(mv) }
+            mv.maxRecordedDuration = CMTime(seconds: 30, preferredTimescale: 600)
+            if let c = mv.connection(with: .video), c.isVideoMirroringSupported { c.isVideoMirrored = dev.position == .front }
+            s.commitConfiguration()
+            if (try? dev.lockForConfiguration()) != nil { dev.videoZoomFactor = main; dev.unlockForConfiguration() }
+            if !s.isRunning { s.startRunning() }
+        }
+        device = dev; zoomFactor = main; shownZoom = 1
+    }
+
+    func flip() { front.toggle(); UIImpactFeedbackGenerator(style: .light).impactOccurred(); configure() }
+    func cycleFlash() { flash = flash == .off ? .auto : flash == .auto ? .on : .off }
+
+    /// A device zoom factor, kept in the camera's range.
+    func zoom(to factor: CGFloat) {
+        guard let d = device else { return }
+        let f = min(max(factor, d.minAvailableVideoZoomFactor), min(d.maxAvailableVideoZoomFactor, mainFactor * 10))
+        zoomFactor = f; shownZoom = f / mainFactor
+        queue.async { if (try? d.lockForConfiguration()) != nil { d.videoZoomFactor = f; d.unlockForConfiguration() } }
+    }
+    func zoom(shown z: CGFloat) { zoom(to: z * mainFactor) }
+
+    func takePhoto() {
+        let settings = AVCapturePhotoSettings()
+        if photos.supportedFlashModes.contains(flash) { settings.flashMode = flash }
+        photos.capturePhoto(with: settings, delegate: self)
+    }
+
+    func startMovie() {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mov")
+        if flash == .on, let d = device, d.hasTorch, (try? d.lockForConfiguration()) != nil { d.torchMode = .on; d.unlockForConfiguration() }
+        movies.startRecording(to: url, recordingDelegate: self)
+    }
+    func stopMovie() {
+        if movies.isRecording { movies.stopRecording() }
+        if let d = device, d.hasTorch, d.torchMode == .on, (try? d.lockForConfiguration()) != nil { d.torchMode = .off; d.unlockForConfiguration() }
+    }
+
+    /// The newest photo or video in the library, for the corner button (only when Photos is allowed).
+    private func loadLatest() async {
+        let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+        guard status == .authorized || status == .limited else { return }
+        let opts = PHFetchOptions(); opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]; opts.fetchLimit = 1
+        guard let a = PHAsset.fetchAssets(with: opts).firstObject else { return }
+        latest = await withCheckedContinuation { c in
+            let o = PHImageRequestOptions(); o.deliveryMode = .opportunistic; o.isNetworkAccessAllowed = true; o.isSynchronous = false
+            var done = false
+            PHImageManager.default().requestImage(for: a, targetSize: CGSize(width: 120, height: 120), contentMode: .aspectFill, options: o) { img, info in
+                if (info?[PHImageResultIsDegradedKey] as? Bool) == true { return }
+                if !done { done = true; c.resume(returning: img) }
+            }
+        }
+    }
+}
+
+extension CameraRig: AVCapturePhotoCaptureDelegate, AVCaptureFileOutputRecordingDelegate {
+    nonisolated func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
+        guard let d = photo.fileDataRepresentation(), let img = UIImage(data: d) else { return }
+        Task { @MainActor in self.photo = img }
+    }
+    nonisolated func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo url: URL, from connections: [AVCaptureConnection], error: Error?) {
+        Task { @MainActor in self.finishedMovie = url }
+    }
+}
+
+/// The live camera picture.
+struct CameraPreview: UIViewRepresentable {
+    let session: AVCaptureSession
+    final class Layered: UIView {
+        override static var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
+        var preview: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
+    }
+    func makeUIView(context: Context) -> Layered {
+        let v = Layered(); v.preview.session = session; v.preview.videoGravity = .resizeAspectFill; v.backgroundColor = .black
+        return v
+    }
+    func updateUIView(_ v: Layered, context: Context) {}
+}
+
+/// Your recent photos and videos (videos with their length): tap one to edit it.
+struct RecentMedia: View {
+    var chose: (UIImage?, URL?) -> Void
+    var more: () -> Void
+    @State private var assets: [PHAsset] = []
+    @State private var allowed = true
+    @State private var busy = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Recents").font(.headline)
+                Spacer()
+                Button("All photos") { more() }.font(.subheadline.weight(.semibold))
+            }
+            .padding(.horizontal, 16).padding(.top, 16)
+            if !allowed {
+                Text("Cheat Days can't see your photos. Tap All photos to pick one.").font(.subheadline).foregroundStyle(.secondary).padding(16)
+            }
+            ScrollView {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 3), spacing: 2) {
+                    ForEach(assets, id: \.localIdentifier) { a in
+                        Button { pick(a) } label: { AssetThumb(asset: a) }.buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .overlay { if busy { ProgressView().controlSize(.large) } }
+        .task {
+            let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+            guard status == .authorized || status == .limited else { allowed = false; return }
+            let opts = PHFetchOptions(); opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]; opts.fetchLimit = 90
+            opts.predicate = NSPredicate(format: "mediaType == %d || mediaType == %d", PHAssetMediaType.image.rawValue, PHAssetMediaType.video.rawValue)
+            let r = PHAsset.fetchAssets(with: opts)
+            var out: [PHAsset] = []; r.enumerateObjects { a, _, _ in out.append(a) }
+            assets = out
+        }
+    }
+
+    private func pick(_ a: PHAsset) {
+        busy = true
+        if a.mediaType == .video {
+            let o = PHVideoRequestOptions(); o.isNetworkAccessAllowed = true; o.deliveryMode = .highQualityFormat
+            PHImageManager.default().requestAVAsset(forVideo: a, options: o) { av, _, _ in
+                guard let u = (av as? AVURLAsset)?.url else { DispatchQueue.main.async { busy = false }; return }
+                // copied, so the editor can read and trim it after Photos lets go
+                let to = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "." + u.pathExtension)
+                try? FileManager.default.copyItem(at: u, to: to)
+                DispatchQueue.main.async { busy = false; chose(nil, to) }
+            }
+        } else {
+            let o = PHImageRequestOptions(); o.isNetworkAccessAllowed = true; o.deliveryMode = .highQualityFormat
+            PHImageManager.default().requestImage(for: a, targetSize: CGSize(width: 1440, height: 2560), contentMode: .aspectFit, options: o) { img, info in
+                if (info?[PHImageResultIsDegradedKey] as? Bool) == true { return }
+                DispatchQueue.main.async { busy = false; chose(img, nil) }
+            }
+        }
+    }
+}
+
+struct AssetThumb: View {
+    let asset: PHAsset
+    @State private var img: UIImage?
+    var body: some View {
+        Color(white: 0.15).aspectRatio(9.0 / 16.0, contentMode: .fit)
+            .overlay { if let img { Image(uiImage: img).resizable().scaledToFill() } }
+            .clipped()
+            .overlay(alignment: .bottomTrailing) {
+                if asset.mediaType == .video {
+                    Text(String(format: "%d:%02d", Int(asset.duration) / 60, Int(asset.duration) % 60)).font(.caption2.weight(.heavy)).foregroundStyle(.white).shadow(radius: 2).padding(5)
+                }
+            }
+            .task {
+                let o = PHImageRequestOptions(); o.deliveryMode = .opportunistic; o.isNetworkAccessAllowed = true
+                PHImageManager.default().requestImage(for: asset, targetSize: CGSize(width: 240, height: 420), contentMode: .aspectFill, options: o) { i, _ in
+                    DispatchQueue.main.async { if let i { img = i } }
+                }
+            }
+    }
+}

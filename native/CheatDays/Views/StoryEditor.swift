@@ -58,6 +58,8 @@ struct StoryEditor: View {
     @State private var food = false
     @State private var polling = false
     @State private var mentioning = false
+    @State private var typingSticker: String?   // a question or a hashtag being typed in
+    @State private var stickerText = ""
     @State private var note: String?
     @State private var canvasWidth: CGFloat = 360
     @State private var history: [(items: [JSON], strokes: [JSON])] = []   // for Undo, newest last
@@ -107,11 +109,21 @@ struct StoryEditor: View {
         .task { await prepare() }
         .onChange(of: filter) { _, f in Task { await refilter(f) } }
         .sheet(isPresented: $stickers) {
-            StickerSheet(forPost: forPost) { pick in stickers = false; add(pick) }
+            StickerSheet(forPost: forPost, pick: { id in stickers = false; add(id) }, place: { o in stickers = false; place(o) })
                 .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $food) { FoodStickerPicker { it in addFood(it) }.presentationDetents([.medium, .large]) }
         .sheet(isPresented: $polling) { PollMaker { q, a, b in place(["type": "poll", "q": q, "a": a, "b": b]) }.presentationDetents([.medium]) }
+        .alert(typingSticker == "question" ? "Ask a question" : "Hashtag", isPresented: Binding(get: { typingSticker != nil }, set: { if !$0 { typingSticker = nil } })) {
+            TextField(typingSticker == "question" ? "Ask me anything" : "mealprep", text: $stickerText)
+            Button("Add") {
+                let t = stickerText.trimmingCharacters(in: .whitespacesAndNewlines)
+                if typingSticker == "question" { place(["type": "question", "q": String(t.isEmpty ? "Ask me anything" : t).prefix(80).description]) }
+                else if !t.isEmpty { place(["type": "hashtag", "text": String(t.replacingOccurrences(of: "#", with: "").replacingOccurrences(of: " ", with: "").prefix(30))]) }
+                typingSticker = nil
+            }
+            Button("Cancel", role: .cancel) { typingSticker = nil }
+        }
         .sheet(isPresented: $mentioning) { MentionPicker { id, name in place(["type": "mention", "user": id, "name": name]) }.presentationDetents([.medium, .large]) }
         .overlay(alignment: .top) {
             if let note { Text(note).font(.subheadline.weight(.semibold)).padding(.horizontal, 14).padding(.vertical, 9).background(.ultraThinMaterial, in: Capsule()).padding(.top, 60) }
@@ -432,6 +444,14 @@ struct StoryEditor: View {
                 place(["type": "workout", "name": str(w["name"]), "minutes": Int(num(w["minutes"]) ?? 0), "detail": "\(list(w["lifts"]).count) exercises"])
             } else { flash("No workout today yet") }
         case "time": place(["type": "time", "text": Date().formatted(date: .omitted, time: .shortened)])
+        case "ring": place(["type": "ring", "eaten": Int(s.eaten), "budget": Int(s.budgetToday)])
+        case "steps": place(["type": "steps", "steps": Steps.shared.today ?? 0])
+        case "badge":
+            if let id = StickerSheet.latestBadge { place(["type": "badge", "id": id]) } else { flash("Earn a badge first") }
+        case "rank": place(["type": "rank", "level": s.rank.level])
+        case "cheat":
+            if let d = StickerSheet.daysToCheat { place(["type": "cheat", "days": d]) } else { flash("Set a cheat day first") }
+        case "question", "hashtag": DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { typingSticker = pick; stickerText = "" }
         case "place":
             Task {
                 if let sub = await Locator.shared.suburb() { place(["type": "place", "text": sub]) } else { flash("Couldn't find your suburb") }
@@ -610,59 +630,166 @@ struct StoryEditor: View {
     }
 }
 
-/// The sticker tray: the app's own stickers from your numbers, then emoji, with search.
+/// The sticker tray, Instagram's way: each sticker shown as it'll look. Yours, made from your own numbers (your food,
+/// macros, a calories ring, steps, streak, latest badge, rank, the cheat-day countdown, a workout), the interactive ones
+/// (poll, question, mention), the fun ones (time, place, hashtag); then 3D stickers built in, and GIPHY's.
 struct StickerSheet: View {
     var forPost = false
     var pick: (String) -> Void
+    var place: (JSON) -> Void
     @State private var q = ""
+    @State private var tab = 0
+    @State private var gifKind = "stickers"
+    @State private var gifs: [JSON] = []
+    @State private var limited = false
+    @State private var loading = false
     private var store: Store { Store.shared }
-    private static let emoji = ["😋", "🔥", "💪", "🥗", "🍕", "🎉", "🥵", "🤤", "🏋️", "🍳", "🍰", "👏", "😮‍💨", "🥑", "🍜", "🍣", "🥩", "🍓", "☕️", "🥤", "🏃", "🧘", "⚡️", "✨", "❤️", "😂", "🙌", "🤯", "😴", "🍫"]
 
-    private var app: [(id: String, title: String, detail: String)] {
-        let m = store.macros(store.todayItems)
-        return [("food", "Your food", "from today's log"),
-                ("macros", "Macros", "P \(Int(m.p)) · C \(Int(m.c)) · F \(Int(m.f))"),
-                ("streak", "🔥 Streak", "\(store.streakInfo.days) days"),
-                ("left", "Calories left", "\(Fmt.int(max(0, store.left))) today"),
-                ("workout", "🏋️ Workout", store.todayWorkouts.last.map { str($0["name"]) } ?? "today's"),
-                ("poll", "📊 Poll", "ask your friends"),
-                ("time", "Time", Date().formatted(date: .omitted, time: .shortened)),
-                ("place", "📍 Location", "your suburb"),
-                ("mention", "@ Mention", "a friend")]
+    static var latestBadge: String? { (Store.shared.doc["seenBadges"] as? [String])?.last }
+    /// Days until the cheat day, 0 on it; nil when there isn't one.
+    static var daysToCheat: Int? {
+        guard let c = Store.shared.cheatWeekday else { return nil }
+        return (c - DayKey.weekday(Store.shared.today) + 7) % 7
+    }
+
+    /// Each of the app's stickers: its name for search, and how it looks with today's numbers.
+    private var mine: [(id: String, words: String, sample: JSON)] {
+        let m = store.macros(store.todayItems), food = store.todayItems.last
+        var out: [(String, String, JSON)] = [
+            ("food", "your food meal", ["type": "food", "name": food.map { str($0["name"]) } ?? "Your food", "kcal": Int(num(food?["kcal"]) ?? 410), "p": Int(food.map { store.macros([$0]).p } ?? 33), "style": 0]),
+            ("ring", "calories ring today budget", ["type": "ring", "eaten": Int(store.eaten), "budget": Int(store.budgetToday)]),
+            ("macros", "macros protein carbs fat", ["type": "macros", "p": Int(m.p), "c": Int(m.c), "f": Int(m.f), "kcal": Int(store.eaten)]),
+            ("left", "calories left", ["type": "left", "kcal": Int(max(0, store.left))]),
+            ("streak", "streak fire days", ["type": "streak", "days": store.streakInfo.days]),
+            ("steps", "steps walk", ["type": "steps", "steps": Steps.shared.today ?? 0]),
+        ]
+        if let b = Self.latestBadge { out.append(("badge", "badge achievement", ["type": "badge", "id": b])) }
+        out.append(("rank", "rank level", ["type": "rank", "level": store.rank.level]))
+        if let d = Self.daysToCheat { out.append(("cheat", "cheat day countdown", ["type": "cheat", "days": d])) }
+        if let w = store.todayWorkouts.last { out.append(("workout", "workout gym", ["type": "workout", "name": str(w["name"]), "minutes": Int(num(w["minutes"]) ?? 0)])) }
+        if !forPost {
+            out.append(("poll", "poll vote", ["type": "poll", "q": "Cheat day or not?", "a": "Yes", "b": "No"]))
+            out.append(("question", "question ask me anything", ["type": "question", "q": "Ask me anything"]))
+            out.append(("mention", "mention friend", ["type": "mention", "name": "friend"]))
+        }
+        out.append(("time", "time clock", ["type": "time", "text": Date().formatted(date: .omitted, time: .shortened)]))
+        out.append(("place", "location place suburb", ["type": "place", "text": "Your suburb"]))
+        out.append(("hashtag", "hashtag tag", ["type": "hashtag", "text": "mealprep"]))
+        return out.map { (id: $0.0, words: $0.1, sample: $0.2) }
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                    TextField("Search stickers", text: $q)
-                }
-                .padding(10).background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12))
-                // a poll or a mention needs a story to vote or tap on; a post is one picture
-                let shown = app.filter { (!forPost || ($0.id != "poll" && $0.id != "mention")) && (q.isEmpty || ($0.title + " " + $0.detail).localizedCaseInsensitiveContains(q)) }
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
-                    ForEach(shown, id: \.id) { s in
-                        Button { pick(s.id) } label: {
-                            VStack(spacing: 3) {
-                                Text(s.title).font(.subheadline.weight(.heavy)).lineLimit(1)
-                                Text(s.detail).font(.caption2.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1)
-                            }
-                            .frame(maxWidth: .infinity, minHeight: 66).padding(.horizontal, 6)
-                            .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                if q.isEmpty {
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 12) {
-                        ForEach(Self.emoji, id: \.self) { e in Button { pick(e) } label: { Text(e).font(.system(size: 34)) }.buttonStyle(.plain) }
-                    }
+        VStack(spacing: 10) {
+            HStack {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField(tab == 2 ? "Search GIPHY" : "Search stickers", text: $q).autocorrectionDisabled()
+                if !q.isEmpty { Button { q = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }.buttonStyle(.plain) }
+            }
+            .padding(10).background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12))
+            // GIFs move, and a post is one still picture, so they're for stories
+            Picker("Stickers", selection: $tab) { Text("Yours").tag(0); Text("3D").tag(1); if !forPost { Text("GIPHY").tag(2) } }.pickerStyle(.segmented)
+            ScrollView {
+                switch tab {
+                case 1: threeD
+                case 2: giphy
+                default: yours
                 }
             }
-            .padding(16)
+            .scrollDismissesKeyboard(.immediately)
+        }
+        .padding(.horizontal, 16).padding(.top, 16)
+        .task(id: "\(tab)|\(q)|\(gifKind)") {
+            guard tab == 2 else { return }
+            try? await Task.sleep(for: .milliseconds(q.isEmpty ? 0 : 450))   // when typing stops, not every letter: 100 calls an hour
+            if !Task.isCancelled { await loadGifs() }
         }
     }
+
+    private var yours: some View {
+        let shown = mine.filter { q.isEmpty || $0.words.localizedCaseInsensitiveContains(q) }
+        return VStack(alignment: .leading, spacing: 14) {
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                ForEach(shown, id: \.id) { s in
+                    Button { pick(s.id) } label: {
+                        StoryItem(o: s.sample).scaleEffect(0.5).frame(maxWidth: .infinity).frame(height: 104).clipped()
+                            .background(Color(.tertiarySystemFill).opacity(0.5), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .allowsHitTesting(false)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            if q.isEmpty {
+                Text("Emoji").font(.subheadline.weight(.bold)).foregroundStyle(.secondary)
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 12) {
+                    ForEach(Self.emoji, id: \.self) { e in Button { place(["type": "emoji", "text": e]) } label: { Text(e).font(.system(size: 34)) }.buttonStyle(.plain) }
+                }
+            }
+        }
+        .padding(.bottom, 20)
+    }
+
+    private var threeD: some View {
+        let all = BuiltInStickers.all.filter { q.isEmpty || $0.emoji.contains(q) || q.count > 1 && (Self.names[$0.emoji] ?? "").localizedCaseInsensitiveContains(q) }
+        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 12) {
+            ForEach(all, id: \.code) { st in
+                Button { place(["type": "sticker3d", "code": st.code]) } label: {
+                    Image("sticker-" + st.code).resizable().interpolation(.high).scaledToFit().frame(width: 66, height: 66)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.bottom, 20)
+    }
+
+    private var giphy: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 8) {
+                Chip(text: "Stickers", on: gifKind == "stickers") { gifKind = "stickers" }
+                Chip(text: "GIFs", on: gifKind == "gifs") { gifKind = "gifs" }
+                Spacer()
+            }
+            if limited && gifs.isEmpty {
+                Text("GIF search is busy right now. Try the 3D stickers, or again in a bit.").font(.subheadline).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center).padding(.top, 30)
+            } else if loading && gifs.isEmpty {
+                ProgressView().padding(.top, 40)
+            }
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
+                ForEach(gifs.indices, id: \.self) { i in
+                    let g = gifs[i]
+                    Button { place(["type": "gif", "url": g["url"] ?? "", "w": g["w"] ?? 200, "h": g["h"] ?? 200]) } label: {
+                        AnimatedGIF(url: str(g["url"])).frame(height: 96).frame(maxWidth: .infinity)
+                            .background(gifKind == "stickers" ? Color.clear : Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            // GIPHY asks for its name wherever its search is
+            Text("Powered by GIPHY").font(.caption.weight(.heavy)).foregroundStyle(.secondary).padding(.vertical, 12)
+        }
+    }
+
+    private func loadGifs() async {
+        loading = true; defer { loading = false }
+        guard let (d, code) = try? await Supabase.shared.call("/functions/v1/giphy", body: ["q": q, "kind": gifKind] as JSON, timeout: 20), code == 200,
+              let r = (try? JSONSerialization.jsonObject(with: d)) as? JSON else { limited = true; return }
+        gifs = CheatDays.list(r["items"])
+        limited = r["limited"] as? Bool ?? false
+    }
+
+    private static let emoji = ["😋", "🔥", "💪", "🥗", "🍕", "🎉", "🥵", "🤤", "🏋️", "🍳", "🍰", "👏", "😮‍💨", "🥑", "🍜", "🍣", "🥩", "🍓", "☕️", "🥤", "🏃", "🧘", "⚡️", "✨", "❤️", "😂", "🙌", "🤯", "😴", "🍫"]
+    /// Words to find the 3D ones by.
+    private static let names: [String: String] = [
+        "🍕": "pizza", "🍔": "burger", "🌮": "taco", "🌯": "burrito wrap", "🥗": "salad", "🍜": "noodles ramen", "🍣": "sushi", "🍱": "bento",
+        "🍛": "curry", "🍝": "pasta", "🥩": "steak meat", "🍗": "chicken", "🥓": "bacon", "🍳": "eggs breakfast", "🥞": "pancakes", "🧇": "waffle",
+        "🥐": "croissant", "🥑": "avocado", "🍓": "strawberry", "🍌": "banana", "🍎": "apple", "🍉": "watermelon", "🫐": "blueberries", "🥦": "broccoli",
+        "🥕": "carrot", "🌶️": "chilli spicy", "🧀": "cheese", "🥚": "egg", "🍞": "bread", "🍰": "cake", "🍩": "donut", "🍪": "cookie", "🍫": "chocolate",
+        "🍦": "ice cream", "🧁": "cupcake", "🍿": "popcorn", "☕": "coffee", "🥤": "drink shake", "🧋": "bubble tea", "🍷": "wine", "🍺": "beer",
+        "🥂": "cheers", "💧": "water", "🍽️": "plate dinner", "🥄": "spoon", "💪": "strong muscle", "🏋️": "lifting gym", "🏃": "running", "🚴": "cycling",
+        "🧘": "yoga", "🤸": "workout", "⚽": "football", "🏆": "trophy win", "🥇": "gold first", "🔥": "fire", "⚡": "energy", "✨": "sparkle", "🎉": "party",
+        "🎯": "target goal", "⏰": "time", "📈": "progress", "❤️": "love heart", "💯": "hundred", "😋": "yum", "🤤": "drool", "🥵": "hot", "😮‍💨": "phew",
+        "😴": "sleep", "🤯": "mind blown", "😂": "laugh", "🥳": "celebrate", "😎": "cool", "🤩": "wow", "🙌": "hands", "👏": "clap", "👀": "eyes", "💀": "dead"]
 }
 
 /// A question and two answers for a poll sticker.

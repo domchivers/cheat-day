@@ -15,7 +15,8 @@ struct StoryComposer: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            if image == nil && video == nil { pick }
+            // straight into the camera, as Instagram opens (the in-between Camera / Library screen is gone)
+            if image == nil && video == nil { StoryCamera(captured: { img, url in image = img; video = url }, close: { dismiss() }) }
             else { StoryEditor(image: image, video: video, close: { image = nil; video = nil }, posted: { dismiss() }) }
         }
         .statusBarHidden()

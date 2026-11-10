@@ -75,7 +75,7 @@ struct StoryView: View {
                         // polls sit above the taps, so voting doesn't skip the story
                         .overlay {
                             if case .snap(let st) = s[min(slide, s.count - 1)] {
-                                let polls = list(st["overlays"]).filter { str($0["type"]) == "poll" }
+                                let polls = list(st["overlays"]).filter { ["poll", "question"].contains(str($0["type"])) }
                                 if !polls.isEmpty { StoryLayer(items: polls, story: str(st["id"])).aspectRatio(StoryArt.aspect, contentMode: .fit) }
                             }
                         }
@@ -156,7 +156,7 @@ struct StoryView: View {
             ZStack {
                 if str(st["kind"]) == "video", let url = URL(string: str(st["media"])) { LoopingVideo(url: url, paused: paused || seenBy != nil) }
                 else { FeedPhoto(src: str(st["media"]), fill: true) }
-                StoryLayer(items: list(st["overlays"]).filter { str($0["type"]) != "poll" }, story: str(st["id"]))
+                StoryLayer(items: list(st["overlays"]).filter { !["poll", "question"].contains(str($0["type"])) }, story: str(st["id"]))
             }
             .aspectRatio(StoryArt.aspect, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))

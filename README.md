@@ -588,6 +588,10 @@ Polls on stories: run `supabase/story_polls.sql` once (after stories.sql).
 
 Highlights (stories kept on your profile): run `supabase/highlights.sql` once (after stories.sql).
 
+GIF and sticker search in the story editor goes through the `giphy` edge function (secret `GIPHY_KEY`; the key is
+never in the app): deploy `supabase/functions/giphy/index.ts` and run `supabase/giphy.sql`. The 3D stickers are built
+in: `python tools/fluent3d.py` downloads them (Microsoft Fluent Emoji, MIT).
+
 ## Macros
 
 Everything carries protein, carbs and fat where they're known: the built-in food
