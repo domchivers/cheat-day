@@ -73,7 +73,7 @@ struct ProfileView: View {
             .padding(.bottom, 110)
         }
         .background(Theme.bg)
-        .navigationTitle(p.map { $0.username.isEmpty ? $0.name : "@\($0.username)" } ?? "")
+        .navigationTitle(p.map { $0.username.isEmpty ? $0.name : "@\($0.username)" } ?? (isMe ? Friends.shared.myName : ""))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if isMe {

@@ -28,12 +28,14 @@ struct SettingsView: View {
             if search.isEmpty || shows("Account password email") {
             Section {
                 NavigationLink { page("Account") { accountPage } } label: {
+                    // your photo and name, then the email: the email alone left a blank line when there wasn't one
+                    let me = Profiles.shared.me, email = Supabase.shared.email
+                    let name = Profiles.shared.mine?.name ?? (Friends.shared.myName.isEmpty ? "You" : Friends.shared.myName)
                     HStack(spacing: 12) {
-                        Text(String(Supabase.shared.email.prefix(1)).uppercased()).font(.title3.weight(.heavy)).foregroundStyle(Theme.onAccent)
-                            .frame(width: 44, height: 44).background(Theme.accent, in: Circle())
+                        Avatar(id: me, size: 44)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(Supabase.shared.email).font(.body.weight(.semibold)).lineLimit(1)
-                            Text("Account and password").font(.footnote).foregroundStyle(.secondary)
+                            Text(name).font(.body.weight(.semibold)).lineLimit(1)
+                            Text(email.isEmpty ? "Account and password" : email).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
                         }
                     }
                     .padding(.vertical, 4)
@@ -91,6 +93,7 @@ struct SettingsView: View {
         } message: { Text("Everything stays in your account. Sign in again to get it back.") }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)   // like Instagram: Settings has the screen to itself
         .task {
             let p = store.reminderPrefs
             lunch = p.lunch; weighOn = p.weigh != nil
