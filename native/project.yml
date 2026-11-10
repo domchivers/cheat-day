@@ -38,11 +38,11 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         UIStatusBarStyle: UIStatusBarStyleLightContent
-        NSCameraUsageDescription: Cheat Days uses the camera to scan barcodes and take photos of food labels and packs.
+        NSCameraUsageDescription: Cheat Days uses the camera to scan barcodes, take photos of food labels and packs, and take photos and videos for your story.
         NSPhotoLibraryUsageDescription: Cheat Days lets you pick a photo of food or a label from your library.
         NSLocationWhenInUseUsageDescription: Cheat Days uses your suburb to find places to eat near you when you ask. Only the suburb's name is used, never where you are exactly.
         NSLocationDefaultAccuracyReduced: true
-        NSMicrophoneUsageDescription: Cheat Days listens when you tap the microphone in a chat box, so you can say what you ate instead of typing it.
+        NSMicrophoneUsageDescription: Cheat Days listens when you tap the microphone in a chat box, so you can say what you ate instead of typing it, and records sound when you film a video for your story.
         NSSpeechRecognitionUsageDescription: Cheat Days turns what you say into words in the chat box, on your iPhone where it can.
         NSHealthShareUsageDescription: Cheat Days reads your weight, body fat, lean mass, BMI and steps from Apple Health, so weigh-ins from your smart scale's app arrive on their own and Today can show your steps.
         NSHealthUpdateUsageDescription: Cheat Days only reads your weigh-ins from Apple Health. It never writes to or changes your Health data.
