@@ -289,7 +289,7 @@ struct MainTabs: View {
             MeView()
                 .tabItem {
                     // your photo, once you've added one
-                    if let icon = Profiles.shared.meIcon { Label { Text("Me") } icon: { Image(uiImage: icon).renderingMode(.original) } }
+                    if let icon = tab == 3 ? Profiles.shared.meIconOn : Profiles.shared.meIcon { Label { Text("Me") } icon: { Image(uiImage: icon).renderingMode(.original) } }
                     else { Label("Me", systemImage: "person.crop.circle.fill") }
                 }.tag(3)
         }
