@@ -58,6 +58,7 @@ struct StoryEditor: View {
     @State private var poster: UIImage?   // the video's first frame, shown while the player gets going
     // sheets
     @State private var stickers = false
+    @State private var picked: String?   // a tile from the tray, added once the tray has closed
     @State private var food = false
     @State private var polling = false
     @State private var mentioning = false
@@ -112,8 +113,8 @@ struct StoryEditor: View {
         .task { await prepare() }
         .task { if startWriting { try? await Task.sleep(for: .milliseconds(350)); newText(); size = 40 } }
         .onChange(of: filter) { _, f in Task { await refilter(f) } }
-        .sheet(isPresented: $stickers) {
-            StickerSheet(forPost: forPost, pick: { id in stickers = false; add(id) }, place: { o in stickers = false; place(o) })
+        .sheet(isPresented: $stickers, onDismiss: { if let p = picked { picked = nil; add(p) } }) {
+            StickerSheet(forPost: forPost, pick: { id in picked = id; stickers = false }, place: { o in stickers = false; place(o) })
                 .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $food) { FoodStickerPicker { it in addFood(it) }.presentationDetents([.medium, .large]) }
@@ -436,9 +437,9 @@ struct StoryEditor: View {
         let s = Store.shared
         switch pick {
         // these open their own sheet once the sticker tray has gone
-        case "food": DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { food = true }
-        case "poll": DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { polling = true }
-        case "mention": DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { mentioning = true }
+        case "food": food = true
+        case "poll": polling = true
+        case "mention": mentioning = true
         case "macros":
             let m = s.macros(s.todayItems)
             place(["type": "macros", "p": Int(m.p), "c": Int(m.c), "f": Int(m.f), "kcal": Int(s.eaten)])
@@ -456,7 +457,7 @@ struct StoryEditor: View {
         case "rank": place(["type": "rank", "level": s.rank.level])
         case "cheat":
             if let d = StickerSheet.daysToCheat { place(["type": "cheat", "days": d]) } else { flash("Set a cheat day first") }
-        case "question", "hashtag": DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { typingSticker = pick; stickerText = "" }
+        case "question", "hashtag": typingSticker = pick; stickerText = ""
         case "place":
             Task {
                 if let sub = await Locator.shared.suburb() { place(["type": "place", "text": sub]) } else { flash("Couldn't find your suburb") }
@@ -742,7 +743,7 @@ struct StickerSheet: View {
                             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                             .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plain).accessibilityIdentifier("tile-" + s.id)
                 }
             }
             if q.isEmpty {
@@ -762,7 +763,7 @@ struct StickerSheet: View {
                 Button { place(["type": "sticker3d", "code": st.code]) } label: {
                     Image("sticker-" + st.code).resizable().interpolation(.high).scaledToFit().frame(width: 66, height: 66)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plain).accessibilityIdentifier("tile-3d")
             }
         }
         .padding(.bottom, 20)
@@ -904,10 +905,14 @@ struct PlacedItem: View {
     }
 
     var body: some View {
-        let at = place(drag), k = cw / StoryArt.design
+        let at = place(drag), k = cw / StoryArt.design, eff = min(4, max(0.3, scale * Double(pinch))) * k
         StoryItem(o: o)
-            .scaleEffect(min(4, max(0.3, scale * Double(pinch))) * k)
+            .padding(34 / max(0.2, eff))   // about 34 points on screen at any size
+            .overlay(Color.black.opacity(0.001))
+            .contentShape(Rectangle())
+            .scaleEffect(eff)
             .rotationEffect(.degrees(snapped(rotation + twist.degrees).0))
+            .accessibilityElement(children: .ignore).accessibilityIdentifier("placed-" + str(o["type"])).accessibilityAddTraits(.isButton)
             .position(x: at.x * cw, y: at.y * ch)
             .opacity(hidden ? 0 : (dim ? 0.45 : 1))
             .animation(.snappy(duration: 0.18), value: dim)

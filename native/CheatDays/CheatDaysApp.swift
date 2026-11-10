@@ -45,6 +45,7 @@ struct RootView: View {
         else if ProcessInfo.processInfo.arguments.contains("-uitest-mealcheck") { MealCheckHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-stickers") { StickersHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-honors") { HonorsHarness() }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-editor") { EditorHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-review") { ReviewHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-cards") { CardsHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-checkin-step") { CheckInHarness(acting: true) }
@@ -172,6 +173,17 @@ private struct HonorsHarness: View {
 }
 
 /// For the sticker screenshots only: the tray as it opens, then every sticker on a story, no sign-in.
+/// For the editor test only: the real story editor on a plain photo, to add, move and pinch stickers.
+private struct EditorHarness: View {
+    private static let photo = UIGraphicsImageRenderer(size: CGSize(width: 1080, height: 1920)).image { c in
+        let colours = [UIColor(red: 0.4, green: 0.25, blue: 0.15, alpha: 1).cgColor, UIColor(red: 0.12, green: 0.08, blue: 0.06, alpha: 1).cgColor] as CFArray
+        if let g = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colours, locations: [0, 1]) {
+            c.cgContext.drawLinearGradient(g, start: .zero, end: CGPoint(x: 0, y: 1920), options: [])
+        }
+    }
+    var body: some View { StoryEditor(image: Self.photo, video: nil, close: {}) }
+}
+
 private struct StickersHarness: View {
     @State private var tray = true
     private static let all: [JSON] = [

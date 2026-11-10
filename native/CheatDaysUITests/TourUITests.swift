@@ -173,6 +173,49 @@ final class TourUITests: XCTestCase {
         let c = XCTAttachment(screenshot: app.screenshot()); c.name = "stickers-story"; c.lifetime = .keepAlways; add(c)
     }
 
+    /// The real editor: a sticker from Yours and one from 3D go on, one is dragged and pinched, and the food sticker opens its sheet.
+    func testEditorStickers() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-uitest-editor"]
+        app.launch()
+        let stickers = app.buttons["Stickers"]
+        XCTAssertTrue(stickers.waitForExistence(timeout: 5))
+        stickers.tap()
+        let left = app.buttons["tile-left"]
+        XCTAssertTrue(left.waitForExistence(timeout: 3), "the tray's calories-left tile")
+        left.tap()
+        let placed = app.descendants(matching: .any)["placed-left"]
+        XCTAssertTrue(placed.waitForExistence(timeout: 3), "tapping a tile puts it on the story")
+        sleep(1)
+        let before = placed.frame
+        let start = placed.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -160)))
+        sleep(1)
+        XCTAssertLessThan(placed.frame.midY, before.midY - 80, "it moves with the finger")
+        let moved = placed.frame
+        placed.pinch(withScale: 1.8, velocity: 1.5)
+        sleep(1)
+        XCTAssertGreaterThan(placed.frame.width, moved.width * 1.2, "a pinch makes it bigger")
+        let a = XCTAttachment(screenshot: app.screenshot()); a.name = "editor-moved"; a.lifetime = .keepAlways; add(a)
+
+        stickers.tap()
+        XCTAssertTrue(app.buttons["3D"].waitForExistence(timeout: 3))
+        app.buttons["3D"].tap()
+        let three = app.buttons["tile-3d"].firstMatch
+        XCTAssertTrue(three.waitForExistence(timeout: 3))
+        three.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["placed-sticker3d"].waitForExistence(timeout: 3), "a 3D sticker goes on too")
+
+        stickers.tap()
+        XCTAssertTrue(app.buttons["Yours"].waitForExistence(timeout: 3))
+        app.buttons["Yours"].tap()
+        let poll = app.buttons["tile-food"]
+        XCTAssertTrue(poll.waitForExistence(timeout: 3))
+        poll.tap()
+        XCTAssertTrue(app.navigationBars["Food sticker"].waitForExistence(timeout: 4), "the food sticker's own sheet opens once the tray has gone")
+        let b = XCTAttachment(screenshot: app.screenshot()); b.name = "editor-food"; b.lifetime = .keepAlways; add(b)
+    }
+
     /// A profile's tag and label line, and the sheet of all the tags.
     func testProfileTags() {
         let app = XCUIApplication()

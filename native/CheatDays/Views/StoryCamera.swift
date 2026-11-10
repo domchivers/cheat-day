@@ -79,19 +79,16 @@ struct StoryCamera: View {
                 Button { close() } label: { Image(systemName: "xmark").font(.system(size: 22, weight: .semibold)).foregroundStyle(.white).padding(12) }
                     .accessibilityLabel("Close")
                 Spacer()
+                // Aa beside the flash, the same size and weight (it sat on its own line below)
+                Button { textOnly() } label: {
+                    Text("Aa").font(.system(size: 20, weight: .semibold)).foregroundStyle(.white).padding(12)
+                }
+                .accessibilityLabel("A text story")
                 Button { cam.cycleFlash() } label: {
                     Image(systemName: cam.flash == .on ? "bolt.fill" : cam.flash == .auto ? "bolt.badge.automatic.fill" : "bolt.slash.fill")
                         .font(.system(size: 20, weight: .semibold)).foregroundStyle(cam.flash == .on ? .yellow : .white).padding(12)
                 }
                 .accessibilityLabel("Flash")
-            }
-            HStack {
-                Spacer()
-                // the same plain white icon as the flash above it (it was a dark circle, and didn't belong)
-                Button { textOnly() } label: {
-                    Text("Aa").font(.system(size: 21, weight: .bold)).foregroundStyle(.white).shadow(color: .black.opacity(0.35), radius: 3).padding(12)
-                }
-                .accessibilityLabel("A text story")
             }
             Spacer()
         }
