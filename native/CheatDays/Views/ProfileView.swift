@@ -10,7 +10,7 @@ struct ProfileView: View {
     @State private var posts: [JSON] = []
     @State private var tab = 0
     @State private var editing = false
-    @State private var opened: PostBox?
+    @State private var openAt: Int?   // a post tapped in the grid: the posts from there, as on the feed
     @State private var chatting = false
     @State private var reporting = false
     @State private var removing = false
@@ -80,7 +80,9 @@ struct ProfileView: View {
         .refreshable { await reload() }
         .sheet(isPresented: $editing) { EditProfileView() }
         .sheet(isPresented: $showCode) { MyCodeSheet().presentationDetents([.large]) }
-        .sheet(item: $opened) { b in PostRecipeSheet(post: b.post) }
+        .navigationDestination(item: $openAt) { i in
+            FeedView(only: Array(posts[min(i, max(0, posts.count - 1))...])).navigationTitle("Posts").navigationBarTitleDisplayMode(.inline)
+        }
         .navigationDestination(isPresented: $chatting) { ChatView(friend: id) }
         .confirmationDialog("Report \(p?.name ?? "them")?", isPresented: $reporting, titleVisibility: .visible) {
             ForEach(["Spam", "Something hurtful", "Pretending to be someone", "Something else"], id: \.self) { r in
@@ -94,7 +96,7 @@ struct ProfileView: View {
 
     private func reload() async {
         await Task { await profiles.load([id], force: true) }.value
-        if let got = await profiles.posts(of: id) { posts = got }
+        if let got = await profiles.posts(of: id) { posts = got; await Feed.shared.loadExtras(got) }
         if let c = await Task(operation: { await follows.counts(id) }).value { counts = c }
     }
 
@@ -238,7 +240,7 @@ struct ProfileView: View {
     private func cell(_ post: JSON) -> some View {
         let photo = str(post["photo"]), kind = str(post["kind"])
         let label = kind == "workout" ? "\(Int(num(dict(post["extra"])["minutes"]) ?? 0)) min" : kind == "moment" ? "" : Fmt.int(num(post["kcal"]) ?? 0)
-        return Button { if kind != "moment" { opened = PostBox(post: post) } } label: {
+        return Button { openAt = posts.firstIndex { str($0["id"]) == str(post["id"]) } } label: {
             Color.clear.aspectRatio(1, contentMode: .fit)
                 .overlay {
                     if photo.hasPrefix("http") { FeedPhoto(src: photo, fill: true) }
@@ -377,21 +379,19 @@ struct EditProfileView: View {
                     }
                 } header: { Text("Tags") } footer: { Text("Up to 3, about what you're into. Nothing about weight shows on your profile.") }
                 Section {
-                    let earned = Badge.all.filter { store.seenBadges.contains($0.id) || $0.earned(store.badgeStats) }
-                    if earned.isEmpty { Text("Earn a badge to pin it.").foregroundStyle(.secondary) }
-                    ScrollView(.horizontal) {
+                    // the ones pinned, each with a minus; then a page of everything earned to pick from
+                    let pins = pinned.compactMap { pid in Badge.all.first { $0.id == pid } }
+                    if pins.isEmpty { Text("None pinned yet.").foregroundStyle(.secondary) }
+                    ForEach(pins, id: \.id) { b in
                         HStack(spacing: 12) {
-                            ForEach(earned, id: \.id) { b in
-                                Button { toggle(b.id) } label: {
-                                    BadgeCoin(badge: b, size: 50, got: pinned.contains(b.id) || pinned.count < 4)
-                                        .overlay(alignment: .topTrailing) { if pinned.contains(b.id) { Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.accent).background(Theme.bg, in: Circle()) } }
-                                }
-                                .buttonStyle(.plain)
-                            }
+                            BadgeCoin(badge: b, size: 36)
+                            Text(b.name)
+                            Spacer()
+                            Button { withAnimation { pinned.removeAll { $0 == b.id } } } label: { Image(systemName: "minus.circle.fill").foregroundStyle(.red) }
+                                .buttonStyle(.borderless).accessibilityLabel("Unpin \(b.name)")
                         }
-                        .padding(.vertical, 4)
                     }
-                    .scrollIndicators(.hidden)
+                    NavigationLink { PinBadgesView(pinned: $pinned) } label: { Label(pins.isEmpty ? "Choose badges" : "Change badges", systemImage: "pin") }
                 } header: { Text("Pinned badges") } footer: { Text("Up to 4, on your profile.") }
                 Section {
                     Toggle("Private profile", isOn: $isPrivate)
@@ -445,6 +445,8 @@ struct EditProfileView: View {
             defer { busy = false }
             let u = Profiles.clean(username)
             if !u.isEmpty, u.count < 3 { problem = "An @name needs at least 3 characters."; return }
+            if !u.isEmpty, let why = Profiles.problem(u, username: true) { problem = why; return }
+            if let why = Profiles.problem(name, username: false) { problem = why; return }
             if !u.isEmpty, await profiles.taken(u) { taken = true; return }
             taken = false
             let change: JSON = ["display_name": name.trimmingCharacters(in: .whitespaces).isEmpty ? Friends.shared.myName : name.trimmingCharacters(in: .whitespaces),
@@ -717,5 +719,42 @@ struct AvatarCropView: View {
         return UIGraphicsImageRenderer(size: CGSize(width: 640, height: 640), format: format).image { _ in
             image.draw(in: CGRect(x: -x0 * k, y: -y0 * k, width: image.size.width * k, height: image.size.height * k))
         }
+    }
+}
+
+/// Every badge you've earned, to pin up to four: tap to pin, tap again to unpin.
+struct PinBadgesView: View {
+    @Binding var pinned: [String]
+    private var store: Store { Store.shared }
+
+    var body: some View {
+        let earned = Badge.all.filter { store.seenBadges.contains($0.id) || $0.earned(store.badgeStats) }
+        ScrollView {
+            Text("\(pinned.count) of 4 pinned").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).padding(.top, 8)
+            if earned.isEmpty { Text("Earn a badge to pin it.").foregroundStyle(.secondary).padding(.top, 30) }
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), alignment: .top), count: 4), spacing: 16) {
+                ForEach(earned, id: \.id) { b in
+                    let on = pinned.contains(b.id), full = pinned.count >= 4
+                    Button {
+                        if on { pinned.removeAll { $0 == b.id } } else if !full { pinned.append(b.id) }
+                    } label: {
+                        VStack(spacing: 4) {
+                            BadgeCoin(badge: b, size: 58, got: on || !full)
+                                .overlay(alignment: .topTrailing) {
+                                    if on { Image(systemName: "checkmark.circle.fill").font(.title3).foregroundStyle(Theme.accent).background(Theme.bg, in: Circle()).offset(x: 4, y: -4) }
+                                }
+                            Text(b.name).font(.caption2).foregroundStyle(on ? .primary : .secondary).lineLimit(2).multilineTextAlignment(.center)
+                                .frame(maxWidth: .infinity, minHeight: 30, alignment: .top)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .sensoryFeedback(.selection, trigger: on)
+                    .accessibilityLabel(on ? "Unpin \(b.name)" : "Pin \(b.name)")
+                }
+            }
+            .padding(16)
+        }
+        .background(Theme.bg)
+        .navigationTitle("Pin badges").navigationBarTitleDisplayMode(.inline)
     }
 }

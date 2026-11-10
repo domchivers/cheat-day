@@ -78,6 +78,24 @@ final class Profiles {
     static func clean(_ s: String) -> String {
         String(s.lowercased().replacingOccurrences(of: "@", with: "").filter { ($0.isASCII && ($0.isLetter || $0.isNumber)) || $0 == "." || $0 == "_" }.prefix(20))
     }
+    /// Words an @name or name can't contain, after undoing look-alikes (0 for o, 1 for i, $ for s…) and taking out
+    /// dots and underscores; and names kept back so nobody passes as the app. The same list is on the server.
+    static let blocked = ["fuck", "fuk", "shit", "cunt", "nigger", "nigga", "faggot", "retard", "whore", "slut", "rapist", "nazi", "hitler", "kkk", "bitch", "pussy", "porn", "wank", "twat", "chink", "kike", "tranny", "penis", "vagina", "boob", "nude", "naked", "molest", "paedo", "pedophile", "incel", "jihad"]   // whole words that don't turn up inside foods or names ("spicy", "grape", "cucumber" are fine)
+    static let reserved = ["admin", "administrator", "cheatdays", "cheatday", "mycheatdays", "support", "official", "help", "staff", "moderator", "mod", "system", "root", "owner", "team", "apple", "anthropic"]
+    static func squash(_ s: String) -> String {
+        let map: [Character: Character] = ["0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "8": "b", "@": "a", "$": "s", "!": "i", "|": "i"]
+        return String(s.lowercased().compactMap { c -> Character? in
+            if let m = map[c] { return m }
+            return c.isLetter ? c : nil
+        })
+    }
+    /// Why this @name or name can't be used, or nil when it's fine.
+    static func problem(_ s: String, username: Bool) -> String? {
+        let t = squash(s)
+        if blocked.contains(where: { t.contains($0) }) { return username ? "That @name isn't allowed. Try another." : "That name isn't allowed. Try another." }
+        if username, reserved.contains(t) { return "That @name is kept for the app. Try another." }
+        return nil
+    }
     func taken(_ username: String) async -> Bool {
         let u = Self.clean(username)
         guard u.count >= 3 else { return false }
