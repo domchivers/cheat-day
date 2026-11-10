@@ -306,7 +306,9 @@ struct FeedView: View {
                     // centred on the ring's bottom, no pill or outline: the flame and the number, with a dark glow so it reads over the ring
                     HStack(spacing: 1) { FluentIcon(emoji: "🔥", size: 13); Text(tag).font(.system(size: 12, weight: .black)).foregroundStyle(Color(red: 1, green: 0.7, blue: 0.36)) }
                         .shadow(color: Theme.bg, radius: 1.5).shadow(color: Theme.bg, radius: 3).shadow(color: .black.opacity(0.6), radius: 1, y: 1)
-                        .offset(y: 8)
+                        // its middle on the ring's line, not just below it
+                        .alignmentGuide(.bottom) { $0[VerticalAlignment.center] }
+                        .offset(y: -2)
                         .accessibilityLabel("\(tag) day streak")
                 }
             }
