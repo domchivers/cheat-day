@@ -345,7 +345,7 @@ struct EditProfileView: View {
                             Button { camera = true } label: { Label("Take a photo", systemImage: "camera") }
                             Button { library = true } label: { Label("Choose from library", systemImage: "photo.on.rectangle") }
                             if !profiles.avatar(profiles.me).isEmpty {
-                                Button { Task { await reframe() } } label: { Label("Move and zoom", systemImage: "arrow.up.and.down.and.arrow.left.and.right") }
+                                Button { Task { await reframe() } } label: { Label("Edit", systemImage: "crop") }
                             }
                         } label: {
                             Avatar(id: profiles.me, size: 96)
@@ -697,7 +697,7 @@ struct AvatarCropView: View {
                 .fill(Color.black.opacity(0.6), style: FillStyle(eoFill: true)).allowsHitTesting(false)
                 Circle().stroke(.white.opacity(0.85), lineWidth: 2).frame(width: side, height: side).allowsHitTesting(false)
                 VStack {
-                    Text("Move and zoom").font(.headline).foregroundStyle(.white).padding(.top, 20)
+                    Text("Edit").font(.headline).foregroundStyle(.white).padding(.top, 20)
                     Spacer()
                     HStack {
                         Button("Cancel") { done(nil) }.foregroundStyle(.white)

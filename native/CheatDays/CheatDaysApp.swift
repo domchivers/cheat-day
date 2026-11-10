@@ -303,10 +303,10 @@ private struct TourHarness: View {
     @State private var tab = 0
     var body: some View {
         TabView(selection: $tab) {
-            TodayView().tabItem { Label("Today", systemImage: "sun.max.fill") }.tag(0)
-            Color.clear.tabItem { Label("Workouts", systemImage: "dumbbell.fill") }.tag(1)
-            Color.clear.tabItem { Label("Friends", systemImage: "person.2.fill") }.tag(2)
-            Color.clear.tabItem { Label("Me", systemImage: "person.crop.circle.fill") }.tag(3)
+            TodayView().tabItem { Image(systemName: "fork.knife.circle.fill").accessibilityLabel("Today") }.tag(0)
+            Color.clear.tabItem { Image(systemName: "dumbbell.fill").accessibilityLabel("Workouts") }.tag(1)
+            Color.clear.tabItem { Image(systemName: "person.2.fill").accessibilityLabel("Friends") }.tag(2)
+            Color.clear.tabItem { Image(systemName: "person.crop.circle.fill").accessibilityLabel("Me") }.tag(3)
         }
         .overlay { TourOverlay() }
         .task {
@@ -328,18 +328,19 @@ struct MainTabs: View {
 
     var body: some View {
         TabView(selection: $tab) {
+            // icons only, no words under them; Today is the food log, so a plate rather than a sun
             TodayView()
-                .tabItem { Label("Today", systemImage: "sun.max.fill") }.tag(0)
+                .tabItem { Image(systemName: "fork.knife.circle.fill").accessibilityLabel("Today") }.tag(0)
             WorkoutsView()
-                .tabItem { Label("Workouts", systemImage: "dumbbell.fill") }.tag(1)
+                .tabItem { Image(systemName: "dumbbell.fill").accessibilityLabel("Workouts") }.tag(1)
             FriendsView()
-                .tabItem { Label("Friends", systemImage: "person.2.fill") }.tag(2)
+                .tabItem { Image(systemName: "person.2.fill").accessibilityLabel("Friends") }.tag(2)
                 .badge(FriendActivity.shared.unread)
             MeView()
                 .tabItem {
                     // your photo, once you've added one
-                    if let icon = tab == 3 ? Profiles.shared.meIconOn : Profiles.shared.meIcon { Label { Text("Me") } icon: { Image(uiImage: icon).renderingMode(.original) } }
-                    else { Label("Me", systemImage: "person.crop.circle.fill") }
+                    if let icon = tab == 3 ? Profiles.shared.meIconOn : Profiles.shared.meIcon { Image(uiImage: icon).renderingMode(.original).accessibilityLabel("Me") }
+                    else { Image(systemName: "person.crop.circle.fill").accessibilityLabel("Me") }
                 }.tag(3)
         }
         .sensoryFeedback(.selection, trigger: tab)
