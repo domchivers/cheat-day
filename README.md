@@ -584,6 +584,8 @@ Stories people post (a photo or a video up to 30 seconds, for 24 hours, with tex
 friends or Your story; who's seen each one): run `supabase/stories.sql` once. Videos go in the `photos` bucket as
 mp4: if its allowed types are limited to images, add `video/mp4` (Storage → photos → Edit bucket).
 
+Polls on stories: run `supabase/story_polls.sql` once (after stories.sql).
+
 ## Macros
 
 Everything carries protein, carbs and fat where they're known: the built-in food

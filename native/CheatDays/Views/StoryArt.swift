@@ -1,0 +1,279 @@
+import CoreImage
+import CoreImage.CIFilterBuiltins
+import SwiftUI
+
+/// How a story's text, stickers and drawing look, shared by the editor and the viewer so a story looks the same on
+/// every phone. Everything is sized for a 390-point-wide story and scaled to the one it's shown in; positions are
+/// fractions of the story's width and height.
+enum StoryArt {
+    static let design: CGFloat = 390
+    static let aspect: CGFloat = 9.0 / 16.0
+
+    static let fonts = ["classic", "modern", "serif", "neon", "type"]
+    static let fontNames = ["classic": "Classic", "modern": "Modern", "serif": "Serif", "neon": "Neon", "type": "Type"]
+    static let colors = ["FFFFFF", "000000", "8CC4FF", "C4A1FF", "F4A0A6", "F2C66B", "5CD18F", "FF6B3D"]
+
+    static func font(_ name: String, _ size: CGFloat) -> Font {
+        switch name {
+        case "modern": return .system(size: size, weight: .black, design: .default).width(.condensed)
+        case "serif": return .system(size: size, weight: .bold, design: .serif).italic()
+        case "neon": return .system(size: size, weight: .semibold, design: .rounded)
+        case "type": return .system(size: size * 0.9, weight: .medium, design: .monospaced)
+        default: return .system(size: size, weight: .heavy, design: .rounded)
+        }
+    }
+
+    static func color(_ hex: String) -> Color {
+        let v = UInt64(hex.replacingOccurrences(of: "#", with: ""), radix: 16) ?? 0xFFFFFF
+        return Color(red: Double((v >> 16) & 0xFF) / 255, green: Double((v >> 8) & 0xFF) / 255, blue: Double(v & 0xFF) / 255)
+    }
+    /// Text on a highlight: dark text on light colours, white on dark.
+    static func onColor(_ hex: String) -> Color {
+        let v = UInt64(hex, radix: 16) ?? 0xFFFFFF
+        let l = 0.299 * Double((v >> 16) & 0xFF) + 0.587 * Double((v >> 8) & 0xFF) + 0.114 * Double(v & 0xFF)
+        return l > 150 ? .black : .white
+    }
+
+    // MARK: filters
+
+    static let filters = ["Normal", "Warm", "Cool", "Mono", "Vivid", "Fade", "Pop", "Noir"]
+    static let context = CIContext()
+
+    static func filtered(_ input: CIImage, _ name: String) -> CIImage {
+        switch name {
+        case "Warm":
+            let f = CIFilter.temperatureAndTint(); f.inputImage = input
+            f.neutral = CIVector(x: 6500, y: 0); f.targetNeutral = CIVector(x: 5200, y: 0)
+            return (f.outputImage ?? input).applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 1.12])
+        case "Cool":
+            let f = CIFilter.temperatureAndTint(); f.inputImage = input
+            f.neutral = CIVector(x: 6500, y: 0); f.targetNeutral = CIVector(x: 8200, y: 0)
+            return f.outputImage ?? input
+        case "Mono": return input.applyingFilter("CIPhotoEffectMono")
+        case "Noir": return input.applyingFilter("CIPhotoEffectNoir")
+        case "Vivid": return input.applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 1.4, kCIInputContrastKey: 1.08])
+        case "Fade": return input.applyingFilter("CIPhotoEffectFade")
+        case "Pop":
+            let v = CIFilter.vibrance(); v.inputImage = input; v.amount = 0.8
+            return (v.outputImage ?? input).applyingFilter("CIColorControls", parameters: [kCIInputContrastKey: 1.12, kCIInputBrightnessKey: 0.02])
+        default: return input
+        }
+    }
+
+    static func filtered(_ image: UIImage, _ name: String) -> UIImage {
+        guard name != "Normal", let ci = CIImage(image: image) else { return image }
+        let out = filtered(ci, name)
+        guard let cg = context.createCGImage(out, from: ci.extent) else { return image }
+        return UIImage(cgImage: cg, scale: image.scale, orientation: image.imageOrientation)
+    }
+}
+
+/// One thing placed on a story, drawn at the 390-point design size.
+struct StoryItem: View {
+    let o: JSON
+    var votes: (a: Int, b: Int, mine: Int?)? = nil
+    var vote: ((Int) -> Void)? = nil
+
+    var body: some View {
+        switch str(o["type"]) {
+        case "text": text
+        case "food": food
+        case "macros": macros
+        case "streak": pill("🔥", "\(Int(num(o["days"]) ?? 0))-day streak", Color(red: 1, green: 0.54, blue: 0.16), .white)
+        case "left": pill("🎯", "\(Fmt.int(num(o["kcal"]) ?? 0)) kcal left today", .white.opacity(0.18), .white, glass: true)
+        case "workout": workout
+        case "poll": poll
+        case "time": Text(str(o["text"])).font(.system(size: 40, weight: .heavy, design: .rounded)).foregroundStyle(.white).shadow(color: .black.opacity(0.5), radius: 6)
+        case "place": pill("📍", str(o["text"]), .white, .black)
+        case "mention": Text("@" + str(o["name"])).font(.system(size: 24, weight: .heavy, design: .rounded)).foregroundStyle(StoryArt.color("8CC4FF"))
+            .padding(.horizontal, 14).padding(.vertical, 8).background(.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        case "emoji": Text(str(o["text"])).font(.system(size: 90))
+        default: EmptyView()
+        }
+    }
+
+    private var text: some View {
+        let size = CGFloat(num(o["size"]) ?? 30), c = str(o["color"]).isEmpty ? "FFFFFF" : str(o["color"]), fontName = str(o["font"])
+        let highlight = o["bg"] as? Bool ?? false, glow = (o["glow"] as? Bool ?? false) || fontName == "neon"
+        let align: TextAlignment = str(o["align"]) == "left" ? .leading : str(o["align"]) == "right" ? .trailing : .center
+        return Text(str(o["text"])).font(StoryArt.font(fontName, size)).multilineTextAlignment(align)
+            .foregroundStyle(highlight ? StoryArt.onColor(c) : StoryArt.color(c))
+            .padding(.horizontal, highlight ? 12 : 0).padding(.vertical, highlight ? 6 : 0)
+            .background { if highlight { RoundedRectangle(cornerRadius: 10, style: .continuous).fill(StoryArt.color(c)) } }
+            .shadow(color: glow ? StoryArt.color(c).opacity(0.9) : (highlight ? .clear : .black.opacity(0.45)), radius: glow ? 10 : 4)
+            .shadow(color: glow ? StoryArt.color(c).opacity(0.6) : .clear, radius: glow ? 20 : 0)
+            .frame(maxWidth: 330)
+    }
+
+    /// Three looks, tapped through in the editor: a white card, glass, bold.
+    private var food: some View {
+        let style = Int(num(o["style"]) ?? 0)
+        let name = str(o["name"]), kcal = Fmt.int(num(o["kcal"]) ?? 0), p = num(o["p"]).map { "\(Int($0)) g protein" }
+        return VStack(alignment: .leading, spacing: 3) {
+            Text(name).font(.system(size: style == 2 ? 20 : 16, weight: .heavy, design: .rounded)).lineLimit(2)
+            HStack(spacing: 6) {
+                Text("\(kcal) kcal")
+                if let p { Text(p).foregroundStyle(style == 0 ? Color(red: 0.12, green: 0.6, blue: 0.34) : StoryArt.color("5CD18F")) }
+            }
+            .font(.system(size: 13, weight: .bold, design: .rounded))
+        }
+        .foregroundStyle(style == 0 ? .black : .white)
+        .padding(.horizontal, 15).padding(.vertical, 11)
+        .background {
+            switch style {
+            case 1: RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.ultraThinMaterial).environment(\.colorScheme, .dark)
+            case 2: RoundedRectangle(cornerRadius: 18, style: .continuous).fill(LinearGradient(colors: [Color(red: 0.11, green: 0.18, blue: 0.32), Color(red: 0.17, green: 0.13, blue: 0.31)], startPoint: .topLeading, endPoint: .bottomTrailing))
+            default: RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.white)
+            }
+        }
+        .shadow(color: .black.opacity(0.35), radius: 10, y: 6)
+        .frame(maxWidth: 260)
+    }
+
+    private var macros: some View {
+        HStack(spacing: 14) {
+            ForEach([("P", "p", "5CD18F"), ("C", "c", "8CC4FF"), ("F", "f", "F2C66B")], id: \.0) { l in
+                VStack(spacing: 1) {
+                    Text("\(Int(num(o[l.1]) ?? 0))g").font(.system(size: 20, weight: .heavy, design: .rounded)).foregroundStyle(StoryArt.color(l.2))
+                    Text(l.0 == "P" ? "protein" : l.0 == "C" ? "carbs" : "fat").font(.system(size: 11, weight: .bold)).foregroundStyle(.white.opacity(0.7))
+                }
+            }
+            VStack(spacing: 1) {
+                Text(Fmt.int(num(o["kcal"]) ?? 0)).font(.system(size: 20, weight: .heavy, design: .rounded)).foregroundStyle(.white)
+                Text("kcal").font(.system(size: 11, weight: .bold)).foregroundStyle(.white.opacity(0.7))
+            }
+        }
+        .padding(.horizontal, 18).padding(.vertical, 12)
+        .background(LinearGradient(colors: [Color(red: 0.11, green: 0.18, blue: 0.32), Color(red: 0.17, green: 0.13, blue: 0.31)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                    in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: .black.opacity(0.35), radius: 10, y: 6)
+    }
+
+    private var workout: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("🏋️ " + str(o["name"])).font(.system(size: 18, weight: .heavy, design: .rounded)).foregroundStyle(.white).lineLimit(1)
+            Text("\(Int(num(o["minutes"]) ?? 0)) min" + (str(o["detail"]).isEmpty ? "" : " · " + str(o["detail"]))).font(.system(size: 13, weight: .bold)).foregroundStyle(StoryArt.color("A9B8E6"))
+        }
+        .padding(.horizontal, 16).padding(.vertical, 11)
+        .background(LinearGradient(colors: [Color(red: 0.11, green: 0.18, blue: 0.32), Color(red: 0.17, green: 0.13, blue: 0.31)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                    in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .shadow(color: .black.opacity(0.35), radius: 10, y: 6)
+    }
+
+    /// A question and two answers. Once you've voted (or it's yours), the split shows on each answer.
+    private var poll: some View {
+        let a = str(o["a"]).isEmpty ? "Yes" : str(o["a"]), b = str(o["b"]).isEmpty ? "No" : str(o["b"])
+        let total = (votes?.a ?? 0) + (votes?.b ?? 0)
+        let showing = votes?.mine != nil || (votes != nil && vote == nil)
+        return VStack(spacing: 10) {
+            Text(str(o["q"])).font(.system(size: 19, weight: .heavy, design: .rounded)).foregroundStyle(.black).multilineTextAlignment(.center).lineLimit(3)
+            HStack(spacing: 8) {
+                answer(a, 0, count: votes?.a ?? 0, total: total, showing: showing)
+                answer(b, 1, count: votes?.b ?? 0, total: total, showing: showing)
+            }
+        }
+        .padding(14).frame(width: 270)
+        .background(.white, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: .black.opacity(0.35), radius: 10, y: 6)
+    }
+
+    private func answer(_ title: String, _ i: Int, count: Int, total: Int, showing: Bool) -> some View {
+        let pct = total > 0 ? Double(count) / Double(total) : 0, mine = votes?.mine == i
+        return Button { vote?(i) } label: {
+            ZStack(alignment: .leading) {
+                GeometryReader { g in
+                    Capsule().fill(Color(white: 0.92))
+                    if showing { Capsule().fill(mine ? StoryArt.color("8CC4FF") : Color(white: 0.8)).frame(width: max(14, g.size.width * pct)) }
+                }
+                HStack {
+                    Text(title).font(.system(size: 15, weight: .heavy, design: .rounded)).foregroundStyle(.black).lineLimit(1)
+                    Spacer(minLength: 2)
+                    if showing { Text("\(Int((pct * 100).rounded()))%").font(.system(size: 13, weight: .heavy)).foregroundStyle(.black.opacity(0.7)) }
+                }
+                .padding(.horizontal, 12)
+            }
+            .frame(height: 40)
+        }
+        .buttonStyle(.plain)
+        .disabled(vote == nil || votes?.mine != nil)
+    }
+
+    private func pill(_ icon: String, _ text: String, _ bg: Color, _ fg: Color, glass: Bool = false) -> some View {
+        HStack(spacing: 6) { Text(icon); Text(text) }
+            .font(.system(size: 18, weight: .heavy, design: .rounded)).foregroundStyle(fg).lineLimit(1)
+            .padding(.horizontal, 15).padding(.vertical, 10)
+            .background {
+                if glass { Capsule().fill(.ultraThinMaterial).environment(\.colorScheme, .dark) } else { Capsule().fill(bg) }
+            }
+            .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
+    }
+}
+
+/// Drawn lines: pen, marker, neon and eraser, as fractions of the story so they scale with it.
+struct StoryDrawing: View {
+    let strokes: [JSON]
+    var body: some View {
+        Canvas { ctx, size in
+            for s in strokes {
+                let pts = ((s["points"] as? [Any]) ?? []).compactMap { p -> CGPoint? in
+                    guard let a = p as? [Any], a.count == 2, let x = num(a[0]), let y = num(a[1]) else { return nil }
+                    return CGPoint(x: x * size.width, y: y * size.height)
+                }
+                guard let first = pts.first else { continue }
+                var path = Path(); path.move(to: first)
+                if pts.count == 1 { path.addLine(to: CGPoint(x: first.x + 0.1, y: first.y)) }
+                for p in pts.dropFirst() { path.addLine(to: p) }
+                let kind = str(s["kind"]), w = (num(s["width"]) ?? 0.015) * size.width
+                let c = StoryArt.color(str(s["color"]).isEmpty ? "FFFFFF" : str(s["color"]))
+                let style = StrokeStyle(lineWidth: kind == "marker" ? w * 2.2 : w, lineCap: kind == "marker" ? .square : .round, lineJoin: .round)
+                switch kind {
+                case "eraser":
+                    ctx.blendMode = .clear; ctx.stroke(path, with: .color(.black), style: StrokeStyle(lineWidth: w * 2.5, lineCap: .round, lineJoin: .round)); ctx.blendMode = .normal
+                case "neon":
+                    var glow = ctx; glow.addFilter(.shadow(color: c, radius: w * 1.4))
+                    glow.stroke(path, with: .color(c), style: style)
+                    ctx.stroke(path, with: .color(.white), style: StrokeStyle(lineWidth: w * 0.45, lineCap: .round, lineJoin: .round))
+                case "marker": ctx.stroke(path, with: .color(c.opacity(0.55)), style: style)
+                default: ctx.stroke(path, with: .color(c), style: style)
+                }
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// Everything placed on a story, positioned and scaled for the size it's shown at. Polls can be voted on.
+struct StoryLayer: View {
+    let items: [JSON]
+    var story: String? = nil   // the story, for poll votes; nil in the editor
+    private var stories: Stories { Stories.shared }
+
+    var body: some View {
+        GeometryReader { g in
+            let k = g.size.width / StoryArt.design
+            ZStack {
+                ForEach(items.indices, id: \.self) { i in
+                    let o = items[i]
+                    if str(o["type"]) == "drawing" { StoryDrawing(strokes: list(o["strokes"])) }
+                    else {
+                        StoryItem(o: o, votes: poll(o), vote: voteAction(o))
+                            .scaleEffect((num(o["scale"]) ?? 1) * k)
+                            .rotationEffect(.degrees(num(o["rotation"]) ?? 0))
+                            .position(x: (num(o["x"]) ?? 0.5) * g.size.width, y: (num(o["y"]) ?? 0.5) * g.size.height)
+                            .allowsHitTesting(str(o["type"]) == "poll" && story != nil)
+                    }
+                }
+            }
+            .frame(width: g.size.width, height: g.size.height)
+        }
+    }
+
+    private func poll(_ o: JSON) -> (a: Int, b: Int, mine: Int?)? {
+        guard str(o["type"]) == "poll", let story else { return nil }
+        return stories.tally(story, str(o["id"]))
+    }
+    private func voteAction(_ o: JSON) -> ((Int) -> Void)? {
+        guard str(o["type"]) == "poll", let story, stories.owner(story) != stories.me else { return nil }
+        return { choice in Task { await stories.vote(story, poll: str(o["id"]), choice) } }
+    }
+}

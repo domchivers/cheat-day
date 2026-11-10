@@ -9,6 +9,7 @@ final class Stories {
 
     private(set) var all: [JSON] = []      // live stories I can see, oldest first
     private(set) var views: [JSON] = []    // who's watched mine
+    private(set) var votes: [JSON] = []    // poll votes on the stories I can see
     private(set) var watched: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "stories.watched") ?? [])
     private(set) var posting = false
     var error: String?
@@ -27,7 +28,25 @@ final class Stories {
         all = got
         let mine = got.filter { str($0["owner"]) == me }.map { str($0["id"]) }
         views = mine.isEmpty ? [] : ((try? await rows("/rest/v1/story_views?story_id=in.(\(mine.joined(separator: ",")))&select=*&order=created_at.desc")) ?? [])
+        let polled = got.filter { list($0["overlays"]).contains { str($0["type"]) == "poll" } }.map { str($0["id"]) }
+        votes = polled.isEmpty ? [] : ((try? await rows("/rest/v1/story_poll_votes?story_id=in.(\(polled.joined(separator: ",")))&select=*")) ?? [])
         await Profiles.shared.load(got.map { str($0["owner"]) } + views.map { str($0["viewer"]) })
+    }
+
+    func owner(_ story: String) -> String { str(all.first { str($0["id"]) == story }?["owner"]) }
+
+    /// A poll's split, and my answer if I've voted.
+    func tally(_ story: String, _ poll: String) -> (a: Int, b: Int, mine: Int?) {
+        let v = votes.filter { str($0["story_id"]) == story && str($0["poll"]) == poll }
+        let mine = v.first { str($0["voter"]) == me }.flatMap { num($0["choice"]).map(Int.init) }
+        return (v.filter { num($0["choice"]) == 0 }.count, v.filter { num($0["choice"]) == 1 }.count, mine)
+    }
+
+    func vote(_ story: String, poll: String, _ choice: Int) async {
+        guard tally(story, poll).mine == nil else { return }
+        votes.append(["story_id": story, "poll": poll, "voter": me, "choice": choice])
+        do { _ = try await api.rest("/rest/v1/story_poll_votes", method: "POST", body: [["story_id": story, "poll": poll, "voter": me, "choice": choice]]) }
+        catch { votes.removeAll { str($0["story_id"]) == story && str($0["poll"]) == poll && str($0["voter"]) == me }; self.error = "Polls need setting up (supabase/story_polls.sql)." }
     }
 
     func of(_ id: String) -> [JSON] { all.filter { str($0["owner"]) == id } }
@@ -53,13 +72,14 @@ final class Stories {
         all.removeAll { str($0["id"]) == str(story["id"]) }
     }
 
-    /// Upload the picture or video, then the story with its overlays.
-    func post(image: UIImage?, video: URL?, overlays: [JSON], audience: String) async -> Bool {
+    /// Upload the picture (already framed and filtered) or the video (trimmed, filtered, with or without its sound),
+    /// then the story with what's placed on it. People mentioned hear about it in your chat.
+    func post(image: UIImage?, video: URL?, overlays: [JSON], audience: String, filter: String = "Normal", range: ClosedRange<Double>? = nil, muted: Bool = false) async -> Bool {
         posting = true; defer { posting = false }
         do {
             var row: JSON = ["owner": me, "overlays": overlays, "audience": audience]
             if let video {
-                let (data, seconds) = try await Self.compress(video)
+                let (data, seconds) = try await Self.compress(video, filter: filter, range: range, muted: muted)
                 row["kind"] = "video"; row["seconds"] = seconds
                 row["media"] = try await api.upload(data, ext: "mp4", type: "video/mp4")
             } else if let image, let jpeg = Feed.prepare(image) {
@@ -68,6 +88,9 @@ final class Stories {
             let made = try await rows("/rest/v1/stories", method: "POST", body: [row], prefer: "return=representation")
             all += made
             made.forEach { watched.insert(str($0["id"])) }   // your own don't light your ring
+            for m in overlays where str(m["type"]) == "mention" && Friends.shared.people.contains(where: { $0.id == str(m["user"]) }) {
+                await Messages.shared.send(to: str(m["user"]), text: "Mentioned you in their story 📸")
+            }
             error = nil
             return true
         } catch {
@@ -76,72 +99,86 @@ final class Stories {
         }
     }
 
-    /// A video as a smaller mp4, at most 30 seconds, and how long it is.
-    static func compress(_ url: URL) async throws -> (Data, Double) {
+    /// A video as a smaller mp4: the trimmed part (at most 30 seconds), through the filter, with or without sound.
+    static func compress(_ url: URL, filter: String = "Normal", range: ClosedRange<Double>? = nil, muted: Bool = false) async throws -> (Data, Double) {
         let asset = AVURLAsset(url: url)
-        let length = min(30, (try? await asset.load(.duration).seconds) ?? 15)
+        let full = (try? await asset.load(.duration).seconds) ?? 15
+        let start = range?.lowerBound ?? 0, end = min(range?.upperBound ?? full, start + 30)
+        let span = CMTimeRange(start: CMTime(seconds: start, preferredTimescale: 600), end: CMTime(seconds: end, preferredTimescale: 600))
+        // the picture, and the sound unless it's off, cut to the part kept
+        let comp = AVMutableComposition()
+        if let v = try? await asset.loadTracks(withMediaType: .video).first, let t = comp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) {
+            try t.insertTimeRange(span, of: v, at: .zero)
+            t.preferredTransform = (try? await v.load(.preferredTransform)) ?? .identity
+        }
+        if !muted, let a = try? await asset.loadTracks(withMediaType: .audio).first, let t = comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
+            try? t.insertTimeRange(span, of: a, at: .zero)
+        }
         let out = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
-        guard let export = AVAssetExportSession(asset: asset, presetName: AVAssetExportPreset1280x720) else { return (try Data(contentsOf: url), length) }
+        guard let export = AVAssetExportSession(asset: comp, presetName: AVAssetExportPreset1280x720) else { return (try Data(contentsOf: url), end - start) }
         export.outputURL = out; export.outputFileType = .mp4; export.shouldOptimizeForNetworkUse = true
-        export.timeRange = CMTimeRange(start: .zero, duration: CMTime(seconds: length, preferredTimescale: 600))
+        if filter != "Normal" {
+            export.videoComposition = AVVideoComposition(asset: comp) { req in
+                req.finish(with: StoryArt.filtered(req.sourceImage.clampedToExtent(), filter).cropped(to: req.sourceImage.extent), context: nil)
+            }
+        }
         await export.export()
         defer { try? FileManager.default.removeItem(at: out) }
-        return (try Data(contentsOf: export.status == .completed ? out : url), length)
+        return (try Data(contentsOf: export.status == .completed ? out : url), end - start)
     }
 }
 
-/// A video that plays on its own, filling its frame, without controls: stories.
+/// A video that loops on its own, filling its frame, without controls: in stories and the editor. It can play a
+/// trimmed part, silently, and through a filter, so the editor shows what friends will see.
 struct LoopingVideo: UIViewRepresentable {
     let url: URL
     var paused = false
+    var muted = false
+    var filter = "Normal"
+    var range: ClosedRange<Double>? = nil
+
     final class PlayerView: UIView {
         override static var layerClass: AnyClass { AVPlayerLayer.self }
         var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
+        var looper: AVPlayerLooper?
+        var key = ""
     }
+
     func makeUIView(context: Context) -> PlayerView {
         let v = PlayerView()
         v.playerLayer.videoGravity = .resizeAspectFill
-        v.playerLayer.player = AVPlayer(url: url)
-        v.playerLayer.player?.play()
+        setUp(v)
         return v
     }
+
     func updateUIView(_ v: PlayerView, context: Context) {
-        if (v.playerLayer.player?.currentItem?.asset as? AVURLAsset)?.url != url { v.playerLayer.player = AVPlayer(url: url) }
+        if v.key != key { setUp(v) }
+        v.playerLayer.player?.isMuted = muted
         if paused { v.playerLayer.player?.pause() } else { v.playerLayer.player?.play() }
     }
-    static func dismantleUIView(_ v: PlayerView, coordinator: ()) { v.playerLayer.player?.pause() }
-}
 
-/// What's placed on a story: text, or a food sticker (name, calories, protein), at a spot given as fractions of the
-/// picture so it lands in the same place on any phone.
-struct StoryOverlays: View {
-    let items: [JSON]
-    var body: some View {
-        GeometryReader { g in
-            ForEach(items.indices, id: \.self) { i in
-                let o = items[i]
-                Self.view(o)
-                    .scaleEffect(num(o["scale"]) ?? 1)
-                    .position(x: (num(o["x"]) ?? 0.5) * g.size.width, y: (num(o["y"]) ?? 0.5) * g.size.height)
+    private var key: String { "\(url.absoluteString)|\(filter)|\(range.map { "\($0.lowerBound)-\($0.upperBound)" } ?? "")" }
+
+    private func setUp(_ v: PlayerView) {
+        v.key = key
+        let asset = AVURLAsset(url: url)
+        let item = AVPlayerItem(asset: asset)
+        if filter != "Normal" {
+            let name = filter
+            item.videoComposition = AVVideoComposition(asset: asset) { req in
+                req.finish(with: StoryArt.filtered(req.sourceImage.clampedToExtent(), name).cropped(to: req.sourceImage.extent), context: nil)
             }
         }
-        .allowsHitTesting(false)
-    }
-
-    @ViewBuilder static func view(_ o: JSON) -> some View {
-        if str(o["type"]) == "food" {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(str(o["name"])).font(.subheadline.weight(.heavy)).foregroundStyle(.black).lineLimit(2)
-                (Text("\(Fmt.int(num(o["kcal"]) ?? 0)) kcal") + Text(num(o["p"]).map { " · \(Int($0)) g protein" } ?? "").foregroundStyle(Color(red: 0.12, green: 0.6, blue: 0.34)))
-                    .font(.caption.weight(.bold)).foregroundStyle(Color(white: 0.35))
-            }
-            .padding(.horizontal, 14).padding(.vertical, 10)
-            .background(.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .rotationEffect(.degrees(-4)).shadow(color: .black.opacity(0.35), radius: 10, y: 6)
-            .frame(maxWidth: 240)
+        let player = AVQueuePlayer()
+        player.isMuted = muted
+        if let r = range {
+            v.looper = AVPlayerLooper(player: player, templateItem: item, timeRange: CMTimeRange(start: CMTime(seconds: r.lowerBound, preferredTimescale: 600), end: CMTime(seconds: r.upperBound, preferredTimescale: 600)))
         } else {
-            Text(str(o["text"])).font(.system(size: 28, weight: .heavy)).foregroundStyle(.white).multilineTextAlignment(.center)
-                .shadow(color: .black.opacity(0.7), radius: 6).frame(maxWidth: 300)
+            v.looper = AVPlayerLooper(player: player, templateItem: item)
         }
+        v.playerLayer.player = player
+        if !paused { player.play() }
     }
+
+    static func dismantleUIView(_ v: PlayerView, coordinator: ()) { v.playerLayer.player?.pause(); v.looper = nil }
 }

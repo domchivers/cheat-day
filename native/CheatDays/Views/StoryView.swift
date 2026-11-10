@@ -67,6 +67,13 @@ struct StoryView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .overlay { taps }
+                        // polls sit above the taps, so voting doesn't skip the story
+                        .overlay {
+                            if case .snap(let st) = s[min(slide, s.count - 1)] {
+                                let polls = list(st["overlays"]).filter { str($0["type"]) == "poll" }
+                                if !polls.isEmpty { StoryLayer(items: polls, story: str(st["id"])).aspectRatio(StoryArt.aspect, contentMode: .fit) }
+                            }
+                        }
                     footer(s[min(slide, s.count - 1)])
                 }
                 .padding(.horizontal, 8)
@@ -133,11 +140,14 @@ struct StoryView: View {
     @ViewBuilder private func content(_ s: Slide) -> some View {
         switch s {
         case .snap(let st):
+            // 9:16, the editor's shape, so everything placed lands where it was put
             ZStack {
                 if str(st["kind"]) == "video", let url = URL(string: str(st["media"])) { LoopingVideo(url: url, paused: paused || seenBy != nil) }
                 else { FeedPhoto(src: str(st["media"]), fill: true) }
-                StoryOverlays(items: list(st["overlays"]))
+                StoryLayer(items: list(st["overlays"]).filter { str($0["type"]) != "poll" }, story: str(st["id"]))
             }
+            .aspectRatio(StoryArt.aspect, contentMode: .fit)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         case .post(let p):
             ZStack(alignment: .bottomLeading) {
                 if str(p["photo"]).hasPrefix("http") { FeedPhoto(src: str(p["photo"]), fill: true) }
