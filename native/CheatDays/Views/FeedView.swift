@@ -45,7 +45,9 @@ final class Feed {
         } catch { self.error = error.localizedDescription }
     }
 
-    func name(_ id: String) -> String { id == me ? "You" : ((names[id] ?? Profiles.shared.all[id]?.name).flatMap { $0.isEmpty ? nil : $0 } ?? "Someone") }
+    func name(_ id: String) -> String {
+        id == me ? "You" : ((names[id] ?? Profiles.shared.all[id]?.name ?? Friends.shared.people.first { $0.id == id }?.name).flatMap { $0.isEmpty ? nil : $0 } ?? "Someone")
+    }
 
     func toggle(_ post: JSON, _ emoji: String) async {
         let id = str(post["id"]), mine = reactions.contains { str($0["post_id"]) == id && str($0["user_id"]) == me && str($0["emoji"]) == emoji }

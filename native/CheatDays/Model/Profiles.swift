@@ -139,7 +139,7 @@ struct Avatar: View {
                 FeedPhoto(src: src, fill: true)
             } else {
                 Theme.hero
-                Text(String(Feed.shared.name(id) == "You" ? (Friends.shared.myName.isEmpty ? "M" : Friends.shared.myName) : Feed.shared.name(id)).prefix(1).uppercased())
+                Text(String(Self.name(id).prefix(1)).uppercased())
                     .font(.system(size: size * 0.42, weight: .heavy)).foregroundStyle(Theme.accent)
             }
         }
@@ -151,5 +151,14 @@ struct Avatar: View {
             }
         }
         .accessibilityHidden(true)
+    }
+
+    /// Their name for the letter: a friend's from Friends (they may have no posts, so Feed doesn't know them), else
+    /// their profile's. The rings all showed "S", for "Someone".
+    static func name(_ id: String) -> String {
+        if id == Profiles.shared.me { return Friends.shared.myName.isEmpty ? "Me" : Friends.shared.myName }
+        if let p = Friends.shared.people.first(where: { $0.id == id }) { return p.name }
+        if let n = Profiles.shared.all[id]?.name, !n.isEmpty { return n }
+        return Feed.shared.name(id)
     }
 }
