@@ -118,22 +118,32 @@ enum Assistant {
         "for", "lunch", "dinner", "breakfast", "snack", "today", "yesterday", "aiming", "protein", "calories", "kcal", "grams", "some",
         "should", "could", "would", "like", "want", "about", "make", "cook", "cooked", "made", "there", "their", "your", "just", "need"]
 
-    /// What they said in other chats over the last week, and what was worked out, so "that chicken" can be found.
-    /// Skip is the current chat's first message (it's in the conversation already).
+    /// A message pointing back at food from before: "the chicken I cooked yesterday", "same as Tuesday", "that pasta again".
+    static func pointsBack(_ s: String) -> Bool {
+        s.range(of: #"\b(same|again|yesterday|last|before|earlier|usual|another|that|those|leftover|leftovers|batch|cooked|made|prepped|monday|tuesday|wednesday|thursday|friday|saturday|sunday|weekend)\b"#,
+                options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
+    /// What they said in other chats over the last week, and what was worked out, so "that chicken" can be found. Only
+    /// when the message points back (most don't: "a banana" needs none of it, and it was half a cent a message), and then
+    /// only the chats about the same food, or the two latest if none are. Skip is the current chat's first message (it's
+    /// in the conversation already); asking is what they've just said.
     @MainActor
-    static func earlierChats(_ store: Store, skip: String) -> String {
+    static func earlierChats(_ store: Store, skip: String, asking: String = "") -> String {
+        let said = skip + " " + asking
+        guard pointsBack(said) else { return "" }
         let since = Date().addingTimeInterval(-7 * 86400)
         let week = CheatDays.list(store.doc["chats"]).filter { c in
             (ISO.date(str(c["when"])) ?? .distantPast) >= since && CheatDays.list(c["turns"]).first { str($0["role"]) == "me" }.map { str($0["text"]) } != skip
         }
         // the chats about what they're asking about first ("the chicken I cooked yesterday" finds the one where the chicken
         // was boiled down and worked out), then the latest: only the six newest went, and a busy day pushed it out
-        let words = Set(skip.lowercased().split { !$0.isLetter }.map(String.init).filter { $0.count >= 4 && !Self.everyday.contains($0) })
+        let words = Set(said.lowercased().split { !$0.isLetter }.map(String.init).filter { $0.count >= 4 && !Self.everyday.contains($0) })
         let about = week.filter { c in
-            let said = CheatDays.list(c["turns"]).map { str($0["text"]).lowercased() }.joined(separator: " ")
-            return words.contains { said.contains($0) }
+            let text = CheatDays.list(c["turns"]).map { str($0["text"]).lowercased() }.joined(separator: " ")
+            return words.contains { text.contains($0) }
         }
-        let picked = Array((about.prefix(4) + week.filter { c in !about.prefix(4).contains { str($0["id"]) == str(c["id"]) } }).prefix(8))
+        let picked = about.isEmpty ? Array(week.prefix(2)) : Array(about.prefix(3))
         return picked.map { c -> String in
             let when = ISO.date(str(c["when"])).map { $0.formatted(.dateTime.weekday(.wide).hour().minute()) } ?? ""
             let lines = CheatDays.list(c["turns"]).compactMap { t -> String? in
@@ -152,11 +162,11 @@ enum Assistant {
                 return "you said \"\(plain.prefix(480))\""
             }.suffix(10)
             return "\(when): " + lines.joined(separator: "; ")
-        }.joined(separator: "\n").prefix(9000).description
+        }.joined(separator: "\n").prefix(5000).description
     }
 
     @MainActor
-    static func context(_ store: Store, skip: String = "") -> String {
+    static func context(_ store: Store, skip: String = "", asking: String = "") -> String {
         let items = store.todayItems
         let eaten = items.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }, m = store.macros(items)
         let list = byMeal(items)
@@ -166,7 +176,7 @@ enum Assistant {
             let name = i == 0 ? "Yesterday" : i < 6 ? DayKey.date(d).formatted(.dateTime.weekday(.wide)) : "Last \(DayKey.date(d).formatted(.dateTime.weekday(.wide)))"
             return "\(name) (\(d)), \(Int(p.kcal))/\(Int(p.budget)) kcal: \(p.items.isEmpty ? "nothing logged" : byMeal(p.items))"
         }.joined(separator: "\n")
-        let chats = earlierChats(store, skip: skip)
+        let chats = earlierChats(store, skip: skip, asking: asking)
         let meals = Swift.Array(CheatDays.list(store.doc["meals"]).prefix(10)).map { str($0["name"]) }.joined(separator: ", ")
         let wk = store.todayWorkouts.map { "\(str($0["name"])) \(Int(num($0["minutes"]) ?? 0)) min" }.joined(separator: ", ")
         let notes = str(store.doc["notes"]).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -295,7 +305,7 @@ enum Assistant {
         // price); then the photos, then this person and this message
         var parts: [JSON] = [["text": "You are the assistant inside a cheat-day food diary app called Cheat Days.\n\(rules)", "cache": true]]
         parts += pics.prefix(4).compactMap { Gemini.imagePart($0) }
-        parts.append(["text": "\(context(store, skip: turns.first { $0.me }?.text ?? ""))\(earlier.isEmpty ? "" : "Recent conversation:\n\(earlier)\n")They now say: \"\(last.text)\"\(last.images.isEmpty && !pics.isEmpty ? " (about the photos from earlier)" : "")\n\(foodData(([last.text] + (seen?.foods ?? [])).joined(separator: ", ")))\(loggedBefore(store, text: ([last.text] + (seen?.foods ?? [])).joined(separator: " ")))\(corrections(CheatDays.list(store.doc["corrections"]), text: ([last.text] + (seen?.foods ?? [])).joined(separator: " ")))"])
+        parts.append(["text": "\(context(store, skip: turns.first { $0.me }?.text ?? "", asking: turns.last { $0.me }?.text ?? ""))\(earlier.isEmpty ? "" : "Recent conversation:\n\(earlier)\n")They now say: \"\(last.text)\"\(last.images.isEmpty && !pics.isEmpty ? " (about the photos from earlier)" : "")\n\(foodData(([last.text] + (seen?.foods ?? [])).joined(separator: ", ")))\(loggedBefore(store, text: ([last.text] + (seen?.foods ?? [])).joined(separator: " ")))\(corrections(CheatDays.list(store.doc["corrections"]), text: ([last.text] + (seen?.foods ?? [])).joined(separator: " ")))"])
         // Claude for everything (Apple's on-device model made up foods: "1/2 tsp sesame oil" came back as roasted cauliflower).
         // Simple logs and questions go to the quick model; photos, recipes and plans to the careful one.
         // a follow-up in a conversation stays with the careful model: after advice, "No they've been helping me lol" isn't a
