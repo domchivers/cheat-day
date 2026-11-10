@@ -48,9 +48,12 @@ final class Follows {
         let friend = Friends.shared.people.contains { $0.id == id }
         let status = isPublic || friend ? "accepted" : "pending"
         do {
-            _ = try await api.rest("/rest/v1/follows", method: "POST", body: [["follower": me, "followee": id, "status": status]])
-            mine.append(["follower": me, "followee": id, "status": status])
-            notify(id, isPublic || friend ? "follow" : "follow_request")
+            // the server has the last word (follow_status_server.sql): a friend or a public profile is followed straight away
+            let d = try await api.rest("/rest/v1/follows", method: "POST", body: [["follower": me, "followee": id, "status": status]], prefer: "return=representation")
+            let got = ((try? JSONSerialization.jsonObject(with: d)) as? [JSON])?.first.map { str($0["status"]) } ?? status
+            mine.removeAll { str($0["followee"]) == id }
+            mine.append(["follower": me, "followee": id, "status": got.isEmpty ? status : got])
+            notify(id, got == "accepted" ? "follow" : "follow_request")
             error = nil
         } catch { self.error = "Couldn't follow: following needs setting up (supabase/followers_explore.sql)." }
     }

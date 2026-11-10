@@ -16,6 +16,7 @@ struct ProfileView: View {
     @State private var chatting = false
     @State private var friendsOnly = false   // Message on someone who isn't a friend yet
     @State private var composing = false   // adding to your story
+    @State private var followBusy = false   // a follow or unfollow on its way
     @State private var watching = false   // your story, from your photo
     @State private var posting = false   // a new post, from the +
     @State private var listing: String?   // "followers" or "following", open
@@ -235,7 +236,12 @@ struct ProfileView: View {
                 // Follow (or Following) and Message, like Instagram; no Cheer. Becoming friends is scanning each other's
                 // code, never a button here, and messages are between friends
                 let st = follows.state(id), known = follows.loaded && Friends.shared.loaded
-                Button { Task { if st == .none { await follows.follow(id) } else { await follows.unfollow(id) }; counts = await follows.counts(id) } } label: {
+                // one tap at a time: tapping fast flipped it follow, unfollow, follow and could leave a request
+                Button {
+                    guard !followBusy else { return }
+                    followBusy = true
+                    Task { if st == .none { await follows.follow(id) } else { await follows.unfollow(id) }; counts = await follows.counts(id); followBusy = false }
+                } label: {
                     Group {
                         if known { Text(st == .following ? "Following" : st == .requested ? "Requested" : follows.followsMe(id) ? "Follow back" : "Follow") }
                         else { Text("Follow").hidden().overlay { ProgressView().controlSize(.small) } }
@@ -244,7 +250,7 @@ struct ProfileView: View {
                         .frame(maxWidth: .infinity).padding(.vertical, 9)
                         .background(st == .none && known ? Theme.accent : Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12))
                 }
-                .buttonStyle(.plain).disabled(!known)
+                .buttonStyle(.plain).disabled(!known || followBusy).opacity(followBusy ? 0.6 : 1)
                 pill("Message") { if person != nil { chatting = true } else { friendsOnly = true } }
             }
         }
