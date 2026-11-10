@@ -124,8 +124,13 @@ struct ProgressPage: View {
             }
             .padding(.horizontal, 14)
             if pts.count >= 2, let first = pts.first, let last = pts.last {
+                // a little time either side of the weigh-ins, so the end dots aren't cut by the card; the fill carries on
+                // flat to both edges, so it still runs the card's full width
+                let span = last.date.timeIntervalSince(first.date), slack = max(span * 0.05, 3600 * 12)
+                let x0 = first.date.addingTimeInterval(-slack), x1 = last.date.addingTimeInterval(slack)
+                let fill = [Point(id: "start", date: x0, kg: first.trend, trend: first.trend)] + pts + [Point(id: "end", date: x1, kg: last.trend, trend: last.trend)]
                 Chart {
-                    ForEach(pts) { p in
+                    ForEach(fill) { p in
                         AreaMark(x: .value("Day", p.date), yStart: .value("Low", lo - pad), yEnd: .value("Trend", p.trend))
                             .interpolationMethod(.monotone)
                             .foregroundStyle(LinearGradient(colors: [Theme.accent.opacity(0.32), Theme.accent.opacity(0.03)], startPoint: .top, endPoint: .bottom))
@@ -155,7 +160,10 @@ struct ProgressPage: View {
                 .chartYAxis(.hidden)
                 .chartXAxis {
                     AxisMarks(values: [first.date, mid(first.date, last.date), last.date]) { v in
-                        AxisValueLabel {
+                        // the end dates hang inwards, so "7 Nov" at the right isn't cut to "7 N"
+                        let d0 = v.as(Date.self)
+                        let anchor: UnitPoint = d0.map { abs($0.timeIntervalSince(last.date)) < 60 ? .topTrailing : abs($0.timeIntervalSince(first.date)) < 60 ? .topLeading : .top } ?? .top
+                        AxisValueLabel(anchor: anchor) {
                             if let d = v.as(Date.self) {
                                 Text(Calendar.current.isDate(d, inSameDayAs: last.date) && last.id == store.today ? "Today" : d.formatted(.dateTime.day().month(.abbreviated)))
                                     .font(.caption2).foregroundStyle(.secondary)
@@ -163,8 +171,7 @@ struct ProgressPage: View {
                         }
                     }
                 }
-                // a little room at each end so the first weigh-in and today's dot (with its glow) aren't cut by the card
-                .chartXScale(range: .plotDimension(startPadding: 6, endPadding: 20))
+                .chartXScale(domain: x0...x1)
                 .chartPlotStyle { $0.padding(.horizontal, 0) }
                 .frame(height: 170)
                 .animation(.snappy, value: range)
