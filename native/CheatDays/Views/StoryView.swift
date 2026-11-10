@@ -6,6 +6,9 @@ struct StoryView: View {
     /// The people with a story today, in ring order, and where to start.
     let people: [String]
     @State var at: Int
+    /// A highlight from a profile: just its stories, kept after their 24 hours.
+    var highlight: JSON? = nil
+    @State private var adding: JSON?   // your story going into a highlight
     @Environment(\.dismiss) private var dismiss
     @State private var slide = 0
     @State private var progress: Double = 0
@@ -20,7 +23,7 @@ struct StoryView: View {
     @State private var seenBy: JSON?   // your own snap's "Seen by" list
 
     private var who: String { people[min(at, people.count - 1)] }
-    private var slides: [Slide] { Self.slides(for: who) }
+    private var slides: [Slide] { highlight.map { list($0["items"]).map { Slide.snap($0) } } ?? Self.slides(for: who) }
     private var isMe: Bool { who == Profiles.shared.me }
 
     /// Their slides: posts from today, then each meal they've logged, then workouts.
@@ -87,10 +90,10 @@ struct StoryView: View {
             progress = 0
             let now = slides.indices.contains(slide) ? slides[slide] : nil
             var length = Self.seconds
-            if case .snap(let st)? = now { Stories.shared.watch(st); if str(st["kind"]) == "video" { length = max(3, num(st["seconds"]) ?? 15) } }
+            if case .snap(let st)? = now { if highlight == nil { Stories.shared.watch(st) }; if str(st["kind"]) == "video" { length = max(3, num(st["seconds"]) ?? 15) } }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(50))
-                if paused || typing || seenBy != nil { continue }
+                if paused || typing || seenBy != nil || adding != nil { continue }
                 progress += 0.05 / length
                 if progress >= 1 { next(); return }
             }
@@ -114,7 +117,7 @@ struct StoryView: View {
     private var header: some View {
         HStack(spacing: 9) {
             Avatar(id: who, size: 32)
-            Text(isMe ? "Your day" : Feed.shared.name(who)).font(.subheadline.weight(.bold)).foregroundStyle(.white)
+            Text(highlight.map { str($0["title"]).isEmpty ? "Highlight" : str($0["title"]) } ?? (isMe ? "Your day" : Feed.shared.name(who))).font(.subheadline.weight(.bold)).foregroundStyle(.white)
             Text("today").font(.subheadline).foregroundStyle(.white.opacity(0.65))
             Spacer()
             Button { dismiss() } label: { Image(systemName: "xmark").font(.system(size: 18, weight: .semibold)).foregroundStyle(.white).padding(8) }
@@ -202,7 +205,12 @@ struct StoryView: View {
     }
 
     @ViewBuilder private func footer(_ s: Slide) -> some View {
-        if isMe {
+        if highlight != nil {
+            // a highlight: when it was, nothing to reply to from here
+            if case .snap(let st) = s {
+                Text(ISO.date(str(st["created_at"]))?.formatted(.dateTime.day().month(.wide).year()) ?? "").font(.footnote.weight(.semibold)).foregroundStyle(.white.opacity(0.65)).frame(height: 44)
+            }
+        } else if isMe {
             if case .snap(let st) = s {
                 // yours: who's watched it, and take it down early
                 HStack {
@@ -212,11 +220,13 @@ struct StoryView: View {
                     Spacer()
                     Text(str(st["audience"]) == "friends" ? "Close friends" : "Your story").font(.caption.weight(.bold)).foregroundStyle(.white.opacity(0.6))
                     Menu {
+                        Button { adding = st } label: { Label("Add to highlight", systemImage: "heart.circle") }
                         Button(role: .destructive) { Task { await Stories.shared.delete(st); if slides.isEmpty { dismiss() } else { slide = min(slide, slides.count - 1) } } } label: { Label("Delete this story", systemImage: "trash") }
                     } label: { Image(systemName: "ellipsis").font(.title3).foregroundStyle(.white).padding(10) }
                 }
                 .frame(height: 44).padding(.horizontal, 8)
                 .sheet(item: Binding(get: { seenBy.map { PostBox(post: $0) } }, set: { seenBy = $0?.post })) { b in SeenBySheet(story: b.post).presentationDetents([.medium, .large]) }
+                .sheet(item: Binding(get: { adding.map { PostBox(post: $0) } }, set: { adding = $0?.post })) { b in AddToHighlight(story: b.post).presentationDetents([.medium, .large]) }
             } else {
                 Text("Your day, as friends see it").font(.footnote).foregroundStyle(.white.opacity(0.6)).frame(height: 44)
             }

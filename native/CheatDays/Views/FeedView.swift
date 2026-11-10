@@ -829,7 +829,10 @@ struct ComposeSheet: View {
             }
             .fullScreenCover(isPresented: $camera) { CameraPicker { img in camera = false; if let img { DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { editing = EditBox(image: img) } } }.ignoresSafeArea() }
             .onChange(of: picked) { _, item in Task { if let d = try? await item?.loadTransferable(type: Data.self), let img = UIImage(data: d) { editing = EditBox(image: img) } } }
-            .fullScreenCover(item: $editing) { e in PhotoEditor(image: e.image) { photo = $0; source = e.image } }
+            // the story editor, in the feed's 4:5: text, stickers, drawing and filters baked into the photo
+            .fullScreenCover(item: $editing) { e in
+                StoryEditor(image: e.image, video: nil, aspect: 4.0 / 5.0, close: { editing = nil }, finish: { out in photo = out; source = e.image; editing = nil })
+            }
         }
     }
 

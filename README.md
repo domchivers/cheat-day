@@ -586,6 +586,8 @@ mp4: if its allowed types are limited to images, add `video/mp4` (Storage → ph
 
 Polls on stories: run `supabase/story_polls.sql` once (after stories.sql).
 
+Highlights (stories kept on your profile): run `supabase/highlights.sql` once (after stories.sql).
+
 ## Macros
 
 Everything carries protein, carbs and fat where they're known: the built-in food

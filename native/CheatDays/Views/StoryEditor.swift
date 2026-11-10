@@ -9,8 +9,13 @@ import SwiftUI
 struct StoryEditor: View {
     let image: UIImage?
     let video: URL?
+    /// 9:16 for a story; 4:5 for a feed post, which gets everything baked into its photo.
+    var aspect: CGFloat = StoryArt.aspect
     var close: () -> Void
-    var posted: () -> Void
+    var posted: () -> Void = {}
+    /// A feed post: the finished photo, with everything on it, instead of sharing to a story.
+    var finish: ((UIImage) -> Void)? = nil
+    private var forPost: Bool { finish != nil }
 
     enum Mode { case none, text, draw, filters, trim }
     @State private var mode: Mode = .none
@@ -60,8 +65,8 @@ struct StoryEditor: View {
 
     var body: some View {
         GeometryReader { screen in
-            let cw = min(screen.size.width - 16, (screen.size.height - 96) * StoryArt.aspect)
-            let ch = cw / StoryArt.aspect
+            let cw = min(screen.size.width - 16, (screen.size.height - 96) * aspect)
+            let ch = cw / aspect
             VStack(spacing: 10) {
                 canvas(cw, ch)
                     .frame(width: cw, height: ch)
@@ -83,7 +88,7 @@ struct StoryEditor: View {
         .task { await prepare() }
         .onChange(of: filter) { _, f in Task { await refilter(f) } }
         .sheet(isPresented: $stickers) {
-            StickerSheet { pick in stickers = false; add(pick) }
+            StickerSheet(forPost: forPost) { pick in stickers = false; add(pick) }
                 .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $food) { FoodStickerPicker { it in addFood(it) }.presentationDetents([.medium, .large]) }
@@ -497,22 +502,34 @@ struct StoryEditor: View {
         preview = f == "Normal" ? nil : await Task.detached { StoryArt.filtered(src, f) }.value
     }
 
-    /// The photo as framed (zoom, position, filter), 1080 × 1920; what's placed on it stays sharp as its own layer.
+    /// The photo as framed (zoom, position, filter), 1080 wide (1920 high for a story); what's placed on it stays
+    /// sharp as its own layer.
     private func framedPhoto(_ cw: CGFloat) -> UIImage? {
         guard let base = preview ?? image else { return nil }
-        let ch = cw / StoryArt.aspect, k = 1080 / cw
+        let ch = cw / aspect, k = 1080 / cw, oh = (1080 / aspect).rounded()
         let fill = max(cw / base.size.width, ch / base.size.height) * bgScale
         let w = base.size.width * fill, h = base.size.height * fill
         let format = UIGraphicsImageRendererFormat(); format.scale = 1
-        return UIGraphicsImageRenderer(size: CGSize(width: 1080, height: 1920), format: format).image { _ in
-            UIColor(white: 0.08, alpha: 1).setFill(); UIRectFill(CGRect(x: 0, y: 0, width: 1080, height: 1920))
+        return UIGraphicsImageRenderer(size: CGSize(width: 1080, height: oh), format: format).image { _ in
+            UIColor(white: 0.08, alpha: 1).setFill(); UIRectFill(CGRect(x: 0, y: 0, width: 1080, height: oh))
             base.draw(in: CGRect(x: ((cw - w) / 2 + bgOffset.width) * k, y: ((ch - h) / 2 + bgOffset.height) * k, width: w * k, height: h * k))
         }
     }
 
     private var everything: [JSON] { (strokes.isEmpty ? [] : [["type": "drawing", "strokes": strokes]]) + items }
 
-    private var bottomBar: some View {
+    @ViewBuilder private var bottomBar: some View {
+        if forPost {
+            Button {
+                if let out = baked() { UINotificationFeedbackGenerator().notificationOccurred(.success); finish?(out) }
+            } label: {
+                Text("Use this photo").font(.headline).foregroundStyle(.black).frame(maxWidth: .infinity).padding(.vertical, 13).background(.white, in: Capsule())
+            }
+            .buttonStyle(.plain).disabled(mode != .none).opacity(mode == .none ? 1 : 0.3)
+        } else { storyButtons }
+    }
+
+    private var storyButtons: some View {
         HStack(spacing: 10) {
             Button { share("friends") } label: {
                 HStack(spacing: 7) {
@@ -548,16 +565,21 @@ struct StoryEditor: View {
         }
     }
 
-    /// The finished story, everything on it, saved as a photo.
-    private func save() async {
-        guard let photo = framedPhoto(canvasWidth) else { return }
+    /// The photo with everything on it, as one picture: a feed post, or Save to Photos.
+    private func baked() -> UIImage? {
+        guard let photo = framedPhoto(canvasWidth) else { return nil }
         let layer = ZStack {
             Image(uiImage: photo).resizable()
             StoryLayer(items: everything)
         }
-        .frame(width: StoryArt.design, height: StoryArt.design / StoryArt.aspect)
+        .frame(width: StoryArt.design, height: StoryArt.design / aspect)
         let r = ImageRenderer(content: layer); r.scale = 1080 / StoryArt.design
-        guard let out = r.uiImage else { return }
+        return r.uiImage
+    }
+
+    /// The finished story, everything on it, saved as a photo.
+    private func save() async {
+        guard let out = baked() else { return }
         let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
         guard status == .authorized || status == .limited else { flash("Allow Photos in Settings to save"); return }
         UIImageWriteToSavedPhotosAlbum(out, nil, nil, nil)
@@ -572,6 +594,7 @@ struct StoryEditor: View {
 
 /// The sticker tray: the app's own stickers from your numbers, then emoji, with search.
 struct StickerSheet: View {
+    var forPost = false
     var pick: (String) -> Void
     @State private var q = ""
     private var store: Store { Store.shared }
@@ -598,7 +621,8 @@ struct StickerSheet: View {
                     TextField("Search stickers", text: $q)
                 }
                 .padding(10).background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12))
-                let shown = app.filter { q.isEmpty || ($0.title + " " + $0.detail).localizedCaseInsensitiveContains(q) }
+                // a poll or a mention needs a story to vote or tap on; a post is one picture
+                let shown = app.filter { (!forPost || ($0.id != "poll" && $0.id != "mention")) && (q.isEmpty || ($0.title + " " + $0.detail).localizedCaseInsensitiveContains(q)) }
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
                     ForEach(shown, id: \.id) { s in
                         Button { pick(s.id) } label: {

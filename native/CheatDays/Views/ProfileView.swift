@@ -32,6 +32,8 @@ struct ProfileView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 header.padding(.horizontal, 18).padding(.top, 8)
+                // highlights: stories kept on the profile, like Instagram's circles
+                if !locked { HighlightsRow(owner: id).padding(.top, 14) }
                 if locked {
                     VStack(spacing: 8) {
                         Image(systemName: "lock.fill").font(.system(size: 34)).foregroundStyle(.secondary)
