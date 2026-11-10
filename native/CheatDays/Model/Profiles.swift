@@ -45,7 +45,12 @@ final class Profiles {
         }
     }
 
-    private(set) var all: [String: Profile] = [:] { didSet { if mine?.avatar != iconFor { Task { await makeIcon() } } } }
+    private(set) var all: [String: Profile] = [:] {
+        didSet {
+            keepAvatars()
+            if let a = mine?.avatar, a != iconFor { Task { await makeIcon() } }
+        }
+    }
     /// The Me tab's icon: your photo, round, the size of the other tab icons; with a ring in the accent colour
     /// when Me is the tab you're on (it didn't change at all before, so it looked stuck on).
     private(set) var meIcon: UIImage?
@@ -70,16 +75,30 @@ final class Profiles {
         }
     }
 
-    func avatar(_ id: String) -> String { all[id]?.avatar ?? "" }
+    /// Their photo's address, or the one kept from last time while their profile is still on its way (so the picture
+    /// is there at once instead of the letter first).
+    func avatar(_ id: String) -> String {
+        if let a = all[id]?.avatar { return a }
+        return keptAvatars[id] ?? ""
+    }
+    private var keptAvatars: [String: String] = UserDefaults.standard.dictionary(forKey: "avatars") as? [String: String] ?? [:]
+    private func keepAvatars() {
+        var k = keptAvatars
+        for (id, p) in all where !p.avatar.isEmpty { k[id] = p.avatar }
+        if k != keptAvatars { keptAvatars = k; UserDefaults.standard.set(k, forKey: "avatars") }
+    }
     /// Profiles a search already fetched.
     func keep(_ ps: [Profile]) { for p in ps { all[p.id] = p } }
 
+    /// The tab icon from the photo kept on the phone: there at launch, before your profile has loaded.
+    func warmIcon() { if meIcon == nil, !avatar(me).isEmpty { Task { await makeIcon() } } }
+
     private func makeIcon() async {
-        let src = mine?.avatar ?? ""
+        let src = mine?.avatar ?? keptAvatars[me] ?? ""
         iconFor = src
-        guard src.hasPrefix("http"), let url = URL(string: src), let (d, _) = try? await URLSession.shared.data(from: url), let img = UIImage(data: d) else { meIcon = nil; meIconOn = nil; return }
+        guard src.hasPrefix("http"), let img = await ImageStore.load(src) else { meIcon = nil; meIconOn = nil; return }
         func icon(ring: Bool) -> UIImage {
-            let side: CGFloat = 27.5, inset: CGFloat = ring ? 3.5 : 1.5   // a round photo reads smaller than a glyph, so a touch bigger
+            let side: CGFloat = 24.75, inset: CGFloat = ring ? 3.5 : 1.5   // a round photo reads smaller than a glyph, so a touch bigger
             return UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { ctx in
                 let photo = CGRect(x: inset, y: inset, width: side - inset * 2, height: side - inset * 2)
                 ctx.cgContext.saveGState()

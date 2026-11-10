@@ -1050,7 +1050,11 @@ struct FeedPhoto: View {
     let src: String
     var fill = false
     @State private var image: UIImage?
-    private static let cache = NSCache<NSString, UIImage>()
+
+    init(src: String, fill: Bool = false) {
+        self.src = src; self.fill = fill
+        _image = State(initialValue: ImageStore.cached(src))   // one already here shows at once, with no placeholder first
+    }
 
     var body: some View {
         Group {
@@ -1062,16 +1066,51 @@ struct FeedPhoto: View {
     }
 
     private func load() async {
-        if let kept = Self.cache.object(forKey: src as NSString) { image = kept; return }
-        guard let url = URL(string: src) else { return }
+        if image != nil, ImageStore.cached(src) != nil { return }
         for attempt in 0..<3 {
             if attempt > 0 { try? await Task.sleep(nanoseconds: UInt64(attempt) * 1_500_000_000) }
             if Task.isCancelled { return }
-            if let (data, _) = try? await URLSession.shared.data(from: url), let got = UIImage(data: data) {
-                Self.cache.setObject(got, forKey: src as NSString)
-                image = got
-                return
-            }
+            if let got = await ImageStore.load(src) { image = got; return }
         }
+    }
+}
+
+/// Photos kept in memory and on the phone, so profile pictures and posts show straight away, even after the app's
+/// been closed (they were only kept in memory, so every launch fetched every face again).
+enum ImageStore {
+    private static let memory = NSCache<NSString, UIImage>()
+    private static let folder: URL = {
+        let f = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("photos", isDirectory: true)
+        try? FileManager.default.createDirectory(at: f, withIntermediateDirectories: true)
+        return f
+    }()
+    private static func file(_ src: String) -> URL {
+        // a stable name from the address (Swift's own hash changes every launch)
+        var h: UInt64 = 1469598103934665603
+        for b in src.utf8 { h = (h ^ UInt64(b)) &* 1099511628211 }
+        return folder.appendingPathComponent(String(h, radix: 36) + ".img")
+    }
+
+    /// Only what's in memory: for drawing straight away.
+    static func cached(_ src: String) -> UIImage? { src.isEmpty ? nil : memory.object(forKey: src as NSString) }
+
+    /// Memory, then the phone, then the internet (kept on the phone after).
+    static func load(_ src: String) async -> UIImage? {
+        if let m = cached(src) { return m }
+        if src.hasPrefix("data:image"), let comma = src.firstIndex(of: ","), let d = Data(base64Encoded: String(src[src.index(after: comma)...])), let img = UIImage(data: d) {
+            memory.setObject(img, forKey: src as NSString); return img
+        }
+        guard src.hasPrefix("http"), let url = URL(string: src) else { return nil }
+        let path = file(src)
+        if let img = await Task.detached(priority: .userInitiated, operation: { () -> UIImage? in
+            guard let d = try? Data(contentsOf: path) else { return nil }
+            return UIImage(data: d)?.preparingForDisplay()
+        }).value {
+            memory.setObject(img, forKey: src as NSString); return img
+        }
+        guard let (d, _) = try? await URLSession.shared.data(from: url), let img = UIImage(data: d) else { return nil }
+        memory.setObject(img, forKey: src as NSString)
+        Task.detached(priority: .utility) { try? d.write(to: path, options: .atomic) }
+        return img
     }
 }

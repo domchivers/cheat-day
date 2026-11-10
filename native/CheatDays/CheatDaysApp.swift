@@ -391,7 +391,8 @@ struct MainTabs: View {
                 }.tag(3)
         }
         .sensoryFeedback(.selection, trigger: tab)
-        .onChange(of: tab) { _, _ in KeyboardDone.quiet = false }   // a chat box left open in another tab can't take Done away from this one
+        .onChange(of: tab) { _, _ in KeyboardDone.quiet = false }
+        .onAppear { Profiles.shared.warmIcon() }   // your photo on Me from the phone, before your profile loads   // a chat box left open in another tab can't take Done away from this one
         .onReceive(NotificationCenter.default.publisher(for: .openTab)) { n in if let t = n.object as? Int { tab = t } }
         .onOpenURL { url in
             guard url.scheme == "cheatdays" else { return }
@@ -609,7 +610,7 @@ private struct DemoRoot: View {
 /// knife and your photo, rather than being shrunk to fit their width.
 enum TabGlyph {
     @MainActor private static var made: [String: UIImage] = [:]
-    @MainActor static func make(_ name: String, height: CGFloat = 25.5) -> UIImage {   // the fork and knife's own size in the bar
+    @MainActor static func make(_ name: String, height: CGFloat = 23) -> UIImage {   // the fork and knife's own size in the bar
         if let m = made[name] { return m }
         guard let sym = UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: 60, weight: .semibold)) else { return UIImage() }
         // the dumbbell is so wide that at full height it looked bigger than the rest
