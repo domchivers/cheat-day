@@ -159,6 +159,20 @@ final class TourUITests: XCTestCase {
         let c = XCTAttachment(screenshot: app.screenshot()); c.name = "all-badges"; c.lifetime = .keepAlways; add(c)
     }
 
+    /// The sticker tray as it opens, and every sticker on a story: screenshots to check nothing's squeezed or broken.
+    func testStickers() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-uitest-stickers"]
+        app.launch()
+        XCTAssertTrue(app.buttons["Yours"].waitForExistence(timeout: 5), "the tray opens on Yours")
+        sleep(1)
+        let a = XCTAttachment(screenshot: app.screenshot()); a.name = "stickers-tray"; a.lifetime = .keepAlways; add(a)
+        app.buttons["3D"].tap(); sleep(1)
+        let b = XCTAttachment(screenshot: app.screenshot()); b.name = "stickers-3d"; b.lifetime = .keepAlways; add(b)
+        app.swipeDown(velocity: .fast); sleep(1)
+        let c = XCTAttachment(screenshot: app.screenshot()); c.name = "stickers-story"; c.lifetime = .keepAlways; add(c)
+    }
+
     func testMealCheck() {
         let app = XCUIApplication()
         app.launchArguments = ["-uitest-mealcheck"]

@@ -43,6 +43,7 @@ struct RootView: View {
         else if ProcessInfo.processInfo.arguments.contains("-uitest-walk") { WalkHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-ranks") { RanksHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-mealcheck") { MealCheckHarness() }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-stickers") { StickersHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-review") { ReviewHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-cards") { CardsHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-checkin-step") { CheckInHarness(acting: true) }
@@ -156,6 +157,30 @@ private struct WalkHarness: View {
         Steps.shared.preview(days)
     }
     var body: some View { WorkoutsView() }
+}
+
+/// For the sticker screenshots only: the tray as it opens, then every sticker on a story, no sign-in.
+private struct StickersHarness: View {
+    @State private var tray = true
+    private static let all: [JSON] = [
+        ["type": "food", "name": "Eggs on sourdough", "kcal": 410, "p": 33, "style": 0, "x": 0.3, "y": 0.1],
+        ["type": "food", "name": "Chicken bowl", "kcal": 520, "p": 42, "style": 1, "x": 0.72, "y": 0.1],
+        ["type": "macros", "p": 120, "c": 180, "f": 55, "kcal": 1652, "x": 0.5, "y": 0.21],
+        ["type": "ring", "eaten": 1240, "budget": 2350, "x": 0.5, "y": 0.32],
+        ["type": "left", "kcal": 1110, "x": 0.3, "y": 0.42], ["type": "streak", "days": 54, "x": 0.72, "y": 0.42],
+        ["type": "steps", "steps": 8421, "x": 0.3, "y": 0.5], ["type": "rank", "level": 10, "x": 0.72, "y": 0.5],
+        ["type": "cheat", "days": 4, "x": 0.27, "y": 0.61], ["type": "workout", "name": "Push day", "minutes": 52, "detail": "6 exercises", "x": 0.72, "y": 0.61],
+        ["type": "poll", "q": "Cheat day or not?", "a": "Yes", "b": "No", "x": 0.5, "y": 0.72],
+        ["type": "question", "q": "Ask me anything", "x": 0.5, "y": 0.84],
+        ["type": "time", "text": "15:40", "x": 0.2, "y": 0.94], ["type": "place", "text": "South Yarra", "x": 0.5, "y": 0.94],
+        ["type": "hashtag", "text": "mealprep", "x": 0.82, "y": 0.94]]
+    var body: some View {
+        ZStack {
+            LinearGradient(colors: [Color(red: 0.4, green: 0.25, blue: 0.15), Color(red: 0.12, green: 0.08, blue: 0.06)], startPoint: .top, endPoint: .bottom).ignoresSafeArea()
+            StoryLayer(items: Self.all).aspectRatio(9.0 / 16.0, contentMode: .fit).accessibilityIdentifier("story")
+        }
+        .sheet(isPresented: $tray) { StickerSheet(pick: { _ in }, place: { _ in }).presentationDetents([.large]) }
+    }
 }
 
 /// For the meal check screenshot only: toast logged for lunch, then the pop-up after it, no sign-in.

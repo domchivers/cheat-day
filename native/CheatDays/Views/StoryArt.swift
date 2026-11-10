@@ -78,6 +78,11 @@ struct StoryItem: View {
     var answer: (() -> Void)? = nil
 
     var body: some View {
+        if str(o["type"]) == "text" { text }   // text wraps at its own width; everything else keeps its size, never squeezed
+        else { sticker.fixedSize() }
+    }
+
+    @ViewBuilder private var sticker: some View {
         switch str(o["type"]) {
         case "text": text
         case "food": food
@@ -151,13 +156,13 @@ struct StoryItem: View {
         HStack(spacing: 14) {
             ForEach([("P", "p", "5CD18F"), ("C", "c", "8CC4FF"), ("F", "f", "F2C66B")], id: \.0) { l in
                 VStack(spacing: 1) {
-                    Text("\(Int(num(o[l.1]) ?? 0))g").font(.system(size: 20, weight: .heavy, design: .rounded)).foregroundStyle(StoryArt.color(l.2))
-                    Text(l.0 == "P" ? "protein" : l.0 == "C" ? "carbs" : "fat").font(.system(size: 11, weight: .bold)).foregroundStyle(.white.opacity(0.7))
+                    Text("\(Int(num(o[l.1]) ?? 0))g").font(.system(size: 20, weight: .heavy, design: .rounded)).foregroundStyle(StoryArt.color(l.2)).lineLimit(1)
+                    Text(l.0 == "P" ? "protein" : l.0 == "C" ? "carbs" : "fat").font(.system(size: 11, weight: .bold)).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
                 }
             }
             VStack(spacing: 1) {
-                Text(Fmt.int(num(o["kcal"]) ?? 0)).font(.system(size: 20, weight: .heavy, design: .rounded)).foregroundStyle(.white)
-                Text("kcal").font(.system(size: 11, weight: .bold)).foregroundStyle(.white.opacity(0.7))
+                Text(Fmt.int(num(o["kcal"]) ?? 0)).font(.system(size: 20, weight: .heavy, design: .rounded)).foregroundStyle(.white).lineLimit(1)
+                Text("kcal").font(.system(size: 11, weight: .bold)).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
             }
         }
         .padding(.horizontal, 18).padding(.vertical, 12)
