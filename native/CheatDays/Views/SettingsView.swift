@@ -16,6 +16,7 @@ struct SettingsView: View {
     @State private var newPassword = ""
     @State private var passwordNote: String?
     @State private var confirmSignOut = false
+    @State private var search = ""
     private var store: Store { Store.shared }
     private let order = [1, 2, 3, 4, 5, 6, 0]
     @AppStorage("dailyTips") private var dailyTips = true
@@ -24,6 +25,7 @@ struct SettingsView: View {
     var body: some View {
         let helpers = Family.shared.helpers.count
         Form {
+            if search.isEmpty || shows("Account password email") {
             Section {
                 NavigationLink { page("Account") { accountPage } } label: {
                     HStack(spacing: 12) {
@@ -36,38 +38,49 @@ struct SettingsView: View {
                     }
                     .padding(.vertical, 4)
                 }
+            } header: { if search.isEmpty { Text("Your account") } }
             }
+            // grouped as Instagram groups its settings, with a search over them all
             Section {
-                NavigationLink { page("Reminders") { remindersPage } } label: {
-                    row("🔔", "Reminders", value: "\([lunch, dailyTips, weighOn].filter { $0 }.count) on")
+                if shows("Reminders") {
+                    NavigationLink { page("Reminders") { remindersPage } } label: {
+                        row("🔔", "Reminders", value: "\([lunch, dailyTips, weighOn].filter { $0 }.count) on")
+                    }
                 }
-                NavigationLink { page("Friends and sharing") { friendsPage } } label: { row("👥", "Friends and sharing") }
-            }
-            Section {
-                NavigationLink { page("Colour") { colourPage } } label: { row("🎨", "Colour", value: Palette.current.name) }
-            }
-            Section {
-                NavigationLink { page("Portion sizes") { portionsPage } } label: {
-                    row("🍽️", "Portion sizes", value: Region(rawValue: region)?.label ?? "Automatic")
+                if shows("Portion sizes") {
+                    NavigationLink { page("Portion sizes") { portionsPage } } label: {
+                        row("🍽️", "Portion sizes", value: Region(rawValue: region)?.label ?? "Automatic")
+                    }
                 }
-                NavigationLink { page("Assistant") { assistantPage } } label: { row("✨", "Assistant") }
-            }
+                if shows("Assistant") { NavigationLink { page("Assistant") { assistantPage } } label: { row("✨", "Assistant") } }
+                if shows("Colour") { NavigationLink { page("Colour") { colourPage } } label: { row("🎨", "Colour", value: Palette.current.name) } }
+            } header: { if search.isEmpty { Text("How you use Cheat Days") } }
             Section {
-                if helpers > 0 {
+                if shows("Account privacy private public") {
+                    NavigationLink { PrivacyPage() } label: { row("🔒", "Account privacy", value: (Profiles.shared.mine?.isPrivate ?? true) ? "Private" : "Public") }
+                }
+                if shows("Friends and sharing") { NavigationLink { page("Friends and sharing") { friendsPage } } label: { row("👥", "Friends and sharing") } }
+                if shows("Blocked") { NavigationLink { BlockedPage() } label: { row("🚫", "Blocked", value: "\(Follows.shared.blocked.count)") } }
+            } header: { if search.isEmpty { Text("Who can see your content") } }
+            Section {
+                if helpers > 0, shows("Family") {
                     NavigationLink { page("Family") { familyPage } } label: { row("🏡", "Family", value: "\(helpers) helper\(helpers == 1 ? "" : "s")") }
                 }
-                NavigationLink { page("Your data") { dataPage } } label: { row("💾", "Your data and backups") }
-            }
+                if shows("Your data and backups") { NavigationLink { page("Your data") { dataPage } } label: { row("💾", "Your data and backups") } }
+            } header: { if search.isEmpty { Text("Family and data") } }
+            if search.isEmpty {
             Section {
                 Button { Tour.shared.pending = true } label: { row("📖", "Show me around") }.foregroundStyle(.primary)
             }
             Section {
-                Button("Sign out", role: .destructive) { confirmSignOut = true }.frame(maxWidth: .infinity)
+                Button("Log out", role: .destructive) { confirmSignOut = true }.frame(maxWidth: .infinity)
             } footer: {
                 Text("Cheat Days \(Bundle.main.shortVersion)\(store.lastSynced.map { " · synced \($0.formatted(date: .omitted, time: .shortened))" } ?? "")")
                     .frame(maxWidth: .infinity).padding(.top, 6)
             }
+            }
         }
+        .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search")
         .task { await Family.shared.load() }
         .confirmationDialog("Sign out of Cheat Days on this phone?", isPresented: $confirmSignOut, titleVisibility: .visible) {
             Button("Sign out", role: .destructive) {
@@ -94,6 +107,12 @@ struct SettingsView: View {
         .onChange(of: days) { _, now in if loaded { store.setWeighDays(Array(now)) } }
         .onChange(of: share) { _, now in if loaded { store.setShareDay(now) } }
         .onChange(of: notes) { _, now in if loaded { store.perform(["type": "set", "key": "notes", "value": String(now.prefix(1000))], syncAfter: 3) } }
+    }
+
+    /// Whether a row is in the search (every row when there's none).
+    private func shows(_ words: String) -> Bool {
+        let q = search.trimmingCharacters(in: .whitespaces)
+        return q.isEmpty || words.localizedCaseInsensitiveContains(q)
     }
 
     /// A row on the main list: the Fluent icon, the name, and what it's set to.
@@ -295,5 +314,45 @@ struct SettingsView: View {
     private func save() {
         guard loaded else { return }
         store.setReminders(lunch: lunch, weigh: weighOn ? timeText : nil)
+    }
+}
+
+/// Private or public, the same switch as in Edit profile, with what each means.
+struct PrivacyPage: View {
+    @State private var isPrivate = Profiles.shared.mine?.isPrivate ?? true
+    @State private var loaded = false
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Private profile", isOn: $isPrivate)
+            } footer: {
+                Text(isPrivate ? "People ask to follow you, and you say yes or no. Friends see your day and posts either way."
+                     : "Anyone can follow you and see your posts and badges, and they can show on Explore. Your day, week and food log stay friends only.")
+            }
+        }
+        .navigationTitle("Account privacy").navigationBarTitleDisplayMode(.inline)
+        .onAppear { loaded = true }
+        .onChange(of: isPrivate) { _, v in if loaded { Task { _ = await Profiles.shared.save(["private": v, "privacy_chosen": true]) } } }
+    }
+}
+
+/// Everyone you've blocked, each with Unblock.
+struct BlockedPage: View {
+    private var follows: Follows { Follows.shared }
+    private var profiles: Profiles { Profiles.shared }
+    var body: some View {
+        List {
+            if follows.blocked.isEmpty { Text("You haven't blocked anyone.").foregroundStyle(.secondary) }
+            ForEach(Array(follows.blocked).sorted(), id: \.self) { u in
+                HStack(spacing: 12) {
+                    Avatar(id: u, size: 40)
+                    Text(profiles.all[u]?.name ?? "Someone").font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Button("Unblock") { Task { await follows.unblock(u) } }.buttonStyle(.bordered).controlSize(.small)
+                }
+            }
+        }
+        .navigationTitle("Blocked").navigationBarTitleDisplayMode(.inline)
+        .task { await follows.load(); await profiles.load(Array(follows.blocked)) }
     }
 }

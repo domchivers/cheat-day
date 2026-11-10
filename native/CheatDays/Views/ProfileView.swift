@@ -75,8 +75,17 @@ struct ProfileView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if isMe {
+                if home {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Menu {
+                            Button { composing = true } label: { Label("Story", systemImage: "plus.circle") }
+                            Button { posting = true } label: { Label("Post", systemImage: "square.grid.3x3") }
+                        } label: { Image(systemName: "plus") }
+                        .accessibilityLabel("New story or post")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink { SettingsView() } label: { Image(systemName: "gearshape") }.accessibilityLabel("Settings")
+                    NavigationLink { SettingsView() } label: { Image(systemName: "line.3.horizontal") }.accessibilityLabel("Settings")
                 }
             }
             if !isMe {
@@ -154,18 +163,24 @@ struct ProfileView: View {
                     }
                     // your photo plays your story if there is one, else starts one
                     .onTapGesture { if isMe { if Stories.shared.of(id).isEmpty { composing = true } else { watching = true } } }
-                HStack {
-                    count(locked ? "–" : "\(posts.count)", posts.count == 1 ? "post" : "posts")
-                    // tap either for the people
-                    count("\(counts?.followers ?? 0)", counts?.followers == 1 ? "follower" : "followers")
-                        .contentShape(Rectangle()).onTapGesture { if !locked { listing = "followers" } }
-                    count("\(counts?.following ?? 0)", "following")
-                        .contentShape(Rectangle()).onTapGesture { if !locked { listing = "following" } }
+                // Instagram's way: the name, then the counts under it, beside the photo
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 6) {
+                        Text(name).font(.title3.weight(.heavy)).lineLimit(1).minimumScaleFactor(0.8)
+                        if p?.isPrivate == true { Image(systemName: "lock.fill").font(.caption).foregroundStyle(.secondary) }
+                    }
+                    HStack(spacing: 22) {
+                        stat(locked ? "–" : "\(posts.count)", posts.count == 1 ? "post" : "posts")
+                        // tap either for the people
+                        stat("\(counts?.followers ?? 0)", counts?.followers == 1 ? "follower" : "followers")
+                            .contentShape(Rectangle()).onTapGesture { if !locked { listing = "followers" } }
+                        stat("\(counts?.following ?? 0)", "following")
+                            .contentShape(Rectangle()).onTapGesture { if !locked { listing = "following" } }
+                    }
                 }
+                Spacer(minLength: 0)
             }
             HStack(spacing: 8) {
-                Text(name).font(.title3.weight(.heavy))
-                if p?.isPrivate == true { Image(systemName: "lock.fill").font(.caption).foregroundStyle(.secondary) }
                 if streak > 1 { HStack(spacing: 2) { FluentIcon(emoji: "🔥", size: 14); Text("\(streak)").font(.subheadline.weight(.heavy)).foregroundStyle(.orange) } }
                 if level > 0 {
                     let r = Rank(level: level)
@@ -192,6 +207,14 @@ struct ProfileView: View {
                 }
                 .padding(.top, 14)
             }
+        }
+    }
+
+    /// A number over its word, left-aligned, as on Instagram.
+    private func stat(_ n: String, _ label: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(n).font(.headline.weight(.heavy))
+            Text(label).font(.subheadline).foregroundStyle(.secondary)
         }
     }
 
