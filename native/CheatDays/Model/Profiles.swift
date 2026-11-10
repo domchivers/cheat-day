@@ -259,7 +259,7 @@ struct HonorPill: View {
     var small = false
     var body: some View {
         HStack(spacing: small ? 3 : 4) {
-            Text(honor.icon).font(.system(size: small ? 9 : 11))
+            Text(honor.icon).font(.system(size: small ? 9 : 11)).accessibilityHidden(true)   // read once, as the title
             Text(honor.title).font(.system(size: small ? 10 : 12, weight: .heavy, design: .rounded))
         }
         .foregroundStyle(honor.ink).lineLimit(1).fixedSize()
