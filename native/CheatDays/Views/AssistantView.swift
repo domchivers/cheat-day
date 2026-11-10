@@ -68,8 +68,8 @@ struct AssistantView: View {
                         }
                         if turns.isEmpty {
                             HStack(spacing: 10) {
-                                Button { camera = true } label: { Label("Snap a plate", systemImage: "camera.fill").lineLimit(1).frame(maxWidth: .infinity) }
-                                Button { library = true } label: { Label("Photos", systemImage: "photo.on.rectangle").lineLimit(1).frame(maxWidth: .infinity) }
+                                Button { typing = false; camera = true } label: { Label("Snap a plate", systemImage: "camera.fill").lineLimit(1).frame(maxWidth: .infinity) }
+                                Button { typing = false; library = true } label: { Label("Photos", systemImage: "photo.on.rectangle").lineLimit(1).frame(maxWidth: .infinity) }
                             }
                             .buttonStyle(.bordered).buttonBorderShape(.roundedRectangle(radius: 14)).controlSize(.large)
                         }
@@ -121,7 +121,7 @@ struct AssistantView: View {
                 keeping?.cancel()
                 keeping = Task { try? await Task.sleep(for: .seconds(1.5)); guard !Task.isCancelled else { return }; keptKey = k; live.keep(store) }
             }
-            .fullScreenCover(isPresented: $camera) { CameraPicker { img in camera = false; if let img { pending.append(img) } }.ignoresSafeArea() }
+            .fullScreenCover(isPresented: $camera) { CameraPicker { img in camera = false; if let img { Task { pending.append(await Self.shrunk(img)) } } }.ignoresSafeArea() }
             .fullScreenCover(item: $viewing) { PhotoViewer(photos: $0) }
             .sheet(item: $changing) { ref in MatchPicker(ref: ref) { food in setMatch(ref, to: food); changing = nil }.presentationDetents([.medium]) }
             .sheet(item: $amount) { t in
@@ -919,8 +919,8 @@ struct AssistantView: View {
 
     // MARK: composer
 
-    /// One rounded box, like the Claude app's: waiting photos and quick notes on top, the words under them (growing to
-    /// about 8 lines, then scrolling inside), and a row of buttons along the bottom: ＋ for a photo, the microphone, send.
+    /// One rounded box, like the Claude app's: waiting photos on top, the words under them (growing to 5 lines, then
+    /// scrolling inside), and a row of buttons along the bottom: ＋ for a photo, the microphone, send.
     private var composer: some View {
         let empty = text.trimmingCharacters(in: .whitespaces).isEmpty && pending.isEmpty
         return VStack(alignment: .leading, spacing: 10) {
@@ -942,17 +942,15 @@ struct AssistantView: View {
                     }
                     .padding(.top, 6).padding(.horizontal, 6)
                 }
-                // a note helps more than anything: what it is, where from, how much they had
-                Flow { ForEach(Self.notes, id: \.self) { n in Chip(text: n, on: hasNote(n)) { toggleNote(n) } } }.padding(.horizontal, 4)
             }
-            TextField("Ask, or say what you ate", text: $text, axis: .vertical).lineLimit(1...8).focused($typing)
+            // return is a new line, shown as the plain return key: it said "send" but only went down a line
+            TextField("Ask, or say what you ate", text: $text, axis: .vertical).lineLimit(1...5).focused($typing)
                 .accessibilityIdentifier("chatBox")
-                .submitLabel(.send).onSubmit { send() }
                 .padding(.horizontal, 8).padding(.top, 4)
             HStack(spacing: 8) {
                 Menu {
-                    Button { camera = true } label: { Label("Take a photo", systemImage: "camera") }
-                    Button { library = true } label: { Label("Choose photos", systemImage: "photo.on.rectangle") }
+                    Button { typing = false; camera = true } label: { Label("Take a photo", systemImage: "camera") }
+                    Button { typing = false; library = true } label: { Label("Choose photos", systemImage: "photo.on.rectangle") }
                 } label: { roundButton("plus") }
                 .accessibilityLabel("Add a photo")
                 if speech.listening {
@@ -997,6 +995,17 @@ struct AssistantView: View {
         Task { await speech.start { words in text = before.isEmpty ? words : before + " " + words } }
     }
 
+    /// A photo at most 2048 pixels on its longest side (still enough to read a label), made off the main thread.
+    static func shrunk(_ img: UIImage) async -> UIImage {
+        await Task.detached(priority: .userInitiated) {
+            let side = max(img.size.width, img.size.height)
+            guard side > 2048 else { return img }
+            let f = 2048 / side, size = CGSize(width: img.size.width * f, height: img.size.height * f)
+            let fmt = UIGraphicsImageRendererFormat.default(); fmt.scale = 1
+            return UIGraphicsImageRenderer(size: size, format: fmt).image { _ in img.draw(in: CGRect(origin: .zero, size: size)) }
+        }.value
+    }
+
     /// The quick notes under a waiting photo; a tap adds the words to the box, another takes them out.
     static let notes = ["Homemade", "Shared", "Had half", "No sauce"]
     private func hasNote(_ n: String) -> Bool { text.range(of: n, options: .caseInsensitive) != nil }
@@ -1011,7 +1020,7 @@ struct AssistantView: View {
     }
 
     private func load(_ items: [PhotosPickerItem]) async {
-        for i in items { if let d = try? await i.loadTransferable(type: Data.self), let img = UIImage(data: d) { pending.append(img) } }
+        for i in items { if let d = try? await i.loadTransferable(type: Data.self), let img = UIImage(data: d) { pending.append(await Self.shrunk(img)) } }
         picked = []
     }
 
