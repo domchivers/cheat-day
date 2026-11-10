@@ -47,6 +47,7 @@ struct RootView: View {
         else if ProcessInfo.processInfo.arguments.contains("-uitest-honors") { HonorsHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-editor") { EditorHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-tabicons") { TabIconsHarness() }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-editprofile") { EditProfileHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-review") { ReviewHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-cards") { CardsHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-checkin-step") { CheckInHarness(acting: true) }
@@ -173,7 +174,16 @@ private struct HonorsHarness: View {
     var body: some View { NavigationStack { ProfileView(id: Self.id) } }
 }
 
-/// For the sticker screenshots only: the tray as it opens, then every sticker on a story, no sign-in.
+/// For the Edit profile screenshots only: signed out, so "me" is the empty id, given the founder's profile.
+private struct EditProfileHarness: View {
+    init() {
+        Profiles.shared.keep([Profiles.Profile(["user_id": "", "display_name": "Dom Chivers", "username": "domchivers", "label": "Founder of Cheat Days",
+                                                "bio": "Lifting, eating, building the app 💪", "honors": ["founder", "alpha", "first100"],
+                                                "top_honor": "founder", "show_honors": true, "private": true, "privacy_chosen": true])])
+    }
+    var body: some View { EditProfileView() }
+}
+
 /// For choosing the Today tab's icon only: Apple's food and day symbols, each in a tab bar beside the others.
 private struct TabIconsHarness: View {
     static let names = ["fork.knife", "fork.knife.circle.fill", "takeoutbag.and.cup.and.straw.fill", "frying.pan.fill", "carrot.fill",
@@ -216,6 +226,7 @@ private struct EditorHarness: View {
     var body: some View { StoryEditor(image: Self.photo, video: nil, close: {}) }
 }
 
+/// For the sticker screenshots only: the tray as it opens, then every sticker on a story, no sign-in.
 private struct StickersHarness: View {
     @State private var tray = true
     private static let all: [JSON] = [

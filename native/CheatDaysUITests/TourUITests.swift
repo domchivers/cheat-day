@@ -217,6 +217,20 @@ final class TourUITests: XCTestCase {
         let b = XCTAttachment(screenshot: app.screenshot()); b.name = "editor-food"; b.lifetime = .keepAlways; add(b)
     }
 
+    /// Edit profile as rows, and the Label page it opens.
+    func testEditProfile() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-uitest-editprofile"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Founder of Cheat Days"].waitForExistence(timeout: 5), "the label row")
+        sleep(1)
+        let a = XCTAttachment(screenshot: app.screenshot()); a.name = "edit-profile"; a.lifetime = .keepAlways; add(a)
+        app.staticTexts["Founder of Cheat Days"].tap()
+        XCTAssertTrue(app.navigationBars["Label"].waitForExistence(timeout: 3), "the label's own page")
+        sleep(1)
+        let b = XCTAttachment(screenshot: app.screenshot()); b.name = "edit-profile-label"; b.lifetime = .keepAlways; add(b)
+    }
+
     /// Apple's food and day symbols in the tab bar style, for choosing the Today icon.
     func testTabIcons() {
         let app = XCUIApplication()
