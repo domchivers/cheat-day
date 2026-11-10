@@ -36,6 +36,7 @@ final class Feed {
                 commentLikes = cids.isEmpty ? [] : ((try? await rows("/rest/v1/comment_likes?comment_id=in.(\(cids))&select=comment_id,user_id")) ?? [])
             }
             let who = Set(posts.map { str($0["owner"]) } + comments.map { str($0["user_id"]) } + [me]).filter { !$0.isEmpty }
+            await Profiles.shared.load(Array(who))
             if !who.isEmpty {
                 for p in try await rows("/rest/v1/profiles?user_id=in.(\(who.joined(separator: ",")))&select=user_id,display_name") {
                     names[str(p["user_id"])] = str(p["display_name"])
@@ -44,7 +45,7 @@ final class Feed {
         } catch { self.error = error.localizedDescription }
     }
 
-    func name(_ id: String) -> String { id == me ? "You" : (names[id].flatMap { $0.isEmpty ? nil : $0 } ?? "Someone") }
+    func name(_ id: String) -> String { id == me ? "You" : ((names[id] ?? Profiles.shared.all[id]?.name).flatMap { $0.isEmpty ? nil : $0 } ?? "Someone") }
 
     func toggle(_ post: JSON, _ emoji: String) async {
         let id = str(post["id"]), mine = reactions.contains { str($0["post_id"]) == id && str($0["user_id"]) == me && str($0["emoji"]) == emoji }
@@ -92,7 +93,9 @@ final class Feed {
     func share(_ post: JSON, to friend: String, note: String) async {
         do {
             _ = try await api.rest("/rest/v1/post_shares", method: "POST", body: [["post_id": post["id"] ?? "", "from_user": me, "to_user": friend, "note": note]])
-            notify(friend, kind: "share", text: note.isEmpty ? str(post["name"]) : note, extra: ["post": str(post["id"])])
+            // and in your chat with them, which is where they hear about it
+            await Messages.shared.send(to: friend, kind: "post", payload: ["name": post["name"] ?? "", "kcal": post["kcal"] ?? 0, "photo": post["photo"] ?? "", "macros": post["macros"] ?? [:] as JSON, "post": post])
+            if !note.isEmpty { await Messages.shared.send(to: friend, text: note) }
         } catch { self.error = "Sending posts isn't set up yet." }
     }
 
@@ -182,6 +185,7 @@ struct FeedView: View {
     @State private var sharing: PostBox?
     @State private var picking: String?   // the post whose reactions are showing
     @State private var burst: String?   // the post a double-tap just liked
+    @State private var profileOf: String?
     private var feed: Feed { Feed.shared }
     private var friends: Friends { Friends.shared }
 
@@ -194,7 +198,7 @@ struct FeedView: View {
                 if feed.posts.isEmpty && !feed.loading {
                     Text("Nothing in the feed yet. Share something, or add a friend.").foregroundStyle(.secondary).padding(.top, 40)
                 }
-                ForEach(keyed(feed.posts)) { entry in   // by post id: deleting one can't leave a row past the end
+                ForEach(keyed(feed.posts.filter { !Profiles.shared.muted.contains(str($0["owner"])) })) { entry in   // by post id: deleting one can't leave a row past the end
                     let pid = str(entry.item["id"])
                     postView(entry.item).id(pid)
                         .background { if flash == pid { Theme.accent.opacity(0.12).allowsHitTesting(false) } }
@@ -221,6 +225,7 @@ struct FeedView: View {
         .sheet(item: Binding(get: { recipe.map { PostBox(post: $0) } }, set: { recipe = $0?.post })) { b in PostRecipeSheet(post: b.post) }
         .sheet(item: $talking) { b in CommentsSheet(post: b.post).presentationDetents([.medium, .large]).presentationDragIndicator(.visible) }
         .sheet(item: $sharing) { b in SharePostSheet(post: b.post).presentationDetents([.medium, .large]) }
+        .navigationDestination(item: $profileOf) { id in ProfileView(id: id) }
     }
 
     // MARK: friends' days along the top
@@ -228,10 +233,10 @@ struct FeedView: View {
     private var rings: some View {
         ScrollView(.horizontal) {
             HStack(alignment: .top, spacing: 14) {
-                Button { composing = true } label: { ring(String(feed.name(feed.me).prefix(1)), "Your post", new: false, tag: nil, plus: true) }
+                Button { composing = true } label: { ring(feed.me, "Your post", new: false, tag: nil, plus: true) }
                     .buttonStyle(.plain)
                 ForEach(friends.people) { p in
-                    Button { showPerson(p.id) } label: { ring(String(p.name.prefix(1)).uppercased(), p.name, new: p.isActive, tag: p.streak > 1 ? "🔥 \(p.streak)" : nil, plus: false) }
+                    Button { showPerson(p.id) } label: { ring(p.id, p.name, new: p.isActive, tag: p.streak > 1 ? "🔥 \(p.streak)" : nil, plus: false) }
                         .buttonStyle(.plain).accessibilityLabel("\(p.name)'s day")
                 }
             }
@@ -240,13 +245,13 @@ struct FeedView: View {
         .scrollIndicators(.hidden)
     }
 
-    private func ring(_ letter: String, _ name: String, new: Bool, tag: String?, plus: Bool) -> some View {
+    private func ring(_ who: String, _ name: String, new: Bool, tag: String?, plus: Bool) -> some View {
         VStack(spacing: 5) {
             ZStack {
                 Circle().fill(new ? AnyShapeStyle(AngularGradient(colors: [Theme.accent, Theme.meal("Snacks"), Theme.meal("Breakfast"), Theme.accent], center: .center))
                                   : AnyShapeStyle(Color(.tertiarySystemFill)))
                 Circle().fill(Theme.hero).padding(3.5)
-                Text(letter).font(.title3.weight(.heavy)).foregroundStyle(Theme.accent)
+                Avatar(id: who, size: 53)
             }
             .frame(width: 62, height: 62)
             .overlay(alignment: .bottomTrailing) {
@@ -290,11 +295,16 @@ struct FeedView: View {
         return VStack(alignment: .leading, spacing: 0) {
             Divider().opacity(0.4)
             HStack(spacing: 10) {
-                avatar(owner, size: 34)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(feed.name(owner)).font(.subheadline.weight(.bold))
-                    Text(Self.what(p) + " · " + Feed.ago(str(p["created_at"]))).font(.caption).foregroundStyle(.secondary)
+                Button { profileOf = owner } label: {
+                    HStack(spacing: 10) {
+                        avatar(owner, size: 34)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(feed.name(owner)).font(.subheadline.weight(.bold)).foregroundStyle(.primary)
+                            Text(Self.what(p) + " · " + Feed.ago(str(p["created_at"]))).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
                 }
+                .buttonStyle(.plain)
                 Spacer()
                 Menu {
                     Button { sharing = PostBox(post: p) } label: { Label("Send to a friend", systemImage: "paperplane") }
@@ -505,10 +515,7 @@ struct FeedView: View {
         }
     }
 
-    private func avatar(_ id: String, size: CGFloat) -> some View {
-        Text(String(feed.name(id).prefix(1)).uppercased()).font(.system(size: size * 0.42, weight: .heavy)).foregroundStyle(Theme.accent)
-            .frame(width: size, height: size).background(Theme.hero, in: Circle())
-    }
+    private func avatar(_ id: String, size: CGFloat) -> some View { Avatar(id: id, size: size) }
 }
 
 /// A badge just earned: "Share it with your friends?" Moments only go on the feed when they say yes.
@@ -592,8 +599,7 @@ struct CommentsSheet: View {
         let likes = feed.commentLikes.filter { str($0["comment_id"]) == cid }
         let liked = likes.contains { str($0["user_id"]) == feed.me }
         return HStack(alignment: .top, spacing: 10) {
-            Text(String(feed.name(who).prefix(1)).uppercased()).font(.system(size: 12, weight: .heavy)).foregroundStyle(Theme.accent)
-                .frame(width: 30, height: 30).background(Theme.hero, in: Circle())
+            Avatar(id: who, size: 30)
             VStack(alignment: .leading, spacing: 3) {
                 (Text(feed.name(who) + " ").bold() + Text(str(c["text"]))).font(.subheadline)
                 HStack(spacing: 14) {

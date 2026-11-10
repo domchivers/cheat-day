@@ -328,7 +328,7 @@ struct MainTabs: View {
         }
         .onChange(of: phase) { _, now in
             if now == .background { Store.shared.flush() }
-            if now == .active { Task { await Store.shared.sync(); await Store.shared.applyHelperChanges(); await Reminders.reschedule(Store.shared); await HealthSync.pull(); await Steps.shared.refresh(); await FriendActivity.shared.load() } } }
+            if now == .active { Task { await Store.shared.sync(); await Store.shared.applyHelperChanges(); await Reminders.reschedule(Store.shared); await HealthSync.pull(); await Steps.shared.refresh(); await FriendActivity.shared.load(); await Profiles.shared.touch(); await Messages.shared.load() } } }
         .onChange(of: tab) { _, _ in
             if Store.shared.lastSynced.map({ Date().timeIntervalSince($0) > 60 }) ?? true { Task { await Store.shared.sync() } }
         }

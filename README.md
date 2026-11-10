@@ -574,6 +574,9 @@ Likes and replies on comments, and sending a post to one friend (the app's feed)
 `supabase/feed_v2.sql` once in the SQL Editor, and redeploy the `push` function for the
 "replied" and "sent you a post" notifications. Without it the app's feed still works; those three just don't.
 
+Profiles (a photo, @username, bio, tags, pinned badges; never weight) and one-to-one messages between friends:
+run `supabase/profiles_messages.sql` once in the SQL Editor and redeploy `push` (for message notifications).
+
 ## Macros
 
 Everything carries protein, carbs and fat where they're known: the built-in food

@@ -18,7 +18,7 @@ final class PushDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCen
 
     // shown even while the app is open
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        Task { @MainActor in await FriendActivity.shared.load() }
+        Task { @MainActor in await FriendActivity.shared.load(); await Messages.shared.load(); await Messages.shared.refresh() }
         return [.banner, .sound]
     }
 
@@ -28,6 +28,7 @@ final class PushDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCen
         let kind = info["kind"] as? String ?? "", post = info["post"] as? String ?? ""
         await MainActor.run {
             if kind == "plan" { Nav.shared.plan(info["meal"] as? String ?? "Lunch"); return }   // a meal reminder: its planner
+            if kind.contains("message"), post.hasPrefix("chat:") { Nav.shared.chat(String(post.dropFirst(5))); Task { await Messages.shared.load() }; return }
             if kind.contains("send") { Nav.shared.today() }
             else if !post.isEmpty || kind.contains("comment") { Nav.shared.feed(post: post) }
             else { Nav.shared.people() }   // a reaction to your day
@@ -47,12 +48,15 @@ final class Nav {
     static let shared = Nav()
     var friendsSeg = 1   // the feed first
     var focusPost: String?
+    /// A message notification tapped: that chat, on Friends.
+    var chatWith: String?
     /// The meal a reminder asked to plan: Today opens the planner on it.
     var planMeal: String?
 
     func today() { NotificationCenter.default.post(name: .openTab, object: 0) }
     func plan(_ meal: String) { planMeal = meal; today() }
     func people() { friendsSeg = 0; NotificationCenter.default.post(name: .openTab, object: 2) }
+    func chat(_ friend: String) { chatWith = friend; NotificationCenter.default.post(name: .openTab, object: 2) }
     func feed(post: String? = nil) {
         friendsSeg = 1
         focusPost = (post?.isEmpty ?? true) ? nil : post

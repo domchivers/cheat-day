@@ -160,6 +160,7 @@ async function handle(req: Request): Promise<Response> {
       : body.kind === "send" ? { title: `${who} sent you food`, body: what ? `${what}: tap to add it to your day` : "Tap to add it to your day" }
       : body.kind === "reply" ? { title: `${who} replied to you`, body: what || "on a post" }
       : body.kind === "share" ? { title: `${who} sent you a post`, body: what || "Tap to see it" }
+      : body.kind === "message" ? { title: who, body: what || "Sent you a message" }
       : { title: `${who} reacted ${String(body.emoji || "").slice(0, 4)}`, body: what ? `to ${what}` : "to your post" };
     const n = await sendToUser(to, { ...msg, tag: `social-${body.kind || "react"}`, post: String(body.post || "").slice(0, 64) }, "social");
     return json({ ok: true, sent: n });

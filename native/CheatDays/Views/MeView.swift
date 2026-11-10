@@ -38,9 +38,8 @@ struct MeView: View {
         let name = Friends.shared.myName.isEmpty ? "Me" : Friends.shared.myName
         let streak = store.streakInfo.days
         return HStack(spacing: 12) {
-            Text(String(name.prefix(1)).uppercased())
-                .font(.title3.weight(.heavy)).foregroundStyle(Theme.accent)
-                .frame(width: 48, height: 48).background(Theme.hero, in: Circle())
+            NavigationLink { ProfileView(id: Profiles.shared.me) } label: { Avatar(id: Profiles.shared.me, size: 48) }
+                .buttonStyle(.plain).accessibilityLabel("Your profile")
             Button { ranks = true } label: {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(name).font(.title2.weight(.heavy)).foregroundStyle(.primary).lineLimit(1)

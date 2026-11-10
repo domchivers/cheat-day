@@ -7,6 +7,8 @@ struct FriendsView: View {
     @State private var adding = false
     @State private var showActivity = false
     @State private var viewing: FriendWorkout?
+    @State private var showMessages = false
+    @State private var profileOf: String?
     private var model: Friends { Friends.shared }
     private struct FriendWorkout: Identifiable { let id = UUID(); let post: JSON; let by: String }
 
@@ -20,11 +22,14 @@ struct FriendsView: View {
             .background(Theme.bg)
             .keyboardDone()
             .navigationTitle("Friends")
-            .modifier(FriendsToolbar(unread: FriendActivity.shared.unread, showActivity: $showActivity, adding: $adding))
+            .modifier(FriendsToolbar(unread: FriendActivity.shared.unread, chats: Messages.shared.unread, showActivity: $showActivity, adding: $adding, showMessages: $showMessages, showMe: Binding(get: { profileOf == Profiles.shared.me }, set: { profileOf = $0 ? Profiles.shared.me : nil })))
+            .navigationDestination(isPresented: $showMessages) { MessagesView() }
+            .navigationDestination(item: $profileOf) { id in ProfileView(id: id) }
+            .navigationDestination(item: $nav.chatWith) { id in ChatView(friend: id) }
             .sheet(isPresented: $adding) { AddFriendSheet().presentationDetents([.medium]) }
             .sheet(isPresented: $showActivity) { ActivityView() }
             .sheet(item: $viewing) { v in PostRecipeSheet(post: v.post, by: v.by) }
-            .task { await model.load() }
+            .task { await model.load(); await Profiles.shared.load(model.people.map(\.id)); await Messages.shared.load() }
         }
     }
 
@@ -165,8 +170,9 @@ struct FriendsView: View {
         let over = budget > 0 && kcal > budget * 1.1, near = budget > 0 && !over && kcal > budget
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
-                Text(String(p.name.prefix(1)).uppercased()).font(.headline.weight(.heavy)).foregroundStyle(Theme.accent)
-                    .frame(width: 42, height: 42).background(Theme.hero, in: Circle())
+                Avatar(id: p.id, size: 42, dot: true)
+                    .onTapGesture { profileOf = p.id }
+                    .accessibilityAddTraits(.isButton).accessibilityLabel("\(p.name)'s profile")
                 VStack(alignment: .leading, spacing: 2) {
                     Text(p.name).font(.headline)
                     Text(p.isActive ? (open.contains(p.id) ? "Their day so far" : "Tap to see what they had") : "Nothing logged today yet")
@@ -243,8 +249,11 @@ struct AddFriendSheet: View {
 /// before that, a red dot drawn into the button.
 private struct FriendsToolbar: ViewModifier {
     let unread: Int
+    let chats: Int
     @Binding var showActivity: Bool
     @Binding var adding: Bool
+    @Binding var showMessages: Bool
+    @Binding var showMe: Bool
 
     func body(content: Content) -> some View {
         if #available(iOS 26, *) {
@@ -263,7 +272,9 @@ private struct FriendsToolbar: ViewModifier {
                     .buttonStyle(.plain)
                 }
                 .sharedBackgroundVisibility(.hidden)
+                ToolbarItem(placement: .topBarTrailing) { messages }
                 ToolbarItem(placement: .topBarTrailing) { add }
+                ToolbarItem(placement: .topBarTrailing) { me }
             }
         } else {
             content.toolbar {
@@ -277,7 +288,9 @@ private struct FriendsToolbar: ViewModifier {
                     }
                     .frame(minWidth: 34, minHeight: 30))
                 }
+                ToolbarItem(placement: .topBarTrailing) { messages }
                 ToolbarItem(placement: .topBarTrailing) { add }
+                ToolbarItem(placement: .topBarTrailing) { me }
             }
         }
     }
@@ -287,5 +300,21 @@ private struct FriendsToolbar: ViewModifier {
     }
     private var add: some View {
         Button { adding = true } label: { Image(systemName: "person.badge.plus") }.accessibilityLabel("Add a friend")
+    }
+    /// Messages, with how many chats have something unread.
+    private var messages: some View {
+        Button { showMessages = true } label: {
+            Image(systemName: "paperplane")
+                .overlay(alignment: .topTrailing) {
+                    if chats > 0 {
+                        Text("\(min(chats, 99))").font(.system(size: 10, weight: .heavy)).foregroundStyle(.white)
+                            .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 16).background(Color.red, in: Capsule()).offset(x: 9, y: -8)
+                    }
+                }
+        }
+        .accessibilityLabel("Messages, \(chats) unread")
+    }
+    private var me: some View {
+        Button { showMe = true } label: { Avatar(id: Profiles.shared.me, size: 28) }.accessibilityLabel("Your profile")
     }
 }
