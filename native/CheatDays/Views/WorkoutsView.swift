@@ -40,23 +40,22 @@ struct WorkoutsView: View {
                         NavigationLink { PlanEditor() } label: { Label("Edit your week", systemImage: "slider.horizontal.3") }
                     }
                 }
-                Section { hero.listRowBackground(Color.clear).listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4)) }
+                Section { hero.padding(.leading, 8).padding(.vertical, 12).listRowBackground(Color.clear).listRowInsets(EdgeInsets()) }
                 if tracked || weekHasBars { Section { weekCard } }
                 Section {
                     HStack(spacing: 10) {
                         if store.session == nil {
                             Button { store.startSession(nil); showSession = true } label: {
-                                Label("Start a session", systemImage: "play.fill").font(.subheadline.weight(.heavy)).foregroundStyle(Theme.onAccent)
-                                    .frame(maxWidth: .infinity).padding(.vertical, 14).background(Theme.accent, in: Capsule())
+                                capsule("play.fill", "Start a session", Theme.onAccent).background(Theme.accent, in: Capsule())
                             }
-                            .buttonStyle(.borderless).layoutPriority(1)
+                            .buttonStyle(.borderless)
                         }
                         Button { showActivity = true } label: {
-                            Label("Log activity", systemImage: "plus").font(.subheadline.weight(.heavy)).foregroundStyle(Theme.accent)
-                                .frame(maxWidth: .infinity).padding(.vertical, 14).background(Color(.secondarySystemGroupedBackground), in: Capsule())
+                            capsule("plus", "Log activity", Theme.accent).background(Color(.secondarySystemGroupedBackground), in: Capsule())
                         }
                         .buttonStyle(.borderless).accessibilityLabel("Log a walk, run or class")
                     }
+                    .fixedSize(horizontal: false, vertical: true)
                     .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
                 }
                 // a fresh app: the plan is the best way in, so it has the page; once you're tracking it moves down to More
@@ -164,6 +163,15 @@ struct WorkoutsView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
+    }
+
+    private func capsule(_ symbol: String, _ title: String, _ colour: Color) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: symbol).font(.system(size: 13, weight: .heavy))
+            Text(title).font(.subheadline.weight(.heavy)).lineLimit(1).minimumScaleFactor(0.8)
+        }
+        .foregroundStyle(colour)
+        .frame(maxWidth: .infinity).frame(height: 50)
     }
 
     private func moreRow(_ symbol: String, _ title: String, _ sub: String) -> some View {
