@@ -69,14 +69,24 @@ struct ProgressPage: View {
     private var top: some View {
         HStack(spacing: 12) {
         VStack(alignment: .leading, spacing: 2) {
-            Text(greeting).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
-            if let now {
+            if let sel = selected(points) {
+                // a day held on the chart takes over the three lines: its date, its number, and how it compares with now
+                let unit = BodyView.metrics.first { $0.key == metric }?.unit ?? ""
+                Text(sel.date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(unit == "%" ? Fmt.dec(sel.kg) : Fmt.kg(sel.kg)).font(.system(size: 48, weight: .heavy, design: .rounded)).contentTransition(.numericText())
+                    Text(unit).font(.headline).foregroundStyle(.secondary)
+                }
+                Text(heldLine(sel)).font(.subheadline).foregroundStyle(.primary.opacity(0.8))
+            } else if let now {
+                Text(greeting).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(Fmt.kg(now)).font(.system(size: 48, weight: .heavy, design: .rounded)).contentTransition(.numericText())
                     Text("kg").font(.headline).foregroundStyle(.secondary)
                 }
                 Text(toGo).font(.subheadline).foregroundStyle(.primary.opacity(0.8))
             } else {
+                Text(greeting).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
                 Text("Weigh in to start").font(.title2.weight(.heavy)).padding(.top, 2)
                 Text("Your trend and the date you'll reach your goal show here after a few weigh-ins.").font(.subheadline).foregroundStyle(.secondary)
             }
@@ -85,6 +95,16 @@ struct ProgressPage: View {
         // beside the number it adds to, round like the buttons on Friends
         round("plus") { weighing = true }.accessibilityLabel("Weigh in")
         }
+    }
+
+    /// Under a held day's number: how far it is from the latest reading of the same measure.
+    private func heldLine(_ sel: Point) -> String {
+        let m = BodyView.metrics.first { $0.key == metric }
+        guard let last = points.last, last.id != sel.id else { return metric == "weight" ? "Your latest weigh-in" : (m?.name ?? "") }
+        let d = sel.kg - last.kg, unit = m?.unit ?? ""
+        if abs(d) < 0.05 { return "Same as now" }
+        let amount = unit == "%" ? "\(Fmt.dec(abs(d)))%" : "\(Fmt.kg(abs(d)))\(unit.isEmpty ? "" : " " + unit)"
+        return "\(amount) \(d > 0 ? "more" : "less") than now"
     }
 
     private var greeting: String {
@@ -146,14 +166,9 @@ struct ProgressPage: View {
                         }
                     }
                 } else {
+                    // the chips have the row to themselves (a held day shows in the big number above); without them, a hint
                     Text("Your weight").font(.subheadline.weight(.bold))
-                }
-                Spacer(minLength: 6)
-                // a held day's number, or what holding does
-                if let sel = selected(pts) {
-                    Text("\(sel.date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)))  ").font(.footnote).foregroundStyle(.secondary)
-                        + Text(value(sel.kg)).font(.footnote.weight(.bold))
-                } else {
+                    Spacer(minLength: 6)
                     Text(pts.count >= 2 ? "Hold to see a day" : rangeName).font(.footnote).foregroundStyle(.secondary)
                 }
             }
