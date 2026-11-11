@@ -100,7 +100,8 @@ struct NewMessageSheet: View {
 
 /// One chat: bubbles, a GIF, a post or food card, reactions (hold a message), the day and time between stretches,
 /// ticks under your last message (blue once it's seen), and a box with ＋ for a photo, one of today's foods, a saved
-/// meal or today's workout, and GIF for GIPHY's.
+/// meal or today's workout, and GIF for GIPHY's. Slide the chat left to see each message's time; slide a message
+/// right to reply to it (the reply carries a line of what it answers, in payload.reply).
 struct ChatView: View {
     let friend: String
     @State private var text = ""
@@ -109,6 +110,14 @@ struct ChatView: View {
     @State private var camera = false
     @State private var choosing = false
     @State private var gifs = false
+    @State private var replying: JSON?   // the message the next one answers
+    @State private var jump: String?     // a quoted message to scroll back to
+    /// A finger sliding a row sideways: left shows the times, right pulls that message towards a reply. It lets go
+    /// by itself, even when the scroll takes the touch over.
+    private struct Slide: Equatable { var id = ""; var dx: CGFloat = 0 }
+    @GestureState(resetTransaction: Transaction(animation: .snappy(duration: 0.25))) private var slide = Slide()
+    private var timesOut: CGFloat { slide.dx < 0 ? max(-64, slide.dx * 0.6) : 0 }
+    private func replyPull(_ id: String) -> CGFloat { slide.id == id && slide.dx > 0 ? min(70, slide.dx * 0.6) : 0 }
     @State private var opened: PostBox?
     @State private var added: Set<String> = []
     @FocusState private var typing: Bool
@@ -129,9 +138,12 @@ struct ChatView: View {
                         if let last = t.last, str(last["from_user"]) == me { ticks(seen: !str(last["seen_at"]).isEmpty) }
                     }
                     .padding(.horizontal, 12).padding(.vertical, 10)
+                    .offset(x: timesOut)   // the times wait just off the right edge
                 }
                 .scrollDismissesKeyboard(.interactively)
                 .defaultScrollAnchor(.bottom)
+                .onChange(of: jump) { _, id in if let id { withAnimation { proxy.scrollTo(id, anchor: .center) }; jump = nil } }
+                .sensoryFeedback(.impact(weight: .light), trigger: slide.dx * 0.6 > 48)
                 .onChange(of: messages.thread.count) { _, _ in withAnimation { proxy.scrollTo(str(messages.thread.last?["id"]), anchor: .bottom) } }
             }
             composer
@@ -159,7 +171,11 @@ struct ChatView: View {
         .onAppear { KeyboardDone.quiet = true }
         .sheet(item: $opened, onDismiss: { KeyboardDone.quiet = true }) { b in PostRecipeSheet(post: b.post) }
         .sheet(isPresented: $gifs, onDismiss: { KeyboardDone.quiet = true }) {
-            GifPicker { g in Task { await messages.send(to: friend, kind: "gif", payload: g) } }.presentationDetents([.medium, .large])
+            GifPicker { g in
+                let payload = g.merging(takeReply()) { a, _ in a }
+                Task { await messages.send(to: friend, kind: "gif", payload: payload) }
+            }
+            .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $choosing) { ShareThingSheet { kind, payload in Task { await messages.send(to: friend, kind: kind, payload: payload) } } }
         .photosPicker(isPresented: $library, selection: $picked, matching: .images)
@@ -190,7 +206,8 @@ struct ChatView: View {
             Image(systemName: "checkmark").offset(x: 2.5)
         }
         .font(.system(size: 10, weight: .heavy))
-        .foregroundStyle(seen ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(.tertiary))
+        .foregroundStyle(seen ? Theme.accent : Color(.systemGray2))
+        .compositingGroup()
         .frame(maxWidth: .infinity, alignment: .trailing).padding(.trailing, 9).padding(.top, 1)
         .accessibilityElement(children: .ignore).accessibilityLabel(seen ? "Seen" : "Sent")
         .animation(.easeInOut(duration: 0.2), value: seen)
@@ -199,7 +216,20 @@ struct ChatView: View {
     @ViewBuilder private func bubble(_ m: JSON) -> some View {
         let mine = str(m["from_user"]) == me, kind = str(m["kind"]), p = dict(m["payload"])
         let rx = messages.reactions.filter { str($0["message_id"]) == str(m["id"]) }
+        let id = str(m["id"]), quoted = dict(p["reply"]), pulled = replyPull(id)
         VStack(alignment: mine ? .trailing : .leading, spacing: 0) {
+            if !quoted.isEmpty {
+                // what this one answers: a tap goes back to it
+                Button { jump = str(quoted["id"]) } label: {
+                    VStack(alignment: mine ? .trailing : .leading, spacing: 2) {
+                        Text(mine ? "You replied" : "Replied to you").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                        Text(str(quoted["text"])).font(.footnote).foregroundStyle(.secondary).lineLimit(2).multilineTextAlignment(.leading)
+                            .padding(.horizontal, 11).padding(.vertical, 7)
+                            .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+                }
+                .buttonStyle(.plain).padding(.bottom, 3)
+            }
             Group {
                 switch kind {
                 case "photo":
@@ -231,6 +261,46 @@ struct ChatView: View {
         }
         .frame(maxWidth: .infinity, alignment: mine ? .trailing : .leading)
         .padding(mine ? .leading : .trailing, 50)
+        .offset(x: pulled)
+        // the reply arrow comes in from the left as the message is pulled
+        .overlay(alignment: .leading) {
+            Image(systemName: "arrowshape.turn.up.left.fill").font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(pulled > 48 ? Theme.accent : Color.secondary)
+                .opacity(Double(min(1, pulled / 40))).offset(x: pulled - 26)
+                .accessibilityHidden(true)
+        }
+        // its own time, off the right edge until the chat is slid left
+        .overlay(alignment: .trailing) {
+            Text(ISO.date(str(m["created_at"]))?.formatted(date: .omitted, time: .shortened) ?? "").font(.caption2).foregroundStyle(.secondary)
+                .frame(width: 52, alignment: .trailing).offset(x: 64).accessibilityHidden(true)
+        }
+        .contentShape(Rectangle())
+        .simultaneousGesture(DragGesture(minimumDistance: 18)
+            .updating($slide) { v, state, _ in
+                // sideways only: an up-and-down drag is the scroll's
+                if state.id == id || abs(v.translation.width) > abs(v.translation.height) * 1.4 { state = Slide(id: id, dx: v.translation.width) }
+            }
+            .onEnded { v in
+                if v.translation.width * 0.6 > 48, abs(v.translation.width) > abs(v.translation.height) * 1.4 { replying = m; typing = true }
+            })
+        .accessibilityAction(named: "Reply") { replying = m; typing = true }
+    }
+
+    /// A line of a message, for the quote above a reply and the bar above the box.
+    private func line(of m: JSON) -> String {
+        let p = dict(m["payload"])
+        switch str(m["kind"]) {
+        case "photo": return "Photo"
+        case "gif": return "GIF"
+        case "post", "food": return str(p["name"])
+        default: return String(str(m["text"]).prefix(120))
+        }
+    }
+    /// What goes with a message sent while replying, and the reply is then done with.
+    private func takeReply() -> JSON {
+        guard let r = replying else { return [:] }
+        replying = nil
+        return ["reply": ["id": str(r["id"]), "from": str(r["from_user"]), "text": line(of: r)] as JSON]
     }
 
     private func postCard(_ p: JSON) -> some View {
@@ -272,7 +342,23 @@ struct ChatView: View {
 
     private var composer: some View {
         let empty = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        return HStack(alignment: .bottom, spacing: 8) {
+        return VStack(spacing: 4) {
+            if let r = replying {
+                HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(str(r["from_user"]) == me ? "Replying to yourself" : "Replying to \(Feed.shared.name(friend))").font(.caption.weight(.bold))
+                        Text(line(of: r)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                    Button { withAnimation(.snappy) { replying = nil } } label: {
+                        Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).foregroundStyle(.secondary).frame(width: 28, height: 28).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).accessibilityLabel("Cancel the reply")
+                }
+                .padding(.leading, 10).padding(.top, 4)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+        HStack(alignment: .bottom, spacing: 8) {
             Menu {
                 Button { camera = true } label: { Label("Take a photo", systemImage: "camera") }
                 Button { library = true } label: { Label("Photo library", systemImage: "photo") }
@@ -294,13 +380,16 @@ struct ChatView: View {
             Button {
                 let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
                 text = ""
-                Task { await messages.send(to: friend, text: String(t.prefix(1000))) }
+                let payload = takeReply()
+                Task { await messages.send(to: friend, text: String(t.prefix(1000)), payload: payload) }
             } label: {
                 Image(systemName: "arrow.up").font(.system(size: 16, weight: .bold)).foregroundStyle(Theme.onAccent)
                     .frame(width: 36, height: 36).background(Theme.accent.opacity(empty ? 0.4 : 1), in: Circle())
             }
             .buttonStyle(.plain).disabled(empty).accessibilityLabel("Send")
         }
+        }
+        .animation(.snappy, value: replying == nil)
         .padding(.horizontal, 8).padding(.vertical, 6)
         .composerGlass(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .padding(.horizontal, 10).padding(.top, 6).padding(.bottom, 8)
