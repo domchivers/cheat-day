@@ -386,9 +386,10 @@ enum Assistant {
         if str(answer["kind"]) == "recipe", var rc = answer["recipe"] as? JSON {
             // ...except the ingredients already worked out in this chat (their own batch of chicken), which keep those numbers
             let asked = CheatDays.list(rc["ingredients"])
-            let known = turns.reversed().flatMap { t -> [JSON] in
-                CheatDays.list((t.result?["estimate"] as? JSON)?["parts"]) + CheatDays.list((t.result?["recipe"] as? JSON)?["ingredients"])
-            }
+            // the cards for single foods first, then earlier dishes: a dish made before this fix has the table's numbers in
+            // it, and mustn't be what a new one copies
+            let known = turns.reversed().flatMap { CheatDays.list(($0.result?["estimate"] as? JSON)?["parts"]) }
+                + turns.reversed().flatMap { CheatDays.list(($0.result?["recipe"] as? JSON)?["ingredients"]) }
             rc["ingredients"] = steadyRecipe(FoodReference.checked(asked).items, asked: asked, earlier: known)
             answer["recipe"] = rc
         }
