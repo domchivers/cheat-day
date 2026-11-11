@@ -1,22 +1,15 @@
 import SwiftUI
 
-/// What our own tab bar needs to know from the rest of the app: the pages that want the screen to themselves, whether
-/// the keyboard is up, and where each button sits (for the tour).
+/// What our own tab bar needs to know from the rest of the app: the pages that want the screen to themselves, and
+/// where each button sits (for the tour).
 @Observable final class OwnBar {
     static let shared = OwnBar()
     var hiders = Set<UUID>()
-    var keyboard = false
     var homeInset: CGFloat = 34   // the home indicator's strip; 0 on a phone with a button
     @ObservationIgnored var frames: [String: CGRect] = [:]
     var hidden: Bool { !hiders.isEmpty }
     /// How far the bar lifts the bottom of a tab's content: what Apple's bar did, so nothing on any page moved.
-    var space: CGFloat { hidden || keyboard ? 0 : max(49, 83 - homeInset) }
-
-    private init() {
-        let nc = NotificationCenter.default
-        nc.addObserver(forName: UIResponder.keyboardWillShowNotification, object: nil, queue: .main) { [weak self] _ in self?.keyboard = true }
-        nc.addObserver(forName: UIResponder.keyboardWillHideNotification, object: nil, queue: .main) { [weak self] _ in self?.keyboard = false }
-    }
+    var space: CGFloat { hidden ? 0 : max(49, 83 - homeInset) }
 }
 
 /// The tab bar, drawn by the app rather than Apple's, to Instagram's measurements: 58 high, a lighter pill 44 high
@@ -76,7 +69,28 @@ private struct OwnBarTab: ViewModifier {
     func body(content: Content) -> some View {
         content
             .toolbar(.hidden, for: .tabBar)
-            .safeAreaInset(edge: .bottom, spacing: 0) { Color.clear.frame(height: OwnBar.shared.space).allowsHitTesting(false) }
+            .background { BarSpace(space: OwnBar.shared.space).frame(width: 0, height: 0).accessibilityHidden(true) }
+    }
+}
+
+/// The room Apple's bar kept at the bottom of a tab, given back as the tab's own safe area, the way UIKit does it: a
+/// SwiftUI safeAreaInset outside the tab's NavigationStack didn't reach what's inside (the feed's + sat under the bar).
+private struct BarSpace: UIViewControllerRepresentable {
+    let space: CGFloat
+    func makeUIViewController(context: Context) -> Probe { Probe() }
+    func updateUIViewController(_ vc: Probe, context: Context) { vc.space = space; vc.apply() }
+
+    final class Probe: UIViewController {
+        var space: CGFloat = 0
+        override func didMove(toParent parent: UIViewController?) { super.didMove(toParent: parent); apply() }
+        override func viewWillAppear(_ animated: Bool) { super.viewWillAppear(animated); apply() }
+        override func viewDidAppear(_ animated: Bool) { super.viewDidAppear(animated); apply() }
+        func apply() {
+            // the controller the tab bar controller holds for this tab
+            var vc: UIViewController? = self
+            while let c = vc, !(c.parent is UITabBarController) { vc = c.parent }
+            if let host = vc, host.additionalSafeAreaInsets.bottom != space { host.additionalSafeAreaInsets.bottom = space }
+        }
     }
 }
 
@@ -101,7 +115,7 @@ extension View {
             .animation(.easeInOut(duration: 0.2), value: OwnBar.shared.hidden)
         }
     }
-    /// On each tab's root: Apple's bar hidden, and the room it kept at the bottom kept.
+    /// On each tab's root: Apple's bar hidden, and the room it kept at the bottom given back.
     func ownBarTab() -> some View { modifier(OwnBarTab()) }
     /// On a page that has the screen to itself (Settings): the bar steps aside while it's showing.
     func hidesOwnBar() -> some View { modifier(HidesOwnBar()) }
