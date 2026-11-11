@@ -143,6 +143,20 @@ final class Feed {
         catch { self.error = error.localizedDescription }
     }
 
+    /// Captions changed since a copy of the post was fetched (a profile keeps its own list), by post id.
+    private(set) var edited: [String: String] = [:]
+    func caption(_ post: JSON) -> String { edited[str(post["id"])] ?? str(post["caption"]) }
+
+    /// Your own post's caption, changed. False when the server didn't take it.
+    func edit(_ post: JSON, caption: String) async -> Bool {
+        let id = str(post["id"])
+        guard let d = try? await api.rest("/rest/v1/posts?id=eq.\(id)&owner=eq.\(me)", method: "PATCH", body: ["caption": caption] as JSON, prefer: "return=representation"),
+              let rows = (try? JSONSerialization.jsonObject(with: d)) as? [JSON], !rows.isEmpty else { return false }
+        edited[id] = caption
+        for i in posts.indices where str(posts[i]["id"]) == id { posts[i]["caption"] = caption }
+        return true
+    }
+
     func delete(_ post: JSON) async {
         do { _ = try await api.rest("/rest/v1/posts?id=eq.\(str(post["id"]))&owner=eq.\(me)", method: "DELETE"); posts.removeAll { str($0["id"]) == str(post["id"]) } }
         catch { self.error = error.localizedDescription }
@@ -225,6 +239,7 @@ struct FeedView: View {
     @State private var flash: String?
     @State private var talking: PostBox?   // the post whose comments are open
     @State private var sharing: PostBox?
+    @State private var rewording: PostBox?   // your post whose caption is being changed
     @State private var picking: String?   // the post whose reactions are showing
     @State private var burst: String?   // the post a double-tap just liked
     @State private var profileOf: String?
@@ -275,6 +290,7 @@ struct FeedView: View {
         .sheet(item: Binding(get: { recipe.map { PostBox(post: $0) } }, set: { recipe = $0?.post })) { b in PostRecipeSheet(post: b.post) }
         .sheet(item: $talking) { b in CommentsSheet(post: b.post).presentationDetents([.medium, .large]).presentationDragIndicator(.visible) }
         .sheet(item: $sharing) { b in SharePostSheet(post: b.post).presentationDetents([.medium, .large]) }
+        .sheet(item: $rewording) { b in EditPostSheet(post: b.post).presentationDetents([.medium, .large]) }
         .navigationDestination(item: $profileOf) { id in ProfileView(id: id) }
         .fullScreenCover(item: $story, onDismiss: { if let p = profileAfterStory { profileAfterStory = nil; profileOf = p } }) { s in
             StoryView(people: s.people, at: s.at, onProfile: { profileAfterStory = $0 })
@@ -408,7 +424,10 @@ struct FeedView: View {
                         Button { Profiles.shared.toggleMute(owner) } label: { Label("Hide posts from \(feed.name(owner))", systemImage: "eye.slash") }
                         Button { Task { await Profiles.shared.report(owner, reason: "Post: \(str(p["id"]))") } } label: { Label("Report post", systemImage: "flag") }
                     }
-                    if owner == feed.me { Button(role: .destructive) { Task { await feed.delete(p) } } label: { Label("Delete post", systemImage: "trash") } }
+                    if owner == feed.me {
+                        Button { rewording = PostBox(post: p) } label: { Label("Edit", systemImage: "pencil") }
+                        Button(role: .destructive) { Task { await feed.delete(p) } } label: { Label("Delete post", systemImage: "trash") }
+                    }
                 } label: { Image(systemName: "ellipsis").foregroundStyle(.secondary).padding(10) }
             }
             .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 8)
@@ -428,8 +447,8 @@ struct FeedView: View {
 
             actions(p, rx: rx, comments: cm.count)
             if !rx.isEmpty { likedBy(rx).padding(.horizontal, 14).padding(.top, 2) }
-            if !str(p["caption"]).isEmpty {
-                (Text(feed.name(owner) + " ").bold() + Text(str(p["caption"]))).font(.subheadline).padding(.horizontal, 14).padding(.top, 4)
+            if !feed.caption(p).isEmpty {
+                (Text(feed.name(owner) + " ").bold() + Text(feed.caption(p))).font(.subheadline).padding(.horizontal, 14).padding(.top, 4)
             }
             if !cm.isEmpty {
                 VStack(alignment: .leading, spacing: 3) {
@@ -641,6 +660,45 @@ struct MomentAsk: ViewModifier {
 }
 
 struct PostBox: Identifiable { let post: JSON; var id: String { str(post["id"]) } }
+
+/// Your post, after it's on the feed: its caption, to change or clear.
+struct EditPostSheet: View {
+    let post: JSON
+    @Environment(\.dismiss) private var dismiss
+    @State private var caption = ""
+    @State private var busy = false
+    @State private var problem: String?
+    @FocusState private var typing: Bool
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Write a caption…", text: $caption, axis: .vertical).lineLimit(3...8).focused($typing)
+                } header: { Text(str(post["name"])) } footer: {
+                    if let problem { Text(problem).foregroundStyle(Theme.warn) }
+                }
+            }
+            .scrollContentBackground(.hidden).background(Theme.bg)
+            .navigationTitle("Edit post").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        busy = true; problem = nil
+                        Task {
+                            let ok = await Feed.shared.edit(post, caption: String(caption.trimmingCharacters(in: .whitespacesAndNewlines).prefix(2000)))
+                            busy = false
+                            if ok { dismiss() } else { problem = "Couldn't save that just now. Try again." }
+                        }
+                    }
+                    .fontWeight(.bold).disabled(busy)
+                }
+            }
+            .onAppear { caption = Feed.shared.caption(post); typing = true }
+        }
+    }
+}
 
 /// A post's comments: likes and replies, one-tap quick replies, and the box at the bottom.
 struct CommentsSheet: View {

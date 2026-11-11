@@ -111,6 +111,8 @@ struct ChatView: View {
     @State private var choosing = false
     @State private var gifs = false
     @State private var replying: JSON?   // the message the next one answers
+    @State private var rewording: JSON?  // your message being changed: the box holds its words
+    @State private var failed: String?
     @State private var jump: String?     // a quoted message to scroll back to
     /// A finger sliding a row sideways: left shows the times, right pulls that message towards a reply. It lets go
     /// by itself, even when the scroll takes the touch over.
@@ -251,6 +253,7 @@ struct ChatView: View {
             .contextMenu {
                 ForEach(["❤️", "😂", "👍", "🔥", "😋"], id: \.self) { e in Button(e) { Task { await messages.react(m, e) } } }
                 if kind == "text" { Button { UIPasteboard.general.string = str(m["text"]) } label: { Label("Copy", systemImage: "doc.on.doc") } }
+                if mine && kind == "text" { Button { replying = nil; rewording = m; text = str(m["text"]); typing = true } label: { Label("Edit", systemImage: "pencil") } }
                 if mine { Button(role: .destructive) { Task { await messages.delete(m) } } label: { Label("Delete", systemImage: "trash") } }
             }
             if !rx.isEmpty {
@@ -258,6 +261,7 @@ struct ChatView: View {
                     .padding(.horizontal, 6).padding(.vertical, 2).background(Color(.tertiarySystemBackground), in: Capsule())
                     .overlay(Capsule().stroke(Theme.bg, lineWidth: 2)).offset(y: -6).padding(.horizontal, 10)
             }
+            if p["edited"] as? Bool == true { Text("Edited").font(.caption2).foregroundStyle(.secondary).padding(.horizontal, 8).padding(.top, 2) }
         }
         .frame(maxWidth: .infinity, alignment: mine ? .trailing : .leading)
         .padding(mine ? .leading : .trailing, 50)
@@ -343,6 +347,20 @@ struct ChatView: View {
     private var composer: some View {
         let empty = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         return VStack(spacing: 4) {
+            if rewording != nil {
+                HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Editing message").font(.caption.weight(.bold))
+                        if let failed { Text(failed).font(.caption).foregroundStyle(Theme.warn).lineLimit(2) }
+                    }
+                    Spacer(minLength: 0)
+                    Button { withAnimation(.snappy) { rewording = nil; failed = nil; text = "" } } label: {
+                        Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).foregroundStyle(.secondary).frame(width: 28, height: 28).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).accessibilityLabel("Cancel the edit")
+                }
+                .padding(.leading, 10).padding(.top, 4)
+            }
             if let r = replying {
                 HStack(spacing: 8) {
                     VStack(alignment: .leading, spacing: 1) {
@@ -379,6 +397,15 @@ struct ChatView: View {
             .buttonStyle(.plain).accessibilityLabel("Send a GIF")
             Button {
                 let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let old = rewording {
+                    // the same message, reworded: it stays in the box if the server won't take it
+                    Task {
+                        if t == str(old["text"]) { rewording = nil; text = ""; return }
+                        if await messages.edit(old, text: String(t.prefix(1000))) { rewording = nil; failed = nil; text = "" }
+                        else { failed = "Couldn't save the edit. Try again." }
+                    }
+                    return
+                }
                 text = ""
                 let payload = takeReply()
                 Task { await messages.send(to: friend, text: String(t.prefix(1000)), payload: payload) }
@@ -390,6 +417,7 @@ struct ChatView: View {
         }
         }
         .animation(.snappy, value: replying == nil)
+        .animation(.snappy, value: rewording == nil)
         .padding(.horizontal, 8).padding(.vertical, 6)
         .composerGlass(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .padding(.horizontal, 10).padding(.top, 6).padding(.bottom, 8)

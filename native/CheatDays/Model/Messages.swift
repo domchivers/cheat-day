@@ -92,6 +92,17 @@ final class Messages {
         reactions.append(["message_id": id, "user_id": me, "emoji": emoji])
     }
 
+    /// Your own text message, reworded; payload.edited marks it. False when the server didn't take it.
+    func edit(_ m: JSON, text: String) async -> Bool {
+        let id = str(m["id"])
+        var p = dict(m["payload"]); p["edited"] = true
+        guard let d = try? await api.rest("/rest/v1/messages?id=eq.\(id)&from_user=eq.\(me)", method: "PATCH", body: ["text": text, "payload": p] as JSON, prefer: "return=representation"),
+              let rows = (try? JSONSerialization.jsonObject(with: d)) as? [JSON], !rows.isEmpty else { error = "Couldn't edit that message."; return false }
+        for i in thread.indices where str(thread[i]["id"]) == id { thread[i]["text"] = text; thread[i]["payload"] = p }
+        for i in recent.indices where str(recent[i]["id"]) == id { recent[i]["text"] = text; recent[i]["payload"] = p }
+        return true
+    }
+
     func delete(_ m: JSON) async {
         _ = try? await api.rest("/rest/v1/messages?id=eq.\(str(m["id"]))&from_user=eq.\(me)", method: "DELETE")
         thread.removeAll { str($0["id"]) == str(m["id"]) }
