@@ -202,6 +202,19 @@ struct LoopingVideo: UIViewRepresentable {
         var looper: AVPlayerLooper?
         var key = ""
         var held: Double?
+        let look = Look()
+    }
+
+    /// The look the frames are being drawn through, read by the player for each frame as it comes: a slider can
+    /// change it many times a second and the clip just carries on (setting the player up again for each change
+    /// started the clip over, which is why Adjust on a video only showed when the finger lifted).
+    final class Look: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value = "Normal"
+        var name: String {
+            get { lock.lock(); defer { lock.unlock() }; return value }
+            set { lock.lock(); value = newValue; lock.unlock() }
+        }
     }
 
     func makeUIView(context: Context) -> PlayerView {
@@ -212,6 +225,7 @@ struct LoopingVideo: UIViewRepresentable {
     }
 
     func updateUIView(_ v: PlayerView, context: Context) {
+        v.look.name = filter
         if v.key != key { setUp(v) }
         v.playerLayer.player?.isMuted = muted
         if let at = scrub {
@@ -228,15 +242,19 @@ struct LoopingVideo: UIViewRepresentable {
         if paused { v.playerLayer.player?.pause() } else { v.playerLayer.player?.play() }
     }
 
-    private var key: String { "\(url.absoluteString)|\(filter)|\(range.map { "\($0.lowerBound)-\($0.upperBound)" } ?? "")" }
+    // whether there's a look at all, not which: going from none to one is the only change that needs a new player
+    private var key: String { "\(url.absoluteString)|\(filter != "Normal")|\(range.map { "\($0.lowerBound)-\($0.upperBound)" } ?? "")" }
 
     private func setUp(_ v: PlayerView) {
         v.key = key
         let asset = AVURLAsset(url: url)
         let item = AVPlayerItem(asset: asset)
+        v.look.name = filter
         if filter != "Normal" {
-            let name = filter
+            let look = v.look
             item.videoComposition = AVVideoComposition(asset: asset) { req in
+                let name = look.name
+                if name == "Normal" { req.finish(with: req.sourceImage, context: nil); return }
                 req.finish(with: StoryArt.filtered(req.sourceImage.clampedToExtent(), name, frame: req.sourceImage.extent).cropped(to: req.sourceImage.extent), context: nil)
             }
         }

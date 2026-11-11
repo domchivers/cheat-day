@@ -226,7 +226,7 @@ struct StoryEditor: View {
                         ZStack {
                             if let poster { Image(uiImage: poster).resizable().scaledToFill().frame(width: f.width, height: f.height).clipped() }
                             // turned on its side, the player is laid out sideways and then turned to stand in the frame
-                            LoopingVideo(url: video, paused: false, muted: muted, filter: clipLook, range: length > 0 && mode != .trim ? range : nil, scrub: mode == .trim ? scrub : nil)
+                            LoopingVideo(url: video, paused: false, muted: muted, filter: look, range: length > 0 && mode != .trim ? range : nil, scrub: mode == .trim ? scrub : nil)
                                 .frame(width: turns % 2 == 1 ? f.height : f.width, height: turns % 2 == 1 ? f.width : f.height)
                                 .rotationEffect(.degrees(Double(turns) * 90))
                         }
@@ -234,7 +234,7 @@ struct StoryEditor: View {
                     }
                 } else {
                 if let poster { Image(uiImage: poster).resizable().scaledToFill().frame(width: cw, height: ch).clipped() }
-                LoopingVideo(url: video, paused: mode == .text, muted: muted, filter: clipLook, range: length > 0 && mode != .trim ? range : nil, scrub: mode == .trim ? scrub : nil)
+                LoopingVideo(url: video, paused: mode == .text, muted: muted, filter: look, range: length > 0 && mode != .trim ? range : nil, scrub: mode == .trim ? scrub : nil)
                 }
             } else if let shown = (comparing ? nil : preview) ?? work ?? image {
                 // the photo moves on its own too, and tells the editor only when the finger lifts
@@ -693,7 +693,7 @@ struct StoryEditor: View {
                 handle(inner, grip, left: true).offset(x: inner * lo)
                 handle(inner, grip, left: false).offset(x: grip + inner * hi)
             }
-            .frame(width: width, height: 64)
+            .frame(width: width, height: 64, alignment: .leading)   // from the left: centred, everything sat a handle's width to the right
             .coordinateSpace(name: "strip")
         }
     }
@@ -704,7 +704,9 @@ struct StoryEditor: View {
             .overlay(Image(systemName: left ? "chevron.compact.left" : "chevron.compact.right").font(.system(size: 20, weight: .bold)).foregroundStyle(.black.opacity(0.7)))
             // a thumb's width to catch it by, not just the sliver that shows
             .padding(.horizontal, 14).padding(.vertical, 8).contentShape(Rectangle()).padding(.horizontal, -14).padding(.vertical, -8)
-            .gesture(DragGesture(minimumDistance: 0).onChanged { v in
+            // measured against the strip, which stays put: against the handle itself, which moves with the finger,
+            // it came out as half the distance
+            .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("strip")).onChanged { v in
                 // from where the end was when it was caught, by how far the finger has gone: it never jumps to the finger
                 let from = grabbed ?? (left ? range.lowerBound : range.upperBound)
                 if grabbed == nil { grabbed = from; UISelectionFeedbackGenerator().selectionChanged() }
