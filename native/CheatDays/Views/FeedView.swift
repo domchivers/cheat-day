@@ -899,10 +899,24 @@ struct SongSwitch: View {
                 .buttonStyle(.plain).padding(10)
                 .accessibilityLabel(on ? "Sound off" : "Sound on")
             }
-            .onScrollVisibilityChange(threshold: 0.6) { showing in
+            .modifier(MostlyShowing { showing in
                 if showing { SongPlayer.shared.arrive(song, key: key) } else { SongPlayer.shared.leave(key) }
-            }
+            })
             .onDisappear { SongPlayer.shared.leave(key) }
+    }
+}
+
+/// Tells when most of a view (six tenths) has come onto the screen in a scrolling list, and when it's gone again.
+/// On iOS 17, which can't measure that, it's when the view arrives in the list and leaves it: a little early, but
+/// the same idea.
+struct MostlyShowing: ViewModifier {
+    let changed: (Bool) -> Void
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.onScrollVisibilityChange(threshold: 0.6) { changed($0) }
+        } else {
+            content.onAppear { changed(true) }.onDisappear { changed(false) }
+        }
     }
 }
 
