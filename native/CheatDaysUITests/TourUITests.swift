@@ -109,7 +109,7 @@ final class TourUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-uitest-body"]
         app.launch()
-        XCTAssertTrue(app.navigationBars["Body"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Weigh-ins"].waitForExistence(timeout: 5))
         sleep(1)
         let a = XCTAttachment(screenshot: app.screenshot()); a.name = "body-chart"; a.lifetime = .keepAlways; add(a)
         app.swipeUp()

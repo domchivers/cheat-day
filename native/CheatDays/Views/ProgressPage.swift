@@ -49,11 +49,6 @@ struct ProgressPage: View {
         HStack(spacing: 8) {
             Text("Progress").font(.system(size: 30, weight: .heavy))
             Spacer()
-            Button { weighing = true } label: {
-                Label("Weigh in", systemImage: "plus").font(.subheadline.weight(.heavy)).foregroundStyle(Theme.onAccent)
-                    .padding(.horizontal, 14).padding(.vertical, 9).background(Theme.accent, in: Capsule())
-            }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 16).padding(.top, 6)
     }
@@ -72,6 +67,7 @@ struct ProgressPage: View {
 
     /// Three quiet lines: a word on how it's going, the weight, and how far and how long.
     private var top: some View {
+        HStack(spacing: 12) {
         VStack(alignment: .leading, spacing: 2) {
             Text(greeting).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
             if let now {
@@ -84,6 +80,10 @@ struct ProgressPage: View {
                 Text("Weigh in to start").font(.title2.weight(.heavy)).padding(.top, 2)
                 Text("Your trend and the date you'll reach your goal show here after a few weigh-ins.").font(.subheadline).foregroundStyle(.secondary)
             }
+        }
+        Spacer(minLength: 0)
+        // beside the number it adds to, round like the buttons on Friends
+        round("plus") { weighing = true }.accessibilityLabel("Weigh in")
         }
     }
 
@@ -137,9 +137,9 @@ struct ProgressPage: View {
                         HStack(spacing: 6) {
                             ForEach(have.prefix(4), id: \.key) { m in
                                 Button { withAnimation(.easeInOut(duration: 0.25)) { metric = m.key; picked = nil } } label: {
-                                    Text(m.name).font(.footnote.weight(.bold)).foregroundStyle(metric == m.key ? Theme.onAccent : .secondary)
+                                    Text(m.name).font(.footnote.weight(.bold)).foregroundStyle(metric == m.key ? .primary : .secondary)
                                         .padding(.horizontal, 10).padding(.vertical, 5)
-                                        .background(metric == m.key ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Color(.tertiarySystemFill)), in: Capsule())
+                                        .background(metric == m.key ? AnyShapeStyle(Color(.systemGray3)) : AnyShapeStyle(Color(.tertiarySystemFill)), in: Capsule())
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -229,9 +229,9 @@ struct ProgressPage: View {
             HStack(spacing: 0) {
                 ForEach(Self.ranges, id: \.days) { r in
                     Button { picked = nil; withAnimation(.easeInOut(duration: 0.25)) { range = r.days } } label: {
-                        Text(r.label).font(.footnote.weight(.bold)).foregroundStyle(range == r.days ? Theme.onAccent : .secondary)
+                        Text(r.label).font(.footnote.weight(.bold)).foregroundStyle(range == r.days ? .primary : .secondary)
                             .padding(.horizontal, 11).padding(.vertical, 6)
-                            .background(range == r.days ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Color.clear), in: Capsule())
+                            .background(range == r.days ? AnyShapeStyle(Color(.systemGray3)) : AnyShapeStyle(Color.clear), in: Capsule())
                     }
                     .buttonStyle(.plain).frame(maxWidth: .infinity)
                 }
@@ -333,7 +333,7 @@ struct ProgressPage: View {
     }
 
     private func small(title: String, value: String, unit: String, note: String, icon: String?) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(spacing: 4) {
             Text(title).font(.footnote).foregroundStyle(.secondary)
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 if let icon { FluentIcon(emoji: icon, size: 20) }
@@ -342,7 +342,7 @@ struct ProgressPage: View {
             }
             Text(note).font(.caption).foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity)
         .padding(14).background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
@@ -358,19 +358,19 @@ struct ProgressPage: View {
         let cheat = store.cheatWeekday.map { Calendar.current.weekdaySymbols[$0] } ?? "None"
         return NavigationLink { BudgetView() } label: {
             HStack(spacing: 0) {
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(spacing: 3) {
                     Text("Budget").font(.footnote).foregroundStyle(.secondary)
                     (Text(Fmt.int(base)).font(.title3.weight(.heavy)) + Text(" a day").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)).foregroundStyle(.primary)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading).padding(14)
+                .frame(maxWidth: .infinity).padding(14)
                 Divider().frame(height: 40)
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(spacing: 3) {
                     Text("Cheat day").font(.footnote).foregroundStyle(.secondary)
                     Text(cheat).font(.title3.weight(.heavy)).foregroundStyle(.primary)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading).padding(14)
-                Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary).padding(.trailing, 14)
+                .frame(maxWidth: .infinity).padding(14)
             }
+            .overlay(alignment: .trailing) { Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary).padding(.trailing, 12) }
             .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         }
         .buttonStyle(.plain)

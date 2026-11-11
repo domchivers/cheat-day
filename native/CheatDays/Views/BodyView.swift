@@ -2,239 +2,82 @@ import Charts
 import PhotosUI
 import SwiftUI
 
-private struct BodyPoint: Identifiable { let id: String; let date: Date; let value: Double; let trend: Double?; let odd: Bool }
-
-/// Body: any measure over time with a trend line, your goal, every reading, and adding one by hand or from a scale screenshot.
+/// Weigh-ins, behind "See all" on Progress: your goal, every reading by month (tap to change, swipe to delete), and
+/// your scale. The chart lives on Progress alone.
 struct BodyView: View {
-    @State private var metric = "weight"
-    @State private var range = 90
     @State private var entry: JSON?
-    @State private var picked: Date?
     private var store: Store { Store.shared }
-
     static let metrics: [(key: String, name: String, unit: String)] = [
         ("weight", "Weight", "kg"), ("fat", "Body fat", "%"), ("muscle", "Muscle", "kg"), ("water", "Water", "%"),
         ("visceral", "Visceral fat", ""), ("bone", "Bone", "kg"), ("bmi", "BMI", ""), ("age", "Body age", "yrs")
     ]
 
+    private struct Month: Identifiable { let id: String; let rows: [JSON] }
+    /// Readings newest first, a section a month.
+    private var months: [Month] {
+        let rows = store.bodyRows.filter { pos($0["weight"]) != nil || pos($0["fat"]) != nil }.sorted { str($0["day"]) > str($1["day"]) }
+        var out: [Month] = []
+        for r in rows {
+            let key = String(str(r["day"]).prefix(7))
+            if out.last?.id == key { out[out.count - 1] = Month(id: key, rows: out[out.count - 1].rows + [r]) } else { out.append(Month(id: key, rows: [r])) }
+        }
+        return out
+    }
+    private func monthName(_ key: String) -> String {
+        let d = DayKey.date(key + "-01")
+        return key.prefix(4) == store.today.prefix(4) ? d.formatted(.dateTime.month(.wide)) : d.formatted(.dateTime.month(.wide).year())
+    }
+    private func head(_ t: String) -> some View {
+        Text(t).font(.headline.weight(.heavy)).foregroundStyle(.secondary).textCase(nil)
+    }
+
     var body: some View {
-        let rows = store.bodyRows
-        let have = Self.metrics.filter { m in rows.contains { pos($0[m.key]) != nil } }
-        let m = Self.metrics.first { $0.key == metric } ?? Self.metrics[0]
-        let points = series(rows, key: metric)
+        let all = months
         List {
-            if !have.isEmpty {
-                Section {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) { ForEach(have, id: \.key) { x in Chip(text: x.name, on: metric == x.key) { withAnimation(.snappy) { metric = x.key } } } }
-                    }
-                    Picker("Range", selection: $range.animation(.snappy)) {
-                        Text("1M").tag(30); Text("3M").tag(90); Text("6M").tag(180); Text("1Y").tag(365); Text("All").tag(4000)
-                    }
-                    .pickerStyle(.segmented)
-                    hero(points, m)
-                    chart(points, m)
-                        .onChange(of: metric) { _, _ in picked = nil }
-                        .onChange(of: range) { _, _ in picked = nil }
-                    if metric == "weight" { summary }
-                }
-                .listRowSeparator(.hidden)
-            }
-            if metric == "weight" { Section { goalCard } header: { Text("Goals") } }
-            if rows.isEmpty {
+            Section { goalCard } header: { head("Goal") }
+            if all.isEmpty {
                 Section { Button { entry = ["new": true, "day": "new"] } label: { Label("Weigh in", systemImage: "plus.circle.fill").font(.headline) } }
-            } else {
-                let recent = Array(rows.reversed().prefix(60))
+            }
+            ForEach(all) { m in
                 Section {
-                    ForEach(keyed(recent, by: "day")) { reading in
+                    ForEach(keyed(m.rows, by: "day")) { reading in
                         let r = reading.item
                         Button { entry = r } label: {
                             HStack {
                                 VStack(alignment: .leading, spacing: 1) {
-                                    Text(DayKey.date(str(r["day"])).formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))).font(.subheadline)
+                                    Text(DayKey.date(str(r["day"])).formatted(.dateTime.weekday(.abbreviated).day())).font(.body.weight(.semibold))
                                     if let t = ISO.date(str(r["takenAt"])) { Text(t.formatted(date: .omitted, time: .shortened)).font(.caption2).foregroundStyle(.secondary) }
                                 }
                                 Spacer()
-                                Text(Self.metrics.compactMap { x in pos(r[x.key]).map { x.unit == "%" ? "\(Fmt.dec($0))%" : "\(Fmt.kg($0))\(x.unit.isEmpty ? "" : " \(x.unit)")" } }.prefix(3).joined(separator: " · "))
-                                    .font(.subheadline.weight(.semibold)).monospacedDigit().foregroundStyle(.secondary)
+                                Text(([pos(r["weight"]).map { "\(Fmt.kg($0)) kg" }, pos(r["fat"]).map { "\(Fmt.dec($0))%" }].compactMap { $0 }).joined(separator: " · "))
+                                    .font(.subheadline).monospacedDigit().foregroundStyle(.secondary)
+                                Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
                             }
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .swipeActions { Button(role: .destructive) { store.deleteBody(str(r["day"])) } label: { Label("Delete", systemImage: "trash") } }
                     }
-                } header: {
-                    HStack {
-                        Text("Readings")
-                        Spacer()
-                        Button { entry = ["new": true, "day": "new"] } label: { Label("Weigh in", systemImage: "plus") }.font(.subheadline.weight(.semibold)).textCase(nil)
-                    }
-                }
+                } header: { head(monthName(m.id)) }
             }
             Section {
                 ScaleConnectRow()
-            } header: { Text("Your scale") } footer: { Text("Smart scale apps (VeSync, Withings, Eufy, Renpho, Fitbit, Garmin and more) save to Apple Health. Connect it and every weigh-in arrives on its own.") }
+            } header: { head("Your scale") } footer: { Text("Smart scale apps (VeSync, Withings, Eufy, Renpho, Fitbit, Garmin and more) save to Apple Health. Connect it and every weigh-in arrives on its own.") }
         }
         .scrollContentBackground(.hidden)
         .background(Theme.bg)
-        .navigationTitle("Body")
+        .navigationTitle("Weigh-ins")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { entry = ["new": true, "day": "new"] } label: { Image(systemName: "plus") }.accessibilityLabel("Weigh in")
+            }
+        }
         .refreshable { await store.pullBody(); await HealthSync.pull(force: true) }
         .task { await HealthSync.pull() }
         .sheet(item: Binding(get: { entry.map { EntryBox(row: $0) } }, set: { entry = $0?.row })) { b in
             if b.row["new"] as? Bool == true { WeighInSheet() } else { WeighInSheet(row: b.row) }
         }
-    }
-
-    private func series(_ rows: [JSON], key: String) -> [BodyPoint] {
-        let since = DayKey.shift(store.today, days: -range)
-        let all = rows.compactMap { r -> (String, Double)? in pos(r[key]).map { (str(r["day"]), $0) } }
-        let t = all.count >= 4 ? Trend.fit(days: all.map(\.0), values: all.map(\.1)) : (fit: all.map(\.1), odd: all.map { _ in false })
-        return all.indices.filter { all[$0].0 >= since }.map { i in
-            BodyPoint(id: all[i].0, date: DayKey.date(all[i].0), value: all[i].1, trend: all.count >= 4 ? t.fit[i] : nil, odd: t.odd[i])
-        }
-    }
-
-    private func hero(_ pts: [BodyPoint], _ m: (key: String, name: String, unit: String)) -> some View {
-        let last = pts.last, first = pts.first { !$0.odd }
-        let sel = nearest(pts)
-        let now = sel?.value ?? last?.value   // the latest reading as measured, or the one under your finger
-        let change = (now != nil && first != nil) ? now! - (first!.trend ?? first!.value) : nil
-        return HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 2) {
-                Eyebrow(text: sel.map { $0.date.formatted(.dateTime.weekday(.wide).day().month(.wide)) } ?? (m.key == "weight" ? "Last weigh-in" : m.name), color: Theme.heroLabel)
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(now.map { Fmt.kg($0) } ?? "–").font(.system(size: 44, weight: .heavy, design: .rounded)).contentTransition(.numericText())
-                    Text(m.unit).font(.headline).foregroundStyle(.secondary)
-                }
-                if let sel {
-                    Text(sel.trend.map { "Trend that day \(Fmt.kg($0))" } ?? "A single reading").font(.caption).foregroundStyle(.secondary)
-                } else if m.key == "weight", let w = store.lastWeighIn {
-                    let trend = store.trendWeight.flatMap { abs($0 - w.kg) >= 0.2 ? " · trend \(Fmt.kg($0)) kg" : nil } ?? ""
-                    Text("\(Store.whenTaken(day: w.day, at: w.at).capitalizedFirst)\(trend)").font(.caption).foregroundStyle(.secondary)
-                }
-            }
-            Spacer()
-            if let change, pts.count > 1, sel == nil {
-                let good = m.key == "muscle" ? change >= 0 : change <= 0
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text("\(change > 0 ? "↑ " : change < 0 ? "↓ " : "")\(Fmt.one(abs(change)))\(m.unit.isEmpty || m.unit == "%" ? m.unit : " \(m.unit)")")
-                        .font(.subheadline.weight(.heavy)).foregroundStyle(good ? Color.green : Theme.warn)
-                        .padding(.horizontal, 9).padding(.vertical, 4)
-                        .background((good ? Color.green : Theme.warn).opacity(0.15), in: Capsule())
-                    Text(range > 400 ? "since you started" : "in \(rangeText)").font(.caption).foregroundStyle(.secondary)
-                }
-            }
-        }
-    }
-
-    /// Under the weight chart: the weekly rate (4-week trend), body fat, and when the goal's reached.
-    @ViewBuilder private var summary: some View {
-        let rate = store.weightTrend().map { $0.perDay * 7 }
-        let goal = pos(store.doc["goalWeight"])
-        HStack(spacing: 0) {
-            stat(rate.map { "\($0 < 0 ? "−" : "+")\(Fmt.kg2(abs($0))) kg" } ?? "–", "a week (4-wk trend)")
-            stat(store.lastWeighIn?.fat.map { "\(Fmt.dec($0))%" } ?? "–", "body fat")   // the last weigh-in's own, like the number above
-            stat(goal.flatMap { store.reachDate($0) }.map { $0.formatted(.dateTime.day().month(.abbreviated)) }
-                 ?? (goal.map { store.nearGoal($0) } == true ? "any day" : "–"), goal.map { "to \(Fmt.kg($0)) kg" } ?? "no goal set")
-        }
-        .padding(.top, 4)
-    }
-
-    private func stat(_ v: String, _ l: String) -> some View {
-        VStack(spacing: 2) {
-            Text(v).font(.subheadline.weight(.heavy)).monospacedDigit()
-            Text(l).font(.caption2).foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private var rangeText: String { [30: "a month", 90: "3 months", 180: "6 months", 365: "a year"][range] ?? "" }
-
-    /// The reading nearest to where your finger is on the chart.
-    private func nearest(_ pts: [BodyPoint]) -> BodyPoint? {
-        guard let picked else { return nil }
-        return pts.min { abs($0.date.timeIntervalSince(picked)) < abs($1.date.timeIntervalSince(picked)) }
-    }
-
-    /// Readings as soft dots, the trend as a smooth line with a fade under it, the goal dashed. Touch and drag along it
-    /// and the big number above shows that day's reading.
-    private func chart(_ pts: [BodyPoint], _ m: (key: String, name: String, unit: String)) -> some View {
-        let goal = m.key == "weight" ? pos(store.doc["goalWeight"]) : nil
-        let vals = pts.map(\.value) + pts.compactMap(\.trend) + (goal.map { [$0] } ?? [])
-        let lo = (vals.min() ?? 0), hi = (vals.max() ?? 1), pad = max(0.4, (hi - lo) * 0.12)
-        let floor = lo - pad
-        let line = pts.filter { $0.trend != nil }
-        let sel = nearest(pts)
-        return Chart {
-            // the trend leads: a soft fade under it, a faint glow along it; the daily readings stay small and quiet,
-            // unusual ones hollow, and today's end of the line is marked with its value
-            ForEach(line) { p in
-                AreaMark(x: .value("Day", p.date), yStart: .value("Base", floor), yEnd: .value("Trend", p.trend ?? p.value))
-                    .foregroundStyle(LinearGradient(colors: [Theme.accent.opacity(0.30), Theme.accent.opacity(0.0)], startPoint: .top, endPoint: .bottom))
-                    .interpolationMethod(.monotone)
-            }
-            ForEach(line) { p in
-                LineMark(x: .value("Day", p.date), y: .value("Trend", p.trend ?? p.value), series: .value("Line", "glow"))
-                    .foregroundStyle(Theme.accent.opacity(0.22))
-                    .lineStyle(StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
-                    .interpolationMethod(.monotone)
-            }
-            ForEach(line) { p in
-                LineMark(x: .value("Day", p.date), y: .value("Trend", p.trend ?? p.value), series: .value("Line", "trend"))
-                    .foregroundStyle(Theme.accent)
-                    .lineStyle(StrokeStyle(lineWidth: 2.6, lineCap: .round, lineJoin: .round))
-                    .interpolationMethod(.monotone)
-            }
-            ForEach(pts) { p in
-                PointMark(x: .value("Day", p.date), y: .value(m.name, p.value))
-                    .symbol {
-                        if p.odd { Circle().strokeBorder(Color.primary.opacity(0.6), lineWidth: 1.5).frame(width: 9, height: 9) }
-                        else { Circle().fill(Color.primary.opacity(0.32)).frame(width: 6, height: 6) }
-                    }
-            }
-            if let goal {
-                RuleMark(y: .value("Goal", goal))
-                    .foregroundStyle(Color.green.opacity(0.8))
-                    .lineStyle(StrokeStyle(lineWidth: 1.2, dash: [5, 5]))
-                    .annotation(position: .bottom, alignment: .trailing) {
-                        Text("Goal \(Fmt.kg(goal))").font(.caption2.weight(.heavy)).foregroundStyle(.green)
-                            .padding(.horizontal, 7).padding(.vertical, 3).background(Color.green.opacity(0.15), in: Capsule())
-                    }
-            }
-            if sel == nil, let end = line.last, let v = end.trend {
-                PointMark(x: .value("Day", end.date), y: .value("Trend", v)).foregroundStyle(Theme.accent.opacity(0.25)).symbolSize(260)
-                PointMark(x: .value("Day", end.date), y: .value("Trend", v)).foregroundStyle(Theme.accent).symbolSize(70)
-                    .annotation(position: .top, alignment: .trailing, spacing: 14) {
-                        Text(Fmt.kg(v)).font(.caption.weight(.heavy)).monospacedDigit().lineLimit(1).fixedSize()   // never "80…."
-                            .padding(.horizontal, 7).padding(.vertical, 3).background(Theme.hero, in: RoundedRectangle(cornerRadius: 6))
-                    }
-            }
-            if let sel {
-                RuleMark(x: .value("Picked", sel.date)).foregroundStyle(Color.primary.opacity(0.3)).lineStyle(StrokeStyle(lineWidth: 1))
-                PointMark(x: .value("Day", sel.date), y: .value(m.name, sel.value)).foregroundStyle(Theme.accent).symbolSize(90)
-            }
-        }
-        .chartYScale(domain: floor...(hi + pad).rounded(.up))   // up to a whole number, so the top reading sits under a gridline
-        .chartXSelection(value: $picked)
-        .chartYAxis {
-            AxisMarks(position: .trailing, values: .automatic(desiredCount: 3)) { v in
-                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.08))
-                AxisValueLabel { if let d = v.as(Double.self) { Text(Fmt.one(d)).font(.caption2).foregroundStyle(.secondary) } }
-            }
-        }
-        .chartXAxis {
-            // one label per week (1M), per month (3M), or every few months, so none repeat
-            if range <= 30 {
-                AxisMarks(values: .stride(by: .weekOfYear)) { _ in AxisValueLabel(format: .dateTime.day().month(.abbreviated)).font(.caption2).foregroundStyle(.secondary) }
-            } else if range <= 365 {
-                AxisMarks(values: .stride(by: .month, count: range <= 90 ? 1 : range <= 180 ? 2 : 3)) { _ in AxisValueLabel(format: .dateTime.month(.abbreviated)).font(.caption2).foregroundStyle(.secondary) }
-            } else {
-                AxisMarks(values: .automatic(desiredCount: 4)) { _ in AxisValueLabel(format: .dateTime.month(.abbreviated).year(.twoDigits)).font(.caption2).foregroundStyle(.secondary) }
-            }
-        }
-        .frame(height: 220)
-        .overlay { if pts.isEmpty { Text("No readings in this range").font(.footnote).foregroundStyle(.secondary) } }
-        .sensoryFeedback(.selection, trigger: sel?.id)
     }
 
     private var goalCard: some View {
@@ -255,7 +98,7 @@ struct BodyView: View {
                 GeometryReader { g in
                     ZStack(alignment: .leading) {
                         Capsule().fill(Theme.track)
-                        Capsule().fill(Color.green).frame(width: g.size.width * (total > 0 ? min(1, done / total) : 1))
+                        Capsule().fill(Theme.accent).frame(width: g.size.width * (total > 0 ? min(1, done / total) : 1))
                     }
                 }
                 .frame(height: 8)
@@ -371,7 +214,7 @@ struct ScaleConnectRow: View {
     }
 }
 
-/// Body fat with the goals in Body: the averaged %, fat and lean mass, and a body-fat goal with the weight it
+/// Body fat with the goal in Weigh-ins: the averaged %, and a body-fat goal with the weight it
 /// means and when the trend gets there (the same date maths as the weight goal).
 struct BodyFatSummary: View {
     let now: Double
@@ -384,11 +227,6 @@ struct BodyFatSummary: View {
             let fatKg = now * bf.pct / 100
             VStack(alignment: .leading, spacing: 6) {
                 Divider().padding(.vertical, 2)
-                HStack {
-                    Text("Body fat \(Fmt.dec(bf.pct))%").font(.headline)
-                    Spacer()
-                    Text("fat \(Fmt.one(fatKg)) kg · lean \(Fmt.one(now - fatKg)) kg").font(.caption).foregroundStyle(.secondary).monospacedDigit()
-                }
                 Button {
                     text = store.goalFat.map { Fmt.one($0) } ?? ""; setting = true
                 } label: {
@@ -406,7 +244,7 @@ struct BodyFatSummary: View {
                          : "\(Fmt.dec(t))% body fat ≈ \(Fmt.kg(g.weight)) kg\(store.reachDate(g.weight).map { ", around \($0.formatted(.dateTime.day().month(.wide)))" } ?? "").")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
-                Text("Averaged over your last \(bf.n) readings: scales read body fat roughly, so one reading means little.")
+                Text("Now \(Fmt.dec(bf.pct))%, averaged over your last \(bf.n) readings: scales read body fat roughly, so one reading means little.")
                     .font(.caption2).foregroundStyle(.tertiary)
             }
             .alert("Body-fat goal", isPresented: $setting) {
