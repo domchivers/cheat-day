@@ -258,4 +258,33 @@ final class AssistantTests: XCTestCase {
         XCTAssertEqual(num(list(Assistant.steady(fish, earlier: [first])["parts"])[0]["kcal"]), 330)
         XCTAssertEqual(num(list(Assistant.steady(again, earlier: [])["parts"])[0]["kcal"]), 401)
     }
+
+    // a salad from two batches of their boiled chicken: the recipe check had put both back to plain chicken (52 g
+    // protein where the chat's own cards made it 80)
+    func testARecipeKeepsTheChatsOwnChicken() {
+        let cards: [JSON] = [
+            ["name": "Boiled chicken breast, from the 591 g batch", "grams": 73, "kcal": 123, "protein_g": 24, "carbs_g": 0, "fat_g": 3],
+            ["name": "Boiled chicken breast, from the 918 g batch", "grams": 150, "kcal": 269, "protein_g": 56, "carbs_g": 0, "fat_g": 5]]
+        let asked: [JSON] = [
+            ["name": "Boiled chicken breast (918 g batch)", "grams": 150, "kcal": 269, "protein_g": 56, "carbs_g": 0, "fat_g": 5],
+            ["name": "Boiled chicken breast (591 g batch)", "grams": 73, "kcal": 123, "protein_g": 24, "carbs_g": 0, "fat_g": 3],
+            ["name": "Lime juice, half a lime", "grams": 15, "kcal": 4, "protein_g": 0, "carbs_g": 1, "fat_g": 0]]
+        // what the table check made of them
+        let checked: [JSON] = [
+            ["name": "Boiled chicken breast (918 g batch)", "grams": 150, "kcal": 147, "protein_g": 34, "carbs_g": 0, "fat_g": 1],
+            ["name": "Boiled chicken breast (591 g batch)", "grams": 73, "kcal": 72, "protein_g": 17, "carbs_g": 0, "fat_g": 1],
+            ["name": "Lime juice, half a lime", "grams": 15, "kcal": 4, "protein_g": 0, "carbs_g": 1, "fat_g": 0]]
+        let kept = Assistant.steadyRecipe(checked, asked: asked, earlier: cards)
+        XCTAssertEqual(num(kept[0]["kcal"]), 269); XCTAssertEqual(num(kept[0]["protein_g"]), 56)
+        XCTAssertEqual(num(kept[1]["kcal"]), 123); XCTAssertEqual(num(kept[1]["protein_g"]), 24)   // each batch its own, by its grams
+        XCTAssertEqual(num(kept[2]["kcal"]), 4)
+        XCTAssertEqual(kept.reduce(0) { $0 + (num($1["protein_g"]) ?? 0) }, 80, accuracy: 0.5)
+
+        // another amount of the 591 g batch: found by the protein the AI gave it (32.8 g per 100 g), not the 918's 37.4
+        let more: [JSON] = [["name": "Boiled chicken breast", "grams": 100, "kcal": 168, "protein_g": 32.8, "carbs_g": 0, "fat_g": 4]]
+        let table: [JSON] = [["name": "Boiled chicken breast", "grams": 100, "kcal": 98, "protein_g": 23, "carbs_g": 0, "fat_g": 1]]
+        XCTAssertEqual(num(Assistant.steadyRecipe(table, asked: more, earlier: cards)[0]["kcal"]) ?? 0, 168, accuracy: 1)   // 123 x 100 / 73
+        // nothing of the chat's in the recipe: the checked numbers stand
+        XCTAssertEqual(num(Assistant.steadyRecipe(table, asked: more, earlier: [])[0]["kcal"]), 98)
+    }
 }

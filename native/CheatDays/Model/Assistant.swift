@@ -384,7 +384,12 @@ enum Assistant {
         if groundNow, str(answer["kind"]) == "estimate", let e = answer["estimate"] as? JSON { answer["estimate"] = await ground(e) }
         // a recipe's ingredients checked like the recipe screen's
         if str(answer["kind"]) == "recipe", var rc = answer["recipe"] as? JSON {
-            rc["ingredients"] = FoodReference.checked(CheatDays.list(rc["ingredients"])).items
+            // ...except the ingredients already worked out in this chat (their own batch of chicken), which keep those numbers
+            let asked = CheatDays.list(rc["ingredients"])
+            let known = turns.reversed().flatMap { t -> [JSON] in
+                CheatDays.list((t.result?["estimate"] as? JSON)?["parts"]) + CheatDays.list((t.result?["recipe"] as? JSON)?["ingredients"])
+            }
+            rc["ingredients"] = steadyRecipe(FoodReference.checked(asked).items, asked: asked, earlier: known)
             answer["recipe"] = rc
         }
         if groundNow, let target = calorieTarget(last.text) { answer = fitToCalories(answer, target: target) }
@@ -902,6 +907,32 @@ enum Assistant {
         out["parts"] = parts
         out["kcal_total"] = sum("kcal").rounded(); out["protein_g"] = sum("protein_g"); out["carbs_g"] = sum("carbs_g"); out["fat_g"] = sum("fat_g")
         return out
+    }
+
+    /// A recipe's ingredients that were already worked out in this chat keep those numbers. The recipe check put
+    /// their boiled chicken (37.4 g protein per 100 g, from their own batch) back to the table's plain chicken at 23 g,
+    /// so a salad with 80 g of protein showed 52. An ingredient is one of the chat's foods when its name shares words
+    /// with an earlier part's and either its grams are the same, or its protein per gram as the AI gave it (asked, in
+    /// the same order as checked) is within 3% of that part's. Earlier is the chat's parts and ingredients, latest first.
+    static func steadyRecipe(_ checked: [JSON], asked: [JSON], earlier: [JSON]) -> [JSON] {
+        let old = earlier.filter { pos($0["grams"]) != nil && pos($0["kcal"]) != nil }
+        guard !old.isEmpty else { return checked }
+        return checked.enumerated().map { i, x -> JSON in
+            guard let g = pos(x["grams"]) else { return x }
+            let like = old.filter { soundsLike(str($0["name"]), Set(FoodTable.words(str(x["name"])))) }
+            let said = asked.indices.contains(i) ? (num(asked[i]["protein_g"]) ?? 0) / g : 0
+            let found = like.first { abs((num($0["grams"]) ?? 0) - g) < 1 }
+                ?? like.first { o in
+                    let per = (num(o["protein_g"]) ?? 0) / (num(o["grams"]) ?? 1)
+                    return said > 0.02 && per > 0 && abs(said - per) <= 0.03 * per
+                }
+            guard let o = found, let og = pos(o["grams"]) else { return x }
+            let f = g / og
+            var out = x
+            out["kcal"] = ((num(o["kcal"]) ?? 0) * f).rounded()
+            for k in ["protein_g", "carbs_g", "fat_g"] { out[k] = (num(o[k]) ?? 0) * f }
+            return out
+        }
     }
 
     /// Every part through Sanity: calories that don't fit the macros are fixed from them, odd values are flagged on
