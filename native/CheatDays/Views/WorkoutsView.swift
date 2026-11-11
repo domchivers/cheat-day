@@ -9,6 +9,10 @@ struct WorkoutsView: View {
     @State private var showSession = false
     @State private var showActivity = false
     @State private var confirmRoutineDelete: JSON?
+    // a routine being renamed from the list, without starting it; and a name another routine already has
+    @State private var renaming: JSON?
+    @State private var renameText = ""
+    @State private var nameTaken: String?
     @State private var building = false
     @State private var lookAlike: (keep: String, merge: String, keepCount: Int, mergeCount: Int)?
     private var store: Store { Store.shared }
@@ -18,6 +22,20 @@ struct WorkoutsView: View {
         guard lookAlike == nil, !showSession, let (a, b) = ExerciseNames.firstPair(in: store.exerciseNames) else { return }
         let na = store.sessions(of: a).count, nb = store.sessions(of: b).count
         lookAlike = na >= nb ? (a, b, na, nb) : (b, a, nb, na)
+    }
+
+    /// A routine's name, changed where it's listed: its exercises, its id and its place stay as they are. Saving
+    /// under a name another routine has would replace that one, so it's refused.
+    private func rename(_ routine: JSON, to text: String) {
+        let name = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(40))
+        guard !name.isEmpty, name != str(routine["name"]) else { return }
+        if store.routines.contains(where: { str($0["id"]) != str(routine["id"]) && str($0["name"]).lowercased() == name.lowercased() }) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { nameTaken = name }
+            return
+        }
+        var r = routine
+        r["name"] = name
+        store.perform(["type": "updateRoutine", "routine": r])
     }
 
     var body: some View {
@@ -94,7 +112,14 @@ struct WorkoutsView: View {
                                 }
                                 .buttonStyle(.borderless).accessibilityLabel("Start \(str(r["name"]))")
                             }
-                            .swipeActions { Button(role: .destructive) { store.deleteRoutine(str(r["id"])) } label: { Label("Delete", systemImage: "trash") } }
+                            .swipeActions {
+                                Button(role: .destructive) { store.deleteRoutine(str(r["id"])) } label: { Label("Delete", systemImage: "trash") }
+                                Button { renameText = str(r["name"]); renaming = r } label: { Label("Rename", systemImage: "pencil") }.tint(Theme.accent)
+                            }
+                            .contextMenu {
+                                Button { renameText = str(r["name"]); renaming = r } label: { Label("Rename", systemImage: "pencil") }
+                                Button(role: .destructive) { store.deleteRoutine(str(r["id"])) } label: { Label("Delete", systemImage: "trash") }
+                            }
                         }
                     } header: { head("Your routines") }
                 }
@@ -131,6 +156,14 @@ struct WorkoutsView: View {
             }
             .navigationDestination(isPresented: $showSession) { SessionView() }
             .sheet(isPresented: $building) { PlanBuilder() }
+            .alert("Rename routine", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+                TextField("Routine name", text: $renameText)
+                Button("Save") { if let r = renaming { rename(r, to: renameText) }; renaming = nil }
+                Button("Cancel", role: .cancel) { renaming = nil }
+            }
+            .alert("That name's taken", isPresented: Binding(get: { nameTaken != nil }, set: { if !$0 { nameTaken = nil } })) {
+                Button("OK", role: .cancel) { nameTaken = nil }
+            } message: { Text("You already have a routine called \(nameTaken ?? ""). Pick another name.") }
             .sheet(isPresented: $showActivity) { ActivitySheet().presentationDetents([.medium, .large]) }
         }
     }
