@@ -346,13 +346,12 @@ private struct TourHarness: View {
     @State private var tab = 0
     var body: some View {
         TabView(selection: $tab) {
-            TodayView().ownBarTab().tag(0)
-            Color.clear.ownBarTab().tag(1)
-            Color.clear.ownBarTab().tag(4)
-            Color.clear.ownBarTab().tag(2)
-            Color.clear.ownBarTab().tag(3)
+            TodayView().tabItem { Image(uiImage: TabGlyph.make("fork.knife")).accessibilityLabel("Today") }.tag(0)
+            Color.clear.tabItem { Image(uiImage: TabGlyph.make("dumbbell.fill")).accessibilityLabel("Workouts") }.tag(1)
+            Color.clear.tabItem { Image(uiImage: TabGlyph.make("chart.line.uptrend.xyaxis")).accessibilityLabel("Progress") }.tag(4)
+            Color.clear.tabItem { Image(uiImage: TabGlyph.make("person.2.fill")).accessibilityLabel("Friends") }.tag(2)
+            Color.clear.tabItem { Image(uiImage: TabGlyph.make("person.crop.circle.fill")).accessibilityLabel("Me") }.tag(3)
         }
-        .ownTabBar($tab)
         .overlay { TourOverlay() }
         .task {
             try? await Task.sleep(for: .seconds(1))
@@ -373,15 +372,24 @@ struct MainTabs: View {
 
     var body: some View {
         TabView(selection: $tab) {
-            // the bar is our own (OwnTabBar): icons only, no words under them
-            TodayView().ownBarTab().tag(0)
-            WorkoutsView().ownBarTab().tag(1)
+            // icons only, no words under them; Today is the food log, so a plate rather than a sun
+            TodayView()
+                .tabItem { Image(uiImage: TabGlyph.make("fork.knife")).accessibilityLabel("Today") }.tag(0)
+            WorkoutsView()
+                .tabItem { Image(uiImage: TabGlyph.make("dumbbell.fill")).accessibilityLabel("Workouts") }.tag(1)
             // Progress, its own tab (it was a tab inside your profile); tag 4 so the others keep their numbers
-            ProgressTab().ownBarTab().tag(4)
-            FriendsView().ownBarTab().tag(2)
-            MeView().ownBarTab().tag(3)
+            ProgressTab()
+                .tabItem { Image(uiImage: TabGlyph.make("chart.line.uptrend.xyaxis")).accessibilityLabel("Progress") }.tag(4)
+            FriendsView()
+                .tabItem { Image(uiImage: TabGlyph.make("person.2.fill")).accessibilityLabel("Friends") }.tag(2)
+                .badge(FriendActivity.shared.unread)
+            MeView()
+                .tabItem {
+                    // your photo, once you've added one
+                    if let icon = tab == 3 ? Profiles.shared.meIconOn : Profiles.shared.meIcon { Image(uiImage: icon).renderingMode(.original).accessibilityLabel("Me") }
+                    else { Image(uiImage: TabGlyph.make("person.crop.circle.fill")).accessibilityLabel("Me") }
+                }.tag(3)
         }
-        .ownTabBar($tab)
         .sensoryFeedback(.selection, trigger: tab)
         .onChange(of: tab) { _, _ in KeyboardDone.quiet = false }
         .onAppear { Profiles.shared.warmIcon() }   // your photo on Me from the phone, before your profile loads   // a chat box left open in another tab can't take Done away from this one

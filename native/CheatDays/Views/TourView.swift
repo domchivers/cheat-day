@@ -70,7 +70,6 @@ import UIKit
 
     /// A tab's button in the tab bar, read from the tab bar's own views; if that can't be found, its share of the bar.
     static func tabFrame(_ title: String, at position: Int) -> CGRect? {
-        if let f = OwnBar.shared.frames[title], f.width > 0 { return f }   // our own bar says where its buttons are
         guard let win = UIApplication.shared.connectedScenes.compactMap({ ($0 as? UIWindowScene)?.keyWindow }).first else { return nil }
         let bottom = win.bounds.height - 160
         func visible(_ v: UIView) -> Bool { !v.isHidden && v.alpha > 0.01 }

@@ -93,7 +93,7 @@ struct SettingsView: View {
         } message: { Text("Everything stays in your account. Sign in again to get it back.") }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
-        .hidesOwnBar()   // like Instagram: Settings has the screen to itself
+        .toolbar(.hidden, for: .tabBar)   // like Instagram: Settings has the screen to itself
         .task {
             let p = store.reminderPrefs
             lunch = p.lunch; weighOn = p.weigh != nil
