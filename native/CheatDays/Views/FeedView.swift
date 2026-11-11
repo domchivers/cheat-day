@@ -157,6 +157,29 @@ final class Feed {
         return true
     }
 
+    /// A post on its way up: the sheet closes at once and this says how it's going (on the feed and your profile).
+    struct Sending { var thumb: UIImage?; var state: State; var again: (() -> Void)?
+        enum State: Equatable { case working, done, failed(String) } }
+    private(set) var sending: Sending?
+
+    /// Post in the background. Done shows for a moment; a failure stays, with Try again.
+    func send(_ row: JSON, photo: UIImage?, video: URL?, filter: String, range: ClosedRange<Double>?, muted: Bool) {
+        let again: () -> Void = { [weak self] in self?.send(row, photo: photo, video: video, filter: filter, range: range, muted: muted) }
+        withAnimation(.snappy) { sending = Sending(thumb: photo, state: .working, again: again) }
+        Task {
+            do {
+                try await post(row, photo: photo, video: video, filter: filter, range: range, muted: muted)
+                withAnimation(.snappy) { sending?.state = .done }
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                try? await Task.sleep(for: .seconds(2.5))
+                if sending?.state == .done { withAnimation(.snappy) { sending = nil } }
+            } catch {
+                withAnimation(.snappy) { sending?.state = .failed(error.localizedDescription) }
+            }
+        }
+    }
+    func clearSending() { withAnimation(.snappy) { sending = nil } }
+
     /// Posts deleted this session: gone at once from every list showing them (a profile keeps its own copy), not
     /// when the server has answered.
     private(set) var removed: Set<String> = []
@@ -267,6 +290,7 @@ struct FeedView: View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 if only == nil { rings }
+                if only == nil { PostingBanner().padding(.horizontal, 14).padding(.bottom, 8) }
                 if let e = feed.error { Text(e).font(.footnote).foregroundStyle(Theme.warn).padding(.horizontal, 16).padding(.bottom, 8) }
                 if only == nil && feed.posts.isEmpty && !feed.loading {
                     Text("Nothing in the feed yet. Share something, or add a friend.").foregroundStyle(.secondary).padding(.top, 40)
@@ -518,8 +542,9 @@ struct FeedView: View {
 
     private func photoView(_ p: JSON) -> some View {
         let n = numbers(p)
+        let shape = num(dict(p["extra"])["aspect"]).map { min(1.91, max(0.8, $0)) }
         return FeedPhoto(src: str(p["photo"]), fill: true)
-            .frame(maxWidth: .infinity).frame(height: 400)
+            .frame(maxWidth: .infinity).frame(height: shape.map { (UIScreen.main.bounds.width / $0).rounded() } ?? 400)
             .overlay { if let v = Feed.video(p) { FeedVideo(url: v) } }   // under the name and numbers
             .clipped()
             .contentShape(Rectangle())
@@ -986,7 +1011,7 @@ struct ComposeSheet: View {
                 let ready = what != nil || photo != nil || movie != nil
                 if !writing {
                 Button { post() } label: {
-                    Text(busy ? "Sharing…" : "Share").font(.headline.weight(.heavy)).foregroundStyle(ready ? Theme.onAccent : Color.secondary)
+                    Text("Share").font(.headline.weight(.heavy)).foregroundStyle(ready ? Theme.onAccent : Color.secondary)
                         .frame(maxWidth: .infinity).padding(.vertical, 15)
                         .background(ready ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Color(.tertiarySystemFill)), in: Capsule())
                 }
@@ -1252,12 +1277,49 @@ struct ComposeSheet: View {
         guard what != nil || photo != nil || movie != nil else { return }
         row["caption"] = caption.trimmingCharacters(in: .whitespacesAndNewlines)
         if let song { var x = dict(row["extra"]); x["song"] = ["id": song.id, "title": song.title] as JSON; row["extra"] = x }
+        // the picture's shape, for the feed to show it whole (a video's is its first frame's)
+        if let photo { var x = dict(row["extra"]); x["aspect"] = Double(photo.size.width / max(photo.size.height, 1)); row["extra"] = x }
         SongPlayer.shared.stop()
-        busy = true; problem = nil
-        Task {
-            defer { busy = false }
-            do { try await Feed.shared.post(row, photo: photo, video: movie, filter: movieFilter, range: movieRange, muted: movieMuted); dismiss() }
-            catch { problem = "Couldn't post: \(error.localizedDescription)" }
+        // it goes up after the sheet has closed: a line on the feed says posting, then posted
+        Feed.shared.send(row, photo: photo, video: movie, filter: movieFilter, range: movieRange, muted: movieMuted)
+        dismiss()
+    }
+}
+
+/// A post on its way up, at the top of the feed and your profile: its picture, "Posting…" with a spinner, then
+/// "Posted" for a moment; if it didn't go, why, with Try again and a way to drop it.
+struct PostingBanner: View {
+    private var feed: Feed { Feed.shared }
+    var body: some View {
+        if let s = feed.sending {
+            HStack(spacing: 12) {
+                Group {
+                    if let t = s.thumb { Image(uiImage: t).resizable().scaledToFill() } else { Color(.tertiarySystemFill).overlay { Image(systemName: "fork.knife").foregroundStyle(.secondary) } }
+                }
+                .frame(width: 40, height: 40).clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                switch s.state {
+                case .working:
+                    Text("Posting…").font(.subheadline.weight(.semibold))
+                    Spacer(minLength: 0)
+                    ProgressView()
+                case .done:
+                    Text("Posted").font(.subheadline.weight(.semibold))
+                    Spacer(minLength: 0)
+                    Image(systemName: "checkmark.circle.fill").font(.title3).foregroundStyle(Theme.walk)
+                case .failed(let why):
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Couldn't post").font(.subheadline.weight(.semibold))
+                        Text(why).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                    Spacer(minLength: 0)
+                    Button("Try again") { s.again?() }.font(.subheadline.weight(.bold)).buttonStyle(.plain).foregroundStyle(Theme.accent)
+                    Button { feed.clearSending() } label: { Image(systemName: "xmark").font(.caption.weight(.bold)).foregroundStyle(.secondary).frame(width: 28, height: 28) }
+                        .buttonStyle(.plain).accessibilityLabel("Dismiss")
+                }
+            }
+            .padding(10)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .transition(.move(edge: .top).combined(with: .opacity))
         }
     }
 }

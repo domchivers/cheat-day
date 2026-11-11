@@ -22,6 +22,19 @@ struct StoryEditor: View {
     private var forPost: Bool { finish != nil || finishVideo != nil }
     /// A post's clip: trimmed, filtered and muted only.
     private var clipOnly: Bool { finishVideo != nil }
+    /// A post's photo: the shape picked for it (portrait 4:5 to start, as Instagram's is), else the editor's own.
+    @State private var shape: CGFloat?
+    private var ratio: CGFloat { shape ?? aspect }
+    private static let shapes: [(name: String, ratio: CGFloat)] = [("Portrait 4:5", 4.0 / 5.0), ("Square 1:1", 1), ("Landscape 16:9", 16.0 / 9.0)]
+    /// The photo's own shape, within what the feed shows (no taller than 4:5, no wider than 1.91:1).
+    private var ownShape: CGFloat? { image.map { min(1.91, max(0.8, $0.size.width / max($0.size.height, 1))) } }
+    private func nextShape() {
+        var all = Self.shapes
+        if let o = ownShape, !all.contains(where: { abs($0.ratio - o) < 0.02 }) { all.append(("Original", o)) }
+        let i = all.firstIndex { abs($0.ratio - ratio) < 0.02 } ?? 0, next = all[(i + 1) % all.count]
+        withAnimation(.snappy) { shape = next.ratio; bgScale = 1; bgOffset = .zero }
+        flash(next.name)
+    }
 
     enum Mode { case none, text, draw, filters, trim }
     @State private var mode: Mode = .none
@@ -76,8 +89,8 @@ struct StoryEditor: View {
 
     var body: some View {
         GeometryReader { screen in
-            let cw = min(screen.size.width - 16, (screen.size.height - 96) * aspect)
-            let ch = cw / aspect
+            let cw = min(screen.size.width - 16, (screen.size.height - 96) * ratio)
+            let ch = cw / ratio
             VStack(spacing: 10) {
                 canvas(cw, ch)
                     .frame(width: cw, height: ch)
@@ -237,6 +250,7 @@ struct StoryEditor: View {
                     round("face.smiling") { stickers = true }.accessibilityLabel("Stickers")
                     round("scribble.variable") { mode = .draw }.accessibilityLabel("Draw")
                 }
+                if finish != nil { round("aspectratio") { nextShape() }.accessibilityLabel("Shape") }
                 round("camera.filters") { mode = .filters }.accessibilityLabel("Filters")
                 if video != nil {
                     round(muted ? "speaker.slash.fill" : "speaker.wave.2.fill") { muted.toggle(); flash(muted ? "Sound off" : "Sound on") }.accessibilityLabel(muted ? "Sound off" : "Sound on")
@@ -569,7 +583,7 @@ struct StoryEditor: View {
     /// sharp as its own layer.
     private func framedPhoto(_ cw: CGFloat) -> UIImage? {
         guard let base = preview ?? work ?? image else { return nil }
-        let ch = cw / aspect, k = 1080 / cw, oh = (1080 / aspect).rounded()
+        let ch = cw / ratio, k = 1080 / cw, oh = (1080 / ratio).rounded()
         let fill = max(cw / base.size.width, ch / base.size.height) * bgScale
         let w = base.size.width * fill, h = base.size.height * fill
         let format = UIGraphicsImageRendererFormat(); format.scale = 1
@@ -643,7 +657,7 @@ struct StoryEditor: View {
             Image(uiImage: photo).resizable()
             StoryLayer(items: everything)
         }
-        .frame(width: StoryArt.design, height: StoryArt.design / aspect)
+        .frame(width: StoryArt.design, height: StoryArt.design / ratio)
         let r = ImageRenderer(content: layer); r.scale = 1080 / StoryArt.design
         return r.uiImage
     }

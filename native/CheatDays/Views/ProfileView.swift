@@ -52,6 +52,8 @@ struct ProfileView: View {
                     }
                     .frame(maxWidth: .infinity).padding(.top, 44)
                 } else {
+                // a post of yours on its way up, and how it's going
+                if isMe { PostingBanner().padding(.horizontal, 14).padding(.bottom, 8) }
                 // only posts on someone else's profile: no tabs to choose between
                 if person != nil || isMe || posts.contains(where: { Feed.video($0) != nil }) {
                 Picker("Show", selection: $tab) {
@@ -119,6 +121,8 @@ struct ProfileView: View {
         .fullScreenCover(isPresented: $composing) { StoryComposer() }
         .fullScreenCover(isPresented: $watching) { StoryView(people: [id], at: 0) }
         .fullScreenCover(item: $reels) { r in ReelsView(posts: posts, startAt: r.id) }
+        // a post that's just gone up shows in the grid without a pull to refresh
+        .onChange(of: Feed.shared.sending?.state == .done) { _, done in if done && isMe { Task { await reload() } } }
         // a post deleted from the list of posts leaves the grid and the count at once too
         .onChange(of: Feed.shared.removed) { _, gone in withAnimation(.snappy) { posts.removeAll { gone.contains(str($0["id"])) } } }
         .sheet(isPresented: $posting, onDismiss: { Task { await reload() } }) { ComposeSheet() }
@@ -185,6 +189,8 @@ struct ProfileView: View {
                 }
                 Spacer(minLength: 0)
             }
+            // their tag first (tap it for all of theirs), then the streak and level under it
+            if let h = p?.shownHonor { Button { honorsOpen = true } label: { HonorText(honor: h) }.buttonStyle(.plain).accessibilityLabel(h.title).padding(.top, 12) }
             HStack(spacing: 8) {
                 if streak > 1 { HStack(spacing: 2) { FluentIcon(emoji: "🔥", size: 14); Text("\(streak)").font(.subheadline.weight(.heavy)).foregroundStyle(.orange) } }
                 if level > 0 {
@@ -193,11 +199,9 @@ struct ProfileView: View {
                         .foregroundStyle(r.color).padding(.horizontal, 8).padding(.vertical, 3).background(r.color.opacity(0.14), in: Capsule())
                 }
             }
-            .padding(.top, 12)
+            .padding(.top, p?.shownHonor == nil ? 12 : 5)
             if !profiles.handle(id).isEmpty { Text(profiles.handle(id)).font(.subheadline).foregroundStyle(.secondary) }
-            // their tag on its own line under the name (tap it for all of theirs), then their label in grey where
-            // Instagram has "Artist", then the bio
-            if let h = p?.shownHonor { Button { honorsOpen = true } label: { HonorText(honor: h) }.buttonStyle(.plain).accessibilityLabel(h.title).padding(.top, 2) }
+            // then their label in grey where Instagram has "Artist", then the bio
             if let l = p?.label, !l.isEmpty { Text(l).font(.subheadline).foregroundStyle(.secondary).lineLimit(1).padding(.top, 3) }
             if let bio = p?.bio, !bio.isEmpty { Text(bio).font(.subheadline).padding(.top, 4) }
             else if isMe { Button("Add a bio") { editing = true }.font(.subheadline).padding(.top, 4) }
