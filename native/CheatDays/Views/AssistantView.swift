@@ -736,14 +736,22 @@ struct AssistantView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
+            // their own name for it, as the foods card has: the dish's to start with
+            let key = turn.uuidString, typed = (mealNames[key] ?? "").trimmingCharacters(in: .whitespaces), named = typed.isEmpty ? str(rc["name"]) : typed
+            HStack(spacing: 8) {
+                Text("Name").foregroundStyle(.secondary)
+                TextField(str(rc["name"]), text: Binding(get: { mealNames[key] ?? "" }, set: { mealNames[key] = $0 })).submitLabel(.done)
+            }
+            .font(.subheadline).padding(.horizontal, 12).padding(.vertical, 9)
+            .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             HStack(spacing: 8) {
                 addButton("Add a portion", key: "portion", turn: turn) {
-                    store.add(Assistant.basis(name: str(rc["name"]), kcal: total / portions, grams: nil, p: p / portions, c: c / portions, f: f / portions), kcal: total / portions, meal: meal)
+                    store.add(Assistant.basis(name: named, kcal: total / portions, grams: nil, p: p / portions, c: c / portions, f: f / portions), kcal: total / portions, meal: meal)
                 }
                 // the quieter of the two: saving it for another day
                 let tag = "\(turn)-save", saved = done[turn, default: ""].contains(tag)
                 Button {
-                    store.perform(["type": "saveMeal", "meal": ["id": uid(), "name": str(rc["name"]), "portions": portions, "items": items, "steps": steps, "saved": true, "updatedAt": ISO.now()] as JSON])
+                    store.perform(["type": "saveMeal", "meal": ["id": uid(), "name": named, "portions": portions, "items": items, "steps": steps, "saved": true, "updatedAt": ISO.now()] as JSON])
                     withAnimation { done[turn, default: ""] += "|\(tag)" }
                 } label: { Label(saved ? "Saved" : "Save as a meal", systemImage: saved ? "checkmark" : "bookmark").font(.subheadline.weight(.bold)) }
                 .buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.small).disabled(saved)
