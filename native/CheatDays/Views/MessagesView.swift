@@ -27,7 +27,7 @@ struct MessagesView: View {
         .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search")   // always showing: the default hid it after a flash, until you pulled down
         .background(Theme.bg)
         .navigationTitle("Messages").navigationBarTitleDisplayMode(.inline)
-        .toolbar { ToolbarItem(placement: .topBarTrailing) { Button { picking = true } label: { Image(systemName: "square.and.pencil") }.accessibilityLabel("New message") } }
+        .toolbar { ToolbarItem(placement: .topBarTrailing) { Button { picking = true } label: { Image(systemName: "square.and.pencil").offset(x: 1.5, y: -2.5) }.accessibilityLabel("New message")   // the square, not the square and its pencil, in the middle of the button } }
         .task { await messages.load() }
         .refreshable { await messages.load() }
         .navigationDestination(item: $chatWith) { id in ChatView(friend: id) }
