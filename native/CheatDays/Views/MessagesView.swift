@@ -98,8 +98,9 @@ struct NewMessageSheet: View {
     }
 }
 
-/// One chat: bubbles, a post or food card, reactions (hold a message), "Seen", and a box with ＋ for a photo,
-/// one of today's foods, a saved meal or today's workout.
+/// One chat: bubbles, a GIF, a post or food card, reactions (hold a message), the day and time between stretches,
+/// ticks under your last message (blue once it's seen), and a box with ＋ for a photo, one of today's foods, a saved
+/// meal or today's workout, and GIF for GIPHY's.
 struct ChatView: View {
     let friend: String
     @State private var text = ""
@@ -107,6 +108,7 @@ struct ChatView: View {
     @State private var library = false
     @State private var camera = false
     @State private var choosing = false
+    @State private var gifs = false
     @State private var opened: PostBox?
     @State private var added: Set<String> = []
     @FocusState private var typing: Bool
@@ -124,9 +126,7 @@ struct ChatView: View {
                             if i == 0 || gap(t[i - 1], t[i]) { stamp(t[i]) }
                             bubble(t[i]).id(str(t[i]["id"]))
                         }
-                        if let last = t.last, str(last["from_user"]) == me, !str(last["seen_at"]).isEmpty {
-                            Text("Seen").font(.caption2).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .trailing).padding(.trailing, 4)
-                        }
+                        if let last = t.last, str(last["from_user"]) == me { ticks(seen: !str(last["seen_at"]).isEmpty) }
                     }
                     .padding(.horizontal, 12).padding(.vertical, 10)
                 }
@@ -158,6 +158,9 @@ struct ChatView: View {
         .onDisappear { messages.closeChat(); KeyboardDone.quiet = false }
         .onAppear { KeyboardDone.quiet = true }
         .sheet(item: $opened, onDismiss: { KeyboardDone.quiet = true }) { b in PostRecipeSheet(post: b.post) }
+        .sheet(isPresented: $gifs, onDismiss: { KeyboardDone.quiet = true }) {
+            GifPicker { g in Task { await messages.send(to: friend, kind: "gif", payload: g) } }.presentationDetents([.medium, .large])
+        }
         .sheet(isPresented: $choosing) { ShareThingSheet { kind, payload in Task { await messages.send(to: friend, kind: kind, payload: payload) } } }
         .photosPicker(isPresented: $library, selection: $picked, matching: .images)
         .onChange(of: picked) { _, item in Task { if let d = try? await item?.loadTransferable(type: Data.self), let img = UIImage(data: d) { await messages.sendPhoto(to: friend, img) }; picked = nil } }
@@ -169,7 +172,28 @@ struct ChatView: View {
         return y.timeIntervalSince(x) > 3600
     }
     private func stamp(_ m: JSON) -> some View {
-        Text(ISO.date(str(m["created_at"]))?.formatted(.relative(presentation: .named)) ?? "").font(.caption2).foregroundStyle(.secondary).padding(.vertical, 8)
+        Text(Self.when(ISO.date(str(m["created_at"])))).font(.caption2.weight(.semibold)).foregroundStyle(.secondary).padding(.vertical, 8)
+    }
+    /// "Today, 14:31", "Yesterday, 09:15", "Sat 7 Nov, 18:42".
+    static func when(_ date: Date?) -> String {
+        guard let d = date else { return "" }
+        let time = d.formatted(date: .omitted, time: .shortened)
+        if Calendar.current.isDateInToday(d) { return "Today, \(time)" }
+        if Calendar.current.isDateInYesterday(d) { return "Yesterday, \(time)" }
+        return "\(d.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))), \(time)"
+    }
+
+    /// Two small ticks under your last message: grey once it's sent, blue once it's been seen.
+    private func ticks(seen: Bool) -> some View {
+        ZStack {
+            Image(systemName: "checkmark").offset(x: -2.5)
+            Image(systemName: "checkmark").offset(x: 2.5)
+        }
+        .font(.system(size: 10, weight: .heavy))
+        .foregroundStyle(seen ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(.tertiary))
+        .frame(maxWidth: .infinity, alignment: .trailing).padding(.trailing, 9).padding(.top, 1)
+        .accessibilityElement(children: .ignore).accessibilityLabel(seen ? "Seen" : "Sent")
+        .animation(.easeInOut(duration: 0.2), value: seen)
     }
 
     @ViewBuilder private func bubble(_ m: JSON) -> some View {
@@ -180,6 +204,10 @@ struct ChatView: View {
                 switch kind {
                 case "photo":
                     FeedPhoto(src: str(p["photo"]), fill: true).frame(width: 220, height: 260).clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                case "gif":
+                    let w = num(p["w"]) ?? 200, h = num(p["h"]) ?? 200
+                    AnimatedGIF(url: str(p["url"])).frame(width: 200, height: min(260, max(90, 200 * h / max(w, 1))))
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous)).accessibilityLabel("GIF")
                 case "post":
                     Button { opened = PostBox(post: dict(p["post"]).isEmpty ? p : dict(p["post"])) } label: { postCard(p) }.buttonStyle(.plain)
                 case "food":
@@ -256,6 +284,13 @@ struct ChatView: View {
             .accessibilityLabel("Send a photo or food")
             TextField("Message \(Feed.shared.name(friend))…", text: $text, axis: .vertical).lineLimit(1...5).focused($typing)
                 .padding(.vertical, 8)
+            Button { typing = false; gifs = true } label: {
+                Text("GIF").font(.system(size: 11, weight: .black)).foregroundStyle(.primary)
+                    .padding(.horizontal, 5).padding(.vertical, 3)
+                    .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(Color.primary, lineWidth: 1.6))
+                    .frame(height: 36).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).accessibilityLabel("Send a GIF")
             Button {
                 let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
                 text = ""
@@ -270,6 +305,76 @@ struct ChatView: View {
         .composerGlass(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .padding(.horizontal, 10).padding(.top, 6).padding(.bottom, 8)
         .composerBar()
+    }
+}
+
+/// GIPHY's GIFs to send in a chat: what's trending, a few quick words, or a search. A tap sends it.
+struct GifPicker: View {
+    var send: (JSON) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var q = ""
+    @State private var found: [JSON] = []
+    @State private var loading = false
+    @State private var limited = false
+    private static var trending: [JSON] = []   // kept for the next time the sheet opens
+    private let topics = ["Yes", "Hungry", "Gym", "Well done", "Haha", "No"]
+
+    var body: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField("Search GIPHY", text: $q).autocorrectionDisabled().submitLabel(.search)
+                if !q.isEmpty { Button { q = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }.buttonStyle(.plain).accessibilityLabel("Clear") }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 7) {
+                    Chip(text: "Trending", on: q.isEmpty, quiet: true) { q = "" }
+                    ForEach(topics, id: \.self) { t in Chip(text: t, on: q.lowercased() == t.lowercased(), quiet: true) { q = t } }
+                }
+            }
+            ScrollView {
+                if limited && found.isEmpty {
+                    Text("GIF search is busy right now. Try again in a bit.").font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.top, 30)
+                } else if loading && found.isEmpty {
+                    ProgressView().padding(.top, 40)
+                }
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
+                    ForEach(found.indices, id: \.self) { i in
+                        let g = found[i]
+                        Button { send(["url": g["url"] ?? "", "w": g["w"] ?? 200, "h": g["h"] ?? 200]); dismiss() } label: {
+                            // GIPHY's 100-pixel copy in the grid (the 200 one is sent): a quarter of the frames to decode
+                            AnimatedGIF(url: str(g["url"]).replacingOccurrences(of: "/200w.gif", with: "/100w.gif"), maxPixel: 200).frame(height: 96).frame(maxWidth: .infinity)
+                                .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10))
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                        .buttonStyle(.plain).accessibilityLabel("GIF \(i + 1)")
+                    }
+                }
+                // GIPHY asks for its name wherever its search is
+                Text("Powered by GIPHY").font(.caption.weight(.heavy)).foregroundStyle(.secondary).padding(.vertical, 12)
+            }
+            .scrollDismissesKeyboard(.immediately)
+        }
+        .padding(.horizontal, 12).padding(.top, 18)
+        .presentationDragIndicator(.visible)
+        .onAppear { if found.isEmpty { found = Self.trending } }
+        .task(id: q) {
+            if !q.isEmpty { try? await Task.sleep(for: .milliseconds(350)) }   // not a search a letter
+            if !Task.isCancelled { await load() }
+        }
+    }
+
+    private func load() async {
+        let asked = q
+        loading = true; defer { loading = false }
+        guard let (d, code) = try? await Supabase.shared.call("/functions/v1/giphy", body: ["q": asked, "kind": "gifs"] as JSON, timeout: 20), code == 200,
+              let r = (try? JSONSerialization.jsonObject(with: d)) as? JSON else { limited = true; return }
+        guard asked == q else { return }
+        found = CheatDays.list(r["items"])
+        limited = r["limited"] as? Bool ?? false
+        if asked.isEmpty && !found.isEmpty { Self.trending = found }
     }
 }
 

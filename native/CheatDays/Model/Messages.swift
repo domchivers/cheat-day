@@ -65,7 +65,7 @@ final class Messages {
         }
     }
 
-    /// Text, or a photo, post or food with its details in payload.
+    /// Text, or a photo, GIF, post or food with its details in payload.
     func send(to friend: String, text: String = "", kind: String = "text", payload: JSON = [:]) async {
         let row: JSON = ["from_user": me, "to_user": friend, "kind": kind, "text": text, "payload": payload]
         do {
@@ -73,7 +73,7 @@ final class Messages {
             let made = (try? JSONSerialization.jsonObject(with: d)) as? [JSON] ?? []
             if open == friend { thread += made }
             recent.insert(contentsOf: made, at: 0)
-            let preview = kind == "text" ? text : kind == "photo" ? "Sent a photo" : kind == "post" ? "Sent a post: \(str(payload["name"]))" : "Sent food: \(str(payload["name"]))"
+            let preview = kind == "text" ? text : kind == "photo" ? "Sent a photo" : kind == "gif" ? "Sent a GIF" : kind == "post" ? "Sent a post: \(str(payload["name"]))" : "Sent food: \(str(payload["name"]))"
             Task { _ = try? await api.call("/functions/v1/push", body: ["action": "notify", "to": friend, "kind": "message", "text": preview, "post": "chat:\(me)"] as JSON) }
         } catch { self.error = "Couldn't send: messages need setting up, or you're not friends." }
     }
@@ -102,6 +102,7 @@ final class Messages {
         let mine = str(m["from_user"]) == me, p = dict(m["payload"])
         let body = switch str(m["kind"]) {
         case "photo": "Sent a photo"
+        case "gif": "Sent a GIF"
         case "post": "Sent a post: \(str(p["name"]))"
         case "food": "Sent food: \(str(p["name"]))"
         default: str(m["text"])
