@@ -78,6 +78,16 @@ struct ProgressPage: View {
                     Text(unit).font(.headline).foregroundStyle(.secondary)
                 }
                 Text(heldLine(sel)).font(.subheadline).foregroundStyle(.primary.opacity(0.8))
+            } else if metric != "weight", let m = BodyView.metrics.first(where: { $0.key == metric }),
+                      let last = store.bodyRows.filter({ pos($0[metric]) != nil && str($0["day"]) <= store.today }).max(by: { str($0["day"]) < str($1["day"]) }),
+                      let v = pos(last[metric]) {
+                // another measure picked on the chart: the top is that measure's latest reading, not the weight
+                Text(m.name).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(m.unit == "%" ? Fmt.dec(v) : Fmt.kg(v)).font(.system(size: 48, weight: .heavy, design: .rounded)).contentTransition(.numericText())
+                    Text(m.unit).font(.headline).foregroundStyle(.secondary)
+                }
+                Text("Latest reading · \(DayKey.date(str(last["day"])).formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)))").font(.subheadline).foregroundStyle(.primary.opacity(0.8))
             } else if let now {
                 Text(greeting).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
