@@ -57,7 +57,7 @@ struct StoryEditor: View {
         let f = clipFill(cw, ch), s = min(4, max(1, sc))
         let mx = max(0, (f.width * s - cw) / 2), my = max(0, (f.height * s - ch) / 2)
         let o = CGSize(width: min(mx, max(-mx, off.width)), height: min(my, max(-my, off.height)))
-        withAnimation(.snappy) { bgScale = s; bgOffset = o }
+        bgScale = s; bgOffset = o   // no animation: the clip is already there, under the fingers
         clipMove = CGSize(width: o.width / cw, height: o.height / ch)
     }
     /// The part of the clip's picture showing in the frame, as fractions from its top left; nil when that's all of it.
@@ -195,7 +195,7 @@ struct StoryEditor: View {
                 if clipOnly {
                     // a post's clip: its whole picture behind the frame, to pinch and drag like a photo
                     let f = clipFill(cw, ch)
-                    MovableClip(cw: cw, ch: ch, scale: bgScale, offset: bgOffset, movable: mode == .none, commit: { sc, off in moveClip(sc, off, cw: cw, ch: ch) }) {
+                    MovableClip(cw: cw, ch: ch, fill: f, scale: bgScale, offset: bgOffset, movable: mode == .none, commit: { sc, off in moveClip(sc, off, cw: cw, ch: ch) }) {
                         ZStack {
                             if let poster { Image(uiImage: poster).resizable().scaledToFill() }
                             LoopingVideo(url: video, paused: false, muted: muted, filter: filter, range: length > 0 && mode != .trim ? range : nil, scrub: mode == .trim ? scrub : nil)
@@ -1083,11 +1083,14 @@ struct PlacedItem: View {
 
 /// The photo behind a story: pinch to zoom, then drag to move it; while it isn't zoomed, a swipe across changes the
 /// filter. Like a placed sticker it moves on its own and tells the editor only when the finger lifts.
-/// A post's clip behind its frame: pinch to zoom, drag to choose the part that shows. It follows the fingers on its
-/// own and tells the editor where it ended up when they lift.
+/// A post's clip behind its frame: pinch to zoom, drag to choose the part that shows, never past its own edges. It
+/// follows the fingers on its own and keeps where they left it until the editor's copy says the same: handing the
+/// new zoom to the editor and waiting for it back made the clip spring to its old size and then swell again.
 struct MovableClip<Content: View>: View {
     let cw: CGFloat
     let ch: CGFloat
+    /// The clip's size when it just fills the frame.
+    let fill: CGSize
     let scale: CGFloat
     let offset: CGSize
     var movable: Bool
@@ -1095,21 +1098,43 @@ struct MovableClip<Content: View>: View {
     @ViewBuilder var content: () -> Content
     @GestureState private var drag: CGSize = .zero
     @GestureState private var pinch: CGFloat = 1
+    @State private var heldScale: CGFloat?
+    @State private var heldOffset: CGSize?
+
+    private func clamped(_ sc: CGFloat, _ off: CGSize) -> (scale: CGFloat, offset: CGSize) {
+        let s = min(4, max(1, sc))
+        let mx = max(0, (fill.width * s - cw) / 2), my = max(0, (fill.height * s - ch) / 2)
+        return (s, CGSize(width: min(mx, max(-mx, off.width)), height: min(my, max(-my, off.height))))
+    }
 
     var body: some View {
+        let s0 = heldScale ?? scale, o0 = heldOffset ?? offset
+        let live = clamped(s0 * pinch, CGSize(width: o0.width + drag.width, height: o0.height + drag.height))
         content()
-            .scaleEffect(min(4, max(1, scale * pinch)))
-            .offset(x: offset.width + drag.width, y: offset.height + drag.height)
+            .scaleEffect(live.scale)
+            .offset(live.offset)
             .frame(width: cw, height: ch).clipped()
             .contentShape(Rectangle())
             .gesture(SimultaneousGesture(
                 DragGesture(minimumDistance: 8)
                     .updating($drag) { v, s, _ in s = v.translation }
-                    .onEnded { v in commit(scale, CGSize(width: offset.width + v.translation.width, height: offset.height + v.translation.height)) },
+                    .onEnded { v in
+                        let end = clamped(s0, CGSize(width: o0.width + v.translation.width, height: o0.height + v.translation.height))
+                        heldScale = end.scale; heldOffset = end.offset
+                        commit(end.scale, end.offset)
+                    },
                 MagnifyGesture()
                     .updating($pinch) { v, s, _ in s = v.magnification }
-                    .onEnded { v in commit(scale * v.magnification, offset) }))
+                    .onEnded { v in
+                        let end = clamped(s0 * v.magnification, o0)
+                        heldScale = end.scale; heldOffset = end.offset
+                        commit(end.scale, end.offset)
+                    }))
             .allowsHitTesting(movable)
+            // the editor has caught up (or reset it, or changed its shape): its numbers from here
+            .onChange(of: scale) { _, _ in heldScale = nil; heldOffset = nil }
+            .onChange(of: offset) { _, _ in heldScale = nil; heldOffset = nil }
+            .onChange(of: fill) { _, _ in heldScale = nil; heldOffset = nil }
     }
 }
 
