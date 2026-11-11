@@ -49,7 +49,7 @@ struct HabitsView: View {
         }
         .background(Theme.bg.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
-        .toolbar(.hidden, for: .tabBar)
+        .hidesOwnBar()
         .onAppear { if !loaded { prefill(); loaded = true } }
         .keyboardDone()
         .sheet(item: $open) { r in

@@ -107,10 +107,12 @@ final class Profiles {
                 let w = img.size.width * s, h = img.size.height * s
                 img.draw(in: CGRect(x: photo.midX - w / 2, y: photo.midY - h / 2, width: w, height: h))
                 ctx.cgContext.restoreGState()
-                let edge = UIBezierPath(ovalIn: ring ? CGRect(x: 0.9, y: 0.9, width: side - 1.8, height: side - 1.8) : photo)
-                edge.lineWidth = ring ? 1.8 : 0.6
-                (ring ? UIColor(Theme.accent) : UIColor.white.withAlphaComponent(0.35)).setStroke()
-                edge.stroke()
+                if ring {   // the tab you're on; otherwise the photo alone, no edge
+                    let edge = UIBezierPath(ovalIn: CGRect(x: 0.9, y: 0.9, width: side - 1.8, height: side - 1.8))
+                    edge.lineWidth = 1.8
+                    UIColor(Theme.accent).setStroke()
+                    edge.stroke()
+                }
             }.withRenderingMode(.alwaysOriginal)
         }
         if iconFor == src { meIcon = icon(ring: false); meIconOn = icon(ring: true) }
