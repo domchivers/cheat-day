@@ -124,7 +124,7 @@ final class Stories {
         guard let export = AVAssetExportSession(asset: comp, presetName: AVAssetExportPreset1280x720) else { return (try Data(contentsOf: url), end - start) }
         export.outputURL = out; export.outputFileType = .mp4; export.shouldOptimizeForNetworkUse = true
         let quarter = ((turns % 4) + 4) % 4   // quarter turns to the right
-        let spun = placed.flatMap { $0.spin != 0 ? $0 : nil }   // turned freely: laid into its frame, not cut from the picture
+        let spun = placed.flatMap { $0.loose ? $0 : nil }   // turned freely: laid into its frame, not cut from the picture
         if crop != nil || overlay != nil || quarter != 0 || spun != nil {
             let crop = crop ?? CGRect(x: 0, y: 0, width: 1, height: 1)
             // text, stickers and drawing: one see-through picture, stretched over the part kept

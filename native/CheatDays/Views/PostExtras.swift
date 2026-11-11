@@ -21,6 +21,9 @@ struct ClipEdit {
     var spin: Double = 0
     var zoom: CGFloat = 1
     var move: CGSize = .zero
+    /// The clip doesn't cover its frame (turned, made smaller, or carried off to one side): it's laid on black
+    /// by `spin`, `zoom` and `move`, not cut from the picture by `crop`.
+    var loose = false
 
     /// A frame of the clip as friends will see it: through the look, cut to the part kept, with what's on it.
     func still(_ url: URL, at seconds: Double? = nil, width: CGFloat = 1440) async -> UIImage? {
@@ -38,7 +41,7 @@ struct ClipEdit {
 
     func dress(_ frame: UIImage) -> UIImage {
         let lit = StoryArt.filtered((0..<(((turns % 4) + 4) % 4)).reduce(frame) { img, _ in img.quarterTurned() }, look)
-        if spin != 0 {
+        if loose {
             let w = lit.size.width, h = lit.size.height, own = w / max(h, 1), sh = shape ?? own
             let fw = sh > own ? w : h * sh, fh = fw / sh
             let format = UIGraphicsImageRendererFormat(); format.scale = 1
@@ -254,7 +257,7 @@ enum Drafts {
             if let s = clip.shape { c["shape"] = Double(s) }
             if let t = clip.cover { c["cover"] = t }
             c["turns"] = clip.turns
-            if clip.spin != 0 { c["spin"] = clip.spin; c["zoom"] = Double(clip.zoom); c["move"] = [Double(clip.move.width), Double(clip.move.height)] }
+            if clip.loose { c["spin"] = clip.spin; c["zoom"] = Double(clip.zoom); c["move"] = [Double(clip.move.width), Double(clip.move.height)] }
             m["movie"] = name; m["clip"] = c
             try? clip.overlay?.pngData()?.write(to: tmp.appendingPathComponent("overlay.png"))
             try? poster?.jpegData(compressionQuality: 0.9)?.write(to: tmp.appendingPathComponent("poster.jpg"))
@@ -289,7 +292,7 @@ enum Drafts {
             clip.cover = num(c["cover"])
             clip.turns = Int(num(c["turns"]) ?? 0)
             if let sp = num(c["spin"]), let m = c["move"] as? [Double], m.count == 2 {
-                clip.spin = sp; clip.zoom = CGFloat(num(c["zoom"]) ?? 1); clip.move = CGSize(width: m[0], height: m[1])
+                clip.loose = true; clip.spin = sp; clip.zoom = CGFloat(num(c["zoom"]) ?? 1); clip.move = CGSize(width: m[0], height: m[1])
             }
             clip.overlay = pic("overlay.png")
         }

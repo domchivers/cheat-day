@@ -29,8 +29,9 @@ struct StoryEditor: View {
     private var clipOnly: Bool { finishVideo != nil }
     /// A post's photo: the shape picked for it (portrait 4:5 to start, as Instagram's is), else the editor's own.
     @State private var shape: CGFloat?
-    /// A post's clip starts as it was filmed; a photo at the editor's own shape.
-    private var ratio: CGFloat { shape ?? (clipOnly ? (clipShape ?? aspect) : aspect) }
+    /// A post's clip goes in a tall 9:16 frame, the shape videos are watched in, whatever shape it was filmed
+    /// (it's placed in the frame; the frame doesn't take its shape); a photo starts at the editor's own shape.
+    private var ratio: CGFloat { shape ?? (clipOnly ? 9.0 / 16.0 : aspect) }
     private static let shapes: [(name: String, ratio: CGFloat)] = [("Portrait 4:5", 4.0 / 5.0), ("Square 1:1", 1), ("Landscape 16:9", 16.0 / 9.0)]
     /// The photo's own shape, within what the feed shows (no taller than 4:5, no wider than 1.91:1).
     private var ownShape: CGFloat? { image.map { min(1.91, max(0.8, $0.size.width / max($0.size.height, 1))) } }
@@ -45,7 +46,7 @@ struct StoryEditor: View {
             if let o = clipShape, !all.contains(where: { abs($0.ratio - o) < 0.02 }) { all.insert(("Original", o), at: 0) }
         } else if let o = ownShape, !all.contains(where: { abs($0.ratio - o) < 0.02 }) { all.append(("Original", o)) }
         let i = all.firstIndex { abs($0.ratio - ratio) < 0.02 } ?? 0, next = all[(i + 1) % all.count]
-        withAnimation(.snappy) { shape = next.ratio; bgScale = 1; bgOffset = .zero; bgSpin = 0; clipMove = .zero }
+        withAnimation(.snappy) { shape = next.ratio; bgScale = 1; bgOffset = .zero; bgSpin = 0; clipMove = .zero; clipCovers = true }
         flash(next.name)
     }
 
@@ -54,16 +55,18 @@ struct StoryEditor: View {
         let v = clipShape ?? (cw / ch)
         return v > cw / ch ? CGSize(width: ch * v, height: ch) : CGSize(width: cw, height: cw / v)
     }
-    /// A pinch or a drag on the clip, kept inside its edges so no blank shows.
+    /// A pinch, a turn or a drag on the clip: it's where the fingers put it (the clip itself keeps it in reach and
+    /// catches it at the frame's middle and edges). Whether it still covers the whole frame is noted, for the video
+    /// to be made by cutting a piece from the picture when it does, and by laying the picture on black when not.
     private func moveClip(_ sc: CGFloat, _ off: CGSize, _ deg: Double, cw: CGFloat, ch: CGFloat) {
-        let f = clipFill(cw, ch), s = min(4, max(1, sc))
-        let mx = max(0, (f.width * s - cw) / 2), my = max(0, (f.height * s - ch) / 2)
-        // turned, it's where the fingers put it (the clip itself kept it in reach)
-        let o = deg == 0 ? CGSize(width: min(mx, max(-mx, off.width)), height: min(my, max(-my, off.height))) : off
+        let f = clipFill(cw, ch), s = min(4, max(0.25, sc))
         bgSpin = deg
-        bgScale = s; bgOffset = o   // no animation: the clip is already there, under the fingers
-        clipMove = CGSize(width: o.width / cw, height: o.height / ch)
+        bgScale = s; bgOffset = off   // no animation: the clip is already there, under the fingers
+        clipMove = CGSize(width: off.width / cw, height: off.height / ch)
+        let mx = (f.width * s - cw) / 2, my = (f.height * s - ch) / 2
+        clipCovers = deg == 0 && mx >= -0.5 && my >= -0.5 && abs(off.width) <= mx + 0.5 && abs(off.height) <= my + 0.5
     }
+    @State private var clipCovers = true
     /// The part of the clip's picture showing in the frame, as fractions from its top left; nil when that's all of it.
     private var clipCrop: CGRect? {
         let r = ratio, f = clipFill(r, 1), s = bgScale
@@ -222,7 +225,7 @@ struct StoryEditor: View {
                 if clipOnly {
                     // a post's clip: its whole picture behind the frame, to pinch and drag like a photo
                     let f = clipFill(cw, ch)
-                    MovableClip(cw: cw, ch: ch, fill: f, scale: bgScale, offset: bgOffset, spin: bgSpin, movable: mode == .none, commit: { sc, off, deg in moveClip(sc, off, deg, cw: cw, ch: ch) }) {
+                    MovableClip(cw: cw, ch: ch, fill: f, scale: bgScale, offset: bgOffset, spin: bgSpin, movable: mode == .none, free: true, commit: { sc, off, deg in moveClip(sc, off, deg, cw: cw, ch: ch) }) {
                         ZStack {
                             if let poster { Image(uiImage: poster).resizable().scaledToFill().frame(width: f.width, height: f.height).clipped() }
                             // turned on its side, the player is laid out sideways and then turned to stand in the frame
@@ -358,7 +361,7 @@ struct StoryEditor: View {
             Task { await refilter(l) }
         }
         thumbs = thumbs.mapValues { $0.quarterTurned() }
-        withAnimation(.snappy) { bgScale = 1; bgOffset = .zero; bgSpin = 0; clipMove = .zero }
+        withAnimation(.snappy) { bgScale = 1; bgOffset = .zero; bgSpin = 0; clipMove = .zero; clipCovers = true }
     }
 
     @ViewBuilder private var topRow: some View {
@@ -376,7 +379,7 @@ struct StoryEditor: View {
                 if image != nil || bgScale > 1.01 || bgOffset != .zero || bgSpin != 0 || !items.isEmpty || !strokes.isEmpty {
                 Menu {
                     if image != nil { Button { Task { await save() } } label: { Label("Save to Photos", systemImage: "square.and.arrow.down") } }
-                    if bgScale > 1.01 || bgOffset != .zero || bgSpin != 0 { Button { withAnimation { bgScale = 1; bgOffset = .zero; bgSpin = 0; clipMove = .zero } } label: { Label(video == nil ? "Reset the photo" : "Reset the video", systemImage: "arrow.counterclockwise") } }
+                    if bgScale > 1.01 || bgOffset != .zero || bgSpin != 0 { Button { withAnimation { bgScale = 1; bgOffset = .zero; bgSpin = 0; clipMove = .zero; clipCovers = true } } label: { Label(video == nil ? "Reset the photo" : "Reset the video", systemImage: "arrow.counterclockwise") } }
                     if !items.isEmpty || !strokes.isEmpty { Button(role: .destructive) { remember(); withAnimation { items = []; strokes = [] } } label: { Label("Clear everything", systemImage: "trash") } }
                 } label: { roundLabel("ellipsis") }
                 }
@@ -746,7 +749,15 @@ struct StoryEditor: View {
             let gen = AVAssetImageGenerator(asset: asset); gen.appliesPreferredTrackTransform = true; gen.maximumSize = CGSize(width: 160, height: 160)
             // its first frame straight away, behind the player, so there's never a black screen while it loads
             let big = AVAssetImageGenerator(asset: asset); big.appliesPreferredTrackTransform = true; big.maximumSize = CGSize(width: 1080, height: 1920)
-            if let cg = try? await big.image(at: .zero).image { poster = UIImage(cgImage: cg) }
+            if let cg = try? await big.image(at: .zero).image {
+                poster = UIImage(cgImage: cg)
+                // a clip far from the frame's shape (one filmed sideways, say) starts whole in the frame, on black,
+                // as Instagram shows it; one near enough starts filling it
+                if clipOnly, bgScale == 1, bgOffset == .zero, bgSpin == 0 {
+                    let own = CGFloat(cg.width) / CGFloat(max(cg.height, 1)), fits = min(own / ratio, ratio / own)
+                    if fits < 0.75 { bgScale = max(0.25, fits); clipCovers = false }
+                }
+            }
             var got: [UIImage] = []
             for i in 0..<8 {
                 if let cg = try? await gen.image(at: CMTime(seconds: length * Double(i) / 8, preferredTimescale: 600)).image { got.append(UIImage(cgImage: cg)) }
@@ -797,7 +808,7 @@ struct StoryEditor: View {
         if let finishVideo {
             Button {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
-                finishVideo(ClipEdit(look: look, range: length > 0 ? range : nil, muted: muted, crop: bgSpin == 0 ? clipCrop : nil, shape: ratio, overlay: overlayPicture(), turns: turns, spin: bgSpin, zoom: bgScale, move: clipMove))
+                finishVideo(ClipEdit(look: look, range: length > 0 ? range : nil, muted: muted, crop: clipCovers ? clipCrop : nil, shape: ratio, overlay: overlayPicture(), turns: turns, spin: bgSpin, zoom: bgScale, move: clipMove, loose: !clipCovers))
             } label: {
                 Text("Use this video").font(.headline).foregroundStyle(.black).frame(maxWidth: .infinity).padding(.vertical, 13).background(.white, in: Capsule())
             }
@@ -1250,6 +1261,9 @@ struct MovableClip<Content: View>: View {
     /// How far it's turned, in degrees to the right.
     var spin: Double = 0
     var movable: Bool
+    /// A post's clip: it can be made smaller than the frame and carried anywhere in it, black showing round it. It
+    /// still catches at the frame's middle and at its own edges, so filling the frame exactly is easy.
+    var free = false
     /// A photo's: a swipe across it at its plain size changes the filter, and it only moves once zoomed in or turned.
     var swipe: ((Int) -> Void)? = nil
     var commit: (CGFloat, CGSize, Double) -> Void
@@ -1275,11 +1289,19 @@ struct MovableClip<Content: View>: View {
         return d
     }
     private func clamped(_ sc: CGFloat, _ off: CGSize, _ deg: Double) -> (scale: CGFloat, offset: CGSize) {
-        let s = min(4, max(1, sc))
-        // straight: inside its own edges. Turned: its middle stays in reach, so it can't be lost off the side
-        let mx = deg == 0 ? max(0, (fill.width * s - cw) / 2) : (fill.width * s + cw) / 4
-        let my = deg == 0 ? max(0, (fill.height * s - ch) / 2) : (fill.height * s + ch) / 4
-        return (s, CGSize(width: min(mx, max(-mx, off.width)), height: min(my, max(-my, off.height))))
+        var s = min(4, max(free ? 0.25 : 1, sc))
+        if free, abs(s - 1) < 0.03 { s = 1 }   // caught at exactly filling the frame
+        // how far it can go each way before an edge of it comes inside the frame (none, when it's smaller than the frame)
+        let ex = max(0, (fill.width * s - cw) / 2), ey = max(0, (fill.height * s - ch) / 2)
+        // and how far at all: its middle stays in reach, so it can't be lost off the side
+        let rx = (fill.width * s + cw) / 4, ry = (fill.height * s + ch) / 4
+        func place(_ v: CGFloat, _ edge: CGFloat, _ reach: CGFloat) -> CGFloat {
+            if deg != 0 { return min(reach, max(-reach, v)) }          // turned: wherever it's put
+            if !free || abs(v) <= edge { return min(edge, max(-edge, v)) }   // straight, and not free: inside its edges
+            if abs(v) - edge < 12 { return v > 0 ? edge : -edge }      // free: caught at the edge (or the middle) when near
+            return min(reach, max(-reach, v))
+        }
+        return (s, CGSize(width: place(off.width, ex, rx), height: place(off.height, ey, ry)))
     }
     /// Where it stands with no finger on it, read as of now.
     private var from: (scale: CGFloat, offset: CGSize, spin: Double) { (heldScale ?? scale, heldOffset ?? offset, heldSpin ?? spin) }
