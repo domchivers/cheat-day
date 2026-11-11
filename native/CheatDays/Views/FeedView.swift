@@ -997,25 +997,27 @@ struct ComposeSheet: View {
     // MARK: the picture
 
     /// The post's picture, tall and centred, in the feed's 4:5: the photo or video; without one, what's attached
-    /// drawn as a card; with neither, the way to add one. A tap offers the camera or the library.
+    /// drawn as a card; with neither, Camera and Library to add one. Once there's something in it, a small button
+    /// in the corner drops a menu to edit, change or remove (the whole tile as a menu's label made iOS 26 swallow
+    /// it into a blob and put the menu on top of it).
     private var picture: some View {
-        Menu {
-            if photo != nil && movie == nil { Button { editing = EditBox(image: source ?? photo ?? UIImage()) } label: { Label("Edit photo", systemImage: "crop.rotate") } }
-            Button { camera = true } label: { Label(photo == nil ? "Take a photo" : "Take another", systemImage: "camera") }
-            Button { library = true } label: { Label(photo == nil ? "Choose from library" : "Choose another", systemImage: "photo.on.rectangle") }
-            if photo != nil || movie != nil { Button(role: .destructive) { photo = nil; movie = nil; source = nil } label: { Label("Remove", systemImage: "trash") } }
-        } label: {
-            pictureTile.frame(width: 210, height: 262)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .overlay(alignment: .bottomTrailing) {
-                    if photo != nil || what != nil {
+        pictureTile.frame(width: 210, height: 262)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(alignment: .bottomTrailing) {
+                if photo != nil || what != nil {
+                    Menu {
+                        if photo != nil && movie == nil { Button { editing = EditBox(image: source ?? photo ?? UIImage()) } label: { Label("Edit photo", systemImage: "crop.rotate") } }
+                        Button { camera = true } label: { Label(photo == nil ? "Take a photo" : "Take another", systemImage: "camera") }
+                        Button { library = true } label: { Label(photo == nil ? "Choose from library" : "Choose another", systemImage: "photo.on.rectangle") }
+                        if photo != nil || movie != nil { Button(role: .destructive) { photo = nil; movie = nil; source = nil } label: { Label("Remove", systemImage: "trash") } }
+                    } label: {
                         Image(systemName: photo == nil ? "plus" : "pencil").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
-                            .frame(width: 30, height: 30).background(.black.opacity(0.55), in: Circle()).padding(8)
+                            .frame(width: 34, height: 34).background(.black.opacity(0.55), in: Circle())
                     }
+                    .menuOrder(.fixed).padding(8)
+                    .accessibilityLabel(photo == nil ? "Add a photo or video" : "Change the photo")
                 }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(photo == nil ? "Add a photo or video" : "Change the photo")
+            }
     }
 
     @ViewBuilder private var pictureTile: some View {
@@ -1034,15 +1036,30 @@ struct ComposeSheet: View {
             .padding(16).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             .background(LinearGradient(colors: [Theme.hero, Theme.accent.opacity(0.28)], startPoint: .topLeading, endPoint: .bottomTrailing))
         } else {
-            VStack(spacing: 8) {
-                Image(systemName: "plus").font(.system(size: 22, weight: .medium)).foregroundStyle(Theme.accent)
-                    .frame(width: 50, height: 50).background(Color(.tertiarySystemFill), in: Circle())
-                Text("Add a photo or video").font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent)
+            VStack(spacing: 10) {
+                Text("Add a photo or video").font(.subheadline.weight(.bold))
                 Text("Optional").font(.footnote).foregroundStyle(.secondary)
+                // one tap each, no menu
+                VStack(spacing: 8) {
+                    tileButton("camera.fill", "Camera") { camera = true }
+                    tileButton("photo.on.rectangle", "Library") { library = true }
+                }
+                .padding(.top, 4)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(.secondarySystemGroupedBackground))
         }
+    }
+
+    private func tileButton(_ symbol: String, _ title: String, _ tap: @escaping () -> Void) -> some View {
+        Button(action: tap) {
+            HStack(spacing: 7) {
+                Image(systemName: symbol).font(.system(size: 13, weight: .semibold))
+                Text(title).font(.subheadline.weight(.bold))
+            }
+            .foregroundStyle(Theme.accent).frame(width: 130, height: 40).background(Color(.tertiarySystemFill), in: Capsule())
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: what's attached
