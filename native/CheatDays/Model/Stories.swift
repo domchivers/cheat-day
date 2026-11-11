@@ -162,7 +162,7 @@ final class Stories {
                         img = img.transformed(by: CGAffineTransform(translationX: -img.extent.minX, y: -img.extent.minY))
                     }
                     let whole = img.extent
-                    if filter != "Normal" { img = StoryArt.filtered(img, filter, frame: whole).cropped(to: whole) }
+                    if filter != "Normal" { img = StoryArt.filtered(img.clampedToExtent(), filter, frame: whole).cropped(to: whole) }
                     var done = img.cropped(to: cut).transformed(by: CGAffineTransform(translationX: -cut.minX, y: -cut.minY))
                     if let lay { done = img.transformed(by: lay).cropped(to: cut).composited(over: CIImage(color: .black).cropped(to: cut)) }
                     if let top, top.extent.width > 0, top.extent.height > 0 {
@@ -175,7 +175,7 @@ final class Stories {
             }
         } else if filter != "Normal" {
             export.videoComposition = AVVideoComposition(asset: comp) { req in
-                req.finish(with: StoryArt.filtered(req.sourceImage, filter, frame: req.sourceImage.extent).cropped(to: req.sourceImage.extent), context: nil)
+                req.finish(with: StoryArt.filtered(req.sourceImage.clampedToExtent(), filter, frame: req.sourceImage.extent).cropped(to: req.sourceImage.extent), context: nil)
             }
         }
         await export.export()
@@ -203,6 +203,9 @@ struct LoopingVideo: UIViewRepresentable {
         var key = ""
         var held: Double?
         let look = Look()
+        var ender: NSObjectProtocol?   // a clip with a look goes round by being sent back to its start: this hears its end
+        var playing = true
+        deinit { if let ender { NotificationCenter.default.removeObserver(ender) } }
     }
 
     /// The look the frames are being drawn through, read by the player for each frame as it comes: a slider can
@@ -226,6 +229,7 @@ struct LoopingVideo: UIViewRepresentable {
 
     func updateUIView(_ v: PlayerView, context: Context) {
         v.look.name = filter
+        v.playing = !paused && scrub == nil
         if v.key != key { setUp(v) }
         v.playerLayer.player?.isMuted = muted
         if let at = scrub {
@@ -255,8 +259,28 @@ struct LoopingVideo: UIViewRepresentable {
             item.videoComposition = AVVideoComposition(asset: asset) { req in
                 let name = look.name
                 if name == "Normal" { req.finish(with: req.sourceImage, context: nil); return }
-                req.finish(with: StoryArt.filtered(req.sourceImage, name, frame: req.sourceImage.extent).cropped(to: req.sourceImage.extent), context: nil)
+                req.finish(with: StoryArt.filtered(req.sourceImage.clampedToExtent(), name, frame: req.sourceImage.extent).cropped(to: req.sourceImage.extent), context: nil)
             }
+        }
+        if let ender = v.ender { NotificationCenter.default.removeObserver(ender); v.ender = nil }
+        if filter != "Normal" {
+            // With a look, one item, sent back to its start each time it ends. The looper plays a clip round by
+            // lining up copies of the item, and each copy has to build its own drawing of the look: those were what
+            // failed to get ready (-12784), freezing the clip a moment after a filter was picked.
+            let start = CMTime(seconds: range?.lowerBound ?? 0, preferredTimescale: 600)
+            if let r = range { item.forwardPlaybackEndTime = CMTime(seconds: r.upperBound, preferredTimescale: 600) }
+            let player = AVPlayer(playerItem: item)
+            player.isMuted = muted
+            player.actionAtItemEnd = .none
+            if range != nil { player.seek(to: start, toleranceBefore: .zero, toleranceAfter: .zero) }
+            v.looper = nil
+            v.ender = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { [weak player, weak v] _ in
+                player?.seek(to: start, toleranceBefore: .zero, toleranceAfter: .zero)
+                if v?.playing == true { player?.play() }
+            }
+            v.playerLayer.player = player
+            if !paused { player.play() }
+            return
         }
         let player = AVQueuePlayer()
         player.isMuted = muted
