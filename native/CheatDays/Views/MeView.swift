@@ -268,7 +268,7 @@ struct ProgressDashboard: View {
             return "Set a goal weight and the app works out how to get there."
         }
         let s = status(now: now, goal: goal)
-        if s == .there { return "Change your goal to staying where you are in Plan and budget, and you'll get a budget to match." }
+        if s == .there { return "Change your goal to staying where you are in Your plan, and you'll get a budget to match." }
         if let tw, tw.avg > tw.budget + 120 {
             return "You're averaging \(Fmt.int(tw.avg - tw.budget)) a day over your budget. Getting the weekdays closer to it is the quickest fix."
         }

@@ -497,7 +497,7 @@ struct TodayView: View {
         })
     }
 
-    /// Protein, carbs and fat so far, each against its goal when one's set (Plan and budget).
+    /// Protein, carbs and fat so far, each against its goal when one's set (Your plan).
     private func macroBars(protein: Double, carbs: Double, fat: Double) -> some View {
         let goals = dict(store.doc["goals"])
         let rows: [(String, Double, Double?, Color)] = [

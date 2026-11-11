@@ -144,7 +144,7 @@ private struct FamilyBudgetSheet: View {
                             }
                         }
                     }
-                } footer: { Text("\(person.name)'s app uses this from the next time it opens. They can still see it in their Plan and budget.") }
+                } footer: { Text("\(person.name)'s app uses this from the next time it opens. They can still see it under Your plan.") }
                 if current != nil {
                     Section { Button("Stop setting their budget", role: .destructive) { Task { await stop() } } }
                 }

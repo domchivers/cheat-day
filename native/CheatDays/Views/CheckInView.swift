@@ -46,7 +46,7 @@ struct CheckInView: View {
                 Section {
                     Button { store.finishCheckIn(c, use: false); dismiss() } label: { Text("Done").font(.headline).frame(maxWidth: .infinity) }
                 } footer: {
-                    Text(c.want == nil ? "Set a goal under Plan and budget, and the check-in works out the calories that get you there."
+                    Text(c.want == nil ? "Set a goal under Your plan, and the check-in works out the calories that get you there."
                                        : "Worked out \(Date().formatted(date: .abbreviated, time: .shortened)). Grey dots are weigh-ins shown but not counted.")
                 }
             }
