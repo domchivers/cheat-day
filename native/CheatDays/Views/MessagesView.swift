@@ -255,7 +255,7 @@ struct ChatView: View {
                 ControlGroup {
                     // drawn as pictures: as text the menu set them small
                     ForEach(["❤️", "😂", "👍", "🔥", "😋"], id: \.self) { e in
-                        Button { Task { await messages.react(m, e) } } label: { Label { Text(e) } icon: { Image(uiImage: ReactionGlyph.make(e)) } }
+                        Button { Task { await messages.react(m, e) } } label: { Image(uiImage: ReactionGlyph.make(e)).accessibilityLabel(e) }   // the picture alone: with a title too, the menu kept an empty line under the row
                     }
                 }
                 .controlGroupStyle(.palette)
