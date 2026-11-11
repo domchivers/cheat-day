@@ -251,6 +251,16 @@ struct LoopingVideo: UIViewRepresentable {
 
     private func setUp(_ v: PlayerView) {
         v.key = key
+        // The player before this one, taken right down first. Left to be let go in its own time, its items still
+        // held their decoders while the new item tried to get ready, and a phone (and the simulator more so) only
+        // has so many: the new one then failed to build its pipeline and the clip froze.
+        if let old = v.playerLayer.player {
+            old.pause()
+            v.looper?.disableLooping(); v.looper = nil
+            (old as? AVQueuePlayer)?.removeAllItems()
+            old.replaceCurrentItem(with: nil)
+            v.playerLayer.player = nil
+        }
         let asset = AVURLAsset(url: url)
         let item = AVPlayerItem(asset: asset)
         v.look.name = filter
