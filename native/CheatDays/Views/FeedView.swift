@@ -157,6 +157,20 @@ final class Feed {
         return true
     }
 
+    /// Goes up each time a post of yours is changed, for a list with its own copy of it to fetch it again.
+    private(set) var revision = 0
+
+    /// Your own post, changed: whichever of its fields are given. False when the server didn't take it.
+    func update(_ post: JSON, change: JSON) async -> Bool {
+        let id = str(post["id"])
+        guard let d = try? await api.rest("/rest/v1/posts?id=eq.\(id)&owner=eq.\(me)", method: "PATCH", body: change, prefer: "return=representation"),
+              let rows = (try? JSONSerialization.jsonObject(with: d)) as? [JSON], let row = rows.first else { return false }
+        if let c = change["caption"] as? String { edited[id] = c }
+        for i in posts.indices where str(posts[i]["id"]) == id { for (k, v) in row { posts[i][k] = v } }
+        revision += 1
+        return true
+    }
+
     /// A post on its way up: the sheet closes at once and this says how it's going (on the feed and your profile).
     struct Sending { var thumb: UIImage?; var state: State; var again: (() -> Void)?
         enum State: Equatable { case working, done, failed(String) } }
@@ -331,7 +345,7 @@ struct FeedView: View {
         .sheet(item: Binding(get: { recipe.map { PostBox(post: $0) } }, set: { recipe = $0?.post })) { b in PostRecipeSheet(post: b.post) }
         .sheet(item: $talking) { b in CommentsSheet(post: b.post).presentationDetents([.medium, .large]).presentationDragIndicator(.visible) }
         .sheet(item: $sharing) { b in SharePostSheet(post: b.post).presentationDetents([.medium, .large]) }
-        .sheet(item: $rewording) { b in EditPostSheet(post: b.post).presentationDetents([.medium, .large]) }
+        .sheet(item: $rewording) { b in EditPostSheet(post: b.post) }
         .fullScreenCover(item: $reels) { r in ReelsView(posts: only ?? feed.posts, startAt: r.id) }
         .navigationDestination(item: $profileOf) { id in ProfileView(id: id) }
         .fullScreenCover(item: $story, onDismiss: { if let p = profileAfterStory { profileAfterStory = nil; profileOf = p } }) { s in
@@ -727,45 +741,6 @@ struct MomentAsk: ViewModifier {
 
 struct PostBox: Identifiable { let post: JSON; var id: String { str(post["id"]) } }
 
-/// Your post, after it's on the feed: its caption, to change or clear.
-struct EditPostSheet: View {
-    let post: JSON
-    @Environment(\.dismiss) private var dismiss
-    @State private var caption = ""
-    @State private var busy = false
-    @State private var problem: String?
-    @FocusState private var typing: Bool
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    TextField("Write a caption…", text: $caption, axis: .vertical).lineLimit(3...8).focused($typing)
-                } header: { Text(str(post["name"])) } footer: {
-                    if let problem { Text(problem).foregroundStyle(Theme.warn) }
-                }
-            }
-            .scrollContentBackground(.hidden).background(Theme.bg)
-            .navigationTitle("Edit post").navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        busy = true; problem = nil
-                        Task {
-                            let ok = await Feed.shared.edit(post, caption: String(caption.trimmingCharacters(in: .whitespacesAndNewlines).prefix(2000)))
-                            busy = false
-                            if ok { dismiss() } else { problem = "Couldn't save that just now. Try again." }
-                        }
-                    }
-                    .fontWeight(.bold).disabled(busy)
-                }
-            }
-            .onAppear { caption = Feed.shared.caption(post); typing = true }
-        }
-    }
-}
-
 /// A post's comments: likes and replies, one-tap quick replies, and the box at the bottom.
 struct CommentsSheet: View {
     let post: JSON
@@ -966,38 +941,8 @@ struct ComposeSheet: View {
     @FocusState private var writing: Bool
     @State private var busy = false
     @State private var problem: String?
-    @State private var search = ""
     @State private var shelf = 0   // Foods, Meals, Workouts: one list at a time, or all three when searching
     private var store: Store { Store.shared }
-
-    private func matches(_ name: String) -> Bool { search.isEmpty || name.localizedCaseInsensitiveContains(search) }
-    /// The last 30 days, newest first: today's, then History's.
-    private var days: [(date: String, items: [JSON], workouts: [JSON])] {
-        let since = DayKey.shift(store.today, days: -30)
-        let past = list(store.doc["history"]).filter { str($0["date"]) >= since && str($0["date"]) < store.today }
-            .map { (date: str($0["date"]), items: list($0["items"]), workouts: list($0["workouts"])) }.sorted { $0.date > $1.date }
-        return [(date: store.today, items: store.todayItems, workouts: store.todayWorkouts)] + past
-    }
-    /// Each food once, the latest time it was had.
-    private var recentFoods: [JSON] {
-        var seen = Set<String>(), out: [JSON] = []
-        for d in days { for it in d.items.reversed() where matches(str(it["name"])) && seen.insert(str(it["name"]).lowercased()).inserted { var x = it; x["_date"] = d.date; out.append(x) } }
-        return Array(out.prefix(search.isEmpty ? 25 : 60))
-    }
-    private var savedMeals: [JSON] {
-        Array(list(store.doc["meals"]).filter { $0["saved"] as? Bool == true && matches(str($0["name"])) }.prefix(search.isEmpty ? 12 : 60))
-    }
-    private var recentWorkouts: [JSON] {
-        var out: [JSON] = []
-        for d in days { for w in d.workouts.reversed() where matches(str(w["name"])) { var x = w; x["_date"] = d.date; out.append(x) } }
-        return Array(out.prefix(search.isEmpty ? 12 : 40))
-    }
-    private func when(_ v: Any?) -> String {
-        let d = str(v)
-        if d == store.today { return "today" }
-        if d == DayKey.shift(store.today, days: -1) { return "yesterday" }
-        return DayKey.date(d).formatted(.dateTime.day().month(.abbreviated))
-    }
 
     var body: some View {
         NavigationStack {
@@ -1060,7 +1005,7 @@ struct ComposeSheet: View {
                     ToolbarItem(placement: .topBarTrailing) { Button(busy ? "Sharing…" : "Share") { writing = false; post() }.fontWeight(.bold).disabled(busy) }
                 }
             }
-            .sheet(isPresented: $attaching) { attachPicker }
+            .sheet(isPresented: $attaching) { AttachPicker(start: shelf) { what = $0 } }
             .sheet(isPresented: $choosingSong) { SongPicker { song = $0 } }
             .photosPicker(isPresented: $library, selection: $picked, maxSelectionCount: max(1, 10 - shots.count), matching: shots.isEmpty ? PHPickerFilter.any(of: [.images, .videos]) : PHPickerFilter.images)
             .fullScreenCover(isPresented: $camera) { CameraPicker { img in camera = false; if let img { DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { editing = EditBox(image: img) } } }.ignoresSafeArea() }
@@ -1410,39 +1355,6 @@ struct ComposeSheet: View {
         .buttonStyle(.plain)
     }
 
-    /// The last month's foods, saved meals and workouts to attach: one list at a time, or all three when searching.
-    private var attachPicker: some View {
-        NavigationStack {
-            List {
-                let items = recentFoods, meals = savedMeals, wos = recentWorkouts
-                if search.isEmpty {
-                    Picker("Show", selection: $shelf) {
-                        Text("Foods").tag(0); Text("Meals").tag(1); Text("Workouts").tag(2)
-                    }
-                    .pickerStyle(.segmented).listRowBackground(Color.clear).listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-                }
-                if !items.isEmpty && (!search.isEmpty || shelf == 0) {
-                    Section("Foods") { ForEach(items.indices, id: \.self) { i in pickRow(str(items[i]["name"]), "\(Int(num(items[i]["kcal"]) ?? 0)) kcal · \(when(items[i]["_date"]))") { what = food(items[i]); attaching = false } } }
-                }
-                if !meals.isEmpty && (!search.isEmpty || shelf == 1) {
-                    Section("Meals and recipes") { ForEach(meals.indices, id: \.self) { i in let m = meals[i]; pickRow(str(m["name"]), "\(Fmt.int(num(store.mealBasis(m)["kcalPerServing"]) ?? 0)) kcal a portion") { what = meal(m); attaching = false } } }
-                }
-                if !wos.isEmpty && (!search.isEmpty || shelf == 2) {
-                    Section("Workouts") { ForEach(wos.indices, id: \.self) { i in pickRow(str(wos[i]["name"]), "\(Int(num(wos[i]["minutes"]) ?? 0)) min · \(when(wos[i]["_date"]))") { what = workout(wos[i]); attaching = false } } }
-                }
-                let none = search.isEmpty ? [items, meals, wos][shelf].isEmpty : (items.isEmpty && meals.isEmpty && wos.isEmpty)
-                if none {
-                    Text(!search.isEmpty ? "Nothing called that." : ["Log a food and it's here to share.", "Save a meal or recipe and it's here to share.", "Finish a workout and it's here to share."][shelf])
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search foods, meals and workouts")
-            .navigationTitle("Add to your post")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { attaching = false } } }
-        }
-    }
-
     /// A video's first frame, the right way up.
     static func firstFrame(_ url: URL, at seconds: Double = 0) async -> UIImage? {
         let g = AVAssetImageGenerator(asset: AVURLAsset(url: url))
@@ -1451,29 +1363,6 @@ struct ComposeSheet: View {
         guard let (cg, _) = try? await g.image(at: CMTime(seconds: seconds, preferredTimescale: 600)) else { return nil }
         return UIImage(cgImage: cg)
     }
-
-    private func pickRow(_ name: String, _ detail: String, tap: @escaping () -> Void) -> some View {
-        Button(action: tap) {
-            HStack(spacing: 12) {
-                FoodDot(name: name, size: 30)
-                VStack(alignment: .leading, spacing: 1) { Text(name).font(.subheadline.weight(.semibold)); Text(detail).font(.caption).foregroundStyle(.secondary) }
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func food(_ it: JSON) -> JSON {
-        let m = store.macros([it]), k = num(it["kcal"]) ?? 0
-        return ["kind": "food", "name": it["name"] ?? "", "kcal": Int(k), "macros": ["p": Int(m.p), "c": Int(m.c), "f": Int(m.f)] as JSON,
-                "payload": FoodMath.basisOf(it), "extra": ["grams": it["grams"] ?? NSNull(), "unit": it["unit"] ?? "g", "meal": Meals.of(it)] as JSON]
-    }
-    private func meal(_ m: JSON) -> JSON {
-        let b = store.mealBasis(m), n = num(m["portions"]) ?? 1
-        return ["kind": "meal", "name": m["name"] ?? "", "kcal": Int((num(b["kcalPerServing"]) ?? 0).rounded()),
-                "macros": ["p": Int(num(b["pServ"]) ?? 0), "c": Int(num(b["cServ"]) ?? 0), "f": Int(num(b["fServ"]) ?? 0)] as JSON,
-                "payload": ["name": m["name"] ?? "", "portions": n, "items": m["items"] ?? [Any](), "steps": m["steps"] ?? [Any]()] as JSON, "extra": ["portions": n] as JSON]
-    }
-    private func workout(_ w: JSON) -> JSON { Self.workoutPost(w) }
 
     /// A finished workout as a post.
     static func workoutPost(_ w: JSON) -> JSON {
