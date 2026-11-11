@@ -162,12 +162,12 @@ final class Feed {
         catch { self.error = error.localizedDescription }
     }
 
-    func post(_ row: JSON, photo: UIImage?, video: URL? = nil) async throws {
+    func post(_ row: JSON, photo: UIImage?, video: URL? = nil, filter: String = "Normal", range: ClosedRange<Double>? = nil, muted: Bool = false) async throws {
         var r = row
         r["owner"] = me
         // a video: up to 30 seconds as mp4 into the same bucket as stories' videos; its first frame is the photo
         if let video {
-            let (mp4, _) = try await Stories.compress(video)
+            let (mp4, _) = try await Stories.compress(video, filter: filter, range: range, muted: muted)
             var x = dict(r["extra"]); x["video"] = try await api.upload(mp4, ext: "mp4", type: "video/mp4"); r["extra"] = x
         }
         if let photo, let jpeg = Self.prepare(photo) { r["photo"] = (try? await api.uploadPhoto(jpeg)) ?? NSNull() }
@@ -883,6 +883,10 @@ struct ComposeSheet: View {
     @State private var source: UIImage?   // the photo before editing, to edit again from
     @State private var photo: UIImage?
     @State private var movie: URL?   // a video post: the clip; photo is its first frame
+    @State private var cutting: ClipBox?   // a clip in the editor: trim, filter, sound
+    @State private var movieFilter = "Normal"
+    @State private var movieRange: ClosedRange<Double>?
+    @State private var movieMuted = false
     @State private var picked: PhotosPickerItem?
     @State private var camera = false
     @State private var library = false
@@ -978,7 +982,10 @@ struct ComposeSheet: View {
                     guard let item else { return }
                     // a video: kept as it is, with its first frame as the photo
                     if item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }), let m = try? await item.loadTransferable(type: PickedMovie.self) {
-                        movie = m.url; photo = await Self.firstFrame(m.url); source = nil
+                        // into the editor first, to trim it, filter it or take its sound off
+                        library = false
+                        try? await Task.sleep(for: .milliseconds(550))
+                        cutting = ClipBox(url: m.url)
                     } else if let d = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: d) {
                         movie = nil; library = false
                         try? await Task.sleep(for: .milliseconds(550))
@@ -986,6 +993,12 @@ struct ComposeSheet: View {
                     }
                     picked = nil
                 }
+            }
+            .fullScreenCover(item: $cutting) { c in
+                StoryEditor(image: nil, video: c.url, close: { cutting = nil }, finishVideo: { f, r, m in
+                    movieFilter = f; movieRange = r; movieMuted = m; movie = c.url; source = nil; cutting = nil
+                    Task { photo = await Self.firstFrame(c.url, at: r?.lowerBound ?? 0) }
+                })
             }
             // the story editor, in the feed's 4:5: text, stickers, drawing and filters baked into the photo
             .fullScreenCover(item: $editing) { e in
@@ -1007,6 +1020,7 @@ struct ComposeSheet: View {
                 if photo != nil || what != nil {
                     Menu {
                         if photo != nil && movie == nil { Button { editing = EditBox(image: source ?? photo ?? UIImage()) } label: { Label("Edit photo", systemImage: "crop.rotate") } }
+                        if let movie { Button { cutting = ClipBox(url: movie) } label: { Label("Edit video", systemImage: "scissors") } }
                         Button { camera = true } label: { Label(photo == nil ? "Take a photo" : "Take another", systemImage: "camera") }
                         Button { library = true } label: { Label(photo == nil ? "Choose from library" : "Choose another", systemImage: "photo.on.rectangle") }
                         if photo != nil || movie != nil { Button(role: .destructive) { photo = nil; movie = nil; source = nil } label: { Label("Remove", systemImage: "trash") } }
@@ -1022,7 +1036,7 @@ struct ComposeSheet: View {
 
     @ViewBuilder private var pictureTile: some View {
         if let movie {
-            LoopingVideo(url: movie, muted: true)
+            LoopingVideo(url: movie, muted: true, filter: movieFilter, range: movieRange)
         } else if let photo {
             Color.clear.overlay { Image(uiImage: photo).resizable().scaledToFill() }
         } else if let w = what {
@@ -1163,11 +1177,11 @@ struct ComposeSheet: View {
     }
 
     /// A video's first frame, the right way up.
-    static func firstFrame(_ url: URL) async -> UIImage? {
+    static func firstFrame(_ url: URL, at seconds: Double = 0) async -> UIImage? {
         let g = AVAssetImageGenerator(asset: AVURLAsset(url: url))
         g.appliesPreferredTrackTransform = true
         g.maximumSize = CGSize(width: 1440, height: 1440)
-        guard let (cg, _) = try? await g.image(at: .zero) else { return nil }
+        guard let (cg, _) = try? await g.image(at: CMTime(seconds: seconds, preferredTimescale: 600)) else { return nil }
         return UIImage(cgImage: cg)
     }
 
@@ -1210,7 +1224,7 @@ struct ComposeSheet: View {
         busy = true; problem = nil
         Task {
             defer { busy = false }
-            do { try await Feed.shared.post(row, photo: photo, video: movie); dismiss() }
+            do { try await Feed.shared.post(row, photo: photo, video: movie, filter: movieFilter, range: movieRange, muted: movieMuted); dismiss() }
             catch { problem = "Couldn't post: \(error.localizedDescription)" }
         }
     }
@@ -1294,6 +1308,7 @@ struct PostRecipeSheet: View {
 }
 
 private struct EditBox: Identifiable { let id = UUID(); let image: UIImage }
+private struct ClipBox: Identifiable { let id = UUID(); let url: URL }
 
 /// A post's picture. SwiftUI's AsyncImage stays blank for good if scrolling cancels its download, as a long feed does;
 /// this one is kept once loaded, tries again when it comes back on screen, and retries a failed download.

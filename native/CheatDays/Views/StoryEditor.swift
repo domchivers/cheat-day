@@ -17,7 +17,11 @@ struct StoryEditor: View {
     var posted: () -> Void = {}
     /// A feed post: the finished photo, with everything on it, instead of sharing to a story.
     var finish: ((UIImage) -> Void)? = nil
-    private var forPost: Bool { finish != nil }
+    /// A feed post's video: the filter, the part kept and whether its sound is off, for the post to be made with.
+    var finishVideo: ((String, ClosedRange<Double>?, Bool) -> Void)? = nil
+    private var forPost: Bool { finish != nil || finishVideo != nil }
+    /// A post's clip: trimmed, filtered and muted only.
+    private var clipOnly: Bool { finishVideo != nil }
 
     enum Mode { case none, text, draw, filters, trim }
     @State private var mode: Mode = .none
@@ -228,9 +232,11 @@ struct StoryEditor: View {
                 round("xmark") { if edited { leaving = true } else { close() } }.accessibilityLabel("Back")
                 if !history.isEmpty { round("arrow.uturn.backward") { undo() }.accessibilityLabel("Undo") }
                 Spacer()
-                round("textformat") { newText() }.accessibilityLabel("Text")
-                round("face.smiling") { stickers = true }.accessibilityLabel("Stickers")
-                round("scribble.variable") { mode = .draw }.accessibilityLabel("Draw")
+                if !clipOnly {
+                    round("textformat") { newText() }.accessibilityLabel("Text")
+                    round("face.smiling") { stickers = true }.accessibilityLabel("Stickers")
+                    round("scribble.variable") { mode = .draw }.accessibilityLabel("Draw")
+                }
                 round("camera.filters") { mode = .filters }.accessibilityLabel("Filters")
                 if video != nil {
                     round(muted ? "speaker.slash.fill" : "speaker.wave.2.fill") { muted.toggle(); flash(muted ? "Sound off" : "Sound on") }.accessibilityLabel(muted ? "Sound off" : "Sound on")
@@ -576,7 +582,15 @@ struct StoryEditor: View {
     private var everything: [JSON] { (strokes.isEmpty ? [] : [["type": "drawing", "strokes": strokes]]) + items }
 
     @ViewBuilder private var bottomBar: some View {
-        if forPost {
+        if let finishVideo {
+            Button {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                finishVideo(filter, length > 0 ? range : nil, muted)
+            } label: {
+                Text("Use this video").font(.headline).foregroundStyle(.black).frame(maxWidth: .infinity).padding(.vertical, 13).background(.white, in: Capsule())
+            }
+            .buttonStyle(.plain).disabled(mode != .none).opacity(mode == .none ? 1 : 0.3)
+        } else if forPost {
             Button {
                 if let out = baked() { UINotificationFeedbackGenerator().notificationOccurred(.success); finish?(out) }
             } label: {
