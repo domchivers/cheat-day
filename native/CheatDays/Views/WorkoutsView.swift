@@ -148,21 +148,24 @@ struct WorkoutsView: View {
         let days = store.week
         let count = days.reduce(0) { $0 + $1.count }, total = days.reduce(0) { $0 + $1.kcal }
         let walked = days.reduce(0) { $0 + Steps.shared.kcal(on: $1.date) }
+        // walking alone still counts here: no workouts, but the calories it burned
+        let line = total > 0 || walked == 0 ? "\(Fmt.int(total)) kcal\(walked > 0 ? " · \(Fmt.int(walked)) more from walking" : "")" : "\(Fmt.int(walked)) kcal from walking"
+        let said = count > 0 || tracked || walked > 0 ? "This week: \(count) workout\(count == 1 ? "" : "s"), \(line)" : "This week: no workouts yet"
         return VStack(alignment: .leading, spacing: 2) {
             Text("This week").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
-            if count > 0 || tracked {
+            if count > 0 || tracked || walked > 0 {
                 HStack(alignment: .firstTextBaseline, spacing: 5) {
                     Text("\(count)").font(.system(size: 48, weight: .heavy, design: .rounded)).monospacedDigit()
                     Text(count == 1 ? "workout" : "workouts").font(.headline).foregroundStyle(.secondary)
                 }
-                Text("\(Fmt.int(total)) kcal\(walked > 0 ? " · \(Fmt.int(walked)) more from walking" : "")").font(.subheadline).foregroundStyle(.primary.opacity(0.8)).monospacedDigit()
+                Text(line).font(.subheadline).foregroundStyle(.primary.opacity(0.8)).monospacedDigit()
             } else {
                 Text("No workouts yet").font(.title.weight(.heavy)).padding(.top, 2)
                 Text("Start a session, or log one you've done.").font(.subheadline).foregroundStyle(.secondary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore).accessibilityLabel(said).accessibilityAddTraits(.isStaticText)
     }
 
     private func capsule(_ symbol: String, _ title: String, _ colour: Color) -> some View {
@@ -203,7 +206,7 @@ struct WorkoutsView: View {
             Image(systemName: "dumbbell.fill").font(.title2).foregroundStyle(Theme.accent)
             VStack(alignment: .leading, spacing: 2) {
                 Text(s.name.isEmpty ? "Gym session" : s.name).font(.headline)
-                Text(s.looksForgotten && s.setsDone > 0 ? "Forgot to finish? Tap to wrap it up" : "\(s.setsDone) sets done · tap to carry on")
+                Text(s.looksForgotten && s.setsDone > 0 ? "Forgot to finish? Tap to wrap it up" : "\(s.setsDone) set\(s.setsDone == 1 ? "" : "s") done · tap to carry on")
                     .font(.footnote).foregroundStyle(s.looksForgotten && s.setsDone > 0 ? Theme.warn : .secondary)
             }
             Spacer()

@@ -121,8 +121,9 @@ final class TourUITests: XCTestCase {
         app.launchArguments = ["-uitest-walk"]
         app.launch()
         XCTAssertTrue(app.staticTexts["Walking"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["0 workouts · 0 kcal"].exists, "walking isn't counted as a workout")
-        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH %@", "+ walking")).firstMatch.exists)
+        let week = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "This week: 0 workouts")).firstMatch
+        XCTAssertTrue(week.exists, "walking isn't counted as a workout")
+        XCTAssertTrue(week.label.contains("from walking"), "the walking calories still show")
         let a = XCTAttachment(screenshot: app.screenshot()); a.name = "workouts-walking"; a.lifetime = .keepAlways; add(a)
     }
 
