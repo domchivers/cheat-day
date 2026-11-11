@@ -1158,9 +1158,9 @@ struct ComposeSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("DRAFTS").font(.caption.weight(.heavy)).foregroundStyle(.secondary).padding(.leading, 6)
             VStack(spacing: 0) {
-                ForEach(drafts.indices, id: §.self) { i in
+                ForEach(drafts.indices, id: \.self) { i in
                     let d = drafts[i], n = Int(num(d["shots"]) ?? 0), words = str(d["caption"]).trimmingCharacters(in: .whitespacesAndNewlines)
-                    let kind = !str(d["movie"]).isEmpty ? "Video" : n > 1 ? "§(n) photos" : n == 1 ? "Photo" : str(dict(d["what"])["name"])
+                    let kind = !str(d["movie"]).isEmpty ? "Video" : n > 1 ? "\(n) photos" : n == 1 ? "Photo" : str(dict(d["what"])["name"])
                     if i > 0 { Divider().padding(.leading, 74) }
                     HStack(spacing: 12) {
                         Group {
@@ -1170,7 +1170,7 @@ struct ComposeSheet: View {
                         .frame(width: 48, height: 48).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
                         VStack(alignment: .leading, spacing: 2) {
                             Text(words.isEmpty ? "No caption yet" : words).font(.body.weight(.semibold)).foregroundStyle(words.isEmpty ? .secondary : .primary).lineLimit(1)
-                            Text(kind.isEmpty ? Drafts.when(d) : "§(kind) · §(Drafts.when(d))").font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                            Text(kind.isEmpty ? Drafts.when(d) : "\(kind) · \(Drafts.when(d))").font(.footnote).foregroundStyle(.secondary).lineLimit(1)
                         }
                         Spacer(minLength: 0)
                         Menu {
@@ -1197,19 +1197,19 @@ struct ComposeSheet: View {
         VStack(spacing: 6) {
             ScrollView(.horizontal) {
                 HStack(spacing: 10) {
-                    ForEach(Array(shots.enumerated()), id: §.element.id) { i, shot in
+                    ForEach(Array(shots.enumerated()), id: \.element.id) { i, shot in
                         Button { withAnimation(.snappy(duration: 0.2)) { showing = i } } label: {
                             Image(uiImage: shot.out).resizable().scaledToFill().frame(width: 54, height: 54)
                                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                                 .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).stroke(i == showing ? Theme.accent : .clear, lineWidth: 2.5).padding(-3.5))
                                 .overlay(alignment: .bottomLeading) {
                                     if shots.count > 1 {
-                                        Text("§(i + 1)").font(.caption2.weight(.heavy)).monospacedDigit().foregroundStyle(.white)
+                                        Text("\(i + 1)").font(.caption2.weight(.heavy)).monospacedDigit().foregroundStyle(.white)
                                             .frame(width: 18, height: 18).background(.black.opacity(0.6), in: Circle()).padding(3)
                                     }
                                 }
                         }
-                        .buttonStyle(.plain).accessibilityLabel("Photo §(i + 1)")
+                        .buttonStyle(.plain).accessibilityLabel("Photo \(i + 1)")
                         .contextMenu {
                             Button { editing = EditBox(image: shot.source, index: i) } label: { Label("Edit", systemImage: "crop.rotate") }
                             if i > 0 { Button { move(i, to: 0) } label: { Label("Make it first", systemImage: "arrow.left.to.line") } }
