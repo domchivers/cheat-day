@@ -10,6 +10,12 @@ struct HistoryView: View {
     @State private var added: String?
     private var store: Store { Store.shared }
 
+    /// Opened on a day (from Progress's week): its month showing and the day unfolded.
+    init(start: String? = nil) {
+        _openDay = State(initialValue: start)
+        if let start { _month = State(initialValue: String(start.prefix(7))) }
+    }
+
     private var days: [PastDay] {
         var out: [PastDay] = []
         let d = store.day

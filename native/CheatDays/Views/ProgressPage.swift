@@ -1,6 +1,12 @@
 import Charts
 import SwiftUI
 
+private extension VerticalAlignment {
+    /// The middle of the big number at the top of Progress: the round + sits level with it.
+    private enum NumberCentre: AlignmentID { static func defaultValue(in d: ViewDimensions) -> CGFloat { d[VerticalAlignment.center] } }
+    static let numberCentre = VerticalAlignment(NumberCentre.self)
+}
+
 /// The Progress tab, laid out like Friends: the big title and round buttons, a quiet line on how you're doing, your
 /// weight on one clean chart across the card, the week as bars, protein and streak, then everything else in a list.
 struct ProgressPage: View {
@@ -9,6 +15,7 @@ struct ProgressPage: View {
     @State private var metric = "weight"
     @State private var picked: Date?   // a day held on the chart
     @State private var editing: JSON?   // a reading being changed
+    @State private var weekDay: String?   // a day tapped in This week
     private var store: Store { Store.shared }
     private static let ranges: [(label: String, days: Int)] = [("1W", 7), ("1M", 30), ("3M", 90), ("6M", 180), ("1Y", 365), ("All", 100_000)]
 
@@ -23,11 +30,14 @@ struct ProgressPage: View {
                     top.padding(.horizontal, 18).padding(.top, 14)
                     chartCard.padding(.horizontal, 14).padding(.top, 14)
                     if store.checkInDue { checkInRow.padding(.horizontal, 14).padding(.top, 10) }
-                    section("Your plan")
+                    HStack(alignment: .firstTextBaseline) {
+                        section("Your plan")
+                        Spacer()
+                        NavigationLink { BudgetView() } label: { Text("Change").font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent) }.padding(.trailing, 18)
+                    }
                     planCard.padding(.horizontal, 14)
-                    section("This week")
+                    weekHeader
                     weekCard.padding(.horizontal, 14)
-                    smallCards.padding(.horizontal, 14).padding(.top, 10)
                     weighInsHeader
                     weighIns.padding(.horizontal, 14)
                     section("Food")
@@ -67,7 +77,7 @@ struct ProgressPage: View {
 
     /// Three quiet lines: a word on how it's going, the weight, and how far and how long.
     private var top: some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .numberCentre, spacing: 12) {
         VStack(alignment: .leading, spacing: 2) {
             if let sel = selected(points) {
                 // a day held on the chart takes over the three lines: its date, its number, and how it compares with now
@@ -77,6 +87,7 @@ struct ProgressPage: View {
                     Text(unit == "%" ? Fmt.dec(sel.kg) : Fmt.kg(sel.kg)).font(.system(size: 48, weight: .heavy, design: .rounded)).contentTransition(.numericText())
                     Text(unit).font(.headline).foregroundStyle(.secondary)
                 }
+                .alignmentGuide(.numberCentre) { $0[VerticalAlignment.center] }
                 Text(heldLine(sel)).font(.subheadline).foregroundStyle(.primary.opacity(0.8))
             } else if metric != "weight", let m = BodyView.metrics.first(where: { $0.key == metric }),
                       let last = store.bodyRows.filter({ pos($0[metric]) != nil && str($0["day"]) <= store.today }).max(by: { str($0["day"]) < str($1["day"]) }),
@@ -87,6 +98,7 @@ struct ProgressPage: View {
                     Text(m.unit == "%" ? Fmt.dec(v) : Fmt.kg(v)).font(.system(size: 48, weight: .heavy, design: .rounded)).contentTransition(.numericText())
                     Text(m.unit).font(.headline).foregroundStyle(.secondary)
                 }
+                .alignmentGuide(.numberCentre) { $0[VerticalAlignment.center] }
                 Text("Latest reading · \(DayKey.date(str(last["day"])).formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)))").font(.subheadline).foregroundStyle(.primary.opacity(0.8))
             } else if let now {
                 Text(greeting).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
@@ -94,6 +106,7 @@ struct ProgressPage: View {
                     Text(Fmt.kg(now)).font(.system(size: 48, weight: .heavy, design: .rounded)).contentTransition(.numericText())
                     Text("kg").font(.headline).foregroundStyle(.secondary)
                 }
+                .alignmentGuide(.numberCentre) { $0[VerticalAlignment.center] }
                 Text(toGo).font(.subheadline).foregroundStyle(.primary.opacity(0.8))
             } else {
                 Text(greeting).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
@@ -102,7 +115,7 @@ struct ProgressPage: View {
             }
         }
         Spacer(minLength: 0)
-        // beside the number it adds to, round like the buttons on Friends
+        // level with the number it adds to, round like the buttons on Friends
         round("plus") { weighing = true }.accessibilityLabel("Weigh in")
         }
     }
@@ -303,72 +316,106 @@ struct ProgressPage: View {
         .buttonStyle(.plain)
     }
 
-    /// The last seven days as bars against each day's budget: green on it, amber over, grey not logged.
+    private var weekDays: [(date: String, f: Store.DayFacts)] {
+        (0..<7).reversed().map { DayKey.shift(store.today, days: -$0) }.map { (date: $0, f: store.dayFacts($0)) }
+    }
+
+    /// "This week" with the average a day beside it.
+    private var weekHeader: some View {
+        let logged = weekDays.map(\.f).filter(\.logged)
+        let avg = logged.isEmpty ? 0 : logged.reduce(0) { $0 + $1.kcal } / Double(logged.count)
+        return HStack(alignment: .firstTextBaseline) {
+            section("This week")
+            Spacer()
+            if !logged.isEmpty { Text("\(Fmt.int(avg)) a day avg").font(.footnote).foregroundStyle(.secondary).monospacedDigit().padding(.trailing, 18) }
+        }
+    }
+
+    /// The last seven days as bars against each day's budget (green on it, amber over, grey not logged) with the
+    /// calories on top; tap one for that day; then on budget, protein and the streak in a row.
     private var weekCard: some View {
-        let dates = (0..<7).reversed().map { DayKey.shift(store.today, days: -$0) }
-        let days = dates.map { (date: $0, f: store.dayFacts($0)) }
-        let logged = days.filter { $0.f.logged }
-        let ok = logged.filter { store.underBudget($0.f) }.count
-        let avg = logged.isEmpty ? 0 : logged.reduce(0) { $0 + $1.f.kcal } / Double(logged.count)
+        let days = weekDays
         let top = max(1, days.map { max($0.f.kcal, $0.f.budget) }.max() ?? 1)
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(logged.isEmpty ? "Nothing logged yet" : "\(ok) of \(logged.count) on budget").font(.subheadline.weight(.bold))
-                Spacer()
-                if !logged.isEmpty { Text("\(Fmt.int(avg)) a day avg").font(.footnote).foregroundStyle(.secondary) }
+        return VStack(spacing: 0) {
+            HStack(alignment: .bottom, spacing: 6) {
+                ForEach(days, id: \.date) { d in weekBar(d.date, d.f, top: top) }
             }
-            HStack(alignment: .bottom, spacing: 7) {
-                ForEach(days, id: \.date) { d in
-                    VStack(spacing: 6) {
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(!d.f.logged ? Color(.tertiarySystemFill) : store.underBudget(d.f) ? Theme.walk : Theme.warn)
-                            .frame(height: d.f.logged ? max(10, 46 * d.f.kcal / top) : 10)
-                        Text(DayKey.date(d.date).formatted(.dateTime.weekday(.narrow))).font(.caption2).foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity)
-                }
+            .frame(height: 104, alignment: .bottom)
+            if let day = weekDay, let d = days.first(where: { $0.date == day }) {
+                Divider().padding(.top, 12)
+                weekDetail(d.date, d.f).padding(.top, 12)
             }
-            .frame(height: 66, alignment: .bottom)
-            Text(weekLine(days.map(\.f))).font(.footnote).foregroundStyle(.secondary)
+            Divider().padding(.top, 12)
+            weekFigures(days.map(\.f)).padding(.top, 12)
         }
         .padding(14).background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
-    /// One plain line about the week.
-    private func weekLine(_ fs: [Store.DayFacts]) -> String {
-        let logged = fs.filter(\.logged)
-        if logged.isEmpty { return "Log what you eat and your week shows here." }
-        let over = logged.filter { !store.underBudget($0) }
-        if over.isEmpty { return "Every day you logged was on budget. Lovely work." }
-        let overBy = over.reduce(0) { $0 + ($1.kcal - $1.budget) } / Double(over.count)
-        if over.count * 2 > logged.count { return "Most days ran over, by about \(Fmt.int(overBy)) on average. A smaller dinner is the easiest win." }
-        return "\(over.count == 1 ? "One day" : "\(over.count) days") ran over, by about \(Fmt.int(overBy)) each. The rest were on budget."
+    private func weekBar(_ date: String, _ f: Store.DayFacts, top: Double) -> some View {
+        let on = weekDay == date
+        let fill: Color = !f.logged ? Color(.tertiarySystemFill) : store.underBudget(f) ? Theme.walk : Theme.warn
+        return Button { withAnimation(.snappy) { weekDay = on ? nil : date } } label: {
+            VStack(spacing: 5) {
+                Spacer(minLength: 0)
+                Text(f.logged ? Fmt.int(f.kcal) : " ").font(.system(size: 10.5, weight: .bold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+                    .foregroundStyle(on ? .primary : .secondary)
+                RoundedRectangle(cornerRadius: 8, style: .continuous).fill(fill)
+                    .frame(height: f.logged ? max(12, 62 * f.kcal / top) : 12)
+                    .opacity(weekDay == nil || on ? 1 : 0.35)
+                Text(DayKey.date(date).formatted(.dateTime.weekday(.narrow))).font(.caption2.weight(.semibold)).foregroundStyle(on ? .primary : .secondary)
+            }
+            .frame(maxWidth: .infinity).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(DayKey.date(date).formatted(.dateTime.weekday(.wide))), \(f.logged ? "\(Fmt.int(f.kcal)) of \(Fmt.int(f.budget))" : "nothing logged")")
     }
 
-    private var smallCards: some View {
-        let dates = (1...30).map { DayKey.shift(store.today, days: -$0) }
-        let logged = dates.map(store.dayFacts).filter(\.logged)
-        let hit = store.proteinGoal.map { g in logged.filter { $0.p >= g * 0.9 }.count } ?? 0
-        let pct = logged.isEmpty ? 0 : Int((Double(hit) / Double(logged.count) * 100).rounded())
-        return HStack(spacing: 10) {
-            small(title: "Protein", value: store.proteinGoal == nil ? "–" : "\(pct)", unit: store.proteinGoal == nil ? "" : "%",
-                  note: store.proteinGoal == nil ? "No goal set" : "of days hit", icon: nil)
-            small(title: "Streak", value: "\(store.streakInfo.days)", unit: "", note: "days logged", icon: "🔥")
+    /// The tapped day: what was eaten against its budget, the protein, and a way in to the day itself.
+    private func weekDetail(_ date: String, _ f: Store.DayFacts) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                (Text(date == store.today ? "Today" : DayKey.date(date).formatted(.dateTime.weekday(.wide))).font(.body.weight(.semibold))
+                 + Text(store.isCheatDay(date) ? " · cheat day" : "").font(.footnote).foregroundStyle(.secondary))
+                Text(f.logged ? "\(Fmt.int(f.kcal)) of \(Fmt.int(f.budget)) kcal · \(Fmt.int(f.p)) g protein" : "Nothing logged")
+                    .font(.footnote).foregroundStyle(.secondary).monospacedDigit()
+            }
+            Spacer(minLength: 8)
+            if date == store.today {
+                Button { NotificationCenter.default.post(name: .openTab, object: 0) } label: { openDayLabel }.buttonStyle(.plain)
+            } else if f.logged {
+                NavigationLink { HistoryView(start: date) } label: { openDayLabel }
+            }
+        }
+    }
+    private var openDayLabel: some View {
+        HStack(spacing: 3) { Text("Open day"); Image(systemName: "chevron.right").font(.caption2.weight(.bold)) }.font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent)
+    }
+
+    /// On budget this week, protein over the last 30 days, and the streak.
+    private func weekFigures(_ fs: [Store.DayFacts]) -> some View {
+        let logged = fs.filter(\.logged), ok = logged.filter { store.underBudget($0) }.count
+        let month = (1...30).map { store.dayFacts(DayKey.shift(store.today, days: -$0)) }.filter(\.logged)
+        let hit = store.proteinGoal.map { g in month.filter { $0.p >= g * 0.9 }.count } ?? 0
+        let pct = month.isEmpty ? 0 : Int((Double(hit) / Double(month.count) * 100).rounded())
+        return HStack(spacing: 0) {
+            figure(logged.isEmpty ? "–" : "\(ok)", unit: logged.isEmpty ? "" : "of \(logged.count)", note: "on budget", icon: nil)
+            Divider().frame(height: 34)
+            figure(store.proteinGoal == nil ? "–" : "\(pct)%", unit: "", note: store.proteinGoal == nil ? "no protein goal" : "protein days", icon: nil)
+            Divider().frame(height: 34)
+            figure("\(store.streakInfo.days)", unit: "", note: "day streak", icon: "🔥")
         }
     }
 
-    private func small(title: String, value: String, unit: String, note: String, icon: String?) -> some View {
-        VStack(spacing: 4) {
-            Text(title).font(.footnote).foregroundStyle(.secondary)
+    private func figure(_ value: String, unit: String, note: String, icon: String?) -> some View {
+        VStack(spacing: 2) {
             HStack(alignment: .firstTextBaseline, spacing: 4) {
-                if let icon { FluentIcon(emoji: icon, size: 20) }
+                if let icon { FluentIcon(emoji: icon, size: 18) }
                 Text(value).font(.title3.weight(.heavy)).monospacedDigit()
                 if !unit.isEmpty { Text(unit).font(.footnote.weight(.semibold)).foregroundStyle(.secondary) }
             }
             Text(note).font(.caption).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
-        .padding(14).background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
     // MARK: your plan, weigh-ins and food
