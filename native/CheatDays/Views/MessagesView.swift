@@ -253,7 +253,10 @@ struct ChatView: View {
             .contextMenu {
                 // the reactions in one row across the top of the menu, not a list down it
                 ControlGroup {
-                    ForEach(["❤️", "😂", "👍", "🔥", "😋"], id: \.self) { e in Button(e) { Task { await messages.react(m, e) } } }
+                    // drawn as pictures: as text the menu set them small
+                    ForEach(["❤️", "😂", "👍", "🔥", "😋"], id: \.self) { e in
+                        Button { Task { await messages.react(m, e) } } label: { Label { Text(e) } icon: { Image(uiImage: ReactionGlyph.make(e)) } }
+                    }
                 }
                 .controlGroupStyle(.palette)
                 if kind == "text" { Button { UIPasteboard.general.string = str(m["text"]) } label: { Label("Copy", systemImage: "doc.on.doc") } }
@@ -426,6 +429,22 @@ struct ChatView: View {
         .composerGlass(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .padding(.horizontal, 10).padding(.top, 6).padding(.bottom, 8)
         .composerBar()
+    }
+}
+
+/// A reaction emoji as a full-colour picture at a set size, for the hold menu's row (text there comes out small).
+enum ReactionGlyph {
+    @MainActor private static var made: [String: UIImage] = [:]
+    @MainActor static func make(_ emoji: String, side: CGFloat = 30) -> UIImage {
+        if let m = made[emoji] { return m }
+        let out = UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { _ in
+            let text = emoji as NSString, font = UIFont.systemFont(ofSize: side * 0.86)
+            let size = text.size(withAttributes: [.font: font])
+            text.draw(at: CGPoint(x: (side - size.width) / 2, y: (side - size.height) / 2), withAttributes: [.font: font])
+        }
+        .withRenderingMode(.alwaysOriginal)
+        made[emoji] = out
+        return out
     }
 }
 
