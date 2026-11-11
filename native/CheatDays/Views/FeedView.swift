@@ -940,6 +940,9 @@ struct ComposeSheet: View {
     @State private var library = false
     @State private var picking = false   // the app's own picker: the one chosen big, recents under it
     @State private var opened = false
+    /// Where a photo post is: 0, its pictures with the tools under them (Instagram's middle screen); 1, writing it up.
+    @State private var stage = 1
+    private var inHub: Bool { stage == 0 && movie == nil && !shots.isEmpty }
     @State private var pickerFirst = false   // the picker is what New post opened on: closing it closes New post
     @State private var attaching = false   // the list of foods, meals and workouts is open
     @State private var song: Song?
@@ -960,16 +963,17 @@ struct ComposeSheet: View {
                     if !started && preset == nil && !drafts.isEmpty { draftList.padding(.horizontal, 14).padding(.top, 14) }
                     picture.padding(.top, 14)
                     if movie != nil { Text("Up to 30 seconds are posted.").font(.caption).foregroundStyle(.secondary).padding(.top, 8) }
-                    if movie == nil && !shots.isEmpty { strip.padding(.top, 10) }
-                    // in a box of its own, like the rows under it: as bare grey words it read as a label, not somewhere to type
-                    TextField("Write a caption…", text: $caption, axis: .vertical).lineLimit(2...6).focused($writing)
-                        .padding(.horizontal, 14).padding(.vertical, 12)
-                        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    // the caption straight on the page, then plain rows with a line between them, as Instagram's is
+                    TextField("Add a caption…", text: $caption, axis: .vertical).lineLimit(3...8).focused($writing)
+                        .font(.body)
+                        .padding(.horizontal, 18).padding(.vertical, 16)
                         .contentShape(Rectangle()).onTapGesture { writing = true }
-                        .padding(.horizontal, 14).padding(.top, 14).padding(.bottom, 10).id("caption")
-                    attachment.padding(.horizontal, 14)
-                    songRow.padding(.horizontal, 14).padding(.top, 10)
-                    tagRow.padding(.horizontal, 14).padding(.top, 10)
+                        .padding(.top, 6).id("caption")
+                    Divider().padding(.leading, 18)
+                    attachment.padding(.horizontal, 4)
+                    songRow.padding(.horizontal, 4)
+                    if song == nil { songIdeas }
+                    tagRow.padding(.horizontal, 4)
                     if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.top, 8) }
                 }
                 .padding(.bottom, 20)
@@ -984,7 +988,7 @@ struct ComposeSheet: View {
             .presentationBackground(Theme.bg)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 let ready = what != nil || photo != nil || movie != nil
-                if !writing {
+                if !writing && !inHub {
                 Button { post() } label: {
                     Text("Share").font(.headline.weight(.heavy)).foregroundStyle(ready ? Theme.onAccent : Color.secondary)
                         .frame(maxWidth: .infinity).padding(.vertical, 15)
@@ -995,6 +999,7 @@ struct ComposeSheet: View {
                 }
             }
             .keyboardDone()
+            .overlay { if inHub { hub.background(Theme.bg.ignoresSafeArea()).transition(.opacity) } }
             .onAppear {
                 if what == nil, let preset { what = preset }
                 drafts = Drafts.all()
@@ -1027,7 +1032,15 @@ struct ComposeSheet: View {
             .navigationTitle("New post")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button { writing = false; if started { leaving = true } else { dismiss() } } label: { Image(systemName: "xmark") }.accessibilityLabel("Cancel") }
+                ToolbarItem(placement: .cancellationAction) {
+                    // from the write-up, back to the pictures; from there (or with none), out
+                    let back = stage == 1 && movie == nil && !shots.isEmpty
+                    Button {
+                        writing = false
+                        if back { withAnimation(.snappy(duration: 0.25)) { stage = 0 } } else if started { leaving = true } else { dismiss() }
+                    } label: { Image(systemName: back ? "chevron.left" : "xmark") }
+                    .accessibilityLabel(back ? "Back" : "Cancel")
+                }
                 // while the keyboard's up, Share is here
                 if writing && (what != nil || photo != nil || movie != nil) {
                     ToolbarItem(placement: .topBarTrailing) { Button(busy ? "Sharing…" : "Share") { writing = false; post() }.fontWeight(.bold).disabled(busy) }
@@ -1067,12 +1080,14 @@ struct ComposeSheet: View {
             .fullScreenCover(item: $editing) { e in
                 // any photo but the first keeps the first one's shape, as the feed shows them all in it
                 let later = e.index.map { $0 > 0 } ?? !shots.isEmpty
-                StoryEditor(image: e.image, video: nil, aspect: later ? (firstShape ?? 4.0 / 5.0) : 4.0 / 5.0, close: { editing = nil }, finish: { out in
+                // one already in the post opens whole, in the shape it has; a new one in the feed's 4:5
+                let own = min(1.91, max(0.8, e.image.size.width / max(e.image.size.height, 1)))
+                StoryEditor(image: e.image, video: nil, aspect: later ? (firstShape ?? 4.0 / 5.0) : (e.index != nil ? own : 4.0 / 5.0), close: { editing = nil }, finish: { out in
                     movie = nil; poster = nil
                     if let i = e.index, shots.indices.contains(i) { shots[i].out = out }
-                    else if shots.count < 10 { shots.append(Shot(source: e.image, out: out)); showing = shots.count - 1 }
+                    else if shots.count < 10 { shots.append(Shot(source: e.image, out: out)); showing = shots.count - 1; stage = 0 }
                     editing = nil
-                }, lockShape: later)
+                }, lockShape: later, startTool: e.tool)
             }
         }
     }
@@ -1085,12 +1100,12 @@ struct ComposeSheet: View {
             if let video, shots.isEmpty {
                 try? await Task.sleep(for: .milliseconds(550))
                 cutting = ClipBox(url: video)
-            } else if images.count == 1 {
-                try? await Task.sleep(for: .milliseconds(550))
-                editing = EditBox(image: Self.sized(images[0]))
             } else if !images.isEmpty {
+                // photos: onto the screen with the tools under them (one or several), in the first one's shape
                 movie = nil; poster = nil
+                let from = shots.count
                 for img in images where shots.count < 10 { let s = Self.sized(img); shots.append(Shot(source: s, out: Self.fitted(s, to: firstShape))) }
+                showing = min(from, max(0, shots.count - 1)); stage = 0
             }
         }
     }
@@ -1133,7 +1148,7 @@ struct ComposeSheet: View {
         song = Music.all.first { $0.id == str(d["song"]) }
         tags = d["tags"] as? [String] ?? []
         shots = got.shots.map { Shot(source: $0.0, out: $0.1) }; showing = 0
-        movie = got.movie; clip = got.clip; poster = got.poster; triedPoster = false
+        movie = got.movie; clip = got.clip; poster = got.poster; triedPoster = false; stage = 1
         if let m = got.movie, got.poster == nil { Task { poster = await got.clip.still(m) } }
     }
 
@@ -1171,6 +1186,125 @@ struct ComposeSheet: View {
             }
             .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         }
+    }
+
+    // MARK: the pictures and their tools
+
+    /// Instagram's middle screen: the photo big (swipe between several), the tools named in a row under it, the
+    /// photos small at the bottom left with a + for another, and Next at the bottom right. Each tool opens the
+    /// editor on that tool, with the photo as it stands, so what's done to it adds up.
+    private var hub: some View {
+        VStack(spacing: 12) {
+            Button { choosingSong = true } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "music.note").font(.system(size: 13, weight: .bold)).foregroundStyle(Theme.accent)
+                    Text(song?.title ?? "Add a song").font(.subheadline.weight(.semibold)).foregroundStyle(.primary).lineLimit(1)
+                    Image(systemName: song == nil ? "plus" : "chevron.down").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 14).frame(height: 38).background(Color(.secondarySystemGroupedBackground), in: Capsule())
+            }
+            .buttonStyle(.plain).padding(.top, 6)
+            TabView(selection: $showing) {
+                ForEach(Array(shots.enumerated()), id: \.element.id) { i, shot in
+                    Image(uiImage: shot.out).resizable().scaledToFit()
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .padding(.horizontal, 14).tag(i)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            if shots.count > 1 {
+                HStack(spacing: 5) {
+                    ForEach(shots.indices, id: \.self) { i in Circle().fill(Color.primary.opacity(i == showing ? 0.9 : 0.25)).frame(width: 6, height: 6) }
+                }
+            }
+            ScrollView(.horizontal) {
+                HStack(spacing: 8) {
+                    hubTool("music.note", "Audio") { choosingSong = true }
+                    hubTool("textformat", "Text") { edit("text") }
+                    hubTool("face.smiling", "Stickers") { edit("stickers") }
+                    hubTool("scribble.variable", "Draw") { edit("draw") }
+                    hubTool("camera.filters", "Filter") { edit("filters") }
+                    hubTool("slider.horizontal.3", "Adjust") { edit("adjust") }
+                    hubTool("crop", "Crop") { edit(nil) }
+                }
+                .padding(.horizontal, 14)
+            }
+            .scrollIndicators(.hidden)
+            HStack(spacing: 10) {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(shots.enumerated()), id: \.element.id) { i, shot in
+                            Button { withAnimation(.snappy(duration: 0.2)) { showing = i } } label: {
+                                Image(uiImage: shot.out).resizable().scaledToFill().frame(width: 44, height: 56)
+                                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).stroke(i == showing ? Color.primary : .clear, lineWidth: 2).padding(-3))
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain).accessibilityLabel("Photo \(i + 1)")
+                            .contextMenu {
+                                if i > 0 { Button { move(i, to: 0) } label: { Label("Make it first", systemImage: "arrow.left.to.line") } }
+                                if i > 0 { Button { move(i, to: i - 1) } label: { Label("Move left", systemImage: "arrow.left") } }
+                                if i < shots.count - 1 { Button { move(i, to: i + 1) } label: { Label("Move right", systemImage: "arrow.right") } }
+                                Button { editing = EditBox(image: shot.source, index: i) } label: { Label("Start again from the original", systemImage: "arrow.counterclockwise") }
+                                Button(role: .destructive) { drop(i) } label: { Label("Remove", systemImage: "trash") }
+                            }
+                        }
+                        if shots.count < 10 {
+                            Button { picking = true } label: {
+                                Image(systemName: "plus").font(.system(size: 16, weight: .bold)).foregroundStyle(.primary)
+                                    .frame(width: 44, height: 56).background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                            }
+                            .buttonStyle(.plain).accessibilityLabel("Add another photo")
+                        }
+                    }
+                    .padding(.vertical, 4).padding(.horizontal, 3)
+                }
+                .scrollIndicators(.hidden)
+                Button { withAnimation(.snappy(duration: 0.25)) { stage = 1 } } label: {
+                    HStack(spacing: 6) { Text("Next"); Image(systemName: "arrow.right") }
+                        .font(.headline.weight(.heavy)).foregroundStyle(Theme.onAccent)
+                        .padding(.horizontal, 20).frame(height: 48).background(Theme.accent, in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 14).padding(.bottom, 8)
+        }
+    }
+
+    private func hubTool(_ symbol: String, _ title: String, _ tap: @escaping () -> Void) -> some View {
+        Button(action: tap) {
+            VStack(spacing: 5) {
+                Image(systemName: symbol).font(.system(size: 18, weight: .semibold)).frame(height: 22)
+                Text(title).font(.caption2.weight(.semibold))
+            }
+            .foregroundStyle(.primary).frame(width: 64, height: 56)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// The photo showing, into the editor on one of its tools, as it stands now.
+    private func edit(_ tool: String?) {
+        guard shots.indices.contains(showing) else { return }
+        editing = EditBox(image: shots[showing].out, index: showing, tool: tool)
+    }
+
+    /// A few songs to pick with one tap, under Add a song.
+    private var songIdeas: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 8) {
+                ForEach(Array(Music.all.prefix(8))) { s in
+                    Button { song = s } label: {
+                        Label(s.title, systemImage: "music.note").font(.footnote.weight(.semibold)).foregroundStyle(.primary).lineLimit(1)
+                            .padding(.horizontal, 12).frame(height: 34).background(Color(.secondarySystemGroupedBackground), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 18)
+        }
+        .scrollIndicators(.hidden).padding(.top, 2).padding(.bottom, 10)
+        .overlay(alignment: .bottom) { Divider().padding(.leading, 18) }
     }
 
     // MARK: several photos
@@ -1351,7 +1485,7 @@ struct ComposeSheet: View {
                 attachRow("dumbbell.fill", "Add a workout") { shelf = 2; attaching = true }
             }
         }
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(alignment: .bottom) { Divider().padding(.leading, 14) }
     }
 
     /// A song for the post: the way to add one, or the one picked with a play button.
@@ -1377,7 +1511,7 @@ struct ComposeSheet: View {
                 attachRow("music.note", "Add a song") { writing = false; choosingSong = true }
             }
         }
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(alignment: .bottom) { Divider().padding(.leading, 14) }
         .onDisappear { SongPlayer.shared.stop() }
     }
 
@@ -1394,7 +1528,7 @@ struct ComposeSheet: View {
             .padding(.horizontal, 14).padding(.vertical, 13).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(alignment: .bottom) { Divider().padding(.leading, 14) }
     }
 
     private func attachRow(_ symbol: String, _ title: String, _ tap: @escaping () -> Void) -> some View {
@@ -1565,7 +1699,7 @@ struct PostRecipeSheet: View {
     }
 }
 
-private struct EditBox: Identifiable { let id = UUID(); let image: UIImage; var index: Int? = nil }
+private struct EditBox: Identifiable { let id = UUID(); let image: UIImage; var index: Int? = nil; var tool: String? = nil }
 private struct ClipBox: Identifiable { let id = UUID(); let url: URL }
 
 /// A post's picture. SwiftUI's AsyncImage stays blank for good if scrolling cancels its download, as a long feed does;

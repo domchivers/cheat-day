@@ -24,6 +24,9 @@ struct StoryEditor: View {
     var startShape: CGFloat? = nil
     /// One of several photos in a post, after the first: it keeps the first one's shape.
     var lockShape = false
+    /// Open on one of the tools ("text", "stickers", "draw", "filters", "adjust"): New post's own row of tools
+    /// leads straight into it.
+    var startTool: String? = nil
     private var forPost: Bool { finish != nil || finishVideo != nil }
     /// A post's clip: its own frame to zoom and move in, and everything on it made part of the video.
     private var clipOnly: Bool { finishVideo != nil }
@@ -195,6 +198,18 @@ struct StoryEditor: View {
         .statusBarHidden()
         .task { await prepare() }
         .task { if startWriting { try? await Task.sleep(for: .milliseconds(350)); newText(); size = 40 } }
+        .task {
+            guard let startTool else { return }
+            try? await Task.sleep(for: .milliseconds(450))
+            switch startTool {
+            case "text": newText()
+            case "stickers": stickers = true
+            case "draw": mode = .draw
+            case "filters": mode = .filters
+            case "adjust": mode = .adjust
+            default: break
+            }
+        }
         .task(id: flatLook + (sliding ? " " : "")) { await refilter(flatLook) }
         .sheet(isPresented: $stickers, onDismiss: { if let p = picked { picked = nil; add(p) } }) {
             StickerSheet(forPost: forPost, pick: { id in picked = id; stickers = false }, place: { o in stickers = false; place(o) })
