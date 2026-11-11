@@ -305,7 +305,7 @@ struct StoryEditor: View {
                 if image != nil || bgScale > 1.01 || bgOffset != .zero || !items.isEmpty || !strokes.isEmpty {
                 Menu {
                     if image != nil { Button { Task { await save() } } label: { Label("Save to Photos", systemImage: "square.and.arrow.down") } }
-                    if bgScale > 1.01 || bgOffset != .zero { Button { withAnimation { bgScale = 1; bgOffset = .zero } } label: { Label("Reset the photo", systemImage: "arrow.counterclockwise") } }
+                    if bgScale > 1.01 || bgOffset != .zero { Button { withAnimation { bgScale = 1; bgOffset = .zero; clipMove = .zero } } label: { Label(video == nil ? "Reset the photo" : "Reset the video", systemImage: "arrow.counterclockwise") } }
                     if !items.isEmpty || !strokes.isEmpty { Button(role: .destructive) { remember(); withAnimation { items = []; strokes = [] } } label: { Label("Clear everything", systemImage: "trash") } }
                 } label: { roundLabel("ellipsis") }
                 }
