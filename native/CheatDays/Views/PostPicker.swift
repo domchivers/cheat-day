@@ -27,34 +27,21 @@ struct PostPicker: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                preview
-                HStack(spacing: 10) {
-                    Text("Recents").font(.title3.weight(.heavy))
-                    Button { allPhotos() } label: { Text("All photos").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accent) }.buttonStyle(.plain)
-                    Spacer(minLength: 0)
-                    if room > 1 {
-                        Button { toggleSeveral() } label: {
-                            Label(several ? "Selecting" : "Select", systemImage: "square.on.square")
-                                .font(.subheadline.weight(.bold)).foregroundStyle(several ? Theme.onAccent : Color.primary)
-                                .padding(.horizontal, 13).frame(height: 36)
-                                .background(several ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Color(.tertiarySystemFill)), in: Capsule())
-                        }
-                        .buttonStyle(.plain).accessibilityLabel(several ? "Stop picking several" : "Pick several")
+            // One page that scrolls, as Instagram's does: the big picture goes up out of the way and the grid takes
+            // the screen, with "Recents" and Select staying at the top. Picking one brings the big picture back.
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                        preview.id("top")
+                        Section {
+                            if !allowed { denied } else { grid }
+                        } header: { header.background(Theme.bg) }
                     }
                 }
-                .padding(.horizontal, 16).padding(.vertical, 12)
-                if !allowed {
-                    VStack(spacing: 12) {
-                        Text("Cheat Days can't see your photos here.").font(.subheadline).foregroundStyle(.secondary)
-                        Button { allPhotos() } label: {
-                            Text("Choose from all photos").font(.subheadline.weight(.bold)).foregroundStyle(Theme.onAccent)
-                                .padding(.horizontal, 18).frame(height: 42).background(Theme.accent, in: Capsule())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else { grid }
+                .onChange(of: showing?.localIdentifier) { _, _ in
+                    // not while several are being ticked off: the grid would jump away under the finger each time
+                    if !several { withAnimation(.snappy(duration: 0.3)) { proxy.scrollTo("top", anchor: .top) } }
+                }
             }
             .background(Theme.bg.ignoresSafeArea())
             .overlay { if busy { ZStack { Color.black.opacity(0.35).ignoresSafeArea(); ProgressView().controlSize(.large).tint(.white) } } }
@@ -67,6 +54,36 @@ struct PostPicker: View {
             .task(id: showing?.localIdentifier) { await enlarge() }
         }
         .presentationBackground(Theme.bg)
+    }
+
+    private var header: some View {
+        HStack(spacing: 10) {
+            Text("Recents").font(.title3.weight(.heavy))
+            Button { allPhotos() } label: { Text("All photos").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accent) }.buttonStyle(.plain)
+            Spacer(minLength: 0)
+            if room > 1 {
+                Button { toggleSeveral() } label: {
+                    Label(several ? "Selecting" : "Select", systemImage: "square.on.square")
+                        .font(.subheadline.weight(.bold)).foregroundStyle(several ? Theme.onAccent : Color.primary)
+                        .padding(.horizontal, 13).frame(height: 36)
+                        .background(several ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Color(.tertiarySystemFill)), in: Capsule())
+                }
+                .buttonStyle(.plain).accessibilityLabel(several ? "Stop picking several" : "Pick several")
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 12)
+    }
+
+    private var denied: some View {
+        VStack(spacing: 12) {
+            Text("Cheat Days can't see your photos here.").font(.subheadline).foregroundStyle(.secondary)
+            Button { allPhotos() } label: {
+                Text("Choose from all photos").font(.subheadline.weight(.bold)).foregroundStyle(Theme.onAccent)
+                    .padding(.horizontal, 18).frame(height: 42).background(Theme.accent, in: Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity).frame(height: 260)
     }
 
     // MARK: the one picked, big
@@ -99,7 +116,7 @@ struct PostPicker: View {
     // MARK: the grid
 
     private var grid: some View {
-        ScrollView {
+        VStack(spacing: 0) {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 4), spacing: 2) {
                 Button { camera() } label: {
                     Color(.secondarySystemGroupedBackground).aspectRatio(1, contentMode: .fit)
