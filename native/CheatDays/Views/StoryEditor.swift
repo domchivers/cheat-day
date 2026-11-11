@@ -155,13 +155,16 @@ struct StoryEditor: View {
             // kept clear for the home bar, stopping 12 short of the bottom (96 was held back before, and none of
             // that strip used, which left a tall clip small with black all round it)
             let low = max(0, screen.safeAreaInsets.bottom - 22)   // 22 clear of the bottom: at 12 the home bar lay across the button
-            let cw = min(screen.size.width - 16, (screen.size.height + low - 136) * ratio)   // 66 more for the row of tools
+            // The picture has a space of its own that never changes size, and sits in the middle of it whatever its
+            // shape. The tools and the button are under that space, the X at its top: before, all of them were hung
+            // on the picture, so a wide clip pulled them up the screen and a narrow one squeezed the button.
+            let stageH = max(120, screen.size.height + low - 136)
+            let cw = min(screen.size.width - 16, stageH * ratio)   // 66 more for the row of tools
             let ch = cw / ratio
             VStack(spacing: 10) {
                 canvas(cw, ch)
                     .frame(width: cw, height: ch)
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .overlay(alignment: .top) { topBar.padding(12) }
                     .overlay(alignment: mode == .text ? .top : .bottom) { tray(cw).padding(mode == .text ? .top : .bottom, mode == .text ? 64 : 12) }
                     .overlay(alignment: .leading) { if mode == .text || mode == .draw { sizeSlider.padding(.leading, 8) } }
                     .overlay {
@@ -178,9 +181,11 @@ struct StoryEditor: View {
                         }
                     }
                     .animation(.easeOut(duration: 0.2), value: stories.posting)
+                    .frame(width: screen.size.width, height: stageH)
+                    .overlay(alignment: .top) { topBar.padding(.horizontal, 14).padding(.top, 10) }
                 // the tools across the whole screen, not just the picture's width; out of the way while one is in use
                 toolbar.frame(width: screen.size.width).opacity(mode == .none ? 1 : 0).allowsHitTesting(mode == .none)
-                bottomBar.frame(width: cw)
+                bottomBar.frame(width: screen.size.width - 28)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .offset(y: low / 2)   // what's taller than the safe part hangs below it, not half above
