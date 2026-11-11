@@ -163,12 +163,12 @@ final class Feed {
     private(set) var sending: Sending?
 
     /// Post in the background. Done shows for a moment; a failure stays, with Try again.
-    func send(_ row: JSON, photo: UIImage?, video: URL?, filter: String, range: ClosedRange<Double>?, muted: Bool, crop: CGRect? = nil) {
-        let again: () -> Void = { [weak self] in self?.send(row, photo: photo, video: video, filter: filter, range: range, muted: muted, crop: crop) }
+    func send(_ row: JSON, photo: UIImage?, video: URL?, filter: String, range: ClosedRange<Double>?, muted: Bool, crop: CGRect? = nil, overlay: UIImage? = nil, more: [UIImage] = []) {
+        let again: () -> Void = { [weak self] in self?.send(row, photo: photo, video: video, filter: filter, range: range, muted: muted, crop: crop, overlay: overlay, more: more) }
         withAnimation(.snappy) { sending = Sending(thumb: photo, state: .working, again: again) }
         Task {
             do {
-                try await post(row, photo: photo, video: video, filter: filter, range: range, muted: muted, crop: crop)
+                try await post(row, photo: photo, video: video, filter: filter, range: range, muted: muted, crop: crop, overlay: overlay, more: more)
                 withAnimation(.snappy) { sending?.state = .done }
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 try? await Task.sleep(for: .seconds(2.5))
@@ -195,15 +195,21 @@ final class Feed {
         }
     }
 
-    func post(_ row: JSON, photo: UIImage?, video: URL? = nil, filter: String = "Normal", range: ClosedRange<Double>? = nil, muted: Bool = false, crop: CGRect? = nil) async throws {
+    func post(_ row: JSON, photo: UIImage?, video: URL? = nil, filter: String = "Normal", range: ClosedRange<Double>? = nil, muted: Bool = false, crop: CGRect? = nil, overlay: UIImage? = nil, more: [UIImage] = []) async throws {
         var r = row
         r["owner"] = me
         // a video: up to 30 seconds as mp4 into the same bucket as stories' videos; its first frame is the photo
         if let video {
-            let (mp4, _) = try await Stories.compress(video, filter: filter, range: range, muted: muted, crop: crop)
+            let (mp4, _) = try await Stories.compress(video, filter: filter, range: range, muted: muted, crop: crop, overlay: overlay)
             var x = dict(r["extra"]); x["video"] = try await api.upload(mp4, ext: "mp4", type: "video/mp4"); r["extra"] = x
         }
         if let photo, let jpeg = Self.prepare(photo) { r["photo"] = (try? await api.uploadPhoto(jpeg)) ?? NSNull() }
+        // several photos: the first is the post's own, and all of them, in order, are listed beside it
+        if !more.isEmpty, let first = r["photo"] as? String {
+            var all = [first]
+            for img in more { if let jpeg = Self.prepare(img) { all.append(try await api.uploadPhoto(jpeg)) } }
+            var x = dict(r["extra"]); x["photos"] = all; r["extra"] = x
+        }
         // a workout that's already on the feed (posted when it finished): add the photo and caption to that post instead
         if str(r["kind"]) == "workout", let existing = await sameWorkout(str(r["name"])) {
             var change: JSON = [:]
@@ -543,7 +549,7 @@ struct FeedView: View {
     private func photoView(_ p: JSON) -> some View {
         let n = numbers(p)
         let shape = num(dict(p["extra"])["aspect"]).map { min(1.91, max(0.8, $0)) }
-        return FeedPhoto(src: str(p["photo"]), fill: true)
+        return PostPhotos(post: p)
             .frame(maxWidth: .infinity).frame(height: shape.map { (UIScreen.main.bounds.width / $0).rounded() } ?? 400)
             .overlay { if let v = Feed.video(p) { FeedVideo(url: v) } }   // under the name and numbers
             .clipped()
@@ -933,16 +939,25 @@ struct ComposeSheet: View {
     @State private var what: JSON?
     @State private var caption = ""
     @State private var editing: EditBox?
-    @State private var source: UIImage?   // the photo before editing, to edit again from
-    @State private var photo: UIImage?
-    @State private var movie: URL?   // a video post: the clip; photo is its first frame
-    @State private var cutting: ClipBox?   // a clip in the editor: trim, filter, sound
-    @State private var movieFilter = "Normal"
-    @State private var movieRange: ClosedRange<Double>?
-    @State private var movieMuted = false
-    @State private var movieCrop: CGRect?    // the part of the picture kept
-    @State private var movieShape: CGFloat?  // and the shape that makes
-    @State private var picked: PhotosPickerItem?
+    /// A photo post's pictures, in order (up to ten): each as it came, to edit again from, and as edited.
+    @State private var shots: [Shot] = []
+    @State private var showing = 0   // which of them is in the big tile
+    @State private var movie: URL?   // a video post: the clip
+    @State private var poster: UIImage?   // and its cover, exactly as it will be posted
+    @State private var clip = ClipEdit()   // what the editor did to it
+    @State private var cutting: ClipBox?   // a clip in the editor
+    @State private var choosingCover = false
+    @State private var picked: [PhotosPickerItem] = []
+    // drafts: the ones kept on this phone, the one this post was opened from, and ✕ asking what to do with it
+    @State private var drafts: [JSON] = []
+    @State private var draftID: String?
+    @State private var leaving = false
+    @State private var triedPoster = false
+    private struct Shot: Identifiable { let id = UUID(); var source: UIImage; var out: UIImage }
+    /// The picture in the tile: the video's cover, or the photo picked from the row.
+    private var photo: UIImage? { movie != nil ? poster : (shots.indices.contains(showing) ? shots[showing].out : shots.first?.out) }
+    private var firstShape: CGFloat? { shots.first.map { $0.out.size.width / max($0.out.size.height, 1) } }
+    private var started: Bool { !shots.isEmpty || movie != nil || !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (what != nil && preset == nil) || song != nil }
     @State private var camera = false
     @State private var library = false
     @State private var attaching = false   // the list of foods, meals and workouts is open
@@ -989,8 +1004,10 @@ struct ComposeSheet: View {
             ScrollViewReader { proxy in
             ScrollView {
                 VStack(spacing: 0) {
+                    if !started && preset == nil && !drafts.isEmpty { draftList.padding(.horizontal, 14).padding(.top, 14) }
                     picture.padding(.top, 14)
                     if movie != nil { Text("Up to 30 seconds are posted.").font(.caption).foregroundStyle(.secondary).padding(.top, 8) }
+                    if movie == nil && !shots.isEmpty { strip.padding(.top, 10) }
                     // in a box of its own, like the rows under it: as bare grey words it read as a label, not somewhere to type
                     TextField("Write a caption…", text: $caption, axis: .vertical).lineLimit(2...6).focused($writing)
                         .padding(.horizontal, 14).padding(.vertical, 12)
@@ -1024,11 +1041,20 @@ struct ComposeSheet: View {
                 }
             }
             .keyboardDone()
-            .onAppear { if what == nil, let preset { what = preset } }
+            .onAppear { if what == nil, let preset { what = preset }; drafts = Drafts.all() }
+            .interactiveDismissDisabled(started)
+            .confirmationDialog("Keep this post to finish later?", isPresented: $leaving, titleVisibility: .visible) {
+                Button("Save draft") { saveDraft() }
+                Button("Discard", role: .destructive) { dismiss() }
+                Button("Keep editing", role: .cancel) {}
+            }
+            .sheet(isPresented: $choosingCover) {
+                if let movie { CoverPicker(url: movie, edit: clip, start: poster) { at, still in clip.cover = at; if let still { poster = still } } }
+            }
             .navigationTitle("New post")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel("Cancel") }
+                ToolbarItem(placement: .cancellationAction) { Button { writing = false; if started { leaving = true } else { dismiss() } } label: { Image(systemName: "xmark") }.accessibilityLabel("Cancel") }
                 // while the keyboard's up, Share is here
                 if writing && (what != nil || photo != nil || movie != nil) {
                     ToolbarItem(placement: .topBarTrailing) { Button(busy ? "Sharing…" : "Share") { writing = false; post() }.fontWeight(.bold).disabled(busy) }
@@ -1036,36 +1062,188 @@ struct ComposeSheet: View {
             }
             .sheet(isPresented: $attaching) { attachPicker }
             .sheet(isPresented: $choosingSong) { SongPicker { song = $0 } }
-            .photosPicker(isPresented: $library, selection: $picked, matching: .any(of: [.images, .videos]))
+            .photosPicker(isPresented: $library, selection: $picked, maxSelectionCount: max(1, 10 - shots.count), matching: shots.isEmpty ? PHPickerFilter.any(of: [.images, .videos]) : PHPickerFilter.images)
             .fullScreenCover(isPresented: $camera) { CameraPicker { img in camera = false; if let img { DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { editing = EditBox(image: img) } } }.ignoresSafeArea() }
-            .onChange(of: picked) { _, item in
+            .onChange(of: picked) { _, items in
+                guard !items.isEmpty else { return }
                 Task {
-                    guard let item else { return }
-                    // a video: kept as it is, with its first frame as the photo
-                    if item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }), let m = try? await item.loadTransferable(type: PickedMovie.self) {
-                        // into the editor first, to trim it, filter it or take its sound off
+                    // a video (only as the post's one picture): into the editor first, to trim it, filter it, write on it
+                    if shots.isEmpty, let first = items.first, first.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }),
+                       let m = try? await first.loadTransferable(type: PickedMovie.self) {
                         library = false
                         try? await Task.sleep(for: .milliseconds(550))
                         cutting = ClipBox(url: m.url)
-                    } else if let d = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: d) {
-                        movie = nil; library = false
-                        try? await Task.sleep(for: .milliseconds(550))
-                        editing = EditBox(image: img)
+                    } else {
+                        var got: [UIImage] = []
+                        for item in items { if let d = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: d) { got.append(Self.sized(img)) } }
+                        library = false
+                        if got.count == 1 {
+                            // one photo: straight into the editor, as before
+                            try? await Task.sleep(for: .milliseconds(550))
+                            editing = EditBox(image: got[0])
+                        } else if !got.isEmpty {
+                            // several: all in at once, in the first one's shape; tap any to edit it
+                            movie = nil; poster = nil
+                            for img in got where shots.count < 10 { shots.append(Shot(source: img, out: Self.fitted(img, to: firstShape))) }
+                        }
                     }
-                    picked = nil
+                    picked = []
                 }
             }
             .fullScreenCover(item: $cutting) { c in
-                StoryEditor(image: nil, video: c.url, close: { cutting = nil }, finishVideo: { f, r, m, crop, shape in
-                    movieFilter = f; movieRange = r; movieMuted = m; movieCrop = crop; movieShape = shape; movie = c.url; source = nil; cutting = nil
-                    Task { photo = await Self.firstFrame(c.url, at: r?.lowerBound ?? 0) }
-                }, startShape: movieShape)
+                StoryEditor(image: nil, video: c.url, close: { cutting = nil }, finishVideo: { e in
+                    var e = e
+                    // the cover picked before stays, if that moment is still in the part kept
+                    if movie == c.url, let at = clip.cover, e.range.map({ $0.contains(at) }) ?? true { e.cover = at }
+                    clip = e; movie = c.url; shots = []; poster = nil; triedPoster = false; cutting = nil
+                    Task { poster = await e.still(c.url) }
+                }, startShape: clip.shape)
             }
             // the story editor, in the feed's 4:5: text, stickers, drawing and filters baked into the photo
             .fullScreenCover(item: $editing) { e in
-                StoryEditor(image: e.image, video: nil, aspect: 4.0 / 5.0, close: { editing = nil }, finish: { out in photo = out; source = e.image; editing = nil })
+                // any photo but the first keeps the first one's shape, as the feed shows them all in it
+                let later = e.index.map { $0 > 0 } ?? !shots.isEmpty
+                StoryEditor(image: e.image, video: nil, aspect: later ? (firstShape ?? 4.0 / 5.0) : 4.0 / 5.0, close: { editing = nil }, finish: { out in
+                    movie = nil; poster = nil
+                    if let i = e.index, shots.indices.contains(i) { shots[i].out = out }
+                    else if shots.count < 10 { shots.append(Shot(source: e.image, out: out)); showing = shots.count - 1 }
+                    editing = nil
+                }, lockShape: later)
             }
         }
+    }
+
+    /// A photo no bigger than it needs to be kept at: ten camera photos at full size is more than the phone has room for.
+    private static func sized(_ img: UIImage) -> UIImage {
+        let long = max(img.size.width, img.size.height)
+        guard long > 2400 else { return img }
+        return img.preparingThumbnail(of: CGSize(width: img.size.width * 2400 / long, height: img.size.height * 2400 / long)) ?? img
+    }
+    /// A photo added without editing: its middle, in the first photo's shape (its own, within what the feed shows, when it is the first).
+    private static func fitted(_ img: UIImage, to shape: CGFloat?) -> UIImage {
+        let own = img.size.width / max(img.size.height, 1), want = shape ?? min(1.91, max(0.8, own))
+        let w = own > want ? img.size.height * want : img.size.width, h = own > want ? img.size.height : img.size.width / want
+        let k = min(1, 1440 / max(w, h, 1))
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1
+        return UIGraphicsImageRenderer(size: CGSize(width: (w * k).rounded(), height: (h * k).rounded()), format: format).image { _ in
+            img.draw(in: CGRect(x: -(img.size.width - w) / 2 * k, y: -(img.size.height - h) / 2 * k, width: img.size.width * k, height: img.size.height * k))
+        }
+    }
+
+    // MARK: drafts
+
+    private func saveDraft() {
+        let id = draftID ?? UUID().uuidString
+        var meta: JSON = ["caption": caption]
+        if let what { meta["what"] = what }
+        if let song { meta["song"] = song.id }
+        let pics = shots.map { ($0.source, $0.out) }, movie = movie, clip = clip, poster = poster
+        SongPlayer.shared.stop()
+        Task.detached(priority: .userInitiated) { Drafts.save(id, meta: meta, shots: pics, movie: movie, clip: clip, poster: poster) }
+        dismiss()
+    }
+
+    private func open(_ d: JSON) {
+        let got = Drafts.load(d)
+        draftID = str(d["id"]); caption = str(d["caption"])
+        if let w = d["what"] as? JSON { what = w }
+        song = Music.all.first { $0.id == str(d["song"]) }
+        shots = got.shots.map { Shot(source: $0.0, out: $0.1) }; showing = 0
+        movie = got.movie; clip = got.clip; poster = got.poster; triedPoster = false
+        if let m = got.movie, got.poster == nil { Task { poster = await got.clip.still(m) } }
+    }
+
+    /// Posts kept to finish later, above an empty new one: tap to carry on with it.
+    private var draftList: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("DRAFTS").font(.caption.weight(.heavy)).foregroundStyle(.secondary).padding(.leading, 6)
+            VStack(spacing: 0) {
+                ForEach(drafts.indices, id: §.self) { i in
+                    let d = drafts[i], n = Int(num(d["shots"]) ?? 0), words = str(d["caption"]).trimmingCharacters(in: .whitespacesAndNewlines)
+                    let kind = !str(d["movie"]).isEmpty ? "Video" : n > 1 ? "§(n) photos" : n == 1 ? "Photo" : str(dict(d["what"])["name"])
+                    if i > 0 { Divider().padding(.leading, 74) }
+                    HStack(spacing: 12) {
+                        Group {
+                            if let t = Drafts.thumb(d) { Image(uiImage: t).resizable().scaledToFill() }
+                            else { LinearGradient(colors: [Theme.hero, Theme.accent.opacity(0.28)], startPoint: .topLeading, endPoint: .bottomTrailing) }
+                        }
+                        .frame(width: 48, height: 48).clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(words.isEmpty ? "No caption yet" : words).font(.body.weight(.semibold)).foregroundStyle(words.isEmpty ? .secondary : .primary).lineLimit(1)
+                            Text(kind.isEmpty ? Drafts.when(d) : "§(kind) · §(Drafts.when(d))").font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Spacer(minLength: 0)
+                        Menu {
+                            Button(role: .destructive) { Drafts.delete(str(d["id"])); withAnimation(.snappy) { drafts = Drafts.all() } } label: { Label("Delete draft", systemImage: "trash") }
+                        } label: {
+                            Image(systemName: "ellipsis").font(.system(size: 15, weight: .bold)).foregroundStyle(.secondary).frame(width: 36, height: 36).contentShape(Rectangle())
+                        }
+                        .accessibilityLabel("More")
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 9).contentShape(Rectangle())
+                    .onTapGesture { withAnimation(.snappy) { open(d) } }
+                    .accessibilityAddTraits(.isButton)
+                }
+            }
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        }
+    }
+
+    // MARK: several photos
+
+    /// The post's photos in a row under the big one: tap one to show it, hold it to edit, move or remove it, and
+    /// + to add another (up to ten).
+    private var strip: some View {
+        VStack(spacing: 6) {
+            ScrollView(.horizontal) {
+                HStack(spacing: 10) {
+                    ForEach(Array(shots.enumerated()), id: §.element.id) { i, shot in
+                        Button { withAnimation(.snappy(duration: 0.2)) { showing = i } } label: {
+                            Image(uiImage: shot.out).resizable().scaledToFill().frame(width: 54, height: 54)
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).stroke(i == showing ? Theme.accent : .clear, lineWidth: 2.5).padding(-3.5))
+                                .overlay(alignment: .bottomLeading) {
+                                    if shots.count > 1 {
+                                        Text("§(i + 1)").font(.caption2.weight(.heavy)).monospacedDigit().foregroundStyle(.white)
+                                            .frame(width: 18, height: 18).background(.black.opacity(0.6), in: Circle()).padding(3)
+                                    }
+                                }
+                        }
+                        .buttonStyle(.plain).accessibilityLabel("Photo §(i + 1)")
+                        .contextMenu {
+                            Button { editing = EditBox(image: shot.source, index: i) } label: { Label("Edit", systemImage: "crop.rotate") }
+                            if i > 0 { Button { move(i, to: 0) } label: { Label("Make it first", systemImage: "arrow.left.to.line") } }
+                            if i > 0 { Button { move(i, to: i - 1) } label: { Label("Move left", systemImage: "arrow.left") } }
+                            if i < shots.count - 1 { Button { move(i, to: i + 1) } label: { Label("Move right", systemImage: "arrow.right") } }
+                            Button(role: .destructive) { drop(i) } label: { Label("Remove", systemImage: "trash") }
+                        }
+                    }
+                    if shots.count < 10 {
+                        Menu {
+                            Button { camera = true } label: { Label("Take a photo", systemImage: "camera") }
+                            Button { library = true } label: { Label("Choose from library", systemImage: "photo.on.rectangle") }
+                        } label: {
+                            Image(systemName: "plus").font(.system(size: 17, weight: .bold)).foregroundStyle(Theme.accent)
+                                .frame(width: 54, height: 54).background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                        .menuOrder(.fixed).accessibilityLabel("Add another photo")
+                    }
+                }
+                .padding(.horizontal, 16).padding(.vertical, 5)
+                .frame(minWidth: UIScreen.main.bounds.width)
+            }
+            .scrollIndicators(.hidden)
+            if shots.count > 1 { Text("Hold a photo to move, edit or remove it.").font(.caption).foregroundStyle(.secondary) }
+        }
+    }
+
+    private func move(_ i: Int, to j: Int) {
+        guard shots.indices.contains(i), shots.indices.contains(j) else { return }
+        withAnimation(.snappy) { let s = shots.remove(at: i); shots.insert(s, at: j); showing = j }
+    }
+    private func drop(_ i: Int) {
+        guard shots.indices.contains(i) else { return }
+        withAnimation(.snappy) { shots.remove(at: i); showing = min(showing, max(0, shots.count - 1)) }
     }
 
     // MARK: the picture
@@ -1080,11 +1258,17 @@ struct ComposeSheet: View {
             .overlay(alignment: .bottomTrailing) {
                 if photo != nil || what != nil {
                     Menu {
-                        if photo != nil && movie == nil { Button { editing = EditBox(image: source ?? photo ?? UIImage()) } label: { Label("Edit photo", systemImage: "crop.rotate") } }
-                        if let movie { Button { cutting = ClipBox(url: movie) } label: { Label("Edit video", systemImage: "scissors") } }
-                        Button { camera = true } label: { Label(photo == nil ? "Take a photo" : "Take another", systemImage: "camera") }
-                        Button { library = true } label: { Label(photo == nil ? "Choose from library" : "Choose another", systemImage: "photo.on.rectangle") }
-                        if photo != nil || movie != nil { Button(role: .destructive) { photo = nil; movie = nil; source = nil } label: { Label("Remove", systemImage: "trash") } }
+                        if movie == nil, shots.indices.contains(showing) { Button { editing = EditBox(image: shots[showing].source, index: showing) } label: { Label("Edit photo", systemImage: "crop.rotate") } }
+                        if let movie {
+                            Button { cutting = ClipBox(url: movie) } label: { Label("Edit video", systemImage: "scissors") }
+                            Button { choosingCover = true } label: { Label("Choose cover", systemImage: "photo") }
+                        }
+                        if shots.count < 10 {
+                            Button { camera = true } label: { Label(photo == nil ? "Take a photo" : movie != nil ? "Take a photo instead" : "Take another", systemImage: "camera") }
+                            Button { library = true } label: { Label(photo == nil ? "Choose from library" : movie != nil ? "Choose something else" : "Add from library", systemImage: "photo.on.rectangle") }
+                        }
+                        if movie != nil { Button(role: .destructive) { movie = nil; poster = nil; clip = ClipEdit() } label: { Label("Remove", systemImage: "trash") } }
+                        else if !shots.isEmpty { Button(role: .destructive) { drop(showing) } label: { Label("Remove", systemImage: "trash") } }
                     } label: {
                         Image(systemName: photo == nil ? "plus" : "pencil").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
                             .frame(width: 34, height: 34).background(.black.opacity(0.55), in: Circle())
@@ -1093,14 +1277,31 @@ struct ComposeSheet: View {
                     .accessibilityLabel(photo == nil ? "Add a photo or video" : "Change the photo")
                 }
             }
+            .overlay(alignment: .bottomLeading) {
+                if movie != nil {
+                    Button { choosingCover = true } label: {
+                        Label("Cover", systemImage: "photo").font(.caption.weight(.bold)).foregroundStyle(.white)
+                            .padding(.horizontal, 11).frame(height: 34).background(.black.opacity(0.55), in: Capsule())
+                    }
+                    .buttonStyle(.plain).padding(8)
+                }
+            }
+            .overlay(alignment: .topLeading) {
+                if movie != nil {
+                    Image(systemName: "video.fill").font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
+                        .frame(width: 28, height: 28).background(.black.opacity(0.55), in: Circle()).padding(8)
+                } else if shots.count > 1 {
+                    Text("\(min(showing, shots.count - 1) + 1)/\(shots.count)").font(.caption.weight(.bold)).monospacedDigit().foregroundStyle(.white)
+                        .padding(.horizontal, 9).frame(height: 26).background(.black.opacity(0.55), in: Capsule()).padding(8)
+                }
+            }
     }
 
     @ViewBuilder private var pictureTile: some View {
-        if let movie {
-            // in the shape picked for it (the middle of the picture: the exact part kept shows once it's posted)
+        if movie != nil {
+            // its cover, exactly as it will be posted: the look, the part kept and what's written on it
             Color.black.opacity(0.35).overlay {
-                if let shape = movieShape { LoopingVideo(url: movie, muted: true, filter: movieFilter, range: movieRange).aspectRatio(shape, contentMode: .fit) }
-                else { LoopingVideo(url: movie, muted: true, filter: movieFilter, range: movieRange) }
+                if let poster { Image(uiImage: poster).resizable().scaledToFit() } else { ProgressView() }
             }
         } else if let photo {
             // whole, in the shape picked for it (square, wide), on the tile's dark ground
@@ -1284,13 +1485,22 @@ struct ComposeSheet: View {
         // nothing attached: a photo or video on its own (a progress photo, say), with no numbers to show
         var row = what ?? ["kind": "photo", "name": "", "kcal": 0, "macros": [:] as JSON, "payload": [:] as JSON, "extra": [:] as JSON]
         guard what != nil || photo != nil || movie != nil else { return }
+        // a video whose cover is still being made: wait for it, once (without it the post has no picture)
+        if let movie, poster == nil, !triedPoster {
+            triedPoster = true; busy = true
+            Task { poster = await clip.still(movie); busy = false; post() }
+            return
+        }
+        let face = movie != nil ? poster : shots.first?.out
         row["caption"] = caption.trimmingCharacters(in: .whitespacesAndNewlines)
         if let song { var x = dict(row["extra"]); x["song"] = ["id": song.id, "title": song.title] as JSON; row["extra"] = x }
         // the picture's shape, for the feed to show it whole (a video's is its first frame's)
-        if let photo { var x = dict(row["extra"]); x["aspect"] = Double(movie != nil ? (movieShape ?? photo.size.width / max(photo.size.height, 1)) : photo.size.width / max(photo.size.height, 1)); row["extra"] = x }
+        if let face { var x = dict(row["extra"]); x["aspect"] = Double(face.size.width / max(face.size.height, 1)); row["extra"] = x }
         SongPlayer.shared.stop()
         // it goes up after the sheet has closed: a line on the feed says posting, then posted
-        Feed.shared.send(row, photo: photo, video: movie, filter: movieFilter, range: movieRange, muted: movieMuted, crop: movieCrop)
+        Feed.shared.send(row, photo: face, video: movie.map { Drafts.release($0) }, filter: clip.look, range: clip.range, muted: clip.muted, crop: clip.crop,
+                         overlay: clip.overlay, more: movie == nil ? shots.dropFirst().map { $0.out } : [])
+        if let draftID { Drafts.delete(draftID) }
         dismiss()
     }
 }
@@ -1410,7 +1620,7 @@ struct PostRecipeSheet: View {
     }
 }
 
-private struct EditBox: Identifiable { let id = UUID(); let image: UIImage }
+private struct EditBox: Identifiable { let id = UUID(); let image: UIImage; var index: Int? = nil }
 private struct ClipBox: Identifiable { let id = UUID(); let url: URL }
 
 /// A post's picture. SwiftUI's AsyncImage stays blank for good if scrolling cancels its download, as a long feed does;

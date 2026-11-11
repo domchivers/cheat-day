@@ -330,6 +330,7 @@ struct ProfileView: View {
                 .clipped()
                 .overlay(alignment: .topTrailing) {
                     if Feed.video(post) != nil { Image(systemName: "play.fill").font(.system(size: 12, weight: .bold)).foregroundStyle(.white).shadow(radius: 3).padding(7) }
+                    else if PostPhotos.all(post).count > 1 { Image(systemName: "square.fill.on.square.fill").font(.system(size: 12, weight: .bold)).foregroundStyle(.white).shadow(radius: 3).padding(7) }
                 }
                 .overlay(alignment: .bottomLeading) {
                     if !label.isEmpty {

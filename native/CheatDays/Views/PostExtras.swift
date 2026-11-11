@@ -1,0 +1,271 @@
+import AVFoundation
+import SwiftUI
+
+/// What the editor did to a post's clip.
+struct ClipEdit {
+    var look = "Normal"
+    var range: ClosedRange<Double>? = nil
+    var muted = false
+    /// The part of the picture kept, as fractions from its top left; nil for all of it.
+    var crop: CGRect? = nil
+    var shape: CGFloat? = nil
+    /// Text, stickers and drawing as one see-through picture in the frame's shape, laid over every frame.
+    var overlay: UIImage? = nil
+    /// The moment shown before it plays; nil for where it starts.
+    var cover: Double? = nil
+
+    /// A frame of the clip as friends will see it: through the look, cut to the part kept, with what's on it.
+    func still(_ url: URL, at seconds: Double? = nil, width: CGFloat = 1440) async -> UIImage? {
+        let g = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+        g.appliesPreferredTrackTransform = true
+        g.maximumSize = CGSize(width: width, height: width)
+        // near enough to the moment asked for: the nearest key frame could be seconds away
+        let near = CMTime(seconds: 0.08, preferredTimescale: 600)
+        g.requestedTimeToleranceBefore = near; g.requestedTimeToleranceAfter = near
+        let t = seconds ?? cover ?? range?.lowerBound ?? 0
+        guard let (cg, _) = try? await g.image(at: CMTime(seconds: t, preferredTimescale: 600)) else { return nil }
+        let frame = UIImage(cgImage: cg), edit = self
+        return await Task.detached(priority: .userInitiated) { edit.dress(frame) }.value
+    }
+
+    func dress(_ frame: UIImage) -> UIImage {
+        let lit = StoryArt.filtered(frame, look)
+        guard let cg = lit.cgImage else { return lit }
+        let w = CGFloat(cg.width), h = CGFloat(cg.height), c = crop ?? CGRect(x: 0, y: 0, width: 1, height: 1)
+        let cut = CGRect(x: c.minX * w, y: c.minY * h, width: c.width * w, height: c.height * h).integral
+        guard let piece = cg.cropping(to: cut) else { return lit }
+        let size = CGSize(width: piece.width, height: piece.height)
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1
+        return UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            UIImage(cgImage: piece).draw(in: CGRect(origin: .zero, size: size))
+            overlay?.draw(in: CGRect(origin: .zero, size: size))
+        }
+    }
+}
+
+/// Choosing the frame of a video that shows before it plays: on the feed, and on the profile's grid. The big
+/// picture is that frame exactly as it will be posted; a finger along the strip under it moves through the clip.
+struct CoverPicker: View {
+    let url: URL
+    let edit: ClipEdit
+    var done: (Double, UIImage?) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var at: Double
+    @State private var shown: UIImage?
+    @State private var frames: [UIImage] = []
+    @State private var span: ClosedRange<Double>
+
+    init(url: URL, edit: ClipEdit, start: UIImage?, done: @escaping (Double, UIImage?) -> Void) {
+        self.url = url; self.edit = edit; self.done = done
+        let from = edit.range?.lowerBound ?? 0
+        _at = State(initialValue: edit.cover ?? from)
+        _shown = State(initialValue: start)
+        _span = State(initialValue: edit.range ?? from...(from + 1))
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                ZStack {
+                    if let shown {
+                        Image(uiImage: shown).resizable().scaledToFit()
+                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            .shadow(color: .black.opacity(0.25), radius: 14, y: 6)
+                    } else { ProgressView() }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity).padding(.horizontal, 28).padding(.vertical, 18)
+                VStack(spacing: 12) {
+                    Text(clock(at - span.lowerBound)).font(.footnote.weight(.bold)).monospacedDigit().foregroundStyle(.secondary)
+                    strip.frame(height: 60).padding(.horizontal, 22)
+                    Text("Slide to choose what people see before it plays.").font(.footnote).foregroundStyle(.secondary)
+                }
+                .padding(.bottom, 22)
+            }
+            .background(Theme.bg.ignoresSafeArea())
+            .navigationTitle("Cover").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { done(at, shown); dismiss() }.fontWeight(.bold) }
+            }
+            .task { await load() }
+            .task(id: Int(at * 12)) {
+                try? await Task.sleep(for: .milliseconds(25))   // a moving finger asks often: only where it rests is drawn
+                if Task.isCancelled { return }
+                if let got = await edit.still(url, at: at, width: 1080), !Task.isCancelled { shown = got }
+            }
+        }
+        .presentationBackground(Theme.bg)
+    }
+
+    private func clock(_ s: Double) -> String { String(format: "%d:%04.1f", Int(max(0, s)) / 60, max(0, s).truncatingRemainder(dividingBy: 60)) }
+
+    private var strip: some View {
+        GeometryReader { g in
+            let w = g.size.width, box: CGFloat = 44
+            let frac = span.upperBound > span.lowerBound ? CGFloat((at - span.lowerBound) / (span.upperBound - span.lowerBound)) : 0
+            ZStack(alignment: .leading) {
+                HStack(spacing: 0) {
+                    ForEach(frames.indices, id: \.self) { i in
+                        Image(uiImage: frames[i]).resizable().scaledToFill().frame(width: w / CGFloat(max(1, frames.count)), height: 52).clipped()
+                    }
+                }
+                .frame(width: w, height: 52).background(Color(.tertiarySystemFill))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous)).opacity(0.75)
+                RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(.white, lineWidth: 3)
+                    .frame(width: box, height: 60).shadow(color: .black.opacity(0.4), radius: 4)
+                    .offset(x: frac * (w - box))
+            }
+            .frame(height: 60)
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0).onChanged { v in
+                let f = Double(min(1, max(0, (v.location.x - box / 2) / max(1, w - box))))
+                at = span.lowerBound + f * (span.upperBound - span.lowerBound)
+            })
+            .accessibilityLabel("Cover frame")
+        }
+    }
+
+    private func load() async {
+        let asset = AVURLAsset(url: url)
+        let length = (try? await asset.load(.duration).seconds) ?? 0
+        let from = edit.range?.lowerBound ?? 0, to = min(edit.range?.upperBound ?? length, from + 30, max(length, from + 0.1))
+        span = from...max(from + 0.1, to - 0.05)
+        at = min(span.upperBound, max(span.lowerBound, at))
+        var got: [UIImage] = []
+        for i in 0..<9 {
+            if let f = await edit.still(url, at: span.lowerBound + (span.upperBound - span.lowerBound) * Double(i) / 8, width: 200) { got.append(f); frames = got }
+        }
+    }
+}
+
+/// A post's photos on the feed: one fills its frame; several are swiped across, with which one it is in the corner
+/// and dots along the bottom.
+struct PostPhotos: View {
+    let post: JSON
+    @State private var page = 0
+
+    static func all(_ p: JSON) -> [String] {
+        let many = dict(p["extra"])["photos"] as? [String] ?? []
+        return many.count > 1 ? many : [str(p["photo"])]
+    }
+
+    var body: some View {
+        let urls = Self.all(post)
+        if urls.count < 2 { FeedPhoto(src: urls.first ?? "", fill: true) }
+        else {
+            TabView(selection: $page) {
+                ForEach(urls.indices, id: \.self) { i in
+                    Color.clear.overlay { FeedPhoto(src: urls[i], fill: true) }.clipped().tag(i)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .overlay(alignment: .topTrailing) {
+                Text("\(page + 1)/\(urls.count)").font(.caption.weight(.bold)).monospacedDigit().foregroundStyle(.white)
+                    .padding(.horizontal, 9).padding(.vertical, 5).background(.black.opacity(0.55), in: Capsule()).padding(12)
+            }
+            .overlay(alignment: .bottom) {
+                HStack(spacing: 5) {
+                    ForEach(urls.indices, id: \.self) { i in
+                        Circle().fill(.white.opacity(i == page ? 1 : 0.45)).frame(width: i == page ? 7 : 6, height: i == page ? 7 : 6)
+                    }
+                }
+                .padding(.horizontal, 9).padding(.vertical, 6).background(.black.opacity(0.35), in: Capsule()).padding(.bottom, 10)
+                .animation(.snappy(duration: 0.2), value: page)
+            }
+        }
+    }
+}
+
+/// Posts started and kept to finish later: each a folder on this phone with its photos or video, and a note of the
+/// caption, what's attached, the song and how the video was edited. They never leave the phone.
+enum Drafts {
+    private static var root: URL {
+        let u = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("drafts", isDirectory: true)
+        try? FileManager.default.createDirectory(at: u, withIntermediateDirectories: true)
+        return u
+    }
+    private static func folder(_ id: String) -> URL { root.appendingPathComponent(id, isDirectory: true) }
+
+    /// Newest first.
+    static func all() -> [JSON] {
+        let ids = (try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []
+        return ids.compactMap { id -> JSON? in
+            guard !id.hasPrefix("tmp-"), let d = try? Data(contentsOf: folder(id).appendingPathComponent("draft.json")) else { return nil }
+            return (try? JSONSerialization.jsonObject(with: d)) as? JSON
+        }
+        .sorted { str($0["saved"]) > str($1["saved"]) }
+    }
+
+    static func thumb(_ d: JSON) -> UIImage? { UIImage(contentsOfFile: folder(str(d["id"])).appendingPathComponent("thumb.jpg").path) }
+
+    static func delete(_ id: String) { if !id.isEmpty { try? FileManager.default.removeItem(at: folder(id)) } }
+
+    /// Written beside the old one and swapped in, so a draft saved again is never half there.
+    static func save(_ id: String, meta: JSON, shots: [(UIImage, UIImage)], movie: URL?, clip: ClipEdit, poster: UIImage?) {
+        let fm = FileManager.default, tmp = root.appendingPathComponent("tmp-" + UUID().uuidString, isDirectory: true)
+        try? fm.createDirectory(at: tmp, withIntermediateDirectories: true)
+        var m = meta
+        m["id"] = id; m["saved"] = ISO8601DateFormatter().string(from: Date()); m["shots"] = shots.count
+        for (i, s) in shots.enumerated() {
+            try? s.0.jpegData(compressionQuality: 0.9)?.write(to: tmp.appendingPathComponent("s\(i).jpg"))
+            try? s.1.jpegData(compressionQuality: 0.9)?.write(to: tmp.appendingPathComponent("o\(i).jpg"))
+        }
+        if let movie {
+            let name = "movie." + (movie.pathExtension.isEmpty ? "mov" : movie.pathExtension)
+            try? fm.copyItem(at: movie, to: tmp.appendingPathComponent(name))
+            var c: JSON = ["look": clip.look, "muted": clip.muted]
+            if let r = clip.range { c["lo"] = r.lowerBound; c["hi"] = r.upperBound }
+            if let k = clip.crop { c["crop"] = [Double(k.minX), Double(k.minY), Double(k.width), Double(k.height)] }
+            if let s = clip.shape { c["shape"] = Double(s) }
+            if let t = clip.cover { c["cover"] = t }
+            m["movie"] = name; m["clip"] = c
+            try? clip.overlay?.pngData()?.write(to: tmp.appendingPathComponent("overlay.png"))
+            try? poster?.jpegData(compressionQuality: 0.9)?.write(to: tmp.appendingPathComponent("poster.jpg"))
+        }
+        if let face = movie != nil ? poster : shots.first?.1 {
+            let k = 200 / max(1, max(face.size.width, face.size.height))
+            let small = face.preparingThumbnail(of: CGSize(width: face.size.width * k, height: face.size.height * k)) ?? face
+            try? small.jpegData(compressionQuality: 0.8)?.write(to: tmp.appendingPathComponent("thumb.jpg"))
+        }
+        if !JSONSerialization.isValidJSONObject(m) { m["what"] = nil }
+        guard JSONSerialization.isValidJSONObject(m), let d = try? JSONSerialization.data(withJSONObject: m) else { try? fm.removeItem(at: tmp); return }
+        try? d.write(to: tmp.appendingPathComponent("draft.json"))
+        try? fm.removeItem(at: folder(id))
+        try? fm.moveItem(at: tmp, to: folder(id))
+    }
+
+    static func load(_ d: JSON) -> (shots: [(UIImage, UIImage)], movie: URL?, clip: ClipEdit, poster: UIImage?) {
+        let dir = folder(str(d["id"]))
+        func pic(_ name: String) -> UIImage? { UIImage(contentsOfFile: dir.appendingPathComponent(name).path) }
+        var shots: [(UIImage, UIImage)] = []
+        for i in 0..<Int(num(d["shots"]) ?? 0) { if let o = pic("o\(i).jpg") { shots.append((pic("s\(i).jpg") ?? o, o)) } }
+        var clip = ClipEdit(), movie: URL?
+        let name = str(d["movie"])
+        if !name.isEmpty, FileManager.default.fileExists(atPath: dir.appendingPathComponent(name).path) {
+            movie = dir.appendingPathComponent(name)
+            let c = dict(d["clip"])
+            clip.look = str(c["look"]).isEmpty ? "Normal" : str(c["look"])
+            clip.muted = c["muted"] as? Bool ?? false
+            if let lo = num(c["lo"]), let hi = num(c["hi"]), hi > lo { clip.range = lo...hi }
+            if let k = c["crop"] as? [Double], k.count == 4 { clip.crop = CGRect(x: k[0], y: k[1], width: k[2], height: k[3]) }
+            clip.shape = num(c["shape"]).map { CGFloat($0) }
+            clip.cover = num(c["cover"])
+            clip.overlay = pic("overlay.png")
+        }
+        return (shots, movie, clip, movie == nil ? nil : pic("poster.jpg"))
+    }
+
+    /// A draft's video on its way to being posted: moved out of the draft's folder, which is about to go.
+    static func release(_ movie: URL) -> URL {
+        guard movie.path.hasPrefix(root.path) else { return movie }
+        let to = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "." + movie.pathExtension)
+        return (try? FileManager.default.copyItem(at: movie, to: to)) != nil ? to : movie
+    }
+
+    static func when(_ d: JSON) -> String {
+        guard let date = ISO8601DateFormatter().date(from: str(d["saved"])) else { return "Saved" }
+        if Calendar.current.isDateInToday(date) { return "Saved today" }
+        if Calendar.current.isDateInYesterday(date) { return "Saved yesterday" }
+        return "Saved " + date.formatted(.dateTime.day().month(.abbreviated))
+    }
+}

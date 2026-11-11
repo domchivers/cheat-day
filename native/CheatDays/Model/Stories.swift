@@ -106,7 +106,7 @@ final class Stories {
 
     /// A video as a smaller mp4: the trimmed part (at most 30 seconds), through the filter, with or without sound.
     /// Crop is the part of the picture to keep, as fractions of it from the top left (a post's video, zoomed and moved in the editor).
-    static func compress(_ url: URL, filter: String = "Normal", range: ClosedRange<Double>? = nil, muted: Bool = false, crop: CGRect? = nil) async throws -> (Data, Double) {
+    static func compress(_ url: URL, filter: String = "Normal", range: ClosedRange<Double>? = nil, muted: Bool = false, crop: CGRect? = nil, overlay: UIImage? = nil) async throws -> (Data, Double) {
         let asset = AVURLAsset(url: url)
         let full = (try? await asset.load(.duration).seconds) ?? 15
         let start = range?.lowerBound ?? 0, end = min(range?.upperBound ?? full, start + 30)
@@ -123,7 +123,10 @@ final class Stories {
         let out = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
         guard let export = AVAssetExportSession(asset: comp, presetName: AVAssetExportPreset1280x720) else { return (try Data(contentsOf: url), end - start) }
         export.outputURL = out; export.outputFileType = .mp4; export.shouldOptimizeForNetworkUse = true
-        if let crop {
+        if crop != nil || overlay != nil {
+            let crop = crop ?? CGRect(x: 0, y: 0, width: 1, height: 1)
+            // text, stickers and drawing: one see-through picture, stretched over the part kept
+            let top = overlay.flatMap { CIImage(image: $0) }
             // the picture the right way up, and the piece of it kept, in its pixels (Core Image counts up from the bottom)
             var size = CGSize.zero
             if let v = try? await comp.loadTracks(withMediaType: .video).first {
@@ -136,7 +139,11 @@ final class Stories {
                 let vc = AVMutableVideoComposition(asset: comp) { req in
                     var img = req.sourceImage
                     if filter != "Normal" { img = StoryArt.filtered(img.clampedToExtent(), filter, frame: req.sourceImage.extent).cropped(to: req.sourceImage.extent) }
-                    req.finish(with: img.cropped(to: cut).transformed(by: CGAffineTransform(translationX: -cut.minX, y: -cut.minY)), context: nil)
+                    var done = img.cropped(to: cut).transformed(by: CGAffineTransform(translationX: -cut.minX, y: -cut.minY))
+                    if let top, top.extent.width > 0, top.extent.height > 0 {
+                        done = top.transformed(by: CGAffineTransform(scaleX: cut.width / top.extent.width, y: cut.height / top.extent.height)).composited(over: done)
+                    }
+                    req.finish(with: done, context: nil)
                 }
                 vc.renderSize = CGSize(width: (cut.width / 2).rounded(.down) * 2, height: (cut.height / 2).rounded(.down) * 2)   // even, as the encoder wants
                 export.videoComposition = vc

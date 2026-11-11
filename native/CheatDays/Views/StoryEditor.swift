@@ -19,11 +19,13 @@ struct StoryEditor: View {
     var finish: ((UIImage) -> Void)? = nil
     /// A feed post's video: the filter, the part kept and whether its sound is off, for the post to be made with.
     /// Then the part of the picture kept (fractions from the top left; nil for all of it) and the shape that makes.
-    var finishVideo: ((String, ClosedRange<Double>?, Bool, CGRect?, CGFloat) -> Void)? = nil
+    var finishVideo: ((ClipEdit) -> Void)? = nil
     /// The shape picked the last time this clip was in the editor, to open on.
     var startShape: CGFloat? = nil
+    /// One of several photos in a post, after the first: it keeps the first one's shape.
+    var lockShape = false
     private var forPost: Bool { finish != nil || finishVideo != nil }
-    /// A post's clip: trimmed, filtered and muted only.
+    /// A post's clip: its own frame to zoom and move in, and everything on it made part of the video.
     private var clipOnly: Bool { finishVideo != nil }
     /// A post's photo: the shape picked for it (portrait 4:5 to start, as Instagram's is), else the editor's own.
     @State private var shape: CGFloat?
@@ -298,25 +300,33 @@ struct StoryEditor: View {
 
     // MARK: tools along the top
 
-    @ViewBuilder private var topBar: some View {
+    /// The tools in a row, and under its right end the ones for the frame and the clip itself: in the one row
+    /// there were more buttons than a narrow phone is wide.
+    private var topBar: some View {
+        VStack(alignment: .trailing, spacing: 6) {
+            topRow
+            if mode == .none {
+                if forPost && !lockShape { round("aspectratio") { nextShape() }.accessibilityLabel("Shape") }
+                if video != nil {
+                    round(muted ? "speaker.slash.fill" : "speaker.wave.2.fill") { muted.toggle(); flash(muted ? "Sound off" : "Sound on") }.accessibilityLabel(muted ? "Sound off" : "Sound on")
+                    round("scissors") { mode = .trim }.accessibilityLabel("Trim")
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var topRow: some View {
         HStack(spacing: 5) {
             switch mode {
             case .none:
                 round("xmark") { if edited { leaving = true } else { close() } }.accessibilityLabel("Back")
                 if !history.isEmpty { round("arrow.uturn.backward") { undo() }.accessibilityLabel("Undo") }
                 Spacer()
-                if !clipOnly {
-                    round("textformat") { newText() }.accessibilityLabel("Text")
-                    round("face.smiling") { stickers = true }.accessibilityLabel("Stickers")
-                    round("scribble.variable") { mode = .draw }.accessibilityLabel("Draw")
-                }
-                if forPost { round("aspectratio") { nextShape() }.accessibilityLabel("Shape") }
+                round("textformat") { newText() }.accessibilityLabel("Text")
+                round("face.smiling") { stickers = true }.accessibilityLabel("Stickers")
+                round("scribble.variable") { mode = .draw }.accessibilityLabel("Draw")
                 round("camera.filters") { mode = .filters }.accessibilityLabel("Filters")
                 round("slider.horizontal.3") { mode = .adjust }.accessibilityLabel("Adjust")
-                if video != nil {
-                    round(muted ? "speaker.slash.fill" : "speaker.wave.2.fill") { muted.toggle(); flash(muted ? "Sound off" : "Sound on") }.accessibilityLabel(muted ? "Sound off" : "Sound on")
-                    round("scissors") { mode = .trim }.accessibilityLabel("Trim")
-                }
                 if image != nil || bgScale > 1.01 || bgOffset != .zero || !items.isEmpty || !strokes.isEmpty {
                 Menu {
                     if image != nil { Button { Task { await save() } } label: { Label("Save to Photos", systemImage: "square.and.arrow.down") } }
@@ -718,7 +728,7 @@ struct StoryEditor: View {
         if let finishVideo {
             Button {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
-                finishVideo(look, length > 0 ? range : nil, muted, clipCrop, ratio)
+                finishVideo(ClipEdit(look: look, range: length > 0 ? range : nil, muted: muted, crop: clipCrop, shape: ratio, overlay: overlayPicture()))
             } label: {
                 Text("Use this video").font(.headline).foregroundStyle(.black).frame(maxWidth: .infinity).padding(.vertical, 13).background(.white, in: Capsule())
             }
@@ -767,6 +777,15 @@ struct StoryEditor: View {
             if ok { UINotificationFeedbackGenerator().notificationOccurred(.success); posted() }
             else { flash(stories.error ?? "Couldn't share it") }
         }
+    }
+
+    /// What's written, stuck and drawn on a post's clip, as one see-through picture in the frame's shape: the video
+    /// is made with it over every frame. Nil when there's nothing on it.
+    private func overlayPicture() -> UIImage? {
+        guard !everything.isEmpty else { return nil }
+        let r = ImageRenderer(content: StoryLayer(items: everything).frame(width: StoryArt.design, height: StoryArt.design / ratio))
+        r.scale = 1080 / StoryArt.design; r.isOpaque = false
+        return r.uiImage
     }
 
     /// The photo with everything on it, as one picture: a feed post, or Save to Photos.

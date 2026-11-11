@@ -86,7 +86,7 @@ enum StoryArt {
         if let sh = t["sh"], sh > 0 { img = img.applyingFilter("CISharpenLuminance", parameters: [kCIInputSharpnessKey: sh / 100 * 1.5]) }
         if let v = t["v"], v > 0, whole {
             img = img.applyingFilter("CIVignetteEffect", parameters: [kCIInputCenterKey: CIVector(x: ext.midX, y: ext.midY),
-                kCIInputRadiusKey: hypot(ext.width, ext.height) / 2 * 0.9, kCIInputIntensityKey: v / 100 * 0.9, "inputFalloff": 0.5])
+                kCIInputRadiusKey: hypot(ext.width, ext.height) / 2 * 0.72, kCIInputIntensityKey: v / 100, "inputFalloff": 0.5])
         }
         return img
     }
