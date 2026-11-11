@@ -46,6 +46,8 @@ struct PostPicker: View {
             .background(Theme.bg.ignoresSafeArea())
             .overlay { if busy { ZStack { Color.black.opacity(0.35).ignoresSafeArea(); ProgressView().controlSize(.large).tint(.white) } } }
             .navigationTitle("New post").navigationBarTitleDisplayMode(.inline)
+            // solid: the grid showed through the bar as it scrolled under
+            .toolbarBackground(Theme.bg, for: .navigationBar).toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button { close() } label: { Image(systemName: "xmark") }.accessibilityLabel("Close") }
                 ToolbarItem(placement: .confirmationAction) { Button("Next") { next() }.fontWeight(.bold).disabled(picked.isEmpty || busy) }
@@ -91,7 +93,14 @@ struct PostPicker: View {
     private var preview: some View {
         Color.black.opacity(0.5)
             .overlay {
-                if let big { Image(uiImage: big).resizable().scaledToFit() }
+                if let big {
+                    // as it will be posted, filling what it can of a square the screen's width: a photo in its own shape
+                    // (no taller than 4:5, no wider than 1.91:1), a video in the tall 9:16 frame. Shown whole and small
+                    // in the middle, a tall screenshot was a sliver.
+                    let own = big.size.width / max(big.size.height, 1)
+                    let shape: CGFloat = showing?.mediaType == .video ? 9.0 / 16.0 : min(1.91, max(0.8, own))
+                    Color.clear.aspectRatio(shape, contentMode: .fit).overlay { Image(uiImage: big).resizable().scaledToFill() }.clipped()
+                }
                 else if allowed && !assets.isEmpty { ProgressView() }
                 else { Image(systemName: "photo.on.rectangle.angled").font(.system(size: 40)).foregroundStyle(.tertiary) }
             }
@@ -107,7 +116,7 @@ struct PostPicker: View {
                         .padding(.horizontal, 9).frame(height: 26).background(.black.opacity(0.55), in: Capsule()).padding(10)
                 }
             }
-            .frame(maxWidth: .infinity).frame(height: min(UIScreen.main.bounds.width, UIScreen.main.bounds.height * 0.42))
+            .frame(maxWidth: .infinity).frame(height: min(UIScreen.main.bounds.width, UIScreen.main.bounds.height * 0.5))
             .clipped()
     }
 

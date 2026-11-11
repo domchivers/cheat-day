@@ -913,6 +913,13 @@ extension FeedVideo {
 
 struct ComposeSheet: View {
     var preset: JSON? = nil
+    /// A new post starts as the picker, in this same sheet (not the write-up with the picker coming up over it a
+    /// moment later). Not when it's of a workout or food already, or there are drafts to carry on with.
+    @State private var firstPick: Bool
+    init(preset: JSON? = nil) {
+        self.preset = preset
+        _firstPick = State(initialValue: preset == nil && Drafts.all().isEmpty)
+    }
     @Environment(\.dismiss) private var dismiss
     @State private var what: JSON?
     @State private var caption = ""
@@ -956,6 +963,23 @@ struct ComposeSheet: View {
     private var store: Store { Store.shared }
 
     var body: some View {
+        ZStack {
+            form
+            if firstPick && !started {
+                PostPicker(room: 10, photosOnly: false,
+                           done: { images, video in took(images, video, wait: false) },
+                           // the camera, the system's picker and the video editor come up over the picker, which is
+                           // still there if they're backed out of; it goes once there's something in the post
+                           camera: { camera = true },
+                           allPhotos: { library = true },
+                           noPhoto: { firstPick = false },
+                           close: { dismiss() })
+                    .background(Theme.bg.ignoresSafeArea())
+            }
+        }
+    }
+
+    private var form: some View {
         NavigationStack {
             ScrollViewReader { proxy in
             ScrollView {
@@ -1005,10 +1029,7 @@ struct ComposeSheet: View {
                 drafts = Drafts.all()
                 // a new post starts by choosing its picture, as Instagram's does (unless it's of a workout or food
                 // already, or there are drafts to carry on with); closing the picker leaves the post to be written without one
-                if !opened {
-                    opened = true
-                    if preset == nil && drafts.isEmpty && !started { pickerFirst = true; DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { picking = true } }
-                }
+                opened = true
             }
             .fullScreenCover(isPresented: $picking) {
                 PostPicker(room: max(1, 10 - shots.count), photosOnly: !shots.isEmpty,
@@ -1072,7 +1093,7 @@ struct ComposeSheet: View {
                     var e = e
                     // the cover picked before stays, if that moment is still in the part kept
                     if movie == c.url, let at = clip.cover, e.range.map({ $0.contains(at) }) ?? true { e.cover = at }
-                    clip = e; movie = c.url; shots = []; poster = nil; triedPoster = false; cutting = nil
+                    clip = e; movie = c.url; shots = []; poster = nil; triedPoster = false; cutting = nil; firstPick = false
                     Task { poster = await e.still(c.url) }
                 }, startShape: clip.shape)
             }
@@ -1085,7 +1106,7 @@ struct ComposeSheet: View {
                 StoryEditor(image: e.image, video: nil, aspect: later ? (firstShape ?? 4.0 / 5.0) : (e.index != nil ? own : 4.0 / 5.0), close: { editing = nil }, finish: { out in
                     movie = nil; poster = nil
                     if let i = e.index, shots.indices.contains(i) { shots[i].out = out }
-                    else if shots.count < 10 { shots.append(Shot(source: e.image, out: out)); showing = shots.count - 1; stage = 0 }
+                    else if shots.count < 10 { shots.append(Shot(source: e.image, out: out)); showing = shots.count - 1; stage = 0; firstPick = false }
                     editing = nil
                 }, lockShape: later, startTool: e.tool)
             }
@@ -1095,17 +1116,17 @@ struct ComposeSheet: View {
     /// What was picked, from the app's picker or the system's. A video (only as the post's one picture) goes into
     /// the editor first, to trim it, filter it, write on it; one photo goes straight into the editor too; several go
     /// in at once in the first one's shape, each to be edited by tapping it.
-    private func took(_ images: [UIImage], _ video: URL?) {
+    private func took(_ images: [UIImage], _ video: URL?, wait: Bool = true) {
         Task {
             if let video, shots.isEmpty {
-                try? await Task.sleep(for: .milliseconds(550))
+                if wait { try? await Task.sleep(for: .milliseconds(550)) }   // for a picker over this to have gone
                 cutting = ClipBox(url: video)
             } else if !images.isEmpty {
                 // photos: onto the screen with the tools under them (one or several), in the first one's shape
                 movie = nil; poster = nil
                 let from = shots.count
                 for img in images where shots.count < 10 { let s = Self.sized(img); shots.append(Shot(source: s, out: Self.fitted(s, to: firstShape))) }
-                showing = min(from, max(0, shots.count - 1)); stage = 0
+                showing = min(from, max(0, shots.count - 1)); stage = 0; firstPick = false
             }
         }
     }
