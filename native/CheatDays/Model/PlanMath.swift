@@ -210,6 +210,7 @@ extension Store {
             if let kept = dict(d["prefs"])["cheatPlans"] { prefs["cheatPlans"] = kept }
             if prefs["workoutPlan"] == nil, let kept = dict(d["prefs"])["workoutPlan"] { prefs["workoutPlan"] = kept }
             if prefs["habits"] == nil, let kept = dict(d["prefs"])["habits"] { prefs["habits"] = kept }
+            if let kept = dict(d["prefs"])["weighDay"] { prefs["weighDay"] = kept }   // the weigh-in day they chose isn't the plan's to reset
             d["prefs"] = prefs
             d["eatBack"] = false
             d["onboarded"] = true

@@ -97,7 +97,7 @@ struct BudgetView: View {
                         Button { withAnimation(.snappy) { day = on ? nil : d } } label: {
                             VStack(spacing: 5) {
                                 Spacer(minLength: 0)
-                                Text(Fmt.int(v)).font(.system(size: 10.5, weight: .bold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+                                Text(Fmt.int(v)).font(.system(size: 10.5, weight: .bold)).monospacedDigit().fixedSize()
                                     .foregroundStyle(on ? .primary : .secondary)
                                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                                     .fill(on ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Theme.accent.opacity(0.25)))

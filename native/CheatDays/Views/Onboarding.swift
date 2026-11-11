@@ -313,19 +313,21 @@ struct OnboardingView: View {
             ForEach([1, 2, 3, 4, 5, 6, 0], id: \.self) { d in
                 let on = r.cheat != nil && q.cheatDay == d
                 let v = Double(on ? (r.cheat ?? r.everyday) : r.everyday)
+                // a real button (a tap gesture on the column didn't take taps); it only answers on the cheat day step
+                Button { withAnimation(.snappy) { q.cheatDay = d } } label: {
                 VStack(spacing: 5) {
                     Spacer(minLength: 0)
-                    Text(Fmt.int(v)).font(.system(size: 10.5, weight: .bold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+                    Text(Fmt.int(v)).font(.system(size: 10.5, weight: .bold)).monospacedDigit().fixedSize()
                         .foregroundStyle(on ? .primary : .secondary)
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(on ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Theme.accent.opacity(0.25)))
                         .frame(height: min(66, max(18, 40 * v / Double(max(r.everyday, 1)))))
                     Text(Calendar.current.veryShortWeekdaySymbols[d]).font(.caption2.weight(.semibold)).foregroundStyle(on ? .primary : .secondary)
                 }
-                .frame(maxWidth: .infinity).contentShape(Rectangle())
-                .onTapGesture { if pick { withAnimation(.snappy) { q.cheatDay = d } } }
+                .frame(maxWidth: .infinity, maxHeight: .infinity).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).allowsHitTesting(pick)
                 .accessibilityLabel("\(Calendar.current.weekdaySymbols[d]), \(Fmt.int(v))\(on ? ", cheat day" : "")")
-                .accessibilityAddTraits(pick ? [.isButton] : [])
             }
         }
         .frame(height: 108).padding(14)
