@@ -973,6 +973,12 @@ struct PlacedItem: View {
     @State private var told = ""
     @State private var upright = false
     @State private var resizing = false   // a real pinch under way: a small twist then is the fingers wobbling
+    // where the fingers left it, shown until the editor's own copy says the same: without it the sticker jumped back
+    // to its old size or place for a frame as they lifted
+    @State private var held: JSON = [:]
+    // the twist at which turning took hold (10 degrees, 25 during a pinch), kept for the rest of the gesture: the dead
+    // zone growing part way through a pinch used to jerk the sticker back by 15 degrees
+    @State private var twistFrom: Double?
     // the sticker drawn as a picture at the size it's shown: scaled up as it was, it went soft and fuzzy
     @State private var sharp: UIImage?
     @State private var sharpFor = ""
@@ -980,8 +986,8 @@ struct PlacedItem: View {
 
     /// A twist only counts past 10 degrees (25 while it's being pinched bigger or smaller), so resizing doesn't tilt it.
     private func turned(_ a: Angle) -> Double {
-        let d = a.degrees, dead: Double = resizing ? 25 : 10
-        return abs(d) < dead ? 0 : d - (d > 0 ? dead : -dead)
+        guard let from = twistFrom else { return 0 }
+        return a.degrees - from
     }
 
     /// What it looks like and how big, for knowing when to draw it again (where it is and its turn don't matter).
@@ -1007,15 +1013,20 @@ struct PlacedItem: View {
         return abs(deg - q) < 4 ? (q, true) : (deg, false)
     }
 
-    private var bx: Double { num(o["x"]) ?? 0.5 }
-    private var by: Double { num(o["y"]) ?? 0.5 }
-    private var scale: Double { num(o["scale"]) ?? 1 }
-    private var rotation: Double { num(o["rotation"]) ?? 0 }
+    private var bx: Double { num(held["x"]) ?? num(o["x"]) ?? 0.5 }
+    private var by: Double { num(held["y"]) ?? num(o["y"]) ?? 0.5 }
+    private var scale: Double { num(held["scale"]) ?? num(o["scale"]) ?? 1 }
+    private var rotation: Double { num(held["rotation"]) ?? num(o["rotation"]) ?? 0 }
+    /// The editor's copy of where it is and how big: when this changes, what was held has been taken.
+    private var theirs: String { "\(num(o["x"]) ?? 0.5),\(num(o["y"]) ?? 0.5),\(num(o["scale"]) ?? 1),\(num(o["rotation"]) ?? 0)" }
+    private func keep(_ change: JSON) { for (k, v) in change { held[k] = v }; commit(change) }
 
     /// Where it is with the finger's move, snapped to the middle when it's close.
     private func place(_ t: CGSize) -> (x: Double, y: Double, sx: Bool, sy: Bool) {
         var x = bx + Double(t.width / cw), y = by + Double(t.height / ch)
-        let sx = abs(x - 0.5) < 0.025, sy = abs(y - 0.5) < 0.02
+        // not while two fingers are resizing it: their middle wobbles, and it kept catching and letting go of the centre
+        let free = pinch == 1 && !resizing
+        let sx = free && abs(x - 0.5) < 0.025, sy = free && abs(y - 0.5) < 0.02
         if sx { x = 0.5 }; if sy { y = 0.5 }
         return (min(1, max(0, x)), min(1, max(0, y)), sx, sy)
     }
@@ -1036,6 +1047,7 @@ struct PlacedItem: View {
             .animation(.snappy(duration: 0.18), value: dim)
             .onTapGesture { tap() }
             .task(id: lookKey) { if drawn { let k = lookKey; sharp = draw(); sharpFor = k } }
+            .onChange(of: theirs) { _, _ in held = [:] }
             .gesture(SimultaneousGesture(
                 DragGesture(minimumDistance: 2)
                     .updating($drag) { v, s, _ in s = v.translation }
@@ -1048,7 +1060,7 @@ struct PlacedItem: View {
                     }
                     .onEnded { v in
                         let p = place(v.translation)
-                        commit(["x": p.x, "y": p.y]); told = ""; ended()
+                        keep(["x": p.x, "y": p.y]); told = ""; ended()
                     },
                 SimultaneousGesture(
                     MagnifyGesture().updating($pinch) { v, s, _ in s = v.magnification }
@@ -1056,13 +1068,16 @@ struct PlacedItem: View {
                             if told.isEmpty { told = "pinch"; began() }
                             if abs(v.magnification - 1) > 0.12 { resizing = true }
                         }
-                        .onEnded { v in commit(["scale": min(4, max(0.3, scale * Double(v.magnification)))]); told = ""; DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { resizing = false }; ended() },
+                        .onEnded { v in keep(["scale": min(4, max(0.3, scale * Double(v.magnification)))]); told = ""; DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { resizing = false }; ended() },
                     RotateGesture().updating($twist) { v, s, _ in s = v.rotation }
                         .onChanged { v in
+                            // turning takes hold once, at the edge of the dead zone, so it starts from nothing
+                            let dead: Double = resizing ? 25 : 10
+                            if twistFrom == nil, abs(v.rotation.degrees) >= dead { twistFrom = v.rotation.degrees > 0 ? dead : -dead }
                             let on = snapped(rotation + turned(v.rotation)).1
                             if on != upright { upright = on; if on { UIImpactFeedbackGenerator(style: .light).impactOccurred() } }
                         }
-                        .onEnded { v in commit(["rotation": snapped(rotation + turned(v.rotation)).0]); told = ""; upright = false; ended() })))
+                        .onEnded { v in keep(["rotation": snapped(rotation + turned(v.rotation)).0]); twistFrom = nil; told = ""; upright = false; ended() })))
     }
 }
 
