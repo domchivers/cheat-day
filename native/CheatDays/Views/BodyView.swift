@@ -44,12 +44,9 @@ struct BodyView: View {
                         let r = reading.item
                         Button { entry = r } label: {
                             HStack {
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(DayKey.date(str(r["day"])).formatted(.dateTime.weekday(.abbreviated).day())).font(.body.weight(.semibold))
-                                    if let t = ISO.date(str(r["takenAt"])) { Text(t.formatted(date: .omitted, time: .shortened)).font(.caption2).foregroundStyle(.secondary) }
-                                }
+                                Text(DayKey.date(str(r["day"])).formatted(.dateTime.weekday(.abbreviated).day())).font(.body.weight(.semibold))
                                 Spacer()
-                                Text(([pos(r["weight"]).map { "\(Fmt.kg($0)) kg" }, pos(r["fat"]).map { "\(Fmt.dec($0))%" }].compactMap { $0 }).joined(separator: " · "))
+                                Text(([pos(r["weight"]).map { "\(Fmt.kgRow($0)) kg" }, pos(r["fat"]).map { "\(Fmt.dec($0))%" }].compactMap { $0 }).joined(separator: " · "))
                                     .font(.subheadline).monospacedDigit().foregroundStyle(.secondary)
                                 Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
                             }

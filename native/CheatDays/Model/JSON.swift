@@ -73,6 +73,8 @@ enum Fmt {
         let s = String(format: "%.2f", r)
         return s.hasSuffix("0") ? String(s.dropLast()) : s
     }
+    /// A weight in a list of weigh-ins: always two decimals (81.60 under 81.35), so a column of them lines up.
+    static func kgRow(_ v: Double) -> String { String(format: "%.2f", v) }
     static func kg2(_ v: Double) -> Double { (v * 100).rounded() / 100 }
     /// A number as typed: "22.5", "22,5" (a comma keypad), "22." part way through, ".5".
     static func typed(_ t: String) -> Double? { Double(t.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: ".")) }

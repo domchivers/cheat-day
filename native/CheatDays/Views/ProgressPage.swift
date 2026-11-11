@@ -476,7 +476,7 @@ struct ProgressPage: View {
                     HStack {
                         Text(DayKey.date(str(r["day"])).formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))).font(.body.weight(.semibold)).foregroundStyle(.primary)
                         Spacer()
-                        Text(([pos(r["weight"]).map { "\(Fmt.kg($0)) kg" }, pos(r["fat"]).map { "\(Fmt.dec($0))%" }].compactMap { $0 }).joined(separator: " · "))
+                        Text(([pos(r["weight"]).map { "\(Fmt.kgRow($0)) kg" }, pos(r["fat"]).map { "\(Fmt.dec($0))%" }].compactMap { $0 }).joined(separator: " · "))
                             .font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
                     }
                     .padding(.horizontal, 14).padding(.vertical, 12).contentShape(Rectangle())
