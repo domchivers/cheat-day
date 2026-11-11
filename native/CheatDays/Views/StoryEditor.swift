@@ -152,7 +152,7 @@ struct StoryEditor: View {
             // kept clear for the home bar, stopping 12 short of the bottom (96 was held back before, and none of
             // that strip used, which left a tall clip small with black all round it)
             let low = max(0, screen.safeAreaInsets.bottom - 12)
-            let cw = min(screen.size.width - 16, (screen.size.height + low - 62) * ratio)
+            let cw = min(screen.size.width - 16, (screen.size.height + low - 128) * ratio)   // 66 more for the row of tools
             let ch = cw / ratio
             VStack(spacing: 10) {
                 canvas(cw, ch)
@@ -175,6 +175,8 @@ struct StoryEditor: View {
                         }
                     }
                     .animation(.easeOut(duration: 0.2), value: stories.posting)
+                // the tools across the whole screen, not just the picture's width; out of the way while one is in use
+                toolbar.frame(width: screen.size.width).opacity(mode == .none ? 1 : 0).allowsHitTesting(mode == .none)
                 bottomBar.frame(width: cw)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -330,38 +332,42 @@ struct StoryEditor: View {
 
     // MARK: tools along the top
 
-    /// The tools in a row, and under its right end the ones for the frame and the clip itself: in the one row
-    /// there were more buttons than a narrow phone is wide.
-    private var topBar: some View {
-        VStack(alignment: .trailing, spacing: 6) {
-            topRow
-            if mode == .none {
-                if forPost && !lockShape { round("aspectratio") { nextShape() }.accessibilityLabel("Shape") }
-                if video == nil ? image != nil : clipOnly { round("rotate.right") { turn() }.accessibilityLabel("Rotate") }
+    /// Over the picture, only what leaves or undoes: the tools are in a row of their own under it.
+    private var topBar: some View { topRow }
+
+    /// The tools, each with its name, in a row under the picture that slides sideways: as bare round icons over the
+    /// picture they covered it, and nobody could tell the frame button from the filters one.
+    private var toolbar: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 8) {
+                tool("textformat", "Text", "Text") { newText() }
+                tool("face.smiling", "Stickers", "Stickers") { stickers = true }
+                tool("scribble.variable", "Draw", "Draw") { mode = .draw }
+                tool("camera.filters", "Filter", "Filters") { mode = .filters }
+                tool("slider.horizontal.3", "Adjust", "Adjust") { mode = .adjust }
+                if forPost && !lockShape { tool("aspectratio", "Shape", "Shape") { nextShape() } }
+                if video == nil ? image != nil : clipOnly { tool("rotate.right", "Rotate", "Rotate") { turn() } }
                 if video != nil {
-                    round(muted ? "speaker.slash.fill" : "speaker.wave.2.fill") { muted.toggle(); flash(muted ? "Sound off" : "Sound on") }.accessibilityLabel(muted ? "Sound off" : "Sound on")
-                    round("scissors") { mode = .trim }.accessibilityLabel("Trim")
+                    tool(muted ? "speaker.slash.fill" : "speaker.wave.2.fill", "Sound", muted ? "Sound off" : "Sound on") { muted.toggle(); flash(muted ? "Sound off" : "Sound on") }
+                    tool("scissors", "Trim", "Trim") { mode = .trim }
                 }
             }
+            .padding(.horizontal, 8)
         }
+        .scrollIndicators(.hidden)
+        .frame(height: 56)
     }
 
-    /// A quarter turn to the right. A photo is turned itself; a post's clip is shown turned and made that way when
-    /// it's posted. The zoom and place start again: they were for the picture as it lay.
-    private func turn() {
-        UISelectionFeedbackGenerator().selectionChanged()
-        if video != nil {
-            turns = (turns + 1) % 4
-            poster = poster?.quarterTurned()
-            frames = frames.map { $0.quarterTurned() }
-        } else {
-            guard let now = work ?? image else { return }
-            work = now.quarterTurned(); lite = lite?.quarterTurned(); preview = nil
-            let l = flatLook
-            Task { await refilter(l) }
+    private func tool(_ symbol: String, _ title: String, _ label: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 5) {
+                Image(systemName: symbol).font(.system(size: 18, weight: .semibold)).frame(height: 22)
+                Text(title).font(.caption2.weight(.semibold))
+            }
+            .foregroundStyle(.white).frame(width: 64, height: 56)
+            .background(Color(white: 0.15), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
-        thumbs = thumbs.mapValues { $0.quarterTurned() }
-        withAnimation(.snappy) { bgScale = 1; bgOffset = .zero; bgSpin = 0; clipMove = .zero; clipCovers = true }
+        .buttonStyle(.plain).accessibilityLabel(label)
     }
 
     @ViewBuilder private var topRow: some View {
@@ -371,11 +377,6 @@ struct StoryEditor: View {
                 round("xmark") { if edited { leaving = true } else { close() } }.accessibilityLabel("Back")
                 if !history.isEmpty { round("arrow.uturn.backward") { undo() }.accessibilityLabel("Undo") }
                 Spacer()
-                round("textformat") { newText() }.accessibilityLabel("Text")
-                round("face.smiling") { stickers = true }.accessibilityLabel("Stickers")
-                round("scribble.variable") { mode = .draw }.accessibilityLabel("Draw")
-                round("camera.filters") { mode = .filters }.accessibilityLabel("Filters")
-                round("slider.horizontal.3") { mode = .adjust }.accessibilityLabel("Adjust")
                 if image != nil || bgScale > 1.01 || bgOffset != .zero || bgSpin != 0 || !items.isEmpty || !strokes.isEmpty {
                 Menu {
                     if image != nil { Button { Task { await save() } } label: { Label("Save to Photos", systemImage: "square.and.arrow.down") } }
