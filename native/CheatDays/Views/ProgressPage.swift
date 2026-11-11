@@ -111,8 +111,6 @@ struct ProgressPage: View {
             }
         }
         Spacer(minLength: 0)
-        // level with the number it adds to, round like the buttons on Friends
-        round("plus") { weighing = true }.accessibilityLabel("Weigh in")
         }
     }
 
@@ -271,11 +269,36 @@ struct ProgressPage: View {
                 }
             }
             .padding(.horizontal, 8)
+            // when you last weighed, and the way to weigh in, with the chart they feed (the empty chart has its own button)
+            if pts.count >= 2 {
+                Divider().padding(.top, 2)
+                HStack(spacing: 8) {
+                    lastWeighed.font(.subheadline).lineLimit(1).minimumScaleFactor(0.8)
+                    Spacer(minLength: 0)
+                    Button { weighing = true } label: {
+                        Text("Weigh in").font(.footnote.weight(.heavy)).foregroundStyle(Theme.accent)
+                            .padding(.horizontal, 14).padding(.vertical, 8).background(Color(.tertiarySystemFill), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 14).padding(.top, 2)
+            }
         }
         .padding(.vertical, 14)
         .background(LinearGradient(colors: [Theme.accent.opacity(0.10), Color(.secondarySystemGroupedBackground)], startPoint: .top, endPoint: .center),
                     in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    /// "Last weighed Sat 7 Nov · 4 days ago", the date standing out.
+    private var lastWeighed: Text {
+        guard let last = store.lastWeighIn else { return Text("No weigh-ins yet").foregroundStyle(.secondary) }
+        let day = DayKey.date(last.day)
+        let ago = Calendar.current.dateComponents([.day], from: day, to: DayKey.date(store.today)).day ?? 0
+        let when = ago <= 0 ? "today" : ago == 1 ? "yesterday" : "\(ago) days ago"
+        return Text("Last weighed ").foregroundStyle(.secondary)
+            + Text(day.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))).fontWeight(.bold)
+            + Text(" · \(when)").foregroundStyle(.secondary)
     }
 
     private var rangeName: String {
