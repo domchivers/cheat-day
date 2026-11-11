@@ -85,6 +85,13 @@ struct StoryEditor: View {
     @State private var tool: String?
     @State private var settled: [String: Double] = [:]
     @State private var turns = 0   // a post's clip, turned by quarters to the right (a photo is itself turned)
+    // a smaller copy of the photo, drawn through the look while a slider is moving (the full one each step lagged
+    // behind the finger); the full one is drawn when the finger lifts
+    @State private var lite: UIImage?
+    @State private var sliding = false
+    /// The look without Straighten: on a photo that's a turn of the picture on screen, done as the slider moves,
+    /// not a new picture made for every degree.
+    private var flatLook: String { StoryArt.look(filter, tune.filter { $0.key != "t" }) }
     @State private var comparing = false   // a finger held on the photo in Adjust: the photo as it came
     private var look: String { StoryArt.look(filter, tune) }
     private var clipLook: String { StoryArt.look(filter, settled) }
@@ -183,7 +190,7 @@ struct StoryEditor: View {
         .statusBarHidden()
         .task { await prepare() }
         .task { if startWriting { try? await Task.sleep(for: .milliseconds(350)); newText(); size = 40 } }
-        .task(id: look) { await refilter(look) }
+        .task(id: flatLook + (sliding ? " " : "")) { await refilter(flatLook) }
         .sheet(isPresented: $stickers, onDismiss: { if let p = picked { picked = nil; add(p) } }) {
             StickerSheet(forPost: forPost, pick: { id in picked = id; stickers = false }, place: { o in stickers = false; place(o) })
                 .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
@@ -232,10 +239,17 @@ struct StoryEditor: View {
             } else if let shown = (comparing ? nil : preview) ?? work ?? image {
                 // the photo moves on its own too, and tells the editor only when the finger lifts
                 let k = max(cw / max(1, shown.size.width), ch / max(1, shown.size.height))
-                MovableClip(cw: cw, ch: ch, fill: CGSize(width: shown.size.width * k, height: shown.size.height * k), scale: bgScale, offset: bgOffset, spin: bgSpin,
+                let full = CGSize(width: shown.size.width * k, height: shown.size.height * k)
+                // Straighten: turned about its middle and grown just enough that no corner comes up empty, as the
+                // finished picture is
+                let tilt = comparing ? 0 : (tune["t"] ?? 0), lean = abs(tilt) * Double.pi / 180
+                let grow = CGFloat(cos(lean) + Double(max(full.width / max(full.height, 1), full.height / max(full.width, 1))) * sin(lean))
+                MovableClip(cw: cw, ch: ch, fill: full, scale: bgScale, offset: bgOffset, spin: bgSpin,
                             movable: mode == .none || mode == .filters, swipe: { nextFilter($0) },
                             commit: { sc, off, deg in bgScale = sc; bgOffset = off; bgSpin = deg }) {   // no animation: it is already there, under the fingers
-                    Image(uiImage: shown).resizable().scaledToFill().frame(width: cw, height: ch)
+                    Image(uiImage: shown).resizable().frame(width: full.width, height: full.height)
+                        .rotationEffect(.degrees(tilt)).scaleEffect(grow)
+                        .frame(width: full.width, height: full.height).clipped()
                 }
             }
             if mode == .adjust && video == nil {
@@ -339,8 +353,8 @@ struct StoryEditor: View {
             frames = frames.map { $0.quarterTurned() }
         } else {
             guard let now = work ?? image else { return }
-            work = now.quarterTurned(); preview = nil
-            let l = look
+            work = now.quarterTurned(); lite = lite?.quarterTurned(); preview = nil
+            let l = flatLook
             Task { await refilter(l) }
         }
         thumbs = thumbs.mapValues { $0.quarterTurned() }
@@ -484,7 +498,7 @@ struct StoryEditor: View {
                 }
                 .buttonStyle(.plain).accessibilityLabel("Put \(spec.1) back")
                 Slider(value: Binding(get: { tune[k] ?? 0 }, set: { let n = $0.rounded(); tune[k] = n == 0 ? nil : n }), in: spec.3...spec.4, step: 1,
-                       onEditingChanged: { if !$0 { settled = tune } })
+                       onEditingChanged: { sliding = $0; if !$0 { settled = tune } })
                     .tint(.white).padding(.horizontal, 24).accessibilityLabel(spec.1)
             }
             ScrollView(.horizontal) {
@@ -720,6 +734,8 @@ struct StoryEditor: View {
                 return (w, t)
             }.value
             work = w; thumbs = t
+            let long = max(w.size.width, w.size.height)
+            if long > 1100 { lite = await w.byPreparingThumbnail(ofSize: CGSize(width: w.size.width * 1100 / long, height: w.size.height * 1100 / long)) }
         }
         if let video {
             let asset = AVURLAsset(url: video)
@@ -746,7 +762,7 @@ struct StoryEditor: View {
     /// The photo through the look. A slider asks many times a second: each asking waits a moment and gives way to
     /// the next, so only the latest is drawn.
     private func refilter(_ f: String) async {
-        guard let src = work ?? image else { return }
+        guard let src = (sliding ? lite : nil) ?? work ?? image else { return }
         if f == "Normal" { preview = nil; return }
         try? await Task.sleep(for: .milliseconds(12))
         if Task.isCancelled { return }
@@ -757,7 +773,9 @@ struct StoryEditor: View {
     /// The photo as framed (zoom, position, filter), 1080 wide (1920 high for a story); what's placed on it stays
     /// sharp as its own layer.
     private func framedPhoto(_ cw: CGFloat) -> UIImage? {
-        guard let base = preview ?? work ?? image else { return nil }
+        // made afresh from the full photo, Straighten and all: what's on screen may be the smaller copy, turned as a view
+        guard let plain = work ?? image else { return nil }
+        let base = look == "Normal" ? plain : StoryArt.filtered(plain, look)
         let ch = cw / ratio, k = 1080 / cw, oh = (1080 / ratio).rounded()
         let fill = max(cw / base.size.width, ch / base.size.height) * bgScale
         let w = base.size.width * fill, h = base.size.height * fill
