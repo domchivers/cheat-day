@@ -24,7 +24,7 @@ struct MessagesView: View {
             }
         }
         .listStyle(.plain)
-        .searchable(text: $search, prompt: "Search")
+        .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search")   // always showing: the default hid it after a flash, until you pulled down
         .background(Theme.bg)
         .navigationTitle("Messages").navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .topBarTrailing) { Button { picking = true } label: { Image(systemName: "square.and.pencil") }.accessibilityLabel("New message") } }
