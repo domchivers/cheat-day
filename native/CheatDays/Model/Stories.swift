@@ -141,12 +141,16 @@ struct LoopingVideo: UIViewRepresentable {
     var muted = false
     var filter = "Normal"
     var range: ClosedRange<Double>? = nil
+    /// A moment to hold on, in seconds: the clip stops there while a finger looks through it, and plays on from
+    /// there once this is nil again.
+    var scrub: Double? = nil
 
     final class PlayerView: UIView {
         override static var layerClass: AnyClass { AVPlayerLayer.self }
         var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
         var looper: AVPlayerLooper?
         var key = ""
+        var held: Double?
     }
 
     func makeUIView(context: Context) -> PlayerView {
@@ -159,6 +163,17 @@ struct LoopingVideo: UIViewRepresentable {
     func updateUIView(_ v: PlayerView, context: Context) {
         if v.key != key { setUp(v) }
         v.playerLayer.player?.isMuted = muted
+        if let at = scrub {
+            v.playerLayer.player?.pause()
+            // only when the finger has moved on: a seek for every redraw made it stutter
+            if v.held.map({ abs($0 - at) > 0.03 }) ?? true {
+                v.held = at
+                let near = CMTime(seconds: 0.05, preferredTimescale: 600)
+                v.playerLayer.player?.seek(to: CMTime(seconds: at, preferredTimescale: 600), toleranceBefore: near, toleranceAfter: near)
+            }
+            return
+        }
+        v.held = nil
         if paused { v.playerLayer.player?.pause() } else { v.playerLayer.player?.play() }
     }
 

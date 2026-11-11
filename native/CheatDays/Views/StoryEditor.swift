@@ -71,6 +71,7 @@ struct StoryEditor: View {
     @State private var muted = false
     @State private var length: Double = 0
     @State private var range: ClosedRange<Double> = 0...30
+    @State private var scrub: Double?   // the moment under a finger on the trim strip
     @State private var frames: [UIImage] = []
     @State private var poster: UIImage?   // the video's first frame, shown while the player gets going
     // sheets
@@ -159,7 +160,7 @@ struct StoryEditor: View {
             Color(white: 0.08)
             if let video {
                 if let poster { Image(uiImage: poster).resizable().scaledToFill().frame(width: cw, height: ch).clipped() }
-                LoopingVideo(url: video, paused: mode == .text, muted: muted, filter: filter, range: length > 0 && mode != .trim ? range : nil)
+                LoopingVideo(url: video, paused: mode == .text, muted: muted, filter: filter, range: length > 0 && mode != .trim ? range : nil, scrub: mode == .trim ? scrub : nil)
             } else if let shown = preview ?? work ?? image {
                 // the photo moves on its own too, and tells the editor only when the finger lifts
                 BackgroundPhoto(image: shown, cw: cw, ch: ch, scale: bgScale, offset: bgOffset, movable: mode == .none || mode == .filters,
@@ -505,17 +506,23 @@ struct StoryEditor: View {
         let total = max(length, 0.1)
         let lo = range.lowerBound / total, hi = range.upperBound / total
         return VStack(spacing: 8) {
-            Text("\(clock(range.lowerBound)) – \(clock(range.upperBound)) · \(Int((range.upperBound - range.lowerBound).rounded())) s")
-                .font(.caption.weight(.heavy)).foregroundStyle(.white)
+            Text(scrub.map { "At \(clock($0))" } ?? "\(clock(range.lowerBound)) – \(clock(range.upperBound)) · \(Int((range.upperBound - range.lowerBound).rounded())) s")
+                .font(.caption.weight(.heavy)).foregroundStyle(.white).monospacedDigit()
             ZStack(alignment: .leading) {
                 HStack(spacing: 0) {
                     ForEach(frames.indices, id: \.self) { i in Image(uiImage: frames[i]).resizable().scaledToFill().frame(width: width / CGFloat(max(1, frames.count)), height: 52).clipped() }
                 }
                 .frame(width: width, height: 52).background(Color(white: 0.2))
+                // a finger along the strip looks through the clip: it holds on that moment, and plays on from it after
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("strip"))
+                    .onChanged { v in scrub = min(length, max(0, Double(v.location.x / width) * length)) }
+                    .onEnded { _ in scrub = nil })
                 // outside the kept part, dimmed
-                Rectangle().fill(.black.opacity(0.6)).frame(width: width * lo, height: 52)
-                Rectangle().fill(.black.opacity(0.6)).frame(width: width * (1 - hi), height: 52).offset(x: width * hi)
-                RoundedRectangle(cornerRadius: 6).stroke(.white, lineWidth: 3).frame(width: max(20, width * (hi - lo)), height: 52).offset(x: width * lo)
+                Rectangle().fill(.black.opacity(0.6)).frame(width: width * lo, height: 52).allowsHitTesting(false)
+                Rectangle().fill(.black.opacity(0.6)).frame(width: width * (1 - hi), height: 52).offset(x: width * hi).allowsHitTesting(false)
+                RoundedRectangle(cornerRadius: 6).stroke(.white, lineWidth: 3).frame(width: max(20, width * (hi - lo)), height: 52).offset(x: width * lo).allowsHitTesting(false)
+                if let at = scrub { Rectangle().fill(.white).frame(width: 2, height: 52).offset(x: width * CGFloat(at / total) - 1).allowsHitTesting(false) }
                 handle(width, left: true).offset(x: width * lo - 8)
                 handle(width, left: false).offset(x: width * hi - 8)
             }
@@ -530,7 +537,8 @@ struct StoryEditor: View {
                 let at = min(length, max(0, Double(v.location.x / width) * length))
                 if left { let s = min(at, range.upperBound - 1); range = max(0, max(s, range.upperBound - 30))...range.upperBound }
                 else { let e = max(at, range.lowerBound + 1); range = range.lowerBound...min(length, min(e, range.lowerBound + 30)) }
-            })
+                scrub = left ? range.lowerBound : range.upperBound   // the frame that end lands on
+            }.onEnded { _ in scrub = nil })
             .accessibilityLabel(left ? "Start" : "End")
     }
 
