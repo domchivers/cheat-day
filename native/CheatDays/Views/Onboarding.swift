@@ -27,13 +27,14 @@ struct Flow: Layout {
 struct Chip: View {
     let text: String
     let on: Bool
+    var quiet = false   // grey when picked, as on the chart's chips, rather than the accent
     let tap: () -> Void
     var body: some View {
         Button(action: tap) {
             Text(text).font(.subheadline.weight(.semibold))
                 .padding(.horizontal, 13).padding(.vertical, 8)
-                .background(on ? Theme.accent : Color(.tertiarySystemFill), in: Capsule())
-                .foregroundStyle(on ? Theme.onAccent : Color.primary)
+                .background(on ? (quiet ? Color(.systemGray3) : Theme.accent) : Color(.tertiarySystemFill), in: Capsule())
+                .foregroundStyle(on ? (quiet ? Color.primary : Theme.onAccent) : (quiet ? Color.secondary : Color.primary))
         }
         .buttonStyle(.plain)
         .sensoryFeedback(.selection, trigger: on)
@@ -69,7 +70,8 @@ struct ChoiceCard: View {
     }
 }
 
-/// Sign-up: what you're after, what you love eating, a normal day, how you train, your cheat day, then the plan.
+/// Sign-up: what you're after, about you, what you love eating, a normal day, how you train, your cheat day, then the
+/// plan. Laid out like Progress and Your plan; from About you on, the budget so far sits above Next.
 struct OnboardingView: View {
     var firstRun = true
     var onDone: () -> Void
@@ -78,6 +80,9 @@ struct OnboardingView: View {
     @State private var loaded = false
     @State private var q = PlanInput()
     @State private var goalWeight: Double?
+    @State private var age: Int?      // nothing is assumed: these start empty and Next waits for them
+    @State private var height: Int?
+    @State private var wheel: String?   // the row whose wheel is open
     @State private var cuisines: Set<String> = []
     @State private var loves: Set<String> = []
     @State private var avoid: Set<String> = []
@@ -98,7 +103,8 @@ struct OnboardingView: View {
     @State private var problem: String?
     private var store: Store { Store.shared }
 
-    private let titles = ["Goals", "Food", "Normal day", "Training", "Cheat days", "Your plan"]
+    private let titles = ["Goals", "About you", "Food", "Normal day", "Training", "Cheat days", "Your plan"]
+    private var last: Int { titles.count - 1 }
     private let allCuisines = ["Chinese", "Thai", "Japanese", "Korean", "Vietnamese", "Indian", "Italian", "Mexican", "Middle Eastern", "Greek", "Pub classics", "Sunday roast", "Aussie BBQ", "Fish and chips"]
     private let allLoves = ["Pizza", "Burgers", "Dumplings", "Curry", "Pasta", "Sushi", "Chips", "Fried chicken", "Kebabs", "Noodles", "Chocolate", "Ice cream", "Biscuits", "Cake", "Crisps", "Cheese", "Beer", "Wine"]
     private let allAvoid = ["Vegetarian", "Vegan", "Halal", "No pork", "No beef", "No seafood", "No dairy", "Gluten free", "Nut allergy", "No eggs", "No mushrooms", "Not spicy"]
@@ -113,19 +119,21 @@ struct OnboardingView: View {
                 Group {
                     switch step {
                     case 0: goalsStep
-                    case 1: foodStep
-                    case 2: dayStep
-                    case 3: trainingStep
-                    case 4: cheatStep
+                    case 1: aboutStep
+                    case 2: foodStep
+                    case 3: dayStep
+                    case 4: trainingStep
+                    case 5: cheatStep
                     default: planStep
                     }
                 }
-                .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 30)
+                .padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 30)
                 .id(step)
                 .transition(.asymmetric(insertion: .move(edge: forward ? .trailing : .leading).combined(with: .opacity),
                                         removal: .move(edge: forward ? .leading : .trailing).combined(with: .opacity)))
             }
             .scrollDismissesKeyboard(.interactively)
+            live
             bottom
         }
         .background(Theme.bg.ignoresSafeArea())
@@ -135,108 +143,261 @@ struct OnboardingView: View {
 
     // MARK: the frame
 
+    /// A round button (leave on the first step, back after it), the steps as bars, and the count or Skip.
     private var top: some View {
-        VStack(spacing: 10) {
-            HStack {
-                if step > 0 { Button("Back") { go(-1) } }
-                else if !firstRun { Button("Cancel") { onDone() } }
-                else { Text(" ") }
-                Spacer()
-                if firstRun && step < 5 { Button("Skip for now") { skip() }.foregroundStyle(.secondary) }
-                else if !firstRun && step > 0 { Button("Close") { onDone() }.foregroundStyle(.secondary) }
+        HStack(spacing: 12) {
+            Button { if step == 0 { firstRun ? skip() : onDone() } else { go(-1) } } label: {
+                Image(systemName: step == 0 ? "xmark" : "chevron.left").font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.accent)
+                    .frame(width: 38, height: 38).background(Color(.tertiarySystemFill), in: Circle())
             }
-            .font(.body.weight(.semibold))
-            HStack(spacing: 4) {
+            .buttonStyle(.plain).accessibilityLabel(step == 0 ? (firstRun ? "Skip for now" : "Cancel") : "Back")
+            HStack(spacing: 5) {
                 ForEach(titles.indices, id: \.self) { i in
-                    Capsule().fill(i <= step ? Theme.accent : Theme.track).frame(height: 4)
+                    Capsule().fill(i <= step ? Theme.accent : Color(.tertiarySystemFill)).frame(height: 4)
                 }
             }
+            if step == 2 || step == 3 {   // food and a normal day help, but the numbers don't need them
+                Button("Skip") { go(1) }.font(.footnote.weight(.bold)).foregroundStyle(Theme.accent)
+            } else {
+                Text("\(step + 1) of \(titles.count)").font(.footnote.weight(.semibold)).foregroundStyle(.secondary).monospacedDigit()
+            }
         }
-        .padding(.horizontal, 20).padding(.top, 12).padding(.bottom, 6)
+        .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 6)
         .animation(.snappy, value: step)
     }
 
+    private var ready: Bool { step != 1 || (age != nil && height != nil) }
+
     private var bottom: some View {
         Button {
-            if step == 5 { finish() } else { go(1) }
+            if step == last { finish() } else { go(1) }
         } label: {
-            Text(step == 5 ? "Start my plan" : step == 4 ? "Build my plan" : "Next")
-                .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 15)
+            Text(!ready ? "Add your age and height" : step == last ? "Start my plan" : "Next")
+                .font(.headline.weight(.heavy)).foregroundStyle(ready ? Theme.onAccent : Color.secondary)
+                .frame(maxWidth: .infinity).padding(.vertical, 15)
+                .background(ready ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Color(.tertiarySystemFill)), in: Capsule())
         }
-        .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 18))
-        .foregroundStyle(Theme.onAccent)
-        .padding(.horizontal, 20).padding(.vertical, 10)
+        .buttonStyle(.plain).disabled(!ready)
+        .padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 10)
         .background(Theme.bg)
+    }
+
+    /// The budget so far and where it leads, above Next from About you to the cheat day: it moves as you answer.
+    @ViewBuilder private var live: some View {
+        if (1...5).contains(step), age != nil, height != nil {
+            let r = Plan.compute(input)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(Fmt.int(Double(r.everyday))).font(.headline.weight(.heavy)).monospacedDigit().contentTransition(.numericText())
+                Text("kcal a day").font(.footnote).foregroundStyle(.secondary)
+                Spacer(minLength: 8)
+                Text(liveNote(r)).font(.footnote).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 11)
+            .background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .padding(.horizontal, 14).padding(.top, 6)
+            .animation(.snappy, value: r.everyday)
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    private func liveNote(_ r: PlanResult) -> String {
+        if step == 5, let cheat = r.cheat { return "\(Fmt.int(Double(cheat))) on \(Calendar.current.weekdaySymbols[q.cheatDay])" }
+        if let g = goalWeight, let d = Plan.reach(g, from: q.weight, rate: r.rate) { return "\(Fmt.one(g)) kg by \(d.formatted(.dateTime.day().month(.abbreviated)))" }
+        return ""
     }
 
     private func go(_ by: Int) {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         if step == 0 && by < 0 { onDone(); return }
+        // age and height are kept as soon as they're given, so leaving part way doesn't lose them
+        if step == 1, by > 0, age != nil, height != nil {
+            store.perform(["type": "set", "key": "profile", "value": ["sex": q.sex, "age": Int(q.age), "height": q.height] as JSON])
+        }
         forward = by > 0
-        withAnimation(.snappy) { step = max(0, min(5, step + by)) }
-        if step == 5 && ideasState == 0 { Task { await askIdeas() } }
+        wheel = nil
+        withAnimation(.snappy) { step = max(0, min(last, step + by)) }
+        if step == last && ideasState == 0 { Task { await askIdeas() } }
     }
 
     private func heading(_ title: String, _ sub: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Eyebrow(text: "Step \(step + 1) of 6", color: Theme.heroLabel)
-            Text(title).font(.largeTitle.bold())
-            Text(sub).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title).font(.system(size: 30, weight: .heavy))
+            Text(sub).font(.subheadline).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.bottom, 6)
+        .padding(.horizontal, 4).padding(.top, 6).padding(.bottom, 6)
     }
 
-    private func label(_ t: String) -> some View {
-        Text(t).font(.headline).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 10)
+    private func label(_ t: String, _ right: String = "") -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(t).font(.headline.weight(.heavy)).foregroundStyle(.secondary)
+            Spacer()
+            if !right.isEmpty { Text(right).font(.footnote).foregroundStyle(.secondary).monospacedDigit() }
+        }
+        .padding(.horizontal, 4).padding(.top, 12)
     }
 
     private func card<C: View>(@ViewBuilder _ content: () -> C) -> some View {
         VStack(spacing: 12) { content() }
-            .padding(16)
-            .background(Theme.hero, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .padding(14)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    /// Rows in one card, edge to edge: the choices of a question, or a short form.
+    private func group<C: View>(@ViewBuilder _ content: () -> C) -> some View {
+        VStack(spacing: 0) { content() }
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+    private var line: some View { Divider().padding(.leading, 14) }
+
+    /// One choice in a group: a round symbol, a title with a line under it, and a tick when it's the one picked.
+    private func option(_ title: String, _ sub: String, _ symbol: String, on: Bool, _ tap: @escaping () -> Void) -> some View {
+        Button(action: tap) {
+            HStack(spacing: 12) {
+                Image(systemName: symbol).font(.system(size: 16, weight: .semibold)).foregroundStyle(on ? Theme.onAccent : Theme.accent)
+                    .frame(width: 38, height: 38).background(on ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Color(.tertiarySystemFill)), in: Circle())
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title).font(.body.weight(.bold))
+                    Text(sub).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.leading)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: on ? "checkmark.circle.fill" : "circle").font(.title3).foregroundStyle(on ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(.tertiary))
+            }
+            .padding(.horizontal, 14).padding(.vertical, 11).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? [.isSelected] : [])
+        .sensoryFeedback(.selection, trigger: on)
     }
 
     private func numberRow(_ title: String, _ value: Binding<Double>, _ unit: String) -> some View {
         HStack {
-            Text(title)
+            Text(title).font(.body.weight(.semibold))
             Spacer()
             TextField(title, value: value, format: .number).keyboardType(.decimalPad).multilineTextAlignment(.trailing).frame(width: 90)
-                .font(.body.weight(.bold))
+                .font(.body.weight(.heavy))
             Text(unit).foregroundStyle(.secondary).frame(width: 44, alignment: .leading)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 13)
+    }
+
+    /// A whole number set on a wheel that opens under its row; "Add" until it's been set.
+    private func wheelRow(_ title: String, _ value: Int?, _ unit: String, range: ClosedRange<Int>, start: Int, set: @escaping (Int) -> Void) -> some View {
+        VStack(spacing: 0) {
+            Button {
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                withAnimation(.snappy) { if value == nil { set(start) }; wheel = wheel == title ? nil : title }
+            } label: {
+                HStack {
+                    Text(title).font(.body.weight(.semibold))
+                    Spacer()
+                    Text(value.map { "\($0)" } ?? "Add").font(.body.weight(.heavy)).monospacedDigit()
+                        .foregroundStyle(value == nil ? AnyShapeStyle(.tertiary) : wheel == title ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(.primary))
+                    Text(unit).foregroundStyle(.secondary).frame(width: 44, alignment: .leading)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 13).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            if wheel == title {
+                Picker(title, selection: Binding(get: { value ?? start }, set: set)) {
+                    ForEach(Array(range), id: \.self) { Text("\($0)").tag($0) }
+                }
+                .pickerStyle(.wheel).frame(height: 120)
+            }
         }
     }
 
-    // MARK: 1 goals and body
+    /// The week as bars: every day's budget, the cheat day the tall one. On the cheat day step a tap picks the day.
+    private func weekBars(_ r: PlanResult, pick: Bool) -> some View {
+        HStack(alignment: .bottom, spacing: 6) {
+            ForEach([1, 2, 3, 4, 5, 6, 0], id: \.self) { d in
+                let on = r.cheat != nil && q.cheatDay == d
+                let v = Double(on ? (r.cheat ?? r.everyday) : r.everyday)
+                VStack(spacing: 5) {
+                    Spacer(minLength: 0)
+                    Text(Fmt.int(v)).font(.system(size: 10.5, weight: .bold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+                        .foregroundStyle(on ? .primary : .secondary)
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(on ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Theme.accent.opacity(0.25)))
+                        .frame(height: min(66, max(18, 40 * v / Double(max(r.everyday, 1)))))
+                    Text(Calendar.current.veryShortWeekdaySymbols[d]).font(.caption2.weight(.semibold)).foregroundStyle(on ? .primary : .secondary)
+                }
+                .frame(maxWidth: .infinity).contentShape(Rectangle())
+                .onTapGesture { if pick { withAnimation(.snappy) { q.cheatDay = d } } }
+                .accessibilityLabel("\(Calendar.current.weekdaySymbols[d]), \(Fmt.int(v))\(on ? ", cheat day" : "")")
+                .accessibilityAddTraits(pick ? [.isButton] : [])
+            }
+        }
+        .frame(height: 108).padding(14)
+    }
+
+    // MARK: 1 goals, 2 about you
 
     private var goalsStep: some View {
         VStack(alignment: .leading, spacing: 10) {
             heading("What are you after?", "Everything gets built around this.")
-            ChoiceCard(title: "Lose fat", sub: "Steadily, without giving up the foods you love", symbol: "flame.fill", on: q.goal == "lose") { q.goal = "lose"; q.pace = -0.5 }
-            ChoiceCard(title: "Get leaner and stronger", sub: "Lose fat slowly while you build muscle", symbol: "figure.strengthtraining.traditional", on: q.goal == "recomp") { q.goal = "recomp" }
-            ChoiceCard(title: "Build muscle", sub: "A small surplus, so it's mostly muscle", symbol: "dumbbell.fill", on: q.goal == "leanbulk") { q.goal = "leanbulk"; q.pace = 0.25 }
-            ChoiceCard(title: "Stay where I am", sub: "Eat well, enjoy it, keep the weight steady", symbol: "equal.circle.fill", on: q.goal == "maintain") { q.goal = "maintain" }
-            if let ps = Plan.paces[q.goal] {
-                label("How fast?")
-                Picker("How fast", selection: $q.pace) { ForEach(ps, id: \.1) { p in Text(p.0).tag(p.1) } }.pickerStyle(.segmented)
-                Text("\(Fmt.one(abs(q.pace))) kg a week").font(.footnote).foregroundStyle(.secondary)
+            group {
+                option("Lose fat", "Steadily, without giving up the foods you love", "flame.fill", on: q.goal == "lose") { q.goal = "lose"; q.pace = -0.5 }
+                line
+                option("Get leaner and stronger", "Lose fat slowly while you build muscle", "figure.strengthtraining.traditional", on: q.goal == "recomp") { q.goal = "recomp" }
+                line
+                option("Build muscle", "A small surplus, so it's mostly muscle", "dumbbell.fill", on: q.goal == "leanbulk") { q.goal = "leanbulk"; q.pace = 0.25 }
+                line
+                option("Stay where I am", "Eat well, enjoy it, keep the weight steady", "equal.circle.fill", on: q.goal == "maintain") { q.goal = "maintain" }
             }
-            label("About you")
-            card {
-                Picker("Sex", selection: $q.sex) { Text("Male").tag("m"); Text("Female").tag("f") }.pickerStyle(.segmented)
-                numberRow("Age", $q.age, "years")
-                numberRow("Height", $q.height, "cm")
-                numberRow("Weight", $q.weight, "kg")
+            group {
                 HStack {
-                    Text("Goal weight")
+                    Text("Goal weight").font(.body.weight(.semibold))
                     Spacer()
-                    TextField("Optional", value: $goalWeight, format: .number).keyboardType(.decimalPad).multilineTextAlignment(.trailing).frame(width: 90).font(.body.weight(.bold))
+                    TextField("Optional", value: $goalWeight, format: .number).keyboardType(.decimalPad).multilineTextAlignment(.trailing).frame(width: 90).font(.body.weight(.heavy))
                     Text("kg").foregroundStyle(.secondary).frame(width: 44, alignment: .leading)
                 }
+                .padding(.horizontal, 14).padding(.vertical, 13)
+            }
+            if let ps = Plan.paces[q.goal] {
+                label("How fast?", "\(Fmt.kg(abs(q.pace))) kg a week")
+                HStack(spacing: 8) {
+                    ForEach(ps, id: \.1) { p in paceTile(p.0, p.1) }
+                }
+            }
+        }
+    }
+
+    /// A pace and the date it gets you to your goal weight (the kg a week, when there's no goal to date).
+    private func paceTile(_ name: String, _ pace: Double) -> some View {
+        let on = q.pace == pace
+        let when = Plan.reach(goalWeight, from: q.weight, rate: pace).map { "by \($0.formatted(.dateTime.day().month(.abbreviated)))" } ?? "\(Fmt.kg(abs(pace))) kg a week"
+        return Button { withAnimation(.snappy) { q.pace = pace } } label: {
+            VStack(spacing: 3) {
+                Text(name).font(.subheadline.weight(.heavy)).foregroundStyle(on ? .primary : .secondary)
+                Text(when).font(.caption.weight(.semibold)).foregroundStyle(on ? .primary : .secondary).monospacedDigit().lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity).padding(.vertical, 11)
+            .background(on ? AnyShapeStyle(Color(.systemGray3)) : AnyShapeStyle(Color(.secondarySystemGroupedBackground)), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? [.isSelected] : [])
+        .sensoryFeedback(.selection, trigger: on)
+    }
+
+    private var aboutStep: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            heading("About you", "Your budget is worked out from these.")
+            Picker("Sex", selection: $q.sex) { Text("Male").tag("m"); Text("Female").tag("f") }.pickerStyle(.segmented)
+            group {
+                wheelRow("Age", age, "years", range: 14...95, start: 30) { age = $0; q.age = Double($0) }
+                line
+                wheelRow("Height", height, "cm", range: 130...220, start: 170) { height = $0; q.height = Double($0) }
+                line
+                numberRow("Weight", $q.weight, "kg")
             }
             label("Your day, outside the gym")
-            ForEach(Plan.activities, id: \.k) { a in
-                ChoiceCard(title: a.name, sub: a.sub, symbol: a.symbol, on: q.activity == a.k) { q.activity = a.k }
+            group {
+                ForEach(Plan.activities.indices, id: \.self) { i in
+                    let a = Plan.activities[i]
+                    if i > 0 { line }
+                    option(a.name, a.sub, a.symbol, on: q.activity == a.k) { q.activity = a.k }
+                }
             }
         }
     }
@@ -247,7 +408,7 @@ struct OnboardingView: View {
         let extra = picked.wrappedValue.subtracting(all).sorted()
         return Flow {
             ForEach(all + extra, id: \.self) { c in
-                Chip(text: c, on: picked.wrappedValue.contains(c)) {
+                Chip(text: c, on: picked.wrappedValue.contains(c), quiet: true) {
                     if picked.wrappedValue.contains(c) { picked.wrappedValue.remove(c) } else { picked.wrappedValue.insert(c) }
                 }
             }
@@ -260,16 +421,16 @@ struct OnboardingView: View {
                 .onSubmit { let t = text.wrappedValue.trimmingCharacters(in: .whitespaces); if !t.isEmpty { picked.wrappedValue.insert(t.capitalizedFirst) }; text.wrappedValue = "" }
             Image(systemName: "plus.circle.fill").foregroundStyle(Theme.accent)
         }
-        .padding(12).background(Theme.hero, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(12).background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private var foodStep: some View {
         VStack(alignment: .leading, spacing: 10) {
             heading("What do you love eating?", "Your plan gets built around these. No diet food.")
             label("Cuisines you eat most")
-            chips(allCuisines, $cuisines)
+            chips(allCuisines, $cuisines).padding(.top, -2)
             label("Can't live without")
-            chips(allLoves, $loves)
+            chips(allLoves, $loves).padding(.top, -2)
             addField("Add another favourite", $newLove, into: $loves)
             label("Anything you don't eat?")
             chips(allAvoid, $avoid)
@@ -281,30 +442,57 @@ struct OnboardingView: View {
 
     private var dayStep: some View {
         VStack(alignment: .leading, spacing: 10) {
-            heading("A normal day for you", "Roughly is fine. It shows where you're starting from. You can skip it.")
-            ForEach(meals.indices, id: \.self) { i in
-                VStack(alignment: .leading, spacing: 4) {
-                    Eyebrow(text: meals[i])
-                    TextField(hints[i], text: $usual[i], axis: .vertical).lineLimit(1...3)
+            heading("A normal day for you", "Roughly is fine. It shows where you're starting from.")
+            group {
+                ForEach(meals.indices, id: \.self) { i in
+                    if i > 0 { line }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Eyebrow(text: meals[i])
+                        TextField(hints[i], text: $usual[i], axis: .vertical).lineLimit(1...3)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14).padding(.vertical, 11)
                 }
-                .padding(14).background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
+            let empty = usual.allSatisfy { $0.trimmingCharacters(in: .whitespaces).isEmpty }
             Button { Task { await estimate() } } label: {
-                Label(estimating ? "Working it out…" : "Work out my calories", systemImage: "sparkles").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 6)
+                group {
+                    HStack(spacing: 12) {
+                        Group { if estimating { ProgressView() } else { Image(systemName: "sparkles").font(.system(size: 16, weight: .semibold)).foregroundStyle(Theme.accent) } }
+                            .frame(width: 38, height: 38).background(Color(.tertiarySystemFill), in: Circle())
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(estimating ? "Working it out…" : "Work out my calories").font(.body.weight(.bold)).foregroundStyle(.primary)
+                            Text("An estimate of what you eat now").font(.footnote).foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 11)
+                }
             }
-            .buttonStyle(.bordered).buttonBorderShape(.roundedRectangle(radius: 14))
-            .disabled(estimating || usual.allSatisfy { $0.trimmingCharacters(in: .whitespaces).isEmpty })
+            .buttonStyle(.plain).disabled(estimating || empty).opacity(empty ? 0.5 : 1)
             if let k = usualKcal {
-                card {
-                    HStack { Text("That's about").foregroundStyle(.secondary); Spacer(); Text("\(Fmt.int(k)) kcal").font(.title2.weight(.heavy)) }
-                    if let p = usualProtein { HStack { Text("Protein").foregroundStyle(.secondary); Spacer(); Text("\(Int(p)) g").font(.headline) } }
-                    if !usualNote.isEmpty { Text(usualNote).font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading) }
+                label("Where you are now")
+                group {
+                    HStack(spacing: 0) {
+                        figure(Fmt.int(k), "kcal a day")
+                        if let p = usualProtein { Divider().frame(height: 34); figure("\(Int(p)) g", "protein") }
+                    }
+                    .padding(.vertical, 12)
+                    if !usualNote.isEmpty {
+                        Text(usualNote).font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 14).padding(.bottom, 12)
+                    }
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
-            if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn) }
+            if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn).padding(.horizontal, 4) }
         }
         .animation(.snappy, value: usualKcal)
+    }
+
+    private func figure(_ v: String, _ l: String) -> some View {
+        VStack(spacing: 1) { Text(v).font(.title3.weight(.heavy)).monospacedDigit(); Text(l).font(.caption).foregroundStyle(.secondary) }.frame(maxWidth: .infinity)
     }
 
     private func estimate() async {
@@ -334,9 +522,13 @@ struct OnboardingView: View {
                 label("How long have you been lifting?")
                 Picker("Experience", selection: $experience) { Text("New to it").tag("new"); Text("A year or two").tag("some"); Text("Years").tag("lots") }.pickerStyle(.segmented)
                 label("Where?")
-                ChoiceCard(title: "A full gym", sub: "Barbells, machines, cables", symbol: "building.2.fill", on: kit == "gym") { kit = "gym" }
-                ChoiceCard(title: "Dumbbells at home", sub: "A set of dumbbells and a bench", symbol: "dumbbell.fill", on: kit == "dumbbells") { kit = "dumbbells" }
-                ChoiceCard(title: "No kit", sub: "Bodyweight, anywhere", symbol: "figure.cooldown", on: kit == "none") { kit = "none" }
+                group {
+                    option("A full gym", "Barbells, machines, cables", "building.2.fill", on: kit == "gym") { kit = "gym" }
+                    line
+                    option("Dumbbells at home", "A set of dumbbells and a bench", "dumbbell.fill", on: kit == "dumbbells") { kit = "dumbbells" }
+                    line
+                    option("No kit", "Bodyweight, anywhere", "figure.cooldown", on: kit == "none") { kit = "none" }
+                }
                 if !store.routines.isEmpty {
                     card {
                         HStack {
@@ -356,31 +548,19 @@ struct OnboardingView: View {
 
     private var cheatStep: some View {
         let r = Plan.compute(input)
-        let order = [1, 2, 3, 4, 5, 6, 0]
         return VStack(alignment: .leading, spacing: 10) {
-            heading("Your cheat day", "Eat a bit less on normal days, then spend it all on one day. It's the weekly total that counts.")
-            ChoiceCard(title: "Save up for a cheat day", sub: "One big day a week, guilt-free", symbol: "party.popper.fill", on: q.spread == "cheat") { q.spread = "cheat" }
-            ChoiceCard(title: "Same every day", sub: "No cheat day, the same budget daily", symbol: "equal.circle.fill", on: q.spread == "same") { q.spread = "same" }
+            heading("Your cheat day", "Eat a bit less on normal days, then spend it on one day. It's the weekly total that counts.")
+            group {
+                option("Save up for a cheat day", "One big day a week, guilt-free", "party.popper.fill", on: q.spread == "cheat") { q.spread = "cheat" }
+                line
+                option("Same every day", "No cheat day, the same budget daily", "equal.circle.fill", on: q.spread == "same") { q.spread = "same" }
+            }
             if q.spread == "cheat" {
-                label("Which day?")
-                HStack(spacing: 6) {
-                    ForEach(order, id: \.self) { d in
-                        Button { q.cheatDay = d } label: {
-                            Text(Calendar.current.shortWeekdaySymbols[d].prefix(2)).font(.subheadline.weight(.bold)).frame(maxWidth: .infinity).padding(.vertical, 10)
-                                .background(q.cheatDay == d ? Theme.warn : Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                .foregroundStyle(q.cheatDay == d ? Theme.onAccent : Color.primary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
+                label("Which day?", "Tap a day")
+                group { weekBars(r, pick: true) }
+                    .sensoryFeedback(.selection, trigger: q.cheatDay)
                 label("How big?")
-                Picker("Size", selection: $q.cheatSize) { Text("A bit more").tag(1.3); Text("Lots more").tag(1.5); Text("Go big").tag(1.7) }.pickerStyle(.segmented)
-                card {
-                    HStack { Text("\(Calendar.current.weekdaySymbols[q.cheatDay])").foregroundStyle(.secondary); Spacer(); Text("\(Fmt.int(Double(r.cheat ?? 0))) kcal").font(.title3.weight(.heavy)).foregroundStyle(Theme.warn) }
-                    HStack { Text("Other days").foregroundStyle(.secondary); Spacer(); Text("\(Fmt.int(Double(r.everyday))) kcal").font(.title3.weight(.heavy)) }
-                }
-                .contentTransition(.numericText())
-                .animation(.snappy, value: q.cheatSize)
+                Picker("Size", selection: $q.cheatSize.animation(.snappy)) { Text("A bit more").tag(1.3); Text("Lots more").tag(1.5); Text("Go big").tag(1.7) }.pickerStyle(.segmented)
             }
         }
     }
@@ -406,28 +586,35 @@ struct OnboardingView: View {
         let r = Plan.compute(input)
         let reach = Plan.reach(goalWeight, from: q.weight, rate: r.rate)
         return VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
-                Eyebrow(text: "Your plan", color: Theme.heroLabel)
-                Text(planTitle(r)).font(.largeTitle.bold())
-                if let reach { Text("\(Fmt.one(goalWeight ?? 0)) kg around \(reach.formatted(.dateTime.month(.wide).year()))").foregroundStyle(.secondary) }
-            }
-            .padding(.bottom, 6)
-            card {
-                if let cheat = r.cheat {
-                    row("Normal days", "\(Fmt.int(Double(r.everyday))) kcal")
-                    row("\(Calendar.current.weekdaySymbols[q.cheatDay]), cheat day", "\(Fmt.int(Double(cheat))) kcal", tint: Theme.warn)
-                    Text("You bank about \(Fmt.int(Double(cheat - r.everyday) / 6)) kcal a day for it.").font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    row("Every day", "\(Fmt.int(Double(r.kcal))) kcal")
+            VStack(alignment: .leading, spacing: 2) {
+                Text(planTitle(r)).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(Fmt.int(Double(r.everyday))).font(.system(size: 48, weight: .heavy, design: .rounded)).monospacedDigit()
+                    Text("kcal").font(.headline).foregroundStyle(.secondary)
                 }
+                if let reach { Text("\(Fmt.one(goalWeight ?? 0)) kg around \(reach.formatted(.dateTime.day().month(.wide)))").font(.subheadline).foregroundStyle(.primary.opacity(0.8)) }
+            }
+            .padding(.horizontal, 4).padding(.top, 6)
+            label("Your week")
+            group {
+                weekBars(r, pick: false)
                 Divider()
-                row("Protein", "\(r.p) g a day")
-                row("Carbs · fat", "\(r.c) g · \(r.f) g")
+                HStack(spacing: 0) {
+                    figure("\(r.p) g", "protein")
+                    Divider().frame(height: 34)
+                    figure("\(r.c) g", "carbs")
+                    Divider().frame(height: 34)
+                    figure("\(r.f) g", "fat")
+                }
+                .padding(.vertical, 12)
+            }
+            Group {
+                if let cheat = r.cheat { Text("You bank about \(Fmt.int(Double(cheat - r.everyday) / 6)) kcal a day for \(Calendar.current.weekdaySymbols[q.cheatDay]).") }
                 if let k = usualKcal {
                     Text("You eat about \(Fmt.int(k)) now\(usualProtein.map { " with \(Int($0)) g protein" } ?? ""). You burn about \(Fmt.int(Double(r.tdee))).")
-                        .font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
+            .font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 4)
             ForEach(r.notes, id: \.self) { n in
                 Label(n, systemImage: "info.circle").font(.footnote).foregroundStyle(Theme.warn)
             }
@@ -466,7 +653,7 @@ struct OnboardingView: View {
                             Text("\(Int(num(m["protein"]) ?? 0))g protein").font(.caption2).foregroundStyle(.secondary)
                         }
                     }
-                    .padding(12).background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .padding(12).background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
             case 3:
                 Button("Couldn't get ideas just now. Try again") { Task { await askIdeas() } }.font(.footnote)
@@ -524,8 +711,8 @@ struct OnboardingView: View {
     private func prefill() {
         let prof = dict(store.doc["profile"])
         if let s = prof["sex"] as? String, !s.isEmpty { q.sex = s }
-        if let a = pos(prof["age"]) { q.age = a }
-        if let h = pos(prof["height"]) { q.height = h }
+        if let a = pos(prof["age"]) { q.age = a; age = Int(a) }
+        if let h = pos(prof["height"]) { q.height = h; height = Int(h.rounded()) }
         if let w = store.latestWeight?.kg ?? pos(store.doc["weightKg"]) { q.weight = w }
         goalWeight = pos(store.doc["goalWeight"])
         let plan = dict(store.doc["plan"])
