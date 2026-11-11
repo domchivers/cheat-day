@@ -151,8 +151,8 @@ struct StoryEditor: View {
             // as big as the screen allows: the button under it takes 58, and the two of them go down into the strip
             // kept clear for the home bar, stopping 12 short of the bottom (96 was held back before, and none of
             // that strip used, which left a tall clip small with black all round it)
-            let low = max(0, screen.safeAreaInsets.bottom - 12)
-            let cw = min(screen.size.width - 16, (screen.size.height + low - 128) * ratio)   // 66 more for the row of tools
+            let low = max(0, screen.safeAreaInsets.bottom - 22)   // 22 clear of the bottom: at 12 the home bar lay across the button
+            let cw = min(screen.size.width - 16, (screen.size.height + low - 136) * ratio)   // 66 more for the row of tools
             let ch = cw / ratio
             VStack(spacing: 10) {
                 canvas(cw, ch)
