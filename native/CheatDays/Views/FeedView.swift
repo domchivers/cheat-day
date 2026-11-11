@@ -1008,7 +1008,9 @@ struct ComposeSheet: View {
                 if on { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { withAnimation(.snappy) { proxy.scrollTo("caption", anchor: .center) } } }
             }
             }
-            .background(Theme.bg)
+            // to every edge and under the keyboard: the sheet's own grey showed in the strip behind Done
+            .background(Theme.bg.ignoresSafeArea())
+            .presentationBackground(Theme.bg)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 let ready = what != nil || photo != nil || movie != nil
                 if !writing {
