@@ -45,7 +45,7 @@ struct StoryEditor: View {
             if let o = clipShape, !all.contains(where: { abs($0.ratio - o) < 0.02 }) { all.insert(("Original", o), at: 0) }
         } else if let o = ownShape, !all.contains(where: { abs($0.ratio - o) < 0.02 }) { all.append(("Original", o)) }
         let i = all.firstIndex { abs($0.ratio - ratio) < 0.02 } ?? 0, next = all[(i + 1) % all.count]
-        withAnimation(.snappy) { shape = next.ratio; bgScale = 1; bgOffset = .zero; clipMove = .zero }
+        withAnimation(.snappy) { shape = next.ratio; bgScale = 1; bgOffset = .zero; bgSpin = 0; clipMove = .zero }
         flash(next.name)
     }
 
@@ -55,10 +55,12 @@ struct StoryEditor: View {
         return v > cw / ch ? CGSize(width: ch * v, height: ch) : CGSize(width: cw, height: cw / v)
     }
     /// A pinch or a drag on the clip, kept inside its edges so no blank shows.
-    private func moveClip(_ sc: CGFloat, _ off: CGSize, cw: CGFloat, ch: CGFloat) {
+    private func moveClip(_ sc: CGFloat, _ off: CGSize, _ deg: Double, cw: CGFloat, ch: CGFloat) {
         let f = clipFill(cw, ch), s = min(4, max(1, sc))
         let mx = max(0, (f.width * s - cw) / 2), my = max(0, (f.height * s - ch) / 2)
-        let o = CGSize(width: min(mx, max(-mx, off.width)), height: min(my, max(-my, off.height)))
+        // turned, it's where the fingers put it (the clip itself kept it in reach)
+        let o = deg == 0 ? CGSize(width: min(mx, max(-mx, off.width)), height: min(my, max(-my, off.height))) : off
+        bgSpin = deg
         bgScale = s; bgOffset = o   // no animation: the clip is already there, under the fingers
         clipMove = CGSize(width: o.width / cw, height: o.height / ch)
     }
@@ -92,6 +94,7 @@ struct StoryEditor: View {
     // the photo itself, pinched and moved
     @State private var bgScale: CGFloat = 1
     @State private var bgOffset: CGSize = .zero
+    @State private var bgSpin: Double = 0   // turned by two fingers, in degrees to the right
     // something placed, being moved
     @State private var active: Int?
     @State private var snapX = false
@@ -116,6 +119,7 @@ struct StoryEditor: View {
     @State private var length: Double = 0
     @State private var range: ClosedRange<Double> = 0...30
     @State private var scrub: Double?   // the moment under a finger on the trim strip
+    @State private var grabbed: Double?   // where an end of the trim was when a finger caught it
     @State private var frames: [UIImage] = []
     @State private var poster: UIImage?   // the video's first frame, shown while the player gets going
     // sheets
@@ -206,7 +210,7 @@ struct StoryEditor: View {
                 if clipOnly {
                     // a post's clip: its whole picture behind the frame, to pinch and drag like a photo
                     let f = clipFill(cw, ch)
-                    MovableClip(cw: cw, ch: ch, fill: f, scale: bgScale, offset: bgOffset, movable: mode == .none, commit: { sc, off in moveClip(sc, off, cw: cw, ch: ch) }) {
+                    MovableClip(cw: cw, ch: ch, fill: f, scale: bgScale, offset: bgOffset, spin: bgSpin, movable: mode == .none, commit: { sc, off, deg in moveClip(sc, off, deg, cw: cw, ch: ch) }) {
                         ZStack {
                             if let poster { Image(uiImage: poster).resizable().scaledToFill().frame(width: f.width, height: f.height).clipped() }
                             // turned on its side, the player is laid out sideways and then turned to stand in the frame
@@ -223,9 +227,9 @@ struct StoryEditor: View {
             } else if let shown = (comparing ? nil : preview) ?? work ?? image {
                 // the photo moves on its own too, and tells the editor only when the finger lifts
                 let k = max(cw / max(1, shown.size.width), ch / max(1, shown.size.height))
-                MovableClip(cw: cw, ch: ch, fill: CGSize(width: shown.size.width * k, height: shown.size.height * k), scale: bgScale, offset: bgOffset,
+                MovableClip(cw: cw, ch: ch, fill: CGSize(width: shown.size.width * k, height: shown.size.height * k), scale: bgScale, offset: bgOffset, spin: bgSpin,
                             movable: mode == .none || mode == .filters, swipe: { nextFilter($0) },
-                            commit: { sc, off in bgScale = sc; bgOffset = off }) {   // no animation: it is already there, under the fingers
+                            commit: { sc, off, deg in bgScale = sc; bgOffset = off; bgSpin = deg }) {   // no animation: it is already there, under the fingers
                     Image(uiImage: shown).resizable().scaledToFill().frame(width: cw, height: ch)
                 }
             }
@@ -335,7 +339,7 @@ struct StoryEditor: View {
             Task { await refilter(l) }
         }
         thumbs = thumbs.mapValues { $0.quarterTurned() }
-        withAnimation(.snappy) { bgScale = 1; bgOffset = .zero; clipMove = .zero }
+        withAnimation(.snappy) { bgScale = 1; bgOffset = .zero; bgSpin = 0; clipMove = .zero }
     }
 
     @ViewBuilder private var topRow: some View {
@@ -350,10 +354,10 @@ struct StoryEditor: View {
                 round("scribble.variable") { mode = .draw }.accessibilityLabel("Draw")
                 round("camera.filters") { mode = .filters }.accessibilityLabel("Filters")
                 round("slider.horizontal.3") { mode = .adjust }.accessibilityLabel("Adjust")
-                if image != nil || bgScale > 1.01 || bgOffset != .zero || !items.isEmpty || !strokes.isEmpty {
+                if image != nil || bgScale > 1.01 || bgOffset != .zero || bgSpin != 0 || !items.isEmpty || !strokes.isEmpty {
                 Menu {
                     if image != nil { Button { Task { await save() } } label: { Label("Save to Photos", systemImage: "square.and.arrow.down") } }
-                    if bgScale > 1.01 || bgOffset != .zero { Button { withAnimation { bgScale = 1; bgOffset = .zero; clipMove = .zero } } label: { Label(video == nil ? "Reset the photo" : "Reset the video", systemImage: "arrow.counterclockwise") } }
+                    if bgScale > 1.01 || bgOffset != .zero || bgSpin != 0 { Button { withAnimation { bgScale = 1; bgOffset = .zero; bgSpin = 0; clipMove = .zero } } label: { Label(video == nil ? "Reset the photo" : "Reset the video", systemImage: "arrow.counterclockwise") } }
                     if !items.isEmpty || !strokes.isEmpty { Button(role: .destructive) { remember(); withAnimation { items = []; strokes = [] } } label: { Label("Clear everything", systemImage: "trash") } }
                 } label: { roundLabel("ellipsis") }
                 }
@@ -390,7 +394,7 @@ struct StoryEditor: View {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         withAnimation(.snappy(duration: 0.22)) { items = last.items; strokes = last.strokes }
     }
-    private var edited: Bool { !items.isEmpty || !strokes.isEmpty || filter != "Normal" || !tune.isEmpty || bgScale > 1.01 || turns != 0 }
+    private var edited: Bool { !items.isEmpty || !strokes.isEmpty || filter != "Normal" || !tune.isEmpty || bgScale > 1.01 || bgSpin != 0 || turns != 0 }
 
     private func round(_ symbol: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) { roundLabel(symbol) }.buttonStyle(.plain)
@@ -639,43 +643,57 @@ struct StoryEditor: View {
 
     // MARK: video
 
+    /// The clip as a strip of its frames, with a white frame round the part kept. The two ends of that frame are
+    /// the handles: thick, with an arrow on each, standing outside the frames (inside the strip's rounded corners
+    /// they were cut off and hard to catch) and taking a touch well beyond what shows.
     private func trimmer(_ width: CGFloat) -> some View {
-        let total = max(length, 0.1)
-        let lo = range.lowerBound / total, hi = range.upperBound / total
-        return VStack(spacing: 8) {
+        let total = max(length, 0.1), grip: CGFloat = 22, inner = max(1, width - 2 * grip)
+        let lo = CGFloat(range.lowerBound / total), hi = CGFloat(range.upperBound / total)
+        return VStack(spacing: 10) {
             Text(scrub.map { "At \(clock($0))" } ?? "\(clock(range.lowerBound)) – \(clock(range.upperBound)) · \(Int((range.upperBound - range.lowerBound).rounded())) s")
                 .font(.caption.weight(.heavy)).foregroundStyle(.white).monospacedDigit()
             ZStack(alignment: .leading) {
                 HStack(spacing: 0) {
-                    ForEach(frames.indices, id: \.self) { i in Image(uiImage: frames[i]).resizable().scaledToFill().frame(width: width / CGFloat(max(1, frames.count)), height: 52).clipped() }
+                    ForEach(frames.indices, id: \.self) { i in Image(uiImage: frames[i]).resizable().scaledToFill().frame(width: inner / CGFloat(max(1, frames.count)), height: 52).clipped() }
                 }
-                .frame(width: width, height: 52).background(Color(white: 0.2))
+                .frame(width: inner, height: 52).background(Color(white: 0.2))
+                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                 // a finger along the strip looks through the clip: it holds on that moment, and plays on from it after
                 .contentShape(Rectangle())
                 .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("strip"))
-                    .onChanged { v in scrub = min(length, max(0, Double(v.location.x / width) * length)) }
+                    .onChanged { v in scrub = min(length, max(0, Double((v.location.x - grip) / inner) * length)) }
                     .onEnded { _ in scrub = nil })
+                .offset(x: grip)
                 // outside the kept part, dimmed
-                Rectangle().fill(.black.opacity(0.6)).frame(width: width * lo, height: 52).allowsHitTesting(false)
-                Rectangle().fill(.black.opacity(0.6)).frame(width: width * (1 - hi), height: 52).offset(x: width * hi).allowsHitTesting(false)
-                RoundedRectangle(cornerRadius: 6).stroke(.white, lineWidth: 3).frame(width: max(20, width * (hi - lo)), height: 52).offset(x: width * lo).allowsHitTesting(false)
-                if let at = scrub { Rectangle().fill(.white).frame(width: 2, height: 52).offset(x: width * CGFloat(at / total) - 1).allowsHitTesting(false) }
-                handle(width, left: true).offset(x: width * lo - 8)
-                handle(width, left: false).offset(x: width * hi - 8)
+                Rectangle().fill(.black.opacity(0.6)).frame(width: inner * lo, height: 52).offset(x: grip).allowsHitTesting(false)
+                Rectangle().fill(.black.opacity(0.6)).frame(width: inner * (1 - hi), height: 52).offset(x: grip + inner * hi).allowsHitTesting(false)
+                // the kept part's top and bottom edges, joining the two handles
+                Rectangle().fill(.white).frame(width: inner * (hi - lo) + 2, height: 4).offset(x: grip + inner * lo - 1, y: -28).allowsHitTesting(false)
+                Rectangle().fill(.white).frame(width: inner * (hi - lo) + 2, height: 4).offset(x: grip + inner * lo - 1, y: 28).allowsHitTesting(false)
+                if let at = scrub { Capsule().fill(.white).frame(width: 3, height: 64).shadow(color: .black.opacity(0.5), radius: 2).offset(x: grip + inner * CGFloat(at / total) - 1.5).allowsHitTesting(false) }
+                handle(inner, grip, left: true).offset(x: inner * lo)
+                handle(inner, grip, left: false).offset(x: grip + inner * hi)
             }
-            .frame(width: width, height: 52).clipShape(RoundedRectangle(cornerRadius: 8))
+            .frame(width: width, height: 64)
             .coordinateSpace(name: "strip")
         }
     }
 
-    private func handle(_ width: CGFloat, left: Bool) -> some View {
-        Capsule().fill(.white).frame(width: 16, height: 52).overlay(Capsule().fill(.black.opacity(0.4)).frame(width: 3, height: 18))
-            .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("strip")).onChanged { v in
-                let at = min(length, max(0, Double(v.location.x / width) * length))
+    private func handle(_ inner: CGFloat, _ grip: CGFloat, left: Bool) -> some View {
+        UnevenRoundedRectangle(topLeadingRadius: left ? 10 : 0, bottomLeadingRadius: left ? 10 : 0, bottomTrailingRadius: left ? 0 : 10, topTrailingRadius: left ? 0 : 10, style: .continuous)
+            .fill(.white).frame(width: grip, height: 60)
+            .overlay(Image(systemName: left ? "chevron.compact.left" : "chevron.compact.right").font(.system(size: 20, weight: .bold)).foregroundStyle(.black.opacity(0.7)))
+            // a thumb's width to catch it by, not just the sliver that shows
+            .padding(.horizontal, 14).padding(.vertical, 8).contentShape(Rectangle()).padding(.horizontal, -14).padding(.vertical, -8)
+            .gesture(DragGesture(minimumDistance: 0).onChanged { v in
+                // from where the end was when it was caught, by how far the finger has gone: it never jumps to the finger
+                let from = grabbed ?? (left ? range.lowerBound : range.upperBound)
+                if grabbed == nil { grabbed = from; UISelectionFeedbackGenerator().selectionChanged() }
+                let at = min(length, max(0, from + Double(v.translation.width / inner) * length))
                 if left { let s = min(at, range.upperBound - 1); range = max(0, max(s, range.upperBound - 30))...range.upperBound }
                 else { let e = max(at, range.lowerBound + 1); range = range.lowerBound...min(length, min(e, range.lowerBound + 30)) }
-                scrub = left ? range.lowerBound : range.upperBound   // the frame that end lands on
-            }.onEnded { _ in scrub = nil })
+                scrub = left ? range.lowerBound : range.upperBound
+            }.onEnded { _ in scrub = nil; grabbed = nil })
             .accessibilityLabel(left ? "Start" : "End")
     }
 
@@ -739,9 +757,12 @@ struct StoryEditor: View {
         let fill = max(cw / base.size.width, ch / base.size.height) * bgScale
         let w = base.size.width * fill, h = base.size.height * fill
         let format = UIGraphicsImageRendererFormat(); format.scale = 1
-        return UIGraphicsImageRenderer(size: CGSize(width: 1080, height: oh), format: format).image { _ in
+        return UIGraphicsImageRenderer(size: CGSize(width: 1080, height: oh), format: format).image { c in
             UIColor(white: 0.08, alpha: 1).setFill(); UIRectFill(CGRect(x: 0, y: 0, width: 1080, height: oh))
-            base.draw(in: CGRect(x: ((cw - w) / 2 + bgOffset.width) * k, y: ((ch - h) / 2 + bgOffset.height) * k, width: w * k, height: h * k))
+            // about its own middle, where it was carried to: turned there, then drawn at its size
+            c.cgContext.translateBy(x: (cw / 2 + bgOffset.width) * k, y: (ch / 2 + bgOffset.height) * k)
+            c.cgContext.rotate(by: CGFloat(bgSpin) * .pi / 180)
+            base.draw(in: CGRect(x: -w * k / 2, y: -h * k / 2, width: w * k, height: h * k))
         }
     }
 
@@ -751,7 +772,7 @@ struct StoryEditor: View {
         if let finishVideo {
             Button {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
-                finishVideo(ClipEdit(look: look, range: length > 0 ? range : nil, muted: muted, crop: clipCrop, shape: ratio, overlay: overlayPicture(), turns: turns))
+                finishVideo(ClipEdit(look: look, range: length > 0 ? range : nil, muted: muted, crop: bgSpin == 0 ? clipCrop : nil, shape: ratio, overlay: overlayPicture(), turns: turns, spin: bgSpin, zoom: bgScale, move: clipMove))
             } label: {
                 Text("Use this video").font(.headline).foregroundStyle(.black).frame(maxWidth: .infinity).padding(.vertical, 13).background(.white, in: Capsule())
             }
@@ -1188,11 +1209,12 @@ struct PlacedItem: View {
 
 /// The photo behind a story: pinch to zoom, then drag to move it; while it isn't zoomed, a swipe across changes the
 /// filter. Like a placed sticker it moves on its own and tells the editor only when the finger lifts.
-/// The photo or clip behind the editor's frame: pinch to zoom, drag to choose the part that shows, never past its own
-/// edges. It follows the fingers on its own and keeps where they left it until the editor's copy says the same:
-/// handing the new zoom to the editor and waiting for it back made it spring to its old size and then swell again.
-/// The two gestures end one after the other, so each reads what the other has just left rather than what was drawn
-/// last: a drag ending a moment after the pinch used to put the old zoom back.
+/// The photo or clip behind the editor's frame: two fingers pinch it bigger, turn it and carry it about, all at
+/// once; one finger drags it. Lying straight it never shows past its own edges; turned, it goes where it's put,
+/// and the dark behind shows at the corners. It follows the fingers on its own and keeps where they left it until
+/// the editor's copy says the same: handing the new zoom to the editor and waiting for it back made it spring to
+/// its old size and then swell again. The gestures end one after the other, so each reads what the others have
+/// just left rather than what was drawn last: a drag ending a moment after the pinch used to put the old zoom back.
 struct MovableClip<Content: View>: View {
     let cw: CGFloat
     let ch: CGFloat
@@ -1200,66 +1222,95 @@ struct MovableClip<Content: View>: View {
     let fill: CGSize
     let scale: CGFloat
     let offset: CGSize
+    /// How far it's turned, in degrees to the right.
+    var spin: Double = 0
     var movable: Bool
-    /// A photo's: a swipe across it at its plain size changes the filter, and it only moves once zoomed in.
+    /// A photo's: a swipe across it at its plain size changes the filter, and it only moves once zoomed in or turned.
     var swipe: ((Int) -> Void)? = nil
-    var commit: (CGFloat, CGSize) -> Void
+    var commit: (CGFloat, CGSize, Double) -> Void
     @ViewBuilder var content: () -> Content
     @GestureState private var drag: CGSize = .zero
     @GestureState private var pinch: CGFloat = 1
+    @GestureState private var twist: Angle = .zero
     @State private var heldScale: CGFloat?
     @State private var heldOffset: CGSize?
+    @State private var heldSpin: Double?
 
-    private func clamped(_ sc: CGFloat, _ off: CGSize) -> (scale: CGFloat, offset: CGSize) {
+    /// A twist of the fingers as a turn: nothing for the first 8 degrees (two fingers pinching always wobble), then
+    /// from nothing, so it never jumps.
+    private static func turn(_ a: Angle) -> Double {
+        let d = a.degrees
+        return abs(d) < 8 ? 0 : d - (d > 0 ? 8 : -8)
+    }
+    /// Between -180 and 180, and caught by upright, on its side and upside down when within 4 degrees of them.
+    private static func settled(_ deg: Double) -> Double {
+        var d = deg.truncatingRemainder(dividingBy: 360)
+        if d > 180 { d -= 360 } else if d <= -180 { d += 360 }
+        for stop in [0.0, 90, -90, 180, -180] where abs(d - stop) < 4 { return stop == -180 ? 180 : stop }
+        return d
+    }
+    private func clamped(_ sc: CGFloat, _ off: CGSize, _ deg: Double) -> (scale: CGFloat, offset: CGSize) {
         let s = min(4, max(1, sc))
-        let mx = max(0, (fill.width * s - cw) / 2), my = max(0, (fill.height * s - ch) / 2)
+        // straight: inside its own edges. Turned: its middle stays in reach, so it can't be lost off the side
+        let mx = deg == 0 ? max(0, (fill.width * s - cw) / 2) : (fill.width * s + cw) / 4
+        let my = deg == 0 ? max(0, (fill.height * s - ch) / 2) : (fill.height * s + ch) / 4
         return (s, CGSize(width: min(mx, max(-mx, off.width)), height: min(my, max(-my, off.height))))
     }
     /// Where it stands with no finger on it, read as of now.
-    private var from: (scale: CGFloat, offset: CGSize) { (heldScale ?? scale, heldOffset ?? offset) }
-    private func pans(_ s: CGFloat) -> Bool { swipe == nil || s > 1.01 || pinch != 1 }
-    private func settle(_ sc: CGFloat, _ off: CGSize) {
-        if swipe != nil && sc <= 1.01 {
-            withAnimation(.snappy) { heldScale = 1; heldOffset = .zero }
-            commit(1, .zero)
+    private var from: (scale: CGFloat, offset: CGSize, spin: Double) { (heldScale ?? scale, heldOffset ?? offset, heldSpin ?? spin) }
+    private func pans(_ s: CGFloat, _ deg: Double) -> Bool { swipe == nil || s > 1.01 || pinch != 1 || deg != 0 }
+    private func settle(_ sc: CGFloat, _ off: CGSize, _ deg: Double) {
+        if swipe != nil && sc <= 1.01 && deg == 0 {
+            withAnimation(.snappy) { heldScale = 1; heldOffset = .zero; heldSpin = 0 }
+            commit(1, .zero, 0)
         } else {
-            heldScale = sc; heldOffset = off
-            commit(sc, off)
+            heldScale = sc; heldOffset = off; heldSpin = deg
+            commit(sc, off, deg)
         }
     }
 
     var body: some View {
         let b = from
-        let live = clamped(b.scale * pinch, pans(b.scale) ? CGSize(width: b.offset.width + drag.width, height: b.offset.height + drag.height) : b.offset)
+        let deg = Self.settled(b.spin + Self.turn(twist))
+        let live = clamped(b.scale * pinch, pans(b.scale, deg) ? CGSize(width: b.offset.width + drag.width, height: b.offset.height + drag.height) : b.offset, deg)
         content()
             .scaleEffect(live.scale)
+            .rotationEffect(.degrees(deg))
             .offset(live.offset)
             .frame(width: cw, height: ch).clipped()
             .contentShape(Rectangle())
-            .gesture(SimultaneousGesture(
+            .gesture(SimultaneousGesture(SimultaneousGesture(
                 DragGesture(minimumDistance: 8)
                     .updating($drag) { v, s, _ in s = v.translation }
                     .onEnded { v in
-                        let b = from
-                        guard pans(b.scale) else {
+                        let b = from, deg = Self.settled(b.spin + Self.turn(twist))
+                        guard pans(b.scale, deg) else {
                             if abs(v.translation.width) > 50, abs(v.translation.width) > abs(v.translation.height) { swipe?(v.translation.width < 0 ? 1 : -1) }
                             return
                         }
-                        // within the edges at the size the fingers have it now, a pinch still going included
-                        let end = clamped(b.scale * pinch, CGSize(width: b.offset.width + v.translation.width, height: b.offset.height + v.translation.height))
-                        if pinch == 1 { settle(end.scale, end.offset) } else { heldOffset = end.offset }
+                        // within reach at the size and turn the fingers have it now, a pinch or twist still going included
+                        let end = clamped(b.scale * pinch, CGSize(width: b.offset.width + v.translation.width, height: b.offset.height + v.translation.height), deg)
+                        if pinch == 1 && twist == .zero { settle(end.scale, end.offset, b.spin) } else { heldOffset = end.offset }
                     },
                 MagnifyGesture()
                     .updating($pinch) { v, s, _ in s = v.magnification }
                     .onEnded { v in
                         let b = from
-                        let end = clamped(b.scale * v.magnification, b.offset)
-                        settle(end.scale, end.offset)
+                        let end = clamped(b.scale * v.magnification, b.offset, Self.settled(b.spin + Self.turn(twist)))
+                        settle(end.scale, end.offset, b.spin)
+                    }),
+                RotateGesture()
+                    .updating($twist) { v, s, _ in s = v.rotation }
+                    .onEnded { v in
+                        let b = from, deg = Self.settled(b.spin + Self.turn(v.rotation))
+                        let end = clamped(b.scale * pinch, b.offset, deg)
+                        if pinch == 1 { settle(end.scale, end.offset, deg) } else { heldSpin = deg; heldOffset = end.offset }
                     }))
             .allowsHitTesting(movable)
             // the editor has caught up (or reset it, or changed its shape): its numbers from here
-            .onChange(of: scale) { _, _ in heldScale = nil; heldOffset = nil }
-            .onChange(of: offset) { _, _ in heldScale = nil; heldOffset = nil }
-            .onChange(of: fill) { _, _ in heldScale = nil; heldOffset = nil }
+            .onChange(of: scale) { _, _ in heldScale = nil; heldOffset = nil; heldSpin = nil }
+            .onChange(of: offset) { _, _ in heldScale = nil; heldOffset = nil; heldSpin = nil }
+            .onChange(of: spin) { _, _ in heldScale = nil; heldOffset = nil; heldSpin = nil }
+            .onChange(of: fill) { _, _ in heldScale = nil; heldOffset = nil; heldSpin = nil }
     }
 }

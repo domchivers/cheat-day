@@ -297,7 +297,7 @@ struct EditPostSheet: View {
             do {
                 if isVideo {
                     if let clip, let local {
-                        let (mp4, _) = try await Stories.compress(local, filter: clip.look, range: clip.range, muted: clip.muted, crop: clip.crop, overlay: clip.overlay, turns: clip.turns)
+                        let (mp4, _) = try await Stories.compress(local, filter: clip.look, range: clip.range, muted: clip.muted, crop: clip.crop, overlay: clip.overlay, turns: clip.turns, placed: clip)
                         extra["video"] = try await api.upload(mp4, ext: "mp4", type: "video/mp4")
                     }
                     if let poster, let jpeg = Feed.prepare(poster) {

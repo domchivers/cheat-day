@@ -177,12 +177,12 @@ final class Feed {
     private(set) var sending: Sending?
 
     /// Post in the background. Done shows for a moment; a failure stays, with Try again.
-    func send(_ row: JSON, photo: UIImage?, video: URL?, filter: String, range: ClosedRange<Double>?, muted: Bool, crop: CGRect? = nil, overlay: UIImage? = nil, more: [UIImage] = [], turns: Int = 0) {
-        let again: () -> Void = { [weak self] in self?.send(row, photo: photo, video: video, filter: filter, range: range, muted: muted, crop: crop, overlay: overlay, more: more, turns: turns) }
+    func send(_ row: JSON, photo: UIImage?, video: URL?, filter: String, range: ClosedRange<Double>?, muted: Bool, crop: CGRect? = nil, overlay: UIImage? = nil, more: [UIImage] = [], turns: Int = 0, placed: ClipEdit? = nil) {
+        let again: () -> Void = { [weak self] in self?.send(row, photo: photo, video: video, filter: filter, range: range, muted: muted, crop: crop, overlay: overlay, more: more, turns: turns, placed: placed) }
         withAnimation(.snappy) { sending = Sending(thumb: photo, state: .working, again: again) }
         Task {
             do {
-                try await post(row, photo: photo, video: video, filter: filter, range: range, muted: muted, crop: crop, overlay: overlay, more: more, turns: turns)
+                try await post(row, photo: photo, video: video, filter: filter, range: range, muted: muted, crop: crop, overlay: overlay, more: more, turns: turns, placed: placed)
                 withAnimation(.snappy) { sending?.state = .done }
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 try? await Task.sleep(for: .seconds(2.5))
@@ -209,12 +209,12 @@ final class Feed {
         }
     }
 
-    func post(_ row: JSON, photo: UIImage?, video: URL? = nil, filter: String = "Normal", range: ClosedRange<Double>? = nil, muted: Bool = false, crop: CGRect? = nil, overlay: UIImage? = nil, more: [UIImage] = [], turns: Int = 0) async throws {
+    func post(_ row: JSON, photo: UIImage?, video: URL? = nil, filter: String = "Normal", range: ClosedRange<Double>? = nil, muted: Bool = false, crop: CGRect? = nil, overlay: UIImage? = nil, more: [UIImage] = [], turns: Int = 0, placed: ClipEdit? = nil) async throws {
         var r = row
         r["owner"] = me
         // a video: up to 30 seconds as mp4 into the same bucket as stories' videos; its first frame is the photo
         if let video {
-            let (mp4, _) = try await Stories.compress(video, filter: filter, range: range, muted: muted, crop: crop, overlay: overlay, turns: turns)
+            let (mp4, _) = try await Stories.compress(video, filter: filter, range: range, muted: muted, crop: crop, overlay: overlay, turns: turns, placed: placed)
             var x = dict(r["extra"]); x["video"] = try await api.upload(mp4, ext: "mp4", type: "video/mp4"); r["extra"] = x
         }
         if let photo, let jpeg = Self.prepare(photo) { r["photo"] = (try? await api.uploadPhoto(jpeg)) ?? NSNull() }
@@ -1388,7 +1388,7 @@ struct ComposeSheet: View {
         SongPlayer.shared.stop()
         // it goes up after the sheet has closed: a line on the feed says posting, then posted
         Feed.shared.send(row, photo: face, video: movie.map { Drafts.release($0) }, filter: clip.look, range: clip.range, muted: clip.muted, crop: clip.crop,
-                         overlay: clip.overlay, more: movie == nil ? shots.dropFirst().map { $0.out } : [], turns: clip.turns)
+                         overlay: clip.overlay, more: movie == nil ? shots.dropFirst().map { $0.out } : [], turns: clip.turns, placed: clip)
         if let draftID { Drafts.delete(draftID) }
         dismiss()
     }

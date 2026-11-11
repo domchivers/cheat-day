@@ -15,6 +15,12 @@ struct ClipEdit {
     var cover: Double? = nil
     /// Quarter turns to the right.
     var turns = 0
+    /// Turned freely by two fingers, in degrees to the right. When it is, the part kept isn't a plain rectangle of
+    /// the picture, so in place of `crop` there's how big it was made and where it was carried to (as fractions of
+    /// the frame), and the frame's corners may show the dark behind.
+    var spin: Double = 0
+    var zoom: CGFloat = 1
+    var move: CGSize = .zero
 
     /// A frame of the clip as friends will see it: through the look, cut to the part kept, with what's on it.
     func still(_ url: URL, at seconds: Double? = nil, width: CGFloat = 1440) async -> UIImage? {
@@ -32,6 +38,20 @@ struct ClipEdit {
 
     func dress(_ frame: UIImage) -> UIImage {
         let lit = StoryArt.filtered((0..<(((turns % 4) + 4) % 4)).reduce(frame) { img, _ in img.quarterTurned() }, look)
+        if spin != 0 {
+            let w = lit.size.width, h = lit.size.height, own = w / max(h, 1), sh = shape ?? own
+            let fw = sh > own ? w : h * sh, fh = fw / sh
+            let format = UIGraphicsImageRendererFormat(); format.scale = 1
+            return UIGraphicsImageRenderer(size: CGSize(width: fw.rounded(), height: fh.rounded()), format: format).image { c in
+                UIColor.black.setFill(); UIRectFill(CGRect(x: 0, y: 0, width: fw, height: fh))
+                c.cgContext.saveGState()
+                c.cgContext.translateBy(x: fw / 2 + move.width * fw, y: fh / 2 + move.height * fh)
+                c.cgContext.rotate(by: CGFloat(spin) * .pi / 180)
+                lit.draw(in: CGRect(x: -w * zoom / 2, y: -h * zoom / 2, width: w * zoom, height: h * zoom))
+                c.cgContext.restoreGState()
+                overlay?.draw(in: CGRect(x: 0, y: 0, width: fw.rounded(), height: fh.rounded()))
+            }
+        }
         guard let cg = lit.cgImage else { return lit }
         let w = CGFloat(cg.width), h = CGFloat(cg.height), c = crop ?? CGRect(x: 0, y: 0, width: 1, height: 1)
         let cut = CGRect(x: c.minX * w, y: c.minY * h, width: c.width * w, height: c.height * h).integral
@@ -234,6 +254,7 @@ enum Drafts {
             if let s = clip.shape { c["shape"] = Double(s) }
             if let t = clip.cover { c["cover"] = t }
             c["turns"] = clip.turns
+            if clip.spin != 0 { c["spin"] = clip.spin; c["zoom"] = Double(clip.zoom); c["move"] = [Double(clip.move.width), Double(clip.move.height)] }
             m["movie"] = name; m["clip"] = c
             try? clip.overlay?.pngData()?.write(to: tmp.appendingPathComponent("overlay.png"))
             try? poster?.jpegData(compressionQuality: 0.9)?.write(to: tmp.appendingPathComponent("poster.jpg"))
@@ -267,6 +288,9 @@ enum Drafts {
             clip.shape = num(c["shape"]).map { CGFloat($0) }
             clip.cover = num(c["cover"])
             clip.turns = Int(num(c["turns"]) ?? 0)
+            if let sp = num(c["spin"]), let m = c["move"] as? [Double], m.count == 2 {
+                clip.spin = sp; clip.zoom = CGFloat(num(c["zoom"]) ?? 1); clip.move = CGSize(width: m[0], height: m[1])
+            }
             clip.overlay = pic("overlay.png")
         }
         return (shots, movie, clip, movie == nil ? nil : pic("poster.jpg"))

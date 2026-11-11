@@ -106,7 +106,7 @@ final class Stories {
 
     /// A video as a smaller mp4: the trimmed part (at most 30 seconds), through the filter, with or without sound.
     /// Crop is the part of the picture to keep, as fractions of it from the top left (a post's video, zoomed and moved in the editor).
-    static func compress(_ url: URL, filter: String = "Normal", range: ClosedRange<Double>? = nil, muted: Bool = false, crop: CGRect? = nil, overlay: UIImage? = nil, turns: Int = 0) async throws -> (Data, Double) {
+    static func compress(_ url: URL, filter: String = "Normal", range: ClosedRange<Double>? = nil, muted: Bool = false, crop: CGRect? = nil, overlay: UIImage? = nil, turns: Int = 0, placed: ClipEdit? = nil) async throws -> (Data, Double) {
         let asset = AVURLAsset(url: url)
         let full = (try? await asset.load(.duration).seconds) ?? 15
         let start = range?.lowerBound ?? 0, end = min(range?.upperBound ?? full, start + 30)
@@ -124,7 +124,8 @@ final class Stories {
         guard let export = AVAssetExportSession(asset: comp, presetName: AVAssetExportPreset1280x720) else { return (try Data(contentsOf: url), end - start) }
         export.outputURL = out; export.outputFileType = .mp4; export.shouldOptimizeForNetworkUse = true
         let quarter = ((turns % 4) + 4) % 4   // quarter turns to the right
-        if crop != nil || overlay != nil || quarter != 0 {
+        let spun = placed.flatMap { $0.spin != 0 ? $0 : nil }   // turned freely: laid into its frame, not cut from the picture
+        if crop != nil || overlay != nil || quarter != 0 || spun != nil {
             let crop = crop ?? CGRect(x: 0, y: 0, width: 1, height: 1)
             // text, stickers and drawing: one see-through picture, stretched over the part kept
             let top = overlay.flatMap { CIImage(image: $0) }
@@ -136,7 +137,22 @@ final class Stories {
                 size = CGSize(width: abs(r.width), height: abs(r.height))
             }
             if quarter % 2 == 1 { size = CGSize(width: size.height, height: size.width) }
-            let cut = CGRect(x: crop.minX * size.width, y: (1 - crop.maxY) * size.height, width: crop.width * size.width, height: crop.height * size.height).integral
+            var area = CGRect(x: crop.minX * size.width, y: (1 - crop.maxY) * size.height, width: crop.width * size.width, height: crop.height * size.height).integral
+            var laying: CGAffineTransform?
+            if let e = spun, size.width > 0, size.height > 0 {
+                // the frame, in the picture's own pixels at its plain size (no more than 1280 on its longer side)
+                let own = size.width / size.height, shape = e.shape ?? own
+                let fw = shape > own ? size.width : size.height * shape
+                let cap = min(1, 1280 / max(fw, fw / shape))
+                let w = (fw * cap / 2).rounded(.down) * 2, h = (fw / shape * cap / 2).rounded(.down) * 2
+                area = CGRect(x: 0, y: 0, width: w, height: h)
+                // from its middle: made its size, turned (to the right is backwards here), carried to its place (down is backwards too)
+                laying = CGAffineTransform(translationX: -size.width / 2, y: -size.height / 2)
+                    .concatenating(CGAffineTransform(scaleX: cap * e.zoom, y: cap * e.zoom))
+                    .concatenating(CGAffineTransform(rotationAngle: -CGFloat(e.spin) * .pi / 180))
+                    .concatenating(CGAffineTransform(translationX: w / 2 + e.move.width * w, y: h / 2 - e.move.height * h))
+            }
+            let cut = area, lay = laying
             if cut.width >= 16, cut.height >= 16 {
                 let vc = AVMutableVideoComposition(asset: comp) { req in
                     var img = req.sourceImage
@@ -148,6 +164,7 @@ final class Stories {
                     let whole = img.extent
                     if filter != "Normal" { img = StoryArt.filtered(img.clampedToExtent(), filter, frame: whole).cropped(to: whole) }
                     var done = img.cropped(to: cut).transformed(by: CGAffineTransform(translationX: -cut.minX, y: -cut.minY))
+                    if let lay { done = img.transformed(by: lay).cropped(to: cut).composited(over: CIImage(color: .black).cropped(to: cut)) }
                     if let top, top.extent.width > 0, top.extent.height > 0 {
                         done = top.transformed(by: CGAffineTransform(scaleX: cut.width / top.extent.width, y: cut.height / top.extent.height)).composited(over: done)
                     }
