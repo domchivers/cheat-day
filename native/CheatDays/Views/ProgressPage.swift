@@ -204,11 +204,8 @@ struct ProgressPage: View {
                 let stroke = LinearGradient(colors: ink, startPoint: .leading, endPoint: .trailing)
                 let months = span > 75 * 86400
                 Chart {
-                    ForEach(pts) { p in
-                        AreaMark(x: .value("Day", p.date), yStart: .value("Low", lo - pad), yEnd: .value("Trend", p.trend))
-                            .interpolationMethod(.monotone)
-                            .foregroundStyle(LinearGradient(colors: [(ink.last ?? Theme.accent).opacity(0.30), (ink.first ?? Theme.accent).opacity(0)], startPoint: .top, endPoint: .bottom))
-                    }
+                    // nothing filled in under the line: whatever its colour, a block of it under the curve was what made the
+                    // chart look muddy. The line and its glow stand on the card alone.
                     if let goal = goalLine {
                         RuleMark(y: .value("Goal", goal)).foregroundStyle(Color.primary.opacity(0.38)).lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
                             .annotation(position: .bottom, alignment: .leading, spacing: 3) {
