@@ -370,6 +370,24 @@ struct StoryEditor: View {
         .buttonStyle(.plain).accessibilityLabel(label)
     }
 
+    /// A quarter turn to the right. A photo is turned itself; a post's clip is shown turned and made that way when
+    /// it's posted. The zoom and place start again: they were for the picture as it lay.
+    private func turn() {
+        UISelectionFeedbackGenerator().selectionChanged()
+        if video != nil {
+            turns = (turns + 1) % 4
+            poster = poster?.quarterTurned()
+            frames = frames.map { $0.quarterTurned() }
+        } else {
+            guard let now = work ?? image else { return }
+            work = now.quarterTurned(); lite = lite?.quarterTurned(); preview = nil
+            let l = flatLook
+            Task { await refilter(l) }
+        }
+        thumbs = thumbs.mapValues { $0.quarterTurned() }
+        withAnimation(.snappy) { bgScale = 1; bgOffset = .zero; bgSpin = 0; clipMove = .zero; clipCovers = true }
+    }
+
     @ViewBuilder private var topRow: some View {
         HStack(spacing: 5) {
             switch mode {
