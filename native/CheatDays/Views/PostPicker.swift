@@ -135,7 +135,7 @@ struct PostPicker: View {
         UISelectionFeedbackGenerator().selectionChanged()
         several.toggle()
         // back to one: the one showing; into several: the one showing first, unless it's a video
-        if let s = showing, !(several && s.mediaType == .video) { picked = [s.localIdentifier] } else { picked = [] }
+        if several { picked = [] } else if let s = showing { picked = [s.localIdentifier] }
     }
 
     private func tap(_ a: PHAsset) {
@@ -154,7 +154,12 @@ struct PostPicker: View {
 
     private func load() async {
         var status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        if status == .notDetermined { status = await PHPhotoLibrary.requestAuthorization(for: .readWrite) }
+        if status == .notDetermined {
+            // once the picker has finished coming up: asked while it was still arriving, the question didn't show,
+            // and Recents sat empty until something else brought it out
+            try? await Task.sleep(for: .milliseconds(700))
+            status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+        }
         guard status == .authorized || status == .limited else { allowed = false; return }
         let opts = PHFetchOptions()
         opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
