@@ -3,7 +3,8 @@ import SwiftUI
 
 private struct DayBar: Identifiable { let id: String; let label: String; let kcal: Double; let walk: Double; let today: Bool }
 
-/// Workouts: the week, one big Start, routines and today's, with past workouts and every exercise a tap away.
+/// Workouts, laid out like Progress: the week in big type and bars, Start and Log side by side, today's and your
+/// routines, then the rest in a list. Getting a workout plan leads the page only until there's a workout logged.
 struct WorkoutsView: View {
     @State private var showSession = false
     @State private var showActivity = false
@@ -38,35 +39,29 @@ struct WorkoutsView: View {
                         VolumeRows(plan: plan)
                         NavigationLink { PlanEditor() } label: { Label("Edit your week", systemImage: "slider.horizontal.3") }
                     }
-                } else {
-                    Section {
-                        Button { building = true } label: {
-                            HStack(spacing: 14) {
-                                Image(systemName: "calendar.badge.plus").font(.title2).foregroundStyle(Theme.accent)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Get a workout plan").font(.headline)
-                                    Text("A week built around your days, kit and goal, with weights that go up when you're ready.").font(.footnote).foregroundStyle(.secondary)
-                                }
-                                Spacer(minLength: 0)
-                                Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.secondary)
-                            }
-                            .padding(.vertical, 4)
-                        }
-                        .buttonStyle(.plain)
-                    }
                 }
-                Section { weekCard }
-                if store.session == nil {
-                    Section {
-                        Button { store.startSession(nil); showSession = true } label: {
-                            Label("Start a gym session", systemImage: "play.fill").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 6)
-                        }
-                        .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 16)).foregroundStyle(Theme.onAccent)
-                        .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
-                    }
-                }
+                Section { hero.listRowBackground(Color.clear).listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4)) }
+                if tracked || weekHasBars { Section { weekCard } }
                 Section {
-                    Button { showActivity = true } label: { Label("Log a walk, run or class", systemImage: "figure.walk") }
+                    HStack(spacing: 10) {
+                        if store.session == nil {
+                            Button { store.startSession(nil); showSession = true } label: {
+                                Label("Start a session", systemImage: "play.fill").font(.subheadline.weight(.heavy)).foregroundStyle(Theme.onAccent)
+                                    .frame(maxWidth: .infinity).padding(.vertical, 14).background(Theme.accent, in: Capsule())
+                            }
+                            .buttonStyle(.borderless).layoutPriority(1)
+                        }
+                        Button { showActivity = true } label: {
+                            Label("Log activity", systemImage: "plus").font(.subheadline.weight(.heavy)).foregroundStyle(Theme.accent)
+                                .frame(maxWidth: .infinity).padding(.vertical, 14).background(Color(.secondarySystemGroupedBackground), in: Capsule())
+                        }
+                        .buttonStyle(.borderless).accessibilityLabel("Log a walk, run or class")
+                    }
+                    .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
+                }
+                // a fresh app: the plan is the best way in, so it has the page; once you're tracking it moves down to More
+                if store.workoutPlan == nil && !tracked {
+                    Section { planRow("Get a workout plan", "A week built around your days, kit and goal, with weights that go up when you're ready.") } header: { head("Not sure where to start?") }
                 }
                 let walked = Steps.shared.today
                 if !store.todayWorkouts.isEmpty || walked != nil {
@@ -77,49 +72,44 @@ struct WorkoutsView: View {
                             NavigationLink { WorkoutDetail(workout: w, date: store.today) } label: { WorkoutRow(workout: w, date: nil) }
                                 .swipeActions { Button(role: .destructive) { store.deleteWorkout(str(w["id"])) } label: { Label("Delete", systemImage: "trash") } }
                         }
-                    } header: { Text("Today") } footer: {
+                    } header: { head("Today") } footer: {
                         if walked != nil { Text("Walking is counted from your steps and weight. It isn't a workout, so it doesn't add to your workout count, badges or budget.") }
                     }
                 }
                 if !store.routines.isEmpty {
-                    Section("Your routines") {
+                    Section {
                         ForEach(keyed(store.routines)) { entry in
                             let r = entry.item
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(str(r["name"])).font(.body.weight(.semibold))
-                                    Text("\(list(r["exercises"]).count) exercises · tap play to start").font(.footnote).foregroundStyle(.secondary)
+                                    Text("\(list(r["exercises"]).count) exercises").font(.footnote).foregroundStyle(.secondary)
                                 }
                                 Spacer()
                                 Button {
                                     guard store.session == nil else { showSession = true; return }
                                     store.startSession(r); showSession = true
                                 } label: {
-                                    Image(systemName: "play.circle.fill").font(.system(size: 30)).foregroundStyle(Theme.accent)
+                                    Image(systemName: "play.fill").font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.accent)
+                                        .frame(width: 38, height: 38).background(Color(.tertiarySystemFill), in: Circle())
                                 }
-                                .buttonStyle(.borderless)
+                                .buttonStyle(.borderless).accessibilityLabel("Start \(str(r["name"]))")
                             }
                             .swipeActions { Button(role: .destructive) { store.deleteRoutine(str(r["id"])) } label: { Label("Delete", systemImage: "trash") } }
                         }
-                    }
+                    } header: { head("Your routines") }
                 }
                 Section {
+                    if store.workoutPlan == nil && tracked { planRow("Workout plan", "A week built around your days, kit and goal") }
                     if let last = store.pastWorkouts.max(by: { $0.date < $1.date }) {
                         NavigationLink { PastWorkoutsView() } label: {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Past workouts")
-                                Text("Last: \(Store.when(last.date).capitalizedFirst) · \(str(last.workout["name"]))").font(.footnote).foregroundStyle(.secondary).lineLimit(1)
-                            }
+                            moreRow("clock.arrow.circlepath", "Past workouts", "Last: \(Store.when(last.date).capitalizedFirst) · \(str(last.workout["name"]))")
                         }
                     }
-                    NavigationLink { ExerciseBrowser() } label: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("All exercises")
-                            Text("Your bests and the library").font(.footnote).foregroundStyle(.secondary)
-                        }
-                    }
-                }
+                    NavigationLink { ExerciseBrowser() } label: { moreRow("list.bullet", "All exercises", "Your bests and the library") }
+                } header: { head("More") }
             }
+            .listSectionSpacing(14)
             .navigationTitle("Workouts")
             // the same slim title as Friends and Progress, at the same height, in place of the large navigation title
             .toolbar(.hidden, for: .navigationBar)
@@ -144,6 +134,60 @@ struct WorkoutsView: View {
             .sheet(isPresented: $building) { PlanBuilder() }
             .sheet(isPresented: $showActivity) { ActivitySheet().presentationDetents([.medium, .large]) }
         }
+    }
+
+    /// Whether there's anything of theirs here yet: a workout in the last months, one today, or a routine.
+    private var tracked: Bool { !store.pastWorkouts.isEmpty || !store.todayWorkouts.isEmpty || !store.routines.isEmpty }
+    private var weekHasBars: Bool { store.week.contains { $0.kcal > 0 || Steps.shared.kcal(on: $0.date) > 0 } }
+
+    private func head(_ t: String) -> some View {
+        Text(t).font(.headline.weight(.heavy)).foregroundStyle(.secondary).textCase(nil)
+    }
+
+    /// The week in three lines, as Progress has your weight: a quiet label, the count in big type, the calories.
+    private var hero: some View {
+        let days = store.week
+        let count = days.reduce(0) { $0 + $1.count }, total = days.reduce(0) { $0 + $1.kcal }
+        let walked = days.reduce(0) { $0 + Steps.shared.kcal(on: $1.date) }
+        return VStack(alignment: .leading, spacing: 2) {
+            Text("This week").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+            if count > 0 || tracked {
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    Text("\(count)").font(.system(size: 48, weight: .heavy, design: .rounded)).monospacedDigit()
+                    Text(count == 1 ? "workout" : "workouts").font(.headline).foregroundStyle(.secondary)
+                }
+                Text("\(Fmt.int(total)) kcal\(walked > 0 ? " · \(Fmt.int(walked)) more from walking" : "")").font(.subheadline).foregroundStyle(.primary.opacity(0.8)).monospacedDigit()
+            } else {
+                Text("No workouts yet").font(.title.weight(.heavy)).padding(.top, 2)
+                Text("Start a session, or log one you've done.").font(.subheadline).foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func moreRow(_ symbol: String, _ title: String, _ sub: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: symbol).font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.accent)
+                .frame(width: 38, height: 38).background(Color(.tertiarySystemFill), in: Circle())
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.body.weight(.semibold)).foregroundStyle(.primary)
+                Text(sub).font(.footnote).foregroundStyle(.secondary).lineLimit(2).multilineTextAlignment(.leading)
+            }
+        }
+    }
+
+    /// Getting a workout plan, as a row: under its own heading on a fresh app, in More once you're tracking.
+    private func planRow(_ title: String, _ sub: String) -> some View {
+        Button { building = true } label: {
+            HStack {
+                moreRow("calendar.badge.plus", title, sub)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func liveCard(_ s: LiveSession) -> some View {
@@ -171,17 +215,8 @@ struct WorkoutsView: View {
         let days = store.week
         let bars = days.map { d in DayBar(id: d.date, label: String(DayKey.date(d.date).formatted(.dateTime.weekday(.narrow))), kcal: d.kcal,
                                           walk: Steps.shared.kcal(on: d.date), today: d.date == store.today) }
-        let total = days.reduce(0) { $0 + $1.kcal }, count = days.reduce(0) { $0 + $1.count }
         let walked = bars.reduce(0) { $0 + $1.walk }
         return VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("This week").font(.headline)
-                Spacer()
-                VStack(alignment: .trailing, spacing: 1) {
-                    Text("\(count) workout\(count == 1 ? "" : "s") · \(Fmt.int(total)) kcal").font(.subheadline).foregroundStyle(.secondary)
-                    if walked > 0 { Text("+ walking \(Fmt.int(walked)) kcal").font(.subheadline).foregroundStyle(Theme.walk) }
-                }
-            }
             // one bar a day: workouts from the bottom, the walking share in green on top; an empty day keeps a small grey stub
             Chart(bars) { b in
                 BarMark(x: .value("Day", b.id), y: .value("kcal", b.kcal + b.walk > 0 ? b.kcal + b.walk : 4))
