@@ -20,6 +20,8 @@ struct StoryEditor: View {
     /// A feed post's video: the filter, the part kept and whether its sound is off, for the post to be made with.
     /// Then the part of the picture kept (fractions from the top left; nil for all of it) and the shape that makes.
     var finishVideo: ((String, ClosedRange<Double>?, Bool, CGRect?, CGFloat) -> Void)? = nil
+    /// The shape picked the last time this clip was in the editor, to open on.
+    var startShape: CGFloat? = nil
     private var forPost: Bool { finish != nil || finishVideo != nil }
     /// A post's clip: trimmed, filtered and muted only.
     private var clipOnly: Bool { finishVideo != nil }
@@ -212,7 +214,7 @@ struct StoryEditor: View {
                                 },
                                 swipe: { nextFilter($0) })
             }
-            if video != nil {
+            if video != nil && !clipOnly {   // a post's clip is pinched and dragged itself: this sheet over it took those touches
                 // a video can't be zoomed, but swiping across it still changes the filter
                 Color.clear.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 20).onEnded { v in
                     guard abs(v.translation.width) > 50, abs(v.translation.width) > abs(v.translation.height) else { return }
@@ -592,6 +594,7 @@ struct StoryEditor: View {
     // MARK: getting ready, filters and sharing
 
     private func prepare() async {
+        if shape == nil, let startShape { shape = startShape }
         if let image {
             // made off the main thread: shrinking a camera photo there held the screen black while the editor opened
             let src = image

@@ -1059,7 +1059,7 @@ struct ComposeSheet: View {
                 StoryEditor(image: nil, video: c.url, close: { cutting = nil }, finishVideo: { f, r, m, crop, shape in
                     movieFilter = f; movieRange = r; movieMuted = m; movieCrop = crop; movieShape = shape; movie = c.url; source = nil; cutting = nil
                     Task { photo = await Self.firstFrame(c.url, at: r?.lowerBound ?? 0) }
-                })
+                }, startShape: movieShape)
             }
             // the story editor, in the feed's 4:5: text, stickers, drawing and filters baked into the photo
             .fullScreenCover(item: $editing) { e in
