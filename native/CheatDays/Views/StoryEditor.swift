@@ -829,14 +829,14 @@ struct StoryEditor: View {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 finishVideo(ClipEdit(look: look, range: length > 0 ? range : nil, muted: muted, crop: clipCovers ? clipCrop : nil, shape: ratio, overlay: overlayPicture(), turns: turns, spin: bgSpin, zoom: bgScale, move: clipMove, loose: !clipCovers))
             } label: {
-                Text("Use this video").font(.headline).foregroundStyle(.black).frame(maxWidth: .infinity).padding(.vertical, 13).background(.white, in: Capsule())
+                Text("Next").font(.headline).foregroundStyle(.black).frame(maxWidth: .infinity).padding(.vertical, 13).background(.white, in: Capsule())
             }
             .buttonStyle(.plain).disabled(mode != .none).opacity(mode == .none ? 1 : 0.3)
         } else if forPost {
             Button {
                 if let out = baked() { UINotificationFeedbackGenerator().notificationOccurred(.success); finish?(out) }
             } label: {
-                Text("Use this photo").font(.headline).foregroundStyle(.black).frame(maxWidth: .infinity).padding(.vertical, 13).background(.white, in: Capsule())
+                Text("Next").font(.headline).foregroundStyle(.black).frame(maxWidth: .infinity).padding(.vertical, 13).background(.white, in: Capsule())
             }
             .buttonStyle(.plain).disabled(mode != .none).opacity(mode == .none ? 1 : 0.3)
         } else { storyButtons }

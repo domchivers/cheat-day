@@ -938,6 +938,8 @@ struct ComposeSheet: View {
     private var started: Bool { !shots.isEmpty || movie != nil || !tags.isEmpty || !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (what != nil && preset == nil) || song != nil }
     @State private var camera = false
     @State private var library = false
+    @State private var picking = false   // the app's own picker: the one chosen big, recents under it
+    @State private var opened = false
     @State private var attaching = false   // the list of foods, meals and workouts is open
     @State private var song: Song?
     @State private var choosingSong = false
@@ -992,7 +994,23 @@ struct ComposeSheet: View {
                 }
             }
             .keyboardDone()
-            .onAppear { if what == nil, let preset { what = preset }; drafts = Drafts.all() }
+            .onAppear {
+                if what == nil, let preset { what = preset }
+                drafts = Drafts.all()
+                // a new post starts by choosing its picture, as Instagram's does (unless it's of a workout or food
+                // already, or there are drafts to carry on with); closing the picker leaves the post to be written without one
+                if !opened {
+                    opened = true
+                    if preset == nil && drafts.isEmpty && !started { DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { picking = true } }
+                }
+            }
+            .fullScreenCover(isPresented: $picking) {
+                PostPicker(room: max(1, 10 - shots.count), photosOnly: !shots.isEmpty,
+                           done: { images, video in picking = false; took(images, video) },
+                           camera: { picking = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { camera = true } },
+                           allPhotos: { picking = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { library = true } },
+                           close: { picking = false })
+            }
             .interactiveDismissDisabled(started)
             .confirmationDialog("Keep this post to finish later?", isPresented: $leaving, titleVisibility: .visible) {
                 Button("Save draft") { saveDraft() }
@@ -1019,25 +1037,15 @@ struct ComposeSheet: View {
             .onChange(of: picked) { _, items in
                 guard !items.isEmpty else { return }
                 Task {
-                    // a video (only as the post's one picture): into the editor first, to trim it, filter it, write on it
                     if shots.isEmpty, let first = items.first, first.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }),
                        let m = try? await first.loadTransferable(type: PickedMovie.self) {
                         library = false
-                        try? await Task.sleep(for: .milliseconds(550))
-                        cutting = ClipBox(url: m.url)
+                        took([], m.url)
                     } else {
                         var got: [UIImage] = []
-                        for item in items { if let d = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: d) { got.append(Self.sized(img)) } }
+                        for item in items { if let d = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: d) { got.append(img) } }
                         library = false
-                        if got.count == 1 {
-                            // one photo: straight into the editor, as before
-                            try? await Task.sleep(for: .milliseconds(550))
-                            editing = EditBox(image: got[0])
-                        } else if !got.isEmpty {
-                            // several: all in at once, in the first one's shape; tap any to edit it
-                            movie = nil; poster = nil
-                            for img in got where shots.count < 10 { shots.append(Shot(source: img, out: Self.fitted(img, to: firstShape))) }
-                        }
+                        took(got, nil)
                     }
                     picked = []
                 }
@@ -1061,6 +1069,24 @@ struct ComposeSheet: View {
                     else if shots.count < 10 { shots.append(Shot(source: e.image, out: out)); showing = shots.count - 1 }
                     editing = nil
                 }, lockShape: later)
+            }
+        }
+    }
+
+    /// What was picked, from the app's picker or the system's. A video (only as the post's one picture) goes into
+    /// the editor first, to trim it, filter it, write on it; one photo goes straight into the editor too; several go
+    /// in at once in the first one's shape, each to be edited by tapping it.
+    private func took(_ images: [UIImage], _ video: URL?) {
+        Task {
+            if let video, shots.isEmpty {
+                try? await Task.sleep(for: .milliseconds(550))
+                cutting = ClipBox(url: video)
+            } else if images.count == 1 {
+                try? await Task.sleep(for: .milliseconds(550))
+                editing = EditBox(image: Self.sized(images[0]))
+            } else if !images.isEmpty {
+                movie = nil; poster = nil
+                for img in images where shots.count < 10 { let s = Self.sized(img); shots.append(Shot(source: s, out: Self.fitted(s, to: firstShape))) }
             }
         }
     }
@@ -1175,7 +1201,7 @@ struct ComposeSheet: View {
                     if shots.count < 10 {
                         Menu {
                             Button { camera = true } label: { Label("Take a photo", systemImage: "camera") }
-                            Button { library = true } label: { Label("Choose from library", systemImage: "photo.on.rectangle") }
+                            Button { picking = true } label: { Label("Choose from library", systemImage: "photo.on.rectangle") }
                         } label: {
                             Image(systemName: "plus").font(.system(size: 17, weight: .bold)).foregroundStyle(Theme.accent)
                                 .frame(width: 54, height: 54).background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -1219,7 +1245,7 @@ struct ComposeSheet: View {
                         }
                         if shots.count < 10 {
                             Button { camera = true } label: { Label(photo == nil ? "Take a photo" : movie != nil ? "Take a photo instead" : "Take another", systemImage: "camera") }
-                            Button { library = true } label: { Label(photo == nil ? "Choose from library" : movie != nil ? "Choose something else" : "Add from library", systemImage: "photo.on.rectangle") }
+                            Button { picking = true } label: { Label(photo == nil ? "Choose from library" : movie != nil ? "Choose something else" : "Add from library", systemImage: "photo.on.rectangle") }
                         }
                         if movie != nil { Button(role: .destructive) { movie = nil; poster = nil; clip = ClipEdit() } label: { Label("Remove", systemImage: "trash") } }
                         else if !shots.isEmpty { Button(role: .destructive) { drop(showing) } label: { Label("Remove", systemImage: "trash") } }
@@ -1277,7 +1303,7 @@ struct ComposeSheet: View {
                 // one tap each, no menu
                 VStack(spacing: 8) {
                     tileButton("camera.fill", "Camera") { camera = true }
-                    tileButton("photo.on.rectangle", "Library") { library = true }
+                    tileButton("photo.on.rectangle", "Library") { picking = true }
                 }
                 .padding(.top, 4)
             }
