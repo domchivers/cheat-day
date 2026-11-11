@@ -32,6 +32,7 @@ struct AssistantView: View {
     @State private var keeping: Task<Void, Never>?
     @State private var keptKey = ""
     @State private var openCombo: [UUID: Int] = [:]   // which of a takeaway answer's combos is open
+    @State private var openMethod: Set<UUID> = []   // the dish cards whose method is showing
     @State private var cardEdits: [String: CardEdit] = [:]   // what's been changed on each takeaway combo ("turn-combo")
     @FocusState private var typing: Bool
     private var store: Store { Store.shared }
@@ -699,22 +700,53 @@ struct AssistantView: View {
         }
         return panel {
             Text(str(rc["name"])).font(.headline)
-            Text("\(Fmt.one(portions)) portion\(portions == 1 ? "" : "s") · per portion:").font(.caption).foregroundStyle(.secondary)
+            Text("\(Fmt.one(portions)) portion\(portions == 1 ? "" : "s")\(portions == 1 ? "" : " · per portion:")").font(.caption).foregroundStyle(.secondary)
             macros(total / portions, p / portions, c / portions, f / portions)
+            // each ingredient as the foods card shows a food: its picture, its name, its numbers under it, the grams beside
             ForEach(ings.indices, id: \.self) { i in
-                HStack { Text(str(ings[i]["name"])).font(.caption); Spacer(); Text("\(Int(num(ings[i]["grams"]) ?? 0)) g · \(Int(num(ings[i]["kcal"]) ?? 0))").font(.caption).monospacedDigit().foregroundStyle(.secondary) }
+                let g = ings[i]
+                HStack(spacing: 11) {
+                    FoodDot(name: str(g["name"]), size: 30)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(str(g["name"])).font(.subheadline.weight(.semibold))
+                        Text("\(Fmt.int(num(g["kcal"]) ?? 0)) kcal · P \(Int((num(g["protein_g"]) ?? 0).rounded()))g · C \(Int((num(g["carbs_g"]) ?? 0).rounded()))g · F \(Int((num(g["fat_g"]) ?? 0).rounded()))g")
+                            .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 6)
+                    Text("\(Int(num(g["grams"]) ?? 0)) g").font(.footnote.weight(.semibold)).monospacedDigit().foregroundStyle(.secondary)
+                }
             }
             let steps = rc["steps"] as? [String] ?? []
             if !steps.isEmpty {
-                VStack(alignment: .leading, spacing: 4) { ForEach(steps.indices, id: \.self) { i in Text("\(i + 1). \(steps[i])").font(.caption) } }.padding(.top, 4)
-            }
-            HStack {
-                addButton("Save as a meal", key: "save", turn: turn) {
-                    store.perform(["type": "saveMeal", "meal": ["id": uid(), "name": str(rc["name"]), "portions": portions, "items": items, "steps": steps, "saved": true, "updatedAt": ISO.now()] as JSON])
+                // the method on one line until it's wanted
+                let open = openMethod.contains(turn)
+                Divider()
+                Button { withAnimation(.snappy) { if open { openMethod.remove(turn) } else { openMethod.insert(turn) } } } label: {
+                    HStack {
+                        Text("Method").font(.subheadline.weight(.bold)).foregroundStyle(.primary)
+                        Spacer()
+                        Text("\(steps.count) step\(steps.count == 1 ? "" : "s")").font(.footnote).foregroundStyle(.secondary)
+                        Image(systemName: open ? "chevron.up" : "chevron.right").font(.caption2.weight(.bold)).foregroundStyle(.tertiary)
+                    }
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                if open {
+                    VStack(alignment: .leading, spacing: 4) { ForEach(steps.indices, id: \.self) { i in Text("\(i + 1). \(steps[i])").font(.caption) } }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            HStack(spacing: 8) {
                 addButton("Add a portion", key: "portion", turn: turn) {
                     store.add(Assistant.basis(name: str(rc["name"]), kcal: total / portions, grams: nil, p: p / portions, c: c / portions, f: f / portions), kcal: total / portions, meal: meal)
                 }
+                // the quieter of the two: saving it for another day
+                let tag = "\(turn)-save", saved = done[turn, default: ""].contains(tag)
+                Button {
+                    store.perform(["type": "saveMeal", "meal": ["id": uid(), "name": str(rc["name"]), "portions": portions, "items": items, "steps": steps, "saved": true, "updatedAt": ISO.now()] as JSON])
+                    withAnimation { done[turn, default: ""] += "|\(tag)" }
+                } label: { Label(saved ? "Saved" : "Save as a meal", systemImage: saved ? "checkmark" : "bookmark").font(.subheadline.weight(.bold)) }
+                .buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.small).disabled(saved)
             }
         }
     }
