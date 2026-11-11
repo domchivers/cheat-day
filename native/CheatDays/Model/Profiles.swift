@@ -187,6 +187,13 @@ final class Profiles {
         await Task { try? await rows("/rest/v1/posts?owner=eq.\(id)&select=*&order=created_at.desc&limit=60") }.value
     }
 
+    /// The posts someone's tagged in (a post lists who's in it under `tags` in its extra), newest first: the ones
+    /// you're allowed to see, as with any post.
+    func tagged(_ id: String) async -> [JSON]? {
+        let want = "{\"tags\":[\"\(id)\"]}".addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
+        return await Task { try? await rows("/rest/v1/posts?extra=cs.\(want)&select=*&order=created_at.desc&limit=60") }.value
+    }
+
     func removeFriend(_ p: Friends.Person) async {
         _ = try? await api.rest("/rest/v1/friendships?id=eq.\(p.friendship)", method: "DELETE")
         await Friends.shared.load()

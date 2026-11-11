@@ -460,6 +460,9 @@ struct FeedView: View {
                                 Text(feed.name(owner)).font(.subheadline.weight(.bold)).foregroundStyle(.primary)
                             }
                             Text(Self.what(p) + " · " + Feed.ago(str(p["created_at"]))).font(.caption).foregroundStyle(.secondary)
+                            if let with = dict(p["extra"])["tags"] as? [String], !with.isEmpty {
+                                Text("with " + TagPicker.names(with)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            }
                         }
                     }
                 }
@@ -932,12 +935,14 @@ struct ComposeSheet: View {
     /// The picture in the tile: the video's cover, or the photo picked from the row.
     private var photo: UIImage? { movie != nil ? poster : (shots.indices.contains(showing) ? shots[showing].out : shots.first?.out) }
     private var firstShape: CGFloat? { shots.first.map { $0.out.size.width / max($0.out.size.height, 1) } }
-    private var started: Bool { !shots.isEmpty || movie != nil || !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (what != nil && preset == nil) || song != nil }
+    private var started: Bool { !shots.isEmpty || movie != nil || !tags.isEmpty || !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (what != nil && preset == nil) || song != nil }
     @State private var camera = false
     @State private var library = false
     @State private var attaching = false   // the list of foods, meals and workouts is open
     @State private var song: Song?
     @State private var choosingSong = false
+    @State private var tags: [String] = []   // friends in the post
+    @State private var tagging = false
     @FocusState private var writing: Bool
     @State private var busy = false
     @State private var problem: String?
@@ -961,6 +966,7 @@ struct ComposeSheet: View {
                         .padding(.horizontal, 14).padding(.top, 14).padding(.bottom, 10).id("caption")
                     attachment.padding(.horizontal, 14)
                     songRow.padding(.horizontal, 14).padding(.top, 10)
+                    tagRow.padding(.horizontal, 14).padding(.top, 10)
                     if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.top, 8) }
                 }
                 .padding(.bottom, 20)
@@ -1007,6 +1013,7 @@ struct ComposeSheet: View {
             }
             .sheet(isPresented: $attaching) { AttachPicker(start: shelf) { what = $0 } }
             .sheet(isPresented: $choosingSong) { SongPicker { song = $0 } }
+            .sheet(isPresented: $tagging) { TagPicker(picked: $tags) }
             .photosPicker(isPresented: $library, selection: $picked, maxSelectionCount: max(1, 10 - shots.count), matching: shots.isEmpty ? PHPickerFilter.any(of: [.images, .videos]) : PHPickerFilter.images)
             .fullScreenCover(isPresented: $camera) { CameraPicker { img in camera = false; if let img { DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { editing = EditBox(image: img) } } }.ignoresSafeArea() }
             .onChange(of: picked) { _, items in
@@ -1082,6 +1089,7 @@ struct ComposeSheet: View {
         var meta: JSON = ["caption": caption]
         if let what { meta["what"] = what }
         if let song { meta["song"] = song.id }
+        if !tags.isEmpty { meta["tags"] = tags }
         let pics = shots.map { ($0.source, $0.out) }, movie = movie, clip = clip, poster = poster
         SongPlayer.shared.stop()
         Task.detached(priority: .userInitiated) { Drafts.save(id, meta: meta, shots: pics, movie: movie, clip: clip, poster: poster) }
@@ -1093,6 +1101,7 @@ struct ComposeSheet: View {
         draftID = str(d["id"]); caption = str(d["caption"])
         if let w = d["what"] as? JSON { what = w }
         song = Music.all.first { $0.id == str(d["song"]) }
+        tags = d["tags"] as? [String] ?? []
         shots = got.shots.map { Shot(source: $0.0, out: $0.1) }; showing = 0
         movie = got.movie; clip = got.clip; poster = got.poster; triedPoster = false
         if let m = got.movie, got.poster == nil { Task { poster = await got.clip.still(m) } }
@@ -1342,6 +1351,22 @@ struct ComposeSheet: View {
         .onDisappear { SongPlayer.shared.stop() }
     }
 
+    /// The friends in the post: the way to tag some, or who's tagged.
+    private var tagRow: some View {
+        Button { writing = false; tagging = true } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "person.crop.square").font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.accent).frame(width: 24)
+                Text("Tag people").font(.body.weight(.semibold)).foregroundStyle(.primary)
+                Spacer(minLength: 8)
+                if !tags.isEmpty { Text(TagPicker.names(tags)).font(.subheadline).foregroundStyle(.secondary).lineLimit(1) }
+                Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 13).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
     private func attachRow(_ symbol: String, _ title: String, _ tap: @escaping () -> Void) -> some View {
         Button(action: tap) {
             HStack(spacing: 12) {
@@ -1383,6 +1408,7 @@ struct ComposeSheet: View {
         let face = movie != nil ? poster : shots.first?.out
         row["caption"] = caption.trimmingCharacters(in: .whitespacesAndNewlines)
         if let song { var x = dict(row["extra"]); x["song"] = ["id": song.id, "title": song.title] as JSON; row["extra"] = x }
+        if !tags.isEmpty { var x = dict(row["extra"]); x["tags"] = tags; row["extra"] = x }
         // the picture's shape, for the feed to show it whole (a video's is its first frame's)
         if let face { var x = dict(row["extra"]); x["aspect"] = Double(face.size.width / max(face.size.height, 1)); row["extra"] = x }
         SongPlayer.shared.stop()

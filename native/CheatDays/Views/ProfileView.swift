@@ -11,6 +11,9 @@ struct ProfileView: View {
     var home = false
     @State private var posts: [JSON] = []
     @State private var tab = 0
+    @State private var tagged: [JSON] = []   // posts they're tagged in
+    @State private var openTagged: String?   // one of those, tapped
+    @Namespace private var tabLine
     @State private var editing = false
     @State private var openAt: Int?   // a post tapped in the grid: the posts from there, as on the feed
     @State private var reels: ReelStart?   // a video tapped in the grid: full screen, their other videos after it
@@ -54,20 +57,12 @@ struct ProfileView: View {
                 } else {
                 // a post of yours on its way up, and how it's going
                 if isMe { PostingBanner().padding(.horizontal, 14).padding(.bottom, 8) }
-                // only posts on someone else's profile: no tabs to choose between
-                if person != nil || isMe || posts.contains(where: { Feed.video($0) != nil }) {
-                Picker("Show", selection: $tab) {
-                    Image(systemName: "square.grid.3x3").tag(0)
-                    if isMe || posts.contains(where: { Feed.video($0) != nil }) { Image(systemName: "play.rectangle").tag(4) }   // videos, like reels
-                    // no badges tab (pinned badges show under the bio); Progress is yours alone
-                    if person != nil { Image(systemName: "fork.knife").tag(2) }   // their food today, like the Today tab
-                }
-                .pickerStyle(.segmented).padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 8)
-                } else { Divider().padding(.top, 16).padding(.bottom, 2) }
+                tabBar
                 switch tab {
                 case 1: badges.padding(.horizontal, 16)
                 case 2: today.padding(.horizontal, 16)
                 case 4: grid(posts.filter { Feed.video($0) != nil }, empty: isMe ? "Your videos show here. Tap ＋ on your photo, then Post, and pick a video." : "No videos yet.")
+                case 5: grid(tagged, empty: isMe ? "Posts your friends tag you in show here." : "No tagged posts yet.")
                 default: grid(posts, empty: isMe ? "Your posts show here. Tap ＋ on your photo to share one." : "No posts yet.")
                 }
                 }
@@ -117,10 +112,13 @@ struct ProfileView: View {
         .navigationDestination(item: $openAt) { i in
             FeedView(only: posts, startAt: posts.indices.contains(i) ? str(posts[i]["id"]) : nil).navigationTitle("Posts").navigationBarTitleDisplayMode(.inline)
         }
+        .navigationDestination(item: $openTagged) { at in
+            FeedView(only: tagged, startAt: at).navigationTitle("Tagged").navigationBarTitleDisplayMode(.inline)
+        }
         .navigationDestination(isPresented: $chatting) { ChatView(friend: id) }
         .fullScreenCover(isPresented: $composing) { StoryComposer() }
         .fullScreenCover(isPresented: $watching) { StoryView(people: [id], at: 0) }
-        .fullScreenCover(item: $reels) { r in ReelsView(posts: posts, startAt: r.id) }
+        .fullScreenCover(item: $reels) { r in ReelsView(posts: posts + tagged.filter { t in !posts.contains { str($0["id"]) == str(t["id"]) } }, startAt: r.id) }
         // a post that's just gone up shows in the grid without a pull to refresh
         .onChange(of: Feed.shared.sending?.state == .done) { _, done in if done && isMe { Task { await reload() } } }
         // a post deleted from the list of posts leaves the grid and the count at once too
@@ -146,6 +144,7 @@ struct ProfileView: View {
         if !follows.loaded { await follows.load() }
         await Task { await profiles.load([id], force: true) }.value
         if let got = await profiles.posts(of: id) { posts = got; await Feed.shared.loadExtras(got) }
+        if let got = await profiles.tagged(id) { tagged = got; await Feed.shared.loadExtras(got) }
         if let c = await Task(operation: { await follows.counts(id) }).value { counts = c }
     }
 
@@ -298,6 +297,36 @@ struct ProfileView: View {
 
     // MARK: the tabs
 
+    /// Posts, videos, tagged (and, on a friend's, their food today) as icons across the page, a line sliding under
+    /// the one showing: the grey segmented box they were in looked like a settings switch.
+    private var tabBar: some View {
+        var tabs: [(Int, String, String)] = [(0, "square.grid.3x3", "Posts")]
+        if isMe || posts.contains(where: { Feed.video($0) != nil }) { tabs.append((4, "play.rectangle", "Videos")) }
+        tabs.append((5, "person.crop.square", "Tagged"))
+        if person != nil { tabs.append((2, "fork.knife", "Today")) }
+        return HStack(spacing: 0) {
+            ForEach(tabs, id: \.0) { t in
+                let on = tab == t.0
+                Button { withAnimation(.snappy(duration: 0.25)) { tab = t.0 } } label: {
+                    VStack(spacing: 9) {
+                        Image(systemName: t.1).font(.system(size: 21, weight: on ? .semibold : .regular))
+                            .foregroundStyle(on ? Color.primary : Color.secondary).frame(height: 26)
+                        ZStack {
+                            Color.clear
+                            if on { Capsule().fill(Color.primary).frame(width: 52).matchedGeometryEffect(id: "line", in: tabLine) }
+                        }
+                        .frame(height: 2.5)
+                    }
+                    .frame(maxWidth: .infinity).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).accessibilityLabel(t.2).accessibilityAddTraits(on ? .isSelected : [])
+            }
+        }
+        .padding(.top, 14)
+        .background(alignment: .bottom) { Rectangle().fill(Color(.separator).opacity(0.5)).frame(height: 0.5) }
+        .padding(.bottom, 2)
+    }
+
     private func grid(_ shown: [JSON], empty: String) -> some View {
         let cols = Array(repeating: GridItem(.flexible(), spacing: 2), count: 3)
         return Group {
@@ -315,7 +344,7 @@ struct ProfileView: View {
         let photo = str(post["photo"]), kind = str(post["kind"])
         let label = kind == "workout" ? "\(Int(num(dict(post["extra"])["minutes"]) ?? 0)) min" : kind == "moment" || kind == "photo" ? "" : Fmt.int(num(post["kcal"]) ?? 0)
         return Button {
-            if Feed.video(post) != nil { reels = ReelStart(id: str(post["id"])) } else { openAt = posts.firstIndex { str($0["id"]) == str(post["id"]) } }
+            if Feed.video(post) != nil { reels = ReelStart(id: str(post["id"])) } else if let i = posts.firstIndex(where: { str($0["id"]) == str(post["id"]) }) { openAt = i } else { openTagged = str(post["id"]) }
         } label: {
             Color.clear.aspectRatio(1, contentMode: .fit)
                 .overlay {

@@ -313,3 +313,52 @@ enum Drafts {
         return "Saved " + date.formatted(.dateTime.day().month(.abbreviated))
     }
 }
+
+/// Who's in a post: your friends, to tick. They're named on the post and it shows under Tagged on their profile.
+struct TagPicker: View {
+    @Binding var picked: [String]
+    @Environment(\.dismiss) private var dismiss
+    @State private var search = ""
+
+    static func names(_ ids: [String]) -> String {
+        let n = ids.map { Feed.shared.name($0) }.filter { !$0.isEmpty }
+        switch n.count {
+        case 0: return ""
+        case 1: return n[0]
+        case 2: return "\(n[0]) and \(n[1])"
+        default: return "\(n[0]), \(n[1]) and \(n.count - 2) more"
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                let people = Friends.shared.people.filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) }
+                if Friends.shared.people.isEmpty {
+                    Text("Add a friend and you can tag them in your posts.").foregroundStyle(.secondary)
+                } else if people.isEmpty {
+                    Text("No friend called that.").foregroundStyle(.secondary)
+                }
+                ForEach(people) { f in
+                    let on = picked.contains(f.id)
+                    Button {
+                        UISelectionFeedbackGenerator().selectionChanged()
+                        if on { picked.removeAll { $0 == f.id } } else if picked.count < 20 { picked.append(f.id) }
+                    } label: {
+                        HStack(spacing: 12) {
+                            Avatar(id: f.id, size: 38)
+                            Text(f.name).font(.body.weight(.semibold)).foregroundStyle(.primary)
+                            Spacer(minLength: 0)
+                            Image(systemName: on ? "checkmark.circle.fill" : "circle").font(.system(size: 22)).foregroundStyle(on ? Theme.accent : Color(.tertiaryLabel))
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).accessibilityAddTraits(on ? .isSelected : [])
+                }
+            }
+            .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search friends")
+            .navigationTitle("Tag people").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.fontWeight(.bold) } }
+        }
+    }
+}

@@ -16,6 +16,8 @@ struct EditPostSheet: View {
     @State private var shelf = 0
     @State private var song: Song?
     @State private var choosingSong = false
+    @State private var tags: [String] = []
+    @State private var tagging = false
     // its photos, in order: each where it is now, and as cropped again here
     @State private var pics: [Pic] = []
     @State private var showing = 0
@@ -56,6 +58,19 @@ struct EditPostSheet: View {
                         .padding(.horizontal, 14).padding(.top, 14).padding(.bottom, 10)
                     if kind != "moment" { attachment.padding(.horizontal, 14) }
                     songRow.padding(.horizontal, 14).padding(.top, 10)
+                    Button { typing = false; tagging = true } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "person.crop.square").font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.accent).frame(width: 24)
+                            Text("Tag people").font(.body.weight(.semibold)).foregroundStyle(.primary)
+                            Spacer(minLength: 8)
+                            if !tags.isEmpty { Text(TagPicker.names(tags)).font(.subheadline).foregroundStyle(.secondary).lineLimit(1) }
+                            Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
+                        }
+                        .padding(.horizontal, 14).padding(.vertical, 13).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .padding(.horizontal, 14).padding(.top, 10)
                     if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.top, 10) }
                 }
                 .padding(.bottom, 24)
@@ -75,6 +90,7 @@ struct EditPostSheet: View {
             .task { await fetchVideo() }
             .sheet(isPresented: $attaching) { AttachPicker(start: shelf) { what = $0; whatChanged = true } }
             .sheet(isPresented: $choosingSong) { SongPicker { song = $0 } }
+            .sheet(isPresented: $tagging) { TagPicker(picked: $tags) }
             .sheet(isPresented: $choosingCover) {
                 if let local { CoverPicker(url: local, edit: clip ?? ClipEdit(cover: cover), start: poster) { at, still in cover = at; clip?.cover = at; if let still { poster = still } } }
             }
@@ -272,6 +288,7 @@ struct EditPostSheet: View {
         opened = true
         caption = Feed.shared.caption(post)
         song = Music.of(post)
+        tags = dict(post["extra"])["tags"] as? [String] ?? []
         if ["food", "meal", "workout"].contains(kind) {
             what = ["kind": kind, "name": post["name"] ?? "", "kcal": post["kcal"] ?? 0, "macros": post["macros"] ?? NSNull(), "payload": post["payload"] ?? [:] as JSON, "extra": dict(post["extra"])]
         }
@@ -318,6 +335,7 @@ struct EditPostSheet: View {
                 return
             }
             extra["song"] = song.map { ["id": $0.id, "title": $0.title] as JSON }
+            extra["tags"] = tags.isEmpty ? nil : tags
             if whatChanged {
                 for k in Self.attachKeys { extra[k] = nil }
                 if let w = what {
