@@ -157,9 +157,19 @@ final class Feed {
         return true
     }
 
+    /// Posts deleted this session: gone at once from every list showing them (a profile keeps its own copy), not
+    /// when the server has answered.
+    private(set) var removed: Set<String> = []
+
     func delete(_ post: JSON) async {
-        do { _ = try await api.rest("/rest/v1/posts?id=eq.\(str(post["id"]))&owner=eq.\(me)", method: "DELETE"); posts.removeAll { str($0["id"]) == str(post["id"]) } }
-        catch { self.error = error.localizedDescription }
+        let id = str(post["id"]), before = posts
+        withAnimation(.snappy) { removed.insert(id); posts.removeAll { str($0["id"]) == id } }
+        do { _ = try await api.rest("/rest/v1/posts?id=eq.\(id)&owner=eq.\(me)", method: "DELETE") }
+        catch {
+            // it didn't go: back where it was, with why
+            withAnimation(.snappy) { removed.remove(id); posts = before }
+            self.error = "Couldn't delete that post: \(error.localizedDescription)"
+        }
     }
 
     func post(_ row: JSON, photo: UIImage?, video: URL? = nil, filter: String = "Normal", range: ClosedRange<Double>? = nil, muted: Bool = false) async throws {
@@ -261,7 +271,7 @@ struct FeedView: View {
                 if only == nil && feed.posts.isEmpty && !feed.loading {
                     Text("Nothing in the feed yet. Share something, or add a friend.").foregroundStyle(.secondary).padding(.top, 40)
                 }
-                ForEach(keyed((only ?? feed.posts).filter { !Profiles.shared.muted.contains(str($0["owner"])) && !Follows.shared.blocked.contains(str($0["owner"])) })) { entry in   // by post id: deleting one can't leave a row past the end
+                ForEach(keyed((only ?? feed.posts).filter { !feed.removed.contains(str($0["id"])) && !Profiles.shared.muted.contains(str($0["owner"])) && !Follows.shared.blocked.contains(str($0["owner"])) })) { entry in   // by post id: deleting one can't leave a row past the end
                     let pid = str(entry.item["id"])
                     postView(entry.item).id(pid)
                         .background { if flash == pid { Theme.accent.opacity(0.12).allowsHitTesting(false) } }

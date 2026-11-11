@@ -119,6 +119,8 @@ struct ProfileView: View {
         .fullScreenCover(isPresented: $composing) { StoryComposer() }
         .fullScreenCover(isPresented: $watching) { StoryView(people: [id], at: 0) }
         .fullScreenCover(item: $reels) { r in ReelsView(posts: posts, startAt: r.id) }
+        // a post deleted from the list of posts leaves the grid and the count at once too
+        .onChange(of: Feed.shared.removed) { _, gone in withAnimation(.snappy) { posts.removeAll { gone.contains(str($0["id"])) } } }
         .sheet(isPresented: $posting, onDismiss: { Task { await reload() } }) { ComposeSheet() }
         .navigationDestination(item: $listing) { which in FollowListView(id: id, which: which) }
         .alert("Messages are for friends", isPresented: $friendsOnly) { Button("OK", role: .cancel) {} } message: {
