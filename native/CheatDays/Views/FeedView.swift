@@ -1095,7 +1095,8 @@ struct ComposeSheet: View {
         if let movie {
             LoopingVideo(url: movie, muted: true, filter: movieFilter, range: movieRange)
         } else if let photo {
-            Color.clear.overlay { Image(uiImage: photo).resizable().scaledToFill() }
+            // whole, in the shape picked for it (square, wide), on the tile's dark ground
+            Color.black.opacity(0.35).overlay { Image(uiImage: photo).resizable().scaledToFit() }
         } else if let w = what {
             // no photo: its numbers are the picture, as the feed's card is
             VStack(alignment: .leading, spacing: 2) {
