@@ -240,6 +240,7 @@ struct FeedView: View {
     @State private var talking: PostBox?   // the post whose comments are open
     @State private var sharing: PostBox?
     @State private var rewording: PostBox?   // your post whose caption is being changed
+    @State private var reels: ReelStart?   // a video opened full screen
     @State private var picking: String?   // the post whose reactions are showing
     @State private var burst: String?   // the post a double-tap just liked
     @State private var profileOf: String?
@@ -291,6 +292,7 @@ struct FeedView: View {
         .sheet(item: $talking) { b in CommentsSheet(post: b.post).presentationDetents([.medium, .large]).presentationDragIndicator(.visible) }
         .sheet(item: $sharing) { b in SharePostSheet(post: b.post).presentationDetents([.medium, .large]) }
         .sheet(item: $rewording) { b in EditPostSheet(post: b.post).presentationDetents([.medium, .large]) }
+        .fullScreenCover(item: $reels) { r in ReelsView(posts: only ?? feed.posts, startAt: r.id) }
         .navigationDestination(item: $profileOf) { id in ProfileView(id: id) }
         .fullScreenCover(item: $story, onDismiss: { if let p = profileAfterStory { profileAfterStory = nil; profileOf = p } }) { s in
             StoryView(people: s.people, at: s.at, onProfile: { profileAfterStory = $0 })
@@ -439,6 +441,8 @@ struct FeedView: View {
                 else { card(p) }
             }
             .onTapGesture(count: 2) { like(p, rx: rx) }
+            // a video opens full screen, to swipe on through the others
+            .onTapGesture { if Feed.video(p) != nil { reels = ReelStart(id: id) } }
             .overlay {
                 if burst == id {
                     Image(systemName: "heart.fill").font(.system(size: 96)).foregroundStyle(.white).shadow(radius: 12)

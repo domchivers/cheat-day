@@ -13,6 +13,7 @@ struct ProfileView: View {
     @State private var tab = 0
     @State private var editing = false
     @State private var openAt: Int?   // a post tapped in the grid: the posts from there, as on the feed
+    @State private var reels: ReelStart?   // a video tapped in the grid: full screen, their other videos after it
     @State private var chatting = false
     @State private var friendsOnly = false   // Message on someone who isn't a friend yet
     @State private var composing = false   // adding to your story
@@ -117,6 +118,7 @@ struct ProfileView: View {
         .navigationDestination(isPresented: $chatting) { ChatView(friend: id) }
         .fullScreenCover(isPresented: $composing) { StoryComposer() }
         .fullScreenCover(isPresented: $watching) { StoryView(people: [id], at: 0) }
+        .fullScreenCover(item: $reels) { r in ReelsView(posts: posts, startAt: r.id) }
         .sheet(isPresented: $posting, onDismiss: { Task { await reload() } }) { ComposeSheet() }
         .navigationDestination(item: $listing) { which in FollowListView(id: id, which: which) }
         .alert("Messages are for friends", isPresented: $friendsOnly) { Button("OK", role: .cancel) {} } message: {
@@ -305,7 +307,9 @@ struct ProfileView: View {
     private func cell(_ post: JSON) -> some View {
         let photo = str(post["photo"]), kind = str(post["kind"])
         let label = kind == "workout" ? "\(Int(num(dict(post["extra"])["minutes"]) ?? 0)) min" : kind == "moment" || kind == "photo" ? "" : Fmt.int(num(post["kcal"]) ?? 0)
-        return Button { openAt = posts.firstIndex { str($0["id"]) == str(post["id"]) } } label: {
+        return Button {
+            if Feed.video(post) != nil { reels = ReelStart(id: str(post["id"])) } else { openAt = posts.firstIndex { str($0["id"]) == str(post["id"]) } }
+        } label: {
             Color.clear.aspectRatio(1, contentMode: .fit)
                 .overlay {
                     if Feed.hasPhoto(post) { FeedPhoto(src: photo, fill: true) }
