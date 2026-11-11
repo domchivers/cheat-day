@@ -2,7 +2,7 @@ import Charts
 import SwiftUI
 
 private extension VerticalAlignment {
-    /// The middle of the big number at the top of Progress: the round + sits level with it.
+    /// The middle of the big number and the line under it at the top of Progress: the round + sits level with that.
     private enum NumberCentre: AlignmentID { static func defaultValue(in d: ViewDimensions) -> CGFloat { d[VerticalAlignment.center] } }
     static let numberCentre = VerticalAlignment(NumberCentre.self)
 }
@@ -87,7 +87,7 @@ struct ProgressPage: View {
                     Text(unit == "%" ? Fmt.dec(sel.kg) : Fmt.kg(sel.kg)).font(.system(size: 48, weight: .heavy, design: .rounded)).contentTransition(.numericText())
                     Text(unit).font(.headline).foregroundStyle(.secondary)
                 }
-                .alignmentGuide(.numberCentre) { $0[VerticalAlignment.center] }
+                .alignmentGuide(.numberCentre) { $0[VerticalAlignment.center] + 11 }   // the middle of the number and the line under it
                 Text(heldLine(sel)).font(.subheadline).foregroundStyle(.primary.opacity(0.8))
             } else if metric != "weight", let m = BodyView.metrics.first(where: { $0.key == metric }),
                       let last = store.bodyRows.filter({ pos($0[metric]) != nil && str($0["day"]) <= store.today }).max(by: { str($0["day"]) < str($1["day"]) }),
@@ -98,7 +98,7 @@ struct ProgressPage: View {
                     Text(m.unit == "%" ? Fmt.dec(v) : Fmt.kg(v)).font(.system(size: 48, weight: .heavy, design: .rounded)).contentTransition(.numericText())
                     Text(m.unit).font(.headline).foregroundStyle(.secondary)
                 }
-                .alignmentGuide(.numberCentre) { $0[VerticalAlignment.center] }
+                .alignmentGuide(.numberCentre) { $0[VerticalAlignment.center] + 11 }   // the middle of the number and the line under it
                 Text("Latest reading · \(DayKey.date(str(last["day"])).formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)))").font(.subheadline).foregroundStyle(.primary.opacity(0.8))
             } else if let now {
                 Text(greeting).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
@@ -106,7 +106,7 @@ struct ProgressPage: View {
                     Text(Fmt.kg(now)).font(.system(size: 48, weight: .heavy, design: .rounded)).contentTransition(.numericText())
                     Text("kg").font(.headline).foregroundStyle(.secondary)
                 }
-                .alignmentGuide(.numberCentre) { $0[VerticalAlignment.center] }
+                .alignmentGuide(.numberCentre) { $0[VerticalAlignment.center] + 11 }   // the middle of the number and the line under it
                 Text(toGo).font(.subheadline).foregroundStyle(.primary.opacity(0.8))
             } else {
                 Text(greeting).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
