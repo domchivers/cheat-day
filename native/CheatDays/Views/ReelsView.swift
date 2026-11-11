@@ -66,7 +66,14 @@ struct ReelsView: View {
             Color.black
             // only the page on screen plays; its neighbours wait as their first frame
             if on, let v = Feed.video(p) {
-                LoopingVideo(url: v, paused: paused, muted: muted).allowsHitTesting(false)
+                // a tall clip fills the screen; a squarer one is shown whole in the middle
+                if let a = num(dict(p["extra"])["aspect"]), a > 0.62 {
+                    LoopingVideo(url: v, paused: paused, muted: muted).aspectRatio(a, contentMode: .fit).allowsHitTesting(false)
+                } else {
+                    LoopingVideo(url: v, paused: paused, muted: muted).allowsHitTesting(false)
+                }
+            } else if let a = num(dict(p["extra"])["aspect"]), a > 0.62 {
+                Color.clear.aspectRatio(a, contentMode: .fit).overlay { FeedPhoto(src: str(p["photo"]), fill: true) }.clipped()
             } else {
                 FeedPhoto(src: str(p["photo"]), fill: true).frame(maxWidth: .infinity, maxHeight: .infinity).clipped()
             }

@@ -105,7 +105,8 @@ final class Stories {
     }
 
     /// A video as a smaller mp4: the trimmed part (at most 30 seconds), through the filter, with or without sound.
-    static func compress(_ url: URL, filter: String = "Normal", range: ClosedRange<Double>? = nil, muted: Bool = false) async throws -> (Data, Double) {
+    /// Crop is the part of the picture to keep, as fractions of it from the top left (a post's video, zoomed and moved in the editor).
+    static func compress(_ url: URL, filter: String = "Normal", range: ClosedRange<Double>? = nil, muted: Bool = false, crop: CGRect? = nil) async throws -> (Data, Double) {
         let asset = AVURLAsset(url: url)
         let full = (try? await asset.load(.duration).seconds) ?? 15
         let start = range?.lowerBound ?? 0, end = min(range?.upperBound ?? full, start + 30)
@@ -122,7 +123,25 @@ final class Stories {
         let out = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
         guard let export = AVAssetExportSession(asset: comp, presetName: AVAssetExportPreset1280x720) else { return (try Data(contentsOf: url), end - start) }
         export.outputURL = out; export.outputFileType = .mp4; export.shouldOptimizeForNetworkUse = true
-        if filter != "Normal" {
+        if let crop {
+            // the picture the right way up, and the piece of it kept, in its pixels (Core Image counts up from the bottom)
+            var size = CGSize.zero
+            if let v = try? await comp.loadTracks(withMediaType: .video).first {
+                let n = (try? await v.load(.naturalSize)) ?? .zero, t = (try? await v.load(.preferredTransform)) ?? .identity
+                let r = CGRect(origin: .zero, size: n).applying(t)
+                size = CGSize(width: abs(r.width), height: abs(r.height))
+            }
+            let cut = CGRect(x: crop.minX * size.width, y: (1 - crop.maxY) * size.height, width: crop.width * size.width, height: crop.height * size.height).integral
+            if cut.width >= 16, cut.height >= 16 {
+                let vc = AVMutableVideoComposition(asset: comp) { req in
+                    var img = req.sourceImage
+                    if filter != "Normal" { img = StoryArt.filtered(img.clampedToExtent(), filter).cropped(to: req.sourceImage.extent) }
+                    req.finish(with: img.cropped(to: cut).transformed(by: CGAffineTransform(translationX: -cut.minX, y: -cut.minY)), context: nil)
+                }
+                vc.renderSize = CGSize(width: (cut.width / 2).rounded(.down) * 2, height: (cut.height / 2).rounded(.down) * 2)   // even, as the encoder wants
+                export.videoComposition = vc
+            }
+        } else if filter != "Normal" {
             export.videoComposition = AVVideoComposition(asset: comp) { req in
                 req.finish(with: StoryArt.filtered(req.sourceImage.clampedToExtent(), filter).cropped(to: req.sourceImage.extent), context: nil)
             }

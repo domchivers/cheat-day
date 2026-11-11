@@ -18,22 +18,53 @@ struct StoryEditor: View {
     /// A feed post: the finished photo, with everything on it, instead of sharing to a story.
     var finish: ((UIImage) -> Void)? = nil
     /// A feed post's video: the filter, the part kept and whether its sound is off, for the post to be made with.
-    var finishVideo: ((String, ClosedRange<Double>?, Bool) -> Void)? = nil
+    /// Then the part of the picture kept (fractions from the top left; nil for all of it) and the shape that makes.
+    var finishVideo: ((String, ClosedRange<Double>?, Bool, CGRect?, CGFloat) -> Void)? = nil
     private var forPost: Bool { finish != nil || finishVideo != nil }
     /// A post's clip: trimmed, filtered and muted only.
     private var clipOnly: Bool { finishVideo != nil }
     /// A post's photo: the shape picked for it (portrait 4:5 to start, as Instagram's is), else the editor's own.
     @State private var shape: CGFloat?
-    private var ratio: CGFloat { shape ?? aspect }
+    /// A post's clip starts as it was filmed; a photo at the editor's own shape.
+    private var ratio: CGFloat { shape ?? (clipOnly ? (clipShape ?? aspect) : aspect) }
     private static let shapes: [(name: String, ratio: CGFloat)] = [("Portrait 4:5", 4.0 / 5.0), ("Square 1:1", 1), ("Landscape 16:9", 16.0 / 9.0)]
     /// The photo's own shape, within what the feed shows (no taller than 4:5, no wider than 1.91:1).
     private var ownShape: CGFloat? { image.map { min(1.91, max(0.8, $0.size.width / max($0.size.height, 1))) } }
+    /// The clip's own shape, from its first frame.
+    private var clipShape: CGFloat? { poster.map { $0.size.width / max($0.size.height, 1) } }
+    /// Where the clip was dragged to, as fractions of the frame (the frame's size on screen isn't known when sharing).
+    @State private var clipMove: CGSize = .zero
     private func nextShape() {
         var all = Self.shapes
-        if let o = ownShape, !all.contains(where: { abs($0.ratio - o) < 0.02 }) { all.append(("Original", o)) }
+        if clipOnly {
+            all.insert(("Tall 9:16", 9.0 / 16.0), at: 0)
+            if let o = clipShape, !all.contains(where: { abs($0.ratio - o) < 0.02 }) { all.insert(("Original", o), at: 0) }
+        } else if let o = ownShape, !all.contains(where: { abs($0.ratio - o) < 0.02 }) { all.append(("Original", o)) }
         let i = all.firstIndex { abs($0.ratio - ratio) < 0.02 } ?? 0, next = all[(i + 1) % all.count]
-        withAnimation(.snappy) { shape = next.ratio; bgScale = 1; bgOffset = .zero }
+        withAnimation(.snappy) { shape = next.ratio; bgScale = 1; bgOffset = .zero; clipMove = .zero }
         flash(next.name)
+    }
+
+    /// The clip's size when it just fills a frame cw by ch.
+    private func clipFill(_ cw: CGFloat, _ ch: CGFloat) -> CGSize {
+        let v = clipShape ?? (cw / ch)
+        return v > cw / ch ? CGSize(width: ch * v, height: ch) : CGSize(width: cw, height: cw / v)
+    }
+    /// A pinch or a drag on the clip, kept inside its edges so no blank shows.
+    private func moveClip(_ sc: CGFloat, _ off: CGSize, cw: CGFloat, ch: CGFloat) {
+        let f = clipFill(cw, ch), s = min(4, max(1, sc))
+        let mx = max(0, (f.width * s - cw) / 2), my = max(0, (f.height * s - ch) / 2)
+        let o = CGSize(width: min(mx, max(-mx, off.width)), height: min(my, max(-my, off.height)))
+        withAnimation(.snappy) { bgScale = s; bgOffset = o }
+        clipMove = CGSize(width: o.width / cw, height: o.height / ch)
+    }
+    /// The part of the clip's picture showing in the frame, as fractions from its top left; nil when that's all of it.
+    private var clipCrop: CGRect? {
+        let r = ratio, f = clipFill(r, 1), s = bgScale
+        let w = f.width * s, h = f.height * s
+        let x = ((w - r) / 2 - clipMove.width * r) / w, y = ((h - 1) / 2 - clipMove.height) / h
+        let cut = CGRect(x: max(0, x), y: max(0, y), width: min(1, r / w), height: min(1, 1 / h))
+        return cut.width > 0.995 && cut.height > 0.995 ? nil : cut
     }
 
     enum Mode { case none, text, draw, filters, trim }
@@ -159,8 +190,20 @@ struct StoryEditor: View {
         ZStack {
             Color(white: 0.08)
             if let video {
+                if clipOnly {
+                    // a post's clip: its whole picture behind the frame, to pinch and drag like a photo
+                    let f = clipFill(cw, ch)
+                    MovableClip(cw: cw, ch: ch, scale: bgScale, offset: bgOffset, movable: mode == .none, commit: { sc, off in moveClip(sc, off, cw: cw, ch: ch) }) {
+                        ZStack {
+                            if let poster { Image(uiImage: poster).resizable().scaledToFill() }
+                            LoopingVideo(url: video, paused: false, muted: muted, filter: filter, range: length > 0 && mode != .trim ? range : nil, scrub: mode == .trim ? scrub : nil)
+                        }
+                        .frame(width: f.width, height: f.height)
+                    }
+                } else {
                 if let poster { Image(uiImage: poster).resizable().scaledToFill().frame(width: cw, height: ch).clipped() }
                 LoopingVideo(url: video, paused: mode == .text, muted: muted, filter: filter, range: length > 0 && mode != .trim ? range : nil, scrub: mode == .trim ? scrub : nil)
+                }
             } else if let shown = preview ?? work ?? image {
                 // the photo moves on its own too, and tells the editor only when the finger lifts
                 BackgroundPhoto(image: shown, cw: cw, ch: ch, scale: bgScale, offset: bgOffset, movable: mode == .none || mode == .filters,
@@ -251,17 +294,19 @@ struct StoryEditor: View {
                     round("face.smiling") { stickers = true }.accessibilityLabel("Stickers")
                     round("scribble.variable") { mode = .draw }.accessibilityLabel("Draw")
                 }
-                if finish != nil { round("aspectratio") { nextShape() }.accessibilityLabel("Shape") }
+                if forPost { round("aspectratio") { nextShape() }.accessibilityLabel("Shape") }
                 round("camera.filters") { mode = .filters }.accessibilityLabel("Filters")
                 if video != nil {
                     round(muted ? "speaker.slash.fill" : "speaker.wave.2.fill") { muted.toggle(); flash(muted ? "Sound off" : "Sound on") }.accessibilityLabel(muted ? "Sound off" : "Sound on")
                     round("scissors") { mode = .trim }.accessibilityLabel("Trim")
                 }
+                if image != nil || bgScale > 1.01 || bgOffset != .zero || !items.isEmpty || !strokes.isEmpty {
                 Menu {
                     if image != nil { Button { Task { await save() } } label: { Label("Save to Photos", systemImage: "square.and.arrow.down") } }
                     if bgScale > 1.01 || bgOffset != .zero { Button { withAnimation { bgScale = 1; bgOffset = .zero } } label: { Label("Reset the photo", systemImage: "arrow.counterclockwise") } }
                     if !items.isEmpty || !strokes.isEmpty { Button(role: .destructive) { remember(); withAnimation { items = []; strokes = [] } } label: { Label("Clear everything", systemImage: "trash") } }
                 } label: { roundLabel("ellipsis") }
+                }
             case .text:
                 Spacer()
                 round(highlight ? "character.textbox" : "a.square") { highlight.toggle() }.accessibilityLabel("Highlight")
@@ -607,7 +652,7 @@ struct StoryEditor: View {
         if let finishVideo {
             Button {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
-                finishVideo(filter, length > 0 ? range : nil, muted)
+                finishVideo(filter, length > 0 ? range : nil, muted, clipCrop, ratio)
             } label: {
                 Text("Use this video").font(.headline).foregroundStyle(.black).frame(maxWidth: .infinity).padding(.vertical, 13).background(.white, in: Capsule())
             }
@@ -1020,6 +1065,36 @@ struct PlacedItem: View {
 
 /// The photo behind a story: pinch to zoom, then drag to move it; while it isn't zoomed, a swipe across changes the
 /// filter. Like a placed sticker it moves on its own and tells the editor only when the finger lifts.
+/// A post's clip behind its frame: pinch to zoom, drag to choose the part that shows. It follows the fingers on its
+/// own and tells the editor where it ended up when they lift.
+struct MovableClip<Content: View>: View {
+    let cw: CGFloat
+    let ch: CGFloat
+    let scale: CGFloat
+    let offset: CGSize
+    var movable: Bool
+    var commit: (CGFloat, CGSize) -> Void
+    @ViewBuilder var content: () -> Content
+    @GestureState private var drag: CGSize = .zero
+    @GestureState private var pinch: CGFloat = 1
+
+    var body: some View {
+        content()
+            .scaleEffect(min(4, max(1, scale * pinch)))
+            .offset(x: offset.width + drag.width, y: offset.height + drag.height)
+            .frame(width: cw, height: ch).clipped()
+            .contentShape(Rectangle())
+            .gesture(SimultaneousGesture(
+                DragGesture(minimumDistance: 8)
+                    .updating($drag) { v, s, _ in s = v.translation }
+                    .onEnded { v in commit(scale, CGSize(width: offset.width + v.translation.width, height: offset.height + v.translation.height)) },
+                MagnifyGesture()
+                    .updating($pinch) { v, s, _ in s = v.magnification }
+                    .onEnded { v in commit(scale * v.magnification, offset) }))
+            .allowsHitTesting(movable)
+    }
+}
+
 struct BackgroundPhoto: View {
     let image: UIImage
     let cw: CGFloat

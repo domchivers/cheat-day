@@ -163,12 +163,12 @@ final class Feed {
     private(set) var sending: Sending?
 
     /// Post in the background. Done shows for a moment; a failure stays, with Try again.
-    func send(_ row: JSON, photo: UIImage?, video: URL?, filter: String, range: ClosedRange<Double>?, muted: Bool) {
-        let again: () -> Void = { [weak self] in self?.send(row, photo: photo, video: video, filter: filter, range: range, muted: muted) }
+    func send(_ row: JSON, photo: UIImage?, video: URL?, filter: String, range: ClosedRange<Double>?, muted: Bool, crop: CGRect? = nil) {
+        let again: () -> Void = { [weak self] in self?.send(row, photo: photo, video: video, filter: filter, range: range, muted: muted, crop: crop) }
         withAnimation(.snappy) { sending = Sending(thumb: photo, state: .working, again: again) }
         Task {
             do {
-                try await post(row, photo: photo, video: video, filter: filter, range: range, muted: muted)
+                try await post(row, photo: photo, video: video, filter: filter, range: range, muted: muted, crop: crop)
                 withAnimation(.snappy) { sending?.state = .done }
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 try? await Task.sleep(for: .seconds(2.5))
@@ -195,12 +195,12 @@ final class Feed {
         }
     }
 
-    func post(_ row: JSON, photo: UIImage?, video: URL? = nil, filter: String = "Normal", range: ClosedRange<Double>? = nil, muted: Bool = false) async throws {
+    func post(_ row: JSON, photo: UIImage?, video: URL? = nil, filter: String = "Normal", range: ClosedRange<Double>? = nil, muted: Bool = false, crop: CGRect? = nil) async throws {
         var r = row
         r["owner"] = me
         // a video: up to 30 seconds as mp4 into the same bucket as stories' videos; its first frame is the photo
         if let video {
-            let (mp4, _) = try await Stories.compress(video, filter: filter, range: range, muted: muted)
+            let (mp4, _) = try await Stories.compress(video, filter: filter, range: range, muted: muted, crop: crop)
             var x = dict(r["extra"]); x["video"] = try await api.upload(mp4, ext: "mp4", type: "video/mp4"); r["extra"] = x
         }
         if let photo, let jpeg = Self.prepare(photo) { r["photo"] = (try? await api.uploadPhoto(jpeg)) ?? NSNull() }
@@ -940,6 +940,8 @@ struct ComposeSheet: View {
     @State private var movieFilter = "Normal"
     @State private var movieRange: ClosedRange<Double>?
     @State private var movieMuted = false
+    @State private var movieCrop: CGRect?    // the part of the picture kept
+    @State private var movieShape: CGFloat?  // and the shape that makes
     @State private var picked: PhotosPickerItem?
     @State private var camera = false
     @State private var library = false
@@ -1052,8 +1054,8 @@ struct ComposeSheet: View {
                 }
             }
             .fullScreenCover(item: $cutting) { c in
-                StoryEditor(image: nil, video: c.url, close: { cutting = nil }, finishVideo: { f, r, m in
-                    movieFilter = f; movieRange = r; movieMuted = m; movie = c.url; source = nil; cutting = nil
+                StoryEditor(image: nil, video: c.url, close: { cutting = nil }, finishVideo: { f, r, m, crop, shape in
+                    movieFilter = f; movieRange = r; movieMuted = m; movieCrop = crop; movieShape = shape; movie = c.url; source = nil; cutting = nil
                     Task { photo = await Self.firstFrame(c.url, at: r?.lowerBound ?? 0) }
                 })
             }
@@ -1093,7 +1095,11 @@ struct ComposeSheet: View {
 
     @ViewBuilder private var pictureTile: some View {
         if let movie {
-            LoopingVideo(url: movie, muted: true, filter: movieFilter, range: movieRange)
+            // in the shape picked for it (the middle of the picture: the exact part kept shows once it's posted)
+            Color.black.opacity(0.35).overlay {
+                if let shape = movieShape { LoopingVideo(url: movie, muted: true, filter: movieFilter, range: movieRange).aspectRatio(shape, contentMode: .fit) }
+                else { LoopingVideo(url: movie, muted: true, filter: movieFilter, range: movieRange) }
+            }
         } else if let photo {
             // whole, in the shape picked for it (square, wide), on the tile's dark ground
             Color.black.opacity(0.35).overlay { Image(uiImage: photo).resizable().scaledToFit() }
@@ -1279,10 +1285,10 @@ struct ComposeSheet: View {
         row["caption"] = caption.trimmingCharacters(in: .whitespacesAndNewlines)
         if let song { var x = dict(row["extra"]); x["song"] = ["id": song.id, "title": song.title] as JSON; row["extra"] = x }
         // the picture's shape, for the feed to show it whole (a video's is its first frame's)
-        if let photo { var x = dict(row["extra"]); x["aspect"] = Double(photo.size.width / max(photo.size.height, 1)); row["extra"] = x }
+        if let photo { var x = dict(row["extra"]); x["aspect"] = Double(movie != nil ? (movieShape ?? photo.size.width / max(photo.size.height, 1)) : photo.size.width / max(photo.size.height, 1)); row["extra"] = x }
         SongPlayer.shared.stop()
         // it goes up after the sheet has closed: a line on the feed says posting, then posted
-        Feed.shared.send(row, photo: photo, video: movie, filter: movieFilter, range: movieRange, muted: movieMuted)
+        Feed.shared.send(row, photo: photo, video: movie, filter: movieFilter, range: movieRange, muted: movieMuted, crop: movieCrop)
         dismiss()
     }
 }
