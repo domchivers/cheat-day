@@ -867,14 +867,28 @@ struct FeedVideo: View {
         LoopingVideo(url: url, paused: !showing, muted: muted)
             .allowsHitTesting(false)
             .onAppear { showing = true }
-            .onDisappear { showing = false }
+            .onDisappear { showing = false; if !muted { muted = true; loud(false) } }
             .overlay(alignment: .topTrailing) {
-                Button { muted.toggle() } label: {
+                Button { muted.toggle(); loud(!muted) } label: {
                     Image(systemName: muted ? "speaker.slash.fill" : "speaker.wave.2.fill").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
                         .frame(width: 32, height: 32).background(.black.opacity(0.45), in: Circle())
                 }
                 .buttonStyle(.plain).padding(10).accessibilityLabel(muted ? "Sound on" : "Sound off")
             }
+    }
+}
+
+extension FeedVideo {
+    /// Sound they turned on is heard with the ringer off too (the song button was; the video's speaker button wasn't,
+    /// so it looked broken on a silenced phone). Turned off again, the app goes back to respecting the switch.
+    func loud(_ on: Bool) {
+        let session = AVAudioSession.sharedInstance()
+        if on {
+            try? session.setCategory(.playback, mode: .moviePlayback)
+            try? session.setActive(true)
+        } else if SongPlayer.shared.playing == nil {
+            try? session.setCategory(.soloAmbient)
+        }
     }
 }
 
