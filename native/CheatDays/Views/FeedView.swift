@@ -432,6 +432,7 @@ struct FeedView: View {
             }
             .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 8)
 
+            if let s = Music.of(p) { songLine(s, post: id) }
             Group {
                 if kind == "moment" { moment(p, rx: rx) }
                 else if photo { photoView(p) }
@@ -465,6 +466,23 @@ struct FeedView: View {
             }
             .buttonStyle(.plain).padding(.horizontal, 14).padding(.top, 4).padding(.bottom, 14)
         }
+    }
+
+    /// A post's song: its name in a small capsule; a tap plays its 30 seconds, another stops it. Never by itself.
+    private func songLine(_ s: Song, post: String) -> some View {
+        let on = SongPlayer.shared.playing == "post:" + post
+        return Button { SongPlayer.shared.toggle(s, key: "post:" + post) } label: {
+            HStack(spacing: 6) {
+                Image(systemName: on ? "pause.fill" : "music.note").font(.system(size: 11, weight: .bold))
+                Text(s.title).lineLimit(1)
+                if on { Text("· playing").foregroundStyle(.secondary) }
+            }
+            .font(.caption.weight(.bold)).foregroundStyle(on ? Theme.accent : Color.primary)
+            .padding(.horizontal, 11).padding(.vertical, 6).background(Color(.tertiarySystemFill), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 14).padding(.bottom, 8)
+        .accessibilityLabel(on ? "Stop \(s.title)" : "Play \(s.title)")
     }
 
     /// "Lunch", "Push day", "Snack": what the post is.
@@ -869,6 +887,8 @@ struct ComposeSheet: View {
     @State private var camera = false
     @State private var library = false
     @State private var attaching = false   // the list of foods, meals and workouts is open
+    @State private var song: Song?
+    @State private var choosingSong = false
     @FocusState private var writing: Bool
     @State private var busy = false
     @State private var problem: String?
@@ -914,6 +934,7 @@ struct ComposeSheet: View {
                     TextField("Write a caption…", text: $caption, axis: .vertical).lineLimit(1...6).focused($writing)
                         .padding(.horizontal, 18).padding(.top, 14).padding(.bottom, 12).id("caption")
                     attachment.padding(.horizontal, 14)
+                    songRow.padding(.horizontal, 14).padding(.top, 10)
                     if movie != nil { Text("Up to the first 30 seconds are posted.").font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.top, 8) }
                     if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.top, 8) }
                 }
@@ -949,6 +970,7 @@ struct ComposeSheet: View {
                 }
             }
             .sheet(isPresented: $attaching) { attachPicker }
+            .sheet(isPresented: $choosingSong) { SongPicker { song = $0 } }
             .photosPicker(isPresented: $library, selection: $picked, matching: .any(of: [.images, .videos]))
             .fullScreenCover(isPresented: $camera) { CameraPicker { img in camera = false; if let img { DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { editing = EditBox(image: img) } } }.ignoresSafeArea() }
             .onChange(of: picked) { _, item in
@@ -1050,6 +1072,33 @@ struct ComposeSheet: View {
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
+    /// A song for the post: the way to add one, or the one picked with a play button.
+    private var songRow: some View {
+        VStack(spacing: 0) {
+            if let s = song {
+                let on = SongPlayer.shared.playing == "new:" + s.id
+                HStack(spacing: 12) {
+                    Button { SongPlayer.shared.toggle(s, key: "new:" + s.id) } label: {
+                        Image(systemName: on ? "pause.fill" : "play.fill").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.accent)
+                            .frame(width: 34, height: 34).background(Color(.tertiarySystemFill), in: Circle())
+                    }
+                    .buttonStyle(.plain).accessibilityLabel(on ? "Stop the song" : "Play the song")
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(s.title).font(.body.weight(.semibold)).lineLimit(1)
+                        Text("Song").font(.footnote).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                    Button("Remove") { SongPlayer.shared.stop(); withAnimation(.snappy) { song = nil } }.font(.subheadline).foregroundStyle(.secondary).buttonStyle(.plain)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 11)
+            } else {
+                attachRow("music.note", "Add a song") { writing = false; choosingSong = true }
+            }
+        }
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .onDisappear { SongPlayer.shared.stop() }
+    }
+
     private func attachRow(_ symbol: String, _ title: String, _ tap: @escaping () -> Void) -> some View {
         Button(action: tap) {
             HStack(spacing: 12) {
@@ -1139,6 +1188,8 @@ struct ComposeSheet: View {
         var row = what ?? ["kind": "photo", "name": "", "kcal": 0, "macros": [:] as JSON, "payload": [:] as JSON, "extra": [:] as JSON]
         guard what != nil || photo != nil || movie != nil else { return }
         row["caption"] = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let song { var x = dict(row["extra"]); x["song"] = ["id": song.id, "title": song.title] as JSON; row["extra"] = x }
+        SongPlayer.shared.stop()
         busy = true; problem = nil
         Task {
             defer { busy = false }
