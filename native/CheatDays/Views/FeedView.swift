@@ -869,6 +869,7 @@ struct ComposeSheet: View {
     @State private var camera = false
     @State private var library = false
     @State private var attaching = false   // the list of foods, meals and workouts is open
+    @FocusState private var writing: Bool
     @State private var busy = false
     @State private var problem: String?
     @State private var search = ""
@@ -906,11 +907,12 @@ struct ComposeSheet: View {
 
     var body: some View {
         NavigationStack {
+            ScrollViewReader { proxy in
             ScrollView {
                 VStack(spacing: 0) {
                     picture.padding(.top, 14)
-                    TextField("Write a caption…", text: $caption, axis: .vertical).lineLimit(1...6)
-                        .padding(.horizontal, 18).padding(.top, 14).padding(.bottom, 12)
+                    TextField("Write a caption…", text: $caption, axis: .vertical).lineLimit(1...6).focused($writing)
+                        .padding(.horizontal, 18).padding(.top, 14).padding(.bottom, 12).id("caption")
                     attachment.padding(.horizontal, 14)
                     if movie != nil { Text("Up to the first 30 seconds are posted.").font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.top, 8) }
                     if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.top, 8) }
@@ -918,9 +920,14 @@ struct ComposeSheet: View {
                 .padding(.bottom, 20)
             }
             .scrollDismissesKeyboard(.interactively)
+            .onChange(of: writing) { _, on in
+                if on { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { withAnimation(.snappy) { proxy.scrollTo("caption", anchor: .center) } } }
+            }
+            }
             .background(Theme.bg)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 let ready = what != nil || photo != nil || movie != nil
+                if !writing {
                 Button { post() } label: {
                     Text(busy ? "Sharing…" : "Share").font(.headline.weight(.heavy)).foregroundStyle(ready ? Theme.onAccent : Color.secondary)
                         .frame(maxWidth: .infinity).padding(.vertical, 15)
@@ -928,6 +935,7 @@ struct ComposeSheet: View {
                 }
                 .buttonStyle(.plain).disabled(!ready || busy)
                 .padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 10).background(Theme.bg)
+                }
             }
             .keyboardDone()
             .onAppear { if what == nil, let preset { what = preset } }
@@ -935,6 +943,10 @@ struct ComposeSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel("Cancel") }
+                // while the keyboard's up, Share is here
+                if writing && (what != nil || photo != nil || movie != nil) {
+                    ToolbarItem(placement: .topBarTrailing) { Button(busy ? "Sharing…" : "Share") { writing = false; post() }.fontWeight(.bold).disabled(busy) }
+                }
             }
             .sheet(isPresented: $attaching) { attachPicker }
             .photosPicker(isPresented: $library, selection: $picked, matching: .any(of: [.images, .videos]))
@@ -946,7 +958,9 @@ struct ComposeSheet: View {
                     if item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }), let m = try? await item.loadTransferable(type: PickedMovie.self) {
                         movie = m.url; photo = await Self.firstFrame(m.url); source = nil
                     } else if let d = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: d) {
-                        movie = nil; editing = EditBox(image: img)
+                        movie = nil; library = false
+                        try? await Task.sleep(for: .milliseconds(550))
+                        editing = EditBox(image: img)
                     }
                     picked = nil
                 }
