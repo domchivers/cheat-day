@@ -24,6 +24,13 @@ struct PostPicker: View {
     @State private var showing: PHAsset?
     @State private var big: UIImage?
     @State private var busy = false
+    // the day of the photos at the top of the grid, shown for a moment each time the grid moves on
+    @State private var day = ""
+    @State private var dayTick = 0
+    @State private var dayShowing = false
+    @State private var onScreen = Seen()
+    @State private var place: [String: Int] = [:]
+    private final class Seen { var rows = Set<Int>() }
 
     var body: some View {
         NavigationStack {
@@ -37,6 +44,21 @@ struct PostPicker: View {
                             if !allowed { denied } else { grid }
                         } header: { header.background(Theme.bg) }
                     }
+                }
+                .overlay(alignment: .topTrailing) {
+                    if dayShowing && !day.isEmpty {
+                        Text(day).font(.subheadline.weight(.bold)).foregroundStyle(.black)
+                            .padding(.horizontal, 14).frame(height: 34).background(.white, in: Capsule())
+                            .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
+                            .padding(.trailing, 10).padding(.top, 66)
+                            .transition(.opacity).allowsHitTesting(false)
+                    }
+                }
+                .task(id: dayTick) {
+                    guard dayTick > 0 else { return }
+                    withAnimation(.easeOut(duration: 0.15)) { dayShowing = true }
+                    try? await Task.sleep(for: .milliseconds(1400))
+                    if !Task.isCancelled { withAnimation(.easeOut(duration: 0.3)) { dayShowing = false } }
                 }
                 .onChange(of: showing?.localIdentifier) { _, _ in
                     // not while several are being ticked off: the grid would jump away under the finger each time
@@ -163,6 +185,8 @@ struct PostPicker: View {
                             .opacity(dim ? 0.35 : 1)
                     }
                     .buttonStyle(.plain).contentShape(Rectangle()).disabled(dim)
+                    .onAppear { if let i = place[a.localIdentifier] { onScreen.rows.insert(i); moved() } }
+                    .onDisappear { if let i = place[a.localIdentifier] { onScreen.rows.remove(i); moved() } }
                 }
             }
             .padding(.bottom, 20)
@@ -191,6 +215,20 @@ struct PostPicker: View {
         }
     }
 
+    /// The grid has moved: the day of the topmost photos showing, when that row has changed (nothing while the
+    /// very first row is still there: the grid hasn't been scrolled yet).
+    private func moved() {
+        guard let top = onScreen.rows.min(), assets.indices.contains(top) else { return }
+        guard top >= 4, let date = assets[top].creationDate else { if top < 4 { dayShowing = false }; return }
+        let cal = Calendar.current
+        let label = cal.isDateInToday(date) ? "Today" : cal.isDateInYesterday(date) ? "Yesterday"
+            : cal.isDate(date, equalTo: Date(), toGranularity: .year) ? date.formatted(.dateTime.day().month(.abbreviated))
+            : date.formatted(.dateTime.month(.abbreviated).year())
+        let row = top / 4
+        if label != day || row != lastRow { day = label; lastRow = row; dayTick += 1 }
+    }
+    @State private var lastRow = -1
+
     // MARK: loading
 
     private func load() async {
@@ -211,6 +249,9 @@ struct PostPicker: View {
         var out: [PHAsset] = []
         found.enumerateObjects { a, _, _ in out.append(a) }
         assets = out
+        var at: [String: Int] = [:]
+        for (i, a) in out.enumerated() { at[a.localIdentifier] = i }
+        place = at
         if let first = out.first, showing == nil { showing = first; picked = [first.localIdentifier] }
         if out.isEmpty { allowed = status == .authorized }
     }

@@ -85,11 +85,30 @@ enum Music {
 
     func toggle(_ song: Song, key: String) { if playing == key { stop() } else { play(song, key: key) } }
 
-    func play(_ song: Song, key: String) {
+    /// Songs on photos start by themselves as their post comes up the feed, as Instagram's do, until the speaker
+    /// on one is turned off; turning one on turns that back on. Kept between launches.
+    var auto: Bool {
+        get { UserDefaults.standard.object(forKey: "song.auto") as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: "song.auto") }
+    }
+    /// The speaker on a post, tapped.
+    func flip(_ song: Song, key: String) {
+        if playing == key { auto = false; stop() } else { auto = true; play(song, key: key) }
+    }
+    /// A post with a song has come onto the screen. Nothing if songs are off, or if the phone's already playing
+    /// something of its own (their music or a podcast isn't cut off by scrolling past a photo).
+    func arrive(_ song: Song, key: String) {
+        guard auto, playing != key, !AVAudioSession.sharedInstance().isOtherAudioPlaying else { return }
+        play(song, key: key, asked: false)
+    }
+    /// It's gone off the screen again.
+    func leave(_ key: String) { if playing == key { stop() } }
+
+    func play(_ song: Song, key: String, asked: Bool = true) {
         stop()
         guard let url = song.url else { return }
-        // they tapped play, so it's heard with the ringer off too
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+        // they tapped play, so it's heard with the ringer off too; one that started by itself keeps to the ringer
+        try? AVAudioSession.sharedInstance().setCategory(asked ? .playback : .soloAmbient, mode: .default)
         try? AVAudioSession.sharedInstance().setActive(true)
         let item = AVPlayerItem(url: url)
         end = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { [weak self] _ in self?.stop() }

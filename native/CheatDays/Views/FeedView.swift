@@ -572,7 +572,7 @@ struct FeedView: View {
             .clipped()
             .contentShape(Rectangle())
             // a photo with a song: its sound on and off at the bottom right, as Instagram has it
-            .overlay(alignment: .bottomTrailing) {
+            .overlay {
                 if Feed.video(p) == nil, let song = Music.of(p) { SongSwitch(song: song, key: "post:" + str(p["id"])) }
             }
             .overlay(alignment: .bottomLeading) {
@@ -882,20 +882,27 @@ struct SharePostSheet: View {
 
 /// Share something: one of today's foods, a saved meal or today's workout, with a caption and an optional photo.
 /// A video post on the feed: plays on a loop while it's on screen, muted until the speaker's tapped.
-/// The speaker on a photo that has a song: tap for its sound, tap again for quiet. It goes quiet by itself when
-/// the post is scrolled away.
+/// A photo that has a song: the song starts as the photo comes up the feed (most of it on screen) and stops as it
+/// leaves, and the speaker at its bottom right turns the sound off and on, for every photo from then on.
 struct SongSwitch: View {
     let song: Song
     let key: String
     var body: some View {
         let on = SongPlayer.shared.playing == key
-        Button { SongPlayer.shared.toggle(song, key: key) } label: {
-            Image(systemName: on ? "speaker.wave.2.fill" : "speaker.slash.fill").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
-                .frame(width: 32, height: 32).background(.black.opacity(0.45), in: Circle())
-        }
-        .buttonStyle(.plain).padding(10)
-        .accessibilityLabel(on ? "Sound off" : "Sound on")
-        .onDisappear { if SongPlayer.shared.playing == key { SongPlayer.shared.stop() } }
+        // the size of the photo, to know when most of it is showing; only the speaker takes touches
+        Color.clear
+            .overlay(alignment: .bottomTrailing) {
+                Button { SongPlayer.shared.flip(song, key: key) } label: {
+                    Image(systemName: on ? "speaker.wave.2.fill" : "speaker.slash.fill").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                        .frame(width: 32, height: 32).background(.black.opacity(0.45), in: Circle())
+                }
+                .buttonStyle(.plain).padding(10)
+                .accessibilityLabel(on ? "Sound off" : "Sound on")
+            }
+            .onScrollVisibilityChange(threshold: 0.6) { showing in
+                if showing { SongPlayer.shared.arrive(song, key: key) } else { SongPlayer.shared.leave(key) }
+            }
+            .onDisappear { SongPlayer.shared.leave(key) }
     }
 }
 

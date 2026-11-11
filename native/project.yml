@@ -13,7 +13,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "1.2.89"
+    MARKETING_VERSION: "1.2.90"
     CURRENT_PROJECT_VERSION: "1"
 targets:
   CheatDays:
@@ -39,7 +39,7 @@ targets:
           - UIInterfaceOrientationPortrait
         UIStatusBarStyle: UIStatusBarStyleLightContent
         NSCameraUsageDescription: Cheat Days uses the camera to scan barcodes, take photos of food labels and packs, and take photos and videos for your story.
-        NSPhotoLibraryUsageDescription: Cheat Days lets you pick a photo of food or a label from your library, and shows your recent photos and videos to add to your story.
+        NSPhotoLibraryUsageDescription: Cheat Days lets you pick a photo of food or a label from your library, and shows your recent photos and videos to add to your story or a post.
         NSPhotoLibraryAddUsageDescription: Cheat Days saves your story to Photos when you tap Save to Photos.
         NSLocationWhenInUseUsageDescription: Cheat Days uses your suburb to find places to eat near you when you ask. Only the suburb's name is used, never where you are exactly.
         NSLocationDefaultAccuracyReduced: true
