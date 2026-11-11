@@ -565,7 +565,7 @@ struct FeedView: View {
 
     private func photoView(_ p: JSON) -> some View {
         let n = numbers(p)
-        let shape = num(dict(p["extra"])["aspect"]).map { min(1.91, max(0.8, $0)) }
+        let shape = num(dict(p["extra"])["aspect"]).map { min(1.91, max(0.75, $0)) }
         return PostPhotos(post: p)
             .frame(maxWidth: .infinity).frame(height: shape.map { (UIScreen.main.bounds.width / $0).rounded() } ?? 400)
             .overlay { if let v = Feed.video(p) { FeedVideo(url: v) } }   // under the name and numbers
@@ -1102,7 +1102,7 @@ struct ComposeSheet: View {
                 // any photo but the first keeps the first one's shape, as the feed shows them all in it
                 let later = e.index.map { $0 > 0 } ?? !shots.isEmpty
                 // one already in the post opens whole, in the shape it has; a new one in the feed's 4:5
-                let own = min(1.91, max(0.8, e.image.size.width / max(e.image.size.height, 1)))
+                let own = min(1.91, max(0.75, e.image.size.width / max(e.image.size.height, 1)))
                 StoryEditor(image: e.image, video: nil, aspect: later ? (firstShape ?? 4.0 / 5.0) : (e.index != nil ? own : 4.0 / 5.0), close: { editing = nil }, finish: { out in
                     movie = nil; poster = nil
                     if let i = e.index, shots.indices.contains(i) { shots[i].out = out }
@@ -1139,7 +1139,7 @@ struct ComposeSheet: View {
     }
     /// A photo added without editing: its middle, in the first photo's shape (its own, within what the feed shows, when it is the first).
     private static func fitted(_ img: UIImage, to shape: CGFloat?) -> UIImage {
-        let own = img.size.width / max(img.size.height, 1), want = shape ?? min(1.91, max(0.8, own))
+        let own = img.size.width / max(img.size.height, 1), want = shape ?? min(1.91, max(0.75, own))
         let w = own > want ? img.size.height * want : img.size.width, h = own > want ? img.size.height : img.size.width / want
         let k = min(1, 1440 / max(w, h, 1))
         let format = UIGraphicsImageRendererFormat(); format.scale = 1

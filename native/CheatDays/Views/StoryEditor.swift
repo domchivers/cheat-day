@@ -35,9 +35,9 @@ struct StoryEditor: View {
     /// A post's clip goes in a tall 9:16 frame, the shape videos are watched in, whatever shape it was filmed
     /// (it's placed in the frame; the frame doesn't take its shape); a photo starts at the editor's own shape.
     private var ratio: CGFloat { shape ?? (clipOnly ? 9.0 / 16.0 : aspect) }
-    private static let shapes: [(name: String, ratio: CGFloat)] = [("Portrait 4:5", 4.0 / 5.0), ("Square 1:1", 1), ("Landscape 16:9", 16.0 / 9.0)]
+    private static let shapes: [(name: String, ratio: CGFloat)] = [("Portrait 4:5", 4.0 / 5.0), ("Tall 3:4", 3.0 / 4.0), ("Square 1:1", 1), ("Landscape 16:9", 16.0 / 9.0)]
     /// The photo's own shape, within what the feed shows (no taller than 4:5, no wider than 1.91:1).
-    private var ownShape: CGFloat? { image.map { min(1.91, max(0.8, $0.size.width / max($0.size.height, 1))) } }
+    private var ownShape: CGFloat? { image.map { min(1.91, max(0.75, $0.size.width / max($0.size.height, 1))) } }
     /// The clip's own shape, from its first frame.
     private var clipShape: CGFloat? { poster.map { $0.size.width / max($0.size.height, 1) } }
     /// Where the clip was dragged to, as fractions of the frame (the frame's size on screen isn't known when sharing).

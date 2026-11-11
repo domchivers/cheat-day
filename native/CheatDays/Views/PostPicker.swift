@@ -98,7 +98,7 @@ struct PostPicker: View {
                     // (no taller than 4:5, no wider than 1.91:1), a video in the tall 9:16 frame. Shown whole and small
                     // in the middle, a tall screenshot was a sliver.
                     let own = big.size.width / max(big.size.height, 1)
-                    let shape: CGFloat = showing?.mediaType == .video ? 9.0 / 16.0 : min(1.91, max(0.8, own))
+                    let shape: CGFloat = showing?.mediaType == .video ? 9.0 / 16.0 : min(1.91, max(0.75, own))
                     Color.clear.aspectRatio(shape, contentMode: .fit).overlay { Image(uiImage: big).resizable().scaledToFill() }.clipped()
                 }
                 else if allowed && !assets.isEmpty { ProgressView() }

@@ -40,7 +40,7 @@ struct EditPostSheet: View {
     private var isVideo: Bool { Feed.video(post) != nil }
     private var kind: String { str(post["kind"]) }
     private var shape: CGFloat { CGFloat(min(1.91, max(0.5, num(dict(post["extra"])["aspect"]) ?? 0.8))) }
-    private var firstShape: CGFloat { pics.first?.fresh.map { $0.size.width / max($0.size.height, 1) } ?? min(1.91, max(0.8, shape)) }
+    private var firstShape: CGFloat { pics.first?.fresh.map { $0.size.width / max($0.size.height, 1) } ?? min(1.91, max(0.75, shape)) }
 
     var body: some View {
         NavigationStack {
@@ -97,7 +97,7 @@ struct EditPostSheet: View {
             .fullScreenCover(item: $editing) { e in
                 // the first photo can take another shape; the ones after keep the first one's
                 let own = e.image.size.width / max(e.image.size.height, 1)
-                StoryEditor(image: e.image, video: nil, aspect: e.index > 0 ? firstShape : min(1.91, max(0.8, own)), close: { editing = nil }, finish: { out in
+                StoryEditor(image: e.image, video: nil, aspect: e.index > 0 ? firstShape : min(1.91, max(0.75, own)), close: { editing = nil }, finish: { out in
                     if pics.indices.contains(e.index) { pics[e.index].fresh = out; picsChanged = true }
                     editing = nil
                 }, lockShape: e.index > 0)
