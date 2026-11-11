@@ -208,11 +208,12 @@ struct StoryEditor: View {
                 }
             } else if let shown = preview ?? work ?? image {
                 // the photo moves on its own too, and tells the editor only when the finger lifts
-                BackgroundPhoto(image: shown, cw: cw, ch: ch, scale: bgScale, offset: bgOffset, movable: mode == .none || mode == .filters,
-                                commit: { sc, off in
-                                    if sc <= 1.01 { withAnimation(.snappy) { bgScale = 1; bgOffset = .zero } } else { bgScale = sc; bgOffset = off }
-                                },
-                                swipe: { nextFilter($0) })
+                let k = max(cw / max(1, shown.size.width), ch / max(1, shown.size.height))
+                MovableClip(cw: cw, ch: ch, fill: CGSize(width: shown.size.width * k, height: shown.size.height * k), scale: bgScale, offset: bgOffset,
+                            movable: mode == .none || mode == .filters, swipe: { nextFilter($0) },
+                            commit: { sc, off in bgScale = sc; bgOffset = off }) {   // no animation: it is already there, under the fingers
+                    Image(uiImage: shown).resizable().scaledToFill().frame(width: cw, height: ch)
+                }
             }
             if video != nil && !clipOnly {   // a post's clip is pinched and dragged itself: this sheet over it took those touches
                 // a video can't be zoomed, but swiping across it still changes the filter
@@ -1083,17 +1084,21 @@ struct PlacedItem: View {
 
 /// The photo behind a story: pinch to zoom, then drag to move it; while it isn't zoomed, a swipe across changes the
 /// filter. Like a placed sticker it moves on its own and tells the editor only when the finger lifts.
-/// A post's clip behind its frame: pinch to zoom, drag to choose the part that shows, never past its own edges. It
-/// follows the fingers on its own and keeps where they left it until the editor's copy says the same: handing the
-/// new zoom to the editor and waiting for it back made the clip spring to its old size and then swell again.
+/// The photo or clip behind the editor's frame: pinch to zoom, drag to choose the part that shows, never past its own
+/// edges. It follows the fingers on its own and keeps where they left it until the editor's copy says the same:
+/// handing the new zoom to the editor and waiting for it back made it spring to its old size and then swell again.
+/// The two gestures end one after the other, so each reads what the other has just left rather than what was drawn
+/// last: a drag ending a moment after the pinch used to put the old zoom back.
 struct MovableClip<Content: View>: View {
     let cw: CGFloat
     let ch: CGFloat
-    /// The clip's size when it just fills the frame.
+    /// Its size when it just fills the frame.
     let fill: CGSize
     let scale: CGFloat
     let offset: CGSize
     var movable: Bool
+    /// A photo's: a swipe across it at its plain size changes the filter, and it only moves once zoomed in.
+    var swipe: ((Int) -> Void)? = nil
     var commit: (CGFloat, CGSize) -> Void
     @ViewBuilder var content: () -> Content
     @GestureState private var drag: CGSize = .zero
@@ -1106,10 +1111,22 @@ struct MovableClip<Content: View>: View {
         let mx = max(0, (fill.width * s - cw) / 2), my = max(0, (fill.height * s - ch) / 2)
         return (s, CGSize(width: min(mx, max(-mx, off.width)), height: min(my, max(-my, off.height))))
     }
+    /// Where it stands with no finger on it, read as of now.
+    private var from: (scale: CGFloat, offset: CGSize) { (heldScale ?? scale, heldOffset ?? offset) }
+    private func pans(_ s: CGFloat) -> Bool { swipe == nil || s > 1.01 || pinch != 1 }
+    private func settle(_ sc: CGFloat, _ off: CGSize) {
+        if swipe != nil && sc <= 1.01 {
+            withAnimation(.snappy) { heldScale = 1; heldOffset = .zero }
+            commit(1, .zero)
+        } else {
+            heldScale = sc; heldOffset = off
+            commit(sc, off)
+        }
+    }
 
     var body: some View {
-        let s0 = heldScale ?? scale, o0 = heldOffset ?? offset
-        let live = clamped(s0 * pinch, CGSize(width: o0.width + drag.width, height: o0.height + drag.height))
+        let b = from
+        let live = clamped(b.scale * pinch, pans(b.scale) ? CGSize(width: b.offset.width + drag.width, height: b.offset.height + drag.height) : b.offset)
         content()
             .scaleEffect(live.scale)
             .offset(live.offset)
@@ -1119,55 +1136,26 @@ struct MovableClip<Content: View>: View {
                 DragGesture(minimumDistance: 8)
                     .updating($drag) { v, s, _ in s = v.translation }
                     .onEnded { v in
-                        let end = clamped(s0, CGSize(width: o0.width + v.translation.width, height: o0.height + v.translation.height))
-                        heldScale = end.scale; heldOffset = end.offset
-                        commit(end.scale, end.offset)
+                        let b = from
+                        guard pans(b.scale) else {
+                            if abs(v.translation.width) > 50, abs(v.translation.width) > abs(v.translation.height) { swipe?(v.translation.width < 0 ? 1 : -1) }
+                            return
+                        }
+                        // within the edges at the size the fingers have it now, a pinch still going included
+                        let end = clamped(b.scale * pinch, CGSize(width: b.offset.width + v.translation.width, height: b.offset.height + v.translation.height))
+                        if pinch == 1 { settle(end.scale, end.offset) } else { heldOffset = end.offset }
                     },
                 MagnifyGesture()
                     .updating($pinch) { v, s, _ in s = v.magnification }
                     .onEnded { v in
-                        let end = clamped(s0 * v.magnification, o0)
-                        heldScale = end.scale; heldOffset = end.offset
-                        commit(end.scale, end.offset)
+                        let b = from
+                        let end = clamped(b.scale * v.magnification, b.offset)
+                        settle(end.scale, end.offset)
                     }))
             .allowsHitTesting(movable)
             // the editor has caught up (or reset it, or changed its shape): its numbers from here
             .onChange(of: scale) { _, _ in heldScale = nil; heldOffset = nil }
             .onChange(of: offset) { _, _ in heldScale = nil; heldOffset = nil }
             .onChange(of: fill) { _, _ in heldScale = nil; heldOffset = nil }
-    }
-}
-
-struct BackgroundPhoto: View {
-    let image: UIImage
-    let cw: CGFloat
-    let ch: CGFloat
-    let scale: CGFloat
-    let offset: CGSize
-    var movable: Bool
-    var commit: (CGFloat, CGSize) -> Void
-    var swipe: (Int) -> Void
-    @GestureState private var drag: CGSize = .zero
-    @GestureState private var pinch: CGFloat = 1
-
-    var body: some View {
-        let zoomed = scale > 1.01, live = min(4, max(1, scale * pinch))
-        Image(uiImage: image).resizable().scaledToFill().frame(width: cw, height: ch)
-            .scaleEffect(live)
-            .offset(x: offset.width + (zoomed ? drag.width : 0), y: offset.height + (zoomed ? drag.height : 0))
-            .frame(width: cw, height: ch).clipped()
-            .contentShape(Rectangle())
-            .gesture(SimultaneousGesture(
-                DragGesture(minimumDistance: 10)
-                    .updating($drag) { v, s, _ in s = v.translation }
-                    .onEnded { v in
-                        if zoomed { commit(scale, CGSize(width: offset.width + v.translation.width, height: offset.height + v.translation.height)); return }
-                        guard abs(v.translation.width) > 50, abs(v.translation.width) > abs(v.translation.height) else { return }
-                        swipe(v.translation.width < 0 ? 1 : -1)
-                    },
-                MagnifyGesture()
-                    .updating($pinch) { v, s, _ in s = v.magnification }
-                    .onEnded { v in commit(min(4, max(1, scale * v.magnification)), offset) }))
-            .allowsHitTesting(movable)
     }
 }
