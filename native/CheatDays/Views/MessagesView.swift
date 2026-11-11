@@ -316,7 +316,7 @@ struct GifPicker: View {
     @State private var found: [JSON] = []
     @State private var loading = false
     @State private var limited = false
-    private static var trending: [JSON] = []   // kept for the next time the sheet opens
+    @MainActor private static var trending: [JSON] = []   // kept for the next time the sheet opens
     private let topics = ["Yes", "Hungry", "Gym", "Well done", "Haha", "No"]
 
     var body: some View {
