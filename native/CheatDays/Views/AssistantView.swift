@@ -1081,7 +1081,9 @@ struct AssistantView: View {
                 if str(r["kind"]) == "estimate", r["scaled"] == nil, let e = r["estimate"] as? JSON {
                     // what a follow-up didn't change keeps the numbers the last card had
                     let before = turns.last { !$0.me && $0.id != turn.id && $0.result?["estimate"] != nil }?.result?["estimate"] as? JSON
-                    let checked = Assistant.keepingEarlier(await Assistant.ground(e), before)
+                    // and a food already worked out in this chat, under another name or amount, keeps those numbers too
+                    let cards = turns.filter { !$0.me && $0.id != turn.id }.compactMap { $0.result?["estimate"] as? JSON }
+                    let checked = Assistant.steady(Assistant.keepingEarlier(await Assistant.ground(e), before), earlier: cards)
                     // the parts no food table had (the sparkle): kept, so the tables can be filled where they're used
                     let gaps = CheatDays.list(checked["parts"]).filter { str($0["src"]) == "ai" }.map { str($0["name"]) }
                     if !gaps.isEmpty { store.perform(["type": "gaps", "names": gaps, "at": ISO.now()]) }

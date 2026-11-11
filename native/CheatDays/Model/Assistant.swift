@@ -870,6 +870,40 @@ enum Assistant {
         return out
     }
 
+    /// The same food worked out again later in a chat (another name for it, another amount) keeps the numbers it had:
+    /// 244 g of their boiled chicken was 410 kcal on one card and 401 on the next, counted two ways. A part is the
+    /// same food when its name shares words with an earlier part's and its protein per gram is within 3% of it (a new
+    /// batch that cooked down differently isn't); its calories, carbs, fat and name then come from the earlier part,
+    /// scaled to its grams. Earlier is this chat's cards, oldest first: the latest one that fits is used.
+    static func steady(_ e: JSON, earlier: [JSON]) -> JSON {
+        let old = earlier.reversed().flatMap { CheatDays.list($0["parts"]) }.filter { pos($0["grams"]) != nil && pos($0["kcal"]) != nil && pos($0["protein_g"]) != nil }
+        guard !old.isEmpty else { return e }
+        var changed = false
+        let parts = CheatDays.list(e["parts"]).map { p -> JSON in
+            guard let g = pos(p["grams"]), let pr = pos(p["protein_g"]), pr / g > 0.02 else { return p }
+            let words = Set(FoodTable.words(str(p["name"])))
+            let found = old.first { o in
+                let og = num(o["grams"]) ?? 1, per = (num(o["protein_g"]) ?? 0) / og
+                return abs(pr / g - per) <= 0.03 * per && soundsLike(str(o["name"]), words)
+            }
+            guard let o = found, let og = pos(o["grams"]) else { return p }
+            let f = g / og, kcal = ((num(o["kcal"]) ?? 0) * f).rounded()
+            if kcal == num(p["kcal"]) && str(o["name"]) == str(p["name"]) { return p }
+            var x = p
+            x["name"] = o["name"]; x["kcal"] = kcal
+            x["carbs_g"] = (num(o["carbs_g"]) ?? 0) * f; x["fat_g"] = (num(o["fat_g"]) ?? 0) * f
+            for k in ["src", "match", "numbers_from"] { if let v = o[k] { x[k] = v } }
+            changed = true
+            return x
+        }
+        guard changed else { return e }
+        func sum(_ k: String) -> Double { parts.reduce(0) { $0 + (num($1[k]) ?? 0) } }
+        var out = e
+        out["parts"] = parts
+        out["kcal_total"] = sum("kcal").rounded(); out["protein_g"] = sum("protein_g"); out["carbs_g"] = sum("carbs_g"); out["fat_g"] = sum("fat_g")
+        return out
+    }
+
     /// Every part through Sanity: calories that don't fit the macros are fixed from them, odd values are flagged on
     /// the card (and the totals added up again).
     static func sane(_ e: JSON) -> JSON {

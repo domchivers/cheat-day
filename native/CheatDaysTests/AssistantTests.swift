@@ -233,4 +233,29 @@ final class AssistantTests: XCTestCase {
         XCTAssertEqual(num(kept["kcal_total"]) ?? 0, 685, accuracy: 1)
         XCTAssertEqual(num(list(Assistant.keepingEarlier(now, nil)["parts"])[0]["kcal"]), 376)
     }
+
+    // their boiled chicken, worked out twice in one chat: 244 g was 410 kcal, then 401 under another name
+    func testTheSameFoodKeepsItsNumbersThroughAChat() {
+        let first: JSON = ["name": "Boiled chicken breast (591 g batch)", "kcal_total": 410,
+                           "parts": [["name": "Boiled chicken breast", "grams": 244, "kcal": 410, "protein_g": 80, "carbs_g": 0, "fat_g": 9, "numbers_from": "them"]]]
+        let again: JSON = ["name": "Boiled chicken breast, 80 g protein", "kcal_total": 401,
+                           "parts": [["name": "Chicken breast, boiled, skinless (591 g batch)", "grams": 244, "kcal": 401, "protein_g": 80, "carbs_g": 0, "fat_g": 9, "numbers_from": "them"]]]
+        let kept = Assistant.steady(again, earlier: [first])
+        XCTAssertEqual(num(list(kept["parts"])[0]["kcal"]), 410)
+        XCTAssertEqual(str(list(kept["parts"])[0]["name"]), "Boiled chicken breast")
+        XCTAssertEqual(num(kept["kcal_total"]), 410)
+
+        // another amount of it scales from the same card: 213 g for 70 g of protein
+        let less: JSON = ["parts": [["name": "Boiled chicken breast", "grams": 213, "kcal": 350, "protein_g": 70, "carbs_g": 0, "fat_g": 8]]]
+        XCTAssertEqual(num(list(Assistant.steady(less, earlier: [first])["parts"])[0]["kcal"]) ?? 0, 358, accuracy: 1)   // 410 x 213 / 244
+
+        // a new batch that cooked down further has more protein per gram: it isn't the same food, so it's left alone
+        let drier: JSON = ["parts": [["name": "Boiled chicken breast", "grams": 200, "kcal": 370, "protein_g": 75, "carbs_g": 0, "fat_g": 8]]]
+        XCTAssertEqual(num(list(Assistant.steady(drier, earlier: [first])["parts"])[0]["kcal"]), 370)
+
+        // and another food with the same protein isn't touched
+        let fish: JSON = ["parts": [["name": "Tuna steak, grilled", "grams": 244, "kcal": 330, "protein_g": 80, "carbs_g": 0, "fat_g": 2]]]
+        XCTAssertEqual(num(list(Assistant.steady(fish, earlier: [first])["parts"])[0]["kcal"]), 330)
+        XCTAssertEqual(num(list(Assistant.steady(again, earlier: [])["parts"])[0]["kcal"]), 401)
+    }
 }
