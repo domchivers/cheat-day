@@ -68,8 +68,9 @@ enum StoryArt {
         let whole = !ext.isInfinite && ext.width > 1 && ext.height > 1
         if let deg = t["t"], deg != 0, whole {
             // tilted about its middle and grown just enough that no corner comes up empty
-            let a = -deg * .pi / 180, grow = cos(abs(a)) + max(ext.width / ext.height, ext.height / ext.width) * sin(abs(a))
-            let turn = CGAffineTransform(translationX: ext.midX, y: ext.midY).rotated(by: a).scaledBy(x: grow, y: grow).translatedBy(x: -ext.midX, y: -ext.midY)
+            let a: Double = -deg * Double.pi / 180, long = Double(max(ext.width / ext.height, ext.height / ext.width))
+            let grow = CGFloat(cos(abs(a)) + long * sin(abs(a)))
+            let turn = CGAffineTransform(translationX: ext.midX, y: ext.midY).rotated(by: CGFloat(a)).scaledBy(x: grow, y: grow).translatedBy(x: -ext.midX, y: -ext.midY)
             img = img.transformed(by: turn)
             if frame == nil { img = img.cropped(to: ext) }
         }
