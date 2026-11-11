@@ -158,8 +158,11 @@ struct StoryEditor: View {
             // The picture has a space of its own that never changes size, and sits in the middle of it whatever its
             // shape. The tools and the button are under that space, the X at its top: before, all of them were hung
             // on the picture, so a wide clip pulled them up the screen and a narrow one squeezed the button.
-            let stageH = max(120, screen.size.height + low - 136)
-            let cw = min(screen.size.width - 16, stageH * ratio)   // 66 more for the row of tools
+            // Only the button is under the picture's space now: the row of tools lies over the bottom of it, as
+            // Instagram's tools lie over its picture. That gives a tall 9:16 picture the screen's whole width, which
+            // is the size Instagram shows it at; with the tools taking a row of their own it came out narrower.
+            let stageH = max(120, screen.size.height + low - 70)
+            let cw = min(screen.size.width, stageH * ratio)   // 66 more for the row of tools
             let ch = cw / ratio
             VStack(spacing: 10) {
                 canvas(cw, ch)
@@ -182,9 +185,14 @@ struct StoryEditor: View {
                     }
                     .animation(.easeOut(duration: 0.2), value: stories.posting)
                     .frame(width: screen.size.width, height: stageH)
-                    .overlay(alignment: .top) { topBar.padding(.horizontal, 14).padding(.top, 10) }
-                // the tools across the whole screen, not just the picture's width; out of the way while one is in use
-                toolbar.frame(width: screen.size.width).opacity(mode == .none ? 1 : 0).allowsHitTesting(mode == .none)
+                    // X and Done sit inside the picture when it reaches the top of its space (they straddled its
+                    // rounded corner), and across the screen when it's a short one with black above it
+                    .overlay(alignment: .top) { topBar.padding(.horizontal, 14).padding(.top, 12).frame(width: ch >= stageH - 1 && cw >= 250 ? cw : screen.size.width) }
+                    // the tools over the bottom of that space; out of the way while one is in use or something's being dragged to the bin
+                    .overlay(alignment: .bottom) {
+                        toolbar.frame(width: screen.size.width).padding(.bottom, 10)
+                            .opacity(mode == .none && active == nil ? 1 : 0).allowsHitTesting(mode == .none && active == nil)
+                    }
                 bottomBar.frame(width: screen.size.width - 28)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -385,7 +393,7 @@ struct StoryEditor: View {
                 Text(title).font(.caption2.weight(.semibold))
             }
             .foregroundStyle(.white).frame(width: 64, height: 56)
-            .background(Color(white: 0.15), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain).accessibilityLabel(label)
     }
