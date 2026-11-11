@@ -30,11 +30,7 @@ struct ProgressPage: View {
                     top.padding(.horizontal, 18).padding(.top, 14)
                     chartCard.padding(.horizontal, 14).padding(.top, 14)
                     if store.checkInDue { checkInRow.padding(.horizontal, 14).padding(.top, 10) }
-                    HStack(alignment: .firstTextBaseline) {
-                        section("Your plan")
-                        Spacer()
-                        NavigationLink { BudgetView() } label: { Text("Change").font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent) }.padding(.trailing, 18)
-                    }
+                    section("Your plan")
                     planCard.padding(.horizontal, 14)
                     weekHeader
                     weekCard.padding(.horizontal, 14)
