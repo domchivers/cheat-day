@@ -90,10 +90,10 @@ final class FriendActivity {
         }
         for p in posts where str(p["owner"]) != me && close.contains(str(p["owner"])) {
             let kind = str(p["kind"])
-            let what = kind == "workout" ? "logged a workout" : kind == "meal" ? "shared a meal" : kind == "moment" ? "hit a milestone" : "had"
+            let what = kind == "workout" ? "logged a workout" : kind == "meal" ? "shared a meal" : kind == "moment" ? "hit a milestone" : kind == "photo" ? "shared a photo" : "had"
             let extra = dict(p["extra"])
             let detail = kind == "workout" ? "\(str(p["name"])) · \(Int(num(extra["minutes"]) ?? 0)) min"
-                : kind == "moment" ? str(p["name"]) : "\(str(p["name"])) · \(Int(num(p["kcal"]) ?? 0)) kcal"
+                : kind == "moment" ? str(p["name"]) : kind == "photo" ? str(p["caption"]) : "\(str(p["name"])) · \(Int(num(p["kcal"]) ?? 0)) kcal"
             out.append(Item(id: "p-\(str(p["id"]))", kind: .post, who: name(str(p["owner"])), at: date(p["created_at"]),
                             text: what, detail: (str(p["caption"]).isEmpty ? "" : "“\(str(p["caption"]))” · ") + detail,
                             photo: Feed.hasPhoto(p) ? str(p["photo"]) : nil, post: str(p["id"])))

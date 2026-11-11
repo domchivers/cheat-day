@@ -33,7 +33,7 @@ struct StoryView: View {
     /// Their slides: posts from today, then each meal they've logged, then workouts.
     static func slides(for id: String) -> [Slide] {
         let today = DayKey.string(Date())
-        let posts = Feed.shared.posts.filter { str($0["owner"]) == id && str($0["kind"]) != "moment" && String(str($0["created_at"]).prefix(10)) == today }
+        let posts = Feed.shared.posts.filter { str($0["owner"]) == id && str($0["kind"]) != "moment" && str($0["kind"]) != "photo" && String(str($0["created_at"]).prefix(10)) == today }
             .sorted { str($0["created_at"]) < str($1["created_at"]) }
         // stories they posted come first, then today's posts, meals and workouts
         var out: [Slide] = Stories.shared.of(id).map { .snap($0) } + posts.map { .post($0) }

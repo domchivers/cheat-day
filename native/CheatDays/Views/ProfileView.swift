@@ -304,7 +304,7 @@ struct ProfileView: View {
 
     private func cell(_ post: JSON) -> some View {
         let photo = str(post["photo"]), kind = str(post["kind"])
-        let label = kind == "workout" ? "\(Int(num(dict(post["extra"])["minutes"]) ?? 0)) min" : kind == "moment" ? "" : Fmt.int(num(post["kcal"]) ?? 0)
+        let label = kind == "workout" ? "\(Int(num(dict(post["extra"])["minutes"]) ?? 0)) min" : kind == "moment" || kind == "photo" ? "" : Fmt.int(num(post["kcal"]) ?? 0)
         return Button { openAt = posts.firstIndex { str($0["id"]) == str(post["id"]) } } label: {
             Color.clear.aspectRatio(1, contentMode: .fit)
                 .overlay {

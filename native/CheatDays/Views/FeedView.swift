@@ -473,6 +473,7 @@ struct FeedView: View {
         case "workout": return "Worked out"
         case "meal": return "Shared a meal"
         case "moment": return "A milestone"
+        case "photo": return "Shared a photo"
         default: let m = str(dict(p["extra"])["meal"]); return m.isEmpty ? "Shared a food" : (m == "Snacks" ? "Snack" : m)
         }
     }
@@ -491,6 +492,7 @@ struct FeedView: View {
             .clipped()
             .contentShape(Rectangle())
             .overlay(alignment: .bottomLeading) {
+                if str(p["kind"]) != "photo" {   // a photo on its own has no name or numbers
                 HStack(spacing: 8) {
                     Text(str(p["name"])).lineLimit(1)
                     Text(n.kcal).foregroundStyle(.secondary)
@@ -499,6 +501,7 @@ struct FeedView: View {
                 .font(.caption.weight(.bold)).padding(.horizontal, 11).padding(.vertical, 7)
                 .background(.ultraThinMaterial, in: Capsule()).environment(\.colorScheme, .dark)
                 .padding(12)
+                }
             }
     }
 
@@ -616,7 +619,7 @@ struct FeedView: View {
                 Button { sharing = PostBox(post: p) } label: { Image(systemName: "paperplane").font(.system(size: 21, weight: .medium)) }
                     .buttonStyle(.plain).accessibilityLabel("Send to a friend")
                 Spacer()
-                if kind != "moment" {
+                if kind != "moment" && kind != "photo" {
                     Button { recipe = p } label: {
                         Label(kind == "workout" ? "Do it" : kind == "meal" ? "Recipe" : "Have some", systemImage: kind == "workout" ? "play.fill" : "plus")
                             .font(.subheadline.weight(.bold)).foregroundStyle(Theme.onAccent)
@@ -864,6 +867,8 @@ struct ComposeSheet: View {
     @State private var movie: URL?   // a video post: the clip; photo is its first frame
     @State private var picked: PhotosPickerItem?
     @State private var camera = false
+    @State private var library = false
+    @State private var attaching = false   // the list of foods, meals and workouts is open
     @State private var busy = false
     @State private var problem: String?
     @State private var search = ""
@@ -901,62 +906,38 @@ struct ComposeSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                if let w = what {
-                    Section {
-                        HStack { FoodDot(name: str(w["name"]), size: 34); Text(str(w["name"])).font(.headline); Spacer(); Button("Change") { what = nil }.font(.subheadline) }
-                        TextField("Say something about it", text: $caption, axis: .vertical).lineLimit(2...5)
-                    }
-                    Section {
-                        if let movie {
-                            LoopingVideo(url: movie, muted: true).frame(height: 320).frame(maxWidth: .infinity).clipShape(RoundedRectangle(cornerRadius: 14))
-                            Text("Up to the first 30 seconds are posted.").font(.caption).foregroundStyle(.secondary)
-                        } else if let photo {
-                            Image(uiImage: photo).resizable().scaledToFit().frame(maxHeight: 320).frame(maxWidth: .infinity).clipShape(RoundedRectangle(cornerRadius: 14))
-                            Button { editing = EditBox(image: source ?? photo) } label: { Label("Edit photo", systemImage: "crop.rotate") }.buttonStyle(.borderless)
-                        }
-                        HStack(spacing: 18) {
-                            Button { camera = true } label: { Label(photo == nil ? "Snap a pic" : "Retake", systemImage: "camera.fill") }.buttonStyle(.borderless)
-                            PhotosPicker(selection: $picked, matching: .any(of: [.images, .videos])) { Label("Library", systemImage: "photo") }.buttonStyle(.borderless)
-                            if photo != nil || movie != nil { Button("Remove", role: .destructive) { photo = nil; movie = nil }.buttonStyle(.borderless) }
-                        }
-                    }
-                    if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn) }
-                } else {
-                    // anything from the last month, not just today: foods, meals and recipes, workouts; search to narrow it
-                    let items = recentFoods, meals = savedMeals, wos = recentWorkouts
-                    // one list at a time: three long ones stacked meant scrolling past every food to reach a workout
-                    if search.isEmpty {
-                        Picker("Show", selection: $shelf) {
-                            Text("Foods").tag(0); Text("Meals").tag(1); Text("Workouts").tag(2)
-                        }
-                        .pickerStyle(.segmented).listRowBackground(Color.clear).listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-                    }
-                    if !items.isEmpty && (!search.isEmpty || shelf == 0) {
-                        Section("Foods") { ForEach(items.indices, id: \.self) { i in pickRow(str(items[i]["name"]), "\(Int(num(items[i]["kcal"]) ?? 0)) kcal · \(when(items[i]["_date"]))") { what = food(items[i]) } } }
-                    }
-                    if !meals.isEmpty && (!search.isEmpty || shelf == 1) {
-                        Section("Meals and recipes") { ForEach(meals.indices, id: \.self) { i in let m = meals[i]; pickRow(str(m["name"]), "\(Fmt.int(num(store.mealBasis(m)["kcalPerServing"]) ?? 0)) kcal a portion") { what = meal(m) } } }
-                    }
-                    if !wos.isEmpty && (!search.isEmpty || shelf == 2) {
-                        Section("Workouts") { ForEach(wos.indices, id: \.self) { i in pickRow(str(wos[i]["name"]), "\(Int(num(wos[i]["minutes"]) ?? 0)) min · \(when(wos[i]["_date"]))") { what = workout(wos[i]) } } }
-                    }
-                    let none = search.isEmpty ? [items, meals, wos][shelf].isEmpty : (items.isEmpty && meals.isEmpty && wos.isEmpty)
-                    if none {
-                        Text(!search.isEmpty ? "Nothing called that." : ["Log a food and it's here to share.", "Save a meal or recipe and it's here to share.", "Finish a workout and it's here to share."][shelf])
-                            .foregroundStyle(.secondary)
-                    }
+            ScrollView {
+                VStack(spacing: 0) {
+                    picture.padding(.top, 14)
+                    TextField("Write a caption…", text: $caption, axis: .vertical).lineLimit(1...6)
+                        .padding(.horizontal, 18).padding(.top, 14).padding(.bottom, 12)
+                    attachment.padding(.horizontal, 14)
+                    if movie != nil { Text("Up to the first 30 seconds are posted.").font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.top, 8) }
+                    if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.top, 8) }
                 }
+                .padding(.bottom, 20)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .background(Theme.bg)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                let ready = what != nil || photo != nil || movie != nil
+                Button { post() } label: {
+                    Text(busy ? "Sharing…" : "Share").font(.headline.weight(.heavy)).foregroundStyle(ready ? Theme.onAccent : Color.secondary)
+                        .frame(maxWidth: .infinity).padding(.vertical, 15)
+                        .background(ready ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Color(.tertiarySystemFill)), in: Capsule())
+                }
+                .buttonStyle(.plain).disabled(!ready || busy)
+                .padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 10).background(Theme.bg)
             }
             .keyboardDone()
-            .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search foods, meals and workouts")
             .onAppear { if what == nil, let preset { what = preset } }
-            .navigationTitle(what == nil ? "What are you sharing?" : "New post")
+            .navigationTitle("New post")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                if what != nil { ToolbarItem(placement: .topBarTrailing) { Button(busy ? "Posting…" : "Post") { post() }.fontWeight(.bold).disabled(busy) } }
+                ToolbarItem(placement: .cancellationAction) { Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel("Cancel") }
             }
+            .sheet(isPresented: $attaching) { attachPicker }
+            .photosPicker(isPresented: $library, selection: $picked, matching: .any(of: [.images, .videos]))
             .fullScreenCover(isPresented: $camera) { CameraPicker { img in camera = false; if let img { DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { editing = EditBox(image: img) } } }.ignoresSafeArea() }
             .onChange(of: picked) { _, item in
                 Task {
@@ -967,12 +948,137 @@ struct ComposeSheet: View {
                     } else if let d = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: d) {
                         movie = nil; editing = EditBox(image: img)
                     }
+                    picked = nil
                 }
             }
             // the story editor, in the feed's 4:5: text, stickers, drawing and filters baked into the photo
             .fullScreenCover(item: $editing) { e in
                 StoryEditor(image: e.image, video: nil, aspect: 4.0 / 5.0, close: { editing = nil }, finish: { out in photo = out; source = e.image; editing = nil })
             }
+        }
+    }
+
+    // MARK: the picture
+
+    /// The post's picture, tall and centred, in the feed's 4:5: the photo or video; without one, what's attached
+    /// drawn as a card; with neither, the way to add one. A tap offers the camera or the library.
+    private var picture: some View {
+        Menu {
+            if photo != nil && movie == nil { Button { editing = EditBox(image: source ?? photo ?? UIImage()) } label: { Label("Edit photo", systemImage: "crop.rotate") } }
+            Button { camera = true } label: { Label(photo == nil ? "Take a photo" : "Take another", systemImage: "camera") }
+            Button { library = true } label: { Label(photo == nil ? "Choose from library" : "Choose another", systemImage: "photo.on.rectangle") }
+            if photo != nil || movie != nil { Button(role: .destructive) { photo = nil; movie = nil; source = nil } label: { Label("Remove", systemImage: "trash") } }
+        } label: {
+            pictureTile.frame(width: 210, height: 262)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(alignment: .bottomTrailing) {
+                    if photo != nil || what != nil {
+                        Image(systemName: photo == nil ? "plus" : "pencil").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                            .frame(width: 30, height: 30).background(.black.opacity(0.55), in: Circle()).padding(8)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(photo == nil ? "Add a photo or video" : "Change the photo")
+    }
+
+    @ViewBuilder private var pictureTile: some View {
+        if let movie {
+            LoopingVideo(url: movie, muted: true)
+        } else if let photo {
+            Color.clear.overlay { Image(uiImage: photo).resizable().scaledToFill() }
+        } else if let w = what {
+            // no photo: its numbers are the picture, as the feed's card is
+            VStack(alignment: .leading, spacing: 2) {
+                Spacer(minLength: 0)
+                Text(str(w["name"]).uppercased()).font(.caption2.weight(.heavy)).foregroundStyle(.secondary).lineLimit(2)
+                Text(Fmt.int(num(w["kcal"]) ?? 0)).font(.system(size: 40, weight: .heavy, design: .rounded)).monospacedDigit()
+                Text(str(w["kind"]) == "workout" ? "kcal · \(Int(num(dict(w["extra"])["minutes"]) ?? 0)) min" : "kcal").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+            }
+            .padding(16).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .background(LinearGradient(colors: [Theme.hero, Theme.accent.opacity(0.28)], startPoint: .topLeading, endPoint: .bottomTrailing))
+        } else {
+            VStack(spacing: 8) {
+                Image(systemName: "plus").font(.system(size: 22, weight: .medium)).foregroundStyle(Theme.accent)
+                    .frame(width: 50, height: 50).background(Color(.tertiarySystemFill), in: Circle())
+                Text("Add a photo or video").font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent)
+                Text("Optional").font(.footnote).foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(.secondarySystemGroupedBackground))
+        }
+    }
+
+    // MARK: what's attached
+
+    /// A food, meal or workout going with the post, or the two ways to add one.
+    private var attachment: some View {
+        VStack(spacing: 0) {
+            if let w = what {
+                let kind = str(w["kind"]), protein = num(dict(w["macros"])["p"])
+                HStack(spacing: 12) {
+                    FoodDot(name: kind == "workout" ? "Workout" : str(w["name"]), size: 34)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(str(w["name"])).font(.body.weight(.semibold)).lineLimit(1)
+                        Text(kind == "workout" ? "\(Int(num(dict(w["extra"])["minutes"]) ?? 0)) min · \(Fmt.int(num(w["kcal"]) ?? 0)) kcal"
+                             : "\(Fmt.int(num(w["kcal"]) ?? 0)) kcal\(protein.map { " · \(Int($0)) g protein" } ?? "")").font(.footnote).foregroundStyle(.secondary).monospacedDigit()
+                    }
+                    Spacer(minLength: 0)
+                    Button("Remove") { withAnimation(.snappy) { what = nil } }.font(.subheadline).foregroundStyle(.secondary).buttonStyle(.plain)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 11)
+            } else {
+                attachRow("fork.knife", "Add a food or meal") { shelf = 0; attaching = true }
+                Divider().padding(.leading, 14)
+                attachRow("dumbbell.fill", "Add a workout") { shelf = 2; attaching = true }
+            }
+        }
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    private func attachRow(_ symbol: String, _ title: String, _ tap: @escaping () -> Void) -> some View {
+        Button(action: tap) {
+            HStack(spacing: 12) {
+                Image(systemName: symbol).font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.accent).frame(width: 24)
+                Text(title).font(.body.weight(.semibold)).foregroundStyle(.primary)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 13).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// The last month's foods, saved meals and workouts to attach: one list at a time, or all three when searching.
+    private var attachPicker: some View {
+        NavigationStack {
+            List {
+                let items = recentFoods, meals = savedMeals, wos = recentWorkouts
+                if search.isEmpty {
+                    Picker("Show", selection: $shelf) {
+                        Text("Foods").tag(0); Text("Meals").tag(1); Text("Workouts").tag(2)
+                    }
+                    .pickerStyle(.segmented).listRowBackground(Color.clear).listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                }
+                if !items.isEmpty && (!search.isEmpty || shelf == 0) {
+                    Section("Foods") { ForEach(items.indices, id: \.self) { i in pickRow(str(items[i]["name"]), "\(Int(num(items[i]["kcal"]) ?? 0)) kcal · \(when(items[i]["_date"]))") { what = food(items[i]); attaching = false } } }
+                }
+                if !meals.isEmpty && (!search.isEmpty || shelf == 1) {
+                    Section("Meals and recipes") { ForEach(meals.indices, id: \.self) { i in let m = meals[i]; pickRow(str(m["name"]), "\(Fmt.int(num(store.mealBasis(m)["kcalPerServing"]) ?? 0)) kcal a portion") { what = meal(m); attaching = false } } }
+                }
+                if !wos.isEmpty && (!search.isEmpty || shelf == 2) {
+                    Section("Workouts") { ForEach(wos.indices, id: \.self) { i in pickRow(str(wos[i]["name"]), "\(Int(num(wos[i]["minutes"]) ?? 0)) min · \(when(wos[i]["_date"]))") { what = workout(wos[i]); attaching = false } } }
+                }
+                let none = search.isEmpty ? [items, meals, wos][shelf].isEmpty : (items.isEmpty && meals.isEmpty && wos.isEmpty)
+                if none {
+                    Text(!search.isEmpty ? "Nothing called that." : ["Log a food and it's here to share.", "Save a meal or recipe and it's here to share.", "Finish a workout and it's here to share."][shelf])
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search foods, meals and workouts")
+            .navigationTitle("Add to your post")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { attaching = false } } }
         }
     }
 
@@ -1015,7 +1121,9 @@ struct ComposeSheet: View {
     }
 
     private func post() {
-        guard var row = what else { return }
+        // nothing attached: a photo or video on its own (a progress photo, say), with no numbers to show
+        var row = what ?? ["kind": "photo", "name": "", "kcal": 0, "macros": [:] as JSON, "payload": [:] as JSON, "extra": [:] as JSON]
+        guard what != nil || photo != nil || movie != nil else { return }
         row["caption"] = caption.trimmingCharacters(in: .whitespacesAndNewlines)
         busy = true; problem = nil
         Task {
