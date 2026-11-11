@@ -176,7 +176,7 @@ struct ProgressPage: View {
                                 Button { withAnimation(.easeInOut(duration: 0.25)) { metric = m.key; picked = nil } } label: {
                                     Text(m.name).font(.footnote.weight(.bold)).foregroundStyle(metric == m.key ? .primary : .secondary)
                                         .padding(.horizontal, 10).padding(.vertical, 5)
-                                        .background(metric == m.key ? AnyShapeStyle(Color(.systemGray3)) : AnyShapeStyle(Color(.tertiarySystemFill)), in: Capsule())
+                                        .background(Color.primary.opacity(metric == m.key ? 0.16 : 0.07), in: Capsule())
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -195,55 +195,83 @@ struct ProgressPage: View {
                 // flat to both edges, so it still runs the card's full width
                 let span = last.date.timeIntervalSince(first.date), slack = max(span * 0.05, 3600 * 12)
                 let x0 = first.date.addingTimeInterval(-slack), x1 = last.date.addingTimeInterval(slack)
-                let fill = [Point(id: "start", date: x0, kg: first.trend, trend: first.trend)] + pts + [Point(id: "end", date: x1, kg: last.trend, trend: last.trend)]
+                // The line in the theme's own colours (the Gradient theme's blue into violet; else the accent, brightening
+                // to where you are now), with a wide soft copy under it for a glow. Everything else steps back: the
+                // weigh-ins are small pale dots, the fill fades out under the line and stops at its ends, and the goal
+                // is a dashed line with its name at the left, clear of the dot. It was one blue at four strengths
+                // before, and they all ran together.
+                let ink = Palette.current.gradient ?? [Theme.accent.opacity(0.7), Theme.accent]
+                let stroke = LinearGradient(colors: ink, startPoint: .leading, endPoint: .trailing)
+                let months = span > 75 * 86400
                 Chart {
-                    ForEach(fill) { p in
+                    ForEach(pts) { p in
                         AreaMark(x: .value("Day", p.date), yStart: .value("Low", lo - pad), yEnd: .value("Trend", p.trend))
                             .interpolationMethod(.monotone)
-                            .foregroundStyle(LinearGradient(colors: [Theme.accent.opacity(0.32), Theme.accent.opacity(0.03)], startPoint: .top, endPoint: .bottom))
-                    }
-                    ForEach(pts) { p in
-                        PointMark(x: .value("Day", p.date), y: .value("Weigh-in", p.kg)).symbolSize(10).foregroundStyle(Theme.accent.opacity(0.28))
-                    }
-                    ForEach(pts) { p in
-                        LineMark(x: .value("Day", p.date), y: .value("Trend", p.trend))
-                            .interpolationMethod(.monotone)
-                            .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
-                            .foregroundStyle(LinearGradient(colors: [Theme.accent.opacity(0.35), Theme.accent.opacity(0.9), Theme.accent], startPoint: .leading, endPoint: .trailing))
-                    }
-                    if let sel = selected(pts) {
-                        RuleMark(x: .value("Held", sel.date)).foregroundStyle(.white.opacity(0.25)).lineStyle(StrokeStyle(lineWidth: 1))
-                        PointMark(x: .value("Held", sel.date), y: .value("Reading", sel.kg)).symbolSize(60).foregroundStyle(Theme.accent)
+                            .foregroundStyle(LinearGradient(colors: [(ink.last ?? Theme.accent).opacity(0.30), (ink.first ?? Theme.accent).opacity(0)], startPoint: .top, endPoint: .bottom))
                     }
                     if let goal = goalLine {
-                        RuleMark(y: .value("Goal", goal)).foregroundStyle(.white.opacity(0.16)).lineStyle(StrokeStyle(lineWidth: 1))
-                            .annotation(position: .bottom, alignment: .trailing) {
-                                Text("Goal \(Fmt.kg(goal)) kg").font(.caption2.weight(.semibold)).foregroundStyle(.secondary).padding(.trailing, 12)
+                        RuleMark(y: .value("Goal", goal)).foregroundStyle(Color.primary.opacity(0.38)).lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                            .annotation(position: .bottom, alignment: .leading, spacing: 3) {
+                                Text("GOAL \(Fmt.kg(goal))").font(.system(size: 10, weight: .heavy)).foregroundStyle(Color.primary.opacity(0.55)).padding(.leading, 2)
                             }
                     }
-                    // today: a white dot with a soft halo and the number above it
-                    PointMark(x: .value("Day", last.date), y: .value("Trend", last.trend)).symbolSize(420).foregroundStyle(Theme.accent.opacity(0.22))
-                    // no number on it: the trend there is a touch off the scale's number in big type above, and two
-                    // different weights side by side looked like a mistake
-                    PointMark(x: .value("Day", last.date), y: .value("Trend", last.trend)).symbolSize(70).foregroundStyle(.white)
+                    ForEach(pts) { p in
+                        PointMark(x: .value("Day", p.date), y: .value("Weigh-in", p.kg)).symbolSize(9).foregroundStyle((ink.first ?? Theme.accent).opacity(0.5))
+                    }
+                    ForEach(pts) { p in
+                        LineMark(x: .value("Day", p.date), y: .value("Trend", p.trend), series: .value("Line", "glow"))
+                            .interpolationMethod(.monotone)
+                            .lineStyle(StrokeStyle(lineWidth: 10, lineCap: .round, lineJoin: .round))
+                            .foregroundStyle(stroke.opacity(0.20))
+                    }
+                    ForEach(pts) { p in
+                        LineMark(x: .value("Day", p.date), y: .value("Trend", p.trend), series: .value("Line", "trend"))
+                            .interpolationMethod(.monotone)
+                            .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                            .foregroundStyle(stroke)
+                    }
+                    if let sel = selected(pts) {
+                        RuleMark(x: .value("Held", sel.date)).foregroundStyle(Color.primary.opacity(0.25)).lineStyle(StrokeStyle(lineWidth: 1))
+                        PointMark(x: .value("Held", sel.date), y: .value("Reading", sel.kg)).symbolSize(60).foregroundStyle(ink.last ?? Theme.accent)
+                    }
+                    // where you are now: a white dot in a soft halo of the line's last colour. No number on it: the
+                    // trend there is a touch off the scale's number in big type above, and two different weights
+                    // side by side looked like a mistake
+                    PointMark(x: .value("Day", last.date), y: .value("Trend", last.trend)).symbolSize(380).foregroundStyle((ink.last ?? Theme.accent).opacity(0.28))
+                    PointMark(x: .value("Day", last.date), y: .value("Trend", last.trend)).symbolSize(64).foregroundStyle(.white)
                 }
                 .chartYScale(domain: (lo - pad)...(hi + pad))
-                .chartYAxis(.hidden)
+                // a few numbers down the right, so the line can be read, and room there for the last dot
+                .chartYAxis {
+                    AxisMarks(position: .trailing, values: .automatic(desiredCount: 3)) { _ in
+                        AxisGridLine().foregroundStyle(Color.primary.opacity(0.07))
+                        AxisValueLabel().font(.caption2.weight(.semibold)).foregroundStyle(Color.secondary)
+                    }
+                }
                 .chartXAxis {
-                    AxisMarks(values: [first.date, mid(first.date, last.date), last.date]) { v in
-                        // the end dates hang inwards, so "7 Nov" at the right isn't cut to "7 N"
-                        let d0 = v.as(Date.self)
-                        let anchor: UnitPoint = d0.map { abs($0.timeIntervalSince(last.date)) < 60 ? .topTrailing : abs($0.timeIntervalSince(first.date)) < 60 ? .topLeading : .top } ?? .top
-                        AxisValueLabel(anchor: anchor) {
-                            if let d = v.as(Date.self) {
-                                Text(Calendar.current.isDate(d, inSameDayAs: last.date) && last.id == store.today ? "Today" : d.formatted(.dateTime.day().month(.abbreviated)))
-                                    .font(.caption2).foregroundStyle(.secondary)
+                    if months {
+                        // months along the bottom (with the year once it runs past one)
+                        AxisMarks(values: .automatic(desiredCount: 5)) { _ in
+                            AxisValueLabel(format: span > 400 * 86400 ? Date.FormatStyle().month(.abbreviated).year(.twoDigits) : Date.FormatStyle().month(.abbreviated))
+                                .font(.caption2).foregroundStyle(Color.secondary)
+                        }
+                    } else {
+                        AxisMarks(values: [first.date, mid(first.date, last.date), last.date]) { v in
+                            // the end dates hang inwards, so "7 Nov" at the right isn't cut to "7 N"
+                            let d0 = v.as(Date.self)
+                            let anchor: UnitPoint = d0.map { abs($0.timeIntervalSince(last.date)) < 60 ? .topTrailing : abs($0.timeIntervalSince(first.date)) < 60 ? .topLeading : .top } ?? .top
+                            AxisValueLabel(anchor: anchor) {
+                                if let d = v.as(Date.self) {
+                                    Text(Calendar.current.isDate(d, inSameDayAs: last.date) && last.id == store.today ? "Today" : d.formatted(.dateTime.day().month(.abbreviated)))
+                                        .font(.caption2).foregroundStyle(.secondary)
+                                }
                             }
                         }
                     }
                 }
                 .chartXScale(domain: x0...x1)
-                .chartPlotStyle { $0.padding(.horizontal, 0) }
+                .chartPlotStyle { $0.padding(.leading, 14) }
+                .padding(.trailing, 10)
                 .chartXSelection(value: $picked)
                 .frame(height: 170)
                 // a fade from one range to the next: reshaping the line between them looked messy
@@ -263,7 +291,7 @@ struct ProgressPage: View {
                     Button { picked = nil; withAnimation(.easeInOut(duration: 0.25)) { range = r.days } } label: {
                         Text(r.label).font(.footnote.weight(.bold)).foregroundStyle(range == r.days ? .primary : .secondary)
                             .padding(.horizontal, 11).padding(.vertical, 6)
-                            .background(range == r.days ? AnyShapeStyle(Color(.systemGray3)) : AnyShapeStyle(Color.clear), in: Capsule())
+                            .background(Color.primary.opacity(range == r.days ? 0.16 : 0), in: Capsule())
                     }
                     .buttonStyle(.plain).frame(maxWidth: .infinity)
                 }
@@ -285,7 +313,7 @@ struct ProgressPage: View {
             }
         }
         .padding(.vertical, 14)
-        .background(LinearGradient(colors: [Theme.accent.opacity(0.10), Color(.secondarySystemGroupedBackground)], startPoint: .top, endPoint: .center),
+        .background(LinearGradient(colors: [Theme.hero, Theme.hero.opacity(0.72)], startPoint: .top, endPoint: .bottom),
                     in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
