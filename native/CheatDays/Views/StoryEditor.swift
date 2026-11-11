@@ -138,7 +138,11 @@ struct StoryEditor: View {
 
     var body: some View {
         GeometryReader { screen in
-            let cw = min(screen.size.width - 16, (screen.size.height - 96) * ratio)
+            // as big as the screen allows: the button under it takes 58, and the two of them go down into the strip
+            // kept clear for the home bar, stopping 12 short of the bottom (96 was held back before, and none of
+            // that strip used, which left a tall clip small with black all round it)
+            let low = max(0, screen.safeAreaInsets.bottom - 12)
+            let cw = min(screen.size.width - 16, (screen.size.height + low - 62) * ratio)
             let ch = cw / ratio
             VStack(spacing: 10) {
                 canvas(cw, ch)
@@ -164,6 +168,7 @@ struct StoryEditor: View {
                 bottomBar.frame(width: cw)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .offset(y: low / 2)   // what's taller than the safe part hangs below it, not half above
             .task(id: cw) { canvasWidth = cw }
         }
         // the keyboard slides over the story rather than squashing it
