@@ -106,7 +106,7 @@ final class Stories {
 
     /// A video as a smaller mp4: the trimmed part (at most 30 seconds), through the filter, with or without sound.
     /// Crop is the part of the picture to keep, as fractions of it from the top left (a post's video, zoomed and moved in the editor).
-    static func compress(_ url: URL, filter: String = "Normal", range: ClosedRange<Double>? = nil, muted: Bool = false, crop: CGRect? = nil, overlay: UIImage? = nil) async throws -> (Data, Double) {
+    static func compress(_ url: URL, filter: String = "Normal", range: ClosedRange<Double>? = nil, muted: Bool = false, crop: CGRect? = nil, overlay: UIImage? = nil, turns: Int = 0) async throws -> (Data, Double) {
         let asset = AVURLAsset(url: url)
         let full = (try? await asset.load(.duration).seconds) ?? 15
         let start = range?.lowerBound ?? 0, end = min(range?.upperBound ?? full, start + 30)
@@ -123,7 +123,8 @@ final class Stories {
         let out = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
         guard let export = AVAssetExportSession(asset: comp, presetName: AVAssetExportPreset1280x720) else { return (try Data(contentsOf: url), end - start) }
         export.outputURL = out; export.outputFileType = .mp4; export.shouldOptimizeForNetworkUse = true
-        if crop != nil || overlay != nil {
+        let quarter = ((turns % 4) + 4) % 4   // quarter turns to the right
+        if crop != nil || overlay != nil || quarter != 0 {
             let crop = crop ?? CGRect(x: 0, y: 0, width: 1, height: 1)
             // text, stickers and drawing: one see-through picture, stretched over the part kept
             let top = overlay.flatMap { CIImage(image: $0) }
@@ -134,11 +135,18 @@ final class Stories {
                 let r = CGRect(origin: .zero, size: n).applying(t)
                 size = CGSize(width: abs(r.width), height: abs(r.height))
             }
+            if quarter % 2 == 1 { size = CGSize(width: size.height, height: size.width) }
             let cut = CGRect(x: crop.minX * size.width, y: (1 - crop.maxY) * size.height, width: crop.width * size.width, height: crop.height * size.height).integral
             if cut.width >= 16, cut.height >= 16 {
                 let vc = AVMutableVideoComposition(asset: comp) { req in
                     var img = req.sourceImage
-                    if filter != "Normal" { img = StoryArt.filtered(img.clampedToExtent(), filter, frame: req.sourceImage.extent).cropped(to: req.sourceImage.extent) }
+                    if quarter != 0 {
+                        // turned (to the right is backwards to Core Image, which counts up), then slid back to the corner
+                        img = img.transformed(by: CGAffineTransform(rotationAngle: -CGFloat.pi / 2 * CGFloat(quarter)))
+                        img = img.transformed(by: CGAffineTransform(translationX: -img.extent.minX, y: -img.extent.minY))
+                    }
+                    let whole = img.extent
+                    if filter != "Normal" { img = StoryArt.filtered(img.clampedToExtent(), filter, frame: whole).cropped(to: whole) }
                     var done = img.cropped(to: cut).transformed(by: CGAffineTransform(translationX: -cut.minX, y: -cut.minY))
                     if let top, top.extent.width > 0, top.extent.height > 0 {
                         done = top.transformed(by: CGAffineTransform(scaleX: cut.width / top.extent.width, y: cut.height / top.extent.height)).composited(over: done)

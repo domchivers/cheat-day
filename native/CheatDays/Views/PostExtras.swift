@@ -13,6 +13,8 @@ struct ClipEdit {
     var overlay: UIImage? = nil
     /// The moment shown before it plays; nil for where it starts.
     var cover: Double? = nil
+    /// Quarter turns to the right.
+    var turns = 0
 
     /// A frame of the clip as friends will see it: through the look, cut to the part kept, with what's on it.
     func still(_ url: URL, at seconds: Double? = nil, width: CGFloat = 1440) async -> UIImage? {
@@ -29,7 +31,7 @@ struct ClipEdit {
     }
 
     func dress(_ frame: UIImage) -> UIImage {
-        let lit = StoryArt.filtered(frame, look)
+        let lit = StoryArt.filtered((0..<(((turns % 4) + 4) % 4)).reduce(frame) { img, _ in img.quarterTurned() }, look)
         guard let cg = lit.cgImage else { return lit }
         let w = CGFloat(cg.width), h = CGFloat(cg.height), c = crop ?? CGRect(x: 0, y: 0, width: 1, height: 1)
         let cut = CGRect(x: c.minX * w, y: c.minY * h, width: c.width * w, height: c.height * h).integral
@@ -39,6 +41,19 @@ struct ClipEdit {
         return UIGraphicsImageRenderer(size: size, format: format).image { _ in
             UIImage(cgImage: piece).draw(in: CGRect(origin: .zero, size: size))
             overlay?.draw(in: CGRect(origin: .zero, size: size))
+        }
+    }
+}
+
+extension UIImage {
+    /// The picture turned a quarter to the right.
+    func quarterTurned() -> UIImage {
+        let old = size, new = CGSize(width: old.height, height: old.width)
+        let format = UIGraphicsImageRendererFormat(); format.scale = scale
+        return UIGraphicsImageRenderer(size: new, format: format).image { c in
+            c.cgContext.translateBy(x: new.width / 2, y: new.height / 2)
+            c.cgContext.rotate(by: .pi / 2)
+            draw(in: CGRect(x: -old.width / 2, y: -old.height / 2, width: old.width, height: old.height))
         }
     }
 }
@@ -218,6 +233,7 @@ enum Drafts {
             if let k = clip.crop { c["crop"] = [Double(k.minX), Double(k.minY), Double(k.width), Double(k.height)] }
             if let s = clip.shape { c["shape"] = Double(s) }
             if let t = clip.cover { c["cover"] = t }
+            c["turns"] = clip.turns
             m["movie"] = name; m["clip"] = c
             try? clip.overlay?.pngData()?.write(to: tmp.appendingPathComponent("overlay.png"))
             try? poster?.jpegData(compressionQuality: 0.9)?.write(to: tmp.appendingPathComponent("poster.jpg"))
@@ -250,6 +266,7 @@ enum Drafts {
             if let k = c["crop"] as? [Double], k.count == 4 { clip.crop = CGRect(x: k[0], y: k[1], width: k[2], height: k[3]) }
             clip.shape = num(c["shape"]).map { CGFloat($0) }
             clip.cover = num(c["cover"])
+            clip.turns = Int(num(c["turns"]) ?? 0)
             clip.overlay = pic("overlay.png")
         }
         return (shots, movie, clip, movie == nil ? nil : pic("poster.jpg"))

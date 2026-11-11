@@ -82,6 +82,7 @@ struct StoryEditor: View {
     @State private var tune: [String: Double] = [:]
     @State private var tool: String?
     @State private var settled: [String: Double] = [:]
+    @State private var turns = 0   // a post's clip, turned by quarters to the right (a photo is itself turned)
     @State private var comparing = false   // a finger held on the photo in Adjust: the photo as it came
     private var look: String { StoryArt.look(filter, tune) }
     private var clipLook: String { StoryArt.look(filter, settled) }
@@ -207,8 +208,11 @@ struct StoryEditor: View {
                     let f = clipFill(cw, ch)
                     MovableClip(cw: cw, ch: ch, fill: f, scale: bgScale, offset: bgOffset, movable: mode == .none, commit: { sc, off in moveClip(sc, off, cw: cw, ch: ch) }) {
                         ZStack {
-                            if let poster { Image(uiImage: poster).resizable().scaledToFill() }
+                            if let poster { Image(uiImage: poster).resizable().scaledToFill().frame(width: f.width, height: f.height).clipped() }
+                            // turned on its side, the player is laid out sideways and then turned to stand in the frame
                             LoopingVideo(url: video, paused: false, muted: muted, filter: clipLook, range: length > 0 && mode != .trim ? range : nil, scrub: mode == .trim ? scrub : nil)
+                                .frame(width: turns % 2 == 1 ? f.height : f.width, height: turns % 2 == 1 ? f.width : f.height)
+                                .rotationEffect(.degrees(Double(turns) * 90))
                         }
                         .frame(width: f.width, height: f.height)
                     }
@@ -307,12 +311,31 @@ struct StoryEditor: View {
             topRow
             if mode == .none {
                 if forPost && !lockShape { round("aspectratio") { nextShape() }.accessibilityLabel("Shape") }
+                if video == nil ? image != nil : clipOnly { round("rotate.right") { turn() }.accessibilityLabel("Rotate") }
                 if video != nil {
                     round(muted ? "speaker.slash.fill" : "speaker.wave.2.fill") { muted.toggle(); flash(muted ? "Sound off" : "Sound on") }.accessibilityLabel(muted ? "Sound off" : "Sound on")
                     round("scissors") { mode = .trim }.accessibilityLabel("Trim")
                 }
             }
         }
+    }
+
+    /// A quarter turn to the right. A photo is turned itself; a post's clip is shown turned and made that way when
+    /// it's posted. The zoom and place start again: they were for the picture as it lay.
+    private func turn() {
+        UISelectionFeedbackGenerator().selectionChanged()
+        if video != nil {
+            turns = (turns + 1) % 4
+            poster = poster?.quarterTurned()
+            frames = frames.map { $0.quarterTurned() }
+        } else {
+            guard let now = work ?? image else { return }
+            work = now.quarterTurned(); preview = nil
+            let l = look
+            Task { await refilter(l) }
+        }
+        thumbs = thumbs.mapValues { $0.quarterTurned() }
+        withAnimation(.snappy) { bgScale = 1; bgOffset = .zero; clipMove = .zero }
     }
 
     @ViewBuilder private var topRow: some View {
@@ -367,7 +390,7 @@ struct StoryEditor: View {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         withAnimation(.snappy(duration: 0.22)) { items = last.items; strokes = last.strokes }
     }
-    private var edited: Bool { !items.isEmpty || !strokes.isEmpty || filter != "Normal" || !tune.isEmpty || bgScale > 1.01 }
+    private var edited: Bool { !items.isEmpty || !strokes.isEmpty || filter != "Normal" || !tune.isEmpty || bgScale > 1.01 || turns != 0 }
 
     private func round(_ symbol: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) { roundLabel(symbol) }.buttonStyle(.plain)
@@ -728,7 +751,7 @@ struct StoryEditor: View {
         if let finishVideo {
             Button {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
-                finishVideo(ClipEdit(look: look, range: length > 0 ? range : nil, muted: muted, crop: clipCrop, shape: ratio, overlay: overlayPicture()))
+                finishVideo(ClipEdit(look: look, range: length > 0 ? range : nil, muted: muted, crop: clipCrop, shape: ratio, overlay: overlayPicture(), turns: turns))
             } label: {
                 Text("Use this video").font(.headline).foregroundStyle(.black).frame(maxWidth: .infinity).padding(.vertical, 13).background(.white, in: Capsule())
             }
