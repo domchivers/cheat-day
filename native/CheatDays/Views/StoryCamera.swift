@@ -400,8 +400,9 @@ struct AssetThumb: View {
     @State private var img: UIImage?
     var body: some View {
         Color(white: 0.15).aspectRatio(9.0 / 16.0, contentMode: .fit)
-            .overlay { if let img { Image(uiImage: img).resizable().scaledToFill() } }
+            .overlay { if let img { Image(uiImage: img).resizable().scaledToFill().allowsHitTesting(false) } }
             .clipped()
+            .contentShape(Rectangle())
             .overlay(alignment: .bottomTrailing) {
                 if asset.mediaType == .video {
                     Text(String(format: "%d:%02d", Int(asset.duration) / 60, Int(asset.duration) % 60)).font(.caption2.weight(.heavy)).foregroundStyle(.white).shadow(radius: 2).padding(5)

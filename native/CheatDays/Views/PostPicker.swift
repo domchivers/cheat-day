@@ -13,6 +13,8 @@ struct PostPicker: View {
     var done: ([UIImage], URL?) -> Void
     var camera: () -> Void
     var allPhotos: () -> Void
+    /// A post with no picture (a meal or a workout on its own): shown as a square beside the camera when given.
+    var noPhoto: (() -> Void)? = nil
     var close: () -> Void
 
     @State private var assets: [PHAsset] = []
@@ -104,6 +106,19 @@ struct PostPicker: View {
                         .overlay { Image(systemName: "camera.fill").font(.system(size: 24)).foregroundStyle(.primary) }
                 }
                 .buttonStyle(.plain).accessibilityLabel("Camera")
+                if let noPhoto {
+                    Button { noPhoto() } label: {
+                        Color(.secondarySystemGroupedBackground).aspectRatio(1, contentMode: .fit)
+                            .overlay {
+                                VStack(spacing: 5) {
+                                    Image(systemName: "fork.knife").font(.system(size: 19, weight: .semibold))
+                                    Text("No photo").font(.caption2.weight(.bold))
+                                }
+                                .foregroundStyle(.primary)
+                            }
+                    }
+                    .buttonStyle(.plain).accessibilityLabel("Post without a photo")
+                }
                 ForEach(assets, id: \.localIdentifier) { a in
                     let at = picked.firstIndex(of: a.localIdentifier), dim = several && photosOrLocked(a)
                     Button { tap(a) } label: {
@@ -121,7 +136,7 @@ struct PostPicker: View {
                             }
                             .opacity(dim ? 0.35 : 1)
                     }
-                    .buttonStyle(.plain).disabled(dim)
+                    .buttonStyle(.plain).contentShape(Rectangle()).disabled(dim)
                 }
             }
             .padding(.bottom, 20)
@@ -224,8 +239,9 @@ private struct SquareThumb: View {
     @State private var img: UIImage?
     var body: some View {
         Color(white: 0.15).aspectRatio(1, contentMode: .fit)
-            .overlay { if let img { Image(uiImage: img).resizable().scaledToFill() } }
+            .overlay { if let img { Image(uiImage: img).resizable().scaledToFill().allowsHitTesting(false) } }
             .clipped()
+            .contentShape(Rectangle())   // a touch counts inside the square only: the photo spilling past it took its neighbours' taps
             .overlay(alignment: .bottomTrailing) {
                 if asset.mediaType == .video {
                     Text(String(format: "%d:%02d", Int(asset.duration) / 60, Int(asset.duration) % 60)).font(.caption2.weight(.heavy)).foregroundStyle(.white).shadow(radius: 2).padding(5)

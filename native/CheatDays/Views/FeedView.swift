@@ -940,6 +940,7 @@ struct ComposeSheet: View {
     @State private var library = false
     @State private var picking = false   // the app's own picker: the one chosen big, recents under it
     @State private var opened = false
+    @State private var pickerFirst = false   // the picker is what New post opened on: closing it closes New post
     @State private var attaching = false   // the list of foods, meals and workouts is open
     @State private var song: Song?
     @State private var choosingSong = false
@@ -1001,15 +1002,18 @@ struct ComposeSheet: View {
                 // already, or there are drafts to carry on with); closing the picker leaves the post to be written without one
                 if !opened {
                     opened = true
-                    if preset == nil && drafts.isEmpty && !started { DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { picking = true } }
+                    if preset == nil && drafts.isEmpty && !started { pickerFirst = true; DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { picking = true } }
                 }
             }
             .fullScreenCover(isPresented: $picking) {
                 PostPicker(room: max(1, 10 - shots.count), photosOnly: !shots.isEmpty,
-                           done: { images, video in picking = false; took(images, video) },
-                           camera: { picking = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { camera = true } },
-                           allPhotos: { picking = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { library = true } },
-                           close: { picking = false })
+                           done: { images, video in pickerFirst = false; picking = false; took(images, video) },
+                           camera: { pickerFirst = false; picking = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { camera = true } },
+                           allPhotos: { pickerFirst = false; picking = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { library = true } },
+                           // only while nothing's been started: a post of a meal or a workout alone, written up without a picture
+                           noPhoto: started ? nil : { pickerFirst = false; picking = false },
+                           // X on the picker New post opened with closes New post: the empty write-up screen behind it was a dead end
+                           close: { if pickerFirst && !started { dismiss() } else { picking = false } })
             }
             .interactiveDismissDisabled(started)
             .confirmationDialog("Keep this post to finish later?", isPresented: $leaving, titleVisibility: .visible) {
