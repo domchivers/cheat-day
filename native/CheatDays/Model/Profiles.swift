@@ -98,7 +98,7 @@ final class Profiles {
         iconFor = src
         guard src.hasPrefix("http"), let img = await ImageStore.load(src) else { meIcon = nil; meIconOn = nil; return }
         func icon(ring: Bool) -> UIImage {
-            let side: CGFloat = 24.75, inset: CGFloat = ring ? 3.5 : 1.5   // a round photo reads smaller than a glyph, so a touch bigger
+            let side: CGFloat = 27, inset: CGFloat = ring ? 3.5 : 1.5   // a round photo reads smaller than a glyph, so a touch bigger
             return UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { ctx in
                 let photo = CGRect(x: inset, y: inset, width: side - inset * 2, height: side - inset * 2)
                 ctx.cgContext.saveGState()

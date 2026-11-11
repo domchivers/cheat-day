@@ -613,8 +613,10 @@ enum TabGlyph {
     @MainActor static func make(_ name: String, height: CGFloat = 23) -> UIImage {   // the fork and knife's own size in the bar
         if let m = made[name] { return m }
         guard let sym = UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: 60, weight: .semibold)) else { return UIImage() }
-        // the dumbbell is so wide that at full height it looked bigger than the rest
-        let height = name == "dumbbell.fill" ? height * 0.88 : name == "person.crop.circle.fill" ? height * 1.08 : height   // the Me circle as big as your photo
+        // sized against Instagram's bar, where every icon fills about a 23pt square: the tall narrow ones (the fork and
+        // knife, the chart) go up to that; the wide ones (the dumbbell, the two people) are already as wide and stay
+        let scale: [String: CGFloat] = ["fork.knife": 1.16, "chart.line.uptrend.xyaxis": 1.1, "dumbbell.fill": 0.88, "person.crop.circle.fill": 1.17]   // the Me circle as big as your photo
+        let height = height * (scale[name] ?? 1)
         let k = height / sym.size.height, size = CGSize(width: (sym.size.width * k).rounded(), height: height)
         let out = UIGraphicsImageRenderer(size: size).image { _ in sym.withTintColor(.black).draw(in: CGRect(origin: .zero, size: size)) }
         .withRenderingMode(.alwaysTemplate)
