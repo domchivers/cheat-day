@@ -251,7 +251,11 @@ struct ChatView: View {
                 }
             }
             .contextMenu {
-                ForEach(["❤️", "😂", "👍", "🔥", "😋"], id: \.self) { e in Button(e) { Task { await messages.react(m, e) } } }
+                // the reactions in one row across the top of the menu, not a list down it
+                ControlGroup {
+                    ForEach(["❤️", "😂", "👍", "🔥", "😋"], id: \.self) { e in Button(e) { Task { await messages.react(m, e) } } }
+                }
+                .controlGroupStyle(.palette)
                 if kind == "text" { Button { UIPasteboard.general.string = str(m["text"]) } label: { Label("Copy", systemImage: "doc.on.doc") } }
                 if mine && kind == "text" { Button { replying = nil; rewording = m; text = str(m["text"]); typing = true } label: { Label("Edit", systemImage: "pencil") } }
                 if mine { Button(role: .destructive) { Task { await messages.delete(m) } } label: { Label("Delete", systemImage: "trash") } }
