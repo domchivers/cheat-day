@@ -121,6 +121,14 @@ struct WorkoutsView: View {
                 }
             }
             .navigationTitle("Workouts")
+            // the same slim title as Friends and Progress, at the same height, in place of the large navigation title
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                HStack { Text("Workouts").font(.system(size: 30, weight: .heavy)).accessibilityAddTraits(.isHeader); Spacer() }
+                    .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 4)
+                    .background(Theme.bg)
+            }
+            .contentMargins(.top, 4, for: .scrollContent)
             .scrollContentBackground(.hidden)
             .background(Theme.bg)
             .refreshable { await store.sync(); await Steps.shared.refresh() }
