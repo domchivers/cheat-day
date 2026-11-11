@@ -135,7 +135,7 @@ final class Stories {
             if cut.width >= 16, cut.height >= 16 {
                 let vc = AVMutableVideoComposition(asset: comp) { req in
                     var img = req.sourceImage
-                    if filter != "Normal" { img = StoryArt.filtered(img.clampedToExtent(), filter).cropped(to: req.sourceImage.extent) }
+                    if filter != "Normal" { img = StoryArt.filtered(img.clampedToExtent(), filter, frame: req.sourceImage.extent).cropped(to: req.sourceImage.extent) }
                     req.finish(with: img.cropped(to: cut).transformed(by: CGAffineTransform(translationX: -cut.minX, y: -cut.minY)), context: nil)
                 }
                 vc.renderSize = CGSize(width: (cut.width / 2).rounded(.down) * 2, height: (cut.height / 2).rounded(.down) * 2)   // even, as the encoder wants
@@ -143,7 +143,7 @@ final class Stories {
             }
         } else if filter != "Normal" {
             export.videoComposition = AVVideoComposition(asset: comp) { req in
-                req.finish(with: StoryArt.filtered(req.sourceImage.clampedToExtent(), filter).cropped(to: req.sourceImage.extent), context: nil)
+                req.finish(with: StoryArt.filtered(req.sourceImage.clampedToExtent(), filter, frame: req.sourceImage.extent).cropped(to: req.sourceImage.extent), context: nil)
             }
         }
         await export.export()
@@ -205,7 +205,7 @@ struct LoopingVideo: UIViewRepresentable {
         if filter != "Normal" {
             let name = filter
             item.videoComposition = AVVideoComposition(asset: asset) { req in
-                req.finish(with: StoryArt.filtered(req.sourceImage.clampedToExtent(), name).cropped(to: req.sourceImage.extent), context: nil)
+                req.finish(with: StoryArt.filtered(req.sourceImage.clampedToExtent(), name, frame: req.sourceImage.extent).cropped(to: req.sourceImage.extent), context: nil)
             }
         }
         let player = AVQueuePlayer()

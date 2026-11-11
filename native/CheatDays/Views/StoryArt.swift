@@ -40,7 +40,57 @@ enum StoryArt {
     static let filters = ["Normal", "Warm", "Cool", "Mono", "Vivid", "Fade", "Pop", "Noir"]
     static let context = CIContext()
 
-    static func filtered(_ input: CIImage, _ name: String) -> CIImage {
+    /// What Adjust can change, each with the letter it's written down as: a look is a filter's name and then any of
+    /// these that aren't at rest, as in "Warm;b=20;t=-4". Written into the one string, the photo, the playing clip
+    /// and the exported video all get them without being told separately.
+    static let tunes: [(String, String, String, Double, Double)] = [
+        ("b", "Brightness", "sun.max", -100, 100), ("c", "Contrast", "circle.lefthalf.filled", -100, 100),
+        ("w", "Warmth", "thermometer.medium", -100, 100), ("s", "Saturation", "drop", -100, 100),
+        ("sh", "Sharpen", "triangle", 0, 100), ("v", "Vignette", "circle.dashed", 0, 100),
+        ("t", "Straighten", "rotate.right", -15, 15)]
+
+    static func look(_ filter: String, _ tune: [String: Double]) -> String {
+        filter + tune.filter { $0.value != 0 }.sorted { $0.key < $1.key }.map { ";\($0.key)=\(Int($0.value))" }.joined()
+    }
+
+    /// A picture through a look. `frame` is the picture's own edges, for when it comes in stretched out for ever
+    /// (a video's frames do): straightening and the vignette turn about its middle.
+    static func filtered(_ input: CIImage, _ look: String, frame: CGRect? = nil) -> CIImage {
+        let parts = look.split(separator: ";").map(String.init)
+        var img = named(input, parts.first ?? "Normal")
+        guard parts.count > 1 else { return img }
+        var t: [String: Double] = [:]
+        for part in parts.dropFirst() {
+            let kv = part.split(separator: "=")
+            if kv.count == 2, let v = Double(kv[1]) { t[String(kv[0])] = v }
+        }
+        let ext = frame ?? input.extent
+        let whole = !ext.isInfinite && ext.width > 1 && ext.height > 1
+        if let deg = t["t"], deg != 0, whole {
+            // tilted about its middle and grown just enough that no corner comes up empty
+            let a = -deg * .pi / 180, grow = cos(abs(a)) + max(ext.width / ext.height, ext.height / ext.width) * sin(abs(a))
+            let turn = CGAffineTransform(translationX: ext.midX, y: ext.midY).rotated(by: a).scaledBy(x: grow, y: grow).translatedBy(x: -ext.midX, y: -ext.midY)
+            img = img.transformed(by: turn)
+            if frame == nil { img = img.cropped(to: ext) }
+        }
+        if let b = t["b"], b != 0 { img = img.applyingFilter("CIExposureAdjust", parameters: [kCIInputEVKey: b / 100 * 1.2]) }
+        if (t["c"] ?? 0) != 0 || (t["s"] ?? 0) != 0 {
+            img = img.applyingFilter("CIColorControls", parameters: [kCIInputContrastKey: 1 + (t["c"] ?? 0) / 100 * 0.3, kCIInputSaturationKey: 1 + (t["s"] ?? 0) / 100])
+        }
+        if let w = t["w"], w != 0 {
+            let f = CIFilter.temperatureAndTint(); f.inputImage = img
+            f.neutral = CIVector(x: 6500, y: 0); f.targetNeutral = CIVector(x: 6500 - w / 100 * 1800, y: 0)
+            img = f.outputImage ?? img
+        }
+        if let sh = t["sh"], sh > 0 { img = img.applyingFilter("CISharpenLuminance", parameters: [kCIInputSharpnessKey: sh / 100 * 1.5]) }
+        if let v = t["v"], v > 0, whole {
+            img = img.applyingFilter("CIVignetteEffect", parameters: [kCIInputCenterKey: CIVector(x: ext.midX, y: ext.midY),
+                kCIInputRadiusKey: hypot(ext.width, ext.height) / 2 * 0.9, kCIInputIntensityKey: v / 100 * 0.9, "inputFalloff": 0.5])
+        }
+        return img
+    }
+
+    private static func named(_ input: CIImage, _ name: String) -> CIImage {
         switch name {
         case "Warm":
             let f = CIFilter.temperatureAndTint(); f.inputImage = input

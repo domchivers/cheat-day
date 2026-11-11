@@ -69,12 +69,20 @@ struct StoryEditor: View {
         return cut.width > 0.995 && cut.height > 0.995 ? nil : cut
     }
 
-    enum Mode { case none, text, draw, filters, trim }
+    enum Mode { case none, text, draw, filters, trim, adjust }
     @State private var mode: Mode = .none
     @State private var items: [JSON] = []
     @State private var strokes: [JSON] = []
     @State private var current: [CGPoint] = []
     @State private var filter = "Normal"
+    // Adjust: each slider that's off its rest, by its letter; the one being slid; and, for a clip, the sliders as
+    // they were when a finger last lifted (the player is rebuilt for a new look, too much to do for every step)
+    @State private var tune: [String: Double] = [:]
+    @State private var tool: String?
+    @State private var settled: [String: Double] = [:]
+    @State private var comparing = false   // a finger held on the photo in Adjust: the photo as it came
+    private var look: String { StoryArt.look(filter, tune) }
+    private var clipLook: String { StoryArt.look(filter, settled) }
     @State private var preview: UIImage?
     @State private var work: UIImage?   // the photo at screen size: filtering and drawing a 4000-pixel one lagged
     @State private var thumbs: [String: UIImage] = [:]
@@ -163,7 +171,7 @@ struct StoryEditor: View {
         .statusBarHidden()
         .task { await prepare() }
         .task { if startWriting { try? await Task.sleep(for: .milliseconds(350)); newText(); size = 40 } }
-        .onChange(of: filter) { _, f in Task { await refilter(f) } }
+        .task(id: look) { await refilter(look) }
         .sheet(isPresented: $stickers, onDismiss: { if let p = picked { picked = nil; add(p) } }) {
             StickerSheet(forPost: forPost, pick: { id in picked = id; stickers = false }, place: { o in stickers = false; place(o) })
                 .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
@@ -198,15 +206,15 @@ struct StoryEditor: View {
                     MovableClip(cw: cw, ch: ch, fill: f, scale: bgScale, offset: bgOffset, movable: mode == .none, commit: { sc, off in moveClip(sc, off, cw: cw, ch: ch) }) {
                         ZStack {
                             if let poster { Image(uiImage: poster).resizable().scaledToFill() }
-                            LoopingVideo(url: video, paused: false, muted: muted, filter: filter, range: length > 0 && mode != .trim ? range : nil, scrub: mode == .trim ? scrub : nil)
+                            LoopingVideo(url: video, paused: false, muted: muted, filter: clipLook, range: length > 0 && mode != .trim ? range : nil, scrub: mode == .trim ? scrub : nil)
                         }
                         .frame(width: f.width, height: f.height)
                     }
                 } else {
                 if let poster { Image(uiImage: poster).resizable().scaledToFill().frame(width: cw, height: ch).clipped() }
-                LoopingVideo(url: video, paused: mode == .text, muted: muted, filter: filter, range: length > 0 && mode != .trim ? range : nil, scrub: mode == .trim ? scrub : nil)
+                LoopingVideo(url: video, paused: mode == .text, muted: muted, filter: clipLook, range: length > 0 && mode != .trim ? range : nil, scrub: mode == .trim ? scrub : nil)
                 }
-            } else if let shown = preview ?? work ?? image {
+            } else if let shown = (comparing ? nil : preview) ?? work ?? image {
                 // the photo moves on its own too, and tells the editor only when the finger lifts
                 let k = max(cw / max(1, shown.size.width), ch / max(1, shown.size.height))
                 MovableClip(cw: cw, ch: ch, fill: CGSize(width: shown.size.width * k, height: shown.size.height * k), scale: bgScale, offset: bgOffset,
@@ -214,6 +222,11 @@ struct StoryEditor: View {
                             commit: { sc, off in bgScale = sc; bgOffset = off }) {   // no animation: it is already there, under the fingers
                     Image(uiImage: shown).resizable().scaledToFill().frame(width: cw, height: ch)
                 }
+            }
+            if mode == .adjust && video == nil {
+                // a finger held on the photo shows it as it came, to compare
+                Color.clear.contentShape(Rectangle())
+                    .gesture(DragGesture(minimumDistance: 0).onChanged { _ in comparing = true }.onEnded { _ in comparing = false })
             }
             if video != nil && !clipOnly {   // a post's clip is pinched and dragged itself: this sheet over it took those touches
                 // a video can't be zoomed, but swiping across it still changes the filter
@@ -299,6 +312,7 @@ struct StoryEditor: View {
                 }
                 if forPost { round("aspectratio") { nextShape() }.accessibilityLabel("Shape") }
                 round("camera.filters") { mode = .filters }.accessibilityLabel("Filters")
+                round("slider.horizontal.3") { mode = .adjust }.accessibilityLabel("Adjust")
                 if video != nil {
                     round(muted ? "speaker.slash.fill" : "speaker.wave.2.fill") { muted.toggle(); flash(muted ? "Sound off" : "Sound on") }.accessibilityLabel(muted ? "Sound off" : "Sound on")
                     round("scissors") { mode = .trim }.accessibilityLabel("Trim")
@@ -325,6 +339,10 @@ struct StoryEditor: View {
             case .filters, .trim:
                 Spacer()
                 Button("Done") { mode = .none }.font(.headline).foregroundStyle(.white)
+            case .adjust:
+                if !tune.isEmpty { Button("Reset") { withAnimation { tune = [:]; settled = [:] } }.font(.headline).foregroundStyle(.white.opacity(0.8)) }
+                Spacer()
+                Button("Done") { settled = tune; comparing = false; mode = .none }.font(.headline).foregroundStyle(.white)
             }
         }
     }
@@ -339,7 +357,7 @@ struct StoryEditor: View {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         withAnimation(.snappy(duration: 0.22)) { items = last.items; strokes = last.strokes }
     }
-    private var edited: Bool { !items.isEmpty || !strokes.isEmpty || filter != "Normal" || bgScale > 1.01 }
+    private var edited: Bool { !items.isEmpty || !strokes.isEmpty || filter != "Normal" || !tune.isEmpty || bgScale > 1.01 }
 
     private func round(_ symbol: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) { roundLabel(symbol) }.buttonStyle(.plain)
@@ -404,10 +422,48 @@ struct StoryEditor: View {
                 .padding(.horizontal, 12).padding(.vertical, 4)
             }
             .scrollIndicators(.hidden)
+        case .adjust:
+            adjuster
         case .trim:
             trimmer(cw - 24)
         case .none:
             EmptyView()
+        }
+    }
+
+    /// Adjust: the tools in a row, and over them the slider for the one picked. Tapping its number puts it back.
+    private var adjuster: some View {
+        VStack(spacing: 8) {
+            if let k = tool, let spec = StoryArt.tunes.first(where: { $0.0 == k }) {
+                let v = Int(tune[k] ?? 0)
+                Button { tune[k] = nil; settled = tune } label: {
+                    Text(k == "t" ? "\(v)°" : v > 0 ? "+\(v)" : "\(v)").font(.title3.weight(.heavy)).foregroundStyle(.white).monospacedDigit()
+                        .shadow(color: .black.opacity(0.5), radius: 4)
+                }
+                .buttonStyle(.plain).accessibilityLabel("Put \(spec.1) back")
+                Slider(value: Binding(get: { tune[k] ?? 0 }, set: { let n = $0.rounded(); tune[k] = n == 0 ? nil : n }), in: spec.3...spec.4, step: 1,
+                       onEditingChanged: { if !$0 { settled = tune } })
+                    .tint(.white).padding(.horizontal, 24).accessibilityLabel(spec.1)
+            }
+            ScrollView(.horizontal) {
+                HStack(spacing: 12) {
+                    ForEach(StoryArt.tunes, id: \.0) { t in
+                        let on = tool == t.0, changed = (tune[t.0] ?? 0) != 0
+                        Button { withAnimation(.snappy(duration: 0.2)) { tool = on ? nil : t.0 } } label: {
+                            VStack(spacing: 5) {
+                                Image(systemName: t.2).font(.system(size: 18, weight: .semibold)).foregroundStyle(on ? .black : .white)
+                                    .frame(width: 46, height: 46).background(on ? Color.white : Color.black.opacity(0.55), in: Circle())
+                                    .overlay(Circle().stroke(Theme.accent, lineWidth: changed && !on ? 2 : 0))
+                                Text(t.1).font(.caption2.weight(.bold)).foregroundStyle(.white).shadow(color: .black.opacity(0.6), radius: 3)
+                            }
+                            .frame(width: 66)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 12)
+            }
+            .scrollIndicators(.hidden)
         }
     }
 
@@ -631,9 +687,15 @@ struct StoryEditor: View {
         }
     }
 
+    /// The photo through the look. A slider asks many times a second: each asking waits a moment and gives way to
+    /// the next, so only the latest is drawn.
     private func refilter(_ f: String) async {
         guard let src = work ?? image else { return }
-        preview = f == "Normal" ? nil : await Task.detached { StoryArt.filtered(src, f) }.value
+        if f == "Normal" { preview = nil; return }
+        try? await Task.sleep(for: .milliseconds(12))
+        if Task.isCancelled { return }
+        let out = await Task.detached { StoryArt.filtered(src, f) }.value
+        if !Task.isCancelled { preview = out }
     }
 
     /// The photo as framed (zoom, position, filter), 1080 wide (1920 high for a story); what's placed on it stays
@@ -656,7 +718,7 @@ struct StoryEditor: View {
         if let finishVideo {
             Button {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
-                finishVideo(filter, length > 0 ? range : nil, muted, clipCrop, ratio)
+                finishVideo(look, length > 0 ? range : nil, muted, clipCrop, ratio)
             } label: {
                 Text("Use this video").font(.headline).foregroundStyle(.black).frame(maxWidth: .infinity).padding(.vertical, 13).background(.white, in: Capsule())
             }
@@ -698,7 +760,7 @@ struct StoryEditor: View {
         Task {
             let ok: Bool
             if let video {
-                ok = await stories.post(image: nil, video: video, overlays: everything, audience: audience, filter: filter, range: length > 0 ? range : nil, muted: muted)
+                ok = await stories.post(image: nil, video: video, overlays: everything, audience: audience, filter: look, range: length > 0 ? range : nil, muted: muted)
             } else {
                 ok = await stories.post(image: framedPhoto(canvasWidth), video: nil, overlays: everything, audience: audience)
             }
