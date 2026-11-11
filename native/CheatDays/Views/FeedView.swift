@@ -953,11 +953,15 @@ struct ComposeSheet: View {
             ScrollView {
                 VStack(spacing: 0) {
                     picture.padding(.top, 14)
-                    TextField("Write a caption…", text: $caption, axis: .vertical).lineLimit(1...6).focused($writing)
-                        .padding(.horizontal, 18).padding(.top, 14).padding(.bottom, 12).id("caption")
+                    if movie != nil { Text("Up to 30 seconds are posted.").font(.caption).foregroundStyle(.secondary).padding(.top, 8) }
+                    // in a box of its own, like the rows under it: as bare grey words it read as a label, not somewhere to type
+                    TextField("Write a caption…", text: $caption, axis: .vertical).lineLimit(2...6).focused($writing)
+                        .padding(.horizontal, 14).padding(.vertical, 12)
+                        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .contentShape(Rectangle()).onTapGesture { writing = true }
+                        .padding(.horizontal, 14).padding(.top, 14).padding(.bottom, 10).id("caption")
                     attachment.padding(.horizontal, 14)
                     songRow.padding(.horizontal, 14).padding(.top, 10)
-                    if movie != nil { Text("Up to the first 30 seconds are posted.").font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.top, 8) }
                     if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.top, 8) }
                 }
                 .padding(.bottom, 20)
