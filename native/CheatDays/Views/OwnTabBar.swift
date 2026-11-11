@@ -16,7 +16,8 @@ import SwiftUI
 /// behind the tab you're on with 7 clear all round, icons about 23, your photo 24.
 struct OwnTabBar: View {
     @Binding var tab: Int
-    @Namespace private var pill
+    @State private var dragX: CGFloat?   // a finger held and slid along the bar
+    @State private var width: CGFloat = 0
     private static let items: [(tag: Int, symbol: String, name: String)] = [
         (0, "fork.knife", "Today"), (1, "dumbbell.fill", "Workouts"), (4, "chart.line.uptrend.xyaxis", "Progress"),
         (2, "person.2.fill", "Friends"), (3, "person.crop.circle.fill", "Me")
@@ -26,17 +27,47 @@ struct OwnTabBar: View {
         HStack(spacing: 0) {
             ForEach(Self.items, id: \.tag) { it in button(it.tag, it.symbol, it.name) }
         }
+        .background(alignment: .leading) { pill }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .contentShape(Rectangle())
+        // hold and slide, as on Apple's bar: the pill follows your finger and the tab under it opens when you let go
+        .simultaneousGesture(DragGesture(minimumDistance: 6)
+            .onChanged { dragX = $0.location.x }
+            .onEnded { v in
+                if let i = slot(at: v.location.x) { tab = Self.items[i].tag }
+                dragX = nil
+            })
+        .sensoryFeedback(.selection, trigger: dragX.flatMap(slot(at:)))
         .padding(.horizontal, 7).frame(height: 58)
         .ownBarGlass()
         .padding(.horizontal, 21)
         .animation(.snappy(duration: 0.25), value: tab)
+        .animation(.snappy(duration: 0.2), value: dragX == nil)
         .onAppear {
             if let win = UIApplication.shared.connectedScenes.compactMap({ ($0 as? UIWindowScene)?.keyWindow }).first { OwnBar.shared.homeInset = win.safeAreaInsets.bottom }
         }
     }
 
+    private var slotWidth: CGFloat { width / CGFloat(Self.items.count) }
+    private func slot(at x: CGFloat) -> Int? {
+        guard slotWidth > 0 else { return nil }
+        return min(Self.items.count - 1, max(0, Int(x / slotWidth)))
+    }
+    /// The tab the pill is on: the one under a sliding finger, else the one that's open.
+    private var lit: Int { dragX.flatMap(slot(at:)).map { Self.items[$0].tag } ?? tab }
+
+    /// The lighter pill behind the tab you're on; under a sliding finger it follows it, a touch bigger.
+    private var pill: some View {
+        let w = slotWidth, i = CGFloat(Self.items.firstIndex { $0.tag == tab } ?? 0)
+        let x = dragX.map { min(max($0 - w / 2, 0), max(0, width - w)) } ?? i * w
+        return Capsule().fill(Color.primary.opacity(dragX == nil ? 0.16 : 0.22))
+            .frame(width: w, height: 44)
+            .scaleEffect(dragX == nil ? 1 : 1.08)
+            .offset(x: x)
+    }
+
     private func button(_ tag: Int, _ symbol: String, _ name: String) -> some View {
-        let on = tab == tag, unread = tag == 2 ? FriendActivity.shared.unread : 0
+        let on = lit == tag, unread = tag == 2 ? FriendActivity.shared.unread : 0
         return Button { tab = tag } label: {
             icon(tag, symbol, on: on)
                 .overlay(alignment: .topTrailing) {
@@ -46,12 +77,11 @@ struct OwnTabBar: View {
                     }
                 }
                 .frame(maxWidth: .infinity).frame(height: 44)
-                .background { if on { Capsule().fill(Color.primary.opacity(0.16)).matchedGeometryEffect(id: "on", in: pill) } }
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(unread > 0 ? "\(name), \(unread) new" : name)
-        .accessibilityAddTraits(on ? [.isSelected] : [])
+        .accessibilityAddTraits(tab == tag ? [.isSelected] : [])
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { OwnBar.shared.frames[name] = $0 }
     }
 
