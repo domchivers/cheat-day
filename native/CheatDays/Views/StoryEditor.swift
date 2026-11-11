@@ -669,7 +669,7 @@ struct StoryEditor: View {
         let total = max(length, 0.1), grip: CGFloat = 22, inner = max(1, width - 2 * grip)
         let lo = CGFloat(range.lowerBound / total), hi = CGFloat(range.upperBound / total)
         return VStack(spacing: 10) {
-            Text(scrub.map { "At \(clock($0))" } ?? "\(clock(range.lowerBound)) – \(clock(range.upperBound)) · \(Int((range.upperBound - range.lowerBound).rounded())) s")
+            Text(scrub.map { "At \(clock($0))" } ?? "\(clock(range.lowerBound)) – \(clock(range.upperBound)) · \(max(1, Int(range.upperBound) - Int(range.lowerBound))) s")
                 .font(.caption.weight(.heavy)).foregroundStyle(.white).monospacedDigit()
             ZStack(alignment: .leading) {
                 HStack(spacing: 0) {

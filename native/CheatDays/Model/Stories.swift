@@ -162,7 +162,7 @@ final class Stories {
                         img = img.transformed(by: CGAffineTransform(translationX: -img.extent.minX, y: -img.extent.minY))
                     }
                     let whole = img.extent
-                    if filter != "Normal" { img = StoryArt.filtered(img.clampedToExtent(), filter, frame: whole).cropped(to: whole) }
+                    if filter != "Normal" { img = StoryArt.filtered(img, filter, frame: whole).cropped(to: whole) }
                     var done = img.cropped(to: cut).transformed(by: CGAffineTransform(translationX: -cut.minX, y: -cut.minY))
                     if let lay { done = img.transformed(by: lay).cropped(to: cut).composited(over: CIImage(color: .black).cropped(to: cut)) }
                     if let top, top.extent.width > 0, top.extent.height > 0 {
@@ -175,7 +175,7 @@ final class Stories {
             }
         } else if filter != "Normal" {
             export.videoComposition = AVVideoComposition(asset: comp) { req in
-                req.finish(with: StoryArt.filtered(req.sourceImage.clampedToExtent(), filter, frame: req.sourceImage.extent).cropped(to: req.sourceImage.extent), context: nil)
+                req.finish(with: StoryArt.filtered(req.sourceImage, filter, frame: req.sourceImage.extent).cropped(to: req.sourceImage.extent), context: nil)
             }
         }
         await export.export()
@@ -255,7 +255,7 @@ struct LoopingVideo: UIViewRepresentable {
             item.videoComposition = AVVideoComposition(asset: asset) { req in
                 let name = look.name
                 if name == "Normal" { req.finish(with: req.sourceImage, context: nil); return }
-                req.finish(with: StoryArt.filtered(req.sourceImage.clampedToExtent(), name, frame: req.sourceImage.extent).cropped(to: req.sourceImage.extent), context: nil)
+                req.finish(with: StoryArt.filtered(req.sourceImage, name, frame: req.sourceImage.extent).cropped(to: req.sourceImage.extent), context: nil)
             }
         }
         let player = AVQueuePlayer()
