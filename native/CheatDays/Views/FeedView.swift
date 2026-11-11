@@ -571,6 +571,10 @@ struct FeedView: View {
             .overlay { if let v = Feed.video(p) { FeedVideo(url: v) } }   // under the name and numbers
             .clipped()
             .contentShape(Rectangle())
+            // a photo with a song: its sound on and off at the bottom right, as Instagram has it
+            .overlay(alignment: .bottomTrailing) {
+                if Feed.video(p) == nil, let song = Music.of(p) { SongSwitch(song: song, key: "post:" + str(p["id"])) }
+            }
             .overlay(alignment: .bottomLeading) {
                 if str(p["kind"]) != "photo" {   // a photo on its own has no name or numbers
                 HStack(spacing: 8) {
@@ -878,6 +882,23 @@ struct SharePostSheet: View {
 
 /// Share something: one of today's foods, a saved meal or today's workout, with a caption and an optional photo.
 /// A video post on the feed: plays on a loop while it's on screen, muted until the speaker's tapped.
+/// The speaker on a photo that has a song: tap for its sound, tap again for quiet. It goes quiet by itself when
+/// the post is scrolled away.
+struct SongSwitch: View {
+    let song: Song
+    let key: String
+    var body: some View {
+        let on = SongPlayer.shared.playing == key
+        Button { SongPlayer.shared.toggle(song, key: key) } label: {
+            Image(systemName: on ? "speaker.wave.2.fill" : "speaker.slash.fill").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                .frame(width: 32, height: 32).background(.black.opacity(0.45), in: Circle())
+        }
+        .buttonStyle(.plain).padding(10)
+        .accessibilityLabel(on ? "Sound off" : "Sound on")
+        .onDisappear { if SongPlayer.shared.playing == key { SongPlayer.shared.stop() } }
+    }
+}
+
 struct FeedVideo: View {
     let url: URL
     @State private var muted = true
