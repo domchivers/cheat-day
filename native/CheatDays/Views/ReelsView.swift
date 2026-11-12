@@ -271,11 +271,11 @@ struct ReelsView: View {
                                 Button { Task { await Profiles.shared.report(str(p["owner"]), reason: "Post: \(id)") } } label: { Label("Report post", systemImage: "flag") }
                             }
                         } label: {
-                            Image(systemName: "ellipsis").font(.system(size: 24, weight: .medium)).foregroundStyle(.white)
-                                .shadow(color: .black.opacity(0.4), radius: 3).frame(width: 44, height: 34).contentShape(Rectangle())
+                            Self.railIcon("ellipsis").foregroundStyle(.white)
+                                .shadow(color: .black.opacity(0.4), radius: 3).frame(width: 44).contentShape(Rectangle())
                         }
                         .menuOrder(.fixed).accessibilityLabel("More")
-                        rail("arrow.up.left.and.arrow.down.right", "") { withAnimation(.easeOut(duration: 0.2)) { clean = true } }.accessibilityLabel("Just the video")
+                        // no button for just the video: spreading two fingers does that, and its own button brings all this back
                     }
                 }
                 .padding(.horizontal, 14).padding(.bottom, 26)   // room for the line under it
@@ -300,10 +300,16 @@ struct ReelsView: View {
         .transition(.opacity)
     }
 
+    /// A symbol for the side of a reel, fitted to the same square whatever its own shape: drawn at one type size, the
+    /// heart, the speech bubble, the paper plane and the three dots each came out a different size.
+    private static func railIcon(_ symbol: String) -> some View {
+        Image(systemName: symbol).resizable().scaledToFit().fontWeight(.medium).frame(width: 27, height: 27)
+    }
+
     private func rail(_ symbol: String, _ count: String, tint: Color = .white, _ tap: @escaping () -> Void) -> some View {
         Button(action: tap) {
             VStack(spacing: 3) {
-                Image(systemName: symbol).font(.system(size: 26, weight: .medium)).foregroundStyle(tint)
+                Self.railIcon(symbol).foregroundStyle(tint)
                 if !count.isEmpty { Text(count).font(.caption.weight(.bold)).foregroundStyle(.white).monospacedDigit() }
             }
             .shadow(color: .black.opacity(0.4), radius: 3).frame(width: 44).contentShape(Rectangle())
