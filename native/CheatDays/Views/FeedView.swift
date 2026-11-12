@@ -576,7 +576,7 @@ struct FeedView: View {
         let shape = num(dict(p["extra"])["aspect"]).map { min(1.91, max(0.75, $0)) }
         return PostPhotos(post: p)
             .frame(maxWidth: .infinity).frame(height: shape.map { (UIScreen.main.bounds.width / $0).rounded() } ?? 400)
-            .overlay { if let v = Feed.video(p) { FeedVideo(url: v, hasSong: Music.of(p) != nil) } }   // under the name and numbers
+            .overlay { if let v = Feed.video(p) { FeedVideo(url: v, songKey: Music.of(p) != nil ? "post:" + str(p["id"]) : nil) } }   // under the name and numbers
             .clipped()
             .contentShape(Rectangle())
             // a photo with a song: its sound on and off at the bottom right, as Instagram has it
@@ -930,17 +930,18 @@ struct MostlyShowing: ViewModifier {
 
 struct FeedVideo: View {
     let url: URL
-    /// The post has a song: that's its sound, with its own speaker (SongSwitch); the clip's own sound stays off.
-    var hasSong = false
+    /// The post has a song, known to the song player by this name. The two are heard together, as Instagram blends
+    /// them: the clip's own sound is on whenever its song is playing, and the one speaker (SongSwitch) is for both.
+    var songKey: String? = nil
     @State private var muted = true
     @State private var showing = false
     var body: some View {
-        LoopingVideo(url: url, paused: !showing, muted: muted)
+        LoopingVideo(url: url, paused: !showing, muted: songKey.map { SongPlayer.shared.playing != $0 } ?? muted)
             .allowsHitTesting(false)
             .onAppear { showing = true }
             .onDisappear { showing = false; if !muted { muted = true; loud(false) } }
             .overlay(alignment: .topTrailing) {
-                if !hasSong {
+                if songKey == nil {
                 Button { muted.toggle(); loud(!muted) } label: {
                     Image(systemName: muted ? "speaker.slash.fill" : "speaker.wave.2.fill").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
                         .frame(width: 32, height: 32).background(.black.opacity(0.45), in: Circle())

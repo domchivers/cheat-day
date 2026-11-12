@@ -74,7 +74,8 @@ struct ReelsView: View {
     }
 
     /// The video showing has a song: it plays, by itself, for as long as the video's showing and not paused or
-    /// silenced (the clip's own sound is off under it). One without a song is heard with its own sound.
+    /// silenced, together with the clip's own sound (the two blended, as Instagram has them). One without a song is
+    /// heard with its own sound alone.
     private func sound() {
         if let id = current, let p = posts.first(where: { str($0["id"]) == id }), let s = Music.of(p), !paused, !muted {
             if SongPlayer.shared.playing != "reel:" + id { SongPlayer.shared.play(s, key: "reel:" + id, loop: true) }
@@ -96,9 +97,9 @@ struct ReelsView: View {
             if on, let v = Feed.video(p) {
                 // a tall clip fills the screen; a squarer one is shown whole in the middle
                 if let a = num(dict(p["extra"])["aspect"]), a > 0.62 {
-                    LoopingVideo(url: v, paused: paused, muted: muted || Music.of(p) != nil, scrub: holding, tick: { at, length in head.at = at; head.length = length }).aspectRatio(a, contentMode: .fit).allowsHitTesting(false)
+                    LoopingVideo(url: v, paused: paused, muted: muted, scrub: holding, tick: { at, length in head.at = at; head.length = length }).aspectRatio(a, contentMode: .fit).allowsHitTesting(false)
                 } else {
-                    LoopingVideo(url: v, paused: paused, muted: muted || Music.of(p) != nil, scrub: holding, tick: { at, length in head.at = at; head.length = length }).allowsHitTesting(false)
+                    LoopingVideo(url: v, paused: paused, muted: muted, scrub: holding, tick: { at, length in head.at = at; head.length = length }).allowsHitTesting(false)
                 }
             } else if let a = num(dict(p["extra"])["aspect"]), a > 0.62 {
                 Color.clear.aspectRatio(a, contentMode: .fit).overlay { FeedPhoto(src: str(p["photo"]), fill: true) }.clipped()
