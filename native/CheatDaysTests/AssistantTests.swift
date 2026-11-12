@@ -236,6 +236,16 @@ final class AssistantTests: XCTestCase {
         XCTAssertNil(Assistant.usualPick(["mayo"], days: [[light]]), "once isn't a habit")
     }
 
+    /// "Couldn't post: "exp" claim timestamp check failed": the file store's way of saying the sign-in ran out.
+    func testAnExpiredSignInIsKnownFromTheFileStore() {
+        let store = Data(#"{"statusCode":"403","error":"Unauthorized","message":"\"exp\" claim timestamp check failed"}"#.utf8)
+        XCTAssertTrue(Supabase.expired(store, 400))
+        XCTAssertTrue(Supabase.expired(store, 403))
+        XCTAssertTrue(Supabase.expired(Data(), 401))
+        XCTAssertFalse(Supabase.expired(Data(#"{"message":"The resource already exists"}"#.utf8), 400))
+        XCTAssertFalse(Supabase.expired(store, 500))
+    }
+
     func testAMealOnlyMentionedIsntAskedFor() {
         XCTAssertNil(Meals.named(in: "Also I have 159g of the boiled chicken from yesterday that I had for lunch today left over. How much of that plus the new one now to get 80g protein?"))
         XCTAssertNil(Meals.named(in: "320g cabbage\n96g carrot\n15g of that mayo I use every lunch\n\nThat's my coleslaw, work out the calories and will have half of it"))

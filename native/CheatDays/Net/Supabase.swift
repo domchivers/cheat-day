@@ -102,16 +102,27 @@ final class Supabase {
             return (d, http)
         }
         var (d, r) = try await attempt()
-        if r.statusCode == 401, await refresh() { (d, r) = try await attempt() }
+        if Self.expired(d, r.statusCode), await refresh() { (d, r) = try await attempt() }
         guard (200..<300).contains(r.statusCode) else { throw Self.error(d, r.statusCode, "Upload failed (\(r.statusCode))") }
         return SupabaseConfig.url.absoluteString + "/storage/v1/object/public/photos/" + path
     }
 
     // MARK: plumbing
 
+    /// The sign-in has run out (it lasts about an hour) and wants renewing. Most of the cloud says so with a 401.
+    /// The file store says it with a 400 or 403 and the words "exp" claim timestamp check failed, which wasn't
+    /// taken for the same thing: a photo or video sent after an hour in the app failed with "Couldn't post".
+    nonisolated static func expired(_ body: Data, _ status: Int) -> Bool {
+        if status == 401 { return true }
+        guard status == 400 || status == 403 else { return false }
+        // the quotes come written as \" inside the answer: without the strokes, so the words read plainly
+        let said = (String(data: body.prefix(600), encoding: .utf8) ?? "").lowercased().replacingOccurrences(of: "\\", with: "")
+        return said.contains("\"exp\"") || said.contains("exp claim") || said.contains("jwt expired") || said.contains("token is expired") || said.contains("invalid jwt")
+    }
+
     func rest(_ path: String, method: String = "GET", body: Any? = nil, prefer: String? = nil) async throws -> Data {
         var (d, r) = try await send(path, method: method, body: body, prefer: prefer)
-        if r.statusCode == 401, await refresh() { (d, r) = try await send(path, method: method, body: body, prefer: prefer) }
+        if Self.expired(d, r.statusCode), await refresh() { (d, r) = try await send(path, method: method, body: body, prefer: prefer) }
         guard (200..<300).contains(r.statusCode) else { throw Self.error(d, r.statusCode, "Cloud request failed (\(r.statusCode))") }
         return d
     }
@@ -119,7 +130,7 @@ final class Supabase {
     /// Like rest(), but hands back the status instead of throwing, for callers that try one model after another.
     func call(_ path: String, body: Any, timeout: TimeInterval = 40) async throws -> (Data, Int) {
         var (d, r) = try await send(path, method: "POST", body: body, timeout: timeout)
-        if r.statusCode == 401, await refresh() { (d, r) = try await send(path, method: "POST", body: body, timeout: timeout) }
+        if Self.expired(d, r.statusCode), await refresh() { (d, r) = try await send(path, method: "POST", body: body, timeout: timeout) }
         return (d, r.statusCode)
     }
 
