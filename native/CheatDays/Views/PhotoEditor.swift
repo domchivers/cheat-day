@@ -47,7 +47,7 @@ struct PhotoEditor: View {
                         Color.black
                         canvas(width: fw, height: fw / shape.ratio, scaleBy: 1)
                             .overlay { if moving { grid } }
-                            .gesture(drag(fw: fw).simultaneously(with: pinch))
+                            .overlay { PinchPanPad(scale: $scale, offset: $offset, range: 1...5, moving: { moving = $0 }) }
                     }
                     .frame(width: w, height: g.size.height)
                     .onAppear { frameWidth = fw }

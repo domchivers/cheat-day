@@ -801,6 +801,9 @@ struct AvatarCropView: View {
                 }
                 .fill(Color.black.opacity(0.6), style: FillStyle(eoFill: true)).allowsHitTesting(false)
                 Circle().stroke(.white.opacity(0.85), lineWidth: 2).frame(width: side, height: side).allowsHitTesting(false)
+                // under the buttons, over the photo: the fingers followed directly
+                PinchPanPad(scale: $scale, offset: $offset, range: 1...5,
+                            clamp: { o, sc in clamp(o, w: image.size.width * fill * sc, h: image.size.height * fill * sc, side: side) })
                 VStack {
                     Text("Edit").font(.headline).foregroundStyle(.white).padding(.top, 20)
                     Spacer()
@@ -814,17 +817,6 @@ struct AvatarCropView: View {
             }
             .frame(width: g.size.width, height: g.size.height)
             .contentShape(Rectangle())
-            .gesture(
-                DragGesture()
-                    .onChanged { v in offset = clamp(CGSize(width: lastOffset.width + v.translation.width, height: lastOffset.height + v.translation.height), w: w, h: h, side: side) }
-                    .onEnded { _ in lastOffset = offset }
-                    .simultaneously(with: MagnificationGesture()
-                        .onChanged { m in
-                            scale = min(5, max(1, lastScale * m))
-                            offset = clamp(offset, w: image.size.width * fill * scale, h: image.size.height * fill * scale, side: side)
-                        }
-                        .onEnded { _ in lastScale = scale; lastOffset = offset })
-            )
         }
         .statusBarHidden()
     }

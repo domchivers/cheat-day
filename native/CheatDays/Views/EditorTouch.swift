@@ -265,3 +265,29 @@ struct PlacedItem: View {
             .allowsHitTesting(false)
     }
 }
+
+/// A picture to pinch bigger and carry about (a photo being cropped): the same following of the fingers the story
+/// editor has, for anything that keeps a zoom and a place. Laid over the picture, under any buttons. With a drag and
+/// a pinch as two separate gestures, as these screens had, the pinch began a beat late with a jump and the picture
+/// shook as two fingers moved, the same faults the editor had.
+struct PinchPanPad: View {
+    @Binding var scale: CGFloat
+    @Binding var offset: CGSize
+    var range: ClosedRange<CGFloat> = 1...5
+    /// Where the picture's allowed to be at a zoom (so it can't be carried past its own edges).
+    var clamp: (CGSize, CGFloat) -> CGSize = { o, _ in o }
+    var moving: (Bool) -> Void = { _ in }
+    @State private var fromScale: CGFloat = 1
+    @State private var fromOffset: CGSize = .zero
+
+    var body: some View {
+        EditorTouch(began: { _ in fromScale = scale; fromOffset = offset },
+                    changed: { move, size, _, _ in
+                        moving(true)
+                        let s = min(range.upperBound, max(range.lowerBound, fromScale * size))
+                        scale = s
+                        offset = clamp(CGSize(width: fromOffset.width + move.width, height: fromOffset.height + move.height), s)
+                    },
+                    ended: { _, _ in moving(false) })
+    }
+}
