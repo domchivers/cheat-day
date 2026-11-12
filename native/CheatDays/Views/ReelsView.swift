@@ -303,7 +303,10 @@ struct ReelsView: View {
     /// A symbol for the side of a reel, fitted to the same square whatever its own shape: drawn at one type size, the
     /// heart, the speech bubble, the paper plane and the three dots each came out a different size.
     private static func railIcon(_ symbol: String) -> some View {
-        Image(systemName: symbol).resizable().scaledToFit().fontWeight(.medium).frame(width: 27, height: 27)
+        // the three dots are nothing but dots: stretched across the whole square they came out far heavier than the
+        // other symbols' lines, so they're drawn narrower, in the middle of the same square
+        let w: CGFloat = symbol == "ellipsis" ? 19 : 27
+        return Image(systemName: symbol).resizable().scaledToFit().fontWeight(.medium).frame(width: w, height: w).frame(width: 27, height: 27)
     }
 
     private func rail(_ symbol: String, _ count: String, tint: Color = .white, _ tap: @escaping () -> Void) -> some View {
