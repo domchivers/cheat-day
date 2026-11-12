@@ -118,7 +118,7 @@ func clipSettled(_ deg: Double) -> Double {
 /// edges, at its plain size or bigger. A post's clip (`free`) can be smaller than the frame and anywhere in it, but
 /// catches at the frame's middle and at its own edges. Turned, either goes where it's put, its middle in reach.
 func clipClamped(_ sc: CGFloat, _ off: CGSize, _ deg: Double, fill: CGSize, cw: CGFloat, ch: CGFloat, free: Bool) -> (scale: CGFloat, offset: CGSize) {
-    var s = min(4, max(free ? 0.25 : 1, sc))
+    var s = min(10, max(free ? 0.25 : 1, sc))
     if free, abs(s - 1) < 0.03 { s = 1 }   // caught at exactly filling the frame
     let ex = max(0, (fill.width * s - cw) / 2), ey = max(0, (fill.height * s - ch) / 2)
     let rx = (fill.width * s + cw) / 4, ry = (fill.height * s + ch) / 4
@@ -216,7 +216,7 @@ struct PlacedItem: View {
         if sx { x = 0.5 }; if sy { y = 0.5 }
         let deg = (num(o["rotation"]) ?? 0) + turn, quarter = (deg / 90).rounded() * 90
         let straight = abs(deg - quarter) < 4
-        return (min(1, max(0, x)), min(1, max(0, y)), min(12, max(0.2, (num(o["scale"]) ?? 1) * Double(size))), straight ? quarter : deg, sx, sy, straight)
+        return (min(1, max(0, x)), min(1, max(0, y)), min(60, max(0.15, (num(o["scale"]) ?? 1) * Double(size))), straight ? quarter : deg, sx, sy, straight)
     }
 
     var body: some View {

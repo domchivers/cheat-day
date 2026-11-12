@@ -64,7 +64,7 @@ struct StoryEditor: View {
     /// catches it at the frame's middle and edges). Whether it still covers the whole frame is noted, for the video
     /// to be made by cutting a piece from the picture when it does, and by laying the picture on black when not.
     private func moveClip(_ sc: CGFloat, _ off: CGSize, _ deg: Double, cw: CGFloat, ch: CGFloat) {
-        let f = clipFill(cw, ch), s = min(4, max(0.25, sc))
+        let f = clipFill(cw, ch), s = min(10, max(0.25, sc))
         bgSpin = deg
         bgScale = s; bgOffset = off   // no animation: the clip is already there, under the fingers
         clipMove = CGSize(width: off.width / cw, height: off.height / ch)
