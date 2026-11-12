@@ -25,6 +25,11 @@ struct StoryView: View {
 
     enum Slide { case snap(JSON), post(JSON), meal(String, [JSON]), workout(JSON) }
     @State private var seenBy: JSON?   // your own snap's "Seen by" list
+    // the heart beside the message box: tapped, a like; held, a row of emoji to answer with
+    @State private var reacting = false
+    @State private var burstEmoji: String?
+    @State private var likedSnaps: Set<String> = []
+    private static let answers = ["❤️", "🔥", "👏", "😂", "😮", "😢", "💪"]
 
     private var who: String { people[min(at, people.count - 1)] }
     private var slides: [Slide] { highlight.map { list($0["items"]).map { Slide.snap($0) } } ?? Self.slides(for: who) }
@@ -84,6 +89,27 @@ struct StoryView: View {
                     footer(s[min(slide, s.count - 1)])
                 }
                 .padding(.horizontal, 8)
+                // the row of emoji is open: a tap anywhere else puts it away
+                if reacting { Color.black.opacity(0.001).ignoresSafeArea().onTapGesture { withAnimation(.snappy(duration: 0.2)) { reacting = false } } }
+                if reacting {
+                    VStack {
+                        Spacer()
+                        HStack(spacing: 6) {
+                            ForEach(Self.answers, id: \.self) { e in
+                                Button { withAnimation(.snappy(duration: 0.2)) { reacting = false }; react(s[min(slide, s.count - 1)], e) } label: {
+                                    Text(e).font(.system(size: 30)).frame(width: 42, height: 46)
+                                }
+                                .buttonStyle(.plain).accessibilityLabel("React with " + e)
+                            }
+                        }
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(.ultraThinMaterial, in: Capsule()).environment(\.colorScheme, .dark)
+                        .shadow(color: .black.opacity(0.4), radius: 12, y: 4)
+                        .padding(.bottom, 64)
+                    }
+                    .transition(.scale(scale: 0.7, anchor: .bottomTrailing).combined(with: .opacity))
+                }
+                if let e = burstEmoji { HeartBurst(emoji: e == "❤️" ? nil : e).transition(.identity) }
             }
         }
         .offset(y: max(0, drag))
@@ -109,7 +135,7 @@ struct StoryView: View {
             } else { SongPlayer.shared.stop() }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(50))
-                if paused || typing || seenBy != nil || adding != nil || managing != nil { continue }
+                if paused || typing || reacting || seenBy != nil || adding != nil || managing != nil { continue }
                 progress += 0.05 / length
                 if progress >= 1 { next(); return }
             }
@@ -273,26 +299,49 @@ struct StoryView: View {
                     .focused($typing).foregroundStyle(.white).submitLabel(.send).onSubmit { send() }
                     .padding(.horizontal, 16).padding(.vertical, 11)
                     .overlay(Capsule().stroke(.white.opacity(0.55), lineWidth: 1.5))
-                switch s {
-                case .snap(let st):
-                    Button { Task { await Stories.shared.react(st, "❤️") } } label: { Image(systemName: "heart").font(.system(size: 24)).foregroundStyle(.white) }
-                        .accessibilityLabel("Like")
-                case .post(let p):
-                    let liked = Feed.shared.reactions.contains { str($0["post_id"]) == str(p["id"]) && str($0["user_id"]) == Feed.shared.me && str($0["emoji"]) == "❤️" }
-                    Button { Task { await Feed.shared.toggle(p, "❤️") } } label: {
-                        Image(systemName: liked ? "heart.fill" : "heart").font(.system(size: 24)).foregroundStyle(liked ? Color(red: 1, green: 0.3, blue: 0.4) : .white)
+                // a heart whatever the slide is (a meal or workout had a party popper here, which nobody read as a like)
+                let liked = isLiked(s)
+                Image(systemName: liked ? "heart.fill" : "heart").font(.system(size: 25, weight: .medium))
+                    .foregroundStyle(liked ? Color(red: 1, green: 0.3, blue: 0.4) : .white)
+                    .symbolEffect(.bounce, value: liked)
+                    .frame(width: 40, height: 44).contentShape(Rectangle())
+                    .onTapGesture { react(s, "❤️") }
+                    .onLongPressGesture(minimumDuration: 0.3) {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(.snappy(duration: 0.2)) { reacting = true }
                     }
-                    .accessibilityLabel(liked ? "Unlike" : "Like")
-                default:
-                    if let person = Friends.shared.people.first(where: { $0.id == who }) {
-                        let done = Friends.shared.cheered.contains(person.id)
-                        Button { Task { await Friends.shared.cheer(person) } } label: { Text("🎉").font(.system(size: 24)).opacity(done ? 0.4 : 1) }
-                            .disabled(done).accessibilityLabel("Cheer")
-                    }
-                }
+                    .accessibilityLabel(liked ? "Liked" : "Like").accessibilityAddTraits(.isButton)
+                    .accessibilityAction(named: "React with an emoji") { reacting = true }
             }
             .padding(.horizontal, 6).padding(.bottom, 6)
         }
+    }
+
+    private func isLiked(_ s: Slide) -> Bool {
+        switch s {
+        case .snap(let st): return likedSnaps.contains(str(st["id"]))
+        case .post(let p): return Feed.shared.reactions.contains { str($0["post_id"]) == str(p["id"]) && str($0["user_id"]) == Feed.shared.me && str($0["emoji"]) == "❤️" }
+        default: return Friends.shared.cheered.contains(who)
+        }
+    }
+
+    /// A like or another emoji for the slide showing: sent the way that kind of slide takes it, and shown going up.
+    private func react(_ s: Slide, _ e: String) {
+        switch s {
+        case .snap(let st):
+            likedSnaps.insert(str(st["id"]))
+            Task { await Stories.shared.react(st, e) }
+        case .post(let p):
+            let has = Feed.shared.reactions.contains { str($0["post_id"]) == str(p["id"]) && str($0["user_id"]) == Feed.shared.me && str($0["emoji"]) == e }
+            // the heart tapped on a post already liked takes the like off, with nothing to show for it
+            if has { if e == "❤️" { Task { await Feed.shared.toggle(p, e) } }; return }
+            Task { await Feed.shared.toggle(p, e) }
+        default:
+            if let person = Friends.shared.people.first(where: { $0.id == who }) { Task { await Friends.shared.cheer(person, emoji: e) } }
+        }
+        burstEmoji = nil
+        DispatchQueue.main.async { burstEmoji = e }
+        Task { try? await Task.sleep(for: .milliseconds(1000)); if burstEmoji == e { burstEmoji = nil } }
     }
 
     private func send() {

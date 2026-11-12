@@ -628,6 +628,8 @@ struct SongCard: View {
 /// time, with small hearts thrown out round it, then lifts away and fades. (It was a plain white heart that grew
 /// and went.)
 struct HeartBurst: View {
+    /// Another reaction in the heart's place (a story answered with 🔥): the same spring, scatter and lift.
+    var emoji: String? = nil
     @State private var pop = false
     @State private var away = false
     @State private var tilt = Double.random(in: -14...14)
@@ -637,15 +639,19 @@ struct HeartBurst: View {
         ZStack {
             ForEach(0..<7, id: \.self) { i in
                 let a = Double(i) / 7 * 2 * Double.pi + tilt * 0.05
-                Image(systemName: "heart.fill").font(.system(size: i % 2 == 0 ? 20 : 14))
-                    .foregroundStyle(Self.fill)
+                Group {
+                    if let emoji { Text(emoji).font(.system(size: i % 2 == 0 ? 22 : 16)) }
+                    else { Image(systemName: "heart.fill").font(.system(size: i % 2 == 0 ? 20 : 14)).foregroundStyle(Self.fill) }
+                }
                     .scaleEffect(pop ? 1 : 0.2)
                     .offset(x: pop ? cos(a) * 94 : 0, y: pop ? sin(a) * 94 : 0)
                     .opacity(pop && !away ? 0.95 : 0)
                     .animation(.easeOut(duration: 0.5).delay(0.06), value: pop)
             }
-            Image(systemName: "heart.fill").font(.system(size: 104))
-                .foregroundStyle(Self.fill)
+            Group {
+                if let emoji { Text(emoji).font(.system(size: 96)) }
+                else { Image(systemName: "heart.fill").font(.system(size: 104)).foregroundStyle(Self.fill) }
+            }
                 .shadow(color: .black.opacity(0.3), radius: 14, y: 4)
                 .rotationEffect(.degrees(tilt))
                 .scaleEffect(pop ? 1 : 0.2)

@@ -99,9 +99,9 @@ final class Friends {
         myName = "Sam"; myCode = "SAM-4821"
     }
 
-    func cheer(_ p: Person) async {
+    func cheer(_ p: Person, emoji: String = "👏") async {
         cheered.insert(p.id)
-        _ = try? await Supabase.shared.call("/functions/v1/push", body: ["action": "notify", "to": p.id, "kind": "react", "text": "your day", "emoji": "👏"] as JSON)
+        _ = try? await Supabase.shared.call("/functions/v1/push", body: ["action": "notify", "to": p.id, "kind": "react", "text": "your day", "emoji": emoji] as JSON)
     }
 
     func accept(_ r: Request) async {
