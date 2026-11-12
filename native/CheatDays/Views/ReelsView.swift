@@ -108,15 +108,15 @@ struct ReelsView: View {
 
     /// Paused: just the clip, with sound and play in the middle.
     private var pausedButtons: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: 14) {
             Button { muted.toggle() } label: {
-                Image(systemName: muted ? "speaker.slash.fill" : "speaker.wave.2.fill").font(.system(size: 20, weight: .semibold)).foregroundStyle(.white)
-                    .frame(width: 56, height: 56).background(.black.opacity(0.45), in: Circle())
+                Image(systemName: muted ? "speaker.slash.fill" : "speaker.wave.2.fill").font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
+                    .frame(width: 45, height: 45).background(.black.opacity(0.45), in: Circle())
             }
             .buttonStyle(.plain).accessibilityLabel(muted ? "Sound on" : "Sound off")
             Button { withAnimation(.easeOut(duration: 0.15)) { paused = false } } label: {
-                Image(systemName: "play.fill").font(.system(size: 32, weight: .semibold)).foregroundStyle(.white)
-                    .frame(width: 86, height: 86).background(.black.opacity(0.45), in: Circle())
+                Image(systemName: "play.fill").font(.system(size: 26, weight: .semibold)).foregroundStyle(.white)
+                    .frame(width: 69, height: 69).background(.black.opacity(0.45), in: Circle())
             }
             .buttonStyle(.plain).accessibilityLabel("Play")
         }
