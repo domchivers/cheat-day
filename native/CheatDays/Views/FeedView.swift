@@ -543,8 +543,7 @@ struct FeedView: View {
             .onTapGesture { if Feed.video(p) != nil { reels = ReelStart(id: id) } }
             .overlay {
                 if burst == id {
-                    Image(systemName: "heart.fill").font(.system(size: 96)).foregroundStyle(.white).shadow(radius: 12)
-                        .transition(.scale(scale: 0.4).combined(with: .opacity)).allowsHitTesting(false)
+                    HeartBurst().transition(.identity)
                 }
             }
             // two fingers on a photo or video make it bigger while they're on it, as Instagram's feed does
@@ -705,8 +704,10 @@ struct FeedView: View {
     private func like(_ p: JSON, rx: [JSON]) {
         let id = str(p["id"])
         if !rx.contains(where: { str($0["emoji"]) == "❤️" && str($0["user_id"]) == feed.me }) { Task { await feed.toggle(p, "❤️") } }
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.55)) { burst = id }
-        Task { try? await Task.sleep(for: .milliseconds(750)); withAnimation(.easeOut(duration: 0.25)) { if burst == id { burst = nil } } }
+        // tapped again while it's still up: a fresh one
+        burst = nil
+        DispatchQueue.main.async { burst = id }
+        Task { try? await Task.sleep(for: .milliseconds(1000)); if burst == id { burst = nil } }
     }
 
     private func actions(_ p: JSON, rx: [JSON], comments: Int) -> some View {
@@ -732,7 +733,11 @@ struct FeedView: View {
             HStack(spacing: 18) {
                 Group {
                     if let other, !hearted { Text(other).font(.system(size: 22)) }
-                    else { Image(systemName: hearted ? "heart.fill" : "heart").foregroundStyle(hearted ? Color(red: 1, green: 0.3, blue: 0.4) : .primary) }
+                    else {
+                        Image(systemName: hearted ? "heart.fill" : "heart").foregroundStyle(hearted ? Color(red: 1, green: 0.3, blue: 0.4) : .primary)
+                            .symbolEffect(.bounce, value: hearted)
+                            .scaleEffect(hearted ? 1.08 : 1).animation(.spring(response: 0.28, dampingFraction: 0.45), value: hearted)
+                    }
                 }
                 .font(.system(size: 23, weight: .medium))
                 .contentShape(Rectangle())

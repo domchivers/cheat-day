@@ -187,8 +187,7 @@ struct ReelsView: View {
                     .padding(.bottom, !paused && !clean ? 68 : 22)
             }
             if burst == id {
-                Image(systemName: "heart.fill").font(.system(size: 96)).foregroundStyle(.white).shadow(radius: 12)
-                    .transition(.scale(scale: 0.4).combined(with: .opacity)).allowsHitTesting(false)
+                HeartBurst().transition(.identity)
             }
         }
         .clipped()
@@ -231,8 +230,10 @@ struct ReelsView: View {
     private func like(_ p: JSON, rx: [JSON]) {
         let id = str(p["id"])
         if !rx.contains(where: { str($0["emoji"]) == "❤️" && str($0["user_id"]) == feed.me }) { Task { await feed.toggle(p, "❤️") } }
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.55)) { burst = id }
-        Task { try? await Task.sleep(for: .milliseconds(750)); withAnimation(.easeOut(duration: 0.25)) { if burst == id { burst = nil } } }
+        // tapped again while it's still up: a fresh one
+        burst = nil
+        DispatchQueue.main.async { burst = id }
+        Task { try? await Task.sleep(for: .milliseconds(1000)); if burst == id { burst = nil } }
     }
 
     // MARK: what's over the clip
@@ -316,6 +317,7 @@ struct ReelsView: View {
         Button(action: tap) {
             VStack(spacing: 3) {
                 Self.railIcon(symbol).foregroundStyle(tint)
+                    .symbolEffect(.bounce, value: symbol)   // the heart, as it fills or empties
                 if !count.isEmpty { Text(count).font(.caption.weight(.bold)).foregroundStyle(.white).monospacedDigit() }
             }
             .shadow(color: .black.opacity(0.4), radius: 3).frame(width: 44).contentShape(Rectangle())
