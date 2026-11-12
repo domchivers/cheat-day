@@ -48,6 +48,9 @@ struct EditorTouch: UIViewRepresentable {
         private var lastMiddle = CGPoint.zero, lastApart: CGFloat = 1, lastAngle: CGFloat = 0
         private var move = CGSize.zero, size: CGFloat = 1, turn: CGFloat = 0
         private var start = CGPoint.zero, moved = false
+        // when each finger last reported a move, and which have since the last time anything was passed on
+        private var movedAt: [ObjectIdentifier: TimeInterval] = [:]
+        private var fresh: Set<ObjectIdentifier> = []
 
         /// Where the fingers are now: their middle, how far apart, and the angle of the line between them.
         private func read() -> (middle: CGPoint, apart: CGFloat, angle: CGFloat) {
@@ -63,7 +66,8 @@ struct EditorTouch: UIViewRepresentable {
 
         override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
             let first = down.isEmpty
-            for t in touches where down.count < 2 { down.append(t) }
+            for t in touches where down.count < 2 { down.append(t); movedAt[ObjectIdentifier(t)] = event?.timestamp ?? 0 }
+            fresh.removeAll()
             rebase()
             if first {
                 // two fingers at once is never a tap, however still their middle stays
@@ -77,6 +81,21 @@ struct EditorTouch: UIViewRepresentable {
 
         override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
             guard !down.isEmpty else { return }
+            // The phone reports two fingers one at a time, a few thousandths of a second apart. In a pinch they move
+            // opposite ways, so their middle, worked out afresh on each report, went up for one finger's news and
+            // back down for the other's: the thing held shook by a point or two on every frame. So with two fingers
+            // down nothing is passed on until both have reported (a finger that's simply resting, and so reports
+            // nothing, isn't waited for).
+            let now = event?.timestamp ?? ProcessInfo.processInfo.systemUptime
+            for t in touches where down.contains(t) { movedAt[ObjectIdentifier(t)] = now; fresh.insert(ObjectIdentifier(t)) }
+            if down.count >= 2 {
+                let waiting = down.prefix(2).contains { t in
+                    let id = ObjectIdentifier(t)
+                    return !fresh.contains(id) && now - (movedAt[id] ?? 0) < 0.03
+                }
+                if waiting { return }
+            }
+            fresh.removeAll()
             let r = read()
             move.width += r.middle.x - lastMiddle.x; move.height += r.middle.y - lastMiddle.y
             if down.count >= 2 {
@@ -98,7 +117,9 @@ struct EditorTouch: UIViewRepresentable {
 
         private func lifted(_ touches: Set<UITouch>) {
             down.removeAll { touches.contains($0) }
-            if down.isEmpty { ended?(moved, start) } else { rebase(); changed?(move, size, turn, down.count) }
+            for t in touches { movedAt[ObjectIdentifier(t)] = nil }
+            fresh.removeAll()
+            if down.isEmpty { movedAt.removeAll(); ended?(moved, start) } else { rebase(); changed?(move, size, turn, down.count) }
         }
         override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) { lifted(touches) }
         override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) { lifted(touches) }
