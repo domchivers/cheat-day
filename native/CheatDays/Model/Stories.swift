@@ -201,6 +201,9 @@ struct LoopingVideo: UIViewRepresentable {
     /// The look, kept by whoever shows the clip and changed by them directly: a slider can then change what's
     /// drawn without the screen around the clip being worked out again for every step, which was what stuttered.
     var box: Look? = nil
+    /// Told many times a second where the clip has got to and how long it is, in seconds: for a line along the
+    /// bottom of the full-screen viewer.
+    var tick: ((Double, Double) -> Void)? = nil
 
     final class PlayerView: UIView {
         override static var layerClass: AnyClass { AVPlayerLayer.self }
@@ -211,7 +214,11 @@ struct LoopingVideo: UIViewRepresentable {
         let look = Look()
         var ender: NSObjectProtocol?   // a clip with a look goes round by being sent back to its start: this hears its end
         var playing = true
-        deinit { if let ender { NotificationCenter.default.removeObserver(ender) } }
+        var tick: ((Double, Double) -> Void)?
+        var watch: Any?              // the player's own clock, watched for `tick`
+        weak var watched: AVPlayer?
+        func unwatch() { if let watch, let watched { watched.removeTimeObserver(watch) }; watch = nil; watched = nil }
+        deinit { if let ender { NotificationCenter.default.removeObserver(ender) }; unwatch() }
     }
 
     /// How much smaller than the clip its frames are drawn while it plays with a look (1 for as they are).
@@ -239,6 +246,7 @@ struct LoopingVideo: UIViewRepresentable {
     func updateUIView(_ v: PlayerView, context: Context) {
         if box == nil { v.look.name = filter }
         v.playing = !paused && scrub == nil
+        v.tick = tick
         if v.key != key { setUp(v) }
         v.playerLayer.player?.isMuted = muted
         if let at = scrub {
@@ -264,6 +272,7 @@ struct LoopingVideo: UIViewRepresentable {
         // The player before this one, taken right down first. Left to be let go in its own time, its items still
         // held their decoders while the new item tried to get ready, and a phone (and the simulator more so) only
         // has so many: the new one then failed to build its pipeline and the clip froze.
+        v.unwatch()
         if let old = v.playerLayer.player {
             old.pause()
             v.looper?.disableLooping(); v.looper = nil
@@ -310,8 +319,16 @@ struct LoopingVideo: UIViewRepresentable {
             v.looper = AVPlayerLooper(player: player, templateItem: item)
         }
         v.playerLayer.player = player
+        if tick != nil {
+            v.tick = tick
+            v.watched = player
+            v.watch = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.05, preferredTimescale: 600), queue: .main) { [weak v, weak player] t in
+                guard let length = player?.currentItem?.duration.seconds, length.isFinite, length > 0 else { return }
+                v?.tick?(min(length, max(0, t.seconds)), length)
+            }
+        }
         if !paused { player.play() }
     }
 
-    static func dismantleUIView(_ v: PlayerView, coordinator: ()) { v.playerLayer.player?.pause(); v.looper = nil }
+    static func dismantleUIView(_ v: PlayerView, coordinator: ()) { v.unwatch(); v.playerLayer.player?.pause(); v.looper = nil }
 }

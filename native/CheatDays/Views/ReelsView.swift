@@ -17,6 +17,10 @@ struct ReelsView: View {
     // Two fingers on the video: it zooms while they're on it and goes back when they lift. Pinching it bigger also
     // clears everything off the screen (just the video); pinching smaller, or the button at the bottom right,
     // brings it all back.
+    // how far through the video showing is (kept apart so that only the line along the bottom redraws as it moves),
+    // and the moment a finger on that line is holding it at
+    @State private var head = Playhead()
+    @State private var holding: Double?
     @GestureState private var pinch: CGFloat = 1
     @State private var clean = false
     @State private var talking: PostBox?
@@ -49,7 +53,7 @@ struct ReelsView: View {
         .ignoresSafeArea()
         .background(Color.black.ignoresSafeArea())
         .preferredColorScheme(.dark)
-        .onChange(of: current) { _, _ in paused = false; sound() }
+        .onChange(of: current) { _, _ in paused = false; holding = nil; head.at = 0; head.length = 0; sound() }
         .onChange(of: paused) { _, _ in sound() }
         .onChange(of: muted) { _, _ in sound() }
         .onAppear {
@@ -92,9 +96,9 @@ struct ReelsView: View {
             if on, let v = Feed.video(p) {
                 // a tall clip fills the screen; a squarer one is shown whole in the middle
                 if let a = num(dict(p["extra"])["aspect"]), a > 0.62 {
-                    LoopingVideo(url: v, paused: paused, muted: muted || Music.of(p) != nil).aspectRatio(a, contentMode: .fit).allowsHitTesting(false)
+                    LoopingVideo(url: v, paused: paused, muted: muted || Music.of(p) != nil, scrub: holding, tick: { at, length in head.at = at; head.length = length }).aspectRatio(a, contentMode: .fit).allowsHitTesting(false)
                 } else {
-                    LoopingVideo(url: v, paused: paused, muted: muted || Music.of(p) != nil).allowsHitTesting(false)
+                    LoopingVideo(url: v, paused: paused, muted: muted || Music.of(p) != nil, scrub: holding, tick: { at, length in head.at = at; head.length = length }).allowsHitTesting(false)
                 }
             } else if let a = num(dict(p["extra"])["aspect"]), a > 0.62 {
                 Color.clear.aspectRatio(a, contentMode: .fit).overlay { FeedPhoto(src: str(p["photo"]), fill: true) }.clipped()
@@ -115,6 +119,11 @@ struct ReelsView: View {
                     })
                 .accessibilityLabel(paused ? "Play" : "Pause").accessibilityAddTraits(.isButton)
             if on && paused { pausedButtons } else if !clean { chrome(p, rx: rx) } else { backAgain }
+            if on {
+                // just above the comment bar; lower when that's cleared away
+                VStack { Spacer(); ReelBar(head: head, holding: $holding) }
+                    .padding(.bottom, !paused && !clean ? 82 : 30)
+            }
             if burst == id {
                 Image(systemName: "heart.fill").font(.system(size: 96)).foregroundStyle(.white).shadow(radius: 12)
                     .transition(.scale(scale: 0.4).combined(with: .opacity)).allowsHitTesting(false)
@@ -279,4 +288,46 @@ struct ReelsView: View {
         }
         .shadow(color: .black.opacity(0.35), radius: 3)
     }
+}
+
+/// Where a playing video has got to. Its own small thing so that the line showing it can redraw twenty times a
+/// second without the whole viewer doing so.
+@Observable final class Playhead {
+    var at: Double = 0
+    var length: Double = 0
+}
+
+/// The fine line along the bottom of a video, as Instagram has: how far through it is. Put a finger on it and it
+/// thickens, the video holds on the moment under the finger, and the time shows; lift, and it plays on from there.
+struct ReelBar: View {
+    let head: Playhead
+    @Binding var holding: Double?
+
+    var body: some View {
+        let length = max(head.length, 0.01), now = holding ?? head.at
+        VStack(spacing: 6) {
+            if let h = holding {
+                Text(clock(h) + " / " + clock(length)).font(.caption.weight(.bold)).monospacedDigit().foregroundStyle(.white)
+                    .padding(.horizontal, 10).padding(.vertical, 5).background(.black.opacity(0.55), in: Capsule())
+            }
+            GeometryReader { g in
+                let w = g.size.width, tall: CGFloat = holding == nil ? 2 : 6
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.white.opacity(0.28)).frame(height: tall)
+                    Capsule().fill(.white.opacity(holding == nil ? 0.85 : 1)).frame(width: max(tall, w * CGFloat(min(1, now / length))), height: tall)
+                }
+                .frame(maxHeight: .infinity, alignment: .center)
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 0)
+                    .onChanged { v in holding = Double(min(1, max(0, v.location.x / max(1, w)))) * length }
+                    .onEnded { _ in holding = nil })
+                .animation(.easeOut(duration: 0.15), value: holding == nil)
+            }
+            .frame(height: 22)   // a finger's worth to catch, though the line is two points
+        }
+        .padding(.horizontal, 12)
+        .accessibilityLabel("How far through").accessibilityValue(clock(now) + " of " + clock(length))
+    }
+
+    private func clock(_ s: Double) -> String { String(format: "%d:%02d", Int(max(0, s)) / 60, Int(max(0, s)) % 60) }
 }
