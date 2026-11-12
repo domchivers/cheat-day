@@ -50,7 +50,7 @@ enum StoryArt {
         ("t", "Straighten", "rotate.right", -15, 15)]
 
     static func look(_ filter: String, _ tune: [String: Double]) -> String {
-        filter + tune.filter { $0.value != 0 }.sorted { $0.key < $1.key }.map { ";\($0.key)=\(Int($0.value))" }.joined()
+        filter + tune.filter { $0.value != 0 }.sorted { $0.key < $1.key }.map { ";\($0.key)=" + String(format: "%.1f", $0.value) }.joined()
     }
 
     /// A picture through a look. `frame` is the picture's own edges, for when it comes in stretched out for ever

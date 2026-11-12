@@ -1289,14 +1289,21 @@ struct TuneSlider: View {
     }
 
     var body: some View {
-        let n = Int(v)
+        let n = Int(v.rounded())
         VStack(spacing: 8) {
             Button { v = 0; changed(0); done(0) } label: {
-                Text(degrees ? "\(n)°" : n > 0 ? "+\(n)" : "\(n)").font(.title3.weight(.heavy)).foregroundStyle(.white).monospacedDigit()
+                Text(degrees ? String(format: "%.1f°", v) : n > 0 ? "+\(n)" : "\(n)").font(.title3.weight(.heavy)).foregroundStyle(.white).monospacedDigit()
                     .shadow(color: .black.opacity(0.5), radius: 4)
             }
             .buttonStyle(.plain).accessibilityLabel("Put \(name) back")
-            Slider(value: Binding(get: { v }, set: { let r = $0.rounded(); if r != v { v = r; changed(r) } }), in: lo...hi, step: 1,
+            // no steps: it moves as finely as the finger does (to a tenth of a degree for Straighten, a fifth of a
+            // point for the rest), and catches at nothing when it's all but there
+            Slider(value: Binding(get: { v }, set: { raw in
+                       let fine: Double = degrees ? 10 : 5
+                       var r = (raw * fine).rounded() / fine
+                       if abs(r) < (degrees ? 0.25 : 1.2) { r = 0 }
+                       if r != v { v = r; changed(r) }
+                   }), in: lo...hi,
                    onEditingChanged: { on in held = on; sliding(on); if !on { done(v) } })
                 .tint(.white).padding(.horizontal, 24).accessibilityLabel(name)
         }
