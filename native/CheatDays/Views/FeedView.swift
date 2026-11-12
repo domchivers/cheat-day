@@ -1145,7 +1145,7 @@ struct ComposeSheet: View {
                     if movie == c.url, let at = clip.cover, e.range.map({ $0.contains(at) }) ?? true { e.cover = at }
                     clip = e; movie = c.url; shots = []; poster = nil; triedPoster = false; cutting = nil; firstPick = false
                     Task { poster = await e.still(c.url) }
-                }, startShape: clip.shape)
+                }, startShape: clip.shape, startPoster: c.first)
             }
             // the story editor, in the feed's 4:5: text, stickers, drawing and filters baked into the photo
             .fullScreenCover(item: $editing) { e in
@@ -1170,7 +1170,7 @@ struct ComposeSheet: View {
         Task {
             if let video, shots.isEmpty {
                 if wait { try? await Task.sleep(for: .milliseconds(550)) }   // for a picker over this to have gone
-                cutting = ClipBox(url: video)
+                cutting = ClipBox(url: video, first: images.first)
             } else if !images.isEmpty {
                 // photos: onto the screen with the tools under them (one or several), in the first one's shape
                 movie = nil; poster = nil
@@ -1771,7 +1771,7 @@ struct PostRecipeSheet: View {
 }
 
 private struct EditBox: Identifiable { let id = UUID(); let image: UIImage; var index: Int? = nil; var tool: String? = nil }
-private struct ClipBox: Identifiable { let id = UUID(); let url: URL }
+private struct ClipBox: Identifiable { let id = UUID(); let url: URL; var first: UIImage? = nil }
 
 /// A post's picture. SwiftUI's AsyncImage stays blank for good if scrolling cancels its download, as a long feed does;
 /// this one is kept once loaded, tries again when it comes back on screen, and retries a failed download.

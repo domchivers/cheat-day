@@ -92,6 +92,8 @@ struct CoverPicker: View {
     @State private var shown: UIImage?
     @State private var frames: [UIImage] = []
     @State private var span: ClosedRange<Double>
+    @State private var own: CGFloat?   // the clip's own shape, the way up it's been turned
+    @State private var finishing = false
 
     init(url: URL, edit: ClipEdit, start: UIImage?, done: @escaping (Double, UIImage?) -> Void) {
         self.url = url; self.edit = edit; self.done = done
@@ -104,14 +106,39 @@ struct CoverPicker: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                ZStack {
-                    if let shown {
+                // The clip itself, stopped on the moment under the finger, in its frame as it was placed there, with
+                // what's written on it over the top. A player goes to a moment in a blink; making a finished still for
+                // every move of the finger (as this did) took long enough to feel like wading. The finished still
+                // is made once, on Done.
+                GeometryReader { g in
+                    if let own {
+                        let shape = edit.shape ?? own
+                        let cw = min(g.size.width, g.size.height * shape), ch = cw / shape
+                        let fill = own > shape ? CGSize(width: ch * own, height: ch) : CGSize(width: cw, height: cw / own)
+                        let odd = edit.turns % 2 != 0
+                        ZStack {
+                            Color.black
+                            LoopingVideo(url: url, paused: true, muted: true, filter: edit.look, scrub: at)
+                                .frame(width: odd ? fill.height : fill.width, height: odd ? fill.width : fill.height)
+                                .rotationEffect(.degrees(Double(edit.turns) * 90))
+                                .frame(width: fill.width, height: fill.height)
+                                .scaleEffect(edit.zoom)
+                                .rotationEffect(.degrees(edit.spin))
+                                .offset(x: edit.move.width * cw, y: edit.move.height * ch)
+                                .allowsHitTesting(false)
+                            if let top = edit.overlay { Image(uiImage: top).resizable().frame(width: cw, height: ch).allowsHitTesting(false) }
+                        }
+                        .frame(width: cw, height: ch).clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .shadow(color: .black.opacity(0.25), radius: 14, y: 6)
+                        .position(x: g.size.width / 2, y: g.size.height / 2)
+                    } else if let shown {
                         Image(uiImage: shown).resizable().scaledToFit()
                             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                            .shadow(color: .black.opacity(0.25), radius: 14, y: 6)
-                    } else { ProgressView() }
+                            .position(x: g.size.width / 2, y: g.size.height / 2)
+                    } else { ProgressView().position(x: g.size.width / 2, y: g.size.height / 2) }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity).padding(.horizontal, 28).padding(.vertical, 18)
+                .padding(.horizontal, 28).padding(.vertical, 18)
                 VStack(spacing: 12) {
                     Text(clock(at - span.lowerBound)).font(.footnote.weight(.bold)).monospacedDigit().foregroundStyle(.secondary)
                     strip.frame(height: 60).padding(.horizontal, 22)
@@ -123,14 +150,21 @@ struct CoverPicker: View {
             .navigationTitle("Cover").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { done(at, shown); dismiss() }.fontWeight(.bold) }
+                ToolbarItem(placement: .confirmationAction) {
+                    if finishing { ProgressView() } else {
+                        Button("Done") {
+                            finishing = true
+                            Task {
+                                let still = await edit.still(url, at: at)   // the one finished picture, as it will be posted
+                                done(at, still ?? shown)
+                                dismiss()
+                            }
+                        }
+                        .fontWeight(.bold)
+                    }
+                }
             }
             .task { await load() }
-            .task(id: Int(at * 12)) {
-                try? await Task.sleep(for: .milliseconds(25))   // a moving finger asks often: only where it rests is drawn
-                if Task.isCancelled { return }
-                if let got = await edit.still(url, at: at, width: 1080), !Task.isCancelled { shown = got }
-            }
         }
         .presentationBackground(Theme.bg)
     }
@@ -169,6 +203,14 @@ struct CoverPicker: View {
         let from = edit.range?.lowerBound ?? 0, to = min(edit.range?.upperBound ?? length, from + 30, max(length, from + 0.1))
         span = from...max(from + 0.1, to - 0.05)
         at = min(span.upperBound, max(span.lowerBound, at))
+        if let track = try? await asset.loadTracks(withMediaType: .video).first {
+            let n = (try? await track.load(.naturalSize)) ?? .zero, t = (try? await track.load(.preferredTransform)) ?? .identity
+            let r = CGRect(origin: .zero, size: n).applying(t)
+            if abs(r.width) > 1, abs(r.height) > 1 {
+                let a = abs(r.width) / abs(r.height)
+                own = edit.turns % 2 != 0 ? 1 / a : a
+            }
+        }
         var got: [UIImage] = []
         for i in 0..<9 {
             if let f = await edit.still(url, at: span.lowerBound + (span.upperBound - span.lowerBound) * Double(i) / 8, width: 200) { got.append(f); frames = got }

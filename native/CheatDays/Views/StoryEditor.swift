@@ -27,6 +27,8 @@ struct StoryEditor: View {
     /// Open on one of the tools ("text", "stickers", "draw", "filters", "adjust"): New post's own row of tools
     /// leads straight into it.
     var startTool: String? = nil
+    /// A clip's first frame, when whoever opens the editor already has it: shown at once, under the player.
+    var startPoster: UIImage? = nil
     private var forPost: Bool { finish != nil || finishVideo != nil }
     /// A post's clip: its own frame to zoom and move in, and everything on it made part of the video.
     private var clipOnly: Bool { finishVideo != nil }
@@ -213,6 +215,20 @@ struct StoryEditor: View {
             Button("Keep editing", role: .cancel) {}
         } message: { Text("Your text, stickers and drawing will be lost.") }
         .statusBarHidden()
+        // Before it's first drawn: the shape it was left in, the clip's first picture and how it sits in the frame,
+        // and the tool it was opened for. Each of these used to arrive a moment after the editor had come up (the
+        // frame changing shape, the picture popping in and resizing, the tool's tray opening late), which is what
+        // flickered.
+        .onAppear {
+            if shape == nil, let startShape { shape = startShape }
+            if poster == nil, let startPoster { poster = startPoster; seat(startPoster.size) }
+            switch startTool {
+            case "draw": mode = .draw
+            case "filters": mode = .filters
+            case "adjust": mode = .adjust
+            default: break
+            }
+        }
         .task { await prepare() }
         .onChange(of: look, initial: true) { _, l in lookBox.name = l }
         .task { if startWriting { try? await Task.sleep(for: .milliseconds(350)); newText(); size = 40 } }
@@ -222,10 +238,7 @@ struct StoryEditor: View {
             switch startTool {
             case "text": newText()
             case "stickers": stickers = true
-            case "draw": mode = .draw
-            case "filters": mode = .filters
-            case "adjust": mode = .adjust
-            default: break
+            default: break   // the others are set as it appears
             }
         }
         .task(id: flatLook + (sliding ? " " : "")) { await refilter(flatLook) }
@@ -867,6 +880,14 @@ struct StoryEditor: View {
 
     // MARK: getting ready, filters and sharing
 
+    /// A clip far from the frame's shape (one filmed sideways, say) starts whole in the frame, on black, as
+    /// Instagram shows it; one near enough starts filling it.
+    private func seat(_ size: CGSize) {
+        guard clipOnly, startShape == nil, bgScale == 1, bgOffset == .zero, bgSpin == 0 else { return }
+        let own = size.width / max(size.height, 1), fits = min(own / ratio, ratio / own)
+        if fits < 0.75 { bgScale = max(0.25, fits); clipCovers = false }
+    }
+
     private func prepare() async {
         if shape == nil, let startShape { shape = startShape }
         if let image {
@@ -894,14 +915,9 @@ struct StoryEditor: View {
             // lot is asked for again a moment later: asked once, as the player was starting, they sometimes all
             // failed, and the strip and the filters stayed blank.
             let plain = ClipEdit()
-            if let first = await plain.still(video, at: 0, width: 1920) {
+            if poster == nil, let first = await plain.still(video, at: 0, width: 1920) {
                 poster = first
-                // a clip far from the frame's shape (one filmed sideways, say) starts whole in the frame, on black,
-                // as Instagram shows it; one near enough starts filling it
-                if clipOnly, bgScale == 1, bgOffset == .zero, bgSpin == 0 {
-                    let own = first.size.width / max(first.size.height, 1), fits = min(own / ratio, ratio / own)
-                    if fits < 0.75 { bgScale = max(0.25, fits); clipCovers = false }
-                }
+                seat(first.size)
             }
             var got: [UIImage] = []
             for attempt in 0..<4 {

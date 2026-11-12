@@ -302,7 +302,8 @@ struct PostPicker: View {
                 guard let u = (av as? AVURLAsset)?.url else { DispatchQueue.main.async { busy = false }; return }
                 let to = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "." + u.pathExtension)
                 try? FileManager.default.copyItem(at: u, to: to)
-                DispatchQueue.main.async { busy = false; done([], to) }
+                // with the picture of it already showing here, for the editor to open on (not on black while it finds its own)
+                DispatchQueue.main.async { busy = false; done(big.map { [$0] } ?? [], to) }
             }
             return
         }
