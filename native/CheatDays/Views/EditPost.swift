@@ -17,6 +17,8 @@ struct EditPostSheet: View {
     @State private var song: Song?
     @State private var choosingSong = false
     @State private var tags: [String] = []
+    @State private var songVol = 1.0
+    @State private var clipVol = 1.0
     @State private var tagging = false
     // its photos, in order: each where it is now, and as cropped again here
     @State private var pics: [Pic] = []
@@ -58,6 +60,7 @@ struct EditPostSheet: View {
                         .padding(.horizontal, 14).padding(.top, 14).padding(.bottom, 10)
                     if kind != "moment" { attachment.padding(.horizontal, 14) }
                     songRow.padding(.horizontal, 14).padding(.top, 10)
+                    if song != nil { MixSliders(song: $songVol, clip: $clipVol, hasClip: isVideo).padding(.horizontal, 28).padding(.top, 8) }
                     Button { typing = false; tagging = true } label: {
                         HStack(spacing: 12) {
                             Image(systemName: "person.crop.square").font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.accent).frame(width: 24)
@@ -292,6 +295,7 @@ struct EditPostSheet: View {
         caption = Feed.shared.caption(post)
         song = Music.of(post)
         tags = dict(post["extra"])["tags"] as? [String] ?? []
+        let m = Music.mix(post); songVol = Double(m.song); clipVol = Double(m.clip)
         if ["food", "meal", "workout"].contains(kind) {
             what = ["kind": kind, "name": post["name"] ?? "", "kcal": post["kcal"] ?? 0, "macros": post["macros"] ?? NSNull(), "payload": post["payload"] ?? [:] as JSON, "extra": dict(post["extra"])]
         }
@@ -345,6 +349,7 @@ struct EditPostSheet: View {
             }
             extra["song"] = song.map { ["id": $0.id, "title": $0.title] as JSON }
             extra["tags"] = tags.isEmpty ? nil : tags
+            extra["mix"] = song != nil && (songVol < 0.995 || clipVol < 0.995) ? ["song": songVol, "clip": clipVol] as JSON : nil
             if whatChanged {
                 for k in Self.attachKeys { extra[k] = nil }
                 if let w = what {

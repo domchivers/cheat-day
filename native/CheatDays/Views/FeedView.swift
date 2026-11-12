@@ -576,12 +576,12 @@ struct FeedView: View {
         let shape = num(dict(p["extra"])["aspect"]).map { min(1.91, max(0.75, $0)) }
         return PostPhotos(post: p)
             .frame(maxWidth: .infinity).frame(height: shape.map { (UIScreen.main.bounds.width / $0).rounded() } ?? 400)
-            .overlay { if let v = Feed.video(p) { FeedVideo(url: v, songKey: Music.of(p) != nil ? "post:" + str(p["id"]) : nil) } }   // under the name and numbers
+            .overlay { if let v = Feed.video(p) { FeedVideo(url: v, songKey: Music.of(p) != nil ? "post:" + str(p["id"]) : nil, clipVolume: Music.of(p) != nil ? Music.mix(p).clip : 1) } }   // under the name and numbers
             .clipped()
             .contentShape(Rectangle())
             // a photo with a song: its sound on and off at the bottom right, as Instagram has it
             .overlay {
-                if let song = Music.of(p) { SongSwitch(song: song, key: "post:" + str(p["id"])) }
+                if let song = Music.of(p) { SongSwitch(song: song, key: "post:" + str(p["id"]), volume: Music.mix(p).song) }
             }
             .overlay(alignment: .bottomLeading) {
                 if str(p["kind"]) != "photo" {   // a photo on its own has no name or numbers
@@ -895,12 +895,13 @@ struct SharePostSheet: View {
 struct SongSwitch: View {
     let song: Song
     let key: String
+    var volume: Float = 1
     var body: some View {
         let on = SongPlayer.shared.playing == key
         // the size of the photo, to know when most of it is showing; only the speaker takes touches
         Color.clear
             .overlay(alignment: .bottomTrailing) {
-                Button { SongPlayer.shared.flip(song, key: key) } label: {
+                Button { SongPlayer.shared.flip(song, key: key, volume: volume) } label: {
                     Image(systemName: on ? "speaker.wave.2.fill" : "speaker.slash.fill").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
                         .frame(width: 32, height: 32).background(.black.opacity(0.45), in: Circle())
                 }
@@ -908,7 +909,7 @@ struct SongSwitch: View {
                 .accessibilityLabel(on ? "Sound off" : "Sound on")
             }
             .modifier(MostlyShowing { showing in
-                if showing { SongPlayer.shared.arrive(song, key: key) } else { SongPlayer.shared.leave(key) }
+                if showing { SongPlayer.shared.arrive(song, key: key, volume: volume) } else { SongPlayer.shared.leave(key) }
             })
             .onDisappear { SongPlayer.shared.leave(key) }
     }
@@ -933,10 +934,11 @@ struct FeedVideo: View {
     /// The post has a song, known to the song player by this name. The two are heard together, as Instagram blends
     /// them: the clip's own sound is on whenever its song is playing, and the one speaker (SongSwitch) is for both.
     var songKey: String? = nil
+    var clipVolume: Float = 1
     @State private var muted = true
     @State private var showing = false
     var body: some View {
-        LoopingVideo(url: url, paused: !showing, muted: songKey.map { SongPlayer.shared.playing != $0 } ?? muted)
+        LoopingVideo(url: url, paused: !showing, muted: songKey.map { SongPlayer.shared.playing != $0 } ?? muted, volume: clipVolume)
             .allowsHitTesting(false)
             .onAppear { showing = true }
             .onDisappear { showing = false; if !muted { muted = true; loud(false) } }
@@ -1009,6 +1011,8 @@ struct ComposeSheet: View {
     @State private var attaching = false   // the list of foods, meals and workouts is open
     @State private var song: Song?
     @State private var choosingSong = false
+    @State private var songVol = 1.0   // how loud the song is, and the video's own sound against it
+    @State private var clipVol = 1.0
     @State private var tags: [String] = []   // friends in the post
     @State private var tagging = false
     @FocusState private var writing: Bool
@@ -1052,6 +1056,11 @@ struct ComposeSheet: View {
                     attachment.padding(.horizontal, 4)
                     songRow.padding(.horizontal, 4)
                     if song == nil { songIdeas }
+                    else {
+                        MixSliders(song: $songVol, clip: $clipVol, hasClip: movie != nil && !clip.muted)
+                            .padding(.horizontal, 18).padding(.vertical, 8)
+                            .overlay(alignment: .bottom) { Divider().padding(.leading, 18) }
+                    }
                     tagRow.padding(.horizontal, 4)
                     if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.top, 8) }
                 }
@@ -1214,7 +1223,7 @@ struct ComposeSheet: View {
         let id = draftID ?? UUID().uuidString
         var meta: JSON = ["caption": caption]
         if let what { meta["what"] = what }
-        if let song { meta["song"] = song.id }
+        if let song { meta["song"] = song.id; meta["mix"] = [songVol, clipVol] }
         if !tags.isEmpty { meta["tags"] = tags }
         let pics = shots.map { ($0.source, $0.out) }, movie = movie, clip = clip, poster = poster
         SongPlayer.shared.stop()
@@ -1228,6 +1237,7 @@ struct ComposeSheet: View {
         if let w = d["what"] as? JSON { what = w }
         song = Music.all.first { $0.id == str(d["song"]) }
         tags = d["tags"] as? [String] ?? []
+        if let m = d["mix"] as? [Double], m.count == 2 { songVol = m[0]; clipVol = m[1] }
         shots = got.shots.map { Shot(source: $0.0, out: $0.1) }; showing = 0
         movie = got.movie; clip = got.clip; poster = got.poster; triedPoster = false; stage = 1
         if let m = got.movie, got.poster == nil { Task { poster = await got.clip.still(m) } }
@@ -1575,7 +1585,7 @@ struct ComposeSheet: View {
             if let s = song {
                 let on = SongPlayer.shared.playing == "new:" + s.id
                 HStack(spacing: 12) {
-                    Button { SongPlayer.shared.toggle(s, key: "new:" + s.id) } label: {
+                    Button { if on { SongPlayer.shared.stop() } else { SongPlayer.shared.play(s, key: "new:" + s.id, volume: Float(songVol)) } } label: {
                         Image(systemName: on ? "pause.fill" : "play.fill").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.accent)
                             .frame(width: 34, height: 34).background(Color(.tertiarySystemFill), in: Circle())
                     }
@@ -1652,7 +1662,11 @@ struct ComposeSheet: View {
         }
         let face = movie != nil ? poster : shots.first?.out
         row["caption"] = caption.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let song { var x = dict(row["extra"]); x["song"] = ["id": song.id, "title": song.title] as JSON; row["extra"] = x }
+        if let song {
+            var x = dict(row["extra"]); x["song"] = ["id": song.id, "title": song.title] as JSON
+            if songVol < 0.995 || clipVol < 0.995 { x["mix"] = ["song": songVol, "clip": clipVol] as JSON }
+            row["extra"] = x
+        }
         if !tags.isEmpty { var x = dict(row["extra"]); x["tags"] = tags; row["extra"] = x }
         // the picture's shape, for the feed to show it whole (a video's is its first frame's)
         if let face { var x = dict(row["extra"]); x["aspect"] = Double(face.size.width / max(face.size.height, 1)); row["extra"] = x }

@@ -404,3 +404,28 @@ struct TagPicker: View {
         }
     }
 }
+
+/// How loud a post's song is, and (on a video that has sound) how loud the video's own sound is against it: the two
+/// are heard together, and these set one against the other. A song that's playing follows its slider as it moves.
+struct MixSliders: View {
+    @Binding var song: Double
+    @Binding var clip: Double
+    let hasClip: Bool
+
+    var body: some View {
+        VStack(spacing: 4) {
+            row("music.note", "Song", $song)
+            if hasClip { row("video.fill", "Video", $clip) }
+        }
+        .onChange(of: song) { _, v in SongPlayer.shared.volume(Float(v)) }
+    }
+
+    private func row(_ symbol: String, _ name: String, _ value: Binding<Double>) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: symbol).font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary).frame(width: 22)
+            Text(name).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).frame(width: 46, alignment: .leading)
+            Slider(value: value, in: 0...1).tint(Theme.accent).accessibilityLabel(name + " volume")
+            Text("\(Int((value.wrappedValue * 100).rounded()))%").font(.footnote.weight(.semibold)).monospacedDigit().foregroundStyle(.secondary).frame(width: 44, alignment: .trailing)
+        }
+    }
+}

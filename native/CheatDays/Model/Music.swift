@@ -68,6 +68,12 @@ enum Music {
     ]
 
     /// A post's song, if it has one (a song this build doesn't list still plays, from its id).
+    /// How loud a post's song and its video's own sound are to be, each from 0 to 1 (both full unless the poster set them).
+    static func mix(_ post: JSON) -> (song: Float, clip: Float) {
+        let m = dict(dict(post["extra"])["mix"])
+        return (Float(min(1, max(0, num(m["song"]) ?? 1))), Float(min(1, max(0, num(m["clip"]) ?? 1))))
+    }
+
     static func of(_ post: JSON) -> Song? {
         let s = dict(dict(post["extra"])["song"]), id = str(s["id"])
         guard !id.isEmpty else { return nil }
@@ -93,22 +99,24 @@ enum Music {
         set { UserDefaults.standard.set(newValue, forKey: "song.auto") }
     }
     /// The speaker on a post, tapped.
-    func flip(_ song: Song, key: String) {
-        if playing == key { auto = false; stop() } else { auto = true; play(song, key: key, loop: true) }
+    func flip(_ song: Song, key: String, volume: Float = 1) {
+        if playing == key { auto = false; stop() } else { auto = true; play(song, key: key, loop: true, volume: volume) }
     }
+    /// The song that's playing, louder or quieter (a slider being moved while it's heard).
+    func volume(_ v: Float) { player?.volume = v }
     /// A post with a song has come onto the screen. Nothing if songs are off, or if the phone's already playing
     /// something of its own (their music or a podcast isn't cut off by scrolling past a photo).
-    func arrive(_ song: Song, key: String) {
+    func arrive(_ song: Song, key: String, volume: Float = 1) {
         guard auto, playing != key, !AVAudioSession.sharedInstance().isOtherAudioPlaying else { return }
         // heard with the ringer off as well: kept to the ringer, a phone on silent (most are) never played one, and
         // it looked as though songs only played when their button was pressed. The speaker turns them all off.
-        play(song, key: key, loop: true)
+        play(song, key: key, loop: true, volume: volume)
     }
     /// It's gone off the screen again.
     func leave(_ key: String) { if playing == key { stop() } }
 
     /// `loop`: under a post or a video it goes round for as long as that's on screen; in a list of songs it's heard once.
-    func play(_ song: Song, key: String, loop: Bool = false) {
+    func play(_ song: Song, key: String, loop: Bool = false, volume: Float = 1) {
         stop()
         guard let url = song.url else { return }
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
@@ -118,6 +126,7 @@ enum Music {
         end = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { [weak self, weak p] _ in
             if loop { p?.seek(to: .zero); p?.play() } else { self?.stop() }
         }
+        p.volume = volume
         player = p; playing = key
         p.play()
     }

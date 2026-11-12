@@ -78,7 +78,7 @@ struct ReelsView: View {
     /// heard with its own sound alone.
     private func sound() {
         if let id = current, let p = posts.first(where: { str($0["id"]) == id }), let s = Music.of(p), !paused, !muted {
-            if SongPlayer.shared.playing != "reel:" + id { SongPlayer.shared.play(s, key: "reel:" + id, loop: true) }
+            if SongPlayer.shared.playing != "reel:" + id { SongPlayer.shared.play(s, key: "reel:" + id, loop: true, volume: Music.mix(p).song) }
         } else {
             SongPlayer.shared.stop()
             // stopping a song hands the sound back to the ringer; here a video is still to be heard
@@ -97,9 +97,9 @@ struct ReelsView: View {
             if on, let v = Feed.video(p) {
                 // a tall clip fills the screen; a squarer one is shown whole in the middle
                 if let a = num(dict(p["extra"])["aspect"]), a > 0.62 {
-                    LoopingVideo(url: v, paused: paused, muted: muted, scrub: holding, tick: { at, length in head.at = at; head.length = length }).aspectRatio(a, contentMode: .fit).allowsHitTesting(false)
+                    LoopingVideo(url: v, paused: paused, muted: muted, scrub: holding, tick: { at, length in head.at = at; head.length = length }, volume: Music.of(p) != nil ? Music.mix(p).clip : 1).aspectRatio(a, contentMode: .fit).allowsHitTesting(false)
                 } else {
-                    LoopingVideo(url: v, paused: paused, muted: muted, scrub: holding, tick: { at, length in head.at = at; head.length = length }).allowsHitTesting(false)
+                    LoopingVideo(url: v, paused: paused, muted: muted, scrub: holding, tick: { at, length in head.at = at; head.length = length }, volume: Music.of(p) != nil ? Music.mix(p).clip : 1).allowsHitTesting(false)
                 }
             } else if let a = num(dict(p["extra"])["aspect"]), a > 0.62 {
                 Color.clear.aspectRatio(a, contentMode: .fit).overlay { FeedPhoto(src: str(p["photo"]), fill: true) }.clipped()

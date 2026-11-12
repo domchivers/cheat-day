@@ -204,6 +204,8 @@ struct LoopingVideo: UIViewRepresentable {
     /// Told many times a second where the clip has got to and how long it is, in seconds: for a line along the
     /// bottom of the full-screen viewer.
     var tick: ((Double, Double) -> Void)? = nil
+    /// How loud its own sound is, from 0 to 1 (a post with a song can have the two set against each other).
+    var volume: Float = 1
 
     final class PlayerView: UIView {
         override static var layerClass: AnyClass { AVPlayerLayer.self }
@@ -249,6 +251,7 @@ struct LoopingVideo: UIViewRepresentable {
         v.tick = tick
         if v.key != key { setUp(v) }
         v.playerLayer.player?.isMuted = muted
+        if v.playerLayer.player?.volume != volume { v.playerLayer.player?.volume = volume }
         if let at = scrub {
             v.playerLayer.player?.pause()
             // only when the finger has moved on: a seek for every redraw made it stutter
@@ -313,6 +316,7 @@ struct LoopingVideo: UIViewRepresentable {
         // to be the simulator's alone; on a phone the looper's copies play it round without a gap.)
         let player = AVQueuePlayer()
         player.isMuted = muted
+        player.volume = volume
         if let r = range {
             v.looper = AVPlayerLooper(player: player, templateItem: item, timeRange: CMTimeRange(start: CMTime(seconds: r.lowerBound, preferredTimescale: 600), end: CMTime(seconds: r.upperBound, preferredTimescale: 600)))
         } else {
