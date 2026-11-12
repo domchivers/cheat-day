@@ -111,7 +111,7 @@ struct StoryView: View {
                     }
                     .transition(.scale(scale: 0.7, anchor: .bottomTrailing).combined(with: .opacity))
                 }
-                if let e = burstEmoji { HeartBurst(emoji: e == "❤️" ? nil : e).transition(.identity) }
+                if let e = burstEmoji { EmojiShower(emoji: e).transition(.identity) }
             }
         }
         .offset(y: max(0, drag))
@@ -358,7 +358,7 @@ struct StoryView: View {
         }
         burstEmoji = nil
         DispatchQueue.main.async { burstEmoji = e }
-        Task { try? await Task.sleep(for: .milliseconds(1000)); if burstEmoji == e { burstEmoji = nil } }
+        Task { try? await Task.sleep(for: .milliseconds(1800)); if burstEmoji == e { burstEmoji = nil } }
     }
 
     private func send() {

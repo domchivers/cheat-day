@@ -624,9 +624,9 @@ struct SongCard: View {
     }
 }
 
-/// The heart that a double tap puts on a post: it springs up a little too big and settles, tilted its own way each
-/// time, with small hearts thrown out round it, then lifts away and fades. (It was a plain white heart that grew
-/// and went.)
+/// The heart that a double tap puts on a post, as Instagram and TikTok show theirs: one heart that springs up a
+/// little too big and settles, tilted its own way each time, then lifts away and fades. (A ring of small ones was
+/// thrown out round it for a while: clutter, and worse round an emoji.)
 struct HeartBurst: View {
     /// Another reaction in the heart's place (a story answered with 🔥): the same spring, scatter and lift.
     var emoji: String? = nil
@@ -637,17 +637,6 @@ struct HeartBurst: View {
 
     var body: some View {
         ZStack {
-            ForEach(0..<7, id: \.self) { i in
-                let a = Double(i) / 7 * 2 * Double.pi + tilt * 0.05
-                Group {
-                    if let emoji { Text(emoji).font(.system(size: i % 2 == 0 ? 22 : 16)) }
-                    else { Image(systemName: "heart.fill").font(.system(size: i % 2 == 0 ? 20 : 14)).foregroundStyle(Self.fill) }
-                }
-                    .scaleEffect(pop ? 1 : 0.2)
-                    .offset(x: pop ? cos(a) * 94 : 0, y: pop ? sin(a) * 94 : 0)
-                    .opacity(pop && !away ? 0.95 : 0)
-                    .animation(.easeOut(duration: 0.5).delay(0.06), value: pop)
-            }
             Group {
                 if let emoji { Text(emoji).font(.system(size: 96)) }
                 else { Image(systemName: "heart.fill").font(.system(size: 104)).foregroundStyle(Self.fill) }
@@ -760,5 +749,43 @@ struct SendToSheet: View {
             }
         }
         .presentationDragIndicator(.visible)
+    }
+}
+
+/// A reaction to a story, the way Instagram shows a quick reaction: a flurry of the emoji rising from the bottom of
+/// the screen, each coming in small, swaying a little as it climbs, and fading out before the top. Nothing in the
+/// middle of the story.
+struct EmojiShower: View {
+    let emoji: String
+    private struct Bit { let x: Double, size: Double, delay: Double, rise: Double, sway: Double, phase: Double, tilt: Double }
+    @State private var bits: [Bit] = (0..<11).map { i in
+        // spread across the width, each a little off its place, so they never line up or bunch
+        Bit(x: (Double(i) + Double.random(in: 0.15...0.85)) / 11, size: Double.random(in: 34...60), delay: Double.random(in: 0...0.38),
+            rise: Double.random(in: 0.62...0.9), sway: Double.random(in: 8...20), phase: Double.random(in: 0...6.28), tilt: Double.random(in: -16...16))
+    }.shuffled()
+    @State private var began = Date()
+    static let life = 1.25   // seconds each one takes; the last sets off 0.38 after the first
+
+    var body: some View {
+        GeometryReader { g in
+            TimelineView(.animation) { clock in
+                let t = clock.date.timeIntervalSince(began)
+                ZStack {
+                    ForEach(bits.indices, id: \.self) { i in
+                        let b = bits[i], p = min(1, max(0, (t - b.delay) / Self.life))
+                        let eased = 1 - pow(1 - p, 2.2)   // quick off the bottom, slowing as it climbs
+                        Text(emoji).font(.system(size: b.size))
+                            .rotationEffect(.degrees(b.tilt * (1 - p)))
+                            .scaleEffect(0.55 + 0.45 * min(1, p / 0.18) - 0.12 * max(0, (p - 0.7) / 0.3))
+                            .opacity(p <= 0 ? 0 : p < 0.12 ? p / 0.12 : p > 0.62 ? max(0, (1 - p) / 0.38) : 1)
+                            .position(x: b.x * g.size.width + sin(p * 5 + b.phase) * b.sway,
+                                      y: g.size.height + 30 - eased * b.rise * g.size.height)
+                    }
+                }
+            }
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false).accessibilityHidden(true)
+        .onAppear { began = Date(); UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
     }
 }
