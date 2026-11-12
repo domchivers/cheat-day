@@ -25,6 +25,7 @@ struct StoryCamera: View {
     // into one picture (0 when off). Hands-free: a tap starts filming and a tap stops it, no holding.
     @State private var layout = 0
     @State private var cells: [UIImage] = []
+    @State private var grid = "2v"   // Layout's arrangement: 2v, 2h, 3, 4 or 6
     @State private var handsFree = false
 
     var body: some View {
@@ -45,12 +46,13 @@ struct StoryCamera: View {
                                 .multilineTextAlignment(.center).padding(.horizontal, 40)
                             Button("Open Settings") { if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) } }.font(.headline)
                         }
+                    } else if layout > 0 {
+                        layoutStage
                     } else {
                         CameraPreview(session: cam.session)
                             .gesture(MagnifyGesture().onChanged { m in cam.zoom(to: zoomStart * m.magnification, glide: true) }.onEnded { _ in zoomStart = cam.zoomFactor })
                             .onTapGesture(count: 2) { cam.flip() }
                     }
-                    if layout > 0 { layoutGuide.allowsHitTesting(false) }
                     if !recording && !cam.denied { modes }
                     if recording {
                         Text(String(format: "0:%02d", Int(elapsed))).font(.subheadline.weight(.heavy)).foregroundStyle(.white)
@@ -64,8 +66,9 @@ struct StoryCamera: View {
                     VStack(spacing: 18) {
                         Spacer()
                         if !recording && !cam.denied { zoomButtons }
-                        if !recording, layout > 0 || handsFree {
-                            Text(layout > 0 ? "Photo \(cells.count + 1) of \(layout)" : "Tap to start, tap to stop")
+                        if !recording, layout > 0 { layoutBar }
+                        if !recording, handsFree {
+                            Text("Tap to start, tap to stop")
                                 .font(.footnote.weight(.bold)).foregroundStyle(.white).padding(.horizontal, 12).padding(.vertical, 6)
                                 .background(.black.opacity(0.5), in: Capsule())
                         }
@@ -212,9 +215,9 @@ struct StoryCamera: View {
 
     private var modes: some View {
         VStack(alignment: .leading, spacing: 14) {
-            modeButton("square.grid.2x2", layout == 0 ? "Layout" : "Layout · \(layout)", on: layout > 0) {
-                layout = layout == 0 ? 2 : layout == 2 ? 4 : 0
-                cells = []; if layout > 0 { handsFree = false }
+            modeButton("square.grid.2x2", "Layout", on: layout > 0) {
+                cells = []
+                if layout > 0 { layout = 0 } else { layout = Self.places(grid).count; handsFree = false }
             }
             modeButton("record.circle", "Hands-free", on: handsFree) {
                 handsFree.toggle(); if handsFree { layout = 0; cells = [] }
@@ -226,37 +229,90 @@ struct StoryCamera: View {
     private func modeButton(_ symbol: String, _ name: String, on: Bool, _ tap: @escaping () -> Void) -> some View {
         Button { UISelectionFeedbackGenerator().selectionChanged(); withAnimation(.snappy(duration: 0.2)) { tap() } } label: {
             HStack(spacing: 8) {
-                Image(systemName: symbol).font(.system(size: 18, weight: .semibold)).foregroundStyle(on ? .black : .white)
-                    .frame(width: 40, height: 40).background(on ? Color.yellow : Color.black.opacity(0.45), in: Circle())
-                Text(name).font(.caption.weight(.bold)).foregroundStyle(.white).shadow(color: .black.opacity(0.6), radius: 3)
+                Image(systemName: symbol).font(.system(size: 17, weight: .semibold)).foregroundStyle(on ? .black : .white)
+                    .frame(width: 38, height: 38).background(on ? Color.white : Color.black.opacity(0.45), in: Circle())
+                // named only while it's on: two labels always showing down the side cluttered the picture
+                if on { Text(name).font(.caption.weight(.bold)).foregroundStyle(.white).shadow(color: .black.opacity(0.6), radius: 3) }
             }
         }
         .buttonStyle(.plain).accessibilityLabel(name).accessibilityAddTraits(on ? .isSelected : [])
     }
 
-    /// Where each of Layout's photos goes, as fractions of the picture: two, one over the other; four, two by two.
-    private static func places(_ n: Int) -> [CGRect] {
-        n == 2 ? [CGRect(x: 0, y: 0, width: 1, height: 0.5), CGRect(x: 0, y: 0.5, width: 1, height: 0.5)]
-               : [CGRect(x: 0, y: 0, width: 0.5, height: 0.5), CGRect(x: 0.5, y: 0, width: 0.5, height: 0.5),
-                  CGRect(x: 0, y: 0.5, width: 0.5, height: 0.5), CGRect(x: 0.5, y: 0.5, width: 0.5, height: 0.5)]
+    /// Where each of Layout's photos goes, as fractions of the picture, for each arrangement.
+    static func places(_ kind: String) -> [CGRect] {
+        func cells(_ cols: Int, _ rows: Int) -> [CGRect] {
+            var out: [CGRect] = []
+            for r in 0..<rows { for c in 0..<cols { out.append(CGRect(x: CGFloat(c) / CGFloat(cols), y: CGFloat(r) / CGFloat(rows), width: 1 / CGFloat(cols), height: 1 / CGFloat(rows))) } }
+            return out
+        }
+        switch kind {
+        case "2h": return cells(2, 1)
+        case "3": return cells(1, 3)
+        case "4": return cells(2, 2)
+        case "6": return cells(2, 3)
+        default: return cells(1, 2)
+        }
     }
+    private static let grids = ["2v", "2h", "3", "4", "6"]
 
-    /// Over the camera in Layout: the photos taken so far in their places, the next place ringed, the rest dimmed.
-    private var layoutGuide: some View {
+    /// Layout as it's being made: each photo already taken in its place, the camera live in the place being filled
+    /// (sized to that place, so what's seen there is exactly what the photo will show), and the places still to come
+    /// dark with their number. A fine white line between them, as the finished picture has.
+    private var layoutStage: some View {
         GeometryReader { g in
-            let spots = Self.places(layout)
+            let spots = Self.places(grid), gap: CGFloat = 1.5
             ZStack(alignment: .topLeading) {
+                Color.white
                 ForEach(spots.indices, id: \.self) { i in
-                    let r = spots[i], w = r.width * g.size.width, h = r.height * g.size.height
+                    let r = spots[i]
+                    let w = r.width * g.size.width - (r.maxX < 0.999 ? gap : 0), h = r.height * g.size.height - (r.maxY < 0.999 ? gap : 0)
                     Group {
-                        if i < cells.count { Image(uiImage: cells[i]).resizable().scaledToFill().frame(width: w, height: h).clipped() }
-                        else if i == cells.count { Rectangle().strokeBorder(Color.yellow, lineWidth: 3) }
-                        else { Color.black.opacity(0.45) }
+                        if i < cells.count {
+                            Image(uiImage: cells[i]).resizable().scaledToFill().frame(width: w, height: h).clipped()
+                        } else if i == cells.count {
+                            CameraPreview(session: cam.session)
+                                .gesture(MagnifyGesture().onChanged { m in cam.zoom(to: zoomStart * m.magnification, glide: true) }.onEnded { _ in zoomStart = cam.zoomFactor })
+                                .onTapGesture(count: 2) { cam.flip() }
+                        } else {
+                            Color(white: 0.09).overlay {
+                                Text("\(i + 1)").font(.system(size: 22, weight: .heavy, design: .rounded)).foregroundStyle(.white.opacity(0.22))
+                            }
+                        }
                     }
-                    .frame(width: w, height: h)
-                    .overlay(Rectangle().strokeBorder(.white.opacity(0.7), lineWidth: 1))
+                    .frame(width: w, height: h).clipped()
                     .offset(x: r.minX * g.size.width, y: r.minY * g.size.height)
                 }
+            }
+        }
+    }
+
+    /// Under the picture in Layout: undo the last photo, how far along it is, and the arrangements to choose from.
+    private var layoutBar: some View {
+        HStack(spacing: 10) {
+            if !cells.isEmpty {
+                Button { UIImpactFeedbackGenerator(style: .light).impactOccurred(); withAnimation(.snappy(duration: 0.2)) { _ = cells.removeLast() } } label: {
+                    Image(systemName: "arrow.uturn.backward").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                        .frame(width: 34, height: 34).background(.black.opacity(0.5), in: Circle())
+                }
+                .buttonStyle(.plain).accessibilityLabel("Take the last photo again")
+                Text("\(cells.count + 1) of \(layout)").font(.footnote.weight(.bold)).monospacedDigit().foregroundStyle(.white)
+                    .padding(.horizontal, 12).frame(height: 34).background(.black.opacity(0.5), in: Capsule())
+            } else {
+                // before the first photo: which arrangement
+                HStack(spacing: 4) {
+                    ForEach(Self.grids, id: \.self) { k in
+                        let on = k == grid
+                        Button {
+                            UISelectionFeedbackGenerator().selectionChanged()
+                            withAnimation(.snappy(duration: 0.2)) { grid = k; layout = Self.places(k).count }
+                        } label: {
+                            GridIcon(kind: k).foregroundStyle(on ? Color.black : Color.white)
+                                .frame(width: 36, height: 36).background(on ? Color.white : Color.clear, in: Circle())
+                        }
+                        .buttonStyle(.plain).accessibilityLabel("\(Self.places(k).count) photos").accessibilityAddTraits(on ? .isSelected : [])
+                    }
+                }
+                .padding(3).background(.black.opacity(0.45), in: Capsule())
             }
         }
     }
@@ -264,21 +320,23 @@ struct StoryCamera: View {
     /// A photo from the shutter: the story's picture, or in Layout the next of its photos (the last one finishes it).
     private func took(_ img: UIImage) {
         guard layout > 0 else { captured(img, nil); return }
-        cells.append(img)
+        withAnimation(.snappy(duration: 0.2)) { cells.append(img) }
         guard cells.count >= layout else { return }
-        let out = Self.collage(cells, layout)
+        let out = Self.collage(cells, grid)
         cells = []
         captured(out, nil)
     }
 
-    /// Layout's photos as one 9:16 picture, each filling its place from its middle.
-    static func collage(_ shots: [UIImage], _ n: Int) -> UIImage {
-        let size = CGSize(width: 1080, height: 1920), spots = places(n)
+    /// Layout's photos as one 9:16 picture, each filling its place from its middle, a fine white line between.
+    static func collage(_ shots: [UIImage], _ kind: String) -> UIImage {
+        let size = CGSize(width: 1080, height: 1920), spots = places(kind), gap: CGFloat = 4
         let format = UIGraphicsImageRendererFormat(); format.scale = 1
         return UIGraphicsImageRenderer(size: size, format: format).image { ctx in
-            UIColor.black.setFill(); UIRectFill(CGRect(origin: .zero, size: size))
+            UIColor.white.setFill(); UIRectFill(CGRect(origin: .zero, size: size))
             for (i, shot) in shots.prefix(spots.count).enumerated() {
-                let r = CGRect(x: spots[i].minX * size.width, y: spots[i].minY * size.height, width: spots[i].width * size.width, height: spots[i].height * size.height)
+                let f = spots[i]
+                let r = CGRect(x: f.minX * size.width, y: f.minY * size.height,
+                               width: f.width * size.width - (f.maxX < 0.999 ? gap : 0), height: f.height * size.height - (f.maxY < 0.999 ? gap : 0))
                 let k = max(r.width / max(1, shot.size.width), r.height / max(1, shot.size.height))
                 let w = shot.size.width * k, h = shot.size.height * k
                 ctx.cgContext.saveGState()
@@ -286,10 +344,6 @@ struct StoryCamera: View {
                 shot.draw(in: CGRect(x: r.midX - w / 2, y: r.midY - h / 2, width: w, height: h))
                 ctx.cgContext.restoreGState()
             }
-            // a fine white line between them
-            UIColor.white.setFill()
-            UIRectFill(CGRect(x: 0, y: size.height / 2 - 2, width: size.width, height: 4))
-            if n == 4 { UIRectFill(CGRect(x: size.width / 2 - 2, y: 0, width: 4, height: size.height)) }
         }
     }
 
@@ -582,5 +636,20 @@ struct AssetThumb: View {
                     DispatchQueue.main.async { if let i { img = i } }
                 }
             }
+    }
+}
+
+/// One of Layout's arrangements, drawn small: a tall frame with its places marked off.
+struct GridIcon: View {
+    let kind: String
+    var body: some View {
+        Canvas { ctx, size in
+            let box = CGRect(x: (size.width - 13) / 2, y: (size.height - 19) / 2, width: 13, height: 19)
+            for r in StoryCamera.places(kind) {
+                let cell = CGRect(x: box.minX + r.minX * box.width, y: box.minY + r.minY * box.height, width: r.width * box.width, height: r.height * box.height).insetBy(dx: 0.9, dy: 0.9)
+                ctx.fill(Path(roundedRect: cell, cornerRadius: 1.4), with: .foreground)
+            }
+        }
+        .frame(width: 22, height: 26)
     }
 }
