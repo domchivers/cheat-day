@@ -4,6 +4,19 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// The friends feed: posts, reactions and comments, from the same tables as the website.
+/// Time asked of the phone to finish something after the app's been left: held from when this is made until
+/// `end()`, or until the phone says time's up.
+@MainActor final class KeepAlive {
+    private var id = UIBackgroundTaskIdentifier.invalid
+    init(_ name: String) {
+        id = UIApplication.shared.beginBackgroundTask(withName: name) { [weak self] in Task { @MainActor in self?.end() } }
+    }
+    func end() {
+        guard id != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(id); id = .invalid
+    }
+}
+
 @Observable @MainActor
 final class Feed {
     static let shared = Feed()
@@ -187,12 +200,9 @@ final class Feed {
         withAnimation(.snappy) { sending = Sending(thumb: photo, state: .working, again: again) }
         // Leaving the app doesn't stop it: the phone is asked for time to finish (it gives about half a minute, enough
         // for most posts; a long video on a slow line can still be cut off, and then says so with Try again).
-        var keep = UIBackgroundTaskIdentifier.invalid
-        keep = UIApplication.shared.beginBackgroundTask(withName: "Posting") {
-            UIApplication.shared.endBackgroundTask(keep); keep = .invalid
-        }
+        let keep = KeepAlive("Posting")
         Task {
-            defer { if keep != .invalid { UIApplication.shared.endBackgroundTask(keep); keep = .invalid } }
+            defer { keep.end() }
             do {
                 try await post(row, photo: photo, video: video, filter: filter, range: range, muted: muted, crop: crop, overlay: overlay, more: more, turns: turns, placed: placed)
                 withAnimation(.snappy) { sending?.state = .done }
