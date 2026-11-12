@@ -105,6 +105,15 @@ enum Music {
     /// The song that's playing, stopped where it is and carried on from there (a story held under a finger).
     func hold(_ on: Bool) { if on { player?.pause() } else { player?.play() } }
 
+    /// The song that's playing, moved to this many seconds in: to keep it in step with a video that's been scrubbed
+    /// or has gone round to its start again.
+    func seek(_ seconds: Double) {
+        guard let player else { return }
+        let length = player.currentItem?.duration.seconds ?? 0
+        let to = length.isFinite && length > 0 ? seconds.truncatingRemainder(dividingBy: length) : seconds
+        player.seek(to: CMTime(seconds: max(0, to), preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+
     /// The song that's playing, louder or quieter (a slider being moved while it's heard).
     func volume(_ v: Float) { player?.volume = v }
     /// A post with a song has come onto the screen. Nothing if songs are off, or if the phone's already playing

@@ -22,6 +22,8 @@ struct ReelsView: View {
     // and the moment a finger on that line is holding it at
     @State private var head = Playhead()
     @State private var holding: Double?
+    @State private var lastTap = Date.distantPast
+    @State private var pausedBefore = false
     @GestureState private var pinch: CGFloat = 1
     @State private var clean = false
     @State private var talking: PostBox?
@@ -58,6 +60,11 @@ struct ReelsView: View {
         .onChange(of: current) { _, _ in paused = false; holding = nil; head.at = 0; head.length = 0; sound() }
         .onChange(of: paused) { _, _ in sound() }
         .onChange(of: muted) { _, _ in sound() }
+        .onChange(of: holding) { was, now in
+            // let go of the line: the song goes to the moment the video was left on, and both carry on from there
+            if now == nil, let at = was { SongPlayer.shared.seek(at) }
+            sound()
+        }
         .onAppear {
             // a video they opened plays with its sound, the ringer off or not
             try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
@@ -85,8 +92,15 @@ struct ReelsView: View {
     /// silenced, together with the clip's own sound (the two blended, as Instagram has them). One without a song is
     /// heard with its own sound alone.
     private func sound() {
-        if let id = current, let p = posts.first(where: { str($0["id"]) == id }), let s = Music.of(p), !paused, !muted {
-            if SongPlayer.shared.playing != "reel:" + id { SongPlayer.shared.play(s, key: "reel:" + id, loop: true, volume: Music.mix(p).song) }
+        if let id = current, let p = posts.first(where: { str($0["id"]) == id }), let s = Music.of(p), !muted {
+            // paused, or held on the line along the bottom: the song waits where it is (stopped and started again,
+            // it began from its beginning while the video carried on from the middle)
+            if SongPlayer.shared.playing != "reel:" + id {
+                guard !paused else { return }
+                SongPlayer.shared.play(s, key: "reel:" + id, loop: true, volume: Music.mix(p).song)
+                if head.at > 0.3 { SongPlayer.shared.seek(head.at) }
+            }
+            SongPlayer.shared.hold(paused || holding != nil)
         } else {
             SongPlayer.shared.stop()
             // stopping a song hands the sound back to the ringer; here a video is still to be heard
@@ -95,7 +109,7 @@ struct ReelsView: View {
         }
     }
 
-    /// Your own video, fetched and put in Photos.
+    /// The video, fetched and put in Photos.
     private func saveVideo(_ p: JSON) async {
         func say(_ text: String) async {
             withAnimation { note = text }
@@ -123,9 +137,17 @@ struct ReelsView: View {
             if on, let v = Feed.video(p) {
                 // a tall clip fills the screen; a squarer one is shown whole in the middle
                 if let a = num(dict(p["extra"])["aspect"]), a > 0.62 {
-                    LoopingVideo(url: v, paused: paused, muted: muted, scrub: holding, tick: { at, length in head.at = at; head.length = length }, volume: Music.of(p) != nil ? Music.mix(p).clip : 1).aspectRatio(a, contentMode: .fit).allowsHitTesting(false)
+                    LoopingVideo(url: v, paused: paused, muted: muted, scrub: holding, tick: { at, length in
+                        // gone round to its start: so does its song
+                        if at + 0.5 < head.at, holding == nil { SongPlayer.shared.seek(at) }
+                        head.at = at; head.length = length
+                    }, volume: Music.of(p) != nil ? Music.mix(p).clip : 1).aspectRatio(a, contentMode: .fit).allowsHitTesting(false)
                 } else {
-                    LoopingVideo(url: v, paused: paused, muted: muted, scrub: holding, tick: { at, length in head.at = at; head.length = length }, volume: Music.of(p) != nil ? Music.mix(p).clip : 1).allowsHitTesting(false)
+                    LoopingVideo(url: v, paused: paused, muted: muted, scrub: holding, tick: { at, length in
+                        // gone round to its start: so does its song
+                        if at + 0.5 < head.at, holding == nil { SongPlayer.shared.seek(at) }
+                        head.at = at; head.length = length
+                    }, volume: Music.of(p) != nil ? Music.mix(p).clip : 1).allowsHitTesting(false)
                 }
             } else if let a = num(dict(p["extra"])["aspect"]), a > 0.62 {
                 Color.clear.aspectRatio(a, contentMode: .fit).overlay { FeedPhoto(src: str(p["photo"]), fill: true) }.clipped()
@@ -136,8 +158,18 @@ struct ReelsView: View {
             .scaleEffect(on ? min(4, max(1, pinch)) : 1)
             .animation(.snappy(duration: 0.25), value: pinch == 1)
             Color.clear.contentShape(Rectangle())
-                .onTapGesture(count: 2) { like(p, rx: rx) }
-                .onTapGesture { withAnimation(.easeOut(duration: 0.15)) { paused.toggle() } }
+                .onTapGesture {
+                    let now = Date()
+                    if now.timeIntervalSince(lastTap) < 0.3 {
+                        // the second of two quick taps: a like, and the pause the first one made is taken back
+                        withAnimation(.easeOut(duration: 0.1)) { paused = pausedBefore }
+                        like(p, rx: rx)
+                        lastTap = .distantPast
+                    } else {
+                        pausedBefore = paused; lastTap = now
+                        withAnimation(.easeOut(duration: 0.12)) { paused.toggle() }
+                    }
+                }
                 .simultaneousGesture(MagnifyGesture()
                     .updating($pinch) { v, s, _ in s = v.magnification }
                     .onEnded { v in
@@ -149,7 +181,7 @@ struct ReelsView: View {
             if on {
                 // just above the comment bar; lower when that's cleared away
                 VStack { Spacer(); ReelBar(head: head, holding: $holding) }
-                    .padding(.bottom, !paused && !clean ? 82 : 30)
+                    .padding(.bottom, !paused && !clean ? 68 : 22)
             }
             if burst == id {
                 Image(systemName: "heart.fill").font(.system(size: 96)).foregroundStyle(.white).shadow(radius: 12)
@@ -172,7 +204,7 @@ struct ReelsView: View {
                 .buttonStyle(.plain).accessibilityLabel("Bring everything back")
             }
         }
-        .padding(.trailing, 14).padding(.bottom, 40)
+        .padding(.trailing, 14).padding(.bottom, 60)   // above the line, not under it
         .transition(.opacity)
     }
 
@@ -230,9 +262,9 @@ struct ReelsView: View {
                         rail("paperplane", "") { sharing = PostBox(post: p) }.accessibilityLabel("Send to a friend")
                         // the same choices the post has on the feed: yours to edit or delete, someone else's to hide or report
                         Menu {
+                            Button { Task { await saveVideo(p) } } label: { Label("Save video", systemImage: "arrow.down.to.line") }
                             if str(p["owner"]) == feed.me {
                                 Button { rewording = PostBox(post: p) } label: { Label("Edit", systemImage: "pencil") }
-                                Button { Task { await saveVideo(p) } } label: { Label("Save video", systemImage: "arrow.down.to.line") }
                                 Button(role: .destructive) { Task { await feed.delete(p) }; dismiss() } label: { Label("Delete post", systemImage: "trash") }
                             } else {
                                 Button { Profiles.shared.toggleMute(str(p["owner"])); dismiss() } label: { Label("Hide posts from \(feed.name(str(p["owner"])))", systemImage: "eye.slash") }
@@ -246,7 +278,7 @@ struct ReelsView: View {
                         rail("arrow.up.left.and.arrow.down.right", "") { withAnimation(.easeOut(duration: 0.2)) { clean = true } }.accessibilityLabel("Just the video")
                     }
                 }
-                .padding(.horizontal, 14).padding(.bottom, 12)
+                .padding(.horizontal, 14).padding(.bottom, 26)   // room for the line under it
                 HStack(spacing: 8) {
                     Button { talking = PostBox(post: p) } label: {
                         Text("Add a comment…").font(.subheadline).foregroundStyle(.white.opacity(0.6)).frame(maxWidth: .infinity, alignment: .leading)
@@ -351,7 +383,7 @@ struct ReelBar: View {
                     .onEnded { _ in holding = nil })
                 .animation(.easeOut(duration: 0.15), value: holding == nil)
             }
-            .frame(height: 22)   // a finger's worth to catch, though the line is two points
+            .frame(height: 18)   // a finger's worth to catch, though the line is two points
         }
         .padding(.horizontal, 12)
         .accessibilityLabel("How far through").accessibilityValue(clock(now) + " of " + clock(length))
