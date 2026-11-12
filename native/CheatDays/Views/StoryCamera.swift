@@ -107,18 +107,37 @@ struct StoryCamera: View {
         .padding(.top, 8)
     }
 
+    /// The phone's own lenses as a row in one dark pill, the way the Camera app shows them: the one in use bigger and
+    /// yellow with its ×, showing the exact zoom while it's between two (1.4×). Which numbers are there comes from the
+    /// phone (see CameraRig.stops): they were always .5, 1 and 2 before, whatever lenses it had.
     private var zoomButtons: some View {
-        HStack(spacing: 8) {
-            ForEach(cam.stops, id: \.self) { z in
-                let on = abs(cam.shownZoom - z) < 0.05 || (z == cam.stops.last && cam.shownZoom > z)
-                Button { withAnimation(.snappy) { cam.zoom(shown: z) }; zoomStart = cam.zoomFactor } label: {
-                    Text(on ? (z < 1 ? ".5×" : "\(Int(z))×") : (z < 1 ? ".5" : "\(Int(z))"))
-                        .font(.system(size: on ? 13 : 11, weight: .heavy)).foregroundStyle(on ? .yellow : .white)
-                        .frame(width: on ? 40 : 32, height: on ? 40 : 32).background(.black.opacity(0.45), in: Circle())
+        let stops = cam.stops
+        // the one in use: the biggest that the zoom has reached
+        let current = stops.last(where: { cam.shownZoom >= $0 - 0.04 }) ?? stops.first ?? 1
+        return HStack(spacing: 2) {
+            ForEach(stops, id: \.self) { z in
+                let on = z == current
+                Button { UISelectionFeedbackGenerator().selectionChanged(); withAnimation(.snappy) { cam.zoom(shown: z) }; zoomStart = cam.zoomFactor } label: {
+                    Text(on ? Self.zoomName(cam.shownZoom) + "×" : Self.zoomName(z))
+                        .font(.system(size: on ? 13 : 12, weight: .bold, design: .rounded)).monospacedDigit()
+                        .foregroundStyle(on ? Color.yellow : Color.white)
+                        .frame(width: on ? 42 : 34, height: on ? 42 : 34)
+                        .background(Color.black.opacity(on ? 0.55 : 0), in: Circle())
+                        .contentShape(Circle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plain).accessibilityLabel(Self.zoomName(z) + " times zoom").accessibilityAddTraits(on ? .isSelected : [])
             }
         }
+        .padding(3).background(.black.opacity(0.35), in: Capsule())
+        .opacity(stops.count > 1 ? 1 : 0)
+    }
+
+    /// A zoom as the Camera app writes it: .5, 1, 2, 1.4 (no nought before the point, no ".0").
+    private static func zoomName(_ z: CGFloat) -> String {
+        let r = (z * 10).rounded() / 10
+        if abs(r - r.rounded()) < 0.05 { return "\(Int(r.rounded()))" }
+        let t = String(format: "%.1f", Double(r))
+        return t.hasPrefix("0") ? String(t.dropFirst()) : t
     }
 
     /// Tap for a photo; hold for a video, slide up while holding to zoom in.
@@ -327,7 +346,10 @@ final class CameraRig: NSObject {
     private(set) var shownZoom: CGFloat = 1
     private(set) var zoomFactor: CGFloat = 1
     private var mainFactor: CGFloat = 1   // the device zoom factor that is "1×"
-    var stops: [CGFloat] { mainFactor > 1 && !front ? [0.5, 1, 2] : [1, 2] }
+    /// The zooms offered as buttons, from the lenses this phone has: its ultra wide (.5, or whatever it is), 1, 2
+    /// (the main camera cropped, as the Camera app offers it), then each longer lens by its own number (3, 5…).
+    /// The front camera has the one.
+    private(set) var stops: [CGFloat] = [1, 2]
 
     func start() async {
         let video = await AVCaptureDevice.requestAccess(for: .video)
@@ -352,6 +374,17 @@ final class CameraRig: NSObject {
         let main: CGFloat = dev.isVirtualDevice && dev.constituentDevices.contains(where: { $0.deviceType == .builtInUltraWideCamera })
             ? CGFloat(truncating: dev.virtualDeviceSwitchOverVideoZoomFactors.first ?? 1) : 1
         mainFactor = main
+        if dev.position == .front { stops = [1] } else {
+            var list: [CGFloat] = []
+            if main > 1 { list.append((10 / main).rounded() / 10) }   // the ultra wide: half the main camera, on most
+            list.append(1)
+            // where the phone changes to a longer lens, as so many times the main one, to the nearest half
+            let longer = dev.isVirtualDevice
+                ? dev.virtualDeviceSwitchOverVideoZoomFactors.map { (CGFloat(truncating: $0) / main * 2).rounded() / 2 }.filter { $0 > 1.4 } : []
+            if !longer.contains(where: { abs($0 - 2) < 0.3 }) { list.append(2) }
+            list.append(contentsOf: longer)
+            stops = Array(list.prefix(4))
+        }
         queue.async {
             s.beginConfiguration()
             s.sessionPreset = .high
