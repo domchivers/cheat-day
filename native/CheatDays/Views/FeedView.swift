@@ -334,6 +334,7 @@ struct FeedView: View {
     @State private var reels: ReelStart?   // a video opened full screen
     @State private var picking: String?   // the post whose reactions are showing
     @State private var burst: String?   // the post a double-tap just liked
+    @State private var deleting: PostBox?   // a post of yours, about to be deleted: asked first
     @State private var zoomed: String?   // the post whose picture two fingers have pinched bigger
     @State private var profileOf: String?
     @State private var story: StoryStart?
@@ -386,6 +387,11 @@ struct FeedView: View {
         .sheet(item: Binding(get: { recipe.map { PostBox(post: $0) } }, set: { recipe = $0?.post })) { b in PostRecipeSheet(post: b.post) }
         .sheet(item: $talking) { b in CommentsSheet(post: b.post).presentationDetents([.medium, .large]).presentationDragIndicator(.visible) }
         .sheet(item: $sharing) { b in SharePostSheet(post: b.post).presentationDetents([.medium, .large]) }
+        // deleting asks first: it was one tap in a menu, next to Edit, and there's no getting a post back
+        .alert("Delete this post?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), presenting: deleting) { b in
+            Button("Delete", role: .destructive) { Task { await feed.delete(b.post) } }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in Text("It will be gone for good, along with its likes and comments.") }
         .sheet(item: $rewording) { b in EditPostSheet(post: b.post) }
         .fullScreenCover(item: $reels) { r in ReelsView(posts: only ?? feed.posts, startAt: r.id) }
         .navigationDestination(item: $profileOf) { id in ProfileView(id: id) }
@@ -526,7 +532,7 @@ struct FeedView: View {
                     }
                     if owner == feed.me {
                         Button { rewording = PostBox(post: p) } label: { Label("Edit", systemImage: "pencil") }
-                        Button(role: .destructive) { Task { await feed.delete(p) } } label: { Label("Delete post", systemImage: "trash") }
+                        Button(role: .destructive) { deleting = PostBox(post: p) } label: { Label("Delete post", systemImage: "trash") }
                     }
                 } label: { Image(systemName: "ellipsis").foregroundStyle(.secondary).padding(10) }
             }

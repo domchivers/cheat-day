@@ -28,6 +28,7 @@ struct ReelsView: View {
     @State private var clean = false
     @State private var talking: PostBox?
     @State private var songShown: SongShown?
+    @State private var deleting: PostBox?
     @State private var slide: CGFloat = 0   // carried to the right by a finger, on the way back out
     struct SongShown: Identifiable { let song: Song; let key: String; var id: String { key } }
     @State private var sharing: PostBox?
@@ -93,6 +94,11 @@ struct ReelsView: View {
             try? AVAudioSession.sharedInstance().setCategory(.soloAmbient)
         }
         .sheet(item: $songShown) { s in SongCard(song: s.song, muted: $muted) }
+        // deleting asks first: it was one tap in a menu, next to Edit, and there's no getting a post back
+        .alert("Delete this post?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), presenting: deleting) { b in
+            Button("Delete", role: .destructive) { Task { await feed.delete(b.post) }; dismiss() }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in Text("It will be gone for good, along with its likes and comments.") }
         .sheet(item: $talking) { b in CommentsSheet(post: b.post).presentationDetents([.medium, .large]).presentationDragIndicator(.visible) }
         .sheet(item: $sharing) { b in SharePostSheet(post: b.post).presentationDetents([.medium, .large]) }
         .sheet(item: $recipe) { b in PostRecipeSheet(post: b.post) }
@@ -283,7 +289,7 @@ struct ReelsView: View {
                             Button { Task { await saveVideo(p) } } label: { Label("Save video", systemImage: "arrow.down.to.line") }
                             if str(p["owner"]) == feed.me {
                                 Button { rewording = PostBox(post: p) } label: { Label("Edit", systemImage: "pencil") }
-                                Button(role: .destructive) { Task { await feed.delete(p) }; dismiss() } label: { Label("Delete post", systemImage: "trash") }
+                                Button(role: .destructive) { deleting = PostBox(post: p) } label: { Label("Delete post", systemImage: "trash") }
                             } else {
                                 Button { Profiles.shared.toggleMute(str(p["owner"])); dismiss() } label: { Label("Hide posts from \(feed.name(str(p["owner"])))", systemImage: "eye.slash") }
                                 Button { Task { await Profiles.shared.report(str(p["owner"]), reason: "Post: \(id)") } } label: { Label("Report post", systemImage: "flag") }
