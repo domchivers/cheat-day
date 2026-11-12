@@ -475,26 +475,47 @@ final class CameraRig: NSObject {
             if (try? dev.lockForConfiguration()) != nil { dev.videoZoomFactor = main; dev.unlockForConfiguration() }
             if !s.isRunning { s.startRunning() }
         }
-        device = dev; zoomFactor = main; shownZoom = 1
+        device = dev; zoomFactor = main; shownZoom = 1; reached = main
     }
 
     func flip() { front.toggle(); UIImpactFeedbackGenerator(style: .light).impactOccurred(); configure() }
     func cycleFlash() { flash = flash == .off ? .auto : flash == .auto ? .on : .off }
 
     /// A device zoom factor, kept in the camera's range.
-    /// `glide`: from a moving finger. The camera is asked to run smoothly to the zoom wanted (and is asked again,
-    /// from wherever it's got to, as the finger moves on): set outright for every move, it went in little steps.
+    /// `glide`: from a moving finger. The zoom wanted is noted, and sixty times a second the camera is moved a third
+    /// of the way to it: a steady run that keeps up with the finger and never steps. (Asking the camera to "ramp" to
+    /// each new zoom was tried: every ask began a new ramp from rest, so a moving finger made it lurch.)
     func zoom(to factor: CGFloat, glide: Bool = false) {
         guard let d = device else { return }
-        let f = min(max(factor, d.minAvailableVideoZoomFactor), min(d.maxAvailableVideoZoomFactor, mainFactor * 10))
+        let floor = filming ? max(d.minAvailableVideoZoomFactor, lensFloor) : d.minAvailableVideoZoomFactor
+        let f = min(max(factor, floor), min(d.maxAvailableVideoZoomFactor, mainFactor * 10))
         guard abs(f - zoomFactor) > 0.001 else { return }
-        zoomFactor = f; shownZoom = f / mainFactor
-        queue.async {
-            guard (try? d.lockForConfiguration()) != nil else { return }
-            if glide { d.ramp(toVideoZoomFactor: f, withRate: 12) } else { if d.isRampingVideoZoom { d.cancelVideoZoomRamp() }; d.videoZoomFactor = f }
-            d.unlockForConfiguration()
+        zoomFactor = f
+        if !filming { shownZoom = f / mainFactor }   // nothing shows the number while filming: no need to redraw for it
+        if glide {
+            if glider == nil {
+                glider = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] _ in Task { @MainActor in self?.glideOn() } }
+            }
+        } else {
+            glider?.invalidate(); glider = nil
+            reached = f
+            queue.async { if (try? d.lockForConfiguration()) != nil { d.videoZoomFactor = f; d.unlockForConfiguration() } }
         }
     }
+    private var glider: Timer?
+    private var reached: CGFloat = 1   // where the glide has got the camera to
+    private func glideOn() {
+        guard let d = device else { glider?.invalidate(); glider = nil; return }
+        let gap = zoomFactor - reached
+        if abs(gap) < 0.003 { reached = zoomFactor; glider?.invalidate(); glider = nil } else { reached += gap * 0.34 }
+        let z = reached
+        queue.async { if (try? d.lockForConfiguration()) != nil { d.videoZoomFactor = z; d.unlockForConfiguration() } }
+    }
+    // While filming the phone is kept on the lens it started with. Left to itself it changes lens as the zoom passes
+    // certain points (to the long lens at 2 or 3 times, say), and each change is a visible jolt in the film. Zooming
+    // in on the one lens is a smooth crop; it just can't go wider than that lens while the film's running.
+    private var filming = false
+    private var lensFloor: CGFloat = 1
     func zoom(shown z: CGFloat) { zoom(to: z * mainFactor) }
 
     func takePhoto() {
@@ -506,11 +527,27 @@ final class CameraRig: NSObject {
     func startMovie() {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mov")
         if flash == .on, let d = device, d.hasTorch, (try? d.lockForConfiguration()) != nil { d.torchMode = .on; d.unlockForConfiguration() }
+        if let d = device {
+            filming = true; lensFloor = zoomFactor; reached = zoomFactor
+            if d.primaryConstituentDeviceSwitchingBehavior != .unsupported, (try? d.lockForConfiguration()) != nil {
+                d.setPrimaryConstituentDeviceSwitchingBehavior(.locked, restrictedSwitchingBehaviorConditions: [])
+                d.unlockForConfiguration()
+            }
+        }
         movies.startRecording(to: url, recordingDelegate: self)
     }
     func stopMovie() {
         if movies.isRecording { movies.stopRecording() }
         if let d = device, d.hasTorch, d.torchMode == .on, (try? d.lockForConfiguration()) != nil { d.torchMode = .off; d.unlockForConfiguration() }
+        filming = false
+        glider?.invalidate(); glider = nil
+        if let d = device {
+            if d.primaryConstituentDeviceSwitchingBehavior != .unsupported, (try? d.lockForConfiguration()) != nil {
+                d.setPrimaryConstituentDeviceSwitchingBehavior(.auto, restrictedSwitchingBehaviorConditions: [])
+                d.unlockForConfiguration()
+            }
+            shownZoom = zoomFactor / mainFactor
+        }
     }
 
     /// The newest photo or video in the library, for the corner button (only when Photos is allowed).
