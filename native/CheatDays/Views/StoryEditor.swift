@@ -108,6 +108,9 @@ struct StoryEditor: View {
     @State private var bgScale: CGFloat = 1
     @State private var bgOffset: CGSize = .zero
     @State private var bgSpin: Double = 0   // turned by two fingers, in degrees to the right
+    // the look the clip's frames are drawn through: a slider writes to it directly, without this whole screen being
+    // worked out again for each step (see LoopingVideo.box)
+    @State private var lookBox = LoopingVideo.Look()
     @State private var grab = Grab()   // what fingers have hold of on the story, and what they've done to it
     // something placed, being moved
     @State private var active: Int?
@@ -211,6 +214,7 @@ struct StoryEditor: View {
         } message: { Text("Your text, stickers and drawing will be lost.") }
         .statusBarHidden()
         .task { await prepare() }
+        .onChange(of: look, initial: true) { _, l in lookBox.name = l }
         .task { if startWriting { try? await Task.sleep(for: .milliseconds(350)); newText(); size = 40 } }
         .task {
             guard let startTool else { return }
@@ -260,7 +264,7 @@ struct StoryEditor: View {
                         ZStack {
                             if let poster { Image(uiImage: poster).resizable().scaledToFill().frame(width: f.width, height: f.height).clipped() }
                             // turned on its side, the player is laid out sideways and then turned to stand in the frame
-                            LoopingVideo(url: video, paused: false, muted: muted, filter: look, range: length > 0 && mode != .trim ? range : nil, scrub: mode == .trim ? scrub : nil)
+                            LoopingVideo(url: video, paused: false, muted: muted, filter: look, range: length > 0 && mode != .trim ? range : nil, scrub: mode == .trim ? scrub : nil, always: true, box: lookBox)
                                 .frame(width: turns % 2 == 1 ? f.height : f.width, height: turns % 2 == 1 ? f.width : f.height)
                                 .rotationEffect(.degrees(Double(turns) * 90))
                         }
@@ -268,7 +272,7 @@ struct StoryEditor: View {
                     }
                 } else {
                 if let poster { Image(uiImage: poster).resizable().scaledToFill().frame(width: cw, height: ch).clipped() }
-                LoopingVideo(url: video, paused: mode == .text, muted: muted, filter: look, range: length > 0 && mode != .trim ? range : nil, scrub: mode == .trim ? scrub : nil)
+                LoopingVideo(url: video, paused: mode == .text, muted: muted, filter: look, range: length > 0 && mode != .trim ? range : nil, scrub: mode == .trim ? scrub : nil, always: true, box: lookBox)
                 }
             } else if let shown = (comparing ? nil : preview) ?? work ?? image {
                 // the photo moves on its own too, and tells the editor only when the finger lifts
@@ -295,12 +299,23 @@ struct StoryEditor: View {
             if snapX { Rectangle().fill(Color.yellow.opacity(0.9)).frame(width: 1.5).allowsHitTesting(false) }
             if snapY { Rectangle().fill(Color.yellow.opacity(0.9)).frame(height: 1.5).allowsHitTesting(false) }
             if active != nil {
-                Image(systemName: "trash").font(.system(size: overBin ? 24 : 20, weight: .semibold)).foregroundStyle(.white)
-                    .frame(width: overBin ? 68 : 56, height: overBin ? 68 : 56)
-                    .background(overBin ? Color.red.opacity(0.85) : Color.black.opacity(0.4), in: Circle())
-                    .overlay(Circle().stroke(.white, lineWidth: 2))
-                    .position(x: cw / 2, y: ch - 70).allowsHitTesting(false)
-                    .animation(.snappy, value: overBin)
+                // the bin: dark glass with a fine edge while something's being carried; as the thing comes over it, it
+                // swells and turns red, its lid shuts, and the thing itself draws in
+                ZStack {
+                    Circle().fill(overBin
+                        ? AnyShapeStyle(LinearGradient(colors: [Color(red: 1, green: 0.36, blue: 0.32), Color(red: 0.82, green: 0.1, blue: 0.16)], startPoint: .top, endPoint: .bottom))
+                        : AnyShapeStyle(.ultraThinMaterial))
+                    Circle().strokeBorder(.white.opacity(overBin ? 0.9 : 0.35), lineWidth: 1.5)
+                    Image(systemName: overBin ? "trash.fill" : "trash").font(.system(size: 21, weight: .semibold)).foregroundStyle(.white)
+                        .contentTransition(.symbolEffect(.replace))
+                }
+                .frame(width: 58, height: 58)
+                .scaleEffect(overBin ? 1.3 : 1)
+                .shadow(color: overBin ? Color.red.opacity(0.55) : Color.black.opacity(0.35), radius: overBin ? 18 : 8, y: 3)
+                .environment(\.colorScheme, .dark)
+                .position(x: cw / 2, y: ch - 70).allowsHitTesting(false)
+                .animation(.spring(response: 0.28, dampingFraction: 0.62), value: overBin)
+                .transition(.scale(scale: 0.5).combined(with: .opacity))
             }
             // every touch on the story while nothing else is open: which thing it's on is worked out from where it
             // landed, and the fingers are followed from there (a swipe across a picture that can't move changes the filter)
@@ -316,7 +331,7 @@ struct StoryEditor: View {
 
     /// Something placed: drawn where it is, or where the fingers holding it have taken it.
     private func placed(_ i: Int, _ cw: CGFloat, _ ch: CGFloat) -> some View {
-        PlacedItem(o: items[i], index: i, cw: cw, ch: ch, hidden: editing == i, dim: active == i && overBin, grab: grab, tap: { tapped(i) })
+        PlacedItem(o: items[i], index: i, cw: cw, ch: ch, hidden: editing == i, dim: active == i && overBin, grab: grab, lookKey: PlacedItem.lookKey(items[i], cw), tap: { tapped(i) })
     }
 
     // MARK: fingers on the story
@@ -612,15 +627,17 @@ struct StoryEditor: View {
     private var adjuster: some View {
         VStack(spacing: 8) {
             if let k = tool, let spec = StoryArt.tunes.first(where: { $0.0 == k }) {
-                let v = Int(tune[k] ?? 0)
-                Button { tune[k] = nil; settled = tune } label: {
-                    Text(k == "t" ? "\(v)°" : v > 0 ? "+\(v)" : "\(v)").font(.title3.weight(.heavy)).foregroundStyle(.white).monospacedDigit()
-                        .shadow(color: .black.opacity(0.5), radius: 4)
-                }
-                .buttonStyle(.plain).accessibilityLabel("Put \(spec.1) back")
-                Slider(value: Binding(get: { tune[k] ?? 0 }, set: { let n = $0.rounded(); tune[k] = n == 0 ? nil : n }), in: spec.3...spec.4, step: 1,
-                       onEditingChanged: { sliding = $0; if !$0 { settled = tune } })
-                    .tint(.white).padding(.horizontal, 24).accessibilityLabel(spec.1)
+                TuneSlider(name: spec.1, degrees: k == "t", lo: spec.3, hi: spec.4, value: tune[k] ?? 0,
+                           changed: { v in
+                               if video != nil {
+                                   // a clip: straight to the frames being drawn; this screen isn't told until the finger lifts
+                                   var t = tune; t[k] = v == 0 ? nil : v
+                                   lookBox.name = StoryArt.look(filter, t)
+                               } else { tune[k] = v == 0 ? nil : v }
+                           },
+                           sliding: { on in if video == nil { sliding = on } },
+                           done: { v in tune[k] = v == 0 ? nil : v; settled = tune })
+                    .id(k)
             }
             ScrollView(.horizontal) {
                 HStack(spacing: 12) {
@@ -789,6 +806,8 @@ struct StoryEditor: View {
     private func trimmer(_ width: CGFloat) -> some View {
         let total = max(length, 0.1), grip: CGFloat = 22, inner = max(1, width - 2 * grip)
         let lo = CGFloat(range.lowerBound / total), hi = CGFloat(range.upperBound / total)
+        // a round end shows the picture behind in its corners when a square handle stands right against it
+        let endL: CGFloat = lo < 0.01 ? 0 : 9, endR: CGFloat = hi > 0.99 ? 0 : 9
         return VStack(spacing: 10) {
             Text(scrub.map { "At \(clock($0))" } ?? "\(clock(range.lowerBound)) – \(clock(range.upperBound)) · \(max(1, Int(range.upperBound) - Int(range.lowerBound))) s")
                 .font(.caption.weight(.heavy)).foregroundStyle(.white).monospacedDigit()
@@ -797,7 +816,7 @@ struct StoryEditor: View {
                     ForEach(frames.indices, id: \.self) { i in Image(uiImage: frames[i]).resizable().scaledToFill().frame(width: inner / CGFloat(max(1, frames.count)), height: 52).clipped() }
                 }
                 .frame(width: inner, height: 52).background(Color(white: 0.2))
-                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .clipShape(UnevenRoundedRectangle(topLeadingRadius: endL, bottomLeadingRadius: endL, bottomTrailingRadius: endR, topTrailingRadius: endR, style: .continuous))
                 // a finger along the strip looks through the clip: it holds on that moment, and plays on from it after
                 .contentShape(Rectangle())
                 .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("strip"))
@@ -805,12 +824,12 @@ struct StoryEditor: View {
                     .onEnded { _ in scrub = nil })
                 .offset(x: grip)
                 // outside the kept part, dimmed
-                UnevenRoundedRectangle(topLeadingRadius: 9, bottomLeadingRadius: 9, bottomTrailingRadius: 0, topTrailingRadius: 0, style: .continuous)
+                UnevenRoundedRectangle(topLeadingRadius: endL, bottomLeadingRadius: endL, bottomTrailingRadius: 0, topTrailingRadius: 0, style: .continuous)
                     .fill(.black.opacity(0.6)).frame(width: inner * lo, height: 52).offset(x: grip).allowsHitTesting(false)
-                UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 0, bottomTrailingRadius: 9, topTrailingRadius: 9, style: .continuous)
+                UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 0, bottomTrailingRadius: endR, topTrailingRadius: endR, style: .continuous)
                     .fill(.black.opacity(0.6)).frame(width: inner * (1 - hi), height: 52).offset(x: grip + inner * hi).allowsHitTesting(false)
                 // a light edge round the whole clip, so where it starts and ends shows against a dark picture
-                RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(.white.opacity(0.45), lineWidth: 1)
+                UnevenRoundedRectangle(topLeadingRadius: endL, bottomLeadingRadius: endL, bottomTrailingRadius: endR, topTrailingRadius: endR, style: .continuous).stroke(.white.opacity(0.45), lineWidth: 1)
                     .frame(width: inner, height: 52).offset(x: grip).allowsHitTesting(false)
                 // the kept part's top and bottom edges, joining the two handles
                 Rectangle().fill(.white).frame(width: inner * (hi - lo) + 2, height: 4).offset(x: grip + inner * lo - 1, y: -28).allowsHitTesting(false)
@@ -869,23 +888,32 @@ struct StoryEditor: View {
             let asset = AVURLAsset(url: video)
             length = (try? await asset.load(.duration).seconds) ?? 0
             range = 0...min(length, 30)
-            let gen = AVAssetImageGenerator(asset: asset); gen.appliesPreferredTrackTransform = true; gen.maximumSize = CGSize(width: 160, height: 160)
-            // its first frame straight away, behind the player, so there's never a black screen while it loads
-            let big = AVAssetImageGenerator(asset: asset); big.appliesPreferredTrackTransform = true; big.maximumSize = CGSize(width: 1080, height: 1920)
-            if let cg = try? await big.image(at: .zero).image {
-                poster = UIImage(cgImage: cg)
+            // Its first frame straight away, behind the player, so there's never a black screen while it loads; then
+            // eight along it for the trim strip and one for the filters' little pictures. Each is asked for the way
+            // the cover picker asks (near the moment wanted, not "any frame you like"), and if none comes back the
+            // lot is asked for again a moment later: asked once, as the player was starting, they sometimes all
+            // failed, and the strip and the filters stayed blank.
+            let plain = ClipEdit()
+            if let first = await plain.still(video, at: 0, width: 1920) {
+                poster = first
                 // a clip far from the frame's shape (one filmed sideways, say) starts whole in the frame, on black,
                 // as Instagram shows it; one near enough starts filling it
                 if clipOnly, bgScale == 1, bgOffset == .zero, bgSpin == 0 {
-                    let own = CGFloat(cg.width) / CGFloat(max(cg.height, 1)), fits = min(own / ratio, ratio / own)
+                    let own = first.size.width / max(first.size.height, 1), fits = min(own / ratio, ratio / own)
                     if fits < 0.75 { bgScale = max(0.25, fits); clipCovers = false }
                 }
             }
             var got: [UIImage] = []
-            for i in 0..<8 {
-                if let cg = try? await gen.image(at: CMTime(seconds: length * Double(i) / 8, preferredTimescale: 600)).image { got.append(UIImage(cgImage: cg)) }
+            for attempt in 0..<4 {
+                if attempt > 0 { try? await Task.sleep(for: .milliseconds(700)) }
+                if Task.isCancelled { return }
+                got = []
+                for i in 0..<8 {
+                    if let f = await plain.still(video, at: min(max(0, length - 0.1), length * Double(i) / 8), width: 200) { got.append(f); frames = got }
+                }
+                if !got.isEmpty { break }
             }
-            frames = got
+            if poster == nil, let f = got.first { poster = f }
             if let first = got.first {
                 let t = await Task.detached(priority: .userInitiated) { () -> [String: UIImage] in
                     var t: [String: UIImage] = [:]; for f in StoryArt.filters { t[f] = StoryArt.filtered(first, f) }; return t
@@ -1235,5 +1263,44 @@ struct MentionPicker: View {
             .onDisappear { KeyboardDone.quiet = true }   // back in the editor, which has none
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }
+    }
+}
+
+/// One of Adjust's sliders with its number over it. The number it's at is its own while a finger's on it: each
+/// step goes straight to whatever draws the picture, and the editor around it is only told when the finger lifts.
+/// Tapping the number puts it back to nothing.
+struct TuneSlider: View {
+    let name: String
+    let degrees: Bool
+    let lo: Double
+    let hi: Double
+    let value: Double
+    var changed: (Double) -> Void
+    var sliding: (Bool) -> Void
+    var done: (Double) -> Void
+    @State private var v: Double
+    @State private var held = false
+
+    init(name: String, degrees: Bool, lo: Double, hi: Double, value: Double,
+         changed: @escaping (Double) -> Void, sliding: @escaping (Bool) -> Void, done: @escaping (Double) -> Void) {
+        self.name = name; self.degrees = degrees; self.lo = lo; self.hi = hi; self.value = value
+        self.changed = changed; self.sliding = sliding; self.done = done
+        _v = State(initialValue: value)
+    }
+
+    var body: some View {
+        let n = Int(v)
+        VStack(spacing: 8) {
+            Button { v = 0; changed(0); done(0) } label: {
+                Text(degrees ? "\(n)°" : n > 0 ? "+\(n)" : "\(n)").font(.title3.weight(.heavy)).foregroundStyle(.white).monospacedDigit()
+                    .shadow(color: .black.opacity(0.5), radius: 4)
+            }
+            .buttonStyle(.plain).accessibilityLabel("Put \(name) back")
+            Slider(value: Binding(get: { v }, set: { let r = $0.rounded(); if r != v { v = r; changed(r) } }), in: lo...hi, step: 1,
+                   onEditingChanged: { on in held = on; sliding(on); if !on { done(v) } })
+                .tint(.white).padding(.horizontal, 24).accessibilityLabel(name)
+        }
+        // put back from outside (Reset): follow it, unless a finger's on the slider
+        .onChange(of: value) { _, now in if !held { v = now } }
     }
 }

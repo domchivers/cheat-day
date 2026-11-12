@@ -195,6 +195,12 @@ struct LoopingVideo: UIViewRepresentable {
     /// A moment to hold on, in seconds: the clip stops there while a finger looks through it, and plays on from
     /// there once this is nil again.
     var scrub: Double? = nil
+    /// The editor's clip: its frames go through the look from the very start, even while the look is "Normal", so
+    /// picking the first filter doesn't mean a new player (a black blink and a stutter each time).
+    var always = false
+    /// The look, kept by whoever shows the clip and changed by them directly: a slider can then change what's
+    /// drawn without the screen around the clip being worked out again for every step, which was what stuttered.
+    var box: Look? = nil
 
     final class PlayerView: UIView {
         override static var layerClass: AnyClass { AVPlayerLayer.self }
@@ -231,7 +237,7 @@ struct LoopingVideo: UIViewRepresentable {
     }
 
     func updateUIView(_ v: PlayerView, context: Context) {
-        v.look.name = filter
+        if box == nil { v.look.name = filter }
         v.playing = !paused && scrub == nil
         if v.key != key { setUp(v) }
         v.playerLayer.player?.isMuted = muted
@@ -246,11 +252,12 @@ struct LoopingVideo: UIViewRepresentable {
             return
         }
         v.held = nil
-        if paused { v.playerLayer.player?.pause() } else { v.playerLayer.player?.play() }
+        // only told to play when it isn't: told again on every redraw, it hitched
+        if paused { v.playerLayer.player?.pause() } else if v.playerLayer.player?.rate == 0 { v.playerLayer.player?.play() }
     }
 
     // whether there's a look at all, not which: going from none to one is the only change that needs a new player
-    private var key: String { "\(url.absoluteString)|\(filter != "Normal")|\(range.map { "\($0.lowerBound)-\($0.upperBound)" } ?? "")" }
+    private var key: String { "\(url.absoluteString)|\(always || filter != "Normal")|\(range.map { "\($0.lowerBound)-\($0.upperBound)" } ?? "")" }
 
     private func setUp(_ v: PlayerView) {
         v.key = key
@@ -266,13 +273,13 @@ struct LoopingVideo: UIViewRepresentable {
         }
         let asset = AVURLAsset(url: url)
         let item = AVPlayerItem(asset: asset)
-        v.look.name = filter
-        if filter != "Normal" {
+        if box == nil { v.look.name = filter }
+        if always || filter != "Normal" {
             // Every frame goes through the look as it's shown. A phone's video is 4K, eight million dots a frame,
             // and that many through a filter sixty times a second is what made a slider stutter. For looking at
             // in the editor each frame is made small first (1280 on its longer side), a ninth of the work; the
             // video that's posted is still made from the full frames.
-            let look = v.look
+            let look = box ?? v.look
             let shrink = Shrink()
             let comp = AVMutableVideoComposition(asset: asset) { req in
                 let name = look.name, k = shrink.by
@@ -284,7 +291,7 @@ struct LoopingVideo: UIViewRepresentable {
             }
             let full = comp.renderSize
             if full.width > 0, full.height > 0 {
-                let k = min(1, 1280 / max(full.width, full.height))
+                let k = min(1, 1600 / max(full.width, full.height))
                 if k < 1 {
                     shrink.by = k
                     comp.renderSize = CGSize(width: max(2, (full.width * k / 2).rounded(.down) * 2), height: max(2, (full.height * k / 2).rounded(.down) * 2))
@@ -293,25 +300,8 @@ struct LoopingVideo: UIViewRepresentable {
             item.videoComposition = comp
         }
         if let ender = v.ender { NotificationCenter.default.removeObserver(ender); v.ender = nil }
-        if filter != "Normal" {
-            // With a look, one item, sent back to its start each time it ends. The looper plays a clip round by
-            // lining up copies of the item, and each copy has to build its own drawing of the look: those were what
-            // failed to get ready (-12784), freezing the clip a moment after a filter was picked.
-            let start = CMTime(seconds: range?.lowerBound ?? 0, preferredTimescale: 600)
-            if let r = range { item.forwardPlaybackEndTime = CMTime(seconds: r.upperBound, preferredTimescale: 600) }
-            let player = AVPlayer(playerItem: item)
-            player.isMuted = muted
-            player.actionAtItemEnd = .none
-            if range != nil { player.seek(to: start, toleranceBefore: .zero, toleranceAfter: .zero) }
-            v.looper = nil
-            v.ender = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { [weak player, weak v] _ in
-                player?.seek(to: start, toleranceBefore: .zero, toleranceAfter: .zero)
-                if v?.playing == true { player?.play() }
-            }
-            v.playerLayer.player = player
-            if !paused { player.play() }
-            return
-        }
+        // (For a while a clip with a look was one item sent back to its start, a guess at a freeze that turned out
+        // to be the simulator's alone; on a phone the looper's copies play it round without a gap.)
         let player = AVQueuePlayer()
         player.isMuted = muted
         if let r = range {

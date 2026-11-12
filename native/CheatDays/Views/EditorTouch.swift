@@ -179,6 +179,7 @@ struct PlacedItem: View {
     var hidden: Bool
     var dim: Bool
     var grab: Grab
+    var lookKey: String
     var tap: () -> Void
     // the sticker drawn as a picture at the size it's shown: scaled up as it was, it went soft and fuzzy
     @State private var sharp: UIImage?
@@ -186,7 +187,9 @@ struct PlacedItem: View {
     @Environment(\.displayScale) private var displayScale
 
     /// What it looks like and how big, for knowing when to draw it again (where it is and its turn don't matter).
-    private var lookKey: String {
+    /// Worked out by the editor when the item changes: worked out here, it was done afresh for every move of a
+    /// finger, a hundred times a second, and that alone made dragging stutter.
+    static func lookKey(_ o: JSON, _ cw: CGFloat) -> String {
         var look = o
         for k in ["x", "y", "rotation"] { look[k] = nil }
         let data = (try? JSONSerialization.data(withJSONObject: look, options: [.sortedKeys])) ?? Data()
@@ -198,7 +201,7 @@ struct PlacedItem: View {
     private func draw() -> UIImage? {
         let r = ImageRenderer(content: StoryItem(o: o).environment(\.colorScheme, .dark))
         r.proposedSize = ProposedViewSize(width: StoryArt.design, height: nil)
-        r.scale = min(9, displayScale * max(1, (num(o["scale"]) ?? 1) * cw / StoryArt.design))
+        r.scale = min(12, displayScale * max(1, (num(o["scale"]) ?? 1) * cw / StoryArt.design))
         return r.uiImage
     }
 
@@ -213,7 +216,7 @@ struct PlacedItem: View {
         if sx { x = 0.5 }; if sy { y = 0.5 }
         let deg = (num(o["rotation"]) ?? 0) + turn, quarter = (deg / 90).rounded() * 90
         let straight = abs(deg - quarter) < 4
-        return (min(1, max(0, x)), min(1, max(0, y)), min(4, max(0.3, (num(o["scale"]) ?? 1) * Double(size))), straight ? quarter : deg, sx, sy, straight)
+        return (min(1, max(0, x)), min(1, max(0, y)), min(12, max(0.2, (num(o["scale"]) ?? 1) * Double(size))), straight ? quarter : deg, sx, sy, straight)
     }
 
     var body: some View {
@@ -230,7 +233,7 @@ struct PlacedItem: View {
                     .onChange(of: g.size) { _, s in grab.sizes[index] = s }
                     .onChange(of: index) { _, i in grab.sizes[i] = g.size }
             })
-            .scaleEffect(eff)
+            .scaleEffect(eff * (dim ? 0.55 : 1))   // over the bin it draws in, about to go
             .rotationEffect(.degrees(r.rotation))
             .accessibilityElement(children: .ignore).accessibilityIdentifier("placed-" + str(o["type"])).accessibilityAddTraits(.isButton)
             .accessibilityAction { tap() }
