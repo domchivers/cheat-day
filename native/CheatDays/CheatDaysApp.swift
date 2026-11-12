@@ -46,6 +46,7 @@ struct RootView: View {
         else if ProcessInfo.processInfo.arguments.contains("-uitest-stickers") { StickersHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-honors") { HonorsHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-editor") { EditorHarness() }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-jitter") { JitterProbe() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-tabicons") { TabIconsHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-editprofile") { EditProfileHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-review") { ReviewHarness() }
