@@ -56,7 +56,8 @@ struct ProfileView: View {
                     .frame(maxWidth: .infinity).padding(.top, 44)
                 } else {
                 // a post of yours on its way up, and how it's going
-                if isMe { PostingBanner().padding(.horizontal, 14).padding(.bottom, 8) }
+                // as much room above it as below: it sat 7 points under the highlights and 26 above the tabs
+                if isMe, Feed.shared.sending != nil { PostingBanner().padding(.horizontal, 14).padding(.top, 10) }
                 tabBar
                 switch tab {
                 case 1: badges.padding(.horizontal, 16)
