@@ -306,7 +306,7 @@ struct EditPostSheet: View {
         tags = dict(post["extra"])["tags"] as? [String] ?? []
         let m = Music.mix(post); songVol = Double(m.song); clipVol = Double(m.clip)
         if ["food", "meal", "workout"].contains(kind) {
-            what = ["kind": kind, "name": post["name"] ?? "", "kcal": post["kcal"] ?? 0, "macros": post["macros"] ?? NSNull(), "payload": post["payload"] ?? [:] as JSON, "extra": dict(post["extra"])]
+            what = ["kind": kind, "name": post["name"] ?? "", "kcal": post["kcal"] ?? 0, "macros": dict(post["macros"]), "payload": post["payload"] ?? [:] as JSON, "extra": dict(post["extra"])]
         }
         if !isVideo && Feed.hasPhoto(post) { pics = PostPhotos.all(post).map { Pic(url: $0) } }
     }
@@ -363,7 +363,7 @@ struct EditPostSheet: View {
                 for k in Self.attachKeys { extra[k] = nil }
                 if let w = what {
                     change["kind"] = w["kind"] ?? "food"; change["name"] = w["name"] ?? ""; change["kcal"] = w["kcal"] ?? 0
-                    change["macros"] = w["macros"] ?? NSNull(); change["payload"] = w["payload"] ?? [:] as JSON
+                    change["macros"] = dict(w["macros"]); change["payload"] = w["payload"] ?? [:] as JSON
                     for (k, v) in dict(w["extra"]) where Self.attachKeys.contains(k) { extra[k] = v }
                 } else {
                     change["kind"] = "photo"; change["name"] = ""; change["kcal"] = 0; change["macros"] = [:] as JSON; change["payload"] = [:] as JSON

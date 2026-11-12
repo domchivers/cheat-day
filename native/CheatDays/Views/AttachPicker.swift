@@ -61,7 +61,7 @@ struct AttachPicker: View {
                     Section("Meals and recipes") { ForEach(meals.indices, id: \.self) { i in let m = meals[i]; pickRow(str(m["name"]), "\(Fmt.int(num(store.mealBasis(m)["kcalPerServing"]) ?? 0)) kcal a portion") { pick(meal(m)); dismiss() } } }
                 }
                 if !wos.isEmpty && (!search.isEmpty || shelf == 2) {
-                    Section("Workouts") { ForEach(wos.indices, id: \.self) { i in pickRow(str(wos[i]["name"]), "\(Int(num(wos[i]["minutes"]) ?? 0)) min · \(when(wos[i]["_date"]))", dot: "Workout") { pick(workout(wos[i])); dismiss() } } }
+                    Section("Workouts") { ForEach(wos.indices, id: \.self) { i in pickRow(str(wos[i]["name"]), "\(Int(num(wos[i]["minutes"]) ?? 0)) min · \(when(wos[i]["_date"]))", symbol: "dumbbell.fill") { pick(workout(wos[i])); dismiss() } } }
                 }
                 let none = search.isEmpty ? [items, meals, wos][shelf].isEmpty : (items.isEmpty && meals.isEmpty && wos.isEmpty)
                 if none {
@@ -78,10 +78,14 @@ struct AttachPicker: View {
 
     /// `dot` is what the little picture is of when that isn't the row's own name: a workout's is the dumbbell, not
     /// a plate of food guessed from "Back & Biceps".
-    private func pickRow(_ name: String, _ detail: String, dot: String? = nil, tap: @escaping () -> Void) -> some View {
+    private func pickRow(_ name: String, _ detail: String, dot: String? = nil, symbol: String? = nil, tap: @escaping () -> Void) -> some View {
         Button(action: tap) {
             HStack(spacing: 12) {
-                FoodDot(name: dot ?? name, size: 30)
+                // a workout has its own sign: looked up as a food, it got the plate every unknown food gets
+                if let symbol {
+                    Image(systemName: symbol).font(.system(size: 13, weight: .bold)).foregroundStyle(Theme.accent)
+                        .frame(width: 30, height: 30).background(Theme.accent.opacity(0.16), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                } else { FoodDot(name: dot ?? name, size: 30) }
                 VStack(alignment: .leading, spacing: 1) { Text(name).font(.subheadline.weight(.semibold)); Text(detail).font(.caption).foregroundStyle(.secondary) }
             }
         }

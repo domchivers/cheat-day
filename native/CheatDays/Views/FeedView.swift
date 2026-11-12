@@ -1677,7 +1677,9 @@ struct ComposeSheet: View {
 
     /// A finished workout as a post.
     static func workoutPost(_ w: JSON) -> JSON {
-        ["kind": "workout", "name": w["name"] ?? "", "kcal": w["kcal"] ?? 0, "macros": NSNull(),
+        // macros as an empty list, never nothing: the posts table won't take a post without them, and a workout
+        // sent with none failed with "null value in column macros"
+        ["kind": "workout", "name": w["name"] ?? "", "kcal": w["kcal"] ?? 0, "macros": [:] as JSON,
          "payload": ["minutes": w["minutes"] ?? 0, "lifts": w["lifts"] ?? [Any]()] as JSON, "extra": ["minutes": w["minutes"] ?? 0] as JSON]
     }
 
@@ -1692,6 +1694,8 @@ struct ComposeSheet: View {
             return
         }
         let face = movie != nil ? poster : shots.first?.out
+        for k in ["macros", "payload", "extra"] where row[k] == nil || row[k] is NSNull { row[k] = [:] as JSON }
+        if row["kcal"] == nil || row["kcal"] is NSNull { row["kcal"] = 0 }
         row["caption"] = caption.trimmingCharacters(in: .whitespacesAndNewlines)
         if let song {
             var x = dict(row["extra"]); x["song"] = ["id": song.id, "title": song.title] as JSON
