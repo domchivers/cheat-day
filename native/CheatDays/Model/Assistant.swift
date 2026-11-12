@@ -895,6 +895,11 @@ enum Assistant {
                 let og = num(o["grams"]) ?? 1, per = (num(o["protein_g"]) ?? 0) / og
                 let theirs = figures(str(o["name"]))
                 if !mine.isEmpty, !theirs.isEmpty, mine.isDisjoint(with: theirs) { return false }
+                // Named as that very batch of theirs ("…, 557 g batch"): theirs whatever its protein now says.
+                // "Need the chicken in this too" had the food table's plain chicken put in its place (241 kcal
+                // for 246 g, where their batch makes it 399), and at 21 g protein per 100 g it no longer looked alike.
+                let own = ["them", "label"].contains(str(o["numbers_from"])) || ["them", "label"].contains(str(o["src"]))
+                if own, !mine.isEmpty, mine == theirs, soundsLike(str(o["name"]), words) { return true }
                 return abs(pr / g - per) <= 0.03 * per && soundsLike(str(o["name"]), words)
             }
             guard let o = found, let og = pos(o["grams"]) else { return p }
@@ -902,6 +907,9 @@ enum Assistant {
             if kcal == num(p["kcal"]) && str(o["name"]) == str(p["name"]) { return p }
             var x = p
             x["name"] = o["name"]; x["kcal"] = kcal
+            let per = (num(o["protein_g"]) ?? 0) / og
+            if abs(pr / g - per) > 0.03 * per { x["protein_g"] = per * g }
+            x["flagged"] = nil   // what was flagged was the table's number, now gone
             x["carbs_g"] = (num(o["carbs_g"]) ?? 0) * f; x["fat_g"] = (num(o["fat_g"]) ?? 0) * f
             for k in ["src", "match", "numbers_from"] { if let v = o[k] { x[k] = v } }
             changed = true
@@ -912,7 +920,7 @@ enum Assistant {
         var out = e
         out["parts"] = parts
         out["kcal_total"] = sum("kcal").rounded(); out["protein_g"] = sum("protein_g"); out["carbs_g"] = sum("carbs_g"); out["fat_g"] = sum("fat_g")
-        return out
+        return sane(out)   // the warnings worked out again: one about a number that's been put right mustn't stay
     }
 
     /// The numbers in a food's name ("Boiled chicken breast, 557 g batch": 557), two figures or more.

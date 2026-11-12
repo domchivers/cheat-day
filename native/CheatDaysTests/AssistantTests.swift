@@ -208,6 +208,22 @@ final class AssistantTests: XCTestCase {
         XCTAssertEqual(num(parts[1]["kcal"]) ?? 0, 141, accuracy: 1, "today's is today's: 397 x 87 / 245")
     }
 
+    /// "Need the chicken in this too": the batch chicken came back as the food table's plain chicken, 241 kcal for
+    /// 246 g with a warning, where their batch makes it 399.
+    func testTheirBatchByNameKeepsItsNumbers() {
+        let first: JSON = ["parts": [["name": "Boiled chicken breast, 557 g batch", "grams": 245, "kcal": 397, "protein_g": 78, "carbs_g": 0, "fat_g": 9, "numbers_from": "them", "src": "them"] as JSON]]
+        let salad: JSON = ["kcal_total": 333, "parts": [
+            ["name": "Boiled chicken breast, 557 g batch", "grams": 246, "kcal": 241, "protein_g": 53, "carbs_g": 0, "fat_g": 4, "src": "au", "flagged": true] as JSON,
+            ["name": "Cucumber, raw", "grams": 150, "kcal": 17, "protein_g": 1, "carbs_g": 3, "fat_g": 0, "src": "au"] as JSON]]
+        let out = Assistant.steady(salad, earlier: [first]), parts = list(out["parts"])
+        XCTAssertEqual(num(parts[0]["kcal"]) ?? 0, 399, accuracy: 1)
+        XCTAssertEqual(num(parts[0]["protein_g"]) ?? 0, 78.3, accuracy: 0.2)
+        XCTAssertNil(parts[0]["flagged"])
+        XCTAssertEqual(str(parts[0]["src"]), "them")
+        XCTAssertEqual(num(out["kcal_total"]) ?? 0, 416, accuracy: 1)
+        XCTAssertTrue((out["flags"] as? [String] ?? []).isEmpty, "nothing left to warn about")
+    }
+
     func testAMealOnlyMentionedIsntAskedFor() {
         XCTAssertNil(Meals.named(in: "Also I have 159g of the boiled chicken from yesterday that I had for lunch today left over. How much of that plus the new one now to get 80g protein?"))
         XCTAssertNil(Meals.named(in: "320g cabbage\n96g carrot\n15g of that mayo I use every lunch\n\nThat's my coleslaw, work out the calories and will have half of it"))
