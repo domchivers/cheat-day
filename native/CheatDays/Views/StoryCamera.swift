@@ -21,6 +21,11 @@ struct StoryCamera: View {
     @State private var recents = false
     @State private var picked: PhotosPickerItem?
     @State private var library = false
+    // camera modes, down the left as Instagram has them. Layout: 2 or 4 photos taken one after another and made
+    // into one picture (0 when off). Hands-free: a tap starts filming and a tap stops it, no holding.
+    @State private var layout = 0
+    @State private var cells: [UIImage] = []
+    @State private var handsFree = false
 
     var body: some View {
         ZStack {
@@ -39,6 +44,8 @@ struct StoryCamera: View {
                             .gesture(MagnifyGesture().onChanged { m in cam.zoom(to: zoomStart * m.magnification) }.onEnded { _ in zoomStart = cam.zoomFactor })
                             .onTapGesture(count: 2) { cam.flip() }
                     }
+                    if layout > 0 { layoutGuide.allowsHitTesting(false) }
+                    if !recording && !cam.denied { modes }
                     if recording {
                         Text(String(format: "0:%02d", Int(elapsed))).font(.subheadline.weight(.heavy)).foregroundStyle(.white)
                             .padding(.horizontal, 10).padding(.vertical, 4).background(Color.red, in: RoundedRectangle(cornerRadius: 8))
@@ -49,6 +56,11 @@ struct StoryCamera: View {
                     VStack(spacing: 18) {
                         Spacer()
                         if !recording && !cam.denied { zoomButtons }
+                        if !recording, layout > 0 || handsFree {
+                            Text(layout > 0 ? "Photo \(cells.count + 1) of \(layout)" : "Tap to start, tap to stop")
+                                .font(.footnote.weight(.bold)).foregroundStyle(.white).padding(.horizontal, 12).padding(.vertical, 6)
+                                .background(.black.opacity(0.5), in: Capsule())
+                        }
                         shutter
                     }
                     .padding(.bottom, 22)
@@ -70,7 +82,7 @@ struct StoryCamera: View {
         .photosPicker(isPresented: $library, selection: $picked, matching: .any(of: [.images, .videos]))
         .onChange(of: picked) { _, item in Task { await load(item) } }
         .onChange(of: cam.finishedMovie) { _, url in if let url { captured(nil, url) } }
-        .onChange(of: cam.photo) { _, img in if let img { captured(img, nil) } }
+        .onChange(of: cam.photo) { _, img in if let img { took(img) } }
     }
 
     private var controlsTop: some View {
@@ -127,6 +139,7 @@ struct StoryCamera: View {
             .onChanged { v in
                 if !pressing {
                     pressing = true
+                    guard !handsFree, layout == 0 else { return }   // no holding to film in those: a tap does it all
                     let at = Date(); started = at
                     // held a moment: it's a video
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
@@ -140,10 +153,103 @@ struct StoryCamera: View {
             }
             .onEnded { _ in
                 pressing = false
+                if handsFree && !recording && !cam.denied {
+                    // hands-free: this tap starts it; the next one (below) stops it
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    let at = Date(); started = at
+                    cam.startMovie(); recording = true; elapsed = 0; zoomStart = cam.zoomFactor
+                    tick(at)
+                    return
+                }
                 if recording { cam.stopMovie(); recording = false }
                 else if !cam.denied { UIImpactFeedbackGenerator(style: .light).impactOccurred(); cam.takePhoto() }
             })
         .accessibilityLabel("Shutter").accessibilityHint("Tap for a photo, hold to film")
+    }
+
+    // MARK: modes
+
+    private var modes: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            modeButton("square.grid.2x2", layout == 0 ? "Layout" : "Layout · \(layout)", on: layout > 0) {
+                layout = layout == 0 ? 2 : layout == 2 ? 4 : 0
+                cells = []; if layout > 0 { handsFree = false }
+            }
+            modeButton("record.circle", "Hands-free", on: handsFree) {
+                handsFree.toggle(); if handsFree { layout = 0; cells = [] }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading).padding(.leading, 10)
+    }
+
+    private func modeButton(_ symbol: String, _ name: String, on: Bool, _ tap: @escaping () -> Void) -> some View {
+        Button { UISelectionFeedbackGenerator().selectionChanged(); withAnimation(.snappy(duration: 0.2)) { tap() } } label: {
+            HStack(spacing: 8) {
+                Image(systemName: symbol).font(.system(size: 18, weight: .semibold)).foregroundStyle(on ? .black : .white)
+                    .frame(width: 40, height: 40).background(on ? Color.yellow : Color.black.opacity(0.45), in: Circle())
+                Text(name).font(.caption.weight(.bold)).foregroundStyle(.white).shadow(color: .black.opacity(0.6), radius: 3)
+            }
+        }
+        .buttonStyle(.plain).accessibilityLabel(name).accessibilityAddTraits(on ? .isSelected : [])
+    }
+
+    /// Where each of Layout's photos goes, as fractions of the picture: two, one over the other; four, two by two.
+    private static func places(_ n: Int) -> [CGRect] {
+        n == 2 ? [CGRect(x: 0, y: 0, width: 1, height: 0.5), CGRect(x: 0, y: 0.5, width: 1, height: 0.5)]
+               : [CGRect(x: 0, y: 0, width: 0.5, height: 0.5), CGRect(x: 0.5, y: 0, width: 0.5, height: 0.5),
+                  CGRect(x: 0, y: 0.5, width: 0.5, height: 0.5), CGRect(x: 0.5, y: 0.5, width: 0.5, height: 0.5)]
+    }
+
+    /// Over the camera in Layout: the photos taken so far in their places, the next place ringed, the rest dimmed.
+    private var layoutGuide: some View {
+        GeometryReader { g in
+            let spots = Self.places(layout)
+            ZStack(alignment: .topLeading) {
+                ForEach(spots.indices, id: \.self) { i in
+                    let r = spots[i], w = r.width * g.size.width, h = r.height * g.size.height
+                    Group {
+                        if i < cells.count { Image(uiImage: cells[i]).resizable().scaledToFill().frame(width: w, height: h).clipped() }
+                        else if i == cells.count { Rectangle().strokeBorder(Color.yellow, lineWidth: 3) }
+                        else { Color.black.opacity(0.45) }
+                    }
+                    .frame(width: w, height: h)
+                    .overlay(Rectangle().strokeBorder(.white.opacity(0.7), lineWidth: 1))
+                    .offset(x: r.minX * g.size.width, y: r.minY * g.size.height)
+                }
+            }
+        }
+    }
+
+    /// A photo from the shutter: the story's picture, or in Layout the next of its photos (the last one finishes it).
+    private func took(_ img: UIImage) {
+        guard layout > 0 else { captured(img, nil); return }
+        cells.append(img)
+        guard cells.count >= layout else { return }
+        let out = Self.collage(cells, layout)
+        cells = []
+        captured(out, nil)
+    }
+
+    /// Layout's photos as one 9:16 picture, each filling its place from its middle.
+    static func collage(_ shots: [UIImage], _ n: Int) -> UIImage {
+        let size = CGSize(width: 1080, height: 1920), spots = places(n)
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1
+        return UIGraphicsImageRenderer(size: size, format: format).image { ctx in
+            UIColor.black.setFill(); UIRectFill(CGRect(origin: .zero, size: size))
+            for (i, shot) in shots.prefix(spots.count).enumerated() {
+                let r = CGRect(x: spots[i].minX * size.width, y: spots[i].minY * size.height, width: spots[i].width * size.width, height: spots[i].height * size.height)
+                let k = max(r.width / max(1, shot.size.width), r.height / max(1, shot.size.height))
+                let w = shot.size.width * k, h = shot.size.height * k
+                ctx.cgContext.saveGState()
+                ctx.cgContext.clip(to: r)
+                shot.draw(in: CGRect(x: r.midX - w / 2, y: r.midY - h / 2, width: w, height: h))
+                ctx.cgContext.restoreGState()
+            }
+            // a fine white line between them
+            UIColor.white.setFill()
+            UIRectFill(CGRect(x: 0, y: size.height / 2 - 2, width: size.width, height: 4))
+            if n == 4 { UIRectFill(CGRect(x: size.width / 2 - 2, y: 0, width: 4, height: size.height)) }
+        }
     }
 
     private func tick(_ at: Date) {

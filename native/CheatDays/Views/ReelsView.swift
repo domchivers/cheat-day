@@ -1,4 +1,5 @@
 import AVFoundation
+import Photos
 import SwiftUI
 
 /// Which video the viewer opens on.
@@ -27,6 +28,7 @@ struct ReelsView: View {
     @State private var sharing: PostBox?
     @State private var recipe: PostBox?
     @State private var rewording: PostBox?   // your own video, being edited
+    @State private var note: String?   // "Saved to Photos", for a moment
     @State private var burst: String?
     private var feed: Feed { Feed.shared }
 
@@ -71,6 +73,12 @@ struct ReelsView: View {
         .sheet(item: $sharing) { b in SharePostSheet(post: b.post).presentationDetents([.medium, .large]) }
         .sheet(item: $recipe) { b in PostRecipeSheet(post: b.post) }
         .sheet(item: $rewording) { b in EditPostSheet(post: b.post) }
+        .overlay(alignment: .top) {
+            if let note {
+                Text(note).font(.footnote.weight(.bold)).foregroundStyle(.white).padding(.horizontal, 14).padding(.vertical, 9)
+                    .background(.black.opacity(0.7), in: Capsule()).padding(.top, 70).transition(.opacity)
+            }
+        }
     }
 
     /// The video showing has a song: it plays, by itself, for as long as the video's showing and not paused or
@@ -85,6 +93,24 @@ struct ReelsView: View {
             try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
             try? AVAudioSession.sharedInstance().setActive(true)
         }
+    }
+
+    /// Your own video, fetched and put in Photos.
+    private func saveVideo(_ p: JSON) async {
+        func say(_ text: String) async {
+            withAnimation { note = text }
+            try? await Task.sleep(for: .seconds(2.2))
+            if note == text { withAnimation { note = nil } }
+        }
+        let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+        guard status == .authorized || status == .limited else { await say("Allow Photos in Settings to save"); return }
+        withAnimation { note = "Saving…" }
+        guard let remote = Feed.video(p), let (tmp, _) = try? await URLSession.shared.download(from: remote) else { await say("Couldn't save it"); return }
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
+        guard (try? FileManager.default.moveItem(at: tmp, to: file)) != nil else { await say("Couldn't save it"); return }
+        let saved = (try? await PHPhotoLibrary.shared().performChanges { PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: file) }) != nil
+        try? FileManager.default.removeItem(at: file)
+        await say(saved ? "Saved to Photos" : "Couldn't save it")
     }
 
     private func page(_ p: JSON) -> some View {
@@ -206,6 +232,7 @@ struct ReelsView: View {
                         Menu {
                             if str(p["owner"]) == feed.me {
                                 Button { rewording = PostBox(post: p) } label: { Label("Edit", systemImage: "pencil") }
+                                Button { Task { await saveVideo(p) } } label: { Label("Save video", systemImage: "arrow.down.to.line") }
                                 Button(role: .destructive) { Task { await feed.delete(p) }; dismiss() } label: { Label("Delete post", systemImage: "trash") }
                             } else {
                                 Button { Profiles.shared.toggleMute(str(p["owner"])); dismiss() } label: { Label("Hide posts from \(feed.name(str(p["owner"])))", systemImage: "eye.slash") }

@@ -117,6 +117,17 @@ struct StoryEditor: View {
     // goes with the story as one of the things on it, to be played when the story's watched
     @State private var storySong: Song?
     @State private var choosingSong = false
+    @State private var songSeed = Int.random(in: 0..<10_000)
+    /// A song put forward for a story that has none: by what's on it (a workout sticker, something lively from Gym;
+    /// food or its numbers, something easy from Chill), else by the hour (bright in the morning and through the
+    /// day, easy at night). Which one of that kind changes each time the editor's opened.
+    private var suggested: Song? {
+        guard !forPost, storySong == nil, image != nil || video != nil else { return nil }
+        let kinds = Set(items.map { str($0["type"]) }), hour = Calendar.current.component(.hour, from: Date())
+        let mood = kinds.contains("workout") ? "Gym" : (kinds.contains("food") || kinds.contains("macros")) ? "Chill" : hour >= 20 || hour < 6 ? "Chill" : "Upbeat"
+        let pool = Music.all.filter { $0.mood == mood }
+        return pool.isEmpty ? nil : pool[songSeed % pool.count]
+    }
     @State private var grab = Grab()   // what fingers have hold of on the story, and what they've done to it
     // something placed, being moved
     @State private var active: Int?
@@ -491,6 +502,7 @@ struct StoryEditor: View {
                     tool(muted ? "speaker.slash.fill" : "speaker.wave.2.fill", "Sound", muted ? "Sound off" : "Sound on") { muted.toggle(); flash(muted ? "Sound off" : "Sound on") }
                     tool("scissors", "Trim", "Trim") { mode = .trim }
                 }
+                if !forPost && (image != nil || video != nil) { tool("arrow.down.to.line", "Save", "Save to Photos") { Task { await save() } } }
             }
             .padding(.horizontal, 8)
         }
@@ -553,10 +565,28 @@ struct StoryEditor: View {
                     .foregroundStyle(.white).padding(.leading, 11).padding(.trailing, 8).frame(height: 34)
                     .background(.black.opacity(0.45), in: Capsule()).frame(maxWidth: 200)
                     Spacer(minLength: 6)
+                } else if let idea = suggested {
+                    // a song put forward for this story: one tap takes it
+                    Button {
+                        storySong = idea
+                        SongPlayer.shared.play(idea, key: "story-edit", loop: true)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "music.note").font(.system(size: 11, weight: .bold))
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(idea.title).font(.caption.weight(.bold)).lineLimit(1)
+                                Text("Suggested song").font(.system(size: 9, weight: .semibold)).opacity(0.75)
+                            }
+                            Image(systemName: "plus").font(.system(size: 11, weight: .heavy))
+                        }
+                        .foregroundStyle(.white).padding(.horizontal, 11).frame(height: 34).background(.black.opacity(0.45), in: Capsule()).frame(maxWidth: 200)
+                    }
+                    .buttonStyle(.plain).accessibilityLabel("Add the suggested song, " + idea.title)
+                    Spacer(minLength: 6)
                 }
-                if image != nil || bgScale > 1.01 || bgOffset != .zero || bgSpin != 0 || !items.isEmpty || !strokes.isEmpty {
+                if image != nil || video != nil || bgScale > 1.01 || bgOffset != .zero || bgSpin != 0 || !items.isEmpty || !strokes.isEmpty {
                 Menu {
-                    if image != nil { Button { Task { await save() } } label: { Label("Save to Photos", systemImage: "square.and.arrow.down") } }
+                    if image != nil || video != nil { Button { Task { await save() } } label: { Label("Save to Photos", systemImage: "square.and.arrow.down") } }
                     if bgScale > 1.01 || bgOffset != .zero || bgSpin != 0 { Button { withAnimation { bgScale = 1; bgOffset = .zero; bgSpin = 0; clipMove = .zero; clipCovers = true } } label: { Label(video == nil ? "Reset the photo" : "Reset the video", systemImage: "arrow.counterclockwise") } }
                     if !items.isEmpty || !strokes.isEmpty { Button(role: .destructive) { remember(); withAnimation { items = []; strokes = [] } } label: { Label("Clear everything", systemImage: "trash") } }
                 } label: { roundLabel("ellipsis") }
@@ -1084,9 +1114,22 @@ struct StoryEditor: View {
 
     /// The finished story, everything on it, saved as a photo.
     private func save() async {
-        guard let out = baked() else { return }
         let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
         guard status == .authorized || status == .limited else { flash("Allow Photos in Settings to save"); return }
+        if let video {
+            // a video: made as it would be posted (the part kept, the look, its sound on or off) with what's written
+            // and drawn laid over it, then handed to Photos
+            flash("Saving…")
+            let top = overlayPicture()
+            guard let (data, _) = try? await Stories.compress(video, filter: look, range: length > 0 ? range : nil, muted: muted, overlay: top) else { flash("Couldn't save it"); return }
+            let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
+            guard (try? data.write(to: file)) != nil else { flash("Couldn't save it"); return }
+            let saved = (try? await PHPhotoLibrary.shared().performChanges { PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: file) }) != nil
+            try? FileManager.default.removeItem(at: file)
+            flash(saved ? "Saved to Photos" : "Couldn't save it")
+            return
+        }
+        guard let out = baked() else { return }
         UIImageWriteToSavedPhotosAlbum(out, nil, nil, nil)
         flash("Saved to Photos")
     }
