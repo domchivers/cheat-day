@@ -781,21 +781,15 @@ struct FeedView: View {
                 .transition(.scale(scale: 0.6, anchor: .bottomLeading).combined(with: .opacity))
             }
             HStack(spacing: 18) {
-                Group {
-                    if let other, !hearted { Text(other).font(.system(size: 22)) }
-                    else {
-                        Image(systemName: hearted ? "heart.fill" : "heart").foregroundStyle(hearted ? Color(red: 1, green: 0.3, blue: 0.4) : .primary)
-                            .symbolEffect(.bounce, value: hearted)
-                            .scaleEffect(hearted ? 1.08 : 1).animation(.spring(response: 0.28, dampingFraction: 0.45), value: hearted)
-                    }
-                }
+                Image(systemName: hearted ? "heart.fill" : "heart").foregroundStyle(hearted ? Color(red: 1, green: 0.3, blue: 0.4) : .primary)
+                    .symbolEffect(.bounce, value: hearted)
+                    .scaleEffect(hearted ? 1.08 : 1).animation(.spring(response: 0.28, dampingFraction: 0.45), value: hearted)
                 .font(.system(size: 23, weight: .medium))
                 .contentShape(Rectangle())
-                .onTapGesture { if picking == id { withAnimation(.snappy) { picking = nil } } else { Task { await feed.toggle(p, (hearted ? nil : other) ?? "❤️") } } }
-                .onLongPressGesture(minimumDuration: 0.3) { withAnimation(.snappy) { picking = picking == id ? nil : id } }
+                // a like, on or off. No row of other emoji here: those are for answering a story
+                .onTapGesture { Task { await feed.toggle(p, "❤️") } }
                 .sensoryFeedback(.selection, trigger: hearted)
                 .accessibilityLabel(hearted ? "Unlike" : "Like").accessibilityAddTraits(.isButton)
-                .accessibilityAction(named: "More reactions") { picking = id }
                 // how many, beside each, as Instagram shows them (none shown for none)
                 if likes > 0 { Text("\(likes)").font(.subheadline.weight(.semibold)).monospacedDigit().padding(.leading, -12).accessibilityLabel("\(likes) likes") }
                 Button { talking = PostBox(post: p) } label: {
@@ -836,13 +830,10 @@ struct FeedView: View {
         for r in rx { let u = str(r["user_id"]); if !people.contains(u) { people.append(u) } }
         let first = people.first { $0 != feed.me } ?? people[0]
         let others = people.count - 1
-        var emojis: [String] = []
-        for r in rx { let e = str(r["emoji"]); if !emojis.contains(e) { emojis.append(e) } }
         return HStack(spacing: 6) {
             HStack(spacing: -7) { ForEach(people.prefix(3), id: \.self) { u in avatar(u, size: 20).overlay(Circle().stroke(Theme.bg, lineWidth: 2)) } }
             (Text("Liked by ") + Text(feed.name(first)).bold() + Text(others > 0 ? " and " : "") + Text(others > 0 ? "\(others) other\(others == 1 ? "" : "s")" : "").bold())
                 .font(.subheadline).lineLimit(1)
-            Text(emojis.prefix(4).joined()).font(.caption)
         }
     }
 

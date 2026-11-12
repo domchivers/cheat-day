@@ -334,6 +334,11 @@ struct StoryView: View {
         .buttonStyle(.plain).accessibilityLabel("Send to a friend")
     }
 
+    /// A story as a message carries it: which one, whose, and its picture.
+    static func card(_ st: JSON) -> JSON {
+        ["story": str(st["id"]), "owner": str(st["owner"]), "kind": str(st["kind"]), "media": str(st["media"])]
+    }
+
     private func isLiked(_ s: Slide) -> Bool {
         switch s {
         case .snap(let st): return likedSnaps.contains(str(st["id"]))
@@ -347,7 +352,12 @@ struct StoryView: View {
         switch s {
         case .snap(let st):
             likedSnaps.insert(str(st["id"]))
-            Task { await Stories.shared.react(st, e) }
+            // on the story's own record (its Seen by list), and to its owner as a message with the story on it
+            Task {
+                await Stories.shared.react(st, e)
+                var payload = Self.card(st); payload["reaction"] = e
+                await Messages.shared.send(to: who, text: "Reacted \(e) to your story", kind: "story", payload: payload)
+            }
         case .post(let p):
             let has = Feed.shared.reactions.contains { str($0["post_id"]) == str(p["id"]) && str($0["user_id"]) == Feed.shared.me && str($0["emoji"]) == e }
             // the heart tapped on a post already liked takes the like off, with nothing to show for it
@@ -365,7 +375,14 @@ struct StoryView: View {
         let t = reply.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return }
         reply = ""; typing = false; sent = true
-        Task { await Messages.shared.send(to: who, text: t) }
+        // words written under a story go with the story they're about
+        let showing = slides.indices.contains(slide) ? slides[slide] : nil
+        Task {
+            if case .snap(let st)? = showing {
+                var payload = Self.card(st); payload["reply"] = t
+                await Messages.shared.send(to: who, text: t, kind: "story", payload: payload)
+            } else { await Messages.shared.send(to: who, text: t) }
+        }
     }
 
     private func next() {

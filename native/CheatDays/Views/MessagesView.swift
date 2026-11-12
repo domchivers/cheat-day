@@ -124,14 +124,16 @@ struct ChatView: View {
     @State private var watching: PostBox?   // a story sent in the chat, opened: its owner's stories
 
     private func storyCard(_ p: JSON, live: Bool) -> some View {
-        ZStack {
+        // an answer to a story shows it smaller: the answer is the point, the story's the reminder
+        let small = !str(p["reaction"]).isEmpty || !str(p["reply"]).isEmpty
+        return ZStack {
             LinearGradient(colors: [Color(red: 0.1, green: 0.18, blue: 0.32), Color(red: 0.16, green: 0.13, blue: 0.31)], startPoint: .topLeading, endPoint: .bottomTrailing)
             if live, str(p["kind"]) != "video" { FeedPhoto(src: str(p["media"]), fill: true) }
             else { Image(systemName: live ? "play.fill" : "clock.arrow.circlepath").font(.system(size: 26, weight: .semibold)).foregroundStyle(.white.opacity(0.8)) }
         }
-        .frame(width: 150, height: 240)
+        .frame(width: small ? 110 : 150, height: small ? 176 : 240)
         .overlay(alignment: .bottomLeading) {
-            Text(live ? "\(Feed.shared.name(str(p["owner"])))'s story" : "Story no longer available")
+            Text(!live ? "Story no longer available" : str(p["owner"]) == Feed.shared.me ? "Your story" : "\(Feed.shared.name(str(p["owner"])))'s story")
                 .font(.caption.weight(.bold)).foregroundStyle(.white).shadow(color: .black.opacity(0.6), radius: 3).padding(10)
         }
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
@@ -262,8 +264,22 @@ struct ChatView: View {
                 case "story":
                     // shown only while it's still up and it's one they can see; after that, just that it was sent
                     let live = Stories.shared.all.contains { str($0["id"]) == str(p["story"]) }
-                    Button { if live { watching = PostBox(post: ["id": str(p["owner"])]) } } label: { storyCard(p, live: live) }
-                        .buttonStyle(.plain).disabled(!live)
+                    let reaction = str(p["reaction"]), words = str(p["reply"])
+                    VStack(alignment: mine ? .trailing : .leading, spacing: 5) {
+                        // an answer to a story: said so above it, with the emoji or the words under it
+                        if !reaction.isEmpty || !words.isEmpty {
+                            Text(mine ? (reaction.isEmpty ? "You replied to their story" : "You reacted to their story") : (reaction.isEmpty ? "Replied to your story" : "Reacted to your story"))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Button { if live { watching = PostBox(post: ["id": str(p["owner"])]) } } label: { storyCard(p, live: live) }
+                            .buttonStyle(.plain).disabled(!live)
+                        if !reaction.isEmpty { Text(reaction).font(.system(size: 40)) }
+                        if !words.isEmpty {
+                            Text(words).font(.body).foregroundStyle(mine ? Theme.onAccent : .primary)
+                                .padding(.horizontal, 13).padding(.vertical, 9)
+                                .background(mine ? Theme.accent : Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        }
+                    }
                 case "food":
                     foodCard(m, p, mine: mine)
                 default:

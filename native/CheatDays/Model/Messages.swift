@@ -73,7 +73,7 @@ final class Messages {
             let made = (try? JSONSerialization.jsonObject(with: d)) as? [JSON] ?? []
             if open == friend { thread += made }
             recent.insert(contentsOf: made, at: 0)
-            let preview = kind == "text" ? text : kind == "photo" ? "Sent a photo" : kind == "gif" ? "Sent a GIF" : kind == "post" ? "Sent a post: \(str(payload["name"]))" : kind == "story" ? "Sent a story" : "Sent food: \(str(payload["name"]))"
+            let preview = kind == "text" ? text : kind == "photo" ? "Sent a photo" : kind == "gif" ? "Sent a GIF" : kind == "post" ? "Sent a post: \(str(payload["name"]))" : kind == "story" ? (str(payload["reaction"]).isEmpty && str(payload["reply"]).isEmpty ? "Sent a story" : text) : "Sent food: \(str(payload["name"]))"
             Task { _ = try? await api.call("/functions/v1/push", body: ["action": "notify", "to": friend, "kind": "message", "text": preview, "post": "chat:\(me)"] as JSON) }
         } catch { self.error = "Couldn't send: messages need setting up, or you're not friends." }
     }
