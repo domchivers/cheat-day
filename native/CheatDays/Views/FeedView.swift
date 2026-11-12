@@ -1097,6 +1097,11 @@ struct ComposeSheet: View {
                 Button("Discard", role: .destructive) { dismiss() }
                 Button("Keep editing", role: .cancel) {}
             }
+            // a song being listened to here stops when another screen comes up over this one (it used to play on
+            // through choosing a cover, the editor and the rest)
+            .onChange(of: choosingCover || cutting != nil || editing != nil || picking || tagging || attaching || camera || library) { _, away in
+                if away { SongPlayer.shared.stop() }
+            }
             .sheet(isPresented: $choosingCover) {
                 if let movie { CoverPicker(url: movie, edit: clip, start: poster) { at, still in clip.cover = at; if let still { poster = still } } }
             }

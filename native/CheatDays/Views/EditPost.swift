@@ -91,6 +91,9 @@ struct EditPostSheet: View {
             .sheet(isPresented: $attaching) { AttachPicker(start: shelf) { what = $0; whatChanged = true } }
             .sheet(isPresented: $choosingSong) { SongPicker { song = $0 } }
             .sheet(isPresented: $tagging) { TagPicker(picked: $tags) }
+            .onChange(of: choosingCover || cutting || editing != nil || tagging || attaching) { _, away in
+                if away { SongPlayer.shared.stop() }
+            }
             .sheet(isPresented: $choosingCover) {
                 if let local { CoverPicker(url: local, edit: clip ?? ClipEdit(cover: cover), start: poster) { at, still in cover = at; clip?.cover = at; if let still { poster = still } } }
             }
