@@ -157,6 +157,10 @@ final class Feed {
         return true
     }
 
+    /// Posts of yours changed this session, as the server gave them back: a list with its own copy of one (a
+    /// profile) swaps it in at once, before it fetches anything.
+    private(set) var changed: [String: JSON] = [:]
+
     /// Goes up each time a post of yours is changed, for a list with its own copy of it to fetch it again.
     private(set) var revision = 0
 
@@ -167,6 +171,7 @@ final class Feed {
               let rows = (try? JSONSerialization.jsonObject(with: d)) as? [JSON], let row = rows.first else { return false }
         if let c = change["caption"] as? String { edited[id] = c }
         for i in posts.indices where str(posts[i]["id"]) == id { for (k, v) in row { posts[i][k] = v } }
+        changed[id] = row
         revision += 1
         return true
     }
@@ -217,7 +222,10 @@ final class Feed {
             let (mp4, _) = try await Stories.compress(video, filter: filter, range: range, muted: muted, crop: crop, overlay: overlay, turns: turns, placed: placed)
             var x = dict(r["extra"]); x["video"] = try await api.upload(mp4, ext: "mp4", type: "video/mp4"); r["extra"] = x
         }
-        if let photo, let jpeg = Self.prepare(photo) { r["photo"] = (try? await api.uploadPhoto(jpeg)) ?? NSNull() }
+        if let photo, let jpeg = Self.prepare(photo) {
+            r["photo"] = (try? await api.uploadPhoto(jpeg)) ?? NSNull()
+            if let at = r["photo"] as? String { ImageStore.keep(photo, as: at) }
+        }
         // several photos: the first is the post's own, and all of them, in order, are listed beside it
         if !more.isEmpty, let first = r["photo"] as? String {
             var all = [first]
@@ -1811,6 +1819,10 @@ enum ImageStore {
         for b in src.utf8 { h = (h ^ UInt64(b)) &* 1099511628211 }
         return folder.appendingPathComponent(String(h, radix: 36) + ".img")
     }
+
+    /// A picture made on this phone and just uploaded, kept under its new address: whatever shows that address
+    /// has it at once, with nothing to fetch (an edited post's photo took a while to turn up on the profile).
+    static func keep(_ img: UIImage, as src: String) { if src.hasPrefix("http") { memory.setObject(img, forKey: src as NSString) } }
 
     /// Only what's in memory: for drawing straight away.
     static func cached(_ src: String) -> UIImage? { src.isEmpty ? nil : memory.object(forKey: src as NSString) }

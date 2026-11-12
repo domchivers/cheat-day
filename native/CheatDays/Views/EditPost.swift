@@ -318,13 +318,19 @@ struct EditPostSheet: View {
                         extra["video"] = try await api.upload(mp4, ext: "mp4", type: "video/mp4")
                     }
                     if let poster, let jpeg = Feed.prepare(poster) {
-                        change["photo"] = try await api.uploadPhoto(jpeg)
+                        let at = try await api.uploadPhoto(jpeg)
+                        change["photo"] = at
+                        ImageStore.keep(poster, as: at)
                         extra["aspect"] = Double(poster.size.width / max(poster.size.height, 1))
                     }
                 } else if picsChanged, !pics.isEmpty {
                     var urls: [String] = []
                     for p in pics {
-                        if let f = p.fresh, let jpeg = Feed.prepare(f) { urls.append(try await api.uploadPhoto(jpeg)) } else { urls.append(p.url) }
+                        if let f = p.fresh, let jpeg = Feed.prepare(f) {
+                            let at = try await api.uploadPhoto(jpeg)
+                            urls.append(at)
+                            ImageStore.keep(f, as: at)
+                        } else { urls.append(p.url) }
                     }
                     change["photo"] = urls[0]
                     extra["photos"] = urls.count > 1 ? urls : nil

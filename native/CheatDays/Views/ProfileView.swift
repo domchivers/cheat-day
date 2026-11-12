@@ -122,7 +122,12 @@ struct ProfileView: View {
         // a post that's just gone up shows in the grid without a pull to refresh
         .onChange(of: Feed.shared.sending?.state == .done) { _, done in if done && isMe { Task { await reload() } } }
         // a post deleted from the list of posts leaves the grid and the count at once too
-        .onChange(of: Feed.shared.revision) { _, _ in if isMe { Task { await reload() } } }
+        .onChange(of: Feed.shared.revision) { _, _ in
+            guard isMe else { return }
+            // the changed post swapped in straight away (the full fetch after it took seconds to show on the grid)
+            for i in posts.indices { if let row = Feed.shared.changed[str(posts[i]["id"])] { for (k, v) in row { posts[i][k] = v } } }
+            Task { await reload() }
+        }
         .onChange(of: Feed.shared.removed) { _, gone in withAnimation(.snappy) { posts.removeAll { gone.contains(str($0["id"])) } } }
         .sheet(isPresented: $posting, onDismiss: { Task { await reload() } }) { ComposeSheet() }
         .navigationDestination(item: $listing) { which in FollowListView(id: id, which: which) }
