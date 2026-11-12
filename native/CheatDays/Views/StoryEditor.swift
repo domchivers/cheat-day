@@ -29,6 +29,11 @@ struct StoryEditor: View {
     var startTool: String? = nil
     /// A clip's first frame, when whoever opens the editor already has it: shown at once, under the player.
     var startPoster: UIImage? = nil
+    /// A post's video: its song, and how loud the song and the video's own sound are, chosen here with the video
+    /// playing (Audio), as Instagram has it. They're the post's own, kept by whoever opened the editor.
+    var postSong: Binding<Song?>? = nil
+    var postSongVol: Binding<Double>? = nil
+    var postClipVol: Binding<Double>? = nil
     private var forPost: Bool { finish != nil || finishVideo != nil }
     /// A post's clip: its own frame to zoom and move in, and everything on it made part of the video.
     private var clipOnly: Bool { finishVideo != nil }
@@ -117,6 +122,12 @@ struct StoryEditor: View {
     // goes with the story as one of the things on it, to be played when the story's watched
     @State private var storySong: Song?
     @State private var choosingSong = false
+    @State private var mixing = false   // a post's video: the song's name and the two volumes, over the playing video
+    /// The song on it: a post's video's (kept by the post), or a story's.
+    private var song: Song? { postSong.map { $0.wrappedValue } ?? storySong }
+    private func setSong(_ s: Song?) { if let postSong { postSong.wrappedValue = s } else { storySong = s } }
+    private var songLevel: Float { Float(postSongVol?.wrappedValue ?? 1) }
+    private var clipLevel: Float { song == nil ? 1 : Float(postClipVol?.wrappedValue ?? 1) }
     @State private var songSeed = Int.random(in: 0..<10_000)
     /// A song put forward for a story that has none: by what's on it (a workout sticker, something lively from Gym;
     /// food or its numbers, something easy from Chill), else by the hour (bright in the morning and through the
@@ -246,11 +257,20 @@ struct StoryEditor: View {
         }
         .task { await prepare() }
         .sheet(isPresented: $choosingSong) {
-            SongPicker { song in
-                storySong = song
+            SongPicker { picked in
+                setSong(picked)
                 // heard while the story's made, after the list of songs has gone (which stops whatever it was playing)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { if storySong?.id == song.id { SongPlayer.shared.play(song, key: "story-edit", loop: true) } }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    guard song?.id == picked.id else { return }
+                    SongPlayer.shared.play(picked, key: "story-edit", loop: true, volume: songLevel)
+                    if postSong != nil { mixing = true }   // a post's video: straight on to how loud each is
+                }
             }
+        }
+        .sheet(isPresented: $mixing) { mixSheet }
+        .task {
+            // back in the editor with a song already on the post: heard again with the video
+            if let s = postSong?.wrappedValue { SongPlayer.shared.play(s, key: "story-edit", loop: true, volume: songLevel) }
         }
         .onDisappear { SongPlayer.shared.stop() }
         .onChange(of: look, initial: true) { _, l in lookBox.name = l }
@@ -300,7 +320,7 @@ struct StoryEditor: View {
                         ZStack {
                             if let poster { Image(uiImage: poster).resizable().scaledToFill().frame(width: f.width, height: f.height).clipped() }
                             // turned on its side, the player is laid out sideways and then turned to stand in the frame
-                            LoopingVideo(url: video, paused: false, muted: muted, filter: look, range: length > 0 && mode != .trim ? range : nil, scrub: mode == .trim ? scrub : nil, always: true, box: lookBox)
+                            LoopingVideo(url: video, paused: false, muted: muted, filter: look, range: length > 0 && mode != .trim ? range : nil, scrub: mode == .trim ? scrub : nil, always: true, box: lookBox, volume: clipLevel)
                                 .frame(width: turns % 2 == 1 ? f.height : f.width, height: turns % 2 == 1 ? f.width : f.height)
                                 .rotationEffect(.degrees(Double(turns) * 90))
                         }
@@ -308,7 +328,7 @@ struct StoryEditor: View {
                     }
                 } else {
                 if let poster { Image(uiImage: poster).resizable().scaledToFill().frame(width: cw, height: ch).clipped() }
-                LoopingVideo(url: video, paused: mode == .text, muted: muted, filter: look, range: length > 0 && mode != .trim ? range : nil, scrub: mode == .trim ? scrub : nil, always: true, box: lookBox)
+                LoopingVideo(url: video, paused: mode == .text, muted: muted, filter: look, range: length > 0 && mode != .trim ? range : nil, scrub: mode == .trim ? scrub : nil, always: true, box: lookBox, volume: clipLevel)
                 }
             } else if let shown = (comparing ? nil : preview) ?? work ?? image {
                 // the photo moves on its own too, and tells the editor only when the finger lifts
@@ -498,12 +518,37 @@ struct StoryEditor: View {
     /// Over the picture, only what leaves or undoes: the tools are in a row of their own under it.
     private var topBar: some View { topRow }
 
+    /// A post's video's sound: which song, and the song and the video's own sound each as loud as wanted, set by ear
+    /// with the video playing behind.
+    private var mixSheet: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                Image(systemName: "music.note").font(.system(size: 15, weight: .bold)).foregroundStyle(Theme.accent)
+                Text(song?.title ?? "No song").font(.headline).lineLimit(1)
+                Spacer(minLength: 8)
+                Button("Change") { mixing = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { choosingSong = true } }
+                    .font(.subheadline.weight(.semibold))
+                Button("Remove") { SongPlayer.shared.stop(); setSong(nil); mixing = false }
+                    .font(.subheadline).foregroundStyle(.secondary)
+            }
+            if let postSongVol, let postClipVol {
+                MixSliders(song: postSongVol, clip: postClipVol, hasClip: !muted)
+            }
+            if muted { Text("The video's own sound is off (Sound, in the tools).").font(.caption).foregroundStyle(.secondary) }
+        }
+        .padding(.horizontal, 20).padding(.top, 22)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .presentationDetents([.height(muted ? 170 : 190)])
+        .presentationDragIndicator(.visible)
+        .presentationBackgroundInteraction(.enabled)
+    }
+
     /// The tools, each with its name, in a row under the picture that slides sideways: as bare round icons over the
     /// picture they covered it, and nobody could tell the frame button from the filters one.
     private var toolbar: some View {
         ScrollView(.horizontal) {
             HStack(spacing: 8) {
-                if !forPost { tool("music.note", "Audio", "Audio") { choosingSong = true } }
+                if !forPost || postSong != nil { tool("music.note", "Audio", "Audio") { if postSong != nil, song != nil { mixing = true } else { choosingSong = true } } }
                 tool("textformat", "Text", "Text") { newText() }
                 tool("face.smiling", "Stickers", "Stickers") { stickers = true }
                 tool("scribble.variable", "Draw", "Draw") { mode = .draw }
@@ -560,17 +605,17 @@ struct StoryEditor: View {
                 round("xmark") { if edited { leaving = true } else { close() } }.accessibilityLabel("Back")
                 if !history.isEmpty { round("arrow.uturn.backward") { undo() }.accessibilityLabel("Undo") }
                 Spacer(minLength: 6)
-                if let song = storySong {
-                    // the song, named at the top: tap its name for another, the x to take it off
+                if let song {
+                    // the song, named at the top: tap its name for another (a post's video: for its volumes too), the x to take it off
                     HStack(spacing: 6) {
-                        Button { choosingSong = true } label: {
+                        Button { if postSong != nil { mixing = true } else { choosingSong = true } } label: {
                             HStack(spacing: 6) {
                                 Image(systemName: "music.note").font(.system(size: 11, weight: .bold))
                                 Text(song.title).font(.footnote.weight(.bold)).lineLimit(1)
                             }
                         }
                         .buttonStyle(.plain)
-                        Button { SongPlayer.shared.stop(); withAnimation(.snappy) { storySong = nil } } label: {
+                        Button { SongPlayer.shared.stop(); withAnimation(.snappy) { setSong(nil) } } label: {
                             Image(systemName: "xmark.circle.fill").font(.system(size: 15)).foregroundStyle(.white.opacity(0.8))
                         }
                         .buttonStyle(.plain).accessibilityLabel("Take the song off")

@@ -1093,10 +1093,10 @@ struct ComposeSheet: View {
                     if song == nil { songIdeas }
                     else {
                         VStack(alignment: .leading, spacing: 6) {
-                            MixSliders(song: $songVol, clip: $clipVol, hasClip: movie != nil && !clip.muted)
-                            if movie != nil && !clip.muted {
-                                Text("Press play on the song to hear it with the video, then set the two.").font(.caption).foregroundStyle(.secondary)
-                            }
+                            // a video's song is set against its own sound in the editor (Audio), with the video
+                            // playing; here just the song's own level, for a photo
+                            if movie == nil { MixSliders(song: $songVol, clip: $clipVol, hasClip: false) }
+                            else { Text("To set how loud the song and the video are, edit the video and tap Audio.").font(.caption).foregroundStyle(.secondary) }
                         }
                             .padding(.horizontal, 18).padding(.vertical, 8)
                             .overlay(alignment: .bottom) { Divider().padding(.leading, 18) }
@@ -1204,7 +1204,7 @@ struct ComposeSheet: View {
                     if movie == c.url, let at = clip.cover, e.range.map({ $0.contains(at) }) ?? true { e.cover = at }
                     clip = e; movie = c.url; shots = []; poster = nil; triedPoster = false; cutting = nil; firstPick = false
                     Task { poster = await e.still(c.url) }
-                }, startShape: clip.shape, startPoster: c.first)
+                }, startShape: clip.shape, startPoster: c.first, postSong: $song, postSongVol: $songVol, postClipVol: $clipVol)
             }
             // the story editor, in the feed's 4:5: text, stickers, drawing and filters baked into the photo
             .fullScreenCover(item: $editing) { e in
