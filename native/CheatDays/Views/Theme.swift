@@ -162,7 +162,9 @@ struct FoodDot: View {
         let t = Theme.tone(name)
         Group {
             // the AI's pick for this name once it has one (FoodIcons), the word rules until then
-            if let e = FoodIcons.shared.icon(name, hint: hint) {
+            // A workout isn't a food: asked for by that name in seven places (story slide, feed card, profile grid,
+            // Explore, the pickers), it matched nothing and got the plate every unknown food gets.
+            if let e = name == "Workout" ? "🏋️" : FoodIcons.shared.icon(name, hint: hint) {
                 // Microsoft's Fluent flat icon for it when we have one, else the phone's own emoji; no circle behind
                 if let img = UIImage(named: FoodEmoji.asset(e)) { Image(uiImage: img).resizable().scaledToFit().padding(size * 0.06) }
                 else { Text(e).font(.system(size: size * 0.78)) }
