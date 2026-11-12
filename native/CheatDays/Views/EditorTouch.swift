@@ -22,11 +22,23 @@ import UIKit
 /// deciding for itself when it had begun: a pinch would start a beat after the drag and the turn a beat after
 /// that, each arriving with a jump, and they measured against the very thing they were moving. Here it's the
 /// fingers themselves that are followed, against the story, which stays put. One finger carries; two carry, size
-/// and turn together, from the line between them. The second finger can land anywhere, not only on the thing held.
+/// and turn together. The second finger can land anywhere, not only on the thing held.
+///
+/// Two things keep it steady, both found by measuring a recording of big text shaking as it was pinched:
+/// - The thing held is sized and turned about the point between the fingers, not about its own middle. What's
+///   under the fingers stays under them. About its own middle, a text many times the screen's size, held near
+///   one end, swung that end by several points for every tenth of a degree or thousandth of a size the fingers
+///   wavered by: the farther its middle from the fingers, the worse it shook.
+/// - The fingers' spread, angle and middle are each taken as the mean of the last two readings. The two fingers
+///   are read a moment apart, which puts a small to-and-fro on all three from one reading to the next; the mean
+///   of two neighbours cancels exactly that, for about four thousandths of a second's delay.
 struct EditorTouch: UIViewRepresentable {
-    /// A finger has come down, here.
-    var began: (CGPoint) -> Void
-    /// Since then: carried this far, made this many times the size, turned this far (radians, to the right), with this many fingers down.
+    /// A finger has come down, here. The answer is the middle of whatever it has hold of (in this view's own
+    /// points), for sizing and turning it about the fingers; nil, and it's just carried.
+    var began: (CGPoint) -> CGPoint?
+    /// Since then: its middle carried this far, it made this many times the size, turned this far (radians, to the
+    /// right; a twist's first 8 degrees count for nothing, as two fingers pinching always turn a little), with
+    /// this many fingers down.
     var changed: (CGSize, CGFloat, CGFloat, Int) -> Void
     /// The last finger has lifted: whether anything was moved (if not, it was a tap), and where it began.
     var ended: (Bool, CGPoint) -> Void
@@ -41,16 +53,24 @@ struct EditorTouch: UIViewRepresentable {
     func updateUIView(_ v: Pad, context: Context) { v.began = began; v.changed = changed; v.ended = ended }
 
     final class Pad: UIView {
-        var began: ((CGPoint) -> Void)?
+        var began: ((CGPoint) -> CGPoint?)?
         var changed: ((CGSize, CGFloat, CGFloat, Int) -> Void)?
         var ended: ((Bool, CGPoint) -> Void)?
         private var down: [UITouch] = []
-        private var lastMiddle = CGPoint.zero, lastApart: CGFloat = 1, lastAngle: CGFloat = 0
-        private var move = CGSize.zero, size: CGFloat = 1, turn: CGFloat = 0
+        // the last raw reading, and the last steadied one (the mean of two raw neighbours)
+        private var rawMiddle = CGPoint.zero, rawApart: CGFloat = 1, rawAngle: CGFloat = 0, wound: CGFloat = 0
+        private var lastMiddle = CGPoint.zero, lastApart: CGFloat = 1, lastWound: CGFloat = 0
+        // what the fingers have done since they came down
+        private var size: CGFloat = 1, twist: CGFloat = 0, turn: CGFloat = 0
+        private var middle: CGPoint?            // the middle of the thing held, as it's carried, sized and turned
+        private var middleAtStart = CGPoint.zero
+        private var carried = CGSize.zero       // with nothing's middle to follow: how far the fingers have gone
         private var start = CGPoint.zero, moved = false
-        // when each finger last reported a move, and which have since the last time anything was passed on
-        private var movedAt: [ObjectIdentifier: TimeInterval] = [:]
-        private var fresh: Set<ObjectIdentifier> = []
+        private static let slack: CGFloat = 8 * .pi / 180
+
+        private var move: CGSize {
+            middle.map { CGSize(width: $0.x - middleAtStart.x, height: $0.y - middleAtStart.y) } ?? carried
+        }
 
         /// Where the fingers are now: their middle, how far apart, and the angle of the line between them.
         private func read() -> (middle: CGPoint, apart: CGFloat, angle: CGFloat) {
@@ -62,17 +82,21 @@ struct EditorTouch: UIViewRepresentable {
         }
         /// From here on, measured from where the fingers are now: a finger arriving or leaving changes their middle,
         /// and that mustn't count as a move.
-        private func rebase() { let r = read(); lastMiddle = r.middle; lastApart = r.apart; lastAngle = r.angle }
+        private func rebase() {
+            let r = read()
+            rawMiddle = r.middle; rawApart = r.apart; rawAngle = r.angle; wound = 0
+            lastMiddle = r.middle; lastApart = r.apart; lastWound = 0
+        }
 
         override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
             let first = down.isEmpty
-            for t in touches where down.count < 2 { down.append(t); movedAt[ObjectIdentifier(t)] = event?.timestamp ?? 0 }
-            fresh.removeAll()
+            for t in touches where down.count < 2 { down.append(t) }
             rebase()
             if first {
                 // two fingers at once is never a tap, however still their middle stays
-                move = .zero; size = 1; turn = 0; moved = down.count >= 2; start = lastMiddle
-                began?(start)
+                size = 1; twist = 0; turn = 0; carried = .zero; moved = down.count >= 2; start = lastMiddle
+                middle = began?(start)
+                middleAtStart = middle ?? .zero
             } else {
                 moved = true
                 changed?(move, size, turn, down.count)
@@ -81,35 +105,38 @@ struct EditorTouch: UIViewRepresentable {
 
         override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
             guard !down.isEmpty else { return }
-            // The phone reports two fingers one at a time, a few thousandths of a second apart. In a pinch they move
-            // opposite ways, so their middle, worked out afresh on each report, went up for one finger's news and
-            // back down for the other's: the thing held shook by a point or two on every frame. So with two fingers
-            // down nothing is passed on until both have reported (a finger that's simply resting, and so reports
-            // nothing, isn't waited for).
-            let now = event?.timestamp ?? ProcessInfo.processInfo.systemUptime
-            for t in touches where down.contains(t) { movedAt[ObjectIdentifier(t)] = now; fresh.insert(ObjectIdentifier(t)) }
-            if down.count >= 2 {
-                let waiting = down.prefix(2).contains { t in
-                    let id = ObjectIdentifier(t)
-                    return !fresh.contains(id) && now - (movedAt[id] ?? 0) < 0.03
-                }
-                if waiting { return }
+            let r = read(), two = down.count >= 2
+            // the angle wound on from the last reading, so a turn through north doesn't jump by a whole circle
+            var step = r.angle - rawAngle
+            if step > .pi { step -= 2 * .pi } else if step < -.pi { step += 2 * .pi }
+            let nowWound = wound + step
+            // each steadied reading is the mean of this raw one and the one before
+            let m = CGPoint(x: (r.middle.x + rawMiddle.x) / 2, y: (r.middle.y + rawMiddle.y) / 2)
+            let apart = (r.apart + rawApart) / 2, around = (nowWound + wound) / 2
+            rawMiddle = r.middle; rawApart = r.apart; rawAngle = r.angle; wound = nowWound
+
+            var grew: CGFloat = 1, turned: CGFloat = 0
+            if two {
+                grew = apart / lastApart
+                size *= grew
+                twist += around - lastWound
+                let steady = abs(twist) < Self.slack ? 0 : twist - (twist > 0 ? Self.slack : -Self.slack)
+                turned = steady - turn
+                turn = steady
             }
-            fresh.removeAll()
-            let r = read()
-            move.width += r.middle.x - lastMiddle.x; move.height += r.middle.y - lastMiddle.y
-            if down.count >= 2 {
-                size *= r.apart / lastApart
-                var d = r.angle - lastAngle
-                if d > .pi { d -= 2 * .pi } else if d < -.pi { d += 2 * .pi }
-                turn += d
+            if let c = middle {
+                // about the point between the fingers: the thing's middle swings and draws in or out round it
+                let vx = (c.x - lastMiddle.x) * grew, vy = (c.y - lastMiddle.y) * grew
+                let cs = cos(turned), sn = sin(turned)
+                middle = CGPoint(x: m.x + vx * cs - vy * sn, y: m.y + vx * sn + vy * cs)
+            } else {
+                carried.width += m.x - lastMiddle.x; carried.height += m.y - lastMiddle.y
             }
-            lastMiddle = r.middle; lastApart = r.apart; lastAngle = r.angle
+            lastMiddle = m; lastApart = apart; lastWound = around
+
             if !moved {
-                // one finger that's barely shifted is a tap. (Only its travel was looked at before, so two fingers
-                // spreading evenly about a still middle counted as a tap, and a pinch on text opened it for typing.)
-                // What it has travelled by then is kept: thrown away, the thing trailed the finger by that much.
-                guard down.count >= 2 || hypot(move.width, move.height) > 4 else { return }
+                // one finger that's barely shifted is a tap; what it has travelled by then is kept
+                guard two || hypot(r.middle.x - start.x, r.middle.y - start.y) > 4 else { return }
                 moved = true
             }
             changed?(move, size, turn, down.count)
@@ -117,9 +144,7 @@ struct EditorTouch: UIViewRepresentable {
 
         private func lifted(_ touches: Set<UITouch>) {
             down.removeAll { touches.contains($0) }
-            for t in touches { movedAt[ObjectIdentifier(t)] = nil }
-            fresh.removeAll()
-            if down.isEmpty { movedAt.removeAll(); ended?(moved, start) } else { rebase(); changed?(move, size, turn, down.count) }
+            if down.isEmpty { ended?(moved, start) } else { rebase(); changed?(move, size, turn, down.count) }
         }
         override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) { lifted(touches) }
         override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) { lifted(touches) }
@@ -281,7 +306,7 @@ struct PinchPanPad: View {
     @State private var fromOffset: CGSize = .zero
 
     var body: some View {
-        EditorTouch(began: { _ in fromScale = scale; fromOffset = offset },
+        EditorTouch(began: { _ in fromScale = scale; fromOffset = offset; return nil },
                     changed: { move, size, _, _ in
                         moving(true)
                         let s = min(range.upperBound, max(range.lowerBound, fromScale * size))

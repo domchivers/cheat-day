@@ -396,16 +396,24 @@ struct StoryEditor: View {
         return CGSize(width: shown.size.width * k, height: shown.size.height * k)
     }
 
-    private func grabBegan(_ p: CGPoint, _ cw: CGFloat, _ ch: CGFloat) {
+    /// What a finger has landed on, and (the answer) where its middle is, for it to be sized and turned about the
+    /// fingers: a thing placed, or the picture behind when that can be moved.
+    private func grabBegan(_ p: CGPoint, _ cw: CGFloat, _ ch: CGFloat) -> CGPoint? {
         grab.letGo()
-        grab.target = mode == .none ? (itemAt(p, cw, ch) ?? -1) : -1
+        let t = mode == .none ? (itemAt(p, cw, ch) ?? -1) : -1
+        grab.target = t
+        if t >= 0, items.indices.contains(t) {
+            return CGPoint(x: (num(items[t]["x"]) ?? 0.5) * Double(cw), y: (num(items[t]["y"]) ?? 0.5) * Double(ch))
+        }
+        guard bgFill(cw, ch) != nil else { return nil }
+        return CGPoint(x: cw / 2 + bgOffset.width, y: ch / 2 + bgOffset.height)
     }
 
     private func grabChanged(_ move: CGSize, _ size: CGFloat, _ turn: CGFloat, _ fingers: Int, _ cw: CGFloat, _ ch: CGFloat) {
         guard let t = grab.target else { return }
         if t >= 0, items.indices.contains(t) {
             if active != t { remember(); active = t }
-            grab.move = move; grab.size = size; grab.turn = Self.steadied(turn); grab.fingers = fingers
+            grab.move = move; grab.size = size; grab.turn = Double(turn) * 180 / Double.pi; grab.fingers = fingers
             // the lines down and across the middle, and the bin, as it comes to them
             let r = PlacedItem.resting(items[t], move: move, size: size, turn: grab.turn, fingers: fingers, cw: cw, ch: ch)
             let bin = hypot(r.x * Double(cw) - Double(cw) / 2, r.y * Double(ch) - Double(ch - 70)) < 70
@@ -416,14 +424,8 @@ struct StoryEditor: View {
             if r.sy != snapY { snapY = r.sy }
             if bin != overBin { overBin = bin }
         } else {
-            grab.move = move; grab.size = size; grab.turn = Self.steadied(turn); grab.fingers = fingers
+            grab.move = move; grab.size = size; grab.turn = Double(turn) * 180 / Double.pi; grab.fingers = fingers
         }
-    }
-
-    /// A twist of the fingers (radians) as a turn in degrees: nothing for the first 8 degrees, then from nothing.
-    private static func steadied(_ turn: CGFloat) -> Double {
-        let d = Double(turn) * 180 / Double.pi
-        return abs(d) < 8 ? 0 : d - (d > 0 ? 8 : -8)
     }
 
     private func grabEnded(_ moved: Bool, _ cw: CGFloat, _ ch: CGFloat) {
