@@ -666,3 +666,99 @@ struct HeartBurst: View {
         }
     }
 }
+
+/// Who to send something to: your friends as a grid of faces to search and tick, then a line to write and Send, as
+/// Instagram's has it. (It was a plain list of names with a Send button on each row.)
+struct SendToSheet: View {
+    /// Someone not to offer (whoever's post or story it is).
+    var exclude = ""
+    /// Send it to this friend, with this note (may be empty).
+    var send: (String, String) async -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+    @State private var picked: [String] = []
+    @State private var note = ""
+    @State private var sending = false
+    @FocusState private var searching: Bool
+
+    private var people: [Friends.Person] {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        return Friends.shared.people.filter { $0.id != exclude && (q.isEmpty || $0.name.lowercased().contains(q)) }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField("Search", text: $query).focused($searching).autocorrectionDisabled().textInputAutocapitalization(.never)
+                if !query.isEmpty { Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }.buttonStyle(.plain) }
+            }
+            .padding(.horizontal, 14).frame(height: 44)
+            .background(Color(.tertiarySystemFill), in: Capsule())
+            .padding(.horizontal, 16).padding(.top, 22).padding(.bottom, 10)
+
+            ScrollView {
+                if people.isEmpty {
+                    Text(Friends.shared.people.isEmpty ? "Add a friend first, then you can send things to them." : "Nobody by that name.")
+                        .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.top, 50).padding(.horizontal, 30)
+                } else {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 18) {
+                        ForEach(people) { p in
+                            let on = picked.contains(p.id)
+                            Button {
+                                UISelectionFeedbackGenerator().selectionChanged()
+                                withAnimation(.snappy(duration: 0.18)) { if on { picked.removeAll { $0 == p.id } } else { picked.append(p.id) } }
+                            } label: {
+                                VStack(spacing: 7) {
+                                    Avatar(id: p.id, size: 78)
+                                        .overlay(Circle().strokeBorder(Theme.accent, lineWidth: on ? 3 : 0).padding(-4))
+                                        .overlay(alignment: .bottomTrailing) {
+                                            if on {
+                                                Image(systemName: "checkmark").font(.system(size: 11, weight: .heavy)).foregroundStyle(Theme.onAccent)
+                                                    .frame(width: 24, height: 24).background(Theme.accent, in: Circle())
+                                                    .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: 2))
+                                                    .transition(.scale.combined(with: .opacity))
+                                            }
+                                        }
+                                    Text(p.name).font(.footnote).lineLimit(2).multilineTextAlignment(.center).frame(height: 34, alignment: .top)
+                                }
+                                .frame(maxWidth: .infinity).contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain).accessibilityLabel(p.name).accessibilityAddTraits(on ? .isSelected : [])
+                        }
+                    }
+                    .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 20)
+                }
+            }
+            .scrollDismissesKeyboard(.interactively)
+
+            if !picked.isEmpty {
+                VStack(spacing: 10) {
+                    TextField("Write a message…", text: $note, axis: .vertical).lineLimit(1...3)
+                        .padding(.horizontal, 14).padding(.vertical, 10)
+                        .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    Button {
+                        sending = true
+                        let to = picked, words = note.trimmingCharacters(in: .whitespacesAndNewlines)
+                        Task {
+                            for id in to { await send(id, words) }
+                            UINotificationFeedbackGenerator().notificationOccurred(.success)
+                            dismiss()
+                        }
+                    } label: {
+                        Group {
+                            if sending { ProgressView().tint(Theme.onAccent) }
+                            else { Text(picked.count > 1 ? "Send separately (\(picked.count))" : "Send").font(.headline) }
+                        }
+                        .foregroundStyle(Theme.onAccent).frame(maxWidth: .infinity).frame(height: 50).background(Theme.accent, in: Capsule())
+                    }
+                    .buttonStyle(.plain).disabled(sending)
+                }
+                .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 12)
+                .background(.bar)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .presentationDragIndicator(.visible)
+    }
+}

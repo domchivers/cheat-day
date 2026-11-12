@@ -902,34 +902,8 @@ struct CommentsSheet: View {
 /// Send a post to one friend, with a note: it's in their Activity, and a tap opens it.
 struct SharePostSheet: View {
     let post: JSON
-    @Environment(\.dismiss) private var dismiss
-    @State private var note = ""
-    @State private var sent: Set<String> = []
-    private var feed: Feed { Feed.shared }
-
     var body: some View {
-        NavigationStack {
-            List {
-                Section { TextField("Add a note (optional)", text: $note) }
-                Section("Send to") {
-                    if Friends.shared.people.isEmpty { Text("Add a friend first.").foregroundStyle(.secondary) }
-                    ForEach(Friends.shared.people.filter { $0.id != str(post["owner"]) }) { p in
-                        HStack {
-                            Text(p.name)
-                            Spacer()
-                            Button(sent.contains(p.id) ? "Sent" : "Send") {
-                                sent.insert(p.id)
-                                Task { await feed.share(post, to: p.id, note: note.trimmingCharacters(in: .whitespacesAndNewlines)) }
-                            }
-                            .buttonStyle(.borderedProminent).controlSize(.small).foregroundStyle(Theme.onAccent).disabled(sent.contains(p.id))
-                        }
-                    }
-                }
-                if let e = feed.error { Text(e).font(.footnote).foregroundStyle(Theme.warn) }
-            }
-            .navigationTitle("Send \(str(post["name"]))").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
-        }
+        SendToSheet(exclude: str(post["owner"])) { friend, note in await Feed.shared.share(post, to: friend, note: note) }
     }
 }
 

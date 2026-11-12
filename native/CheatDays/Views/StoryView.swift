@@ -406,32 +406,12 @@ struct SeenBySheet: View {
 /// still up and it's one they're allowed to see, the same as in the rings.
 struct ShareStorySheet: View {
     let story: JSON
-    @Environment(\.dismiss) private var dismiss
-    @State private var sent: Set<String> = []
-
     var body: some View {
         let owner = str(story["owner"]), name = Feed.shared.name(owner)
-        NavigationStack {
-            List {
-                Section("Send to") {
-                    let people = Friends.shared.people.filter { $0.id != owner }
-                    if people.isEmpty { Text("Add a friend first.").foregroundStyle(.secondary) }
-                    ForEach(people) { p in
-                        HStack {
-                            Text(p.name)
-                            Spacer()
-                            Button(sent.contains(p.id) ? "Sent" : "Send") {
-                                sent.insert(p.id)
-                                let payload: JSON = ["story": str(story["id"]), "owner": owner, "kind": str(story["kind"]), "media": str(story["media"])]
-                                Task { await Messages.shared.send(to: p.id, text: "Sent \(name)'s story", kind: "story", payload: payload) }
-                            }
-                            .buttonStyle(.borderedProminent).controlSize(.small).foregroundStyle(Theme.onAccent).disabled(sent.contains(p.id))
-                        }
-                    }
-                }
-            }
-            .navigationTitle("Send \(name)'s story").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
+        SendToSheet(exclude: owner) { friend, note in
+            let payload: JSON = ["story": str(story["id"]), "owner": owner, "kind": str(story["kind"]), "media": str(story["media"])]
+            await Messages.shared.send(to: friend, text: "Sent \(name)'s story", kind: "story", payload: payload)
+            if !note.isEmpty { await Messages.shared.send(to: friend, text: note) }
         }
     }
 }
