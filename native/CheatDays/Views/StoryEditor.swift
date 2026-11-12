@@ -641,11 +641,12 @@ struct StoryEditor: View {
         case .text:
             VStack(spacing: 10) {
                 ScrollView(.horizontal) {
-                    HStack(spacing: 8) {
+                    HStack(spacing: 4) {
                         ForEach(StoryArt.fonts, id: \.self) { f in
                             Button { font = f } label: {
-                                Text(StoryArt.fontNames[f] ?? f).font(StoryArt.font(f, 14)).foregroundStyle(font == f ? .black : .white)
-                                    .padding(.horizontal, 13).padding(.vertical, 7).background(font == f ? Color.white : Color.white.opacity(0.18), in: Capsule())
+                                Text(StoryArt.fontNames[f] ?? f).font(StoryArt.font(f, 15)).foregroundStyle(font == f ? .black : .white)
+                                    .padding(.horizontal, 15).frame(height: 36).background(font == f ? Color.white : Color.white.opacity(0.18), in: Capsule())
+                                    .padding(.vertical, 5).padding(.horizontal, 2).contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                         }
@@ -655,6 +656,11 @@ struct StoryEditor: View {
                 .scrollIndicators(.hidden)
                 swatches($color)
             }
+            // The whole band the styles and colours sit in takes touches, and does nothing with the ones that miss.
+            // Behind it the picture is one big "tap to finish": a finger landing just beside a colour closed the
+            // text instead of changing it.
+            .padding(.vertical, 8).frame(maxWidth: .infinity)
+            .contentShape(Rectangle()).onTapGesture {}
         case .draw:
             VStack(spacing: 12) {
                 HStack(spacing: 14) {
@@ -737,12 +743,13 @@ struct StoryEditor: View {
     }
 
     private func swatches(_ value: Binding<String>) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 0) {
             ForEach(StoryArt.colors, id: \.self) { c in
-                Button { value.wrappedValue = c } label: {
-                    Circle().fill(StoryArt.color(c)).frame(width: 26, height: 26)
+                Button { UISelectionFeedbackGenerator().selectionChanged(); value.wrappedValue = c } label: {
+                    Circle().fill(StoryArt.color(c)).frame(width: 28, height: 28)
                         .overlay(Circle().stroke(.white, lineWidth: value.wrappedValue == c ? 3 : 1.5))
                         .scaleEffect(value.wrappedValue == c ? 1.15 : 1)
+                        .frame(width: 40, height: 46).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
