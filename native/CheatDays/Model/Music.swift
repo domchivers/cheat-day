@@ -85,10 +85,11 @@ enum Music {
 
     func toggle(_ song: Song, key: String) { if playing == key { stop() } else { play(song, key: key) } }
 
-    /// Songs on photos start by themselves as their post comes up the feed, as Instagram's do, until the speaker
-    /// on one is turned off; turning one on turns that back on. Kept between launches.
+    /// Once a speaker on a post has been tapped on, songs start by themselves as their posts come up the feed, as
+    /// Instagram's do, until one's tapped off again. Quiet until that first tap, so the feed never makes a sound
+    /// nobody asked for. Kept between launches.
     var auto: Bool {
-        get { UserDefaults.standard.object(forKey: "song.auto") as? Bool ?? true }
+        get { UserDefaults.standard.object(forKey: "song.auto") as? Bool ?? false }
         set { UserDefaults.standard.set(newValue, forKey: "song.auto") }
     }
     /// The speaker on a post, tapped.

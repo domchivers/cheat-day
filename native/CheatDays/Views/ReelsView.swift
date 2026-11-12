@@ -22,6 +22,7 @@ struct ReelsView: View {
     @State private var talking: PostBox?
     @State private var sharing: PostBox?
     @State private var recipe: PostBox?
+    @State private var rewording: PostBox?   // your own video, being edited
     @State private var burst: String?
     private var feed: Feed { Feed.shared }
 
@@ -65,6 +66,7 @@ struct ReelsView: View {
         .sheet(item: $talking) { b in CommentsSheet(post: b.post).presentationDetents([.medium, .large]).presentationDragIndicator(.visible) }
         .sheet(item: $sharing) { b in SharePostSheet(post: b.post).presentationDetents([.medium, .large]) }
         .sheet(item: $recipe) { b in PostRecipeSheet(post: b.post) }
+        .sheet(item: $rewording) { b in EditPostSheet(post: b.post) }
     }
 
     /// The video showing has a song: it plays, by itself, for as long as the video's showing and not paused or
@@ -190,6 +192,20 @@ struct ReelsView: View {
                             .accessibilityLabel(hearted ? "Unlike" : "Like")
                         rail("bubble.right", comments == 0 ? "" : "\(comments)") { talking = PostBox(post: p) }.accessibilityLabel("Comments")
                         rail("paperplane", "") { sharing = PostBox(post: p) }.accessibilityLabel("Send to a friend")
+                        // the same choices the post has on the feed: yours to edit or delete, someone else's to hide or report
+                        Menu {
+                            if str(p["owner"]) == feed.me {
+                                Button { rewording = PostBox(post: p) } label: { Label("Edit", systemImage: "pencil") }
+                                Button(role: .destructive) { Task { await feed.delete(p) }; dismiss() } label: { Label("Delete post", systemImage: "trash") }
+                            } else {
+                                Button { Profiles.shared.toggleMute(str(p["owner"])); dismiss() } label: { Label("Hide posts from \(feed.name(str(p["owner"])))", systemImage: "eye.slash") }
+                                Button { Task { await Profiles.shared.report(str(p["owner"]), reason: "Post: \(id)") } } label: { Label("Report post", systemImage: "flag") }
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis").font(.system(size: 24, weight: .medium)).foregroundStyle(.white)
+                                .shadow(color: .black.opacity(0.4), radius: 3).frame(width: 44, height: 34).contentShape(Rectangle())
+                        }
+                        .menuOrder(.fixed).accessibilityLabel("More")
                         rail("arrow.up.left.and.arrow.down.right", "") { withAnimation(.easeOut(duration: 0.2)) { clean = true } }.accessibilityLabel("Just the video")
                     }
                 }
