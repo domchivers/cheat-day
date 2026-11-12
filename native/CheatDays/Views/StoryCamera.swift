@@ -57,7 +57,9 @@ struct StoryCamera: View {
                             .padding(.horizontal, 10).padding(.vertical, 4).background(Color.red, in: RoundedRectangle(cornerRadius: 8))
                             .frame(maxHeight: .infinity, alignment: .top).padding(.top, 14)
                     } else {
-                        controlsTop
+                        // the editor hangs its X from the top of the picture's space, which is a little above the
+                        // picture itself: the same here, to the point
+                        controlsTop((stageH - ch) / 2)
                     }
                     VStack(spacing: 18) {
                         Spacer()
@@ -96,7 +98,7 @@ struct StoryCamera: View {
         .onChange(of: cam.photo) { _, img in if let img { took(img) } }
     }
 
-    private var controlsTop: some View {
+    private func controlsTop(_ above: CGFloat) -> some View {
         VStack {
             HStack {
                 Button { close() } label: {
@@ -122,7 +124,7 @@ struct StoryCamera: View {
             }
             Spacer()
         }
-        .padding(.horizontal, 14).padding(.top, 12)
+        .padding(.horizontal, 14).padding(.top, max(2, 12 - above))
     }
 
     /// The phone's own lenses as a row in one dark pill, the way the Camera app shows them: the one in use bigger and
