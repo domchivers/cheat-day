@@ -28,6 +28,7 @@ struct ReelsView: View {
     @State private var clean = false
     @State private var talking: PostBox?
     @State private var songShown: SongShown?
+    @State private var slide: CGFloat = 0   // carried to the right by a finger, on the way back out
     struct SongShown: Identifiable { let song: Song; let key: String; var id: String { key } }
     @State private var sharing: PostBox?
     @State private var recipe: PostBox?
@@ -57,6 +58,19 @@ struct ReelsView: View {
         .scrollPosition(id: $current)
         .scrollIndicators(.hidden)
         .ignoresSafeArea()
+        // A swipe to the right goes back, as the X does: the video follows the finger, and past a third of a hand's
+        // width (or flicked) it's left. Not from the line along the bottom, where a finger moves through the video.
+        .offset(x: slide)
+        .simultaneousGesture(DragGesture(minimumDistance: 24)
+            .onChanged { v in
+                guard holding == nil, v.startLocation.y < UIScreen.main.bounds.height - 130,
+                      v.translation.width > 0, abs(v.translation.width) > abs(v.translation.height) * 1.5 else { return }
+                slide = v.translation.width
+            }
+            .onEnded { v in
+                if slide > 90 || (slide > 30 && v.predictedEndTranslation.width > 220) { dismiss() }
+                else { withAnimation(.snappy(duration: 0.2)) { slide = 0 } }
+            })
         .background(Color.black.ignoresSafeArea())
         .preferredColorScheme(.dark)
         .onChange(of: current) { _, _ in paused = false; holding = nil; head.at = 0; head.length = 0; sound() }
