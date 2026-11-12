@@ -24,10 +24,24 @@ final class Follows {
     func load() async {
         defer { loaded = true }   // a failed or signed-out load still ends the wait, so the button shows Follow
         guard !me.isEmpty else { return }
-        mine = (try? await rows("/rest/v1/follows?follower=eq.\(me)&select=*")) ?? []
-        ofMe = (try? await rows("/rest/v1/follows?followee=eq.\(me)&select=*&order=created_at.desc")) ?? []
-        blocked = Set(((try? await rows("/rest/v1/blocks?blocker=eq.\(me)&select=blocked")) ?? []).map { str($0["blocked"]) })
+        // A load that fails (no signal, or called off part-way by another refresh) leaves what was known alone. It
+        // used to empty the lists: everyone you follow then showed Follow again until the next load that worked,
+        // and tapping it failed, because you already did.
+        if mine.isEmpty, let kept = Self.kept(me) { mine = kept }
+        if let got = try? await rows("/rest/v1/follows?follower=eq.\(me)&select=*") { mine = got; Self.keep(got, me) }
+        if let got = try? await rows("/rest/v1/follows?followee=eq.\(me)&select=*&order=created_at.desc") { ofMe = got }
+        if let got = try? await rows("/rest/v1/blocks?blocker=eq.\(me)&select=blocked") { blocked = Set(got.map { str($0["blocked"]) }) }
         await Profiles.shared.load(mine.map { str($0["followee"]) } + ofMe.map { str($0["follower"]) })
+    }
+
+    // Who I follow, kept on the phone between launches, so the buttons are right before the first load answers
+    private static func keep(_ rows: [JSON], _ me: String) {
+        let slim = rows.map { ["follower": str($0["follower"]), "followee": str($0["followee"]), "status": str($0["status"])] }
+        if let d = try? JSONSerialization.data(withJSONObject: slim) { UserDefaults.standard.set(d, forKey: "follows.mine." + me) }
+    }
+    private static func kept(_ me: String) -> [JSON]? {
+        guard let d = UserDefaults.standard.data(forKey: "follows.mine." + me) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: d)) as? [JSON]
     }
 
     /// People I follow (accepted): their posts are in my feed.
@@ -55,13 +69,20 @@ final class Follows {
             mine.append(["follower": me, "followee": id, "status": got.isEmpty ? status : got])
             notify(id, got == "accepted" ? "follow" : "follow_request")
             error = nil
-        } catch { self.error = "Couldn't follow: following needs setting up (supabase/followers_explore.sql)." }
+            Self.keep(mine, me)
+        } catch {
+            // refused because you follow them already (the phone had lost track): take the server's word for it
+            if let row = (try? await rows("/rest/v1/follows?follower=eq.\(me)&followee=eq.\(id)&select=*"))?.first {
+                mine.removeAll { str($0["followee"]) == id }; mine.append(row); Self.keep(mine, me); self.error = nil
+            } else { self.error = "Couldn't follow just now. Check your connection and try again." }
+        }
     }
 
     /// Unfollow, or take back a request.
     func unfollow(_ id: String) async {
         _ = try? await api.rest("/rest/v1/follows?follower=eq.\(me)&followee=eq.\(id)", method: "DELETE")
         mine.removeAll { str($0["followee"]) == id }
+        Self.keep(mine, me)
     }
 
     func accept(_ follower: String) async {

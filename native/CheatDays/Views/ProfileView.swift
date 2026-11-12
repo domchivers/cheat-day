@@ -149,7 +149,9 @@ struct ProfileView: View {
 
     private func reload() async {
         if !Friends.shared.loaded { await Friends.shared.load() }
-        if !follows.loaded { await follows.load() }
+        // asked afresh each time a profile's opened: asked only once, a first load that failed was never tried again,
+        // and the button stayed wrong for as long as the app was open
+        await follows.load()
         await Task { await profiles.load([id], force: true) }.value
         if let got = await profiles.posts(of: id) { posts = got; await Feed.shared.loadExtras(got) }
         if let got = await profiles.tagged(id) { tagged = got; await Feed.shared.loadExtras(got) }
