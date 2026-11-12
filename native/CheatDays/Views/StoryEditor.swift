@@ -403,6 +403,11 @@ struct StoryEditor: View {
         let t = mode == .none ? (itemAt(p, cw, ch) ?? -1) : -1
         grab.target = t
         if t >= 0, items.indices.contains(t) {
+            // a text reading "touchlog": the fingers' readings are written down for measuring (see TouchLog)
+            if str(items[t]["text"]).lowercased().trimmingCharacters(in: .whitespacesAndNewlines) == "touchlog" {
+                TouchLog.on = true
+                TouchLog.head = "touchlog v1 cw=\(cw) ch=\(ch) x=\(num(items[t]["x"]) ?? 0.5) y=\(num(items[t]["y"]) ?? 0.5) scale=\(num(items[t]["scale"]) ?? 1) rot=\(num(items[t]["rotation"]) ?? 0) size=\(grab.sizes[t] ?? .zero)"
+            }
             return CGPoint(x: (num(items[t]["x"]) ?? 0.5) * Double(cw), y: (num(items[t]["y"]) ?? 0.5) * Double(ch))
         }
         guard bgFill(cw, ch) != nil else { return nil }

@@ -18,6 +18,31 @@ import UIKit
     func letGo() { target = nil; move = .zero; size = 1; turn = 0; fingers = 0 }
 }
 
+/// The fingers' own readings from one hold, written down for measuring what shakes: on only while a text reading
+/// "touchlog" is held. When the fingers lift it's put on the clipboard (a buzz says so), to be pasted and sent.
+/// Each line: thousandths of a second since the first finger, how many fingers this reading moved, how many
+/// in-between readings the phone had for the first finger, then each finger's place.
+@MainActor enum TouchLog {
+    static var on = false
+    static var head = ""
+    static var lines: [String] = []
+    static var t0: TimeInterval = 0
+    static func note(_ what: String, _ touches: Set<UITouch>, _ down: [UITouch], _ event: UIEvent?, in view: UIView) {
+        guard on, lines.count < 4000 else { return }
+        let ms = Int(((event?.timestamp ?? t0) - t0) * 1000)
+        let co = down.first.flatMap { event?.coalescedTouches(for: $0)?.count } ?? 0
+        let at = down.prefix(2).map { t -> String in let q = t.preciseLocation(in: view); return String(format: "%.2f %.2f", q.x, q.y) }.joined(separator: " ")
+        lines.append("\(what) \(ms) \(touches.count) \(co) \(at)")
+    }
+    static func finish() {
+        guard on else { return }
+        on = false
+        guard lines.count > 30 else { return }
+        UIPasteboard.general.string = ([head] + lines).joined(separator: "\n")
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+}
+
 /// The whole story as one surface for fingers. Moving, sizing and turning were three separate gestures before, each
 /// deciding for itself when it had begun: a pinch would start a beat after the drag and the turn a beat after
 /// that, each arriving with a jump, and they measured against the very thing they were moving. Here it's the
@@ -92,6 +117,8 @@ struct EditorTouch: UIViewRepresentable {
             let first = down.isEmpty
             for t in touches where down.count < 2 { down.append(t) }
             rebase()
+            if first { TouchLog.lines = []; TouchLog.t0 = event?.timestamp ?? 0 }
+            defer { TouchLog.note("B", touches, down, event, in: self) }
             if first {
                 // two fingers at once is never a tap, however still their middle stays
                 size = 1; twist = 0; turn = 0; carried = .zero; moved = down.count >= 2; start = lastMiddle
@@ -105,6 +132,7 @@ struct EditorTouch: UIViewRepresentable {
 
         override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
             guard !down.isEmpty else { return }
+            TouchLog.note("M", touches, down, event, in: self)
             let r = read(), two = down.count >= 2
             // the angle wound on from the last reading, so a turn through north doesn't jump by a whole circle
             var step = r.angle - rawAngle
@@ -149,6 +177,7 @@ struct EditorTouch: UIViewRepresentable {
         }
 
         private func lifted(_ touches: Set<UITouch>) {
+            TouchLog.note("E", touches, down, nil, in: self)
             // The last word before a finger goes: the fingers exactly as last read, not the mean of the last two
             // readings. With nothing further to average against, the mean stopped half a step short for good.
             if moved, !down.isEmpty {
@@ -156,7 +185,7 @@ struct EditorTouch: UIViewRepresentable {
                 changed?(move, size, turn, down.count)
             }
             down.removeAll { touches.contains($0) }
-            if down.isEmpty { ended?(moved, start) } else { rebase(); changed?(move, size, turn, down.count) }
+            if down.isEmpty { TouchLog.finish(); ended?(moved, start) } else { rebase(); changed?(move, size, turn, down.count) }
         }
         override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) { lifted(touches) }
         override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) { lifted(touches) }
@@ -221,7 +250,8 @@ struct MovableClip<Content: View>: View {
         content()
             .scaleEffect(live.scale)
             .rotationEffect(.degrees(deg))
-            .offset(live.offset)
+            // not .offset: that lands on whole pixels, so the picture went in steps of a third of a point (measured)
+            .transformEffect(CGAffineTransform(translationX: live.offset.width, y: live.offset.height))
             .frame(width: cw, height: ch).clipped()
             .allowsHitTesting(false)
     }
@@ -295,7 +325,11 @@ struct PlacedItem: View {
             .rotationEffect(.degrees(r.rotation))
             .accessibilityElement(children: .ignore).accessibilityIdentifier("placed-" + str(o["type"])).accessibilityAddTraits(.isButton)
             .accessibilityAction { tap() }
-            .position(x: r.x * cw, y: r.y * ch)
+            // Laid out at the story's middle, which never changes, and carried from there by a plain transform. Put
+            // in its place with .position it landed on whole pixels, a third of a point apart, and so moved in
+            // little steps (measured off the screen: up to 0.16 of a point out, against 0.002 this way).
+            .position(x: cw / 2, y: ch / 2)
+            .transformEffect(CGAffineTransform(translationX: (r.x - 0.5) * cw, y: (r.y - 0.5) * ch))
             .opacity(hidden ? 0 : (dim ? 0.45 : 1))
             .animation(.snappy(duration: 0.18), value: dim)
             .task(id: lookKey) { if drawn { let k = lookKey; sharp = draw(); sharpFor = k } }
