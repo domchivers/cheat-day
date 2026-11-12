@@ -121,6 +121,22 @@ struct ChatView: View {
     private var timesOut: CGFloat { slide.dx < 0 ? max(-64, slide.dx * 0.6) : 0 }
     private func replyPull(_ id: String) -> CGFloat { slide.id == id && slide.dx > 0 ? min(70, slide.dx * 0.6) : 0 }
     @State private var opened: PostBox?
+    @State private var watching: PostBox?   // a story sent in the chat, opened: its owner's stories
+
+    private func storyCard(_ p: JSON, live: Bool) -> some View {
+        ZStack {
+            LinearGradient(colors: [Color(red: 0.1, green: 0.18, blue: 0.32), Color(red: 0.16, green: 0.13, blue: 0.31)], startPoint: .topLeading, endPoint: .bottomTrailing)
+            if live, str(p["kind"]) != "video" { FeedPhoto(src: str(p["media"]), fill: true) }
+            else { Image(systemName: live ? "play.fill" : "clock.arrow.circlepath").font(.system(size: 26, weight: .semibold)).foregroundStyle(.white.opacity(0.8)) }
+        }
+        .frame(width: 150, height: 240)
+        .overlay(alignment: .bottomLeading) {
+            Text(live ? "\(Feed.shared.name(str(p["owner"])))'s story" : "Story no longer available")
+                .font(.caption.weight(.bold)).foregroundStyle(.white).shadow(color: .black.opacity(0.6), radius: 3).padding(10)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .accessibilityLabel(live ? "Story, opens it" : "Story no longer available")
+    }
     @State private var added: Set<String> = []
     @FocusState private var typing: Bool
     private var messages: Messages { Messages.shared }
@@ -172,6 +188,7 @@ struct ChatView: View {
         .onDisappear { messages.closeChat(); KeyboardDone.quiet = false }
         .onAppear { KeyboardDone.quiet = true }
         .sheet(item: $opened, onDismiss: { KeyboardDone.quiet = true }) { b in PostRecipeSheet(post: b.post) }
+        .fullScreenCover(item: $watching, onDismiss: { KeyboardDone.quiet = true }) { b in StoryView(people: [b.id], at: 0) }
         .sheet(isPresented: $gifs, onDismiss: { KeyboardDone.quiet = true }) {
             GifPicker { g in
                 let payload = g.merging(takeReply()) { a, _ in a }
@@ -242,6 +259,11 @@ struct ChatView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous)).accessibilityLabel("GIF")
                 case "post":
                     Button { opened = PostBox(post: dict(p["post"]).isEmpty ? p : dict(p["post"])) } label: { postCard(p) }.buttonStyle(.plain)
+                case "story":
+                    // shown only while it's still up and it's one they can see; after that, just that it was sent
+                    let live = Stories.shared.all.contains { str($0["id"]) == str(p["story"]) }
+                    Button { if live { watching = PostBox(post: ["id": str(p["owner"])]) } } label: { storyCard(p, live: live) }
+                        .buttonStyle(.plain).disabled(!live)
                 case "food":
                     foodCard(m, p, mine: mine)
                 default:
@@ -303,6 +325,7 @@ struct ChatView: View {
         switch str(m["kind"]) {
         case "photo": return "Photo"
         case "gif": return "GIF"
+        case "story": return "Story"
         case "post", "food": return str(p["name"])
         default: return String(str(m["text"]).prefix(120))
         }

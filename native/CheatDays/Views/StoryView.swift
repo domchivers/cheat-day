@@ -27,6 +27,8 @@ struct StoryView: View {
     @State private var seenBy: JSON?   // your own snap's "Seen by" list
     // the heart beside the message box: tapped, a like; held, a row of emoji to answer with
     @State private var reacting = false
+    @State private var sharing: PostBox?        // a post in their story, being sent to a friend
+    @State private var sharingStory: PostBox?   // a story of theirs, being sent to a friend
     @State private var burstEmoji: String?
     @State private var likedSnaps: Set<String> = []
     private static let answers = ["❤️", "🔥", "👏", "😂", "😮", "😢", "💪"]
@@ -135,7 +137,7 @@ struct StoryView: View {
             } else { SongPlayer.shared.stop() }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(50))
-                if paused || typing || reacting || seenBy != nil || adding != nil || managing != nil { continue }
+                if paused || typing || reacting || sharing != nil || sharingStory != nil || seenBy != nil || adding != nil || managing != nil { continue }
                 progress += 0.05 / length
                 if progress >= 1 { next(); return }
             }
@@ -312,9 +314,24 @@ struct StoryView: View {
                     }
                     .accessibilityLabel(liked ? "Liked" : "Like").accessibilityAddTraits(.isButton)
                     .accessibilityAction(named: "React with an emoji") { reacting = true }
+                // send it to a friend: a post, or a story that isn't for friends only (that one stays where it was put)
+                switch s {
+                case .post(let p): sendButton { sharing = PostBox(post: p) }
+                case .snap(let st) where str(st["audience"]) != "friends": sendButton { sharingStory = PostBox(post: st) }
+                default: EmptyView()
+                }
             }
+            .sheet(item: $sharing) { b in SharePostSheet(post: b.post).presentationDetents([.medium, .large]) }
+            .sheet(item: $sharingStory) { b in ShareStorySheet(story: b.post).presentationDetents([.medium, .large]) }
             .padding(.horizontal, 6).padding(.bottom, 6)
         }
+    }
+
+    private func sendButton(_ tap: @escaping () -> Void) -> some View {
+        Button(action: tap) {
+            Image(systemName: "paperplane").font(.system(size: 23, weight: .medium)).foregroundStyle(.white).frame(width: 38, height: 44).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).accessibilityLabel("Send to a friend")
     }
 
     private func isLiked(_ s: Slide) -> Bool {
@@ -381,6 +398,40 @@ struct SeenBySheet: View {
             }
             .navigationTitle("Seen by \(Stories.shared.viewers(story).count)").navigationBarTitleDisplayMode(.inline)
             .task { await Stories.shared.load() }
+        }
+    }
+}
+
+/// A story sent on to a friend, as a message. It carries which story it is; the friend sees it there only if it's
+/// still up and it's one they're allowed to see, the same as in the rings.
+struct ShareStorySheet: View {
+    let story: JSON
+    @Environment(\.dismiss) private var dismiss
+    @State private var sent: Set<String> = []
+
+    var body: some View {
+        let owner = str(story["owner"]), name = Feed.shared.name(owner)
+        NavigationStack {
+            List {
+                Section("Send to") {
+                    let people = Friends.shared.people.filter { $0.id != owner }
+                    if people.isEmpty { Text("Add a friend first.").foregroundStyle(.secondary) }
+                    ForEach(people) { p in
+                        HStack {
+                            Text(p.name)
+                            Spacer()
+                            Button(sent.contains(p.id) ? "Sent" : "Send") {
+                                sent.insert(p.id)
+                                let payload: JSON = ["story": str(story["id"]), "owner": owner, "kind": str(story["kind"]), "media": str(story["media"])]
+                                Task { await Messages.shared.send(to: p.id, text: "Sent \(name)'s story", kind: "story", payload: payload) }
+                            }
+                            .buttonStyle(.borderedProminent).controlSize(.small).foregroundStyle(Theme.onAccent).disabled(sent.contains(p.id))
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Send \(name)'s story").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
         }
     }
 }
