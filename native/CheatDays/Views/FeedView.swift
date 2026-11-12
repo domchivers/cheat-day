@@ -1086,7 +1086,7 @@ struct ComposeSheet: View {
                     tagRow.padding(.horizontal, 4)
                     if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.top, 8) }
                 }
-                .padding(.bottom, 20)
+                .padding(.bottom, 44)
             }
             .scrollDismissesKeyboard(.interactively)
             .onChange(of: writing) { _, on in
@@ -1535,8 +1535,8 @@ struct ComposeSheet: View {
             // slider says: the way to hear the two together and set one against the other before posting.
             Color.black.opacity(0.35).overlay {
                 if let song, SongPlayer.shared.playing == "new:" + song.id {
-                    LoopingVideo(url: movie, muted: clip.muted, filter: clip.look, range: clip.range, volume: Float(clipVol))
-                        .aspectRatio(clip.shape ?? 9.0 / 16.0, contentMode: .fit)
+                    // framed as the cover is (it filled the tile before, so the picture jumped when play was pressed)
+                    PlacedClip(url: movie, edit: clip, volume: Float(clipVol))
                 } else if let poster { Image(uiImage: poster).resizable().scaledToFit() } else { ProgressView() }
             }
         } else if let photo {

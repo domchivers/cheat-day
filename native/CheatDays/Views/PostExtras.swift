@@ -429,3 +429,45 @@ struct MixSliders: View {
         }
     }
 }
+
+/// A post's clip playing in its frame as it was placed there in the editor (its shape, size, turn and position, and
+/// what's written on it over the top): for hearing it on the write-up screen without it jumping to another framing.
+struct PlacedClip: View {
+    let url: URL
+    let edit: ClipEdit
+    var volume: Float = 1
+    @State private var own: CGFloat?   // the clip's own shape, the way up it's been turned
+
+    var body: some View {
+        GeometryReader { g in
+            if let own {
+                let shape = edit.shape ?? own
+                let cw = min(g.size.width, g.size.height * shape), ch = cw / shape
+                let fill = own > shape ? CGSize(width: ch * own, height: ch) : CGSize(width: cw, height: cw / own)
+                let odd = edit.turns % 2 != 0
+                ZStack {
+                    Color.black
+                    LoopingVideo(url: url, muted: edit.muted, filter: edit.look, range: edit.range, volume: volume)
+                        .frame(width: odd ? fill.height : fill.width, height: odd ? fill.width : fill.height)
+                        .rotationEffect(.degrees(Double(edit.turns) * 90))
+                        .frame(width: fill.width, height: fill.height)
+                        .scaleEffect(edit.zoom)
+                        .rotationEffect(.degrees(edit.spin))
+                        .offset(x: edit.move.width * cw, y: edit.move.height * ch)
+                    if let top = edit.overlay { Image(uiImage: top).resizable().frame(width: cw, height: ch) }
+                }
+                .frame(width: cw, height: ch).clipped()
+                .position(x: g.size.width / 2, y: g.size.height / 2)
+                .allowsHitTesting(false)
+            }
+        }
+        .task {
+            guard let track = try? await AVURLAsset(url: url).loadTracks(withMediaType: .video).first else { return }
+            let n = (try? await track.load(.naturalSize)) ?? .zero, t = (try? await track.load(.preferredTransform)) ?? .identity
+            let r = CGRect(origin: .zero, size: n).applying(t)
+            guard abs(r.width) > 1, abs(r.height) > 1 else { return }
+            let a = abs(r.width) / abs(r.height)
+            own = edit.turns % 2 != 0 ? 1 / a : a
+        }
+    }
+}
