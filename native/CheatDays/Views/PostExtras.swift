@@ -471,3 +471,73 @@ struct PlacedClip: View {
         }
     }
 }
+
+/// A post's picture in the feed, pinched bigger: it grows from between the fingers and goes where they go, over
+/// whatever's around it, and springs back when they lift. Nothing stays zoomed. `held` is the post being pinched,
+/// for the feed to lift its row above the others and hold the list still meanwhile.
+struct PinchToZoom: ViewModifier {
+    let id: String
+    @Binding var held: String?
+    var on = true
+    @State private var scale: CGFloat = 1
+    @State private var pan = CGSize.zero
+    @State private var anchor = UnitPoint.center
+    @State private var size = CGSize.zero
+
+    func body(content: Content) -> some View {
+        if !on { content } else {
+            let shown = content
+                .background(GeometryReader { g in Color.clear.onAppear { size = g.size }.onChange(of: g.size) { _, s in size = s } })
+                .scaleEffect(scale, anchor: anchor)
+                .offset(pan)
+                .zIndex(held == id ? 5 : 0)
+            if #available(iOS 18.0, *) {
+                shown.gesture(PinchFollow(began: { at in
+                    anchor = UnitPoint(x: at.x / max(1, size.width), y: at.y / max(1, size.height)); held = id
+                }, changed: { s, move in scale = min(5, max(1, s)); pan = move }, ended: end))
+            } else {
+                // before iOS 18 a pinch can't be followed as it moves: it grows where it was pinched, and stays put
+                shown.simultaneousGesture(MagnifyGesture()
+                    .onChanged { v in
+                        if held != id { anchor = v.startAnchor; held = id }
+                        scale = min(5, max(1, v.magnification))
+                    }
+                    .onEnded { _ in end() })
+            }
+        }
+    }
+
+    private func end() {
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { scale = 1; pan = .zero }
+        // it stays above its neighbours until it's back in its place
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.36) { if scale == 1, held == id { held = nil } }
+    }
+}
+
+/// A pinch with where it is as well as how big: the point between the fingers moves with them.
+@available(iOS 18.0, *)
+struct PinchFollow: UIGestureRecognizerRepresentable {
+    /// Begun, here in the view's own points.
+    var began: (CGPoint) -> Void
+    /// This many times the size, and carried this far since it began.
+    var changed: (CGFloat, CGSize) -> Void
+    var ended: () -> Void
+
+    final class Coordinator { var start = CGPoint.zero }
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
+    func makeUIGestureRecognizer(context: Context) -> UIPinchGestureRecognizer { UIPinchGestureRecognizer() }
+    func handleUIGestureRecognizerAction(_ recognizer: UIPinchGestureRecognizer, context: Context) {
+        let here = context.converter.location(in: .global)
+        switch recognizer.state {
+        case .began:
+            context.coordinator.start = here
+            began(context.converter.localLocation)
+        case .changed:
+            // with one finger lifted the point between them jumps to the one that's left: not followed
+            guard recognizer.numberOfTouches >= 2 else { return }
+            changed(recognizer.scale, CGSize(width: here.x - context.coordinator.start.x, height: here.y - context.coordinator.start.y))
+        case .ended, .cancelled, .failed: ended()
+        default: break
+        }
+    }
+}

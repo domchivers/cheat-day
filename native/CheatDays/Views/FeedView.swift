@@ -321,6 +321,7 @@ struct FeedView: View {
     @State private var reels: ReelStart?   // a video opened full screen
     @State private var picking: String?   // the post whose reactions are showing
     @State private var burst: String?   // the post a double-tap just liked
+    @State private var zoomed: String?   // the post whose picture two fingers have pinched bigger
     @State private var profileOf: String?
     @State private var story: StoryStart?
     @State private var profileAfterStory: String?   // a name tapped in a story: their page opens once the story has closed
@@ -343,11 +344,13 @@ struct FeedView: View {
                 ForEach(keyed((only ?? feed.posts).filter { !feed.removed.contains(str($0["id"])) && !Profiles.shared.muted.contains(str($0["owner"])) && !Follows.shared.blocked.contains(str($0["owner"])) })) { entry in   // by post id: deleting one can't leave a row past the end
                     let pid = str(entry.item["id"])
                     postView(entry.item).id(pid)
+                        .zIndex(zoomed == pid ? 5 : 0)   // its picture, pinched bigger, goes over the posts around it
                         .background { if flash == pid { Theme.accent.opacity(0.12).allowsHitTesting(false) } }
                 }
             }
             .padding(.bottom, 120)
         }
+        .scrollDisabled(zoomed != nil)   // the list keeps still while a picture's being pinched
         .scrollIndicators(.hidden)
         .task(id: Nav.shared.focusPost) { await focus(proxy) }
         .task { if let startAt { try? await Task.sleep(for: .milliseconds(80)); proxy.scrollTo(startAt, anchor: .top) } }
@@ -531,6 +534,8 @@ struct FeedView: View {
                         .transition(.scale(scale: 0.4).combined(with: .opacity)).allowsHitTesting(false)
                 }
             }
+            // two fingers on a photo or video make it bigger while they're on it, as Instagram's feed does
+            .modifier(PinchToZoom(id: id, held: $zoomed, on: photo && kind != "moment"))
 
             actions(p, rx: rx, comments: cm.count)
             if !rx.isEmpty { likedBy(rx).padding(.horizontal, 14).padding(.top, 2) }
