@@ -59,6 +59,7 @@ struct ReelsView: View {
         .scrollPosition(id: $current)
         .scrollIndicators(.hidden)
         .ignoresSafeArea()
+        .background(Color.black.ignoresSafeArea())
         // A swipe to the right goes back, as the X does: the video follows the finger, and past a third of a hand's
         // width (or flicked) it's left. Not from the line along the bottom, where a finger moves through the video.
         .offset(x: slide)
@@ -69,10 +70,11 @@ struct ReelsView: View {
                 slide = v.translation.width
             }
             .onEnded { v in
-                if slide > 90 || (slide > 30 && v.predictedEndTranslation.width > 220) { dismiss() }
+                if slide > 90 || (slide > 30 && v.predictedEndTranslation.width > 220) { leave() }
                 else { withAnimation(.snappy(duration: 0.2)) { slide = 0 } }
             })
-        .background(Color.black.ignoresSafeArea())
+        // nothing behind the video but the screen it was opened from, which shows as the video slides away
+        .presentationBackground(.clear)
         .preferredColorScheme(.dark)
         .onChange(of: current) { _, _ in paused = false; holding = nil; head.at = 0; head.length = 0; sound() }
         .onChange(of: paused) { _, _ in sound() }
@@ -108,6 +110,18 @@ struct ReelsView: View {
                 Text(note).font(.footnote.weight(.bold)).foregroundStyle(.white).padding(.horizontal, 14).padding(.vertical, 9)
                     .background(.black.opacity(0.7), in: Capsule()).padding(.top, 70).transition(.opacity)
             }
+        }
+    }
+
+    /// Back out: the video slides off to the right, showing where it was opened from, and only then is the screen
+    /// put away (with nothing left on it to see going). Left to the system it dropped off the bottom, and its last
+    /// strip hung there for a moment over the tab bar.
+    private func leave() {
+        paused = true
+        withAnimation(.easeOut(duration: 0.22)) { slide = UIScreen.main.bounds.width + 20 }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+            var t = Transaction(); t.disablesAnimations = true
+            withTransaction(t) { dismiss() }
         }
     }
 
@@ -267,7 +281,7 @@ struct ReelsView: View {
             VStack { Spacer(); LinearGradient(colors: [.clear, .black.opacity(0.7)], startPoint: .top, endPoint: .bottom).frame(height: 320) }.allowsHitTesting(false)
             VStack(spacing: 0) {
                 HStack {
-                    Button { dismiss() } label: {
+                    Button { leave() } label: {
                         Image(systemName: "chevron.left").font(.system(size: 20, weight: .semibold)).foregroundStyle(.white).shadow(radius: 3)
                             .frame(width: 44, height: 44).contentShape(Rectangle())
                     }
