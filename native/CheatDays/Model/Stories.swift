@@ -208,6 +208,9 @@ struct LoopingVideo: UIViewRepresentable {
         deinit { if let ender { NotificationCenter.default.removeObserver(ender) } }
     }
 
+    /// How much smaller than the clip its frames are drawn while it plays with a look (1 for as they are).
+    final class Shrink: @unchecked Sendable { var by: CGFloat = 1 }
+
     /// The look the frames are being drawn through, read by the player for each frame as it comes: a slider can
     /// change it many times a second and the clip just carries on (setting the player up again for each change
     /// started the clip over, which is why Adjust on a video only showed when the finger lifted).
@@ -265,12 +268,29 @@ struct LoopingVideo: UIViewRepresentable {
         let item = AVPlayerItem(asset: asset)
         v.look.name = filter
         if filter != "Normal" {
+            // Every frame goes through the look as it's shown. A phone's video is 4K, eight million dots a frame,
+            // and that many through a filter sixty times a second is what made a slider stutter. For looking at
+            // in the editor each frame is made small first (1280 on its longer side), a ninth of the work; the
+            // video that's posted is still made from the full frames.
             let look = v.look
-            item.videoComposition = AVVideoComposition(asset: asset) { req in
-                let name = look.name
-                if name == "Normal" { req.finish(with: req.sourceImage, context: nil); return }
-                req.finish(with: StoryArt.filtered(req.sourceImage.clampedToExtent(), name, frame: req.sourceImage.extent).cropped(to: req.sourceImage.extent), context: nil)
+            let shrink = Shrink()
+            let comp = AVMutableVideoComposition(asset: asset) { req in
+                let name = look.name, k = shrink.by
+                var img = req.sourceImage
+                if k < 1 { img = img.transformed(by: CGAffineTransform(scaleX: k, y: k)) }
+                let whole = img.extent
+                if name != "Normal" { img = StoryArt.filtered(img.clampedToExtent(), name, frame: whole).cropped(to: whole) }
+                req.finish(with: img, context: nil)
             }
+            let full = comp.renderSize
+            if full.width > 0, full.height > 0 {
+                let k = min(1, 1280 / max(full.width, full.height))
+                if k < 1 {
+                    shrink.by = k
+                    comp.renderSize = CGSize(width: max(2, (full.width * k / 2).rounded(.down) * 2), height: max(2, (full.height * k / 2).rounded(.down) * 2))
+                }
+            }
+            item.videoComposition = comp
         }
         if let ender = v.ender { NotificationCenter.default.removeObserver(ender); v.ender = nil }
         if filter != "Normal" {

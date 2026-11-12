@@ -24,6 +24,7 @@ struct PostPicker: View {
     @State private var showing: PHAsset?
     @State private var big: UIImage?
     @State private var busy = false
+    @State private var source = "Recents"   // Recents, Videos or Favourites
     // the day of the photos at the top of the grid, shown for a moment each time the grid moves on
     @State private var day = ""
     @State private var dayTick = 0
@@ -74,7 +75,7 @@ struct PostPicker: View {
                 ToolbarItem(placement: .cancellationAction) { Button { close() } label: { Image(systemName: "xmark") }.accessibilityLabel("Close") }
                 ToolbarItem(placement: .confirmationAction) { Button("Next") { next() }.fontWeight(.bold).disabled(picked.isEmpty || busy) }
             }
-            .task { await load() }
+            .task(id: source) { await load() }
             .task(id: showing?.localIdentifier) { await enlarge() }
         }
         .presentationBackground(Theme.bg)
@@ -82,8 +83,20 @@ struct PostPicker: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            Text("Recents").font(.title3.weight(.heavy))
-            Button { allPhotos() } label: { Text("All photos").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accent) }.buttonStyle(.plain)
+            // what the grid shows, as a menu under its own name: the small blue "All photos" beside it didn't read as a button
+            Menu {
+                Button { source = "Recents" } label: { Label("Recents", systemImage: "photo.on.rectangle") }
+                if !photosOnly { Button { source = "Videos" } label: { Label("Videos", systemImage: "play.circle") } }
+                Button { source = "Favourites" } label: { Label("Favourites", systemImage: "heart") }
+                Button { allPhotos() } label: { Label("All albums", systemImage: "square.grid.2x2") }
+            } label: {
+                HStack(spacing: 6) {
+                    Text(source).font(.title3.weight(.heavy))
+                    Image(systemName: "chevron.down").font(.footnote.weight(.heavy))
+                }
+                .foregroundStyle(Color.primary).padding(.vertical, 6).contentShape(Rectangle())
+            }
+            .menuOrder(.fixed).accessibilityLabel("Showing " + source)
             Spacer(minLength: 0)
             if room > 1 {
                 Button { toggleSeveral() } label: {
@@ -243,8 +256,16 @@ struct PostPicker: View {
         let opts = PHFetchOptions()
         opts.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
         opts.fetchLimit = 200
-        opts.predicate = photosOnly ? NSPredicate(format: "mediaType == %d", PHAssetMediaType.image.rawValue)
-            : NSPredicate(format: "mediaType == %d || mediaType == %d", PHAssetMediaType.image.rawValue, PHAssetMediaType.video.rawValue)
+        let image = PHAssetMediaType.image.rawValue, movie = PHAssetMediaType.video.rawValue
+        switch source {
+        case "Videos": opts.predicate = NSPredicate(format: "mediaType == %d", movie)
+        case "Favourites":
+            opts.predicate = photosOnly ? NSPredicate(format: "favorite == YES AND mediaType == %d", image)
+                : NSPredicate(format: "favorite == YES AND (mediaType == %d || mediaType == %d)", image, movie)
+        default:
+            opts.predicate = photosOnly ? NSPredicate(format: "mediaType == %d", image) : NSPredicate(format: "mediaType == %d || mediaType == %d", image, movie)
+        }
+        let again = !assets.isEmpty || !place.isEmpty   // the menu's been used: start from the top of the new set
         let found = PHAsset.fetchAssets(with: opts)
         var out: [PHAsset] = []
         found.enumerateObjects { a, _, _ in out.append(a) }
@@ -252,8 +273,12 @@ struct PostPicker: View {
         var at: [String: Int] = [:]
         for (i, a) in out.enumerated() { at[a.localIdentifier] = i }
         place = at
-        if let first = out.first, showing == nil { showing = first; picked = [first.localIdentifier] }
-        if out.isEmpty { allowed = status == .authorized }
+        onScreen.rows = []
+        if again || showing == nil {
+            showing = out.first
+            picked = several ? [] : (out.first.map { [$0.localIdentifier] } ?? [])
+        }
+        if out.isEmpty && source == "Recents" { allowed = status == .authorized }
     }
 
     /// The one showing, big enough for the top of the screen (a video's first frame).
