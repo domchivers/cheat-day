@@ -27,6 +27,8 @@ struct ReelsView: View {
     @GestureState private var pinch: CGFloat = 1
     @State private var clean = false
     @State private var talking: PostBox?
+    @State private var songShown: SongShown?
+    struct SongShown: Identifiable { let song: Song; let key: String; var id: String { key } }
     @State private var sharing: PostBox?
     @State private var recipe: PostBox?
     @State private var rewording: PostBox?   // your own video, being edited
@@ -76,6 +78,7 @@ struct ReelsView: View {
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
             try? AVAudioSession.sharedInstance().setCategory(.soloAmbient)
         }
+        .sheet(item: $songShown) { s in SongCard(song: s.song, muted: $muted) }
         .sheet(item: $talking) { b in CommentsSheet(post: b.post).presentationDetents([.medium, .large]).presentationDragIndicator(.visible) }
         .sheet(item: $sharing) { b in SharePostSheet(post: b.post).presentationDetents([.medium, .large]) }
         .sheet(item: $recipe) { b in PostRecipeSheet(post: b.post) }
@@ -339,8 +342,9 @@ struct ReelsView: View {
             }
             if let s = Music.of(p) {
                 let playing = SongPlayer.shared.playing == "reel:" + id
-                Button { SongPlayer.shared.toggle(s, key: "reel:" + id) } label: {
-                    Label(s.title + (playing ? " · playing" : ""), systemImage: playing ? "pause.fill" : "music.note").font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.9)).lineLimit(1)
+                // its name opens the song (cover, name, sound on or off); the video carries on
+                Button { songShown = SongShown(song: s, key: "reel:" + id) } label: {
+                    Label(s.title + (playing ? "" : " · off"), systemImage: "music.note").font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.9)).lineLimit(1)
                 }
                 .buttonStyle(.plain)
             }

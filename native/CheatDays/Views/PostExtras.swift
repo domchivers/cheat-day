@@ -554,3 +554,72 @@ struct PinchFollow: UIGestureRecognizerRepresentable {
         }
     }
 }
+
+/// A song's cover. The songs have no pictures of their own (public-domain clips), so each gets one made for it: its
+/// mood's colours, tilted its own way by its name, always the same for the same song.
+struct SongCover: View {
+    let song: Song
+    var size: CGFloat = 64
+
+    private var colours: [Color] {
+        switch song.mood {
+        case "Gym": return [Color(red: 0.98, green: 0.30, blue: 0.32), Color(red: 0.55, green: 0.18, blue: 0.75)]
+        case "Epic": return [Color(red: 0.36, green: 0.32, blue: 0.92), Color(red: 0.10, green: 0.62, blue: 0.95)]
+        case "Chill": return [Color(red: 0.12, green: 0.72, blue: 0.70), Color(red: 0.20, green: 0.42, blue: 0.90)]
+        case "Funny": return [Color(red: 0.99, green: 0.76, blue: 0.20), Color(red: 0.30, green: 0.78, blue: 0.42)]
+        default: return [Color(red: 1.0, green: 0.58, blue: 0.22), Color(red: 0.96, green: 0.30, blue: 0.55)]
+        }
+    }
+    private var seed: Int { song.id.utf8.reduce(7) { ($0 &* 31 &+ Int($1)) % 9973 } }
+
+    var body: some View {
+        let turn = Double(seed % 360)
+        ZStack {
+            LinearGradient(colors: colours, startPoint: UnitPoint(x: 0.5 + 0.5 * cos(turn * .pi / 180), y: 0.5 + 0.5 * sin(turn * .pi / 180)),
+                           endPoint: UnitPoint(x: 0.5 - 0.5 * cos(turn * .pi / 180), y: 0.5 - 0.5 * sin(turn * .pi / 180)))
+            Circle().fill(.white.opacity(0.16)).frame(width: size * 0.9).offset(x: size * (0.3 - Double(seed % 7) * 0.1), y: size * 0.35)
+            Image(systemName: "music.note").font(.system(size: size * 0.4, weight: .bold)).foregroundStyle(.white).shadow(color: .black.opacity(0.2), radius: 3, y: 1)
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
+        .accessibilityHidden(true)
+    }
+}
+
+/// The song on a video, shown when its name is tapped: its cover and name, and its sound on or off. The video
+/// carries on behind (tapping the name used to switch the song off, and the video seemed to stop with it).
+struct SongCard: View {
+    let song: Song
+    /// The viewer's own sound switch: the video's sound and the song's together.
+    @Binding var muted: Bool
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 16) {
+            HStack(spacing: 14) {
+                SongCover(song: song, size: 68)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(song.title).font(.title3.weight(.bold)).lineLimit(2)
+                    Text(song.mood.isEmpty ? "Song" : song.mood + " · song").font(.subheadline).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 10) {
+                Button { muted.toggle() } label: {
+                    Label(muted ? "Turn sound on" : "Turn sound off", systemImage: muted ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                        .font(.subheadline.weight(.bold)).frame(maxWidth: .infinity).frame(height: 46)
+                        .background(Color(.tertiarySystemFill), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                Button { dismiss() } label: {
+                    Text("Done").font(.subheadline.weight(.bold)).foregroundStyle(Theme.onAccent).frame(width: 96, height: 46).background(Theme.accent, in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 20).padding(.top, 26)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .presentationDetents([.height(200)])
+        .presentationDragIndicator(.visible)
+    }
+}
