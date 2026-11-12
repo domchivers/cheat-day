@@ -12,6 +12,7 @@ struct ProfileView: View {
     @State private var posts: [JSON] = []
     @State private var tab = 0
     @State private var tagged: [JSON] = []   // posts they're tagged in
+    @State private var kept: [JSON] = []     // posts you've saved (your own profile only)
     @State private var openTagged: String?   // one of those, tapped
     @Namespace private var tabLine
     @State private var editing = false
@@ -64,6 +65,7 @@ struct ProfileView: View {
                 case 2: today.padding(.horizontal, 16)
                 case 4: grid(posts.filter { Feed.video($0) != nil }, empty: isMe ? "Your videos show here. Tap ＋ on your photo, then Post, and pick a video." : "No videos yet.")
                 case 5: grid(tagged, empty: isMe ? "Posts your friends tag you in show here." : "No tagged posts yet.")
+                case 6: grid(kept, empty: "Posts you save with the bookmark show here. Only you can see them.")
                 default: grid(posts, empty: isMe ? "Your posts show here. Tap ＋ on your photo to share one." : "No posts yet.")
                 }
                 }
@@ -114,12 +116,12 @@ struct ProfileView: View {
             FeedView(only: posts, startAt: posts.indices.contains(i) ? str(posts[i]["id"]) : nil).navigationTitle("Posts").navigationBarTitleDisplayMode(.inline)
         }
         .navigationDestination(item: $openTagged) { at in
-            FeedView(only: tagged, startAt: at).navigationTitle("Tagged").navigationBarTitleDisplayMode(.inline)
+            FeedView(only: tab == 6 ? kept : tagged, startAt: at).navigationTitle(tab == 6 ? "Saved" : "Tagged").navigationBarTitleDisplayMode(.inline)
         }
         .navigationDestination(isPresented: $chatting) { ChatView(friend: id) }
         .fullScreenCover(isPresented: $composing) { StoryComposer() }
         .fullScreenCover(isPresented: $watching) { StoryView(people: [id], at: 0) }
-        .fullScreenCover(item: $reels) { r in ReelsView(posts: posts + tagged.filter { t in !posts.contains { str($0["id"]) == str(t["id"]) } }, startAt: r.id) }
+        .fullScreenCover(item: $reels) { r in ReelsView(posts: tab == 6 ? kept : posts + tagged.filter { t in !posts.contains { str($0["id"]) == str(t["id"]) } }, startAt: r.id) }
         // a post that's just gone up shows in the grid without a pull to refresh
         .onChange(of: Feed.shared.sending?.state == .done) { _, done in if done && isMe { Task { await reload() } } }
         // a post deleted from the list of posts leaves the grid and the count at once too
@@ -151,6 +153,7 @@ struct ProfileView: View {
         await Task { await profiles.load([id], force: true) }.value
         if let got = await profiles.posts(of: id) { posts = got; await Feed.shared.loadExtras(got) }
         if let got = await profiles.tagged(id) { tagged = got; await Feed.shared.loadExtras(got) }
+        if isMe { kept = await Feed.shared.savedPosts(); await Feed.shared.loadExtras(kept) }
         if let c = await Task(operation: { await follows.counts(id) }).value { counts = c }
     }
 
@@ -309,6 +312,7 @@ struct ProfileView: View {
         var tabs: [(Int, String, String)] = [(0, "square.grid.3x3", "Posts")]
         if isMe || posts.contains(where: { Feed.video($0) != nil }) { tabs.append((4, "play.rectangle", "Videos")) }
         tabs.append((5, "person.crop.square", "Tagged"))
+        if isMe { tabs.append((6, "bookmark", "Saved")) }
         if person != nil { tabs.append((2, "fork.knife", "Today")) }
         return HStack(spacing: 0) {
             ForEach(tabs, id: \.0) { t in
@@ -350,7 +354,7 @@ struct ProfileView: View {
         let photo = str(post["photo"]), kind = str(post["kind"])
         let label = kind == "workout" ? "\(Int(num(dict(post["extra"])["minutes"]) ?? 0)) min" : kind == "moment" || kind == "photo" ? "" : Fmt.int(num(post["kcal"]) ?? 0)
         return Button {
-            if Feed.video(post) != nil { reels = ReelStart(id: str(post["id"])) } else if let i = posts.firstIndex(where: { str($0["id"]) == str(post["id"]) }) { openAt = i } else { openTagged = str(post["id"]) }
+            if Feed.video(post) != nil { reels = ReelStart(id: str(post["id"])) } else if tab != 6, let i = posts.firstIndex(where: { str($0["id"]) == str(post["id"]) }) { openAt = i } else { openTagged = str(post["id"]) }
         } label: {
             Color.clear.aspectRatio(1, contentMode: .fit)
                 .overlay {

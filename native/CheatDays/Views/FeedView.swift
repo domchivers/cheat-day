@@ -63,6 +63,7 @@ final class Feed {
                 let cids = comments.map { str($0["id"]) }.joined(separator: ",")
                 commentLikes = cids.isEmpty ? [] : ((try? await rows("/rest/v1/comment_likes?comment_id=in.(\(cids))&select=comment_id,user_id")) ?? [])
             }
+            await loadSaves(posts.map { str($0["id"]) })
             let who = Set(posts.map { str($0["owner"]) } + comments.map { str($0["user_id"]) } + [me]).filter { !$0.isEmpty }
             await Profiles.shared.load(Array(who))
             if !who.isEmpty {
@@ -73,8 +74,50 @@ final class Feed {
         } catch { self.error = Feed.said(error) }
     }
 
+    // MARK: saved posts (a bookmark, kept for yourself; supabase/post_saves.sql)
+
+    /// The posts I've saved, and how many people have saved each post that's been looked up. Empty, and the
+    /// bookmark does nothing but say so, until the table's set up.
+    private(set) var saved: Set<String> = []
+    private(set) var saveCounts: [String: Int] = [:]
+
+    /// Which of mine, and the counts for these posts.
+    func loadSaves(_ ids: [String]) async {
+        let real = ids.filter { UUID(uuidString: $0) != nil }
+        if let mine = try? await rows("/rest/v1/post_saves?user_id=eq.\(me)&select=post_id") { saved = Set(mine.map { str($0["post_id"]) }) }
+        guard !real.isEmpty, let d = try? await api.rest("/rest/v1/rpc/post_save_counts", method: "POST", body: ["ids": real] as JSON),
+              let got = (try? JSONSerialization.jsonObject(with: d)) as? [JSON] else { return }
+        for id in real { saveCounts[id] = nil }
+        for r in got { saveCounts[str(r["post_id"])] = Int(num(r["n"]) ?? 0) }
+    }
+
+    /// Save a post, or take it out again. Shown at once, and put back if the server says no.
+    func toggleSave(_ post: JSON) async {
+        let id = str(post["id"]), was = saved.contains(id)
+        if was { saved.remove(id) } else { saved.insert(id) }
+        saveCounts[id] = max(0, (saveCounts[id] ?? 0) + (was ? -1 : 1))
+        do {
+            if was { _ = try await api.rest("/rest/v1/post_saves?post_id=eq.\(id)&user_id=eq.\(me)", method: "DELETE") }
+            else { _ = try await api.rest("/rest/v1/post_saves", method: "POST", body: [["post_id": id, "user_id": me]], prefer: "resolution=ignore-duplicates") }
+        } catch {
+            if was { saved.insert(id) } else { saved.remove(id) }
+            saveCounts[id] = max(0, (saveCounts[id] ?? 0) + (was ? 1 : -1))
+            self.error = "Saving posts isn't set up yet."
+        }
+    }
+
+    /// The posts I've saved, the latest saved first.
+    func savedPosts() async -> [JSON] {
+        guard let mine = try? await rows("/rest/v1/post_saves?user_id=eq.\(me)&select=post_id,created_at&order=created_at.desc&limit=90") else { return [] }
+        let ids = mine.map { str($0["post_id"]) }
+        saved = Set(ids)
+        guard !ids.isEmpty, let got = try? await rows("/rest/v1/posts?id=in.(\(ids.joined(separator: ",")))&select=*") else { return [] }
+        return ids.compactMap { id in got.first { str($0["id"]) == id } }
+    }
+
     /// Reactions and comments for posts that aren't in the feed (Explore's), added to what's here.
     func loadExtras(_ more: [JSON]) async {
+        Task { await loadSaves(more.map { str($0["id"]) }) }
         let ids = more.map { str($0["id"]) }.filter { id in !posts.contains { str($0["id"]) == id } }
         guard !ids.isEmpty else { return }
         let list = ids.joined(separator: ",")
@@ -773,6 +816,15 @@ struct FeedView: View {
                     }
                     .buttonStyle(.plain)
                 }
+                // save it for yourself (only you see what you've saved; the number is how many have)
+                let kept = feed.saved.contains(id), keeps = feed.saveCounts[id] ?? 0
+                Button { UIImpactFeedbackGenerator(style: .light).impactOccurred(); Task { await feed.toggleSave(p) } } label: {
+                    HStack(spacing: 5) {
+                        if keeps > 0 { Text("\(keeps)").font(.subheadline.weight(.semibold)).monospacedDigit() }
+                        Image(systemName: kept ? "bookmark.fill" : "bookmark").font(.system(size: 21, weight: .medium)).symbolEffect(.bounce, value: kept)
+                    }
+                }
+                .buttonStyle(.plain).accessibilityLabel(kept ? "Saved, tap to take out" : "Save")
             }
             .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 4)
         }

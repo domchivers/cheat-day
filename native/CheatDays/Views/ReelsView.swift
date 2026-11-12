@@ -301,6 +301,10 @@ struct ReelsView: View {
                             .accessibilityLabel(hearted ? "Unlike" : "Like")
                         rail("bubble.right", comments == 0 ? "" : "\(comments)") { talking = PostBox(post: p) }.accessibilityLabel("Comments")
                         rail("paperplane", "") { sharing = PostBox(post: p) }.accessibilityLabel("Send to a friend")
+                        rail(feed.saved.contains(id) ? "bookmark.fill" : "bookmark", (feed.saveCounts[id] ?? 0) == 0 ? "" : "\(feed.saveCounts[id] ?? 0)") {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred(); Task { await feed.toggleSave(p) }
+                        }
+                        .accessibilityLabel(feed.saved.contains(id) ? "Saved, tap to take out" : "Save")
                         // the same choices the post has on the feed: yours to edit or delete, someone else's to hide or report
                         Menu {
                             Button { Task { await saveVideo(p) } } label: { Label("Save video", systemImage: "arrow.down.to.line") }
