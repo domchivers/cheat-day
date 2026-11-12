@@ -20,7 +20,9 @@ create policy "saves own" on public.post_saves for all to authenticated
 create or replace function public.post_save_counts(ids uuid[])
 returns table(post_id uuid, n bigint)
 language sql security definer set search_path = public stable as $$
-  select s.post_id, count(*) from public.post_saves s where s.post_id = any(ids) group by s.post_id
+  select s.post_id, count(*) from public.post_saves s
+  where s.post_id = any(ids) and public.can_see_post(s.post_id)   -- only for posts the asker can see
+  group by s.post_id
 $$;
 revoke all on function public.post_save_counts(uuid[]) from public;
 grant execute on function public.post_save_counts(uuid[]) to authenticated;
