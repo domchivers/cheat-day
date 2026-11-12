@@ -576,12 +576,12 @@ struct FeedView: View {
         let shape = num(dict(p["extra"])["aspect"]).map { min(1.91, max(0.75, $0)) }
         return PostPhotos(post: p)
             .frame(maxWidth: .infinity).frame(height: shape.map { (UIScreen.main.bounds.width / $0).rounded() } ?? 400)
-            .overlay { if let v = Feed.video(p) { FeedVideo(url: v) } }   // under the name and numbers
+            .overlay { if let v = Feed.video(p) { FeedVideo(url: v, hasSong: Music.of(p) != nil) } }   // under the name and numbers
             .clipped()
             .contentShape(Rectangle())
             // a photo with a song: its sound on and off at the bottom right, as Instagram has it
             .overlay {
-                if Feed.video(p) == nil, let song = Music.of(p) { SongSwitch(song: song, key: "post:" + str(p["id"])) }
+                if let song = Music.of(p) { SongSwitch(song: song, key: "post:" + str(p["id"])) }
             }
             .overlay(alignment: .bottomLeading) {
                 if str(p["kind"]) != "photo" {   // a photo on its own has no name or numbers
@@ -930,6 +930,8 @@ struct MostlyShowing: ViewModifier {
 
 struct FeedVideo: View {
     let url: URL
+    /// The post has a song: that's its sound, with its own speaker (SongSwitch); the clip's own sound stays off.
+    var hasSong = false
     @State private var muted = true
     @State private var showing = false
     var body: some View {
@@ -938,11 +940,13 @@ struct FeedVideo: View {
             .onAppear { showing = true }
             .onDisappear { showing = false; if !muted { muted = true; loud(false) } }
             .overlay(alignment: .topTrailing) {
+                if !hasSong {
                 Button { muted.toggle(); loud(!muted) } label: {
                     Image(systemName: muted ? "speaker.slash.fill" : "speaker.wave.2.fill").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
                         .frame(width: 32, height: 32).background(.black.opacity(0.45), in: Circle())
                 }
                 .buttonStyle(.plain).padding(10).accessibilityLabel(muted ? "Sound on" : "Sound off")
+                }
             }
     }
 }

@@ -43,11 +43,14 @@ struct ReelsView: View {
         .ignoresSafeArea()
         .background(Color.black.ignoresSafeArea())
         .preferredColorScheme(.dark)
-        .onChange(of: current) { _, _ in paused = false; SongPlayer.shared.stop() }
+        .onChange(of: current) { _, _ in paused = false; sound() }
+        .onChange(of: paused) { _, _ in sound() }
+        .onChange(of: muted) { _, _ in sound() }
         .onAppear {
             // a video they opened plays with its sound, the ringer off or not
             try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
             try? AVAudioSession.sharedInstance().setActive(true)
+            sound()
         }
         .onDisappear {
             SongPlayer.shared.stop()
@@ -59,6 +62,19 @@ struct ReelsView: View {
         .sheet(item: $recipe) { b in PostRecipeSheet(post: b.post) }
     }
 
+    /// The video showing has a song: it plays, by itself, for as long as the video's showing and not paused or
+    /// silenced (the clip's own sound is off under it). One without a song is heard with its own sound.
+    private func sound() {
+        if let id = current, let p = posts.first(where: { str($0["id"]) == id }), let s = Music.of(p), !paused, !muted {
+            if SongPlayer.shared.playing != "reel:" + id { SongPlayer.shared.play(s, key: "reel:" + id, loop: true) }
+        } else {
+            SongPlayer.shared.stop()
+            // stopping a song hands the sound back to the ringer; here a video is still to be heard
+            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+            try? AVAudioSession.sharedInstance().setActive(true)
+        }
+    }
+
     private func page(_ p: JSON) -> some View {
         let id = str(p["id"]), on = current == id
         let rx = feed.reactions.filter { str($0["post_id"]) == id }
@@ -68,9 +84,9 @@ struct ReelsView: View {
             if on, let v = Feed.video(p) {
                 // a tall clip fills the screen; a squarer one is shown whole in the middle
                 if let a = num(dict(p["extra"])["aspect"]), a > 0.62 {
-                    LoopingVideo(url: v, paused: paused, muted: muted).aspectRatio(a, contentMode: .fit).allowsHitTesting(false)
+                    LoopingVideo(url: v, paused: paused, muted: muted || Music.of(p) != nil).aspectRatio(a, contentMode: .fit).allowsHitTesting(false)
                 } else {
-                    LoopingVideo(url: v, paused: paused, muted: muted).allowsHitTesting(false)
+                    LoopingVideo(url: v, paused: paused, muted: muted || Music.of(p) != nil).allowsHitTesting(false)
                 }
             } else if let a = num(dict(p["extra"])["aspect"]), a > 0.62 {
                 Color.clear.aspectRatio(a, contentMode: .fit).overlay { FeedPhoto(src: str(p["photo"]), fill: true) }.clipped()

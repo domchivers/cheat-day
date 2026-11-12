@@ -93,26 +93,30 @@ enum Music {
     }
     /// The speaker on a post, tapped.
     func flip(_ song: Song, key: String) {
-        if playing == key { auto = false; stop() } else { auto = true; play(song, key: key) }
+        if playing == key { auto = false; stop() } else { auto = true; play(song, key: key, loop: true) }
     }
     /// A post with a song has come onto the screen. Nothing if songs are off, or if the phone's already playing
     /// something of its own (their music or a podcast isn't cut off by scrolling past a photo).
     func arrive(_ song: Song, key: String) {
         guard auto, playing != key, !AVAudioSession.sharedInstance().isOtherAudioPlaying else { return }
-        play(song, key: key, asked: false)
+        // heard with the ringer off as well: kept to the ringer, a phone on silent (most are) never played one, and
+        // it looked as though songs only played when their button was pressed. The speaker turns them all off.
+        play(song, key: key, loop: true)
     }
     /// It's gone off the screen again.
     func leave(_ key: String) { if playing == key { stop() } }
 
-    func play(_ song: Song, key: String, asked: Bool = true) {
+    /// `loop`: under a post or a video it goes round for as long as that's on screen; in a list of songs it's heard once.
+    func play(_ song: Song, key: String, loop: Bool = false) {
         stop()
         guard let url = song.url else { return }
-        // they tapped play, so it's heard with the ringer off too; one that started by itself keeps to the ringer
-        try? AVAudioSession.sharedInstance().setCategory(asked ? .playback : .soloAmbient, mode: .default)
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
         try? AVAudioSession.sharedInstance().setActive(true)
         let item = AVPlayerItem(url: url)
-        end = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { [weak self] _ in self?.stop() }
         let p = AVPlayer(playerItem: item)
+        end = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { [weak self, weak p] _ in
+            if loop { p?.seek(to: .zero); p?.play() } else { self?.stop() }
+        }
         player = p; playing = key
         p.play()
     }
