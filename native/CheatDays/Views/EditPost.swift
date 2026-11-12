@@ -174,7 +174,13 @@ struct EditPostSheet: View {
     private func recrop(_ i: Int) {
         guard pics.indices.contains(i) else { return }
         let p = pics[i]
-        Task { if let img = await (p.fresh != nil ? p.fresh : ImageStore.load(p.url)) { editing = Recrop(image: img, index: i) } }
+        // from the copy kept before it was squeezed to send, when this phone has it: so an edit doesn't lose quality
+        Task {
+            var img = p.fresh
+            if img == nil { img = await ImageStore.master(p.url) }
+            if img == nil { img = await ImageStore.load(p.url) }
+            if let img { editing = Recrop(image: img, index: i) }
+        }
     }
 
     /// Several photos: the row of them, to show one, and hold one to crop, move or remove it.
@@ -339,7 +345,7 @@ struct EditPostSheet: View {
                         if let f = p.fresh, let jpeg = Feed.prepare(f) {
                             let at = try await api.uploadPhoto(jpeg)
                             urls.append(at)
-                            ImageStore.keep(f, as: at)
+                            ImageStore.keep(f, as: at); ImageStore.keepMaster(f, as: at)
                         } else { urls.append(p.url) }
                     }
                     change["photo"] = urls[0]

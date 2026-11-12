@@ -248,12 +248,17 @@ final class Feed {
         }
         if let photo, let jpeg = Self.prepare(photo) {
             r["photo"] = (try? await api.uploadPhoto(jpeg)) ?? NSNull()
-            if let at = r["photo"] as? String { ImageStore.keep(photo, as: at) }
+            if let at = r["photo"] as? String { ImageStore.keep(photo, as: at); ImageStore.keepMaster(photo, as: at) }
         }
         // several photos: the first is the post's own, and all of them, in order, are listed beside it
         if !more.isEmpty, let first = r["photo"] as? String {
             var all = [first]
-            for img in more { if let jpeg = Self.prepare(img) { all.append(try await api.uploadPhoto(jpeg)) } }
+            for img in more {
+                guard let jpeg = Self.prepare(img) else { continue }
+                let at = try await api.uploadPhoto(jpeg)
+                ImageStore.keepMaster(img, as: at)
+                all.append(at)
+            }
             var x = dict(r["extra"]); x["photos"] = all; r["extra"] = x
         }
         // a workout that's already on the feed (posted when it finished): add the photo and caption to that post instead
@@ -285,9 +290,10 @@ final class Feed {
         Task { _ = try? await api.call("/functions/v1/push", body: body) }
     }
 
-    /// A post photo as edited: at most 1080 px wide, its own shape, about 150 KB.
+    /// A post photo as edited: at most 1080 px wide, its own shape, about 250 KB. (At 0.75 it was about 150 KB and
+    /// fine detail was already soft; edited and saved a second time at that, it showed.)
     static func prepare(_ img: UIImage) -> Data? {
-        PhotoEditor.shrink(img, to: max(img.size.width, img.size.height) * min(1, 1080 / max(1, img.size.width))).jpegData(compressionQuality: 0.75)
+        PhotoEditor.shrink(img, to: max(img.size.width, img.size.height) * min(1, 1080 / max(1, img.size.width))).jpegData(compressionQuality: 0.85)
     }
 
     /// Feed photos: a 640 px square, about 40 KB, like the website's thumbFromBig.
@@ -1886,6 +1892,41 @@ enum ImageStore {
     /// A picture made on this phone and just uploaded, kept under its new address: whatever shows that address
     /// has it at once, with nothing to fetch (an edited post's photo took a while to turn up on the profile).
     static func keep(_ img: UIImage, as src: String) { if src.hasPrefix("http") { memory.setObject(img, forKey: src as NSString) } }
+
+    // Your own posts' photos as they were before being squeezed to send, kept on this phone (the newest 150):
+    // what Edit post starts from. Starting from the posted copy, an edited photo was squeezed a second time and
+    // came out visibly worse; from this it's squeezed once, like a new post. Never sent anywhere.
+    private static let masters: URL = {
+        let f = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("masters", isDirectory: true)
+        try? FileManager.default.createDirectory(at: f, withIntermediateDirectories: true)
+        return f
+    }()
+    private static func masterFile(_ src: String) -> URL { masters.appendingPathComponent(file(src).deletingPathExtension().lastPathComponent + ".jpg") }
+
+    static func keepMaster(_ img: UIImage, as src: String) {
+        guard src.hasPrefix("http") else { return }
+        let to = masterFile(src), dir = masters
+        Task.detached(priority: .utility) {
+            guard let d = img.jpegData(compressionQuality: 0.97) else { return }
+            try? d.write(to: to, options: .atomic)
+            let all = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+            guard all.count > 150 else { return }
+            let byAge = all.sorted { a, b in
+                let x = (try? a.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                let y = (try? b.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                return x > y
+            }
+            for old in byAge.dropFirst(150) { try? FileManager.default.removeItem(at: old) }
+        }
+    }
+
+    static func master(_ src: String) async -> UIImage? {
+        let from = masterFile(src)
+        return await Task.detached(priority: .userInitiated) { () -> UIImage? in
+            guard let d = try? Data(contentsOf: from) else { return nil }
+            return UIImage(data: d)
+        }.value
+    }
 
     /// Only what's in memory: for drawing straight away.
     static func cached(_ src: String) -> UIImage? { src.isEmpty ? nil : memory.object(forKey: src as NSString) }
