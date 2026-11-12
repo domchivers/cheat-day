@@ -123,6 +123,7 @@ struct StoryEditor: View {
     @State private var storySong: Song?
     @State private var choosingSong = false
     @State private var mixing = false   // a post's video: the song's name and the two volumes, over the playing video
+    @State private var justPicked = false
     /// The song on it: a post's video's (kept by the post), or a story's.
     private var song: Song? { postSong.map { $0.wrappedValue } ?? storySong }
     private func setSong(_ s: Song?) { if let postSong { postSong.wrappedValue = s } else { storySong = s } }
@@ -256,23 +257,25 @@ struct StoryEditor: View {
             }
         }
         .task { await prepare() }
-        .sheet(isPresented: $choosingSong) {
-            SongPicker { picked in
-                setSong(picked)
-                // heard while the story's made, after the list of songs has gone (which stops whatever it was playing)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    guard song?.id == picked.id else { return }
-                    SongPlayer.shared.play(picked, key: "story-edit", loop: true, volume: songLevel)
-                    if postSong != nil { mixing = true }   // a post's video: straight on to how loud each is
-                }
+        // The song starts once the list of songs has really gone. Started half a second after the pick, as it was,
+        // the list could still be on its way out, and its going stops whatever is playing: the new song with it.
+        .sheet(isPresented: $choosingSong, onDismiss: {
+            let fresh = justPicked; justPicked = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                guard let s = song else { return }
+                SongPlayer.shared.play(s, key: "story-edit", loop: true, volume: songLevel)
+                if fresh, postSong != nil { mixing = true }   // a post's video: straight on to how loud each is
             }
+        }) {
+            SongPicker { picked in setSong(picked); justPicked = true }
         }
+        .onAppear { if video != nil { SongPlayer.shared.heard(true) } }
         .sheet(isPresented: $mixing) { mixSheet }
         .task {
             // back in the editor with a song already on the post: heard again with the video
             if let s = postSong?.wrappedValue { SongPlayer.shared.play(s, key: "story-edit", loop: true, volume: songLevel) }
         }
-        .onDisappear { SongPlayer.shared.stop() }
+        .onDisappear { SongPlayer.shared.heard(false); SongPlayer.shared.stop() }
         .onChange(of: look, initial: true) { _, l in lookBox.name = l }
         .task { if startWriting { try? await Task.sleep(for: .milliseconds(350)); newText(); size = 40 } }
         .task {
@@ -541,6 +544,9 @@ struct StoryEditor: View {
         .presentationDetents([.height(muted ? 170 : 190)])
         .presentationDragIndicator(.visible)
         .presentationBackgroundInteraction(.enabled)
+        .presentationBackground(.ultraThinMaterial)
+        .presentationCornerRadius(26)
+        .environment(\.colorScheme, .dark)
     }
 
     /// The tools, each with its name, in a row under the picture that slides sideways: as bare round icons over the

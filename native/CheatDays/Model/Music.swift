@@ -148,8 +148,24 @@ enum Music {
         player?.pause(); player = nil
         if let end { NotificationCenter.default.removeObserver(end) }
         end = nil; playing = nil
+        guard !loud else { return }   // a video's being edited: its own sound is still wanted
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         try? AVAudioSession.sharedInstance().setCategory(.soloAmbient)
+    }
+
+    /// A video's being edited: its sound, and any song put on it, are heard whether or not the phone's on silent,
+    /// until the editor's left. Without this the editor was silent on a phone with its ringer off (most are), and
+    /// each time a song stopped the video's own sound was cut off with it.
+    @ObservationIgnored private var loud = false
+    func heard(_ on: Bool) {
+        loud = on
+        if on {
+            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+            try? AVAudioSession.sharedInstance().setActive(true)
+        } else if player == nil {
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            try? AVAudioSession.sharedInstance().setCategory(.soloAmbient)
+        }
     }
 }
 
