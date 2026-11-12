@@ -113,7 +113,22 @@ final class Follows {
         let got = (try? await rows("/rest/v1/rpc/follow_suggestions", method: "POST", body: [String: Any]())) ?? []
         let out = got.map { (id: str($0["user_id"]), via: str($0["via"]), n: Int(num($0["n"]) ?? 1)) }
         await Profiles.shared.load(out.map(\.id) + out.map(\.via))
+        var k: [String: Known] = [:]
+        for o in out { k[o.id] = Known(via: o.via, n: o.n) }
+        known = k; knownAt = Date()
         return out
+    }
+
+    /// Someone you don't follow who's followed by people you do: one of those people, and how many there are. For
+    /// "Followed by …" under their name on a video, as Instagram has it. From the same list as People's suggestions.
+    struct Known { let via: String; let n: Int }
+    private(set) var known: [String: Known] = [:]
+    @ObservationIgnored private var knownAt = Date.distantPast
+    /// Fetched if it hasn't been in the last ten minutes.
+    func loadKnown() async {
+        guard Date().timeIntervalSince(knownAt) > 600 else { return }
+        knownAt = Date()
+        _ = await suggestions()
     }
 
     func loadExplore() async {

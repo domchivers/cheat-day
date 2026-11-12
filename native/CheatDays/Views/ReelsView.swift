@@ -324,7 +324,7 @@ struct ReelsView: View {
         let stranger = owner != feed.me && !Friends.shared.people.contains { $0.id == owner } && state != .following
         return VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 8) {
-                Avatar(id: owner, size: 32)
+                Avatar(id: owner, size: 32).task { await Follows.shared.loadKnown() }
                 Text(feed.name(owner)).font(.subheadline.weight(.heavy)).foregroundStyle(.white).lineLimit(1)
                 if stranger {
                     Button(state == .requested ? "Requested" : "Follow") {
@@ -342,6 +342,14 @@ struct ReelsView: View {
                 .buttonStyle(.plain)
             }
             if !caption.isEmpty { Text(caption).font(.subheadline).foregroundStyle(.white).lineLimit(3).multilineTextAlignment(.leading) }
+            // someone you don't follow: who you know that does
+            if stranger, let k = Follows.shared.known[owner] {
+                HStack(spacing: 6) {
+                    Avatar(id: k.via, size: 18)
+                    (Text("Followed by ") + Text(feed.name(k.via)).bold() + Text(k.n > 1 ? " and \(k.n - 1) more" : ""))
+                        .font(.caption).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
+                }
+            }
             if kind != "photo" && kind != "moment" {
                 HStack(spacing: 8) {
                     Text(str(p["name"])).lineLimit(1)
