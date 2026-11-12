@@ -358,7 +358,7 @@ struct EditPostSheet: View {
             }
             extra["song"] = song.map { ["id": $0.id, "title": $0.title] as JSON }
             extra["tags"] = tags.isEmpty ? nil : tags
-            extra["mix"] = song != nil && (songVol < 0.995 || clipVol < 0.995) ? ["song": songVol, "clip": clipVol] as JSON : nil
+            extra["mix"] = (song != nil && songVol < 0.995) || clipVol < 0.995 ? ["song": songVol, "clip": clipVol] as JSON : nil
             if whatChanged {
                 for k in Self.attachKeys { extra[k] = nil }
                 if let w = what {

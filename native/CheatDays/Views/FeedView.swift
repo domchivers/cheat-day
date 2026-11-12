@@ -611,7 +611,7 @@ struct FeedView: View {
         let shape = num(dict(p["extra"])["aspect"]).map { min(1.91, max(0.75, $0)) }
         return PostPhotos(post: p)
             .frame(maxWidth: .infinity).frame(height: shape.map { (UIScreen.main.bounds.width / $0).rounded() } ?? 400)
-            .overlay { if let v = Feed.video(p) { FeedVideo(url: v, songKey: Music.of(p) != nil ? "post:" + str(p["id"]) : nil, clipVolume: Music.of(p) != nil ? Music.mix(p).clip : 1) } }   // under the name and numbers
+            .overlay { if let v = Feed.video(p) { FeedVideo(url: v, songKey: Music.of(p) != nil ? "post:" + str(p["id"]) : nil, clipVolume: Music.mix(p).clip) } }   // under the name and numbers
             .clipped()
             .contentShape(Rectangle())
             // a photo with a song: its sound on and off at the bottom right, as Instagram has it
@@ -1263,7 +1263,8 @@ struct ComposeSheet: View {
         let id = draftID ?? UUID().uuidString
         var meta: JSON = ["caption": caption]
         if let what { meta["what"] = what }
-        if let song { meta["song"] = song.id; meta["mix"] = [songVol, clipVol] }
+        if let song { meta["song"] = song.id }
+        meta["mix"] = [songVol, clipVol]
         if !tags.isEmpty { meta["tags"] = tags }
         let pics = shots.map { ($0.source, $0.out) }, movie = movie, clip = clip, poster = poster
         SongPlayer.shared.stop()
@@ -1710,6 +1711,10 @@ struct ComposeSheet: View {
         if let song {
             var x = dict(row["extra"]); x["song"] = ["id": song.id, "title": song.title] as JSON
             if songVol < 0.995 || clipVol < 0.995 { x["mix"] = ["song": songVol, "clip": clipVol] as JSON }
+            row["extra"] = x
+        } else if movie != nil, clipVol < 0.995 {
+            // a video turned down with no song on it: its level goes with the post all the same
+            var x = dict(row["extra"]); x["mix"] = ["song": 1.0, "clip": clipVol] as JSON
             row["extra"] = x
         }
         if !tags.isEmpty { var x = dict(row["extra"]); x["tags"] = tags; row["extra"] = x }

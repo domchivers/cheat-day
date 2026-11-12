@@ -141,13 +141,13 @@ struct ReelsView: View {
                         // gone round to its start: so does its song
                         if at + 0.5 < head.at, holding == nil { SongPlayer.shared.seek(at) }
                         head.at = at; head.length = length
-                    }, volume: Music.of(p) != nil ? Music.mix(p).clip : 1).aspectRatio(a, contentMode: .fit).allowsHitTesting(false)
+                    }, volume: Music.mix(p).clip).aspectRatio(a, contentMode: .fit).allowsHitTesting(false)
                 } else {
                     LoopingVideo(url: v, paused: paused, muted: muted, scrub: holding, tick: { at, length in
                         // gone round to its start: so does its song
                         if at + 0.5 < head.at, holding == nil { SongPlayer.shared.seek(at) }
                         head.at = at; head.length = length
-                    }, volume: Music.of(p) != nil ? Music.mix(p).clip : 1).allowsHitTesting(false)
+                    }, volume: Music.mix(p).clip).allowsHitTesting(false)
                 }
             } else if let a = num(dict(p["extra"])["aspect"]), a > 0.62 {
                 Color.clear.aspectRatio(a, contentMode: .fit).overlay { FeedPhoto(src: str(p["photo"]), fill: true) }.clipped()

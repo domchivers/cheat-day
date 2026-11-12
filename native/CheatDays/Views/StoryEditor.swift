@@ -131,7 +131,7 @@ struct StoryEditor: View {
     private var song: Song? { postSong.map { $0.wrappedValue } ?? storySong }
     private func setSong(_ s: Song?) { if let postSong { postSong.wrappedValue = s } else { storySong = s } }
     private var songLevel: Float { Float(postSongVol?.wrappedValue ?? 1) }
-    private var clipLevel: Float { song == nil ? 1 : Float(postClipVol?.wrappedValue ?? 1) }
+    private var clipLevel: Float { Float(postClipVol?.wrappedValue ?? 1) }   // with a song on it or not
     @State private var songSeed = Int.random(in: 0..<10_000)
     /// A song put forward for a story that has none: by what's on it (a workout sticker, something lively from Gym;
     /// food or its numbers, something easy from Chill), else by the hour (bright in the morning and through the
@@ -550,11 +550,11 @@ struct StoryEditor: View {
     private var mixPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 11) {
-                Image(systemName: "music.note").font(.system(size: 15, weight: .bold)).foregroundStyle(Theme.onAccent)
+                Image(systemName: song == nil ? "speaker.wave.2.fill" : "music.note").font(.system(size: 15, weight: .bold)).foregroundStyle(Theme.onAccent)
                     .frame(width: 38, height: 38).background(Theme.accent, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(song?.title ?? "No song").font(.subheadline.weight(.bold)).lineLimit(1)
-                    Text("Song on this video").font(.caption2.weight(.semibold)).opacity(0.6)
+                    Text(song?.title ?? "Sound").font(.subheadline.weight(.bold)).lineLimit(1)
+                    Text(song == nil ? "No song on this video" : "Song on this video").font(.caption2.weight(.semibold)).opacity(0.6)
                 }
                 Spacer(minLength: 8)
                 Button { withAnimation(.snappy(duration: 0.22)) { mixing = false } } label: {
@@ -563,21 +563,21 @@ struct StoryEditor: View {
                 .buttonStyle(.plain)
             }
             if let postSongVol, let postClipVol {
-                LevelBar(symbol: "music.note", name: "Song", value: postSongVol)
+                if song != nil { LevelBar(symbol: "music.note", name: "Song", value: postSongVol) }
                 if !muted { LevelBar(symbol: "video.fill", name: "Video", value: postClipVol) }
                 else { Text("The video's own sound is off (Sound, in the tools).").font(.caption).opacity(0.6) }
             }
             HStack(spacing: 8) {
                 Button { withAnimation(.snappy(duration: 0.22)) { mixing = false }; choosingSong = true } label: {
-                    Label("Change song", systemImage: "arrow.triangle.2.circlepath").font(.footnote.weight(.bold))
+                    Label(song == nil ? "Add a song" : "Change song", systemImage: song == nil ? "plus" : "arrow.triangle.2.circlepath").font(.footnote.weight(.bold))
                         .padding(.horizontal, 13).frame(height: 34).background(.white.opacity(0.16), in: Capsule())
                 }
                 .buttonStyle(.plain)
-                Button { SongPlayer.shared.stop(); setSong(nil); withAnimation(.snappy(duration: 0.22)) { mixing = false } } label: {
+                if song != nil { Button { SongPlayer.shared.stop(); withAnimation(.snappy(duration: 0.22)) { setSong(nil) } } label: {
                     Label("Remove", systemImage: "trash").font(.footnote.weight(.bold))
                         .padding(.horizontal, 13).frame(height: 34).background(.white.opacity(0.16), in: Capsule())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plain) }
                 Spacer(minLength: 0)
             }
         }
@@ -596,7 +596,7 @@ struct StoryEditor: View {
     private var toolbar: some View {
         ScrollView(.horizontal) {
             HStack(spacing: 8) {
-                if !forPost || postSong != nil { tool("music.note", "Audio", "Audio") { if postSong != nil, song != nil { withAnimation(.snappy(duration: 0.22)) { mixing = true } } else { choosingSong = true } } }
+                if !forPost || postSong != nil { tool("music.note", "Audio", "Audio") { if postSong != nil { withAnimation(.snappy(duration: 0.22)) { mixing = true } } else { choosingSong = true } } }
                 tool("textformat", "Text", "Text") { newText() }
                 tool("face.smiling", "Stickers", "Stickers") { stickers = true }
                 tool("scribble.variable", "Draw", "Draw") { mode = .draw }
