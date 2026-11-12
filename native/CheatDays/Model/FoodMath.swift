@@ -103,9 +103,18 @@ enum Meals {
 
     /// The meal a message names ("add to lunch", "for my dinner", "as a snack"), if it names one.
     static func named(in text: String) -> String? {
+        // A meal only mentioned in passing isn't asked for: "the chicken from yesterday that I had for lunch" and
+        // "that mayo I use every lunch", both sent at dinner time, got Add to lunch.
         let t = text.lowercased()
-        for (m, w) in [("Breakfast", "breakfast|brekkie"), ("Lunch", "lunch"), ("Dinner", "dinner|tea tonight|supper"), ("Snacks", "snacks?")]
-        where t.range(of: "\\b(\(w))\\b", options: .regularExpression) != nil { return m }
+        for (m, w) in [("Breakfast", "breakfast|brekkie"), ("Lunch", "lunch"), ("Dinner", "dinner|tea tonight|supper"), ("Snacks", "snacks?")] {
+            var from = t.startIndex
+            while let r = t.range(of: "\\b(\(w))\\b", options: .regularExpression, range: from..<t.endIndex) {
+                let before = t[..<r.lowerBound]
+                let clause = before.lastIndex(where: { ".!?\n".contains($0) }).map { String(before[before.index(after: $0)...]) } ?? String(before)
+                if clause.range(of: #"\b(every|usual|usually|always|use|uses|used|left ?over|leftovers?|yesterday|that i had|which i had)\b"#, options: .regularExpression) == nil { return m }
+                from = r.upperBound
+            }
+        }
         return nil
     }
 

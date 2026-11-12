@@ -888,8 +888,13 @@ enum Assistant {
         let parts = CheatDays.list(e["parts"]).map { p -> JSON in
             guard let g = pos(p["grams"]), let pr = pos(p["protein_g"]), pr / g > 0.02 else { return p }
             let words = Set(FoodTable.words(str(p["name"])))
+            // "591 g batch" isn't the "557 g batch", however alike they cooked down: yesterday's leftover was renamed
+            // as today's and given its calories
+            let mine = figures(str(p["name"]))
             let found = old.first { o in
                 let og = num(o["grams"]) ?? 1, per = (num(o["protein_g"]) ?? 0) / og
+                let theirs = figures(str(o["name"]))
+                if !mine.isEmpty, !theirs.isEmpty, mine.isDisjoint(with: theirs) { return false }
                 return abs(pr / g - per) <= 0.03 * per && soundsLike(str(o["name"]), words)
             }
             guard let o = found, let og = pos(o["grams"]) else { return p }
@@ -908,6 +913,11 @@ enum Assistant {
         out["parts"] = parts
         out["kcal_total"] = sum("kcal").rounded(); out["protein_g"] = sum("protein_g"); out["carbs_g"] = sum("carbs_g"); out["fat_g"] = sum("fat_g")
         return out
+    }
+
+    /// The numbers in a food's name ("Boiled chicken breast, 557 g batch": 557), two figures or more.
+    static func figures(_ name: String) -> Set<String> {
+        Set(name.components(separatedBy: CharacterSet.decimalDigits.inverted).filter { $0.count >= 2 })
     }
 
     /// A recipe's ingredients that were already worked out in this chat keep those numbers. The recipe check put
@@ -969,8 +979,12 @@ enum Assistant {
     static func saneEdit(_ answer: JSON) -> JSON {
         // "Logging it now": an estimate isn't on the list until Add is tapped either
         if str(answer["kind"]) == "estimate", saysDone(str(answer["reply"])) {
+            // Only the sentence that claims it goes, not the whole answer: "use all 159 g of the leftover and 87 g
+            // of the new batch. I've logged it" lost its answer too, and all that showed was "Here's my estimate".
             var out = answer
-            out["reply"] = "Here's my estimate: check it below and tap Add to put it on today's list."
+            let kept = sentences(str(answer["reply"])).filter { !claimsDone($0) }.joined(separator: " ")
+            out["reply"] = kept.isEmpty ? "Here's my estimate: check it below and tap Add to put it on today's list."
+                : kept + (kept.lowercased().contains("tap") ? "" : " Check it below and tap Add to put it on today's list.")
             return out
         }
         guard str(answer["kind"]) == "edit", var edit = answer["edit"] as? JSON else { return answer }
@@ -989,8 +1003,22 @@ enum Assistant {
         return out
     }
 
-    private static func saysDone(_ reply: String) -> Bool {
-        reply.range(of: #"\b(added|adding|logged|logging|removed|updated|changed|done)\b"#, options: [.regularExpression, .caseInsensitive]) != nil
+    private static func saysDone(_ reply: String) -> Bool { sentences(reply).contains(where: claimsDone) }
+
+    /// A sentence saying it's been done. "I haven't logged anything yet", "once it's added" and "tap to add" say
+    /// the opposite, and used to count: any answer with one of those lost everything else it said.
+    static func claimsDone(_ sentence: String) -> Bool {
+        let o: String.CompareOptions = [.regularExpression, .caseInsensitive]
+        guard sentence.range(of: #"\b(added|adding|logged|logging|removed|updated|changed|done)\b"#, options: o) != nil else { return false }
+        return sentence.range(of: #"n['’]t\b|\b(not|nothing|never|until|once|when|if|before|after|to be|will be|can be)\b"#, options: o) == nil
+    }
+
+    static func sentences(_ text: String) -> [String] {
+        var out: [String] = []
+        text.enumerateSubstrings(in: text.startIndex..., options: .bySentences) { part, _, _, _ in
+            if let t = part?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty { out.append(t) }
+        }
+        return out
     }
 
     /// What an estimate, a suggestion or a lighter serving adds to the day as.

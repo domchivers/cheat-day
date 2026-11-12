@@ -185,6 +185,37 @@ final class AssistantTests: XCTestCase {
         XCTAssertTrue(str(out["reply"]).contains("tap Add"))
     }
 
+    /// From the owner's chat, 12 Nov: the answer to "how much of each" was thrown away for the stock line, yesterday's
+    /// leftover was renamed as today's batch, and both cards said Add to lunch at six in the evening.
+    func testAnEstimateKeepsItsAnswer() {
+        let out = Assistant.saneEdit(["kind": "estimate", "reply": "Use all 159 g of the leftover and 87 g of the new batch for 80 g protein. I haven't logged anything yet."])
+        XCTAssertTrue(str(out["reply"]).hasPrefix("Use all 159 g of the leftover"), "nothing here says it's done")
+        let claimed = Assistant.saneEdit(["kind": "estimate", "reply": "Use all 159 g of the leftover and 87 g of the new batch. I've logged it for you."])
+        XCTAssertTrue(str(claimed["reply"]).hasPrefix("Use all 159 g of the leftover and 87 g of the new batch."))
+        XCTAssertFalse(str(claimed["reply"]).contains("logged"))
+        XCTAssertTrue(str(claimed["reply"]).contains("tap Add"))
+        XCTAssertFalse(Assistant.claimsDone("Tap to add it once it's done cooking."))
+        XCTAssertTrue(Assistant.claimsDone("Logging it now."))
+    }
+
+    func testTwoBatchesStayTwo() {
+        let first: JSON = ["parts": [["name": "Boiled chicken breast, 557 g batch", "grams": 245, "kcal": 397, "protein_g": 78, "carbs_g": 0, "fat_g": 9] as JSON]]
+        let both: JSON = ["parts": [["name": "Boiled chicken breast, 591 g batch", "grams": 159, "kcal": 262, "protein_g": 51.5, "carbs_g": 0, "fat_g": 6] as JSON,
+                                    ["name": "Boiled chicken, 557 g batch", "grams": 87, "kcal": 140, "protein_g": 27.7, "carbs_g": 0, "fat_g": 3] as JSON]]
+        let parts = list(Assistant.steady(both, earlier: [first])["parts"])
+        XCTAssertEqual(str(parts[0]["name"]), "Boiled chicken breast, 591 g batch", "yesterday's keeps its name")
+        XCTAssertEqual(num(parts[0]["kcal"]), 262, "and its own numbers")
+        XCTAssertEqual(num(parts[1]["kcal"]) ?? 0, 141, accuracy: 1, "today's is today's: 397 x 87 / 245")
+    }
+
+    func testAMealOnlyMentionedIsntAskedFor() {
+        XCTAssertNil(Meals.named(in: "Also I have 159g of the boiled chicken from yesterday that I had for lunch today left over. How much of that plus the new one now to get 80g protein?"))
+        XCTAssertNil(Meals.named(in: "320g cabbage\n96g carrot\n15g of that mayo I use every lunch\n\nThat's my coleslaw, work out the calories and will have half of it"))
+        XCTAssertEqual(Meals.named(in: "leftovers from lunch. Add it to dinner"), "Dinner")
+        XCTAssertEqual(Meals.named(in: "I had a chicken sandwich for lunch"), "Lunch")
+        XCTAssertEqual(Meals.named(in: "Lunch was a tuna wrap"), "Lunch")
+    }
+
     func testAnEstimateAddsWithItsServing() {
         let b = Assistant.basis(name: "Chicken katsu curry", kcal: 820, grams: 450, p: 38, c: 95, f: 30)
         XCTAssertEqual(num(b["kcalPerServing"]), 820)
