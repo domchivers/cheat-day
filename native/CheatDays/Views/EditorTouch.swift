@@ -66,7 +66,8 @@ struct EditorTouch: UIViewRepresentable {
             for t in touches where down.count < 2 { down.append(t) }
             rebase()
             if first {
-                move = .zero; size = 1; turn = 0; moved = false; start = lastMiddle
+                // two fingers at once is never a tap, however still their middle stays
+                move = .zero; size = 1; turn = 0; moved = down.count >= 2; start = lastMiddle
                 began?(start)
             } else {
                 moved = true
@@ -86,9 +87,11 @@ struct EditorTouch: UIViewRepresentable {
             }
             lastMiddle = r.middle; lastApart = r.apart; lastAngle = r.angle
             if !moved {
-                // a finger that's barely shifted is a tap; once it's a move, it starts from here, not with a jump
-                guard hypot(move.width, move.height) > 6 else { return }
-                moved = true; move = .zero
+                // one finger that's barely shifted is a tap. (Only its travel was looked at before, so two fingers
+                // spreading evenly about a still middle counted as a tap, and a pinch on text opened it for typing.)
+                // What it has travelled by then is kept: thrown away, the thing trailed the finger by that much.
+                guard down.count >= 2 || hypot(move.width, move.height) > 4 else { return }
+                moved = true
             }
             changed?(move, size, turn, down.count)
         }
