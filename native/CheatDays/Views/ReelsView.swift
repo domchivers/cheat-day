@@ -14,6 +14,11 @@ struct ReelsView: View {
     @State private var current: String?
     @State private var paused = false
     @State private var muted = false
+    // Two fingers on the video: it zooms while they're on it and goes back when they lift. Pinching it bigger also
+    // clears everything off the screen (just the video); pinching smaller, or the button at the bottom right,
+    // brings it all back.
+    @GestureState private var pinch: CGFloat = 1
+    @State private var clean = false
     @State private var talking: PostBox?
     @State private var sharing: PostBox?
     @State private var recipe: PostBox?
@@ -80,6 +85,7 @@ struct ReelsView: View {
         let rx = feed.reactions.filter { str($0["post_id"]) == id }
         return ZStack {
             Color.black
+            Group {
             // only the page on screen plays; its neighbours wait as their first frame
             if on, let v = Feed.video(p) {
                 // a tall clip fills the screen; a squarer one is shown whole in the middle
@@ -93,17 +99,43 @@ struct ReelsView: View {
             } else {
                 FeedPhoto(src: str(p["photo"]), fill: true).frame(maxWidth: .infinity, maxHeight: .infinity).clipped()
             }
+            }
+            .scaleEffect(on ? min(4, max(1, pinch)) : 1)
+            .animation(.snappy(duration: 0.25), value: pinch == 1)
             Color.clear.contentShape(Rectangle())
                 .onTapGesture(count: 2) { like(p, rx: rx) }
                 .onTapGesture { withAnimation(.easeOut(duration: 0.15)) { paused.toggle() } }
+                .simultaneousGesture(MagnifyGesture()
+                    .updating($pinch) { v, s, _ in s = v.magnification }
+                    .onEnded { v in
+                        if v.magnification > 1.15, !clean { UIImpactFeedbackGenerator(style: .light).impactOccurred(); withAnimation(.easeOut(duration: 0.2)) { clean = true } }
+                        else if v.magnification < 0.87, clean { UIImpactFeedbackGenerator(style: .light).impactOccurred(); withAnimation(.easeOut(duration: 0.2)) { clean = false } }
+                    })
                 .accessibilityLabel(paused ? "Play" : "Pause").accessibilityAddTraits(.isButton)
-            if on && paused { pausedButtons } else { chrome(p, rx: rx) }
+            if on && paused { pausedButtons } else if !clean { chrome(p, rx: rx) } else { backAgain }
             if burst == id {
                 Image(systemName: "heart.fill").font(.system(size: 96)).foregroundStyle(.white).shadow(radius: 12)
                     .transition(.scale(scale: 0.4).combined(with: .opacity)).allowsHitTesting(false)
             }
         }
         .clipped()
+    }
+
+    /// With everything cleared off: one faint button at the bottom right to bring it back (a pinch does too).
+    private var backAgain: some View {
+        VStack {
+            Spacer()
+            HStack {
+                Spacer()
+                Button { withAnimation(.easeOut(duration: 0.2)) { clean = false } } label: {
+                    Image(systemName: "arrow.down.right.and.arrow.up.left").font(.system(size: 16, weight: .semibold)).foregroundStyle(.white.opacity(0.9))
+                        .frame(width: 42, height: 42).background(.black.opacity(0.35), in: Circle())
+                }
+                .buttonStyle(.plain).accessibilityLabel("Bring everything back")
+            }
+        }
+        .padding(.trailing, 14).padding(.bottom, 40)
+        .transition(.opacity)
     }
 
     /// Paused: just the clip, with sound and play in the middle.
@@ -158,6 +190,7 @@ struct ReelsView: View {
                             .accessibilityLabel(hearted ? "Unlike" : "Like")
                         rail("bubble.right", comments == 0 ? "" : "\(comments)") { talking = PostBox(post: p) }.accessibilityLabel("Comments")
                         rail("paperplane", "") { sharing = PostBox(post: p) }.accessibilityLabel("Send to a friend")
+                        rail("arrow.up.left.and.arrow.down.right", "") { withAnimation(.easeOut(duration: 0.2)) { clean = true } }.accessibilityLabel("Just the video")
                     }
                 }
                 .padding(.horizontal, 14).padding(.bottom, 12)
