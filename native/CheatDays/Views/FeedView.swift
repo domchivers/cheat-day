@@ -19,6 +19,13 @@ import UniformTypeIdentifiers
 
 @Observable @MainActor
 final class Feed {
+    /// What went wrong, to show under the stories; nothing for a load that was only called off (pulling to refresh
+    /// again, or leaving the screen, stops the one in hand, and that showed as the word "cancelled").
+    static func said(_ error: Error) -> String? {
+        if error is CancellationError || (error as? URLError)?.code == .cancelled || (error as NSError).code == NSURLErrorCancelled { return nil }
+        return error.localizedDescription
+    }
+
     static let shared = Feed()
     static let reacts = ["❤️", "🔥", "😋", "💪", "👏"]   // ❤️ is the heart; the rest are a long press away
     private(set) var posts: [JSON] = []
@@ -63,7 +70,7 @@ final class Feed {
                     names[str(p["user_id"])] = str(p["display_name"])
                 }
             }
-        } catch { self.error = error.localizedDescription }
+        } catch { self.error = Feed.said(error) }
     }
 
     /// Reactions and comments for posts that aren't in the feed (Explore's), added to what's here.
@@ -106,7 +113,7 @@ final class Feed {
                 notify(str(post["owner"]), kind: "react", text: str(post["name"]), extra: ["emoji": emoji, "post": id])
                 Store.shared.perform(["type": "bump", "key": "reactCount"], syncAfter: 3)
             }
-        } catch { self.error = error.localizedDescription }
+        } catch { self.error = Feed.said(error) }
     }
 
     /// A comment, or a reply to one (which its writer hears about too).
@@ -119,7 +126,7 @@ final class Feed {
             notify(str(post["owner"]), kind: "comment", text: text, extra: ["post": str(post["id"])])
             if let r = replyTo, str(r["user_id"]) != str(post["owner"]) { notify(str(r["user_id"]), kind: "reply", text: text, extra: ["post": str(post["id"])]) }
             Store.shared.perform(["type": "bump", "key": "commentCount"], syncAfter: 3)
-        } catch { self.error = error.localizedDescription }
+        } catch { self.error = Feed.said(error) }
     }
 
     func likeComment(_ c: JSON) async {
@@ -153,7 +160,7 @@ final class Feed {
 
     func deleteComment(_ c: JSON) async {
         do { _ = try await api.rest("/rest/v1/comments?id=eq.\(str(c["id"]))&user_id=eq.\(me)", method: "DELETE"); comments.removeAll { str($0["id"]) == str(c["id"]) } }
-        catch { self.error = error.localizedDescription }
+        catch { self.error = Feed.said(error) }
     }
 
     /// Captions changed since a copy of the post was fetched (a profile keeps its own list), by post id.
