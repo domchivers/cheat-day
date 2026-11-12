@@ -2,7 +2,7 @@ import AVFoundation
 import SwiftUI
 
 /// Stories people post: a photo or a video for 24 hours, with text and food stickers placed on it, for friends only
-/// ("Close friends") or friends and followers ("Your story"). On a ring they play before the day from the log.
+/// ("Friends only") or friends and followers ("Your story"). On a ring they play before the day from the log.
 @Observable @MainActor
 final class Stories {
     static let shared = Stories()

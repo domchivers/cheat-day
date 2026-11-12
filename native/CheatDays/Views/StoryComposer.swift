@@ -3,7 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// Making a story: a photo or a video (up to 30 seconds) from the camera or the library, then the editor
-/// (StoryEditor), then Close friends (friends only) or Your story (friends and followers).
+/// (StoryEditor), then Friends only or Your story (friends and followers).
 struct StoryComposer: View {
     @Environment(\.dismiss) private var dismiss
     @State private var image: UIImage?

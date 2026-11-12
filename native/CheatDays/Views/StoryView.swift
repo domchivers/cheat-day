@@ -236,7 +236,7 @@ struct StoryView: View {
                         Label("Seen by \(Stories.shared.viewers(st).count)", systemImage: "eye").font(.subheadline.weight(.bold)).foregroundStyle(.white)
                     }
                     Spacer()
-                    Text(str(st["audience"]) == "friends" ? "Close friends" : "Your story").font(.caption.weight(.bold)).foregroundStyle(.white.opacity(0.6))
+                    Text(str(st["audience"]) == "friends" ? "Friends only" : "Friends and followers").font(.caption.weight(.bold)).foregroundStyle(.white.opacity(0.6))
                     // a dialog that pauses the story: a menu kept playing, moved to the next slide, and its Delete did nothing
                     Button { managing = st } label: { Image(systemName: "ellipsis").font(.title3).foregroundStyle(.white).padding(10) }
                         .accessibilityLabel("Story options")

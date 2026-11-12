@@ -994,8 +994,8 @@ struct StoryEditor: View {
         HStack(spacing: 10) {
             Button { share("friends") } label: {
                 HStack(spacing: 7) {
-                    Image(systemName: "star.fill").font(.system(size: 11, weight: .black)).foregroundStyle(.black).frame(width: 22, height: 22).background(Color(red: 0.19, green: 0.82, blue: 0.35), in: Circle())
-                    Text("Close friends").font(.subheadline.weight(.heavy)).foregroundStyle(.white)
+                    Image(systemName: "person.2.fill").font(.system(size: 10, weight: .black)).foregroundStyle(Theme.onAccent).frame(width: 22, height: 22).background(Theme.accent, in: Circle())
+                    Text("Friends only").font(.subheadline.weight(.heavy)).foregroundStyle(.white)
                 }
                 .padding(.horizontal, 14).padding(.vertical, 11).background(Color(white: 0.14), in: Capsule())
             }
