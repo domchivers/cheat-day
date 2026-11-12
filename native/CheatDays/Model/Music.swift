@@ -102,6 +102,9 @@ enum Music {
     func flip(_ song: Song, key: String, volume: Float = 1) {
         if playing == key { auto = false; stop() } else { auto = true; play(song, key: key, loop: true, volume: volume) }
     }
+    /// The song that's playing, stopped where it is and carried on from there (a story held under a finger).
+    func hold(_ on: Bool) { if on { player?.pause() } else { player?.play() } }
+
     /// The song that's playing, louder or quieter (a slider being moved while it's heard).
     func volume(_ v: Float) { player?.volume = v }
     /// A post with a song has come onto the screen. Nothing if songs are off, or if the phone's already playing

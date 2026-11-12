@@ -113,6 +113,10 @@ struct StoryEditor: View {
     // the look the clip's frames are drawn through: a slider writes to it directly, without this whole screen being
     // worked out again for each step (see LoopingVideo.box)
     @State private var lookBox = LoopingVideo.Look()
+    // a story's song (a post's is chosen where the post is written up): it plays while the story's being made, and
+    // goes with the story as one of the things on it, to be played when the story's watched
+    @State private var storySong: Song?
+    @State private var choosingSong = false
     @State private var grab = Grab()   // what fingers have hold of on the story, and what they've done to it
     // something placed, being moved
     @State private var active: Int?
@@ -230,6 +234,14 @@ struct StoryEditor: View {
             }
         }
         .task { await prepare() }
+        .sheet(isPresented: $choosingSong) {
+            SongPicker { song in
+                storySong = song
+                // heard while the story's made, after the list of songs has gone (which stops whatever it was playing)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { if storySong?.id == song.id { SongPlayer.shared.play(song, key: "story-edit", loop: true) } }
+            }
+        }
+        .onDisappear { SongPlayer.shared.stop() }
         .onChange(of: look, initial: true) { _, l in lookBox.name = l }
         .task { if startWriting { try? await Task.sleep(for: .milliseconds(350)); newText(); size = 40 } }
         .task {
@@ -467,6 +479,7 @@ struct StoryEditor: View {
     private var toolbar: some View {
         ScrollView(.horizontal) {
             HStack(spacing: 8) {
+                if !forPost { tool("music.note", "Audio", "Audio") { choosingSong = true } }
                 tool("textformat", "Text", "Text") { newText() }
                 tool("face.smiling", "Stickers", "Stickers") { stickers = true }
                 tool("scribble.variable", "Draw", "Draw") { mode = .draw }
@@ -521,7 +534,26 @@ struct StoryEditor: View {
             case .none:
                 round("xmark") { if edited { leaving = true } else { close() } }.accessibilityLabel("Back")
                 if !history.isEmpty { round("arrow.uturn.backward") { undo() }.accessibilityLabel("Undo") }
-                Spacer()
+                Spacer(minLength: 6)
+                if let song = storySong {
+                    // the song, named at the top: tap its name for another, the x to take it off
+                    HStack(spacing: 6) {
+                        Button { choosingSong = true } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "music.note").font(.system(size: 11, weight: .bold))
+                                Text(song.title).font(.footnote.weight(.bold)).lineLimit(1)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        Button { SongPlayer.shared.stop(); withAnimation(.snappy) { storySong = nil } } label: {
+                            Image(systemName: "xmark.circle.fill").font(.system(size: 15)).foregroundStyle(.white.opacity(0.8))
+                        }
+                        .buttonStyle(.plain).accessibilityLabel("Take the song off")
+                    }
+                    .foregroundStyle(.white).padding(.leading, 11).padding(.trailing, 8).frame(height: 34)
+                    .background(.black.opacity(0.45), in: Capsule()).frame(maxWidth: 200)
+                    Spacer(minLength: 6)
+                }
                 if image != nil || bgScale > 1.01 || bgOffset != .zero || bgSpin != 0 || !items.isEmpty || !strokes.isEmpty {
                 Menu {
                     if image != nil { Button { Task { await save() } } label: { Label("Save to Photos", systemImage: "square.and.arrow.down") } }
@@ -562,7 +594,7 @@ struct StoryEditor: View {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         withAnimation(.snappy(duration: 0.22)) { items = last.items; strokes = last.strokes }
     }
-    private var edited: Bool { !items.isEmpty || !strokes.isEmpty || filter != "Normal" || !tune.isEmpty || bgScale > 1.01 || bgSpin != 0 || turns != 0 }
+    private var edited: Bool { !items.isEmpty || !strokes.isEmpty || filter != "Normal" || !tune.isEmpty || bgScale > 1.01 || bgSpin != 0 || turns != 0 || storySong != nil }
 
     private func round(_ symbol: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) { roundLabel(symbol) }.buttonStyle(.plain)
@@ -969,7 +1001,10 @@ struct StoryEditor: View {
         }
     }
 
-    private var everything: [JSON] { (strokes.isEmpty ? [] : [["type": "drawing", "strokes": strokes]]) + items }
+    private var everything: [JSON] {
+        (strokes.isEmpty ? [] : [["type": "drawing", "strokes": strokes]]) + items
+            + (storySong.map { [["type": "song", "id": $0.id, "title": $0.title] as JSON] } ?? [])
+    }
 
     @ViewBuilder private var bottomBar: some View {
         if let finishVideo {

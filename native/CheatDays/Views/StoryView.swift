@@ -102,6 +102,11 @@ struct StoryView: View {
             let now = slides.indices.contains(slide) ? slides[slide] : nil
             var length = Self.seconds
             if case .snap(let st)? = now { if highlight == nil { Stories.shared.watch(st) }; if str(st["kind"]) == "video" { length = max(3, num(st["seconds"]) ?? 15) } }
+            // a story with a song: it plays for as long as the story's showing (it's one of the things put on it, by name)
+            if case .snap(let st)? = now, let tune = list(st["overlays"]).first(where: { str($0["type"]) == "song" }),
+               let song = Music.all.first(where: { $0.id == str(tune["id"]) }) {
+                SongPlayer.shared.play(song, key: "story:" + str(st["id"]), loop: true)
+            } else { SongPlayer.shared.stop() }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(50))
                 if paused || typing || seenBy != nil || adding != nil || managing != nil { continue }
@@ -110,6 +115,8 @@ struct StoryView: View {
             }
         }
         .onAppear { if slides.isEmpty { dismiss() } }
+        .onChange(of: paused) { _, on in SongPlayer.shared.hold(on) }
+        .onDisappear { SongPlayer.shared.stop() }
     }
 
     private func bars(_ n: Int) -> some View {
