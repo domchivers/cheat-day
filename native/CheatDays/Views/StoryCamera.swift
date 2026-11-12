@@ -28,9 +28,15 @@ struct StoryCamera: View {
     @State private var handsFree = false
 
     var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            VStack(spacing: 0) {
+        // The same sums as the story editor's (StoryEditor.body): a 9:16 picture in the same space, the bar under it
+        // where the editor's buttons will be, the X where the editor's X will be. Laid out its own way before (a
+        // taller picture, a deeper bar, a bigger X higher up), everything jumped as a photo or video went from one
+        // to the other.
+        GeometryReader { screen in
+            let low = max(0, screen.safeAreaInsets.bottom - 22)
+            let stageH = max(120, screen.size.height + low - 70)
+            let cw = min(screen.size.width, stageH * 9 / 16), ch = cw * 16 / 9
+            VStack(spacing: 10) {
                 ZStack {
                     if cam.denied {
                         VStack(spacing: 12) {
@@ -41,7 +47,7 @@ struct StoryCamera: View {
                         }
                     } else {
                         CameraPreview(session: cam.session)
-                            .gesture(MagnifyGesture().onChanged { m in cam.zoom(to: zoomStart * m.magnification) }.onEnded { _ in zoomStart = cam.zoomFactor })
+                            .gesture(MagnifyGesture().onChanged { m in cam.zoom(to: zoomStart * m.magnification, glide: true) }.onEnded { _ in zoomStart = cam.zoomFactor })
                             .onTapGesture(count: 2) { cam.flip() }
                     }
                     if layout > 0 { layoutGuide.allowsHitTesting(false) }
@@ -65,11 +71,16 @@ struct StoryCamera: View {
                     }
                     .padding(.bottom, 22)
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .frame(width: cw, height: ch)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .gesture(DragGesture(minimumDistance: 40).onEnded { v in if v.translation.height < -60 && !recording { recents = true } })
-                bottomBar.frame(height: 92)
+                .frame(width: screen.size.width, height: stageH)
+                bottomBar.frame(width: screen.size.width, height: 48)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .offset(y: low / 2)
         }
+        .background(Color.black.ignoresSafeArea())
         .statusBarHidden()
         .task { await cam.start() }
         .onDisappear { cam.stop() }
@@ -88,23 +99,30 @@ struct StoryCamera: View {
     private var controlsTop: some View {
         VStack {
             HStack {
-                Button { close() } label: { Image(systemName: "xmark").font(.system(size: 22, weight: .semibold)).foregroundStyle(.white).padding(12) }
-                    .accessibilityLabel("Close")
+                Button { close() } label: {
+                    Image(systemName: "xmark").font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
+                        .frame(width: 34, height: 34).background(.black.opacity(0.45), in: Circle())
+                }
+                .buttonStyle(.plain).accessibilityLabel("Close")
                 Spacer()
                 // Aa beside the flash, the same size and weight (it sat on its own line below)
                 Button { textOnly() } label: {
-                    Text("Aa").font(.system(size: 20, weight: .semibold)).foregroundStyle(.white).padding(12)
+                    Text("Aa").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+                        .frame(width: 34, height: 34).background(.black.opacity(0.45), in: Circle())
                 }
+                .buttonStyle(.plain)
                 .accessibilityLabel("A text story")
                 Button { cam.cycleFlash() } label: {
                     Image(systemName: cam.flash == .on ? "bolt.fill" : cam.flash == .auto ? "bolt.badge.automatic.fill" : "bolt.slash.fill")
-                        .font(.system(size: 20, weight: .semibold)).foregroundStyle(cam.flash == .on ? .yellow : .white).padding(12)
+                        .font(.system(size: 15, weight: .bold)).foregroundStyle(cam.flash == .on ? .yellow : .white)
+                        .frame(width: 34, height: 34).background(.black.opacity(0.45), in: Circle())
                 }
+                .buttonStyle(.plain)
                 .accessibilityLabel("Flash")
             }
             Spacer()
         }
-        .padding(.top, 8)
+        .padding(.horizontal, 14).padding(.top, 12)
     }
 
     /// The phone's own lenses as a row in one dark pill, the way the Camera app shows them: the one in use bigger and
@@ -168,7 +186,9 @@ struct StoryCamera: View {
                         tick(at)
                     }
                 }
-                if recording { cam.zoom(to: zoomStart * max(1, 1 + (-v.translation.height) / 120)) }
+                // each stretch of the thumb's travel doubles the zoom (it grew by a fixed amount per point, which
+                // rushed at the start and crawled further up), and the camera glides to it
+                if recording { cam.zoom(to: zoomStart * pow(2, max(0, -v.translation.height) / 150), glide: true) }
             }
             .onEnded { _ in
                 pressing = false
@@ -406,11 +426,18 @@ final class CameraRig: NSObject {
     func cycleFlash() { flash = flash == .off ? .auto : flash == .auto ? .on : .off }
 
     /// A device zoom factor, kept in the camera's range.
-    func zoom(to factor: CGFloat) {
+    /// `glide`: from a moving finger. The camera is asked to run smoothly to the zoom wanted (and is asked again,
+    /// from wherever it's got to, as the finger moves on): set outright for every move, it went in little steps.
+    func zoom(to factor: CGFloat, glide: Bool = false) {
         guard let d = device else { return }
         let f = min(max(factor, d.minAvailableVideoZoomFactor), min(d.maxAvailableVideoZoomFactor, mainFactor * 10))
+        guard abs(f - zoomFactor) > 0.001 else { return }
         zoomFactor = f; shownZoom = f / mainFactor
-        queue.async { if (try? d.lockForConfiguration()) != nil { d.videoZoomFactor = f; d.unlockForConfiguration() } }
+        queue.async {
+            guard (try? d.lockForConfiguration()) != nil else { return }
+            if glide { d.ramp(toVideoZoomFactor: f, withRate: 12) } else { if d.isRampingVideoZoom { d.cancelVideoZoomRamp() }; d.videoZoomFactor = f }
+            d.unlockForConfiguration()
+        }
     }
     func zoom(shown z: CGFloat) { zoom(to: z * mainFactor) }
 
