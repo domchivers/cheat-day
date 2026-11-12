@@ -262,7 +262,7 @@ struct PlacedItem: View {
         if sx { x = 0.5 }; if sy { y = 0.5 }
         let deg = (num(o["rotation"]) ?? 0) + turn, quarter = (deg / 90).rounded() * 90
         let straight = abs(deg - quarter) < 2.5
-        return (min(1, max(0, x)), min(1, max(0, y)), min(60, max(0.15, (num(o["scale"]) ?? 1) * Double(size))), straight ? quarter : deg, sx, sy, straight)
+        return (min(9, max(-8, x)), min(9, max(-8, y)), min(60, max(0.15, (num(o["scale"]) ?? 1) * Double(size))), straight ? quarter : deg, sx, sy, straight)
     }
 
     var body: some View {
