@@ -720,6 +720,7 @@ struct FeedView: View {
         let id = str(p["id"]), kind = str(p["kind"])
         let mine = rx.filter { str($0["user_id"]) == feed.me }.map { str($0["emoji"]) }
         let hearted = mine.contains("❤️"), other = mine.first { $0 != "❤️" && $0 != "🎉" }
+        let likes = Set(rx.map { str($0["user_id"]) }).count
         return VStack(alignment: .leading, spacing: 0) {
             if picking == id {
                 HStack(spacing: 14) {
@@ -752,7 +753,14 @@ struct FeedView: View {
                 .sensoryFeedback(.selection, trigger: hearted)
                 .accessibilityLabel(hearted ? "Unlike" : "Like").accessibilityAddTraits(.isButton)
                 .accessibilityAction(named: "More reactions") { picking = id }
-                Button { talking = PostBox(post: p) } label: { Image(systemName: "bubble.right").font(.system(size: 22, weight: .medium)) }
+                // how many, beside each, as Instagram shows them (none shown for none)
+                if likes > 0 { Text("\(likes)").font(.subheadline.weight(.semibold)).monospacedDigit().padding(.leading, -12).accessibilityLabel("\(likes) likes") }
+                Button { talking = PostBox(post: p) } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "bubble.right").font(.system(size: 22, weight: .medium))
+                        if comments > 0 { Text("\(comments)").font(.subheadline.weight(.semibold)).monospacedDigit() }
+                    }
+                }
                     .buttonStyle(.plain).accessibilityLabel(comments == 0 ? "Comment" : "\(comments) comments")
                 Button { sharing = PostBox(post: p) } label: { Image(systemName: "paperplane").font(.system(size: 21, weight: .medium)) }
                     .buttonStyle(.plain).accessibilityLabel("Send to a friend")

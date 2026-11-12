@@ -214,11 +214,14 @@ struct ReelsView: View {
                         else if v.magnification < 0.87, clean { UIImpactFeedbackGenerator(style: .light).impactOccurred(); withAnimation(.easeOut(duration: 0.2)) { clean = false } }
                     })
                 .accessibilityLabel(paused ? "Play" : "Pause").accessibilityAddTraits(.isButton)
-            if on && paused { pausedButtons } else if !clean { chrome(p, rx: rx) } else { backAgain }
+            // paused: everything stays where it was, with sound and play in the middle (as Instagram has it; it
+            // used to clear the name, caption and buttons away, which read as something having gone wrong)
+            if !clean { chrome(p, rx: rx) } else { backAgain }
+            if on && paused { pausedButtons }
             if on {
                 // just above the comment bar; lower when that's cleared away
                 VStack { Spacer(); ReelBar(head: head, holding: $holding) }
-                    .padding(.bottom, !paused && !clean ? 68 : 22)
+                    .padding(.bottom, !clean ? 68 : 22)
             }
             if burst == id {
                 HeartBurst().transition(.identity)
