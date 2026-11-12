@@ -120,6 +120,8 @@ struct StoryEditor: View {
     // the look the clip's frames are drawn through: a slider writes to it directly, without this whole screen being
     // worked out again for each step (see LoopingVideo.box)
     @State private var lookBox = LoopingVideo.Look()
+    // the same for a photo: the look its sliders are giving it, read by the picture on screen (see LivePhoto)
+    @State private var photoBox = PhotoLook()
     // a story's song (a post's is chosen where the post is written up): it plays while the story's being made, and
     // goes with the story as one of the things on it, to be played when the story's watched
     @State private var storySong: Song?
@@ -301,6 +303,7 @@ struct StoryEditor: View {
         }
         .onDisappear { SongPlayer.shared.heard(false); SongPlayer.shared.stop() }
         .onChange(of: look, initial: true) { _, l in lookBox.name = l }
+        .onChange(of: flatLook, initial: true) { _, l in photoBox.look = l }
         .task { if startWriting { try? await Task.sleep(for: .milliseconds(350)); newText(); size = 40 } }
         .task {
             guard let startTool else { return }
@@ -367,7 +370,12 @@ struct StoryEditor: View {
                 let grow = CGFloat(cos(lean) + Double(max(full.width / max(full.height, 1), full.height / max(full.width, 1))) * sin(lean))
                 MovableClip(cw: cw, ch: ch, fill: full, scale: bgScale, offset: bgOffset, spin: bgSpin,
                             movable: mode == .none || mode == .filters, photo: true, grab: grab) {
-                    Image(uiImage: shown).resizable().frame(width: full.width, height: full.height)
+                    ZStack {
+                        Image(uiImage: shown).resizable()
+                        // in Adjust the photo draws itself as the slider moves (see LivePhoto), over the settled one
+                        if mode == .adjust, !comparing, let base = lite ?? work ?? image { LivePhoto(base: base, box: photoBox) }
+                    }
+                        .frame(width: full.width, height: full.height)
                         .rotationEffect(.degrees(tilt)).scaleEffect(grow)
                         .frame(width: full.width, height: full.height).clipped()
                 }
@@ -820,9 +828,15 @@ struct StoryEditor: View {
                                    // a clip: straight to the frames being drawn; this screen isn't told until the finger lifts
                                    var t = tune; t[k] = v == 0 ? nil : v
                                    lookBox.name = StoryArt.look(filter, t)
-                               } else { tune[k] = v == 0 ? nil : v }
+                               } else if k == "t" {
+                                   tune[k] = v == 0 ? nil : v   // Straighten turns the picture as a view: no new picture to make
+                               } else {
+                                   // a photo: straight to the picture on screen; this screen isn't told until the finger lifts
+                                   var t = tune; t[k] = v == 0 ? nil : v
+                                   photoBox.look = StoryArt.look(filter, t.filter { $0.key != "t" })
+                               }
                            },
-                           sliding: { on in if video == nil { sliding = on } },
+                           sliding: { _ in },
                            done: { v in tune[k] = v == 0 ? nil : v; settled = tune })
                     .id(k)
             }
