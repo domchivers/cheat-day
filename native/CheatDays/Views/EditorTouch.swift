@@ -110,11 +110,24 @@ struct EditorTouch: UIViewRepresentable {
             var step = r.angle - rawAngle
             if step > .pi { step -= 2 * .pi } else if step < -.pi { step += 2 * .pi }
             let nowWound = wound + step
-            // each steadied reading is the mean of this raw one and the one before
-            let m = CGPoint(x: (r.middle.x + rawMiddle.x) / 2, y: (r.middle.y + rawMiddle.y) / 2)
+            // With two fingers each steadied reading is the mean of this raw one and the one before. One finger is
+            // followed exactly: there's no to-and-fro between fingers to cancel, and the mean left the thing half a
+            // step short of where the finger stopped.
+            let m = two ? CGPoint(x: (r.middle.x + rawMiddle.x) / 2, y: (r.middle.y + rawMiddle.y) / 2) : r.middle
             let apart = (r.apart + rawApart) / 2, around = (nowWound + wound) / 2
             rawMiddle = r.middle; rawApart = r.apart; rawAngle = r.angle; wound = nowWound
+            advance(to: m, apart: apart, around: around, two: two)
 
+            if !moved {
+                // one finger that's barely shifted is a tap; what it has travelled by then is kept
+                guard two || hypot(r.middle.x - start.x, r.middle.y - start.y) > 4 else { return }
+                moved = true
+            }
+            changed?(move, size, turn, down.count)
+        }
+
+        /// The thing held, taken on from the last steadied reading to this one.
+        private func advance(to m: CGPoint, apart: CGFloat, around: CGFloat, two: Bool) {
             var grew: CGFloat = 1, turned: CGFloat = 0
             if two {
                 grew = apart / lastApart
@@ -133,16 +146,15 @@ struct EditorTouch: UIViewRepresentable {
                 carried.width += m.x - lastMiddle.x; carried.height += m.y - lastMiddle.y
             }
             lastMiddle = m; lastApart = apart; lastWound = around
-
-            if !moved {
-                // one finger that's barely shifted is a tap; what it has travelled by then is kept
-                guard two || hypot(r.middle.x - start.x, r.middle.y - start.y) > 4 else { return }
-                moved = true
-            }
-            changed?(move, size, turn, down.count)
         }
 
         private func lifted(_ touches: Set<UITouch>) {
+            // The last word before a finger goes: the fingers exactly as last read, not the mean of the last two
+            // readings. With nothing further to average against, the mean stopped half a step short for good.
+            if moved, !down.isEmpty {
+                advance(to: rawMiddle, apart: rawApart, around: wound, two: down.count >= 2)
+                changed?(move, size, turn, down.count)
+            }
             down.removeAll { touches.contains($0) }
             if down.isEmpty { ended?(moved, start) } else { rebase(); changed?(move, size, turn, down.count) }
         }
