@@ -24,6 +24,19 @@ struct ClipEdit {
     /// The clip doesn't cover its frame (turned, made smaller, or carried off to one side): it's laid on black
     /// by `spin`, `zoom` and `move`, not cut from the picture by `crop`.
     var loose = false
+    /// The editor as it was left, to open it again the same: going back into the editor after Next started it from
+    /// nothing (no filter, no text, the whole clip), and Next again then threw away what had been done before.
+    var kept: Kept? = nil
+    struct Kept {
+        var filter: String
+        var tune: [String: Double]
+        var items: [JSON]
+        var strokes: [JSON]
+        var range: ClosedRange<Double>?
+        var scale: CGFloat
+        var offset: CGSize
+        var covers: Bool
+    }
 
     /// A frame of the clip as friends will see it: through the look, cut to the part kept, with what's on it.
     func still(_ url: URL, at seconds: Double? = nil, width: CGFloat = 1440) async -> UIImage? {

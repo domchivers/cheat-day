@@ -29,6 +29,8 @@ struct StoryEditor: View {
     var startTool: String? = nil
     /// A clip's first frame, when whoever opens the editor already has it: shown at once, under the player.
     var startPoster: UIImage? = nil
+    /// What was done to this clip the last time it was in the editor: opened again as it was left.
+    var startEdit: ClipEdit? = nil
     /// A post's video: its song, and how loud the song and the video's own sound are, chosen here with the video
     /// playing (Audio), as Instagram has it. They're the post's own, kept by whoever opened the editor.
     var postSong: Binding<Song?>? = nil
@@ -124,6 +126,7 @@ struct StoryEditor: View {
     @State private var choosingSong = false
     @State private var mixing = false   // a post's video: the song's name and the two volumes, over the playing video
     @State private var justPicked = false
+    @State private var restored = false
     /// The song on it: a post's video's (kept by the post), or a story's.
     private var song: Song? { postSong.map { $0.wrappedValue } ?? storySong }
     private func setSong(_ s: Song?) { if let postSong { postSong.wrappedValue = s } else { storySong = s } }
@@ -254,6 +257,22 @@ struct StoryEditor: View {
         // flickered.
         .onAppear {
             if shape == nil, let startShape { shape = startShape }
+            if !restored, let e = startEdit {
+                // as it was left: the filter and Adjust, the sound, the turn, where the clip sits, and what's on it
+                restored = true
+                muted = e.muted; turns = e.turns; bgSpin = e.spin; bgScale = e.zoom; clipMove = e.move; clipCovers = !e.loose
+                if let k = e.kept {
+                    filter = k.filter; tune = k.tune; settled = k.tune; items = k.items; strokes = k.strokes
+                    bgScale = k.scale; bgOffset = k.offset; clipCovers = k.covers
+                } else {
+                    // from a draft: only the look's name and sliders are known ("Warm;b=20.4;t=-3.7")
+                    let parts = e.look.split(separator: ";").map(String.init)
+                    filter = parts.first ?? "Normal"
+                    var t: [String: Double] = [:]
+                    for p in parts.dropFirst() { let kv = p.split(separator: "=").map(String.init); if kv.count == 2, let v = Double(kv[1]) { t[kv[0]] = v } }
+                    tune = t; settled = t
+                }
+            }
             if poster == nil, let startPoster { poster = startPoster; seat(startPoster.size) }
             switch startTool {
             case "draw": mode = .draw
@@ -1065,6 +1084,10 @@ struct StoryEditor: View {
             let asset = AVURLAsset(url: video)
             length = (try? await asset.load(.duration).seconds) ?? 0
             range = 0...min(length, 30)
+            // the part kept last time, if this is the clip it was kept from
+            if let r = startEdit?.range, r.lowerBound >= 0, r.upperBound <= length + 0.05, r.upperBound - r.lowerBound > 0.2 {
+                range = r.lowerBound...min(length, r.upperBound)
+            }
             // Its first frame straight away, behind the player, so there's never a black screen while it loads; then
             // eight along it for the trim strip and one for the filters' little pictures. Each is asked for the way
             // the cover picker asks (near the moment wanted, not "any frame you like"), and if none comes back the
@@ -1134,7 +1157,9 @@ struct StoryEditor: View {
         if let finishVideo {
             Button {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
-                finishVideo(ClipEdit(look: look, range: length > 0 ? range : nil, muted: muted, crop: clipCovers ? clipCrop : nil, shape: ratio, overlay: overlayPicture(), turns: turns, spin: bgSpin, zoom: bgScale, move: clipMove, loose: !clipCovers))
+                var e = ClipEdit(look: look, range: length > 0 ? range : nil, muted: muted, crop: clipCovers ? clipCrop : nil, shape: ratio, overlay: overlayPicture(), turns: turns, spin: bgSpin, zoom: bgScale, move: clipMove, loose: !clipCovers)
+                e.kept = ClipEdit.Kept(filter: filter, tune: tune, items: items, strokes: strokes, range: length > 0 ? range : nil, scale: bgScale, offset: bgOffset, covers: clipCovers)
+                finishVideo(e)
             } label: {
                 Text("Next").font(.headline).foregroundStyle(.black).frame(maxWidth: .infinity).padding(.vertical, 13).background(.white, in: Capsule())
             }

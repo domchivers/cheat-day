@@ -113,7 +113,7 @@ struct EditPostSheet: View {
                     StoryEditor(image: nil, video: local, close: { cutting = false }, finishVideo: { e in
                         clip = e; cover = nil; cutting = false
                         Task { poster = await e.still(local) }
-                    })
+                    }, startShape: clip?.shape, startEdit: clip)
                 }
             }
         }

@@ -1204,7 +1204,7 @@ struct ComposeSheet: View {
                     if movie == c.url, let at = clip.cover, e.range.map({ $0.contains(at) }) ?? true { e.cover = at }
                     clip = e; movie = c.url; shots = []; poster = nil; triedPoster = false; cutting = nil; firstPick = false
                     Task { poster = await e.still(c.url) }
-                }, startShape: clip.shape, startPoster: c.first, postSong: $song, postSongVol: $songVol, postClipVol: $clipVol)
+                }, startShape: clip.shape, startPoster: c.first, startEdit: movie == c.url ? clip : nil, postSong: $song, postSongVol: $songVol, postClipVol: $clipVol)
             }
             // the story editor, in the feed's 4:5: text, stickers, drawing and filters baked into the photo
             .fullScreenCover(item: $editing) { e in
