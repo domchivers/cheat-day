@@ -222,9 +222,15 @@ struct StoryEditor: View {
                     // rounded corner), and across the screen when it's a short one with black above it
                     .overlay(alignment: .top) { topBar.padding(.horizontal, 14).padding(.top, 12).frame(width: ch >= stageH - 1 && cw >= 250 ? cw : screen.size.width) }
                     // the tools over the bottom of that space; out of the way while one is in use or something's being dragged to the bin
+                    .overlay { if mixing { Color.black.opacity(0.001).onTapGesture { withAnimation(.snappy(duration: 0.22)) { mixing = false } } } }
                     .overlay(alignment: .bottom) {
-                        toolbar.frame(width: screen.size.width).padding(.bottom, 10)
-                            .opacity(mode == .none && active == nil ? 1 : 0).allowsHitTesting(mode == .none && active == nil)
+                        if mixing {
+                            mixPanel.frame(width: min(screen.size.width - 20, 430)).padding(.bottom, 10)
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                        } else {
+                            toolbar.frame(width: screen.size.width).padding(.bottom, 10)
+                                .opacity(mode == .none && active == nil ? 1 : 0).allowsHitTesting(mode == .none && active == nil)
+                        }
                     }
                 bottomBar.frame(width: screen.size.width - 28)
             }
@@ -264,13 +270,12 @@ struct StoryEditor: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                 guard let s = song else { return }
                 SongPlayer.shared.play(s, key: "story-edit", loop: true, volume: songLevel)
-                if fresh, postSong != nil { mixing = true }   // a post's video: straight on to how loud each is
+                if fresh, postSong != nil { withAnimation(.snappy(duration: 0.22)) { mixing = true } }   // a post's video: straight on to how loud each is
             }
         }) {
             SongPicker { picked in setSong(picked); justPicked = true }
         }
         .onAppear { if video != nil { SongPlayer.shared.heard(true) } }
-        .sheet(isPresented: $mixing) { mixSheet }
         .task {
             // back in the editor with a song already on the post: heard again with the video
             if let s = postSong?.wrappedValue { SongPlayer.shared.play(s, key: "story-edit", loop: true, volume: songLevel) }
@@ -523,30 +528,48 @@ struct StoryEditor: View {
 
     /// A post's video's sound: which song, and the song and the video's own sound each as loud as wanted, set by ear
     /// with the video playing behind.
-    private var mixSheet: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 10) {
-                Image(systemName: "music.note").font(.system(size: 15, weight: .bold)).foregroundStyle(Theme.accent)
-                Text(song?.title ?? "No song").font(.headline).lineLimit(1)
+    private var mixPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 11) {
+                Image(systemName: "music.note").font(.system(size: 15, weight: .bold)).foregroundStyle(Theme.onAccent)
+                    .frame(width: 38, height: 38).background(Theme.accent, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(song?.title ?? "No song").font(.subheadline.weight(.bold)).lineLimit(1)
+                    Text("Song on this video").font(.caption2.weight(.semibold)).opacity(0.6)
+                }
                 Spacer(minLength: 8)
-                Button("Change") { mixing = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { choosingSong = true } }
-                    .font(.subheadline.weight(.semibold))
-                Button("Remove") { SongPlayer.shared.stop(); setSong(nil); mixing = false }
-                    .font(.subheadline).foregroundStyle(.secondary)
+                Button { withAnimation(.snappy(duration: 0.22)) { mixing = false } } label: {
+                    Text("Done").font(.subheadline.weight(.bold)).foregroundStyle(.black).padding(.horizontal, 16).frame(height: 34).background(.white, in: Capsule())
+                }
+                .buttonStyle(.plain)
             }
             if let postSongVol, let postClipVol {
-                MixSliders(song: postSongVol, clip: postClipVol, hasClip: !muted)
+                LevelBar(symbol: "music.note", name: "Song", value: postSongVol)
+                if !muted { LevelBar(symbol: "video.fill", name: "Video", value: postClipVol) }
+                else { Text("The video's own sound is off (Sound, in the tools).").font(.caption).opacity(0.6) }
             }
-            if muted { Text("The video's own sound is off (Sound, in the tools).").font(.caption).foregroundStyle(.secondary) }
+            HStack(spacing: 8) {
+                Button { withAnimation(.snappy(duration: 0.22)) { mixing = false }; choosingSong = true } label: {
+                    Label("Change song", systemImage: "arrow.triangle.2.circlepath").font(.footnote.weight(.bold))
+                        .padding(.horizontal, 13).frame(height: 34).background(.white.opacity(0.16), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                Button { SongPlayer.shared.stop(); setSong(nil); withAnimation(.snappy(duration: 0.22)) { mixing = false } } label: {
+                    Label("Remove", systemImage: "trash").font(.footnote.weight(.bold))
+                        .padding(.horizontal, 13).frame(height: 34).background(.white.opacity(0.16), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                Spacer(minLength: 0)
+            }
         }
-        .padding(.horizontal, 20).padding(.top, 22)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .presentationDetents([.height(muted ? 170 : 190)])
-        .presentationDragIndicator(.visible)
-        .presentationBackgroundInteraction(.enabled)
-        .presentationBackground(.ultraThinMaterial)
-        .presentationCornerRadius(26)
+        .foregroundStyle(.white)
+        .padding(16)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .background(Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(.white.opacity(0.14), lineWidth: 1))
         .environment(\.colorScheme, .dark)
+        .onChange(of: postSongVol?.wrappedValue ?? 1) { _, v in SongPlayer.shared.volume(Float(v)) }
+        .accessibilityIdentifier("mix-panel")
     }
 
     /// The tools, each with its name, in a row under the picture that slides sideways: as bare round icons over the
@@ -554,7 +577,7 @@ struct StoryEditor: View {
     private var toolbar: some View {
         ScrollView(.horizontal) {
             HStack(spacing: 8) {
-                if !forPost || postSong != nil { tool("music.note", "Audio", "Audio") { if postSong != nil, song != nil { mixing = true } else { choosingSong = true } } }
+                if !forPost || postSong != nil { tool("music.note", "Audio", "Audio") { if postSong != nil, song != nil { withAnimation(.snappy(duration: 0.22)) { mixing = true } } else { choosingSong = true } } }
                 tool("textformat", "Text", "Text") { newText() }
                 tool("face.smiling", "Stickers", "Stickers") { stickers = true }
                 tool("scribble.variable", "Draw", "Draw") { mode = .draw }
@@ -614,7 +637,7 @@ struct StoryEditor: View {
                 if let song {
                     // the song, named at the top: tap its name for another (a post's video: for its volumes too), the x to take it off
                     HStack(spacing: 6) {
-                        Button { if postSong != nil { mixing = true } else { choosingSong = true } } label: {
+                        Button { if postSong != nil { withAnimation(.snappy(duration: 0.22)) { mixing = true } } else { choosingSong = true } } label: {
                             HStack(spacing: 6) {
                                 Image(systemName: "music.note").font(.system(size: 11, weight: .bold))
                                 Text(song.title).font(.footnote.weight(.bold)).lineLimit(1)
@@ -1474,5 +1497,36 @@ struct TuneSlider: View {
         }
         // put back from outside (Reset): follow it, unless a finger's on the slider
         .onChange(of: value) { _, now in if !held { v = now } }
+    }
+}
+
+/// How loud something is, as a fine white line with a round handle: the editor's own, over the video. (The system's
+/// slider came out with a wide pill of a handle and the app's blue, which sat oddly on a video.)
+struct LevelBar: View {
+    let symbol: String
+    let name: String
+    @Binding var value: Double
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: symbol).font(.system(size: 14, weight: .semibold)).frame(width: 22)
+            Text(name).font(.subheadline.weight(.semibold)).frame(width: 48, alignment: .leading)
+            GeometryReader { g in
+                let w = g.size.width, x = CGFloat(value) * w
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.white.opacity(0.25)).frame(height: 4)
+                    Capsule().fill(.white).frame(width: max(0, x), height: 4)
+                    Circle().fill(.white).frame(width: 20, height: 20).shadow(color: .black.opacity(0.35), radius: 2, y: 1)
+                        .offset(x: min(max(0, x - 10), max(0, w - 20)))
+                }
+                .frame(height: 34).contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 0).onChanged { d in value = Double(min(1, max(0, d.location.x / max(1, w)))) })
+            }
+            .frame(height: 34)
+            Text("\(Int((value * 100).rounded()))%").font(.footnote.weight(.semibold)).monospacedDigit().opacity(0.8).frame(width: 44, alignment: .trailing)
+        }
+        .foregroundStyle(.white)
+        .accessibilityElement(children: .ignore).accessibilityLabel(name + " volume").accessibilityValue("\(Int((value * 100).rounded())) percent")
+        .accessibilityAdjustableAction { way in value = min(1, max(0, value + (way == .increment ? 0.1 : -0.1))) }
     }
 }
