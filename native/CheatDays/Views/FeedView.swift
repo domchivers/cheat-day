@@ -185,7 +185,14 @@ final class Feed {
     func send(_ row: JSON, photo: UIImage?, video: URL?, filter: String, range: ClosedRange<Double>?, muted: Bool, crop: CGRect? = nil, overlay: UIImage? = nil, more: [UIImage] = [], turns: Int = 0, placed: ClipEdit? = nil) {
         let again: () -> Void = { [weak self] in self?.send(row, photo: photo, video: video, filter: filter, range: range, muted: muted, crop: crop, overlay: overlay, more: more, turns: turns, placed: placed) }
         withAnimation(.snappy) { sending = Sending(thumb: photo, state: .working, again: again) }
+        // Leaving the app doesn't stop it: the phone is asked for time to finish (it gives about half a minute, enough
+        // for most posts; a long video on a slow line can still be cut off, and then says so with Try again).
+        var keep = UIBackgroundTaskIdentifier.invalid
+        keep = UIApplication.shared.beginBackgroundTask(withName: "Posting") {
+            UIApplication.shared.endBackgroundTask(keep); keep = .invalid
+        }
         Task {
+            defer { if keep != .invalid { UIApplication.shared.endBackgroundTask(keep); keep = .invalid } }
             do {
                 try await post(row, photo: photo, video: video, filter: filter, range: range, muted: muted, crop: crop, overlay: overlay, more: more, turns: turns, placed: placed)
                 withAnimation(.snappy) { sending?.state = .done }
@@ -1057,7 +1064,12 @@ struct ComposeSheet: View {
                     songRow.padding(.horizontal, 4)
                     if song == nil { songIdeas }
                     else {
-                        MixSliders(song: $songVol, clip: $clipVol, hasClip: movie != nil && !clip.muted)
+                        VStack(alignment: .leading, spacing: 6) {
+                            MixSliders(song: $songVol, clip: $clipVol, hasClip: movie != nil && !clip.muted)
+                            if movie != nil && !clip.muted {
+                                Text("Press play on the song to hear it with the video, then set the two.").font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
                             .padding(.horizontal, 18).padding(.vertical, 8)
                             .overlay(alignment: .bottom) { Divider().padding(.leading, 18) }
                     }
@@ -1507,10 +1519,15 @@ struct ComposeSheet: View {
     }
 
     @ViewBuilder private var pictureTile: some View {
-        if movie != nil {
-            // its cover, exactly as it will be posted: the look, the part kept and what's written on it
+        if let movie {
+            // Its cover, exactly as it will be posted: the look, the part kept and what's written on it. While its
+            // song is playing here, the video itself plays in its place with its own sound, each as loud as its
+            // slider says: the way to hear the two together and set one against the other before posting.
             Color.black.opacity(0.35).overlay {
-                if let poster { Image(uiImage: poster).resizable().scaledToFit() } else { ProgressView() }
+                if let song, SongPlayer.shared.playing == "new:" + song.id {
+                    LoopingVideo(url: movie, muted: clip.muted, filter: clip.look, range: clip.range, volume: Float(clipVol))
+                        .aspectRatio(clip.shape ?? 9.0 / 16.0, contentMode: .fit)
+                } else if let poster { Image(uiImage: poster).resizable().scaledToFit() } else { ProgressView() }
             }
         } else if let photo {
             // whole, in the shape picked for it (square, wide), on the tile's dark ground
@@ -1585,7 +1602,7 @@ struct ComposeSheet: View {
             if let s = song {
                 let on = SongPlayer.shared.playing == "new:" + s.id
                 HStack(spacing: 12) {
-                    Button { if on { SongPlayer.shared.stop() } else { SongPlayer.shared.play(s, key: "new:" + s.id, volume: Float(songVol)) } } label: {
+                    Button { if on { SongPlayer.shared.stop() } else { SongPlayer.shared.play(s, key: "new:" + s.id, loop: movie != nil, volume: Float(songVol)) } } label: {
                         Image(systemName: on ? "pause.fill" : "play.fill").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.accent)
                             .frame(width: 34, height: 34).background(Color(.tertiarySystemFill), in: Circle())
                     }

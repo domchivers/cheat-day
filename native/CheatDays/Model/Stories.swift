@@ -81,6 +81,10 @@ final class Stories {
     /// then the story with what's placed on it. People mentioned hear about it in your chat.
     func post(image: UIImage?, video: URL?, overlays: [JSON], audience: String, filter: String = "Normal", range: ClosedRange<Double>? = nil, muted: Bool = false) async -> Bool {
         posting = true; defer { posting = false }
+        // carries on for a while if the app's left (see Feed.send)
+        var keep = UIBackgroundTaskIdentifier.invalid
+        keep = UIApplication.shared.beginBackgroundTask(withName: "Story") { UIApplication.shared.endBackgroundTask(keep); keep = .invalid }
+        defer { if keep != .invalid { UIApplication.shared.endBackgroundTask(keep) } }
         do {
             var row: JSON = ["owner": me, "overlays": overlays, "audience": audience]
             if let video {

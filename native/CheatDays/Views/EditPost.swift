@@ -127,7 +127,10 @@ struct EditPostSheet: View {
         Color.black.opacity(0.35)
             .overlay {
                 if isVideo {
-                    if let poster { Image(uiImage: poster).resizable().scaledToFit() } else { FeedPhoto(src: str(post["photo"])) }
+                    // with the song playing here, the video plays too with its own sound, each at its slider's level
+                    if let song, let local, SongPlayer.shared.playing == "edit:" + song.id {
+                        LoopingVideo(url: local, volume: Float(clipVol)).aspectRatio(shape, contentMode: .fit)
+                    } else if let poster { Image(uiImage: poster).resizable().scaledToFit() } else { FeedPhoto(src: str(post["photo"])) }
                 } else if pics.indices.contains(showing) {
                     if let f = pics[showing].fresh { Image(uiImage: f).resizable().scaledToFit() } else { FeedPhoto(src: pics[showing].url) }
                 }
@@ -253,7 +256,7 @@ struct EditPostSheet: View {
             if let s = song {
                 let on = SongPlayer.shared.playing == "edit:" + s.id
                 HStack(spacing: 12) {
-                    Button { SongPlayer.shared.toggle(s, key: "edit:" + s.id) } label: {
+                    Button { if on { SongPlayer.shared.stop() } else { SongPlayer.shared.play(s, key: "edit:" + s.id, loop: isVideo, volume: Float(songVol)) } } label: {
                         Image(systemName: on ? "pause.fill" : "play.fill").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.accent)
                             .frame(width: 34, height: 34).background(Color(.tertiarySystemFill), in: Circle())
                     }
