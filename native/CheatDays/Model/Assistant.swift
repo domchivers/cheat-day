@@ -640,6 +640,8 @@ enum Assistant {
         out["parts"] = CheatDays.list(e["parts"]).map { p -> JSON in
             var x = p
             if str(p["numbers_from"]) == "them" && !gaveNumbers || str(p["numbers_from"]) == "label" && !label { x["numbers_from"] = "estimate" }
+            let keys = habit(said, part: str(p["name"]))
+            if !keys.isEmpty { x["usual_keys"] = keys }
             if !shop.isEmpty {
                 let bare = str(p["name"]).replacingOccurrences(of: shopPattern, with: "", options: [.regularExpression, .caseInsensitive])
                     .replacingOccurrences(of: "()", with: "").replacingOccurrences(of: #"\s{2,}"#, with: " ", options: .regularExpression)
@@ -789,6 +791,13 @@ enum Assistant {
         var ask: [Int] = []
         for i in parts.indices {
             let x = parts[i], g = num(x["grams"]) ?? 0
+            // the one they said they always have ("that mayo I use every lunch"), from what they've logged: it came
+            // out as any full-fat mayonnaise, 47 kcal where their light one is 29
+            if let keys = x["usual_keys"] as? [String], let u = usual(keys) {
+                var y = checked(x, kcal100: u.kcal100, p100: u.p100, c100: u.c100, f100: u.f100, source: "label", match: u.food)
+                y["name"] = u.food; y["numbers_from"] = "them"
+                parts[i] = y; continue
+            }
             // numbers from their label or their own words win: the Portuguese chicken's label (163 kcal per 100 g cooked)
             // was swapped for a generic roast chicken's 190
             if ["label", "them"].contains(str(x["numbers_from"])) { parts[i]["src"] = x["numbers_from"]; continue }
@@ -854,6 +863,50 @@ enum Assistant {
                 if let k = FoodMath.kcalPer100(it) { return (str(it["name"]), k, num(it["p100"]), num(it["c100"]), num(it["f100"])) }
             }
         }
+        return nil
+    }
+
+    /// The words for a part where they said it's the one they always have ("15g of that mayo I use every lunch", for
+    /// the part "Mayonnaise, traditional": mayo); none when they didn't say so of this part.
+    static func habit(_ said: String, part: String) -> [String] {
+        let names = FoodTable.words(part)
+        for clause in said.lowercased().components(separatedBy: CharacterSet(charactersIn: "\n.;!?")) {
+            guard clause.range(of: #"\b(every|usual|usually|always|normally|regular|each)\b"#, options: .regularExpression) != nil else { continue }
+            let keys = clause.split { !$0.isLetter }.map(String.init).filter { w in
+                w.count >= 4 && !everyday.contains(w) && names.contains { $0.hasPrefix(w) || ($0.count >= 4 && w.hasPrefix($0)) }
+            }
+            if !keys.isEmpty { return keys }
+        }
+        return []
+    }
+
+    private static func named(_ name: String, by keys: [String]) -> Bool {
+        let w = name.lowercased().split { !$0.isLetter }.map(String.init)
+        return keys.allSatisfy { k in w.contains { $0.hasPrefix(k) || ($0.count >= 4 && k.hasPrefix($0)) } }
+    }
+
+    /// Of the foods logged on these days, the one by those words logged on the most days (two at least).
+    static func usualPick(_ keys: [String], days: [[JSON]]) -> JSON? {
+        var seen: [String: (n: Int, it: JSON)] = [:]
+        for items in days {
+            var today = Set<String>()
+            for it in items {
+                let key = str(it["name"]).lowercased()
+                guard named(key, by: keys), FoodMath.kcalPer100(it) != nil, today.insert(key).inserted else { continue }
+                seen[key] = ((seen[key]?.n ?? 0) + 1, seen[key]?.it ?? it)
+            }
+        }
+        return seen.values.filter { $0.n >= 2 }.max { $0.n < $1.n }?.it
+    }
+
+    /// Their usual food by those words: the one they log most, or failing that the only one like it they've scanned.
+    @MainActor static func usual(_ keys: [String]) -> (food: String, kcal100: Double, p100: Double?, c100: Double?, f100: Double?)? {
+        guard !keys.isEmpty else { return nil }
+        let store = Store.shared
+        let days = [store.todayItems] + CheatDays.list(store.doc["history"]).sorted { str($0["date"]) > str($1["date"]) }.prefix(180).map { CheatDays.list($0["items"]) }
+        if let it = usualPick(keys, days: days), let k = FoodMath.kcalPer100(it) { return (str(it["name"]), k, num(it["p100"]), num(it["c100"]), num(it["f100"])) }
+        let scans = PantryItem.Saved.load(UserDefaults.standard.string(forKey: "pantry.scans") ?? "[]").filter { $0.kcal100 > 0 && named($0.name, by: keys) }
+        if scans.count == 1, let s = scans.first { return (s.name, s.kcal100, s.p100, s.c100, s.f100) }
         return nil
     }
 

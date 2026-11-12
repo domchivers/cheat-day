@@ -224,6 +224,18 @@ final class AssistantTests: XCTestCase {
         XCTAssertTrue((out["flags"] as? [String] ?? []).isEmpty, "nothing left to warn about")
     }
 
+    /// "15g of that mayo I use every lunch" came out as any full-fat mayonnaise: it's the one they log.
+    func testTheOneTheyAlwaysHave() {
+        let said = "320g cabbage\n96g carrot\n15g of that mayo I use every lunch\n\nThat's my coleslaw, work out the calories and will have half of it"
+        XCTAssertEqual(Assistant.habit(said, part: "Mayonnaise, traditional"), ["mayo"])
+        XCTAssertEqual(Assistant.habit(said, part: "Cabbage, raw"), [], "nothing said about the cabbage")
+        XCTAssertEqual(Assistant.habit("15 g mayo", part: "Mayonnaise, traditional"), [])
+        let light: JSON = ["name": "Light mayo, squeezy", "kcalPer100": 390, "p100": 1.5, "c100": 6, "f100": 40]
+        let days: [[JSON]] = [[light], [light, ["name": "Chicken thigh", "kcalPer100": 180]], [["name": "Mayonnaise, whole egg", "kcalPer100": 700]]]
+        XCTAssertEqual(str(Assistant.usualPick(["mayo"], days: days)?["name"]), "Light mayo, squeezy", "on two days, the other on one")
+        XCTAssertNil(Assistant.usualPick(["mayo"], days: [[light]]), "once isn't a habit")
+    }
+
     func testAMealOnlyMentionedIsntAskedFor() {
         XCTAssertNil(Meals.named(in: "Also I have 159g of the boiled chicken from yesterday that I had for lunch today left over. How much of that plus the new one now to get 80g protein?"))
         XCTAssertNil(Meals.named(in: "320g cabbage\n96g carrot\n15g of that mayo I use every lunch\n\nThat's my coleslaw, work out the calories and will have half of it"))
