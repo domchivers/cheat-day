@@ -215,7 +215,7 @@ struct PlacedItem: View {
         let sx = fingers == 1 && abs(x - 0.5) < 0.025, sy = fingers == 1 && abs(y - 0.5) < 0.02
         if sx { x = 0.5 }; if sy { y = 0.5 }
         let deg = (num(o["rotation"]) ?? 0) + turn, quarter = (deg / 90).rounded() * 90
-        let straight = abs(deg - quarter) < 4
+        let straight = abs(deg - quarter) < 2.5
         return (min(1, max(0, x)), min(1, max(0, y)), min(60, max(0.15, (num(o["scale"]) ?? 1) * Double(size))), straight ? quarter : deg, sx, sy, straight)
     }
 
