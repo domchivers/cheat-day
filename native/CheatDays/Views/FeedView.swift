@@ -1363,23 +1363,31 @@ struct ComposeSheet: View {
     /// editor on that tool, with the photo as it stands, so what's done to it adds up.
     private var hub: some View {
         VStack(spacing: 12) {
-            Button { choosingSong = true } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "music.note").font(.system(size: 13, weight: .bold)).foregroundStyle(Theme.accent)
-                    Text(song?.title ?? "Add a song").font(.subheadline.weight(.semibold)).foregroundStyle(.primary).lineLimit(1)
-                    Image(systemName: song == nil ? "plus" : "chevron.down").font(.caption.weight(.bold)).foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 14).frame(height: 38).background(Color(.secondarySystemGroupedBackground), in: Capsule())
-            }
-            .buttonStyle(.plain).padding(.top, 6)
             TabView(selection: $showing) {
                 ForEach(Array(shots.enumerated()), id: \.element.id) { i, shot in
+                    // The size it is in the editor: the whole width, the same corners. It was set in from the sides
+                    // here with "Add a song" above it taking the room, so it was smaller than in the editor a tap
+                    // away and seemed to jump. Audio in the row below adds the song; once there is one it's named
+                    // on the picture, as the editor names it.
                     Image(uiImage: shot.out).resizable().scaledToFit()
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .padding(.horizontal, 14).tag(i)
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .tag(i)
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
+            .overlay(alignment: .top) {
+                if let song {
+                    Button { choosingSong = true } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "music.note").font(.system(size: 11, weight: .bold))
+                            Text(song.title).font(.footnote.weight(.bold)).lineLimit(1)
+                        }
+                        .foregroundStyle(.white).padding(.horizontal, 12).frame(height: 34).background(.black.opacity(0.5), in: Capsule())
+                    }
+                    .buttonStyle(.plain).padding(.top, 12).accessibilityLabel("Song: " + song.title + ". Change it")
+                }
+            }
+            .padding(.top, 4)
             if shots.count > 1 {
                 HStack(spacing: 5) {
                     ForEach(shots.indices, id: \.self) { i in Circle().fill(Color.primary.opacity(i == showing ? 0.9 : 0.25)).frame(width: 6, height: 6) }
