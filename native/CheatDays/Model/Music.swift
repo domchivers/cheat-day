@@ -7,12 +7,13 @@ struct Song: Identifiable, Hashable {
     var url: URL? { URL(string: Music.base + id + ".m4a") }
 }
 
-/// The songs for posts. Every one is from FreePD's public-domain (CC0) collection, cut to 30 seconds by
+/// The songs for posts. Every one was released as public domain (CC0): FreePD's collection, HoliznaCC0's lofi, and
+/// metal and punk from OpenGameArt pages marked CC0 only (music/SOURCES.json has each one's page). Cut to 30 seconds by
 /// design/music_clips.py; the clips and the record of where each came from are in music/ at the top of the repo,
 /// which the site's GitHub Pages serves. A post carries its song as extra.song {id, title}.
 enum Music {
     static let base = "https://domchivers.github.io/cheat-day/music/"
-    static let moods = ["Upbeat", "Gym", "Epic", "Chill", "Funny"]
+    static let moods = ["Upbeat", "Gym", "Epic", "Chill", "Lofi", "Metal", "Hardcore", "Funny"]
     static let all: [Song] = [
         Song(id: "advertime", title: "Advertime", mood: "Upbeat"),
         Song(id: "and-just-like-that", title: "And Just Like That", mood: "Upbeat"),
@@ -65,6 +66,54 @@ enum Music {
         Song(id: "busybody", title: "Busybody", mood: "Funny"),
         Song(id: "vintage-party", title: "Vintage Party", mood: "Funny"),
         Song(id: "le-baguette", title: "Le Baguette", mood: "Funny"),
+        Song(id: "2-hour-delay", title: "2 Hour Delay", mood: "Lofi"),
+        Song(id: "winter-blues", title: "Winter Blues", mood: "Lofi"),
+        Song(id: "first-snow", title: "First Snow", mood: "Lofi"),
+        Song(id: "snow-drift", title: "Snow Drift", mood: "Lofi"),
+        Song(id: "fire-place", title: "Fire Place", mood: "Lofi"),
+        Song(id: "kids", title: "Kids", mood: "Lofi"),
+        Song(id: "spring-at-last", title: "Spring At Last", mood: "Lofi"),
+        Song(id: "sense-of-purpose", title: "Sense Of Purpose", mood: "Lofi"),
+        Song(id: "april-showers", title: "April Showers", mood: "Lofi"),
+        Song(id: "deja-vu", title: "Deja Vu", mood: "Lofi"),
+        Song(id: "boredom", title: "Boredom", mood: "Lofi"),
+        Song(id: "anxiety", title: "Anxiety", mood: "Lofi"),
+        Song(id: "love", title: "Love", mood: "Lofi"),
+        Song(id: "old-age", title: "Old Age", mood: "Lofi"),
+        Song(id: "dreams", title: "Dreams", mood: "Lofi"),
+        Song(id: "chill-lofi-inspired", title: "Chill Lofi Inspired", mood: "Lofi"),
+        Song(id: "lofi-hip-hop", title: "Lofi Hip Hop", mood: "Lofi"),
+        Song(id: "japanese-lofi-hip-hop", title: "Japanese Lofi Hip Hop", mood: "Lofi"),
+        Song(id: "since-2-am", title: "Since 2 AM", mood: "Lofi"),
+        Song(id: "happy-lofi-day", title: "Happy Lofi Day", mood: "Lofi"),
+        Song(id: "midsummer", title: "Midsummer", mood: "Lofi"),
+        Song(id: "metaltania", title: "Metaltania", mood: "Metal"),
+        Song(id: "dark-rock", title: "Dark Rock", mood: "Metal"),
+        Song(id: "megasong", title: "Megasong", mood: "Metal"),
+        Song(id: "metal-song-energetic", title: "Metal Song Energetic", mood: "Metal"),
+        Song(id: "untitled-metal-track", title: "Untitled Metal Track", mood: "Metal"),
+        Song(id: "heavy-dungeon", title: "Heavy Dungeon", mood: "Metal"),
+        Song(id: "silver-bullet", title: "Silver Bullet", mood: "Metal"),
+        Song(id: "boss-battle-8-metal", title: "Boss Battle 8 Metal", mood: "Metal"),
+        Song(id: "once-more", title: "Once More", mood: "Metal"),
+        Song(id: "fight-for-better-future", title: "Fight for Better Future", mood: "Metal"),
+        Song(id: "unholy-surge", title: "Unholy Surge", mood: "Metal"),
+        Song(id: "realm-of-torment", title: "Realm of Torment", mood: "Metal"),
+        Song(id: "shadows-awaken-within", title: "Shadows Awaken Within", mood: "Metal"),
+        Song(id: "dark-rising-guitar", title: "Dark Rising Guitar", mood: "Metal"),
+        Song(id: "heavy-battle-1", title: "Heavy Battle 1", mood: "Metal"),
+        Song(id: "drum-n-bass-e-energy", title: "Drum n Bass E Energy", mood: "Hardcore"),
+        Song(id: "drum-n-bass-j-hit-me", title: "Drum n Bass J Hit Me", mood: "Hardcore"),
+        Song(id: "drum-n-bass-k-megatrack", title: "Drum n Bass K Megatrack", mood: "Hardcore"),
+        Song(id: "trance-a-metal-rush", title: "Trance A Metal Rush", mood: "Hardcore"),
+        Song(id: "house-b-hard-off", title: "House B Hard Off", mood: "Hardcore"),
+        Song(id: "punk-hardcore", title: "Punk Hardcore", mood: "Hardcore"),
+        Song(id: "hardstyler", title: "Hardstyler", mood: "Hardcore"),
+        Song(id: "bouncer", title: "Bouncer", mood: "Hardcore"),
+        Song(id: "punk-rock-metal", title: "Punk Rock Metal", mood: "Hardcore"),
+        Song(id: "hard-boss-battle-1", title: "Hard Boss Battle 1", mood: "Hardcore"),
+        Song(id: "hard-battle-1", title: "Hard Battle 1", mood: "Hardcore"),
+        Song(id: "fast-cheerful-punk-rock", title: "Fast Cheerful Punk Rock", mood: "Hardcore"),
     ]
 
     /// A post's song, if it has one (a song this build doesn't list still plays, from its id).
@@ -196,7 +245,7 @@ struct SongPicker: View {
                         }
                     }
                 }
-                Section { } footer: { Text("Free-to-use music from FreePD's public-domain collection. About 30 seconds of each plays on a post.") }
+                Section { } footer: { Text("Free-to-use music released as public domain (CC0), from FreePD, HoliznaCC0 and OpenGameArt. About 30 seconds of each plays on a post.") }
             }
             .navigationTitle("Add a song")
             .navigationBarTitleDisplayMode(.inline)

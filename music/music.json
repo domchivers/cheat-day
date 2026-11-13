@@ -355,5 +355,341 @@
   "mood": "Funny",
   "file": "le-baguette.m4a",
   "seconds": 30
+ },
+ {
+  "id": "2-hour-delay",
+  "title": "2 Hour Delay",
+  "mood": "Lofi",
+  "file": "2-hour-delay.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "winter-blues",
+  "title": "Winter Blues",
+  "mood": "Lofi",
+  "file": "winter-blues.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "first-snow",
+  "title": "First Snow",
+  "mood": "Lofi",
+  "file": "first-snow.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "snow-drift",
+  "title": "Snow Drift",
+  "mood": "Lofi",
+  "file": "snow-drift.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "fire-place",
+  "title": "Fire Place",
+  "mood": "Lofi",
+  "file": "fire-place.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "kids",
+  "title": "Kids",
+  "mood": "Lofi",
+  "file": "kids.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "spring-at-last",
+  "title": "Spring At Last",
+  "mood": "Lofi",
+  "file": "spring-at-last.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "sense-of-purpose",
+  "title": "Sense Of Purpose",
+  "mood": "Lofi",
+  "file": "sense-of-purpose.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "april-showers",
+  "title": "April Showers",
+  "mood": "Lofi",
+  "file": "april-showers.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "deja-vu",
+  "title": "Deja Vu",
+  "mood": "Lofi",
+  "file": "deja-vu.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "boredom",
+  "title": "Boredom",
+  "mood": "Lofi",
+  "file": "boredom.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "anxiety",
+  "title": "Anxiety",
+  "mood": "Lofi",
+  "file": "anxiety.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "love",
+  "title": "Love",
+  "mood": "Lofi",
+  "file": "love.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "old-age",
+  "title": "Old Age",
+  "mood": "Lofi",
+  "file": "old-age.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "dreams",
+  "title": "Dreams",
+  "mood": "Lofi",
+  "file": "dreams.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "metaltania",
+  "title": "Metaltania",
+  "mood": "Metal",
+  "file": "metaltania.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "dark-rock",
+  "title": "Dark Rock",
+  "mood": "Metal",
+  "file": "dark-rock.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "drum-n-bass-e-energy",
+  "title": "Drum n Bass E Energy",
+  "mood": "Hardcore",
+  "file": "drum-n-bass-e-energy.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "drum-n-bass-j-hit-me",
+  "title": "Drum n Bass J Hit Me",
+  "mood": "Hardcore",
+  "file": "drum-n-bass-j-hit-me.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "drum-n-bass-k-megatrack",
+  "title": "Drum n Bass K Megatrack",
+  "mood": "Hardcore",
+  "file": "drum-n-bass-k-megatrack.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "trance-a-metal-rush",
+  "title": "Trance A Metal Rush",
+  "mood": "Hardcore",
+  "file": "trance-a-metal-rush.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "house-b-hard-off",
+  "title": "House B Hard Off",
+  "mood": "Hardcore",
+  "file": "house-b-hard-off.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "megasong",
+  "title": "Megasong",
+  "mood": "Metal",
+  "file": "megasong.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "metal-song-energetic",
+  "title": "Metal Song Energetic",
+  "mood": "Metal",
+  "file": "metal-song-energetic.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "untitled-metal-track",
+  "title": "Untitled Metal Track",
+  "mood": "Metal",
+  "file": "untitled-metal-track.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "heavy-dungeon",
+  "title": "Heavy Dungeon",
+  "mood": "Metal",
+  "file": "heavy-dungeon.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "silver-bullet",
+  "title": "Silver Bullet",
+  "mood": "Metal",
+  "file": "silver-bullet.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "boss-battle-8-metal",
+  "title": "Boss Battle 8 Metal",
+  "mood": "Metal",
+  "file": "boss-battle-8-metal.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "once-more",
+  "title": "Once More",
+  "mood": "Metal",
+  "file": "once-more.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "fight-for-better-future",
+  "title": "Fight for Better Future",
+  "mood": "Metal",
+  "file": "fight-for-better-future.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "unholy-surge",
+  "title": "Unholy Surge",
+  "mood": "Metal",
+  "file": "unholy-surge.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "realm-of-torment",
+  "title": "Realm of Torment",
+  "mood": "Metal",
+  "file": "realm-of-torment.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "shadows-awaken-within",
+  "title": "Shadows Awaken Within",
+  "mood": "Metal",
+  "file": "shadows-awaken-within.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "dark-rising-guitar",
+  "title": "Dark Rising Guitar",
+  "mood": "Metal",
+  "file": "dark-rising-guitar.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "heavy-battle-1",
+  "title": "Heavy Battle 1",
+  "mood": "Metal",
+  "file": "heavy-battle-1.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "punk-hardcore",
+  "title": "Punk Hardcore",
+  "mood": "Hardcore",
+  "file": "punk-hardcore.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "hardstyler",
+  "title": "Hardstyler",
+  "mood": "Hardcore",
+  "file": "hardstyler.m4a",
+  "seconds": 28
+ },
+ {
+  "id": "bouncer",
+  "title": "Bouncer",
+  "mood": "Hardcore",
+  "file": "bouncer.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "punk-rock-metal",
+  "title": "Punk Rock Metal",
+  "mood": "Hardcore",
+  "file": "punk-rock-metal.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "hard-boss-battle-1",
+  "title": "Hard Boss Battle 1",
+  "mood": "Hardcore",
+  "file": "hard-boss-battle-1.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "hard-battle-1",
+  "title": "Hard Battle 1",
+  "mood": "Hardcore",
+  "file": "hard-battle-1.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "fast-cheerful-punk-rock",
+  "title": "Fast Cheerful Punk Rock",
+  "mood": "Hardcore",
+  "file": "fast-cheerful-punk-rock.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "chill-lofi-inspired",
+  "title": "Chill Lofi Inspired",
+  "mood": "Lofi",
+  "file": "chill-lofi-inspired.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "lofi-hip-hop",
+  "title": "Lofi Hip Hop",
+  "mood": "Lofi",
+  "file": "lofi-hip-hop.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "japanese-lofi-hip-hop",
+  "title": "Japanese Lofi Hip Hop",
+  "mood": "Lofi",
+  "file": "japanese-lofi-hip-hop.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "since-2-am",
+  "title": "Since 2 AM",
+  "mood": "Lofi",
+  "file": "since-2-am.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "happy-lofi-day",
+  "title": "Happy Lofi Day",
+  "mood": "Lofi",
+  "file": "happy-lofi-day.m4a",
+  "seconds": 30
+ },
+ {
+  "id": "midsummer",
+  "title": "Midsummer",
+  "mood": "Lofi",
+  "file": "midsummer.m4a",
+  "seconds": 30
  }
 ]
