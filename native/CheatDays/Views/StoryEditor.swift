@@ -299,12 +299,10 @@ struct StoryEditor: View {
             SongPicker { picked in setSong(picked); justPicked = true }
         }
         .onAppear { if video != nil { SongPlayer.shared.heard(true) } }
-        // Trim holds the clip still under a finger: the song waits with it, and starts again with the clip when Trim's
-        // left (it played on through, so the two were out of step afterwards)
-        .onChange(of: mode) { was, now in
+        // a finger on the trim strip holds the clip on one moment: the song waits, and carries on from that moment
+        .onChange(of: scrub == nil) { _, free in
             guard video != nil, SongPlayer.shared.playing == "story-edit" else { return }
-            if now == .trim { SongPlayer.shared.hold(true) }
-            else if was == .trim { clipClock.at = 0; SongPlayer.shared.seek(0); SongPlayer.shared.hold(false) }
+            if free { syncSong(clipClock.at) } else { SongPlayer.shared.hold(true) }
         }
         .task {
             // back in the editor with a song already on the post: heard again with the video
@@ -564,13 +562,29 @@ struct StoryEditor: View {
 
     /// A post's video's sound: which song, and the song and the video's own sound each as loud as wanted, set by ear
     /// with the video playing behind.
-    /// The song keeps step with the clip: each time the clip goes round to its start, so does the song. Left to
-    /// itself it went round every 30 seconds whatever the clip was doing, so the two drifted apart.
+    /// The song keeps step with the clip, as if it were cut into it: it starts where the kept part of the clip starts
+    /// and is always as far in as the clip is. Whenever the clip jumps (round to its start again, a new place after
+    /// the trim strip's been dragged, into or out of Trim) the song is put where it belongs. Left to itself it went
+    /// round every 30 seconds whatever the clip was doing, and played on through trimming.
     private var songTick: (Double, Double) -> Void {
         { [clipClock] at, _ in
-            if at + 0.5 < clipClock.at, mode != .trim, SongPlayer.shared.playing == "story-edit" { SongPlayer.shared.seek(0) }
+            let was = clipClock.at
             clipClock.at = at
+            guard scrub == nil else { return }   // under a finger the song waits; it's placed when the finger lifts
+            let jumped = at + 0.3 < was || at > was + 0.6
+            let reached = clipClock.waiting && at >= range.lowerBound
+            if jumped || reached { syncSong(at) }
         }
+    }
+
+    /// The song put where it belongs for the clip being at this moment. In Trim the whole clip plays, so before the
+    /// kept part starts there's no song yet: it waits at its beginning.
+    private func syncSong(_ at: Double) {
+        guard SongPlayer.shared.playing == "story-edit" else { return }
+        let early = mode == .trim && at < range.lowerBound - 0.05
+        clipClock.waiting = early
+        SongPlayer.shared.seek(max(0, at - range.lowerBound))
+        SongPlayer.shared.hold(early || scrub != nil)
     }
 
     private var mixPanel: some View {
@@ -1593,4 +1607,7 @@ struct LevelBar: View {
 }
 
 /// Where a clip had got to, kept outside the editor's own state so hearing it many times a second redraws nothing.
-final class ClipClock { var at = 0.0 }
+final class ClipClock {
+    var at = 0.0
+    var waiting = false   // the song's held at its start until the clip reaches the part that's kept
+}
