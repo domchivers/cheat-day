@@ -10,6 +10,11 @@ final class Stories {
     private(set) var all: [JSON] = []      // live stories I can see, oldest first
     private(set) var views: [JSON] = []    // who's watched mine
     private(set) var votes: [JSON] = []    // poll votes on the stories I can see
+    /// What I've answered each story with (story id: emoji), kept on the phone too, so a heart given is still red
+    /// the next time the story's watched and before the list has come down.
+    private(set) var reacted: [String: String] = UserDefaults.standard.dictionary(forKey: "stories.reacted") as? [String: String] ?? [:] {
+        didSet { UserDefaults.standard.set(reacted, forKey: "stories.reacted") }
+    }
     private(set) var watched: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "stories.watched") ?? [])
     private(set) var posting = false
     var error: String?
@@ -30,6 +35,13 @@ final class Stories {
         views = mine.isEmpty ? [] : ((try? await rows("/rest/v1/story_views?story_id=in.(\(mine.joined(separator: ",")))&select=*&order=created_at.desc")) ?? [])
         let polled = got.filter { list($0["overlays"]).contains { str($0["type"]) == "poll" } }.map { str($0["id"]) }
         votes = polled.isEmpty ? [] : ((try? await rows("/rest/v1/story_poll_votes?story_id=in.(\(polled.joined(separator: ",")))&select=*")) ?? [])
+        // my own answers to the stories still up, as the server has them
+        if let mineOn = try? await rows("/rest/v1/story_views?viewer=eq.\(me)&reaction=not.is.null&select=story_id,reaction") {
+            let live = Set(got.map { str($0["id"]) })
+            var now: [String: String] = [:]
+            for r in mineOn where live.contains(str(r["story_id"])) && !str(r["reaction"]).isEmpty { now[str(r["story_id"])] = str(r["reaction"]) }
+            reacted = now
+        }
         await Profiles.shared.load(got.map { str($0["owner"]) } + views.map { str($0["viewer"]) })
     }
 
@@ -64,7 +76,15 @@ final class Stories {
 
     func react(_ story: JSON, _ emoji: String) async {
         let id = str(story["id"])
+        reacted[id] = emoji
         _ = try? await api.rest("/rest/v1/story_views", method: "POST", body: [["story_id": id, "viewer": me, "reaction": emoji]], prefer: "resolution=merge-duplicates")
+    }
+
+    /// My answer to a story taken off again (the heart tapped a second time).
+    func unreact(_ story: JSON) async {
+        let id = str(story["id"])
+        reacted[id] = nil
+        _ = try? await api.rest("/rest/v1/story_views?story_id=eq.\(id)&viewer=eq.\(me)", method: "PATCH", body: ["reaction": NSNull()] as JSON)
     }
 
     /// Take a story down; false if the server didn't (it stays, rather than vanishing here and coming back).

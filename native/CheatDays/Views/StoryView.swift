@@ -385,7 +385,7 @@ struct StoryView: View {
 
     private func isLiked(_ s: Slide) -> Bool {
         switch s {
-        case .snap(let st): return likedSnaps.contains(str(st["id"]))
+        case .snap(let st): return likedSnaps.contains(str(st["id"])) || Stories.shared.reacted[str(st["id"])] != nil
         case .post(let p): return Feed.shared.reactions.contains { str($0["post_id"]) == str(p["id"]) && str($0["user_id"]) == Feed.shared.me && str($0["emoji"]) == "❤️" }
         default: return Friends.shared.cheered.contains(who)
         }
@@ -395,7 +395,11 @@ struct StoryView: View {
     private func react(_ s: Slide, _ e: String) {
         switch s {
         case .snap(let st):
-            likedSnaps.insert(str(st["id"]))
+            let id = str(st["id"]), had = Stories.shared.reacted[id]
+            // the heart tapped on a story already liked takes the like off, with nothing sent or shown for it
+            if had != nil, e == "❤️" { likedSnaps.remove(id); Task { await Stories.shared.unreact(st) }; return }
+            if had == e { return }   // the same emoji again: said once already
+            likedSnaps.insert(id)
             // on the story's own record (its Seen by list), and to its owner as a message with the story on it
             Task {
                 await Stories.shared.react(st, e)
