@@ -171,6 +171,12 @@ struct StoryView: View {
                let song = Music.all.first(where: { $0.id == str(tune["id"]) }) {
                 SongPlayer.shared.play(song, key: "story:" + str(st["id"]), loop: true)
             } else { SongPlayer.shared.stop() }
+            // what's coming, fetched while this slide's being watched: the rest of this person's, then the next person's
+            if highlight == nil {
+                let rest = slides.dropFirst(slide + 1).compactMap(Self.picture)
+                let after = people.indices.contains(at + 1) ? Self.slides(for: people[at + 1]).compactMap(Self.picture) : []
+                Stories.shared.fetchSoon(rest + after)
+            }
             // a photo that isn't here yet: its bar waits for it (up to eight seconds), as Instagram's does. It ran on over
             // a blank slide before, so a slow picture was gone before it was seen.
             var waited = 0.0
@@ -421,6 +427,15 @@ struct StoryView: View {
             case .workout(let w): return kind == "workout" && str(w["name"]).replacingOccurrences(of: "Workout: ", with: "") == name
             default: return false
             }
+        }
+    }
+
+    /// The picture a slide needs fetched, if it has one (a photo story, or a post's photo).
+    static func picture(_ s: Slide) -> String? {
+        switch s {
+        case .snap(let st): return str(st["kind"]) == "video" ? nil : str(st["media"])
+        case .post(let p): return Feed.hasPhoto(p) ? str(p["photo"]) : nil
+        default: return nil
         }
     }
 

@@ -61,6 +61,24 @@ final class Stories {
         }
     }
 
+    /// These pictures wanted soon (the rest of the story being watched, the next person's): fetched now, a few at a
+    /// time and in this order, ahead of the quiet fetch of everything.
+    private var soon: Task<Void, Never>?
+    func fetchSoon(_ srcs: [String]) {
+        let wanted = srcs.filter { !$0.isEmpty && ImageStore.cached($0) == nil }
+        guard !wanted.isEmpty else { return }
+        soon?.cancel()
+        soon = Task(priority: .userInitiated) {
+            var left = wanted[...]
+            while !left.isEmpty, !Task.isCancelled {
+                let batch = left.prefix(3); left = left.dropFirst(3)
+                await withTaskGroup(of: Void.self) { g in
+                    for src in batch { g.addTask { _ = await ImageStore.load(src) } }
+                }
+            }
+        }
+    }
+
     func owner(_ story: String) -> String { str(all.first { str($0["id"]) == story }?["owner"]) }
 
     /// A poll's split, and my answer if I've voted.
