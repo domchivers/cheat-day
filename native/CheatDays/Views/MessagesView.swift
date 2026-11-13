@@ -591,7 +591,7 @@ struct GifPicker: View {
                 if limited && found.isEmpty {
                     Text("GIF search is busy right now. Try again in a bit.").font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.top, 30)
                 } else if loading && found.isEmpty {
-                    ProgressView().padding(.top, 40)
+                    Skeleton.grid(9).padding(.top, 6)
                 }
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
                     ForEach(found.indices, id: \.self) { i in

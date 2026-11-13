@@ -1404,7 +1404,7 @@ struct StickerSheet: View {
                 Text("GIF search is busy right now. Try the 3D stickers, or again in a bit.").font(.subheadline).foregroundStyle(.secondary)
                     .multilineTextAlignment(.center).padding(.top, 30)
             } else if loading && gifs.isEmpty {
-                ProgressView().padding(.top, 40)
+                Skeleton.grid(9).padding(.top, 6)
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
                 ForEach(gifs.indices, id: \.self) { i in
