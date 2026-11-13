@@ -298,7 +298,7 @@ struct StoryEditor: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                 guard let s = song else { return }
                 SongPlayer.shared.play(s, key: "story-edit", loop: true, volume: songLevel)
-                if fresh, postSong != nil { withAnimation(.snappy(duration: 0.22)) { mixing = true } }   // a post's video: straight on to how loud each is
+                if fresh { withAnimation(.snappy(duration: 0.22)) { mixing = true } }   // a post's video: straight on to how loud each is
             }
         }) {
             SongPicker { picked in setSong(picked); justPicked = true }
@@ -609,7 +609,7 @@ struct StoryEditor: View {
                     .frame(width: 38, height: 38).background(Theme.accent, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 VStack(alignment: .leading, spacing: 1) {
                     Text(song?.title ?? "Sound").font(.subheadline.weight(.bold)).lineLimit(1)
-                    Text(song == nil ? "No song on this video" : "Song on this video").font(.caption2.weight(.semibold)).opacity(0.6)
+                    Text(song == nil ? "No song on this video" : video == nil ? "Song on this story" : "Song on this video").font(.caption2.weight(.semibold)).opacity(0.6)
                 }
                 Spacer(minLength: 8)
                 Button { withAnimation(.snappy(duration: 0.22)) { mixing = false } } label: {
@@ -655,7 +655,7 @@ struct StoryEditor: View {
     private var toolbar: some View {
         ScrollView(.horizontal) {
             HStack(spacing: 8) {
-                if !forPost || postSong != nil { tool("music.note", "Audio", "Audio") { if postSong != nil { withAnimation(.snappy(duration: 0.22)) { mixing = true } } else { choosingSong = true } } }
+                if !forPost || postSong != nil { tool("music.note", "Audio", "Audio") { if postSong != nil || song != nil { withAnimation(.snappy(duration: 0.22)) { mixing = true } } else { choosingSong = true } } }
                 tool("textformat", "Text", "Text") { newText() }
                 tool("face.smiling", "Stickers", "Stickers") { stickers = true }
                 tool("scribble.variable", "Draw", "Draw") { mode = .draw }
@@ -715,7 +715,7 @@ struct StoryEditor: View {
                 if let song {
                     // the song, named at the top: tap its name for another (a post's video: for its volumes too), the x to take it off
                     HStack(spacing: 6) {
-                        Button { if postSong != nil { withAnimation(.snappy(duration: 0.22)) { mixing = true } } else { choosingSong = true } } label: {
+                        Button { if postSong != nil || song != nil { withAnimation(.snappy(duration: 0.22)) { mixing = true } } else { choosingSong = true } } label: {
                             HStack(spacing: 6) {
                                 Image(systemName: "music.note").font(.system(size: 11, weight: .bold))
                                 Text(song.title).font(.footnote.weight(.bold)).lineLimit(1)
@@ -1227,7 +1227,7 @@ struct StoryEditor: View {
 
     private var everything: [JSON] {
         (strokes.isEmpty ? [] : [["type": "drawing", "strokes": strokes]]) + items
-            + (storySong.map { [["type": "song", "id": $0.id, "title": $0.title] as JSON] } ?? [])
+            + (storySong.map { s -> [JSON] in var j: JSON = s.tag; j["type"] = "song"; return [j] } ?? [])
     }
 
     @ViewBuilder private var bottomBar: some View {

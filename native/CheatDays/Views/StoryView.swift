@@ -171,7 +171,8 @@ struct StoryView: View {
             if case .snap(let st)? = now { if highlight == nil { Stories.shared.watch(st) }; if str(st["kind"]) == "video" { length = max(3, num(st["seconds"]) ?? 15) } }
             // a story with a song: it plays for as long as the story's showing (it's one of the things put on it, by name)
             if case .snap(let st)? = now, let tune = list(st["overlays"]).first(where: { str($0["type"]) == "song" }),
-               let song = Music.all.first(where: { $0.id == str(tune["id"]) }) {
+               var song = Music.all.first(where: { $0.id == str(tune["id"]) }) {
+                song.start = num(tune["start"])   // the part of it the poster chose, if they did
                 SongPlayer.shared.play(song, key: "story:" + str(st["id"]), loop: true)
             } else { SongPlayer.shared.stop() }
             // The last slide's up: this person's story has been watched. It was only counted when the last slide was
