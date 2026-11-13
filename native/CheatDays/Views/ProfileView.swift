@@ -187,8 +187,13 @@ struct ProfileView: View {
                             .accessibilityLabel("New story or post")
                         }
                     }
-                    // your photo plays your story if there is one, else starts one
-                    .onTapGesture { if isMe { if Stories.shared.of(id).isEmpty { composing = true } else { watching = true } } }
+                    // The photo plays the story, as the ring on the feed does: yours (your day counts, not only photos and
+                    // videos you've put up, which is all this looked for), or theirs when you're allowed to see it. With
+                    // nothing to play, yours starts a new one.
+                    .onTapGesture {
+                        if StoryView.has(id), isMe || !locked { watching = true }
+                        else if isMe { composing = true }
+                    }
                 // Instagram's way: the name, then the counts under it, beside the photo
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 6) {
