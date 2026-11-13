@@ -38,8 +38,8 @@ final class Messages {
     var unread: Int { chats.filter { $0.unread > 0 }.count }
 
     func load() async {
+        defer { loaded = true }   // signed out too: nothing's coming, so the list says so and doesn't shimmer for ever
         guard !me.isEmpty else { return }
-        defer { loaded = true }
         do {
             recent = try await rows("/rest/v1/messages?select=*&order=created_at.desc&limit=200")
             error = nil
