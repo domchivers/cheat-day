@@ -122,6 +122,8 @@ struct StoryEditor: View {
     @State private var lookBox = LoopingVideo.Look()
     // the same for a photo: the look its sliders are giving it, read by the picture on screen (see LivePhoto)
     @State private var photoBox = PhotoLook()
+    // where the clip had got to when last heard from, to tell when it's gone round to its start again
+    @State private var clipClock = ClipClock()
     // a story's song (a post's is chosen where the post is written up): it plays while the story's being made, and
     // goes with the story as one of the things on it, to be played when the story's watched
     @State private var storySong: Song?
@@ -297,6 +299,13 @@ struct StoryEditor: View {
             SongPicker { picked in setSong(picked); justPicked = true }
         }
         .onAppear { if video != nil { SongPlayer.shared.heard(true) } }
+        // Trim holds the clip still under a finger: the song waits with it, and starts again with the clip when Trim's
+        // left (it played on through, so the two were out of step afterwards)
+        .onChange(of: mode) { was, now in
+            guard video != nil, SongPlayer.shared.playing == "story-edit" else { return }
+            if now == .trim { SongPlayer.shared.hold(true) }
+            else if was == .trim { clipClock.at = 0; SongPlayer.shared.seek(0); SongPlayer.shared.hold(false) }
+        }
         .task {
             // back in the editor with a song already on the post: heard again with the video
             if let s = postSong?.wrappedValue { SongPlayer.shared.play(s, key: "story-edit", loop: true, volume: songLevel) }
@@ -350,7 +359,7 @@ struct StoryEditor: View {
                         ZStack {
                             if let poster { Image(uiImage: poster).resizable().scaledToFill().frame(width: f.width, height: f.height).clipped() }
                             // turned on its side, the player is laid out sideways and then turned to stand in the frame
-                            LoopingVideo(url: video, paused: false, muted: muted, filter: look, range: length > 0 && mode != .trim ? range : nil, scrub: mode == .trim ? scrub : nil, always: true, box: lookBox, volume: clipLevel)
+                            LoopingVideo(url: video, paused: false, muted: muted, filter: look, range: length > 0 && mode != .trim ? range : nil, scrub: mode == .trim ? scrub : nil, always: true, box: lookBox, tick: songTick, volume: clipLevel)
                                 .frame(width: turns % 2 == 1 ? f.height : f.width, height: turns % 2 == 1 ? f.width : f.height)
                                 .rotationEffect(.degrees(Double(turns) * 90))
                         }
@@ -358,7 +367,7 @@ struct StoryEditor: View {
                     }
                 } else {
                 if let poster { Image(uiImage: poster).resizable().scaledToFill().frame(width: cw, height: ch).clipped() }
-                LoopingVideo(url: video, paused: mode == .text, muted: muted, filter: look, range: length > 0 && mode != .trim ? range : nil, scrub: mode == .trim ? scrub : nil, always: true, box: lookBox, volume: clipLevel)
+                LoopingVideo(url: video, paused: mode == .text, muted: muted, filter: look, range: length > 0 && mode != .trim ? range : nil, scrub: mode == .trim ? scrub : nil, always: true, box: lookBox, tick: songTick, volume: clipLevel)
                 }
             } else if let shown = (comparing ? nil : preview) ?? work ?? image {
                 // the photo moves on its own too, and tells the editor only when the finger lifts
@@ -555,6 +564,15 @@ struct StoryEditor: View {
 
     /// A post's video's sound: which song, and the song and the video's own sound each as loud as wanted, set by ear
     /// with the video playing behind.
+    /// The song keeps step with the clip: each time the clip goes round to its start, so does the song. Left to
+    /// itself it went round every 30 seconds whatever the clip was doing, so the two drifted apart.
+    private var songTick: (Double, Double) -> Void {
+        { [clipClock] at, _ in
+            if at + 0.5 < clipClock.at, mode != .trim, SongPlayer.shared.playing == "story-edit" { SongPlayer.shared.seek(0) }
+            clipClock.at = at
+        }
+    }
+
     private var mixPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 11) {
@@ -1573,3 +1591,6 @@ struct LevelBar: View {
         .accessibilityAdjustableAction { way in value = min(1, max(0, value + (way == .increment ? 0.1 : -0.1))) }
     }
 }
+
+/// Where a clip had got to, kept outside the editor's own state so hearing it many times a second redraws nothing.
+final class ClipClock { var at = 0.0 }
