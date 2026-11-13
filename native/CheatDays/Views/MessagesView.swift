@@ -294,18 +294,15 @@ struct ChatView: View {
                 storyCard(p, live: live).contentShape(Rectangle())
                     .onTapGesture { if live, held == nil { watching = PostBox(post: ["id": str(p["owner"])]) } }
                     .accessibilityAddTraits(.isButton)
-                    // the emoji it was answered with: a small badge on the card's corner, as Instagram shows one (it
-                    // stood under the card at the size of a thumb, bigger than what it was about)
-                    .overlay(alignment: mine ? .bottomLeading : .bottomTrailing) {
-                        if !reaction.isEmpty {
-                            Text(reaction).font(.system(size: 17)).frame(width: 36, height: 30)
-                                .background(Color(.secondarySystemBackground), in: Capsule())
-                                .overlay(Capsule().stroke(Theme.bg, lineWidth: 3))
-                                .offset(x: mine ? -12 : 12, y: 12)
-                                .accessibilityLabel("Reacted with " + reaction)
-                        }
-                    }
-                    .padding(.bottom, reaction.isEmpty ? 0 : 12)
+                // the emoji it was answered with, shown the way a reaction to any message is: the same small badge
+                // tucked under the card's corner (it stood under the card at the size of a thumb)
+                if !reaction.isEmpty {
+                    Text(reaction).font(.caption)
+                        .padding(.horizontal, 6).padding(.vertical, 2).background(Color(.tertiarySystemBackground), in: Capsule())
+                        .overlay(Capsule().stroke(Theme.bg, lineWidth: 2)).offset(y: -11).padding(.horizontal, 10).zIndex(1)
+                        .padding(.bottom, -8)
+                        .accessibilityLabel("Reacted with " + reaction)
+                }
                 if !words.isEmpty {
                     Text(words).font(.body).foregroundStyle(mine ? Theme.onAccent : .primary)
                         .padding(.horizontal, 13).padding(.vertical, 9)
