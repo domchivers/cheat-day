@@ -46,12 +46,22 @@ struct StoryCamera: View {
                                 .multilineTextAlignment(.center).padding(.horizontal, 40)
                             Button("Open Settings") { if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) } }.font(.headline)
                         }
-                    } else if layout > 0 {
-                        layoutStage
                     } else {
-                        CameraPreview(session: cam.session)
-                            .gesture(MagnifyGesture().onChanged { m in cam.zoom(to: zoomStart * m.magnification, glide: true) }.onEnded { _ in zoomStart = cam.zoomFactor })
-                            .onTapGesture(count: 2) { cam.flip() }
+                        // One live camera picture for the whole screen's life, moved and sized to where it's wanted:
+                        // the full frame, or in Layout the place being filled. Layout used to take this one away and
+                        // make a second one inside its grid, joined to the same running camera, and the app froze on
+                        // the spot when its button was pressed.
+                        GeometryReader { g in
+                            let spot = layout > 0 ? liveSpot(g.size) : CGRect(origin: .zero, size: g.size)
+                            ZStack(alignment: .topLeading) {
+                                if layout > 0 { layoutStage(g.size) }
+                                CameraPreview(session: cam.session)
+                                    .frame(width: max(1, spot.width), height: max(1, spot.height)).clipped()
+                                    .offset(x: spot.minX, y: spot.minY)
+                                    .gesture(MagnifyGesture().onChanged { m in cam.zoom(to: zoomStart * m.magnification, glide: true) }.onEnded { _ in zoomStart = cam.zoomFactor })
+                                    .onTapGesture(count: 2) { cam.flip() }
+                            }
+                        }
                     }
                     if !recording && !cam.denied { modes }
                     if recording {
@@ -255,35 +265,44 @@ struct StoryCamera: View {
     }
     private static let grids = ["2v", "2h", "3", "4", "6"]
 
-    /// Layout as it's being made: each photo already taken in its place, the camera live in the place being filled
-    /// (sized to that place, so what's seen there is exactly what the photo will show), and the places still to come
-    /// dark with their number. A fine white line between them, as the finished picture has.
-    private var layoutStage: some View {
-        GeometryReader { g in
-            let spots = Self.places(grid), gap: CGFloat = 1.5
-            ZStack(alignment: .topLeading) {
-                Color.white
-                ForEach(spots.indices, id: \.self) { i in
-                    let r = spots[i]
-                    let w = r.width * g.size.width - (r.maxX < 0.999 ? gap : 0), h = r.height * g.size.height - (r.maxY < 0.999 ? gap : 0)
-                    Group {
-                        if i < cells.count {
-                            Image(uiImage: cells[i]).resizable().scaledToFill().frame(width: w, height: h).clipped()
-                        } else if i == cells.count {
-                            CameraPreview(session: cam.session)
-                                .gesture(MagnifyGesture().onChanged { m in cam.zoom(to: zoomStart * m.magnification, glide: true) }.onEnded { _ in zoomStart = cam.zoomFactor })
-                                .onTapGesture(count: 2) { cam.flip() }
-                        } else {
-                            Color(white: 0.09).overlay {
-                                Text("\(i + 1)").font(.system(size: 22, weight: .heavy, design: .rounded)).foregroundStyle(.white.opacity(0.22))
-                            }
+    /// One of Layout's places in the picture's own points: a fine white line is left between it and the next.
+    private func place(_ r: CGRect, in size: CGSize) -> CGRect {
+        let gap: CGFloat = 1.5
+        return CGRect(x: r.minX * size.width, y: r.minY * size.height,
+                      width: max(1, r.width * size.width - (r.maxX < 0.999 ? gap : 0)), height: max(1, r.height * size.height - (r.maxY < 0.999 ? gap : 0)))
+    }
+
+    /// Where the live camera goes in Layout: the place being filled (the last one, once they're all taken).
+    private func liveSpot(_ size: CGSize) -> CGRect {
+        let spots = Self.places(grid)
+        return place(spots[min(cells.count, spots.count - 1)], in: size)
+    }
+
+    /// Layout as it's being made: each photo already taken in its place, and the places still to come dark with their
+    /// number, on white so a fine line shows between them, as the finished picture has. The place being filled is
+    /// left to the live camera, which is laid over it (sized to that place, so what's seen is what the photo will show).
+    private func layoutStage(_ size: CGSize) -> some View {
+        let spots = Self.places(grid)
+        return ZStack(alignment: .topLeading) {
+            Color.white
+            ForEach(spots.indices, id: \.self) { i in
+                let r = place(spots[i], in: size)
+                Group {
+                    if i < cells.count {
+                        Image(uiImage: cells[i]).resizable().scaledToFill().frame(width: r.width, height: r.height).clipped()
+                    } else if i == cells.count {
+                        Color.black
+                    } else {
+                        Color(white: 0.09).overlay {
+                            Text("\(i + 1)").font(.system(size: 22, weight: .heavy, design: .rounded)).foregroundStyle(.white.opacity(0.22))
                         }
                     }
-                    .frame(width: w, height: h).clipped()
-                    .offset(x: r.minX * g.size.width, y: r.minY * g.size.height)
                 }
+                .frame(width: r.width, height: r.height).clipped()
+                .offset(x: r.minX, y: r.minY)
             }
         }
+        .frame(width: size.width, height: size.height)
     }
 
     /// Under the picture in Layout: undo the last photo, how far along it is, and the arrangements to choose from.
