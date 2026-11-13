@@ -65,7 +65,7 @@ struct StoryView: View {
     static func signature(_ id: String) -> String { "\(DayKey.string(Date()))|\(slides(for: id).count)" }
     static func seen(_ id: String) -> Bool {
         _ = Stories.shared.seenTick   // read, so a ring is drawn again when a story's been watched
-        !Stories.shared.unwatched(id) && (UserDefaults.standard.dictionary(forKey: "stories.seen")?[id] as? String) == signature(id)
+        return !Stories.shared.unwatched(id) && (UserDefaults.standard.dictionary(forKey: "stories.seen")?[id] as? String) == signature(id)
     }
     static func markSeen(_ id: String) {
         var d = UserDefaults.standard.dictionary(forKey: "stories.seen") ?? [:]
