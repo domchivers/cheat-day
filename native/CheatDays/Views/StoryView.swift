@@ -272,11 +272,13 @@ struct StoryView: View {
                     }
                     Spacer()
                     Text(str(st["audience"]) == "friends" ? "Friends only" : "Friends and followers").font(.caption.weight(.bold)).foregroundStyle(.white.opacity(0.6))
+                    sendButton { sharingStory = PostBox(post: st) }
                     // a dialog that pauses the story: a menu kept playing, moved to the next slide, and its Delete did nothing
                     Button { managing = st } label: { Image(systemName: "ellipsis").font(.title3).foregroundStyle(.white).padding(10) }
                         .accessibilityLabel("Story options")
                 }
                 .frame(height: 44).padding(.horizontal, 8)
+                .sheet(item: $sharingStory) { b in ShareStorySheet(story: b.post).presentationDetents([.medium, .large]) }
                 .sheet(item: Binding(get: { seenBy.map { PostBox(post: $0) } }, set: { seenBy = $0?.post })) { b in SeenBySheet(story: b.post).presentationDetents([.medium, .large]) }
                 .sheet(item: Binding(get: { adding.map { PostBox(post: $0) } }, set: { adding = $0?.post })) { b in AddToHighlight(story: b.post).presentationDetents([.medium, .large]) }
                 .confirmationDialog("Your story", isPresented: Binding(get: { managing != nil }, set: { if !$0 { managing = nil } }), presenting: managing) { m in
@@ -314,10 +316,10 @@ struct StoryView: View {
                     }
                     .accessibilityLabel(liked ? "Liked" : "Like").accessibilityAddTraits(.isButton)
                     .accessibilityAction(named: "React with an emoji") { reacting = true }
-                // send it to a friend: a post, or a story that isn't for friends only (that one stays where it was put)
+                // send it to a friend: a post, or a story (one for friends only still opens only for their friends)
                 switch s {
                 case .post(let p): sendButton { sharing = PostBox(post: p) }
-                case .snap(let st) where str(st["audience"]) != "friends": sendButton { sharingStory = PostBox(post: st) }
+                case .snap(let st): sendButton { sharingStory = PostBox(post: st) }
                 default: EmptyView()
                 }
             }
@@ -426,8 +428,10 @@ struct ShareStorySheet: View {
     var body: some View {
         let owner = str(story["owner"]), name = Feed.shared.name(owner)
         SendToSheet(exclude: owner) { friend, note in
-            let payload: JSON = ["story": str(story["id"]), "owner": owner, "kind": str(story["kind"]), "media": str(story["media"])]
-            await Messages.shared.send(to: friend, text: "Sent \(name)'s story", kind: "story", payload: payload)
+            // a friends-only story goes without its picture: whoever may see it gets that from the story itself
+            var payload = StoryView.card(story)
+            if str(story["audience"]) == "friends" { payload["media"] = "" }
+            await Messages.shared.send(to: friend, text: owner == Feed.shared.me ? "Sent a story" : "Sent \(name)'s story", kind: "story", payload: payload)
             if !note.isEmpty { await Messages.shared.send(to: friend, text: note) }
         }
     }

@@ -128,7 +128,11 @@ struct ChatView: View {
         let small = !str(p["reaction"]).isEmpty || !str(p["reply"]).isEmpty
         return ZStack {
             LinearGradient(colors: [Color(red: 0.1, green: 0.18, blue: 0.32), Color(red: 0.16, green: 0.13, blue: 0.31)], startPoint: .topLeading, endPoint: .bottomTrailing)
-            if live, str(p["kind"]) != "video" { FeedPhoto(src: str(p["media"]), fill: true) }
+            if live, str(p["kind"]) != "video" {
+                // the picture from the story as it stands (a friends-only one is sent without it)
+                let now = Stories.shared.all.first { str($0["id"]) == str(p["story"]) }
+                FeedPhoto(src: now.map { str($0["media"]) } ?? str(p["media"]), fill: true)
+            }
             else { Image(systemName: live ? "play.fill" : "clock.arrow.circlepath").font(.system(size: 26, weight: .semibold)).foregroundStyle(.white.opacity(0.8)) }
         }
         .frame(width: small ? 110 : 150, height: small ? 176 : 240)
