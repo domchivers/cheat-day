@@ -272,7 +272,9 @@ struct ChatView: View {
             AnimatedGIF(url: str(p["url"])).frame(width: 200, height: min(260, max(90, 200 * h / max(w, 1))))
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous)).accessibilityLabel("GIF")
         case "post":
-            Button { if held == nil { opened = PostBox(post: dict(p["post"]).isEmpty ? p : dict(p["post"])) } } label: { postCard(p) }.buttonStyle(.plain)
+            // a tap, not a button: a button opened the post when a swipe across the chat happened to start on it
+            postCard(p).contentShape(Rectangle()).onTapGesture { if held == nil { opened = PostBox(post: dict(p["post"]).isEmpty ? p : dict(p["post"])) } }
+                .accessibilityAddTraits(.isButton)
         case "story":
             // shown only while it's still up and it's one they can see; after that, just that it was sent
             let live = str(p["slide"]).isEmpty ? Stories.shared.all.contains { str($0["id"]) == str(p["story"]) } : StoryView.daySlide(p) != nil
@@ -283,8 +285,9 @@ struct ChatView: View {
                     Text(mine ? (reaction.isEmpty ? "You replied to their story" : "You reacted to their story") : (reaction.isEmpty ? "Replied to your story" : "Reacted to your story"))
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                Button { if live, held == nil { watching = PostBox(post: ["id": str(p["owner"])]) } } label: { storyCard(p, live: live) }
-                    .buttonStyle(.plain).disabled(!live)
+                storyCard(p, live: live).contentShape(Rectangle())
+                    .onTapGesture { if live, held == nil { watching = PostBox(post: ["id": str(p["owner"])]) } }
+                    .accessibilityAddTraits(.isButton)
                 if !reaction.isEmpty { Text(reaction).font(.system(size: 40)) }
                 if !words.isEmpty {
                     Text(words).font(.body).foregroundStyle(mine ? Theme.onAccent : .primary)
