@@ -1115,29 +1115,39 @@ struct ComposeSheet: View {
             ScrollView {
                 VStack(spacing: 0) {
                     if !started && preset == nil && !drafts.isEmpty { draftList.padding(.horizontal, 14).padding(.top, 14) }
-                    picture.padding(.top, 14)
-                    if movie != nil { Text("Up to 30 seconds are posted.").font(.caption).foregroundStyle(.secondary).padding(.top, 8) }
-                    // the caption straight on the page, then plain rows with a line between them, as Instagram's is
-                    TextField("Add a caption…", text: $caption, axis: .vertical).lineLimit(3...8).focused($writing)
-                        .font(.body)
-                        .padding(.horizontal, 18).padding(.vertical, 16)
-                        .contentShape(Rectangle()).onTapGesture { writing = true }
-                        .padding(.top, 6).id("caption")
-                    Divider().padding(.leading, 18)
-                    attachment.padding(.horizontal, 4)
-                    songRow.padding(.horizontal, 4)
-                    if song == nil { songIdeas }
-                    else {
-                        VStack(alignment: .leading, spacing: 6) {
+                    // The picture small beside the caption, then what can go with the post in rounded groups, as
+                    // Instagram's share screen has it. (The picture took half the page, the caption had no place
+                    // of its own, the lines between rows ran off the right edge and song ideas sat loose among them.)
+                    HStack(alignment: .top, spacing: 14) {
+                        picture
+                        TextField("Write a caption…", text: $caption, axis: .vertical).lineLimit(4...8).focused($writing)
+                            .font(.body).padding(.top, 6)
+                            .frame(maxWidth: .infinity, minHeight: 128, alignment: .topLeading)
+                            .contentShape(Rectangle()).onTapGesture { writing = true }
+                    }
+                    .padding(.horizontal, 16).padding(.top, 14).id("caption")
+                    if movie != nil {
+                        Text("Up to 30 seconds are posted.").font(.caption).foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.top, 8)
+                    }
+                    Text("ADD TO YOUR POST").font(.caption.weight(.bold)).kerning(1).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 30).padding(.top, 22).padding(.bottom, 8)
+                    attachment.modifier(FormGroup())
+                    VStack(spacing: 0) {
+                        songRow
+                        if song != nil {
                             // a video's song is set against its own sound in the editor (Audio), with the video
                             // playing; here just the song's own level, for a photo
-                            if movie == nil { MixSliders(song: $songVol, clip: $clipVol, hasClip: false) }
-                            else { Text("To set how loud the song and the video are, edit the video and tap Audio.").font(.caption).foregroundStyle(.secondary) }
+                            Group {
+                                if movie == nil { MixSliders(song: $songVol, clip: $clipVol, hasClip: false) }
+                                else { Text("To set how loud the song and the video are, edit the video and tap Audio.").font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading) }
+                            }
+                            .padding(.leading, 56).padding(.trailing, 14).padding(.bottom, 12)
                         }
-                            .padding(.horizontal, 18).padding(.vertical, 8)
-                            .overlay(alignment: .bottom) { Divider().padding(.leading, 18) }
+                        Divider().padding(.leading, 56)
+                        tagRow
                     }
-                    tagRow.padding(.horizontal, 4)
+                    .modifier(FormGroup()).padding(.top, 12)
                     if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.top, 8) }
                 }
                 .padding(.bottom, 44)
@@ -1547,8 +1557,30 @@ struct ComposeSheet: View {
     /// in the corner drops a menu to edit, change or remove (the whole tile as a menu's label made iOS 26 swallow
     /// it into a blob and put the menu on top of it).
     private var picture: some View {
-        pictureTile.frame(width: 210, height: 262)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        Group {
+            if photo != nil || movie != nil { pictureTile }
+            else if let w = what {
+                // no photo: what it's of, and its calories
+                VStack(spacing: 2) {
+                    FoodDot(name: str(w["kind"]) == "workout" ? "Workout" : str(w["name"]), size: 40)
+                    Text(Fmt.int(num(w["kcal"]) ?? 0)).font(.system(size: 20, weight: .heavy, design: .rounded)).monospacedDigit()
+                    Text("kcal").font(.caption2.weight(.bold)).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(LinearGradient(colors: [Theme.hero, Theme.accent.opacity(0.28)], startPoint: .topLeading, endPoint: .bottomTrailing))
+            } else {
+                Button { picking = true } label: {
+                    VStack(spacing: 6) {
+                        Image(systemName: "plus").font(.system(size: 20, weight: .bold))
+                        Text("Photo or video").font(.caption2.weight(.bold)).multilineTextAlignment(.center)
+                    }
+                    .foregroundStyle(Theme.accent).frame(maxWidth: .infinity, maxHeight: .infinity).background(Color(.secondarySystemGroupedBackground))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+            .frame(width: 96, height: 128)
+            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
             .overlay(alignment: .bottomTrailing) {
                 if photo != nil || what != nil {
                     Menu {
@@ -1564,29 +1596,21 @@ struct ComposeSheet: View {
                         if movie != nil { Button(role: .destructive) { movie = nil; poster = nil; clip = ClipEdit() } label: { Label("Remove", systemImage: "trash") } }
                         else if !shots.isEmpty { Button(role: .destructive) { drop(showing) } label: { Label("Remove", systemImage: "trash") } }
                     } label: {
-                        Image(systemName: photo == nil ? "plus" : "pencil").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
-                            .frame(width: 34, height: 34).background(.black.opacity(0.55), in: Circle())
+                        Image(systemName: photo == nil ? "plus" : "pencil").font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
+                            .frame(width: 28, height: 28).background(.black.opacity(0.55), in: Circle())
+                            .padding(5).contentShape(Rectangle())
                     }
-                    .menuOrder(.fixed).padding(8)
+                    .menuOrder(.fixed)
                     .accessibilityLabel(photo == nil ? "Add a photo or video" : "Change the photo")
-                }
-            }
-            .overlay(alignment: .bottomLeading) {
-                if movie != nil {
-                    Button { choosingCover = true } label: {
-                        Label("Cover", systemImage: "photo").font(.caption.weight(.bold)).foregroundStyle(.white)
-                            .padding(.horizontal, 11).frame(height: 34).background(.black.opacity(0.55), in: Capsule())
-                    }
-                    .buttonStyle(.plain).padding(8)
                 }
             }
             .overlay(alignment: .topLeading) {
                 if movie != nil {
-                    Image(systemName: "video.fill").font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
-                        .frame(width: 28, height: 28).background(.black.opacity(0.55), in: Circle()).padding(8)
+                    Image(systemName: "video.fill").font(.system(size: 9, weight: .bold)).foregroundStyle(.white)
+                        .frame(width: 22, height: 22).background(.black.opacity(0.55), in: Circle()).padding(5)
                 } else if shots.count > 1 {
                     Text("\(min(showing, shots.count - 1) + 1)/\(shots.count)").font(.caption.weight(.bold)).monospacedDigit().foregroundStyle(.white)
-                        .padding(.horizontal, 9).frame(height: 26).background(.black.opacity(0.55), in: Capsule()).padding(8)
+                        .padding(.horizontal, 7).frame(height: 22).background(.black.opacity(0.55), in: Capsule()).padding(5)
                 }
             }
     }
@@ -1650,7 +1674,8 @@ struct ComposeSheet: View {
             if let w = what {
                 let kind = str(w["kind"]), protein = num(dict(w["macros"])["p"])
                 HStack(spacing: 12) {
-                    FoodDot(name: kind == "workout" ? "Workout" : str(w["name"]), size: 34)
+                    FoodDot(name: kind == "workout" ? "Workout" : str(w["name"]), size: 26)
+                        .frame(width: 30, height: 30).background((kind == "workout" ? Color.blue : Color.orange).opacity(0.18), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
                     VStack(alignment: .leading, spacing: 1) {
                         Text(str(w["name"])).font(.body.weight(.semibold)).lineLimit(1)
                         Text(kind == "workout" ? "\(Int(num(dict(w["extra"])["minutes"]) ?? 0)) min · \(Fmt.int(num(w["kcal"]) ?? 0)) kcal"
@@ -1661,12 +1686,11 @@ struct ComposeSheet: View {
                 }
                 .padding(.horizontal, 14).padding(.vertical, 11)
             } else {
-                attachRow("fork.knife", "Add a food or meal") { shelf = 0; attaching = true }
-                Divider().padding(.leading, 14)
-                attachRow("dumbbell.fill", "Add a workout") { shelf = 2; attaching = true }
+                attachRow(rowPicture("🍽️", .orange), "Food or meal") { shelf = 0; attaching = true }
+                Divider().padding(.leading, 56)
+                attachRow(rowPicture("🏋️", .blue), "Workout") { shelf = 2; attaching = true }
             }
         }
-        .overlay(alignment: .bottom) { Divider().padding(.leading, 14) }
     }
 
     /// A song for the post: the way to add one, or the one picked with a play button.
@@ -1676,23 +1700,25 @@ struct ComposeSheet: View {
                 let on = SongPlayer.shared.playing == "new:" + s.id
                 HStack(spacing: 12) {
                     Button { if on { SongPlayer.shared.stop() } else { SongPlayer.shared.play(s, key: "new:" + s.id, loop: movie != nil, volume: Float(songVol)) } } label: {
-                        Image(systemName: on ? "pause.fill" : "play.fill").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.accent)
-                            .frame(width: 34, height: 34).background(Color(.tertiarySystemFill), in: Circle())
+                        Image(systemName: on ? "pause.fill" : "play.fill").font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.purple)
+                            .frame(width: 30, height: 30).background(Color.purple.opacity(0.18), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
                     }
                     .buttonStyle(.plain).accessibilityLabel(on ? "Stop the song" : "Play the song")
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(s.title).font(.body.weight(.semibold)).lineLimit(1)
-                        Text("Song").font(.footnote).foregroundStyle(.secondary)
+                    Button { writing = false; choosingSong = true } label: {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(s.title).font(.body.weight(.semibold)).foregroundStyle(.primary).lineLimit(1)
+                            Text("Song · tap to change").font(.footnote).foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                     }
-                    Spacer(minLength: 0)
+                    .buttonStyle(.plain)
                     Button("Remove") { SongPlayer.shared.stop(); withAnimation(.snappy) { song = nil } }.font(.subheadline).foregroundStyle(.secondary).buttonStyle(.plain)
                 }
                 .padding(.horizontal, 14).padding(.vertical, 11)
             } else {
-                attachRow("music.note", "Add a song") { writing = false; choosingSong = true }
+                attachRow(rowIcon("music.note", .purple), "Song") { writing = false; choosingSong = true }
             }
         }
-        .overlay(alignment: .bottom) { Divider().padding(.leading, 14) }
         .onDisappear { SongPlayer.shared.stop() }
     }
 
@@ -1700,29 +1726,42 @@ struct ComposeSheet: View {
     private var tagRow: some View {
         Button { writing = false; tagging = true } label: {
             HStack(spacing: 12) {
-                Image(systemName: "person.crop.square").font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.accent).frame(width: 24)
+                rowIcon("person.crop.square", .teal)
                 Text("Tag people").font(.body.weight(.semibold)).foregroundStyle(.primary)
                 Spacer(minLength: 8)
                 if !tags.isEmpty { Text(TagPicker.names(tags)).font(.subheadline).foregroundStyle(.secondary).lineLimit(1) }
                 Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
             }
-            .padding(.horizontal, 14).padding(.vertical, 13).contentShape(Rectangle())
+            .padding(.horizontal, 14).padding(.vertical, 12).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .overlay(alignment: .bottom) { Divider().padding(.leading, 14) }
     }
 
-    private func attachRow(_ symbol: String, _ title: String, _ tap: @escaping () -> Void) -> some View {
+    private func attachRow<Icon: View>(_ icon: Icon, _ title: String, _ tap: @escaping () -> Void) -> some View {
         Button(action: tap) {
             HStack(spacing: 12) {
-                Image(systemName: symbol).font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.accent).frame(width: 24)
+                icon
                 Text(title).font(.body.weight(.semibold)).foregroundStyle(.primary)
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
             }
-            .padding(.horizontal, 14).padding(.vertical, 13).contentShape(Rectangle())
+            .padding(.horizontal, 14).padding(.vertical, 12).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    /// A row's sign: a symbol on a soft square of its own colour.
+    private func rowIcon(_ symbol: String, _ tint: Color) -> some View {
+        Image(systemName: symbol).font(.system(size: 14, weight: .semibold)).foregroundStyle(tint)
+            .frame(width: 30, height: 30).background(tint.opacity(0.18), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+    }
+    /// The same with one of the app's own pictures (the plate, the weight-lifter).
+    private func rowPicture(_ emoji: String, _ tint: Color) -> some View {
+        Group {
+            if let img = UIImage(named: FoodEmoji.asset(emoji)) { Image(uiImage: img).resizable().scaledToFit().padding(5) }
+            else { Text(emoji).font(.system(size: 16)) }
+        }
+        .frame(width: 30, height: 30).background(tint.opacity(0.18), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
 
     /// A video's first frame, the right way up.
@@ -2002,5 +2041,14 @@ enum ImageStore {
         memory.setObject(img, forKey: src as NSString)
         Task.detached(priority: .utility) { try? d.write(to: path, options: .atomic) }
         return img
+    }
+}
+
+/// A group of rows on the write-up screen: one rounded card, set in from the sides.
+struct FormGroup: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .padding(.horizontal, 16)
     }
 }
