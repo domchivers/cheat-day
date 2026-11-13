@@ -64,11 +64,14 @@ struct StoryView: View {
     /// What was in it when last watched, so new things colour the ring again.
     static func signature(_ id: String) -> String { "\(DayKey.string(Date()))|\(slides(for: id).count)" }
     static func seen(_ id: String) -> Bool {
+        _ = Stories.shared.seenTick   // read, so a ring is drawn again when a story's been watched
         !Stories.shared.unwatched(id) && (UserDefaults.standard.dictionary(forKey: "stories.seen")?[id] as? String) == signature(id)
     }
     static func markSeen(_ id: String) {
         var d = UserDefaults.standard.dictionary(forKey: "stories.seen") ?? [:]
+        guard d[id] as? String != signature(id) else { return }
         d[id] = signature(id); UserDefaults.standard.set(d, forKey: "stories.seen")
+        Stories.shared.seenTick += 1
     }
 
     var body: some View {
@@ -171,6 +174,10 @@ struct StoryView: View {
                let song = Music.all.first(where: { $0.id == str(tune["id"]) }) {
                 SongPlayer.shared.play(song, key: "story:" + str(st["id"]), loop: true)
             } else { SongPlayer.shared.stop() }
+            // The last slide's up: this person's story has been watched. It was only counted when the last slide was
+            // gone past (by its bar running out or a tap), so closing on the last slide, as most people do, left
+            // the ring bright for good.
+            if highlight == nil, slide >= slides.count - 1 { Self.markSeen(who) }
             // what's coming, fetched while this slide's being watched: the rest of this person's, then the next person's
             if highlight == nil {
                 let rest = slides.dropFirst(slide + 1).compactMap(Self.picture)

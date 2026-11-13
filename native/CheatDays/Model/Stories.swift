@@ -16,6 +16,9 @@ final class Stories {
     private func keepReacted() { UserDefaults.standard.set(reacted, forKey: "stories.reacted") }
     private(set) var watched: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "stories.watched") ?? [])
     private(set) var posting = false
+    /// Goes up each time someone's story has been watched to its end, so the rings are drawn again (what's been
+    /// watched is kept in the phone's settings, which nothing on screen hears about by itself).
+    var seenTick = 0
     var error: String?
     private var api: Supabase { Supabase.shared }
     var me: String { api.userId ?? "" }
