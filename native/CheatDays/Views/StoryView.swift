@@ -74,14 +74,19 @@ struct StoryView: View {
         ZStack {
             Color.black.ignoresSafeArea()
             if !s.isEmpty {
-                VStack(spacing: 10) {
-                    bars(s.count)
-                    header
-                    // every slide the one shape (9:16, a story's own): a meal or workout card was wider than a photo
+                VStack(spacing: 6) {
+                    // Every slide the one shape (9:16, a story's own), and as big as the screen lets it be: edge to
+                    // edge from the top, with the bars and the name over it, as Instagram's are. With those stacked
+                    // above it on black and a margin each side, it came out noticeably smaller than theirs.
                     content(s[min(slide, s.count - 1)])
                         .aspectRatio(StoryArt.aspect, contentMode: .fit)
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 16, bottomLeadingRadius: 8, bottomTrailingRadius: 8, topTrailingRadius: 16, style: .continuous))
+                        // the bars and the name read over a bright photo too
+                        .overlay(alignment: .top) {
+                            LinearGradient(colors: [.black.opacity(0.45), .clear], startPoint: .top, endPoint: .bottom).frame(height: 120)
+                                .clipShape(UnevenRoundedRectangle(topLeadingRadius: 16, topTrailingRadius: 16, style: .continuous)).allowsHitTesting(false)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                         .overlay { taps }
                         // polls sit above the taps, so voting doesn't skip the story
                         .overlay {
@@ -90,10 +95,13 @@ struct StoryView: View {
                                 if !polls.isEmpty { StoryLayer(items: polls, story: str(st["id"])).aspectRatio(StoryArt.aspect, contentMode: .fit) }
                             }
                         }
+                        // over the taps, so the name and the cross can be pressed
+                        .overlay(alignment: .top) {
+                            VStack(spacing: 8) { bars(s.count); header }.padding(.horizontal, 8).shadow(color: .black.opacity(0.35), radius: 3)
+                        }
                     // and the one height under it, whatever's there, so the slide above doesn't change size either
-                    footer(s[min(slide, s.count - 1)]).frame(height: 52)
+                    footer(s[min(slide, s.count - 1)]).frame(height: 52).padding(.horizontal, 8)
                 }
-                .padding(.horizontal, 8)
                 // the row of emoji is open: a tap anywhere else puts it away
                 if reacting { Color.black.opacity(0.001).ignoresSafeArea().onTapGesture { withAnimation(.snappy(duration: 0.2)) { reacting = false } } }
                 if reacting {
@@ -242,7 +250,7 @@ struct StoryView: View {
                 }
                 Spacer()
             }
-            .padding(22)
+            .padding(22).padding(.top, 62)
             .background(LinearGradient(colors: [Theme.hero, Theme.accent.opacity(0.32)], startPoint: .topLeading, endPoint: .bottomTrailing))
         case .workout(let w):
             let lifts = list(dict(w["workout"])["lifts"] ?? w["lifts"])
@@ -255,7 +263,7 @@ struct StoryView: View {
                 Spacer()
                 FoodDot(name: "Workout", size: 90).frame(maxWidth: .infinity, alignment: .trailing).opacity(0.6)
             }
-            .padding(22)
+            .padding(22).padding(.top, 62)
             .background(LinearGradient(colors: [Color(red: 0.1, green: 0.18, blue: 0.32), Color(red: 0.16, green: 0.13, blue: 0.31)], startPoint: .topLeading, endPoint: .bottomTrailing))
         }
     }
