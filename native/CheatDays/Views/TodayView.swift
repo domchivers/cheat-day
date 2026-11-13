@@ -1134,7 +1134,7 @@ struct AmountView: View {
                     onDecrement: { kcal = max(0.5, count - 0.5) * each; syncTexts() })
             // the weight behind a count, so a bigger or smaller one can be weighed instead
             if let k100 = conv.kcalPer100, k100 > 0 {
-                Text("1 \(label) ≈ \(Fmt.int(each / k100 * 100)) \(unit)\(Region.current == .uk ? "" : " (yours may differ: Weigh is exact)")")
+                Text("1 \(label) ≈ \(each / k100 * 100 < 10 ? String(format: "%.1f", each / k100 * 100) : Fmt.int(each / k100 * 100)) \(unit)\(Region.current == .uk ? "" : " (yours may differ: Weigh is exact)")")
                     .font(.caption).foregroundStyle(.secondary)
             }
             fitsNote
