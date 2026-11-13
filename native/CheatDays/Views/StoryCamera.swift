@@ -25,6 +25,10 @@ struct StoryCamera: View {
     // into one picture (0 when off). Hands-free: a tap starts filming and a tap stops it, no holding.
     @State private var layout = 0
     @State private var cells: [UIImage] = []
+    // Layout's photos once they're all taken: each can be sized and moved in its place before they're made into one
+    // picture (they were joined the moment the last was taken, each cut to its middle, with no say in it)
+    @State private var arranging = false
+    @State private var fits: [LayoutFit] = []
     @State private var grid = "2v"   // Layout's arrangement: 2v, 2h, 3, 4 or 6
     @State private var handsFree = false
 
@@ -58,6 +62,7 @@ struct StoryCamera: View {
                                 CameraPreview(session: cam.session)
                                     .frame(width: max(1, spot.width), height: max(1, spot.height)).clipped()
                                     .offset(x: spot.minX, y: spot.minY)
+                                    .opacity(arranging ? 0 : 1).allowsHitTesting(!arranging)
                                     .gesture(MagnifyGesture().onChanged { m in cam.zoom(to: zoomStart * m.magnification, glide: true) }.onEnded { _ in zoomStart = cam.zoomFactor })
                                     .onTapGesture(count: 2) { cam.flip() }
                             }
@@ -216,6 +221,7 @@ struct StoryCamera: View {
                     return
                 }
                 if recording { cam.stopMovie(); recording = false }
+                else if arranging { finishLayout() }
                 else if !cam.denied { UIImpactFeedbackGenerator(style: .light).impactOccurred(); cam.takePhoto(quick: layout > 0) }
             })
         .accessibilityLabel("Shutter").accessibilityHint("Tap for a photo, hold to film")
@@ -226,11 +232,11 @@ struct StoryCamera: View {
     private var modes: some View {
         VStack(alignment: .leading, spacing: 14) {
             modeButton("square.grid.2x2", "Layout", on: layout > 0) {
-                cells = []
+                cells = []; fits = []; arranging = false
                 if layout > 0 { layout = 0 } else { layout = Self.places(grid).count; handsFree = false }
             }
             modeButton("record.circle", "Hands-free", on: handsFree) {
-                handsFree.toggle(); if handsFree { layout = 0; cells = [] }
+                handsFree.toggle(); if handsFree { layout = 0; cells = []; fits = []; arranging = false }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading).padding(.leading, 10)
@@ -265,11 +271,9 @@ struct StoryCamera: View {
     }
     private static let grids = ["2v", "2h", "3", "4", "6"]
 
-    /// One of Layout's places in the picture's own points: a fine white line is left between it and the next.
+    /// One of Layout's places in the picture's own points. Edge to edge: no line between one and the next.
     private func place(_ r: CGRect, in size: CGSize) -> CGRect {
-        let gap: CGFloat = 1.5
-        return CGRect(x: r.minX * size.width, y: r.minY * size.height,
-                      width: max(1, r.width * size.width - (r.maxX < 0.999 ? gap : 0)), height: max(1, r.height * size.height - (r.maxY < 0.999 ? gap : 0)))
+        CGRect(x: r.minX * size.width, y: r.minY * size.height, width: max(1, r.width * size.width), height: max(1, r.height * size.height))
     }
 
     /// Where the live camera goes in Layout: the place being filled (the last one, once they're all taken).
@@ -284,15 +288,13 @@ struct StoryCamera: View {
     private func layoutStage(_ size: CGSize) -> some View {
         let spots = Self.places(grid)
         return ZStack(alignment: .topLeading) {
-            // white only behind the middle, for the lines between the places: right to the edge, it showed as a hair
-            // of white round the picture's rounded corners
             Color.black
-            Color.white.padding(4)
             ForEach(spots.indices, id: \.self) { i in
                 let r = place(spots[i], in: size)
                 Group {
                     if i < cells.count {
-                        Image(uiImage: cells[i]).resizable().scaledToFill().frame(width: r.width, height: r.height).clipped()
+                        LayoutCell(image: cells[i], size: r.size, fit: Binding(get: { fits.indices.contains(i) ? fits[i] : LayoutFit() }, set: { if fits.indices.contains(i) { fits[i] = $0 } }),
+                                   movable: arranging)
                     } else if i == cells.count {
                         Color.black
                     } else {
@@ -312,13 +314,25 @@ struct StoryCamera: View {
     private var layoutBar: some View {
         HStack(spacing: 10) {
             if !cells.isEmpty {
-                Button { UIImpactFeedbackGenerator(style: .light).impactOccurred(); withAnimation(.snappy(duration: 0.2)) { _ = cells.removeLast() } } label: {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    withAnimation(.snappy(duration: 0.2)) { _ = cells.removeLast(); if !fits.isEmpty { fits.removeLast() }; arranging = false }
+                } label: {
                     Image(systemName: "arrow.uturn.backward").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
                         .frame(width: 34, height: 34).background(.black.opacity(0.5), in: Circle())
                 }
                 .buttonStyle(.plain).accessibilityLabel("Take the last photo again")
-                Text("\(cells.count + 1) of \(layout)").font(.footnote.weight(.bold)).monospacedDigit().foregroundStyle(.white)
-                    .padding(.horizontal, 12).frame(height: 34).background(.black.opacity(0.5), in: Capsule())
+                if arranging {
+                    Text("Pinch and drag each photo").font(.footnote.weight(.bold)).foregroundStyle(.white)
+                        .padding(.horizontal, 12).frame(height: 34).background(.black.opacity(0.5), in: Capsule())
+                    Button { finishLayout() } label: {
+                        Text("Done").font(.footnote.weight(.heavy)).foregroundStyle(.black).padding(.horizontal, 16).frame(height: 34).background(.white, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Text("\(cells.count + 1) of \(layout)").font(.footnote.weight(.bold)).monospacedDigit().foregroundStyle(.white)
+                        .padding(.horizontal, 12).frame(height: 34).background(.black.opacity(0.5), in: Capsule())
+                }
             } else {
                 // before the first photo: which arrangement
                 HStack(spacing: 4) {
@@ -342,28 +356,36 @@ struct StoryCamera: View {
     /// A photo from the shutter: the story's picture, or in Layout the next of its photos (the last one finishes it).
     private func took(_ img: UIImage) {
         guard layout > 0 else { captured(img, nil); return }
-        withAnimation(.snappy(duration: 0.2)) { cells.append(img) }
-        guard cells.count >= layout else { return }
-        let out = Self.collage(cells, grid)
-        cells = []
+        guard !arranging, cells.count < layout else { return }
+        withAnimation(.snappy(duration: 0.2)) { cells.append(img); fits.append(LayoutFit()) }
+        // all taken: each can now be sized and moved in its place; Done (or the shutter) makes the picture
+        if cells.count >= layout { withAnimation(.snappy(duration: 0.2)) { arranging = true } }
+    }
+
+    /// The arrangement made into one picture and handed on to the editor.
+    private func finishLayout() {
+        guard arranging, !cells.isEmpty else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        let out = Self.collage(cells, grid, fits: fits)
+        cells = []; fits = []; arranging = false
         captured(out, nil)
     }
 
-    /// Layout's photos as one 9:16 picture, each filling its place from its middle, a fine white line between.
-    static func collage(_ shots: [UIImage], _ kind: String) -> UIImage {
-        let size = CGSize(width: 1080, height: 1920), spots = places(kind), gap: CGFloat = 4
+    /// Layout's photos as one 9:16 picture, edge to edge, each as it was sized and placed (filling its place from its
+    /// middle when it wasn't touched).
+    static func collage(_ shots: [UIImage], _ kind: String, fits: [LayoutFit] = []) -> UIImage {
+        let size = CGSize(width: 1080, height: 1920), spots = places(kind)
         let format = UIGraphicsImageRendererFormat(); format.scale = 1
         return UIGraphicsImageRenderer(size: size, format: format).image { ctx in
-            UIColor.white.setFill(); UIRectFill(CGRect(origin: .zero, size: size))
+            UIColor.black.setFill(); UIRectFill(CGRect(origin: .zero, size: size))
             for (i, shot) in shots.prefix(spots.count).enumerated() {
-                let f = spots[i]
-                let r = CGRect(x: f.minX * size.width, y: f.minY * size.height,
-                               width: f.width * size.width - (f.maxX < 0.999 ? gap : 0), height: f.height * size.height - (f.maxY < 0.999 ? gap : 0))
-                let k = max(r.width / max(1, shot.size.width), r.height / max(1, shot.size.height))
+                let f = spots[i], fit = fits.indices.contains(i) ? fits[i] : LayoutFit()
+                let r = CGRect(x: f.minX * size.width, y: f.minY * size.height, width: f.width * size.width, height: f.height * size.height).integral
+                let k = max(r.width / max(1, shot.size.width), r.height / max(1, shot.size.height)) * fit.scale
                 let w = shot.size.width * k, h = shot.size.height * k
                 ctx.cgContext.saveGState()
                 ctx.cgContext.clip(to: r)
-                shot.draw(in: CGRect(x: r.midX - w / 2, y: r.midY - h / 2, width: w, height: h))
+                shot.draw(in: CGRect(x: r.midX + fit.x * r.width - w / 2, y: r.midY + fit.y * r.height - h / 2, width: w, height: h))
                 ctx.cgContext.restoreGState()
             }
         }
@@ -713,5 +735,47 @@ struct GridIcon: View {
             }
         }
         .frame(width: 22, height: 26)
+    }
+}
+
+/// How one of Layout's photos sits in its place: how much bigger than just filling it, and how far its middle is from
+/// the place's middle, as fractions of the place.
+struct LayoutFit: Equatable {
+    var scale: CGFloat = 1
+    var x: CGFloat = 0
+    var y: CGFloat = 0
+}
+
+/// One of Layout's photos in its place. Once they're all taken it can be pinched bigger and dragged about, never so
+/// far that the place shows empty.
+struct LayoutCell: View {
+    let image: UIImage
+    let size: CGSize
+    @Binding var fit: LayoutFit
+    var movable = false
+    @GestureState private var pinch: CGFloat = 1
+    @GestureState private var drag: CGSize = .zero
+
+    /// Kept to where the photo still covers its place.
+    private func settled(_ scale: CGFloat, _ x: CGFloat, _ y: CGFloat) -> LayoutFit {
+        let s = min(5, max(1, scale))
+        let k = max(size.width / max(1, image.size.width), size.height / max(1, image.size.height)) * s
+        let mx = max(0, (image.size.width * k - size.width) / 2) / max(1, size.width)
+        let my = max(0, (image.size.height * k - size.height) / 2) / max(1, size.height)
+        return LayoutFit(scale: s, x: min(mx, max(-mx, x)), y: min(my, max(-my, y)))
+    }
+
+    var body: some View {
+        let live = settled(fit.scale * pinch, fit.x + drag.width / max(1, size.width), fit.y + drag.height / max(1, size.height))
+        let k = max(size.width / max(1, image.size.width), size.height / max(1, image.size.height)) * live.scale
+        Image(uiImage: image).resizable()
+            .frame(width: image.size.width * k, height: image.size.height * k)
+            .offset(x: live.x * size.width, y: live.y * size.height)
+            .frame(width: size.width, height: size.height).clipped()
+            .contentShape(Rectangle())
+            .gesture(movable ? DragGesture(minimumDistance: 2).updating($drag) { v, state, _ in state = v.translation }
+                .onEnded { v in fit = settled(fit.scale, fit.x + v.translation.width / max(1, size.width), fit.y + v.translation.height / max(1, size.height)) }
+                .simultaneously(with: MagnifyGesture().updating($pinch) { m, state, _ in state = m.magnification }
+                    .onEnded { m in fit = settled(fit.scale * m.magnification, fit.x, fit.y) }) : nil)
     }
 }
