@@ -154,8 +154,18 @@ struct StoryView: View {
             }
         }
         .offset(y: max(0, drag))
-        .gesture(DragGesture().onChanged { v in if v.translation.height > 0 { drag = v.translation.height; paused = true } }
-            .onEnded { v in if v.translation.height > 120 { dismiss() } else { withAnimation(.snappy) { drag = 0 }; paused = false } })
+        .gesture(DragGesture().onChanged { v in if v.translation.height > 0, abs(v.translation.height) > abs(v.translation.width) { drag = v.translation.height; paused = true } }
+            .onEnded { v in
+                let across = v.translation.width, down = v.translation.height
+                // a swipe sideways: the next person's story, or the one before (there was no way but waiting or tapping
+                // through every slide)
+                if abs(across) > 60, abs(across) > abs(down) * 1.3, !typing {
+                    withAnimation(.snappy) { drag = 0 }; paused = false
+                    if across < 0 { person(1) } else { person(-1) }
+                    return
+                }
+                if down > 120 { dismiss() } else { withAnimation(.snappy) { drag = 0 }; paused = false }
+            })
         .statusBarHidden()
         .overlay(alignment: .top) {
             if let failed {
@@ -502,6 +512,17 @@ struct StoryView: View {
         Self.markSeen(who)
         if at + 1 < people.count { at += 1; slide = 0 } else { dismiss() }
     }
+    /// On to the next person's story, or back to the one before. Past the last, the stories close; before the first,
+    /// this one starts again.
+    private func person(_ step: Int) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        if step > 0 {
+            Self.markSeen(who)
+            if at + 1 < people.count { withAnimation(.easeInOut(duration: 0.2)) { at += 1; slide = 0 } } else { dismiss() }
+        } else if at > 0 { withAnimation(.easeInOut(duration: 0.2)) { at -= 1; slide = 0 } }
+        else { slide = 0; progress = 0 }
+    }
+
     private func back() {
         if slide > 0 { slide -= 1 } else if at > 0 { at -= 1; slide = 0 } else { progress = 0 }
     }

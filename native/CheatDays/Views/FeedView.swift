@@ -463,18 +463,21 @@ struct FeedView: View {
                 // only friends with something today, the ones you haven't watched first
                 let withStory = friends.people.filter { StoryView.has($0.id) }
                 let order = withStory.filter { !StoryView.seen($0.id) } + withStory.filter { StoryView.seen($0.id) }
+                // people you follow (not friends) who've posted a story: their snaps only, never their day
+                let followed = Follows.shared.following.filter { f in !friends.people.contains { $0.id == f } && !Stories.shared.of(f).isEmpty }
+                // one run of stories, in the order the rings are in: watching goes on from friends into the people you
+                // follow (they were two separate runs, so it stopped at the last friend)
+                let run = order.map(\.id) + followed
                 ForEach(order.indices, id: \.self) { i in
                     let p = order[i]
-                    Button { story = StoryStart(people: order.map(\.id), at: i) } label: {
+                    Button { story = StoryStart(people: run, at: i) } label: {
                         ring(p.id, p.name, new: !StoryView.seen(p.id), tag: p.streak > 1 ? "\(p.streak)" : nil, plus: false)
                     }
                     .buttonStyle(.plain).accessibilityLabel("\(p.name)'s story")
                 }
-                // people you follow (not friends) who've posted a story: their snaps only, never their day
-                let followed = Follows.shared.following.filter { f in !friends.people.contains { $0.id == f } && !Stories.shared.of(f).isEmpty }
                 ForEach(followed.indices, id: \.self) { i in
                     let f = followed[i]
-                    Button { story = StoryStart(people: followed, at: i) } label: { ring(f, Feed.shared.name(f), new: Stories.shared.unwatched(f), tag: nil, plus: false) }
+                    Button { story = StoryStart(people: run, at: order.count + i) } label: { ring(f, Feed.shared.name(f), new: Stories.shared.unwatched(f), tag: nil, plus: false) }
                         .buttonStyle(.plain).accessibilityLabel("\(Feed.shared.name(f))'s story")
                 }
             }
