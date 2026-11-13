@@ -885,7 +885,14 @@ struct CommentsSheet: View {
                     ScrollView(.horizontal) {
                         HStack(spacing: 8) {
                             ForEach(Self.quick, id: \.self) { q in
-                                Button { send(q) } label: { Text(q).font(.subheadline).padding(.horizontal, 12).padding(.vertical, 7).background(Color(.tertiarySystemFill), in: Capsule()) }
+                                // put into the box to be sent with whatever else is written, not sent on the spot (a slip
+                                // of the thumb posted a comment)
+                                Button {
+                                    UISelectionFeedbackGenerator().selectionChanged()
+                                    let gap = text.isEmpty || text.hasSuffix(" ") ? "" : " "
+                                    text += gap + q
+                                    typing = true
+                                } label: { Text(q).font(.subheadline).padding(.horizontal, 12).padding(.vertical, 7).background(Color(.tertiarySystemFill), in: Capsule()) }
                                     .buttonStyle(.plain)
                             }
                         }
