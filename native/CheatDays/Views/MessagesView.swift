@@ -128,7 +128,23 @@ struct ChatView: View {
         let small = !str(p["reaction"]).isEmpty || !str(p["reply"]).isEmpty
         return ZStack {
             LinearGradient(colors: [Color(red: 0.1, green: 0.18, blue: 0.32), Color(red: 0.16, green: 0.13, blue: 0.31)], startPoint: .topLeading, endPoint: .bottomTrailing)
-            if live, str(p["kind"]) != "video" {
+            if let day = StoryView.daySlide(p) {
+                // a meal or workout from their day: what it was and its calories, read from their day as it stands
+                VStack(spacing: 8) {
+                    switch day {
+                    case .meal(let meal, let items):
+                        FoodDot(name: str(items.first?["name"]), size: 52)
+                        Text(meal).font(.headline).foregroundStyle(.white)
+                        Text("\(Fmt.int(items.reduce(0) { $0 + (num($1["kcal"]) ?? 0) })) kcal").font(.subheadline.weight(.semibold)).foregroundStyle(.white.opacity(0.75))
+                    case .workout(let w):
+                        FoodDot(name: "Workout", size: 52)
+                        Text(str(w["name"]).replacingOccurrences(of: "Workout: ", with: "")).font(.headline).foregroundStyle(.white).multilineTextAlignment(.center).lineLimit(3)
+                    default: EmptyView()
+                    }
+                }
+                .padding(.horizontal, 10).padding(.bottom, 24)
+            }
+            else if live, str(p["kind"]) != "video" {
                 // the picture from the story as it stands (a friends-only one is sent without it)
                 let now = Stories.shared.all.first { str($0["id"]) == str(p["story"]) }
                 FeedPhoto(src: now.map { str($0["media"]) } ?? str(p["media"]), fill: true)
@@ -267,7 +283,7 @@ struct ChatView: View {
                     Button { opened = PostBox(post: dict(p["post"]).isEmpty ? p : dict(p["post"])) } label: { postCard(p) }.buttonStyle(.plain)
                 case "story":
                     // shown only while it's still up and it's one they can see; after that, just that it was sent
-                    let live = Stories.shared.all.contains { str($0["id"]) == str(p["story"]) }
+                    let live = str(p["slide"]).isEmpty ? Stories.shared.all.contains { str($0["id"]) == str(p["story"]) } : StoryView.daySlide(p) != nil
                     let reaction = str(p["reaction"]), words = str(p["reply"])
                     VStack(alignment: mine ? .trailing : .leading, spacing: 5) {
                         // an answer to a story: said so above it, with the emoji or the words under it

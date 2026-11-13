@@ -295,7 +295,13 @@ struct StoryView: View {
                     Button("Cancel", role: .cancel) { managing = nil }
                 }
             } else {
-                Text("Your day, as friends see it").font(.footnote).foregroundStyle(.white.opacity(0.6)).frame(height: 44)
+                HStack {
+                    Text("Your day, as friends see it").font(.footnote).foregroundStyle(.white.opacity(0.6))
+                    Spacer()
+                    sendButton { sharingStory = PostBox(post: dayCard(s)) }
+                }
+                .frame(height: 44).padding(.horizontal, 8)
+                .sheet(item: $sharingStory) { b in ShareStorySheet(story: b.post).presentationDetents([.medium, .large]) }
             }
         } else {
             HStack(spacing: 12) {
@@ -320,7 +326,7 @@ struct StoryView: View {
                 switch s {
                 case .post(let p): sendButton { sharing = PostBox(post: p) }
                 case .snap(let st): sendButton { sharingStory = PostBox(post: st) }
-                default: EmptyView()
+                default: sendButton { sharingStory = PostBox(post: dayCard(s)) }
                 }
             }
             .sheet(item: $sharing) { b in SharePostSheet(post: b.post).presentationDetents([.medium, .large]) }
@@ -339,6 +345,31 @@ struct StoryView: View {
     /// A story as a message carries it: which one, whose, and its picture.
     static func card(_ st: JSON) -> JSON {
         ["story": str(st["id"]), "owner": str(st["owner"]), "kind": str(st["kind"]), "media": str(st["media"])]
+    }
+
+    /// A meal or workout from someone's day, as a message carries it: whose, which day, and which one. Not what was
+    /// in it: whoever it's sent to sees that only if they can see that person's day themselves.
+    private func dayCard(_ s: Slide) -> JSON {
+        var kind = "", name = ""
+        switch s {
+        case .meal(let meal, _): kind = "meal"; name = meal
+        case .workout(let w): kind = "workout"; name = str(w["name"]).replacingOccurrences(of: "Workout: ", with: "")
+        default: break
+        }
+        return ["id": "day:" + who + ":" + kind + ":" + name, "owner": who, "day": DayKey.string(Date()), "slide": kind, "name": name]
+    }
+
+    /// That meal or workout, if it's still today and it's a day this person can see.
+    static func daySlide(_ p: JSON) -> Slide? {
+        let kind = str(p["slide"]), name = str(p["name"])
+        guard !kind.isEmpty, str(p["day"]) == DayKey.string(Date()) else { return nil }
+        return slides(for: str(p["owner"])).first {
+            switch $0 {
+            case .meal(let meal, _): return kind == "meal" && meal == name
+            case .workout(let w): return kind == "workout" && str(w["name"]).replacingOccurrences(of: "Workout: ", with: "") == name
+            default: return false
+            }
+        }
     }
 
     private func isLiked(_ s: Slide) -> Bool {
@@ -431,6 +462,8 @@ struct ShareStorySheet: View {
             // a friends-only story goes without its picture: whoever may see it gets that from the story itself
             var payload = StoryView.card(story)
             if str(story["audience"]) == "friends" { payload["media"] = "" }
+            // a meal or workout from their day has no story of its own to point to: it goes as which one it was
+            if !str(story["slide"]).isEmpty { payload = story; payload["id"] = nil }
             await Messages.shared.send(to: friend, text: owner == Feed.shared.me ? "Sent a story" : "Sent \(name)'s story", kind: "story", payload: payload)
             if !note.isEmpty { await Messages.shared.send(to: friend, text: note) }
         }
