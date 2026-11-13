@@ -251,6 +251,7 @@ enum Assistant {
     - A specific packaged product they name or show (a brand's ice block, bar, biscuit, drink) is one part, never split into ingredients. With no label in sight (a wrapper, the front of a pack): numbers_from brand, servings how many they had, its full brand and product name as the part's name, so the app can look its label up. Mention they can photograph the nutrition panel or scan the box's barcode for exact numbers.
     - Name foods the way they did ("Aldi brushed potato", not the food table's "Coliban potato"); the table is for the numbers.
     - Keep the cooking they said, and put it in each part's name so it's checked against the right food: "pan fried, no oil" is "Potato, pan fried, no oil", never boiled.
+    - Asked to recheck, check again or put right one part of an estimate you gave: give every part again, each on its own with its grams, changing only what was wrong. Never fold a plate into one part, and never answer a recheck with only a total.
     - Calories must fit the macros: kcal ≈ 4 × protein + 4 × carbs + 9 × fat (a little over for fibre or alcohol). Check every part before answering.
     - \(Sanity.amounts) Meat and fish by weight, not "1 thigh": say the grams you assumed.
     - Photos: before giving grams, look over the whole scene for anything whose real size you know (cutlery, plates, cups, cans, bottles, sauce tubs, takeaway boxes and containers, chopsticks, a phone, a hand, a card, packaging, standard pieces like a chip or an egg) and size each food against it. Use more than one when you can and check they agree. A box or bowl of unknown size can be judged from the known things in it, and a tub's fill tells how much is in it. Never assume a standard portion: bakery and café items vary a lot, and a small croissant isn't a big one. With several photos, size from the one that shows the most around the food (the whole table, the plate, the mug) and use close-ups only to see what it is: close up, food looks bigger than it is. Put that in each part's size ("about 10 cm long, against the side plate"), and in reply say it in a few words. With nothing to size against, or when you can't tell how big or how dense it is, set size_unsure, say you assumed a regular size, and the app asks them small, regular or large.
@@ -908,6 +909,24 @@ enum Assistant {
         let scans = PantryItem.Saved.load(UserDefaults.standard.string(forKey: "pantry.scans") ?? "[]").filter { $0.kcal100 > 0 && named($0.name, by: keys) }
         if scans.count == 1, let s = scans.first { return (s.name, s.kcal100, s.p100, s.c100, s.f100) }
         return nil
+    }
+
+    /// A plate asked about again that came back as one lump gets its parts back. "Recheck macros" on a chicken salad
+    /// of eight parts returned the whole plate as a single part, 583 g: nothing in it could be checked, the old wrong
+    /// total stood, and it was warned about as a leafy veg with too much protein. It's the same plate when its name
+    /// sounds like an earlier card's of two parts or more and it weighs the same (within 2%): the latest such card's
+    /// parts are put back, to be checked as usual.
+    static func unfolded(_ e: JSON, earlier: [JSON]) -> JSON {
+        let parts = CheatDays.list(e["parts"])
+        guard parts.count <= 1, let g = pos(e["portion_g"]) ?? pos(parts.first?["grams"]) else { return e }
+        let words = Set(FoodTable.words(str(e["name"])))
+        guard let was = earlier.last(where: { c in
+            guard CheatDays.list(c["parts"]).count >= 2, let cg = pos(c["portion_g"]) else { return false }
+            return abs(cg - g) <= 0.02 * g && soundsLike(str(c["name"]), words)
+        }) else { return e }
+        var out = e
+        out["parts"] = CheatDays.list(was["parts"]).map { p -> JSON in var x = p; x["flagged"] = nil; return x }
+        return out
     }
 
     /// A follow-up's parts that it left as they were (same name, same grams) keep the earlier card's checked numbers:

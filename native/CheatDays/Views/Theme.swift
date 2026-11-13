@@ -562,24 +562,26 @@ enum Skeleton {
         }
         .shimmering()
     }
-    /// Posts in the feed: who, the picture, a line under it.
+    /// Posts in the feed: who, the picture, a line under it. Each picture is a square the full width of the screen,
+    /// measured: left to fit, two of them shared the height there was and came out half the width, at the left.
     static func posts(_ count: Int = 2) -> some View {
-        VStack(alignment: .leading, spacing: 22) {
-            ForEach(0..<count, id: \.self) { _ in
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 10) {
-                        Circle().fill(Theme.track).frame(width: 38, height: 38)
-                        VStack(alignment: .leading, spacing: 6) { bar(120, 12); bar(80, 10) }
+        GeometryReader { g in
+            VStack(alignment: .leading, spacing: 22) {
+                ForEach(0..<count, id: \.self) { _ in
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 10) {
+                            Circle().fill(Theme.track).frame(width: 38, height: 38)
+                            VStack(alignment: .leading, spacing: 6) { bar(120, 12); bar(80, 10) }
+                        }
+                        .padding(.horizontal, 14)
+                        Rectangle().fill(Theme.track).frame(width: g.size.width, height: g.size.width)
+                        bar(190, 12).padding(.horizontal, 14)
                     }
-                    .padding(.horizontal, 14)
-                    // edge to edge, as a post's picture is (left to itself it was only as wide as the lines above it)
-                    Rectangle().fill(Theme.track).frame(maxWidth: .infinity).aspectRatio(1, contentMode: .fit)
-                    bar(190, 12).padding(.horizontal, 14)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .frame(width: g.size.width, height: g.size.height, alignment: .topLeading)
+            .clipped()
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .shimmering()
     }
 }

@@ -243,6 +243,23 @@ final class AssistantTests: XCTestCase {
         XCTAssertEqual(str(list(Assistant.tidied(said, said: "And the chicken we spoke about all together", photos: false)["parts"])[0]["numbers_from"]), "them")
     }
 
+    /// "Recheck macros" came back as the whole plate in one part: its parts are put back from the card before.
+    func testAPlateInOneLumpGetsItsPartsBack() {
+        let plate: JSON = ["name": "Boiled chicken (thigh and breast) with cabbage, cucumber and yoghurt salad", "portion_g": 583, "kcal_total": 420, "parts": [
+            ["name": "Chicken thigh, raw, skinless", "grams": 142, "kcal": 148, "protein_g": 27, "src": "au"] as JSON,
+            ["name": "Boiled chicken breast, 557 g batch", "grams": 104, "kcal": 168, "protein_g": 38, "src": "them", "flagged": true] as JSON,
+            ["name": "Cabbage, raw", "grams": 120, "kcal": 29, "protein_g": 2, "src": "au"] as JSON]]
+        let lump: JSON = ["name": "Boiled chicken with cabbage, cucumber and yoghurt salad", "portion_g": 583, "kcal_total": 428,
+                          "parts": [["name": "Boiled chicken with cabbage, cucumber and yoghurt salad", "grams": 583, "kcal": 428] as JSON]]
+        let out = Assistant.unfolded(lump, earlier: [plate]), parts = list(out["parts"])
+        XCTAssertEqual(parts.map { str($0["name"]) }, ["Chicken thigh, raw, skinless", "Boiled chicken breast, 557 g batch", "Cabbage, raw"])
+        XCTAssertNil(parts[1]["flagged"], "to be judged afresh")
+        // another plate (a different weight), or one that still has its parts, is left alone
+        var other = lump; other["portion_g"] = 300
+        XCTAssertEqual(list(Assistant.unfolded(other, earlier: [plate])["parts"]).count, 1)
+        XCTAssertEqual(list(Assistant.unfolded(plate, earlier: [plate])["parts"]).count, 3)
+    }
+
     /// "15g of that mayo I use every lunch" came out as any full-fat mayonnaise: it's the one they log.
     func testTheOneTheyAlwaysHave() {
         let said = "320g cabbage\n96g carrot\n15g of that mayo I use every lunch\n\nThat's my coleslaw, work out the calories and will have half of it"
