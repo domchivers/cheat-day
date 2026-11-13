@@ -1962,7 +1962,12 @@ struct FeedPhoto: View {
     }
 
     private func load() async {
-        if image != nil, ImageStore.cached(src) != nil { return }
+        // The picture for this address and no other. This view is kept when what it shows changes (the next slide of a
+        // story is the same view with another address), and a picture already held was left up whenever the new one
+        // was here too: watched a second time, every slide of a story showed the one picture. A new address not yet
+        // here shows the plain ground until it arrives, never the last picture.
+        image = ImageStore.cached(src)
+        if image != nil { return }
         for attempt in 0..<3 {
             if attempt > 0 { try? await Task.sleep(nanoseconds: UInt64(attempt) * 1_500_000_000) }
             if Task.isCancelled { return }
