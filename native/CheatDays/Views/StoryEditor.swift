@@ -376,6 +376,10 @@ struct StoryEditor: View {
                 // the photo moves on its own too, and tells the editor only when the finger lifts
                 let k = max(cw / max(1, shown.size.width), ch / max(1, shown.size.height))
                 let full = CGSize(width: shown.size.width * k, height: shown.size.height * k)
+                // Behind it, for when it's pinched smaller than the frame (a wide photo shown whole, or one set in
+                // a border): the photo itself, filling the frame, blurred and dimmed, as Instagram fills the space.
+                Image(uiImage: shown).resizable().scaledToFill().frame(width: cw, height: ch).clipped()
+                    .blur(radius: 36, opaque: true).overlay(Color.black.opacity(0.28)).frame(width: cw, height: ch).clipped()
                 // Straighten: turned about its middle and grown just enough that no corner comes up empty, as the
                 // finished picture is
                 let tilt = comparing ? 0 : (tune["t"] ?? 0), lean = abs(tilt) * Double.pi / 180
@@ -525,9 +529,9 @@ struct StoryEditor: View {
             if across { nextFilter(grab.move.width < 0 ? 1 : -1) }
             return
         }
-        let end = clipClamped(sc, CGSize(width: bgOffset.width + grab.move.width, height: bgOffset.height + grab.move.height), deg, fill: fill, cw: cw, ch: ch, free: !photo)
+        let end = clipClamped(sc, CGSize(width: bgOffset.width + grab.move.width, height: bgOffset.height + grab.move.height), deg, fill: fill, cw: cw, ch: ch, free: MovableClip<EmptyView>.loose(photo: photo, scale: sc))
         if !photo { moveClip(end.scale, end.offset, deg, cw: cw, ch: ch) }
-        else if end.scale <= 1.01 && deg == 0 { withAnimation(.snappy) { bgScale = 1; bgOffset = .zero; bgSpin = 0 } }
+        else if abs(end.scale - 1) <= 0.01 && deg == 0 { withAnimation(.snappy) { bgScale = 1; bgOffset = .zero; bgSpin = 0 } }
         else { bgScale = end.scale; bgOffset = end.offset; bgSpin = deg }
     }
     @State private var straight = false   // the thing held is caught at straight: for the tick felt as it gets there
@@ -739,10 +743,10 @@ struct StoryEditor: View {
                     .buttonStyle(.plain).accessibilityLabel("Add the suggested song, " + idea.title)
                     Spacer(minLength: 6)
                 }
-                if image != nil || video != nil || bgScale > 1.01 || bgOffset != .zero || bgSpin != 0 || !items.isEmpty || !strokes.isEmpty {
+                if image != nil || video != nil || abs(bgScale - 1) > 0.01 || bgOffset != .zero || bgSpin != 0 || !items.isEmpty || !strokes.isEmpty {
                 Menu {
                     if image != nil || video != nil { Button { Task { await save() } } label: { Label("Save to Photos", systemImage: "square.and.arrow.down") } }
-                    if bgScale > 1.01 || bgOffset != .zero || bgSpin != 0 { Button { withAnimation { bgScale = 1; bgOffset = .zero; bgSpin = 0; clipMove = .zero; clipCovers = true } } label: { Label(video == nil ? "Reset the photo" : "Reset the video", systemImage: "arrow.counterclockwise") } }
+                    if abs(bgScale - 1) > 0.01 || bgOffset != .zero || bgSpin != 0 { Button { withAnimation { bgScale = 1; bgOffset = .zero; bgSpin = 0; clipMove = .zero; clipCovers = true } } label: { Label(video == nil ? "Reset the photo" : "Reset the video", systemImage: "arrow.counterclockwise") } }
                     if !items.isEmpty || !strokes.isEmpty { Button(role: .destructive) { remember(); withAnimation { items = []; strokes = [] } } label: { Label("Clear everything", systemImage: "trash") } }
                 } label: { roundLabel("ellipsis") }
                 }
@@ -779,7 +783,7 @@ struct StoryEditor: View {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         withAnimation(.snappy(duration: 0.22)) { items = last.items; strokes = last.strokes }
     }
-    private var edited: Bool { !items.isEmpty || !strokes.isEmpty || filter != "Normal" || !tune.isEmpty || bgScale > 1.01 || bgSpin != 0 || turns != 0 || storySong != nil }
+    private var edited: Bool { !items.isEmpty || !strokes.isEmpty || filter != "Normal" || !tune.isEmpty || abs(bgScale - 1) > 0.01 || bgSpin != 0 || turns != 0 || storySong != nil }
 
     private func round(_ symbol: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) { roundLabel(symbol) }.buttonStyle(.plain)
@@ -1197,6 +1201,17 @@ struct StoryEditor: View {
         let format = UIGraphicsImageRendererFormat(); format.scale = 1
         return UIGraphicsImageRenderer(size: CGSize(width: 1080, height: oh), format: format).image { c in
             UIColor(white: 0.08, alpha: 1).setFill(); UIRectFill(CGRect(x: 0, y: 0, width: 1080, height: oh))
+            // smaller than the frame: the same blurred, dimmed photo behind it that the editor shows. A copy 28 dots
+            // wide drawn up to the full size is as soft as a blur, at next to no cost.
+            if bgScale < 0.995 || bgSpin != 0 || bgOffset != .zero {
+                let tw: CGFloat = 28, th = max(2, (tw * base.size.height / max(base.size.width, 1)).rounded())
+                let tf = UIGraphicsImageRendererFormat(); tf.scale = 1
+                let tiny = UIGraphicsImageRenderer(size: CGSize(width: tw, height: th), format: tf).image { _ in base.draw(in: CGRect(x: 0, y: 0, width: tw, height: th)) }
+                let cover = max(1080 / tw, oh / th), bw = tw * cover, bh = th * cover
+                c.cgContext.interpolationQuality = .high
+                tiny.draw(in: CGRect(x: (1080 - bw) / 2, y: (oh - bh) / 2, width: bw, height: bh))
+                UIColor(white: 0, alpha: 0.28).setFill(); UIRectFillUsingBlendMode(CGRect(x: 0, y: 0, width: 1080, height: oh), .normal)
+            }
             // about its own middle, where it was carried to: turned there, then drawn at its size
             c.cgContext.translateBy(x: (cw / 2 + bgOffset.width) * k, y: (ch / 2 + bgOffset.height) * k)
             c.cgContext.rotate(by: CGFloat(bgSpin) * .pi / 180)

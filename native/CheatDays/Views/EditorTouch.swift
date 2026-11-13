@@ -238,7 +238,10 @@ struct MovableClip<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     /// Whether one finger carries it: shared with the editor, which has to agree when the fingers lift.
-    static func pans(photo: Bool, scale: CGFloat, deg: Double, fingers: Int) -> Bool { !photo || scale > 1.01 || deg != 0 || fingers >= 2 }
+    static func pans(photo: Bool, scale: CGFloat, deg: Double, fingers: Int) -> Bool { !photo || abs(scale - 1) > 0.01 || deg != 0 || fingers >= 2 }
+    /// Whether it may sit smaller than the frame and be put anywhere in it: a clip always, a photo once it's been
+    /// pinched smaller (a photo that still fills the frame keeps to its edges, as before).
+    static func loose(photo: Bool, scale: CGFloat) -> Bool { !photo || scale < 0.995 }
 
     var body: some View {
         let mine = movable && grab.target == -1
@@ -246,7 +249,7 @@ struct MovableClip<Content: View>: View {
         let s = scale * (mine ? grab.size : 1)
         let carried = mine && Self.pans(photo: photo, scale: s, deg: deg, fingers: grab.fingers)
         let at = carried ? CGSize(width: offset.width + grab.move.width, height: offset.height + grab.move.height) : offset
-        let live = mine ? clipClamped(s, at, deg, fill: fill, cw: cw, ch: ch, free: free) : (scale: scale, offset: offset)
+        let live = mine ? clipClamped(s, at, deg, fill: fill, cw: cw, ch: ch, free: free || (photo && Self.loose(photo: true, scale: s))) : (scale: scale, offset: offset)
         content()
             .scaleEffect(live.scale)
             .rotationEffect(.degrees(deg))
