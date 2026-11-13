@@ -806,6 +806,8 @@ struct FeedView: View {
                     Button { recipe = p } label: {
                         Label(kind == "workout" ? "Do it" : kind == "meal" ? "Recipe" : "Have some", systemImage: kind == "workout" ? "play.fill" : "plus")
                             .font(.subheadline.weight(.bold)).foregroundStyle(Theme.onAccent)
+                            // one line always: a count beside the bookmark squeezed this into two
+                            .lineLimit(1).fixedSize()
                             .padding(.horizontal, 13).padding(.vertical, 7).background(Theme.accent, in: Capsule())
                     }
                     .buttonStyle(.plain)
