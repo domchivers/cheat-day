@@ -70,12 +70,16 @@ const cases = [
   // the owner's Portuguese chicken: its label in the photo, 122 kcal per 100 g raw
   // { say: 'I had a Monarc mini mango frozen yogurt stick', earlier: '' },
   // the owner's "that chicken from dinner yesterday": yesterday by meal, the chicken the 8th item, as the app now sends it
-  { say: '150g of that cooked chicken we had for dinner yesterday', earlier: '', context: `They live in Australia: use the usual portion sizes there. Today: budget 2350 kcal, eaten 425 kcal (Breakfast: "Protein Yogurt Bowl" 295 g 425 kcal), 1925 kcal left. Protein so far 40 g of 180 g, carbs 30 g, fat 10 g. Workouts today: none. Weight 80 kg.
+  // the owner's chicken thigh, 13 Nov: raw weight given, cooked weight promised; it gave a card and asked them to wait
+  { say: '220g chicken thigh weight frozen (was fresh) boiling it, will tell you after weight', earlier: '' },
+  { say: '158g cooked, having all of it', earlier: 'They: 220g chicken thigh weight frozen (was fresh) boiling it, will tell you after weight\nYou: Noted: 220 g raw chicken thigh. From the raw numbers the whole lot comes to about 229 kcal, 42 g protein, 0 g carbs and 6.6 g fat. Once you weigh it cooked, I will work out what you are having from that.' },
+  { say: '80g of it now, rest later', earlier: 'They: 220g chicken thigh weight frozen (was fresh) boiling it, will tell you after weight\nYou: Noted: 220 g raw chicken thigh. From the raw numbers the whole lot comes to about 229 kcal, 42 g protein, 0 g carbs and 6.6 g fat. Once you weigh it cooked, I will work out what you are having from that.\nThey: 158g cooked' },
+/* { say: '150g of that cooked chicken we had for dinner yesterday', earlier: '', context: `They live in Australia: use the usual portion sizes there. Today: budget 2350 kcal, eaten 425 kcal (Breakfast: "Protein Yogurt Bowl" 295 g 425 kcal), 1925 kcal left. Protein so far 40 g of 180 g, carbs 30 g, fat 10 g. Workouts today: none. Weight 80 kg.
 Recent days, by meal (when they mention a past meal, find it here by the meal they name: yesterday's dinner is under Yesterday, Dinner):
 Yesterday (2026-11-05), 2350/2350 kcal: Breakfast: "Protein Yogurt Bowl" 295 g 425 kcal; Lunch: "Extra lean beef mince, cooked" 200 g 330 kcal, "Egg, raw" 50 g 72 kcal, "Egg white" 100 g 48 kcal, "Shredded pizza cheese" 30 g 105 kcal, "Kewpie light mayo" 15 g 50 kcal; Dinner: "Brown rice, cooked" 200 g 250 kcal, "Portuguese chilli & lemon chicken, roasted" 190 g 290 kcal, "Broccoli, steamed" 150 g 52 kcal; Snacks: "Protein brownie" 60 g 190 kcal
 Their other chats with you in the last 3 days (when they mention food from before, it may be here):
 Wednesday 6:40 pm: they said "What's this? (1 photo)"; they said "I had 190g off the bone, roasted"; you worked out Aldi Portuguese style chilli & lemon chicken, roasted, 190 g, 290 kcal
-` },
+` }, */
   // { ...chicken, say: "Let's do 150g cooked", earlier: "They: What's this? (1 photo)\nYou: That's Aldi's Ready, Set... Cook! whole split chicken, Portuguese style chilli & lemon. Tell me how much you're having once it's cooked." },
   // { ...chicken, say: 'I had 190g off the bone, roasted', earlier: "They: What's this? (1 photo)\nYou: That's Aldi's Ready, Set... Cook! whole split chicken, Portuguese style chilli & lemon." },
   // { say: 'Add to lunch', earlier: "They: 174 g, no skin\nYou: 174 g of peeled potato comes to about 101 kcal. Tap to add it." },
