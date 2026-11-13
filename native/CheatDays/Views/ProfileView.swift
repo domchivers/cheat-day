@@ -459,6 +459,8 @@ struct EditProfileView: View {
     @State private var busy = false
     @State private var taken = false
     @State private var problem: String?
+    @State private var filled = false   // the fields have been filled in from the profile
+    private enum EditPage: Hashable { case name, username, label, bio, tag, badges }
     private var profiles: Profiles { Profiles.shared }
     private var store: Store { Store.shared }
     private static let suggestions = ["💪 Lifting", "🏃 Running", "🥗 Meal prep", "🍜 Loves a noodle", "🌱 Plant based", "🍰 Sweet tooth", "🧘 Yoga", "🚴 Cycling"]
@@ -493,21 +495,18 @@ struct EditProfileView: View {
                     }
                 }
                 Section {
-                    NavigationLink { FieldPage(title: "Name", text: $name, placeholder: "Your name", limit: 30) } label: { row("Name", name) }
-                    NavigationLink {
-                        FieldPage(title: "Username", text: $username, placeholder: "username", limit: 20, prefix: "@", clean: Profiles.clean,
-                                  footer: "3 to 20 letters, numbers, dots or underscores. Friends can find you by it.")
-                    } label: { row("Username", username.isEmpty ? "" : "@" + username) }
-                    NavigationLink {
-                        FieldPage(title: "Label", text: $label, placeholder: "Founder of Cheat Days, Personal trainer…", limit: 30, chips: Self.labels,
-                                  footer: "In grey under your name, like Instagram's.")
-                    } label: { row("Label", label) }
-                    NavigationLink { FieldPage(title: "Bio", text: $bio, placeholder: "A line about you", limit: 150, lines: true) } label: { row("Bio", bio) }
+                    // Opened by name, with the pages themselves set out once below. As links that each carried their own
+                    // page, an opened page was sent back a second later whenever this list was drawn again (the profile
+                    // behind it still loading): in, and straight back out, until the loading was done.
+                    NavigationLink(value: EditPage.name) { row("Name", name) }
+                    NavigationLink(value: EditPage.username) { row("Username", username.isEmpty ? "" : "@" + username) }
+                    NavigationLink(value: EditPage.label) { row("Label", label) }
+                    NavigationLink(value: EditPage.bio) { row("Bio", bio) }
                 } footer: { if taken { Text("That @name is taken.").foregroundStyle(Theme.warn) } }
                 Section("On your profile") {
                     let mine = (profiles.mine?.honors ?? []).compactMap(Honor.find)
                     if !mine.isEmpty {
-                        NavigationLink { HonorPickPage(mine: mine, top: $topHonor, show: $showHonors) } label: {
+                        NavigationLink(value: EditPage.tag) {
                             HStack {
                                 Text("Your tag").frame(width: 96, alignment: .leading)
                                 if showHonors, let h = mine.first(where: { $0.id == topHonor }) ?? mine.first { HonorText(honor: h) } else { Text("Hidden").foregroundStyle(.secondary) }
@@ -515,7 +514,7 @@ struct EditProfileView: View {
                             }
                         }
                     }
-                    NavigationLink { PinBadgesView(pinned: $pinned) } label: { row("Badges", pinned.isEmpty ? "None pinned" : "\(pinned.count) pinned", quiet: true) }
+                    NavigationLink(value: EditPage.badges) { row("Badges", pinned.isEmpty ? "None pinned" : "\(pinned.count) pinned", quiet: true) }
                 }
                 Section {
                     Toggle("Private profile", isOn: $isPrivate)
@@ -526,6 +525,20 @@ struct EditProfileView: View {
                 if let problem { Text(problem).font(.footnote).foregroundStyle(Theme.warn) }
             }
             .navigationTitle("Edit profile").navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: EditPage.self) { page in
+                switch page {
+                case .name: FieldPage(title: "Name", text: $name, placeholder: "Your name", limit: 30)
+                case .username:
+                    FieldPage(title: "Username", text: $username, placeholder: "username", limit: 20, prefix: "@", clean: Profiles.clean,
+                              footer: "3 to 20 letters, numbers, dots or underscores. Friends can find you by it.")
+                case .label:
+                    FieldPage(title: "Label", text: $label, placeholder: "Founder of Cheat Days, Personal trainer…", limit: 30, chips: Self.labels,
+                              footer: "In grey under your name, like Instagram's.")
+                case .bio: FieldPage(title: "Bio", text: $bio, placeholder: "A line about you", limit: 150, lines: true)
+                case .tag: HonorPickPage(mine: (profiles.mine?.honors ?? []).compactMap(Honor.find), top: $topHonor, show: $showHonors)
+                case .badges: PinBadgesView(pinned: $pinned)
+                }
+            }
             .photosPicker(isPresented: $library, selection: $picked, matching: .images)
             .keyboardDone()
             .toolbar {
@@ -534,6 +547,8 @@ struct EditProfileView: View {
             }
             .onAppear {
                 KeyboardDone.quiet = false
+                guard !filled else { return }
+                filled = true
                 let p = profiles.mine
                 name = p?.name ?? Friends.shared.myName; username = p?.username ?? ""; bio = p?.bio ?? ""
                 tags = p?.tags ?? []; pinned = p?.pinned ?? []; showWeek = p?.showWeek ?? true; isPrivate = p?.isPrivate ?? true
