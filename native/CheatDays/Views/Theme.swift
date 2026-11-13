@@ -572,11 +572,14 @@ enum Skeleton {
                         VStack(alignment: .leading, spacing: 6) { bar(120, 12); bar(80, 10) }
                     }
                     .padding(.horizontal, 14)
-                    Rectangle().fill(Theme.track).aspectRatio(1, contentMode: .fit)
+                    // edge to edge, as a post's picture is (left to itself it was only as wide as the lines above it)
+                    Rectangle().fill(Theme.track).frame(maxWidth: .infinity).aspectRatio(1, contentMode: .fit)
                     bar(190, 12).padding(.horizontal, 14)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .shimmering()
     }
 }
