@@ -219,6 +219,7 @@ struct LoopingVideo: UIViewRepresentable {
         let look = Look()
         var ender: NSObjectProtocol?   // a clip with a look goes round by being sent back to its start: this hears its end
         var playing = true
+        var tries = 0                // times this clip's player has been built again because it showed nothing
         var tick: ((Double, Double) -> Void)?
         var watch: Any?              // the player's own clock, watched for `tick`
         weak var watched: AVPlayer?
@@ -335,6 +336,22 @@ struct LoopingVideo: UIViewRepresentable {
             }
         }
         if !paused { player.play() }
+        // A player that never gets going is built again. Coming out of Trim (which means a new player) the clip sat on
+        // its first frame and stayed there, on some videos and not others: the owner's recording of 13 Nov shows the
+        // picture dead still for as long as the tools were up, and moving again inside Trim. A moment on, a player that
+        // has drawn nothing, or was meant to be playing and hasn't left its start, is taken down and made afresh, up to
+        // three times; by then whatever the one before was still holding has been let go.
+        let made = key, start = range?.lowerBound ?? 0
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak v, weak player] in
+            guard let v, let player, v.playerLayer.player === player, v.key == made else { return }
+            let at = player.currentTime().seconds
+            let stuck = v.playing && v.held == nil && (!at.isFinite || abs(at - start) < 0.05)
+            guard !v.playerLayer.isReadyForDisplay || stuck else { v.tries = 0; return }
+            guard v.tries < 3 else { return }
+            v.tries += 1
+            print("LoopingVideo: built again (\(v.tries)), ready \(v.playerLayer.isReadyForDisplay), at \(at), item \(player.currentItem?.status.rawValue ?? -1) \(player.currentItem?.error?.localizedDescription ?? "-"), looper \(v.looper?.status.rawValue ?? -1) \(v.looper?.error?.localizedDescription ?? "-")")
+            setUp(v)
+        }
     }
 
     static func dismantleUIView(_ v: PlayerView, coordinator: ()) { v.unwatch(); v.playerLayer.player?.pause(); v.looper = nil }
