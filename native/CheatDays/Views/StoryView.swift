@@ -164,7 +164,7 @@ struct StoryView: View {
                     if across < 0 { person(1) } else { person(-1) }
                     return
                 }
-                if down > 120 { dismiss() } else { withAnimation(.snappy) { drag = 0 }; paused = false }
+                if down > 120 { print("StoryView closed by a swipe down: across \(across), down \(down)"); dismiss() } else { withAnimation(.snappy) { drag = 0 }; paused = false }
             })
         .statusBarHidden()
         .overlay(alignment: .top) {
@@ -516,6 +516,7 @@ struct StoryView: View {
     /// this one starts again.
     private func person(_ step: Int) {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        print("StoryView person \(step): at \(at) of \(people.count), slide \(slide) of \(slides.count), people \(people)")
         if step > 0 {
             Self.markSeen(who)
             if at + 1 < people.count { withAnimation(.easeInOut(duration: 0.2)) { at += 1; slide = 0 } } else { dismiss() }
