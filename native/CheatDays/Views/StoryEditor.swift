@@ -358,6 +358,12 @@ struct StoryEditor: View {
                 if clipOnly {
                     // a post's clip: its whole picture behind the frame, to pinch and drag like a photo
                     let f = clipFill(cw, ch)
+                    // behind it, for when it's smaller than the frame: its first frame filling the frame, blurred and
+                    // dimmed (the posted video does this with every frame; it sat on black)
+                    if let poster {
+                        Image(uiImage: poster).resizable().scaledToFill().frame(width: cw, height: ch).clipped()
+                            .blur(radius: 36, opaque: true).overlay(Color.black.opacity(0.28)).frame(width: cw, height: ch).clipped()
+                    }
                     MovableClip(cw: cw, ch: ch, fill: f, scale: bgScale, offset: bgOffset, spin: bgSpin, movable: mode == .none, free: true, grab: grab) {
                         ZStack {
                             if let poster { Image(uiImage: poster).resizable().scaledToFill().frame(width: f.width, height: f.height).clipped() }

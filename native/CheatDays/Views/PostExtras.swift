@@ -60,6 +60,14 @@ struct ClipEdit {
             let format = UIGraphicsImageRendererFormat(); format.scale = 1
             return UIGraphicsImageRenderer(size: CGSize(width: fw.rounded(), height: fh.rounded()), format: format).image { c in
                 UIColor.black.setFill(); UIRectFill(CGRect(x: 0, y: 0, width: fw, height: fh))
+                // behind it, itself: filling the frame, soft (a copy 28 dots wide drawn up) and dimmed, as the video is made
+                let tw: CGFloat = 28, th = max(2, (tw * h / max(w, 1)).rounded())
+                let tf = UIGraphicsImageRendererFormat(); tf.scale = 1
+                let tiny = UIGraphicsImageRenderer(size: CGSize(width: tw, height: th), format: tf).image { _ in lit.draw(in: CGRect(x: 0, y: 0, width: tw, height: th)) }
+                let cover = max(fw / tw, fh / th), bw = tw * cover, bh = th * cover
+                c.cgContext.interpolationQuality = .high
+                tiny.draw(in: CGRect(x: (fw - bw) / 2, y: (fh - bh) / 2, width: bw, height: bh))
+                UIColor(white: 0, alpha: 0.28).setFill(); UIRectFillUsingBlendMode(CGRect(x: 0, y: 0, width: fw, height: fh), .normal)
                 c.cgContext.saveGState()
                 c.cgContext.translateBy(x: fw / 2 + move.width * fw, y: fh / 2 + move.height * fh)
                 c.cgContext.rotate(by: CGFloat(spin) * .pi / 180)

@@ -224,7 +224,17 @@ final class Stories {
                     let whole = img.extent
                     if filter != "Normal" { img = StoryArt.filtered(img.clampedToExtent(), filter, frame: whole).cropped(to: whole) }
                     var done = img.cropped(to: cut).transformed(by: CGAffineTransform(translationX: -cut.minX, y: -cut.minY))
-                    if let lay { done = img.transformed(by: lay).cropped(to: cut).composited(over: CIImage(color: .black).cropped(to: cut)) }
+                    if let lay {
+                        // Behind a clip that doesn't fill its frame: the same frame, filling it, blurred and dimmed (it
+                        // sat on black). Made small first, blurred there and drawn back up: a sixty-fourth of the work.
+                        let k = max(cut.width / max(whole.width, 1), cut.height / max(whole.height, 1)) / 8
+                        let small = img.transformed(by: CGAffineTransform(scaleX: k, y: k))
+                        let soft = small.clampedToExtent().applyingGaussianBlur(sigma: 4).cropped(to: small.extent)
+                            .transformed(by: CGAffineTransform(scaleX: 8, y: 8))
+                        let back = soft.transformed(by: CGAffineTransform(translationX: cut.midX - soft.extent.midX, y: cut.midY - soft.extent.midY)).cropped(to: cut)
+                        let dim = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 0.28)).cropped(to: cut)
+                        done = img.transformed(by: lay).cropped(to: cut).composited(over: dim.composited(over: back.composited(over: CIImage(color: .black).cropped(to: cut))))
+                    }
                     if let top, top.extent.width > 0, top.extent.height > 0 {
                         done = top.transformed(by: CGAffineTransform(scaleX: cut.width / top.extent.width, y: cut.height / top.extent.height)).composited(over: done)
                     }
