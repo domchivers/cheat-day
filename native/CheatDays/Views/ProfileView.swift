@@ -460,6 +460,7 @@ struct EditProfileView: View {
     @State private var taken = false
     @State private var problem: String?
     @State private var filled = false   // the fields have been filled in from the profile
+    @State private var choosingPhoto = false   // take one, choose one, or reframe the one there is
     private enum EditPage: Hashable { case name, username, label, bio, tag, badges }
     private var profiles: Profiles { Profiles.shared }
     private var store: Store { Store.shared }
@@ -471,25 +472,31 @@ struct EditProfileView: View {
                 Section {
                     HStack {
                         Spacer()
-                        Menu {
-                            Button { camera = true } label: { Label("Take a photo", systemImage: "camera") }
-                            Button { library = true } label: { Label("Choose from library", systemImage: "photo.on.rectangle") }
-                            if !profiles.avatar(profiles.me).isEmpty {
-                                Button { Task { await reframe() } } label: { Label("Edit", systemImage: "crop") }
+                        // The photo and "Edit picture" under it both ask the same thing, from a small list by the words. As
+                        // one menu whose button was the whole photo, the photo itself swelled and turned into the list
+                        // and back each time (the system grows a menu out of its button), which looked wrong.
+                        VStack(spacing: 6) {
+                            Button { choosingPhoto = true } label: {
+                                Avatar(id: profiles.me, size: 96)
+                                    .padding(4).overlay(Circle().stroke(Theme.accent, lineWidth: 3))
+                                    .overlay(alignment: .bottomTrailing) {
+                                        Image(systemName: "camera.fill").font(.system(size: 14, weight: .bold)).foregroundStyle(Theme.onAccent)
+                                            .frame(width: 32, height: 32).background(Theme.accent, in: Circle())
+                                            .overlay(Circle().stroke(Color(.secondarySystemGroupedBackground), lineWidth: 3))
+                                    }
                             }
-                        } label: {
-                            Avatar(id: profiles.me, size: 96)
-                                .padding(4).overlay(Circle().stroke(Theme.accent, lineWidth: 3))
-                                .overlay(alignment: .bottomTrailing) {
-                                    Image(systemName: "camera.fill").font(.system(size: 14, weight: .bold)).foregroundStyle(Theme.onAccent)
-                                        .frame(width: 32, height: 32).background(Theme.accent, in: Circle())
-                                        .overlay(Circle().stroke(Color(.secondarySystemGroupedBackground), lineWidth: 3))
+                            .buttonStyle(.plain)
+                            Button("Edit picture") { choosingPhoto = true }
+                                .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accent).buttonStyle(.plain)
+                                .confirmationDialog("Profile picture", isPresented: $choosingPhoto, titleVisibility: .hidden) {
+                                    Button("Take a photo") { camera = true }
+                                    Button("Choose from library") { library = true }
+                                    if !profiles.avatar(profiles.me).isEmpty { Button("Edit") { Task { await reframe() } } }
+                                    Button("Cancel", role: .cancel) {}
                                 }
-                                .frame(maxWidth: .infinity)
-                                .overlay(alignment: .bottom) { Text("Edit picture").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accent).offset(y: 30) }
-                                .padding(.bottom, 30)
                         }
-                        .accessibilityLabel("Change your photo")
+                        .frame(maxWidth: .infinity)
+                        .accessibilityElement(children: .combine).accessibilityLabel("Change your photo")
                         .padding(.top, 6)
                         Spacer()
                     }
