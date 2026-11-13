@@ -32,6 +32,8 @@ struct StoryView: View {
     @State private var burstEmoji: String?
     @State private var likedSnaps: Set<String> = []
     private static let answers = ["❤️", "🔥", "👏", "😂", "😮", "😢", "💪"]
+    private static let quick = ["😂", "😮", "😍", "😢", "👏", "🔥"]   // over the story while a message is being written
+    @State private var wasQuiet = false   // whether keyboards had no Done bar before this opened
 
     private var who: String { people[min(at, people.count - 1)] }
     private var slides: [Slide] { highlight.map { list($0["items"]).map { Slide.snap($0) } } ?? Self.slides(for: who) }
@@ -74,6 +76,9 @@ struct StoryView: View {
         ZStack {
             Color.black.ignoresSafeArea()
             if !s.isEmpty {
+                // The story stays the size it is when the keyboard comes up (it was squeezed to a third of the
+                // screen); the message box rides up over it on the keyboard, as Instagram's does.
+                ZStack(alignment: .bottom) {
                 VStack(spacing: 6) {
                     // Every slide the one shape (9:16, a story's own), and as big as the screen lets it be: edge to
                     // edge from the top, with the bars and the name over it, as Instagram's are. With those stacked
@@ -99,9 +104,29 @@ struct StoryView: View {
                         .overlay(alignment: .top) {
                             VStack(spacing: 8) { bars(s.count); header }.padding(.horizontal, 8).shadow(color: .black.opacity(0.35), radius: 3)
                         }
-                    // and the one height under it, whatever's there, so the slide above doesn't change size either
-                    footer(s[min(slide, s.count - 1)]).frame(height: 52).padding(.horizontal, 8)
+                    // and the one height kept under it, whatever goes there, so the slide above doesn't change size either
+                    Color.clear.frame(height: 52)
                 }
+                .ignoresSafeArea(.keyboard, edges: .bottom)
+                // writing a message: the story dims, with emoji to answer in one tap; a tap on it puts the keyboard away
+                if typing {
+                    Color.black.opacity(0.4).ignoresSafeArea().onTapGesture { typing = false }
+                    VStack {
+                        LazyVGrid(columns: Array(repeating: GridItem(.fixed(96)), count: 3), spacing: 26) {
+                            ForEach(Self.quick, id: \.self) { e in
+                                Button { typing = false; react(s[min(slide, s.count - 1)], e) } label: { Text(e).font(.system(size: 52)) }
+                                    .buttonStyle(.plain).accessibilityLabel("React with " + e)
+                            }
+                        }
+                        .padding(.top, 170)
+                        Spacer(minLength: 0)
+                    }
+                    .ignoresSafeArea(.keyboard, edges: .bottom)
+                    .transition(.opacity)
+                }
+                footer(s[min(slide, s.count - 1)]).frame(height: 52).padding(.horizontal, 8).padding(.bottom, typing ? 6 : 0)
+                }
+                .animation(.easeOut(duration: 0.18), value: typing)
                 // the row of emoji is open: a tap anywhere else puts it away
                 if reacting { Color.black.opacity(0.001).ignoresSafeArea().onTapGesture { withAnimation(.snappy(duration: 0.2)) { reacting = false } } }
                 if reacting {
@@ -153,7 +178,8 @@ struct StoryView: View {
                 if progress >= 1 { next(); return }
             }
         }
-        .onAppear { if slides.isEmpty { dismiss() } }
+        .onAppear { if slides.isEmpty { dismiss() }; wasQuiet = KeyboardDone.quiet; KeyboardDone.quiet = true }
+        .onDisappear { KeyboardDone.quiet = wasQuiet }
         .onChange(of: paused) { _, on in SongPlayer.shared.hold(on) }
         .onDisappear { SongPlayer.shared.stop() }
     }
@@ -316,10 +342,20 @@ struct StoryView: View {
             }
         } else {
             HStack(spacing: 12) {
-                TextField("", text: $reply, prompt: Text(sent ? "Sent" : "Send \(Feed.shared.name(who)) a message…").foregroundStyle(.white.opacity(0.7)))
-                    .focused($typing).foregroundStyle(.white).submitLabel(.send).onSubmit { send() }
-                    .padding(.horizontal, 16).padding(.vertical, 11)
-                    .overlay(Capsule().stroke(.white.opacity(0.55), lineWidth: 1.5))
+                HStack(spacing: 6) {
+                    TextField("", text: $reply, prompt: Text(typing ? "Send message…" : sent ? "Sent" : "Send \(Feed.shared.name(who)) a message…").foregroundStyle(.white.opacity(0.7)))
+                        .focused($typing).foregroundStyle(.white).submitLabel(.send).onSubmit { send() }
+                    if typing, !reply.trimmingCharacters(in: .whitespaces).isEmpty {
+                        Button { send() } label: {
+                            Image(systemName: "paperplane.fill").font(.system(size: 15, weight: .bold)).foregroundStyle(.black)
+                                .frame(width: 48, height: 32).background(.white, in: Capsule())
+                        }
+                        .buttonStyle(.plain).accessibilityLabel("Send")
+                    }
+                }
+                .padding(.leading, 16).padding(.trailing, typing ? 6 : 16).frame(height: 44)
+                .overlay(Capsule().stroke(.white.opacity(0.55), lineWidth: 1.5))
+                if !typing {
                 // a heart whatever the slide is (a meal or workout had a party popper here, which nobody read as a like)
                 let liked = isLiked(s)
                 Image(systemName: liked ? "heart.fill" : "heart").font(.system(size: 25, weight: .medium))
@@ -338,6 +374,7 @@ struct StoryView: View {
                 case .post(let p): sendButton { sharing = PostBox(post: p) }
                 case .snap(let st): sendButton { sharingStory = PostBox(post: st) }
                 default: sendButton { sharingStory = PostBox(post: dayCard(s)) }
+                }
                 }
             }
             .sheet(item: $sharing) { b in SharePostSheet(post: b.post).presentationDetents([.medium, .large]) }
