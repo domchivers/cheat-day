@@ -61,7 +61,7 @@ struct ExploreView: View {
             if !Task.isCancelled { people = q.count >= 2 ? await follows.search(q) : [] }
         }
         .task { if follows.explore.isEmpty { await follows.loadExplore() } }
-        .overlay { if follows.exploring && follows.explore.isEmpty { ProgressView() } }
+        .overlay(alignment: .top) { if follows.exploring && follows.explore.isEmpty { Skeleton.grid(12).padding(.top, 64).allowsHitTesting(false) } }
         .navigationDestination(item: $opened) { i in
             let list = shown
             FeedView(only: Array(list[min(i, max(0, list.count - 1))...])).navigationTitle("Explore").navigationBarTitleDisplayMode(.inline)

@@ -10,6 +10,9 @@ struct ProfileView: View {
     /// The Me tab. Your own profile looks the same wherever it opens (Progress tab, Settings at the top).
     var home = false
     @State private var posts: [JSON] = []
+    @State private var arrived = false   // this profile's posts and counts have come down (or been tried)
+    /// What each profile last showed, kept while the app's open: opened again, it's there at once and freshened under it.
+    @MainActor private static var last: [String: (posts: [JSON], tagged: [JSON], kept: [JSON], counts: (followers: Int, following: Int)?)] = [:]
     @State private var tab = 0
     @State private var tagged: [JSON] = []   // posts they're tagged in
     @State private var kept: [JSON] = []     // posts you've saved (your own profile only)
@@ -104,6 +107,7 @@ struct ProfileView: View {
             }
         }
         .task {
+            if !arrived, let was = Self.last[id] { posts = was.posts; tagged = was.tagged; kept = was.kept; counts = was.counts; arrived = true }
             await reload()
             if isMe, profiles.mine?.privacyChosen == false { choosing = true }
         }
@@ -157,6 +161,8 @@ struct ProfileView: View {
         if let got = await profiles.tagged(id) { tagged = got; await Feed.shared.loadExtras(got) }
         if isMe { kept = await Feed.shared.savedPosts(); await Feed.shared.loadExtras(kept) }
         if let c = await Task(operation: { await follows.counts(id) }).value { counts = c }
+        arrived = true
+        Self.last[id] = (posts, tagged, kept, counts)
     }
 
     // MARK: the top
@@ -190,11 +196,11 @@ struct ProfileView: View {
                         if p?.isPrivate == true { Image(systemName: "lock.fill").font(.caption).foregroundStyle(.secondary) }
                     }
                     HStack(spacing: 22) {
-                        stat(locked ? "–" : "\(posts.count)", posts.count == 1 ? "post" : "posts")
+                        stat(locked ? "–" : arrived ? "\(posts.count)" : nil, posts.count == 1 ? "post" : "posts")
                         // tap either for the people
-                        stat("\(counts?.followers ?? 0)", counts?.followers == 1 ? "follower" : "followers")
+                        stat(counts.map { "\($0.followers)" } ?? (arrived ? "–" : nil), counts?.followers == 1 ? "follower" : "followers")
                             .contentShape(Rectangle()).onTapGesture { if !locked { listing = "followers" } }
-                        stat("\(counts?.following ?? 0)", "following")
+                        stat(counts.map { "\($0.following)" } ?? (arrived ? "–" : nil), "following")
                             .contentShape(Rectangle()).onTapGesture { if !locked { listing = "following" } }
                     }
                 }
@@ -231,9 +237,11 @@ struct ProfileView: View {
     }
 
     /// A number over its word, left-aligned, as on Instagram.
-    private func stat(_ n: String, _ label: String) -> some View {
+    /// A number and what it counts. No number yet (still loading): a shimmering bar where it'll be, never a 0.
+    private func stat(_ n: String?, _ label: String) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(n).font(.headline.weight(.heavy))
+            if let n { Text(n).font(.headline.weight(.heavy)) }
+            else { Text("00").font(.headline.weight(.heavy)).hidden().overlay(alignment: .leading) { Skeleton.bar(22, 15).shimmering() } }
             Text(label).font(.subheadline).foregroundStyle(.secondary)
         }
     }
@@ -342,7 +350,10 @@ struct ProfileView: View {
     private func grid(_ shown: [JSON], empty: String) -> some View {
         let cols = Array(repeating: GridItem(.flexible(), spacing: 2), count: 3)
         return Group {
-            if shown.isEmpty {
+            if shown.isEmpty && !arrived {
+                // still coming down: the grid's shape, not "your posts show here"
+                Skeleton.grid()
+            } else if shown.isEmpty {
                 Text(empty).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(.top, 30).padding(.horizontal, 24)
             } else {
                 LazyVGrid(columns: cols, spacing: 2) {
@@ -984,7 +995,7 @@ struct FollowListView: View {
                     }
                 }
             } else {
-                ProgressView().frame(maxWidth: .infinity)
+                Skeleton.rows().listRowSeparator(.hidden)
             }
         }
         .navigationTitle(which == "followers" ? "Followers" : "Following").navigationBarTitleDisplayMode(.inline)

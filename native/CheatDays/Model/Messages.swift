@@ -15,6 +15,7 @@ final class Messages {
     private(set) var thread: [JSON] = []   // the open chat, oldest first
     private(set) var reactions: [JSON] = []
     private(set) var open: String?
+    private(set) var loaded = false   // the list of chats has come down (or been tried) at least once
     var error: String?
     private var api: Supabase { Supabase.shared }
     var me: String { api.userId ?? "" }
@@ -38,6 +39,7 @@ final class Messages {
 
     func load() async {
         guard !me.isEmpty else { return }
+        defer { loaded = true }
         do {
             recent = try await rows("/rest/v1/messages?select=*&order=created_at.desc&limit=200")
             error = nil

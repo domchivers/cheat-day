@@ -515,3 +515,68 @@ enum KeyboardDone {
         return t
     }
 }
+
+/// A light sweeping across something that's still loading. Still when Reduce Motion is on.
+struct Shimmer: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var still
+    @State private var sweep = false
+    func body(content: Content) -> some View {
+        content
+            .overlay {
+                GeometryReader { g in
+                    LinearGradient(colors: [.clear, .white.opacity(0.09), .clear], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: g.size.width * 0.6)
+                        .offset(x: sweep ? g.size.width : -g.size.width * 0.6)
+                }
+                .allowsHitTesting(false).opacity(still ? 0 : 1)
+            }
+            .clipped()
+            .onAppear { if !still { withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) { sweep = true } } }
+            .accessibilityElement().accessibilityLabel("Loading")
+    }
+}
+extension View { func shimmering() -> some View { modifier(Shimmer()) } }
+
+/// The shapes of things on their way, shown where they'll be: nothing reads as empty while it's only loading.
+enum Skeleton {
+    static func bar(_ width: CGFloat, _ height: CGFloat = 12) -> some View {
+        RoundedRectangle(cornerRadius: height / 2.5, style: .continuous).fill(Theme.track).frame(width: width, height: height)
+    }
+    /// A grid of squares, three across: a profile's posts.
+    static func grid(_ count: Int = 9) -> some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 3), spacing: 2) {
+            ForEach(0..<count, id: \.self) { _ in Rectangle().fill(Theme.track).aspectRatio(1, contentMode: .fit) }
+        }
+        .shimmering()
+    }
+    /// Rows of a round picture and two lines: people, chats.
+    static func rows(_ count: Int = 6, picture: CGFloat = 44) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            ForEach(0..<count, id: \.self) { i in
+                HStack(spacing: 12) {
+                    Circle().fill(Theme.track).frame(width: picture, height: picture)
+                    VStack(alignment: .leading, spacing: 7) { bar(i % 2 == 0 ? 150 : 110, 13); bar(i % 2 == 0 ? 90 : 130, 10) }
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .shimmering()
+    }
+    /// Posts in the feed: who, the picture, a line under it.
+    static func posts(_ count: Int = 2) -> some View {
+        VStack(alignment: .leading, spacing: 22) {
+            ForEach(0..<count, id: \.self) { _ in
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
+                        Circle().fill(Theme.track).frame(width: 38, height: 38)
+                        VStack(alignment: .leading, spacing: 6) { bar(120, 12); bar(80, 10) }
+                    }
+                    .padding(.horizontal, 14)
+                    Rectangle().fill(Theme.track).aspectRatio(1, contentMode: .fit)
+                    bar(190, 12).padding(.horizontal, 14)
+                }
+            }
+        }
+        .shimmering()
+    }
+}

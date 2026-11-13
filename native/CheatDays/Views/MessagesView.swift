@@ -13,7 +13,9 @@ struct MessagesView: View {
         let chats = messages.chats.filter { search.isEmpty || Feed.shared.name($0.id).localizedCaseInsensitiveContains(search) || Profiles.shared.handle($0.id).localizedCaseInsensitiveContains(search) }
         List {
             if let e = messages.error { Text(e).font(.footnote).foregroundStyle(Theme.warn) }
-            if messages.chats.isEmpty && messages.error == nil {
+            if messages.chats.isEmpty && messages.error == nil && !messages.loaded {
+                Skeleton.rows(5, picture: 52).listRowBackground(Color.clear).listRowSeparator(.hidden)
+            } else if messages.chats.isEmpty && messages.error == nil {
                 Text("No messages yet. Tap ✎ to message a friend.").foregroundStyle(.secondary)
                     .listRowBackground(Color.clear).listRowSeparator(.hidden)
             }

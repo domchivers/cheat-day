@@ -415,7 +415,7 @@ struct FeedView: View {
         }
         .refreshable { if only == nil { await feed.load(); await Stories.shared.load() } }
         .task { if only == nil && feed.posts.isEmpty { await feed.load() } }
-        .overlay { if only == nil && feed.loading && feed.posts.isEmpty { ProgressView() } }
+        .overlay(alignment: .top) { if only == nil && feed.loading && feed.posts.isEmpty { Skeleton.posts().padding(.top, 120).allowsHitTesting(false) } }
         .overlay(alignment: .bottomTrailing) {
             if only == nil {
             Button { composing = true } label: {
