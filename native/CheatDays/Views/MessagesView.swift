@@ -121,6 +121,7 @@ struct ChatView: View {
     private var timesOut: CGFloat { slide.dx < 0 ? max(-64, slide.dx * 0.6) : 0 }
     private func replyPull(_ id: String) -> CGFloat { slide.id == id && slide.dx > 0 ? min(70, slide.dx * 0.6) : 0 }
     @State private var opened: PostBox?
+    @State private var held: JSON?          // the message being held, with its emoji and options up
     @State private var watching: PostBox?   // a story sent in the chat, opened: its owner's stories
 
     private func storyCard(_ p: JSON, live: Bool) -> some View {
@@ -186,9 +187,15 @@ struct ChatView: View {
                 .sensoryFeedback(.impact(weight: .light), trigger: slide.dx * 0.6 > 48)
                 .onChange(of: messages.thread.count) { _, _ in withAnimation { proxy.scrollTo(str(messages.thread.last?["id"]), anchor: .bottom) } }
             }
+            // something that didn't go through (a reaction, a message), said here for a few seconds
+            if let e = messages.error {
+                Text(e).font(.footnote).foregroundStyle(Theme.warn).multilineTextAlignment(.center).padding(.horizontal, 20).padding(.vertical, 6)
+                    .task { try? await Task.sleep(for: .seconds(4)); messages.error = nil }
+            }
             composer
         }
         .background(Theme.bg)
+        .overlay { if let m = held { heldMenu(m) } }
         .toolbar {
             ToolbarItem(placement: .principal) {
                 NavigationLink { ProfileView(id: friend) } label: {
@@ -254,6 +261,90 @@ struct ChatView: View {
         .animation(.easeInOut(duration: 0.2), value: seen)
     }
 
+    /// The message itself: the words in their bubble, or the picture, GIF or card.
+    @ViewBuilder private func inner(_ m: JSON) -> some View {
+        let mine = str(m["from_user"]) == me, kind = str(m["kind"]), p = dict(m["payload"])
+        switch kind {
+        case "photo":
+            FeedPhoto(src: str(p["photo"]), fill: true).frame(width: 220, height: 260).clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        case "gif":
+            let w = num(p["w"]) ?? 200, h = num(p["h"]) ?? 200
+            AnimatedGIF(url: str(p["url"])).frame(width: 200, height: min(260, max(90, 200 * h / max(w, 1))))
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous)).accessibilityLabel("GIF")
+        case "post":
+            Button { if held == nil { opened = PostBox(post: dict(p["post"]).isEmpty ? p : dict(p["post"])) } } label: { postCard(p) }.buttonStyle(.plain)
+        case "story":
+            // shown only while it's still up and it's one they can see; after that, just that it was sent
+            let live = str(p["slide"]).isEmpty ? Stories.shared.all.contains { str($0["id"]) == str(p["story"]) } : StoryView.daySlide(p) != nil
+            let reaction = str(p["reaction"]), words = str(p["reply"])
+            VStack(alignment: mine ? .trailing : .leading, spacing: 5) {
+                // an answer to a story: said so above it, with the emoji or the words under it
+                if !reaction.isEmpty || !words.isEmpty {
+                    Text(mine ? (reaction.isEmpty ? "You replied to their story" : "You reacted to their story") : (reaction.isEmpty ? "Replied to your story" : "Reacted to your story"))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Button { if live, held == nil { watching = PostBox(post: ["id": str(p["owner"])]) } } label: { storyCard(p, live: live) }
+                    .buttonStyle(.plain).disabled(!live)
+                if !reaction.isEmpty { Text(reaction).font(.system(size: 40)) }
+                if !words.isEmpty {
+                    Text(words).font(.body).foregroundStyle(mine ? Theme.onAccent : .primary)
+                        .padding(.horizontal, 13).padding(.vertical, 9)
+                        .background(mine ? Theme.accent : Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                }
+            }
+        case "food":
+            foodCard(m, p, mine: mine)
+        default:
+            Text(str(m["text"])).font(.body).foregroundStyle(mine ? Theme.onAccent : .primary)
+                .padding(.horizontal, 13).padding(.vertical, 9)
+                .background(mine ? Theme.accent : Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        }
+    }
+
+    /// A message being held: the chat dims, and it's shown with a row of emoji over it and what can be done under it.
+    private func heldMenu(_ m: JSON) -> some View {
+        let mine = str(m["from_user"]) == me, kind = str(m["kind"]), id = str(m["id"])
+        let now = str(messages.reactions.first { str($0["message_id"]) == id && str($0["user_id"]) == me }?["emoji"])
+        let close = { withAnimation(.snappy(duration: 0.2)) { held = nil } }
+        return ZStack {
+            Rectangle().fill(.ultraThinMaterial).ignoresSafeArea().onTapGesture { close() }
+            VStack(alignment: mine ? .trailing : .leading, spacing: 10) {
+                HStack(spacing: 2) {
+                    ForEach(["❤️", "😂", "👍", "🔥", "😋", "😮"], id: \.self) { e in
+                        Button { UISelectionFeedbackGenerator().selectionChanged(); close(); Task { await messages.react(m, e) } } label: {
+                            Text(e).font(.system(size: 30)).frame(width: 46, height: 46)
+                                .background(now == e ? Color.primary.opacity(0.16) : .clear, in: Circle())
+                        }
+                        .buttonStyle(.plain).accessibilityLabel(now == e ? "Take off " + e : "React with " + e)
+                    }
+                }
+                .padding(.horizontal, 6).padding(.vertical, 3)
+                .background(Color(.secondarySystemBackground), in: Capsule())
+                inner(m).allowsHitTesting(false)
+                VStack(spacing: 0) {
+                    heldRow("Reply", "arrowshape.turn.up.left") { close(); rewording = nil; replying = m; typing = true }
+                    if kind == "text" { Divider(); heldRow("Copy", "doc.on.doc") { UIPasteboard.general.string = str(m["text"]); close() } }
+                    if mine && kind == "text" { Divider(); heldRow("Edit", "pencil") { close(); replying = nil; rewording = m; text = str(m["text"]); typing = true } }
+                    if mine { Divider(); heldRow("Delete", "trash", red: true) { close(); Task { await messages.delete(m) } } }
+                }
+                .frame(width: 230)
+                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity, alignment: mine ? .trailing : .leading)
+        }
+        .transition(.opacity)
+    }
+
+    private func heldRow(_ title: String, _ icon: String, red: Bool = false, _ tap: @escaping () -> Void) -> some View {
+        Button(action: tap) {
+            HStack { Text(title); Spacer(); Image(systemName: icon) }
+                .font(.body).foregroundStyle(red ? Color.red : Color.primary)
+                .padding(.horizontal, 16).frame(height: 46).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
     @ViewBuilder private func bubble(_ m: JSON) -> some View {
         let mine = str(m["from_user"]) == me, kind = str(m["kind"]), p = dict(m["payload"])
         let rx = messages.reactions.filter { str($0["message_id"]) == str(m["id"]) }
@@ -271,60 +362,18 @@ struct ChatView: View {
                 }
                 .buttonStyle(.plain).padding(.bottom, 3)
             }
-            Group {
-                switch kind {
-                case "photo":
-                    FeedPhoto(src: str(p["photo"]), fill: true).frame(width: 220, height: 260).clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                case "gif":
-                    let w = num(p["w"]) ?? 200, h = num(p["h"]) ?? 200
-                    AnimatedGIF(url: str(p["url"])).frame(width: 200, height: min(260, max(90, 200 * h / max(w, 1))))
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous)).accessibilityLabel("GIF")
-                case "post":
-                    Button { opened = PostBox(post: dict(p["post"]).isEmpty ? p : dict(p["post"])) } label: { postCard(p) }.buttonStyle(.plain)
-                case "story":
-                    // shown only while it's still up and it's one they can see; after that, just that it was sent
-                    let live = str(p["slide"]).isEmpty ? Stories.shared.all.contains { str($0["id"]) == str(p["story"]) } : StoryView.daySlide(p) != nil
-                    let reaction = str(p["reaction"]), words = str(p["reply"])
-                    VStack(alignment: mine ? .trailing : .leading, spacing: 5) {
-                        // an answer to a story: said so above it, with the emoji or the words under it
-                        if !reaction.isEmpty || !words.isEmpty {
-                            Text(mine ? (reaction.isEmpty ? "You replied to their story" : "You reacted to their story") : (reaction.isEmpty ? "Replied to your story" : "Reacted to your story"))
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                        Button { if live { watching = PostBox(post: ["id": str(p["owner"])]) } } label: { storyCard(p, live: live) }
-                            .buttonStyle(.plain).disabled(!live)
-                        if !reaction.isEmpty { Text(reaction).font(.system(size: 40)) }
-                        if !words.isEmpty {
-                            Text(words).font(.body).foregroundStyle(mine ? Theme.onAccent : .primary)
-                                .padding(.horizontal, 13).padding(.vertical, 9)
-                                .background(mine ? Theme.accent : Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                        }
-                    }
-                case "food":
-                    foodCard(m, p, mine: mine)
-                default:
-                    Text(str(m["text"])).font(.body).foregroundStyle(mine ? Theme.onAccent : .primary)
-                        .padding(.horizontal, 13).padding(.vertical, 9)
-                        .background(mine ? Theme.accent : Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                }
-            }
-            .contextMenu {
-                // the reactions in one row across the top of the menu, not a list down it
-                ControlGroup {
-                    // drawn as pictures: as text the menu set them small
-                    ForEach(["❤️", "😂", "👍", "🔥", "😋"], id: \.self) { e in
-                        Button { Task { await messages.react(m, e) } } label: { Image(uiImage: ReactionGlyph.make(e)).accessibilityLabel(e) }   // the picture alone: with a title too, the menu kept an empty line under the row
-                    }
-                }
-                .controlGroupStyle(.palette)
-                if kind == "text" { Button { UIPasteboard.general.string = str(m["text"]) } label: { Label("Copy", systemImage: "doc.on.doc") } }
-                if mine && kind == "text" { Button { replying = nil; rewording = m; text = str(m["text"]); typing = true } label: { Label("Edit", systemImage: "pencil") } }
-                if mine { Button(role: .destructive) { Task { await messages.delete(m) } } label: { Label("Delete", systemImage: "trash") } }
-            }
+            // held: the emoji and what can be done with it, drawn here (the system's menu left a gap under its row
+            // of emoji, and a reaction chosen there didn't always land)
+            inner(m)
+                .simultaneousGesture(LongPressGesture(minimumDuration: 0.35).onEnded { _ in
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    typing = false
+                    withAnimation(.snappy(duration: 0.2)) { held = m }
+                })
             if !rx.isEmpty {
                 Text(rx.map { str($0["emoji"]) }.joined()).font(.caption)
                     .padding(.horizontal, 6).padding(.vertical, 2).background(Color(.tertiarySystemBackground), in: Capsule())
-                    .overlay(Capsule().stroke(Theme.bg, lineWidth: 2)).offset(y: -6).padding(.horizontal, 10)
+                    .overlay(Capsule().stroke(Theme.bg, lineWidth: 2)).offset(y: -6).padding(.horizontal, 10).zIndex(1)
             }
             if p["edited"] as? Bool == true { Text("Edited").font(.caption2).foregroundStyle(.secondary).padding(.horizontal, 8).padding(.top, 2) }
         }

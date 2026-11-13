@@ -58,7 +58,10 @@ final class Messages {
         guard let got = try? await rows("/rest/v1/messages?\(q)&select=*&order=created_at.desc&limit=150") else { return }
         if open == f { thread = got.reversed() }
         let ids = got.map { str($0["id"]) }.joined(separator: ",")
-        if !ids.isEmpty { reactions = (try? await rows("/rest/v1/message_reactions?message_id=in.(\(ids))&select=*")) ?? [] }
+        // a reaction just chosen isn't undone by a fetch that set off before it reached the server, and a fetch that
+        // failed leaves what's showing alone
+        let before = reacted
+        if !ids.isEmpty, let rx = try? await rows("/rest/v1/message_reactions?message_id=in.(\(ids))&select=*"), reacted == before, sending == 0 { reactions = rx }
         if got.contains(where: { str($0["to_user"]) == me && str($0["seen_at"]).isEmpty }) {
             _ = try? await api.rest("/rest/v1/messages?to_user=eq.\(me)&from_user=eq.\(f)&seen_at=is.null", method: "PATCH", body: ["seen_at": ISO.now()])
             await load()
@@ -83,13 +86,28 @@ final class Messages {
         await send(to: friend, kind: "photo", payload: ["photo": url])
     }
 
+    private var reacted = 0   // goes up with every reaction chosen
+    private var sending = 0   // reactions on their way to the server
+
+    /// One emoji of yours on a message: shown at once, then sent. The same one again takes it off.
     func react(_ m: JSON, _ emoji: String) async {
-        let id = str(m["id"]), mine = reactions.first { str($0["message_id"]) == id && str($0["user_id"]) == me }
-        _ = try? await api.rest("/rest/v1/message_reactions?message_id=eq.\(id)&user_id=eq.\(me)", method: "DELETE")
+        let id = str(m["id"]), had = reactions
+        let off = reactions.contains { str($0["message_id"]) == id && str($0["user_id"]) == me && str($0["emoji"]) == emoji }
         reactions.removeAll { str($0["message_id"]) == id && str($0["user_id"]) == me }
-        guard str(mine?["emoji"]) != emoji else { return }   // the same one again takes it off
-        _ = try? await api.rest("/rest/v1/message_reactions", method: "POST", body: [["message_id": id, "user_id": me, "emoji": emoji]])
-        reactions.append(["message_id": id, "user_id": me, "emoji": emoji])
+        if !off { reactions.append(["message_id": id, "user_id": me, "emoji": emoji]) }
+        reacted += 1; sending += 1
+        defer { sending -= 1 }
+        do {
+            if off { _ = try await api.rest("/rest/v1/message_reactions?message_id=eq.\(id)&user_id=eq.\(me)", method: "DELETE") }
+            else {
+                // one request: yours on this message is put in, or changed if there was one
+                _ = try await api.rest("/rest/v1/message_reactions?on_conflict=message_id,user_id", method: "POST", body: [["message_id": id, "user_id": me, "emoji": emoji]], prefer: "resolution=merge-duplicates,return=minimal")
+            }
+        } catch {
+            // not taken: put it back as it was and say so, not leave an emoji showing that nobody else sees
+            reactions = had; reacted += 1
+            self.error = "Couldn't react to that. Check your connection and try again."
+        }
     }
 
     /// Your own text message, reworded; payload.edited marks it. False when the server didn't take it.
