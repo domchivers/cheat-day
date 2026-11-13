@@ -1956,7 +1956,7 @@ struct FeedPhoto: View {
         Group {
             if let image {
                 if fill { Image(uiImage: image).resizable().scaledToFill() } else { Image(uiImage: image).resizable().scaledToFit() }
-            } else if fill { Theme.hero } else { Theme.hero.frame(height: 300) }
+            } else if fill { Theme.hero.shimmering() } else { Theme.hero.frame(height: 300).shimmering() }
         }
         .task(id: src) { await load() }
     }

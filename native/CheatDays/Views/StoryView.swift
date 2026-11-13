@@ -171,8 +171,12 @@ struct StoryView: View {
                let song = Music.all.first(where: { $0.id == str(tune["id"]) }) {
                 SongPlayer.shared.play(song, key: "story:" + str(st["id"]), loop: true)
             } else { SongPlayer.shared.stop() }
+            // a photo that isn't here yet: its bar waits for it (up to eight seconds), as Instagram's does. It ran on over
+            // a blank slide before, so a slow picture was gone before it was seen.
+            var waited = 0.0
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(50))
+                if case .snap(let st)? = now, str(st["kind"]) != "video", waited < 8, ImageStore.cached(str(st["media"])) == nil { waited += 0.05; continue }
                 if paused || typing || reacting || sharing != nil || sharingStory != nil || seenBy != nil || adding != nil || managing != nil { continue }
                 progress += 0.05 / length
                 if progress >= 1 { next(); return }

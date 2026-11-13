@@ -30,6 +30,7 @@ final class Stories {
         let now = ISO8601DateFormatter().string(from: Date())
         guard let got = try? await rows("/rest/v1/stories?expires_at=gt.\(now)&select=*&order=created_at.asc&limit=300") else { return }
         all = got
+        fetchAhead(got)
         let mine = got.filter { str($0["owner"]) == me }.map { str($0["id"]) }
         views = mine.isEmpty ? [] : ((try? await rows("/rest/v1/story_views?story_id=in.(\(mine.joined(separator: ",")))&select=*&order=created_at.desc")) ?? [])
         let polled = got.filter { list($0["overlays"]).contains { str($0["type"]) == "poll" } }.map { str($0["id"]) }
@@ -42,6 +43,22 @@ final class Stories {
             reacted = now; keepReacted()
         }
         await Profiles.shared.load(got.map { str($0["owner"]) } + views.map { str($0["viewer"]) })
+    }
+
+    /// Stories' pictures brought down before they're opened: the ones not watched yet first, one at a time, quietly.
+    /// Fetched only when a slide came up, each sat blank for a second or two while its bar ran on.
+    private var ahead: Task<Void, Never>?
+    private func fetchAhead(_ stories: [JSON]) {
+        let photos = stories.filter { str($0["kind"]) != "video" && !str($0["media"]).isEmpty }
+        let order = photos.filter { !watched.contains(str($0["id"])) } + photos.filter { watched.contains(str($0["id"])) }
+        let wanted = order.prefix(40).map { str($0["media"]) }
+        ahead?.cancel()
+        ahead = Task(priority: .utility) {
+            for src in wanted {
+                if Task.isCancelled { return }
+                if ImageStore.cached(src) == nil { _ = await ImageStore.load(src) }
+            }
+        }
     }
 
     func owner(_ story: String) -> String { str(all.first { str($0["id"]) == story }?["owner"]) }
