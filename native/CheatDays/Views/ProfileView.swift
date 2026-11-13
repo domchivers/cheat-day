@@ -533,7 +533,7 @@ struct EditProfileView: View {
                               footer: "3 to 20 letters, numbers, dots or underscores. Friends can find you by it.")
                 case .label:
                     FieldPage(title: "Label", text: $label, placeholder: "Founder of Cheat Days, Personal trainer…", limit: 30, chips: Self.labels,
-                              footer: "In grey under your name, like Instagram's.")
+                              footer: "In grey under your name.")
                 case .bio: FieldPage(title: "Bio", text: $bio, placeholder: "A line about you", limit: 150, lines: true)
                 case .tag: HonorPickPage(mine: (profiles.mine?.honors ?? []).compactMap(Honor.find), top: $topHonor, show: $showHonors)
                 case .badges: PinBadgesView(pinned: $pinned)
