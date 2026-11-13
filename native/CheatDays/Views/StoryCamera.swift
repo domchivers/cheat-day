@@ -63,6 +63,9 @@ struct StoryCamera: View {
                                     .frame(width: max(1, spot.width), height: max(1, spot.height)).clipped()
                                     .offset(x: spot.minX, y: spot.minY)
                                     .opacity(arranging ? 0 : 1).allowsHitTesting(!arranging)
+                                    // straight to its new place and size: eased there, the live picture was squashed
+                                    // and stretched on the way (it can only be redrawn at a size, not mid-way between two)
+                                    .transaction { $0.animation = nil }
                                     .gesture(MagnifyGesture().onChanged { m in cam.zoom(to: zoomStart * m.magnification, glide: true) }.onEnded { _ in zoomStart = cam.zoomFactor })
                                     .onTapGesture(count: 2) { cam.flip() }
                             }
