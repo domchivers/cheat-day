@@ -345,7 +345,9 @@ struct LoopingVideo: UIViewRepresentable {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak v, weak player] in
             guard let v, let player, v.playerLayer.player === player, v.key == made else { return }
             let at = player.currentTime().seconds
-            let stuck = v.playing && v.held == nil && (!at.isFinite || abs(at - start) < 0.05)
+            // only a clip that's meant to be playing: one waiting off screen, or held under a finger, is left alone
+            guard v.playing, v.held == nil else { return }
+            let stuck = !at.isFinite || abs(at - start) < 0.05
             guard !v.playerLayer.isReadyForDisplay || stuck else { v.tries = 0; return }
             guard v.tries < 3 else { return }
             v.tries += 1
