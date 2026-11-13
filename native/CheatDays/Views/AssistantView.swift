@@ -315,10 +315,20 @@ struct AssistantView: View {
                     if let g = Self.spoons.first(where: { $0.name == name })?.grams { addSauce(turn, sauce, food, grams: g) } else { noSauce(turn) }
                 }
             }
+            // a plate of several things can be called what they call it, as a card of separate foods can
+            let nameKey = "\(turn)-name", typed = (mealNames[nameKey] ?? "").trimmingCharacters(in: .whitespaces)
+            if parts.count > 1, !added {
+                HStack(spacing: 8) {
+                    Text("Name").foregroundStyle(.secondary)
+                    TextField(str(e["name"]), text: Binding(get: { mealNames[nameKey] ?? "" }, set: { mealNames[nameKey] = $0 })).submitLabel(.done)
+                }
+                .font(.subheadline).padding(.horizontal, 12).padding(.vertical, 9)
+                .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
             HStack(spacing: 10) {
                 // one clear Add, the full width left over; every control on the card 40 pt tall with the same corners
                 Button {
-                    var b = Assistant.basis(name: str(e["name"]), kcal: k, grams: num(e["portion_g"]), unit: str(e["unit"]).isEmpty ? "g" : str(e["unit"]), p: p, c: c, f: f)
+                    var b = Assistant.basis(name: typed.isEmpty ? str(e["name"]) : typed, kcal: k, grams: num(e["portion_g"]), unit: str(e["unit"]).isEmpty ? "g" : str(e["unit"]), p: p, c: c, f: f)
                     // what the AI made it, kept on the item so a later change of amount can be learnt from
                     if !str(e["shop"]).isEmpty { b["shop"] = str(e["shop"]) }
                     if let g = pos(e["aiPortion"]) ?? pos(e["portion_g"]) { b["aiGrams"] = g; b["aiKcal"] = num(e["aiPortionKcal"]) ?? k }
