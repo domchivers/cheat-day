@@ -224,6 +224,25 @@ final class AssistantTests: XCTestCase {
         XCTAssertTrue((out["flags"] as? [String] ?? []).isEmpty, "nothing left to warn about")
     }
 
+    /// 220 g of raw thigh, 142 g once boiled and all of it eaten: 229 kcal. Asked for again with other food, it was
+    /// looked up as raw thigh and matched the 220 g raw card by protein per gram: 148 kcal.
+    func testACookedWeightKeepsItsRawTotals() {
+        let raw: JSON = ["parts": [["name": "Chicken thigh, raw, skinless", "grams": 220, "kcal": 229, "protein_g": 42, "carbs_g": 0, "fat_g": 6.6, "src": "au"] as JSON]]
+        let boiled: JSON = ["parts": [["name": "Chicken thigh, boiled", "grams": 142, "kcal": 229, "protein_g": 42, "carbs_g": 0, "fat_g": 6.6, "numbers_from": "them", "src": "them"] as JSON]]
+        let both: JSON = ["kcal_total": 316, "parts": [
+            ["name": "Chicken thigh, raw, skinless", "grams": 142, "kcal": 148, "protein_g": 27, "carbs_g": 0, "fat_g": 4.3, "src": "au", "numbers_from": "estimate"] as JSON,
+            ["name": "Boiled chicken breast, 557 g batch", "grams": 104, "kcal": 168, "protein_g": 38, "carbs_g": 0, "fat_g": 1, "src": "them", "numbers_from": "them"] as JSON]]
+        let out = Assistant.steady(both, earlier: [raw, boiled]), parts = list(out["parts"])
+        XCTAssertEqual(num(parts[0]["kcal"]) ?? 0, 229, accuracy: 1)
+        XCTAssertEqual(num(parts[0]["protein_g"]) ?? 0, 42, accuracy: 0.2)
+        XCTAssertEqual(str(parts[0]["name"]), "Chicken thigh, boiled")
+        XCTAssertEqual(num(out["kcal_total"]) ?? 0, 397, accuracy: 1)
+        XCTAssertTrue((out["flags"] as? [String] ?? []).isEmpty, "their own batch's 37 g protein per 100 g isn't warned about")
+        // and pointing back at it in words keeps the numbers theirs
+        let said: JSON = ["parts": [["name": "Chicken thigh, boiled", "grams": 142, "kcal": 229, "numbers_from": "them"] as JSON]]
+        XCTAssertEqual(str(list(Assistant.tidied(said, said: "And the chicken we spoke about all together", photos: false)["parts"])[0]["numbers_from"]), "them")
+    }
+
     /// "15g of that mayo I use every lunch" came out as any full-fat mayonnaise: it's the one they log.
     func testTheOneTheyAlwaysHave() {
         let said = "320g cabbage\n96g carrot\n15g of that mayo I use every lunch\n\nThat's my coleslaw, work out the calories and will have half of it"

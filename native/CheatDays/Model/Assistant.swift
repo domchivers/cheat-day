@@ -633,7 +633,7 @@ enum Assistant {
         let words = shop.isEmpty ? said : said.replacingOccurrences(of: shop, with: "", options: .caseInsensitive)
         // a number, or a food from before ("same as yesterday", "that pasta again"), whose logged numbers are theirs
         let gaveNumbers = words.range(of: #"\d"#, options: .regularExpression) != nil
-            || words.range(of: #"\b(same|again|yesterday|last|before|earlier|usual|another|that|those|leftover|leftovers)\b"#, options: [.regularExpression, .caseInsensitive]) != nil
+            || words.range(of: #"\b(same|again|yesterday|last|before|earlier|usual|another|that|those|leftover|leftovers|spoke|talked|mentioned|above|both|together)\b"#, options: [.regularExpression, .caseInsensitive]) != nil
         let label = photos || said.lowercased().contains("label")
         let shopPattern = NSRegularExpression.escapedPattern(for: shop) + #"(['’]s)?"#
         var out = e
@@ -944,7 +944,15 @@ enum Assistant {
             // "591 g batch" isn't the "557 g batch", however alike they cooked down: yesterday's leftover was renamed
             // as today's and given its calories
             let mine = figures(str(p["name"]))
-            let found = old.first { o in
+            // The very thing from an earlier card (sounds like it, the same grams) whose numbers were their own: those
+            // numbers, whatever it's been checked against since. Their 142 g of boiled thigh (229 kcal, all of 220 g
+            // raw) was looked up again as raw thigh, matched the 220 g raw card by its protein per gram, and came out
+            // as 142 g of raw thigh: 148 kcal.
+            let exact = old.first { o in
+                let own = ["them", "label"].contains(str(o["numbers_from"])) || ["them", "label"].contains(str(o["src"]))
+                return own && abs((num(o["grams"]) ?? 0) - g) < 1 && soundsLike(str(o["name"]), words)
+            }
+            let found = exact ?? old.first { o in
                 let og = num(o["grams"]) ?? 1, per = (num(o["protein_g"]) ?? 0) / og
                 let theirs = figures(str(o["name"]))
                 if !mine.isEmpty, !theirs.isEmpty, mine.isDisjoint(with: theirs) { return false }
@@ -1016,7 +1024,7 @@ enum Assistant {
             let r = Sanity.check(name: str(x["name"]), grams: num(x["grams"]), kcal: k, p: num(x["protein_g"]), c: num(x["carbs_g"]), f: num(x["fat_g"]))
             if r.kcal != k { parts[i]["kcal"] = r.kcal; fixed = true }
             // chicken boiled down to 60% of its weight really has 37 g protein per 100 g: theirs, so not "more than chicken has"
-            let own = ["them", "label"].contains(str(x["numbers_from"]))
+            let own = ["them", "label"].contains(str(x["numbers_from"])) || ["them", "label"].contains(str(x["src"]))
             let fl = own ? r.flags.filter { !$0.contains("per 100 g") } : r.flags
             if !fl.isEmpty { parts[i]["flagged"] = true }   // shown amber, and not counted as checked
             flags += fl
