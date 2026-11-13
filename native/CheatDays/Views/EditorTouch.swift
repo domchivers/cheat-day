@@ -12,6 +12,8 @@ import UIKit
     /// Degrees to the right.
     var turn: Double = 0
     var fingers = 0
+    /// Where the finger first landed, in the story's own points: with `move`, where it is now.
+    @ObservationIgnored var landed = CGPoint.zero
     /// Each item's own size on screen before it's made bigger or turned, for finding which one a finger landed on.
     @ObservationIgnored var sizes: [Int: CGSize] = [:]
 

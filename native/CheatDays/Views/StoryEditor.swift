@@ -476,6 +476,7 @@ struct StoryEditor: View {
     /// What a finger has landed on, and (the answer) where its middle is, for it to be sized and turned about the
     /// fingers: a thing placed, or the picture behind when that can be moved.
     private func grabBegan(_ p: CGPoint, _ cw: CGFloat, _ ch: CGFloat) -> CGPoint? {
+        grab.landed = p
         grab.letGo()
         let t = mode == .none ? (itemAt(p, cw, ch) ?? -1) : -1
         grab.target = t
@@ -498,7 +499,10 @@ struct StoryEditor: View {
             grab.move = move; grab.size = size; grab.turn = Double(turn) * 180 / Double.pi; grab.fingers = fingers
             // the lines down and across the middle, and the bin, as it comes to them
             let r = PlacedItem.resting(items[t], move: move, size: size, turn: grab.turn, fingers: fingers, cw: cw, ch: ch)
-            let bin = hypot(r.x * Double(cw) - Double(cw) / 2, r.y * Double(ch) - Double(ch - 70)) < 70
+            // over the bin when the finger is (it went by the thing's middle, so a big sticker held by its edge had
+            // to be dragged well past the bin, and one held by its far side went in early)
+            let finger = CGPoint(x: grab.landed.x + move.width, y: grab.landed.y + move.height)
+            let bin = hypot(Double(finger.x) - Double(cw) / 2, Double(finger.y) - Double(ch - 70)) < 48
             if r.sx != snapX || r.sy != snapY { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
             if bin != overBin { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
             if r.straight != straight { straight = r.straight; if r.straight, turn != 0 { UIImpactFeedbackGenerator(style: .light).impactOccurred() } }
