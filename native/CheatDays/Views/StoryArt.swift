@@ -269,7 +269,9 @@ struct StoryItem: View {
             .frame(height: 40)
         }
         .buttonStyle(.plain)
-        .disabled(vote == nil || votes?.mine != nil)
+        // not .disabled: that greys the words, so a poll looked washed out in the editor, on your own story and once
+        // you'd voted. It just stops taking taps.
+        .allowsHitTesting(vote != nil && votes?.mine == nil)
     }
 
     /// Eaten against the day's budget, as a ring.

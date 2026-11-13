@@ -287,11 +287,14 @@ struct PlacedItem: View {
         return (String(data: data, encoding: .utf8) ?? "") + "\(cw)"
     }
 
-    private var drawn: Bool { str(o["type"]) != "gif" }   // a GIF moves, so it stays live
+    private var drawn: Bool { str(o["type"]) != "gif" }
+    private static let margin: CGFloat = 32   // room for a shadow round the picture a sticker's drawn as   // a GIF moves, so it stays live
 
     private func draw() -> UIImage? {
-        let r = ImageRenderer(content: StoryItem(o: o).environment(\.colorScheme, .dark))
-        r.proposedSize = ProposedViewSize(width: StoryArt.design, height: nil)
+        // with room round it for its shadow: drawn to its own edges, the shadow was cut off square there, and what was
+        // left of it inside the corners read as a faint box behind the sticker
+        let r = ImageRenderer(content: StoryItem(o: o).padding(Self.margin).environment(\.colorScheme, .dark))
+        r.proposedSize = ProposedViewSize(width: StoryArt.design + Self.margin * 2, height: nil)   // the same width to wrap in as before
         r.scale = min(12, displayScale * max(1, (num(o["scale"]) ?? 1) * cw / StoryArt.design))
         return r.uiImage
     }
@@ -315,7 +318,8 @@ struct PlacedItem: View {
         let r = Self.resting(o, move: mine ? grab.move : .zero, size: mine ? grab.size : 1, turn: mine ? grab.turn : 0, fingers: mine ? grab.fingers : 0, cw: cw, ch: ch)
         let eff = r.scale * Double(cw / StoryArt.design)
         Group {
-            if drawn, let sharp, sharpFor == lookKey { Image(uiImage: sharp) } else { StoryItem(o: o) }
+            // the room for its shadow is taken back off its size, so it sits and is caught by a finger exactly as before
+            if drawn, let sharp, sharpFor == lookKey { Image(uiImage: sharp).padding(-Self.margin) } else { StoryItem(o: o) }
         }
             // its own size, for the editor to know when a finger has landed on it
             .background(GeometryReader { g in
