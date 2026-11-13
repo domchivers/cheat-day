@@ -124,6 +124,11 @@ struct StoryEditor: View {
     @State private var photoBox = PhotoLook()
     // where the clip had got to when last heard from, to tell when it's gone round to its start again
     @State private var clipClock = ClipClock()
+    // The clip's length and the part of it kept are known, so its player can be made. Made the moment the editor
+    // opened, it was made again a millisecond later when the length arrived (the part to play is part of how it's
+    // set up), and again if a kept part was put back: two or three players taken down and built in a row, each
+    // wanting the phone's video decoders while the one before still held them.
+    @State private var clipReady = false
     // a story's song (a post's is chosen where the post is written up): it plays while the story's being made, and
     // goes with the story as one of the things on it, to be played when the story's watched
     @State private var storySong: Song?
@@ -357,15 +362,15 @@ struct StoryEditor: View {
                         ZStack {
                             if let poster { Image(uiImage: poster).resizable().scaledToFill().frame(width: f.width, height: f.height).clipped() }
                             // turned on its side, the player is laid out sideways and then turned to stand in the frame
-                            LoopingVideo(url: video, paused: false, muted: muted, filter: look, range: length > 0 && mode != .trim ? range : nil, scrub: mode == .trim ? scrub : nil, always: true, box: lookBox, tick: songTick, volume: clipLevel)
+                            if clipReady { LoopingVideo(url: video, paused: false, muted: muted, filter: look, range: length > 0 && mode != .trim ? range : nil, scrub: mode == .trim ? scrub : nil, always: true, box: lookBox, tick: songTick, volume: clipLevel)
                                 .frame(width: turns % 2 == 1 ? f.height : f.width, height: turns % 2 == 1 ? f.width : f.height)
-                                .rotationEffect(.degrees(Double(turns) * 90))
+                                .rotationEffect(.degrees(Double(turns) * 90)) }
                         }
                         .frame(width: f.width, height: f.height)
                     }
                 } else {
                 if let poster { Image(uiImage: poster).resizable().scaledToFill().frame(width: cw, height: ch).clipped() }
-                LoopingVideo(url: video, paused: mode == .text, muted: muted, filter: look, range: length > 0 && mode != .trim ? range : nil, scrub: mode == .trim ? scrub : nil, always: true, box: lookBox, tick: songTick, volume: clipLevel)
+                if clipReady { LoopingVideo(url: video, paused: mode == .text, muted: muted, filter: look, range: length > 0 && mode != .trim ? range : nil, scrub: mode == .trim ? scrub : nil, always: true, box: lookBox, tick: songTick, volume: clipLevel) }
                 }
             } else if let shown = (comparing ? nil : preview) ?? work ?? image {
                 // the photo moves on its own too, and tells the editor only when the finger lifts
@@ -1138,6 +1143,7 @@ struct StoryEditor: View {
             if let r = startEdit?.range, r.lowerBound >= 0, r.upperBound <= length + 0.05, r.upperBound - r.lowerBound > 0.2 {
                 range = r.lowerBound...min(length, r.upperBound)
             }
+            clipReady = true
             // Its first frame straight away, behind the player, so there's never a black screen while it loads; then
             // eight along it for the trim strip and one for the filters' little pictures. Each is asked for the way
             // the cover picker asks (near the moment wanted, not "any frame you like"), and if none comes back the
