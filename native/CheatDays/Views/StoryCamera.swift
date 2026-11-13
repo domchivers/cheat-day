@@ -216,7 +216,7 @@ struct StoryCamera: View {
                     return
                 }
                 if recording { cam.stopMovie(); recording = false }
-                else if !cam.denied { UIImpactFeedbackGenerator(style: .light).impactOccurred(); cam.takePhoto() }
+                else if !cam.denied { UIImpactFeedbackGenerator(style: .light).impactOccurred(); cam.takePhoto(quick: layout > 0) }
             })
         .accessibilityLabel("Shutter").accessibilityHint("Tap for a photo, hold to film")
     }
@@ -540,8 +540,11 @@ final class CameraRig: NSObject {
     private var lensFloor: CGFloat = 1
     func zoom(shown z: CGFloat) { zoom(to: z * mainFactor) }
 
-    func takePhoto() {
+    /// `quick`: taken as fast as the phone can, without the second or so it spends making one photo its best. For
+    /// Layout, where several small ones are taken one after another.
+    func takePhoto(quick: Bool = false) {
         let settings = AVCapturePhotoSettings()
+        if quick { settings.photoQualityPrioritization = .speed }
         if photos.supportedFlashModes.contains(flash) { settings.flashMode = flash }
         photos.capturePhoto(with: settings, delegate: self)
     }
