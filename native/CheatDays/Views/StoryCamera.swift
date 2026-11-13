@@ -284,7 +284,10 @@ struct StoryCamera: View {
     private func layoutStage(_ size: CGSize) -> some View {
         let spots = Self.places(grid)
         return ZStack(alignment: .topLeading) {
-            Color.white
+            // white only behind the middle, for the lines between the places: right to the edge, it showed as a hair
+            // of white round the picture's rounded corners
+            Color.black
+            Color.white.padding(4)
             ForEach(spots.indices, id: \.self) { i in
                 let r = place(spots[i], in: size)
                 Group {
