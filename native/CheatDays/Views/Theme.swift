@@ -585,3 +585,11 @@ enum Skeleton {
         .shimmering()
     }
 }
+
+extension View {
+    /// Without the blur the system lays over the edges of a scrolling view (iOS 26 on): for full-screen pictures and
+    /// video, which it only smears.
+    @ViewBuilder func noScrollEdgeBlur() -> some View {
+        if #available(iOS 26, *) { scrollEdgeEffectHidden(true, for: .all) } else { self }
+    }
+}

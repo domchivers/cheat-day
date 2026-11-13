@@ -56,6 +56,9 @@ struct ReelsView: View {
             .scrollTargetLayout()
         }
         .scrollTargetBehavior(.paging)
+        // no blurred band under the status bar: the system puts one at the top of anything that scrolls, and here it
+        // lay across the top of the video
+        .noScrollEdgeBlur()
         .scrollPosition(id: $current)
         .scrollIndicators(.hidden)
         .ignoresSafeArea()
