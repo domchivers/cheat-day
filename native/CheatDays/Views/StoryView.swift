@@ -77,9 +77,11 @@ struct StoryView: View {
                 VStack(spacing: 10) {
                     bars(s.count)
                     header
+                    // every slide the one shape (9:16, a story's own): a meal or workout card was wider than a photo
                     content(s[min(slide, s.count - 1)])
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .aspectRatio(StoryArt.aspect, contentMode: .fit)
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .overlay { taps }
                         // polls sit above the taps, so voting doesn't skip the story
                         .overlay {
@@ -88,7 +90,8 @@ struct StoryView: View {
                                 if !polls.isEmpty { StoryLayer(items: polls, story: str(st["id"])).aspectRatio(StoryArt.aspect, contentMode: .fit) }
                             }
                         }
-                    footer(s[min(slide, s.count - 1)])
+                    // and the one height under it, whatever's there, so the slide above doesn't change size either
+                    footer(s[min(slide, s.count - 1)]).frame(height: 52)
                 }
                 .padding(.horizontal, 8)
                 // the row of emoji is open: a tap anywhere else puts it away
