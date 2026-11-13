@@ -290,7 +290,9 @@ struct PlacedItem: View {
     }
 
     private var drawn: Bool { str(o["type"]) != "gif" }
-    private static let margin: CGFloat = 32   // room for a shadow round the picture a sticker's drawn as   // a GIF moves, so it stays live
+    // Room for a shadow round the picture a sticker's drawn as. Every card, pill and sticker has one (10 points soft and
+    // 6 down at most), and glowing or neon text spreads furthest: two glows, the wider 20 points soft.
+    private static let margin: CGFloat = 60   // a GIF moves, so it stays live
 
     private func draw() -> UIImage? {
         // with room round it for its shadow: drawn to its own edges, the shadow was cut off square there, and what was

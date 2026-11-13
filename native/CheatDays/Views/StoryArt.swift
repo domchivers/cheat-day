@@ -338,7 +338,7 @@ struct StoryItem: View {
                 Text("Type something…").font(.system(size: 15, weight: .semibold)).foregroundStyle(.black.opacity(0.45))
                     .frame(maxWidth: .infinity).padding(.vertical, 11).background(.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
-            .buttonStyle(.plain).disabled(answer == nil)
+            .buttonStyle(.plain).allowsHitTesting(answer != nil)   // not .disabled, which greys its words (see the poll's answers)
         }
         .padding(14).frame(width: 260)
         .background(LinearGradient(colors: [StoryArt.color("8CC4FF"), StoryArt.color("C4A1FF")], startPoint: .topLeading, endPoint: .bottomTrailing),
