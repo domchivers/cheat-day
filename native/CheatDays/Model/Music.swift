@@ -4,7 +4,25 @@ import SwiftUI
 /// A song people can add to a post: a 30-second clip, streamed.
 struct Song: Identifiable, Hashable {
     let id: String, title: String, mood: String
+    /// Where in the song's longer clip the part that plays starts, when the poster chose (seconds). Not chosen: the
+    /// song's usual 30 seconds.
+    var start: Double? = nil
     var url: URL? { URL(string: Music.base + id + ".m4a") }
+    /// The longer clip a part is chosen from, for songs that have one.
+    var longURL: URL? { Music.long[id] == nil ? nil : URL(string: Music.base + "long/" + id + ".m4a") }
+    /// Where the part that plays starts in the longer clip.
+    var from: Double {
+        guard let l = Music.long[id] else { return 0 }
+        return min(max(0, start ?? l.at), max(0, l.len - 5))
+    }
+    /// As a post carries it: which song, and the part of it if one was chosen (a build from before that plays the usual part).
+    var tag: JSON {
+        var j: JSON = ["id": id, "title": title]
+        if let start { j["start"] = (start * 10).rounded() / 10 }
+        return j
+    }
+    /// How much of a song plays before it goes round again.
+    static let part = 30.0
 }
 
 /// The songs for posts. Every one was released as public domain (CC0): FreePD's collection, HoliznaCC0's lofi, and
@@ -126,7 +144,9 @@ enum Music {
     static func of(_ post: JSON) -> Song? {
         let s = dict(dict(post["extra"])["song"]), id = str(s["id"])
         guard !id.isEmpty else { return nil }
-        return all.first { $0.id == id } ?? Song(id: id, title: str(s["title"]), mood: "")
+        var song = all.first { $0.id == id } ?? Song(id: id, title: str(s["title"]), mood: "")
+        song.start = num(s["start"])
+        return song
     }
 }
 
@@ -137,6 +157,9 @@ enum Music {
     private(set) var playing: String?
     @ObservationIgnored private var player: AVPlayer?
     @ObservationIgnored private var end: NSObjectProtocol?
+    @ObservationIgnored private var edge: Any?    // watches for the end of the part that plays
+    @ObservationIgnored private var base = 0.0    // where in the file that part starts
+    @ObservationIgnored private var span = 0.0    // how long it is (0: the whole file)
 
     func toggle(_ song: Song, key: String) { if playing == key { stop() } else { play(song, key: key) } }
 
@@ -158,9 +181,9 @@ enum Music {
     /// or has gone round to its start again.
     func seek(_ seconds: Double) {
         guard let player else { return }
-        let length = player.currentItem?.duration.seconds ?? 0
+        let length = span > 0 ? span : (player.currentItem?.duration.seconds ?? 0)
         let to = length.isFinite && length > 0 ? seconds.truncatingRemainder(dividingBy: length) : seconds
-        player.seek(to: CMTime(seconds: max(0, to), preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+        player.seek(to: CMTime(seconds: base + max(0, to), preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
     }
 
     /// The song that's playing, louder or quieter (a slider being moved while it's heard).
@@ -179,13 +202,27 @@ enum Music {
     /// `loop`: under a post or a video it goes round for as long as that's on screen; in a list of songs it's heard once.
     func play(_ song: Song, key: String, loop: Bool = false, volume: Float = 1) {
         stop()
-        guard let url = song.url else { return }
+        // from its longer clip when it has one: the part the poster chose, or the usual 30 seconds of it
+        let long = Music.long[song.id]
+        guard let url = long != nil ? song.longURL : song.url else { return }
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
         try? AVAudioSession.sharedInstance().setActive(true)
+        let from = long != nil ? song.from : 0
+        base = from
+        span = long.map { min(Song.part, $0.len - from) } ?? 0
         let item = AVPlayerItem(url: url)
         let p = AVPlayer(playerItem: item)
-        end = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { [weak self, weak p] _ in
-            if loop { p?.seek(to: .zero); p?.play() } else { self?.stop() }
+        if from > 0 { p.seek(to: CMTime(seconds: from, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) }
+        // the part's over (or the file is): round again from where it starts, or done
+        let over: () -> Void = { [weak self, weak p] in
+            guard let self, let p, self.player === p else { return }
+            if loop { p.seek(to: CMTime(seconds: from, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero); p.play() } else { self.stop() }
+        }
+        end = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { _ in over() }
+        if span > 0 {
+            edge = p.addBoundaryTimeObserver(forTimes: [NSValue(time: CMTime(seconds: from + span, preferredTimescale: 600))], queue: .main) {
+                DispatchQueue.main.async { over() }
+            }
         }
         p.volume = volume
         player = p; playing = key
@@ -194,7 +231,9 @@ enum Music {
 
     func stop() {
         guard player != nil || playing != nil else { return }
-        player?.pause(); player = nil
+        player?.pause()
+        if let edge { player?.removeTimeObserver(edge) }
+        edge = nil; player = nil
         if let end { NotificationCenter.default.removeObserver(end) }
         end = nil; playing = nil
         guard !loud else { return }   // a video's being edited: its own sound is still wanted
@@ -252,5 +291,72 @@ struct SongPicker: View {
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { player.stop(); dismiss() } } }
             .onDisappear { player.stop() }
         }
+    }
+}
+
+/// Which part of a song plays: the whole of its longer clip as a strip of its sound, and a window on it, as long as
+/// the part that plays, slid to where it should start. Nothing for a song with no longer clip to choose from.
+struct SongScrub: View {
+    @Binding var song: Song
+    /// The window's been let go: play it from there.
+    var moved: (Song) -> Void
+    /// Where the window is while it's under a finger. Kept here until it's let go, so the screen it sits on (the
+    /// editor's a big one) isn't worked out again for every step of the drag.
+    @State private var dragged: Double?
+
+    var body: some View {
+        if let long = Music.long[song.id], long.len > Song.part + 2 {
+            let from = dragged ?? song.from, levels = Array(long.wave)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("Part of the song").font(.caption2.weight(.bold)).textCase(.uppercase).tracking(0.6).opacity(0.6)
+                    Spacer()
+                    Text("\(Self.clock(from)) – \(Self.clock(from + Song.part))").font(.caption.weight(.semibold)).monospacedDigit()
+                }
+                GeometryReader { g in
+                    let w = g.size.width, win = w * Song.part / long.len, x = w * from / long.len
+                    ZStack(alignment: .leading) {
+                        HStack(alignment: .center, spacing: 1.5) {
+                            ForEach(levels.indices, id: \.self) { i in
+                                let at = (Double(i) + 0.5) / Double(levels.count) * long.len
+                                RoundedRectangle(cornerRadius: 1, style: .continuous)
+                                    .fill(at >= from && at < from + Song.part ? Theme.accent : Color.primary.opacity(0.28))
+                                    .frame(height: 6 + CGFloat(levels[i].wholeNumberValue ?? 0) * 3.4)
+                                    .frame(maxWidth: .infinity)
+                            }
+                        }
+                        RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Color.primary, lineWidth: 2.5)
+                            .frame(width: win, height: 46).offset(x: x)
+                    }
+                    .frame(height: 46).contentShape(Rectangle())
+                    // the window's middle follows the finger, kept inside the strip
+                    .gesture(DragGesture(minimumDistance: 2)
+                        .onChanged { v in
+                            let s = Double((v.location.x - win / 2) / max(w, 1)) * long.len
+                            dragged = (min(max(0, s), long.len - Song.part) * 10).rounded() / 10
+                        }
+                        .onEnded { _ in
+                            var now = song
+                            if let d = dragged { now.start = d }
+                            song = now; dragged = nil
+                            UISelectionFeedbackGenerator().selectionChanged(); moved(now)
+                        })
+                }
+                .frame(height: 46)
+                .accessibilityElement().accessibilityLabel("Part of the song").accessibilityValue("From \(Self.clock(from))")
+                .accessibilityAdjustableAction { way in
+                    let s = from + (way == .increment ? 5 : -5)
+                    var now = song
+                    now.start = min(max(0, s), long.len - Song.part)
+                    song = now; moved(now)
+                }
+                HStack { Text("0:00"); Spacer(); Text(Self.clock(long.len)) }.font(.caption2).monospacedDigit().opacity(0.5)
+            }
+        }
+    }
+
+    static func clock(_ seconds: Double) -> String {
+        let t = Int(seconds.rounded())
+        return "\(t / 60):" + (t % 60 < 10 ? "0" : "") + "\(t % 60)"
     }
 }

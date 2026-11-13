@@ -276,6 +276,9 @@ struct EditPostSheet: View {
                     Button("Remove") { SongPlayer.shared.stop(); withAnimation(.snappy) { song = nil } }.font(.subheadline).foregroundStyle(.secondary).buttonStyle(.plain).padding(.leading, 6)
                 }
                 .padding(.horizontal, 14).padding(.vertical, 11)
+                // which part of the song plays
+                SongScrub(song: Binding(get: { song ?? s }, set: { song = $0 })) { SongPlayer.shared.play($0, key: "edit:" + $0.id, loop: isVideo, volume: Float(songVol)) }
+                    .padding(.horizontal, 14).padding(.bottom, 12)
             } else {
                 row("music.note", "Add a song") { typing = false; choosingSong = true }
             }
@@ -356,7 +359,7 @@ struct EditPostSheet: View {
                 busy = false; problem = "Couldn't save the picture: \(error.localizedDescription)"
                 return
             }
-            extra["song"] = song.map { ["id": $0.id, "title": $0.title] as JSON }
+            extra["song"] = song.map { $0.tag }
             extra["tags"] = tags.isEmpty ? nil : tags
             extra["mix"] = (song != nil && songVol < 0.995) || clipVol < 0.995 ? ["song": songVol, "clip": clipVol] as JSON : nil
             if whatChanged {

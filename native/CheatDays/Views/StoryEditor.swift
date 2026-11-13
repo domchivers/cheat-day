@@ -570,6 +570,10 @@ struct StoryEditor: View {
                 }
                 .buttonStyle(.plain)
             }
+            // which part of the song plays
+            if let s = song {
+                SongScrub(song: Binding(get: { song ?? s }, set: { setSong($0) })) { SongPlayer.shared.play($0, key: "story-edit", loop: true, volume: songLevel) }
+            }
             if let postSongVol, let postClipVol {
                 if song != nil { LevelBar(symbol: "music.note", name: "Song", value: postSongVol) }
                 if !muted { LevelBar(symbol: "video.fill", name: "Video", value: postClipVol) }

@@ -1311,7 +1311,7 @@ struct ComposeSheet: View {
         let id = draftID ?? UUID().uuidString
         var meta: JSON = ["caption": caption]
         if let what { meta["what"] = what }
-        if let song { meta["song"] = song.id }
+        if let song { meta["song"] = song.id; if let at = song.start { meta["songStart"] = at } }
         meta["mix"] = [songVol, clipVol]
         if !tags.isEmpty { meta["tags"] = tags }
         let pics = shots.map { ($0.source, $0.out) }, movie = movie, clip = clip, poster = poster
@@ -1325,6 +1325,7 @@ struct ComposeSheet: View {
         draftID = str(d["id"]); caption = str(d["caption"])
         if let w = d["what"] as? JSON { what = w }
         song = Music.all.first { $0.id == str(d["song"]) }
+        song?.start = num(d["songStart"])
         tags = d["tags"] as? [String] ?? []
         if let m = d["mix"] as? [Double], m.count == 2 { songVol = m[0]; clipVol = m[1] }
         shots = got.shots.map { Shot(source: $0.0, out: $0.1) }; showing = 0
@@ -1717,6 +1718,9 @@ struct ComposeSheet: View {
                     Button("Remove") { SongPlayer.shared.stop(); withAnimation(.snappy) { song = nil } }.font(.subheadline).foregroundStyle(.secondary).buttonStyle(.plain)
                 }
                 .padding(.horizontal, 14).padding(.vertical, 11)
+                // which part of the song plays
+                SongScrub(song: Binding(get: { song ?? s }, set: { song = $0 })) { SongPlayer.shared.play($0, key: "new:" + $0.id, loop: movie != nil, volume: Float(songVol)) }
+                    .padding(.horizontal, 14).padding(.bottom, 12)
             } else {
                 attachRow(rowIcon("music.note", .purple), "Song") { writing = false; choosingSong = true }
             }
@@ -1798,7 +1802,7 @@ struct ComposeSheet: View {
         if row["kcal"] == nil || row["kcal"] is NSNull { row["kcal"] = 0 }
         row["caption"] = caption.trimmingCharacters(in: .whitespacesAndNewlines)
         if let song {
-            var x = dict(row["extra"]); x["song"] = ["id": song.id, "title": song.title] as JSON
+            var x = dict(row["extra"]); x["song"] = song.tag
             if songVol < 0.995 || clipVol < 0.995 { x["mix"] = ["song": songVol, "clip": clipVol] as JSON }
             row["extra"] = x
         } else if movie != nil, clipVol < 0.995 {
