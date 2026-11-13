@@ -156,8 +156,12 @@ struct ChatView: View {
         }
         .frame(width: small ? 110 : 150, height: small ? 176 : 240)
         .overlay(alignment: .bottomLeading) {
+            // an answer's small card carries no name: the line over it says whose story, and a long name broke over
+            // three lines on it ("octavi- achivers's story")
+            if !small || !live {
             Text(!live ? "Story no longer available" : str(p["owner"]) == Feed.shared.me ? "Your story" : "\(Feed.shared.name(str(p["owner"])))'s story")
                 .font(.caption.weight(.bold)).foregroundStyle(.white).shadow(color: .black.opacity(0.6), radius: 3).padding(10)
+            }
         }
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .accessibilityLabel(live ? "Story, opens it" : "Story no longer available")
@@ -290,7 +294,18 @@ struct ChatView: View {
                 storyCard(p, live: live).contentShape(Rectangle())
                     .onTapGesture { if live, held == nil { watching = PostBox(post: ["id": str(p["owner"])]) } }
                     .accessibilityAddTraits(.isButton)
-                if !reaction.isEmpty { Text(reaction).font(.system(size: 40)) }
+                    // the emoji it was answered with: a small badge on the card's corner, as Instagram shows one (it
+                    // stood under the card at the size of a thumb, bigger than what it was about)
+                    .overlay(alignment: mine ? .bottomLeading : .bottomTrailing) {
+                        if !reaction.isEmpty {
+                            Text(reaction).font(.system(size: 17)).frame(width: 36, height: 30)
+                                .background(Color(.secondarySystemBackground), in: Capsule())
+                                .overlay(Capsule().stroke(Theme.bg, lineWidth: 3))
+                                .offset(x: mine ? -12 : 12, y: 12)
+                                .accessibilityLabel("Reacted with " + reaction)
+                        }
+                    }
+                    .padding(.bottom, reaction.isEmpty ? 0 : 12)
                 if !words.isEmpty {
                     Text(words).font(.body).foregroundStyle(mine ? Theme.onAccent : .primary)
                         .padding(.horizontal, 13).padding(.vertical, 9)
