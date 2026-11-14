@@ -515,7 +515,13 @@ struct PinchToZoom: ViewModifier {
             if #available(iOS 18.0, *) {
                 shown.gesture(PinchFollow(began: { at in
                     anchor = UnitPoint(x: at.x / max(1, size.width), y: at.y / max(1, size.height)); held = id
-                }, changed: { s, move in scale = min(5, max(1, s)); pan = move }, ended: end))
+                }, changed: { s, move in
+                    scale = min(5, max(1, s))
+                    // carried with the fingers once it's bigger than its place. At its own size it stays put: dragged
+                    // about there it left a black hole in the feed where it had been, which looked broken.
+                    let free = min(1, max(0, (scale - 1) / 0.2))
+                    pan = CGSize(width: move.width * free, height: move.height * free)
+                }, ended: end))
             } else {
                 // before iOS 18 a pinch can't be followed as it moves: it grows where it was pinched, and stays put
                 shown.simultaneousGesture(MagnifyGesture()
@@ -544,19 +550,27 @@ struct PinchFollow: UIGestureRecognizerRepresentable {
     var changed: (CGFloat, CGSize) -> Void
     var ended: () -> Void
 
-    final class Coordinator { var start = CGPoint.zero }
+    /// Where the fingers were last, how many there were, how far it's been carried, and how big the two made it.
+    final class Coordinator { var last = CGPoint.zero; var fingers = 0; var moved = CGSize.zero; var size: CGFloat = 1 }
     func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
     func makeUIGestureRecognizer(context: Context) -> UIPinchGestureRecognizer { UIPinchGestureRecognizer() }
     func handleUIGestureRecognizerAction(_ recognizer: UIPinchGestureRecognizer, context: Context) {
         let here = context.converter.location(in: .global)
         switch recognizer.state {
         case .began:
-            context.coordinator.start = here
+            let c = context.coordinator
+            c.last = here; c.fingers = recognizer.numberOfTouches; c.moved = .zero; c.size = 1
             began(context.converter.localLocation)
         case .changed:
-            // with one finger lifted the point between them jumps to the one that's left: not followed
-            guard recognizer.numberOfTouches >= 2 else { return }
-            changed(recognizer.scale, CGSize(width: here.x - context.coordinator.start.x, height: here.y - context.coordinator.start.y))
+            let c = context.coordinator
+            // One finger lifted: the one that's left still carries it about, at the size the two made it. The point
+            // between the fingers jumps to that finger as the other lifts, so the carrying is counted afresh from
+            // there (it used to stop dead at that moment, with the picture stuck until both were up).
+            if recognizer.numberOfTouches != c.fingers { c.fingers = recognizer.numberOfTouches; c.last = here }
+            c.moved.width += here.x - c.last.x; c.moved.height += here.y - c.last.y
+            c.last = here
+            if recognizer.numberOfTouches >= 2 { c.size = recognizer.scale }
+            changed(c.size, c.moved)
         case .ended, .cancelled, .failed: ended()
         default: break
         }
