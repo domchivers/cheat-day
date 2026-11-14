@@ -341,6 +341,12 @@ struct ReportTarget: Identifiable {
     let id = UUID()
     let user: String
     let what: String
+    /// post, story, comment, message or profile, its id, and a copy of it for whoever looks (a story is gone in a day).
+    var kind = ""
+    var target = ""
+    var text = ""
+    var media = ""
+    var video = false
 }
 
 /// "What's wrong with it?": the same reasons wherever something can be reported (a post, a story, a comment, a message,
@@ -355,7 +361,7 @@ struct ReportDialog: ViewModifier {
         content
             .confirmationDialog("What's wrong with it?", isPresented: Binding(get: { target != nil }, set: { if !$0 { target = nil } }), titleVisibility: .visible, presenting: target) { t in
                 ForEach(Self.reasons, id: \.self) { r in
-                    Button(r) { Task { await Profiles.shared.report(t.user, reason: r + " · " + t.what) }; thanks = true }
+                    Button(r) { Task { await Moderation.shared.report(t, reason: r) }; thanks = true }
                 }
                 Button("Cancel", role: .cancel) {}
             } message: { _ in Text("It goes to the app's owner. They won't know it was you.") }

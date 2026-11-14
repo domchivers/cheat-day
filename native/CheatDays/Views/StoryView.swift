@@ -19,14 +19,19 @@ struct StoryView: View {
     var onProfile: ((String) -> Void)? = nil
     @State private var tagged: String?   // someone tagged on a story, tapped, where no one else can show their profile
     @State private var reportOf: ReportTarget?
-    /// The slide showing, as a report names it.
-    private var reportWhat: String {
+    /// The slide showing, as a report carries it.
+    private var reportTarget: ReportTarget {
         let s = slides
-        guard !s.isEmpty else { return "Story" }
+        guard !s.isEmpty else { return ReportTarget(user: who, what: "Story", kind: "profile", target: who) }
         switch s[min(slide, s.count - 1)] {
-        case .snap(let st): return "Story: \(str(st["id"]))"
-        case .post(let p): return "Post: \(str(p["id"]))"
-        default: return "Their day, in a story"
+        case .snap(let st):
+            let words = list(st["overlays"]).map { str($0["text"]) + str($0["q"]) }.filter { !$0.isEmpty }.joined(separator: "\n")
+            let video = str(st["kind"]) == "video"
+            return ReportTarget(user: who, what: "Story: \(str(st["id"]))", kind: "story", target: str(st["id"]), text: words, media: video ? "" : str(st["media"]), video: video)
+        case .post(let p):
+            return ReportTarget(user: who, what: "Post: \(str(p["id"]))", kind: "post", target: str(p["id"]),
+                                text: [str(p["name"]), str(p["caption"])].filter { !$0.isEmpty }.joined(separator: "\n"), media: str(p["photo"]), video: Feed.video(p) != nil)
+        default: return ReportTarget(user: who, what: "Their day, in a story", kind: "profile", target: who)
         }
     }
     @State private var reply = ""
@@ -294,7 +299,7 @@ struct StoryView: View {
             Spacer()
             // someone else's: it can be reported (there was no way to from the story itself)
             if !isMe, highlight == nil {
-                Button { reportOf = ReportTarget(user: who, what: reportWhat) } label: {
+                Button { reportOf = reportTarget } label: {
                     Image(systemName: "flag").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white.opacity(0.85)).padding(8)
                 }
                 .accessibilityLabel("Report")

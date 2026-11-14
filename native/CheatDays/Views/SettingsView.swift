@@ -63,6 +63,10 @@ struct SettingsView: View {
                 }
                 if shows("Friends and sharing") { NavigationLink { page("Friends and sharing") { friendsPage } } label: { row("👥", "Friends and sharing") } }
                 if shows("Blocked") { NavigationLink { BlockedPage() } label: { row("🚫", "Blocked", value: "\(Follows.shared.blocked.count)") } }
+                // reviewers only (the owner): reports the AI couldn't settle, and disputes
+                if Moderation.shared.isModerator, shows("Review reports") {
+                    NavigationLink { ModerationQueueView() } label: { row("🚩", "Review reports", value: "\(Moderation.shared.waiting)") }
+                }
             } header: { if search.isEmpty { Text("Who can see your content") } }
             Section {
                 if helpers > 0, shows("Family") {

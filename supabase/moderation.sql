@@ -117,7 +117,8 @@ create policy "removals read" on public.removals for select to authenticated usi
 
 create table if not exists public.appeals (
   id uuid primary key default gen_random_uuid(),
-  removal_id uuid not null unique references public.removals(id) on delete cascade,
+  removal_id uuid unique references public.removals(id) on delete cascade,   -- null for a dispute of a suspension or ban
+  kind text not null default 'removal',       -- removal or ban
   user_id uuid not null references auth.users(id) on delete cascade,
   text text not null default '',
   status text not null default 'open',        -- open, restored, upheld
@@ -129,7 +130,29 @@ drop policy if exists "appeals read" on public.appeals;
 create policy "appeals read" on public.appeals for select to authenticated using (user_id = auth.uid() or public.is_moderator());
 drop policy if exists "appeals send" on public.appeals;
 create policy "appeals send" on public.appeals for insert to authenticated with check (
-  user_id = auth.uid() and exists (select 1 from public.removals r where r.id = removal_id and r.owner = auth.uid() and r.lifted_at is null));
+  user_id = auth.uid() and (
+    (kind = 'removal' and exists (select 1 from public.removals r where r.id = removal_id and r.owner = auth.uid() and r.lifted_at is null))
+    or (kind = 'ban' and removal_id is null and public.suspended())));
+-- one open dispute of a ban at a time
+create unique index if not exists appeals_one_ban on public.appeals (user_id) where kind = 'ban' and status = 'open';
+
+-- ---- repeat offences: three things removed in 90 days is a week's suspension, five is a ban until a person lifts it.
+-- Something hidden only while it's reviewed (reported as involving a child, not yet judged) doesn't count; removed for
+-- that by a person, it's a ban at once. Fewer than three again (a dispute won) lifts a suspension.
+create or replace function public.mod_strikes(o uuid, lift boolean default false) returns void
+language plpgsql security definer set search_path = public as $$
+declare n int; grave boolean;
+begin
+  perform set_config('app.moderating', '1', true);
+  select count(*) into n from removals where owner = o and lifted_at is null and created_at > now() - interval '90 days'
+    and not (category = 'child' and decided_by = 'ai');
+  select exists (select 1 from removals where owner = o and lifted_at is null and category = 'child' and decided_by = 'human') into grave;
+  if grave or n >= 5 then update profiles set suspended_until = now() + interval '100 years' where user_id = o;
+  elsif n >= 3 then update profiles set suspended_until = greatest(coalesce(suspended_until, now()), now() + interval '7 days') where user_id = o;
+  elsif lift then update profiles set suspended_until = null where user_id = o and suspended_until is not null;   -- only when something's been put back
+  end if;
+end $$;
+revoke execute on function public.mod_strikes(uuid, boolean) from public, anon, authenticated;
 
 -- ---- hiding and putting back: used by the moderate function (service role) and the reviewer functions below
 create or replace function public.mod_hide(k text, t text, cat text, reason text, rep uuid, who text) returns void
@@ -145,6 +168,7 @@ begin
     insert into removals (kind, target, owner, category, why, report_id, decided_by) values (k, t, o, cat, reason, rep, who)
     on conflict (kind, target) do update set lifted_at = null, category = excluded.category, why = excluded.why,
       report_id = excluded.report_id, decided_by = excluded.decided_by, created_at = now();
+    perform public.mod_strikes(o);
   end if;
 end $$;
 
@@ -157,6 +181,7 @@ begin
   elsif k = 'comment' then update comments set hidden_at = null where id::text = t;
   end if;
   update removals set lifted_at = now() where kind = k and target = t and lifted_at is null;
+  perform public.mod_strikes(x, true) from (select distinct owner as x from removals where kind = k and target = t) q;
 end $$;
 
 revoke execute on function public.mod_hide(text, text, text, text, uuid, text) from public, anon, authenticated;
@@ -170,9 +195,10 @@ create or replace function public.mod_queue() returns jsonb
 language sql security definer stable set search_path = public as $$
   select case when not public.is_moderator() then jsonb_build_object('reports', '[]'::jsonb, 'appeals', '[]'::jsonb) else jsonb_build_object(
     'reports', coalesce((select jsonb_agg(to_jsonb(r) order by r.created_at) from reports r where r.status = 'human'), '[]'::jsonb),
-    'appeals', coalesce((select jsonb_agg(jsonb_build_object('id', a.id, 'text', a.text, 'created_at', a.created_at, 'user_id', a.user_id,
+    'appeals', coalesce((select jsonb_agg(jsonb_build_object('id', a.id, 'kind', a.kind, 'text', a.text, 'created_at', a.created_at, 'user_id', a.user_id,
+                                                              'strikes', (select count(*) from removals s where s.owner = a.user_id and s.lifted_at is null),
                                                               'removal', to_jsonb(m), 'report', to_jsonb(r)) order by a.created_at)
-                         from appeals a join removals m on m.id = a.removal_id left join reports r on r.id = m.report_id
+                         from appeals a left join removals m on m.id = a.removal_id left join reports r on r.id = m.report_id
                          where a.status = 'open'), '[]'::jsonb)) end;
 $$;
 
@@ -201,12 +227,21 @@ end $$;
 -- a dispute: put it back, or leave it removed
 create or replace function public.mod_appeal(ap uuid, act text) returns void
 language plpgsql security definer set search_path = public as $$
-declare m removals;
+declare m removals; a appeals;
 begin
   if not public.is_moderator() then raise exception 'Not a reviewer'; end if;
-  select x.* into m from removals x join appeals a on a.removal_id = x.id where a.id = ap;
-  if m.id is null then return; end if;
-  if act = 'restore' then perform mod_show(m.kind, m.target); end if;
+  select * into a from appeals where id = ap;
+  if a.id is null then return; end if;
+  if a.kind = 'ban' then
+    -- the suspension or ban itself: lifted, whatever the count says
+    if act = 'restore' then
+      perform set_config('app.moderating', '1', true);
+      update profiles set suspended_until = null where user_id = a.user_id;
+    end if;
+  else
+    select * into m from removals where id = a.removal_id;
+    if m.id is not null and act = 'restore' then perform mod_show(m.kind, m.target); end if;
+  end if;
   update appeals set status = case when act = 'restore' then 'restored' else 'upheld' end, decided_at = now() where id = ap;
 end $$;
 

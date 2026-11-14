@@ -148,7 +148,7 @@ struct ProfileView: View {
         }
         .confirmationDialog("Report \(p?.name ?? "them")?", isPresented: $reporting, titleVisibility: .visible) {
             ForEach(ReportDialog.reasons, id: \.self) { r in
-                Button(r) { Task { await profiles.report(id, reason: r) } }
+                Button(r) { Task { await Moderation.shared.report(ReportTarget(user: id, what: "Profile", kind: "profile", target: id, text: [p?.name ?? "", p?.bio ?? ""].joined(separator: "\n")), reason: r) } }
             }
         } message: { Text("It goes to the app's owner. They won't know it was you.") }
         .confirmationDialog("Remove \(person?.name ?? "them") as a friend?", isPresented: $removing, titleVisibility: .visible) {

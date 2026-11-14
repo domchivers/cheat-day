@@ -318,7 +318,8 @@ struct ReelsView: View {
                                 Button(role: .destructive) { deleting = PostBox(post: p) } label: { Label("Delete post", systemImage: "trash") }
                             } else {
                                 Button { Profiles.shared.toggleMute(str(p["owner"])); dismiss() } label: { Label("Hide posts from \(feed.name(str(p["owner"])))", systemImage: "eye.slash") }
-                                Button { reportOf = ReportTarget(user: str(p["owner"]), what: "Post: \(id)") } label: { Label("Report post", systemImage: "flag") }
+                                Button { reportOf = ReportTarget(user: str(p["owner"]), what: "Post: \(id)", kind: "post", target: id,
+                                                                         text: [str(p["name"]), str(p["caption"])].filter { !$0.isEmpty }.joined(separator: "\n"), media: str(p["photo"]), video: Feed.video(p) != nil) } label: { Label("Report post", systemImage: "flag") }
                             }
                         } label: {
                             Self.railIcon("ellipsis").foregroundStyle(.white)

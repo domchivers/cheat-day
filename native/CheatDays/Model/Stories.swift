@@ -155,6 +155,13 @@ final class Stories {
         // carries on for a while if the app's left (see Feed.send)
         let keep = KeepAlive("Story")
         defer { keep.end() }
+        // The AI's look first (see Moderation): refused, it isn't shared and says why. A video has no picture to show
+        // it here, so only its words are looked at.
+        let words = overlays.map { str($0["text"]) + str($0["q"]) }.filter { !$0.isEmpty }.joined(separator: "\n")
+        var unsure = false
+        do { unsure = try await Moderation.shared.gate(kind: "story", text: words, image: image) }
+        catch let no as Moderation.Blocked { self.error = no.errorDescription; return false }
+        catch {}
         do {
             var row: JSON = ["owner": me, "overlays": overlays, "audience": audience]
             if let video {
@@ -165,6 +172,9 @@ final class Stories {
                 row["kind"] = "photo"; row["media"] = try await api.uploadPhoto(jpeg)
             } else { return false }
             let made = try await rows("/rest/v1/stories", method: "POST", body: [row], prefer: "return=representation")
+            if unsure, let st = made.first {
+                await Moderation.shared.flag(kind: "story", target: str(st["id"]), text: words, media: video == nil ? str(st["media"]) : "", video: video != nil)
+            }
             all += made; self.keep()   // (a local `keep` here is the thing holding the app awake)
             // (your own lights your ring until you've looked at it, as anyone's does: it was marked watched as it
             // went up, so your ring never showed you had something new)

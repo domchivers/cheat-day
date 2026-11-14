@@ -358,7 +358,8 @@ struct ChatView: View {
                     if kind == "text" { Divider(); heldRow("Copy", "doc.on.doc") { UIPasteboard.general.string = str(m["text"]); close() } }
                     if mine && kind == "text" { Divider(); heldRow("Edit", "pencil") { close(); replying = nil; rewording = m; text = str(m["text"]); typing = true } }
                     if mine { Divider(); heldRow("Delete", "trash", red: true) { close(); Task { await messages.delete(m) } } }
-                    else { Divider(); heldRow("Report", "flag", red: true) { close(); reportOf = ReportTarget(user: str(m["from_user"]), what: "Message: \(str(m["id"])) \"\(String(str(m["text"]).prefix(140)))\"") } }
+                    else { Divider(); heldRow("Report", "flag", red: true) { close(); reportOf = ReportTarget(user: str(m["from_user"]), what: "Message: \(str(m["id"])) \"\(String(str(m["text"]).prefix(140)))\"", kind: "message", target: str(m["id"]), text: str(m["text"]),
+                                                                                                 media: str(m["kind"]) == "photo" ? str(dict(m["payload"])["photo"]) : "") } }
                 }
                 .frame(width: 230)
                 .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))

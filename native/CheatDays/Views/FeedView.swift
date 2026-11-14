@@ -165,7 +165,9 @@ final class Feed {
             var row: JSON = ["post_id": post["id"] ?? "", "user_id": me, "text": text]
             if let r = replyTo { row["reply_to"] = r["id"] ?? NSNull() }
             let d = try await api.rest("/rest/v1/comments", method: "POST", body: [row], prefer: "return=representation")
-            comments += (try? JSONSerialization.jsonObject(with: d)) as? [JSON] ?? []
+            let made = (try? JSONSerialization.jsonObject(with: d)) as? [JSON] ?? []
+            comments += made
+            if let c = made.first { Moderation.shared.screen(kind: "comment", target: str(c["id"]), text: text) }
             notify(str(post["owner"]), kind: "comment", text: text, extra: ["post": str(post["id"])])
             if let r = replyTo, str(r["user_id"]) != str(post["owner"]) { notify(str(r["user_id"]), kind: "reply", text: text, extra: ["post": str(post["id"])]) }
             for who in Tagging.people(in: text) where who != me { await Messages.shared.send(to: who, text: "Mentioned you in a comment: " + String(text.prefix(140))) }
@@ -285,6 +287,10 @@ final class Feed {
     func post(_ row: JSON, photo: UIImage?, video: URL? = nil, filter: String = "Normal", range: ClosedRange<Double>? = nil, muted: Bool = false, crop: CGRect? = nil, overlay: UIImage? = nil, more: [UIImage] = [], turns: Int = 0, placed: ClipEdit? = nil) async throws {
         var r = row
         r["owner"] = me
+        // The AI's look first (see Moderation): refused, it isn't posted and says why; unsure, it goes up and a person
+        // is asked to look. A moment (a streak, a badge) is the app's own words.
+        let words = [str(r["name"]), str(r["caption"])].filter { !$0.isEmpty }.joined(separator: "\n")
+        let unsure = str(r["kind"]) == "moment" ? false : try await Moderation.shared.gate(kind: "post", text: words, images: (photo.map { [$0] } ?? []) + more)
         // a video: up to 30 seconds as mp4 into the same bucket as stories' videos; its first frame is the photo
         if let video {
             let (mp4, _) = try await Stories.compress(video, filter: filter, range: range, muted: muted, crop: crop, overlay: overlay, turns: turns, placed: placed)
@@ -314,7 +320,10 @@ final class Feed {
             await load()
             return
         }
-        _ = try await api.rest("/rest/v1/posts", method: "POST", body: [r], prefer: "return=representation")
+        let made = try await api.rest("/rest/v1/posts", method: "POST", body: [r], prefer: "return=representation")
+        if unsure, let id = ((try? JSONSerialization.jsonObject(with: made)) as? [JSON])?.first.map({ str($0["id"]) }) {
+            await Moderation.shared.flag(kind: "post", target: id, text: words, media: str(r["photo"]), video: video != nil)
+        }
         for who in Tagging.people(in: str(r["caption"])) where who != me { await Messages.shared.send(to: who, text: "Mentioned you in a post") }
         Store.shared.perform(["type": "bump", "key": "postCount"], syncAfter: 2)
         await load()
@@ -398,6 +407,7 @@ struct FeedView: View {
         ScrollViewReader { proxy in
         ScrollView {
             LazyVStack(spacing: 0) {
+                if only == nil { ModerationNotices() }
                 if only == nil { rings }
                 if only == nil { PostingBanner().padding(.horizontal, 14).padding(.bottom, 8) }
                 if let e = feed.error { Text(e).font(.footnote).foregroundStyle(Theme.warn).padding(.horizontal, 16).padding(.bottom, 8) }
@@ -451,6 +461,7 @@ struct FeedView: View {
         }
         .fullScreenCover(isPresented: $posting) { StoryComposer() }
         .task { if only == nil { await Stories.shared.load() } }
+        .task { if only == nil { await Moderation.shared.load() } }
     }
 
     // MARK: friends' days along the top
@@ -582,7 +593,8 @@ struct FeedView: View {
                     Button { sharing = PostBox(post: p) } label: { Label("Send to a friend", systemImage: "paperplane") }
                     if owner != feed.me {
                         Button { Profiles.shared.toggleMute(owner) } label: { Label("Hide posts from \(feed.name(owner))", systemImage: "eye.slash") }
-                        Button { reportOf = ReportTarget(user: owner, what: "Post: \(str(p["id"]))") } label: { Label("Report post", systemImage: "flag") }
+                        Button { reportOf = ReportTarget(user: owner, what: "Post: \(str(p["id"]))", kind: "post", target: str(p["id"]),
+                                                         text: [str(p["name"]), feed.caption(p)].filter { !$0.isEmpty }.joined(separator: "\n"), media: str(p["photo"]), video: Feed.video(p) != nil) } label: { Label("Report post", systemImage: "flag") }
                     }
                     if owner == feed.me {
                         Button { rewording = PostBox(post: p) } label: { Label("Edit", systemImage: "pencil") }
@@ -970,7 +982,7 @@ struct CommentsSheet: View {
                     if !likes.isEmpty { Text(likes.count == 1 ? "1 like" : "\(likes.count) likes") }
                     Button("Reply") { replying = reply ? (feed.comments.first { str($0["id"]) == str(c["reply_to"]) } ?? c) : c; typing = true }.buttonStyle(.plain).fontWeight(.semibold)
                     if who == feed.me { Button("Delete") { Task { await feed.deleteComment(c) } }.buttonStyle(.plain) }
-                    else { Button("Report") { reportOf = ReportTarget(user: who, what: "Comment: \(cid) \"\(String(str(c["text"]).prefix(140)))\"") }.buttonStyle(.plain) }
+                    else { Button("Report") { reportOf = ReportTarget(user: who, what: "Comment: \(cid) \"\(String(str(c["text"]).prefix(140)))\"", kind: "comment", target: cid, text: str(c["text"])) }.buttonStyle(.plain) }
                 }
                 .font(.caption).foregroundStyle(.secondary)
             }
