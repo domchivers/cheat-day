@@ -18,6 +18,17 @@ struct StoryView: View {
     /// The poster's name was tapped: the story closes and whoever opened it shows their profile as a normal page.
     var onProfile: ((String) -> Void)? = nil
     @State private var tagged: String?   // someone tagged on a story, tapped, where no one else can show their profile
+    @State private var reportOf: ReportTarget?
+    /// The slide showing, as a report names it.
+    private var reportWhat: String {
+        let s = slides
+        guard !s.isEmpty else { return "Story" }
+        switch s[min(slide, s.count - 1)] {
+        case .snap(let st): return "Story: \(str(st["id"]))"
+        case .post(let p): return "Post: \(str(p["id"]))"
+        default: return "Their day, in a story"
+        }
+    }
     @State private var reply = ""
     @State private var drag: CGFloat = 0
     @State private var sent = false
@@ -230,7 +241,7 @@ struct StoryView: View {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(50))
                 if case .snap(let st)? = now, str(st["kind"]) != "video", waited < 8, ImageStore.cached(str(st["media"])) == nil { waited += 0.05; continue }
-                if paused || tagged != nil || typing || reacting || sharing != nil || sharingStory != nil || seenBy != nil || adding != nil || managing != nil { continue }
+                if paused || tagged != nil || reportOf != nil || typing || reacting || sharing != nil || sharingStory != nil || seenBy != nil || adding != nil || managing != nil { continue }
                 progress += 0.05 / length
                 if progress >= 1 { next(); return }
             }
@@ -281,6 +292,13 @@ struct StoryView: View {
             .buttonStyle(.plain).accessibilityIdentifier("story-author")
             Text(when).font(.subheadline).foregroundStyle(.white.opacity(0.65))
             Spacer()
+            // someone else's: it can be reported (there was no way to from the story itself)
+            if !isMe, highlight == nil {
+                Button { reportOf = ReportTarget(user: who, what: reportWhat) } label: {
+                    Image(systemName: "flag").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white.opacity(0.85)).padding(8)
+                }
+                .accessibilityLabel("Report")
+            }
             Button { dismiss() } label: { Image(systemName: "xmark").font(.system(size: 18, weight: .semibold)).foregroundStyle(.white).padding(8) }
                 .accessibilityLabel("Close")
         }
@@ -299,6 +317,7 @@ struct StoryView: View {
         .accessibilityLabel("Story")
         .accessibilityAction(named: "Next") { next() }
         .accessibilityAction(named: "Back") { back() }
+        .reportDialog($reportOf)
         .sheet(isPresented: Binding(get: { tagged != nil }, set: { if !$0 { tagged = nil } })) {
             NavigationStack {
                 ProfileView(id: tagged ?? "")

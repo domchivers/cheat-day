@@ -385,6 +385,7 @@ struct FeedView: View {
     @State private var zoomed: String?   // the post whose picture two fingers have pinched bigger
     @State private var profileOf: String?
     @State private var tagOf: String?   // a hashtag tapped in a caption: its posts open
+    @State private var reportOf: ReportTarget?
     @State private var story: StoryStart?
     @State private var profileAfterStory: String?   // a name tapped in a story: their page opens once the story has closed
     @State private var posting = false   // making a story
@@ -444,6 +445,7 @@ struct FeedView: View {
         .fullScreenCover(item: $reels) { r in ReelsView(posts: only ?? feed.posts, startAt: r.id) }
         .navigationDestination(item: $profileOf) { id in ProfileView(id: id) }
         .navigationDestination(item: $tagOf) { t in HashtagView(tag: t) }
+        .reportDialog($reportOf)
         .fullScreenCover(item: $story, onDismiss: { if let p = profileAfterStory { profileAfterStory = nil; profileOf = p } }) { s in
             StoryView(people: s.people, at: s.at, onProfile: { profileAfterStory = $0 })
         }
@@ -580,7 +582,7 @@ struct FeedView: View {
                     Button { sharing = PostBox(post: p) } label: { Label("Send to a friend", systemImage: "paperplane") }
                     if owner != feed.me {
                         Button { Profiles.shared.toggleMute(owner) } label: { Label("Hide posts from \(feed.name(owner))", systemImage: "eye.slash") }
-                        Button { Task { await Profiles.shared.report(owner, reason: "Post: \(str(p["id"]))") } } label: { Label("Report post", systemImage: "flag") }
+                        Button { reportOf = ReportTarget(user: owner, what: "Post: \(str(p["id"]))") } label: { Label("Report post", systemImage: "flag") }
                     }
                     if owner == feed.me {
                         Button { rewording = PostBox(post: p) } label: { Label("Edit", systemImage: "pencil") }
@@ -884,6 +886,7 @@ struct CommentsSheet: View {
     @State private var replying: JSON?
     @State private var profile: String?   // someone tagged in a comment, tapped: their page opens here
     @State private var hashtag: String?   // a hashtag in a comment, tapped: its posts open here
+    @State private var reportOf: ReportTarget?
     @FocusState private var typing: Bool
     private var feed: Feed { Feed.shared }
     private var id: String { str(post["id"]) }
@@ -947,6 +950,7 @@ struct CommentsSheet: View {
             .navigationTitle("Comments").navigationBarTitleDisplayMode(.inline)
             .navigationDestination(item: $profile) { id in ProfileView(id: id) }
             .navigationDestination(item: $hashtag) { t in HashtagView(tag: t) }
+            .reportDialog($reportOf)
             .onAppear { KeyboardDone.quiet = true }
             .onDisappear { KeyboardDone.quiet = false }
         }
@@ -966,6 +970,7 @@ struct CommentsSheet: View {
                     if !likes.isEmpty { Text(likes.count == 1 ? "1 like" : "\(likes.count) likes") }
                     Button("Reply") { replying = reply ? (feed.comments.first { str($0["id"]) == str(c["reply_to"]) } ?? c) : c; typing = true }.buttonStyle(.plain).fontWeight(.semibold)
                     if who == feed.me { Button("Delete") { Task { await feed.deleteComment(c) } }.buttonStyle(.plain) }
+                    else { Button("Report") { reportOf = ReportTarget(user: who, what: "Comment: \(cid) \"\(String(str(c["text"]).prefix(140)))\"") }.buttonStyle(.plain) }
                 }
                 .font(.caption).foregroundStyle(.secondary)
             }

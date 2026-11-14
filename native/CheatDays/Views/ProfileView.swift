@@ -147,7 +147,7 @@ struct ProfileView: View {
             Text("Scan each other's code in Add a friend, then you can message.")
         }
         .confirmationDialog("Report \(p?.name ?? "them")?", isPresented: $reporting, titleVisibility: .visible) {
-            ForEach(["Spam", "Something hurtful", "Pretending to be someone", "Something else"], id: \.self) { r in
+            ForEach(ReportDialog.reasons, id: \.self) { r in
                 Button(r) { Task { await profiles.report(id, reason: r) } }
             }
         } message: { Text("It goes to the app's owner. They won't know it was you.") }

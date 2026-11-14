@@ -335,3 +335,36 @@ struct HonorsSheet: View {
         }
     }
 }
+
+/// Something being reported: whose it is, and what it is (kept with the report, so it can be found and looked at).
+struct ReportTarget: Identifiable {
+    let id = UUID()
+    let user: String
+    let what: String
+}
+
+/// "What's wrong with it?": the same reasons wherever something can be reported (a post, a story, a comment, a message,
+/// a person). The report goes to the app's owner; whoever is reported isn't told who sent it.
+struct ReportDialog: ViewModifier {
+    @Binding var target: ReportTarget?
+    @State private var thanks = false
+    static let reasons = ["Nudity or sexual content", "Harassment or bullying", "It involves a child", "Violence or self-harm", "Spam or a scam",
+                          "Pretending to be someone", "Something else"]
+
+    func body(content: Content) -> some View {
+        content
+            .confirmationDialog("What's wrong with it?", isPresented: Binding(get: { target != nil }, set: { if !$0 { target = nil } }), titleVisibility: .visible, presenting: target) { t in
+                ForEach(Self.reasons, id: \.self) { r in
+                    Button(r) { Task { await Profiles.shared.report(t.user, reason: r + " · " + t.what) }; thanks = true }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { _ in Text("It goes to the app's owner. They won't know it was you.") }
+            .alert("Reported", isPresented: $thanks) { Button("OK", role: .cancel) {} } message: {
+                Text("Thanks for telling us. You can also block this person, or hide their posts, from their profile.")
+            }
+    }
+}
+
+extension View {
+    func reportDialog(_ target: Binding<ReportTarget?>) -> some View { modifier(ReportDialog(target: target)) }
+}

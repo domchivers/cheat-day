@@ -126,6 +126,7 @@ struct ChatView: View {
     @State private var held: JSON?          // the message being held, with its emoji and options up
     @State private var watching: PostBox?   // a story sent in the chat, opened: its owner's stories
     @State private var adding: PostBox?     // a story you were mentioned in, being added to your own
+    @State private var reportOf: ReportTarget?
 
     private func storyCard(_ p: JSON, live: Bool) -> some View {
         // an answer to a story shows it smaller: the answer is the point, the story's the reminder
@@ -226,6 +227,7 @@ struct ChatView: View {
         .sheet(item: $opened, onDismiss: { KeyboardDone.quiet = true }) { b in PostRecipeSheet(post: b.post) }
         .fullScreenCover(item: $watching, onDismiss: { KeyboardDone.quiet = true }) { b in StoryView(people: [b.id], at: 0) }
         .fullScreenCover(item: $adding, onDismiss: { KeyboardDone.quiet = true }) { b in StoryReshare(story: b.post) }
+        .reportDialog($reportOf)
         .sheet(isPresented: $gifs, onDismiss: { KeyboardDone.quiet = true }) {
             GifPicker { g in
                 let payload = g.merging(takeReply()) { a, _ in a }
@@ -356,6 +358,7 @@ struct ChatView: View {
                     if kind == "text" { Divider(); heldRow("Copy", "doc.on.doc") { UIPasteboard.general.string = str(m["text"]); close() } }
                     if mine && kind == "text" { Divider(); heldRow("Edit", "pencil") { close(); replying = nil; rewording = m; text = str(m["text"]); typing = true } }
                     if mine { Divider(); heldRow("Delete", "trash", red: true) { close(); Task { await messages.delete(m) } } }
+                    else { Divider(); heldRow("Report", "flag", red: true) { close(); reportOf = ReportTarget(user: str(m["from_user"]), what: "Message: \(str(m["id"])) \"\(String(str(m["text"]).prefix(140)))\"") } }
                 }
                 .frame(width: 230)
                 .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))

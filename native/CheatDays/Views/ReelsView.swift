@@ -12,6 +12,7 @@ struct ReelStart: Identifiable { let id: String }
 struct ReelsView: View {
     let posts: [JSON]
     @Environment(\.dismiss) private var dismiss
+    @State private var reportOf: ReportTarget?
     @State private var current: String?
     @State private var paused = false
     @State private var muted = false
@@ -59,6 +60,7 @@ struct ReelsView: View {
         // no blurred band under the status bar: the system puts one at the top of anything that scrolls, and here it
         // lay across the top of the video
         .noScrollEdgeBlur()
+        .reportDialog($reportOf)
         .scrollPosition(id: $current)
         .scrollIndicators(.hidden)
         .ignoresSafeArea()
@@ -316,7 +318,7 @@ struct ReelsView: View {
                                 Button(role: .destructive) { deleting = PostBox(post: p) } label: { Label("Delete post", systemImage: "trash") }
                             } else {
                                 Button { Profiles.shared.toggleMute(str(p["owner"])); dismiss() } label: { Label("Hide posts from \(feed.name(str(p["owner"])))", systemImage: "eye.slash") }
-                                Button { Task { await Profiles.shared.report(str(p["owner"]), reason: "Post: \(id)") } } label: { Label("Report post", systemImage: "flag") }
+                                Button { reportOf = ReportTarget(user: str(p["owner"]), what: "Post: \(id)") } label: { Label("Report post", systemImage: "flag") }
                             }
                         } label: {
                             Self.railIcon("ellipsis").foregroundStyle(.white)
