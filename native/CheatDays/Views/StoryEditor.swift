@@ -695,6 +695,12 @@ struct StoryEditor: View {
                 tool("textformat", "Text", "Text") { newText() }
                 // more photos after this one: they were only had by picking several at the start
                 if !forPost, addMore != nil, roomFor > 0 { tool("photo.badge.plus", "Add", "Add photos") { addingSlides = true } }
+                // the same photo again as the next slide (the library won't let one be picked twice at once)
+                if !forPost, addMore != nil, roomFor > 0, image != nil || video != nil {
+                    tool("plus.square.on.square", "Again", "Use this photo again") {
+                        addMore?([StoryPick(image: image, video: video)]); flash("It comes again after this one")
+                    }
+                }
                 tool("face.smiling", "Stickers", "Stickers") { stickers = true }
                 tool("scribble.variable", "Draw", "Draw") { mode = .draw }
                 tool("camera.filters", "Filter", "Filters") { mode = .filters }
