@@ -739,7 +739,10 @@ struct FeedView: View {
             Spacer(minLength: 0)
             if str(p["owner"]) != feed.me {
                 Button { Task { await feed.toggle(p, "🎉") } } label: {
-                    Text(cheered ? "🎉 Cheered" : "🎉 Cheer").font(.subheadline.weight(.heavy)).foregroundStyle(.black)
+                    HStack(spacing: 5) {
+                        FluentIcon(emoji: "🎉", size: 17)   // the app's own icon, not the phone's emoji
+                        Text(cheered ? "Cheered" : "Cheer").font(.subheadline.weight(.heavy)).foregroundStyle(.black)
+                    }
                         .padding(.horizontal, 13).padding(.vertical, 8).background(Color.orange.opacity(cheered ? 0.55 : 1), in: Capsule())
                 }
                 .buttonStyle(.plain).sensoryFeedback(.success, trigger: cheered)

@@ -97,7 +97,7 @@ struct ProgressPage: View {
                 .alignmentGuide(.numberCentre) { $0[VerticalAlignment.center] + 11 }   // the middle of the number and the line under it
                 Text("Latest reading · \(DayKey.date(str(last["day"])).formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)))").font(.subheadline).foregroundStyle(.primary.opacity(0.8))
             } else if let now {
-                Text(greeting).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                greetingLine
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(Fmt.kg(now)).font(.system(size: 48, weight: .heavy, design: .rounded)).contentTransition(.numericText())
                     Text("kg").font(.headline).foregroundStyle(.secondary)
@@ -105,7 +105,7 @@ struct ProgressPage: View {
                 .alignmentGuide(.numberCentre) { $0[VerticalAlignment.center] + 11 }   // the middle of the number and the line under it
                 Text(toGo).font(.subheadline).foregroundStyle(.primary.opacity(0.8))
             } else {
-                Text(greeting).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                greetingLine
                 Text("Weigh in to start").font(.title2.weight(.heavy)).padding(.top, 2)
                 Text("Your trend and the date you'll reach your goal show here after a few weigh-ins.").font(.subheadline).foregroundStyle(.secondary)
             }
@@ -122,6 +122,18 @@ struct ProgressPage: View {
         if abs(d) < 0.05 { return "Same as now" }
         let amount = unit == "%" ? "\(Fmt.dec(abs(d)))%" : "\(Fmt.kg(abs(d)))\(unit.isEmpty ? "" : " " + unit)"
         return "\(amount) \(d > 0 ? "more" : "less") than now"
+    }
+
+    /// The greeting, its little picture drawn as one of the app's own icons (it was the phone's emoji, which looks
+    /// nothing like the rest of the app).
+    private var greetingLine: some View {
+        let words = greeting.split(separator: " ").map(String.init)
+        let icon = words.last.flatMap { UIImage(named: FoodEmoji.asset($0)) == nil ? nil : $0 }
+        return HStack(spacing: 5) {
+            Text(icon == nil ? greeting : words.dropLast().joined(separator: " ")).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+            if let icon { FluentIcon(emoji: icon, size: 18) }
+        }
+        .accessibilityElement(children: .combine)
     }
 
     private var greeting: String {
