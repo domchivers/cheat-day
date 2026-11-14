@@ -34,6 +34,9 @@ struct StoryEditor: View {
     var startEdit: ClipEdit? = nil
     /// Things already placed when it opens (someone's story being added to yours: their picture and their name).
     var startItems: [JSON] = []
+    /// A post's photo: the editor as it's left (what's on it, its look, where it sits, its turns), handed over just
+    /// before the finished picture, for opening it again the same.
+    var photoKept: ((ClipEdit) -> Void)? = nil
     /// A post's video: its song, and how loud the song and the video's own sound are, chosen here with the video
     /// playing (Audio), as Instagram has it. They're the post's own, kept by whoever opened the editor.
     var postSong: Binding<Song?>? = nil
@@ -115,6 +118,8 @@ struct StoryEditor: View {
     private var clipLook: String { StoryArt.look(filter, settled) }
     @State private var preview: UIImage?
     @State private var work: UIImage?   // the photo at screen size: filtering and drawing a 4000-pixel one lagged
+    @State private var photoTurns = 0     // quarter turns given to the photo
+    @State private var owedTurns = 0      // turns it had when last left, to give it again once it's ready
     @State private var thumbs: [String: UIImage] = [:]
     // the photo itself, pinched and moved
     @State private var bgScale: CGFloat = 1
@@ -218,7 +223,7 @@ struct StoryEditor: View {
                 canvas(cw, ch)
                     .frame(width: cw, height: ch)
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .overlay(alignment: mode == .text ? .top : .bottom) { tray(cw).padding(mode == .text ? .top : .bottom, mode == .text ? 64 : 12) }
+                    .overlay(alignment: .bottom) { if mode != .text { tray(cw).padding(.bottom, 12) } }
                     .overlay(alignment: .leading) { if mode == .text || mode == .draw { sizeSlider.padding(.leading, 8) } }
                     .overlay {
                         if stories.posting {
@@ -235,6 +240,10 @@ struct StoryEditor: View {
                     }
                     .animation(.easeOut(duration: 0.2), value: stories.posting)
                     .frame(width: screen.size.width, height: stageH)
+                    // Writing: the fonts and colours at the top of the screen, under Done. They hung 64 points down
+                    // the picture, which for a short one (a post's 4:5, lower on the screen) put them across its
+                    // middle, over the words being typed.
+                    .overlay(alignment: .top) { if mode == .text { tray(min(cw, screen.size.width)).padding(.top, 64) } }
                     // X and Done sit inside the picture when it reaches the top of its space (they straddled its
                     // rounded corner), and across the screen when it's a short one with black above it
                     .overlay(alignment: .top) { topBar.padding(.horizontal, 14).padding(.top, 12).frame(width: ch >= stageH - 1 && cw >= 250 ? cw : screen.size.width) }
@@ -276,6 +285,7 @@ struct StoryEditor: View {
                 // as it was left: the filter and Adjust, the sound, the turn, where the clip sits, and what's on it
                 restored = true
                 muted = e.muted; turns = e.turns; bgSpin = e.spin; bgScale = e.zoom; clipMove = e.move; clipCovers = !e.loose
+                if video == nil { turns = 0; owedTurns = e.turns % 4 }
                 if let k = e.kept {
                     filter = k.filter; tune = k.tune; settled = k.tune; items = k.items; strokes = k.strokes
                     bgScale = k.scale; bgOffset = k.offset; clipCovers = k.covers
@@ -717,6 +727,7 @@ struct StoryEditor: View {
             frames = frames.map { $0.quarterTurned() }
         } else {
             guard let now = work ?? image else { return }
+            photoTurns = (photoTurns + 1) % 4
             work = now.quarterTurned(); lite = lite?.quarterTurned(); preview = nil
             let l = flatLook
             Task { await refilter(l) }
@@ -1216,6 +1227,12 @@ struct StoryEditor: View {
             work = w; thumbs = t
             let long = max(w.size.width, w.size.height)
             if long > 1100 { lite = await w.byPreparingThumbnail(ofSize: CGSize(width: w.size.width * 1100 / long, height: w.size.height * 1100 / long)) }
+            // turned as it was when it was last left (with where it sat and how big, which a turn by hand would reset)
+            if owedTurns > 0 {
+                for _ in 0..<owedTurns { work = work?.quarterTurned(); lite = lite?.quarterTurned(); thumbs = thumbs.mapValues { $0.quarterTurned() } }
+                photoTurns = owedTurns; owedTurns = 0; preview = nil
+                await refilter(flatLook)
+            }
         }
         if let video {
             let asset = AVURLAsset(url: video)
@@ -1324,7 +1341,13 @@ struct StoryEditor: View {
             .buttonStyle(.plain).disabled(mode != .none).opacity(mode == .none ? 1 : 0.3)
         } else if forPost {
             Button {
-                if let out = baked() { UINotificationFeedbackGenerator().notificationOccurred(.success); finish?(out) }
+                if let out = baked() {
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    var e = ClipEdit(look: look, shape: ratio, turns: photoTurns, spin: bgSpin, zoom: bgScale)
+                    e.kept = ClipEdit.Kept(filter: filter, tune: tune, items: items, strokes: strokes, range: nil, scale: bgScale, offset: bgOffset, covers: true)
+                    photoKept?(e)
+                    finish?(out)
+                }
             } label: {
                 Text("Next").font(.headline).foregroundStyle(.black).frame(maxWidth: .infinity).padding(.vertical, 13).background(.white, in: Capsule())
             }

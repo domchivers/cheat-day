@@ -1094,7 +1094,10 @@ struct ComposeSheet: View {
     @State private var draftID: String?
     @State private var leaving = false
     @State private var triedPoster = false
-    private struct Shot: Identifiable { let id = UUID(); var source: UIImage; var out: UIImage }
+    /// A photo of the post: as it was picked, as it was finished, and the editor as it was left (to open it again with
+    /// its text, stickers, drawing and look still there to change).
+    private struct Shot: Identifiable { let id = UUID(); var source: UIImage; var out: UIImage; var edit: ClipEdit? = nil }
+    @State private var leftEdit: ClipEdit?   // the editor as it's just been left, on its way to the photo it was for
     /// The picture in the tile: the video's cover, or the photo picked from the row.
     private var photo: UIImage? { movie != nil ? poster : (shots.indices.contains(showing) ? shots[showing].out : shots.first?.out) }
     private var firstShape: CGFloat? { shots.first.map { $0.out.size.width / max($0.out.size.height, 1) } }
@@ -1289,10 +1292,14 @@ struct ComposeSheet: View {
                 let own = min(1.91, max(0.75, e.image.size.width / max(e.image.size.height, 1)))
                 StoryEditor(image: e.image, video: nil, aspect: later ? (firstShape ?? 4.0 / 5.0) : (e.index != nil ? own : 4.0 / 5.0), close: { editing = nil }, finish: { out in
                     movie = nil; poster = nil
-                    if let i = e.index, shots.indices.contains(i) { shots[i].out = out }
-                    else if shots.count < 10 { shots.append(Shot(source: e.image, out: out)); showing = shots.count - 1; stage = 0; firstPick = false }
+                    // the editor as it was left goes with the photo, when it was opened from the photo as picked (opened
+                    // from the finished picture, with everything already part of it, there's nothing to keep apart)
+                    let kept = e.whole ? leftEdit : nil
+                    if let i = e.index, shots.indices.contains(i) { shots[i].out = out; if e.whole { shots[i].edit = kept } }
+                    else if shots.count < 10 { shots.append(Shot(source: e.image, out: out, edit: kept)); showing = shots.count - 1; stage = 0; firstPick = false }
+                    leftEdit = nil
                     editing = nil
-                }, lockShape: later, startTool: e.tool)
+                }, startShape: later ? nil : e.edit?.shape, lockShape: later, startTool: e.tool, startEdit: e.edit, photoKept: { leftEdit = $0 })
             }
         }
     }
@@ -1502,7 +1509,10 @@ struct ComposeSheet: View {
     /// The photo showing, into the editor on one of its tools, as it stands now.
     private func edit(_ tool: String?) {
         guard shots.indices.contains(showing) else { return }
-        editing = EditBox(image: shots[showing].out, index: showing, tool: tool)
+        // with how it was left when there is one (its text and stickers still to change); else the finished picture
+        let shot = shots[showing]
+        editing = shot.edit != nil ? EditBox(image: shot.source, index: showing, tool: tool, edit: shot.edit)
+                                   : EditBox(image: shot.out, index: showing, tool: tool, whole: false)
     }
 
     /// A few songs to pick with one tap, under Add a song.
@@ -1545,7 +1555,7 @@ struct ComposeSheet: View {
                         }
                         .buttonStyle(.plain).accessibilityLabel("Photo \(i + 1)")
                         .contextMenu {
-                            Button { editing = EditBox(image: shot.source, index: i) } label: { Label("Edit", systemImage: "crop.rotate") }
+                            Button { editing = EditBox(image: shot.source, index: i, edit: shot.edit) } label: { Label("Edit", systemImage: "crop.rotate") }
                             if i > 0 { Button { move(i, to: 0) } label: { Label("Make it first", systemImage: "arrow.left.to.line") } }
                             if i > 0 { Button { move(i, to: i - 1) } label: { Label("Move left", systemImage: "arrow.left") } }
                             if i < shots.count - 1 { Button { move(i, to: i + 1) } label: { Label("Move right", systemImage: "arrow.right") } }
@@ -1614,7 +1624,7 @@ struct ComposeSheet: View {
             .overlay(alignment: .bottomTrailing) {
                 if photo != nil || what != nil {
                     Menu {
-                        if movie == nil, shots.indices.contains(showing) { Button { editing = EditBox(image: shots[showing].source, index: showing) } label: { Label("Edit photo", systemImage: "crop.rotate") } }
+                        if movie == nil, shots.indices.contains(showing) { Button { editing = EditBox(image: shots[showing].source, index: showing, edit: shots[showing].edit) } label: { Label("Edit photo", systemImage: "crop.rotate") } }
                         if let movie {
                             Button { cutting = ClipBox(url: movie) } label: { Label("Edit video", systemImage: "scissors") }
                             Button { choosingCover = true } label: { Label("Choose cover", systemImage: "photo") }
@@ -1964,7 +1974,9 @@ struct PostRecipeSheet: View {
     }
 }
 
-private struct EditBox: Identifiable { let id = UUID(); let image: UIImage; var index: Int? = nil; var tool: String? = nil }
+private struct EditBox: Identifiable { let id = UUID(); let image: UIImage; var index: Int? = nil; var tool: String? = nil; var edit: ClipEdit? = nil
+    /// Opened from the photo as it was picked (so what's put on it is kept apart from it), not from a finished picture.
+    var whole = true }
 private struct ClipBox: Identifiable { let id = UUID(); let url: URL; var first: UIImage? = nil }
 
 /// A post's picture. SwiftUI's AsyncImage stays blank for good if scrolling cancels its download, as a long feed does;
