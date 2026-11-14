@@ -265,7 +265,7 @@ enum Takeaway {
             "kj": n, "kcal": n, "protein_g": n, "carbs_g": n, "fat_g": n] as JSON] as JSON] as JSON] as JSON]
 
     /// Kept word for word with the scripts that tested them against Claude: routeAsk with tools/ai-test/intent-check.js,
-    /// menuAsk with menu-check.js.
+    /// menuAsk with menu-check.js, findAsk with find-protein-check.js ("new").
     static func routeAsk(_ message: String, earlier: String, photo: String = "") -> String {
         """
         A message to the assistant in a food diary app\(photo.isEmpty ? "" : ", with a photo of \(photo)"). What is it?
@@ -289,8 +289,8 @@ enum Takeaway {
     /// Kept word for word with tools/ai-test/find-check.js, where it found four South Yarra places on the web in 16 s for 2.4¢.
     static func findAsk(_ area: String, want: [String], meal: String, kcal: Double, protein: Double) -> String {
         """
-        Find 4 real restaurants, cafés or takeaways in or near \(area), \(Plan.country), for \(meal.lowercased())\(want.isEmpty ? "" : ", for someone after \(want.joined(separator: ", "))"). For each, the one dish on its current menu that best fits about \(Fmt.int(kcal)) kcal with \(Int(protein)) g protein or more. Search the web for places there; delivery listings on DoorDash, Uber Eats or Menulog have the current menu, often with kJ in each item's name ("Chicken Bowl (2280 kJ)"). Only list places you found on a page, in that area, still trading.
-        For each place: name as it calls itself. area: its street or suburb, a few words. cuisine: one or two words. dish: as named on its menu, one serving. published is full when the place gives that dish's calories and protein, energy when it gives only kJ or kcal, none when it gives nothing. kj: exactly as published, else 0. kcal: as published, else kJ ÷ 4.184, else your honest estimate. protein_g, carbs_g and fat_g: as published, else your honest estimate from what the dish is and its usual portion. Never guess a kJ: a dish whose energy you didn't read on a page has kj 0 and published none.
+        Find 4 real restaurants, cafés or takeaways in or near \(area), \(Plan.country), for \(meal.lowercased())\(want.isEmpty ? "" : ", for someone after \(want.joined(separator: ", "))"). For each, the one order from its current menu that gets to \(Int(protein)) g protein or more within about \(Fmt.int(kcal)) kcal: one dish when a dish has that much protein, else a dish with what makes up the protein from the same menu (double meat, extra pieces of chicken, a second small main, a protein side), up to three items. The protein matters most: where the menu can reach \(Int(protein)) g, the order reaches it; where it can't, give the order with the most protein you can within the calories. Always give 4 places. Search the web for places there; delivery listings on DoorDash, Uber Eats or Menulog have the current menu, often with kJ in each item's name ("Chicken Bowl (2280 kJ)"). Only list places you found on a page, in that area, still trading.
+        For each place: name as it calls itself. area: its street or suburb, a few words. cuisine: one or two words. dish: the order as named on its menu, items joined with " + " ("Grilled Chicken Bowl + Extra Chicken"). published is full when the place gives the calories and protein of every item in the order, energy when it gives only their kJ or kcal, none when any item has nothing. kj: the items' published kJ added up, else 0. kcal: as published added up, else kJ ÷ 4.184, else your honest estimate. protein_g, carbs_g and fat_g: for the whole order, as published, else your honest estimate from what each item is and its usual portion. Never guess a kJ: an order with an item whose energy you didn't read on a page has kj 0 and published none.
         found false if you couldn't find places there.
         """
     }
@@ -516,9 +516,18 @@ enum Takeaway {
             return ["kind": "answer", "trail": ["Searched the web for places in \(area)"],
                     "reply": "I couldn't find places in \(area) online. Name one you're thinking of and I'll check its menu."]
         }
-        let reply = "For \(meal.lowercased()) around \(Fmt.int(kcal)) kcal with \(Int(protein)) g protein, \(found.count == 1 ? "this place" : "these \(found.count)") in \(area) fit. Tap one to plan it:"
+        // The ones that get to the protein asked for (within a tenth) and stay near the calories come first, then the
+        // rest by how much protein they have, and the sentence says how many do. It said they all "fit" whatever the
+        // numbers were: four dinners of 35 to 52 g were offered as fitting 70 g.
+        func fits(_ p: JSON) -> Bool { (num(p["protein_g"]) ?? 0) >= protein * 0.9 && (num(p["kcal"]) ?? 0) <= kcal * 1.15 }
+        let ranked = found.filter(fits) + found.filter { !fits($0) }.sorted { (num($0["protein_g"]) ?? 0) > (num($1["protein_g"]) ?? 0) }
+        let hits = found.filter(fits).count, aim = "around \(Fmt.int(kcal)) kcal with \(Int(protein)) g protein"
+        let reply: String
+        if hits == ranked.count { reply = "For \(meal.lowercased()) \(aim), \(ranked.count == 1 ? "this place" : "these \(ranked.count)") in \(area) fit. Tap one to plan it:" }
+        else if hits > 0 { reply = "For \(meal.lowercased()) \(aim), \(hits) of these \(ranked.count) in \(area) \(hits == 1 ? "gets" : "get") there (listed first). The rest fall short on protein. Tap one to plan it:" }
+        else { reply = "Nothing I found in \(area) gets to \(Int(protein)) g protein in around \(Fmt.int(kcal)) kcal for \(meal.lowercased()). These come closest, most protein first. Tap one to plan it:" }
         return ["kind": "places", "reply": reply, "meal": meal, "trail": ["Searched the web for places in \(area)"],
-                "places": ["area": area, "asked": asked, "meal": meal, "kcal": kcal, "protein": protein, "places": Array(found)] as JSON]
+                "places": ["area": area, "asked": asked, "meal": meal, "kcal": kcal, "protein": protein, "places": ranked] as JSON]
     }
 
     /// What to aim for: everything left at dinner, else this meal's share; for tomorrow, that meal's usual share of a day.

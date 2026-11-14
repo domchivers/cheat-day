@@ -150,6 +150,24 @@ final class TakeawayTests: XCTestCase {
         XCTAssertEqual(dict(Takeaway.routeSchema["properties"])["intent"].flatMap { $0 as? JSON }?["enum"] as? [String], ["choose", "find", "log", "other"])
     }
 
+    /// 70 g of protein asked for and dinners of 35 to 52 g found: not called a fit. The ones that reach it come first
+    /// and the sentence says how many do.
+    func testPlacesSayWhetherTheyReachTheProtein() {
+        func spot(_ name: String, _ kcal: Double, _ p: Double) -> JSON {
+            ["name": name, "area": "Melbourne", "cuisine": "Chicken", "dish": "A box", "published": "full", "kj": 0, "kcal": kcal, "protein_g": p, "carbs_g": 50, "fat_g": 20]
+        }
+        let short: JSON = ["found": true, "places": [spot("A", 906, 52), spot("B", 760, 35), spot("C", 837, 50)] as [JSON]]
+        let none = Takeaway.places(short, area: "Melbourne", asked: "", meal: "Dinner", kcal: 1000, protein: 70)
+        XCTAssertTrue(str(none["reply"]).hasPrefix("Nothing I found"), str(none["reply"]))
+        XCTAssertEqual(list(dict(none["places"])["places"]).map { str($0["name"]) }, ["A", "C", "B"], "most protein first")
+        let mixed: JSON = ["found": true, "places": [spot("A", 906, 52), spot("B", 990, 76), spot("C", 1400, 95)] as [JSON]]
+        let some = Takeaway.places(mixed, area: "Melbourne", asked: "", meal: "Dinner", kcal: 1000, protein: 70)
+        XCTAssertTrue(str(some["reply"]).contains("1 of these 3"), str(some["reply"]))
+        XCTAssertEqual(list(dict(some["places"])["places"]).map { str($0["name"]) }, ["B", "C", "A"], "the one that fits, then by protein (C is far over the calories)")
+        let all: JSON = ["found": true, "places": [spot("A", 900, 70), spot("B", 990, 76)] as [JSON]]
+        XCTAssertTrue(str(Takeaway.places(all, area: "Melbourne", asked: "", meal: "Dinner", kcal: 1000, protein: 70)["reply"]).contains("these 2 in Melbourne fit"))
+    }
+
     /// "Any good lunch spots in South Yarra?": the places the search found, their kJ winning, a dish with no energy read
     /// on a page marked estimated, and a place on the list found again by a tap or by the router's "the Greek one".
     func testFindingPlaces() {
