@@ -256,6 +256,12 @@ enum Assistant {
     - \(Sanity.amounts) Meat and fish by weight, not "1 thigh": say the grams you assumed.
     - Photos: before giving grams, look over the whole scene for anything whose real size you know (cutlery, plates, cups, cans, bottles, sauce tubs, takeaway boxes and containers, chopsticks, a phone, a hand, a card, packaging, standard pieces like a chip or an egg) and size each food against it. Use more than one when you can and check they agree. A box or bowl of unknown size can be judged from the known things in it, and a tub's fill tells how much is in it. Never assume a standard portion: bakery and café items vary a lot, and a small croissant isn't a big one. With several photos, size from the one that shows the most around the food (the whole table, the plate, the mug) and use close-ups only to see what it is: close up, food looks bigger than it is. Put that in each part's size ("about 10 cm long, against the side plate"), and in reply say it in a few words. With nothing to size against, or when you can't tell how big or how dense it is, set size_unsure, say you assumed a regular size, and the app asks them small, regular or large.
     - Leftovers: with several photos of one meal, one showing it finished or part eaten is the after photo. Grams are what they ate: the full amount less what's left, part by part (broth, noodles and meat each), and say it in that part's size ("about 150 g broth left, taken off"). Only a finished or part-eaten plate and no before photo: give the full serving's parts, set eaten_unsure, and the app asks how much they had.
+    - Photo estimates are a range, narrowed as they tell you more. In each sized part's size, start with the range of grams it could really be and then what it's based on, in this form: "range 60–120 g; 10 × ~8 g pieces, against the saucer". grams is the most likely amount, inside that range. In reply say the range and the likely amount in a few words ("half the box is about 60–120 g, most likely 80 g").
+    - What a weight is based on, most reliable first: a label, receipt or a weight they give (for the food, the box, the pack); a count they give times the weight of one piece; a size they give; firm things of known size in the photo (plate, cup, saucer, cutlery, a takeaway box); a hand (sizes vary a lot: widen the range when it's all you have); a usual portion. Name the one you used in the part's size.
+    - A follow-up can only narrow your range: new grams stay inside the range you gave before, unless they give a weight or count outside it, and then say "that's outside my earlier range, so I'm going with your number". A weight they give is final: never move it for a new look at the photo (a hand, the cup again); say you're sticking with their number. Asked to check again with nothing new, keep the same grams and explain the range rather than giving new ones.
+    - How it eats changes the grams, never the calories per 100 g: light, fluffy, airy, whipped or mousse-like means less weight for the size you see (about 0.3 to 0.5 g per cm³, where most food is 0.8 to 1.0); dense, rich, fudgy or heavy means more (0.9 to 1.1). Use it in the very first estimate.
+    - Food in pieces (a box of bites, dumplings, nuggets, sushi, cookies): count the pieces in the photo, take how many they had (half the box of 20 is 10), size one piece, and give grams as the count times one piece, written in size as "10 × ~7.5 g". When they correct the count or a piece's size, change only that.
+    - A size in a unit that can't be right for food ("pieces about 1.5 m"): work from the likely one (1.5 cm) and ask in reply "Did you mean 1.5 cm?", never take it silently.
     - For an estimate, never put calories, protein or other totals in reply: the app checks every part against the food tables and the card shows the checked numbers (a reply saying 1,140 kcal sat over a card showing 1,004).
     - Side sauces and condiments (hoisin, sriracha, chilli sauce, soy, ketchup, mayo, a dressing on the side) only when they show on the food or they say they had them, never because the dish usually comes with them: leave them out and name the usual one in side_sauce, and the app offers it. A sauce that's part of the dish (a curry's sauce, ramen tare, a sauce poured over a rice bowl) is a part as usual.
     - Name each part as the food itself, with how it's cooked after a comma ("Cheese, melted", "Kabana", "Croissant, plain"), never where it sits ("melted cheese on the croissant"), so it's checked against the right food.
@@ -380,8 +386,14 @@ enum Assistant {
         if var e = answer["estimate"] as? JSON {
             // logging from a menu page: its energy is the shop's own, not "doesn't publish its numbers"
             if let s = seen, !s.listing.isEmpty { e["shopNote"] = "Energy from the kJ on \(s.shop.isEmpty ? "the menu" : s.shop + "'s") page in your photo" }
-            answer["estimate"] = tidied(e, said: last.text, photos: !pics.isEmpty)
+            // held to the last card: the range each part had, a weight they gave, nothing moved by just asking again
+            let before = turns.dropLast().last { !$0.me && $0.result?["estimate"] != nil }?.result?["estimate"] as? JSON
+            let h = held(tidied(e, said: last.text, photos: !pics.isEmpty), before: before, said: last.text)
+            answer["estimate"] = h.estimate
+            if !h.notes.isEmpty { answer["reply"] = ([str(answer["reply"])] + h.notes).joined(separator: " ") }
         }
+        // "pieces about 1.5 m": asked, never quietly taken one way or the other
+        if let q = unitQuestion(last.text), !str(answer["reply"]).contains(q) { answer["reply"] = str(answer["reply"]) + " " + q }
         if groundNow, str(answer["kind"]) == "estimate", let e = answer["estimate"] as? JSON { answer["estimate"] = await ground(e) }
         // a recipe's ingredients checked like the recipe screen's
         if str(answer["kind"]) == "recipe", var rc = answer["recipe"] as? JSON {
@@ -732,6 +744,18 @@ enum Assistant {
         parts.filter { !["", "ai", "label", "them", "web"].contains(str($0["src"])) && $0["flagged"] as? Bool != true }.count
     }
 
+    /// Numbers that don't fit the kind of food the part is (more protein than a dessert can have, calories out of its range).
+    static func wrongFor(_ x: JSON) -> Bool {
+        !Sanity.check(name: str(x["name"]), grams: num(x["grams"]), kcal: num(x["kcal"]) ?? 0, p: num(x["protein_g"]), c: num(x["carbs_g"]), f: num(x["fat_g"])).flags.isEmpty
+    }
+
+    /// An earlier card's part whose numbers don't fit its kind of food (checked before a fix: the tiramisu counted as
+    /// cocoa powder), so nothing later copies them. Their own numbers (a label, a batch boiled down) are theirs and stay.
+    static func stale(_ x: JSON) -> Bool {
+        let own = ["them", "label"].contains(str(x["numbers_from"])) || ["them", "label"].contains(str(x["src"]))
+        return !own && wrongFor(x)
+    }
+
     /// A part checked against a table entry whose numbers don't fit that kind of food (rice noodles at 8 g protein a
     /// 100 g): the closest other entry that does fit, with a line saying so; nil when the first was fine or none fits.
     static func rematched(_ part: JSON, from first: FoodTable.Food, table: FoodTable = .current) -> JSON? {
@@ -810,7 +834,9 @@ enum Assistant {
                 if let found = await Gemini.lookUpLabel(str(x["name"])) { parts[i] = fromLabel(x, found) }
                 continue
             }
-            if let e = FoodReference.match(str(x["name"])) {   // a species or cut we've checked: before any list or database
+            // a species or cut we've checked: before any list or database, unless its numbers don't fit the kind of food
+            // the part is (a cocoa-dusted tiramisu isn't cocoa powder)
+            if let e = FoodReference.match(str(x["name"])), !wrongFor(checked(x, kcal100: e.kcal, p100: e.p, c100: e.c, f100: e.f, source: "reference")) {
                 parts[i] = checked(x, kcal100: e.kcal, p100: e.p, c100: e.c, f100: e.f, source: "reference", match: e.name)
             } else if let f = FoodTable.current.best(str(x["name"]), tags: tags(x)), plausible(f.kcal, aiKcal: num(x["kcal"]) ?? 0, grams: g, name: str(x["name"])) {
                 // the official numbers for their country (AFCD, CoFID or USDA SR Legacy) before the app's list or the US database,
@@ -933,7 +959,7 @@ enum Assistant {
     /// "Ice cream Kenny's" turned the same 220 g burger from 579 kcal into 376 when it was checked again.
     static func keepingEarlier(_ e: JSON, _ before: JSON?) -> JSON {
         guard let before else { return e }
-        let old = CheatDays.list(before["parts"])
+        let old = CheatDays.list(before["parts"]).filter { !stale($0) }
         var kept = false
         let parts = CheatDays.list(e["parts"]).map { p -> JSON in
             guard let o = old.first(where: { str($0["name"]).lowercased() == str(p["name"]).lowercased() && abs((num($0["grams"]) ?? 0) - (num(p["grams"]) ?? 0)) < 1 }) else { return p }
@@ -954,7 +980,7 @@ enum Assistant {
     /// batch that cooked down differently isn't); its calories, carbs, fat and name then come from the earlier part,
     /// scaled to its grams. Earlier is this chat's cards, oldest first: the latest one that fits is used.
     static func steady(_ e: JSON, earlier: [JSON]) -> JSON {
-        let old = earlier.reversed().flatMap { CheatDays.list($0["parts"]) }.filter { pos($0["grams"]) != nil && pos($0["kcal"]) != nil && pos($0["protein_g"]) != nil }
+        let old = earlier.reversed().flatMap { CheatDays.list($0["parts"]) }.filter { pos($0["grams"]) != nil && pos($0["kcal"]) != nil && pos($0["protein_g"]) != nil && !stale($0) }
         guard !old.isEmpty else { return e }
         var changed = false
         let parts = CheatDays.list(e["parts"]).map { p -> JSON in

@@ -20,15 +20,20 @@ enum FoodReference {
     /// Words that make it a different food from the raw one in the table: cooked, processed, or only flavoured with it.
     private static let otherFood = ["cooked", "grilled", "roast", "fried", "baked", "braised", "steamed", "poached", "smoked", "pulled", "shredded", "bbq", "rotisserie",
                                     "canned", "tinned", "crumbed", "battered", "dried", "stock", "broth", "sauce", "gravy ", "paste", "powder", "marinade", "seasoning", "flavour",
-                                    "burger", "nugget", "schnitzel", "sausage", " pie", "soup", "salad", "dressing", " oil", "cake", "curry", "dumpling", "wrap", "sandwich"]
+                                    "burger", "nugget", "schnitzel", "sausage", " pie", "soup", "salad", "dressing", " oil", "cake", "curry", "dumpling", "wrap", "sandwich",
+                                    // only on it: "Tiramisu, cocoa dusted" was counted as 170 g of cocoa powder (20 g protein a 100 g)
+                                    "dusted", "dusting", "sprinkled", "tiramisu", "mousse", "dessert", "pudding", "brownie", "muffin", "biscuit", "cookie", "pastry", "croissant", "ice cream"]
 
     /// The most specific entry for a name, or nil when it isn't a plain raw food in the table.
     static func match(_ name: String) -> Entry? {
         let n = name.lowercased()
         func has(_ w: String) -> Bool { n.contains(w) }
+        // the food itself is named before the first comma: what comes after says how it's done or what's on it
+        let lead = String(n.split(whereSeparator: { $0 == "," || $0 == "(" }).first ?? "")
         var best: (Entry, Int)?
         for e in entries {
             guard e.all.allSatisfy(has), !e.not.contains(where: has), e.any.isEmpty || e.any.contains(where: has) else { continue }
+            guard (e.all + e.any).contains(where: { lead.contains($0) }) else { continue }
             guard !otherFood.contains(where: { has($0) && !e.ok.contains($0) }) else { continue }
             let score = e.all.count + (e.any.isEmpty ? 0 : 1)
             if score > (best?.1 ?? 0) { best = (e, score) }

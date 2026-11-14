@@ -19,6 +19,23 @@ enum Sanity {
         if has(["broth", "stock", "consomm"]) && !has(["cube", "powder", "dry", "noodle", "rice", "pasta", "bone broth", "collagen"]) {
             return Range(label: "broth", lo: 2, hi: 40, proteinMax: 5)
         }
+        // sweet things, by the most protein they can have: tiramisu at 20 g a 100 g was cocoa powder's numbers on a dessert
+        let savoury = has(["fish", "crab", "salmon", "tuna", "potato", "corn", "zucchini", "veg", "rice cake", "protein", "chicken", "beef", "pork", "prawn"])
+        if has(["tiramisu", "mousse", "cheesecake", "cake", "brownie", "eclair", "éclair", "profiterole", "cream puff", "panna cotta", "pannacotta", "trifle", "gateau", "torte"])
+            && !savoury && !has(["custard", "pudding"]) {
+            return Range(label: "a cake or dessert", lo: 120, hi: 520, proteinMax: 10)
+        }
+        if has(["croissant", "danish", "pain au chocolat", "puff pastry", "pastry"])
+            && !savoury && !has(["ham", "cheese", "egg", "bacon", "kabana", "sausage", "pie", "filled", "spinach", "feta"]) {
+            return Range(label: "a pastry", lo: 280, hi: 540, proteinMax: 12)
+        }
+        if has(["ice cream", "gelato"]) && !has(["protein", "halo", "high protein", "cake", "sandwich"]) {
+            return Range(label: "ice cream", lo: 80, hi: 330, proteinMax: 6)
+        }
+        if has(["sauce", "dressing", "ketchup", "sriracha", "hoisin", "gravy", "vinaigrette"])
+            && !has(["soy", "tamari", "miso", "fish sauce", "satay", "peanut", "cheese", "bolognese", "ragu", "meat", "alfredo", "carbonara", "pesto", "xo", "with", "pasta", "noodle", "rice", "chicken", "beef", "pork"]) {
+            return Range(label: "a sauce or dressing", lo: 5, hi: 760, proteinMax: 5)
+        }
         // a whole pho or ramen isn't plain noodles
         if has(["rice", "pasta", "spaghetti", "noodle", "penne", "couscous"]) && !has(["soup", "broth", "pho", "ramen", "laksa"])
             && (cooked || !raw && !has(["dry", "uncooked"])) {
