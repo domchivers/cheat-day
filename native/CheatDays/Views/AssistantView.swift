@@ -1308,26 +1308,70 @@ private struct PhotoViewer: View {
     }
 }
 
-/// One photo in the viewer, with its own zoom. The pinch is this view's alone: kept by the viewer, every move of the
-/// fingers redrew the whole pager and each photo in it, and the app dragged.
-private struct ZoomablePhoto: View {
+/// One photo in the viewer, zoomed by the system's own scroll view: the pinch follows the fingers on the display's
+/// own clock, with nothing of the app's redrawn as they move (as a SwiftUI gesture changing a scale it was never quite
+/// smooth), and a zoomed photo can be dragged about to see the rest of it.
+private struct ZoomablePhoto: UIViewRepresentable {
     let image: UIImage
     var showing: Bool
     @Binding var zoomed: Bool
-    @State private var zoom: CGFloat = 1
-    @GestureState private var pinch: CGFloat = 1
 
-    var body: some View {
-        Image(uiImage: image).resizable().scaledToFit()
-            .scaleEffect(min(max(zoom * pinch, 0.8), 5))
-            .frame(maxWidth: .infinity, maxHeight: .infinity).contentShape(Rectangle())
-            .gesture(MagnifyGesture().updating($pinch) { m, state, _ in state = m.magnification }
-                .onEnded { m in
-                    withAnimation(.snappy(duration: 0.2)) { zoom = min(max(zoom * m.magnification, 1), 4) }
-                    zoomed = zoom > 1.01
-                })
-            .onTapGesture(count: 2) { withAnimation(.spring) { zoom = zoom > 1 ? 1 : 2.5 }; zoomed = zoom > 1.01 }
-            .onChange(of: showing) { _, on in if !on { zoom = 1 } }
+    final class Scroll: UIScrollView {
+        let photo = UIImageView()
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            // at rest the photo fills the page; once zoomed the scroll view sizes it
+            if zoomScale == 1, photo.frame.size != bounds.size {
+                photo.frame = CGRect(origin: .zero, size: bounds.size)
+                contentSize = bounds.size
+            }
+        }
+    }
+
+    final class Coordinator: NSObject, UIScrollViewDelegate {
+        var parent: ZoomablePhoto
+        init(_ parent: ZoomablePhoto) { self.parent = parent }
+
+        func viewForZooming(in scrollView: UIScrollView) -> UIView? { (scrollView as? Scroll)?.photo }
+        // dragging only while it's bigger than the screen: at rest a swipe is the pager's, or the swipe down to close
+        func scrollViewDidZoom(_ scrollView: UIScrollView) { scrollView.panGestureRecognizer.isEnabled = scrollView.zoomScale > 1.01 }
+        func scrollViewDidEndZooming(_ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat) {
+            let big = scrollView.zoomScale > 1.01
+            scrollView.panGestureRecognizer.isEnabled = big
+            if parent.zoomed != big { parent.zoomed = big }
+        }
+
+        @objc func twice(_ tap: UITapGestureRecognizer) {
+            guard let s = tap.view as? Scroll else { return }
+            if s.zoomScale > 1.01 { s.setZoomScale(1, animated: true); return }
+            // in on the spot that was tapped
+            let at = tap.location(in: s.photo), w = s.bounds.width / 2.5, h = s.bounds.height / 2.5
+            s.zoom(to: CGRect(x: at.x - w / 2, y: at.y - h / 2, width: w, height: h), animated: true)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeUIView(context: Context) -> Scroll {
+        let s = Scroll()
+        s.minimumZoomScale = 1; s.maximumZoomScale = 4
+        s.showsVerticalScrollIndicator = false; s.showsHorizontalScrollIndicator = false
+        s.backgroundColor = .clear; s.contentInsetAdjustmentBehavior = .never
+        s.delegate = context.coordinator
+        s.panGestureRecognizer.isEnabled = false
+        s.photo.image = image; s.photo.contentMode = .scaleAspectFit
+        s.addSubview(s.photo)
+        let twice = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.twice(_:)))
+        twice.numberOfTapsRequired = 2
+        s.addGestureRecognizer(twice)
+        return s
+    }
+
+    func updateUIView(_ s: Scroll, context: Context) {
+        context.coordinator.parent = self
+        if s.photo.image !== image { s.photo.image = image }
+        // swiped away to another photo: back to its whole self for next time
+        if !showing, s.zoomScale != 1 { s.setZoomScale(1, animated: false); s.panGestureRecognizer.isEnabled = false }
     }
 }
 
