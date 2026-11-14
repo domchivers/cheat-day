@@ -34,7 +34,9 @@ enum Sanity {
         }
         if has(["sauce", "dressing", "ketchup", "sriracha", "hoisin", "gravy", "vinaigrette"])
             && !has(["soy", "tamari", "miso", "fish sauce", "satay", "peanut", "cheese", "bolognese", "ragu", "meat", "alfredo", "carbonara", "pesto", "xo", "with", "pasta", "noodle", "rice", "chicken", "beef", "pork"]) {
-            return Range(label: "a sauce or dressing", lo: 5, hi: 760, proteinMax: 5)
+            // one that is oil ("Olive oil dressing", a drizzle of chilli oil) can be all oil: 888 kcal a 100 g was called off
+            let oil = has(["olive oil", "chilli oil", "chili oil", "sesame oil", "garlic oil", "oil dressing", "oil drizzle"])
+            return Range(label: "a sauce or dressing", lo: 5, hi: oil ? 900 : 760, proteinMax: 5)
         }
         // a whole pho or ramen isn't plain noodles
         if has(["rice", "pasta", "spaghetti", "noodle", "penne", "couscous"]) && !has(["soup", "broth", "pho", "ramen", "laksa"])

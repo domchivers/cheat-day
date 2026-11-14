@@ -91,4 +91,10 @@ final class SanityTests: XCTestCase {
         XCTAssertEqual(Sanity.protein(name: "White bread", grams: 80, p: 20), 10.4)
         XCTAssertEqual(Sanity.protein(name: "Mystery dish", grams: 300, p: 60), 60, "nothing to go on: unchanged")
     }
+
+    /// A dressing that is oil has oil's calories; one that isn't still can't.
+    func testAnOilDressingCanBeAllOil() {
+        XCTAssertTrue(Sanity.check(name: "Olive oil dressing", grams: 8, kcal: 71, p: 0, c: 0, f: 8).flags.isEmpty)
+        XCTAssertFalse(Sanity.check(name: "Caesar dressing", grams: 10, kcal: 89, p: 0, c: 0, f: 10).flags.isEmpty)
+    }
 }
