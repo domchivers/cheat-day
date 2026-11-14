@@ -1279,8 +1279,7 @@ private struct PhotoViewer: View {
     let photos: Photos
     @Environment(\.dismiss) private var dismiss
     @State private var page = 0
-    @State private var zoom: CGFloat = 1
-    @State private var pinch: CGFloat = 1
+    @State private var zoomed = false   // the photo showing is bigger than the screen (told when a pinch ends, not during)
     @State private var drop: CGFloat = 0
 
     var body: some View {
@@ -1288,20 +1287,15 @@ private struct PhotoViewer: View {
             Color.black.opacity(1 - min(abs(drop) / 400, 0.6)).ignoresSafeArea()
             TabView(selection: $page) {
                 ForEach(photos.images.indices, id: \.self) { i in
-                    Image(uiImage: photos.images[i]).resizable().scaledToFit()
-                        .scaleEffect(i == page ? zoom * pinch : 1)
-                        .tag(i)
+                    ZoomablePhoto(image: photos.images[i], showing: i == page, zoomed: $zoomed).tag(i)
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: photos.images.count > 1 ? .automatic : .never))
             .offset(y: drop)
-            .gesture(MagnifyGesture().onChanged { pinch = $0.magnification }
-                .onEnded { _ in zoom = min(max(zoom * pinch, 1), 4); pinch = 1 })
-            .onTapGesture(count: 2) { withAnimation(.spring) { zoom = zoom > 1 ? 1 : 2.5 } }
             // swipe down to close, only when not zoomed in
-            .simultaneousGesture(DragGesture().onChanged { v in if zoom == 1, abs(v.translation.height) > abs(v.translation.width) { drop = v.translation.height } }
+            .simultaneousGesture(DragGesture().onChanged { v in if !zoomed, abs(v.translation.height) > abs(v.translation.width) { drop = v.translation.height } }
                 .onEnded { _ in if drop > 120 { dismiss() } else { withAnimation(.spring) { drop = 0 } } })
-            .onChange(of: page) { _, _ in zoom = 1 }
+            .onChange(of: page) { _, _ in zoomed = false }
             Button { dismiss() } label: {
                 Image(systemName: "xmark").font(.headline).foregroundStyle(.white).frame(width: 44, height: 44)
                     .background(.ultraThinMaterial, in: Circle())
@@ -1311,6 +1305,29 @@ private struct PhotoViewer: View {
         }
         .onAppear { page = photos.start }
         .statusBarHidden()
+    }
+}
+
+/// One photo in the viewer, with its own zoom. The pinch is this view's alone: kept by the viewer, every move of the
+/// fingers redrew the whole pager and each photo in it, and the app dragged.
+private struct ZoomablePhoto: View {
+    let image: UIImage
+    var showing: Bool
+    @Binding var zoomed: Bool
+    @State private var zoom: CGFloat = 1
+    @GestureState private var pinch: CGFloat = 1
+
+    var body: some View {
+        Image(uiImage: image).resizable().scaledToFit()
+            .scaleEffect(min(max(zoom * pinch, 0.8), 5))
+            .frame(maxWidth: .infinity, maxHeight: .infinity).contentShape(Rectangle())
+            .gesture(MagnifyGesture().updating($pinch) { m, state, _ in state = m.magnification }
+                .onEnded { m in
+                    withAnimation(.snappy(duration: 0.2)) { zoom = min(max(zoom * m.magnification, 1), 4) }
+                    zoomed = zoom > 1.01
+                })
+            .onTapGesture(count: 2) { withAnimation(.spring) { zoom = zoom > 1 ? 1 : 2.5 }; zoomed = zoom > 1.01 }
+            .onChange(of: showing) { _, on in if !on { zoom = 1 } }
     }
 }
 
