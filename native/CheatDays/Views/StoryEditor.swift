@@ -988,11 +988,62 @@ struct StoryEditor: View {
                 .frame(maxWidth: 330 * k)
                 .offset(y: -cw * 0.25)
                 .animation(.snappy(duration: 0.2), value: highlight)
+            // "@" and a few letters while typing: the friends it could be, to tap (there was only the Mention sticker)
+            let found = tagging
+            if !found.isEmpty {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 8) {
+                        ForEach(found, id: \.id) { m in
+                            Button { tag(m) } label: {
+                                HStack(spacing: 6) {
+                                    Avatar(id: m.id, size: 26)
+                                    Text(m.name).font(.subheadline.weight(.bold)).foregroundStyle(.white).lineLimit(1)
+                                }
+                                .padding(.leading, 5).padding(.trailing, 12).frame(height: 36).background(.black.opacity(0.65), in: Capsule())
+                            }
+                            .buttonStyle(.plain).accessibilityIdentifier("tag-suggestion")
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                }
+                .scrollIndicators(.hidden).offset(y: cw * 0.06)
+            }
         }
+    }
+
+    /// The friends the "@word" being typed could be (the last word of the text), on a story.
+    private var tagging: [(id: String, name: String, tag: String)] {
+        guard !forPost, let last = draft.last, last != " ", !last.isNewline,
+              let word = draft.split(whereSeparator: { $0 == " " || $0.isNewline }).last, word.hasPrefix("@") else { return [] }
+        let q = word.dropFirst().lowercased()
+        let all = Friends.shared.people.compactMap { p -> (id: String, name: String, tag: String)? in
+            let u = Profiles.shared.all[p.id]?.username ?? ""
+            guard q.isEmpty || p.name.lowercased().contains(q) || u.lowercased().contains(q) else { return nil }
+            return (id: p.id, name: p.name, tag: u.isEmpty ? p.name : u)
+        }
+        return Array(all.prefix(8))
+    }
+
+    /// One of them tapped: the "@word" comes out of the text (what's left is placed as text), and the person goes on
+    /// as a tag of their own, which tells them and can be tapped by whoever watches.
+    private func tag(_ m: (id: String, name: String, tag: String)) {
+        if let at = draft.range(of: "@", options: .backwards) { draft = String(draft[..<at.lowerBound]) }
+        finishText()
+        place(["type": "mention", "user": m.id, "name": m.tag])
     }
 
     private func finishText() {
         let t = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        // just "@theirname", typed out in full and finished: a tag of them, not plain words
+        if !forPost, editing == nil, t.hasPrefix("@"), !t.contains(" "), t.count > 1 {
+            let q = t.dropFirst().lowercased()
+            if let p = Friends.shared.people.first(where: { $0.name.lowercased() == q || (Profiles.shared.all[$0.id]?.username ?? "").lowercased() == q }) {
+                let u = Profiles.shared.all[p.id]?.username ?? ""
+                editing = nil; draft = ""; typing = false; mode = .none
+                place(["type": "mention", "user": p.id, "name": u.isEmpty ? p.name : u])
+                return
+            }
+        }
         if !t.isEmpty || editing != nil { remember() }
         let o: [String: Any] = ["type": "text", "text": String(t.prefix(200)), "font": font, "color": color, "bg": highlight, "align": align, "glow": glow, "size": size]
         if let i = editing, items.indices.contains(i) {
