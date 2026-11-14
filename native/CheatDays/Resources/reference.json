@@ -38,5 +38,9 @@
 {"n":"Lamb mince","all":["lamb","mince"],"v":[144,20.4,0,6.9],"src":"AFCD3 F005049"},
 {"n":"Cocoa powder","any":["cocoa"],"not":["drink","hot chocolate","cocoa butter","nibs"],"ok":["powder"],"v":[327,20,15,21],"src":"Owner's Cadbury label"},
 {"n":"Whey protein powder","any":["whey"],"ok":["powder"],"v":[380,76,9.2,3.6],"src":"AFCD3 F007491"},
-{"n":"Brioche bun","any":["brioche"],"v":[323,9.5,46.5,10.6],"src":"AFCD3 F010407"}
+{"n":"Brioche bun","any":["brioche"],"v":[323,9.5,46.5,10.6],"src":"AFCD3 F010407"},
+{"n":"Lamb gyros meat","all":["lamb"],"any":["gyros","gyro","yiros","souvlaki","doner","döner","kebab","shawarma"],"ok":["cooked","grilled","roast","fried","baked","bbq","rotisserie","shredded","marinade"],"v":[268,22.8,4.3,17.9],"src":"AUSNUT2023 Lamb, kebab, marinated, cooked, added fat (cooked)"},
+{"n":"Chicken gyros meat","all":["chicken"],"any":["gyros","gyro","yiros","souvlaki","doner","döner","kebab","shawarma"],"ok":["cooked","grilled","roast","fried","baked","bbq","rotisserie","shredded","marinade"],"v":[175,24.2,0,8.7],"src":"AUSNUT2023 Chicken, thigh, lean flesh, baked, no added fat (cooked)"},
+{"n":"Pork gyros meat","all":["pork"],"any":["gyros","gyro","yiros","souvlaki","doner","döner","kebab","shawarma"],"ok":["cooked","grilled","roast","fried","baked","bbq","rotisserie","shredded","marinade"],"v":[185,25.2,5.1,7],"src":"AUSNUT2023 Pork, kebab, marinated, cooked, added fat (cooked)"},
+{"n":"Beef gyros meat","all":["beef"],"any":["gyros","gyro","yiros","souvlaki","doner","döner","kebab","shawarma"],"ok":["cooked","grilled","roast","fried","baked","bbq","rotisserie","shredded","marinade"],"v":[197,23.3,4.3,9.7],"src":"AUSNUT2023 Beef, kebab, marinated, cooked, added fat (cooked)"}
 ]

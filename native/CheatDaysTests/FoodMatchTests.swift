@@ -190,10 +190,14 @@ final class FoodMatchTests: XCTestCase {
     /// Meat off the spit at a Greek or kebab shop is the marinated, fatty kind, not a lean grilled cut: lamb gyros came
     /// out as lean lamb fillet (160 kcal per 100 g) and chicken gyros as a processed poultry doner (268).
     func testGyrosMeatIsTheMarinatedKind() {
-        XCTAssertEqual(FoodTable.au.best("Lamb gyros meat, grilled", tags: ["cooked", "grilled"])?.name, "Lamb, kebab, marinated, cooked, added fat")
-        XCTAssertEqual(FoodTable.au.best("Chicken gyros meat, grilled", tags: ["cooked", "grilled"])?.name, "Chicken, thigh, lean flesh, baked, no added fat")
+        // checked first, before the tables: there, the "grilled" tag took the lamb back to a lean grilled fillet
+        XCTAssertEqual(FoodReference.match("Lamb gyros meat, grilled")?.name, "Lamb gyros meat")
+        XCTAssertEqual(FoodReference.match("Lamb gyros meat, grilled")?.kcal, 268)
+        XCTAssertEqual(FoodReference.match("Chicken gyros meat, grilled")?.name, "Chicken gyros meat")
+        XCTAssertEqual(FoodReference.match("Chicken souvlaki")?.kcal, 175)
+        XCTAssertNil(FoodReference.match("Lamb gyros wrap"), "a wrap is bread and salad too")
+        XCTAssertNotEqual(FoodReference.match("Lamb leg")?.name, "Lamb gyros meat")
         XCTAssertEqual(FoodTable.au.best("Lamb souvlaki", tags: [])?.name, "Lamb, kebab, marinated, cooked, added fat")
-        XCTAssertNotEqual(FoodTable.au.best("Lamb leg, roasted", tags: ["cooked"])?.name, "Lamb, kebab, marinated, cooked, added fat")
     }
 
     /// Other countries' tables, after the country's own and the US dishes; a fallback can't add a word that makes it
