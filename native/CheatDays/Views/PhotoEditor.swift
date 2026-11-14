@@ -168,9 +168,13 @@ struct PhotoEditor: View {
         return r.uiImage ?? shown
     }
 
+    /// No bigger than `side` dots on its long side. In dots, whatever the picture's own scale: a picture made at 2.77
+    /// dots a point (the post editor's, 390 points and 1,080 dots wide) was measured in points and came out 390 dots
+    /// wide, a third of its sharpness, and that's what was posted.
     static func shrink(_ img: UIImage, to side: CGFloat) -> UIImage {
-        let s = min(1, side / max(img.size.width, img.size.height))
-        let size = CGSize(width: (img.size.width * s).rounded(), height: (img.size.height * s).rounded())
+        let w = img.size.width * img.scale, h = img.size.height * img.scale
+        let s = min(1, side / max(w, h, 1))
+        let size = CGSize(width: (w * s).rounded(), height: (h * s).rounded())
         let f = UIGraphicsImageRendererFormat(); f.scale = 1
         return UIGraphicsImageRenderer(size: size, format: f).image { _ in img.draw(in: CGRect(origin: .zero, size: size)) }
     }

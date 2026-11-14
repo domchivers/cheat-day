@@ -338,7 +338,9 @@ final class Feed {
     /// A post photo as edited: at most 1080 px wide, its own shape, about 250 KB. (At 0.75 it was about 150 KB and
     /// fine detail was already soft; edited and saved a second time at that, it showed.)
     static func prepare(_ img: UIImage) -> Data? {
-        PhotoEditor.shrink(img, to: max(img.size.width, img.size.height) * min(1, 1080 / max(1, img.size.width))).jpegData(compressionQuality: 0.85)
+        // in dots, not points (see PhotoEditor.shrink): 1,080 wide at most
+        let w = img.size.width * img.scale, h = img.size.height * img.scale
+        return PhotoEditor.shrink(img, to: max(w, h) * min(1, 1080 / max(1, w))).jpegData(compressionQuality: 0.85)
     }
 
     /// Feed photos: a 640 px square, about 40 KB, like the website's thumbFromBig.
