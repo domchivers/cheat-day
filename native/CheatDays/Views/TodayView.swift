@@ -871,6 +871,7 @@ struct AmountView: View {
     @State private var gramsText = ""
     @State private var kcalText = ""
     @State private var nameText = ""
+    @FocusState private var naming: Bool   // the name box of a logged food
     @State private var change = ""
     @State private var tweaking = false
     @State private var tweakNote: String?
@@ -956,8 +957,13 @@ struct AmountView: View {
                             // flattens its numbers to one portion).
                             else if target.editId != nil {
                                 HStack(spacing: 6) {
-                                    TextField("Name", text: $nameText).font(.title3.bold()).submitLabel(.done)
-                                    Image(systemName: "pencil").font(.subheadline.weight(.semibold)).foregroundStyle(.tertiary).accessibilityHidden(true)
+                                    TextField("Name", text: $nameText).font(.title3.bold()).submitLabel(.done).focused($naming)
+                                    // a button you can see, in the app's colour: the faint little pencil went unnoticed
+                                    Button { naming = true } label: {
+                                        Image(systemName: "pencil").font(.system(size: 16, weight: .bold)).foregroundStyle(Theme.accent)
+                                            .frame(width: 36, height: 36).background(Theme.accent.opacity(0.16), in: Circle())
+                                    }
+                                    .buttonStyle(.plain).accessibilityLabel("Rename")
                                 }
                             }
                             else { Text(name).font(.title3.bold()).lineLimit(2) }
