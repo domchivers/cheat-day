@@ -217,6 +217,9 @@ struct Avatar: View {
     var size: CGFloat = 36
     var ring = false
     var dot = false
+    /// The ring's colours: the story rings' own (the feed's), bright for a story not watched yet, grey otherwise.
+    var bright = true
+    static let rim = [Color(red: 0.84, green: 0.92, blue: 1), Color(red: 0.56, green: 0.77, blue: 1), Color(red: 0.77, green: 0.63, blue: 1)]
     private var profiles: Profiles { Profiles.shared }
 
     var body: some View {
@@ -231,7 +234,12 @@ struct Avatar: View {
             }
         }
         .frame(width: size, height: size).clipShape(Circle())
-        .overlay { if ring { Circle().stroke(Theme.accent, lineWidth: 2.5).padding(-4) } }
+        .overlay {
+            if ring {
+                Circle().stroke(bright ? AnyShapeStyle(AngularGradient(colors: Self.rim + [Self.rim[0]], center: .center, startAngle: .degrees(-90), endAngle: .degrees(270)))
+                                       : AnyShapeStyle(Color(.tertiarySystemFill)), lineWidth: 2.5).padding(-4)
+            }
+        }
         .overlay(alignment: .bottomTrailing) {
             if dot && profiles.all[id]?.online == true {
                 Circle().fill(Theme.walk).frame(width: size * 0.26, height: size * 0.26).overlay(Circle().stroke(Theme.bg, lineWidth: 2.5))

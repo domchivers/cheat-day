@@ -173,7 +173,9 @@ struct ProfileView: View {
         let level = isMe ? store.rank.level : (person?.level ?? 0)
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 18) {
-                Avatar(id: id, size: 86, ring: true, dot: !isMe)
+                // The ring says what the feed's rings say: bright for a story you haven't watched (yours too), grey once
+                // you have or when there's none. It was plain blue always, so it never changed after watching.
+                Avatar(id: id, size: 86, ring: true, dot: !isMe, bright: StoryView.has(id) && (isMe || !locked) && !StoryView.seen(id))
                     .overlay(alignment: .bottomTrailing) {
                         // + for a story or a post, like Instagram; your photo is changed in Edit profile
                         if isMe {

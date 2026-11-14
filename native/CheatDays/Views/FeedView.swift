@@ -453,7 +453,7 @@ struct FeedView: View {
                 // yours: your day as friends see it, or a new post when there's nothing yet
                 let mine = StoryView.has(feed.me)
                 Button { if mine { askMine = true } else { posting = true } } label: {
-                    ring(feed.me, "Your story", new: mine && !Stories.shared.of(feed.me).isEmpty, tag: nil, plus: true)
+                    ring(feed.me, "Your story", new: mine && !Stories.shared.of(feed.me).isEmpty && !StoryView.seen(feed.me), tag: nil, plus: true)
                 }
                 .buttonStyle(.plain)
                 .confirmationDialog("Your story", isPresented: $askMine) {
