@@ -927,7 +927,9 @@ struct AssistantView: View {
         let aim = num(pl["protein"]) ?? 0
         ForEach(list(pl["places"]).indices, id: \.self) { i in
             let p = list(pl["places"])[i], pr = num(p["protein_g"]) ?? 0, estimated = str(p["published"]) == "none"
-            Button { text = str(p["name"]); send() } label: {
+            // Never drawn as switched off. They were while an answer was on its way, and stayed grey after it had
+            // come until the chat was touched; a tap while it's still working is simply passed over.
+            Button { if !busy { text = str(p["name"]); send() } } label: {
                 HStack(spacing: 11) {
                     FoodDot(name: str(p["dish"]), size: 38)
                     VStack(alignment: .leading, spacing: 2) {
@@ -948,7 +950,7 @@ struct AssistantView: View {
                 .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain).disabled(busy).accessibilityLabel("Plan \(str(p["name"]))")
+            .buttonStyle(.plain).accessibilityLabel("Plan \(str(p["name"]))")
         }
     }
 
