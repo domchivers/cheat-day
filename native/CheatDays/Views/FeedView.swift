@@ -168,6 +168,7 @@ final class Feed {
             comments += (try? JSONSerialization.jsonObject(with: d)) as? [JSON] ?? []
             notify(str(post["owner"]), kind: "comment", text: text, extra: ["post": str(post["id"])])
             if let r = replyTo, str(r["user_id"]) != str(post["owner"]) { notify(str(r["user_id"]), kind: "reply", text: text, extra: ["post": str(post["id"])]) }
+            for who in Tagging.people(in: text) where who != me { await Messages.shared.send(to: who, text: "Mentioned you in a comment: " + String(text.prefix(140))) }
             Store.shared.perform(["type": "bump", "key": "commentCount"], syncAfter: 3)
         } catch { self.error = Feed.said(error) }
     }
@@ -314,6 +315,7 @@ final class Feed {
             return
         }
         _ = try await api.rest("/rest/v1/posts", method: "POST", body: [r], prefer: "return=representation")
+        for who in Tagging.people(in: str(r["caption"])) where who != me { await Messages.shared.send(to: who, text: "Mentioned you in a post") }
         Store.shared.perform(["type": "bump", "key": "postCount"], syncAfter: 2)
         await load()
     }
@@ -604,7 +606,8 @@ struct FeedView: View {
             actions(p, rx: rx, comments: cm.count)
             if !rx.isEmpty { likedBy(rx).padding(.horizontal, 14).padding(.top, 2) }
             if !feed.caption(p).isEmpty {
-                (Text(feed.name(owner) + " ").bold() + Text(feed.caption(p))).font(.subheadline).padding(.horizontal, 14).padding(.top, 4)
+                (Text(feed.name(owner) + " ").bold() + Text(Tagging.styled(feed.caption(p)))).font(.subheadline).padding(.horizontal, 14).padding(.top, 4)
+                    .tagLinks { profileOf = $0 }
             }
             if !cm.isEmpty {
                 VStack(alignment: .leading, spacing: 3) {
@@ -872,6 +875,7 @@ struct CommentsSheet: View {
     let post: JSON
     @State private var text = ""
     @State private var replying: JSON?
+    @State private var profile: String?   // someone tagged in a comment, tapped: their page opens here
     @FocusState private var typing: Bool
     private var feed: Feed { Feed.shared }
     private var id: String { str(post["id"]) }
@@ -916,6 +920,7 @@ struct CommentsSheet: View {
                             Button { replying = nil } label: { Image(systemName: "xmark").font(.caption2.weight(.bold)) }.buttonStyle(.plain).foregroundStyle(.secondary)
                         }
                     }
+                    TagSuggestions(text: $text)
                     HStack(spacing: 8) {
                         TextField(replying == nil ? "Add a comment for \(feed.name(str(post["owner"])))…" : "Your reply…", text: $text, axis: .vertical)
                             .lineLimit(1...4).focused($typing).submitLabel(.send).onSubmit { send(text) }
@@ -932,6 +937,7 @@ struct CommentsSheet: View {
                 .composerBar()
             }
             .navigationTitle("Comments").navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(item: $profile) { id in ProfileView(id: id) }
             .onAppear { KeyboardDone.quiet = true }
             .onDisappear { KeyboardDone.quiet = false }
         }
@@ -944,7 +950,8 @@ struct CommentsSheet: View {
         return HStack(alignment: .top, spacing: 10) {
             Avatar(id: who, size: 30)
             VStack(alignment: .leading, spacing: 3) {
-                (Text(feed.name(who) + " ").bold() + Text(str(c["text"]))).font(.subheadline)
+                (Text(feed.name(who) + " ").bold() + Text(Tagging.styled(str(c["text"])))).font(.subheadline)
+                    .tagLinks { profile = $0 }
                 HStack(spacing: 14) {
                     Text(Feed.ago(str(c["created_at"])))
                     if !likes.isEmpty { Text(likes.count == 1 ? "1 like" : "\(likes.count) likes") }
@@ -1147,6 +1154,7 @@ struct ComposeSheet: View {
                             .contentShape(Rectangle()).onTapGesture { writing = true }
                     }
                     .padding(.horizontal, 16).padding(.top, 14).id("caption")
+                    TagSuggestions(text: $caption).padding(.horizontal, 16)
                     if movie != nil {
                         Text("Up to 30 seconds are posted.").font(.caption).foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.top, 8)
