@@ -35,6 +35,12 @@ struct StoryView: View {
     private static let quick = ["😂", "😮", "😍", "😢", "👏", "🔥"]   // over the story while a message is being written
     @State private var wasQuiet = false   // whether keyboards had no Done bar before this opened
 
+    /// What's on a story that can be pressed, so it's drawn above the taps that turn the slides: a poll, a question,
+    /// a person tagged.
+    static func live(_ o: JSON) -> Bool {
+        ["poll", "question"].contains(str(o["type"])) || (str(o["type"]) == "mention" && !str(o["user"]).isEmpty)
+    }
+
     private var who: String { people[min(at, people.count - 1)] }
     private var slides: [Slide] { highlight.map { list($0["items"]).map { Slide.snap($0) } } ?? Self.slides(for: who) }
     private var isMe: Bool { who == Profiles.shared.me }
@@ -99,8 +105,12 @@ struct StoryView: View {
                         // polls sit above the taps, so voting doesn't skip the story
                         .overlay {
                             if case .snap(let st) = s[min(slide, s.count - 1)] {
-                                let polls = list(st["overlays"]).filter { ["poll", "question"].contains(str($0["type"])) }
-                                if !polls.isEmpty { StoryLayer(items: polls, story: str(st["id"])).aspectRatio(StoryArt.aspect, contentMode: .fit) }
+                                let polls = list(st["overlays"]).filter(Self.live)
+                                // a name tagged on the story opens that person's page, as the poster's name at the top does
+                                if !polls.isEmpty {
+                                    StoryLayer(items: polls, story: str(st["id"]), mention: onProfile.map { open in { id in open(id); dismiss() } })
+                                        .aspectRatio(StoryArt.aspect, contentMode: .fit)
+                                }
                             }
                         }
                         // over the taps, so the name and the cross can be pressed
@@ -262,7 +272,7 @@ struct StoryView: View {
         switch s {
         case .snap(let st):
             // 9:16, the editor's shape, so everything placed lands where it was put
-            let layer = StoryLayer(items: list(st["overlays"]).filter { !["poll", "question"].contains(str($0["type"])) }, story: str(st["id"]))
+            let layer = StoryLayer(items: list(st["overlays"]).filter { !Self.live($0) }, story: str(st["id"]))
             ZStack {
                 if str(st["kind"]) == "video", let url = URL(string: str(st["media"])) { LoopingVideo(url: url, paused: paused || seenBy != nil); layer }
                 // a photo still on its way: black with a turning circle, and nothing that's stuck on it until it's

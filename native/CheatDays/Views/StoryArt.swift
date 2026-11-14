@@ -410,6 +410,8 @@ struct StoryDrawing: View {
 struct StoryLayer: View {
     let items: [JSON]
     var story: String? = nil   // the story, for poll votes; nil in the editor
+    /// A tagged name was tapped (their id): set where the story's being watched and a profile can be opened.
+    var mention: ((String) -> Void)? = nil
     private var stories: Stories { Stories.shared }
 
     var body: some View {
@@ -424,7 +426,9 @@ struct StoryLayer: View {
                             .scaleEffect((num(o["scale"]) ?? 1) * k)
                             .rotationEffect(.degrees(num(o["rotation"]) ?? 0))
                             .position(x: (num(o["x"]) ?? 0.5) * g.size.width, y: (num(o["y"]) ?? 0.5) * g.size.height)
-                            .allowsHitTesting((str(o["type"]) == "poll" || str(o["type"]) == "question") && story != nil)
+                            .contentShape(Rectangle())
+                            .simultaneousGesture(str(o["type"]) == "mention" && mention != nil ? TapGesture().onEnded { mention?(str(o["user"])) } : nil)
+                            .allowsHitTesting(((str(o["type"]) == "poll" || str(o["type"]) == "question") && story != nil) || (str(o["type"]) == "mention" && mention != nil))
                     }
                 }
             }
