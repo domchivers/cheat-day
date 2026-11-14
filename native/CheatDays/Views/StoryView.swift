@@ -68,15 +68,29 @@ struct StoryView: View {
     /// Something to show today: their ring is there.
     static func has(_ id: String) -> Bool { !slides(for: id).isEmpty }
 
-    /// What was in it when last watched, so new things colour the ring again.
-    static func signature(_ id: String) -> String { "\(DayKey.string(Date()))|\(slides(for: id).count)" }
+    /// A ring is bright for something not watched yet. A story someone posted is known one by one (Stories.watched),
+    /// for as long as it's up. What's from their day (today's posts, meals, a workout) is counted: watched to the end
+    /// today, it's seen until there's more of it than there was.
+    ///
+    /// It was one sum of everything, matched exactly and by the day. So a ring came back bright the morning after for a
+    /// story watched the night before, flashed bright each time the app opened (until their day had loaded and the
+    /// count matched again), and your own lit up whenever you logged a meal.
+    static func extras(_ id: String) -> Int {
+        id == Profiles.shared.me ? 0 : max(0, slides(for: id).count - Stories.shared.of(id).count)
+    }
+    static func signature(_ id: String) -> String { "\(DayKey.string(Date()))|\(extras(id))" }
     static func seen(_ id: String) -> Bool {
         _ = Stories.shared.seenTick   // read, so a ring is drawn again when a story's been watched
-        return !Stories.shared.unwatched(id) && (UserDefaults.standard.dictionary(forKey: "stories.seen")?[id] as? String) == signature(id)
+        guard !Stories.shared.unwatched(id) else { return false }
+        let more = extras(id)
+        guard more > 0 else { return true }
+        let kept = (UserDefaults.standard.dictionary(forKey: "stories.seen")?[id] as? String ?? "").split(separator: "|")
+        guard kept.count == 2, String(kept[0]) == DayKey.string(Date()), let had = Int(kept[1]) else { return false }
+        return had >= more
     }
     static func markSeen(_ id: String) {
         var d = UserDefaults.standard.dictionary(forKey: "stories.seen") ?? [:]
-        guard d[id] as? String != signature(id) else { return }
+        guard d[id] as? String != signature(id) else { Stories.shared.seenTick += 1; return }
         d[id] = signature(id); UserDefaults.standard.set(d, forKey: "stories.seen")
         Stories.shared.seenTick += 1
     }
@@ -240,6 +254,20 @@ struct StoryView: View {
         .padding(.top, 6)
     }
 
+    /// When the slide showing is from: a story or a post by how long ago it went up ("3 h ago", "yesterday"), a meal or
+    /// workout from their day "today". It said "today" for all of them, a story from last night too.
+    private var when: String {
+        let s = slides
+        guard !s.isEmpty else { return "today" }
+        let ago: String
+        switch s[min(slide, s.count - 1)] {
+        case .snap(let st): ago = Feed.ago(str(st["created_at"]))
+        case .post(let p): ago = Feed.ago(str(p["created_at"]))
+        default: ago = ""
+        }
+        return ago.isEmpty ? "today" : ago
+    }
+
     private var header: some View {
         HStack(spacing: 9) {
             // their photo and name close the story and open their profile, as a page
@@ -251,7 +279,7 @@ struct StoryView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain).accessibilityIdentifier("story-author")
-            Text("today").font(.subheadline).foregroundStyle(.white.opacity(0.65))
+            Text(when).font(.subheadline).foregroundStyle(.white.opacity(0.65))
             Spacer()
             Button { dismiss() } label: { Image(systemName: "xmark").font(.system(size: 18, weight: .semibold)).foregroundStyle(.white).padding(8) }
                 .accessibilityLabel("Close")

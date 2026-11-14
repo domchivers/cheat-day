@@ -166,7 +166,8 @@ final class Stories {
             } else { return false }
             let made = try await rows("/rest/v1/stories", method: "POST", body: [row], prefer: "return=representation")
             all += made; self.keep()   // (a local `keep` here is the thing holding the app awake)
-            made.forEach { watched.insert(str($0["id"])) }   // your own don't light your ring
+            // (your own lights your ring until you've looked at it, as anyone's does: it was marked watched as it
+            // went up, so your ring never showed you had something new)
             for m in overlays where str(m["type"]) == "mention" && Friends.shared.people.contains(where: { $0.id == str(m["user"]) }) {
                 // the story itself, so they can watch it and add it to their own (it was a line of text)
                 var card = made.first.map { StoryView.card($0) } ?? [:]
