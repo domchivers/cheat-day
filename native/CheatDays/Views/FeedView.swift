@@ -290,7 +290,8 @@ final class Feed {
         // The AI's look first (see Moderation): refused, it isn't posted and says why; unsure, it goes up and a person
         // is asked to look. A moment (a streak, a badge) is the app's own words.
         let words = [str(r["name"]), str(r["caption"])].filter { !$0.isEmpty }.joined(separator: "\n")
-        let unsure = str(r["kind"]) == "moment" ? false : try await Moderation.shared.gate(kind: "post", text: words, images: (photo.map { [$0] } ?? []) + more)
+        var unsure = false
+        if str(r["kind"]) != "moment" { unsure = try await Moderation.shared.gate(kind: "post", text: words, images: (photo.map { [$0] } ?? []) + more) }
         // a video: up to 30 seconds as mp4 into the same bucket as stories' videos; its first frame is the photo
         if let video {
             let (mp4, _) = try await Stories.compress(video, filter: filter, range: range, muted: muted, crop: crop, overlay: overlay, turns: turns, placed: placed)
