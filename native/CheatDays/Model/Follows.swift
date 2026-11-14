@@ -176,8 +176,10 @@ final class Follows {
         return out
     }
 
+    /// Explore has been fetched once: after that a refresh keeps what's there on screen until the new list is in.
+    private(set) var explored = false
     func loadExplore() async {
-        exploring = true; defer { exploring = false }
+        exploring = true; defer { exploring = false; explored = true }
         do {
             explore = try await rows("/rest/v1/rpc/explore_posts", method: "POST", body: ["lim": 90]).filter { !blocked.contains(str($0["owner"])) }
             error = nil

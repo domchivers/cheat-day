@@ -73,7 +73,7 @@ struct ExploreView: View {
                     }
                     if !people.isEmpty { peopleRow.padding(.bottom, 8) }
                     if let e = follows.error { Text(e).font(.footnote).foregroundStyle(Theme.warn).padding(16) }
-                    else if shown.isEmpty && !follows.exploring {
+                    else if shown.isEmpty && (follows.explored || !follows.exploring) {
                         Text(follows.explore.isEmpty ? "Nothing on Explore yet. Posts from public profiles show here." : "Nothing matches that.")
                             .font(.subheadline).foregroundStyle(.secondary).padding(.top, 40).padding(.horizontal, 30).multilineTextAlignment(.center)
                     }
@@ -90,7 +90,9 @@ struct ExploreView: View {
         .task { if follows.explore.isEmpty { await follows.loadExplore() } }
         .task(id: fresh) { if fresh, follows.newest.isEmpty { await follows.loadNewest() } }
         .navigationDestination(item: $tagOpen) { t in HashtagView(tag: t) }
-        .overlay(alignment: .top) { if follows.exploring && follows.explore.isEmpty { Skeleton.grid(12).padding(.top, 64).allowsHitTesting(false) } }
+        // the grey tiles only the first time it's fetched: with nothing on Explore, every pull to refresh flashed them
+        // over the page for a moment
+        .overlay(alignment: .top) { if follows.exploring && !follows.explored && follows.explore.isEmpty { Skeleton.grid(12).padding(.top, 64).allowsHitTesting(false) } }
         .navigationDestination(item: $opened) { i in
             let list = shown
             FeedView(only: Array(list[min(i, max(0, list.count - 1))...])).navigationTitle("Explore").navigationBarTitleDisplayMode(.inline)
