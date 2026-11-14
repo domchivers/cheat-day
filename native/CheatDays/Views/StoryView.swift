@@ -17,6 +17,7 @@ struct StoryView: View {
     @State private var paused = false
     /// The poster's name was tapped: the story closes and whoever opened it shows their profile as a normal page.
     var onProfile: ((String) -> Void)? = nil
+    @State private var tagged: String?   // someone tagged on a story, tapped, where no one else can show their profile
     @State private var reply = ""
     @State private var drag: CGFloat = 0
     @State private var sent = false
@@ -108,7 +109,11 @@ struct StoryView: View {
                                 let polls = list(st["overlays"]).filter(Self.live)
                                 // a name tagged on the story opens that person's page, as the poster's name at the top does
                                 if !polls.isEmpty {
-                                    StoryLayer(items: polls, story: str(st["id"]), mention: onProfile.map { open in { id in open(id); dismiss() } }, holding: { paused = $0 })
+                                    StoryLayer(items: polls, story: str(st["id"]), mention: { id in
+                                        // whoever opened the story shows the profile once it's closed (the feed); with nobody
+                                        // to do that (a story opened from a profile or a chat), it comes up over the story
+                                        if let onProfile { onProfile(id); dismiss() } else { tagged = id }
+                                    }, holding: { paused = $0 })
                                         .aspectRatio(StoryArt.aspect, contentMode: .fit)
                                 }
                             }
@@ -211,7 +216,7 @@ struct StoryView: View {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(50))
                 if case .snap(let st)? = now, str(st["kind"]) != "video", waited < 8, ImageStore.cached(str(st["media"])) == nil { waited += 0.05; continue }
-                if paused || typing || reacting || sharing != nil || sharingStory != nil || seenBy != nil || adding != nil || managing != nil { continue }
+                if paused || tagged != nil || typing || reacting || sharing != nil || sharingStory != nil || seenBy != nil || adding != nil || managing != nil { continue }
                 progress += 0.05 / length
                 if progress >= 1 { next(); return }
             }
@@ -266,6 +271,12 @@ struct StoryView: View {
         .accessibilityLabel("Story")
         .accessibilityAction(named: "Next") { next() }
         .accessibilityAction(named: "Back") { back() }
+        .sheet(isPresented: Binding(get: { tagged != nil }, set: { if !$0 { tagged = nil } })) {
+            NavigationStack {
+                ProfileView(id: tagged ?? "")
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { tagged = nil } } }
+            }
+        }
     }
 
     @ViewBuilder private func content(_ s: Slide) -> some View {

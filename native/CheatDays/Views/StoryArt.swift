@@ -428,7 +428,8 @@ struct StoryLayer: View {
                         StoryItem(o: o, votes: poll(o), vote: voteAction(o), answer: answerAction(o))
                             // the tap is the tag's own, taken before it's put in its place: taken after, it was
                             // the whole story's (a placed thing fills the story), so a tap anywhere brought the bubble up
-                            .contentShape(Rectangle())
+                            // a tag is small on a story: a little room round it counts as on it
+                            .contentShape(Rectangle().inset(by: str(o["type"]) == "mention" ? -24 : 0))
                             .simultaneousGesture(str(o["type"]) == "mention" && mention != nil ? TapGesture().onEnded {
                                 // a tap on a tagged name brings up who it is, in a bubble over it; the bubble opens their page
                                 let id = str(o["id"])

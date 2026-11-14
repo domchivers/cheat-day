@@ -165,7 +165,7 @@ final class Stories {
                 row["kind"] = "photo"; row["media"] = try await api.uploadPhoto(jpeg)
             } else { return false }
             let made = try await rows("/rest/v1/stories", method: "POST", body: [row], prefer: "return=representation")
-            all += made; keep()
+            all += made; self.keep()   // (a local `keep` here is the thing holding the app awake)
             made.forEach { watched.insert(str($0["id"])) }   // your own don't light your ring
             for m in overlays where str(m["type"]) == "mention" && Friends.shared.people.contains(where: { $0.id == str(m["user"]) }) {
                 await Messages.shared.send(to: str(m["user"]), text: "Mentioned you in their story 📸")
