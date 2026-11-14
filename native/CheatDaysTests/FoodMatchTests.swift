@@ -187,6 +187,15 @@ final class FoodMatchTests: XCTestCase {
         XCTAssertEqual(FoodTable.dishes.best("Swedish meatballs", tags: [])?.name, "Swedish meatballs with cream or white sauce")
     }
 
+    /// Meat off the spit at a Greek or kebab shop is the marinated, fatty kind, not a lean grilled cut: lamb gyros came
+    /// out as lean lamb fillet (160 kcal per 100 g) and chicken gyros as a processed poultry doner (268).
+    func testGyrosMeatIsTheMarinatedKind() {
+        XCTAssertEqual(FoodTable.au.best("Lamb gyros meat, grilled", tags: ["cooked", "grilled"])?.name, "Lamb, kebab, marinated, cooked, added fat")
+        XCTAssertEqual(FoodTable.au.best("Chicken gyros meat, grilled", tags: ["cooked", "grilled"])?.name, "Chicken, thigh, lean flesh, baked, no added fat")
+        XCTAssertEqual(FoodTable.au.best("Lamb souvlaki", tags: [])?.name, "Lamb, kebab, marinated, cooked, added fat")
+        XCTAssertNotEqual(FoodTable.au.best("Lamb leg, roasted", tags: ["cooked"])?.name, "Lamb, kebab, marinated, cooked, added fat")
+    }
+
     /// Other countries' tables, after the country's own and the US dishes; a fallback can't add a word that makes it
     /// another food (liver, flour, raw, potato, soup), as tools/ai-test/tables.js.
     func testWorldTableFindsDishesButNotOtherFoods() {
