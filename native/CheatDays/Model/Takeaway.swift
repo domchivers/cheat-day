@@ -273,7 +273,7 @@ enum Takeaway {
         find: they want you to suggest places to eat, somewhere or of a kind, with no particular restaurant named ("any good lunch spots near me in South Yarra?", "somewhere high protein on Chapel St", "good Thai near work for dinner", "where can I get a healthy lunch in the city?").
         log: they're telling you what they ate or are eating, to add it ("had a Gami burger for lunch", "Gami chicken burger", "just had Nando's"), or correcting a log.
         other: anything else, including choosing food with no restaurant and no places wanted ("what should I have for dinner?") and questions.
-        When the conversation so far was choosing from a restaurant, a reply changing that choice ("no milk left, I want the wings") is choose, with that restaurant. When you suggested places, picking one ("the poke one", "the second") is choose, with that place's name and area.\(photo.isEmpty ? "" : " With a photo of a menu or delivery-app page, naming a dish on it for a meal (\"this burger for dinner\") is choose, unless they say they had or ate it.")
+        When the conversation so far was choosing from a restaurant, a reply changing that choice ("no milk left, I want the wings", "the lamb one instead") is choose, with that restaurant; a question about the order already suggested is other: which sides, sauces, dips, sizes or extras to pick with it, what you'd recommend among its options, or anything about pictures they sent ("which sides should I get?", "what would you recommend on the picks", "from the pictures I sent"). When you suggested places, picking one ("the poke one", "the second") is choose, with that place's name and area.\(photo.isEmpty ? "" : " With a photo of a menu or delivery-app page, naming a dish on it for a meal (\"this burger for dinner\") is choose, unless they say they had or ate it.")
         \(earlier.isEmpty ? "" : "The conversation so far:\n\(earlier)\n")Their message: "\(message)"
         restaurant: its name as they wrote it, else empty. area: a suburb, street or city if they said one, else empty. want: menu items they say they want, in their words, or for find the kind of food they're after ("Thai", "high protein"). avoid: foods they don't want or don't have in ("milk"), in their words. seen: dishes they quote from a menu or delivery app with their energy ("Chicken Burger (2280 kJ)"), each with its kJ (kcal × 4.184 if they gave kcal), else empty. kcal and protein: numbers they gave for what they have left or for this meal ("854 left" is kcal 854), else 0.
         """
@@ -419,12 +419,16 @@ enum Takeaway {
                 decided?.set(true); return await find(area: said, want: w["want"] as? [String] ?? [], asked: str(w["asked"]), kcal: nil, protein: nil, store: store, step: step)
             }
         }
+        // A place's menu is already planned in this chat: a question about that order ("which sides should I get?",
+        // "from the pictures I sent") is the assistant's to answer. It was planned all over again, the same card each
+        // time, because the place's name was still in mind and the message read like choosing.
+        let planned = turns.dropLast().contains { $0.result?["takeaway"] != nil }
         let page = photo.map { p in "a menu page\(p.shop.isEmpty ? "" : " from \(p.shop)") showing " + p.listing.map { "\(str($0["name"])) (\(Fmt.int(num($0["kj"]) ?? 0)) kJ)" }.joined(separator: ", ") } ?? ""
         // with a menu page, choosing or logging is decided here: Claude called "this burger for dinner" a log one time in three
         if photo != nil, !choosing(last.text) { return nil }
         guard let route = await Gemini.askClaude("quick", schema: routeSchema, parts: [["text": routeAsk(last.text, earlier: earlier, photo: page)]]),
               // choose; or a restaurant named in a question or a wish, nothing they had, in case it's called something else
-              photo != nil || ["choose", "find"].contains(str(route["intent"])) || (!str(route["restaurant"]).isEmpty && choosing(last.text)) else { return nil }
+              photo != nil || ["choose", "find"].contains(str(route["intent"])) || (!str(route["restaurant"]).isEmpty && choosing(last.text) && !(planned && str(route["intent"]) == "other")) else { return nil }
         // "any good lunch spots in South Yarra?": places found on the web, each with the dish that suits them
         if photo == nil, str(route["intent"]) == "find", str(route["restaurant"]).isEmpty {
             decided?.set(true); return await find(area: str(route["area"]), want: route["want"] as? [String] ?? [], asked: last.text, kcal: pos(route["kcal"]), protein: pos(route["protein"]), store: store, step: step)
