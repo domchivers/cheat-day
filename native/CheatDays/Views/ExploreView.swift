@@ -8,12 +8,14 @@ struct ExploreView: View {
     @State private var q = ""
     @State private var people: [Profiles.Profile] = []
     @State private var opened: Int?
+    @State private var fresh = false     // New: newest first, nothing else weighed (Top is by likes and comments for its age)
+    @State private var tagOpen: String?  // a hashtag typed in the search, opened
     private var follows: Follows { Follows.shared }
     private static let chips = ["For you", "💪 High protein", "Under 500", "🍳 Breakfast", "🥗 Lunch", "🍝 Dinner", "🏋️ Workouts"]
 
     private var shown: [JSON] {
         let t = q.trimmingCharacters(in: .whitespaces).lowercased()
-        return follows.explore.filter { p in
+        return (fresh ? follows.newest : follows.explore).filter { p in
             if Profiles.shared.muted.contains(str(p["owner"])) { return false }
             if !t.isEmpty && !str(p["name"]).lowercased().contains(t) && !str(p["caption"]).lowercased().contains(t) { return false }
             let kcal = num(p["kcal"]) ?? 0, pr = num(dict(p["macros"])["p"]) ?? 0, kind = str(p["kind"]), meal = str(dict(p["extra"])["meal"])
@@ -44,6 +46,31 @@ struct ExploreView: View {
                     .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 8)
                     // no filter chips under the search (the owner: they looked cheap); the search narrows it
+                    // Top or New, as two plain words: New is every public post in the order it went up, so anyone's is seen
+                    HStack(spacing: 18) {
+                        ForEach([false, true], id: \.self) { new in
+                            Button { fresh = new } label: {
+                                Text(new ? "New" : "Top").font(.subheadline.weight(fresh == new ? .heavy : .semibold))
+                                    .foregroundStyle(fresh == new ? Color.primary : Color.secondary)
+                            }
+                            .buttonStyle(.plain).accessibilityAddTraits(fresh == new ? .isSelected : [])
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16).padding(.bottom, 8)
+                    // "#mealprep" in the search: that tag's posts
+                    if let t = Tagging.hashtags(in: q).first {
+                        Button { tagOpen = t } label: {
+                            HStack {
+                                Image(systemName: "number").font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent)
+                                Text("Posts tagged #\(t)").font(.subheadline.weight(.semibold))
+                                Spacer()
+                                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                            }
+                            .padding(.horizontal, 16).padding(.vertical, 10).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
                     if !people.isEmpty { peopleRow.padding(.bottom, 8) }
                     if let e = follows.error { Text(e).font(.footnote).foregroundStyle(Theme.warn).padding(16) }
                     else if shown.isEmpty && !follows.exploring {
@@ -54,13 +81,15 @@ struct ExploreView: View {
                 }
                 .padding(.bottom, 110)
             }
-            .refreshable { await follows.loadExplore() }
+            .refreshable { if fresh { await follows.loadNewest() } else { await follows.loadExplore() } }
         }
         .task(id: q) {
             try? await Task.sleep(for: .milliseconds(300))
             if !Task.isCancelled { people = q.count >= 2 ? await follows.search(q) : [] }
         }
         .task { if follows.explore.isEmpty { await follows.loadExplore() } }
+        .task(id: fresh) { if fresh, follows.newest.isEmpty { await follows.loadNewest() } }
+        .navigationDestination(item: $tagOpen) { t in HashtagView(tag: t) }
         .overlay(alignment: .top) { if follows.exploring && follows.explore.isEmpty { Skeleton.grid(12).padding(.top, 64).allowsHitTesting(false) } }
         .navigationDestination(item: $opened) { i in
             let list = shown

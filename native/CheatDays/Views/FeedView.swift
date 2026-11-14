@@ -382,6 +382,7 @@ struct FeedView: View {
     @State private var deleting: PostBox?   // a post of yours, about to be deleted: asked first
     @State private var zoomed: String?   // the post whose picture two fingers have pinched bigger
     @State private var profileOf: String?
+    @State private var tagOf: String?   // a hashtag tapped in a caption: its posts open
     @State private var story: StoryStart?
     @State private var profileAfterStory: String?   // a name tapped in a story: their page opens once the story has closed
     @State private var posting = false   // making a story
@@ -440,6 +441,7 @@ struct FeedView: View {
         .sheet(item: $rewording) { b in EditPostSheet(post: b.post) }
         .fullScreenCover(item: $reels) { r in ReelsView(posts: only ?? feed.posts, startAt: r.id) }
         .navigationDestination(item: $profileOf) { id in ProfileView(id: id) }
+        .navigationDestination(item: $tagOf) { t in HashtagView(tag: t) }
         .fullScreenCover(item: $story, onDismiss: { if let p = profileAfterStory { profileAfterStory = nil; profileOf = p } }) { s in
             StoryView(people: s.people, at: s.at, onProfile: { profileAfterStory = $0 })
         }
@@ -607,7 +609,7 @@ struct FeedView: View {
             if !rx.isEmpty { likedBy(rx).padding(.horizontal, 14).padding(.top, 2) }
             if !feed.caption(p).isEmpty {
                 (Text(feed.name(owner) + " ").bold() + Text(Tagging.styled(feed.caption(p)))).font(.subheadline).padding(.horizontal, 14).padding(.top, 4)
-                    .tagLinks { profileOf = $0 }
+                    .tagLinks({ profileOf = $0 }, tag: { tagOf = $0 })
             }
             if !cm.isEmpty {
                 VStack(alignment: .leading, spacing: 3) {
@@ -876,6 +878,7 @@ struct CommentsSheet: View {
     @State private var text = ""
     @State private var replying: JSON?
     @State private var profile: String?   // someone tagged in a comment, tapped: their page opens here
+    @State private var hashtag: String?   // a hashtag in a comment, tapped: its posts open here
     @FocusState private var typing: Bool
     private var feed: Feed { Feed.shared }
     private var id: String { str(post["id"]) }
@@ -938,6 +941,7 @@ struct CommentsSheet: View {
             }
             .navigationTitle("Comments").navigationBarTitleDisplayMode(.inline)
             .navigationDestination(item: $profile) { id in ProfileView(id: id) }
+            .navigationDestination(item: $hashtag) { t in HashtagView(tag: t) }
             .onAppear { KeyboardDone.quiet = true }
             .onDisappear { KeyboardDone.quiet = false }
         }
@@ -951,7 +955,7 @@ struct CommentsSheet: View {
             Avatar(id: who, size: 30)
             VStack(alignment: .leading, spacing: 3) {
                 (Text(feed.name(who) + " ").bold() + Text(Tagging.styled(str(c["text"])))).font(.subheadline)
-                    .tagLinks { profile = $0 }
+                    .tagLinks({ profile = $0 }, tag: { hashtag = $0 })
                 HStack(spacing: 14) {
                     Text(Feed.ago(str(c["created_at"])))
                     if !likes.isEmpty { Text(likes.count == 1 ? "1 like" : "\(likes.count) likes") }

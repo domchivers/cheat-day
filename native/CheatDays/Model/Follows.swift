@@ -152,6 +152,30 @@ final class Follows {
         _ = await suggestions()
     }
 
+    /// Public profiles' posts, newest first with nothing else weighed: Explore's "New".
+    private(set) var newest: [JSON] = []
+    func loadNewest() async {
+        // every post this account may read, newest first; then only public profiles' (Explore never shows a private one's)
+        guard let got = try? await rows("/rest/v1/posts?kind=neq.moment&owner=neq.\(me)&select=*&order=created_at.desc&limit=150") else { return }
+        await Profiles.shared.load(got.map { str($0["owner"]) })
+        newest = got.filter { p in
+            let o = str(p["owner"])
+            return !blocked.contains(o) && Profiles.shared.all[o]?.isPrivate == false
+        }
+        await Feed.shared.loadExtras(newest)
+    }
+
+    /// The posts this account may read whose caption has this hashtag, newest first.
+    func tagged(_ tag: String) async -> [JSON] {
+        let t = tag.lowercased(), enc = t.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? t
+        guard let got = try? await rows("/rest/v1/posts?caption=ilike.*%23\(enc)*&kind=neq.moment&select=*&order=created_at.desc&limit=100") else { return [] }
+        // the whole tag, not one that starts with it ("#protein" isn't "#proteinshake")
+        let out = got.filter { p in !blocked.contains(str(p["owner"])) && Tagging.hashtags(in: str(p["caption"])).contains(t) }
+        await Profiles.shared.load(out.map { str($0["owner"]) })
+        await Feed.shared.loadExtras(out)
+        return out
+    }
+
     func loadExplore() async {
         exploring = true; defer { exploring = false }
         do {

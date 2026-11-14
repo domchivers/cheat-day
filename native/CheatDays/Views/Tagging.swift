@@ -55,7 +55,24 @@ import SwiftUI
         return seen
     }
 
-    /// The text with each friend's "@name" coloured and made a link (see `tagLinks`).
+    /// Each "#word" in the text, with where it is: letters, numbers and underscores, as it's written.
+    private static func tags(_ text: String) -> [(range: Range<String.Index>, tag: String)] {
+        guard text.contains("#"), let pattern = try? Regex("#[\\p{L}\\p{N}_]+") else { return [] }
+        return text.ranges(of: pattern).compactMap { r -> (range: Range<String.Index>, tag: String)? in
+            let word = String(text[r].dropFirst())
+            // "#1" is a number, not a tag
+            return word.contains(where: { $0.isLetter }) ? (range: r, tag: word.lowercased()) : nil
+        }
+    }
+
+    /// The hashtags in it, lower case, once each.
+    static func hashtags(in text: String) -> [String] {
+        var seen: [String] = []
+        for t in tags(text) where !seen.contains(t.tag) { seen.append(t.tag) }
+        return seen
+    }
+
+    /// The text with each friend's "@name" and each "#tag" coloured and made a link (see `tagLinks`).
     static func styled(_ text: String) -> AttributedString {
         var out = AttributedString(text)
         for f in found(text) {
@@ -63,17 +80,45 @@ import SwiftUI
             out[r].link = url
             out[r].foregroundColor = Theme.accent
         }
+        for t in tags(text) {
+            let word = t.tag.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? t.tag
+            guard let r = Range(t.range, in: out), let url = URL(string: "cheatdays-tag://t/" + word) else { continue }
+            out[r].link = url
+            out[r].foregroundColor = Theme.accent
+        }
         return out
+    }
+
+    /// The tags the "#word" being typed could be: ones already used in the posts this phone has seen, most used first.
+    static func tagMatches(_ text: String) -> [String] {
+        guard let last = text.last, !last.isWhitespace,
+              let word = text.split(whereSeparator: { $0.isWhitespace }).last, word.hasPrefix("#") else { return [] }
+        let q = word.dropFirst().lowercased()
+        var count: [String: Int] = [:]
+        for p in Feed.shared.posts + Follows.shared.explore + Follows.shared.newest {
+            for t in hashtags(in: str(p["caption"])) where t.hasPrefix(q) && t != q { count[t, default: 0] += 1 }
+        }
+        return Array(count.sorted { ($0.value, $1.key) > ($1.value, $0.key) }.map(\.key).prefix(8))
+    }
+
+    /// The text with the "#word" being typed finished as this tag.
+    static func pickedTag(_ tag: String, in text: String) -> String {
+        guard let at = text.range(of: "#", options: .backwards) else { return text }
+        return String(text[..<at.lowerBound]) + "#" + tag + " "
     }
 }
 
 extension View {
-    /// A friend's "@name" tapped in text drawn with `Tagging.styled`: told who.
-    func tagLinks(_ open: @escaping (String) -> Void) -> some View {
+    /// A friend's "@name" or a "#tag" tapped in text drawn with `Tagging.styled`: told who, or which tag.
+    func tagLinks(_ open: @escaping (String) -> Void, tag: ((String) -> Void)? = nil) -> some View {
         environment(\.openURL, OpenURLAction { url in
-            guard url.scheme == "cheatdays-user", let id = url.host, !id.isEmpty else { return .systemAction }
-            open(id)
-            return .handled
+            if url.scheme == "cheatdays-user", let id = url.host, !id.isEmpty { open(id); return .handled }
+            if url.scheme == "cheatdays-tag", let tag {
+                let word = url.lastPathComponent.removingPercentEncoding ?? url.lastPathComponent
+                if !word.isEmpty { tag(word) }
+                return .handled
+            }
+            return .systemAction
         })
     }
 }
@@ -83,7 +128,21 @@ struct TagSuggestions: View {
     @Binding var text: String
 
     var body: some View {
-        let found = Tagging.matches(text)
+        let found = Tagging.matches(text), tags = Tagging.tagMatches(text)
+        if !tags.isEmpty {
+            ScrollView(.horizontal) {
+                HStack(spacing: 8) {
+                    ForEach(tags, id: \.self) { t in
+                        Button { text = Tagging.pickedTag(t, in: text) } label: {
+                            Text("#" + t).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accent).lineLimit(1)
+                                .padding(.horizontal, 12).frame(height: 34).background(Color(.tertiarySystemFill), in: Capsule())
+                        }
+                        .buttonStyle(.plain).accessibilityIdentifier("hashtag-suggestion")
+                    }
+                }
+            }
+            .scrollIndicators(.hidden)
+        }
         if !found.isEmpty {
             ScrollView(.horizontal) {
                 HStack(spacing: 8) {
@@ -102,5 +161,24 @@ struct TagSuggestions: View {
             }
             .scrollIndicators(.hidden)
         }
+    }
+}
+
+/// Every post you can see with a hashtag in its caption, newest first.
+struct HashtagView: View {
+    let tag: String
+    @State private var posts: [JSON] = []
+    @State private var loaded = false
+
+    var body: some View {
+        Group {
+            if !loaded { ProgressView().controlSize(.large).frame(maxWidth: .infinity, maxHeight: .infinity) }
+            else if posts.isEmpty {
+                Text("No posts with #\(tag) yet.").font(.subheadline).foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            else { FeedView(only: posts) }
+        }
+        .navigationTitle("#" + tag).navigationBarTitleDisplayMode(.inline)
+        .task { if !loaded { posts = await Follows.shared.tagged(tag); loaded = true } }
     }
 }
