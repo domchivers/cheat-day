@@ -12,16 +12,38 @@ struct StoryComposer: View {
     @State private var picked: PhotosPickerItem?
     @State private var loading = false
     @State private var words = false   // an Aa story: the editor opens on writing
+    // Several chosen at once: each is its own slide, edited and shared in turn (the one showing is `image`/`video`)
+    @State private var queue: [StoryPick] = []
+    @State private var at = 0
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
             // straight into the camera, as Instagram opens (the in-between Camera / Library screen is gone)
             if image == nil && video == nil {
-                StoryCamera(captured: { img, url in words = false; image = img; video = url }, close: { dismiss() },
-                            wordsOnly: { card in words = true; image = card; video = nil })
+                StoryCamera(captured: { img, url in words = false; queue = []; at = 0; image = img; video = url }, close: { dismiss() },
+                            wordsOnly: { card in words = true; queue = []; at = 0; image = card; video = nil },
+                            capturedMany: { picks in words = false; queue = picks; at = 0; image = picks[0].image; video = picks[0].video })
             }
-            else { StoryEditor(image: image, video: video, startWriting: words, close: { image = nil; video = nil; words = false }, posted: { dismiss() }) }
+            else {
+                StoryEditor(image: image, video: video, startWriting: words, close: {
+                    // leaving part-way: what's shared stays shared, the rest are let go
+                    let shared = at > 0
+                    queue = []; at = 0; image = nil; video = nil; words = false
+                    if shared { dismiss() }
+                }, posted: {
+                    // on to the next one chosen, or done
+                    if at + 1 < queue.count { at += 1; image = queue[at].image; video = queue[at].video } else { dismiss() }
+                })
+                .id(at)
+                .overlay(alignment: .top) {
+                    if queue.count > 1 {
+                        Text("\(at + 1) of \(queue.count)").font(.footnote.weight(.heavy)).monospacedDigit().foregroundStyle(.white)
+                            .padding(.horizontal, 12).frame(height: 30).background(.black.opacity(0.55), in: Capsule())
+                            .padding(.top, 14).allowsHitTesting(false)
+                    }
+                }
+            }
         }
         .statusBarHidden()
         .fullScreenCover(isPresented: $camera) {

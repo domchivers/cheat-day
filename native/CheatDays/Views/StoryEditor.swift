@@ -1,5 +1,6 @@
 import AVFoundation
 import Photos
+import PhotosUI
 import SwiftUI
 
 /// The story editor, Instagram's way: text with fonts, colours, a highlight, alignment and glow; the app's own stickers
@@ -182,6 +183,8 @@ struct StoryEditor: View {
     @State private var poster: UIImage?   // the video's first frame, shown while the player gets going
     // sheets
     @State private var stickers = false
+    @State private var choosingPhoto = false   // a picture of your own, as a sticker
+    @State private var photoPick: PhotosPickerItem?
     @State private var picked: String?   // a tile from the tray, added once the tray has closed
     @State private var food = false
     @State private var polling = false
@@ -332,6 +335,16 @@ struct StoryEditor: View {
                 .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $food) { FoodStickerPicker { it in addFood(it) }.presentationDetents([.medium, .large]) }
+        .photosPicker(isPresented: $choosingPhoto, selection: $photoPick, matching: .images)
+        .onChange(of: photoPick) { _, item in
+            guard let item else { return }
+            photoPick = nil
+            Task {
+                guard let d = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: d) else { flash("Couldn't open that photo"); return }
+                let id = PhotoStickers.keep(img)
+                place(["type": "photo", "local": id, "w": Double(img.size.width), "h": Double(img.size.height)])
+            }
+        }
         .sheet(isPresented: $polling) { PollMaker { q, a, b in place(["type": "poll", "q": q, "a": a, "b": b]) }.presentationDetents([.medium]) }
         .alert(typingSticker == "question" ? "Ask a question" : "Hashtag", isPresented: Binding(get: { typingSticker != nil }, set: { if !$0 { typingSticker = nil } })) {
             TextField(typingSticker == "question" ? "Ask me anything" : "mealprep", text: $stickerText)
@@ -1014,6 +1027,7 @@ struct StoryEditor: View {
         switch pick {
         // these open their own sheet once the sticker tray has gone
         case "food": food = true
+        case "photo": choosingPhoto = true
         case "poll": polling = true
         case "mention": mentioning = true
         case "macros":
@@ -1280,11 +1294,18 @@ struct StoryEditor: View {
 
     private func share(_ audience: String) {
         Task {
+            // pictures stuck on it go up first: whoever watches fetches them from there
+            var layers = everything
+            for i in layers.indices where str(layers[i]["type"]) == "photo" && str(layers[i]["url"]).isEmpty {
+                guard let img = PhotoStickers.local[str(layers[i]["local"])], let jpeg = Feed.prepare(img),
+                      let url = try? await Supabase.shared.uploadPhoto(jpeg) else { flash("Couldn't upload a photo sticker"); return }
+                layers[i]["url"] = url; layers[i]["local"] = nil
+            }
             let ok: Bool
             if let video {
-                ok = await stories.post(image: nil, video: video, overlays: everything, audience: audience, filter: look, range: length > 0 ? range : nil, muted: muted)
+                ok = await stories.post(image: nil, video: video, overlays: layers, audience: audience, filter: look, range: length > 0 ? range : nil, muted: muted)
             } else {
-                ok = await stories.post(image: framedPhoto(canvasWidth), video: nil, overlays: everything, audience: audience)
+                ok = await stories.post(image: framedPhoto(canvasWidth), video: nil, overlays: layers, audience: audience)
             }
             if ok { UINotificationFeedbackGenerator().notificationOccurred(.success); posted() }
             else { flash(stories.error ?? "Couldn't share it") }
@@ -1423,6 +1444,22 @@ struct StickerSheet: View {
         let shown = mine.filter { q.isEmpty || $0.words.localizedCaseInsensitiveContains(q) }
         return VStack(alignment: .leading, spacing: 14) {
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                // a picture of your own, stuck on top: more than one picture on a story
+                if q.isEmpty || "photo picture image".localizedCaseInsensitiveContains(q) {
+                    Button { pick("photo") } label: {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(.tertiarySystemFill).opacity(0.5))
+                            .frame(maxWidth: .infinity).frame(height: 104)
+                            .overlay {
+                                VStack(spacing: 6) {
+                                    Image(systemName: "photo.on.rectangle.angled").font(.system(size: 28, weight: .semibold))
+                                    Text("Photo").font(.subheadline.weight(.heavy))
+                                }
+                                .foregroundStyle(.white)
+                            }
+                            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+                    .buttonStyle(.plain).accessibilityIdentifier("tile-photo")
+                }
                 ForEach(shown, id: \.id) { s in
                     // the sticker laid out at its own size first, then shrunk: squeezed into the tile it was cut short
                     // ("54-day str…") and spilled into its neighbours; and the tile itself takes the tap (it didn't)

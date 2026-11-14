@@ -12,6 +12,8 @@ struct StoryCamera: View {
     var close: () -> Void
     /// Aa: a story that's just words on a colour, opened straight into writing.
     var wordsOnly: (UIImage) -> Void = { _ in }
+    /// Several chosen from the library at once (photos and videos), in the order they were tapped: each is a slide.
+    var capturedMany: ([StoryPick]) -> Void = { _ in }
     @State private var cam = CameraRig()
     @State private var recording = false
     @State private var started: Date?
@@ -19,7 +21,8 @@ struct StoryCamera: View {
     @State private var pressing = false
     @State private var zoomStart: CGFloat = 1
     @State private var recents = false
-    @State private var picked: PhotosPickerItem?
+    @State private var picked: [PhotosPickerItem] = []
+    @State private var opening = false   // the chosen ones are being read
     @State private var library = false
     // camera modes, down the left as Instagram has them. Layout: 2 or 4 photos taken one after another and made
     // into one picture (0 when off). Hands-free: a tap starts filming and a tap stops it, no holding.
@@ -113,8 +116,10 @@ struct StoryCamera: View {
             }
             .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
         }
-        .photosPicker(isPresented: $library, selection: $picked, matching: .any(of: [.images, .videos]))
-        .onChange(of: picked) { _, item in Task { await load(item) } }
+        // up to ten at once, numbered in the order they're tapped: each becomes its own slide
+        .photosPicker(isPresented: $library, selection: $picked, maxSelectionCount: 10, selectionBehavior: .ordered, matching: .any(of: [.images, .videos]))
+        .onChange(of: picked) { _, items in if !items.isEmpty { Task { await load(items) } } }
+        .overlay { if opening { ZStack { Color.black.opacity(0.6).ignoresSafeArea(); ProgressView().tint(.white).controlSize(.large) } } }
         .onChange(of: cam.finishedMovie) { _, url in if let url { captured(nil, url) } }
         .onChange(of: cam.photo) { _, img in if let img { took(img) } }
     }
@@ -423,11 +428,15 @@ struct StoryCamera: View {
         .opacity(recording ? 0 : 1)
     }
 
-    private func load(_ item: PhotosPickerItem?) async {
-        guard let item else { return }
-        if item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }), let m = try? await item.loadTransferable(type: PickedMovie.self) { captured(nil, m.url) }
-        else if let d = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: d) { captured(img, nil) }
-        picked = nil
+    private func load(_ items: [PhotosPickerItem]) async {
+        opening = true; defer { opening = false }
+        var out: [StoryPick] = []
+        for item in items {
+            if item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }), let m = try? await item.loadTransferable(type: PickedMovie.self) { out.append(StoryPick(image: nil, video: m.url)) }
+            else if let d = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: d) { out.append(StoryPick(image: img, video: nil)) }
+        }
+        picked = []
+        if out.count == 1 { captured(out[0].image, out[0].video) } else if out.count > 1 { capturedMany(out) }
     }
 
     private func textOnly() { UIImpactFeedbackGenerator(style: .light).impactOccurred(); wordsOnly(Self.colourCard()) }
@@ -781,4 +790,10 @@ struct LayoutCell: View {
                 .simultaneously(with: MagnifyGesture().updating($pinch) { m, state, _ in state = m.magnification }
                     .onEnded { m in fit = settled(fit.scale * m.magnification, fit.x, fit.y) }) : nil)
     }
+}
+
+/// One thing chosen for a story: a photo or a video.
+struct StoryPick {
+    let image: UIImage?
+    let video: URL?
 }

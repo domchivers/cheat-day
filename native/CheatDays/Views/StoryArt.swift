@@ -133,6 +133,21 @@ struct StoryItem: View {
         else { sticker.fixedSize() }
     }
 
+    /// A picture of your own stuck on the story, in a white frame. While it's being made the picture is on the phone
+    /// (PhotoStickers); once posted it's fetched from where it was uploaded.
+    private var photo: some View {
+        let w = num(o["w"]) ?? 3, h = num(o["h"]) ?? 4
+        let width: CGFloat = 190, height = max(90, min(340, width * h / max(1, w)))
+        return ZStack {
+            Color(white: 0.15)
+            if let img = PhotoStickers.local[str(o["local"])] { Image(uiImage: img).resizable().scaledToFill() }
+            else if !str(o["url"]).isEmpty { FeedPhoto(src: str(o["url"]), fill: true) }
+        }
+        .frame(width: width, height: height).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.white, lineWidth: 4))
+        .shadow(color: .black.opacity(0.3), radius: 8, y: 5)
+    }
+
     @ViewBuilder private var sticker: some View {
         switch str(o["type"]) {
         case "text": text
@@ -149,6 +164,7 @@ struct StoryItem: View {
         case "emoji": Text(str(o["text"])).font(.system(size: 90))
         case "sticker3d": Image("sticker-" + str(o["code"])).resizable().interpolation(.high).scaledToFit().frame(width: 130, height: 130)
             .shadow(color: .black.opacity(0.25), radius: 8, y: 5)
+        case "photo": photo
         case "gif":
             let w = num(o["w"]) ?? 200, h = num(o["h"]) ?? 200
             AnimatedGIF(url: str(o["url"])).frame(width: 170, height: 170 * h / max(1, w))
@@ -497,4 +513,21 @@ enum BuiltInStickers {
               let rows = (try? JSONSerialization.jsonObject(with: d)) as? [[String: String]] else { return [] }
         return rows.compactMap { r in r["code"].map { ($0, r["emoji"] ?? "") } }
     }()
+}
+
+/// Pictures stuck on a story that's still being made, by the name their sticker carries ("local"). They're uploaded
+/// when the story is shared.
+@MainActor enum PhotoStickers {
+    static var local: [String: UIImage] = [:]
+
+    /// The picture made small enough for a sticker (900 pixels on its long side), kept, and its name.
+    static func keep(_ img: UIImage) -> String {
+        let long = max(img.size.width, img.size.height), k = min(1, 900 / max(1, long))
+        let size = CGSize(width: (img.size.width * k).rounded(), height: (img.size.height * k).rounded())
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1
+        let small = UIGraphicsImageRenderer(size: size, format: format).image { _ in img.draw(in: CGRect(origin: .zero, size: size)) }
+        let id = String(UUID().uuidString.prefix(8)).lowercased()
+        local[id] = small
+        return id
+    }
 }
