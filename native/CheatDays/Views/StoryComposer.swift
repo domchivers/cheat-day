@@ -14,6 +14,7 @@ struct StoryComposer: View {
     @State private var words = false   // an Aa story: the editor opens on writing
     // Several chosen at once: each is its own slide, edited and shared in turn (the one showing is `image`/`video`)
     @State private var queue: [StoryPick] = []
+    @State private var extras: [JSON] = []   // the other photos picked with the first, on it as stickers
     @State private var at = 0
 
     var body: some View {
@@ -21,12 +22,23 @@ struct StoryComposer: View {
             Color.black.ignoresSafeArea()
             // straight into the camera, as Instagram opens (the in-between Camera / Library screen is gone)
             if image == nil && video == nil {
-                StoryCamera(captured: { img, url in words = false; queue = []; at = 0; image = img; video = url }, close: { dismiss() },
+                StoryCamera(captured: { img, url in words = false; queue = []; extras = []; at = 0; image = img; video = url }, close: { dismiss() },
                             wordsOnly: { card in words = true; queue = []; at = 0; image = card; video = nil },
-                            capturedMany: { picks in words = false; queue = picks; at = 0; image = picks[0].image; video = picks[0].video })
+                            capturedMany: { picks in
+                                // Several picked from the library: one story. The first is the picture; the other photos go
+                                // on it as stickers, to move and size (each was a story of its own). A video can't be a
+                                // sticker, so any more videos still come after it as stories of their own.
+                                words = false; at = 0
+                                let first = picks[0], rest = picks.dropFirst()
+                                extras = StoryEditor.photoStickers(rest.compactMap(\.image))
+                                queue = [first] + rest.filter { $0.video != nil }
+                                if queue.count == 1 { queue = [] }
+                                image = first.image; video = first.video
+                            })
             }
             else {
                 StoryEditor(image: image, video: video, startWriting: words, close: {
+                    extras = []
                     // leaving part-way: what's shared stays shared, the rest are let go
                     let shared = at > 0
                     queue = []; at = 0; image = nil; video = nil; words = false
@@ -34,7 +46,7 @@ struct StoryComposer: View {
                 }, posted: {
                     // on to the next one chosen, or done
                     if at + 1 < queue.count { at += 1; image = queue[at].image; video = queue[at].video } else { dismiss() }
-                })
+                }, startItems: at == 0 ? extras : [])
                 .id(at)
                 .overlay(alignment: .top) {
                     if queue.count > 1 {

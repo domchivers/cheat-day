@@ -1148,15 +1148,20 @@ struct StoryEditor: View {
     /// each be moved, sized and turned from there.
     private func placePhotos(_ imgs: [UIImage]) {
         remember(); UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        for o in Self.photoStickers(imgs) { withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) { items.append(o) } }
+    }
+
+    /// Photos as stickers for a story, laid out two by two and a little turned.
+    static func photoStickers(_ imgs: [UIImage]) -> [JSON] {
         let n = imgs.count
-        for (i, img) in imgs.enumerated() {
+        return imgs.enumerated().map { i, img in
             var o: JSON = ["type": "photo", "local": PhotoStickers.keep(img), "w": Double(img.size.width), "h": Double(img.size.height)]
             o["id"] = UUID().uuidString.prefix(8).lowercased()
             o["x"] = n == 1 ? 0.5 : (i % 2 == 0 ? 0.32 : 0.68)
             o["y"] = n <= 2 ? 0.45 + Double(i) * 0.04 : min(0.82, 0.26 + Double(i / 2) * 0.27)
             o["rotation"] = n == 1 ? 0.0 : (i % 2 == 0 ? -4.0 : 4.0)
             o["scale"] = n == 1 ? 0.85 : 0.62
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) { items.append(o) }
+            return o
         }
     }
 
