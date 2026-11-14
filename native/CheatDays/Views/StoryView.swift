@@ -108,7 +108,7 @@ struct StoryView: View {
                                 let polls = list(st["overlays"]).filter(Self.live)
                                 // a name tagged on the story opens that person's page, as the poster's name at the top does
                                 if !polls.isEmpty {
-                                    StoryLayer(items: polls, story: str(st["id"]), mention: onProfile.map { open in { id in open(id); dismiss() } })
+                                    StoryLayer(items: polls, story: str(st["id"]), mention: onProfile.map { open in { id in open(id); dismiss() } }, holding: { paused = $0 })
                                         .aspectRatio(StoryArt.aspect, contentMode: .fit)
                                 }
                             }

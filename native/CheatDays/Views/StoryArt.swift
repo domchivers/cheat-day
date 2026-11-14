@@ -412,6 +412,9 @@ struct StoryLayer: View {
     var story: String? = nil   // the story, for poll votes; nil in the editor
     /// A tagged name was tapped (their id): set where the story's being watched and a profile can be opened.
     var mention: ((String) -> Void)? = nil
+    /// Told when a tagged name's bubble is up (the story waits) and when it's gone.
+    var holding: ((Bool) -> Void)? = nil
+    @State private var bubble: String?   // the tag whose bubble is showing, by its id
     private var stories: Stories { Stories.shared }
 
     var body: some View {
@@ -427,13 +430,45 @@ struct StoryLayer: View {
                             .rotationEffect(.degrees(num(o["rotation"]) ?? 0))
                             .position(x: (num(o["x"]) ?? 0.5) * g.size.width, y: (num(o["y"]) ?? 0.5) * g.size.height)
                             .contentShape(Rectangle())
-                            .simultaneousGesture(str(o["type"]) == "mention" && mention != nil ? TapGesture().onEnded { mention?(str(o["user"])) } : nil)
+                            .simultaneousGesture(str(o["type"]) == "mention" && mention != nil ? TapGesture().onEnded {
+                                // a tap on a tagged name brings up who it is, in a bubble over it; the bubble opens their page
+                                let id = str(o["id"])
+                                withAnimation(.snappy(duration: 0.2)) { bubble = bubble == id ? nil : id }
+                                holding?(bubble != nil)
+                            } : nil)
                             .allowsHitTesting(((str(o["type"]) == "poll" || str(o["type"]) == "question") && story != nil) || (str(o["type"]) == "mention" && mention != nil))
                     }
                 }
             }
             .frame(width: g.size.width, height: g.size.height)
+            .overlay {
+                if let o = items.first(where: { str($0["type"]) == "mention" && str($0["id"]) == bubble && bubble != nil }) {
+                    let user = str(o["user"]), known = Avatar.name(user)
+                    Button { bubble = nil; holding?(false); mention?(user) } label: {
+                        HStack(spacing: 10) {
+                            Avatar(id: user, size: 36)
+                            Text(known.isEmpty || known == "Someone" ? str(o["name"]) : known).font(.headline).foregroundStyle(.white).lineLimit(1)
+                            Image(systemName: "chevron.right").font(.subheadline.weight(.bold)).foregroundStyle(.white)
+                        }
+                        .padding(.horizontal, 14).padding(.vertical, 10)
+                        .background(Color(white: 0.16).opacity(0.96), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain).accessibilityIdentifier("mention-bubble")
+                    .frame(maxWidth: g.size.width - 24)
+                    // over the name, kept on the story
+                    .position(x: min(g.size.width - 110, max(110, (num(o["x"]) ?? 0.5) * g.size.width)),
+                              y: max(40, (num(o["y"]) ?? 0.5) * g.size.height - 30 * (num(o["scale"]) ?? 1) * k - 34))
+                    .transition(.scale(scale: 0.8).combined(with: .opacity))
+                }
+            }
         }
+        // it goes by itself after a few seconds, or when the slide changes
+        .task(id: bubble) {
+            guard bubble != nil else { return }
+            try? await Task.sleep(for: .seconds(4))
+            if !Task.isCancelled { withAnimation(.snappy(duration: 0.2)) { bubble = nil }; holding?(false) }
+        }
+        .onChange(of: story) { _, _ in bubble = nil }
         .alert(str(asking?["q"]).isEmpty ? "Ask me anything" : str(asking?["q"]), isPresented: Binding(get: { asking != nil }, set: { if !$0 { asking = nil } })) {
             TextField("Your answer", text: $reply)
             Button("Send") {
