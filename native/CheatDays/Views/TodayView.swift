@@ -909,6 +909,8 @@ struct AmountView: View {
         let guess = Self.rememberedPortion(str(target.basis["name"])) ?? pos(target.basis["portionGuess"])
         _portionText = State(initialValue: guess.map { Fmt.int($0) } ?? "")
         _meal = State(initialValue: target.meal)
+        // a food already logged can be renamed here: its name starts in the box
+        _nameText = State(initialValue: target.editId != nil ? str(target.basis["name"]) : "")
         // meat and fish start on Weigh: "1 thigh" is 100 g in one country and 180 g in another
         let kind = FoodKind.of(str(target.basis["name"])), byWeight = [.meat, .poultry, .fish].contains(kind) && c.kcalPer100 != nil
         let start: Mode = byWeight ? .grams
@@ -919,6 +921,7 @@ struct AmountView: View {
     }
 
     private var name: String { str(target.basis["name"]) }
+    private var newName: String { nameText.trimmingCharacters(in: .whitespaces) }
 
     private func macro(_ label: String, _ grams: Double, _ tint: Color) -> some View {
         VStack(spacing: 2) {
@@ -945,9 +948,18 @@ struct AmountView: View {
             Section {
                 VStack(spacing: 6) {
                     HStack(spacing: 12) {
-                        FoodDot(name: name, size: 48)
+                        FoodDot(name: target.editId != nil && !newName.isEmpty ? newName : name, size: 48)
                         VStack(alignment: .leading, spacing: 2) {
                             if asksName { TextField("What is it?", text: $nameText).font(.title3.bold()) }
+                            // A logged food's name can be changed: one read off a nutrition table and saved without a
+                            // name stayed "Scanned food" for good (only "Fix the numbers" could rename, and that
+                            // flattens its numbers to one portion).
+                            else if target.editId != nil {
+                                HStack(spacing: 6) {
+                                    TextField("Name", text: $nameText).font(.title3.bold()).submitLabel(.done)
+                                    Image(systemName: "pencil").font(.subheadline.weight(.semibold)).foregroundStyle(.tertiary).accessibilityHidden(true)
+                                }
+                            }
                             else { Text(name).font(.title3.bold()).lineLimit(2) }
                             if let per = perText { Text(per).font(.subheadline).foregroundStyle(.secondary) }
                         }
@@ -1245,7 +1257,14 @@ struct AmountView: View {
             basis["servingSize"] = g
         }
         basis.removeValue(forKey: "portionGuess")
-        if let id = target.editId { store.edit(id, kcal: kcal, meal: meal) } else { store.add(basis, kcal: kcal, meal: meal) }
+        if let id = target.editId {
+            // renamed: the entry as it is, with the new name (everything else about it kept)
+            if !newName.isEmpty, newName != name, var it = store.todayItems.first(where: { str($0["id"]) == id }) {
+                it["name"] = newName
+                store.perform(["type": "tweak", "id": id, "item": it])
+            }
+            store.edit(id, kcal: kcal, meal: meal)
+        } else { store.add(basis, kcal: kcal, meal: meal) }
         finish()
     }
 }
