@@ -387,7 +387,8 @@ enum Assistant {
             // logging from a menu page: its energy is the shop's own, not "doesn't publish its numbers"
             if let s = seen, !s.listing.isEmpty { e["shopNote"] = "Energy from the kJ on \(s.shop.isEmpty ? "the menu" : s.shop + "'s") page in your photo" }
             // held to the last card: the range each part had, a weight they gave, nothing moved by just asking again
-            let before = turns.dropLast().last { !$0.me && $0.result?["estimate"] != nil }?.result?["estimate"] as? JSON
+            // (new photos are a new thing to work out: a different plate isn't held to the last one's sizes)
+            let before = last.images.isEmpty ? turns.dropLast().last { !$0.me && $0.result?["estimate"] != nil }?.result?["estimate"] as? JSON : nil
             let h = held(tidied(e, said: last.text, photos: !pics.isEmpty), before: before, said: last.text)
             answer["estimate"] = h.estimate
             if !h.notes.isEmpty { answer["reply"] = ([str(answer["reply"])] + h.notes).joined(separator: " ") }

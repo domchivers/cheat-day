@@ -45,13 +45,6 @@ extension Assistant {
         return "Did you mean \(figure) cm?"
     }
 
-    /// The new card's part that is this earlier one: the same name, or one that sounds like it.
-    private static func earlier(_ p: JSON, in old: [JSON]) -> JSON? {
-        let name = str(p["name"]).lowercased()
-        return old.first { str($0["name"]).lowercased() == name }
-            ?? old.first { soundsLike(str($0["name"]), Set(FoodTable.words(str(p["name"])))) }
-    }
-
     /// A part at other grams, its numbers scaled with it.
     private static func regrammed(_ p: JSON, to g: Double) -> JSON {
         guard let was = pos(p["grams"]), abs(was - g) >= 0.5 else { return p }
@@ -71,11 +64,24 @@ extension Assistant {
         let amount = givesAmount(said), again = asksAgainOnly(said)
         let saidWords = Set(FoodTable.words(said).filter { $0.count >= 4 })
         var notes: [String] = [], changed = false
-        let parts = CheatDays.list(e["parts"]).map { p0 -> JSON in
+        // Each earlier part answers to one new part at most: the one of the same name, else one that sounds like it.
+        // A plate's lamb gyros and chicken gyros were both held to the one "gyros meat" of the card before, each put at
+        // its 160 g, and the plate came out with 320 g of meat where the look had said 260.
+        let news = CheatDays.list(e["parts"])
+        var taken = Set<Int>(), match: [Int: JSON] = [:]
+        for (i, p) in news.enumerated() {
+            let n = str(p["name"]).lowercased()
+            if let j = old.indices.first(where: { !taken.contains($0) && str(old[$0]["name"]).lowercased() == n }) { taken.insert(j); match[i] = old[j] }
+        }
+        for (i, p) in news.enumerated() where match[i] == nil {
+            let words = Set(FoodTable.words(str(p["name"])))
+            if let j = old.indices.first(where: { !taken.contains($0) && soundsLike(str(old[$0]["name"]), words) }) { taken.insert(j); match[i] = old[j] }
+        }
+        let parts = news.enumerated().map { i, p0 -> JSON in
             var p = p0
             let g = pos(p["grams"]) ?? 0
             let fresh = range(inSize: str(p["size"]))
-            let was = earlier(p, in: old)
+            let was = match[i]
             let wasG = was.flatMap { pos($0["grams"]) }
             let wasRange: (low: Double, high: Double)? = was.flatMap { w in
                 guard let lo = pos(w["low"]), let hi = pos(w["high"]) else { return nil }

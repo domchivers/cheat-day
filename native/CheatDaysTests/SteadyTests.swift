@@ -106,6 +106,16 @@ final class SteadyTests: XCTestCase {
         XCTAssertEqual(grams(theirs.estimate, "Tiramisu, cocoa dusted"), 170, "their count outranks the range")
     }
 
+    // two parts of a new card are never both held to the one part of the card before
+    func testOneEarlierPartHoldsOneNewPart() {
+        let first = Assistant.held(card([part("Chicken gyros meat, grilled", 200, kcal: 400, p: 50, c: 0, f: 20, size: "range 160–300 g")]), before: nil, said: "chicken gyros plate").estimate
+        let mixed = Assistant.held(card([part("Lamb gyros meat, grilled", 130, kcal: 300, p: 30, c: 0, f: 20, size: "range 100–160 g"),
+                                         part("Chicken gyros meat, grilled", 130, kcal: 260, p: 32, c: 0, f: 13, size: "range 100–160 g")]), before: first, said: "it was the mixed one")
+        XCTAssertEqual(grams(mixed.estimate, "Lamb gyros meat, grilled"), 130, "new to the chat: as it was sized")
+        XCTAssertEqual(grams(mixed.estimate, "Chicken gyros meat, grilled"), 160, "the same part as before: held to its range")
+        XCTAssertEqual(mixed.notes.count, 1)
+    }
+
     // 5 and 7 are the AI's (density, count × grams per piece, in the rules); the range it writes is read back here
     func testTheRangeIsReadFromTheSize() {
         XCTAssertEqual(Assistant.range(inSize: "range 60–120 g; 10 × ~8 g pieces, against the saucer")?.low, 60)
