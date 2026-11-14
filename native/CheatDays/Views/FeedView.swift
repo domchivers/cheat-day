@@ -783,7 +783,7 @@ struct FeedView: View {
                 .padding(.horizontal, 10).padding(.top, 8)
                 .transition(.scale(scale: 0.6, anchor: .bottomLeading).combined(with: .opacity))
             }
-            HStack(spacing: 18) {
+            HStack(spacing: 16) {
                 Image(systemName: hearted ? "heart.fill" : "heart").foregroundStyle(hearted ? Color(red: 1, green: 0.3, blue: 0.4) : .primary)
                     .symbolEffect(.bounce, value: hearted)
                     .scaleEffect(hearted ? 1.08 : 1).animation(.spring(response: 0.28, dampingFraction: 0.45), value: hearted)
@@ -794,32 +794,38 @@ struct FeedView: View {
                 .sensoryFeedback(.selection, trigger: hearted)
                 .accessibilityLabel(hearted ? "Unlike" : "Like").accessibilityAddTraits(.isButton)
                 // how many, beside each, as Instagram shows them (none shown for none)
-                if likes > 0 { Text("\(likes)").font(.subheadline.weight(.semibold)).monospacedDigit().padding(.leading, -12).accessibilityLabel("\(likes) likes") }
+                // The counts always show whole. The row was a few points too wide for the screen with a like, a comment
+                // and "Have some" all there, and the squeeze fell on a number, which lost half of itself.
+                if likes > 0 { Text("\(likes)").font(.subheadline.weight(.semibold)).monospacedDigit().lineLimit(1).fixedSize().padding(.leading, -10).accessibilityLabel("\(likes) likes") }
                 Button { talking = PostBox(post: p) } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "bubble.right").font(.system(size: 22, weight: .medium))
-                        if comments > 0 { Text("\(comments)").font(.subheadline.weight(.semibold)).monospacedDigit() }
+                        if comments > 0 { Text("\(comments)").font(.subheadline.weight(.semibold)).monospacedDigit().lineLimit(1).fixedSize() }
                     }
                 }
                     .buttonStyle(.plain).accessibilityLabel(comments == 0 ? "Comment" : "\(comments) comments")
                 Button { sharing = PostBox(post: p) } label: { Image(systemName: "paperplane").font(.system(size: 21, weight: .medium)) }
                     .buttonStyle(.plain).accessibilityLabel("Send to a friend")
-                Spacer()
+                Spacer(minLength: 0)
                 if kind != "moment" && kind != "photo" {
+                    let word = kind == "workout" ? "Do it" : kind == "meal" ? "Recipe" : "Have some"
                     Button { recipe = p } label: {
-                        Label(kind == "workout" ? "Do it" : kind == "meal" ? "Recipe" : "Have some", systemImage: kind == "workout" ? "play.fill" : "plus")
-                            .font(.subheadline.weight(.bold)).foregroundStyle(Theme.onAccent)
-                            // one line always: a count beside the bookmark squeezed this into two
-                            .lineLimit(1).fixedSize()
-                            .padding(.horizontal, 13).padding(.vertical, 7).background(Theme.accent, in: Capsule())
+                        // one line always (a count beside the bookmark squeezed this into two). When the counts leave
+                        // no room for all of it, the button gives way, not a number: it drops its little sign.
+                        ViewThatFits(in: .horizontal) {
+                            Label(word, systemImage: kind == "workout" ? "play.fill" : "plus").lineLimit(1).fixedSize()
+                            Text(word).lineLimit(1).fixedSize()
+                        }
+                        .font(.subheadline.weight(.bold)).foregroundStyle(Theme.onAccent)
+                        .padding(.horizontal, 13).padding(.vertical, 7).background(Theme.accent, in: Capsule())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plain).layoutPriority(1).accessibilityLabel(word)
                 }
                 // save it for yourself (only you see what you've saved; the number is how many have)
                 let kept = feed.saved.contains(id), keeps = feed.saveCounts[id] ?? 0
                 Button { UIImpactFeedbackGenerator(style: .light).impactOccurred(); Task { await feed.toggleSave(p) } } label: {
                     HStack(spacing: 5) {
-                        if keeps > 0 { Text("\(keeps)").font(.subheadline.weight(.semibold)).monospacedDigit() }
+                        if keeps > 0 { Text("\(keeps)").font(.subheadline.weight(.semibold)).monospacedDigit().lineLimit(1).fixedSize() }
                         Image(systemName: kept ? "bookmark.fill" : "bookmark").font(.system(size: 21, weight: .medium)).symbolEffect(.bounce, value: kept)
                     }
                 }
