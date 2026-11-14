@@ -34,7 +34,11 @@ struct StoryComposer: View {
                 }, posted: {
                     // on to the next one chosen, or done
                     if at + 1 < queue.count { at += 1; image = queue[at].image; video = queue[at].video } else { dismiss() }
-                })
+                }, addMore: { more in
+                    // the one being edited becomes the first of a run, if it wasn't in one already
+                    if queue.isEmpty { queue = [StoryPick(image: image, video: video)] }
+                    queue += more.prefix(max(0, 10 - queue.count))
+                }, roomFor: words ? 0 : max(0, 10 - max(queue.count, 1)))
                 .id(at)
                 .overlay(alignment: .top) {
                     if queue.count > 1 {

@@ -37,6 +37,10 @@ struct StoryEditor: View {
     /// A post's photo: the editor as it's left (what's on it, its look, where it sits, its turns), handed over just
     /// before the finished picture, for opening it again the same.
     var photoKept: ((ClipEdit) -> Void)? = nil
+    /// A story: more photos or videos picked from here go on after this one, each its own slide. How many more there
+    /// can be (ten in all).
+    var addMore: (([StoryPick]) -> Void)? = nil
+    var roomFor = 0
     /// A post's video: its song, and how loud the song and the video's own sound are, chosen here with the video
     /// playing (Audio), as Instagram has it. They're the post's own, kept by whoever opened the editor.
     var postSong: Binding<Song?>? = nil
@@ -192,6 +196,8 @@ struct StoryEditor: View {
     @State private var stickers = false
     @State private var choosingPhoto = false   // a picture of your own, as a sticker
     @State private var photoPick: PhotosPickerItem?
+    @State private var addingSlides = false       // more photos for after this one
+    @State private var slidePicks: [PhotosPickerItem] = []
     @State private var picked: String?   // a tile from the tray, added once the tray has closed
     @State private var food = false
     @State private var polling = false
@@ -687,6 +693,8 @@ struct StoryEditor: View {
             HStack(spacing: 8) {
                 if !forPost || postSong != nil { tool("music.note", "Audio", "Audio") { if postSong != nil || song != nil { withAnimation(.snappy(duration: 0.22)) { mixing = true } } else { choosingSong = true } } }
                 tool("textformat", "Text", "Text") { newText() }
+                // more photos after this one: they were only had by picking several at the start
+                if !forPost, addMore != nil, roomFor > 0 { tool("photo.badge.plus", "Add", "Add photos") { addingSlides = true } }
                 tool("face.smiling", "Stickers", "Stickers") { stickers = true }
                 tool("scribble.variable", "Draw", "Draw") { mode = .draw }
                 tool("camera.filters", "Filter", "Filters") { mode = .filters }
@@ -703,6 +711,19 @@ struct StoryEditor: View {
         }
         .scrollIndicators(.hidden)
         .frame(height: 56)
+        .photosPicker(isPresented: $addingSlides, selection: $slidePicks, maxSelectionCount: max(1, roomFor), selectionBehavior: .ordered, matching: .any(of: [.images, .videos]))
+        .onChange(of: slidePicks) { _, items in
+            guard !items.isEmpty else { return }
+            slidePicks = []
+            Task {
+                var out: [StoryPick] = []
+                for item in items {
+                    if item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }), let m = try? await item.loadTransferable(type: PickedMovie.self) { out.append(StoryPick(image: nil, video: m.url)) }
+                    else if let d = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: d) { out.append(StoryPick(image: img, video: nil)) }
+                }
+                if !out.isEmpty { addMore?(out); flash(out.count == 1 ? "1 more to come after this" : "\(out.count) more to come after this") }
+            }
+        }
     }
 
     private func tool(_ symbol: String, _ title: String, _ label: String, _ action: @escaping () -> Void) -> some View {
