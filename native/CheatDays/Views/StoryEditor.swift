@@ -32,6 +32,8 @@ struct StoryEditor: View {
     var startPoster: UIImage? = nil
     /// What was done to this clip the last time it was in the editor: opened again as it was left.
     var startEdit: ClipEdit? = nil
+    /// Things already placed when it opens (someone's story being added to yours: their picture and their name).
+    var startItems: [JSON] = []
     /// A post's video: its song, and how loud the song and the video's own sound are, chosen here with the video
     /// playing (Audio), as Instagram has it. They're the post's own, kept by whoever opened the editor.
     var postSong: Binding<Song?>? = nil
@@ -268,6 +270,7 @@ struct StoryEditor: View {
         // frame changing shape, the picture popping in and resizing, the tool's tray opening late), which is what
         // flickered.
         .onAppear {
+            if items.isEmpty, !startItems.isEmpty { items = startItems }
             if shape == nil, let startShape { shape = startShape }
             if !restored, let e = startEdit {
                 // as it was left: the filter and Adjust, the sound, the turn, where the clip sits, and what's on it

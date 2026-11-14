@@ -168,7 +168,11 @@ final class Stories {
             all += made; self.keep()   // (a local `keep` here is the thing holding the app awake)
             made.forEach { watched.insert(str($0["id"])) }   // your own don't light your ring
             for m in overlays where str(m["type"]) == "mention" && Friends.shared.people.contains(where: { $0.id == str(m["user"]) }) {
-                await Messages.shared.send(to: str(m["user"]), text: "Mentioned you in their story 📸")
+                // the story itself, so they can watch it and add it to their own (it was a line of text)
+                var card = made.first.map { StoryView.card($0) } ?? [:]
+                card["mention"] = true
+                if audience == "friends" { card["media"] = "" }
+                await Messages.shared.send(to: str(m["user"]), text: "Mentioned you in their story", kind: "story", payload: card)
             }
             error = nil
             return true

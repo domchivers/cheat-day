@@ -125,6 +125,7 @@ struct ChatView: View {
     @State private var opened: PostBox?
     @State private var held: JSON?          // the message being held, with its emoji and options up
     @State private var watching: PostBox?   // a story sent in the chat, opened: its owner's stories
+    @State private var adding: PostBox?     // a story you were mentioned in, being added to your own
 
     private func storyCard(_ p: JSON, live: Bool) -> some View {
         // an answer to a story shows it smaller: the answer is the point, the story's the reminder
@@ -224,6 +225,7 @@ struct ChatView: View {
         .onAppear { KeyboardDone.quiet = true }
         .sheet(item: $opened, onDismiss: { KeyboardDone.quiet = true }) { b in PostRecipeSheet(post: b.post) }
         .fullScreenCover(item: $watching, onDismiss: { KeyboardDone.quiet = true }) { b in StoryView(people: [b.id], at: 0) }
+        .fullScreenCover(item: $adding, onDismiss: { KeyboardDone.quiet = true }) { b in StoryReshare(story: b.post) }
         .sheet(isPresented: $gifs, onDismiss: { KeyboardDone.quiet = true }) {
             GifPicker { g in
                 let payload = g.merging(takeReply()) { a, _ in a }
@@ -290,10 +292,21 @@ struct ChatView: View {
                 if !reaction.isEmpty || !words.isEmpty {
                     Text(mine ? (reaction.isEmpty ? "You replied to their story" : "You reacted to their story") : (reaction.isEmpty ? "Replied to your story" : "Reacted to your story"))
                         .font(.caption).foregroundStyle(.secondary)
+                } else if p["mention"] as? Bool == true {
+                    Text(mine ? "You mentioned them in your story" : "Mentioned you in their story").font(.caption).foregroundStyle(.secondary)
                 }
                 storyCard(p, live: live).contentShape(Rectangle())
                     .onTapGesture { if live, held == nil { watching = PostBox(post: ["id": str(p["owner"])]) } }
                     .accessibilityAddTraits(.isButton)
+                // mentioned in it: it can go on your own story while it's up (a photo for everyone, not a friends-only one)
+                if !mine, p["mention"] as? Bool == true, live,
+                   let st = Stories.shared.all.first(where: { str($0["id"]) == str(p["story"]) }), str(st["kind"]) != "video", str(st["audience"]) != "friends" {
+                    Button { if held == nil { adding = PostBox(post: st) } } label: {
+                        Label("Add to your story", systemImage: "plus.circle.fill").font(.subheadline.weight(.bold)).foregroundStyle(Theme.onAccent)
+                            .padding(.horizontal, 13).padding(.vertical, 8).background(Theme.accent, in: Capsule())
+                    }
+                    .buttonStyle(.plain).accessibilityIdentifier("add-to-story")
+                }
                 // the emoji it was answered with, shown the way a reaction to any message is: the same small badge
                 // tucked under the card's corner (it stood under the card at the size of a thumb)
                 if !reaction.isEmpty {

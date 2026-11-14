@@ -40,6 +40,26 @@ enum StoryArt {
     static let filters = ["Normal", "Warm", "Cool", "Mono", "Vivid", "Fade", "Pop", "Noir"]
     static let context = CIContext()
 
+    /// A picture as a story's soft background: filling 9:16, blurred and dimmed.
+    static func backdrop(_ img: UIImage) -> UIImage {
+        let w: CGFloat = 270, h: CGFloat = 480, cover = max(w / max(img.size.width, 1), h / max(img.size.height, 1))
+        let sw = img.size.width * cover, sh = img.size.height * cover
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1
+        let small = UIGraphicsImageRenderer(size: CGSize(width: w, height: h), format: format).image { _ in
+            img.draw(in: CGRect(x: (w - sw) / 2, y: (h - sh) / 2, width: sw, height: sh))
+        }
+        var soft = small
+        if let ci = CIImage(image: small) {
+            let out = ci.clampedToExtent().applyingGaussianBlur(sigma: 22).cropped(to: ci.extent)
+            if let cg = context.createCGImage(out, from: ci.extent) { soft = UIImage(cgImage: cg) }
+        }
+        return UIGraphicsImageRenderer(size: CGSize(width: 1080, height: 1920), format: format).image { c in
+            c.cgContext.interpolationQuality = .high
+            soft.draw(in: CGRect(x: 0, y: 0, width: 1080, height: 1920))
+            UIColor(white: 0, alpha: 0.32).setFill(); UIRectFillUsingBlendMode(CGRect(x: 0, y: 0, width: 1080, height: 1920), .normal)
+        }
+    }
+
     /// What Adjust can change, each with the letter it's written down as: a look is a filter's name and then any of
     /// these that aren't at rest, as in "Warm;b=20;t=-4". Written into the one string, the photo, the playing clip
     /// and the exported video all get them without being told separately.

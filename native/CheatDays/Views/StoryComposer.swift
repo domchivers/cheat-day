@@ -147,3 +147,43 @@ struct FoodStickerPicker: View {
         }
     }
 }
+
+/// A story you were mentioned in, being added to your own: their picture placed like a sticker over a soft copy of
+/// itself, their name under it (so they're told, and whoever watches can go to them). Everything can be moved, and
+/// anything else added, before it's shared.
+struct StoryReshare: View {
+    let story: JSON
+    @Environment(\.dismiss) private var dismiss
+    @State private var ground: UIImage?
+    @State private var items: [JSON] = []
+    @State private var failed = false
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            if let ground {
+                StoryEditor(image: ground, video: nil, close: { dismiss() }, posted: { dismiss() }, startItems: items)
+            } else if failed {
+                VStack(spacing: 14) {
+                    Text("Couldn't open that story.").foregroundStyle(.white)
+                    Button("Close") { dismiss() }.buttonStyle(.borderedProminent)
+                }
+            } else {
+                ProgressView().controlSize(.large).tint(.white)
+            }
+        }
+        .statusBarHidden()
+        .task {
+            guard ground == nil else { return }
+            guard let img = await ImageStore.load(str(story["media"])) else { failed = true; return }
+            let owner = str(story["owner"]), user = Profiles.shared.all[owner]?.username ?? ""
+            items = [
+                ["id": "theirs", "type": "photo", "local": PhotoStickers.keep(img), "url": str(story["media"]),
+                 "w": Double(img.size.width), "h": Double(img.size.height), "x": 0.5, "y": 0.45, "scale": 1.35, "rotation": 0.0],
+                ["id": "whose", "type": "mention", "user": owner, "name": user.isEmpty ? Feed.shared.name(owner) : user,
+                 "x": 0.5, "y": 0.86, "scale": 0.75, "rotation": 0.0],
+            ]
+            ground = StoryArt.backdrop(img)
+        }
+    }
+}
