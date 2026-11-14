@@ -468,6 +468,7 @@ struct AnimatedGIF: UIViewRepresentable {
 
     func makeUIView(context: Context) -> UIImageView {
         let v = UIImageView(); v.contentMode = .scaleAspectFit; v.clipsToBounds = true
+        v.isUserInteractionEnabled = false   // never takes a touch from the button or sticker it sits in
         v.setContentCompressionResistancePriority(.defaultLow, for: .horizontal); v.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
         load(into: v)
         return v

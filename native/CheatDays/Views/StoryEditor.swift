@@ -1524,7 +1524,7 @@ struct StickerSheet: View {
                     let g = gifs[i]
                     Button { place(["type": "gif", "url": g["url"] ?? "", "w": g["w"] ?? 200, "h": g["h"] ?? 200]) } label: {
                         // GIPHY's 100-pixel copy in the grid (the 200 one is placed): a quarter of the frames to decode
-                        AnimatedGIF(url: str(g["url"]).replacingOccurrences(of: "/200w.gif", with: "/100w.gif"), maxPixel: 200).frame(height: 96).frame(maxWidth: .infinity)
+                        AnimatedGIF(url: str(g["url"]).replacingOccurrences(of: "/200w.gif", with: "/100w.gif"), maxPixel: 200).allowsHitTesting(false).frame(height: 96).frame(maxWidth: .infinity).contentShape(Rectangle())
                             .background(gifKind == "stickers" ? Color.clear : Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10))
                             .clipShape(RoundedRectangle(cornerRadius: 10))
                     }

@@ -610,7 +610,7 @@ struct GifPicker: View {
                         let g = found[i]
                         Button { send(["url": g["url"] ?? "", "w": g["w"] ?? 200, "h": g["h"] ?? 200]); dismiss() } label: {
                             // GIPHY's 100-pixel copy in the grid (the 200 one is sent): a quarter of the frames to decode
-                            AnimatedGIF(url: str(g["url"]).replacingOccurrences(of: "/200w.gif", with: "/100w.gif"), maxPixel: 200).frame(height: 96).frame(maxWidth: .infinity)
+                            AnimatedGIF(url: str(g["url"]).replacingOccurrences(of: "/200w.gif", with: "/100w.gif"), maxPixel: 200).allowsHitTesting(false).frame(height: 96).frame(maxWidth: .infinity).contentShape(Rectangle())
                                 .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10))
                                 .clipShape(RoundedRectangle(cornerRadius: 10))
                         }
