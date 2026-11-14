@@ -676,10 +676,13 @@ struct FeedView: View {
             }
             .overlay(alignment: .bottomLeading) {
                 if str(p["kind"]) != "photo" {   // a photo on its own has no name or numbers
+                // A small tag: the name has so much room and no more, and one too long for it slides along to show
+                // the rest. It ran the photo's whole width, cut the name short, and lay over the sound button of a post
+                // with a song (at the bottom right).
                 HStack(spacing: 8) {
-                    Text(str(p["name"])).lineLimit(1)
-                    Text(n.kcal).foregroundStyle(.secondary)
-                    if let pr = n.protein { Text(pr).foregroundStyle(Theme.walk) }
+                    Marquee(text: str(p["name"]), maxWidth: Music.of(p) != nil ? 130 : 160)
+                    Text(n.kcal).foregroundStyle(.secondary).lineLimit(1).fixedSize()
+                    if let pr = n.protein { Text(pr).foregroundStyle(Theme.walk).lineLimit(1).fixedSize() }
                 }
                 .font(.caption.weight(.bold)).padding(.horizontal, 11).padding(.vertical, 7)
                 .background(.ultraThinMaterial, in: Capsule()).environment(\.colorScheme, .dark)

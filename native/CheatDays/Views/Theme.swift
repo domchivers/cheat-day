@@ -598,3 +598,36 @@ extension View {
         if #available(iOS 26, *) { scrollEdgeEffectHidden(true, for: .all) } else { self }
     }
 }
+
+/// One line of text in so much width: when it's longer, it waits a moment, slides along to its end, waits, and comes
+/// back, over and over, so all of it can be read where there's no room for it.
+struct Marquee: View {
+    let text: String
+    var maxWidth: CGFloat
+    @State private var full: CGFloat = 0
+    @State private var along = false
+
+    var body: some View {
+        let over = max(0, full - maxWidth)
+        Text(text).lineLimit(1).fixedSize()
+            .background(GeometryReader { g in
+                Color.clear.onAppear { full = g.size.width }.onChange(of: g.size.width) { _, w in full = w }
+            })
+            .offset(x: over > 1 && along ? -over : 0)
+            .frame(width: full > 0 ? min(full, maxWidth) : nil, alignment: .leading)
+            .clipped()
+            .task(id: "\(text)|\(Int(over))") {
+                along = false
+                guard over > 1 else { return }
+                let time = Double(over) / 28   // 28 points a second: slow enough to read
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(1.6))
+                    withAnimation(.linear(duration: time)) { along = true }
+                    try? await Task.sleep(for: .seconds(time + 1.6))
+                    withAnimation(.easeOut(duration: 0.4)) { along = false }
+                    try? await Task.sleep(for: .seconds(0.5))
+                }
+            }
+            .accessibilityLabel(text)
+    }
+}
