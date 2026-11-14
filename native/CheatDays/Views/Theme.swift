@@ -266,6 +266,11 @@ enum FoodEmoji {
     /// Whole words only, plurals too, so steak isn't tea, water isn't watermelon and pepper isn't pepperoni.
     static func `for`(_ name: String) -> String? {
         var n = name.lowercased()
+        // The meat off the spit named by itself ("Chicken gyros, grilled", "Lamb souvlaki meat") is the meat: gyros
+        // alone means the wrap, and a plate's two meats were both drawn as wraps.
+        if let m = n.range(of: #"^(chicken|lamb|beef|pork)\s+(gyros?|yiros|souvlaki|doner|döner|kebab|shawarma)\b"#, options: .regularExpression),
+           n.range(of: #"\b(wrap|pita|pitta|roll|sandwich|burger|plate|platter|box|pack|bowl|salad|meal|combo|tapsi)\b"#, options: .regularExpression) == nil,
+           let meat = last(in: String(n[m].split(separator: " ")[0])) { return meat }
         for (p, with) in [(#"\([^)]*\)"#, " "), (#"\s[—–]\s.*"#, ""), (#"\bwith\b.*"#, ""), (#"\+.*"#, ""), (#"\b(no|without)\b[^,]*"#, " "), (#"(?<=\w)\s+slices?\b"#, " "),
                           (#"\b(raw|cooked|sliced|peeled|boiled|fresh|dry|dried|ground|whole|skinless|shredded|grated|chopped|diced|ripe|unsweetened|plain|skimmed|roasted|toasted|grilled|steamed)\b"#, " ")] {
             n = n.replacingOccurrences(of: p, with: with, options: .regularExpression)
