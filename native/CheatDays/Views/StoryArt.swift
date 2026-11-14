@@ -426,9 +426,8 @@ struct StoryLayer: View {
                     if str(o["type"]) == "drawing" { StoryDrawing(strokes: list(o["strokes"])) }
                     else {
                         StoryItem(o: o, votes: poll(o), vote: voteAction(o), answer: answerAction(o))
-                            .scaleEffect((num(o["scale"]) ?? 1) * k)
-                            .rotationEffect(.degrees(num(o["rotation"]) ?? 0))
-                            .position(x: (num(o["x"]) ?? 0.5) * g.size.width, y: (num(o["y"]) ?? 0.5) * g.size.height)
+                            // the tap is the tag's own, taken before it's put in its place: taken after, it was
+                            // the whole story's (a placed thing fills the story), so a tap anywhere brought the bubble up
                             .contentShape(Rectangle())
                             .simultaneousGesture(str(o["type"]) == "mention" && mention != nil ? TapGesture().onEnded {
                                 // a tap on a tagged name brings up who it is, in a bubble over it; the bubble opens their page
@@ -436,6 +435,9 @@ struct StoryLayer: View {
                                 withAnimation(.snappy(duration: 0.2)) { bubble = bubble == id ? nil : id }
                                 holding?(bubble != nil)
                             } : nil)
+                            .scaleEffect((num(o["scale"]) ?? 1) * k)
+                            .rotationEffect(.degrees(num(o["rotation"]) ?? 0))
+                            .position(x: (num(o["x"]) ?? 0.5) * g.size.width, y: (num(o["y"]) ?? 0.5) * g.size.height)
                             .allowsHitTesting(((str(o["type"]) == "poll" || str(o["type"]) == "question") && story != nil) || (str(o["type"]) == "mention" && mention != nil))
                     }
                 }
