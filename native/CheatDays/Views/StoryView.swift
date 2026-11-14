@@ -262,10 +262,12 @@ struct StoryView: View {
         switch s {
         case .snap(let st):
             // 9:16, the editor's shape, so everything placed lands where it was put
+            let layer = StoryLayer(items: list(st["overlays"]).filter { !["poll", "question"].contains(str($0["type"])) }, story: str(st["id"]))
             ZStack {
-                if str(st["kind"]) == "video", let url = URL(string: str(st["media"])) { LoopingVideo(url: url, paused: paused || seenBy != nil) }
-                else { FeedPhoto(src: str(st["media"]), fill: true) }
-                StoryLayer(items: list(st["overlays"]).filter { !["poll", "question"].contains(str($0["type"])) }, story: str(st["id"]))
+                if str(st["kind"]) == "video", let url = URL(string: str(st["media"])) { LoopingVideo(url: url, paused: paused || seenBy != nil); layer }
+                // a photo still on its way: black with a turning circle, and nothing that's stuck on it until it's
+                // here (the stickers and tags showed at once, over an empty slide)
+                else { StoryPhoto(src: str(st["media"])) { layer }.id(str(st["media"])) }
             }
             .aspectRatio(StoryArt.aspect, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -567,6 +569,38 @@ struct ShareStorySheet: View {
             if !str(story["slide"]).isEmpty { payload = story; payload["id"] = nil }
             await Messages.shared.send(to: friend, text: owner == Feed.shared.me ? "Sent a story" : "Sent \(name)'s story", kind: "story", payload: payload)
             if !note.isEmpty { await Messages.shared.send(to: friend, text: note) }
+        }
+    }
+}
+
+/// A story's photo with what's placed on it. Until the photo's here: black, a turning circle, and none of the rest.
+struct StoryPhoto<Over: View>: View {
+    let src: String
+    @ViewBuilder var over: () -> Over
+    @State private var image: UIImage?
+
+    init(src: String, @ViewBuilder over: @escaping () -> Over) {
+        self.src = src; self.over = over
+        _image = State(initialValue: ImageStore.cached(src))
+    }
+
+    var body: some View {
+        ZStack {
+            Color.black
+            if let image {
+                Color.clear.overlay { Image(uiImage: image).resizable().scaledToFill() }.clipped()
+                over()
+            } else {
+                ProgressView().controlSize(.large).tint(.white)
+            }
+        }
+        .task(id: src) {
+            if image != nil { return }
+            for attempt in 0..<3 {
+                if attempt > 0 { try? await Task.sleep(nanoseconds: UInt64(attempt) * 1_500_000_000) }
+                if Task.isCancelled { return }
+                if let got = await ImageStore.load(src) { image = got; return }
+            }
         }
     }
 }

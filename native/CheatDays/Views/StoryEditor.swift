@@ -1225,15 +1225,24 @@ struct StoryEditor: View {
         let format = UIGraphicsImageRendererFormat(); format.scale = 1
         return UIGraphicsImageRenderer(size: CGSize(width: 1080, height: oh), format: format).image { c in
             UIColor(white: 0.08, alpha: 1).setFill(); UIRectFill(CGRect(x: 0, y: 0, width: 1080, height: oh))
-            // smaller than the frame: the same blurred, dimmed photo behind it that the editor shows. A copy 28 dots
-            // wide drawn up to the full size is as soft as a blur, at next to no cost.
+            // Smaller than the frame: the same blurred, dimmed photo behind it that the editor shows, and blurred the
+            // same way. It was a copy 28 dots wide drawn up to full size, which came out in big soft squares, nothing
+            // like the editor's smooth blur. Now a quarter-size copy filling the frame is properly blurred, then drawn up.
             if bgScale < 0.995 || bgSpin != 0 || bgOffset != .zero {
-                let tw: CGFloat = 28, th = max(2, (tw * base.size.height / max(base.size.width, 1)).rounded())
+                let bw: CGFloat = 270, bh = max(2, (oh / 4).rounded())
+                let cover = max(bw / max(base.size.width, 1), bh / max(base.size.height, 1))
+                let sw = base.size.width * cover, sh = base.size.height * cover
                 let tf = UIGraphicsImageRendererFormat(); tf.scale = 1
-                let tiny = UIGraphicsImageRenderer(size: CGSize(width: tw, height: th), format: tf).image { _ in base.draw(in: CGRect(x: 0, y: 0, width: tw, height: th)) }
-                let cover = max(1080 / tw, oh / th), bw = tw * cover, bh = th * cover
+                let small = UIGraphicsImageRenderer(size: CGSize(width: bw, height: bh), format: tf).image { _ in
+                    base.draw(in: CGRect(x: (bw - sw) / 2, y: (bh - sh) / 2, width: sw, height: sh))
+                }
+                var soft = small
+                if let ci = CIImage(image: small) {
+                    let out = ci.clampedToExtent().applyingGaussianBlur(sigma: 22).cropped(to: ci.extent)
+                    if let cg = StoryArt.context.createCGImage(out, from: ci.extent) { soft = UIImage(cgImage: cg) }
+                }
                 c.cgContext.interpolationQuality = .high
-                tiny.draw(in: CGRect(x: (1080 - bw) / 2, y: (oh - bh) / 2, width: bw, height: bh))
+                soft.draw(in: CGRect(x: 0, y: 0, width: 1080, height: oh))
                 UIColor(white: 0, alpha: 0.28).setFill(); UIRectFillUsingBlendMode(CGRect(x: 0, y: 0, width: 1080, height: oh), .normal)
             }
             // about its own middle, where it was carried to: turned there, then drawn at its size
