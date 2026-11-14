@@ -125,6 +125,7 @@ struct ProfileView: View {
         .navigationDestination(isPresented: $chatting) { ChatView(friend: id) }
         .fullScreenCover(isPresented: $composing) { StoryComposer() }
         .fullScreenCover(isPresented: $watching) { StoryView(people: [id], at: 0) }
+        .task { await Stories.shared.load() }   // a profile opened before the feed has its stories too
         .fullScreenCover(item: $reels) { r in ReelsView(posts: tab == 6 ? kept : posts + tagged.filter { t in !posts.contains { str($0["id"]) == str(t["id"]) } }, startAt: r.id) }
         // a post that's just gone up shows in the grid without a pull to refresh
         .onChange(of: Feed.shared.sending?.state == .done) { _, done in if done && isMe { Task { await reload() } } }

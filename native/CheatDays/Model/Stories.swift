@@ -7,7 +7,21 @@ import SwiftUI
 final class Stories {
     static let shared = Stories()
 
-    private(set) var all: [JSON] = []      // live stories I can see, oldest first
+    // Live stories I can see, oldest first. The last ones fetched are kept on the phone and shown from the start: they
+    // were only in memory and only fetched when the feed came up, so after the app was opened afresh a story was
+    // missing from a profile (and its ring) until the feed had been visited, then came back.
+    private(set) var all: [JSON] = Stories.kept()
+    private static func keptKey(_ who: String) -> String { "stories.kept." + who }
+    private static func kept() -> [JSON] {
+        guard let who = Supabase.shared.userId, !who.isEmpty, let d = UserDefaults.standard.data(forKey: keptKey(who)),
+              let rows = (try? JSONSerialization.jsonObject(with: d)) as? [JSON] else { return [] }
+        // not the ones whose 24 hours have run out since
+        return rows.filter { r in ISO.date(str(r["expires_at"])).map { $0 > Date() } ?? false }
+    }
+    private func keep() {
+        guard !me.isEmpty, let d = try? JSONSerialization.data(withJSONObject: all) else { return }
+        UserDefaults.standard.set(d, forKey: Self.keptKey(me))
+    }
     private(set) var views: [JSON] = []    // who's watched mine
     private(set) var votes: [JSON] = []    // poll votes on the stories I can see
     /// What I've answered each story with (story id: emoji), kept on the phone too, so a heart given is still red
@@ -32,7 +46,7 @@ final class Stories {
         guard !me.isEmpty else { return }
         let now = ISO8601DateFormatter().string(from: Date())
         guard let got = try? await rows("/rest/v1/stories?expires_at=gt.\(now)&select=*&order=created_at.asc&limit=300") else { return }
-        all = got
+        all = got; keep()
         fetchAhead(got)
         let mine = got.filter { str($0["owner"]) == me }.map { str($0["id"]) }
         views = mine.isEmpty ? [] : ((try? await rows("/rest/v1/story_views?story_id=in.(\(mine.joined(separator: ",")))&select=*&order=created_at.desc")) ?? [])
@@ -129,7 +143,7 @@ final class Stories {
     func delete(_ story: JSON) async -> Bool {
         do {
             _ = try await api.rest("/rest/v1/stories?id=eq.\(str(story["id"]))&owner=eq.\(me)", method: "DELETE")
-            all.removeAll { str($0["id"]) == str(story["id"]) }
+            all.removeAll { str($0["id"]) == str(story["id"]) }; keep()
             return true
         } catch { self.error = error.localizedDescription; return false }
     }
@@ -151,7 +165,7 @@ final class Stories {
                 row["kind"] = "photo"; row["media"] = try await api.uploadPhoto(jpeg)
             } else { return false }
             let made = try await rows("/rest/v1/stories", method: "POST", body: [row], prefer: "return=representation")
-            all += made
+            all += made; keep()
             made.forEach { watched.insert(str($0["id"])) }   // your own don't light your ring
             for m in overlays where str(m["type"]) == "mention" && Friends.shared.people.contains(where: { $0.id == str(m["user"]) }) {
                 await Messages.shared.send(to: str(m["user"]), text: "Mentioned you in their story 📸")
