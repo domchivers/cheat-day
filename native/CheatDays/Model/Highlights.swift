@@ -246,3 +246,48 @@ struct AddToHighlight: View {
         }
     }
 }
+
+/// Every story you've posted, newest first, kept after its 24 hours. Only you see them here. Tap one to watch from it
+/// on through the ones after.
+struct StoryArchiveView: View {
+    @State private var playing: PostBox?
+    @State private var loaded = false
+    private var highlights: Highlights { Highlights.shared }
+
+    var body: some View {
+        ScrollView {
+            let all = highlights.archive
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Your stories are kept here after their 24 hours. Only you can see them.")
+                    .font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 16)
+                if loaded && all.isEmpty {
+                    Text("Nothing here yet. Post a story and it'll be kept.").font(.subheadline).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity).padding(.top, 40)
+                } else if !loaded && all.isEmpty {
+                    Skeleton.grid(9)
+                }
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 3), count: 3), spacing: 3) {
+                    ForEach(all.indices, id: \.self) { i in
+                        let s = all[i]
+                        Button {
+                            // from this one on through the newer ones, in the order they went up
+                            playing = PostBox(post: ["id": str(s["id"]), "title": "Archive", "items": Array(all[0...i].reversed())])
+                        } label: {
+                            Color.clear.aspectRatio(9.0 / 16.0, contentMode: .fit)
+                                .overlay { StoryThumb(story: s) }.clipped()
+                                .overlay(alignment: .bottomLeading) {
+                                    Text(ISO.date(str(s["created_at"]))?.formatted(.dateTime.day().month(.abbreviated).year(.twoDigits)) ?? "")
+                                        .font(.caption2.weight(.heavy)).foregroundStyle(.white).padding(5).shadow(radius: 2)
+                                }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .padding(.top, 10).padding(.bottom, 30)
+        }
+        .navigationTitle("Story archive").navigationBarTitleDisplayMode(.inline)
+        .task { await highlights.loadArchive(); loaded = true }
+        .fullScreenCover(item: $playing) { b in StoryView(people: [highlights.me], at: 0, highlight: b.post) }
+    }
+}

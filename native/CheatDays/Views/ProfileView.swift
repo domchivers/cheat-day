@@ -32,6 +32,7 @@ struct ProfileView: View {
     @State private var removing = false
     @State private var showCode = false
     @State private var honorsOpen = false
+    @State private var archive = false   // your old stories
     @State private var counts: (followers: Int, following: Int)?
     @State private var choosing = false   // public or private, the first time you see your profile
     @State private var friendNote: String?
@@ -85,6 +86,8 @@ struct ProfileView: View {
                         Menu {
                             Button { composing = true } label: { Label("Story", systemImage: "plus.circle") }
                             Button { posting = true } label: { Label("Post", systemImage: "square.grid.3x3") }
+                            Divider()
+                            Button { archive = true } label: { Label("Story archive", systemImage: "clock.arrow.circlepath") }
                         } label: { Image(systemName: "plus") }
                         .accessibilityLabel("New story or post")
                     }
@@ -125,6 +128,7 @@ struct ProfileView: View {
         .navigationDestination(isPresented: $chatting) { ChatView(friend: id) }
         .fullScreenCover(isPresented: $composing) { StoryComposer() }
         .fullScreenCover(isPresented: $watching) { StoryView(people: [id], at: 0) }
+        .navigationDestination(isPresented: $archive) { StoryArchiveView() }
         .task { await Stories.shared.load() }   // a profile opened before the feed has its stories too
         .fullScreenCover(item: $reels) { r in ReelsView(posts: tab == 6 ? kept : posts + tagged.filter { t in !posts.contains { str($0["id"]) == str(t["id"]) } }, startAt: r.id) }
         // a post that's just gone up shows in the grid without a pull to refresh
