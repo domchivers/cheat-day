@@ -553,7 +553,7 @@ enum Takeaway {
                                   step: (@MainActor (String, String) -> Void)?) async -> JSON {
         step?("Asked about \(name)", "Finding \(name)'s menu…")
         guard let m = await menu(name, area: area, want: want, seen: seen) else {
-            return ["kind": "answer", "reply": "I couldn't find \(name)'s menu online. Tell me what's on it (the names and kJ from the app you order on) and I'll put it together."]
+            return ["kind": "answer", "menuMissing": true, "reply": "I couldn't find \(name)'s menu online. Tell me what's on it (the names and kJ from the app you order on) and I'll put it together."]
         }
         let menuItems = withSeen(items(m), seen, want: want), shown = name   // their own name for it reads better than "Gami Chicken (Gami Chicken & Beer)"
         let energyOnly = menuItems.filter { $0.tier == "energy" }.count * 2 >= menuItems.count, full = menuItems.allSatisfy { $0.tier == "full" }

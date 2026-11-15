@@ -323,6 +323,11 @@ enum Assistant {
         // "what should I get from Gami?": the restaurant's menu with food from home, worked out by the app. Asked of every
         // typed message; the careful answer below waits for its decision (a couple of seconds), quick logs don't
         let decision = Takeaway.Decision()
+        // With photos in the chat, "couldn't find its menu online" is no answer: a packet's label taken for a menu (a
+        // brand, its importer) went off to look for a restaurant, and the photos were never read. The careful answer,
+        // which reads them, is given instead.
+        let photosHere = !last.images.isEmpty || turns.contains { $0.me && !$0.images.isEmpty }
+        func planned(_ t: JSON?) -> JSON? { t.flatMap { $0["menuMissing"] as? Bool == true && photosHere ? nil : $0 } }
         let takeaway: Task<JSON?, Never>? = last.images.isEmpty ? Task {
             let r = await Takeaway.answer(turns, store: store, step: step, decided: decision)
             decision.set(r != nil)
@@ -333,7 +338,7 @@ enum Assistant {
         var seen: Spotted?
         if !last.images.isEmpty, let s = await spot(last.images, said: last.text) { seen = s; spotted?(s) }
         // a delivery-app page in the photo, and they're choosing ("this burger for dinner"): the takeaway planner, with its kJ
-        if let s = seen, !s.listing.isEmpty, let t = await Takeaway.answer(turns, store: store, step: step, photo: s) { return t }
+        if let s = seen, !s.listing.isEmpty, let t = planned(await Takeaway.answer(turns, store: store, step: step, photo: s)) { return t }
         let earlier = turns.dropLast().suffix(8).map { t -> String in
             if t.me { return "They: \(t.text)" }
             var line = "You: \(t.text)"
@@ -361,9 +366,9 @@ enum Assistant {
         let shape = format(photos: !pics.isEmpty, text: last.text)
         // a takeaway or places question isn't also sent to the careful model, which was charged even when the planner's
         // card won: its decision first, up to 4 seconds (the quick check takes about 2.6). Quick logs cost next to nothing
-        if let takeaway, !simple, await decision.wait(4), let t = await takeaway.value { return t }
+        if let takeaway, !simple, await decision.wait(4), let t = planned(await takeaway.value) { return t }
         let first = Task { try await Gemini.ask(schema: shape, parts: parts, quick: simple, job: simple ? "logs" : pics.isEmpty ? "chat" : "photos") }
-        if let t = await takeaway?.value { first.cancel(); return t }
+        if let t = planned(await takeaway?.value) { first.cancel(); return t }
         var answer = try await first.value
         // "Tap Make these changes" with no changes to tap: the reply said edit but left the edit out. Asked once more.
         if missingCard(answer) { answer = (try? await Gemini.ask(schema: shape, parts: parts, quick: simple, job: simple ? "logs" : pics.isEmpty ? "chat" : "photos")) ?? answer }
