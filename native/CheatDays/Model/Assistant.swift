@@ -1146,11 +1146,11 @@ enum Assistant {
             }
             guard let o = found, let og = pos(o["grams"]) else { return p }
             let f = g / og, kcal = ((num(o["kcal"]) ?? 0) * f).rounded()
-            if kcal == num(p["kcal"]) && (str(o["name"]) == str(p["name"]) || !words.subtracting(FoodTable.words(str(o["name"]))).filter({ $0.count >= 4 && !everyday.contains($0) }).isEmpty) { return p }
+            let renamed = says(words, more: str(o["name"]))
+            if kcal == num(p["kcal"]) && (str(o["name"]) == str(p["name"]) || renamed) { return p }
             var x = p
             // the earlier name, unless this one says more ("Ice cream, Kenny's" after "Ice cream" was renamed back)
-            let added = words.subtracting(FoodTable.words(str(o["name"]))).filter { $0.count >= 4 && !everyday.contains($0) }
-            if added.isEmpty { x["name"] = o["name"] }
+            if !renamed { x["name"] = o["name"] }
             x["kcal"] = kcal
             let per = (num(o["protein_g"]) ?? 0) / og
             if abs(pr / g - per) > 0.03 * per { x["protein_g"] = per * g }
@@ -1166,6 +1166,19 @@ enum Assistant {
         out["parts"] = parts
         out["kcal_total"] = sum("kcal").rounded(); out["protein_g"] = sum("protein_g"); out["carbs_g"] = sum("carbs_g"); out["fat_g"] = sum("fat_g")
         return guarded(sane(out))   // the warnings worked out again: one about a number that's been put right mustn't stay
+    }
+
+    /// Words that only describe a food (how it's cooked or cut, a batch, a size), not which one it is.
+    static let describing: Set<String> = ["skinless", "skin", "boneless", "bone", "batch", "cooked", "boiled", "grilled", "roasted", "roast",
+        "baked", "fried", "steamed", "poached", "simmered", "braised", "stewed", "sliced", "diced", "shredded", "chopped", "pulled", "minced",
+        "plain", "homemade", "fresh", "frozen", "lean", "trimmed", "portion", "serve", "serving", "piece", "pieces", "small", "medium", "large",
+        "whole", "half", "meat", "only", "cold", "warm", "leftover", "leftovers", "protein", "breast", "fillet", "fillets"]
+
+    /// A part's name says more than an earlier part's: a word that's which food it is, not how it's cooked or cut
+    /// ("Ice cream, Kenny's" after "Ice cream" does; "Chicken breast, boiled, skinless (591 g batch)" after "Boiled
+    /// chicken breast" doesn't).
+    static func says(_ words: Set<String>, more than: String) -> Bool {
+        !words.subtracting(FoodTable.words(than)).filter { $0.count >= 4 && !everyday.contains($0) && !describing.contains($0) && $0.rangeOfCharacter(from: .decimalDigits) == nil }.isEmpty
     }
 
     /// The numbers in a food's name ("Boiled chicken breast, 557 g batch": 557), two figures or more.
