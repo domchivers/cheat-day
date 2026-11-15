@@ -105,6 +105,7 @@ Wednesday 6:40 pm: they said "What's this? (1 photo)"; they said "I had 190g off
   // { say: 'is cucumber good when cutting?', earlier: '' },
 ];
 if (process.env.ONLY) cases.splice(0, cases.length, ...cases.filter(c => c.tag === process.env.ONLY));
+if (process.env.SAY) cases.forEach(c => { c.say = process.env.SAY; });   // the same case with other words from them
 const PRICE = JSON.parse(source.match(/\[HAIKU\]: (\[[^\]]*\])/)[1]);
 
 (async () => {

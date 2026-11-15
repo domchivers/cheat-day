@@ -26,6 +26,7 @@ private struct Line: Identifiable { let id: String; let item: JSON }
 
 struct TodayView: View {
     @State private var offset = 0
+    @State private var allSent = false   // "Show 2 more" tapped on the Sent to you card
     @State private var clock = TodayView.clockKey()   // the day and the hour, so midnight, 5am and the meal times redraw the page
     @State private var addChoice: MealChoice?
     @State private var editing: EditTarget?
@@ -129,27 +130,22 @@ struct TodayView: View {
                     }
                     // by each send's id, not its position: adding one removes it, and a row drawn by position
                     // then read past the end of the list and crashed the app
-                    ForEach(Inbox.shared.items.map { Line(id: str($0["id"]), item: $0) }) { line in
-                        let x = line.item
+                    // all of them on one card, a line each (each was its own card, with a gap between)
+                    let sent = Inbox.shared.items.map { Line(id: str($0["id"]), item: $0) }
+                    if !sent.isEmpty {
                         Section {
-                            HStack(spacing: 12) {
-                                let recipe = Inbox.shared.meal(x)
-                                Image(systemName: recipe == nil ? "paperplane.fill" : "book.closed.fill").foregroundStyle(Theme.accent).frame(width: 34, height: 34).background(Theme.hero, in: Circle())
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text("\(Inbox.shared.name(str(x["from_user"]))) sent you \(recipe == nil ? "" : "a recipe")").font(.caption).foregroundStyle(.secondary)
-                                    Text(str(x["name"])).font(.subheadline.weight(.bold))
-                                    Text(recipe.map { "\(list($0["items"]).count) ingredients · \(Int(num(x["kcal"]) ?? 0)) kcal a portion" } ?? "\(Int(num(x["kcal"]) ?? 0)) kcal").font(.caption).foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                if recipe != nil {
-                                    Menu {
-                                        Button { withAnimation { Inbox.shared.save(x) }; note("Saved to your meals") } label: { Label("Save to my meals", systemImage: "book.closed") }
-                                        Button { withAnimation { Inbox.shared.add(x) } } label: { Label("Have a portion today", systemImage: "plus.circle") }
-                                    } label: { Text("Save").font(.subheadline.weight(.bold)).padding(.horizontal, 12).padding(.vertical, 6).background(Theme.accent, in: Capsule()).foregroundStyle(Theme.onAccent) }
-                                } else {
-                                    Button("Add") { withAnimation { Inbox.shared.add(x) } }.buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(.small).foregroundStyle(Theme.onAccent)
-                                }
-                                Button { withAnimation { Inbox.shared.settle(x, "dismissed") } } label: { Image(systemName: "xmark") }.buttonStyle(.borderless).foregroundStyle(.secondary)
+                            Text("Sent to you").font(.caption.weight(.bold)).foregroundStyle(.secondary).textCase(.uppercase)
+                                .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 4, trailing: 16))
+                            // by each send's id, not its position: adding one removes it, and a row drawn by position
+                            // then read past the end of the list and crashed the app
+                            ForEach(allSent || sent.count <= 3 ? sent : Array(sent.prefix(3))) { line in
+                                sentRow(line.item)
+                                    .listRowInsets(EdgeInsets(top: 7, leading: 16, bottom: 7, trailing: 16))
+                            }
+                            if sent.count > 3, !allSent {
+                                Button("Show \(sent.count - 3) more") { withAnimation { allSent = true } }
+                                    .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accent)
+                                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                             }
                         }
                     }
@@ -370,6 +366,30 @@ struct TodayView: View {
         Section {
             WeekReviewCard(review: r, hide: { withAnimation { reviewHidden = store.today } },
                            plan: { meal in plannerMeal = meal; showPlanner = true })
+        }
+    }
+
+    /// One food or recipe sent to them, on one line: its name, who sent it and its calories, Add (Save for a recipe) and ✕.
+    private func sentRow(_ x: JSON) -> some View {
+        let recipe = Inbox.shared.meal(x), who = Inbox.shared.name(str(x["from_user"])), k = Int(num(x["kcal"]) ?? 0)
+        return HStack(spacing: 10) {
+            Image(systemName: recipe == nil ? "paperplane.fill" : "book.closed.fill").font(.footnote).foregroundStyle(Theme.accent)
+                .frame(width: 30, height: 30).background(Theme.hero, in: Circle())
+            VStack(alignment: .leading, spacing: 1) {
+                Text(str(x["name"])).font(.subheadline.weight(.bold)).lineLimit(1)
+                Text(recipe.map { "\(who) · recipe, \(list($0["items"]).count) ingredients · \(k) kcal a portion" } ?? "\(who) · \(k) kcal")
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 6)
+            if recipe != nil {
+                Menu {
+                    Button { withAnimation { Inbox.shared.save(x) }; note("Saved to your meals") } label: { Label("Save to my meals", systemImage: "book.closed") }
+                    Button { withAnimation { Inbox.shared.add(x) } } label: { Label("Have a portion today", systemImage: "plus.circle") }
+                } label: { Text("Save").font(.subheadline.weight(.bold)).padding(.horizontal, 12).padding(.vertical, 6).background(Theme.accent, in: Capsule()).foregroundStyle(Theme.onAccent) }
+            } else {
+                Button("Add") { withAnimation { Inbox.shared.add(x) } }.buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(.small).foregroundStyle(Theme.onAccent)
+            }
+            Button { withAnimation { Inbox.shared.settle(x, "dismissed") } } label: { Image(systemName: "xmark") }.buttonStyle(.borderless).foregroundStyle(.secondary)
         }
     }
 
