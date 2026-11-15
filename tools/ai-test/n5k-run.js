@@ -35,6 +35,8 @@ const schema = obj({
 });
 const context = 'They live in Australia: use the usual portion sizes there. Today: budget 2000 kcal, eaten 640 kcal. Protein so far 40 g of 150 g. Workouts today: none.\nRecent days: none yet.\n';
 const say = 'Lunch';
+// MODEL=claude-opus-5-5 to try another model (the app sends photos to Sonnet)
+const MODEL = process.env.MODEL || 'claude-sonnet-5-5', PRICE = MODEL.includes('opus') ? [4, 20] : MODEL.includes('haiku') ? [0.1, 0.5] : [2, 10];
 const variant = process.env.VARIANT || '', extra = variant ? '\n' + fs.readFileSync(path.join(__dirname, 'variants', variant + '.txt'), 'utf8').trim() : '';
 
 (async () => {
@@ -51,9 +53,9 @@ const variant = process.env.VARIANT || '', extra = variant ? '\n' + fs.readFileS
       const text = `You are the assistant inside a cheat-day food diary app called Cheat Days. ${context}They now say: "${say}" (1 photo)\n\n${rules}${extra}`;
       const img = { type: 'image', source: { type: 'base64', media_type: 'image/png', data: fs.readFileSync(path.join(dir, 'photos', d.id + '.png')).toString('base64') } };
       try {
-        const r = await client.messages.create({ model: 'claude-sonnet-5-5', max_tokens: 12000, messages: [{ role: 'user', content: [img, { type: 'text', text }] }],
+        const r = await client.messages.create({ model: MODEL, max_tokens: 12000, messages: [{ role: 'user', content: [img, { type: 'text', text }] }],
           output_config: { format: { type: 'json_schema', schema: claudeSchema(schema) } } });
-        spent += (r.usage.input_tokens * 2 + r.usage.output_tokens * 10) / 1e6; ledger.calls++;
+        spent += (r.usage.input_tokens * PRICE[0] + r.usage.output_tokens * PRICE[1]) / 1e6; ledger.calls++;
         answers[d.id] = JSON.parse(r.content.filter(b => b.type === 'text').map(b => b.text).join(''));
         const e = answers[d.id].estimate, k = e.parts.reduce((a, p) => a + p.kcal, 0);
         console.log(`${d.id}: truth ${d.kcal.toFixed(0)} kcal ${d.grams.toFixed(0)} g · AI ${k.toFixed(0)} kcal ${e.parts.reduce((a, p) => a + p.grams, 0).toFixed(0)} g · ${e.name}`);
