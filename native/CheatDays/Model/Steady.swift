@@ -52,12 +52,13 @@ extension Assistant {
     /// weight cuts a photo estimate's error by about half, where no wording, model or table did (Nov 2026).
     static func worthWeighing(_ e: JSON) -> [Int] {
         let parts = CheatDays.list(e["parts"])
-        let minor = ["oil", "butter", "sauce", "dressing", "mayo", "aioli", "gravy", "dip", "seasoning", "salt", "sugar", "honey", "syrup", "spread", "glaze"]
+        // whole words: "boiled" has "oil" in it, and the rice was taken for an extra
+        let minor: Set<String> = ["oil", "butter", "sauce", "dressing", "mayo", "mayonnaise", "aioli", "gravy", "dip", "seasoning", "salt", "sugar", "honey", "syrup", "spread", "glaze"]
         let asked = parts.indices.filter { i in
-            let p = parts[i], n = str(p["name"]).lowercased()
+            let p = parts[i], n = Set(FoodTable.words(str(p["name"])))
             return !["label", "them", "web"].contains(str(p["src"])) && !["label", "them", "brand"].contains(str(p["numbers_from"]))
                 && (p["locked"] as? Bool != true || p["weighed"] != nil) && (num(p["kcal"]) ?? 0) >= 60 && pos(p["grams"]) != nil
-                && !minor.contains { n.contains($0) }
+                && n.isDisjoint(with: minor)
         }.sorted { (num(parts[$0]["kcal"]) ?? 0) > (num(parts[$1]["kcal"]) ?? 0) }.prefix(2)
         return asked.filter { str(parts[$0]["weighed"]) != "weighed" }.sorted()
     }
