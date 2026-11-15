@@ -75,7 +75,8 @@ extension Assistant {
         }
         for (i, p) in news.enumerated() where match[i] == nil {
             let words = Set(FoodTable.words(str(p["name"])))
-            if let j = old.indices.first(where: { !taken.contains($0) && soundsLike(str(old[$0]["name"]), words) }) { taken.insert(j); match[i] = old[j] }
+            let meats = proteins(str(p["name"]))
+            if let j = old.indices.first(where: { !taken.contains($0) && soundsLike(str(old[$0]["name"]), words) && proteins(str(old[$0]["name"])) == meats }) { taken.insert(j); match[i] = old[j] }
         }
         let parts = news.enumerated().map { i, p0 -> JSON in
             var p = p0

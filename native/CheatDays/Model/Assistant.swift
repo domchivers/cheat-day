@@ -418,6 +418,14 @@ enum Assistant {
 
     /// A food's name shares two words with what they said or what the photos showed, or it's a short name ("Croissant",
     /// "Pad thai") whose one long word they used.
+    /// The meats, fish and the like a food's name names. Two names that share words but not these are different foods:
+    /// "Beef hotpot rolls" isn't the "Beef and lamb hotpot rolls" of the card before, and was put back to it.
+    static func proteins(_ name: String) -> Set<String> {
+        let kinds: Set<String> = ["beef", "lamb", "mutton", "pork", "chicken", "turkey", "duck", "veal", "goat", "fish", "salmon", "tuna", "prawn",
+                                  "shrimp", "tofu", "egg", "ham", "bacon"]
+        return Set(FoodTable.words(name)).intersection(kinds)
+    }
+
     static func soundsLike(_ name: String, _ said: Set<String>) -> Bool {
         let w = Set(FoodTable.words(name)), shared = w.intersection(said)
         return shared.count >= 2 || (w.count <= 2 && shared.contains { $0.count >= 5 })
@@ -1003,7 +1011,10 @@ enum Assistant {
                 let own = ["them", "label"].contains(str(o["numbers_from"])) || ["them", "label"].contains(str(o["src"]))
                 return own && abs((num(o["grams"]) ?? 0) - g) < 1 && soundsLike(str(o["name"]), words)
             }
+            let meats = proteins(str(p["name"]))
             let found = exact ?? old.first { o in
+                // not another mix of meats ("beef rolls" after "beef and lamb rolls")
+                if proteins(str(o["name"])) != meats { return false }
                 let og = num(o["grams"]) ?? 1, per = (num(o["protein_g"]) ?? 0) / og
                 let theirs = figures(str(o["name"]))
                 if !mine.isEmpty, !theirs.isEmpty, mine.isDisjoint(with: theirs) { return false }

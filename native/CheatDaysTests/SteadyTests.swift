@@ -141,4 +141,13 @@ final class SteadyTests: XCTestCase {
         XCTAssertFalse(Assistant.givesAmount("pieces about 1.5 cm"))
         XCTAssertFalse(Assistant.givesAmount("Maybe can check female hand size"))
     }
+
+    /// "Just beef rolls" after "beef and lamb rolls" is a new food: it keeps its own name and numbers.
+    func testAnotherMixOfMeatsIsNotTheSameFood() {
+        let before = card([part("Beef and lamb hotpot rolls, boiled", 100, kcal: 205, p: 18, c: 0, f: 14)])
+        let now = card([part("Beef hotpot rolls, boiled", 150, kcal: 330, p: 30, c: 0, f: 22)])
+        let out = Assistant.steady(now, earlier: [before])
+        XCTAssertEqual(str(CheatDays.list(out["parts"])[0]["name"]), "Beef hotpot rolls, boiled")
+        XCTAssertEqual(Assistant.proteins("Beef and lamb hotpot rolls"), ["beef", "lamb"])
+    }
 }
