@@ -392,4 +392,25 @@ final class AssistantTests: XCTestCase {
         // nothing of the chat's in the recipe: the checked numbers stand
         XCTAssertEqual(num(Assistant.steadyRecipe(table, asked: more, earlier: [])[0]["kcal"]), 98)
     }
+
+    /// No check leaves a part with numbers that can't be true: it goes back to the AI's own (the owner's hotpot, 15 Nov:
+    /// the soup base drunk came out at 793 kcal for 26 g).
+    func testAPartThatCantBeTrueGoesBackToTheAIsNumbers() {
+        let bad: JSON = ["name": "LIHAILONG Spicy Instant Pot soup base, drunk", "grams": 26, "kcal": 793, "protein_g": 9, "carbs_g": 60, "fat_g": 55,
+                         "src": "web", "was": ["grams": 26, "kcal": 120, "protein_g": 1, "carbs_g": 3, "fat_g": 11] as JSON]
+        let fine: JSON = ["name": "Cabbage", "grams": 135, "kcal": 42, "protein_g": 1.7, "carbs_g": 6, "fat_g": 0.2]
+        let out = Assistant.guarded(["name": "Hotpot", "parts": [bad, fine], "kcal_total": 835] as JSON)
+        let parts = CheatDays.list(out["parts"])
+        XCTAssertEqual(num(parts[0]["kcal"]), 120)
+        XCTAssertEqual(num(out["kcal_total"]), 162)
+        XCTAssertEqual(num(parts[1]["kcal"]), 42, "a part that can be true is left alone")
+        XCTAssertTrue(Assistant.physical(fine))
+        XCTAssertFalse(Assistant.physical(bad))
+    }
+
+    /// Calories aren't rebuilt from protein, carbs and fat that weigh more than the food.
+    func testCaloriesAreNotRaisedFromMacrosHeavierThanTheFood() {
+        XCTAssertEqual(Sanity.check(name: "Soup base", grams: 26, kcal: 120, p: 9, c: 60, f: 55).kcal, 120)
+        XCTAssertEqual(Sanity.check(name: "Chicken breast", grams: 100, kcal: 60, p: 31, c: 0, f: 3.6).kcal, 156, "macros that fit still put a low number right")
+    }
 }

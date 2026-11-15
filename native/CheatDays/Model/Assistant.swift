@@ -802,6 +802,45 @@ enum Assistant {
     }
 
     /// A brand part from the label found online: so many of its servings, or its weight at the label's rate.
+    /// A part's numbers as the AI first gave them.
+    static func firstSay(_ p: JSON) -> JSON {
+        var w: JSON = [:]
+        for k in ["grams", "kcal", "protein_g", "carbs_g", "fat_g"] { if let v = num(p[k]) { w[k] = v } }
+        return w
+    }
+
+    /// Numbers a food can have: no more than 9 kcal a gram (pure fat), and no more protein, carbs and fat than it weighs.
+    static func physical(_ x: JSON) -> Bool {
+        guard let g = pos(x["grams"]) else { return true }
+        let k = num(x["kcal"]) ?? 0, m = (num(x["protein_g"]) ?? 0) + (num(x["carbs_g"]) ?? 0) + (num(x["fat_g"]) ?? 0)
+        return k <= 9.2 * g + 5 && m <= 1.05 * g + 1
+    }
+
+    /// The last word on a card's numbers, after every check and correction: a part whose numbers can't be true is put
+    /// back to the AI's own, when those could be, and says so. No check may leave a part worse than the AI gave it.
+    /// (The soup base they drank was put at 793 kcal for 26 g by a label found on the web, and the card at 1,426 kcal
+    /// where the AI had said 788.)
+    static func guarded(_ e: JSON) -> JSON {
+        var parts = CheatDays.list(e["parts"]), notes: [String] = [], put = false
+        for i in parts.indices where !physical(parts[i]) {
+            guard let w = parts[i]["was"] as? JSON, physical(w) else { continue }
+            for k in ["grams", "kcal", "protein_g", "carbs_g", "fat_g"] { parts[i][k] = w[k] }
+            parts[i]["src"] = "ai"; parts[i]["match"] = nil; parts[i]["flagged"] = true
+            notes.append("\(str(parts[i]["name"])): what it was checked against couldn't be true for its weight, so the first estimate stands.")
+            put = true
+        }
+        guard put else { return e }
+        func sum(_ k: String) -> Double { parts.reduce(0) { $0 + (num($1[k]) ?? 0) } }
+        var out = e
+        out["parts"] = parts
+        out["kcal_total"] = sum("kcal").rounded(); out["protein_g"] = sum("protein_g"); out["carbs_g"] = sum("carbs_g"); out["fat_g"] = sum("fat_g")
+        out["portion_g"] = sum("grams").rounded()
+        // the warnings about the numbers now gone go with them
+        let gone = Set(parts.filter { $0["was"] != nil && str($0["src"]) == "ai" }.map { str($0["name"]) })
+        out["flags"] = (e["flags"] as? [String] ?? []).filter { f in !gone.contains { f.hasPrefix($0 + ":") } } + notes
+        return out
+    }
+
     static func fromLabel(_ part: JSON, _ label: JSON) -> JSON {
         guard let serving = pos(label["serving_g"]), let kcal = pos(label["kcal"]) else { return part }
         let n = pos(part["servings"]), grams = n.map { serving * $0 } ?? (pos(part["grams"]) ?? serving), f = grams / serving
@@ -826,7 +865,11 @@ enum Assistant {
     /// Check each part: the app's own food list first, then the food database through the server (if it's set up).
     @MainActor
     static func ground(_ e: JSON) async -> JSON {
-        var parts = CheatDays.list(e["parts"]).filter { (num($0["grams"]) ?? 0) > 0 }.map { p -> JSON in var x = p; x["src"] = "ai"; return x }
+        var parts = CheatDays.list(e["parts"]).filter { (num($0["grams"]) ?? 0) > 0 }.map { p -> JSON in
+            var x = p; x["src"] = "ai"
+            if x["was"] == nil { x["was"] = firstSay(p) }   // the AI's own numbers, to fall back on (see `guarded`)
+            return x
+        }
         guard !parts.isEmpty else { return e }
         var ask: [Int] = []
         for i in parts.indices {
@@ -846,7 +889,9 @@ enum Assistant {
             // a branded product: its own label from the web, or the AI's guess (44 kcal for a Monarc mango stick, label 43;
             // generic frozen yogurt made it 57)
             if str(x["numbers_from"]) == "brand" {
-                if let found = await Gemini.lookUpLabel(str(x["name"])) { parts[i] = fromLabel(x, found) }
+                // only a label that can be true, for this part: a page gave 1,269 kcal for a 41 g serving, and the
+                // soup base they drank came out at 793 kcal for 26 g
+                if let found = await Gemini.lookUpLabel(str(x["name"])), case let y = fromLabel(x, found), physical(y) { parts[i] = y }
                 continue
             }
             // a species or cut we've checked: before any list or database, unless its numbers don't fit the kind of food
@@ -885,7 +930,7 @@ enum Assistant {
                 }
             }
         }
-        return sane(totals(e, parts: parts))
+        return guarded(sane(totals(e, parts: parts)))
     }
 
     /// A food they've logged from its label or barcode, or scanned in, that this part is: every long word of the part's
@@ -1044,7 +1089,7 @@ enum Assistant {
         var out = e
         out["parts"] = parts
         out["kcal_total"] = sum("kcal").rounded(); out["protein_g"] = sum("protein_g"); out["carbs_g"] = sum("carbs_g"); out["fat_g"] = sum("fat_g")
-        return sane(out)   // the warnings worked out again: one about a number that's been put right mustn't stay
+        return guarded(sane(out))   // the warnings worked out again: one about a number that's been put right mustn't stay
     }
 
     /// The numbers in a food's name ("Boiled chicken breast, 557 g batch": 557), two figures or more.

@@ -125,7 +125,9 @@ enum Sanity {
             // alcohol has energy the macros don't show; fibre-heavy foods have carbs that give little
             let alcohol = n.range(of: #"\b(wine|beer|spirits?|vodka|gin|rum|whisky|sake|mirin|cider|liqueur|cocktail)\b"#, options: .regularExpression) != nil
             let fibre = n.range(of: #"\b(cocoa|cacao|bran|chia|flax|linseed|psyllium|fibre)\b"#, options: .regularExpression) != nil
-            if e > 8 && kcal < e * 0.8 - 5 && !fibre {
+            // (not from macros that weigh more than the food itself: they're wrong too, and the "fix" made it worse)
+            let heavy = grams.map { pp + cc + ff > $0 * 1.05 } ?? false
+            if e > 8 && kcal < e * 0.8 - 5 && !fibre && !heavy {
                 out.kcal = e.rounded()
                 out.flags.append("\(name): \(Fmt.int(kcal)) kcal didn't fit its \(Fmt.int(pp)) g protein, \(Fmt.int(cc)) g carbs and \(Fmt.int(ff)) g fat, so it's \(Fmt.int(e)) kcal from those.")
             } else if e > 0 && kcal > e * 1.2 + 15 && pp + cc + ff > 2 && !alcohol {
