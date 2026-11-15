@@ -156,7 +156,8 @@ struct StoryItem: View {
     /// A picture of your own stuck on the story, in a white frame. While it's being made the picture is on the phone
     /// (PhotoStickers); once posted it's fetched from where it was uploaded.
     /// A photo sticker's looks, in the order a tap goes through them.
-    static let photoStyles = ["Frame", "Plain", "Polaroid", "Round"]
+    /// (New ones go on the end: a story already posted keeps the look it was given by its number.)
+    static let photoStyles = ["Frame", "Plain", "Polaroid", "Round", "Original"]
 
     /// A picture of your own stuck on the story, in one of its looks (tap it in the editor for the next): a white
     /// frame, the photo as it is, a polaroid, or a circle. While it's being made the picture is on the phone
@@ -174,11 +175,22 @@ struct StoryItem: View {
             pic.frame(width: width, height: height).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .shadow(color: .black.opacity(0.3), radius: 8, y: 5)
         case 2:
-            // a polaroid: square, white all round and deeper underneath
-            pic.frame(width: 170, height: 170).clipped()
-                .padding(.horizontal, 10).padding(.top, 10).padding(.bottom, 40)
-                .background(Color(white: 0.97), in: RoundedRectangle(cornerRadius: 3, style: .continuous))
-                .shadow(color: .black.opacity(0.3), radius: 8, y: 5)
+            // A polaroid: the photo square in a warm off-white card, an even border with a deep strip under it, the
+            // photo set into the card by a hairline, almost square corners, and a soft lift off the story
+            pic.frame(width: 168, height: 168).clipped()
+                .overlay(Rectangle().strokeBorder(.black.opacity(0.08), lineWidth: 0.75))
+                .padding(.horizontal, 11).padding(.top, 11).padding(.bottom, 48)
+                .background {
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(LinearGradient(colors: [Color(red: 0.99, green: 0.98, blue: 0.96), Color(red: 0.95, green: 0.94, blue: 0.91)],
+                                             startPoint: .top, endPoint: .bottom))
+                }
+                .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
+                .shadow(color: .black.opacity(0.28), radius: 14, y: 9)
+        case 4:
+            // the photo as it is: square corners, no border
+            pic.frame(width: width, height: height).clipped()
+                .shadow(color: .black.opacity(0.25), radius: 6, y: 4)
         case 3:
             pic.frame(width: 180, height: 180).clipShape(Circle())
                 .overlay(Circle().strokeBorder(.white, lineWidth: 4))
