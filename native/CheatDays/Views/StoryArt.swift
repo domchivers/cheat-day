@@ -155,17 +155,39 @@ struct StoryItem: View {
 
     /// A picture of your own stuck on the story, in a white frame. While it's being made the picture is on the phone
     /// (PhotoStickers); once posted it's fetched from where it was uploaded.
-    private var photo: some View {
+    /// A photo sticker's looks, in the order a tap goes through them.
+    static let photoStyles = ["Frame", "Plain", "Polaroid", "Round"]
+
+    /// A picture of your own stuck on the story, in one of its looks (tap it in the editor for the next): a white
+    /// frame, the photo as it is, a polaroid, or a circle. While it's being made the picture is on the phone
+    /// (PhotoStickers); once posted it's fetched from where it was uploaded.
+    @ViewBuilder private var photo: some View {
         let w = num(o["w"]) ?? 3, h = num(o["h"]) ?? 4
         let width: CGFloat = 190, height = max(90, min(340, width * h / max(1, w)))
-        return ZStack {
+        let pic = ZStack {
             Color(white: 0.15)
             if let img = PhotoStickers.local[str(o["local"])] { Image(uiImage: img).resizable().scaledToFill() }
             else if !str(o["url"]).isEmpty { FeedPhoto(src: str(o["url"]), fill: true) }
         }
-        .frame(width: width, height: height).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.white, lineWidth: 4))
-        .shadow(color: .black.opacity(0.3), radius: 8, y: 5)
+        switch Int(num(o["style"]) ?? 0) % Self.photoStyles.count {
+        case 1:
+            pic.frame(width: width, height: height).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .shadow(color: .black.opacity(0.3), radius: 8, y: 5)
+        case 2:
+            // a polaroid: square, white all round and deeper underneath
+            pic.frame(width: 170, height: 170).clipped()
+                .padding(.horizontal, 10).padding(.top, 10).padding(.bottom, 40)
+                .background(Color(white: 0.97), in: RoundedRectangle(cornerRadius: 3, style: .continuous))
+                .shadow(color: .black.opacity(0.3), radius: 8, y: 5)
+        case 3:
+            pic.frame(width: 180, height: 180).clipShape(Circle())
+                .overlay(Circle().strokeBorder(.white, lineWidth: 4))
+                .shadow(color: .black.opacity(0.3), radius: 8, y: 5)
+        default:
+            pic.frame(width: width, height: height).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.white, lineWidth: 4))
+                .shadow(color: .black.opacity(0.3), radius: 8, y: 5)
+        }
     }
 
     @ViewBuilder private var sticker: some View {

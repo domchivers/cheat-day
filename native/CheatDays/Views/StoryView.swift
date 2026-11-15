@@ -281,7 +281,14 @@ struct StoryView: View {
         case .post(let p): ago = Feed.ago(str(p["created_at"]))
         default: ago = ""
         }
-        return ago.isEmpty ? "today" : ago
+        return ago.isEmpty ? Self.dayWord(who) : ago
+    }
+
+    /// Their day's slides: today, or yesterday when the day showing is still yesterday's (a day touched in the last
+    /// 18 hours is shown, for family in other time zones, and it said "today" the morning after).
+    static func dayWord(_ id: String) -> String {
+        guard id != Profiles.shared.me, let d = Friends.shared.people.first(where: { $0.id == id })?.current else { return "today" }
+        return str(d["day"]) == DayKey.string(Date()) || str(d["day"]).isEmpty ? "today" : "yesterday"
     }
 
     private var header: some View {

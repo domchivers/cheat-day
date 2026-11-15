@@ -572,10 +572,9 @@ struct FeedView: View {
                             } else {
                                 Text(feed.name(owner)).font(.subheadline.weight(.bold)).foregroundStyle(.primary)
                             }
-                            Text(Self.what(p) + " · " + Feed.ago(str(p["created_at"]))).font(.caption).foregroundStyle(.secondary)
-                            if let with = dict(p["extra"])["tags"] as? [String], !with.isEmpty {
-                                Text("with " + TagPicker.names(with)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                            }
+                            // one line: what, when and who with (it took two, with room to spare)
+                            let with = (dict(p["extra"])["tags"] as? [String]).flatMap { $0.isEmpty ? nil : " · with " + TagPicker.names($0) } ?? ""
+                            Text(Self.what(p) + " · " + Feed.ago(str(p["created_at"])) + with).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                         }
                     }
                 }

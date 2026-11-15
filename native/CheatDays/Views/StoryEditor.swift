@@ -590,6 +590,12 @@ struct StoryEditor: View {
         case "food":
             remember(); UISelectionFeedbackGenerator().selectionChanged()
             withAnimation(.snappy(duration: 0.2)) { items[i]["style"] = (Int(num(o["style"]) ?? 0) + 1) % 3 }
+        case "photo":
+            // its next look; only a tap does this: a finger that moves more than a few points is moving it
+            remember(); UISelectionFeedbackGenerator().selectionChanged()
+            let next = (Int(num(o["style"]) ?? 0) + 1) % StoryItem.photoStyles.count
+            withAnimation(.snappy(duration: 0.2)) { items[i]["style"] = next }
+            flash(StoryItem.photoStyles[next])
         default: break
         }
     }
@@ -691,10 +697,6 @@ struct StoryEditor: View {
                 tool("textformat", "Text", "Text") { newText() }
                 // more photos onto this one, to move, size and turn like any sticker: several in one picture
                 tool("photo.badge.plus", "Add", "Add photos") { addingPhotos = true }
-                // this photo again, on top of itself (the library won't let one be picked twice at once)
-                if video == nil, (work ?? image) != nil {
-                    tool("plus.square.on.square", "Again", "Add this photo again") { if let img = work ?? image { placePhotos([img]) } }
-                }
                 tool("face.smiling", "Stickers", "Stickers") { stickers = true }
                 tool("scribble.variable", "Draw", "Draw") { mode = .draw }
                 tool("camera.filters", "Filter", "Filters") { mode = .filters }
