@@ -139,11 +139,14 @@ final class FoodTable {
         let whole = Self.words(name).joined(separator: " "), lead = Self.words(first).joined(separator: " ")
         if let named = (whole != lead ? aliases[whole] : nil) ?? (rare && whole != lead ? aliases[lead] : nil) { return named }
         let base = find(name)
+        // an entry that's another food made with it isn't it: "Black beans" found "Sauce, black bean, commercial"
+        let saidWords = Set(Self.words(name))
+        let otherFood = base.flatMap { b in rows.first { $0.food.name == b.name } }.map { !Set($0.kind).subtracting(saidWords).isDisjoint(with: Self.otherFoods) } ?? false
         // how it's cooked says nothing about which cheese or cake it is (a "cooked" melted cheese found fried mozzarella)
         let cooking: Set<String> = ["raw", "cooked", "fried", "baked", "grilled", "boiled", "steamed"]
         let plain = [FoodKind.dairy, .sweet].contains(FoodKind.of(name))
         let tags = tags.filter { Self.tagWords[$0] != nil && !(plain && cooking.contains($0)) }
-        guard !tags.isEmpty else { return base }
+        guard !tags.isEmpty else { return otherFood ? nil : base }
         let want = Self.words(first), all = Set(Self.words(name)), main = Set(want)
         guard !want.isEmpty else { return base }
         let asked = all.union(tags.flatMap { Self.tagWords[$0]!.yes })
@@ -180,11 +183,11 @@ final class FoodTable {
         var named = all.intersection(baseRow.words).subtracting(described)
         // the entry found is a version nobody asked for (coated fast-food chicken for "Chicken pieces, grilled"): its
         // plain relatives instead, by the food alone
-        let wrongVersion = unasked(baseRow)
+        let wrongVersion = unasked(baseRow) || otherFood
         if wrongVersion { named.subtract(Self.pieceWords) }
         let others = wrongVersion ? rows.filter { !Set($0.kind).subtracting(Self.pieceWords).isDisjoint(with: Set(want).subtracting(Self.pieceWords)) && !(strict && strayed($0, from: asked)) } : pool
         let fitted = others.filter { !unasked($0) && named.isSubset(of: $0.words) }.max { (fit($0), score($0)) < (fit($1), score($1)) }
-        guard let fitted, wrongVersion || fit(fitted) > fit(baseRow) else { return base }
+        guard let fitted, wrongVersion || fit(fitted) > fit(baseRow) else { return otherFood ? nil : base }
         return fitted.food
     }
 

@@ -906,7 +906,7 @@ enum Assistant {
             let src = str(p["src"]).isEmpty ? str(p["numbers_from"]) : str(p["src"]), m = str(p["match"])
             return "\(str(p["name"])) · \(n(p["grams"])) g · \(n(p["kcal"])) kcal · P\(n(p["protein_g"])) C\(n(p["carbs_g"])) F\(n(p["fat_g"]))"
                 + (src.isEmpty ? "" : " · \(src)") + (m.isEmpty ? "" : " (\(m))")
-        } + ["total \(n(e["kcal_total"])) kcal"]
+        } + ["total \(n(e["kcal_total"] ?? CheatDays.list(e["parts"]).reduce(0.0) { $0 + (num($1["kcal"]) ?? 0) })) kcal"]
     }
 
     /// The card with this step added to its trace, when the step changed what it shows.
@@ -932,6 +932,16 @@ enum Assistant {
         var out = ["Cheat Days \(v), assistant chat"]
         for t in turns {
             out.append((t.me ? "Me: " : "Assistant: ") + t.text + (t.images.isEmpty ? "" : " (\(t.images.count) photo\(t.images.count == 1 ? "" : "s"))"))
+            if let ta = t.result?["takeaway"] as? JSON {
+                out.append("  [planned from \(str(ta["restaurant"])) for \(Int(num(ta["kcal"]) ?? 0)) kcal, \(Int(num(ta["aim"]) ?? 0)) g protein · \(str(ta["source"]))]")
+                for c in CheatDays.list(ta["combos"]) { out.append("    \(str(c["title"])) · \(Int(num(c["kcal"]) ?? 0)) kcal · P\(Int(num(c["protein_g"]) ?? 0))") }
+            }
+            if let pl = t.result?["places"] as? JSON {
+                out.append("  [places in \(str(pl["area"])) for \(Int(num(pl["kcal"]) ?? 0)) kcal, \(Int(num(pl["protein"]) ?? 0)) g protein]")
+                for x in CheatDays.list(pl["places"]) {
+                    out.append("    \(str(x["name"])): \(str(x["dish"])) · \(Int(num(x["kcal"]) ?? 0)) kcal · P\(Int(num(x["protein_g"]) ?? 0)) · \(str(x["published"]) == "none" ? "estimated" : "published")")
+                }
+            }
             guard let e = t.result?["estimate"] as? JSON else { continue }
             for st in CheatDays.list(e["trace"]) {
                 out.append("  [\(str(st["step"]))]")
@@ -966,7 +976,7 @@ enum Assistant {
             // was swapped for a generic roast chicken's 190
             if ["label", "them"].contains(str(x["numbers_from"])) { parts[i]["src"] = x["numbers_from"]; continue }
             // a food they logged from its own label: theirs, not the table's (Kenny's ice cream was counted as plain ice cream, 195 for 106)
-            if ownFoods, let y = await yours(str(x["name"])) { parts[i] = checked(x, kcal100: y.kcal100, p100: y.p100, c100: y.c100, f100: y.f100, source: "label", match: y.food); continue }
+            if ownFoods, let y = await yours(str(x["name"])), plausible(y.kcal100, aiKcal: num(x["kcal"]) ?? 0, grams: g, name: str(x["name"])) { parts[i] = checked(x, kcal100: y.kcal100, p100: y.p100, c100: y.c100, f100: y.f100, source: "label", match: y.food); continue }
             // a branded product: its own label from the web, or the AI's guess (44 kcal for a Monarc mango stick, label 43;
             // generic frozen yogurt made it 57)
             if str(x["numbers_from"]) == "brand" {

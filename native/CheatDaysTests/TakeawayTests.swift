@@ -249,4 +249,23 @@ final class TakeawayTests: XCTestCase {
         XCTAssertEqual(list(added["lines"]).count, 2)
         XCTAssertGreaterThan(num(added["p"]) ?? 0, before)
     }
+
+    /// The owner's burrito chat, 15 Nov: "under 700cals" was dropped by the next message, and every list led with the
+    /// protein nobody had asked about.
+    func testCaloriesSaidEarlierAreKept() {
+        XCTAssertEqual(Takeaway.saidKcal(["Reckon I could do a burrito for under 700cals from DoorDash??", "Find some places"]), 700)
+        XCTAssertEqual(Takeaway.saidKcal(["600 calories", "actually 750 kcal"]), 750, "the latest")
+        XCTAssertNil(Takeaway.saidKcal(["Find some places", "2 burritos"]))
+    }
+
+    func testWithoutProteinAskedTheCaloriesDecide() {
+        let r: JSON = ["found": true, "places": [
+            ["name": "Guzman y Gomez", "dish": "Grilled Chicken Bowl", "kcal": 660, "protein_g": 44, "published": "full", "kj": 2760] as JSON,
+            ["name": "Mad Mex", "dish": "Burrito", "kcal": 910, "protein_g": 65, "published": "none", "kj": 0] as JSON,
+            ["name": "Zambrero", "dish": "Small Burrito", "kcal": 522, "protein_g": 21, "published": "full", "kj": 2186] as JSON] as [Any]]
+        let out = Takeaway.places(r, area: "Melbourne", asked: "", meal: "Dinner", kcal: 700, protein: 58, proteinAsked: false)
+        let names = list(dict(out["places"])["places"]).map { str($0["name"]) }
+        XCTAssertEqual(names, ["Guzman y Gomez", "Zambrero", "Mad Mex"], "the two under 700 first, most protein first; the one over last")
+        XCTAssertFalse(str(out["reply"]).contains("g protein"), str(out["reply"]))
+    }
 }

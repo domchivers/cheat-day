@@ -254,4 +254,10 @@ final class FoodMatchTests: XCTestCase {
         XCTAssertEqual(from("Beef rolls 300 cal 20p 0c 25f"), "them")
         XCTAssertEqual(from("918 g chicken breast raw, now 553 g cooked"), "them", "a batch weighed raw and cooked is worked out from its totals")
     }
+
+    /// Black beans aren't black bean sauce (the owner's burrito, 15 Nov).
+    func testAFoodIsntASauceMadeWithIt() {
+        XCTAssertFalse((FoodTable.au.best("Black beans", tags: ["cooked"])?.name ?? "").lowercased().contains("sauce"))
+        XCTAssertFalse((FoodTable.au.best("Black beans", tags: [])?.name ?? "").lowercased().contains("sauce"))
+    }
 }

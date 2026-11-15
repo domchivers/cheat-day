@@ -280,16 +280,17 @@ enum Takeaway {
     }
     static func menuAsk(_ restaurant: String, area: String, want: [String], seen: [String] = []) -> String {
         """
-        Find the current menu of "\(restaurant)"\(area.isEmpty ? "" : " in \(area)"), a restaurant, takeaway or chain in \(Plan.country), and the nutrition it publishes. Look first at its listing on DoorDash, Uber Eats or Menulog, which has the full current menu and where chains put kJ in each item's name ("Chicken Burger (2280 kJ)"), then its own website or nutrition PDF.\(want.isEmpty ? "" : " They want: \(want.joined(separator: ", ")). Make sure those dishes are in the list if it sells them, with the kJ its listing shows today, not an old menu's.")\(seen.isEmpty ? "" : " They read these on its listing today: \(seen.joined(separator: ", ")). List each with exactly that kJ, and estimate its protein, carbs and fat for that energy.") List up to 30 of its items, mains first, each as one serving as sold (with its size or pieces in the name, "Original tenders, 4 pcs").
+        Find the current menu of "\(restaurant)"\(area.isEmpty ? "" : " in \(area)"), a restaurant, takeaway or chain in \(Plan.country), and the nutrition it publishes. Look first for the nutrition it publishes itself: chains in Australia list kJ (often protein too) on their own website's menu or nutrition page, or a nutrition PDF; open that page or PDF with web_fetch and read each item's numbers from it. DoorDash, Uber Eats and Menulog pages usually can't be opened, but their search results show the current menu's item names and often kJ in each name ("Chicken Burger (2280 kJ)"): use them for names and any kJ shown.\(want.isEmpty ? "" : " They want: \(want.joined(separator: ", ")). Make sure those dishes are in the list if it sells them, with the kJ its listing shows today, not an old menu's.")\(seen.isEmpty ? "" : " They read these on its listing today: \(seen.joined(separator: ", ")). List each with exactly that kJ, and estimate its protein, carbs and fat for that energy.") List up to 30 of its items, mains first, each as one serving as sold (with its size or pieces in the name, "Original tenders, 4 pcs").
         For each item: published is full when the restaurant gives its calories and protein, energy when it gives only kJ or kcal, none when it gives nothing. kj: exactly as published, else 0. kcal: as published, else kJ ÷ 4.184, else your estimate. protein_g, carbs_g and fat_g: as published, else your honest estimate from what the item is and its usual portion. kind: main, side, drink or dessert.
-        found false if you can't find its menu at all. source: where the numbers came from, a few words. Open the restaurant's DoorDash or Uber Eats store page with web_fetch and read the kJ from the item names there. When sources disagree, the delivery listing is today's menu: use its number. Never guess a kJ: an item whose energy you didn't read on a page has kj 0 and published none.
+        found false if you can't find its menu at all. source: where the numbers came from, a few words. When its own figures and a delivery listing's kJ disagree, the delivery listing is today's menu: use its number. Never guess a kJ: an item whose energy you didn't read on a page has kj 0 and published none.
         """
     }
 
-    /// Kept word for word with tools/ai-test/find-check.js, where it found four South Yarra places on the web in 16 s for 2.4¢.
+    /// Kept word for word with tools/ai-test/find-protein-check.js ("pub"): places that publish their nutrition, read from
+    /// their own pages (Guzman y Gomez and Zambrero came back with their published kJ and protein every run, Nov 2026).
     static func findAsk(_ area: String, want: [String], meal: String, kcal: Double, protein: Double) -> String {
         """
-        Find 4 real restaurants, cafés or takeaways in or near \(area), \(Plan.country), for \(meal.lowercased())\(want.isEmpty ? "" : ", for someone after \(want.joined(separator: ", "))"). For each, the one order from its current menu that gets to \(Int(protein)) g protein or more within about \(Fmt.int(kcal)) kcal: one dish when a dish has that much protein, else a dish with what makes up the protein from the same menu (double meat, extra pieces of chicken, a second small main, a protein side), up to three items. The protein matters most: where the menu can reach \(Int(protein)) g, the order reaches it; where it can't, give the order with the most protein you can within the calories. Always give 4 places. Search the web for places there; delivery listings on DoorDash, Uber Eats or Menulog have the current menu, often with kJ in each item's name ("Chicken Bowl (2280 kJ)"). Only list places you found on a page, in that area, still trading.
+        Find 4 real restaurants, cafés or takeaways in or near \(area), \(Plan.country), for \(meal.lowercased())\(want.isEmpty ? "" : ", for someone after \(want.joined(separator: ", "))"), choosing places that publish their nutrition: chains in Australia show kJ (often protein too) on their own website's menu or nutrition page or a nutrition PDF, and sites like macromenu.com.au list chains' published figures. Always give 4 different places (4 different businesses, never the same chain twice), at least 3 of them places that publish their nutrition when there are; only make up the 4 with a place that doesn't when there aren't enough. For each, the one order from its current menu that gets to \(Int(protein)) g protein or more within about \(Fmt.int(kcal)) kcal: one dish when a dish has that much protein, else a dish with what makes up the protein from the same menu (double meat, extra pieces of chicken, a second small main, a protein side), up to three items. The protein matters most: where the menu can reach \(Int(protein)) g, the order reaches it; where it can't, give the order with the most protein you can within the calories. Always give 4 places. Search the web for them, then open the place's own nutrition page or PDF (or macromenu.com.au) with web_fetch and read the order's numbers from it; DoorDash, Uber Eats and Menulog pages usually can't be opened, though their search results show item names and often kJ. Only list places in that area, still trading.
         For each place: name as it calls itself. area: its street or suburb, a few words. cuisine: one or two words. dish: the order as named on its menu, items joined with " + " ("Grilled Chicken Bowl + Extra Chicken"). published is full when the place gives the calories and protein of every item in the order, energy when it gives only their kJ or kcal, none when any item has nothing. kj: the items' published kJ added up, else 0. kcal: as published added up, else kJ ÷ 4.184, else your honest estimate. protein_g, carbs_g and fat_g: for the whole order, as published, else your honest estimate from what each item is and its usual portion. Never guess a kJ: an order with an item whose energy you didn't read on a page has kj 0 and published none.
         found false if you couldn't find places there.
         """
@@ -407,6 +408,9 @@ enum Takeaway {
             return "You: \(t.text.prefix(200))"
         }.joined(separator: "\n")
         let said = last.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        // "a burrito for under 700cals", then "find some places": still 700, not everything left (it became 1,021)
+        let theirKcal = saidKcal(turns.filter { $0.me }.map { $0.text })
+        let proteinTalk = turns.filter { $0.me }.contains { $0.text.lowercased().contains("protein") }
         let shown = turns.dropLast().last { $0.result?["places"] != nil }?.result?["places"] as? JSON
         if photo == nil {
             // a place on the list, tapped (its whole name is sent): planned with no asking. Anything more ("had Grill'd")
@@ -416,7 +420,7 @@ enum Takeaway {
             }
             // "Whereabouts?" answered with a suburb: the search they asked for, there
             if let w = turns.dropLast().last(where: { !$0.me })?.result?["whereabouts"] as? JSON, said.split(separator: " ").count <= 5, !said.contains("?") {
-                decided?.set(true); return await find(area: said, want: w["want"] as? [String] ?? [], asked: str(w["asked"]), kcal: nil, protein: nil, store: store, step: step)
+                decided?.set(true); return await find(area: said, want: w["want"] as? [String] ?? [], asked: str(w["asked"]), kcal: theirKcal, protein: nil, store: store, step: step)
             }
         }
         // A place's menu is already planned in this chat: a question about that order ("which sides should I get?",
@@ -431,7 +435,8 @@ enum Takeaway {
               photo != nil || ["choose", "find"].contains(str(route["intent"])) || (!str(route["restaurant"]).isEmpty && choosing(last.text) && !(planned && str(route["intent"]) == "other")) else { return nil }
         // "any good lunch spots in South Yarra?": places found on the web, each with the dish that suits them
         if photo == nil, str(route["intent"]) == "find", str(route["restaurant"]).isEmpty {
-            decided?.set(true); return await find(area: str(route["area"]), want: route["want"] as? [String] ?? [], asked: last.text, kcal: pos(route["kcal"]), protein: pos(route["protein"]), store: store, step: step)
+            decided?.set(true); return await find(area: str(route["area"]), want: route["want"] as? [String] ?? [], asked: last.text, kcal: pos(route["kcal"]) ?? theirKcal, protein: pos(route["protein"]),
+                                                proteinAsked: pos(route["protein"]) != nil || proteinTalk, store: store, step: step)
         }
         let named = str(route["restaurant"]).trimmingCharacters(in: .whitespaces)
         // "the poke one": a place from the list, with its dish's kJ
@@ -448,14 +453,25 @@ enum Takeaway {
             want.append(str((named ?? first)["name"]))
         }
         decided?.set(true); return await choose(name, area: str(route["area"]), want: want, seen: seen, avoid: route["avoid"] as? [String] ?? [], said: last.text, earlier: earlier,
-                            kcal: pos(route["kcal"]), protein: pos(route["protein"]), meal: nil, store: store, step: step)
+                            kcal: pos(route["kcal"]) ?? theirKcal, protein: pos(route["protein"]), meal: nil, store: store, step: step)
+    }
+
+    /// Calories they gave for the meal earlier in the chat ("a burrito for under 700cals"), the latest; nil when none.
+    static func saidKcal(_ texts: [String]) -> Double? {
+        for t in texts.reversed() {
+            let l = t.lowercased()
+            guard let r = l.range(of: #"\d[\d,]{1,4}\s*(k?cals?|calories|kcal)\b"#, options: .regularExpression) else { continue }
+            if let v = Double(l[r].prefix { $0.isNumber || $0 == "," }.replacingOccurrences(of: ",", with: "")), v >= 150, v <= 3000 { return v }
+        }
+        return nil
     }
 
     /// A place off the list, tapped or named: planned like naming it, the dish's kJ the search read going along as quoted.
     @MainActor static func chosen(_ p: JSON, from pl: JSON, store: Store, step: (@MainActor (String, String) -> Void)?) async -> JSON {
         let seen: [JSON] = (num(p["kj"]) ?? 0) > 0 ? [["name": str(p["dish"]), "kj": num(p["kj"]) ?? 0]] : []
         return await choose(str(p["name"]), area: str(p["area"]), want: [], seen: seen, avoid: [], said: str(pl["asked"]), earlier: "",
-                            kcal: pos(pl["kcal"]), protein: pos(pl["protein"]), meal: str(pl["meal"]).isEmpty ? nil : str(pl["meal"]), store: store, step: step)
+                            // the protein only when they'd asked for it (a list for "a burrito under 700" didn't)
+                            kcal: pos(pl["kcal"]), protein: (pl["proteinAsked"] as? Bool ?? true) ? pos(pl["protein"]) : nil, meal: str(pl["meal"]).isEmpty ? nil : str(pl["meal"]), store: store, step: step)
     }
 
     /// The place on a list of places that a message names: its whole name ("Zeus Street Greek", what a tap sends), or the
@@ -481,7 +497,7 @@ enum Takeaway {
     }
 
     /// Places to eat somewhere, found on the web (the menu job's search), each with the one dish that suits what's left.
-    @MainActor static func find(area said: String, want: [String], asked: String, kcal: Double?, protein: Double?, store: Store,
+    @MainActor static func find(area said: String, want: [String], asked: String, kcal: Double?, protein: Double?, proteinAsked: Bool = true, store: Store,
                                 step: (@MainActor (String, String) -> Void)?) async -> JSON {
         let d = UserDefaults.standard
         var area = said.trimmingCharacters(in: .whitespaces), located = false
@@ -503,12 +519,12 @@ enum Takeaway {
         guard let r = await Gemini.askClaude("menu", schema: findSchema, parts: ask, extra: ["country": Region.current.code]) else {
             return ["kind": "answer", "reply": "I couldn't search for places just now. Try again in a minute, or name a place and I'll check its menu."]
         }
-        return places(r, area: area, asked: asked, meal: a.meal, kcal: k, protein: p)
+        return places(r, area: area, asked: asked, meal: a.meal, kcal: k, protein: p, proteinAsked: proteinAsked)
     }
 
     /// What the chat shows for places found: one sentence and the list, each place's numbers from its own kJ where it
     /// gave one (said "their kJ"), else marked estimated.
-    static func places(_ r: JSON, area: String, asked: String, meal: String, kcal: Double, protein: Double) -> JSON {
+    static func places(_ r: JSON, area: String, asked: String, meal: String, kcal: Double, protein: Double, proteinAsked: Bool = true) -> JSON {
         let found = list(r["places"]).filter { !str($0["name"]).isEmpty && !str($0["dish"]).isEmpty }.prefix(4).map { p -> JSON in
             var x = p
             let kj = num(p["kj"]) ?? 0
@@ -523,15 +539,23 @@ enum Takeaway {
         // The ones that get to the protein asked for (within a tenth) and stay near the calories come first, then the
         // rest by how much protein they have, and the sentence says how many do. It said they all "fit" whatever the
         // numbers were: four dinners of 35 to 52 g were offered as fitting 70 g.
-        func fits(_ p: JSON) -> Bool { (num(p["protein_g"]) ?? 0) >= protein * 0.9 && (num(p["kcal"]) ?? 0) <= kcal * 1.15 }
-        let ranked = found.filter(fits) + found.filter { !fits($0) }.sorted { (num($0["protein_g"]) ?? 0) > (num($1["protein_g"]) ?? 0) }
-        let hits = found.filter(fits).count, aim = "around \(Fmt.int(kcal)) kcal with \(Int(protein)) g protein"
+        // When they didn't ask about protein, the calories decide what fits ("a burrito under 700" was answered with
+        // "nothing gets to 58 g protein" over and over), most protein first among them.
+        func fits(_ p: JSON) -> Bool { (!proteinAsked || (num(p["protein_g"]) ?? 0) >= protein * 0.9) && (num(p["kcal"]) ?? 0) <= kcal * 1.15 }
+        func byProtein(_ a: JSON, _ b: JSON) -> Bool { (num(a["protein_g"]) ?? 0) > (num(b["protein_g"]) ?? 0) }
+        let fitting = found.filter(fits)
+        let ranked = (proteinAsked ? fitting : fitting.sorted(by: byProtein)) + found.filter { !fits($0) }.sorted(by: byProtein)
+        let hits = found.filter(fits).count, aim = "around \(Fmt.int(kcal)) kcal" + (proteinAsked ? " with \(Int(protein)) g protein" : "")
         let reply: String
-        if hits == ranked.count { reply = "For \(meal.lowercased()) \(aim), \(ranked.count == 1 ? "this place" : "these \(ranked.count)") in \(area) fit. Tap one to plan it:" }
+        if !proteinAsked {
+            reply = hits == ranked.count ? "For \(meal.lowercased()) \(aim), \(ranked.count == 1 ? "this place" : "these \(ranked.count)") in \(area) fit, most protein first. Tap one to plan it:"
+                : hits > 0 ? "For \(meal.lowercased()) \(aim), \(hits) of these \(ranked.count) in \(area) fit (listed first, most protein first); the rest are over. Tap one to plan it:"
+                : "Nothing I found in \(area) comes in \(aim) for \(meal.lowercased()). These are the closest. Tap one to plan it:"
+        } else if hits == ranked.count { reply = "For \(meal.lowercased()) \(aim), \(ranked.count == 1 ? "this place" : "these \(ranked.count)") in \(area) fit. Tap one to plan it:" }
         else if hits > 0 { reply = "For \(meal.lowercased()) \(aim), \(hits) of these \(ranked.count) in \(area) \(hits == 1 ? "gets" : "get") there (listed first). The rest fall short on protein. Tap one to plan it:" }
         else { reply = "Nothing I found in \(area) gets to \(Int(protein)) g protein in around \(Fmt.int(kcal)) kcal for \(meal.lowercased()). These come closest, most protein first. Tap one to plan it:" }
         return ["kind": "places", "reply": reply, "meal": meal, "trail": ["Searched the web for places in \(area)"],
-                "places": ["area": area, "asked": asked, "meal": meal, "kcal": kcal, "protein": protein, "places": ranked] as JSON]
+                "places": ["area": area, "asked": asked, "meal": meal, "kcal": kcal, "protein": protein, "proteinAsked": proteinAsked, "places": ranked] as JSON]
     }
 
     /// What to aim for: everything left at dinner, else this meal's share; for tomorrow, that meal's usual share of a day.
@@ -570,11 +594,15 @@ enum Takeaway {
         // from Gami tomorrow" came back with a protein shake and ice cream nobody asked for
         let talk = ([text, earlier] + want + avoid).joined(separator: " ")
         let homeToo = asksForHome(talk) || (theirProtein != nil && named == nil)
-        let p = plan(menu: menuItems, home: homeToo ? home : [], kcal: kcal, protein: protein, want: want, avoid: avoid, place: shown)
+        // "What if I did a wrap?" at a place with no wraps: said, not the same card again as if it had been heard
+        let missing = dishes(want).filter { !has(menuItems, $0) }
+        let lead = missing.isEmpty ? "" : "\(shown)'s menu doesn't have \(missing.count == 1 ? "a " + missing[0].lowercased() : missing.joined(separator: " or ").lowercased()), so here's the closest. "
+        let proteinAsked = theirProtein != nil || talk.lowercased().contains("protein") || homeToo
+        let p = plan(menu: menuItems, home: homeToo ? home : [], kcal: kcal, protein: protein, want: want.filter { !missing.contains($0) }, avoid: avoid, place: shown)
 
         let smallest = menuItems.filter { $0.kind == "main" }.map { $0.kcal }.min() ?? 0
         return result(p, home: homeToo ? home : [], tips: homeToo ? [] : home, menu: menuItems, shown: shown, kcal: kcal, protein: protein, meal: meal,
-                      smallest: smallest, source: str(m["source"]))
+                      smallest: smallest, source: str(m["source"]), lead: lead, proteinAsked: proteinAsked)
     }
 
     /// They brought up food from home: a shake, ice cream, yoghurt, milk, powder or "from home".
@@ -639,7 +667,7 @@ enum Takeaway {
     /// its numbers came from, with dishes to swap in and, when it's short of protein and nothing from home was asked for,
     /// one shake offered. (The low-protein and won't-fit lists were too much at once; they're left out.)
     static func result(_ p: Picks, home: [Home], tips: [Home] = [], menu: [Item] = [], shown: String, kcal: Double, protein: Double, meal: String,
-                       smallest: Double, source: String = "") -> JSON {
+                       smallest: Double, source: String = "", lead: String = "", proteinAsked: Bool = true) -> JSON {
         let names = home.map { short($0.name) }
         let mine = names.count > 1 ? names.dropLast().joined(separator: ", ") + " and " + names.last! : names.first ?? ""
         let used = "\(shown)'s menu" + (mine.isEmpty ? "" : " · your \(mine)")
@@ -654,10 +682,13 @@ enum Takeaway {
         }
         let first = combos[0], title = str(first["title"]), over = num(first["over"]) ?? 0
         var reply = over > 10 ? "\(title) is \(Fmt.int(over)) kcal over what's left, but it's the closest:"
-                  : p.meets ? "\(title) gets you there:" : "\(title) gets you closest, \(Fmt.int(top.p)) g of your \(Int(protein)) g protein:"
+                  : p.meets ? "\(title) gets you there:"
+                  : proteinAsked ? "\(title) gets you closest, \(Fmt.int(top.p)) g of your \(Int(protein)) g protein:"
+                  : "\(title) fits in \(Fmt.int(kcal)) kcal, with \(Fmt.int(top.p)) g protein:"
         // said first when the dish's own energy wasn't found; the card's amber line says how to give it
         if top.item.tier == "none" { reply = "I couldn't find its kJ on \(shown)'s listing, so it's estimated. " + reply }
-        if home.isEmpty && tips.isEmpty && !p.meets { reply += "\n\nScan your protein powder or yoghurt in Plan a meal and I can add them from home." }
+        reply = lead + reply
+        if home.isEmpty && tips.isEmpty && !p.meets && proteinAsked { reply += "\n\nScan your protein powder or yoghurt in Plan a meal and I can add them from home." }
         return ["kind": "takeaway", "reply": reply, "meal": meal, "trail": [used],
                 "takeaway": ["restaurant": shown, "source": source, "combos": combos, "aim": protein, "kcal": kcal] as JSON]
     }
