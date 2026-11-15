@@ -151,12 +151,16 @@ struct ChatView: View {
             }
             else if live, str(p["kind"]) != "video" {
                 // the picture from the story as it stands (a friends-only one is sent without it)
+                // with what's on it (text, stickers, tags) where it was put: the card is the story's own 9:16 shape, so
+                // nothing's cut off (it was a little wider, so the picture's top and bottom were cut) and every
+                // sticker lands where it was put (they were missing, leaving the bare picture)
                 let now = Stories.shared.all.first { str($0["id"]) == str(p["story"]) }
                 FeedPhoto(src: now.map { str($0["media"]) } ?? str(p["media"]), fill: true)
+                if let now { StoryLayer(items: list(now["overlays"]).filter { str($0["type"]) != "song" }).allowsHitTesting(false) }
             }
             else { Image(systemName: live ? "play.fill" : "clock.arrow.circlepath").font(.system(size: 26, weight: .semibold)).foregroundStyle(.white.opacity(0.8)) }
         }
-        .frame(width: small ? 110 : 150, height: small ? 176 : 240)
+        .frame(width: small ? 110 : 150, height: (small ? 110 : 150) / StoryArt.aspect)
         .overlay(alignment: .bottomLeading) {
             // an answer's small card carries no name: the line over it says whose story, and a long name broke over
             // three lines on it ("octavi- achivers's story")
