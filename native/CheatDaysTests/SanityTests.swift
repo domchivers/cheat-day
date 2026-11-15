@@ -97,4 +97,11 @@ final class SanityTests: XCTestCase {
         XCTAssertTrue(Sanity.check(name: "Olive oil dressing", grams: 8, kcal: 71, p: 0, c: 0, f: 8).flags.isEmpty)
         XCTAssertFalse(Sanity.check(name: "Caesar dressing", grams: 10, kcal: 89, p: 0, c: 0, f: 10).flags.isEmpty)
     }
+
+    /// Hotpot's beef and lamb rolls are rolled slices of meat, not bread rolls.
+    func testHotpotRollsAreNotBread() {
+        XCTAssertNotEqual(Sanity.range("Beef and lamb hotpot rolls, boiled")?.label, "bread")
+        XCTAssertNotEqual(Sanity.range("Lamb rolls")?.label, "bread")
+        XCTAssertEqual(Sanity.range("Bread rolls, white")?.label, "bread")
+    }
 }
