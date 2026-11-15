@@ -195,6 +195,8 @@ final class FoodMatchTests: XCTestCase {
         XCTAssertEqual(FoodReference.match("Beef hotpot rolls, boiled")?.name, "Beef hotpot slices")
         XCTAssertEqual(FoodReference.match("Lamb hotpot rolls")?.name, "Lamb hotpot slices")
         XCTAssertNil(FoodReference.match("Roast beef roll"))
+        XCTAssertEqual(FoodReference.match("Beef rolls, thin sliced")?.name, "Beef hotpot slices", "the AI's name for them with no hotpot in it")
+        XCTAssertNil(FoodReference.match("Beef roll sandwich"))
     }
 
     func testGyrosMeatIsTheMarinatedKind() {

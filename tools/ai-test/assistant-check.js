@@ -67,6 +67,10 @@ function foodData(text) {
 const potato = { model: 'claude-sonnet-5-5', image: 'results/potatoes.png' };
 const chicken = { model: 'claude-sonnet-5-5', image: 'results/chicken-label.jpg' };
 const cases = [
+  // the owner's hotpot, 15 Nov: the after photo of the broth left; the noodle pack was cut to a quarter as if all soup
+  { tag: 'hotpot', model: 'claude-sonnet-5-5', image: 'results/hotpot-after.jpg', say: 'Left over', earlier: "They: Thinking of sharing this between two people, how to add more protein. Also have beef rolls. What's the calories (2 photos)\nYou: Half the pack each with the beef rolls and cabbage. If you leave some soup, tell me roughly how much (or what's left in the pot) and I'll take it off. [you worked out: LIHAILONG spicy instant pot with beef rolls and cabbage, 971 kcal: LIHAILONG Spicy Instant Pot - Mild Spicy (half pack) 205 g 695 kcal; Beef rolls, thin sliced 125 g 244 kcal; Cabbage, raw 135 g 32 kcal]\nThe pack's label (from their earlier photos): 410 g, per 100 g 339 kcal, fat 19 g, carbs 36.5 g, protein 5.5 g. In it: noodles 130 g, vegetable pack 120 g (potato, mushrooms, lotus root), chili oil sauce 55 g (soybean oil 36%, peppercorn oil 20%), soup base 45 g, seasoning powder 35 g, dried vegetable pack 25 g." },
+  // as the app sends it: the label breakdown is not in the conversation
+  { tag: 'hotpot-app', model: 'claude-sonnet-5-5', image: 'results/hotpot-after.jpg', say: 'Left over', earlier: "They: Thinking of sharing this between two people, how to add more protein. Also have beef rolls. What's the calories (2 photos)\nYou: Half the pack each with the beef rolls and cabbage. If you leave some soup, tell me roughly how much (or what's left in the pot) and I'll take it off. [you worked out: LIHAILONG spicy instant pot with beef rolls and cabbage, 971 kcal: LIHAILONG Spicy Instant Pot - Mild Spicy (half pack) 205 g 695 kcal; Beef rolls, thin sliced 125 g 244 kcal; Cabbage, raw 135 g 32 kcal]" },
   // the owner's Portuguese chicken: its label in the photo, 122 kcal per 100 g raw
   // { say: 'I had a Monarc mini mango frozen yogurt stick', earlier: '' },
   // the owner's "that chicken from dinner yesterday": yesterday by meal, the chicken the 8th item, as the app now sends it
@@ -98,6 +102,7 @@ Wednesday 6:40 pm: they said "What's this? (1 photo)"; they said "I had 190g off
   // { say: '110g cabbage, 170g cucumber', earlier: '' },
   // { say: 'is cucumber good when cutting?', earlier: '' },
 ];
+if (process.env.ONLY) cases.splice(0, cases.length, ...cases.filter(c => c.tag === process.env.ONLY));
 const PRICE = JSON.parse(source.match(/\[HAIKU\]: (\[[^\]]*\])/)[1]);
 
 (async () => {
