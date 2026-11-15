@@ -487,7 +487,7 @@ struct StoryLayer: View {
                             .simultaneousGesture(str(o["type"]) == "mention" && mention != nil ? TapGesture().onEnded {
                                 // a tap on a tagged name brings up who it is, in a bubble over it; the bubble opens their page
                                 let id = str(o["id"])
-                                withAnimation(.snappy(duration: 0.2)) { bubble = bubble == id ? nil : id }
+                                withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) { bubble = bubble == id ? nil : id }
                                 holding?(bubble != nil)
                             } : nil)
                             .scaleEffect((num(o["scale"]) ?? 1) * k)
@@ -501,6 +501,10 @@ struct StoryLayer: View {
             .overlay {
                 if let o = items.first(where: { str($0["type"]) == "mention" && str($0["id"]) == bubble && bubble != nil }) {
                     let user = str(o["user"]), known = Avatar.name(user)
+                    // the tag's top middle, and the bubble's middle kept on the story; its point is over the tag
+                    let tx = (num(o["x"]) ?? 0.5) * g.size.width, ty = (num(o["y"]) ?? 0.5) * g.size.height - 22 * (num(o["scale"]) ?? 1) * k
+                    let cx = min(g.size.width - 120, max(120, tx)), span = g.size.width - 24
+                    VStack(spacing: 0) {
                     Button { bubble = nil; holding?(false); mention?(user) } label: {
                         HStack(spacing: 10) {
                             Avatar(id: user, size: 36)
@@ -511,11 +515,14 @@ struct StoryLayer: View {
                         .background(Color(white: 0.16).opacity(0.96), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
                     .buttonStyle(.plain).accessibilityIdentifier("mention-bubble")
-                    .frame(maxWidth: g.size.width - 24)
-                    // over the name, kept on the story
-                    .position(x: min(g.size.width - 110, max(110, (num(o["x"]) ?? 0.5) * g.size.width)),
-                              y: max(40, (num(o["y"]) ?? 0.5) * g.size.height - 30 * (num(o["scale"]) ?? 1) * k - 34))
-                    .transition(.scale(scale: 0.8).combined(with: .opacity))
+                        // a speech bubble's point, down to the name it came from
+                        BubblePoint().fill(Color(white: 0.16).opacity(0.96)).frame(width: 16, height: 9).offset(x: tx - cx)
+                    }
+                    .fixedSize()
+                    // its bottom on the name: it grows out of it, and shrinks back into it
+                    .frame(width: span, height: 0, alignment: .bottom)
+                    .transition(.scale(scale: 0.08, anchor: UnitPoint(x: 0.5 + (tx - cx) / span, y: 1)).combined(with: .opacity))
+                    .position(x: cx, y: max(70, ty - 4))
                 }
             }
         }
@@ -626,5 +633,14 @@ enum BuiltInStickers {
         let id = String(UUID().uuidString.prefix(8)).lowercased()
         local[id] = small
         return id
+    }
+}
+
+/// The point under a tag's bubble, down to the name.
+struct BubblePoint: Shape {
+    func path(in r: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: r.minX, y: r.minY)); p.addLine(to: CGPoint(x: r.maxX, y: r.minY)); p.addLine(to: CGPoint(x: r.midX, y: r.maxY)); p.closeSubpath()
+        return p
     }
 }
