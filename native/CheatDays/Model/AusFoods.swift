@@ -120,7 +120,12 @@ final class FoodTable {
     }()
     /// Words that make a row a special version of its food: chosen only when the name or a tag asks for it.
     private static let special: Set<String> = ["processed", "reduced", "light", "lite", "flavoured", "coated", "crumbed", "breadcrumb", "battered",
-                                               "canned", "smoked", "marinated", "frozen", "vitamin", "free", "skin", "homemade"]
+                                               "canned", "smoked", "marinated", "frozen", "vitamin", "free", "skin", "homemade",
+                                               // a part of the animal, or a takeaway version ("Chicken, shredded, cooked" found chicken feet;
+                                               // grilled chicken pieces the coated fast-food ones)
+                                               "feet", "liver", "giblet", "neck", "gizzard", "kidney", "tongue", "offal", "tripe", "fast", "outlet", "takeaway"]
+    /// Words for a piece of a food, not which food: "Chicken pieces" is chicken.
+    private static let pieceWords: Set<String> = ["piece", "chunk", "strip", "bite", "cube", "slice", "portion"]
 
     /// The food for a part the AI tagged (bought, natural, cooked, skin on, filled…): the everyday entry find gives, unless a
     /// relative of it fits the name and tags clearly better (a "skin on" chicken is a with-skin entry, a bakery's cheese the
@@ -160,16 +165,26 @@ final class FoodTable {
             s -= 0.5 * Double(r.words.subtracting(all).subtracting(asked).count)
             return s + (r.food.main ? 1 : 0) + (r.food.name == base?.name ? 2 : 0)
         }
+        // the name's food itself, before what it's with or in: "Braised meat with grain and tomato" found tomato paste,
+        // "Quinoa patty" a deep-fried fish patty, "Frittata-style vegetable slice" mixed vegetables
+        let head = Set(Self.words(first.replacingOccurrences(of: #"\s(with|in|on|for|and)\s.*$"#, with: "", options: [.regularExpression, .caseInsensitive])))
         let pool = rows.filter { !Set($0.kind).isDisjoint(with: kinds) && (baseRow != nil || $0.words.intersection(all).count >= min(2, want.count))
+            && (baseRow != nil || Set($0.kind).isSubset(of: head))
             && !(strict && strayed($0, from: asked)) }
-        guard let baseRow else { return pool.max(by: { score($0) < score($1) })?.food }
+        guard let baseRow else { return pool.filter { !unasked($0) }.max(by: { score($0) < score($1) })?.food }
         // a relative only when it's still the food they named (the pho's rice noodles went to egg noodles for matching
         // "plain" too: 166 kcal and 7.5 g protein a 100 g, not 119 and 2.5), fits more of the tags and isn't a special
         // version nobody asked for. How it's cooked isn't the food: "cooked chicken" can be a baked one
         let described = Set(Self.tagWords.values.flatMap { $0.yes + $0.no })
-        let named = main.intersection(baseRow.words).subtracting(described)
-        let fitted = pool.filter { !unasked($0) && named.isSubset(of: $0.words) }.max { (fit($0), score($0)) < (fit($1), score($1)) }
-        guard let fitted, fit(fitted) > fit(baseRow) else { return base }
+        // every word of theirs the entry has ("Rice, white, cooked" went to brown rice, matching only "rice")
+        var named = all.intersection(baseRow.words).subtracting(described)
+        // the entry found is a version nobody asked for (coated fast-food chicken for "Chicken pieces, grilled"): its
+        // plain relatives instead, by the food alone
+        let wrongVersion = unasked(baseRow)
+        if wrongVersion { named.subtract(Self.pieceWords) }
+        let others = wrongVersion ? rows.filter { !Set($0.kind).subtracting(Self.pieceWords).isDisjoint(with: Set(want).subtracting(Self.pieceWords)) && !(strict && strayed($0, from: asked)) } : pool
+        let fitted = others.filter { !unasked($0) && named.isSubset(of: $0.words) }.max { (fit($0), score($0)) < (fit($1), score($1)) }
+        guard let fitted, wrongVersion || fit(fitted) > fit(baseRow) else { return base }
         return fitted.food
     }
 

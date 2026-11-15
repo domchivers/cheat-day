@@ -219,4 +219,28 @@ final class FoodMatchTests: XCTestCase {
         XCTAssertNil(FoodTable.world.best("Spätzle, cheese", tags: []))           // not spätzle flour
         XCTAssertNotEqual(FoodTable.world.best("Goulash, beef", tags: [])?.name, "Goulash soup")
     }
+
+    /// The weighed plates (Nutrition5k, Nov 2026): a food is held to what it is, not what it's in, on, with or for.
+    func testAFoodsKindIsWhatItIsNotWhatItsWith() {
+        XCTAssertNil(Sanity.range("Butter, melted in the eggs"), "butter isn't eggs")
+        XCTAssertNil(Sanity.range("Steak, sliced, grilled with herbs"), "steak isn't a herb")
+        XCTAssertNotEqual(Sanity.range("Mayonnaise, in the tuna salad")?.label, "raw fish")
+        XCTAssertNil(Sanity.range("Oil, for frying the rice"))
+        XCTAssertEqual(Sanity.range("Tuna, canned, flaked")?.label, "cooked fish", "canned is cooked")
+        XCTAssertNotEqual(Sanity.range("Semi-dried tomato")?.label, "leafy or non-starchy veg")
+        XCTAssertEqual(Sanity.range("Scrambled eggs")?.label, "eggs")
+        XCTAssertEqual(Sanity.range("Beef, rare")?.label, "rare lean beef", "rare is read from the whole name")
+    }
+
+    /// ...and matched to the food itself, never a version or a part nobody asked for.
+    func testNoUnaskedVersionOrOtherFood() {
+        let t = FoodTable.au
+        let grilled = t.best("Chicken pieces, grilled", tags: ["grilled", "skin off"])?.name.lowercased() ?? ""
+        XCTAssertTrue(grilled.contains("chicken") && !grilled.contains("coated") && !grilled.contains("fast food"), grilled)
+        let rice = t.best("Rice, white, cooked", tags: ["cooked", "boiled", "plain"])?.name.lowercased() ?? ""
+        XCTAssertTrue(rice.contains("white") && !rice.contains("brown"), rice)
+        XCTAssertFalse((t.best("Chicken, shredded, cooked", tags: ["cooked", "skin off"])?.name ?? "").lowercased().contains("feet"))
+        XCTAssertFalse((t.best("Braised meat with grain and tomato", tags: ["cooked"])?.name ?? "").lowercased().contains("tomato"))
+        XCTAssertFalse((t.best("Quinoa patty, pan fried", tags: ["cooked", "fried"])?.name ?? "").lowercased().contains("fish"))
+    }
 }

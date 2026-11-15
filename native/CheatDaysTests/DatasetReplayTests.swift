@@ -11,7 +11,12 @@ final class DatasetReplayTests: XCTestCase {
     /// when a change improves it; a change that makes it worse fails here.
     static let scoreToBeat = 40.0
 
+    /// Scored with the US table (the plates are from California and their truth is USDA's): with Australia's, a cooked
+    /// rice or a roast sweet potato differs from USDA's by up to half again, which isn't a wrong match.
     func testWeighedPlatesThroughTheAppsChecks() async throws {
+        let table = FoodTable.testing
+        FoodTable.testing = .us
+        defer { FoodTable.testing = table }
         let was = (Assistant.findLabel, Assistant.findFoods)
         Assistant.ownFoods = false
         Assistant.findFoods = { _ in nil }

@@ -9,44 +9,50 @@ enum Sanity {
 
     /// The range for a food by its name, most specific first; nil when there's nothing to go on.
     static func range(_ name: String) -> Range? {
-        let n = name.lowercased()
+        // The kind of food is what the name's first part says it is, not what it's in, on, with or for (weighed plates,
+        // Nov 2026: "Butter, melted in the eggs" was held to eggs and swapped for fruit butter, "Steak, sliced, grilled
+        // with herbs" to a vegetable and swapped for canned steak and veg, "Mayonnaise, in the tuna salad" to fish).
+        // What rules a kind out, and how it's cooked, are read from the whole name.
+        let full = name.lowercased(), n = head(full)
         func has(_ w: [String]) -> Bool { w.contains { n.contains($0) } }
-        let raw = has(["raw", "uncooked"])
-        let cooked = has(["cooked", "grilled", "roast", "bbq", "shredded", "fried", "baked", "braised", "rotisserie", "pulled", "simmered", "stewed", "poached", "casseroled"])
+        func mentions(_ w: [String]) -> Bool { w.contains { full.contains($0) } }
+        let raw = mentions(["raw", "uncooked"])
+        let cooked = mentions(["cooked", "grilled", "roast", "bbq", "shredded", "fried", "baked", "braised", "rotisserie", "pulled", "simmered", "stewed", "poached", "casseroled",
+                               "boiled", "steamed", "seared", "sauteed", "sautéed", "scrambled", "toasted", "wilted", "mashed", "canned", "tinned", "smoked", "flaked"])
         if has(["protein powder", "whey", "protein shake powder", "daily shake", "isolate"]) { return Range(label: "protein powder", lo: 340, hi: 420, proteinMax: 92) }
         if has(["water", "black coffee", "diet ", "zero sugar", "sweetener", "stevia", "monk fruit"]) { return nil }
         // a clear soup's broth on its own (pho's, ramen's), not a stock cube or a whole bowl
-        if has(["broth", "stock", "consomm"]) && !has(["cube", "powder", "dry", "noodle", "rice", "pasta", "bone broth", "collagen"]) {
+        if has(["broth", "stock", "consomm"]) && !mentions(["cube", "powder", "dry", "noodle", "rice", "pasta", "bone broth", "collagen"]) {
             return Range(label: "broth", lo: 2, hi: 40, proteinMax: 5)
         }
         // sweet things, by the most protein they can have: tiramisu at 20 g a 100 g was cocoa powder's numbers on a dessert
-        let savoury = has(["fish", "crab", "salmon", "tuna", "potato", "corn", "zucchini", "veg", "rice cake", "protein", "chicken", "beef", "pork", "prawn"])
+        let savoury = mentions(["fish", "crab", "salmon", "tuna", "potato", "corn", "zucchini", "veg", "rice cake", "protein", "chicken", "beef", "pork", "prawn"])
         if has(["tiramisu", "mousse", "cheesecake", "cake", "brownie", "eclair", "éclair", "profiterole", "cream puff", "panna cotta", "pannacotta", "trifle", "gateau", "torte"])
-            && !savoury && !has(["custard", "pudding"]) {
+            && !savoury && !mentions(["custard", "pudding"]) {
             return Range(label: "a cake or dessert", lo: 120, hi: 520, proteinMax: 10)
         }
         if has(["croissant", "danish", "pain au chocolat", "puff pastry", "pastry"])
-            && !savoury && !has(["ham", "cheese", "egg", "bacon", "kabana", "sausage", "pie", "filled", "spinach", "feta"]) {
+            && !savoury && !mentions(["ham", "cheese", "egg", "bacon", "kabana", "sausage", "pie", "filled", "spinach", "feta"]) {
             return Range(label: "a pastry", lo: 280, hi: 540, proteinMax: 12)
         }
-        if has(["ice cream", "gelato"]) && !has(["protein", "halo", "high protein", "cake", "sandwich"]) {
+        if has(["ice cream", "gelato"]) && !mentions(["protein", "halo", "high protein", "cake", "sandwich"]) {
             return Range(label: "ice cream", lo: 80, hi: 330, proteinMax: 6)
         }
         if has(["sauce", "dressing", "ketchup", "sriracha", "hoisin", "gravy", "vinaigrette"])
-            && !has(["soy", "tamari", "miso", "fish sauce", "satay", "peanut", "cheese", "bolognese", "ragu", "meat", "alfredo", "carbonara", "pesto", "xo", "with", "pasta", "noodle", "rice", "chicken", "beef", "pork"]) {
+            && !mentions(["soy", "tamari", "miso", "fish sauce", "satay", "peanut", "cheese", "bolognese", "ragu", "meat", "alfredo", "carbonara", "pesto", "xo", "with", "pasta", "noodle", "rice", "chicken", "beef", "pork"]) {
             // one that is oil ("Olive oil dressing", a drizzle of chilli oil) can be all oil: 888 kcal a 100 g was called off
-            let oil = has(["olive oil", "chilli oil", "chili oil", "sesame oil", "garlic oil", "oil dressing", "oil drizzle"])
+            let oil = mentions(["olive oil", "chilli oil", "chili oil", "sesame oil", "garlic oil", "oil dressing", "oil drizzle"])
             return Range(label: "a sauce or dressing", lo: 5, hi: oil ? 900 : 760, proteinMax: 5)
         }
         // a whole pho or ramen isn't plain noodles
-        if has(["rice", "pasta", "spaghetti", "noodle", "penne", "couscous"]) && !has(["soup", "broth", "pho", "ramen", "laksa"])
-            && (cooked || !raw && !has(["dry", "uncooked"])) {
+        if has(["rice", "pasta", "spaghetti", "noodle", "penne", "couscous"]) && !mentions(["soup", "broth", "pho", "ramen", "laksa"])
+            && (cooked || !raw && !mentions(["dry", "uncooked"])) {
             return Range(label: "cooked rice or pasta", lo: 95, hi: 190, proteinMax: 7)
         }
         if has(["cabbage", "lettuce", "spinach", "cucumber", "celery", "kale", "broccoli", "zucchini", "courgette", "tomato",
                 "capsicum", "bell pepper", "red pepper", "green pepper", "mushroom", "bok choy", "cauliflower", "salad leaves", "rocket", "asparagus", "green beans",
                 "sprout", "herbs"])
-            && !has(["chips", "crisps", "soup", "sauce", "dressing", "cheese", "pesto",
+            && !mentions(["chips", "crisps", "soup", "sauce", "dressing", "cheese", "pesto", "dried", "pickled",
                      // a dish named after its vegetable ("Spinach and ricotta cannelloni" was swapped for plain spinach,
                      // 450 kcal down to 70): its meat, cheese, starch or oil
                      "ricotta", "mozzarella", "feta", "paneer", "cannelloni", "lasagne", "lasagna", "risotto", "pasta", "noodle", "rice",
@@ -55,13 +61,13 @@ enum Sanity {
                      "prawn", "tofu", "egg", "bacon", "ham", "tuna", "salmon", "avocado", "nut"]) {
             return Range(label: "leafy or non-starchy veg", lo: 10, hi: 60, proteinMax: 4.5)
         }
-        if has(["chicken", "turkey"]) && !has(["nugget", "schnitzel", "kiev", "burger", "wrap", "sandwich", "curry", "soup", "broth", "stock", "pie", "skin",
+        if has(["chicken", "turkey"]) && !mentions(["nugget", "schnitzel", "kiev", "burger", "wrap", "sandwich", "curry", "soup", "broth", "stock", "pie", "skin",
                                                "stir fry", "stir-fry", "stirfry", "salad", "risotto", "pasta", "noodle", "rice", "broccoli", "veg"]) {
             if raw { return Range(label: "raw chicken", lo: 90, hi: 225, proteinMax: 24.5) }
             return Range(label: "cooked chicken", lo: 140, hi: 270, proteinMax: 32)
         }
         // pho's and hotpot's thin raw slices are lean cuts (round, topside: 100 to 140), never mince's 170
-        if has(["beef"]) && n.range(of: #"\brare\b"#, options: .regularExpression) != nil && !has(["mince", "burger", "steak"]) {
+        if has(["beef"]) && full.range(of: #"\brare\b"#, options: .regularExpression) != nil && !mentions(["mince", "burger", "steak"]) {
             return Range(label: "rare lean beef", lo: 90, hi: 145, proteinMax: 24)
         }
         if has(["mince", "ground beef"]) {
@@ -74,26 +80,32 @@ enum Sanity {
         }
         func fishWord(_ p: String) -> Bool { n.range(of: p, options: .regularExpression) != nil }
         if fishWord(#"\b(\w*fish|salmon|tuna|cod|snapper|barramundi|trout|basa|yellowtail|mackerel|hiramasa)\b"#)
-            && !has(["sauce", "oil", "cake", "finger", "battered", "crumbed", "stock", "pie", "curry", "burger"]) {
+            && !mentions(["sauce", "oil", "cake", "finger", "battered", "crumbed", "stock", "pie", "curry", "burger"]) {
             return raw || !cooked ? Range(label: "raw fish", lo: 70, hi: 300, proteinMax: 27)
                                   : Range(label: "cooked fish", lo: 90, hi: 300, proteinMax: 33)
         }
         if has(["cocoa powder", "cacao powder"]) { return Range(label: "cocoa powder", lo: 200, hi: 450, proteinMax: 30) }
         // mayo before eggs: "whole-egg mayonnaise" is mayo
-        if has(["mayo", "aioli"]) { return has(["light", "lite", "low fat", "reduced"]) ? Range(label: "light mayonnaise", lo: 200, hi: 420, proteinMax: 2)
+        if has(["mayo", "aioli"]) { return mentions(["light", "lite", "low fat", "reduced"]) ? Range(label: "light mayonnaise", lo: 200, hi: 420, proteinMax: 2)
                                                                                        : Range(label: "mayonnaise", lo: 560, hi: 740, proteinMax: 2) }
         func word(_ p: String) -> Bool { n.range(of: p, options: .regularExpression) != nil }
-        if word(#"\beggs?\b"#) && !has(["noodle", "nog", "egg white", "pasta", "fried rice", "scotch"]) {
+        if word(#"\beggs?\b"#) && !mentions(["noodle", "nog", "egg white", "pasta", "fried rice", "scotch"]) {
             return Range(label: "eggs", lo: 125, hi: 210, proteinMax: 14)
         }
         if word(#"\b(bread|toast|buns?|rolls?|bagels?|baguette|sourdough|pitta|pita|crumpets?)\b"#)
-            && !has(["protein", "breadcrumb", "garlic bread", "pudding", "rolled", "spring roll", "sausage roll", "sushi", "cinnamon", "french toast"])
-            && (!has(["sandwich"]) || has(["sandwich bread", "sandwich loaf"]))   // a whole sandwich isn't just bread; sandwich bread is
+            && !mentions(["protein", "breadcrumb", "garlic bread", "pudding", "rolled", "spring roll", "sausage roll", "sushi", "cinnamon", "french toast"])
+            && (!mentions(["sandwich"]) || mentions(["sandwich bread", "sandwich loaf"]))   // a whole sandwich isn't just bread; sandwich bread is
             // meat, chicken or fish named with it isn't bread: hotpot's "beef and lamb rolls" are rolled slices of meat
-            && ![FoodKind.meat, .poultry, .fish].contains(FoodKind.of(n)) && !has(["hotpot", "hot pot", "shabu"]) {
+            && ![FoodKind.meat, .poultry, .fish].contains(FoodKind.of(n)) && !mentions(["hotpot", "hot pot", "shabu"]) {
             return Range(label: "bread", lo: 200, hi: 300, proteinMax: 13)
         }
         return nil
+    }
+
+    /// The name's first part, before what it's in, on, with or for ("butter, melted in the eggs": "butter").
+    static func head(_ n: String) -> String {
+        let first = n.components(separatedBy: CharacterSet(charactersIn: ",(")).first ?? n
+        return first.replacingOccurrences(of: #"\s(with|in|on|for|from|over)\s.*$"#, with: "", options: .regularExpression)
     }
 
     /// Protein no more than that kind of food can have (an AI reaching for a protein aim wrote 45 g into an egg
