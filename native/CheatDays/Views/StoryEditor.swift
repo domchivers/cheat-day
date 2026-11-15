@@ -1415,13 +1415,16 @@ struct StoryEditor: View {
                     edge.lineWidth = lw; UIColor.white.setStroke(); edge.stroke()
                 }
             case 3:
-                let pad = r.width * 0.05, card = CGRect(x: r.minX - pad, y: r.minY - pad, width: r.width + pad * 2, height: r.height + pad + r.width * 0.22)
+                // the card is what sits where it was put, as the editor shows it (`styled`): the photo was centred
+                // instead, so the deep strip hung lower and the photo came out lower than placed, under its stickers
+                let pad = r.width * 0.05, p = r.offsetBy(dx: 0, dy: -(r.width * 0.22 - pad) / 2)
+                let card = CGRect(x: p.minX - pad, y: p.minY - pad, width: p.width + pad * 2, height: p.height + pad + p.width * 0.22)
                 g.saveGState()
                 g.setShadow(offset: CGSize(width: 0, height: r.width * 0.025), blur: r.width * 0.08, color: UIColor.black.withAlphaComponent(0.3).cgColor)
                 UIColor(red: 0.97, green: 0.96, blue: 0.93, alpha: 1).setFill(); UIRectFill(card)
                 g.restoreGState()
-                base.draw(in: r)
-                let hair = UIBezierPath(rect: r); hair.lineWidth = max(1, r.width * 0.004); UIColor.black.withAlphaComponent(0.08).setStroke(); hair.stroke()
+                base.draw(in: p)
+                let hair = UIBezierPath(rect: p); hair.lineWidth = max(1, r.width * 0.004); UIColor.black.withAlphaComponent(0.08).setStroke(); hair.stroke()
             case 4:
                 let d = min(r.width, r.height), circle = CGRect(x: r.midX - d / 2, y: r.midY - d / 2, width: d, height: d)
                 g.saveGState(); UIBezierPath(ovalIn: circle).addClip(); base.draw(in: r); g.restoreGState()
