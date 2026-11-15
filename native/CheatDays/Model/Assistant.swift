@@ -395,7 +395,7 @@ enum Assistant {
             // held to the last card: the range each part had, a weight they gave, nothing moved by just asking again
             // (new photos are a new thing to work out: a different plate isn't held to the last one's sizes)
             let before = last.images.isEmpty ? turns.dropLast().last { !$0.me && $0.result?["estimate"] != nil }?.result?["estimate"] as? JSON : nil
-            let h = held(tidied(e, said: last.text, photos: !pics.isEmpty), before: before, said: last.text)
+            let h = shown(e, said: last.text, photos: !pics.isEmpty, before: before, via: str(answer["via"]))
             answer["estimate"] = h.estimate
             if !h.notes.isEmpty { answer["reply"] = ([str(answer["reply"])] + h.notes).joined(separator: " ") }
         }
@@ -862,6 +862,80 @@ enum Assistant {
         return out
     }
 
+    // What the checks look up beyond the phone, swapped for stand-ins in the replay tests (ReplayTests): a label found
+    // on the web for a branded product, and the food database through the server. With ownFoods off, their own scans
+    // and logged labels aren't looked at either, so a replay comes out the same on any phone.
+    @MainActor static var findLabel: (String) async -> JSON? = { await Gemini.lookUpLabel($0) }
+    @MainActor static var findFoods: ([String]) async -> [Any]? = { asked in
+        guard let res = try? await Supabase.shared.call("/functions/v1/food", body: ["foods": asked], timeout: 8), res.1 == 200,
+              let j = (try? JSONSerialization.jsonObject(with: res.0)) as? JSON else { return nil }
+        return j["results"] as? [Any]
+    }
+    @MainActor static var ownFoods = true
+
+    /// The card as it first shows: the AI's estimate tidied, then held to the last card. Each step's result is kept
+    /// on the card's trace, with which AI answered.
+    static func shown(_ e: JSON, said: String, photos: Bool, before: JSON?, via: String = "") -> (estimate: JSON, notes: [String]) {
+        var cur = traced(via.isEmpty ? "AI" : "AI (\(via))", e)
+        cur = carried(cur, tidied(cur, said: said, photos: photos), "tidied")
+        let h = held(cur, before: before, said: said)
+        return (carried(cur, h.estimate, "held to the last card"), h.notes)
+    }
+
+    /// Every check after the card shows: parts put back, the food tables, the last card's numbers, earlier cards.
+    /// The chat uses this, and the replay tests run past cards through it.
+    @MainActor
+    static func checkedCard(_ e: JSON, before: JSON?, earlier: [JSON]) async -> JSON {
+        var cur = carried(e, unfolded(e, earlier: earlier), "parts put back from an earlier card")
+        cur = carried(cur, await ground(cur), "checked against the food tables")
+        cur = carried(cur, keepingEarlier(cur, before), "kept the last card's numbers")
+        return carried(cur, steady(cur, earlier: earlier), "kept steady with earlier cards")
+    }
+
+    /// A card's parts one line each, and its total: what a step left it as.
+    static func traceLines(_ e: JSON) -> [String] {
+        func n(_ v: Any?) -> String { let d = num(v) ?? 0; return abs(d - d.rounded()) < 0.05 ? String(Int(d.rounded())) : String(format: "%.1f", d) }
+        return CheatDays.list(e["parts"]).map { p in
+            let src = str(p["src"]).isEmpty ? str(p["numbers_from"]) : str(p["src"]), m = str(p["match"])
+            return "\(str(p["name"])) · \(n(p["grams"])) g · \(n(p["kcal"])) kcal · P\(n(p["protein_g"])) C\(n(p["carbs_g"])) F\(n(p["fat_g"]))"
+                + (src.isEmpty ? "" : " · \(src)") + (m.isEmpty ? "" : " (\(m))")
+        } + ["total \(n(e["kcal_total"])) kcal"]
+    }
+
+    /// The card with this step added to its trace, when the step changed what it shows.
+    static func traced(_ step: String, _ e: JSON) -> JSON {
+        var t = CheatDays.list(e["trace"]), out = e
+        let now = traceLines(e)
+        if let last = t.last, last["lines"] as? [String] == now { return e }
+        t.append(["step": step, "lines": now])
+        out["trace"] = t
+        return out
+    }
+
+    /// A step's result, carrying the trace so far (a step may build its card afresh) with the step added.
+    static func carried(_ from: JSON, _ to: JSON, _ step: String) -> JSON {
+        var n = to
+        n["trace"] = from["trace"]
+        return traced(step, n)
+    }
+
+    /// The chat as text, with what every step did to each card: to paste into a report when a card comes out wrong.
+    static func report(_ turns: [Turn]) -> String {
+        let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+        var out = ["Cheat Days \(v), assistant chat"]
+        for t in turns {
+            out.append((t.me ? "Me: " : "Assistant: ") + t.text + (t.images.isEmpty ? "" : " (\(t.images.count) photo\(t.images.count == 1 ? "" : "s"))"))
+            guard let e = t.result?["estimate"] as? JSON else { continue }
+            for st in CheatDays.list(e["trace"]) {
+                out.append("  [\(str(st["step"]))]")
+                out += (st["lines"] as? [String] ?? []).map { "    " + $0 }
+            }
+            let flags = e["flags"] as? [String] ?? []
+            if !flags.isEmpty { out.append("  warnings: " + flags.joined(separator: " | ")) }
+        }
+        return out.joined(separator: "\n")
+    }
+
     /// Check each part: the app's own food list first, then the food database through the server (if it's set up).
     @MainActor
     static func ground(_ e: JSON) async -> JSON {
@@ -876,7 +950,7 @@ enum Assistant {
             let x = parts[i], g = num(x["grams"]) ?? 0
             // the one they said they always have ("that mayo I use every lunch"), from what they've logged: it came
             // out as any full-fat mayonnaise, 47 kcal where their light one is 29
-            if let keys = x["usual_keys"] as? [String], let u = usual(keys) {
+            if ownFoods, let keys = x["usual_keys"] as? [String], let u = usual(keys) {
                 var y = checked(x, kcal100: u.kcal100, p100: u.p100, c100: u.c100, f100: u.f100, source: "label", match: u.food)
                 y["name"] = u.food; y["numbers_from"] = "them"
                 parts[i] = y; continue
@@ -885,13 +959,13 @@ enum Assistant {
             // was swapped for a generic roast chicken's 190
             if ["label", "them"].contains(str(x["numbers_from"])) { parts[i]["src"] = x["numbers_from"]; continue }
             // a food they logged from its own label: theirs, not the table's (Kenny's ice cream was counted as plain ice cream, 195 for 106)
-            if let y = await yours(str(x["name"])) { parts[i] = checked(x, kcal100: y.kcal100, p100: y.p100, c100: y.c100, f100: y.f100, source: "label", match: y.food); continue }
+            if ownFoods, let y = await yours(str(x["name"])) { parts[i] = checked(x, kcal100: y.kcal100, p100: y.p100, c100: y.c100, f100: y.f100, source: "label", match: y.food); continue }
             // a branded product: its own label from the web, or the AI's guess (44 kcal for a Monarc mango stick, label 43;
             // generic frozen yogurt made it 57)
             if str(x["numbers_from"]) == "brand" {
                 // only a label that can be true, for this part: a page gave 1,269 kcal for a 41 g serving, and the
                 // soup base they drank came out at 793 kcal for 26 g
-                if let found = await Gemini.lookUpLabel(str(x["name"])), case let y = fromLabel(x, found), physical(y) { parts[i] = y }
+                if let found = await findLabel(str(x["name"])), case let y = fromLabel(x, found), physical(y) { parts[i] = y }
                 continue
             }
             // a species or cut we've checked: before any list or database, unless its numbers don't fit the kind of food
@@ -919,8 +993,7 @@ enum Assistant {
             let names = ask.map { str(parts[$0]["usda_name"]).isEmpty ? str(parts[$0]["name"]) : str(parts[$0]["usda_name"]) }
             for start in stride(from: 0, to: ask.count, by: 10) {   // the function takes 10 at a time
                 let batch = Array(ask[start..<min(start + 10, ask.count)]), asked = Array(names[start..<min(start + 10, ask.count)])
-                guard let res = try? await Supabase.shared.call("/functions/v1/food", body: ["foods": asked], timeout: 8), res.1 == 200,
-                      let j = (try? JSONSerialization.jsonObject(with: res.0)) as? JSON, let found = j["results"] as? [Any] else { continue }
+                guard let found = await findFoods(asked) else { continue }
                 for (k, i) in batch.enumerated() where k < found.count {
                     guard let r = found[k] as? JSON, FoodReference.sameFood(asked: asked[k], got: str(r["name"])) else { continue }
                     let x = parts[i]

@@ -46,8 +46,10 @@ enum Gemini {
     /// With a job, Claude answers (the server picks its model for that job); if it can't, the free Gemini models do.
     static func ask(schema: JSON, parts: [JSON], quick: Bool = true, tries: Int = 99, job: String? = nil) async throws -> JSON {
         try await BackgroundWork.run("AI") {
-            if let job, let answer = await claude(job, schema: schema, parts: parts) { return answer }
-            return try await askNow(schema: schema, parts: parts, quick: quick, tries: tries)
+            if let job, var answer = await claude(job, schema: schema, parts: parts) { answer["via"] = "Claude"; return answer }
+            var answer = try await askNow(schema: schema, parts: parts, quick: quick, tries: tries)
+            if job != nil { answer["via"] = "Gemini (Claude didn't answer)" }
+            return answer
         }
     }
 

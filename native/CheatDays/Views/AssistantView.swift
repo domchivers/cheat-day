@@ -111,6 +111,9 @@ struct AssistantView: View {
                     Menu {
                         Button { turns = []; chatId = uid(); done = [:]; addedFoods = [:]; mealNames = [:] } label: { Label("New chat", systemImage: "square.and.pencil") }
                         Button { showChats = true } label: { Label("Past chats", systemImage: "clock.arrow.circlepath") }
+                        // what every check did to each card, to paste when one comes out wrong
+                        Button { UIPasteboard.general.string = Assistant.report(turns) } label: { Label("Copy details for a report", systemImage: "doc.on.clipboard") }
+                            .disabled(turns.isEmpty)
                     } label: { Image(systemName: "ellipsis.circle") }
                 }
             }
@@ -1135,7 +1138,7 @@ struct AssistantView: View {
                     let before = turns.last { !$0.me && $0.id != turn.id && $0.result?["estimate"] != nil }?.result?["estimate"] as? JSON
                     // and a food already worked out in this chat, under another name or amount, keeps those numbers too
                     let cards = turns.filter { !$0.me && $0.id != turn.id }.compactMap { $0.result?["estimate"] as? JSON }
-                    let checked = Assistant.steady(Assistant.keepingEarlier(await Assistant.ground(Assistant.unfolded(e, earlier: cards)), before), earlier: cards)
+                    let checked = await Assistant.checkedCard(e, before: before, earlier: cards)
                     // the parts no food table had (the sparkle): kept, so the tables can be filled where they're used
                     let gaps = CheatDays.list(checked["parts"]).filter { str($0["src"]) == "ai" }.map { str($0["name"]) }
                     if !gaps.isEmpty { store.perform(["type": "gaps", "names": gaps, "at": ISO.now()]) }
@@ -1147,7 +1150,7 @@ struct AssistantView: View {
                     let shop = await Assistant.fromShop(checked)
                     if let i = turns.firstIndex(where: { $0.id == turn.id }), var res = turns[i].result {
                         let untouched = dict(res["estimate"])["aiPortion"] == nil && !done[turn.id, default: ""].contains("est")
-                        if let shop, untouched { res["estimate"] = shop }
+                        if let shop, untouched { res["estimate"] = Assistant.carried(checked, shop, "the shop's own numbers") }
                         res["trail"] = Assistant.trail(dict(res["estimate"]), shopFound: shop != nil && untouched)
                         withAnimation { turns[i].result = res }
                     }
