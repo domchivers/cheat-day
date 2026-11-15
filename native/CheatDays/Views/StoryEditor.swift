@@ -408,28 +408,13 @@ struct StoryEditor: View {
                 if clipReady { LoopingVideo(url: video, paused: mode == .text, muted: muted, filter: look, range: length > 0 && mode != .trim ? range : nil, scrub: mode == .trim ? scrub : nil, always: true, box: lookBox, tick: songTick, volume: clipLevel) }
                 }
             } else if let shown = (comparing ? nil : preview) ?? work ?? image {
-                // the photo moves on its own too, and tells the editor only when the finger lifts
-                let k = max(cw / max(1, shown.size.width), ch / max(1, shown.size.height))
-                let full = CGSize(width: shown.size.width * k, height: shown.size.height * k)
-                // Behind it, for when it's pinched smaller than the frame (a wide photo shown whole, or one set in
-                // a border): the photo itself, filling the frame, blurred and dimmed, as Instagram fills the space.
-                Image(uiImage: shown).resizable().scaledToFill().frame(width: cw, height: ch).clipped()
-                    .blur(radius: 36, opaque: true).overlay(Color.black.opacity(0.28)).frame(width: cw, height: ch).clipped()
-                // Straighten: turned about its middle and grown just enough that no corner comes up empty, as the
-                // finished picture is
-                let tilt = comparing ? 0 : (tune["t"] ?? 0), lean = abs(tilt) * Double.pi / 180
-                let grow = CGFloat(cos(lean) + Double(max(full.width / max(full.height, 1), full.height / max(full.width, 1))) * sin(lean))
-                MovableClip(cw: cw, ch: ch, fill: full, scale: bgScale, offset: bgOffset, spin: bgSpin,
-                            movable: mode == .none || mode == .filters, photo: true, grab: grab) {
-                    styled(ZStack {
-                        Image(uiImage: shown).resizable()
-                        // in Adjust the photo draws itself as the slider moves (see LivePhoto), over the settled one
-                        if mode == .adjust, !comparing, let base = lite ?? work ?? image { LivePhoto(base: base, box: photoBox) }
-                    }
-                        .frame(width: full.width, height: full.height)
-                        .rotationEffect(.degrees(tilt)).scaleEffect(grow)
-                        .frame(width: full.width, height: full.height).clipped(), full)
-                }
+                // the photo moves on its own too, and tells the editor only when the finger lifts; the posted picture
+                // is this same view drawn bigger (StoryBackdrop.picture), so it can't come out different
+                // in Adjust the photo draws itself as the slider moves (see LivePhoto), over the settled one
+                let live: AnyView? = mode == .adjust && !comparing ? (lite ?? work ?? image).map { AnyView(LivePhoto(base: $0, box: photoBox)) } : nil
+                StoryBackdrop(photo: shown, cw: cw, ch: ch, scale: bgScale, offset: bgOffset, spin: bgSpin,
+                              tilt: comparing ? 0 : (tune["t"] ?? 0), style: bgStyle,
+                              movable: mode == .none || mode == .filters, grab: grab, live: live)
             }
             if mode == .adjust && video == nil {
                 // a finger held on the photo shows it as it came, to compare
@@ -594,29 +579,6 @@ struct StoryEditor: View {
             if next != 0, bgScale > 0.9 { bgScale = 0.8 }
         }
         flash(Self.bgStyles[next])
-    }
-
-    /// The photo behind, in its look. Measured as fractions of its own width, so it looks the same at any size and
-    /// matches the finished picture (`framedPhoto`).
-    @ViewBuilder private func styled<V: View>(_ v: V, _ size: CGSize) -> some View {
-        let w = size.width
-        switch bgStyle {
-        case 1:
-            v.clipShape(RoundedRectangle(cornerRadius: w * 0.04, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: w * 0.04, style: .continuous).strokeBorder(.white, lineWidth: w * 0.02))
-        case 2:
-            v.clipShape(RoundedRectangle(cornerRadius: w * 0.04, style: .continuous))
-        case 3:
-            v.overlay(Rectangle().strokeBorder(.black.opacity(0.08), lineWidth: max(0.5, w * 0.004)))
-                .padding(.horizontal, w * 0.05).padding(.top, w * 0.05).padding(.bottom, w * 0.22)
-                .background(Rectangle().fill(LinearGradient(colors: [Color(red: 0.99, green: 0.98, blue: 0.96), Color(red: 0.95, green: 0.94, blue: 0.91)], startPoint: .top, endPoint: .bottom)))
-                .shadow(color: .black.opacity(0.3), radius: w * 0.04, y: w * 0.025)
-        case 4:
-            let d = min(size.width, size.height)
-            v.clipShape(Circle().size(width: d, height: d).offset(x: (size.width - d) / 2, y: (size.height - d) / 2))
-                .overlay(Circle().strokeBorder(.white, lineWidth: d * 0.02).frame(width: d, height: d))
-        default: v
-        }
     }
 
     private func tapped(_ i: Int) {
@@ -1370,70 +1332,16 @@ struct StoryEditor: View {
         if !Task.isCancelled { preview = out }
     }
 
-    /// The photo as framed (zoom, position, filter), 1080 wide (1920 high for a story); what's placed on it stays
-    /// sharp as its own layer.
+    /// The photo as framed (zoom, position, turn, look), 1080 wide (1920 high for a story): the editor's own view of
+    /// it (StoryBackdrop) drawn bigger, from the full photo, so it's what was on screen. What's placed on it stays sharp
+    /// as its own layer.
     private func framedPhoto(_ cw: CGFloat) -> UIImage? {
-        // made afresh from the full photo, Straighten and all: what's on screen may be the smaller copy, turned as a view
         guard let plain = work ?? image else { return nil }
-        let base = look == "Normal" ? plain : StoryArt.filtered(plain, look)
-        let ch = cw / ratio, k = 1080 / cw, oh = (1080 / ratio).rounded()
-        let fill = max(cw / base.size.width, ch / base.size.height) * bgScale
-        let w = base.size.width * fill, h = base.size.height * fill
-        let format = UIGraphicsImageRendererFormat(); format.scale = 1
-        return UIGraphicsImageRenderer(size: CGSize(width: 1080, height: oh), format: format).image { c in
-            UIColor(white: 0.08, alpha: 1).setFill(); UIRectFill(CGRect(x: 0, y: 0, width: 1080, height: oh))
-            // Smaller than the frame: the same blurred, dimmed photo behind it that the editor shows, and blurred the
-            // same way. It was a copy 28 dots wide drawn up to full size, which came out in big soft squares, nothing
-            // like the editor's smooth blur. Now a quarter-size copy filling the frame is properly blurred, then drawn up.
-            if bgScale < 0.995 || bgSpin != 0 || bgOffset != .zero || bgStyle != 0 {
-                let bw: CGFloat = 270, bh = max(2, (oh / 4).rounded())
-                let cover = max(bw / max(base.size.width, 1), bh / max(base.size.height, 1))
-                let sw = base.size.width * cover, sh = base.size.height * cover
-                let tf = UIGraphicsImageRendererFormat(); tf.scale = 1
-                let small = UIGraphicsImageRenderer(size: CGSize(width: bw, height: bh), format: tf).image { _ in
-                    base.draw(in: CGRect(x: (bw - sw) / 2, y: (bh - sh) / 2, width: sw, height: sh))
-                }
-                var soft = small
-                if let ci = CIImage(image: small) {
-                    let out = ci.clampedToExtent().applyingGaussianBlur(sigma: 22).cropped(to: ci.extent)
-                    if let cg = StoryArt.context.createCGImage(out, from: ci.extent) { soft = UIImage(cgImage: cg) }
-                }
-                c.cgContext.interpolationQuality = .high
-                soft.draw(in: CGRect(x: 0, y: 0, width: 1080, height: oh))
-                UIColor(white: 0, alpha: 0.28).setFill(); UIRectFillUsingBlendMode(CGRect(x: 0, y: 0, width: 1080, height: oh), .normal)
-            }
-            // about its own middle, where it was carried to: turned there, then drawn at its size
-            c.cgContext.translateBy(x: (cw / 2 + bgOffset.width) * k, y: (ch / 2 + bgOffset.height) * k)
-            c.cgContext.rotate(by: CGFloat(bgSpin) * .pi / 180)
-            let r = CGRect(x: -w * k / 2, y: -h * k / 2, width: w * k, height: h * k), g = c.cgContext
-            switch bgStyle {
-            case 1, 2:
-                let path = UIBezierPath(roundedRect: r, cornerRadius: r.width * 0.04)
-                g.saveGState(); path.addClip(); base.draw(in: r); g.restoreGState()
-                if bgStyle == 1 {
-                    let lw = r.width * 0.02, edge = UIBezierPath(roundedRect: r.insetBy(dx: lw / 2, dy: lw / 2), cornerRadius: max(0, r.width * 0.04 - lw / 2))
-                    edge.lineWidth = lw; UIColor.white.setStroke(); edge.stroke()
-                }
-            case 3:
-                // the card is what sits where it was put, as the editor shows it (`styled`): the photo was centred
-                // instead, so the deep strip hung lower and the photo came out lower than placed, under its stickers
-                let pad = r.width * 0.05, p = r.offsetBy(dx: 0, dy: -(r.width * 0.22 - pad) / 2)
-                let card = CGRect(x: p.minX - pad, y: p.minY - pad, width: p.width + pad * 2, height: p.height + pad + p.width * 0.22)
-                g.saveGState()
-                g.setShadow(offset: CGSize(width: 0, height: r.width * 0.025), blur: r.width * 0.08, color: UIColor.black.withAlphaComponent(0.3).cgColor)
-                UIColor(red: 0.97, green: 0.96, blue: 0.93, alpha: 1).setFill(); UIRectFill(card)
-                g.restoreGState()
-                base.draw(in: p)
-                let hair = UIBezierPath(rect: p); hair.lineWidth = max(1, r.width * 0.004); UIColor.black.withAlphaComponent(0.08).setStroke(); hair.stroke()
-            case 4:
-                let d = min(r.width, r.height), circle = CGRect(x: r.midX - d / 2, y: r.midY - d / 2, width: d, height: d)
-                g.saveGState(); UIBezierPath(ovalIn: circle).addClip(); base.draw(in: r); g.restoreGState()
-                let lw = d * 0.02, ring = UIBezierPath(ovalIn: circle.insetBy(dx: lw / 2, dy: lw / 2))
-                ring.lineWidth = lw; UIColor.white.setStroke(); ring.stroke()
-            default:
-                base.draw(in: r)
-            }
-        }
+        // the look without Straighten, which the view turns, as on screen (the look with it turned the photo and
+        // grew its picture to hold the corners, so it came out smaller than it was shown)
+        let base = flatLook == "Normal" ? plain : StoryArt.filtered(plain, flatLook)
+        return StoryBackdrop.picture(photo: base, cw: cw, ch: cw / ratio, scale: bgScale, offset: bgOffset, spin: bgSpin,
+                                     tilt: tune["t"] ?? 0, style: bgStyle)
     }
 
     private var everything: [JSON] {
@@ -1877,4 +1785,91 @@ struct LevelBar: View {
 final class ClipClock {
     var at = 0.0
     var waiting = false   // the song's held at its start until the clip reaches the part that's kept
+}
+
+/// The photo behind a story or post, exactly as the editor shows it: the photo itself blurred and dimmed to fill the
+/// frame, then the photo at its size, place and turn, straightened, in its look (Frame, Polaroid...). The posted
+/// picture is this same view drawn 1080 wide (`picture`). It was drawn again by hand for posting, and every look
+/// copied twice drifted: a polaroid came out lower and smaller than placed, under the stickers put on its strip.
+struct StoryBackdrop: View {
+    let photo: UIImage
+    let cw: CGFloat
+    let ch: CGFloat
+    let scale: CGFloat
+    let offset: CGSize
+    let spin: Double
+    /// Straighten, in degrees.
+    let tilt: Double
+    /// StoryEditor.bgStyles
+    let style: Int
+    var movable = false
+    var grab = Grab()
+    /// Over the photo while Adjust's sliders move (the editor only).
+    var live: AnyView? = nil
+
+    /// The photo's size when it just fills the frame.
+    static func fill(_ img: UIImage, _ cw: CGFloat, _ ch: CGFloat) -> CGSize {
+        let k = max(cw / max(1, img.size.width), ch / max(1, img.size.height))
+        return CGSize(width: img.size.width * k, height: img.size.height * k)
+    }
+
+    var body: some View {
+        let full = Self.fill(photo, cw, ch)
+        // Straighten: turned about its middle and grown just enough that no corner comes up empty
+        let lean = abs(tilt) * Double.pi / 180
+        let grow = CGFloat(cos(lean) + Double(max(full.width / max(full.height, 1), full.height / max(full.width, 1))) * sin(lean))
+        ZStack {
+            Color(white: 0.08)
+            // behind it, for when it's pinched smaller than the frame (a wide photo shown whole, or one set in a
+            // border): the photo itself, filling the frame, blurred and dimmed, as Instagram fills the space
+            Image(uiImage: photo).resizable().scaledToFill().frame(width: cw, height: ch).clipped()
+                .blur(radius: 36, opaque: true).overlay(Color.black.opacity(0.28)).frame(width: cw, height: ch).clipped()
+            MovableClip(cw: cw, ch: ch, fill: full, scale: scale, offset: offset, spin: spin, movable: movable, photo: true, grab: grab) {
+                Self.styled(ZStack {
+                    Image(uiImage: photo).resizable()
+                    if let live { live }
+                }
+                    .frame(width: full.width, height: full.height)
+                    .rotationEffect(.degrees(tilt)).scaleEffect(grow)
+                    .frame(width: full.width, height: full.height).clipped(), full, style)
+            }
+        }
+        .frame(width: cw, height: ch)
+    }
+
+    /// This view as the picture that's posted: 1080 wide, the frame's shape, one point to a pixel.
+    @MainActor static func picture(photo: UIImage, cw: CGFloat, ch: CGFloat, scale: CGFloat, offset: CGSize, spin: Double, tilt: Double, style: Int) -> UIImage? {
+        guard cw > 0, ch > 0 else { return nil }
+        let r = ImageRenderer(content: StoryBackdrop(photo: photo, cw: cw, ch: ch, scale: scale, offset: offset, spin: spin, tilt: tilt, style: style))
+        r.scale = 1080 / cw
+        r.isOpaque = true
+        guard let cg = r.cgImage else { return nil }
+        let oh = (1080 * ch / cw).rounded()
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1; format.opaque = true
+        return UIGraphicsImageRenderer(size: CGSize(width: 1080, height: oh), format: format).image { _ in
+            UIImage(cgImage: cg).draw(in: CGRect(x: 0, y: 0, width: 1080, height: oh))
+        }
+    }
+
+    /// The photo in its look. Measured as fractions of its own width, so it looks the same at any size.
+    @ViewBuilder static func styled<V: View>(_ v: V, _ size: CGSize, _ style: Int) -> some View {
+        let w = size.width
+        switch style {
+        case 1:
+            v.clipShape(RoundedRectangle(cornerRadius: w * 0.04, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: w * 0.04, style: .continuous).strokeBorder(.white, lineWidth: w * 0.02))
+        case 2:
+            v.clipShape(RoundedRectangle(cornerRadius: w * 0.04, style: .continuous))
+        case 3:
+            v.overlay(Rectangle().strokeBorder(.black.opacity(0.08), lineWidth: max(0.5, w * 0.004)))
+                .padding(.horizontal, w * 0.05).padding(.top, w * 0.05).padding(.bottom, w * 0.22)
+                .background(Rectangle().fill(LinearGradient(colors: [Color(red: 0.99, green: 0.98, blue: 0.96), Color(red: 0.95, green: 0.94, blue: 0.91)], startPoint: .top, endPoint: .bottom)))
+                .shadow(color: .black.opacity(0.3), radius: w * 0.04, y: w * 0.025)
+        case 4:
+            let d = min(size.width, size.height)
+            v.clipShape(Circle().size(width: d, height: d).offset(x: (size.width - d) / 2, y: (size.height - d) / 2))
+                .overlay(Circle().strokeBorder(.white, lineWidth: d * 0.02).frame(width: d, height: d))
+        default: v
+        }
+    }
 }
