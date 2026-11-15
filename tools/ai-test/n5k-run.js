@@ -2,6 +2,7 @@
 // Sonnet, the app's real rules, the photo-only format (reply, kind, estimate). Each answer is saved with the weighed
 // truth; the fixtures for the Mac's offline replay test (DatasetReplayTests) are written from them.
 //   node n5k-run.js <dataset dir> [limit]      (answers already saved aren't asked again)
+// A trial rule: VARIANT=name (rules in variants/<name>.txt, added to the app's) and HALF=tune|check (even or odd plates).
 const fs = require('fs'), path = require('path'), Anthropic = require('@anthropic-ai/sdk').default;
 const source = fs.readFileSync(path.join(__dirname, '../../supabase/functions/ai/index.ts'), 'utf8');
 const body = source.match(/function claudeSchema\(s: any\): any \{[\s\S]*?\n\}/)[0].replace(/: any/g, '').replace(/ as any/g, '');
@@ -34,11 +35,12 @@ const schema = obj({
 });
 const context = 'They live in Australia: use the usual portion sizes there. Today: budget 2000 kcal, eaten 640 kcal. Protein so far 40 g of 150 g. Workouts today: none.\nRecent days: none yet.\n';
 const say = 'Lunch';
+const variant = process.env.VARIANT || '', extra = variant ? '\n' + fs.readFileSync(path.join(__dirname, 'variants', variant + '.txt'), 'utf8').trim() : '';
 
 (async () => {
   const dir = process.argv[2], limit = Number(process.argv[3] || 1e9);
-  const picked = JSON.parse(fs.readFileSync(path.join(dir, 'picked.json'), 'utf8')).slice(0, limit);
-  const answersFile = path.join(dir, 'answers.json');
+  const picked = JSON.parse(fs.readFileSync(path.join(dir, 'picked.json'), 'utf8')).filter((_, i) => process.env.HALF === 'tune' ? i % 2 === 0 : process.env.HALF === 'check' ? i % 2 === 1 : true).slice(0, limit);
+  const answersFile = path.join(dir, variant ? `answers-${variant}.json` : 'answers.json');
   const answers = fs.existsSync(answersFile) ? JSON.parse(fs.readFileSync(answersFile, 'utf8')) : {};
   const ledgerFile = path.join(__dirname, 'results', 'ledger.json'), ledger = JSON.parse(fs.readFileSync(ledgerFile, 'utf8'));
   const client = new Anthropic({ baseURL: 'https://api.anthropic.com' });
@@ -46,7 +48,7 @@ const say = 'Lunch';
   const todo = picked.filter(d => !answers[d.id]);
   for (let i = 0; i < todo.length; i += 4) {
     await Promise.all(todo.slice(i, i + 4).map(async d => {
-      const text = `You are the assistant inside a cheat-day food diary app called Cheat Days. ${context}They now say: "${say}" (1 photo)\n\n${rules}`;
+      const text = `You are the assistant inside a cheat-day food diary app called Cheat Days. ${context}They now say: "${say}" (1 photo)\n\n${rules}${extra}`;
       const img = { type: 'image', source: { type: 'base64', media_type: 'image/png', data: fs.readFileSync(path.join(dir, 'photos', d.id + '.png')).toString('base64') } };
       try {
         const r = await client.messages.create({ model: 'claude-sonnet-5-5', max_tokens: 12000, messages: [{ role: 'user', content: [img, { type: 'text', text }] }],
