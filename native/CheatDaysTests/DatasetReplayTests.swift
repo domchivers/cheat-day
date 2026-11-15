@@ -35,7 +35,19 @@ final class DatasetReplayTests: XCTestCase {
             let moved = list(out["parts"]).compactMap { p -> String? in
                 let m = str(p["match"]); return m.isEmpty ? nil : "\(str(p["name"])) → \(m)"
             }.prefix(4).joined(separator: "; ")
-            rows.append((abs(app - tk) / tk * 100 - abs(ai - tk) / tk * 100, "\(id) scale \(Int(tk)) · AI \(Int(ai)) · app \(Int(app)) · \(moved)"))
+            let delta = abs(app - tk) / tk * 100 - abs(ai - tk) / tk * 100
+            rows.append((delta, "\(id) scale \(Int(tk)) · AI \(Int(ai)) · app \(Int(app)) · \(moved)"))
+            // where each part's numbers came from, for the plates the checks made worse: which table entry, found how
+            if delta >= 10 {
+                let asked = list(e["parts"])
+                for (i, p) in list(out["parts"]).enumerated() {
+                    let a = i < asked.count ? asked[i] : [:], name = str(a["name"]), tags = Assistant.tags(a)
+                    print("DATASET-PART: \(id) \(name) [\(tags.joined(separator: ","))] \(Int(num(a["grams"]) ?? 0)) g \(Int(num(a["kcal"]) ?? 0)) → \(Int(num(p["kcal"]) ?? 0)) kcal"
+                          + " · src \(str(p["src"])) · match \(str(p["match"]))" + (str(p["swapped"]).isEmpty ? "" : " · SWAPPED")
+                          + " · range \(Sanity.range(name)?.label ?? "-") · ref \(FoodReference.match(name)?.name ?? "-")"
+                          + " · find \(FoodTable.current.find(name)?.name ?? "-") · best \(FoodTable.current.best(name, tags: tags)?.name ?? "-")")
+                }
+            }
         }
         func mean(_ x: [Double]) -> Double { x.reduce(0, +) / Double(max(x.count, 1)) }
         func within(_ x: [Double]) -> Int { x.filter { $0 <= 20 }.count }
