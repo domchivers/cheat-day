@@ -141,7 +141,12 @@ final class FoodTable {
         let base = find(name)
         // an entry that's another food made with it isn't it: "Black beans" found "Sauce, black bean, commercial"
         let saidWords = Set(Self.words(name))
-        let otherFood = base.flatMap { b in rows.first { $0.food.name == b.name } }.map { !Set($0.kind).subtracting(saidWords).isDisjoint(with: Self.otherFoods) } ?? false
+        // (only the entry's own dish, before "with" or "in": "Swedish meatballs with cream or white sauce" is meatballs)
+        let otherFood = base.map { b -> Bool in
+            let dish = (b.name.split(separator: ",").first.map(String.init) ?? "").components(separatedBy: CharacterSet(charactersIn: "(")).first ?? ""
+            let own = dish.replacingOccurrences(of: #"\s(with|w/|in)\s.*"#, with: "", options: [.regularExpression, .caseInsensitive])
+            return !Set(Self.words(own)).subtracting(saidWords).isDisjoint(with: Self.otherFoods)
+        } ?? false
         // how it's cooked says nothing about which cheese or cake it is (a "cooked" melted cheese found fried mozzarella)
         let cooking: Set<String> = ["raw", "cooked", "fried", "baked", "grilled", "boiled", "steamed"]
         let plain = [FoodKind.dairy, .sweet].contains(FoodKind.of(name))
