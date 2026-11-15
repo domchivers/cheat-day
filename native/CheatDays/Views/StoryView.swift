@@ -243,12 +243,14 @@ struct StoryView: View {
             }
             // a photo that isn't here yet: its bar waits for it (up to eight seconds), as Instagram's does. It ran on over
             // a blank slide before, so a slow picture was gone before it was seen.
-            var waited = 0.0
+            // By the clock, not by counting ticks: a tick is never exactly 50 ms, so counted ones ran the bar unevenly
+            var waited = 0.0, last = Date()
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(50))
-                if case .snap(let st)? = now, waited < 8, Stories.pictures(st).contains(where: { ImageStore.cached($0) == nil }) { waited += 0.05; continue }
+                let at = Date(), dt = min(0.25, at.timeIntervalSince(last)); last = at
+                if case .snap(let st)? = now, waited < 8, Stories.pictures(st).contains(where: { ImageStore.cached($0) == nil }) { waited += dt; continue }
                 if paused || tagged != nil || reportOf != nil || typing || reacting || sharing != nil || sharingStory != nil || seenBy != nil || adding != nil || managing != nil || mentioning != nil { continue }
-                progress += 0.05 / length
+                progress += dt / length
                 if progress >= 1 { next(); return }
             }
         }
@@ -263,7 +265,12 @@ struct StoryView: View {
             ForEach(0..<n, id: \.self) { i in
                 GeometryReader { g in
                     Capsule().fill(.white.opacity(0.3))
-                        .overlay(alignment: .leading) { Capsule().fill(.white).frame(width: g.size.width * (i < slide ? 1 : i == slide ? progress : 0)) }
+                        // each step of the bar slides into the next over the same time a step takes, so it moves
+                        // smoothly instead of in little jumps 20 times a second
+                        .overlay(alignment: .leading) {
+                            Capsule().fill(.white).frame(width: g.size.width * (i < slide ? 1 : i == slide ? progress : 0))
+                                .animation(i == slide && progress > 0.001 ? .linear(duration: 0.06) : nil, value: progress)
+                        }
                 }
                 .frame(height: 3)
             }
