@@ -118,6 +118,7 @@ struct StoryEditor: View {
     private var clipLook: String { StoryArt.look(filter, settled) }
     @State private var preview: UIImage?
     @State private var work: UIImage?   // the photo at screen size: filtering and drawing a 4000-pixel one lagged
+    @State private var bgStyle = 0      // the photo behind's look (bgStyles): tap it for the next
     @State private var photoTurns = 0     // quarter turns given to the photo
     @State private var owedTurns = 0      // turns it had when last left, to give it again once it's ready
     @State private var thumbs: [String: UIImage] = [:]
@@ -290,7 +291,7 @@ struct StoryEditor: View {
                 if video == nil { turns = 0; owedTurns = e.turns % 4 }
                 if let k = e.kept {
                     filter = k.filter; tune = k.tune; settled = k.tune; items = k.items; strokes = k.strokes
-                    bgScale = k.scale; bgOffset = k.offset; clipCovers = k.covers
+                    bgScale = k.scale; bgOffset = k.offset; clipCovers = k.covers; bgStyle = k.style
                 } else {
                     // from a draft: only the look's name and sliders are known ("Warm;b=20.4;t=-3.7")
                     let parts = e.look.split(separator: ";").map(String.init)
@@ -420,14 +421,14 @@ struct StoryEditor: View {
                 let grow = CGFloat(cos(lean) + Double(max(full.width / max(full.height, 1), full.height / max(full.width, 1))) * sin(lean))
                 MovableClip(cw: cw, ch: ch, fill: full, scale: bgScale, offset: bgOffset, spin: bgSpin,
                             movable: mode == .none || mode == .filters, photo: true, grab: grab) {
-                    ZStack {
+                    styled(ZStack {
                         Image(uiImage: shown).resizable()
                         // in Adjust the photo draws itself as the slider moves (see LivePhoto), over the settled one
                         if mode == .adjust, !comparing, let base = lite ?? work ?? image { LivePhoto(base: base, box: photoBox) }
                     }
                         .frame(width: full.width, height: full.height)
                         .rotationEffect(.degrees(tilt)).scaleEffect(grow)
-                        .frame(width: full.width, height: full.height).clipped()
+                        .frame(width: full.width, height: full.height).clipped(), full)
                 }
             }
             if mode == .adjust && video == nil {
@@ -555,7 +556,7 @@ struct StoryEditor: View {
             dropped(t)
             return
         }
-        guard moved else { return }
+        guard moved else { nextBgStyle(); return }
         let across = abs(grab.move.width) > 50 && abs(grab.move.width) > abs(grab.move.height) && grab.size == 1
         guard let fill = bgFill(cw, ch) else {
             if across { nextFilter(grab.move.width < 0 ? 1 : -1) }   // a picture that can't move: a swipe changes the filter
@@ -577,6 +578,45 @@ struct StoryEditor: View {
     private func dropped(_ i: Int) {
         if overBin, items.indices.contains(i) { UINotificationFeedbackGenerator().notificationOccurred(.warning); withAnimation(.snappy(duration: 0.25)) { _ = items.remove(at: i) } }
         active = nil; overBin = false; snapX = false; snapY = false
+    }
+
+    /// The photo behind's looks, the same as a photo sticker's, starting from the photo as it is.
+    static let bgStyles = ["Original", "Frame", "Plain", "Polaroid", "Round"]
+
+    /// A tap on the photo behind: its next look. A look other than the photo as it is needs a border of the story
+    /// round it to show, so a photo filling the frame is made a little smaller first.
+    private func nextBgStyle() {
+        guard video == nil, (work ?? image) != nil, mode == .none else { return }
+        remember(); UISelectionFeedbackGenerator().selectionChanged()
+        let next = (bgStyle + 1) % Self.bgStyles.count
+        withAnimation(.snappy(duration: 0.22)) {
+            bgStyle = next
+            if next != 0, bgScale > 0.9 { bgScale = 0.8 }
+        }
+        flash(Self.bgStyles[next])
+    }
+
+    /// The photo behind, in its look. Measured as fractions of its own width, so it looks the same at any size and
+    /// matches the finished picture (`framedPhoto`).
+    @ViewBuilder private func styled<V: View>(_ v: V, _ size: CGSize) -> some View {
+        let w = size.width
+        switch bgStyle {
+        case 1:
+            v.clipShape(RoundedRectangle(cornerRadius: w * 0.04, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: w * 0.04, style: .continuous).strokeBorder(.white, lineWidth: w * 0.02))
+        case 2:
+            v.clipShape(RoundedRectangle(cornerRadius: w * 0.04, style: .continuous))
+        case 3:
+            v.overlay(Rectangle().strokeBorder(.black.opacity(0.08), lineWidth: max(0.5, w * 0.004)))
+                .padding(.horizontal, w * 0.05).padding(.top, w * 0.05).padding(.bottom, w * 0.22)
+                .background(Rectangle().fill(LinearGradient(colors: [Color(red: 0.99, green: 0.98, blue: 0.96), Color(red: 0.95, green: 0.94, blue: 0.91)], startPoint: .top, endPoint: .bottom)))
+                .shadow(color: .black.opacity(0.3), radius: w * 0.04, y: w * 0.025)
+        case 4:
+            let d = min(size.width, size.height)
+            v.clipShape(Circle().size(width: d, height: d).offset(x: (size.width - d) / 2, y: (size.height - d) / 2))
+                .overlay(Circle().strokeBorder(.white, lineWidth: d * 0.02).frame(width: d, height: d))
+        default: v
+        }
     }
 
     private func tapped(_ i: Int) {
@@ -756,13 +796,9 @@ struct StoryEditor: View {
         withAnimation(.snappy) { bgScale = 1; bgOffset = .zero; bgSpin = 0; clipMove = .zero; clipCovers = true }
     }
 
-    @ViewBuilder private var topRow: some View {
-        HStack(spacing: 5) {
-            switch mode {
-            case .none:
-                round("xmark") { if edited { leaving = true } else { close() } }.accessibilityLabel("Back")
-                if !history.isEmpty { round("arrow.uturn.backward") { undo() }.accessibilityLabel("Undo") }
-                Spacer(minLength: 6)
+    /// The song at the top, in the middle of the screen: it sat between the buttons either side, so with two on the left
+    /// and one on the right it was off to one side.
+    @ViewBuilder private var songPill: some View {
                 if let song {
                     // the song, named at the top: tap its name for another (a post's video: for its volumes too), the x to take it off
                     HStack(spacing: 6) {
@@ -779,8 +815,7 @@ struct StoryEditor: View {
                         .buttonStyle(.plain).accessibilityLabel("Take the song off")
                     }
                     .foregroundStyle(.white).padding(.leading, 11).padding(.trailing, 8).frame(height: 34)
-                    .background(.black.opacity(0.45), in: Capsule()).frame(maxWidth: 200)
-                    Spacer(minLength: 6)
+                    .background(.black.opacity(0.45), in: Capsule()).frame(maxWidth: 180)
                 } else if let idea = suggested {
                     // a song put forward for this story: one tap takes it
                     Button {
@@ -795,15 +830,24 @@ struct StoryEditor: View {
                             }
                             Image(systemName: "plus").font(.system(size: 11, weight: .heavy))
                         }
-                        .foregroundStyle(.white).padding(.horizontal, 11).frame(height: 34).background(.black.opacity(0.45), in: Capsule()).frame(maxWidth: 200)
+                        .foregroundStyle(.white).padding(.horizontal, 11).frame(height: 34).background(.black.opacity(0.45), in: Capsule()).frame(maxWidth: 180)
                     }
                     .buttonStyle(.plain).accessibilityLabel("Add the suggested song, " + idea.title)
-                    Spacer(minLength: 6)
                 }
+    }
+
+    @ViewBuilder private var topRow: some View {
+        HStack(spacing: 5) {
+            switch mode {
+            case .none:
+                round("xmark") { if edited { leaving = true } else { close() } }.accessibilityLabel("Back")
+                if !history.isEmpty { round("arrow.uturn.backward") { undo() }.accessibilityLabel("Undo") }
+                Spacer(minLength: 6)
+                Spacer(minLength: 6)
                 if image != nil || video != nil || abs(bgScale - 1) > 0.01 || bgOffset != .zero || bgSpin != 0 || !items.isEmpty || !strokes.isEmpty {
                 Menu {
                     if image != nil || video != nil { Button { Task { await save() } } label: { Label("Save to Photos", systemImage: "square.and.arrow.down") } }
-                    if abs(bgScale - 1) > 0.01 || bgOffset != .zero || bgSpin != 0 { Button { withAnimation { bgScale = 1; bgOffset = .zero; bgSpin = 0; clipMove = .zero; clipCovers = true } } label: { Label(video == nil ? "Reset the photo" : "Reset the video", systemImage: "arrow.counterclockwise") } }
+                    if abs(bgScale - 1) > 0.01 || bgOffset != .zero || bgSpin != 0 { Button { withAnimation { bgScale = 1; bgOffset = .zero; bgSpin = 0; clipMove = .zero; clipCovers = true; bgStyle = 0 } } label: { Label(video == nil ? "Reset the photo" : "Reset the video", systemImage: "arrow.counterclockwise") } }
                     if !items.isEmpty || !strokes.isEmpty { Button(role: .destructive) { remember(); withAnimation { items = []; strokes = [] } } label: { Label("Clear everything", systemImage: "trash") } }
                 } label: { roundLabel("ellipsis") }
                 }
@@ -828,6 +872,7 @@ struct StoryEditor: View {
                 Button("Done") { settled = tune; comparing = false; mode = .none }.font(.headline).foregroundStyle(.white)
             }
         }
+        .overlay { if mode == .none { songPill } }
     }
 
     /// Before a change: what it was, for Undo (thirty steps back).
@@ -1340,7 +1385,7 @@ struct StoryEditor: View {
             // Smaller than the frame: the same blurred, dimmed photo behind it that the editor shows, and blurred the
             // same way. It was a copy 28 dots wide drawn up to full size, which came out in big soft squares, nothing
             // like the editor's smooth blur. Now a quarter-size copy filling the frame is properly blurred, then drawn up.
-            if bgScale < 0.995 || bgSpin != 0 || bgOffset != .zero {
+            if bgScale < 0.995 || bgSpin != 0 || bgOffset != .zero || bgStyle != 0 {
                 let bw: CGFloat = 270, bh = max(2, (oh / 4).rounded())
                 let cover = max(bw / max(base.size.width, 1), bh / max(base.size.height, 1))
                 let sw = base.size.width * cover, sh = base.size.height * cover
@@ -1360,7 +1405,31 @@ struct StoryEditor: View {
             // about its own middle, where it was carried to: turned there, then drawn at its size
             c.cgContext.translateBy(x: (cw / 2 + bgOffset.width) * k, y: (ch / 2 + bgOffset.height) * k)
             c.cgContext.rotate(by: CGFloat(bgSpin) * .pi / 180)
-            base.draw(in: CGRect(x: -w * k / 2, y: -h * k / 2, width: w * k, height: h * k))
+            let r = CGRect(x: -w * k / 2, y: -h * k / 2, width: w * k, height: h * k), g = c.cgContext
+            switch bgStyle {
+            case 1, 2:
+                let path = UIBezierPath(roundedRect: r, cornerRadius: r.width * 0.04)
+                g.saveGState(); path.addClip(); base.draw(in: r); g.restoreGState()
+                if bgStyle == 1 {
+                    let lw = r.width * 0.02, edge = UIBezierPath(roundedRect: r.insetBy(dx: lw / 2, dy: lw / 2), cornerRadius: max(0, r.width * 0.04 - lw / 2))
+                    edge.lineWidth = lw; UIColor.white.setStroke(); edge.stroke()
+                }
+            case 3:
+                let pad = r.width * 0.05, card = CGRect(x: r.minX - pad, y: r.minY - pad, width: r.width + pad * 2, height: r.height + pad + r.width * 0.22)
+                g.saveGState()
+                g.setShadow(offset: CGSize(width: 0, height: r.width * 0.025), blur: r.width * 0.08, color: UIColor.black.withAlphaComponent(0.3).cgColor)
+                UIColor(red: 0.97, green: 0.96, blue: 0.93, alpha: 1).setFill(); UIRectFill(card)
+                g.restoreGState()
+                base.draw(in: r)
+                let hair = UIBezierPath(rect: r); hair.lineWidth = max(1, r.width * 0.004); UIColor.black.withAlphaComponent(0.08).setStroke(); hair.stroke()
+            case 4:
+                let d = min(r.width, r.height), circle = CGRect(x: r.midX - d / 2, y: r.midY - d / 2, width: d, height: d)
+                g.saveGState(); UIBezierPath(ovalIn: circle).addClip(); base.draw(in: r); g.restoreGState()
+                let lw = d * 0.02, ring = UIBezierPath(ovalIn: circle.insetBy(dx: lw / 2, dy: lw / 2))
+                ring.lineWidth = lw; UIColor.white.setStroke(); ring.stroke()
+            default:
+                base.draw(in: r)
+            }
         }
     }
 
@@ -1385,7 +1454,7 @@ struct StoryEditor: View {
                 if let out = baked() {
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                     var e = ClipEdit(look: look, shape: ratio, turns: photoTurns, spin: bgSpin, zoom: bgScale)
-                    e.kept = ClipEdit.Kept(filter: filter, tune: tune, items: items, strokes: strokes, range: nil, scale: bgScale, offset: bgOffset, covers: true)
+                    e.kept = ClipEdit.Kept(filter: filter, tune: tune, items: items, strokes: strokes, range: nil, scale: bgScale, offset: bgOffset, covers: true, style: bgStyle)
                     photoKept?(e)
                     finish?(out)
                 }

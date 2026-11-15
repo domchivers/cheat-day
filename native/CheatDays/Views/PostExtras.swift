@@ -36,6 +36,8 @@ struct ClipEdit {
         var scale: CGFloat
         var offset: CGSize
         var covers: Bool
+        /// The photo behind's look (StoryEditor.bgStyles), 0 for as it is.
+        var style = 0
     }
 
     /// A frame of the clip as friends will see it: through the look, cut to the part kept, with what's on it.
