@@ -262,6 +262,9 @@ struct AssistantView: View {
             Text((str(e["shop"]).isEmpty ? "" : "\(str(e["shop"])) · ") + "\(Fmt.int(num(e["portion_g"]) ?? 0)) \(str(e["unit"]).isEmpty ? "g" : str(e["unit"]))")
                 .font(.caption).foregroundStyle(.secondary)
             macros(k, p, c, f)
+            if let r = Assistant.kcalRange(e) {
+                Text("Could be \(Fmt.int(r.low))–\(Fmt.int(r.high)) kcal").font(.caption).monospacedDigit().foregroundStyle(.secondary)
+            }
             let parts = list(e["parts"]), checked = Assistant.checkedCount(parts)
             let own = parts.filter { ["label", "them"].contains(str($0["src"])) }.count
             let web = parts.first { str($0["src"]) == "web" }
@@ -282,6 +285,10 @@ struct AssistantView: View {
                             }
                             .accessibilityLabel(flagged ? "Check this one" : ok ? "Checked" : "Not checked")
                         Text(str(pt["name"])).font(.subheadline.weight(.medium)).foregroundStyle(.primary).multilineTextAlignment(.leading)
+                        if !str(pt["weighed"]).isEmpty {
+                            (Text(Image(systemName: str(pt["weighed"]) == "counted" ? "number" : "scalemass.fill")) + Text(" " + str(pt["weighed"])))
+                                .font(.caption2.weight(.bold)).foregroundStyle(Theme.accent).fixedSize()
+                        }
                         Spacer()
                         Text("\(Int(num(pt["grams"]) ?? 0)) g · \(Int(num(pt["kcal"]) ?? 0))").font(.caption).monospacedDigit().foregroundStyle(.secondary)
                         Image(systemName: openPart == key ? "chevron.down" : "chevron.right").font(.caption2).foregroundStyle(.tertiary)
@@ -303,6 +310,8 @@ struct AssistantView: View {
                              : "The AI's estimate: none of the parts could be checked against a food database.")
                 .font(.caption2).foregroundStyle(.secondary) }
             let tag = "\(turn)-est", added = done[turn, default: ""].contains(tag)
+            let asking = Assistant.worthWeighing(e)
+            if !added, !pending, !asking.isEmpty { weighBox(parts, asking, turn: turn) }
             if e["size_unsure"] as? Bool == true, !added {
                 // nothing in the photo showed its size: one tap says, and stays picked so it can be changed
                 choiceRow("How big was it?", ["Small", "Regular", "Large"], picked: str(e["sizeAnswer"])) { answerSize(turn, $0) }
@@ -355,6 +364,60 @@ struct AssistantView: View {
                 }
             }
         }
+    }
+
+    /// "Know how much?": the weight (or count, for food in pieces) of the foods carrying the most calories that were
+    /// judged from the photo. A weight typed is the part's, held through every follow-up, and it leaves the box.
+    private func weighBox(_ parts: [JSON], _ asking: [Int], turn: UUID) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            (Text("Know how much? ").foregroundStyle(.primary) + Text("Calories and macros will be much more accurate").foregroundStyle(.secondary))
+                .font(.caption.weight(.semibold)).padding(.vertical, 8)
+            ForEach(asking, id: \.self) { i in
+                let pt = parts[i], g = num(pt["grams"]) ?? 0, piece = Assistant.pieces(str(pt["size"]))
+                let name = str(pt["name"]).split(separator: ",").first.map(String.init) ?? str(pt["name"])
+                let hint = piece.map { str(pt["weighed"]) == "counted" ? "\($0.n) × about \(Fmt.int($0.each)) g" : "counted \($0.n) in the photo" }
+                    ?? (pos(pt["low"]).flatMap { l in pos(pt["high"]).map { "looks about \(Fmt.int(l))–\(Fmt.int($0)) g" } } ?? "looks about \(Fmt.int(g)) g")
+                Divider()
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(name).font(.subheadline)
+                        Text(hint).font(.caption2).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 8)
+                    if let piece {
+                        SizeStepper(less: { count(turn, index: i, piece.n - 1, each: piece.each) }, more: { count(turn, index: i, piece.n + 1, each: piece.each) }) {
+                            Text("\(piece.n)").font(.subheadline.weight(.bold)).monospacedDigit()
+                        }
+                    } else {
+                        AmountField(unit: "g") { weigh(turn, index: i, grams: $0) }
+                    }
+                }
+                .frame(minHeight: 52)
+            }
+        }
+        .padding(.horizontal, 12).padding(.bottom, 4)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    /// A weight typed in the box: the part at those grams, locked there (give or take 10%) for every follow-up.
+    private func weigh(_ turn: UUID, index i: Int, grams g: Double, size: String? = nil, mark: String = "weighed") {
+        let parts = list(estimate(turn)["parts"])
+        guard parts.indices.contains(i), let was = pos(parts[i]["grams"]), g > 0 else { return }
+        withAnimation(.snappy) {
+            change(turn) { parts in
+                parts[i] = scaled(parts[i], g / was); parts[i]["grams"] = g.rounded()
+                parts[i]["weighed"] = mark; parts[i]["locked"] = true
+                parts[i]["low"] = (g * (1 - Assistant.lockedSlack)).rounded(); parts[i]["high"] = (g * (1 + Assistant.lockedSlack)).rounded()
+                if let size { parts[i]["size"] = size }
+            }
+        }
+        logCorrection(turn, mark == "counted" ? "count" : "weighed", part: parts[i], from: was, to: g.rounded())
+    }
+
+    /// A count changed in the box: that many pieces at the weight of one.
+    private func count(_ turn: UUID, index i: Int, _ n: Int, each: Double) {
+        guard n >= 1 else { return }
+        weigh(turn, index: i, grams: Double(n) * each, size: "\(n) × ~\(Fmt.int(each)) g", mark: "counted")
     }
 
     /// Every button on the estimate card is this tall, with 12 pt corners.
@@ -1274,6 +1337,26 @@ private struct NumberBox: View {
         .onAppear { text = Fmt.int(value) }
         .onChange(of: value) { _, v in if !focused { text = Fmt.int(v) } }
         .onChange(of: focused) { _, on in if !on, let v = Fmt.typed(text), v > 0 { save(v) } else if !on { text = Fmt.int(value) } }
+    }
+}
+
+/// An amount to type, empty until it is: saved when the keyboard goes (the "Know how much?" box).
+private struct AmountField: View {
+    let unit: String
+    let save: (Double) -> Void
+    @State private var text = ""
+    @FocusState private var focused: Bool
+    var body: some View {
+        HStack(spacing: 2) {
+            TextField("", text: $text).keyboardType(.numberPad).focused($focused).multilineTextAlignment(.trailing)
+            Text(unit).foregroundStyle(.secondary)
+        }
+        .font(.subheadline.weight(.bold)).monospacedDigit()
+        .padding(.horizontal, 12).frame(width: 104, height: AssistantView.control)
+        .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay { if focused { RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.accent, lineWidth: 1.5) } }
+        .contentShape(Rectangle()).onTapGesture { focused = true }
+        .onChange(of: focused) { _, on in if !on, let v = Fmt.typed(text), v > 0 { save(v) } }
     }
 }
 

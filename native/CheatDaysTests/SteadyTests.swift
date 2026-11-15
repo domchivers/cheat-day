@@ -181,4 +181,25 @@ final class SteadyTests: XCTestCase {
         XCTAssertEqual(grams(out, "Steamed rice"), 250, "the rice is held to its range, not locked at a new guess")
         XCTAssertNil(CheatDays.list(out["parts"])[1]["locked"])
     }
+
+    /// "Know how much?" asks about the two foods with the most calories judged from the photo, never an extra, a
+    /// label's or one they gave; the same two after one's weighed, which then leaves.
+    func testTheFoodsWorthWeighing() {
+        var chicken = part("Chicken thigh, grilled", 180, kcal: 331, p: 45, c: 0, f: 16); chicken["low"] = 140; chicken["high"] = 220
+        let rice = part("White rice, boiled", 160, kcal: 242, p: 4, c: 53, f: 0.5)
+        let broccoli = part("Broccoli, steamed", 70, kcal: 24, p: 2, c: 3, f: 0.3)
+        let oil = part("Olive oil", 12, kcal: 106, p: 0, c: 0, f: 12)
+        var bread = part("Bread roll", 70, kcal: 190, p: 6, c: 35, f: 2); bread["numbers_from"] = "label"
+        let plate = card([chicken, rice, broccoli, oil, bread])
+        XCTAssertEqual(Assistant.worthWeighing(plate), [0, 1])
+        var weighed = chicken; weighed["weighed"] = "weighed"; weighed["locked"] = true
+        XCTAssertEqual(Assistant.worthWeighing(card([weighed, rice, broccoli, oil, bread])), [1], "the chicken leaves, nothing new comes in")
+        var said = chicken; said["locked"] = true
+        XCTAssertEqual(Assistant.worthWeighing(card([said, rice, broccoli])), [1], "a weight in their message isn't asked again")
+        let r = Assistant.kcalRange(card([chicken, rice]))
+        XCTAssertEqual(r?.low, 500); XCTAssertEqual(r?.high, 650)
+        XCTAssertEqual(Assistant.pieces("range 150–250 g; 8 × ~25 g, against the box")?.n, 8)
+        XCTAssertEqual(Assistant.pieces("8 × ~25 g")?.each, 25)
+        XCTAssertNil(Assistant.pieces("about 5 × 5 × 4 cm"))
+    }
 }

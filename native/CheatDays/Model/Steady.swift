@@ -45,6 +45,46 @@ extension Assistant {
         return "Did you mean \(figure) cm?"
     }
 
+    /// The foods on a card worth asking the weight or count of ("Know how much?"): judged from the photo, not from a
+    /// label, their numbers, a brand or a shop's; not given in their message (locked); not a small extra (oil, a
+    /// sauce); 60 kcal or more; the two with the most calories. The same two whatever's been typed since, so the box
+    /// never brings in another food; one weighed (not counted) has its number and leaves it. Weighed plates: a real
+    /// weight cuts a photo estimate's error by about half, where no wording, model or table did (Nov 2026).
+    static func worthWeighing(_ e: JSON) -> [Int] {
+        let parts = CheatDays.list(e["parts"])
+        let minor = ["oil", "butter", "sauce", "dressing", "mayo", "aioli", "gravy", "dip", "seasoning", "salt", "sugar", "honey", "syrup", "spread", "glaze"]
+        let asked = parts.indices.filter { i in
+            let p = parts[i], n = str(p["name"]).lowercased()
+            return !["label", "them", "web"].contains(str(p["src"])) && !["label", "them", "brand"].contains(str(p["numbers_from"]))
+                && (p["locked"] as? Bool != true || p["weighed"] != nil) && (num(p["kcal"]) ?? 0) >= 60 && pos(p["grams"]) != nil
+                && !minor.contains { n.contains($0) }
+        }.sorted { (num(parts[$0]["kcal"]) ?? 0) > (num(parts[$1]["kcal"]) ?? 0) }.prefix(2)
+        return asked.filter { str(parts[$0]["weighed"]) != "weighed" }.sorted()
+    }
+
+    /// A count in a part's size ("8 × ~25 g", "range 150–200 g; 10 × ~17 g pieces"): how many and the weight of one.
+    static func pieces(_ size: String) -> (n: Int, each: Double)? {
+        guard let rx = try? NSRegularExpression(pattern: #"(\d+)\s*[×x]\s*~?\s*(\d+(?:\.\d+)?)\s*g\b"#),
+              let m = rx.firstMatch(in: size, range: NSRange(size.startIndex..., in: size)),
+              let a = Range(m.range(at: 1), in: size).flatMap({ Int(size[$0]) }),
+              let b = Range(m.range(at: 2), in: size).flatMap({ Double(size[$0]) }), a > 0, b > 0 else { return nil }
+        return (a, b)
+    }
+
+    /// The calories the plate could really be, from each part's range of grams (a weighed part's is tight), or nil
+    /// when no part has a range or it's too narrow to be worth saying.
+    static func kcalRange(_ e: JSON) -> (low: Double, high: Double)? {
+        var lo = 0.0, hi = 0.0, any = false
+        for p in CheatDays.list(e["parts"]) {
+            let k = num(p["kcal"]) ?? 0
+            if let g = pos(p["grams"]), let l = pos(p["low"]), let h = pos(p["high"]), h > l {
+                lo += min(k, k * l / g); hi += max(k, k * h / g); any = true
+            } else { lo += k; hi += k }
+        }
+        guard any, hi - lo >= 20 else { return nil }
+        return ((lo / 10).rounded() * 10, (hi / 10).rounded() * 10)
+    }
+
     /// A part at other grams, its numbers scaled with it.
     private static func regrammed(_ p: JSON, to g: Double) -> JSON {
         guard let was = pos(p["grams"]), abs(was - g) >= 0.5 else { return p }
