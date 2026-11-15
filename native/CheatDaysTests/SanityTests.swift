@@ -104,4 +104,20 @@ final class SanityTests: XCTestCase {
         XCTAssertNotEqual(Sanity.range("Lamb rolls")?.label, "bread")
         XCTAssertEqual(Sanity.range("Bread rolls, white")?.label, "bread")
     }
+
+    /// A dish named after its vegetable isn't held to a vegetable's numbers (nor a chicken stir fry to plain chicken's).
+    func testADishWithAVegInItsNameIsntThatVeg() {
+        XCTAssertNotEqual(Sanity.range("Spinach and ricotta cannelloni")?.label, "leafy or non-starchy veg")
+        XCTAssertNotEqual(Sanity.range("Chicken and broccoli stir fry")?.label, "leafy or non-starchy veg")
+        XCTAssertNotEqual(Sanity.range("Chicken and broccoli stir fry")?.label, "cooked chicken")
+        XCTAssertNotEqual(Sanity.range("Mushroom risotto")?.label, "leafy or non-starchy veg")
+        XCTAssertEqual(Sanity.range("Broccoli, steamed")?.label, "leafy or non-starchy veg", "a vegetable on its own still is")
+        XCTAssertEqual(Sanity.range("Chicken breast, grilled")?.label, "cooked chicken")
+    }
+
+    /// A label's calories aren't raised from its macros: fibre and polyols count for less than 4 kcal a gram.
+    func testALabelsCaloriesStand() {
+        let bar: JSON = ["name": "Protein bar", "grams": 60, "kcal": 190, "protein_g": 21, "carbs_g": 22, "fat_g": 8, "src": "label", "numbers_from": "label"]
+        XCTAssertEqual(num(list(Assistant.sane(["parts": [bar]] as JSON)["parts"])[0]["kcal"]), 190)
+    }
 }

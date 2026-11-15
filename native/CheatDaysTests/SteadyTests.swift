@@ -150,4 +150,12 @@ final class SteadyTests: XCTestCase {
         XCTAssertEqual(str(CheatDays.list(out["parts"])[0]["name"]), "Beef hotpot rolls, boiled")
         XCTAssertEqual(Assistant.proteins("Beef and lamb hotpot rolls"), ["beef", "lamb"])
     }
+
+    /// A part they've renamed keeps its new name: "Ice cream, Kenny's" was put back to the earlier card's "Ice cream".
+    func testARenamedPartKeepsItsName() {
+        let earlier: JSON = ["parts": [["name": "Ice cream", "grams": 100, "kcal": 200, "protein_g": 3.5, "carbs_g": 24, "fat_g": 10, "src": "AFCD"] as JSON] as [Any]]
+        let e: JSON = ["name": "Ice cream", "kcal_total": 210, "parts": [["name": "Ice cream, Kenny's", "grams": 100, "kcal": 210, "protein_g": 3.5, "carbs_g": 24, "fat_g": 11] as JSON] as [Any]]
+        let out = list(Assistant.steady(e, earlier: [earlier])["parts"])[0]
+        XCTAssertEqual(str(out["name"]), "Ice cream, Kenny's")
+    }
 }

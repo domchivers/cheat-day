@@ -1146,9 +1146,12 @@ enum Assistant {
             }
             guard let o = found, let og = pos(o["grams"]) else { return p }
             let f = g / og, kcal = ((num(o["kcal"]) ?? 0) * f).rounded()
-            if kcal == num(p["kcal"]) && str(o["name"]) == str(p["name"]) { return p }
+            if kcal == num(p["kcal"]) && (str(o["name"]) == str(p["name"]) || !words.subtracting(FoodTable.words(str(o["name"]))).filter({ $0.count >= 4 && !everyday.contains($0) }).isEmpty) { return p }
             var x = p
-            x["name"] = o["name"]; x["kcal"] = kcal
+            // the earlier name, unless this one says more ("Ice cream, Kenny's" after "Ice cream" was renamed back)
+            let added = words.subtracting(FoodTable.words(str(o["name"]))).filter { $0.count >= 4 && !everyday.contains($0) }
+            if added.isEmpty { x["name"] = o["name"] }
+            x["kcal"] = kcal
             let per = (num(o["protein_g"]) ?? 0) / og
             if abs(pr / g - per) > 0.03 * per { x["protein_g"] = per * g }
             x["flagged"] = nil   // what was flagged was the table's number, now gone
@@ -1203,9 +1206,12 @@ enum Assistant {
         for i in parts.indices {
             let x = parts[i], k = num(x["kcal"]) ?? 0
             let r = Sanity.check(name: str(x["name"]), grams: num(x["grams"]), kcal: k, p: num(x["protein_g"]), c: num(x["carbs_g"]), f: num(x["fat_g"]))
-            if r.kcal != k { parts[i]["kcal"] = r.kcal; fixed = true }
             // chicken boiled down to 60% of its weight really has 37 g protein per 100 g: theirs, so not "more than chicken has"
             let own = ["them", "label"].contains(str(x["numbers_from"])) || ["them", "label"].contains(str(x["src"]))
+            // and a label's calories stand: a protein bar at 190 kcal with 21 P, 22 C (much of it fibre) and 8 F was
+            // put up to 244 from its macros
+            let label = own || str(x["src"]) == "web"
+            if r.kcal != k, !label { parts[i]["kcal"] = r.kcal; fixed = true }
             let fl = own ? r.flags.filter { !$0.contains("per 100 g") } : r.flags
             if !fl.isEmpty { parts[i]["flagged"] = true }   // shown amber, and not counted as checked
             flags += fl

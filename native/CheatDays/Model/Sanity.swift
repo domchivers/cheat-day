@@ -46,10 +46,17 @@ enum Sanity {
         if has(["cabbage", "lettuce", "spinach", "cucumber", "celery", "kale", "broccoli", "zucchini", "courgette", "tomato",
                 "capsicum", "bell pepper", "red pepper", "green pepper", "mushroom", "bok choy", "cauliflower", "salad leaves", "rocket", "asparagus", "green beans",
                 "sprout", "herbs"])
-            && !has(["chips", "crisps", "soup", "sauce", "dressing", "cheese", "pesto"]) {
+            && !has(["chips", "crisps", "soup", "sauce", "dressing", "cheese", "pesto",
+                     // a dish named after its vegetable ("Spinach and ricotta cannelloni" was swapped for plain spinach,
+                     // 450 kcal down to 70): its meat, cheese, starch or oil
+                     "ricotta", "mozzarella", "feta", "paneer", "cannelloni", "lasagne", "lasagna", "risotto", "pasta", "noodle", "rice",
+                     "pie", "quiche", "frittata", "omelette", "tart", "pizza", "bake", "gratin", "stuffed", "dumpling", "roll", "pakora",
+                     "bhaji", "tempura", "fried", "stir fry", "stir-fry", "stirfry", "roast", "curry", "chicken", "beef", "pork", "lamb",
+                     "prawn", "tofu", "egg", "bacon", "ham", "tuna", "salmon", "avocado", "nut"]) {
             return Range(label: "leafy or non-starchy veg", lo: 10, hi: 60, proteinMax: 4.5)
         }
-        if has(["chicken", "turkey"]) && !has(["nugget", "schnitzel", "kiev", "burger", "wrap", "sandwich", "curry", "soup", "broth", "stock", "pie", "skin"]) {
+        if has(["chicken", "turkey"]) && !has(["nugget", "schnitzel", "kiev", "burger", "wrap", "sandwich", "curry", "soup", "broth", "stock", "pie", "skin",
+                                               "stir fry", "stir-fry", "stirfry", "salad", "risotto", "pasta", "noodle", "rice", "broccoli", "veg"]) {
             if raw { return Range(label: "raw chicken", lo: 90, hi: 225, proteinMax: 24.5) }
             return Range(label: "cooked chicken", lo: 140, hi: 270, proteinMax: 32)
         }
