@@ -66,7 +66,7 @@ struct StoryView: View {
     /// Their slides: posts from today, then each meal they've logged, then workouts.
     static func slides(for id: String) -> [Slide] {
         let today = DayKey.string(Date())
-        let posts = Feed.shared.posts.filter { str($0["owner"]) == id && str($0["kind"]) != "moment" && str($0["kind"]) != "photo" && String(str($0["created_at"]).prefix(10)) == today }
+        let posts = Feed.shared.posts.filter { str($0["owner"]) == id && str($0["kind"]) != "moment" && str($0["kind"]) != "photo" && ISO.date(str($0["created_at"])).map { DayKey.string($0) } == today }   // the server's time is UTC: by its first ten letters a Melbourne post before 11am was yesterday's
             .sorted { str($0["created_at"]) < str($1["created_at"]) }
         // stories they posted come first, then today's posts, meals and workouts
         var out: [Slide] = Stories.shared.of(id).map { .snap($0) } + posts.map { .post($0) }
@@ -95,14 +95,20 @@ struct StoryView: View {
     static func extras(_ id: String) -> Int {
         id == Profiles.shared.me ? 0 : max(0, slides(for: id).count - Stories.shared.of(id).count)
     }
-    static func signature(_ id: String) -> String { "\(DayKey.string(Date()))|\(extras(id))" }
+    /// Which day of theirs is showing: their own date, not mine. A friend's day stays up for 18 hours after they last
+    /// touched it (family in the UK), so it runs past my midnight; keyed by my date, a day already watched lit up
+    /// again every night at 12 with nothing new in it.
+    static func day(_ id: String) -> String {
+        Friends.shared.people.first { $0.id == id }?.current.map { str($0["day"]) } ?? DayKey.string(Date())
+    }
+    static func signature(_ id: String) -> String { "\(day(id))|\(extras(id))" }
     static func seen(_ id: String) -> Bool {
         _ = Stories.shared.seenTick   // read, so a ring is drawn again when a story's been watched
         guard !Stories.shared.unwatched(id) else { return false }
         let more = extras(id)
         guard more > 0 else { return true }
         let kept = (UserDefaults.standard.dictionary(forKey: "stories.seen")?[id] as? String ?? "").split(separator: "|")
-        guard kept.count == 2, String(kept[0]) == DayKey.string(Date()), let had = Int(kept[1]) else { return false }
+        guard kept.count == 2, String(kept[0]) == day(id), let had = Int(kept[1]) else { return false }
         return had >= more
     }
     static func markSeen(_ id: String) {
