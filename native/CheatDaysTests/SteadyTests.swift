@@ -158,4 +158,27 @@ final class SteadyTests: XCTestCase {
         let out = list(Assistant.steady(e, earlier: [earlier])["parts"])[0]
         XCTAssertEqual(str(out["name"]), "Ice cream, Kenny's")
     }
+
+    /// A weight set on the card outside the photo's range (a half, a weight typed in) stays where they put it.
+    func testAWeightTheySetOnTheCardStays() {
+        var half = part("Tiramisu, cocoa dusted", 40, kcal: 102, p: 1.9, c: 6.5, f: 7.5); half["low"] = 60; half["high"] = 120
+        let after = Assistant.held(card([part("Tiramisu, cocoa dusted", 40, kcal: 102, p: 1.9, c: 6.5, f: 7.5)]), before: card([half]), said: "it was the dense kind")
+        XCTAssertEqual(grams(after.estimate, "Tiramisu, cocoa dusted"), 40)
+        var typed = half; typed["grams"] = 150; typed["kcal"] = 381
+        let moved = Assistant.held(card([part("Tiramisu, cocoa dusted", 110, kcal: 279, p: 5.2, c: 18, f: 20)]), before: card([typed]), said: "what's the protein in that")
+        XCTAssertEqual(grams(moved.estimate, "Tiramisu, cocoa dusted"), 150)
+        XCTAssertEqual(CheatDays.list(moved.estimate["parts"])[0]["locked"] as? Bool, true)
+    }
+
+    /// A count for one food doesn't lock the others named alongside it.
+    func testACountLocksOnlyTheFoodItsFor() {
+        var dumplings = part("Pork dumplings", 120, kcal: 270, p: 11, c: 28, f: 12); dumplings["low"] = 90; dumplings["high"] = 160
+        var rice = part("Steamed rice", 200, kcal: 260, p: 5, c: 57, f: 0.6); rice["low"] = 150; rice["high"] = 250
+        let out = Assistant.held(card([part("Pork dumplings", 50, kcal: 113, p: 4.6, c: 11.7, f: 5), part("Steamed rice", 300, kcal: 390, p: 7.5, c: 85, f: 0.9)]),
+                                 before: card([dumplings, rice]), said: "I had 2 dumplings and the rice").estimate
+        XCTAssertEqual(grams(out, "Pork dumplings"), 50, "their count")
+        XCTAssertEqual(CheatDays.list(out["parts"])[0]["locked"] as? Bool, true)
+        XCTAssertEqual(grams(out, "Steamed rice"), 250, "the rice is held to its range, not locked at a new guess")
+        XCTAssertNil(CheatDays.list(out["parts"])[1]["locked"])
+    }
 }

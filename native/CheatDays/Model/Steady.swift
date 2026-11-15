@@ -61,13 +61,25 @@ extension Assistant {
     /// back at the nearest end, and nothing moved at all when they only asked again. What was held, in words for the reply.
     static func held(_ e: JSON, before: JSON?, said: String) -> (estimate: JSON, notes: [String]) {
         let old = CheatDays.list(before?["parts"])
-        let amount = givesAmount(said), again = asksAgainOnly(said)
+        let saysAmount = givesAmount(said), again = asksAgainOnly(said)
         let saidWords = Set(FoodTable.words(said).filter { $0.count >= 4 })
         var notes: [String] = [], changed = false
         // Each earlier part answers to one new part at most: the one of the same name, else one that sounds like it.
         // A plate's lamb gyros and chicken gyros were both held to the one "gyros meat" of the card before, each put at
         // its 160 g, and the plate came out with 320 g of meat where the look had said 260.
         let news = CheatDays.list(e["parts"])
+        // Which parts the weight or count is for: a part named in a clause with a figure in it ("I had 2 dumplings and
+        // the rice" is for the dumplings, not the rice, which was locked too). When no part is named ("the box was
+        // around 150 g"), it's for the parts that moved.
+        let clauses = said.lowercased().components(separatedBy: CharacterSet(charactersIn: ",.;!?\n"))
+            .flatMap { $0.components(separatedBy: " and ") }
+            .filter { $0.range(of: #"\d"#, options: .regularExpression) != nil }
+            .map { FoodTable.words($0).filter { $0.count >= 4 } }
+        func given(_ p: JSON) -> Bool {
+            let w = FoodTable.words(str(p["name"])).filter { $0.count >= 4 }
+            return clauses.contains { c in c.contains { a in w.contains { $0.hasPrefix(a) || a.hasPrefix($0) } } }
+        }
+        let anyGiven = saysAmount && news.contains(where: given)
         var taken = Set<Int>(), match: [Int: JSON] = [:]
         for (i, p) in news.enumerated() {
             let n = str(p["name"]).lowercased()
@@ -88,7 +100,12 @@ extension Assistant {
                 guard let lo = pos(w["low"]), let hi = pos(w["high"]) else { return nil }
                 return (lo, hi)
             }
-            let locked = was?["locked"] as? Bool == true
+            // a weight they set on the card (typed in, a half, a smaller share) sits outside the range the photo gave:
+            // it's theirs, and a follow-up mustn't put it back inside ("half", then "it was the dense kind", put the
+            // tiramisu back up from 40 g to 60)
+            let setByThem = wasG.map { w in wasRange.map { w < $0.low - 0.5 || w > $0.high + 0.5 } ?? false } ?? false
+            let locked = was?["locked"] as? Bool == true || setByThem
+            let amount = anyGiven ? given(p) : saysAmount
             func keep(_ r: (low: Double, high: Double), locked l: Bool) { p["low"] = r.low.rounded(); p["high"] = r.high.rounded(); p["locked"] = l ? true : nil }
             let label = str(p["name"]).split(separator: ",").first.map { $0.lowercased() } ?? "it"
 
@@ -105,10 +122,12 @@ extension Assistant {
             if again || (locked && !amount) {
                 if abs(wasG - g) >= 1 {
                     p = regrammed(p, to: wasG); changed = true
-                    notes.append(locked ? "I've kept the \(label) at \(Fmt.int(wasG)) g from the numbers you gave: they're more reliable than anything I can judge from the photo."
+                    notes.append(setByThem ? "I've kept the \(label) at the \(Fmt.int(wasG)) g you set."
+                                 : locked ? "I've kept the \(label) at \(Fmt.int(wasG)) g from the numbers you gave: they're more reliable than anything I can judge from the photo."
                                         : "Nothing new came in, so the \(label) stays at \(Fmt.int(wasG)) g.")
                 }
                 if let w = was { for k in ["low", "high", "locked", "size"] { p[k] = w[k] } }
+                if setByThem { keep((wasG * (1 - lockedSlack), wasG * (1 + lockedSlack)), locked: true) }
                 return p
             }
             // a new look: it can narrow the range, never leave it
