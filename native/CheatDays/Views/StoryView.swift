@@ -10,6 +10,7 @@ struct StoryView: View {
     var highlight: JSON? = nil
     @State private var adding: JSON?   // your story going into a highlight
     @State private var managing: JSON?   // your story's options are open
+    @State private var mentioning: JSON? // your story, someone being mentioned on it after it went up
     @State private var failed: String?
     @Environment(\.dismiss) private var dismiss
     @State private var slide = 0
@@ -246,7 +247,7 @@ struct StoryView: View {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(50))
                 if case .snap(let st)? = now, waited < 8, Stories.pictures(st).contains(where: { ImageStore.cached($0) == nil }) { waited += 0.05; continue }
-                if paused || tagged != nil || reportOf != nil || typing || reacting || sharing != nil || sharingStory != nil || seenBy != nil || adding != nil || managing != nil { continue }
+                if paused || tagged != nil || reportOf != nil || typing || reacting || sharing != nil || sharingStory != nil || seenBy != nil || adding != nil || managing != nil || mentioning != nil { continue }
                 progress += 0.05 / length
                 if progress >= 1 { next(); return }
             }
@@ -428,8 +429,19 @@ struct StoryView: View {
                 .sheet(item: $sharingStory) { b in ShareStorySheet(story: b.post).presentationDetents([.medium, .large]) }
                 .sheet(item: Binding(get: { seenBy.map { PostBox(post: $0) } }, set: { seenBy = $0?.post })) { b in SeenBySheet(story: b.post).presentationDetents([.medium, .large]) }
                 .sheet(item: Binding(get: { adding.map { PostBox(post: $0) } }, set: { adding = $0?.post })) { b in AddToHighlight(story: b.post).presentationDetents([.medium, .large]) }
+                .sheet(item: Binding(get: { mentioning.map { PostBox(post: $0) } }, set: { mentioning = $0?.post })) { b in
+                    MentionPicker { id, name in
+                        Task {
+                            if await Stories.shared.mention(b.post, user: id, name: name) { UINotificationFeedbackGenerator().notificationOccurred(.success) }
+                            else { failed = Stories.shared.error ?? "Couldn't add that." }
+                        }
+                    }
+                    .presentationDetents([.medium, .large])
+                }
                 .confirmationDialog("Your story", isPresented: Binding(get: { managing != nil }, set: { if !$0 { managing = nil } }), presenting: managing) { m in
                     Button("Add to highlight") { managing = nil; DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { adding = m } }
+                    // tag someone after it's gone up (it could only be done while it was made)
+                    Button("Mention someone") { managing = nil; DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { mentioning = m } }
                     Button("Delete this story", role: .destructive) {
                         managing = nil
                         Task {
