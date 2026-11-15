@@ -128,8 +128,6 @@ struct TodayView: View {
                             .padding(.vertical, 4)
                         }
                     }
-                    // by each send's id, not its position: adding one removes it, and a row drawn by position
-                    // then read past the end of the list and crashed the app
                     // all of them on one card, a line each (each was its own card, with a gap between)
                     let sent = Inbox.shared.items.map { Line(id: str($0["id"]), item: $0) }
                     if !sent.isEmpty {
