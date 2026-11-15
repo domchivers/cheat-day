@@ -660,7 +660,14 @@ enum Assistant {
         // "#1000 Bread" isn't a number they gave
         let words = shop.isEmpty ? said : said.replacingOccurrences(of: shop, with: "", options: .caseInsensitive)
         // a number, or a food from before ("same as yesterday", "that pasta again"), whose logged numbers are theirs
-        let gaveNumbers = words.range(of: #"\d"#, options: .regularExpression) != nil
+        // A weight or a count alone isn't their numbers: "125g beef hotpot rolls" is how much, and the calories were the
+        // AI's own guess at a fatty cut, marked as theirs, so the food tables never checked it (the owner's hotpot,
+        // 15 Nov). Calories, kJ or macros are; so is a batch they weighed raw and cooked (worked out from its totals).
+        let figures = words.range(of: #"\d+(\.\d+)?\s*(k?cals?|calories|kj|kilojoules)\b|\d+(\.\d+)?\s*g?\s*(of\s+)?(protein|carbs?|fat)\b|\b(protein|carbs?|fat)\s*:?\s*\d|\d+\s*[pcf]\b"#,
+                                  options: [.regularExpression, .caseInsensitive]) != nil
+        let batch = words.range(of: #"\b(batch|raw|uncooked|cooked|now|boiled down|after cooking|before cooking)\b"#, options: [.regularExpression, .caseInsensitive]) != nil
+            && words.range(of: #"\d"#, options: .regularExpression) != nil
+        let gaveNumbers = figures || batch
             || words.range(of: #"\b(same|again|yesterday|last|before|earlier|usual|another|that|those|leftover|leftovers|spoke|talked|mentioned|above|both|together)\b"#, options: [.regularExpression, .caseInsensitive]) != nil
         let label = photos || said.lowercased().contains("label")
         let shopPattern = NSRegularExpression.escapedPattern(for: shop) + #"(['’]s)?"#

@@ -243,4 +243,15 @@ final class FoodMatchTests: XCTestCase {
         XCTAssertFalse((t.best("Braised meat with grain and tomato", tags: ["cooked"])?.name ?? "").lowercased().contains("tomato"))
         XCTAssertFalse((t.best("Quinoa patty, pan fried", tags: ["cooked", "fried"])?.name ?? "").lowercased().contains("fish"))
     }
+
+    /// A weight they give is how much, not their numbers: the calories stay the AI's to be checked (the owner's hotpot,
+    /// 15 Nov: "125g beef hotpot rolls" came out as their own 334 kcal and was never checked).
+    func testAWeightAloneIsntTheirNumbers() {
+        func from(_ said: String) -> String { str(list(Assistant.tidied(["parts": [["name": "Beef hotpot rolls", "grams": 125, "numbers_from": "them"]]], said: said, photos: false)["parts"])[0]["numbers_from"]) }
+        XCTAssertEqual(from("Had half this packet, 135g cabbage, 125g beef hotpot rolls and didn't drink any of the soup"), "estimate")
+        XCTAssertEqual(from("125 g beef rolls, 334 kcal"), "them")
+        XCTAssertEqual(from("beef rolls 125g, 20g protein"), "them")
+        XCTAssertEqual(from("Beef rolls 300 cal 20p 0c 25f"), "them")
+        XCTAssertEqual(from("918 g chicken breast raw, now 553 g cooked"), "them", "a batch weighed raw and cooked is worked out from its totals")
+    }
 }
