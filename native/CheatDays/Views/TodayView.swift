@@ -960,20 +960,21 @@ struct AmountView: View {
                             // name stayed "Scanned food" for good (only "Fix the numbers" could rename, and that
                             // flattens its numbers to one portion).
                             else if target.editId != nil {
-                                HStack(spacing: 6) {
-                                    TextField("Name", text: $nameText).font(.title3.bold()).submitLabel(.done).focused($naming)
-                                    // a button you can see, in the app's colour: the faint little pencil went unnoticed
-                                    Button { naming = true } label: {
-                                        Image(systemName: "pencil").font(.system(size: 16, weight: .bold)).foregroundStyle(Theme.accent)
-                                            .frame(width: 36, height: 36).background(Theme.accent.opacity(0.16), in: Circle())
-                                    }
-                                    .buttonStyle(.plain).accessibilityLabel("Rename")
-                                }
+                                TextField("Name", text: $nameText).font(.title3.bold()).submitLabel(.done).focused($naming)
                             }
                             else { Text(name).font(.title3.bold()).lineLimit(2) }
                             if let per = perText { Text(per).font(.subheadline).foregroundStyle(.secondary) }
                         }
                         Spacer()
+                        // rename: a button you can see, in the app's colour, level with the food's picture (it sat by
+                        // the name's first line, higher than the picture)
+                        if target.editId != nil, !asksName {
+                            Button { naming = true } label: {
+                                Image(systemName: "pencil").font(.system(size: 16, weight: .bold)).foregroundStyle(Theme.accent)
+                                    .frame(width: 36, height: 36).background(Theme.accent.opacity(0.16), in: Circle())
+                            }
+                            .buttonStyle(.plain).accessibilityLabel("Rename")
+                        }
                     }
                     if let onLabelPhoto, let warning = Sanity.barcodeWarning(target.basis) {
                         VStack(alignment: .leading, spacing: 8) {
