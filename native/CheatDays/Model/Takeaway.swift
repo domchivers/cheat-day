@@ -296,6 +296,16 @@ enum Takeaway {
         """
     }
 
+    /// Any places there, as before 1.3.50 (find-protein-check.js "new"): for when the published-nutrition search finds
+    /// too few. In a suburb ("South Yarra") it mostly came back with none, where this found four.
+    static func findAskAny(_ area: String, want: [String], meal: String, kcal: Double, protein: Double) -> String {
+        """
+        Find 4 real restaurants, cafés or takeaways in or near \(area), \(Plan.country), for \(meal.lowercased())\(want.isEmpty ? "" : ", for someone after \(want.joined(separator: ", "))"). For each, the one order from its current menu that gets to \(Int(protein)) g protein or more within about \(Fmt.int(kcal)) kcal: one dish when a dish has that much protein, else a dish with what makes up the protein from the same menu (double meat, extra pieces of chicken, a second small main, a protein side), up to three items. The protein matters most: where the menu can reach \(Int(protein)) g, the order reaches it; where it can't, give the order with the most protein you can within the calories. Always give 4 places. Search the web for places there; delivery listings on DoorDash, Uber Eats or Menulog have the current menu, often with kJ in each item's name ("Chicken Bowl (2280 kJ)"). Only list places you found on a page, in that area, still trading.
+        For each place: name as it calls itself. area: its street or suburb, a few words. cuisine: one or two words. dish: the order as named on its menu, items joined with " + " ("Grilled Chicken Bowl + Extra Chicken"). published is full when the place gives the calories and protein of every item in the order, energy when it gives only their kJ or kcal, none when any item has nothing. kj: the items' published kJ added up, else 0. kcal: as published added up, else kJ ÷ 4.184, else your honest estimate. protein_g, carbs_g and fat_g: for the whole order, as published, else your honest estimate from what each item is and its usual portion. Never guess a kJ: an order with an item whose energy you didn't read on a page has kj 0 and published none.
+        found false if you couldn't find places there.
+        """
+    }
+
     /// choose, find, log or other for a message typed in Plan a meal; nil when Claude can't be reached. Choose needs a
     /// restaurant named, as in the assistant.
     @MainActor static func intent(_ text: String) async -> String? {
@@ -516,7 +526,15 @@ enum Takeaway {
         let a = aim(store, said: asked), k = kcal ?? a.kcal, p = protein ?? a.protein
         step?(located ? "You're in \(area)" : "Asked for places in \(area)", "Searching the web for places in \(area)…")
         let ask: [JSON] = [["text": findAsk(area, want: want, meal: a.meal, kcal: k, protein: p)]]
-        guard let r = await Gemini.askClaude("menu", schema: findSchema, parts: ask, extra: ["country": Region.current.code]) else {
+        var r = await Gemini.askClaude("menu", schema: findSchema, parts: ask, extra: ["country": Region.current.code])
+        // places that publish their nutrition first; too few of them there (a suburb), any places there as before
+        if r == nil || r?["found"] as? Bool != true || list(r?["places"]).count < 2 {
+            step?("Few places there publish their numbers", "Looking wider…")
+            let wide: [JSON] = [["text": findAskAny(area, want: want, meal: a.meal, kcal: k, protein: p)]]
+            if let w = await Gemini.askClaude("menu", schema: findSchema, parts: wide, extra: ["country": Region.current.code]), w["found"] as? Bool == true,
+               list(w["places"]).count > list(r?["places"]).count { r = w }
+        }
+        guard let r else {
             return ["kind": "answer", "reply": "I couldn't search for places just now. Try again in a minute, or name a place and I'll check its menu."]
         }
         return places(r, area: area, asked: asked, meal: a.meal, kcal: k, protein: p, proteinAsked: proteinAsked)
