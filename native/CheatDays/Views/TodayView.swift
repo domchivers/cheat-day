@@ -845,17 +845,21 @@ private struct SendFoodDialog: ViewModifier {
     var note: (String) -> Void
     func body(content: Content) -> some View {
         content
-            .confirmationDialog("Send \(str(item?["name"])) to…", isPresented: Binding(get: { item != nil }, set: { if !$0 { item = nil } }), titleVisibility: .visible) {
-                ForEach(Friends.shared.people) { p in
-                    Button(p.name) {
-                        guard let it = item else { return }
-                        Task {
-                            do { try await Friends.shared.send(it, to: p); note("Sent \(str(it["name"])) to \(p.name)") }
-                            catch { note("Couldn't send: \(error.localizedDescription)") }
-                        }
+            // From the bottom of the screen, as sending a post is: friends with their faces, more than one at once,
+            // and a note. (As a list of names it came up as a pop-up hung off the top of the food's row.)
+            .sheet(isPresented: Binding(get: { item != nil }, set: { if !$0 { item = nil } })) {
+                if let it = item {
+                    SendToSheet { id, words in
+                        guard let p = Friends.shared.people.first(where: { $0.id == id }) else { return }
+                        do {
+                            try await Friends.shared.send(it, to: p)
+                            if !words.isEmpty { await Messages.shared.send(to: id, text: words) }
+                            note("Sent \(str(it["name"])) to \(p.name)")
+                        } catch { note("Couldn't send: \(error.localizedDescription)") }
                     }
+                    .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
                 }
-            } message: { Text(Friends.shared.people.isEmpty ? "Add a friend first, in the Friends tab." : "It'll wait on their Today, ready to add in one tap.") }
+            }
             .task { if Friends.shared.people.isEmpty { await Friends.shared.load() } }
     }
 }
