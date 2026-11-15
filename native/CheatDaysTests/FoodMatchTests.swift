@@ -189,6 +189,14 @@ final class FoodMatchTests: XCTestCase {
 
     /// Meat off the spit at a Greek or kebab shop is the marinated, fatty kind, not a lean grilled cut: lamb gyros came
     /// out as lean lamb fillet (160 kcal per 100 g) and chicken gyros as a processed poultry doner (268).
+    /// Hotpot's beef and lamb rolls are thin slices of fatty beef and lamb, not minced meat rolls or bread rolls.
+    func testHotpotRollsAreFattySlices() {
+        XCTAssertEqual(FoodReference.match("Beef and lamb hotpot rolls, boiled")?.name, "Beef and lamb hotpot slices")
+        XCTAssertEqual(FoodReference.match("Beef hotpot rolls, boiled")?.name, "Beef hotpot slices")
+        XCTAssertEqual(FoodReference.match("Lamb hotpot rolls")?.name, "Lamb hotpot slices")
+        XCTAssertNil(FoodReference.match("Roast beef roll"))
+    }
+
     func testGyrosMeatIsTheMarinatedKind() {
         // checked first, before the tables: there, the "grilled" tag took the lamb back to a lean grilled fillet
         XCTAssertEqual(FoodReference.match("Lamb gyros meat, grilled")?.name, "Lamb gyros meat")
