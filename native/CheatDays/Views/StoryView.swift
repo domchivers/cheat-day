@@ -56,7 +56,7 @@ struct StoryView: View {
     /// What's on a story that can be pressed, so it's drawn above the taps that turn the slides: a poll, a question,
     /// a person tagged.
     static func live(_ o: JSON) -> Bool {
-        ["poll", "question"].contains(str(o["type"])) || (str(o["type"]) == "mention" && !str(o["user"]).isEmpty)
+        ["poll", "question"].contains(str(o["type"])) || (str(o["type"]) == "mention" && !str(o["user"]).isEmpty && o["hidden"] as? Bool != true)
     }
 
     private var who: String { people[min(at, people.count - 1)] }
@@ -427,6 +427,9 @@ struct StoryView: View {
                     }
                     Spacer()
                     Text(str(st["audience"]) == "friends" ? "Friends only" : "Friends and followers").font(.caption.weight(.bold)).foregroundStyle(.white.opacity(0.6))
+                    // mention someone on it now it's up, as Instagram's Mention along the bottom
+                    Button { mentioning = st } label: { Image(systemName: "at").font(.title3.weight(.semibold)).foregroundStyle(.white).padding(8) }
+                        .accessibilityLabel("Mention someone")
                     sendButton { sharingStory = PostBox(post: st) }
                     // a dialog that pauses the story: a menu kept playing, moved to the next slide, and its Delete did nothing
                     Button { managing = st } label: { Image(systemName: "ellipsis").font(.title3).foregroundStyle(.white).padding(10) }

@@ -144,15 +144,16 @@ final class Stories {
         _ = try? await api.rest("/rest/v1/story_views?story_id=eq.\(id)&viewer=eq.\(me)", method: "PATCH", body: ["reaction": NSNull()] as JSON)
     }
 
-    /// Someone mentioned on a story already up: a tag of them goes on it (low down, out of the way, to be seen and
-    /// tapped like any other), and they're told in their chat with the story itself, so they can add it to theirs.
+    /// Someone mentioned on a story already up, as Instagram does it: nothing is put on the story for anyone to see
+    /// (a hidden tag, kept so they're not told twice and can add it to theirs), and they're told in their chat with the
+    /// story itself.
     /// False if the server didn't take it.
     func mention(_ story: JSON, user: String, name: String) async -> Bool {
         var overlays = list(story["overlays"])
         guard !overlays.contains(where: { str($0["type"]) == "mention" && str($0["user"]) == user }) else { return true }
         let placed = overlays.filter { str($0["type"]) == "mention" }.count
         overlays.append(["type": "mention", "user": user, "name": name, "id": String(UUID().uuidString.prefix(8)).lowercased(),
-                         "x": 0.5, "y": min(0.9, 0.82 + Double(placed) * 0.05), "scale": 0.7, "rotation": 0.0])
+                         "hidden": true, "x": 0.5, "y": min(0.9, 0.82 + Double(placed) * 0.05), "scale": 0.7, "rotation": 0.0])
         guard (try? await api.rest("/rest/v1/stories?id=eq.\(str(story["id"]))&owner=eq.\(me)", method: "PATCH", body: ["overlays": overlays] as JSON)) != nil else {
             error = "Couldn't add that. Check your connection and try again."; return false
         }

@@ -477,7 +477,8 @@ struct StoryLayer: View {
             ZStack {
                 ForEach(items.indices, id: \.self) { i in
                     let o = items[i]
-                    if str(o["type"]) == "drawing" { StoryDrawing(strokes: list(o["strokes"])) }
+                    if o["hidden"] as? Bool == true { EmptyView() }   // a mention added after it went up: not shown
+                    else if str(o["type"]) == "drawing" { StoryDrawing(strokes: list(o["strokes"])) }
                     else {
                         StoryItem(o: o, votes: poll(o), vote: voteAction(o), answer: answerAction(o))
                             // the tap is the tag's own, taken before it's put in its place: taken after, it was
