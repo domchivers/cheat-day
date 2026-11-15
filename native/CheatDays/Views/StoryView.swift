@@ -236,8 +236,8 @@ struct StoryView: View {
             if highlight == nil, slide >= slides.count - 1 { Self.markSeen(who) }
             // what's coming, fetched while this slide's being watched: the rest of this person's, then the next person's
             if highlight == nil {
-                let rest = slides.dropFirst(slide + 1).compactMap(Self.picture)
-                let after = people.indices.contains(at + 1) ? Self.slides(for: people[at + 1]).compactMap(Self.picture) : []
+                let rest = slides.dropFirst(slide + 1).flatMap(Self.pictures)
+                let after = people.indices.contains(at + 1) ? Self.slides(for: people[at + 1]).flatMap(Self.pictures) : []
                 Stories.shared.fetchSoon(rest + after)
             }
             // a photo that isn't here yet: its bar waits for it (up to eight seconds), as Instagram's does. It ran on over
@@ -245,7 +245,7 @@ struct StoryView: View {
             var waited = 0.0
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(50))
-                if case .snap(let st)? = now, str(st["kind"]) != "video", waited < 8, ImageStore.cached(str(st["media"])) == nil { waited += 0.05; continue }
+                if case .snap(let st)? = now, waited < 8, Stories.pictures(st).contains(where: { ImageStore.cached($0) == nil }) { waited += 0.05; continue }
                 if paused || tagged != nil || reportOf != nil || typing || reacting || sharing != nil || sharingStory != nil || seenBy != nil || adding != nil || managing != nil { continue }
                 progress += 0.05 / length
                 if progress >= 1 { next(); return }
@@ -347,7 +347,7 @@ struct StoryView: View {
                 if str(st["kind"]) == "video", let url = URL(string: str(st["media"])) { LoopingVideo(url: url, paused: paused || seenBy != nil); layer }
                 // a photo still on its way: black with a turning circle, and nothing that's stuck on it until it's
                 // here (the stickers and tags showed at once, over an empty slide)
-                else { StoryPhoto(src: str(st["media"])) { layer }.id(str(st["media"])) }
+                else { StoryPhoto(src: str(st["media"]), also: Stories.pictures(st).filter { $0 != str(st["media"]) }) { layer }.id(str(st["id"])) }
             }
             .aspectRatio(StoryArt.aspect, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -538,6 +538,11 @@ struct StoryView: View {
         default: return nil
         }
     }
+    /// Every picture a slide shows, photos stuck on it included.
+    static func pictures(_ s: Slide) -> [String] {
+        if case .snap(let st) = s { return Stories.pictures(st) }
+        return picture(s).map { [$0] } ?? []
+    }
 
     private func isLiked(_ s: Slide) -> Bool {
         switch s {
@@ -656,18 +661,23 @@ struct ShareStorySheet: View {
 /// A story's photo with what's placed on it. Until the photo's here: black, a turning circle, and none of the rest.
 struct StoryPhoto<Over: View>: View {
     let src: String
+    /// The photos stuck on it: it waits for those too, so it comes up whole (the picture showed with a stuck-on
+    /// photo still blank on it, filling in after).
+    var also: [String] = []
     @ViewBuilder var over: () -> Over
     @State private var image: UIImage?
+    @State private var rest: Bool
 
-    init(src: String, @ViewBuilder over: @escaping () -> Over) {
-        self.src = src; self.over = over
+    init(src: String, also: [String] = [], @ViewBuilder over: @escaping () -> Over) {
+        self.src = src; self.also = also; self.over = over
         _image = State(initialValue: ImageStore.cached(src))
+        _rest = State(initialValue: also.allSatisfy { ImageStore.cached($0) != nil })
     }
 
     var body: some View {
         ZStack {
             Color.black
-            if let image {
+            if let image, rest {
                 Color.clear.overlay { Image(uiImage: image).resizable().scaledToFill() }.clipped()
                 over()
             } else {
@@ -675,11 +685,23 @@ struct StoryPhoto<Over: View>: View {
             }
         }
         .task(id: src) {
-            if image != nil { return }
-            for attempt in 0..<3 {
-                if attempt > 0 { try? await Task.sleep(nanoseconds: UInt64(attempt) * 1_500_000_000) }
-                if Task.isCancelled { return }
-                if let got = await ImageStore.load(src) { image = got; return }
+            // the stuck-on photos come down alongside; however they fare, they're waited for no more than eight seconds
+            let others = also
+            let waiting = Task {
+                await withTaskGroup(of: Void.self) { g in for u in others where ImageStore.cached(u) == nil { g.addTask { _ = await ImageStore.load(u) } } }
+            }
+            if image == nil {
+                for attempt in 0..<3 {
+                    if attempt > 0 { try? await Task.sleep(nanoseconds: UInt64(attempt) * 1_500_000_000) }
+                    if Task.isCancelled { return }
+                    if let got = await ImageStore.load(src) { image = got; break }
+                }
+            }
+            if !rest {
+                let limit = Task { try? await Task.sleep(for: .seconds(8)); waiting.cancel() }
+                _ = await waiting.value
+                limit.cancel()
+                rest = true
             }
         }
     }

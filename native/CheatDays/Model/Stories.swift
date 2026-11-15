@@ -65,10 +65,16 @@ final class Stories {
     /// Stories' pictures brought down before they're opened: the ones not watched yet first, one at a time, quietly.
     /// Fetched only when a slide came up, each sat blank for a second or two while its bar ran on.
     private var ahead: Task<Void, Never>?
+
+    /// Every picture a story shows: its own (not a video's) and each photo stuck on it.
+    static func pictures(_ st: JSON) -> [String] {
+        (str(st["kind"]) == "video" || str(st["media"]).isEmpty ? [] : [str(st["media"])])
+            + list(st["overlays"]).filter { str($0["type"]) == "photo" }.map { str($0["url"]) }.filter { !$0.isEmpty }
+    }
     private func fetchAhead(_ stories: [JSON]) {
-        let photos = stories.filter { str($0["kind"]) != "video" && !str($0["media"]).isEmpty }
-        let order = photos.filter { !watched.contains(str($0["id"])) } + photos.filter { watched.contains(str($0["id"])) }
-        let wanted = order.prefix(40).map { str($0["media"]) }
+        // each story's own picture and the photos stuck on it (they're pictures of their own, fetched apart)
+        let order = stories.filter { !watched.contains(str($0["id"])) } + stories.filter { watched.contains(str($0["id"])) }
+        let wanted = Array(order.flatMap { Self.pictures($0) }.prefix(60))
         ahead?.cancel()
         ahead = Task(priority: .utility) {
             for src in wanted {
