@@ -56,6 +56,26 @@ final class StoryBackdropTests: XCTestCase {
         }
     }
 
+    /// The posted pictures kept with the results, for looking at: a photo with fine detail (a gradient, thin lines and
+    /// small text) as a polaroid made smaller, and filling the frame, to see they're sharp and the blur behind is smooth.
+    @MainActor
+    func testPostedPicturesToLookAt() throws {
+        let f = UIGraphicsImageRendererFormat(); f.scale = 1
+        let photo = UIGraphicsImageRenderer(size: CGSize(width: 1080, height: 1920), format: f).image { c in
+            let g = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: [UIColor.systemTeal.cgColor, UIColor.systemOrange.cgColor] as CFArray, locations: [0, 1])!
+            c.cgContext.drawLinearGradient(g, start: .zero, end: CGPoint(x: 1080, y: 1920), options: [])
+            UIColor.black.setStroke()
+            for i in stride(from: 0, to: 1080, by: 24) { let p = UIBezierPath(); p.move(to: CGPoint(x: CGFloat(i), y: 0)); p.addLine(to: CGPoint(x: CGFloat(i), y: 400)); p.lineWidth = 1; p.stroke() }
+            let words = "Sharp small text 0123456789 the quick brown fox" as NSString
+            for row in 0..<20 { words.draw(at: CGPoint(x: 30, y: 460 + CGFloat(row) * 60), withAttributes: [.font: UIFont.systemFont(ofSize: CGFloat(14 + row)), .foregroundColor: UIColor.white]) }
+        }
+        let cw: CGFloat = 393, ch = cw * 16 / 9
+        for (name, scale, style) in [("polaroid", CGFloat(0.7), 3), ("filling", CGFloat(1), 0), ("frame", CGFloat(0.75), 1)] {
+            let out = try XCTUnwrap(StoryBackdrop.picture(photo: photo, cw: cw, ch: ch, scale: scale, offset: .zero, spin: 0, tilt: 0, style: style))
+            let a = XCTAttachment(image: out); a.name = "posted-\(name)"; a.lifetime = .keepAlways; add(a)
+        }
+    }
+
     /// Drawn at the phone's size (as the editor shows it) and at the posted size, the same things are in the same
     /// places, as fractions of the frame: moved, made smaller, in each look.
     @MainActor
