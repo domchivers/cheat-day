@@ -267,9 +267,9 @@ struct StoryView: View {
                     if far, people.indices.contains(at + step) {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         if step > 0 { Self.markSeen(who) }
-                        finish(step)
+                        finish(step, speed: v.velocity.width)
                     } else if far, step > 0 { Self.markSeen(who); dismiss() }   // past the last person, they close
-                    else { withAnimation(.snappy(duration: 0.25)) { swipe = 0 }; paused = false }
+                    else { withAnimation(.smooth(duration: 0.3)) { swipe = 0 }; paused = false }
                     return
                 }
                 // far enough, or flicked down
@@ -714,10 +714,15 @@ struct StoryView: View {
     }
     /// The push carried through from wherever the finger left it. The people before and after are drawn beside this
     /// one all along, so when it's done the one now in front just becomes the story showing, with nothing jumping.
-    private func finish(_ step: Int) {
+    /// From a swipe, it goes on at the finger's speed (`speed`, points a second) and eases off; from a tap, in a set time.
+    /// It went in a set 0.32 s on a curve starting at three times its average, so after a slow drag the next story
+    /// leapt across in a frame (17 Nov).
+    private func finish(_ step: Int, speed: CGFloat = 0) {
         let n = at + step
         paused = true
-        withAnimation(.timingCurve(0.25, 0.8, 0.25, 1, duration: 0.32)) { swipe = step > 0 ? -width : width } completion: {
+        let rest = max(1, width - abs(swipe))
+        let time = speed == 0 ? 0.32 : min(0.42, max(0.2, 2 * rest / max(900, abs(speed))))   // the curve starts at twice its average
+        withAnimation(.timingCurve(0.25, 0.5, 0.5, 1, duration: time)) { swipe = step > 0 ? -width : width } completion: {
             var t = Transaction(); t.disablesAnimations = true
             withTransaction(t) { at = n; slide = 0; progress = 0; swipe = 0; paused = false }
         }
@@ -777,7 +782,11 @@ struct Sunk: ViewModifier {
     let p: CGFloat
     let width: CGFloat
     func body(content: Content) -> some View {
-        content.scaleEffect(1 - 0.06 * p).brightness(-0.6 * p).offset(x: -width * 0.28 * p)
+        // dimmed by a black layer fading in, not by brightness: brightness takes the same off every colour, so the
+        // app's dark navy cards were near black a little way into a swipe (17 Nov)
+        content
+            .overlay { Color.black.opacity(0.55 * p).allowsHitTesting(false) }
+            .scaleEffect(1 - 0.06 * p).offset(x: -width * 0.28 * p)
     }
 }
 
