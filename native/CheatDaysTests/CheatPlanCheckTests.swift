@@ -29,6 +29,13 @@ final class CheatPlanCheckTests: XCTestCase {
         XCTAssertFalse(str(p["match"]).lowercased().contains("lean"), str(p["match"]))
     }
 
+    func testFriedFoodIsntItsLeanBakedEntry() {
+        XCTAssertFalse(Assistant.sameCooking("Chicken wings, fried with batter", "Chicken, wing, lean flesh, baked, no added fat"))
+        XCTAssertTrue(Assistant.sameCooking("Chicken wings, fried with batter", "Chicken, wing, flesh & skin, battered, fried"))
+        XCTAssertTrue(Assistant.sameCooking("Potato, pan fried, no oil", "Potato, peeled, pan fried, no added fat"))
+        XCTAssertTrue(Assistant.sameCooking("Chicken breast, grilled", "Chicken, breast, lean flesh, baked, no added fat"), "only fried food is held to it")
+    }
+
     @MainActor
     func testHotChipsArentSweetPotatoChips() async {
         let s = slot("Burger and chips", [part("Potato chips (fries), hot", 150, 465, p: 5, c: 55, f: 24)], kcal: 465)

@@ -987,22 +987,23 @@ enum Assistant {
             }
             // a species or cut we've checked: before any list or database, unless its numbers don't fit the kind of food
             // the part is (a cocoa-dusted tiramisu isn't cocoa powder)
-            if let e = FoodReference.match(str(x["name"])), !wrongFor(checked(x, kcal100: e.kcal, p100: e.p, c100: e.c, f100: e.f, source: "reference")) {
+            let said = str(x["name"])
+            if let e = FoodReference.match(said), sameCooking(said, e.name), !wrongFor(checked(x, kcal100: e.kcal, p100: e.p, c100: e.c, f100: e.f, source: "reference")) {
                 parts[i] = checked(x, kcal100: e.kcal, p100: e.p, c100: e.c, f100: e.f, source: "reference", match: e.name)
-            } else if let f = FoodTable.current.best(str(x["name"]), tags: tags(x)), plausible(f.kcal, aiKcal: num(x["kcal"]) ?? 0, grams: g, name: str(x["name"])) {
+            } else if let f = FoodTable.current.best(said, tags: tags(x)), sameCooking(said, f.name), plausible(f.kcal, aiKcal: num(x["kcal"]) ?? 0, grams: g, name: said) {
                 // the official numbers for their country (AFCD, CoFID or USDA SR Legacy) before the app's list or the US database,
                 // the entry chosen by the part's tags too (bought, natural, skin on…)
                 parts[i] = checked(x, kcal100: f.kcal, p100: f.p, c100: f.c, f100: f.f, source: FoodTable.current.src, match: f.name)
                 if let better = rematched(parts[i], from: f) { parts[i] = better }
-            } else if let f = FoodTable.dishes.best(str(x["name"]), tags: tags(x)), plausible(f.kcal, aiKcal: num(x["kcal"]) ?? 0, grams: g, name: str(x["name"])) {
+            } else if let f = FoodTable.dishes.best(said, tags: tags(x)), sameCooking(said, f.name), plausible(f.kcal, aiKcal: num(x["kcal"]) ?? 0, grams: g, name: said) {
                 // a dish their country's table doesn't have (biryani, pad thai, chocolate cheesecake): the US dish table
                 parts[i] = checked(x, kcal100: f.kcal, p100: f.p, c100: f.c, f100: f.f, source: FoodTable.dishes.src, match: f.name)
                 if let better = rematched(parts[i], from: f, table: .dishes) { parts[i] = better }
-            } else if let f = FoodTable.world.best(str(x["name"]), tags: tags(x)), plausible(f.kcal, aiKcal: num(x["kcal"]) ?? 0, grams: g, name: str(x["name"])) {
+            } else if let f = FoodTable.world.best(said, tags: tags(x)), sameCooking(said, f.name), plausible(f.kcal, aiKcal: num(x["kcal"]) ?? 0, grams: g, name: said) {
                 // then the other countries' tables (moussaka, quiche Lorraine, rösti)
                 parts[i] = checked(x, kcal100: f.kcal, p100: f.p, c100: f.c, f100: f.f, source: FoodTable.world.src, match: f.name)
                 if let better = rematched(parts[i], from: f, table: .world) { parts[i] = better }
-            } else if let row = FoodsDB.search(str(x["name"]), limit: 1).first, plausible(num(row["kcalPer100"]), aiKcal: num(x["kcal"]) ?? 0, grams: g, name: str(x["name"])) {
+            } else if let row = FoodsDB.search(said, limit: 1).first, sameCooking(said, str(row["name"])), plausible(num(row["kcalPer100"]), aiKcal: num(x["kcal"]) ?? 0, grams: g, name: str(x["name"])) {
                 parts[i] = checked(x, kcal100: num(row["kcalPer100"]) ?? 0, p100: num(row["p100"]), c100: num(row["c100"]), f100: num(row["f100"]), source: "list", match: str(row["name"]))
             } else { ask.append(i) }
         }
@@ -1012,7 +1013,8 @@ enum Assistant {
                 let batch = Array(ask[start..<min(start + 10, ask.count)]), asked = Array(names[start..<min(start + 10, ask.count)])
                 guard let found = await findFoods(asked) else { continue }
                 for (k, i) in batch.enumerated() where k < found.count {
-                    guard let r = found[k] as? JSON, FoodReference.sameFood(asked: asked[k], got: str(r["name"])) else { continue }
+                    guard let r = found[k] as? JSON, FoodReference.sameFood(asked: asked[k], got: str(r["name"])),
+                          sameCooking(str(parts[i]["name"]), str(r["name"])) else { continue }
                     let x = parts[i]
                     if plausible(num(r["kcal100"]), aiKcal: num(x["kcal"]) ?? 0, grams: num(x["grams"]) ?? 0, name: str(x["name"])) {
                         parts[i] = checked(x, kcal100: num(r["kcal100"]) ?? 0, p100: num(r["p100"]), c100: num(r["c100"]), f100: num(r["f100"]), source: "usda", match: str(r["name"]))
@@ -1021,6 +1023,18 @@ enum Assistant {
             }
         }
         return guarded(sane(totals(e, parts: parts)))
+    }
+
+    /// Fried, battered or crumbed food isn't its lean, no-added-fat version: "Chicken wings, fried with batter" was
+    /// counted as "Chicken, wing, lean flesh, baked, no added fat" (582 kcal for 300 g where the AI had 810; the gap was
+    /// inside plausible's room), in a cheat day plan, 16 Nov. Such an entry is passed over, and the next table or the
+    /// AI's own numbers stand.
+    static func sameCooking(_ said: String, _ entry: String) -> Bool {
+        let s = said.lowercased(), e = entry.lowercased()
+        guard s.range(of: #"\b(fried|fry|deep|batter|battered|crumbed|breaded|coated|tempura|karaage|schnitzel)\b"#, options: .regularExpression) != nil else { return true }
+        let richEntry = e.range(of: #"\b(fried|fry|batter|battered|crumbed|breaded|coated|tempura|schnitzel|fast food|takeaway)\b"#, options: .regularExpression) != nil
+        let lean = e.range(of: #"no added fat|lean flesh|\b(baked|boiled|steamed|poached|raw)\b"#, options: .regularExpression) != nil
+        return richEntry || !lean
     }
 
     /// A food they've logged from its label or barcode, or scanned in, that this part is: every long word of the part's
