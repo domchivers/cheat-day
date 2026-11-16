@@ -273,7 +273,7 @@ struct TodayView: View {
                 }
             }
             .fullScreenCover(isPresented: Binding(get: { rankUp != nil }, set: { if !$0 { rankUp = nil } })) {
-                if let r = rankUp { RankUpView(rank: r, done: { rankUp = nil }, share: { Task { await Feed.shared.postMoment(emoji: "⭐️", title: "Ranked up to \(r.name)", detail: "A new rank in Cheat Days", type: "rank") } }) }
+                if let r = rankUp { RankUpView(rank: r, done: { rankUp = nil }, share: { await Medal.share([Medal.of(r)]) }) }
             }
             .modifier(SendFoodDialog(item: $sendingItem) { note($0) })
             .modifier(MomentAsk(badge: $momentAsk))
@@ -670,7 +670,7 @@ struct TodayView: View {
         withAnimation(.snappy) { badgeNote = text }
         Task {
             try? await Task.sleep(nanoseconds: 3_500_000_000); withAnimation { if badgeNote == text { badgeNote = nil } }
-            // then ask whether to put it on the feed: moments never post by themselves
+            // then ask whether to add it to your story: badges never go up by themselves
             if !Friends.shared.people.isEmpty, addChoice == nil, flow == nil, pop == nil, rankUp == nil { momentAsk = first }
         }
     }

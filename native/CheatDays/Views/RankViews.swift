@@ -172,10 +172,12 @@ struct RanksView: View {
 struct RankUpView: View {
     let rank: Rank
     var done: () -> Void
-    /// Put it on the feed as a moment (asked here rather than posted by itself).
-    var share: (() -> Void)? = nil
+    /// Put it on your story (asked here rather than posted by itself). False when it didn't go.
+    var share: (() async -> Bool)? = nil
     @State private var shown = false
     @State private var shared = false
+    @State private var sharing = false
+    @State private var failed = false
 
     var body: some View {
         VStack(spacing: 18) {
@@ -192,8 +194,11 @@ struct RankUpView: View {
                 .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 18)).tint(rank.color).foregroundStyle(.black)
                 .padding(.horizontal, 24).padding(.bottom, share == nil ? 20 : 4)
             if let share, !Friends.shared.people.isEmpty {
-                Button(shared ? "Shared with your friends" : "Share with friends") { share(); shared = true }
-                    .font(.subheadline.weight(.semibold)).disabled(shared).padding(.bottom, 20)
+                Button(shared ? "Added to your story" : sharing ? "Adding…" : failed ? "Couldn't add it. Try again" : "Add to my story") {
+                    sharing = true
+                    Task { let ok = await share(); shared = ok; failed = !ok; sharing = false }
+                }
+                .font(.subheadline.weight(.semibold)).disabled(shared || sharing).padding(.bottom, 20)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

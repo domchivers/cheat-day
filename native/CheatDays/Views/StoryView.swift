@@ -333,7 +333,7 @@ struct StoryView: View {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(50))
                 let at = Date(), dt = min(0.25, at.timeIntervalSince(last)); last = at
-                if case .snap(let st)? = now, waited < 8, Stories.pictures(st).contains(where: { ImageStore.cached($0) == nil }) { waited += dt; continue }
+                if case .snap(let st)? = now, Medal.on(st) == nil, waited < 8, Stories.pictures(st).contains(where: { ImageStore.cached($0) == nil }) { waited += dt; continue }
                 if paused || tagged != nil || reportOf != nil || typing || reacting || sharing != nil || sharingStory != nil || seenBy != nil || adding != nil || managing != nil || mentioning != nil { continue }
                 progress += dt / length; tickAt = at
                 if progress >= 1 { next(); return }
@@ -446,7 +446,12 @@ struct StoryView: View {
             // 9:16, the editor's shape, so everything placed lands where it was put
             let layer = StoryLayer(items: list(st["overlays"]).filter { !Self.live($0) }, story: str(st["id"]))
             ZStack {
-                if str(st["kind"]) == "video", let url = URL(string: str(st["media"])) { LoopingVideo(url: url, paused: paused || seenBy != nil || person != nil); layer }
+                // a badge or rank-up (Medal): drawn live, so it opens with its medal settling in; the picture under it
+                // is for older versions and messages
+                if let m = Medal.on(st) {
+                    MedalStory(o: m, owner: str(st["owner"]), date: ISO.date(str(st["created_at"])), play: person == nil).id(str(st["id"]))
+                }
+                else if str(st["kind"]) == "video", let url = URL(string: str(st["media"])) { LoopingVideo(url: url, paused: paused || seenBy != nil || person != nil); layer }
                 // a photo still on its way: black with a turning circle, and nothing that's stuck on it until it's
                 // here (the stickers and tags showed at once, over an empty slide)
                 else { StoryPhoto(src: str(st["media"]), also: Stories.pictures(st).filter { $0 != str(st["media"]) }) { layer }.id(str(st["id"])) }
@@ -582,6 +587,16 @@ struct StoryView: View {
                 .padding(.leading, 16).padding(.trailing, typing ? 6 : 16).frame(height: 44)
                 .overlay(Capsule().stroke(.white.opacity(0.55), lineWidth: 1.5))
                 if !typing {
+                // a badge or rank-up: Cheer, which sends them a 🎉
+                if case .snap(let st) = s, Medal.on(st) != nil {
+                    let cheered = Stories.shared.reacted[str(st["id"])] == "🎉"
+                    Button { UIImpactFeedbackGenerator(style: .light).impactOccurred(); react(s, "🎉") } label: {
+                        Text(cheered ? "🎉 Cheered" : "🎉 Cheer").font(.subheadline.weight(.heavy)).foregroundStyle(.black)
+                            .padding(.horizontal, 13).frame(height: 36)
+                            .background(str(Medal.on(st)?["tone"]) == "blue" ? Theme.accent : Color(red: 0.96, green: 0.64, blue: 0.29), in: Capsule())
+                    }
+                    .buttonStyle(.plain).disabled(cheered).accessibilityLabel(cheered ? "Cheered" : "Cheer")
+                } else {
                 // a heart whatever the slide is (a meal or workout had a party popper here, which nobody read as a like)
                 let liked = isLiked(s)
                 Image(systemName: liked ? "heart.fill" : "heart").font(.system(size: 25, weight: .medium))
@@ -595,6 +610,7 @@ struct StoryView: View {
                     }
                     .accessibilityLabel(liked ? "Liked" : "Like").accessibilityAddTraits(.isButton)
                     .accessibilityAction(named: "React with an emoji") { reacting = true }
+                }
                 // send it to a friend: a post, or a story (one for friends only still opens only for their friends)
                 switch s {
                 case .post(let p): sendButton { sharing = PostBox(post: p) }

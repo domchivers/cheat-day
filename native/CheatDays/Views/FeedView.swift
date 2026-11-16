@@ -54,6 +54,8 @@ final class Feed {
             let owners = Set([me] + Friends.shared.people.map(\.id) + Follows.shared.following).filter { UUID(uuidString: $0) != nil }
             guard !owners.isEmpty else { posts = []; return }
             posts = try await rows("/rest/v1/posts?owner=in.(\(owners.joined(separator: ",")))&select=*&order=created_at.desc&limit=40")
+            // your badges from before they went in stories: on your story now instead, once (Medal.carryOver)
+            if posts.contains(where: { str($0["kind"]) == "moment" && str($0["owner"]) == me }) { Task { await Medal.carryOver() } }
             let ids = posts.map { str($0["id"]) }.joined(separator: ",")
             if !ids.isEmpty {
                 async let rx = rows("/rest/v1/reactions?post_id=in.(\(ids))&select=post_id,user_id,emoji")
@@ -196,12 +198,6 @@ final class Feed {
             await Messages.shared.send(to: friend, kind: "post", payload: ["name": post["name"] ?? "", "kcal": post["kcal"] ?? 0, "photo": post["photo"] ?? "", "macros": post["macros"] ?? [:] as JSON, "post": post])
             if !note.isEmpty { await Messages.shared.send(to: friend, text: note) }
         } catch { self.error = "Sending posts isn't set up yet." }
-    }
-
-    /// A streak, a badge or a rank up, once they've said yes to sharing it.
-    func postMoment(emoji: String, title: String, detail: String, type: String) async {
-        try? await post(["kind": "moment", "name": title, "kcal": 0, "macros": [:] as JSON, "payload": [:] as JSON,
-                         "extra": ["emoji": emoji, "detail": detail, "type": type] as JSON], photo: nil)
     }
 
     func deleteComment(_ c: JSON) async {
@@ -415,7 +411,8 @@ struct FeedView: View {
                 if only == nil && feed.posts.isEmpty && !feed.loading {
                     Text("Nothing in the feed yet. Share something, or add a friend.").foregroundStyle(.secondary).padding(.top, 40)
                 }
-                ForEach(keyed((only ?? feed.posts).filter { !feed.removed.contains(str($0["id"])) && !Profiles.shared.muted.contains(str($0["owner"])) && !Follows.shared.blocked.contains(str($0["owner"])) })) { entry in   // by post id: deleting one can't leave a row past the end
+                // badges and rank-ups go in stories now (17 Nov), so ones posted before don't show here
+                ForEach(keyed((only ?? feed.posts).filter { str($0["kind"]) != "moment" && !feed.removed.contains(str($0["id"])) && !Profiles.shared.muted.contains(str($0["owner"])) && !Follows.shared.blocked.contains(str($0["owner"])) })) { entry in   // by post id: deleting one can't leave a row past the end
                     let pid = str(entry.item["id"])
                     postView(entry.item).id(pid)
                         .zIndex(zoomed == pid ? 5 : 0)   // its picture, pinched bigger, goes over the posts around it
@@ -944,17 +941,6 @@ struct FeedView: View {
     }
 
     private func avatar(_ id: String, size: CGFloat) -> some View { Avatar(id: id, size: size) }
-}
-
-/// A badge just earned: "Share it with your friends?" Moments only go on the feed when they say yes.
-struct MomentAsk: ViewModifier {
-    @Binding var badge: Badge?
-    func body(content: Content) -> some View {
-        content.alert("Share it with your friends?", isPresented: Binding(get: { badge != nil }, set: { if !$0 { badge = nil } }), presenting: badge) { b in
-            Button("Share") { Task { await Feed.shared.postMoment(emoji: b.icon, title: "Earned \(b.name)", detail: b.how, type: "badge") } }
-            Button("Not now", role: .cancel) {}
-        } message: { b in Text("\(b.icon) \(b.name): \(b.how). It goes on the feed for friends to cheer.") }
-    }
 }
 
 struct PostBox: Identifiable { let post: JSON; var id: String { str(post["id"]) } }

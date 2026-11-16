@@ -162,7 +162,8 @@ struct ProfileView: View {
         // and the button stayed wrong for as long as the app was open
         await follows.load()
         await Task { await profiles.load([id], force: true) }.value
-        if let got = await profiles.posts(of: id) { posts = got; await Feed.shared.loadExtras(got) }
+        // badges and rank-ups are stories now, so ones posted before aren't in the grid
+        if let got = await profiles.posts(of: id)?.filter({ str($0["kind"]) != "moment" }) { posts = got; await Feed.shared.loadExtras(got) }
         if let got = await profiles.tagged(id) { tagged = got; await Feed.shared.loadExtras(got) }
         if isMe { kept = await Feed.shared.savedPosts(); await Feed.shared.loadExtras(kept) }
         if let c = await Task(operation: { await follows.counts(id) }).value { counts = c }
