@@ -32,17 +32,17 @@ final class VideoExportTests: XCTestCase {
     }
 
     func testVideosPostAtFullHDAndStaySmall() async throws {
-        let src = try await clip(seconds: 10)
+        let src = try await clip(seconds: 3)   // 10 took 48 s on the Mac; the size is what's checked
         defer { try? FileManager.default.removeItem(at: src) }
         let (data, seconds) = try await Stories.compress(src)
-        XCTAssertEqual(seconds, 10, accuracy: 0.1)
+        XCTAssertEqual(seconds, 3, accuracy: 0.1)
         let out = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
         try data.write(to: out); defer { try? FileManager.default.removeItem(at: out) }
         let track = try await AVURLAsset(url: out).loadTracks(withMediaType: .video).first
         let size = try await XCTUnwrap(track).load(.naturalSize)
         XCTAssertEqual(size.width, 1080); XCTAssertEqual(size.height, 1920)
         let mb = Double(data.count) / 1_000_000
-        print("VIDEO EXPORT: \(Int(size.width))x\(Int(size.height)), \(String(format: "%.1f", mb)) MB for 10 s (≈\(String(format: "%.0f", mb * 3)) MB for 30 s)")
-        XCTAssertLessThan(mb * 3, 40, "30 seconds would be \(mb * 3) MB")
+        print("VIDEO EXPORT: \(Int(size.width))x\(Int(size.height)), \(String(format: "%.2f", mb)) MB for 3 s (≈\(String(format: "%.0f", mb * 10)) MB for 30 s)")
+        XCTAssertLessThan(mb * 10, 40, "30 seconds would be \(mb * 10) MB")
     }
 }

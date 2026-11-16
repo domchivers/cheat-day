@@ -39,6 +39,7 @@ struct TodayView: View {
     @State private var plannerMeal: String?   // the meal to open the planner on (a reminder, or "Ideas for dinner")
     @State private var plannerAsk: (text: String, cooking: String)?   // what was typed in a meal pop-up, asked as it opens
     @State private var rankUp: Rank?
+    @State private var rankWaiting: Rank?   // a new rank, shown once nothing else is open
     @State private var badgeNote: String?
     @State private var momentAsk: Badge?   // a badge just earned: share it?
     @AppStorage("today.more") private var moreOpen = false
@@ -234,9 +235,11 @@ struct TodayView: View {
                 }
                 .presentationDragIndicator(.visible)
             }
-            .task(id: "\(store.todayItems.count)|\(addChoice == nil)|\(editing == nil)|\(flow == nil)|\(pop == nil)|\(openIdea == nil)|\(showPlanner)|\(phase == .active)|\(clock)|\(store.lastSynced != nil)") {
+            .task(id: "\(store.todayItems.count)|\(addChoice == nil)|\(editing == nil)|\(flow == nil)|\(pop == nil)|\(openIdea == nil)|\(showPlanner)|\(phase == .active)|\(clock)|\(store.lastSynced != nil)|\(rankUp == nil && rankWaiting == nil)") {
                 // the meal pop-ups, once every other sheet's closed: the morning one, before lunch and dinner, after them
+                // (and after a new rank's celebration: lunch came up over it, and closing lunch brought it back to fall away)
                 guard dailyTipsOn, phase == .active, offset == 0, addChoice == nil, editing == nil, flow == nil, pop == nil, openIdea == nil,
+                      rankUp == nil, rankWaiting == nil, momentAsk == nil, savingMeal == nil,
                       !showPlanner, !showCheat, !showCheckIn, store.lastSynced != nil, !store.needsOnboarding, !store.needsHabits,
                       !Tour.shared.pending, !Tour.shared.active else { return }
                 try? await Task.sleep(for: .seconds(1))
@@ -277,6 +280,13 @@ struct TodayView: View {
             .onAppear { checkRank(); checkBadges() }
             .task { await Steps.shared.refresh() }
             .onChange(of: store.rank.level) { _, _ in checkRank() }
+            .task(id: "\(rankWaiting?.level ?? 0)|\(screenClear)") {
+                // a new rank waits for whatever's open to close (and stay closed a moment) before it's celebrated
+                guard rankWaiting != nil, rankUp == nil, screenClear else { return }
+                try? await Task.sleep(for: .seconds(0.6))
+                guard !Task.isCancelled, screenClear, let r = rankWaiting else { return }
+                rankWaiting = nil; rankUp = r
+            }
             .onChange(of: store.lastSynced) { _, _ in checkBadges(); Task { await Inbox.shared.refresh() } }
             .task { await Inbox.shared.refresh(force: true); await Family.shared.load() }
             .onChange(of: store.todayItems.count) { _, _ in checkBadges() }
@@ -582,7 +592,7 @@ struct TodayView: View {
         Task {
             try? await Task.sleep(nanoseconds: 3_500_000_000); withAnimation { if badgeNote == text { badgeNote = nil } }
             // then ask whether to put it on the feed: moments never post by themselves
-            if !Friends.shared.people.isEmpty, addChoice == nil, flow == nil, pop == nil { momentAsk = first }
+            if !Friends.shared.people.isEmpty, addChoice == nil, flow == nil, pop == nil, rankUp == nil { momentAsk = first }
         }
     }
 
@@ -593,8 +603,14 @@ struct TodayView: View {
         if seen == 0 { UserDefaults.standard.set(now.level, forKey: "rank.seen"); return }
         if now.level > seen {
             UserDefaults.standard.set(now.level, forKey: "rank.seen")
-            rankUp = now
+            rankWaiting = now
         }
+    }
+
+    /// Nothing open on Today, so a new rank's celebration can have the screen to itself.
+    private var screenClear: Bool {
+        addChoice == nil && editing == nil && flow == nil && pop == nil && openIdea == nil && !showPlanner && !showCheat
+            && !showCheckIn && momentAsk == nil && savingMeal == nil && sendingItem == nil
     }
 
     private func stat(_ value: String, _ label: String) -> some View {
