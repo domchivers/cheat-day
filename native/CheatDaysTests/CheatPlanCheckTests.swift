@@ -34,6 +34,8 @@ final class CheatPlanCheckTests: XCTestCase {
         XCTAssertTrue(Assistant.sameCooking("Chicken wings, fried with batter", "Chicken, wing, flesh & skin, battered, fried"))
         XCTAssertTrue(Assistant.sameCooking("Potato, pan fried, no oil", "Potato, peeled, pan fried, no added fat"))
         XCTAssertTrue(Assistant.sameCooking("Chicken breast, grilled", "Chicken, breast, lean flesh, baked, no added fat"), "only fried food is held to it")
+        XCTAssertFalse(Assistant.sameCooking("Chicken wings, fried with batter", "Chicken wings, with skin, fried without fat (oven)"), "fried in name only, and not battered")
+        XCTAssertTrue(Assistant.sameCooking("Bacon, fried", "Bacon, middle rasher, untrimmed, baked, roasted, fried, grilled or BBQ'd, no added fat"))
     }
 
     @MainActor

@@ -1029,12 +1029,20 @@ enum Assistant {
     /// counted as "Chicken, wing, lean flesh, baked, no added fat" (582 kcal for 300 g where the AI had 810; the gap was
     /// inside plausible's room), in a cheat day plan, 16 Nov. Such an entry is passed over, and the next table or the
     /// AI's own numbers stand.
+    /// Battered or crumbed food is a coated entry, too: the wings went next to "Chicken wings, with skin, fried without
+    /// fat (oven)" (678 kcal), fried in name only.
     static func sameCooking(_ said: String, _ entry: String) -> Bool {
         let s = said.lowercased(), e = entry.lowercased()
-        guard s.range(of: #"\b(fried|fry|deep|batter|battered|crumbed|breaded|coated|tempura|karaage|schnitzel)\b"#, options: .regularExpression) != nil else { return true }
-        let richEntry = e.range(of: #"\b(fried|fry|batter|battered|crumbed|breaded|coated|tempura|schnitzel|fast food|takeaway)\b"#, options: .regularExpression) != nil
-        let lean = e.range(of: #"no added fat|lean flesh|\b(baked|boiled|steamed|poached|raw)\b"#, options: .regularExpression) != nil
-        return richEntry || !lean
+        func has(_ t: String, _ p: String) -> Bool { t.range(of: p, options: .regularExpression) != nil }
+        guard has(s, #"\b(fried|fry|deep|batter|battered|crumbed|breaded|coated|tempura|karaage|schnitzel)\b"#) else { return true }
+        let coatSaid = has(s, #"\b(batter|battered|crumbed|breaded|coated|tempura|karaage|schnitzel)\b"#)
+        let coatEntry = has(e, #"\b(batter|battered|crumbed|breaded|coated|tempura|schnitzel|fast food|takeaway)\b"#)
+        if coatSaid && !coatEntry { return false }
+        let oven = has(e, #"without fat|\(oven\)|\boven\b"#)
+        if has(e, #"\b(fried|fry)\b"#) && !oven { return true }   // bacon "fried … no added fat" is fried bacon
+        let noFatSaid = has(s, #"\b(no|without)\s+(added\s+)?(oil|fat)\b|air[ -]?fr|\boven\b"#)
+        let lean = oven || has(e, #"no added fat|lean flesh|\b(baked|boiled|steamed|poached|raw)\b"#)
+        return !lean || noFatSaid
     }
 
     /// A food they've logged from its label or barcode, or scanned in, that this part is: every long word of the part's
