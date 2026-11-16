@@ -71,6 +71,12 @@ final class TakeawayMannerTests: XCTestCase {
         XCTAssertEqual(num(list(Takeaway.steady(full, was: was)["items"])[0]["protein_g"]), 62, "a published number wins")
     }
 
+    func testADeliveryAppIsntARestaurant() {
+        // "Some high protein meals on door dash?" looked for DoorDash's own menu
+        for n in ["DoorDash", "door dash", "Uber Eats", "Menulog"] { XCTAssertTrue(Takeaway.deliveryApp(n), n) }
+        for n in ["Crust", "Gami", "Doorstep Dumplings"] { XCTAssertFalse(Takeaway.deliveryApp(n), n) }
+    }
+
     func testTheMannerWordsGo() {
         XCTAssertEqual(Takeaway.core("High protein pepperoni pizza"), "pepperoni pizza")
         XCTAssertEqual(Takeaway.core("large low carb burger"), "burger")

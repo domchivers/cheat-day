@@ -311,7 +311,14 @@ enum Takeaway {
     @MainActor static func intent(_ text: String) async -> String? {
         guard let r = await Gemini.askClaude("quick", schema: routeSchema, parts: [["text": routeAsk(text, earlier: "")]]) else { return nil }
         let i = str(r["intent"])
+        if deliveryApp(str(r["restaurant"])) { return "find" }
         return i == "choose" && str(r["restaurant"]).isEmpty ? "other" : i
+    }
+
+    /// DoorDash, Uber Eats, Menulog and the like: where they order, not a restaurant.
+    static func deliveryApp(_ name: String) -> Bool {
+        let n = name.lowercased().replacingOccurrences(of: #"[^a-z]"#, with: "", options: .regularExpression)
+        return ["doordash", "ubereats", "uber", "menulog", "deliveroo", "grubhub", "foodpanda"].contains(n)
     }
 
     /// The dishes they asked for, without the foods from home they named with them ("a shake and ice cream").
@@ -515,8 +522,10 @@ enum Takeaway {
         guard let route = await Gemini.askClaude("quick", schema: routeSchema, parts: [["text": routeAsk(last.text, earlier: earlier, photo: page)]]),
               // choose; or a restaurant named in a question or a wish, nothing they had, in case it's called something else
               photo != nil || ["choose", "find"].contains(str(route["intent"])) || (!str(route["restaurant"]).isEmpty && choosing(last.text) && !(planned && str(route["intent"]) == "other")) else { return nil }
-        // "any good lunch spots in South Yarra?": places found on the web, each with the dish that suits them
-        if photo == nil, str(route["intent"]) == "find", str(route["restaurant"]).isEmpty {
+        // "any good lunch spots in South Yarra?": places found on the web, each with the dish that suits them. A delivery
+        // app named is where they'd order, not a restaurant: "Some high protein meals on door dash?" looked for DoorDash's
+        // own menu and said it couldn't find it (16 Nov).
+        if photo == nil, (str(route["intent"]) == "find" && str(route["restaurant"]).isEmpty) || deliveryApp(str(route["restaurant"])) {
             decided?.set(true); return await find(area: str(route["area"]), want: route["want"] as? [String] ?? [], asked: last.text, kcal: pos(route["kcal"]) ?? theirKcal, protein: pos(route["protein"]),
                                                 proteinAsked: pos(route["protein"]) != nil || proteinTalk, store: store, step: step)
         }
