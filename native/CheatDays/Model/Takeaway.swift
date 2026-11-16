@@ -355,7 +355,7 @@ enum Takeaway {
         var covered = false
         for d in asked where isWay(d) {
             let ws = words(d).filter { !generic.contains($0) && !["high", "base"].contains($0) } + dishWords
-            if !ws.isEmpty, let on = items.first(where: { i in let n = i.name.lowercased(); n.contains("base") && ws.allSatisfy { n.contains($0) } }) {
+            if !ws.isEmpty, let on = items.first(where: { i in let n = i.name.lowercased(); return n.contains("base") && ws.allSatisfy { n.contains($0) } }) {
                 plain.append((d, on.name)); covered = true
             } else { ways.append(d) }
         }
