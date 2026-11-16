@@ -237,7 +237,10 @@ final class Stories {
             try? t.insertTimeRange(span, of: a, at: .zero)
         }
         let out = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
-        guard let export = AVAssetExportSession(asset: comp, presetName: AVAssetExportPreset1280x720) else { return (try Data(contentsOf: url), end - start) }
+        // 1080 × 1920 like a posted photo (it was 720 × 1280, softer than the photos). HEVC keeps the file about the
+        // size the 720 one was in H.264, well under the storage's 50 MB a file for 30 seconds.
+        guard let export = AVAssetExportSession(asset: comp, presetName: AVAssetExportPresetHEVC1920x1080)
+                ?? AVAssetExportSession(asset: comp, presetName: AVAssetExportPreset1920x1080) else { return (try Data(contentsOf: url), end - start) }
         export.outputURL = out; export.outputFileType = .mp4; export.shouldOptimizeForNetworkUse = true
         let quarter = ((turns % 4) + 4) % 4   // quarter turns to the right
         let spun = placed.flatMap { $0.loose ? $0 : nil }   // turned freely: laid into its frame, not cut from the picture
@@ -256,10 +259,10 @@ final class Stories {
             var area = CGRect(x: crop.minX * size.width, y: (1 - crop.maxY) * size.height, width: crop.width * size.width, height: crop.height * size.height).integral
             var laying: CGAffineTransform?
             if let e = spun, size.width > 0, size.height > 0 {
-                // the frame, in the picture's own pixels at its plain size (no more than 1280 on its longer side)
+                // the frame, in the picture's own pixels at its plain size (no more than 1920 on its longer side)
                 let own = size.width / size.height, shape = e.shape ?? own
                 let fw = shape > own ? size.width : size.height * shape
-                let cap = min(1, 1280 / max(fw, fw / shape))
+                let cap = min(1, 1920 / max(fw, fw / shape))
                 let w = (fw * cap / 2).rounded(.down) * 2, h = (fw / shape * cap / 2).rounded(.down) * 2
                 area = CGRect(x: 0, y: 0, width: w, height: h)
                 // from its middle: made its size, turned (to the right is backwards here), carried to its place (down is backwards too)
