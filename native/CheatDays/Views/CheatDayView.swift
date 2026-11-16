@@ -43,6 +43,35 @@ enum CheatPlan {
         }
     }
 
+    /// Each dish's parts checked against the food tables, as the assistant's cards are, and the dish's numbers their
+    /// sum. A dish's number was the AI's one guess, never checked; asked for its parts (tried live, 16 Nov), a sushi
+    /// train came to 1,174 listed plate by plate where the guess was 850. A part the tables can't place, or would place
+    /// far from the AI's number (battered wings as baked lean wing), keeps the AI's numbers: ground's own guards. A
+    /// saved meal or a workout keeps its own.
+    @MainActor static func checked(_ slots: [JSON]) async -> [JSON] {
+        var out: [JSON] = []
+        for s in slots {
+            let raw = list(s["parts"]).filter { (num($0["grams"]) ?? 0) > 0 }
+            guard !raw.isEmpty, str(s["saved"]).isEmpty, s["workout"] as? Bool != true else { out.append(s); continue }
+            let parts = raw.map { p -> JSON in
+                ["name": str(p["name"]), "grams": num(p["grams"]) ?? 0, "kcal": num(p["kcal"]) ?? 0, "protein_g": num(p["protein"]) ?? 0,
+                 "carbs_g": num(p["carbs"]) ?? 0, "fat_g": num(p["fat"]) ?? 0, "numbers_from": "estimate"]
+            }
+            let got = list(await Assistant.ground(["name": str(s["title"]), "parts": parts])["parts"])
+            guard !got.isEmpty else { out.append(s); continue }
+            func sum(_ k: String) -> Double { got.reduce(0) { $0 + (num($1[k]) ?? 0) } }
+            var x = s
+            x["kcal"] = sum("kcal").rounded(); x["protein"] = sum("protein_g").rounded()
+            x["carbs"] = sum("carbs_g").rounded(); x["fat"] = sum("fat_g").rounded()
+            x["parts"] = got.map { p -> JSON in
+                ["name": str(p["name"]), "grams": num(p["grams"]) ?? 0, "kcal": num(p["kcal"]) ?? 0, "protein": num(p["protein_g"]) ?? 0,
+                 "carbs": num(p["carbs_g"]) ?? 0, "fat": num(p["fat_g"]) ?? 0, "src": str(p["src"]), "match": str(p["match"])]
+            }
+            out.append(x)
+        }
+        return out
+    }
+
     /// The day's total: what's logged plus the slots still to come (a slot already logged counts once).
     static func total(slots: [JSON], logged items: [JSON]) -> Double {
         let eaten = items.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }
@@ -483,14 +512,21 @@ struct CheatDayView: View {
         let usual = store.mealHistory("Dinner").prefix(8).map(\.name).joined(separator: ", ")
         let earlier = list(plan?["chat"]).suffix(8).map { "They said: \(str($0["me"]))" }.joined(separator: "\n")
         let current = plan.map { list($0["slots"]).map { "\(str($0["time"])) \(str($0["title"])) (\(Int(num($0["kcal"]) ?? 0)) kcal, \(Int(num($0["protein"]) ?? 0)) g protein)" }.joined(separator: "\n") } ?? ""
+        let part: JSON = ["type": "object", "properties": [
+            "name": ["type": "string", "description": "a plain food name as a food table has it, e.g. \"Chicken thigh, fried\", \"Bread roll, white\""] as JSON,
+            "grams": ["type": "number", "description": "as eaten (cooked weight)"] as JSON,
+            "kcal": ["type": "number"] as JSON, "protein": ["type": "number"] as JSON, "carbs": ["type": "number"] as JSON, "fat": ["type": "number"] as JSON
+        ] as JSON, "required": ["name", "grams", "kcal", "protein", "carbs", "fat"]]
         let slot: JSON = ["type": "object", "properties": [
             "time": ["type": "string", "description": "24-hour time like 15:30"] as JSON,
             "title": ["type": "string"] as JSON,
             "detail": ["type": "string", "description": "Under 12 words: what's in it. Empty for a saved meal"] as JSON,
             "kcal": ["type": "number"] as JSON, "protein": ["type": "number"] as JSON, "carbs": ["type": "number"] as JSON, "fat": ["type": "number"] as JSON,
             "workout": ["type": "boolean"] as JSON,
-            "saved": ["type": "string", "description": "The exact name of the saved meal this is, or empty"] as JSON
-        ] as JSON, "required": ["time", "title", "detail", "kcal", "protein", "carbs", "fat", "workout", "saved"]]
+            "saved": ["type": "string", "description": "The exact name of the saved meal this is, or empty"] as JSON,
+            // its parts, to check against the food tables (CheatPlan.checked); as tried live in tools/ai-test/cheat-check.js
+            "parts": ["type": "array", "items": part, "description": "The dish's main parts as eaten, each with its grams and its own numbers; the slot's numbers are these added up. Empty for a saved meal or a workout"] as JSON
+        ] as JSON, "required": ["time", "title", "detail", "kcal", "protein", "carbs", "fat", "workout", "saved", "parts"]]
         let schema: JSON = ["type": "object", "properties": [
             "title": ["type": "string", "description": "A short title for the plan, from what's in it"] as JSON,
             "reply": ["type": "string", "description": "Under 20 words, friendly: what you did or changed"] as JSON,
@@ -512,9 +548,10 @@ struct CheatDayView: View {
         """
         do {
             var a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: false, tries: 4, job: "chat")
-            a["slots"] = CheatPlan.tidied(CheatPlan.keepingRecipes(list(a["slots"]), from: list(plan?["slots"])), saved: saved)
+            let slots = await CheatPlan.checked(list(a["slots"]))
+            a["slots"] = CheatPlan.tidied(CheatPlan.keepingRecipes(slots, from: list(plan?["slots"])), saved: saved)
             let inPlan = Set(list(a["slots"]).map { str($0["title"]).lowercased() })
-            a["options"] = CheatPlan.tidied(list(a["options"]).filter { !inPlan.contains(str($0["title"]).lowercased()) }, saved: saved)
+            a["options"] = CheatPlan.tidied(await CheatPlan.checked(list(a["options"]).filter { !inPlan.contains(str($0["title"]).lowercased()) }), saved: saved)
             a["at"] = ISO.now()
             a["chat"] = Array(list(plan?["chat"]).suffix(11)) + [["me": said] as JSON]
             store.perform(["type": "cheatPlan", "date": next.date, "plan": a])
