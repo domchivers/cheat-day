@@ -290,7 +290,8 @@ struct AssistantView: View {
                                 .font(.caption2.weight(.bold)).foregroundStyle(Theme.accent).fixedSize()
                         }
                         Spacer()
-                        Text("\(Int(num(pt["grams"]) ?? 0)) g · \(Int(num(pt["kcal"]) ?? 0))").font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                        // rounded, as the total is (cut down, 290.6 showed 290 under a total of 1,006)
+                        Text("\(Int((num(pt["grams"]) ?? 0).rounded())) g · \(Int((num(pt["kcal"]) ?? 0).rounded()))").font(.caption).monospacedDigit().foregroundStyle(.secondary)
                         Image(systemName: openPart == key ? "chevron.down" : "chevron.right").font(.caption2).foregroundStyle(.tertiary)
                     }
                     .contentShape(Rectangle())
@@ -302,8 +303,11 @@ struct AssistantView: View {
             let pending = !parts.isEmpty && parts.allSatisfy { str($0["src"]).isEmpty }   // not checked yet
             if pending { Label("Checking against the food database…", systemImage: "hourglass").font(.caption2).foregroundStyle(.secondary) }
             else if let web, parts.count == 1 { Text("From its label, found online: \(str(web["source"]))").font(.caption2).foregroundStyle(.secondary).lineLimit(3) }
-            else if let web, parts.allSatisfy({ str($0["src"]) == "web" }) {   // every item from the shop's own published numbers
-                Text("From \(str(e["shop"]).isEmpty ? "the shop" : str(e["shop"]))'s own published numbers: \(str(web["source"]))").font(.caption2).foregroundStyle(.secondary).lineLimit(3)
+            else if web != nil, parts.allSatisfy({ str($0["src"]) == "web" }) {   // every item from the shop's own published numbers
+                // each item's own page (it cited the chicken's alone, nothing for the chips)
+                let sources = parts.map { str($0["source"]) }.filter { !$0.isEmpty }.reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
+                Text("From \(str(e["shop"]).isEmpty ? "the shop's" : Assistant.possessive(str(e["shop"]))) own published numbers: \(sources.joined(separator: " · "))")
+                    .font(.caption2).foregroundStyle(.secondary).lineLimit(6)
             }
             else if own > 0, own == parts.count { Text("Worked out from your label or your numbers.").font(.caption2).foregroundStyle(.secondary) }
             else { Text(checked > 0 ? "\(checked) of \(parts.count) parts checked against food databases\(num(e["aiKcal"]).map { " (the AI first said \(Int($0)) kcal)" } ?? ""). An estimate, not a label."
@@ -355,7 +359,7 @@ struct AssistantView: View {
                 }
                 .buttonStyle(.plain).disabled(added)
                 if !added && !parts.isEmpty {   // the whole plate a size down or up, every part with it
-                    let start = pos(e["aiPortion"]) ?? pos(e["portion_g"]) ?? 1
+                    let start = pos(e["pctBase"]) ?? pos(e["aiPortion"]) ?? pos(e["portion_g"]) ?? 1
                     // 10% steps of what the AI first said (100, 90, 80…), or a percentage typed in the middle
                     let pct = ((num(e["portion_g"]) ?? start) / start * 100).rounded()
                     SizeStepper(less: { setPercent(turn, Self.step(pct, by: -10, min: 10)) }, more: { setPercent(turn, Self.step(pct, by: 10, min: 10)) }) {
@@ -459,7 +463,9 @@ struct AssistantView: View {
             Button { if canChange { changing = PartRef(turn: turn, index: i, part: pt) } } label: {
                 detailRow("Counted as") {
                     HStack(spacing: 6) {
-                        Text(str(pt["match"]).isEmpty ? "The AI's own numbers" : str(pt["match"])).foregroundStyle(.primary).multilineTextAlignment(.trailing)
+                        // a shop's published numbers aren't the AI's (the chips had the tick and said they were)
+                        Text(!str(pt["match"]).isEmpty ? str(pt["match"]) : str(pt["src"]) == "web" ? "Its own published numbers" : "The AI's own numbers")
+                            .foregroundStyle(.primary).multilineTextAlignment(.trailing)
                         if canChange { Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary) }
                     }
                 }
@@ -491,7 +497,10 @@ struct AssistantView: View {
     // MARK: changing an estimate before it's added
 
     /// Changes a turn's estimate in place (parts, then the totals from them), remembering what the AI first said.
-    private func change(_ turn: UUID, _ edit: (inout [JSON]) -> Void) {
+    /// A part's own amount changed (plate false): the plate stepper starts again at 100% of the new plate. Its
+    /// percentage is of what the AI first said, so cutting the chips to 125 g showed 85% beside a total that already
+    /// counted it, as if Add would take another 15% off (it didn't; it added the total shown).
+    private func change(_ turn: UUID, plate: Bool = false, _ edit: (inout [JSON]) -> Void) {
         guard let t = turns.firstIndex(where: { $0.id == turn }), var r = turns[t].result, var e = r["estimate"] as? JSON else { return }
         if e["aiPortion"] == nil { e["aiPortion"] = e["portion_g"] ?? 0; e["aiPortionKcal"] = e["kcal_total"] ?? 0 }
         var parts = list(e["parts"])
@@ -500,6 +509,7 @@ struct AssistantView: View {
         e["parts"] = parts
         e["kcal_total"] = sum("kcal").rounded(); e["protein_g"] = sum("protein_g"); e["carbs_g"] = sum("carbs_g"); e["fat_g"] = sum("fat_g")
         e["portion_g"] = sum("grams").rounded()
+        if !plate { e["pctBase"] = e["portion_g"] }
         r["estimate"] = e
         var all = turns; all[t].result = r; turns = all
     }
@@ -540,7 +550,7 @@ struct AssistantView: View {
 
     /// The whole plate at a percentage of what the AI first said.
     private func setPercent(_ turn: UUID, _ pct: Double) {
-        let e = estimate(turn), start = pos(e["aiPortion"]) ?? pos(e["portion_g"]) ?? 0, now = pos(e["portion_g"]) ?? 0
+        let e = estimate(turn), start = pos(e["pctBase"]) ?? pos(e["aiPortion"]) ?? pos(e["portion_g"]) ?? 0, now = pos(e["portion_g"]) ?? 0
         guard start > 0, now > 0, pct > 0 else { return }
         let f = start * pct / 100 / now
         if abs(f - 1) > 0.001 { scale(turn, by: f) }
@@ -548,7 +558,7 @@ struct AssistantView: View {
 
     private func scale(_ turn: UUID, by f: Double) {
         let before = num(estimate(turn)["portion_g"]) ?? 0
-        change(turn) { parts in parts = parts.map { scaled($0, f) } }
+        change(turn, plate: true) { parts in parts = parts.map { scaled($0, f) } }
         logCorrection(turn, f < 1 ? "smaller" : "bigger", part: ["name": str(estimate(turn)["name"])], from: before, to: num(estimate(turn)["portion_g"]) ?? 0)
     }
 
@@ -575,7 +585,7 @@ struct AssistantView: View {
         guard was != name, was != "" || name != "All" else { return }
         // not through scale: eating half isn't the AI sizing it wrong, so it isn't logged as a correction
         let f = share(name) / share(was.isEmpty ? "All" : was)
-        change(turn) { parts in parts = parts.map { scaled($0, f) } }
+        change(turn, plate: true) { parts in parts = parts.map { scaled($0, f) } }
         guard let t = turns.firstIndex(where: { $0.id == turn }), var r = turns[t].result, var e = r["estimate"] as? JSON else { return }
         e["eatenAnswer"] = name; r["estimate"] = e
         var all = turns; all[t].result = r
@@ -1206,6 +1216,8 @@ struct AssistantView: View {
                     let gaps = CheatDays.list(checked["parts"]).filter { str($0["src"]) == "ai" }.map { str($0["name"]) }
                     if !gaps.isEmpty { store.perform(["type": "gaps", "names": gaps, "at": ISO.now()]) }
                     if let i = turns.firstIndex(where: { $0.id == turn.id }), var res = turns[i].result {
+                        var checked = checked
+                        checked["pctBase"] = checked["portion_g"]   // a new card is 100%, whatever an earlier one was
                         res["estimate"] = checked
                         withAnimation { turns[i].result = res }
                     }

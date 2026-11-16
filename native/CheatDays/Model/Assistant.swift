@@ -99,7 +99,8 @@ enum Assistant {
             // both checked against Claude's format limit with the biggest format the app sends (7 Nov)
             "eaten_unsure": ["type": "boolean", "description": "true when the only photo shows it finished or part eaten and you can't tell how much they had (the parts are then the full serving)"] as JSON,
             "side_sauce": ["type": "string", "description": "the one sauce or condiment usually served on the side with this that you left out because it isn't on the food and they didn't mention it, as a food name (\"Hoisin sauce\"); else empty"] as JSON,
-            "shop_items": ["type": "string", "description": "with a shop: each thing as the shop sells it and how many, like \"Kabana croissant x1; Tiramisu cream cake bites x4\"; else empty"] as JSON,
+            // the weight they had, tried live (tools/ai-test/shop-grams-check.js): "Large chips 125g" both times
+            "shop_items": ["type": "string", "description": "with a shop: each thing as the shop sells it and how many, like \"Kabana croissant x1; Tiramisu cream cake bites x4\"; when they said the weight they had of one, that weight instead of how many (\"Large chips 125g\"); else empty"] as JSON,
             "parts": arr(obj(["name": s, "usda_name": ["type": "string", "description": "the closest USDA FoodData Central SR Legacy description, e.g. 'Chicken, broilers or fryers, breast, meat only, cooked, roasted'"] as JSON,
                               "grams": ["type": "number", "description": "as eaten (cooked weight)"] as JSON, "kcal": n, "protein_g": n, "carbs_g": n, "fat_g": n,
                               "numbers_from": from,
@@ -708,16 +709,32 @@ enum Assistant {
     }
 
     /// A shop's items as the AI listed them ("Kabana croissant x1; Tiramisu cream cake bites x4"), each with how many.
-    static func shopItems(_ text: String) -> [(name: String, count: Double)] {
+    /// With the grams they had of one, when they said ("Large chips 125g", or as Sonnet also writes it, "Large chips x1
+    /// (125 g of 237 g)"): "125g of their large chips" was counted as Nando's whole 230 g large serve, 533 kcal for 290.
+    static func shopItems(_ text: String) -> [(name: String, count: Double, grams: Double?)] {
         text.split(separator: ";").compactMap { raw in
-            let t = raw.trimmingCharacters(in: .whitespaces)
+            var t = raw.trimmingCharacters(in: .whitespaces)
             guard !t.isEmpty else { return nil }
-            if let r = t.range(of: #"\s*[x×]\s*(\d+(\.\d+)?)$"#, options: .regularExpression) {
-                let n = Double(t[r].filter { $0.isNumber || $0 == "." }) ?? 1
-                return (String(t[..<r.lowerBound]), max(n, 1))
+            var grams: Double?
+            // the first weight in it, the one they had ("125 g of 237 g" is 125)
+            if let r = t.range(of: #"\(?\s*\d+(\.\d+)?\s*g\b[^;]*$"#, options: .regularExpression) {
+                let w = t[r].replacingOccurrences(of: #"^\(?\s*(\d+(\.\d+)?).*$"#, with: "$1", options: .regularExpression)
+                grams = Double(w)
+                t = String(t[..<r.lowerBound]).trimmingCharacters(in: .whitespaces)
             }
-            return (t, 1)
+            var count = 1.0
+            if let r = t.range(of: #"\s*[x×]\s*(\d+(\.\d+)?)$"#, options: .regularExpression) {
+                count = max(Double(t[r].filter { $0.isNumber || $0 == "." }) ?? 1, 1)
+                t = String(t[..<r.lowerBound])
+            }
+            return (t, count, grams)
         }
+    }
+
+    /// "Nando's" + "'s" reads "Nando's's".
+    static func possessive(_ name: String) -> String {
+        let n = name.trimmingCharacters(in: .whitespaces)
+        return n.hasSuffix("'s") || n.hasSuffix("’s") || n.hasSuffix("s'") ? n : n + "'s"
     }
 
     /// The shop's own published numbers for everything on the plate, when it publishes them for every item (a chain's
@@ -735,8 +752,13 @@ enum Assistant {
         for task in lookups { found.append(await task.value) }
         // every item's own numbers: the shop's figures replace the estimate
         if found.allSatisfy({ $0.map(Gemini.hasNumbers) == true }) {
-            var out = sane(totals(e, parts: zip(items, found).map { it, label in fromLabel(["name": it.name, "servings": it.count], label!) }))
-            out["shopNote"] = "\(shop)'s own published numbers"
+            // the grams they had of it, else how many: either way from the shop's numbers for its serve
+            var out = sane(totals(e, parts: zip(items, found).map { it, label -> JSON in
+                var x = fromLabel(it.grams.map { ["name": it.name, "grams": $0] as JSON } ?? ["name": it.name, "servings": it.count], label!)
+                x["match"] = "\(possessive(shop)) \(it.name)"
+                return x
+            }))
+            out["shopNote"] = "\(possessive(shop)) own published numbers"
             return out
         }
         // one item whose weight the shop states: the plate sized to it, its parts' numbers kept
@@ -753,7 +775,7 @@ enum Assistant {
             func sum(_ k: String) -> Double { parts.reduce(0) { $0 + (num($1[k]) ?? 0) } }
             out["kcal_total"] = sum("kcal").rounded(); out["protein_g"] = sum("protein_g"); out["carbs_g"] = sum("carbs_g"); out["fat_g"] = sum("fat_g")
             out["portion_g"] = sum("grams").rounded()
-            out["shopNote"] = "Sized from \(shop)'s listed weight (\(Fmt.int(w)) g each)"
+            out["shopNote"] = "Sized from \(possessive(shop)) listed weight (\(Fmt.int(w)) g each)"
             return out
         }
         if found.allSatisfy({ $0 == nil }) { var n = none; n[shop.lowercased()] = Date().timeIntervalSince1970; d.set(n, forKey: key) }
