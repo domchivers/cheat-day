@@ -27,10 +27,37 @@ final class TakeawayMannerTests: XCTestCase {
         XCTAssertEqual(Takeaway.onMenu(["chicken wrap"], crust).missing, ["chicken wrap"], "not swapped for any chicken dish")
     }
 
+    func testAPepperoniPizzaIsItsClassicPepperoni() {
+        // a pizza place's names often leave out "pizza"
+        XCTAssertEqual(Takeaway.onMenu(["pepperoni pizza"], crust).want, ["Classic Pepperoni, large 11 inch"])
+    }
+
     func testADishItHasStaysAsSaid() {
         let r = Takeaway.onMenu(["capricciosa"], crust)
         XCTAssertEqual(r.want, ["capricciosa"])
         XCTAssertTrue(r.plain.isEmpty && r.missing.isEmpty)
+    }
+
+    func testABaseIsAWayNotADish() {
+        // "They do a protein pizza base": not "Crust's menu doesn't have a protein pizza base"
+        let r = Takeaway.onMenu(["protein pizza base"], crust)
+        XCTAssertTrue(r.missing.isEmpty)
+        XCTAssertEqual(r.ways, ["protein pizza base"], "said its numbers aren't out, and planned on the usual base")
+        XCTAssertTrue(r.want.isEmpty)
+    }
+
+    func testABaseTheMenuListsIsPlannedOnIt() {
+        let hp = Takeaway.Item(name: "Classic Pepperoni, high protein base, 10.5 inch", kind: "main", tier: "energy", kcal: 950, p: 62, c: 70, f: 36)
+        let r = Takeaway.onMenu(["pepperoni pizza", "high protein base"], crust + [hp])
+        XCTAssertTrue(r.ways.isEmpty && r.missing.isEmpty)
+        XCTAssertEqual(r.want, [hp.name], "one pizza on that base, not the pizza and the base as two")
+    }
+
+    func testABaseOnlyAnotherPizzaHasLeavesTheirPizza() {
+        let other = Takeaway.Item(name: "Crust Supreme, high protein base, 10.5 inch", kind: "main", tier: "energy", kcal: 1028, p: 50, c: 100, f: 32)
+        let r = Takeaway.onMenu(["pepperoni pizza", "high protein base"], crust + [other])
+        XCTAssertEqual(r.ways, ["high protein base"], "said its numbers aren't out for theirs")
+        XCTAssertEqual(r.want, ["Classic Pepperoni, large 11 inch"], "their pepperoni, not swapped for the supreme")
     }
 
     func testTheMannerWordsGo() {

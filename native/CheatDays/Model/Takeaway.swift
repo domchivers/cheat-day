@@ -333,21 +333,44 @@ enum Takeaway {
 
     /// The dishes they want, as the menu has them: one it doesn't list the way they said ("protein pepperoni pizza") is
     /// its plain dish when it has that, said in the lead; one it doesn't have at all is left out.
-    static func onMenu(_ want: [String], _ items: [Item]) -> (want: [String], plain: [(said: String, dish: String)], missing: [String]) {
+    /// A base asked for is a way of having a pizza, not a dish: "They do a protein pizza base" (16 Nov) was looked for as a
+    /// dish and said not to be on Crust's menu. The menu's own items on it when the lookup found any ("Crust Supreme,
+    /// high protein base"); else said plainly that its numbers aren't out, and planned on the usual base.
+    static func isWay(_ s: String) -> Bool {
+        s.lowercased().range(of: #"\b(base|bases|crust|dough)\b"#, options: .regularExpression) != nil
+    }
+
+    static func onMenu(_ want: [String], _ items: [Item]) -> (want: [String], plain: [(said: String, dish: String)], missing: [String], ways: [String]) {
         let asked = dishes(want)
-        var plain: [(said: String, dish: String)] = [], missing: [String] = []
-        for d in asked where !has(items, d) {
+        var plain: [(said: String, dish: String)] = [], missing: [String] = [], ways: [String] = []
+        // the dish it's for, when they said one ("pepperoni pizza" and "gluten free base"): the item must be that dish on it
+        let dishWords = asked.filter { !isWay($0) }.flatMap { words(core($0)) }.filter { !generic.contains($0) }
+        var covered = false
+        for d in asked where isWay(d) {
+            let ws = words(d).filter { !generic.contains($0) && !["high", "base"].contains($0) } + dishWords
+            if !ws.isEmpty, let on = items.first(where: { i in let n = i.name.lowercased(); n.contains("base") && ws.allSatisfy { n.contains($0) } }) {
+                plain.append((d, on.name)); covered = true
+            } else { ways.append(d) }
+        }
+        for d in asked where !isWay(d) && !(covered) && !has(items, d) {
             // without the manner words, then without the kind of dish too (Crust's is "Classic Pepperoni", no "pizza")
             let c = core(d)
+            // the kind of dish dropped only when the place sells that kind (some item says pizza): a chicken wrap at a
+            // place with no wraps is still not on the menu, not its chicken pizza
+            let kinds = c.split(separator: " ").map { String($0).lowercased() }.filter { generic.contains($0) }
+            let sold = kinds.allSatisfy { k in items.contains { $0.name.lowercased().contains(k.hasSuffix("s") ? String(k.dropLast()) : k) } }
             let bare = c.split(separator: " ").filter { !generic.contains(String($0).lowercased()) }.joined(separator: " ")
-            // only when they said how they'd like it: a chicken wrap at a place with no wraps is still not on the menu
-            let found = (c == d ? [] : [c, bare]).filter { !words($0).isEmpty }.lazy.compactMap { k in
+            let found = ((c == d ? [] : [c]) + (sold && !kinds.isEmpty ? [bare] : [])).filter { !words($0).isEmpty }.lazy.compactMap { k in
                 items.first { i in words(k).allSatisfy { i.name.lowercased().contains($0) } }
             }.first
             if let found { plain.append((d, found.name)) } else { missing.append(d) }
         }
-        let kept = want.compactMap { w -> String? in missing.contains(w) ? nil : plain.first { $0.said == w }?.dish ?? w }
-        return (kept, plain, missing)
+        // a dish now on the base they asked for is that one item, not the dish and the base as two
+        let kept = want.compactMap { w -> String? in
+            if missing.contains(w) || ways.contains(w) || (covered && asked.contains(w) && !isWay(w)) { return nil }
+            return plain.first { $0.said == w }?.dish ?? w
+        }
+        return (kept, plain, missing, ways)
     }
 
     /// Is a dish they named on this menu: all its words in an item's name.
@@ -646,7 +669,8 @@ enum Takeaway {
         // "What if I did a wrap?" at a place with no wraps: said, not the same card again as if it had been heard
         let asked = onMenu(want, menuItems), missing = asked.missing
         let lead = !missing.isEmpty ? "\(shown)'s menu doesn't have \(missing.count == 1 ? "a " + missing[0].lowercased() : missing.joined(separator: " or ").lowercased()), so here's the closest. "
-                 : asked.plain.first.map { "\(shown) doesn't list a \($0.said.lowercased()), so here's its \($0.dish.lowercased()). " } ?? ""
+                 : !asked.ways.isEmpty ? "\(shown) doesn't give numbers for its \(asked.ways[0].lowercased()), so these are on its usual base. "
+                 : asked.plain.first(where: { isWay($0.said) || core($0.said) != $0.said }).map { isWay($0.said) ? "On its \($0.said.lowercased()): " : "\(shown) doesn't list a \($0.said.lowercased()), so here's its \($0.dish.lowercased()). " } ?? ""
         let proteinAsked = theirProtein != nil || talk.lowercased().contains("protein") || homeToo
         let p = plan(menu: menuItems, home: homeToo ? home : [], kcal: kcal, protein: protein, want: asked.want, avoid: avoid, place: shown)
 
