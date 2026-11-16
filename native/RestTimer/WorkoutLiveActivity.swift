@@ -30,6 +30,8 @@ struct WorkoutLiveActivity: Widget {
                     ClockText(state: context.state, startedAt: context.attributes.startedAt)
                         .font(.system(.title2, design: .rounded).monospacedDigit().bold())
                         .multilineTextAlignment(.trailing)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     Text(subtitle(context.state))
@@ -42,7 +44,9 @@ struct WorkoutLiveActivity: Widget {
             } compactTrailing: {
                 ClockText(state: context.state, startedAt: context.attributes.startedAt)
                     .monospacedDigit()
-                    .frame(maxWidth: 52)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .frame(maxWidth: 60)
                     .foregroundStyle(accent)
             } minimal: {
                 Image(systemName: "timer").foregroundStyle(accent)
@@ -63,6 +67,8 @@ private struct LockScreenView: View {
                 Text(isResting(context.state) ? "Rest" : context.attributes.name)
                     .font(.headline)
                     .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
                 Text(subtitle(context.state))
                     .font(.subheadline)
                     .foregroundStyle(.white.opacity(0.65))
@@ -70,10 +76,14 @@ private struct LockScreenView: View {
             }
             Spacer(minLength: 8)
             ClockText(state: context.state, startedAt: context.attributes.startedAt)
-                .font(.system(size: 34, weight: .bold, design: .rounded).monospacedDigit())
+                // Past an hour ("1:08:02") it didn't fit in 120 pt and broke over two lines (16 Nov): one line, room
+                // for the hours, and smaller rather than wrapping if it still doesn't fit
+                .font(.system(size: 32, weight: .bold, design: .rounded).monospacedDigit())
                 .foregroundStyle(isResting(context.state) ? accent : .white)
                 .multilineTextAlignment(.trailing)
-                .frame(maxWidth: 120, alignment: .trailing)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .frame(maxWidth: 150, alignment: .trailing)
         }
         .padding(16)
     }

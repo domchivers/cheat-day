@@ -15,6 +15,9 @@ struct StoryView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var slide = 0
     @State private var progress: Double = 0
+    @State private var tickAt = Date()     // when progress last stepped, for drawing the bar between steps
+    @State private var pace: Double = 0    // how much of the bar a second is
+    @State private var backwards = false   // the last move between people was back one, for which way the push goes
     @State private var paused = false
     /// The poster's name was tapped: the story closes and whoever opened it shows their profile as a normal page.
     var onProfile: ((String) -> Void)? = nil
@@ -121,11 +124,13 @@ struct StoryView: View {
     var body: some View {
         let s = slides
         ZStack {
-            Color.black.ignoresSafeArea()
+            // the black is behind (below), so it stays put and fades while the story is pulled down; this only catches drags
+            Color.clear.contentShape(Rectangle()).ignoresSafeArea()
             if !s.isEmpty {
                 // The story stays the size it is when the keyboard comes up (it was squeezed to a third of the
                 // screen); the message box rides up over it on the keyboard, as Instagram's does.
                 ZStack(alignment: .bottom) {
+                ZStack {   // its own, so the cards' order (zIndex) is only among themselves, under the message box
                 VStack(spacing: 6) {
                     // Every slide the one shape (9:16, a story's own), and as big as the screen lets it be: edge to
                     // edge from the top, with the bars and the name over it, as Instagram's are. With those stacked
@@ -161,6 +166,13 @@ struct StoryView: View {
                         }
                     // and the one height kept under it, whatever goes there, so the slide above doesn't change size either
                     Color.clear.frame(height: 52)
+                }
+                // each person's story is its own card, so moving between people pushes one over the other
+                .id(people.indices.contains(at) ? people[at] : "")
+                .transition(backwards
+                    ? .asymmetric(insertion: .modifier(active: Sunk(on: true), identity: Sunk(on: false)), removal: .move(edge: .trailing))
+                    : .asymmetric(insertion: .move(edge: .trailing), removal: .modifier(active: Sunk(on: true), identity: Sunk(on: false))))
+                .zIndex(Double(at))
                 }
                 .ignoresSafeArea(.keyboard, edges: .bottom)
                 // writing a message: the story dims, with emoji to answer in one tap; a tap on it puts the keyboard away
@@ -206,6 +218,10 @@ struct StoryView: View {
             }
         }
         .offset(y: max(0, drag))
+        // Swiping down to close (D3, chosen 16 Nov): the story slides down under the finger and the screen it was
+        // opened from shows through as the black fades. The black slid down with it before, so it was black behind.
+        .background { Color.black.opacity(max(0, 1 - Double(max(0, drag)) / 500)).ignoresSafeArea() }
+        .presentationBackground(.clear)
         .gesture(DragGesture().onChanged { v in if v.translation.height > 0, abs(v.translation.height) > abs(v.translation.width) { drag = v.translation.height; paused = true } }
             .onEnded { v in
                 let across = v.translation.width, down = v.translation.height
@@ -216,7 +232,12 @@ struct StoryView: View {
                     if across < 0 { person(1) } else { person(-1) }
                     return
                 }
-                if down > 120 { print("StoryView closed by a swipe down: across \(across), down \(down)"); dismiss() } else { withAnimation(.snappy) { drag = 0 }; paused = false }
+                if down > 120 {
+                    print("StoryView closed by a swipe down: across \(across), down \(down)")
+                    // it carries on down off the screen from where the finger let go, then closes with nothing left to slide
+                    withAnimation(.easeIn(duration: 0.2)) { drag = 1400 }
+                    Task { try? await Task.sleep(for: .milliseconds(200)); var t = Transaction(); t.disablesAnimations = true; withTransaction(t) { dismiss() } }
+                } else { withAnimation(.snappy) { drag = 0 }; paused = false }
             })
         .statusBarHidden()
         .overlay(alignment: .top) {
@@ -237,6 +258,7 @@ struct StoryView: View {
                 song.start = num(tune["start"])   // the part of it the poster chose, if they did
                 SongPlayer.shared.play(song, key: "story:" + str(st["id"]), loop: true)
             } else { SongPlayer.shared.stop() }
+            pace = 1 / length; tickAt = Date()
             // The last slide's up: this person's story has been watched. It was only counted when the last slide was
             // gone past (by its bar running out or a tap), so closing on the last slide, as most people do, left
             // the ring bright for good.
@@ -256,7 +278,7 @@ struct StoryView: View {
                 let at = Date(), dt = min(0.25, at.timeIntervalSince(last)); last = at
                 if case .snap(let st)? = now, waited < 8, Stories.pictures(st).contains(where: { ImageStore.cached($0) == nil }) { waited += dt; continue }
                 if paused || tagged != nil || reportOf != nil || typing || reacting || sharing != nil || sharingStory != nil || seenBy != nil || adding != nil || managing != nil || mentioning != nil { continue }
-                progress += dt / length
+                progress += dt / length; tickAt = at
                 if progress >= 1 { next(); return }
             }
         }
@@ -267,18 +289,22 @@ struct StoryView: View {
     }
 
     private func bars(_ n: Int) -> some View {
-        HStack(spacing: 4) {
-            ForEach(0..<n, id: \.self) { i in
-                GeometryReader { g in
-                    Capsule().fill(.white.opacity(0.3))
-                        // each step of the bar slides into the next over the same time a step takes, so it moves
-                        // smoothly instead of in little jumps 20 times a second
-                        .overlay(alignment: .leading) {
-                            Capsule().fill(.white).frame(width: g.size.width * (i < slide ? 1 : i == slide ? progress : 0))
-                                .animation(i == slide && progress > 0.001 ? .linear(duration: 0.06) : nil, value: progress)
-                        }
+        // Smooth between the 20-a-second steps by drawing every frame, up to one step past the last (where a paused bar
+        // rests). It slid with an animation before (16 Nov): during a swipe down the white part was animated on its
+        // own and came apart from its bar, trailing above the card.
+        TimelineView(.animation) { tl in
+            let ahead = min(0.05, max(0, tl.date.timeIntervalSince(tickAt))) * pace
+            let now = progress > 0 ? min(1, progress + ahead) : 0
+            HStack(spacing: 4) {
+                ForEach(0..<n, id: \.self) { i in
+                    GeometryReader { g in
+                        Capsule().fill(.white.opacity(0.3))
+                            .overlay(alignment: .leading) {
+                                Capsule().fill(.white).frame(width: g.size.width * (i < slide ? 1 : i == slide ? now : 0))
+                            }
+                    }
+                    .frame(height: 3)
                 }
-                .frame(height: 3)
             }
         }
         .padding(.top, 6)
@@ -625,7 +651,17 @@ struct StoryView: View {
     private func next() {
         if slide + 1 < slides.count { slide += 1; return }
         Self.markSeen(who)
-        if at + 1 < people.count { at += 1; slide = 0 } else { dismiss() }
+        if at + 1 < people.count { go(1) } else { dismiss() }
+    }
+    /// To the next person (or back one) with the push (B, chosen 16 Nov): forward, theirs slides in over the top from the
+    /// right and this one sinks back into the dark; back, the same played in reverse. The way is set first, on its own,
+    /// because a story on its way out goes with the transition it last had.
+    private func go(_ step: Int) {
+        backwards = step < 0
+        DispatchQueue.main.async {
+            guard people.indices.contains(at + step) else { return }   // two quick swipes: not past the ends
+            withAnimation(.timingCurve(0.25, 0.8, 0.25, 1, duration: 0.38)) { at += step; slide = 0 }
+        }
     }
     /// On to the next person's story, or back to the one before. Past the last, the stories close; before the first,
     /// this one starts again.
@@ -634,13 +670,23 @@ struct StoryView: View {
         print("StoryView person \(step): at \(at) of \(people.count), slide \(slide) of \(slides.count), people \(people)")
         if step > 0 {
             Self.markSeen(who)
-            if at + 1 < people.count { withAnimation(.easeInOut(duration: 0.2)) { at += 1; slide = 0 } } else { dismiss() }
-        } else if at > 0 { withAnimation(.easeInOut(duration: 0.2)) { at -= 1; slide = 0 } }
+            if at + 1 < people.count { go(1) } else { dismiss() }
+        } else if at > 0 { go(-1) }
         else { slide = 0; progress = 0 }
     }
 
     private func back() {
-        if slide > 0 { slide -= 1 } else if at > 0 { at -= 1; slide = 0 } else { progress = 0 }
+        if slide > 0 { slide -= 1 } else if at > 0 { go(-1) } else { progress = 0 }
+    }
+}
+
+/// A person's story pushed back behind the next one: drifted a little to the left, a touch smaller, and in the dark.
+struct Sunk: ViewModifier {
+    let on: Bool
+    func body(content: Content) -> some View {
+        content.visualEffect { [on] c, g in
+            c.offset(x: on ? -g.size.width * 0.28 : 0).scaleEffect(on ? 0.94 : 1).brightness(on ? -0.6 : 0)
+        }
     }
 }
 
