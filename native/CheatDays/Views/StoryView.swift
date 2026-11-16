@@ -20,6 +20,7 @@ struct StoryView: View {
     @State private var swipe: CGFloat = 0     // how far the card's been pulled sideways, to the next person (−) or back (+)
     @State private var width: CGFloat = 400   // the card's, for how far a swipe has to go
     @State private var axis = 0               // the drag going on: 0 not known yet, 1 down (to close), 2 sideways
+    @State private var grab: CGSize = .zero   // where the finger was when the drag set off, for the card to go from there
     @State private var paused = false
     /// The poster's name was tapped: the story closes and whoever opened it shows their profile as a normal page.
     var onProfile: ((String) -> Void)? = nil
@@ -77,7 +78,9 @@ struct StoryView: View {
         // stories they posted come first, then today's posts, meals and workouts
         var out: [Slide] = Stories.shared.of(id).map { .snap($0) } + posts.map { .post($0) }
         let food: [JSON], workouts: [JSON]
-        if id == Profiles.shared.me { food = Store.shared.todayItems; workouts = Store.shared.todayWorkouts.map { ["name": $0["name"] ?? "", "workout": $0] } }
+        // your own, "as friends see it": a workout only when Settings shares it in your day (it showed here always,
+        // so a workout friends never got looked shared, 17 Nov)
+        if id == Profiles.shared.me { food = Store.shared.todayItems; workouts = Store.shared.workoutsInDay ? Store.shared.todayWorkouts.map { ["name": $0["name"] ?? "", "workout": $0] } : [] }
         else if let p = Friends.shared.people.first(where: { $0.id == id }) { food = p.food; workouts = p.workouts }
         else { food = []; workouts = [] }
         for meal in Meals.all {
@@ -241,18 +244,21 @@ struct StoryView: View {
         .presentationBackground(.clear)
         .gesture(DragGesture().onChanged { v in
                 let t = v.translation
-                // which way it's going is settled once, at the start, so a swipe sideways that dips doesn't start closing
-                if axis == 0 { axis = abs(t.width) > abs(t.height) * 1.2 && !typing && highlight == nil ? 2 : 1 }
+                // which way it's going is settled once, at the start, so a swipe sideways that dips doesn't start closing;
+                // and the card goes from where it is then, not by the 10 points the finger had to move first (it
+                // jumped them as it set off, 17 Nov)
+                if axis == 0 { axis = abs(t.width) > abs(t.height) * 1.2 && !typing && highlight == nil ? 2 : 1; grab = t }
+                let dx = t.width - grab.width, dy = t.height - grab.height
                 if axis == 2 {
                     paused = true
                     // nobody that way (the first person, back): it gives a little and comes back, so it doesn't feel stuck
-                    let there = people.indices.contains(at + (t.width < 0 ? 1 : -1))
-                    swipe = there ? t.width : t.width * 0.25
-                } else if t.height > 0 { drag = t.height; paused = true }
+                    let there = people.indices.contains(at + (dx < 0 ? 1 : -1))
+                    swipe = there ? dx : dx * 0.25
+                } else { drag = max(0, dy); paused = true }
             }
             .onEnded { v in
-                let across = v.translation.width, down = v.translation.height
-                defer { axis = 0 }
+                let across = v.translation.width - grab.width, down = v.translation.height - grab.height
+                defer { axis = 0; grab = .zero }
                 // a swipe sideways: the next person's story, or the one before, once it's gone a third of the way or
                 // was flicked
                 if axis == 2 {
@@ -266,11 +272,18 @@ struct StoryView: View {
                     else { withAnimation(.snappy(duration: 0.25)) { swipe = 0 }; paused = false }
                     return
                 }
-                if down > 120 {
-                    print("StoryView closed by a swipe down: across \(across), down \(down)")
-                    // it carries on down off the screen from where the finger let go, then closes with nothing left to slide
-                    withAnimation(.easeIn(duration: 0.2)) { drag = 1400 }
-                    Task { try? await Task.sleep(for: .milliseconds(200)); var t = Transaction(); t.disablesAnimations = true; withTransaction(t) { dismiss() } }
+                // far enough, or flicked down
+                let speed = v.velocity.height
+                if down > 120 || (down > 30 && speed > 700) {
+                    print("StoryView closed by a swipe down: across \(across), down \(down), speed \(Int(speed))")
+                    // It carries on down from where the finger let go at the finger's own speed, easing off as it goes,
+                    // then closes with nothing left to slide. It went the rest of the way in a set 0.2 s from a standing
+                    // start, so after a slow pull it leapt off the screen (17 Nov).
+                    let rest = max(1, 1000 - drag)
+                    let time = min(0.45, max(0.22, 2 * rest / max(900, speed)))   // the curve starts at twice its average speed
+                    withAnimation(.timingCurve(0.25, 0.5, 0.5, 1, duration: time)) { drag = 1000 } completion: {
+                        var t = Transaction(); t.disablesAnimations = true; withTransaction(t) { dismiss() }
+                    }
                 } else { withAnimation(.snappy) { drag = 0 }; paused = false }
             })
         .statusBarHidden()
