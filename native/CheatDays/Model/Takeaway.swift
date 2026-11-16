@@ -280,7 +280,7 @@ enum Takeaway {
     }
     static func menuAsk(_ restaurant: String, area: String, want: [String], seen: [String] = []) -> String {
         """
-        Find the current menu of "\(restaurant)"\(area.isEmpty ? "" : " in \(area)"), a restaurant, takeaway or chain in \(Plan.country), and the nutrition it publishes. Look first for the nutrition it publishes itself: chains in Australia list kJ (often protein too) on their own website's menu or nutrition page, or a nutrition PDF; search the web for "\(restaurant) nutrition information" first, then open its own page or PDF from those results with web_fetch (a page can only be opened once a search has shown it) and read each item's numbers from it. DoorDash, Uber Eats and Menulog pages usually can't be opened, but their search results show the current menu's item names and often kJ in each name ("Chicken Burger (2280 kJ)"): use them for names and any kJ shown.\(want.isEmpty ? "" : " They want: \(want.joined(separator: ", ")). Make sure those dishes are in the list if it sells them, with the kJ its listing shows today, not an old menu's.")\(seen.isEmpty ? "" : " They read these on its listing today: \(seen.joined(separator: ", ")). List each with exactly that kJ, and estimate its protein, carbs and fat for that energy.") List up to 30 of its items, mains first, each as one serving as sold (with its size or pieces in the name, "Original tenders, 4 pcs").
+        Find the current menu of "\(restaurant)"\(area.isEmpty ? "" : " in \(area)"), a restaurant, takeaway or chain in \(Plan.country), and the nutrition it publishes. Look first for the nutrition it publishes itself: chains in Australia list kJ (often protein too) on their own website's menu or nutrition page, or a nutrition PDF; search the web for "\(restaurant) nutrition information" first, then open its own page or PDF from those results with web_fetch (a page can only be opened once a search has shown it) and read each item's numbers from it. DoorDash, Uber Eats and Menulog pages usually can't be opened, but their search results show the current menu's item names and often kJ in each name ("Chicken Burger (2280 kJ)"): use them for names and any kJ shown.\(want.isEmpty ? "" : " They want: \(want.joined(separator: ", ")). Make sure those dishes are in the list if it sells them, with the kJ its listing shows today, not an old menu's.")\(seen.isEmpty ? "" : " They read these on its listing today: \(seen.joined(separator: ", ")). List each with exactly that kJ, and estimate its protein, carbs and fat for that energy.") List up to 30 of its items, mains first, each as one serving as sold (with its size or pieces in the name, "Original tenders, 4 pcs").\(want.isEmpty ? "" : " When a dish they want comes another way it sells (another base such as high protein, gluten free or thin, or a protein option), list that way as its own item named with it (\"Pepperoni pizza, high protein base\"), with its own numbers.")
         For each item: published is full when the restaurant gives its calories and protein, energy when it gives only kJ or kcal, none when it gives nothing. kj: exactly as published, else 0. kcal: as published, else kJ ÷ 4.184, else your estimate. protein_g, carbs_g and fat_g: as published, else your honest estimate from what the item is and its usual portion. kind: main, side, drink or dessert.
         found false if you can't find its menu at all. source: where the numbers came from, a few words. When its own figures and a delivery listing's kJ disagree, the delivery listing is today's menu: use its number. Never guess a kJ: an item whose energy you didn't read on a page has kj 0 and published none.
         """
@@ -319,6 +319,37 @@ enum Takeaway {
         want.filter { w in kind(w) == nil && !["shake", "milk", "ice cream", "yoghurt", "yogurt"].contains { w.lowercased().contains($0) } && !words(w).isEmpty }
     }
 
+    /// Words that say how they'd like a dish, not which dish. "Protein pepperoni pizza" from Crust is its pepperoni pizza,
+    /// wanted high in protein: no item had "protein" in its name, so the pepperoni was dropped as not on the menu and a
+    /// pesto chicken pizza given instead (16 Nov).
+    static let manner: Set<String> = ["protein", "high", "healthy", "healthier", "light", "lighter", "lean", "low", "carb", "keto",
+                                      "large", "small", "big", "medium", "regular"]
+    /// The kind of dish, which a menu's names often leave out at a place that only sells it.
+    static let generic: Set<String> = ["pizza", "pizzas", "burger", "burgers", "pasta", "bowl", "bowls", "wrap", "wraps", "salad", "sandwich", "sub", "meal"]
+    /// The dish without those words ("pepperoni pizza").
+    static func core(_ dish: String) -> String {
+        dish.split(separator: " ").filter { !manner.contains($0.lowercased().trimmingCharacters(in: .punctuationCharacters)) }.joined(separator: " ")
+    }
+
+    /// The dishes they want, as the menu has them: one it doesn't list the way they said ("protein pepperoni pizza") is
+    /// its plain dish when it has that, said in the lead; one it doesn't have at all is left out.
+    static func onMenu(_ want: [String], _ items: [Item]) -> (want: [String], plain: [(said: String, dish: String)], missing: [String]) {
+        let asked = dishes(want)
+        var plain: [(said: String, dish: String)] = [], missing: [String] = []
+        for d in asked where !has(items, d) {
+            // without the manner words, then without the kind of dish too (Crust's is "Classic Pepperoni", no "pizza")
+            let c = core(d)
+            let bare = c.split(separator: " ").filter { !generic.contains(String($0).lowercased()) }.joined(separator: " ")
+            // only when they said how they'd like it: a chicken wrap at a place with no wraps is still not on the menu
+            let found = (c == d ? [] : [c, bare]).filter { !words($0).isEmpty }.lazy.compactMap { k in
+                items.first { i in words(k).allSatisfy { i.name.lowercased().contains($0) } }
+            }.first
+            if let found { plain.append((d, found.name)) } else { missing.append(d) }
+        }
+        let kept = want.compactMap { w -> String? in missing.contains(w) ? nil : plain.first { $0.said == w }?.dish ?? w }
+        return (kept, plain, missing)
+    }
+
     /// Is a dish they named on this menu: all its words in an item's name.
     static func has(_ items: [Item], _ dish: String) -> Bool {
         let ws = words(dish)
@@ -344,7 +375,7 @@ enum Takeaway {
         let quoted = seen.map { "\(str($0["name"])) (\(Fmt.int(num($0["kj"]) ?? 0)) kJ)" }
         func matches(_ m: JSON) -> Bool {
             let its = items(m)
-            return wanted.allSatisfy { has(its, $0) } && seen.allSatisfy { s in
+            return onMenu(wanted, its).missing.isEmpty && seen.allSatisfy { s in
                 let ws = words(str(s["name"])), k = kcal(fromKJ: num(s["kj"]) ?? 0)
                 return its.contains { i in ws.allSatisfy { i.name.lowercased().contains($0) } && abs(i.kcal - k) <= k * 0.15 }
             }
@@ -613,10 +644,11 @@ enum Takeaway {
         let talk = ([text, earlier] + want + avoid).joined(separator: " ")
         let homeToo = asksForHome(talk) || (theirProtein != nil && named == nil)
         // "What if I did a wrap?" at a place with no wraps: said, not the same card again as if it had been heard
-        let missing = dishes(want).filter { !has(menuItems, $0) }
-        let lead = missing.isEmpty ? "" : "\(shown)'s menu doesn't have \(missing.count == 1 ? "a " + missing[0].lowercased() : missing.joined(separator: " or ").lowercased()), so here's the closest. "
+        let asked = onMenu(want, menuItems), missing = asked.missing
+        let lead = !missing.isEmpty ? "\(shown)'s menu doesn't have \(missing.count == 1 ? "a " + missing[0].lowercased() : missing.joined(separator: " or ").lowercased()), so here's the closest. "
+                 : asked.plain.first.map { "\(shown) doesn't list a \($0.said.lowercased()), so here's its \($0.dish.lowercased()). " } ?? ""
         let proteinAsked = theirProtein != nil || talk.lowercased().contains("protein") || homeToo
-        let p = plan(menu: menuItems, home: homeToo ? home : [], kcal: kcal, protein: protein, want: want.filter { !missing.contains($0) }, avoid: avoid, place: shown)
+        let p = plan(menu: menuItems, home: homeToo ? home : [], kcal: kcal, protein: protein, want: asked.want, avoid: avoid, place: shown)
 
         let smallest = menuItems.filter { $0.kind == "main" }.map { $0.kcal }.min() ?? 0
         return result(p, home: homeToo ? home : [], tips: homeToo ? [] : home, menu: menuItems, shown: shown, kcal: kcal, protein: protein, meal: meal,
