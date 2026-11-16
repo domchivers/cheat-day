@@ -17,7 +17,9 @@ struct StoryView: View {
     @State private var progress: Double = 0
     @State private var tickAt = Date()     // when progress last stepped, for drawing the bar between steps
     @State private var pace: Double = 0    // how much of the bar a second is
-    @State private var backwards = false   // the last move between people was back one, for which way the push goes
+    @State private var swipe: CGFloat = 0     // how far the card's been pulled sideways, to the next person (−) or back (+)
+    @State private var width: CGFloat = 400   // the card's, for how far a swipe has to go
+    @State private var axis = 0               // the drag going on: 0 not known yet, 1 down (to close), 2 sideways
     @State private var paused = false
     /// The poster's name was tapped: the story closes and whoever opened it shows their profile as a normal page.
     var onProfile: ((String) -> Void)? = nil
@@ -39,7 +41,8 @@ struct StoryView: View {
         }
     }
     @State private var reply = ""
-    @State private var drag: CGFloat = 0
+    // starts below the screen: the story rises in on its own (onAppear), the swipe-down close played backwards
+    @State private var drag: CGFloat = 1000
     @State private var sent = false
     @FocusState private var typing: Bool
     private static let seconds = 5.0
@@ -131,12 +134,21 @@ struct StoryView: View {
                 // screen); the message box rides up over it on the keyboard, as Instagram's does.
                 ZStack(alignment: .bottom) {
                 ZStack {   // its own, so the cards' order (zIndex) is only among themselves, under the message box
+                // The person before, waiting under this one in the dark (back: this one slides off right to show them)
+                if people.indices.contains(at - 1), highlight == nil {
+                    let q = 1 - min(1, max(0, swipe) / width)
+                    peek(people[at - 1]).modifier(Sunk(p: q, width: width)).opacity(swipe < 0 ? 0 : 1).zIndex(0)
+                }
                 VStack(spacing: 6) {
                     // Every slide the one shape (9:16, a story's own), and as big as the screen lets it be: edge to
                     // edge from the top, with the bars and the name over it, as Instagram's are. With those stacked
                     // above it on black and a margin each side, it came out noticeably smaller than theirs.
                     content(s[min(slide, s.count - 1)])
                         .aspectRatio(StoryArt.aspect, contentMode: .fit)
+                        // solid behind every slide: the cards' colours fade to see-through and were made on black, so
+                        // with the feed showing behind (swipe down, 16 Nov) the feed showed through the card, and one
+                        // person's card through the other's in the push
+                        .background(Color.black)
                         .clipShape(UnevenRoundedRectangle(topLeadingRadius: 16, bottomLeadingRadius: 8, bottomTrailingRadius: 8, topTrailingRadius: 16, style: .continuous))
                         // the bars and the name read over a bright photo too
                         .overlay(alignment: .top) {
@@ -167,13 +179,18 @@ struct StoryView: View {
                     // and the one height kept under it, whatever goes there, so the slide above doesn't change size either
                     Color.clear.frame(height: 52)
                 }
-                // each person's story is its own card, so moving between people pushes one over the other
-                .id(people.indices.contains(at) ? people[at] : "")
-                .transition(backwards
-                    ? .asymmetric(insertion: .modifier(active: Sunk(on: true), identity: Sunk(on: false)), removal: .move(edge: .trailing))
-                    : .asymmetric(insertion: .move(edge: .trailing), removal: .modifier(active: Sunk(on: true), identity: Sunk(on: false))))
-                .zIndex(Double(at))
+                // Moving between people follows the finger (16 Nov): forward, the next one slides in over the top and
+                // this one sinks back into the dark; back, this one slides off to the right. It played only once the
+                // finger let go before, as a transition, and going back played the forward one.
+                .modifier(Sunk(p: swipe < 0 && people.indices.contains(at + 1) ? min(1, -swipe / width) : 0, width: width))
+                .offset(x: swipe > 0 || !people.indices.contains(at + 1) ? swipe : 0)
+                .zIndex(swipe > 0 ? 2 : 1)
+                // the next person, just off the right edge until it's pulled in
+                if people.indices.contains(at + 1), highlight == nil {
+                    peek(people[at + 1]).offset(x: width + min(0, swipe)).shadow(color: .black.opacity(swipe < 0 ? 0.5 : 0), radius: 16).zIndex(3)
                 }
+                }
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { if $0 > 0 { width = $0 } }
                 .ignoresSafeArea(.keyboard, edges: .bottom)
                 // writing a message: the story dims, with emoji to answer in one tap; a tap on it puts the keyboard away
                 if typing {
@@ -222,14 +239,31 @@ struct StoryView: View {
         // opened from shows through as the black fades. The black slid down with it before, so it was black behind.
         .background { Color.black.opacity(max(0, 1 - Double(max(0, drag)) / 500)).ignoresSafeArea() }
         .presentationBackground(.clear)
-        .gesture(DragGesture().onChanged { v in if v.translation.height > 0, abs(v.translation.height) > abs(v.translation.width) { drag = v.translation.height; paused = true } }
+        .gesture(DragGesture().onChanged { v in
+                let t = v.translation
+                // which way it's going is settled once, at the start, so a swipe sideways that dips doesn't start closing
+                if axis == 0 { axis = abs(t.width) > abs(t.height) * 1.2 && !typing && highlight == nil ? 2 : 1 }
+                if axis == 2 {
+                    paused = true
+                    // nobody that way (the first person, back): it gives a little and comes back, so it doesn't feel stuck
+                    let there = people.indices.contains(at + (t.width < 0 ? 1 : -1))
+                    swipe = there ? t.width : t.width * 0.25
+                } else if t.height > 0 { drag = t.height; paused = true }
+            }
             .onEnded { v in
                 let across = v.translation.width, down = v.translation.height
-                // a swipe sideways: the next person's story, or the one before (there was no way but waiting or tapping
-                // through every slide)
-                if abs(across) > 60, abs(across) > abs(down) * 1.3, !typing {
-                    withAnimation(.snappy) { drag = 0 }; paused = false
-                    if across < 0 { person(1) } else { person(-1) }
+                defer { axis = 0 }
+                // a swipe sideways: the next person's story, or the one before, once it's gone a third of the way or
+                // was flicked
+                if axis == 2 {
+                    let step = across < 0 ? 1 : -1
+                    let far = abs(across) > width * 0.3 || abs(v.predictedEndTranslation.width) > width * 0.6
+                    if far, people.indices.contains(at + step) {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        if step > 0 { Self.markSeen(who) }
+                        finish(step)
+                    } else if far, step > 0 { Self.markSeen(who); dismiss() }   // past the last person, they close
+                    else { withAnimation(.snappy(duration: 0.25)) { swipe = 0 }; paused = false }
                     return
                 }
                 if down > 120 {
@@ -240,6 +274,8 @@ struct StoryView: View {
                 } else { withAnimation(.snappy) { drag = 0 }; paused = false }
             })
         .statusBarHidden()
+        // opened with the system's slide-up turned off (openStory), it comes up from below as the black fades in
+        .onAppear { withAnimation(.spring(duration: 0.34, bounce: 0)) { drag = 0 } }
         .overlay(alignment: .top) {
             if let failed {
                 Text(failed).font(.footnote.weight(.semibold)).foregroundStyle(.white).padding(.horizontal, 14).padding(.vertical, 9)
@@ -315,13 +351,16 @@ struct StoryView: View {
     private var when: String {
         let s = slides
         guard !s.isEmpty else { return "today" }
+        return Self.whenWord(s[min(slide, s.count - 1)], who)
+    }
+    static func whenWord(_ s: Slide, _ id: String) -> String {
         let ago: String
-        switch s[min(slide, s.count - 1)] {
+        switch s {
         case .snap(let st): ago = Feed.ago(str(st["created_at"]))
         case .post(let p): ago = Feed.ago(str(p["created_at"]))
         default: ago = ""
         }
-        return ago.isEmpty ? Self.dayWord(who) : ago
+        return ago.isEmpty ? dayWord(id) : ago
     }
 
     /// Their day's slides: today, or yesterday when the day showing is still yesterday's (a day touched in the last
@@ -378,13 +417,15 @@ struct StoryView: View {
         }
     }
 
-    @ViewBuilder private func content(_ s: Slide) -> some View {
+    /// A slide, for whoever's story is showing, or for `person` beside it (peek), which never plays.
+    @ViewBuilder private func content(_ s: Slide, of person: String? = nil) -> some View {
+        let them = person ?? who
         switch s {
         case .snap(let st):
             // 9:16, the editor's shape, so everything placed lands where it was put
             let layer = StoryLayer(items: list(st["overlays"]).filter { !Self.live($0) }, story: str(st["id"]))
             ZStack {
-                if str(st["kind"]) == "video", let url = URL(string: str(st["media"])) { LoopingVideo(url: url, paused: paused || seenBy != nil); layer }
+                if str(st["kind"]) == "video", let url = URL(string: str(st["media"])) { LoopingVideo(url: url, paused: paused || seenBy != nil || person != nil); layer }
                 // a photo still on its way: black with a turning circle, and nothing that's stuck on it until it's
                 // here (the stickers and tags showed at once, over an empty slide)
                 else { StoryPhoto(src: str(st["media"]), also: Stories.pictures(st).filter { $0 != str(st["media"]) }) { layer }.id(str(st["id"])) }
@@ -415,7 +456,7 @@ struct StoryView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Eyebrow(text: meal, color: Theme.heroLabel)
                 Text("\(Fmt.int(kcal)) kcal").font(.system(size: 34, weight: .heavy)).foregroundStyle(.white)
-                Text("What \(isMe ? "you" : Feed.shared.name(who)) had").font(.caption.weight(.heavy)).tracking(0.8).foregroundStyle(Theme.heroLabel).textCase(.uppercase).padding(.top, 8)
+                Text("What \(them == Profiles.shared.me ? "you" : Feed.shared.name(them)) had").font(.caption.weight(.heavy)).tracking(0.8).foregroundStyle(Theme.heroLabel).textCase(.uppercase).padding(.top, 8)
                 ForEach(items.indices, id: \.self) { i in
                     HStack(spacing: 10) {
                         FoodDot(name: str(items[i]["name"]), size: 32)
@@ -653,26 +694,56 @@ struct StoryView: View {
         Self.markSeen(who)
         if at + 1 < people.count { go(1) } else { dismiss() }
     }
-    /// To the next person (or back one) with the push (B, chosen 16 Nov): forward, theirs slides in over the top from the
-    /// right and this one sinks back into the dark; back, the same played in reverse. The way is set first, on its own,
-    /// because a story on its way out goes with the transition it last had.
+    /// To the next person (or back one) with the push (B, chosen 16 Nov), as a tap at either end of someone's story does.
     private func go(_ step: Int) {
-        backwards = step < 0
-        DispatchQueue.main.async {
-            guard people.indices.contains(at + step) else { return }   // two quick swipes: not past the ends
-            withAnimation(.timingCurve(0.25, 0.8, 0.25, 1, duration: 0.38)) { at += step; slide = 0 }
+        guard people.indices.contains(at + step), swipe == 0 else { return }   // two quick taps: one move at a time
+        finish(step)
+    }
+    /// The push carried through from wherever the finger left it. The people before and after are drawn beside this
+    /// one all along, so when it's done the one now in front just becomes the story showing, with nothing jumping.
+    private func finish(_ step: Int) {
+        let n = at + step
+        paused = true
+        withAnimation(.timingCurve(0.25, 0.8, 0.25, 1, duration: 0.32)) { swipe = step > 0 ? -width : width } completion: {
+            var t = Transaction(); t.disablesAnimations = true
+            withTransaction(t) { at = n; slide = 0; progress = 0; swipe = 0; paused = false }
         }
     }
-    /// On to the next person's story, or back to the one before. Past the last, the stories close; before the first,
-    /// this one starts again.
-    private func person(_ step: Int) {
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        print("StoryView person \(step): at \(at) of \(people.count), slide \(slide) of \(slides.count), people \(people)")
-        if step > 0 {
-            Self.markSeen(who)
-            if at + 1 < people.count { go(1) } else { dismiss() }
-        } else if at > 0 { go(-1) }
-        else { slide = 0; progress = 0 }
+    /// The person before or after, as their story will look when it starts: their first slide, empty bars, their name.
+    /// Drawn beside the one showing, for the swipe to pull in. Nothing on it can be pressed.
+    @ViewBuilder private func peek(_ p: String) -> some View {
+        let s = Self.slides(for: p)
+        if let first = s.first {
+            VStack(spacing: 6) {
+                content(first, of: p)
+                    .aspectRatio(StoryArt.aspect, contentMode: .fit)
+                    .background(Color.black)
+                    .clipShape(UnevenRoundedRectangle(topLeadingRadius: 16, bottomLeadingRadius: 8, bottomTrailingRadius: 8, topTrailingRadius: 16, style: .continuous))
+                    .overlay(alignment: .top) {
+                        LinearGradient(colors: [.black.opacity(0.45), .clear], startPoint: .top, endPoint: .bottom).frame(height: 120)
+                            .clipShape(UnevenRoundedRectangle(topLeadingRadius: 16, topTrailingRadius: 16, style: .continuous))
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .overlay(alignment: .top) {
+                        VStack(spacing: 8) {
+                            HStack(spacing: 4) { ForEach(0..<s.count, id: \.self) { _ in Capsule().fill(.white.opacity(0.3)).frame(height: 3) } }
+                                .padding(.top, 6)
+                            HStack(spacing: 9) {
+                                Avatar(id: p, size: 32)
+                                Text(p == Profiles.shared.me ? "Your day" : Feed.shared.name(p)).font(.subheadline.weight(.bold)).foregroundStyle(.white)
+                                Text(Self.whenWord(first, p)).font(.subheadline).foregroundStyle(.white.opacity(0.65))
+                                Spacer()
+                                if p != Profiles.shared.me { Image(systemName: "flag").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white.opacity(0.85)).padding(8) }
+                                Image(systemName: "xmark").font(.system(size: 18, weight: .semibold)).foregroundStyle(.white).padding(8)
+                            }
+                            .padding(.horizontal, 6)
+                        }
+                        .padding(.horizontal, 8).shadow(color: .black.opacity(0.35), radius: 3)
+                    }
+                Color.clear.frame(height: 52)
+            }
+            .allowsHitTesting(false)
+        }
     }
 
     private func back() {
@@ -680,13 +751,20 @@ struct StoryView: View {
     }
 }
 
-/// A person's story pushed back behind the next one: drifted a little to the left, a touch smaller, and in the dark.
+/// Shows a story without the system's slide-up: with the feed showing behind a story (16 Nov) that slid up a black
+/// sheet with the feed above it. StoryView rises in by itself instead.
+func openStory(_ change: () -> Void) {
+    var t = Transaction(); t.disablesAnimations = true
+    withTransaction(t, change)
+}
+
+/// A person's story pushed back behind the next one, by how far (0 to 1): drifted a little to the left, a touch
+/// smaller, and in the dark.
 struct Sunk: ViewModifier {
-    let on: Bool
+    let p: CGFloat
+    let width: CGFloat
     func body(content: Content) -> some View {
-        content.visualEffect { [on] c, g in
-            c.offset(x: on ? -g.size.width * 0.28 : 0).scaleEffect(on ? 0.94 : 1).brightness(on ? -0.6 : 0)
-        }
+        content.scaleEffect(1 - 0.06 * p).brightness(-0.6 * p).offset(x: -width * 0.28 * p)
     }
 }
 

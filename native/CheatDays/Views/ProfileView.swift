@@ -198,7 +198,7 @@ struct ProfileView: View {
                     // videos you've put up, which is all this looked for), or theirs when you're allowed to see it. With
                     // nothing to play, yours starts a new one.
                     .onTapGesture {
-                        if StoryView.has(id), isMe || !locked { watching = true }
+                        if StoryView.has(id), isMe || !locked { openStory { watching = true } }
                         else if isMe { composing = true }
                     }
                 // Instagram's way: the name, then the counts under it, beside the photo

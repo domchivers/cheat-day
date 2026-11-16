@@ -302,7 +302,7 @@ struct ChatView: View {
                     Text(mine ? "You mentioned them in your story" : "Mentioned you in their story").font(.caption).foregroundStyle(.secondary)
                 }
                 storyCard(p, live: live).contentShape(Rectangle())
-                    .onTapGesture { if live, held == nil { watching = PostBox(post: ["id": str(p["owner"])]) } }
+                    .onTapGesture { if live, held == nil { openStory { watching = PostBox(post: ["id": str(p["owner"])]) } } }
                     .accessibilityAddTraits(.isButton)
                 // mentioned in it: it can go on your own story while it's up (a photo for everyone, not a friends-only one)
                 if !mine, p["mention"] as? Bool == true, live,

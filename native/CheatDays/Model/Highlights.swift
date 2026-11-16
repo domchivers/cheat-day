@@ -106,7 +106,7 @@ struct HighlightsRow: View {
                         ForEach(shelf.indices, id: \.self) { i in
                             let h = shelf[i], items = list(h["items"])
                             // its first photo on the circle, else the first story as it is
-                            Button { playing = PostBox(post: h) } label: {
+                            Button { openStory { playing = PostBox(post: h) } } label: {
                                 circle(StoryThumb(story: items.first { str($0["kind"]) == "photo" } ?? items.first ?? [:]), str(h["title"]).isEmpty ? "Highlight" : str(h["title"]))
                             }
                             .buttonStyle(.plain)
@@ -271,7 +271,7 @@ struct StoryArchiveView: View {
                         let s = all[i]
                         Button {
                             // from this one on through the newer ones, in the order they went up
-                            playing = PostBox(post: ["id": str(s["id"]), "title": "Archive", "items": Array(all[0...i].reversed())])
+                            openStory { playing = PostBox(post: ["id": str(s["id"]), "title": "Archive", "items": Array(all[0...i].reversed())]) }
                         } label: {
                             Color.clear.aspectRatio(9.0 / 16.0, contentMode: .fit)
                                 .overlay { StoryThumb(story: s) }.clipped()

@@ -478,7 +478,7 @@ struct FeedView: View {
                 .buttonStyle(.plain)
                 .confirmationDialog("Your story", isPresented: $askMine) {
                     Button("Add to your story") { posting = true }
-                    Button("View your story") { story = StoryStart(people: [feed.me], at: 0) }
+                    Button("View your story") { openStory { story = StoryStart(people: [feed.me], at: 0) } }
                 }
                 // only friends with something today, the ones you haven't watched first
                 let withStory = friends.people.filter { StoryView.has($0.id) }
@@ -490,14 +490,14 @@ struct FeedView: View {
                 let run = order.map(\.id) + followed
                 ForEach(order.indices, id: \.self) { i in
                     let p = order[i]
-                    Button { story = StoryStart(people: run, at: i) } label: {
+                    Button { openStory { story = StoryStart(people: run, at: i) } } label: {
                         ring(p.id, p.name, new: !StoryView.seen(p.id), tag: p.streak > 1 ? "\(p.streak)" : nil, plus: false)
                     }
                     .buttonStyle(.plain).accessibilityLabel("\(p.name)'s story")
                 }
                 ForEach(followed.indices, id: \.self) { i in
                     let f = followed[i]
-                    Button { story = StoryStart(people: run, at: order.count + i) } label: { ring(f, Feed.shared.name(f), new: Stories.shared.unwatched(f), tag: nil, plus: false) }
+                    Button { openStory { story = StoryStart(people: run, at: order.count + i) } } label: { ring(f, Feed.shared.name(f), new: Stories.shared.unwatched(f), tag: nil, plus: false) }
                         .buttonStyle(.plain).accessibilityLabel("\(Feed.shared.name(f))'s story")
                 }
             }
