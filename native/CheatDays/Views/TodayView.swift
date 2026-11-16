@@ -45,6 +45,7 @@ struct TodayView: View {
     @AppStorage("today.more") private var moreOpen = false
     @AppStorage("nudge.hidden") private var nudgeHidden = ""   // "day|meal" of the card you closed
     @AppStorage("review.hidden") private var reviewHidden = ""   // the day the week review was closed
+    @AppStorage("cheatCard.hidden") private var cheatCardHidden = ""   // the cheat day its card was closed on
     @AppStorage("dailyTips") private var dailyTipsOn = true
     @State private var pop: MealPop?
     /// How long after the last food added to a meal before it's looked at: time to add the rest of it.
@@ -148,6 +149,11 @@ struct TodayView: View {
                             }
                         }
                     }
+                }
+                if offset == 0, cheatToday, cheatCardHidden != store.today {
+                    Section { cheatCard }
+                        .listRowBackground(LinearGradient(colors: [Color(red: 0.557, green: 0.773, blue: 1.0).opacity(0.16), CheatDayView.tint.opacity(0.22)],
+                                                          startPoint: .leading, endPoint: .trailing))
                 }
                 Section { hero }
                     .listRowBackground(Color.clear)   // the panel draws its own card, so the trim and badge can sit on its top edge
@@ -515,9 +521,9 @@ struct TodayView: View {
         }
         .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.heroFill, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .background { heroCard }
         .tourSpot(.hero)
-        .overlay(alignment: .topTrailing) { if offset == 0 { cheatButton.padding(.top, 10).padding(.trailing, 12) } }
+        .overlay(alignment: .topTrailing) { if offset == 0 { cheatButton } }
         .animation(.snappy, value: eaten)
         .simultaneousGesture(DragGesture(minimumDistance: 40).onEnded { v in
             guard abs(v.translation.width) > abs(v.translation.height) * 1.5 else { return }
@@ -555,26 +561,91 @@ struct TodayView: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// The logo in the panel's corner: plan your next meal, or on the cheat day itself, plan the day (cheekily).
-    private var cheatButton: some View {
-        let isToday = store.nextCheat?.date == store.today
-        return Button { if isToday { showCheat = true } else { showPlanner = true } } label: {
-            // a solid pill with the logo and the word cut out of it, the panel showing through, like the beta pass's
-            // BETA PASS: the app's blue, or on the cheat day the pass's blue to lavender with its glow
-            HStack(spacing: 8) {
-                LogoMark().frame(width: 28, height: 15)
-                Text("Plan").font(.subheadline.weight(.heavy))
+    private var cheatToday: Bool { store.nextCheat?.date == store.today }
+    /// Where the logo's cut through the panel, from its top right corner.
+    private static let logoSize = CGSize(width: 34, height: 18)
+    private static let logoInset = EdgeInsets(top: 18, leading: 0, bottom: 0, trailing: 20)
+
+    /// The panel's card with the logo cut through it, so the screen behind shows (the Plan pill on it never sat
+    /// right with the owner). On the cheat day the blue to lavender shows through instead.
+    private var heroCard: some View {
+        ZStack(alignment: .topTrailing) {
+            RoundedRectangle(cornerRadius: 26, style: .continuous).fill(Theme.heroFill)
+            if offset == 0 {
+                LogoMark().fill(.black).frame(width: Self.logoSize.width, height: Self.logoSize.height)
+                    .padding(Self.logoInset).blendMode(.destinationOut)
             }
-            .foregroundStyle(.black).blendMode(.destinationOut)
-            .padding(.horizontal, 16).padding(.vertical, 9)
-            .background(Capsule().fill(isToday ? AnyShapeStyle(CheatDayView.tintGradient) : AnyShapeStyle(Theme.accent)))
-            .compositingGroup()
-            .shadow(color: isToday ? CheatDayView.tint.opacity(0.35) : .clear, radius: 9)
-            .contentShape(Capsule())
+        }
+        .compositingGroup()
+        .background(alignment: .topTrailing) {
+            if offset == 0 && cheatToday {
+                LogoMark().fill(CheatDayView.tintGradient).frame(width: Self.logoSize.width, height: Self.logoSize.height).padding(Self.logoInset)
+            }
+        }
+    }
+
+    /// The cut-out logo still plans: the next meal, or on the cheat day itself, the day.
+    private var cheatButton: some View {
+        Button { if cheatToday { showCheat = true } else { showPlanner = true } } label: {
+            Color.clear.frame(width: Self.logoSize.width + 8, height: Self.logoSize.height + 8)
+                .contentShape(Rectangle())
+                .tourSpot(.plan)
+                .padding(.top, Self.logoInset.top - 4).padding(.trailing, Self.logoInset.trailing - 4)
+                .padding(.leading, 14).padding(.bottom, 12)   // a bigger target than the logo itself
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .tourSpot(.plan)
-        .accessibilityLabel(isToday ? "Plan your cheat day" : "Plan a meal")
+        .accessibilityLabel(cheatToday ? "Plan your cheat day" : "Plan a meal")
+    }
+
+    /// The meal coming up, for the "Not sure?" line: none late at night.
+    private var nextMeal: String? {
+        _ = clock   // a new hour moves it on
+        let h = Calendar.current.component(.hour, from: Date())
+        if h >= 22 || h < 4 { return nil }
+        let m = Meals.byTime(h)
+        return m == "Snacks" ? "Dinner" : m
+    }
+
+    /// Under the next meal while it's empty: a quiet way into the planner, there only when it's useful.
+    private func planHint(_ meal: String) -> some View {
+        let cheat = cheatToday
+        let words = cheat ? "Plan your cheat day ›" : "Plan \(meal.lowercased()) ›"
+        let link = Text("\(Image(systemName: "sparkles")) \(words)").fontWeight(.semibold)
+            .foregroundStyle(cheat ? AnyShapeStyle(CheatDayView.tintGradient) : AnyShapeStyle(Theme.accent))
+        return Button { if cheat { showCheat = true } else { plannerMeal = meal; showPlanner = true } } label: {
+            (Text("Not sure? ").foregroundStyle(.secondary) + link).font(.footnote)
+        }
+        .buttonStyle(.borderless).textCase(nil)
+    }
+
+    /// On the cheat day itself, at the top: it's the day, and what there is to play with (or the plan made). ✕ hides it
+    /// for the day.
+    private var cheatCard: some View {
+        let plan = store.cheatPlan(store.today), slots = list(plan?["slots"])
+        let left = max(0, store.budgetToday - store.eaten)
+        let free = max(0, store.budgetToday - CheatPlan.total(slots: slots, logged: store.todayItems))
+        return HStack(spacing: 12) {
+            Button { showCheat = true } label: {
+                HStack(spacing: 12) {
+                    LogoMark().fill(Theme.onAccent).frame(width: 20, height: 11)
+                        .frame(width: 36, height: 36).background(CheatDayView.tintGradient, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(plan == nil ? "It's your cheat day" : "Your cheat day plan").font(.subheadline.weight(.bold))
+                        Text(plan == nil ? "\(Fmt.int(left)) kcal to play with · Plan it ›"
+                                         : "\(slots.count) \(slots.count == 1 ? "meal" : "meals"), \(Fmt.int(free)) free ›")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            Button { withAnimation { cheatCardHidden = store.today } } label: { Image(systemName: "xmark") }
+                .buttonStyle(.borderless).foregroundStyle(.secondary).font(.footnote.weight(.bold))
+                .accessibilityLabel("Hide")
+        }
+        .padding(.vertical, 2)
     }
 
     private func note(_ text: String) {
@@ -680,6 +751,8 @@ struct TodayView: View {
                     }
                 }
             } footer: {
+                // the next meal, still empty: a way into the planner (on the cheat day, until there's a plan; the card has it then)
+                if offset == 0, lines.isEmpty, meal == nextMeal, !(cheatToday && store.cheatPlan(store.today) != nil) { planHint(meal) }
                 // the tip sits under the card, so the card keeps its rounded corners
                 if !lines.isEmpty && meal == Meals.all.first(where: { m in items.contains { Meals.of($0) == m } }) {
                     Text(offset == 0 ? "Tap a food to change the amount. Swipe left to delete." : "Tap a food to add it to today. Swipe left to delete.")

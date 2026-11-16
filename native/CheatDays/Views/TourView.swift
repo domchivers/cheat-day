@@ -15,7 +15,7 @@ import UIKit
         Step(spot: .hero, shape: .card(26), pad: 0, title: "What's left today",
              text: "Your calories left to eat. Tap the arrow to see protein, carbs and fat."),
         Step(spot: .plan, shape: .capsule, pad: 4, title: "Plan your next meal",
-             text: "Tap Plan and tell it what's in the fridge. It suggests meals that fit what you've got left today. On your cheat day it plans the whole day."),
+             text: "Tap the logo and tell it what's in the fridge. It suggests meals that fit what you've got left today. On your cheat day it plans the whole day."),
         Step(spot: .add, shape: .circle, pad: 5, title: "Add food",
              text: "Tap + to search, scan a barcode, snap a photo or just tell the assistant what you had."),
         Step(spot: .meal, shape: .card(24), pad: 0, title: "Straight into a meal",
