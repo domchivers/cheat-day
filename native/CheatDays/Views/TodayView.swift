@@ -51,6 +51,7 @@ struct TodayView: View {
     /// How long after the last food added to a meal before it's looked at: time to add the rest of it.
     static let mealSettles: Double = 15 * 60
     @Environment(\.scenePhase) private var phase
+    @Environment(\.colorScheme) private var colorScheme
     @AppStorage("mealPops.seen") private var popsSeen = ""   // "date|morning|before-Lunch|after-Lunch…": each once a day
     @State private var openIdea: IdeaRef?
     @State private var sendingItem: JSON?
@@ -563,8 +564,8 @@ struct TodayView: View {
 
     private var cheatToday: Bool { store.nextCheat?.date == store.today }
     /// Where the logo's cut through the panel, from its top right corner.
-    private static let logoSize = CGSize(width: 34, height: 18)
-    private static let logoInset = EdgeInsets(top: 18, leading: 0, bottom: 0, trailing: 20)
+    private static let logoSize = CGSize(width: 41, height: 22)   // 20% bigger than at first: it got lost in the corner
+    private static let logoInset = EdgeInsets(top: 16, leading: 0, bottom: 0, trailing: 20)
 
     /// The panel's card with the logo engraved in its corner (the Plan pill on it never sat right with the owner): a
     /// floor a shade lighter than the card, and a thin shadow under each top edge, as if just cut in. A plain hole
@@ -572,20 +573,22 @@ struct TodayView: View {
     private var heroCard: some View {
         ZStack(alignment: .topTrailing) {
             RoundedRectangle(cornerRadius: 26, style: .continuous).fill(Theme.heroFill)
-            if offset == 0 { engravedLogo.padding(Self.logoInset) }
+            if offset == 0 { panelLogo.padding(Self.logoInset) }
         }
     }
 
-    private var engravedLogo: some View {
-        let s = Self.logoSize, depth = s.height * 0.045   // the shadow's band, as in the mockup (16 of the logo's 352)
-        return ZStack {
-            if cheatToday { LogoMark().fill(CheatDayView.tintGradient) } else { LogoMark().fill(Theme.heroLabel.opacity(0.12)) }
-            // the shadow: the logo less itself moved down, so a band is left under each top edge
-            LogoMark().fill(Color.black.opacity(cheatToday ? 0.4 : 0.5))
-                .overlay(LogoMark().fill(.black).offset(y: depth).blendMode(.destinationOut))
-                .compositingGroup()
+    /// The logo as the app icon has it: silver-white, a little brighter at the top (the engraved one was too quiet and
+    /// too small at real size). In light mode the icon's own navy, so it shows on the white card. On the cheat day
+    /// the blue to lavender.
+    private var panelLogo: some View {
+        let silver = LinearGradient(colors: [Color(red: 0.957, green: 0.965, blue: 0.984), Color(red: 0.788, green: 0.816, blue: 0.886)], startPoint: .top, endPoint: .bottom)
+        let navy = LinearGradient(colors: [Color(red: 0.094, green: 0.137, blue: 0.227), Color(red: 0.039, green: 0.059, blue: 0.110)], startPoint: .top, endPoint: .bottom)
+        return Group {
+            if cheatToday { LogoMark().fill(CheatDayView.tintGradient) }
+            else if colorScheme == .light { LogoMark().fill(navy) }
+            else { LogoMark().fill(silver) }
         }
-        .frame(width: s.width, height: s.height)
+        .frame(width: Self.logoSize.width, height: Self.logoSize.height)
         .accessibilityHidden(true)
     }
 
