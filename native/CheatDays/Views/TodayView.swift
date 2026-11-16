@@ -566,22 +566,27 @@ struct TodayView: View {
     private static let logoSize = CGSize(width: 34, height: 18)
     private static let logoInset = EdgeInsets(top: 18, leading: 0, bottom: 0, trailing: 20)
 
-    /// The panel's card with the logo cut through it, so the screen behind shows (the Plan pill on it never sat
-    /// right with the owner). On the cheat day the blue to lavender shows through instead.
+    /// The panel's card with the logo engraved in its corner (the Plan pill on it never sat right with the owner): a
+    /// floor a shade lighter than the card, and a thin shadow under each top edge, as if just cut in. A plain hole
+    /// through to the screen was too faint in dark mode. On the cheat day the floor is the blue to lavender.
     private var heroCard: some View {
         ZStack(alignment: .topTrailing) {
             RoundedRectangle(cornerRadius: 26, style: .continuous).fill(Theme.heroFill)
-            if offset == 0 {
-                LogoMark().fill(.black).frame(width: Self.logoSize.width, height: Self.logoSize.height)
-                    .padding(Self.logoInset).blendMode(.destinationOut)
-            }
+            if offset == 0 { engravedLogo.padding(Self.logoInset) }
         }
-        .compositingGroup()
-        .background(alignment: .topTrailing) {
-            if offset == 0 && cheatToday {
-                LogoMark().fill(CheatDayView.tintGradient).frame(width: Self.logoSize.width, height: Self.logoSize.height).padding(Self.logoInset)
-            }
+    }
+
+    private var engravedLogo: some View {
+        let s = Self.logoSize, depth = s.height * 0.045   // the shadow's band, as in the mockup (16 of the logo's 352)
+        return ZStack {
+            if cheatToday { LogoMark().fill(CheatDayView.tintGradient) } else { LogoMark().fill(Theme.heroLabel.opacity(0.12)) }
+            // the shadow: the logo less itself moved down, so a band is left under each top edge
+            LogoMark().fill(Color.black.opacity(cheatToday ? 0.4 : 0.5))
+                .overlay(LogoMark().fill(.black).offset(y: depth).blendMode(.destinationOut))
+                .compositingGroup()
         }
+        .frame(width: s.width, height: s.height)
+        .accessibilityHidden(true)
     }
 
     /// The cut-out logo still plans: the next meal, or on the cheat day itself, the day.
