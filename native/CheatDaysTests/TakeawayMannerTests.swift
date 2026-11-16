@@ -60,6 +60,17 @@ final class TakeawayMannerTests: XCTestCase {
         XCTAssertEqual(r.want, ["Classic Pepperoni, large 11 inch"], "their pepperoni, not swapped for the supreme")
     }
 
+    func testALookupAgainKeepsItsProteinEstimate() {
+        let was: JSON = ["items": [["name": "Pesto Chicken Club pizza", "published": "energy", "kj": 5560, "kcal": 1329, "protein_g": 50, "carbs_g": 120, "fat_g": 55] as JSON]]
+        let now: JSON = ["items": [["name": "Pesto Chicken Club pizza", "published": "energy", "kj": 5560, "kcal": 1329, "protein_g": 60, "carbs_g": 110, "fat_g": 58] as JSON,
+                                   ["name": "Classic Pepperoni", "published": "energy", "kj": 4040, "kcal": 966, "protein_g": 40, "carbs_g": 105, "fat_g": 38] as JSON]]
+        let out = list(Takeaway.steady(now, was: was)["items"])
+        XCTAssertEqual(num(out[0]["protein_g"]), 50, "same pizza, same kJ: the same estimate")
+        XCTAssertEqual(num(out[1]["protein_g"]), 40, "a new one keeps its own")
+        let full: JSON = ["items": [["name": "Pesto Chicken Club pizza", "published": "full", "kj": 5560, "kcal": 1329, "protein_g": 62, "carbs_g": 110, "fat_g": 58] as JSON]]
+        XCTAssertEqual(num(list(Takeaway.steady(full, was: was)["items"])[0]["protein_g"]), 62, "a published number wins")
+    }
+
     func testTheMannerWordsGo() {
         XCTAssertEqual(Takeaway.core("High protein pepperoni pizza"), "pepperoni pizza")
         XCTAssertEqual(Takeaway.core("large low carb burger"), "burger")

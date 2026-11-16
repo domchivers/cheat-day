@@ -407,11 +407,29 @@ enum Takeaway {
         // the menu job opens the delivery app's page; a server from before it has only the label lookup's two searches
         let ask: [JSON] = [["text": menuAsk(restaurant, area: area, want: wanted, seen: quoted)]], country: JSON = ["country": Region.current.code]
         let fetched = await Gemini.askClaude("menu", schema: menuSchema, parts: ask, extra: country)
-        guard let m = fetched != nil ? fetched : await Gemini.askClaude("lookup", schema: menuSchema, parts: ask, extra: country),
+        guard var m = fetched != nil ? fetched : await Gemini.askClaude("lookup", schema: menuSchema, parts: ask, extra: country),
               m["found"] as? Bool == true, !items(m).isEmpty else { return nil }
+        if let was = kept[key]?["menu"] as? JSON { m = steady(m, was: was) }
         kept = kept.filter { Date().timeIntervalSince1970 - (num($0.value["at"]) ?? 0) < 7 * 86400 }
         kept[key] = ["at": Date().timeIntervalSince1970, "menu": m]
         if let ok = try? JSONSerialization.data(withJSONObject: kept), ok.count < 400_000 { d.set(kept, forKey: "takeaway.menus") }
+        return m
+    }
+
+    /// A menu looked up again keeps the protein, carbs and fat it estimated before for a dish at the same energy:
+    /// Crust publishes only kJ, and asked again (for its protein base) the same 1,329 kcal Pesto Chicken Club pizza
+    /// came back with 60 g protein where it had 50 (16 Nov). Published numbers always come from the new lookup.
+    static func steady(_ menu: JSON, was: JSON) -> JSON {
+        let old = list(was["items"])
+        var m = menu
+        m["items"] = list(menu["items"]).map { it -> JSON in
+            guard str(it["published"]) != "full", let k = num(it["kcal"]), k > 0,
+                  let o = old.first(where: { str($0["name"]).lowercased() == str(it["name"]).lowercased() }),
+                  let ok = num(o["kcal"]), abs(ok - k) <= k * 0.05 else { return it }
+            var x = it
+            for f in ["protein_g", "carbs_g", "fat_g"] { x[f] = o[f] ?? it[f] }
+            return x
+        }
         return m
     }
 
