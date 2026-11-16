@@ -563,22 +563,26 @@ struct FeedView: View {
         return VStack(alignment: .leading, spacing: 0) {
             Divider().opacity(0.4)
             HStack(spacing: 10) {
-                Button { profileOf = owner } label: {
-                    HStack(spacing: 10) {
-                        avatar(owner, size: 34)
-                        VStack(alignment: .leading, spacing: 1) {
-                            if let h = Profiles.shared.all[owner]?.shownHonor, h.onFeed {
-                                Text(feed.name(owner)).font(.subheadline.weight(.bold)).foregroundStyle(h.shade)
-                            } else {
-                                Text(feed.name(owner)).font(.subheadline.weight(.bold)).foregroundStyle(.primary)
-                            }
-                            // one line: what, when and who with (it took two, with room to spare)
-                            let with = (dict(p["extra"])["tags"] as? [String]).flatMap { $0.isEmpty ? nil : " · with " + TagPicker.names($0) } ?? ""
+                // their photo and name open their profile; the song at the end of the line plays it (a tap, not a
+                // button around it all, so the song can be pressed on its own)
+                HStack(spacing: 10) {
+                    avatar(owner, size: 34)
+                    VStack(alignment: .leading, spacing: 1) {
+                        if let h = Profiles.shared.all[owner]?.shownHonor, h.onFeed {
+                            Text(feed.name(owner)).font(.subheadline.weight(.bold)).foregroundStyle(h.shade)
+                        } else {
+                            Text(feed.name(owner)).font(.subheadline.weight(.bold)).foregroundStyle(.primary)
+                        }
+                        // one line: what, when and who with (it took two, with room to spare), and the song
+                        let with = (dict(p["extra"])["tags"] as? [String]).flatMap { $0.isEmpty ? nil : " · with " + TagPicker.names($0) } ?? ""
+                        HStack(spacing: 0) {
                             Text(Self.what(p) + " · " + Feed.ago(str(p["created_at"])) + with).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            if let s = Music.of(p) { songTag(s, post: id) }
                         }
                     }
                 }
-                .buttonStyle(.plain)
+                .contentShape(Rectangle()).onTapGesture { profileOf = owner }
+                .accessibilityAddTraits(.isButton)
                 Spacer()
                 // someone from Explore: follow them from here
                 if owner != feed.me, !friends.people.contains(where: { $0.id == owner }) {
@@ -604,7 +608,6 @@ struct FeedView: View {
             }
             .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 8)
 
-            if let s = Music.of(p) { songLine(s, post: id) }
             Group {
                 if kind == "moment" { moment(p, rx: rx) }
                 else if photo { photoView(p) }
@@ -644,7 +647,23 @@ struct FeedView: View {
         }
     }
 
-    /// A post's song: its name in a small capsule; a tap plays its 30 seconds, another stops it. Never by itself.
+    /// A post's song, at the end of the line under the name ("Worked out · 3 min ago · ♪ Backbeat", 16 Nov): a tap
+    /// plays its 30 seconds, another stops it. It had a row of its own above the post.
+    private func songTag(_ s: Song, post: String) -> some View {
+        let on = SongPlayer.shared.playing == "post:" + post
+        return Button { SongPlayer.shared.toggle(s, key: "post:" + post) } label: {
+            HStack(spacing: 3) {
+                Text(" · ").foregroundStyle(.secondary)
+                Image(systemName: on ? "pause.fill" : "music.note").font(.system(size: 9, weight: .bold))
+                Text(s.title).lineLimit(1)
+            }
+            .font(.caption.weight(.semibold)).foregroundStyle(on ? Theme.accent : Color.primary)
+            .padding(.vertical, 6).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).fixedSize()
+        .accessibilityLabel(on ? "Stop \(s.title)" : "Play \(s.title)")
+    }
+
     private func songLine(_ s: Song, post: String) -> some View {
         let on = SongPlayer.shared.playing == "post:" + post
         return Button { SongPlayer.shared.toggle(s, key: "post:" + post) } label: {
@@ -716,12 +735,17 @@ struct FeedView: View {
             Eyebrow(text: kind == "workout" ? "Workout" : kind == "meal" ? "Meal" : Self.what(p), color: Theme.heroLabel)
             Text(str(p["name"])).font(.title2.weight(.heavy)).multilineTextAlignment(.leading)
             if kind == "workout" {
-                HStack(spacing: 8) {
-                    tile("\(Int(num(dict(p["extra"])["minutes"]) ?? 0)) min", "time")
-                    tile("\(lifts.count)", lifts.count == 1 ? "exercise" : "exercises")
-                    if kg > 0 { tile(Fmt.int(kg), "kg lifted") }
+                // A, the scoreboard (16 Nov): three big numbers on one line with no boxes, then a bar of where the
+                // weight went, exercise by exercise. No picture: the numbers carry it.
+                let mins = Int(num(dict(p["extra"])["minutes"]) ?? 0)
+                HStack(spacing: 0) {
+                    score("\(mins)", mins == 1 ? "minute" : "minutes", line: false)
+                    score("\(lifts.count)", lifts.count == 1 ? "exercise" : "exercises", line: true)
+                    if kg > 0 { score(Fmt.int(kg), "kg lifted", line: true) }
                 }
-                .padding(.top, 4)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 10)
+                if kg > 0 { weightBar(lifts, kg) }
             } else {
                 HStack(spacing: 8) {
                     Text(n.kcal)
@@ -734,12 +758,56 @@ struct FeedView: View {
         .background(alignment: .topTrailing) {
             ZStack(alignment: .topTrailing) {
                 LinearGradient(colors: [Theme.hero, Theme.accent.opacity(0.28)], startPoint: .topLeading, endPoint: .bottomTrailing)
-                FoodDot(name: kind == "workout" ? "Workout" : str(p["name"]), size: 110).opacity(0.28).offset(x: 18, y: -14)
+                if kind != "workout" { FoodDot(name: str(p["name"]), size: 110).opacity(0.28).offset(x: 18, y: -14) }
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .padding(.horizontal, 14)
+    }
+
+    /// One of a workout's big numbers, with a thin line before it when it isn't the first.
+    private func score(_ value: String, _ label: String, line: Bool) -> some View {
+        HStack(spacing: 0) {
+            if line { Rectangle().fill(Color.primary.opacity(0.14)).frame(width: 1).padding(.trailing, 14) }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(value).font(.system(size: 26, weight: .heavy, design: .rounded)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.6)
+                Text(label).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 6)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// Where a workout's weight went: one bar split by exercise (sets × reps × kg), biggest first, with the top
+    /// three named under it.
+    private func weightBar(_ lifts: [JSON], _ total: Double) -> some View {
+        let parts = lifts.map { (str($0["exercise"]), (num($0["sets"]) ?? 0) * (num($0["reps"]) ?? 0) * (num($0["kg"]) ?? 0)) }
+            .filter { $0.1 > 0 }.sorted { $0.1 > $1.1 }
+        let sum = max(1, parts.reduce(0) { $0 + $1.1 })
+        let shade: (Int) -> Color = { Theme.accent.opacity(max(0.3, 1 - Double($0) * 0.18)) }
+        return VStack(alignment: .leading, spacing: 8) {
+            GeometryReader { g in
+                let room = g.size.width - CGFloat(max(0, parts.count - 1)) * 2
+                HStack(spacing: 2) {
+                    ForEach(parts.indices, id: \.self) { i in
+                        shade(i).frame(width: max(2, room * CGFloat(parts[i].1 / sum)))
+                    }
+                }
+            }
+            .frame(height: 10).clipShape(Capsule())
+            HStack(spacing: 12) {
+                ForEach(Array(parts.prefix(3).enumerated()), id: \.offset) { i, part in
+                    HStack(spacing: 5) {
+                        RoundedRectangle(cornerRadius: 2).fill(shade(i)).frame(width: 8, height: 8)
+                        Text(part.0).lineLimit(1)
+                    }
+                }
+                if parts.count > 3 { Text("+\(parts.count - 3)").fixedSize() }
+            }
+            .font(.caption).foregroundStyle(.secondary)
+        }
+        .padding(.top, 12)
     }
 
     private func tile(_ value: String, _ label: String) -> some View {
@@ -1184,6 +1252,22 @@ struct ComposeSheet: View {
                     }
                     .padding(.horizontal, 16).padding(.top, 14).id("caption")
                     TagSuggestions(text: $caption).padding(.horizontal, 16)
+                    // A workout or a meal with no picture yet: Camera and Library, one tap each (A, 16 Nov). The only way
+                    // was the small + in the tile's corner, which went unseen. Gone once there's a picture.
+                    if what != nil, photo == nil, movie == nil {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Add a photo or video").font(.subheadline.weight(.bold))
+                            Text("Optional").font(.footnote).foregroundStyle(.secondary)
+                            HStack(spacing: 10) {
+                                addButton("Camera") { camera = true }
+                                addButton("Library") { picking = true }
+                            }
+                            .padding(.top, 10)
+                        }
+                        .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .padding(.horizontal, 14).padding(.top, 14)
+                    }
                     if movie != nil {
                         Text("Up to 30 seconds are posted.").font(.caption).foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.top, 8)
@@ -1628,7 +1712,11 @@ struct ComposeSheet: View {
             else if let w = what {
                 // no photo: what it's of, and its calories
                 VStack(spacing: 2) {
-                    FoodDot(name: str(w["kind"]) == "workout" ? "Workout" : str(w["name"]), size: 40)
+                    // a workout by its name, no picture (16 Nov); food keeps its own
+                    if str(w["kind"]) == "workout" {
+                        Text(str(w["name"]).replacingOccurrences(of: "Workout: ", with: "").uppercased()).font(.caption2.weight(.heavy)).tracking(0.8)
+                            .foregroundStyle(Theme.accent).lineLimit(2).multilineTextAlignment(.center).padding(.horizontal, 6).padding(.bottom, 4)
+                    } else { FoodDot(name: str(w["name"]), size: 40) }
                     Text(Fmt.int(num(w["kcal"]) ?? 0)).font(.system(size: 20, weight: .heavy, design: .rounded)).monospacedDigit()
                     Text("kcal").font(.caption2.weight(.bold)).foregroundStyle(.secondary)
                 }
@@ -1719,6 +1807,15 @@ struct ComposeSheet: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(.secondarySystemGroupedBackground))
         }
+    }
+
+    private func addButton(_ title: String, _ tap: @escaping () -> Void) -> some View {
+        Button(action: tap) {
+            Text(title).font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent)
+                .frame(maxWidth: .infinity).padding(.vertical, 11)
+                .background(Theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     private func tileButton(_ symbol: String, _ title: String, _ tap: @escaping () -> Void) -> some View {
@@ -1892,10 +1989,11 @@ struct PostingBanner: View {
     var body: some View {
         if let s = feed.sending {
             HStack(spacing: 12) {
-                Group {
-                    if let t = s.thumb { Image(uiImage: t).resizable().scaledToFill() } else { Color(.tertiarySystemFill).overlay { Image(systemName: "fork.knife").foregroundStyle(.secondary) } }
+                // its picture, when it has one; without, nothing (a fork and knife stood in, for a workout too, 16 Nov)
+                if let t = s.thumb {
+                    Image(uiImage: t).resizable().scaledToFill()
+                        .frame(width: 40, height: 40).clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                 }
-                .frame(width: 40, height: 40).clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                 switch s.state {
                 case .working:
                     Text("Posting…").font(.subheadline.weight(.semibold))
