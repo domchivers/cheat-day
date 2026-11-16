@@ -21,6 +21,8 @@ struct StoryView: View {
     @State private var width: CGFloat = 400   // the card's, for how far a swipe has to go
     @State private var axis = 0               // the drag going on: 0 not known yet, 1 down (to close), 2 sideways
     @State private var grab: CGSize = .zero   // where the finger was when the drag set off, for the card to go from there
+    @GestureState private var touching = false   // a drag is under way; goes false on its own if the drag's cut off
+    @Environment(\.scenePhase) private var scenePhase
     @State private var paused = false
     /// The poster's name was tapped: the story closes and whoever opened it shows their profile as a normal page.
     var onProfile: ((String) -> Void)? = nil
@@ -242,19 +244,24 @@ struct StoryView: View {
         // opened from shows through as the black fades. The black slid down with it before, so it was black behind.
         .background { Color.black.opacity(max(0, 1 - Double(max(0, drag)) / 500)).ignoresSafeArea() }
         .presentationBackground(.clear)
-        .gesture(DragGesture().onChanged { v in
+        .gesture(DragGesture().updating($touching) { _, on, _ in on = true }.onChanged { v in
                 let t = v.translation
                 // which way it's going is settled once, at the start, so a swipe sideways that dips doesn't start closing;
                 // and the card goes from where it is then, not by the 10 points the finger had to move first (it
                 // jumped them as it set off, 17 Nov)
                 if axis == 0 { axis = abs(t.width) > abs(t.height) * 1.2 && !typing && highlight == nil ? 2 : 1; grab = t }
                 let dx = t.width - grab.width, dy = t.height - grab.height
-                if axis == 2 {
-                    paused = true
-                    // nobody that way (the first person, back): it gives a little and comes back, so it doesn't feel stuck
-                    let there = people.indices.contains(at + (dx < 0 ? 1 : -1))
-                    swipe = there ? dx : dx * 0.25
-                } else { drag = max(0, dy); paused = true }
+                paused = true
+                // The card follows the finger on a very short spring rather than jumping to each touch: a slow drag
+                // showed it standing still, then jumping about 37 points in one frame as it set off (17 Nov recording),
+                // and now that's eased away in a few frames instead.
+                withAnimation(.interactiveSpring(response: 0.16, dampingFraction: 0.9)) {
+                    if axis == 2 {
+                        // nobody that way (the first person, back): it gives a little and comes back, so it doesn't feel stuck
+                        let there = people.indices.contains(at + (dx < 0 ? 1 : -1))
+                        swipe = there ? dx : dx * 0.25
+                    } else { drag = max(0, dy) }
+                }
             }
             .onEnded { v in
                 let across = v.translation.width - grab.width, down = v.translation.height - grab.height
@@ -269,7 +276,7 @@ struct StoryView: View {
                         if step > 0 { Self.markSeen(who) }
                         finish(step, speed: v.velocity.width)
                     } else if far, step > 0 { Self.markSeen(who); dismiss() }   // past the last person, they close
-                    else { withAnimation(.smooth(duration: 0.3)) { swipe = 0 }; paused = false }
+                    else { withAnimation(.spring(duration: 0.32, bounce: 0)) { swipe = 0 }; paused = false }
                     return
                 }
                 // far enough, or flicked down
@@ -279,13 +286,14 @@ struct StoryView: View {
                     // It carries on down from where the finger let go at the finger's own speed, easing off as it goes,
                     // then closes with nothing left to slide. It went the rest of the way in a set 0.2 s from a standing
                     // start, so after a slow pull it leapt off the screen (17 Nov).
-                    let rest = max(1, 1000 - drag)
-                    let time = min(0.45, max(0.22, 2 * rest / max(900, speed)))   // the curve starts at twice its average speed
-                    withAnimation(.timingCurve(0.25, 0.5, 0.5, 1, duration: time)) { drag = 1000 } completion: {
+                    withAnimation(Self.carry(rest: max(1, 1000 - drag), speed: max(0, speed), longest: 0.45)) { drag = 1000 } completion: {
                         var t = Transaction(); t.disablesAnimations = true; withTransaction(t) { dismiss() }
                     }
-                } else { withAnimation(.snappy) { drag = 0 }; paused = false }
+                } else { withAnimation(.spring(duration: 0.32, bounce: 0)) { drag = 0 }; paused = false }
             })
+        // a drag that was cut off never gets its end (onEnded): the touch going away, or the app being covered, puts it back
+        .onChange(of: touching) { _, on in if !on { DispatchQueue.main.async { settle() } } }
+        .onChange(of: scenePhase) { _, p in if p != .active { settle() } }
         .statusBarHidden()
         // opened with the system's slide-up turned off (openStory), it comes up from below as the black fades in
         .onAppear { withAnimation(.spring(duration: 0.34, bounce: 0)) { drag = 0 } }
@@ -717,15 +725,32 @@ struct StoryView: View {
     /// From a swipe, it goes on at the finger's speed (`speed`, points a second) and eases off; from a tap, in a set time.
     /// It went in a set 0.32 s on a curve starting at three times its average, so after a slow drag the next story
     /// leapt across in a frame (17 Nov).
-    private func finish(_ step: Int, speed: CGFloat = 0) {
+    private func finish(_ step: Int, speed: CGFloat? = nil) {
         let n = at + step
         paused = true
         let rest = max(1, width - abs(swipe))
-        let time = speed == 0 ? 0.32 : min(0.42, max(0.2, 2 * rest / max(900, abs(speed))))   // the curve starts at twice its average
-        withAnimation(.timingCurve(0.25, 0.5, 0.5, 1, duration: time)) { swipe = step > 0 ? -width : width } completion: {
+        // speed the way it's going (a flick back the other way counts as none)
+        let along = speed.map { max(0, step > 0 ? -$0 : $0) }
+        withAnimation(along.map { Self.carry(rest: rest, speed: $0, longest: 0.4) } ?? .timingCurve(0.25, 0.5, 0.5, 1, duration: 0.32)) { swipe = step > 0 ? -width : width } completion: {
             var t = Transaction(); t.disablesAnimations = true
             withTransaction(t) { at = n; slide = 0; progress = 0; swipe = 0; paused = false }
         }
+    }
+    /// The rest of the way after the finger lets go, starting at exactly the finger's speed (`speed`, points a second,
+    /// over `rest` points): a slow let-go speeds up gently from where it was, a fast one eases off. The curve before
+    /// started at a set twice its average, which after a slow drag was a leap (17 Nov).
+    static func carry(rest: CGFloat, speed: CGFloat, longest: Double) -> Animation {
+        let time = min(longest, max(0.2, 2 * Double(rest) / max(1, Double(speed))))
+        let slope = min(3, Double(speed) * time / Double(rest))   // the curve's starting speed, in its own units
+        return .timingCurve(0.3, 0.3 * slope, 0.6, 1, duration: time)
+    }
+    /// The finger let go somewhere it couldn't end (the drag was cut off, by Control Centre or a call): everything goes
+    /// back where it was. It stayed half way across before (17 Nov), as nothing told it the drag was over.
+    private func settle() {
+        guard axis != 0 else { return }
+        axis = 0; grab = .zero
+        withAnimation(.spring(duration: 0.32, bounce: 0)) { swipe = 0; drag = 0 }
+        paused = false
     }
     /// The person before or after, as their story will look when it starts: their first slide, empty bars, their name.
     /// Drawn beside the one showing, for the swipe to pull in. Nothing on it can be pressed.
