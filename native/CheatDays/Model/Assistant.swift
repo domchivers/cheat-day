@@ -615,8 +615,18 @@ enum Assistant {
     /// the AI being wrong, so the database wins.
     /// Now also by the kind of food (Sanity): when the two are far apart the one that fits wins, and a near-zero
     /// database value (a per-gram number read as per 100 g) never replaces a real food.
-    static func plausible(_ db: Double?, aiKcal: Double, grams: Double, name: String = "") -> Bool {
-        Sanity.prefersDatabase(db, aiKcal: aiKcal, grams: grams, name: name)
+    static func plausible(_ db: Double?, aiKcal: Double, grams: Double, name: String = "", cookedTag: Bool? = nil) -> Bool {
+        guard on("plausible") else { return (db ?? 0) > 0 }
+        return Sanity.prefersDatabase(db, aiKcal: aiKcal, grams: grams, name: name, cookedTag: cookedTag)
+    }
+
+    /// Whether the AI tagged a part cooked (true) or raw (false); nil when it said neither, and the name's words decide.
+    /// The tags say it outright, where words in a name can mislead ("cooked, from 189 g raw" read as raw).
+    static func cooking(_ part: JSON) -> Bool? {
+        guard on("cookedTags") else { return nil }
+        let t = tags(part)
+        if t.contains("raw") { return false }
+        return t.contains { ["cooked", "fried", "baked", "grilled", "boiled", "steamed"].contains($0) } ? true : nil
     }
 
     /// One part with checked numbers per 100 g.
@@ -790,7 +800,7 @@ enum Assistant {
 
     /// Numbers that don't fit the kind of food the part is (more protein than a dessert can have, calories out of its range).
     static func wrongFor(_ x: JSON) -> Bool {
-        !Sanity.check(name: str(x["name"]), grams: num(x["grams"]), kcal: num(x["kcal"]) ?? 0, p: num(x["protein_g"]), c: num(x["carbs_g"]), f: num(x["fat_g"])).flags.isEmpty
+        !Sanity.check(name: str(x["name"]), grams: num(x["grams"]), kcal: num(x["kcal"]) ?? 0, p: num(x["protein_g"]), c: num(x["carbs_g"]), f: num(x["fat_g"]), cookedTag: cooking(x)).flags.isEmpty
     }
 
     /// An earlier card's part whose numbers don't fit its kind of food (checked before a fix: the tiramisu counted as
@@ -803,9 +813,10 @@ enum Assistant {
     /// A part checked against a table entry whose numbers don't fit that kind of food (rice noodles at 8 g protein a
     /// 100 g): the closest other entry that does fit, with a line saying so; nil when the first was fine or none fits.
     static func rematched(_ part: JSON, from first: FoodTable.Food, table: FoodTable = .current) -> JSON? {
+        guard on("rematched") else { return nil }
         let name = str(part["name"])
         func wrong(_ x: JSON) -> Bool {
-            !Sanity.check(name: name, grams: num(x["grams"]), kcal: num(x["kcal"]) ?? 0, p: num(x["protein_g"]), c: num(x["carbs_g"]), f: num(x["fat_g"])).flags.isEmpty
+            !Sanity.check(name: name, grams: num(x["grams"]), kcal: num(x["kcal"]) ?? 0, p: num(x["protein_g"]), c: num(x["carbs_g"]), f: num(x["fat_g"]), cookedTag: cooking(x)).flags.isEmpty
         }
         guard wrong(part) else { return nil }
         for alt in table.alternatives(name, tags: tags(part), matched: first.name, limit: 8).dropFirst() {
@@ -850,6 +861,7 @@ enum Assistant {
     /// (The soup base they drank was put at 793 kcal for 26 g by a label found on the web, and the card at 1,426 kcal
     /// where the AI had said 788.)
     static func guarded(_ e: JSON) -> JSON {
+        guard on("guarded") else { return e }
         var parts = CheatDays.list(e["parts"]), notes: [String] = [], put = false
         for i in parts.indices where !physical(parts[i]) {
             guard let w = parts[i]["was"] as? JSON, physical(w) else { continue }
@@ -902,11 +914,19 @@ enum Assistant {
     }
     @MainActor static var ownFoods = true
 
+    /// Checks switched off, by name, so the replay tests can measure what each one does to the cards (ChecksOffTests).
+    /// Always empty in the app.
+    static var off: Set<String> = []
+    static let switchable = ["tidied", "held", "unfolded", "ground", "reference", "rematched", "rawWeight", "plausible", "sameCooking",
+                             "sane", "guarded", "keepingEarlier", "steady", "cookedTags"]
+    static func on(_ check: String) -> Bool { !off.contains(check) }
+
     /// The card as it first shows: the AI's estimate tidied, then held to the last card. Each step's result is kept
     /// on the card's trace, with which AI answered.
     static func shown(_ e: JSON, said: String, photos: Bool, before: JSON?, via: String = "") -> (estimate: JSON, notes: [String]) {
         var cur = traced(via.isEmpty ? "AI" : "AI (\(via))", e)
-        cur = carried(cur, tidied(cur, said: said, photos: photos), "tidied")
+        if on("tidied") { cur = carried(cur, tidied(cur, said: said, photos: photos), "tidied") }
+        guard on("held") else { return (cur, []) }
         let h = held(cur, before: before, said: said)
         return (carried(cur, h.estimate, "held to the last card"), h.notes)
     }
@@ -915,10 +935,10 @@ enum Assistant {
     /// The chat uses this, and the replay tests run past cards through it.
     @MainActor
     static func checkedCard(_ e: JSON, before: JSON?, earlier: [JSON]) async -> JSON {
-        var cur = carried(e, unfolded(e, earlier: earlier), "parts put back from an earlier card")
-        cur = carried(cur, await ground(cur), "checked against the food tables")
-        cur = carried(cur, keepingEarlier(cur, before), "kept the last card's numbers")
-        return carried(cur, steady(cur, earlier: earlier), "kept steady with earlier cards")
+        var cur = on("unfolded") ? carried(e, unfolded(e, earlier: earlier), "parts put back from an earlier card") : e
+        if on("ground") { cur = carried(cur, await ground(cur), "checked against the food tables") }
+        if on("keepingEarlier") { cur = carried(cur, keepingEarlier(cur, before), "kept the last card's numbers") }
+        return on("steady") ? carried(cur, steady(cur, earlier: earlier), "kept steady with earlier cards") : cur
     }
 
     /// A card's parts one line each, and its total: what a step left it as.
@@ -1012,7 +1032,7 @@ enum Assistant {
             // Cooked from a raw weight they gave ("Chicken breast, cooked, from 189 g raw"): checked as that much of the
             // raw food, its cooked grams kept, since all of it is the raw lot's totals whatever it weighs cooked. The
             // card had raw chicken's numbers on its 142 g cooked guess instead: 139 kcal where 189 g raw is 185, 17 Nov.
-            if let rawG = Sanity.rawWeight(str(x["name"])),
+            if on("rawWeight"), let rawG = Sanity.rawWeight(str(x["name"])),
                str(x["name"]).range(of: #"\b(fried|fry|batter|battered|crumbed|breaded|coated|oil)\b"#, options: [.regularExpression, .caseInsensitive]) == nil {
                 var probe = x
                 probe["name"] = Sanity.rawName(str(x["name"])); probe["grams"] = rawG; probe["tags"] = "raw"
@@ -1044,22 +1064,24 @@ enum Assistant {
     /// A part checked against the food tables on the phone, best first: a species or cut we've checked, their country's
     /// table, the US dish table, the other countries' tables, then the app's list. Nil when none fits, for the database.
     @MainActor static func tableMatch(_ x: JSON) -> JSON? {
-        let said = str(x["name"]), g = num(x["grams"]) ?? 0, ai = num(x["kcal"]) ?? 0
+        let said = str(x["name"]), g = num(x["grams"]) ?? 0, ai = num(x["kcal"]) ?? 0, cooked = cooking(x)
         // a species or cut we've checked: before any list or database, unless its numbers don't fit the kind of food
-        // the part is (a cocoa-dusted tiramisu isn't cocoa powder)
-        if let e = FoodReference.match(said), sameCooking(said, e.name), !wrongFor(checked(x, kcal100: e.kcal, p100: e.p, c100: e.c, f100: e.f, source: "reference")) {
+        // the part is (a cocoa-dusted tiramisu isn't cocoa powder). Its entries are raw, so never for a part tagged
+        // cooked: raw numbers on a cooked weight are a quarter or more too low.
+        if on("reference"), cooked != true, let e = FoodReference.match(said), sameCooking(said, e.name),
+           !wrongFor(checked(x, kcal100: e.kcal, p100: e.p, c100: e.c, f100: e.f, source: "reference")) {
             return checked(x, kcal100: e.kcal, p100: e.p, c100: e.c, f100: e.f, source: "reference", match: e.name)
         }
         // the official numbers for their country (AFCD, CoFID or USDA SR Legacy) before the app's list or the US database,
         // the entry chosen by the part's tags too (bought, natural, skin on…); then a dish their country's table doesn't
         // have (biryani, pad thai, chocolate cheesecake) from the US dish table; then the other countries' (moussaka, rösti)
         for table in [FoodTable.current, .dishes, .world] {
-            if let f = table.best(said, tags: tags(x)), sameCooking(said, f.name), plausible(f.kcal, aiKcal: ai, grams: g, name: said) {
+            if let f = table.best(said, tags: tags(x)), sameCooking(said, f.name), plausible(f.kcal, aiKcal: ai, grams: g, name: said, cookedTag: cooked) {
                 let y = checked(x, kcal100: f.kcal, p100: f.p, c100: f.c, f100: f.f, source: table.src, match: f.name)
                 return rematched(y, from: f, table: table) ?? y
             }
         }
-        if let row = FoodsDB.search(said, limit: 1).first, sameCooking(said, str(row["name"])), plausible(num(row["kcalPer100"]), aiKcal: ai, grams: g, name: said) {
+        if let row = FoodsDB.search(said, limit: 1).first, sameCooking(said, str(row["name"])), plausible(num(row["kcalPer100"]), aiKcal: ai, grams: g, name: said, cookedTag: cooked) {
             return checked(x, kcal100: num(row["kcalPer100"]) ?? 0, p100: num(row["p100"]), c100: num(row["c100"]), f100: num(row["f100"]), source: "list", match: str(row["name"]))
         }
         return nil
@@ -1072,6 +1094,7 @@ enum Assistant {
     /// Battered or crumbed food is a coated entry, too: the wings went next to "Chicken wings, with skin, fried without
     /// fat (oven)" (678 kcal), fried in name only.
     static func sameCooking(_ said: String, _ entry: String) -> Bool {
+        guard on("sameCooking") else { return true }
         let s = said.lowercased(), e = entry.lowercased()
         func has(_ t: String, _ p: String) -> Bool { t.range(of: p, options: .regularExpression) != nil }
         guard has(s, #"\b(fried|fry|deep|batter|battered|crumbed|breaded|coated|tempura|karaage|schnitzel)\b"#) else { return true }
@@ -1294,10 +1317,11 @@ enum Assistant {
     /// Every part through Sanity: calories that don't fit the macros are fixed from them, odd values are flagged on
     /// the card (and the totals added up again).
     static func sane(_ e: JSON) -> JSON {
+        guard on("sane") else { return e }
         var parts = CheatDays.list(e["parts"]), flags: [String] = [], fixed = false
         for i in parts.indices {
             let x = parts[i], k = num(x["kcal"]) ?? 0
-            let r = Sanity.check(name: str(x["name"]), grams: num(x["grams"]), kcal: k, p: num(x["protein_g"]), c: num(x["carbs_g"]), f: num(x["fat_g"]))
+            let r = Sanity.check(name: str(x["name"]), grams: num(x["grams"]), kcal: k, p: num(x["protein_g"]), c: num(x["carbs_g"]), f: num(x["fat_g"]), cookedTag: cooking(x))
             // chicken boiled down to 60% of its weight really has 37 g protein per 100 g: theirs, so not "more than chicken has"
             let own = ["them", "label"].contains(str(x["numbers_from"])) || ["them", "label"].contains(str(x["src"]))
             // and a label's calories stand: a protein bar at 190 kcal with 21 P, 22 C (much of it fibre) and 8 F was

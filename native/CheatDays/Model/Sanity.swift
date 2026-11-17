@@ -8,7 +8,9 @@ enum Sanity {
     struct Range { let label: String; let lo: Double; let hi: Double; let proteinMax: Double }
 
     /// The range for a food by its name, most specific first; nil when there's nothing to go on.
-    static func range(_ name: String) -> Range? {
+    /// `cookedTag` is how the AI tagged the part (true cooked, false raw); without one it's read from the name's words,
+    /// which got "Chicken breast, cooked, from 189 g raw" held to raw chicken.
+    static func range(_ name: String, cookedTag: Bool? = nil) -> Range? {
         // The kind of food is what the name's first part says it is, not what it's in, on, with or for (weighed plates,
         // Nov 2026: "Butter, melted in the eggs" was held to eggs and swapped for fruit butter, "Steak, sliced, grilled
         // with herbs" to a vegetable and swapped for canned steak and veg, "Mayonnaise, in the tuna salad" to fish).
@@ -16,8 +18,8 @@ enum Sanity {
         let full = name.lowercased(), n = head(full)
         func has(_ w: [String]) -> Bool { w.contains { n.contains($0) } }
         func mentions(_ w: [String]) -> Bool { w.contains { full.contains($0) } }
-        let raw = mentions(["raw", "uncooked"])
-        let cooked = mentions(["cooked", "grilled", "roast", "bbq", "shredded", "fried", "baked", "braised", "rotisserie", "pulled", "simmered", "stewed", "poached", "casseroled",
+        let raw = cookedTag.map { !$0 } ?? mentions(["raw", "uncooked"])
+        let cooked = cookedTag ?? mentions(["cooked", "grilled", "roast", "bbq", "shredded", "fried", "baked", "braised", "rotisserie", "pulled", "simmered", "stewed", "poached", "casseroled",
                                "boiled", "steamed", "seared", "sauteed", "sautéed", "scrambled", "toasted", "wilted", "mashed", "canned", "tinned", "smoked", "flaked"])
         if has(["protein powder", "whey", "protein shake powder", "daily shake", "isolate"]) { return Range(label: "protein powder", lo: 340, hi: 420, proteinMax: 92) }
         if has(["water", "black coffee", "diet ", "zero sugar", "sweetener", "stevia", "monk fruit"]) { return nil }
@@ -157,10 +159,11 @@ enum Sanity {
         return n + ", raw"
     }
 
-    static func check(name: String, grams: Double?, kcal: Double, p: Double?, c: Double?, f: Double?) -> Result {
+    static func check(name: String, grams: Double?, kcal: Double, p: Double?, c: Double?, f: Double?, cookedTag: Bool? = nil) -> Result {
         // cooked from a raw weight: the raw lot's numbers, checked against that weight and the raw food's range (the
         // cooked chicken was held to raw chicken's at its cooked weight, called wrong, and swapped, 17 Nov)
-        let grams = rawWeight(name) ?? grams
+        let fromRaw = rawWeight(name)
+        let grams = fromRaw ?? grams, cookedTag = fromRaw != nil ? false : cookedTag
         var out = Result(kcal: kcal, flags: [])
         if p != nil || c != nil || f != nil {
             let pp = p ?? 0, cc = c ?? 0, ff = f ?? 0, e = energy(p: pp, c: cc, f: ff)
@@ -180,7 +183,7 @@ enum Sanity {
         if let g = grams, g > 0 {
             let k100 = out.kcal / g * 100, p100 = (p ?? 0) / g * 100
             if (p ?? 0) + (c ?? 0) + (f ?? 0) > g * 1.05 { out.flags.append("\(name): more protein, carbs and fat than its \(Fmt.int(g)) g weighs. Check the numbers.") }
-            if let r = range(name) {
+            if let r = range(name, cookedTag: cookedTag) {
                 if k100 < r.lo * 0.85 || k100 > r.hi * 1.15 {
                     out.flags.append("\(name): \(Fmt.int(k100)) kcal per 100 g looks off for \(r.label) (usually \(Fmt.int(r.lo))–\(Fmt.int(r.hi))).")
                 }
@@ -195,10 +198,10 @@ enum Sanity {
     /// A database number in place of the AI's: kept when the two are in the same ballpark; when they're far apart (a
     /// per-gram value read as per 100 g, a wrong match), the one that fits the kind of food wins, and a near-zero
     /// database value never replaces a real food.
-    static func prefersDatabase(_ db: Double?, aiKcal: Double, grams: Double, name: String) -> Bool {
+    static func prefersDatabase(_ db: Double?, aiKcal: Double, grams: Double, name: String, cookedTag: Bool? = nil) -> Bool {
         guard let db, db > 0 else { return false }
         let ai = grams > 0 ? aiKcal / grams * 100 : 0
-        let r = range(name)
+        let r = range(name, cookedTag: cookedTag)
         func fits(_ v: Double) -> Bool { r.map { v >= $0.lo * 0.85 && v <= $0.hi * 1.15 } ?? true }
         if db < 5 && r != nil { return false }   // "2 kcal per 100 g" for cabbage: a unit mix-up, not a better number
         if ai > 0 && db >= ai * 0.55 && db <= ai * 1.8 { return fits(db) || !fits(ai) }

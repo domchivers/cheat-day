@@ -164,6 +164,19 @@ final class AssistantTests: XCTestCase {
         XCTAssertNil(p["swapped"])
     }
 
+    /// The reference cuts are raw: a part the AI tagged cooked ("Rump steak" tagged grilled) never takes them, whatever
+    /// its name says, and its range is cooked meat's. Untagged, the name decides as before.
+    @MainActor
+    func testATaggedCookedPartIsntGivenRawNumbers() {
+        let steak: JSON = ["name": "Rump steak", "grams": 150, "kcal": 300, "protein_g": 42, "carbs_g": 0, "fat_g": 12, "tags": "grilled"]
+        XCTAssertNotEqual(str(Assistant.tableMatch(steak)?["src"]), "reference")
+        XCTAssertEqual(Assistant.cooking(steak), true)
+        XCTAssertEqual(Assistant.cooking(["name": "Chicken breast", "tags": "raw, skin off"]), false)
+        XCTAssertNil(Assistant.cooking(["name": "Chicken breast"]))
+        // tagged cooked, its name read as raw: the range is cooked chicken's
+        XCTAssertTrue(Sanity.check(name: "Chicken breast (raw weight unknown)", grams: 100, kcal: 165, p: 31, c: 0, f: 3.6, cookedTag: true).flags.isEmpty)
+    }
+
     /// The owner's Portuguese chicken: 150 g cooked from its label is 245 kcal; a generic roast chicken made it 285.
     @MainActor
     func testALabelsNumbersAreKept() async {
