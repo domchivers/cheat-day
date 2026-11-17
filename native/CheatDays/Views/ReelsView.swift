@@ -106,7 +106,7 @@ struct ReelsView: View {
             Button("Delete", role: .destructive) { Task { await feed.delete(b.post) }; dismiss() }
             Button("Cancel", role: .cancel) {}
         } message: { _ in Text("It will be gone for good, along with its likes and comments.") }
-        .sheet(item: $talking) { b in CommentsSheet(post: b.post).presentationDetents([.medium, .large]).presentationDragIndicator(.visible) }
+        .sheet(item: $talking) { b in CommentsSheet(post: b.post) }
         .sheet(item: $sharing) { b in SharePostSheet(post: b.post).presentationDetents([.medium, .large]) }
         .sheet(item: $recipe) { b in PostRecipeSheet(post: b.post) }
         .sheet(item: $rewording) { b in EditPostSheet(post: b.post) }

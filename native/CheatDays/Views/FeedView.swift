@@ -442,7 +442,7 @@ struct FeedView: View {
         }
         .sheet(isPresented: $composing) { ComposeSheet() }
         .sheet(item: Binding(get: { recipe.map { PostBox(post: $0) } }, set: { recipe = $0?.post })) { b in PostRecipeSheet(post: b.post) }
-        .sheet(item: $talking) { b in CommentsSheet(post: b.post).presentationDetents([.medium, .large]).presentationDragIndicator(.visible) }
+        .sheet(item: $talking) { b in CommentsSheet(post: b.post) }
         .sheet(item: $sharing) { b in SharePostSheet(post: b.post).presentationDetents([.medium, .large]) }
         // deleting asks first: it was one tap in a menu, next to Edit, and there's no getting a post back
         .alert("Delete this post?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), presenting: deleting) { b in
@@ -955,6 +955,7 @@ struct CommentsSheet: View {
     @State private var hashtag: String?   // a hashtag in a comment, tapped: its posts open here
     @State private var reportOf: ReportTarget?
     @FocusState private var typing: Bool
+    @State private var detent: PresentationDetent = .medium
     private var feed: Feed { Feed.shared }
     private var id: String { str(post["id"]) }
     private static let quick = ["🔥", "😋", "💪", "Recipe?", "Looks good!"]
@@ -975,6 +976,33 @@ struct CommentsSheet: View {
                     .padding(16)
                 }
                 .scrollDismissesKeyboard(.interactively)
+                // the box pinned to the sheet's foot, where the keyboard lifts it: as a plain row under the list it
+                // was sometimes left behind the keyboard when Reply opened it (17 Nov)
+                .safeAreaInset(edge: .bottom, spacing: 0) { composer }
+            }
+            .navigationTitle("Comments").navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(item: $profile) { id in ProfileView(id: id) }
+            .navigationDestination(item: $hashtag) { t in HashtagView(tag: t) }
+            .reportDialog($reportOf)
+            .onAppear { KeyboardDone.quiet = true }
+            .onDisappear { KeyboardDone.quiet = false }
+            // the box tapped straight into at half height goes full height too
+            .onChange(of: typing) { _, now in if now, detent != .large { withAnimation(.snappy) { detent = .large } } }
+        }
+        // full height before the keyboard comes up: growing from half height while the keyboard rose is the likely
+        // way the box got left under it
+        .presentationDetents([.medium, .large], selection: $detent)
+        .presentationDragIndicator(.visible)
+    }
+
+    /// Open the box to type: the sheet goes full height first, then the keyboard.
+    private func startTyping() {
+        if detent == .large { typing = true; return }
+        withAnimation(.snappy) { detent = .large }
+        Task { try? await Task.sleep(for: .milliseconds(350)); typing = true }
+    }
+
+    private var composer: some View {
                 VStack(alignment: .leading, spacing: 8) {
                     ScrollView(.horizontal) {
                         HStack(spacing: 8) {
@@ -985,7 +1013,7 @@ struct CommentsSheet: View {
                                     UISelectionFeedbackGenerator().selectionChanged()
                                     let gap = text.isEmpty || text.hasSuffix(" ") ? "" : " "
                                     text += gap + q
-                                    typing = true
+                                    startTyping()
                                 } label: { Text(q).font(.subheadline).padding(.horizontal, 12).padding(.vertical, 7).background(Color(.tertiarySystemFill), in: Capsule()) }
                                     .buttonStyle(.plain)
                             }
@@ -1013,14 +1041,6 @@ struct CommentsSheet: View {
                 }
                 .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 8)
                 .composerBar()
-            }
-            .navigationTitle("Comments").navigationBarTitleDisplayMode(.inline)
-            .navigationDestination(item: $profile) { id in ProfileView(id: id) }
-            .navigationDestination(item: $hashtag) { t in HashtagView(tag: t) }
-            .reportDialog($reportOf)
-            .onAppear { KeyboardDone.quiet = true }
-            .onDisappear { KeyboardDone.quiet = false }
-        }
     }
 
     private func row(_ c: JSON, reply: Bool) -> some View {
@@ -1035,7 +1055,7 @@ struct CommentsSheet: View {
                 HStack(spacing: 14) {
                     Text(Feed.ago(str(c["created_at"])))
                     if !likes.isEmpty { Text(likes.count == 1 ? "1 like" : "\(likes.count) likes") }
-                    Button("Reply") { replying = reply ? (feed.comments.first { str($0["id"]) == str(c["reply_to"]) } ?? c) : c; typing = true }.buttonStyle(.plain).fontWeight(.semibold)
+                    Button("Reply") { replying = reply ? (feed.comments.first { str($0["id"]) == str(c["reply_to"]) } ?? c) : c; startTyping() }.buttonStyle(.plain).fontWeight(.semibold)
                     if who == feed.me { Button("Delete") { Task { await feed.deleteComment(c) } }.buttonStyle(.plain) }
                     else { Button("Report") { reportOf = ReportTarget(user: who, what: "Comment: \(cid) \"\(String(str(c["text"]).prefix(140)))\"", kind: "comment", target: cid, text: str(c["text"])) }.buttonStyle(.plain) }
                 }
