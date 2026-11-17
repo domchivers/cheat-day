@@ -16,6 +16,17 @@ final class FoodMatchTests: XCTestCase {
         }
     }
 
+    /// "Couscous salad with herbs" was counted as a yoghurt sauce for salads; table-style names still match.
+    func testAnEntryForAnotherFoodIsntIt() {
+        XCTAssertFalse(Assistant.sameFood("Couscous salad with herbs", "Yogurt-cream sauce with herbs for salad"))
+        XCTAssertTrue(Assistant.sameFood("Bacon, rashers, grilled crisp", "Pork, cured, bacon, pre-sliced, cooked, pan-fried"))
+        XCTAssertTrue(Assistant.sameFood("Black lentils, boiled", "Lentils, mature seeds, cooked, boiled, without salt"))
+        XCTAssertTrue(Assistant.sameFood("Chicken breast, raw", "Chicken, breast, lean flesh, raw"))
+        XCTAssertTrue(Assistant.sameFood("Chicken biryani", "Biryani with chicken"))
+        XCTAssertTrue(Assistant.sameFood("Potato, roasted", "Potatoes, Russet, flesh and skin, baked"))
+        XCTAssertTrue(Assistant.sameFood("Caesar dressing", "Salad dressing, caesar dressing, regular"))
+    }
+
     func testUnqualifiedCheeseOnABakeryItemIsNaturalCheddar() {
         XCTAssertEqual(best("Cheese, melted", ["bought", "cooked"]), "Cheese, cheddar, natural, regular fat")
         XCTAssertEqual(best("Melted cheese", ["bought"]), "Cheese, cheddar, natural, regular fat")

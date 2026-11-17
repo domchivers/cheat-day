@@ -917,7 +917,7 @@ enum Assistant {
     /// Checks switched off, by name, so the replay tests can measure what each one does to the cards (ChecksOffTests).
     /// Always empty in the app.
     static var off: Set<String> = []
-    static let switchable = ["tidied", "held", "unfolded", "ground", "reference", "rematched", "rawWeight", "plausible", "sameCooking",
+    static let switchable = ["tidied", "held", "unfolded", "ground", "reference", "rematched", "rawWeight", "plausible", "sameCooking", "sameFood",
                              "sane", "guarded", "keepingEarlier", "steady", "cookedTags"]
     static func on(_ check: String) -> Bool { !off.contains(check) }
 
@@ -1076,12 +1076,12 @@ enum Assistant {
         // the entry chosen by the part's tags too (bought, natural, skin on…); then a dish their country's table doesn't
         // have (biryani, pad thai, chocolate cheesecake) from the US dish table; then the other countries' (moussaka, rösti)
         for table in [FoodTable.current, .dishes, .world] {
-            if let f = table.best(said, tags: tags(x)), sameCooking(said, f.name), plausible(f.kcal, aiKcal: ai, grams: g, name: said, cookedTag: cooked) {
+            if let f = table.best(said, tags: tags(x)), sameFood(said, f.name), sameCooking(said, f.name), plausible(f.kcal, aiKcal: ai, grams: g, name: said, cookedTag: cooked) {
                 let y = checked(x, kcal100: f.kcal, p100: f.p, c100: f.c, f100: f.f, source: table.src, match: f.name)
                 return rematched(y, from: f, table: table) ?? y
             }
         }
-        if let row = FoodsDB.search(said, limit: 1).first, sameCooking(said, str(row["name"])), plausible(num(row["kcalPer100"]), aiKcal: ai, grams: g, name: said, cookedTag: cooked) {
+        if let row = FoodsDB.search(said, limit: 1).first, sameFood(said, str(row["name"])), sameCooking(said, str(row["name"])), plausible(num(row["kcalPer100"]), aiKcal: ai, grams: g, name: said, cookedTag: cooked) {
             return checked(x, kcal100: num(row["kcalPer100"]) ?? 0, p100: num(row["p100"]), c100: num(row["c100"]), f100: num(row["f100"]), source: "list", match: str(row["name"]))
         }
         return nil
@@ -1093,6 +1093,27 @@ enum Assistant {
     /// AI's own numbers stand.
     /// Battered or crumbed food is a coated entry, too: the wings went next to "Chicken wings, with skin, fried without
     /// fat (oven)" (678 kcal), fried in name only.
+    /// An entry that's another food altogether isn't this one: the food it's named for (its name before the first comma,
+    /// "Yogurt-cream sauce with herbs for salad") is in the part's name, or every food word of the part's own first
+    /// part is in the entry ("Bacon, rashers" is "Pork, cured, bacon"). "Couscous salad with herbs" was counted as that
+    /// yoghurt sauce (weighed plates, 17 Nov). How it's cooked or cut doesn't count either way.
+    static func sameFood(_ said: String, _ entry: String) -> Bool {
+        guard on("sameFood") else { return true }
+        let ignore = describing.union(["raw", "cooked", "fried", "boiled", "baked", "grilled", "steamed", "roasted", "fresh", "with", "for", "and",
+                                       "or", "in", "on", "the", "of", "style", "type", "mixed", "chunk", "cube", "strip", "rasher", "wedge", "flesh"])
+        // one spelling for the words the tables spell both ways
+        let spelling = ["yogurt": "yoghurt", "chili": "chilli", "chile": "chilli", "doughnut": "donut", "ketchup": "sauce", "flavor": "flavour"]
+        func words(_ s: String) -> [String] { FoodTable.words(s).map { spelling[$0] ?? $0 } }
+        func lead(_ s: String) -> Set<String> {
+            let first = s.split(whereSeparator: { $0 == "," || $0 == "(" }).first.map(String.init) ?? s
+            return Set(words(first)).subtracting(ignore)
+        }
+        let saidAll = Set(words(said)), entryAll = Set(words(entry))
+        let theirs = lead(entry), mine = lead(said)
+        if theirs.isEmpty || mine.isEmpty { return true }
+        return theirs.isSubset(of: saidAll) || mine.isSubset(of: entryAll)
+    }
+
     static func sameCooking(_ said: String, _ entry: String) -> Bool {
         guard on("sameCooking") else { return true }
         let s = said.lowercased(), e = entry.lowercased()
