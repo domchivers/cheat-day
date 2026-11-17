@@ -143,7 +143,7 @@ enum Sanity {
         let n = name.lowercased(), all = NSRange(n.startIndex..., in: n)
         guard let weights = try? NSRegularExpression(pattern: #"\d+(\.\d+)?\s*g\b"#), weights.numberOfMatches(in: n, range: all) == 1,
               let from = try? NSRegularExpression(pattern: #"\bfrom\s+(\d+(?:\.\d+)?)\s*g\s+(?:of\s+)?(?:raw|uncooked)\b"#),
-              let m = from.firstMatch(in: n, range: all), let r = Range(m.range(at: 1), in: n) else { return nil }
+              let m = from.firstMatch(in: n, range: all), let r = Swift.Range(m.range(at: 1), in: n) else { return nil }
         return Double(n[r]).flatMap { $0 > 0 ? $0 : nil }
     }
 
