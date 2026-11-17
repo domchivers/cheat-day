@@ -264,7 +264,8 @@ struct AssistantView: View {
                 .font(.caption).foregroundStyle(.secondary)
             if let w = pos(e["weighedTotal"]) {
                 // the plate's weight from their scale, which every part is held to
-                (Text(Image(systemName: "scalemass.fill")) + Text(str(e["weighedFrom"]) == "scale" ? " \(Fmt.int(w)) g read off your scale" : " Weighed \(Fmt.int(w)) g in total"))
+                let said: String = str(e["weighedFrom"]) == "scale" ? " \(Fmt.int(w)) g read off your scale" : " Weighed \(Fmt.int(w)) g in total"
+                (Text(Image(systemName: "scalemass.fill")) + Text(said))
                     .font(.caption2.weight(.bold)).foregroundStyle(Theme.accent)
             }
             macros(k, p, c, f)
@@ -380,16 +381,19 @@ struct AssistantView: View {
     /// judged from the photo. A weight typed is the part's, held through every follow-up, and it leaves the box.
     private func weighBox(_ parts: [JSON], _ asking: [Int], turn: UUID) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            (pos(estimate(turn)["weighedTotal"]) != nil
-                ? Text("Weighed each? ").foregroundStyle(.primary) + Text("Only if you split them").foregroundStyle(.secondary)
-                : Text("Know how much? ").foregroundStyle(.primary) + Text("Calories and macros will be much more accurate").foregroundStyle(.secondary))
+            let weighedPlate = pos(estimate(turn)["weighedTotal"]) != nil
+            let ask: String = weighedPlate ? "Weighed each? " : "Know how much? "
+            let why: String = weighedPlate ? "Only if you split them" : "Calories and macros will be much more accurate"
+            (Text(ask).foregroundStyle(.primary) + Text(why).foregroundStyle(.secondary))
                 .font(.caption.weight(.semibold)).padding(.vertical, 8)
             ForEach(asking, id: \.self) { i in
                 let pt = parts[i], g = num(pt["grams"]) ?? 0, piece = Assistant.pieces(str(pt["size"]))
                 let name = str(pt["name"]).split(separator: ",").first.map(String.init) ?? str(pt["name"])
                 let total = pos(estimate(turn)["weighedTotal"])
-                let hint = str(pt["weighed"]) == "share" && total != nil ? "about \(Fmt.int(g)) of the \(Fmt.int(total ?? 0)) g" : piece.map { str(pt["weighed"]) == "counted" ? "\($0.n) × about \(Fmt.int($0.each)) g" : "counted \($0.n) in the photo" }
-                    ?? (pos(pt["low"]).flatMap { l in pos(pt["high"]).map { "looks about \(Fmt.int(l))–\(Fmt.int($0)) g" } } ?? "looks about \(Fmt.int(g)) g")
+                let looks: String = pos(pt["low"]).flatMap { l in pos(pt["high"]).map { "looks about \(Fmt.int(l))–\(Fmt.int($0)) g" } } ?? "looks about \(Fmt.int(g)) g"
+                let counted: String? = piece.map { str(pt["weighed"]) == "counted" ? "\($0.n) × about \(Fmt.int($0.each)) g" : "counted \($0.n) in the photo" }
+                let shared: String? = str(pt["weighed"]) == "share" ? total.map { "about \(Fmt.int(g)) of the \(Fmt.int($0)) g" } : nil
+                let hint: String = shared ?? counted ?? looks
                 Divider()
                 HStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 2) {
