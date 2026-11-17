@@ -378,7 +378,6 @@ struct FeedView: View {
     var only: [JSON]? = nil
     /// The post to open on, from a profile's grid.
     var startAt: String? = nil
-    @State private var composing = false
     @State private var recipe: JSON?
     @State private var flash: String?
     @State private var talking: PostBox?   // the post whose comments are open
@@ -430,17 +429,7 @@ struct FeedView: View {
         .refreshable { if only == nil { await feed.load(); await Stories.shared.load() } }
         .task { if only == nil && feed.posts.isEmpty { await feed.load() } }
         .overlay(alignment: .top) { if only == nil && feed.loading && feed.posts.isEmpty { Skeleton.posts().padding(.top, 120).allowsHitTesting(false) } }
-        .overlay(alignment: .bottomTrailing) {
-            if only == nil {
-            Button { composing = true } label: {
-                Image(systemName: "plus").font(.system(size: 26, weight: .semibold)).foregroundStyle(Theme.onAccent)
-                    .frame(width: 58, height: 58).background(Theme.accent, in: Circle()).shadow(color: .black.opacity(0.35), radius: 10, y: 5)
-            }
-            .buttonStyle(.plain).accessibilityLabel("New post")
-            .padding(.trailing, 18).padding(.bottom, 12)   // just above the tab bar
-            }
-        }
-        .sheet(isPresented: $composing) { ComposeSheet() }
+        // no floating + here (17 Nov): it didn't match the Food page's and a post is made from your profile's + or a workout
         .sheet(item: Binding(get: { recipe.map { PostBox(post: $0) } }, set: { recipe = $0?.post })) { b in PostRecipeSheet(post: b.post) }
         .sheet(item: $talking) { b in CommentsSheet(post: b.post) }
         .sheet(item: $sharing) { b in SharePostSheet(post: b.post).presentationDetents([.medium, .large]) }
