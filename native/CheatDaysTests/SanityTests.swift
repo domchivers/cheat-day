@@ -34,6 +34,19 @@ final class SanityTests: XCTestCase {
         XCTAssertTrue(Sanity.check(name: "Aldi BBQ shredded chicken", grams: 140, kcal: 322, p: 35, c: 2, f: 20).flags.allSatisfy { !$0.contains("protein per 100 g") })
     }
 
+    /// "Chicken breast, cooked, from 189 g raw" at 142 g: held to raw chicken's range at its cooked weight, the right
+    /// numbers were called wrong and swapped for raw chicken's (17 Nov). Its numbers are the raw lot's, checked at 189 g.
+    func testCookedFromARawWeightIsCheckedAtThatWeight() {
+        let name = "Chicken breast, cooked, from 189 g raw"
+        XCTAssertEqual(Sanity.rawWeight(name), 189)
+        XCTAssertEqual(Sanity.rawName(name), "Chicken breast, raw")
+        XCTAssertEqual(Sanity.rawName("Boiled chicken thigh (from 220 g raw)"), "chicken thigh, raw")
+        XCTAssertNil(Sanity.rawWeight("Chicken breast, 100 g of it, from 189 g raw"), "a share of the lot isn't the lot")
+        XCTAssertNil(Sanity.rawWeight("Chicken breast, raw"))
+        XCTAssertTrue(Sanity.check(name: name, grams: 142, kcal: 185, p: 42.5, c: 0, f: 2).flags.isEmpty, "189 g raw breast's own numbers")
+        XCTAssertFalse(Sanity.check(name: name, grams: 142, kcal: 139, p: 31, c: 0, f: 1).flags.isEmpty, "raw numbers on the cooked weight are too low")
+    }
+
     func testANearZeroDatabaseValueDoesntReplaceRealFood() {
         // the AI said 100 kcal for 400 g of cabbage; a per-gram value (2) read as per 100 g mustn't win
         XCTAssertFalse(Sanity.prefersDatabase(2, aiKcal: 100, grams: 400, name: "Cabbage"))

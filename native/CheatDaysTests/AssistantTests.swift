@@ -149,6 +149,21 @@ final class AssistantTests: XCTestCase {
         XCTAssertEqual(AusFoods.find("Sweet potato, roasted")?.name.hasPrefix("Sweet potato"), true)
     }
 
+    /// "Let's add the lunch": 189 g raw breast, all of it, guessed at 142 g cooked. The card said 139 kcal (raw chicken's
+    /// numbers on the cooked weight); the raw lot is about 185 kcal and 42 g protein whatever it weighs cooked.
+    @MainActor
+    func testCookedFromARawWeightCountsTheRawLot() async {
+        let part: JSON = ["name": "Chicken breast, cooked, from 189 g raw", "grams": 142, "kcal": 214, "protein_g": 44, "carbs_g": 0, "fat_g": 4,
+                          "tags": "cooked", "numbers_from": "estimate"]
+        let e = await Assistant.ground(["name": "Lunch", "kcal_total": 214, "parts": [part]])
+        let p = list(e["parts"])[0]
+        XCTAssertEqual(num(p["grams"]), 142, "the cooked weight stays on the card")
+        XCTAssertEqual(str(p["name"]), "Chicken breast, cooked, from 189 g raw")
+        XCTAssertTrue((170...200).contains(num(p["kcal"]) ?? 0), "189 g of raw breast, got \(num(p["kcal"]) ?? 0) from \(str(p["match"]))")
+        XCTAssertGreaterThan(num(p["protein_g"]) ?? 0, 38)
+        XCTAssertNil(p["swapped"])
+    }
+
     /// The owner's Portuguese chicken: 150 g cooked from its label is 245 kcal; a generic roast chicken made it 285.
     @MainActor
     func testALabelsNumbersAreKept() async {

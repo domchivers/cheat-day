@@ -136,7 +136,31 @@ enum Sanity {
 
     /// One food's numbers checked. Calories well under what its macros make are replaced by the macros' energy
     /// (protein and carbs 4 kcal a gram, fat 9); everything else that looks wrong is flagged, not changed.
+    /// The raw weight a cooked part was named from, when that's the only weight in its name ("Chicken breast, cooked,
+    /// from 189 g raw" is 189). Its numbers are the raw lot's, so that's the weight they're checked against; one that
+    /// names a share too ("100 g of it, from 189 g raw") has nil, its numbers being only part of the lot.
+    static func rawWeight(_ name: String) -> Double? {
+        let n = name.lowercased(), all = NSRange(n.startIndex..., in: n)
+        guard let weights = try? NSRegularExpression(pattern: #"\d+(\.\d+)?\s*g\b"#), weights.numberOfMatches(in: n, range: all) == 1,
+              let from = try? NSRegularExpression(pattern: #"\bfrom\s+(\d+(?:\.\d+)?)\s*g\s+(?:of\s+)?(?:raw|uncooked)\b"#),
+              let m = from.firstMatch(in: n, range: all), let r = Range(m.range(at: 1), in: n) else { return nil }
+        return Double(n[r]).flatMap { $0 > 0 ? $0 : nil }
+    }
+
+    /// That part named as the raw food it was weighed as ("Chicken breast, cooked, from 189 g raw" is "Chicken breast, raw").
+    static func rawName(_ name: String) -> String {
+        var n = name.replacingOccurrences(of: #"\s*[,(]?\s*from\s+\d+(\.\d+)?\s*g\s+(of\s+)?(raw|uncooked)\s*\)?"#, with: "", options: [.regularExpression, .caseInsensitive])
+        n = n.replacingOccurrences(of: #"\b(cooked|boiled|grilled|baked|roasted|roast|steamed|poached|braised|simmered|stewed|seared|air[ -]?fried)\b"#, with: "",
+                                   options: [.regularExpression, .caseInsensitive])
+        n = n.replacingOccurrences(of: #"\s*,(\s*,)+"#, with: ",", options: .regularExpression).replacingOccurrences(of: #"\s{2,}"#, with: " ", options: .regularExpression)
+        n = n.trimmingCharacters(in: CharacterSet.whitespaces.union(CharacterSet(charactersIn: ",")))
+        return n + ", raw"
+    }
+
     static func check(name: String, grams: Double?, kcal: Double, p: Double?, c: Double?, f: Double?) -> Result {
+        // cooked from a raw weight: the raw lot's numbers, checked against that weight and the raw food's range (the
+        // cooked chicken was held to raw chicken's at its cooked weight, called wrong, and swapped, 17 Nov)
+        let grams = rawWeight(name) ?? grams
         var out = Result(kcal: kcal, flags: [])
         if p != nil || c != nil || f != nil {
             let pp = p ?? 0, cc = c ?? 0, ff = f ?? 0, e = energy(p: pp, c: cc, f: ff)

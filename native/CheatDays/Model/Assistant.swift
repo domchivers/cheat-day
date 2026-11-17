@@ -1009,25 +1009,19 @@ enum Assistant {
             }
             // a species or cut we've checked: before any list or database, unless its numbers don't fit the kind of food
             // the part is (a cocoa-dusted tiramisu isn't cocoa powder)
-            let said = str(x["name"])
-            if let e = FoodReference.match(said), sameCooking(said, e.name), !wrongFor(checked(x, kcal100: e.kcal, p100: e.p, c100: e.c, f100: e.f, source: "reference")) {
-                parts[i] = checked(x, kcal100: e.kcal, p100: e.p, c100: e.c, f100: e.f, source: "reference", match: e.name)
-            } else if let f = FoodTable.current.best(said, tags: tags(x)), sameCooking(said, f.name), plausible(f.kcal, aiKcal: num(x["kcal"]) ?? 0, grams: g, name: said) {
-                // the official numbers for their country (AFCD, CoFID or USDA SR Legacy) before the app's list or the US database,
-                // the entry chosen by the part's tags too (bought, natural, skin on…)
-                parts[i] = checked(x, kcal100: f.kcal, p100: f.p, c100: f.c, f100: f.f, source: FoodTable.current.src, match: f.name)
-                if let better = rematched(parts[i], from: f) { parts[i] = better }
-            } else if let f = FoodTable.dishes.best(said, tags: tags(x)), sameCooking(said, f.name), plausible(f.kcal, aiKcal: num(x["kcal"]) ?? 0, grams: g, name: said) {
-                // a dish their country's table doesn't have (biryani, pad thai, chocolate cheesecake): the US dish table
-                parts[i] = checked(x, kcal100: f.kcal, p100: f.p, c100: f.c, f100: f.f, source: FoodTable.dishes.src, match: f.name)
-                if let better = rematched(parts[i], from: f, table: .dishes) { parts[i] = better }
-            } else if let f = FoodTable.world.best(said, tags: tags(x)), sameCooking(said, f.name), plausible(f.kcal, aiKcal: num(x["kcal"]) ?? 0, grams: g, name: said) {
-                // then the other countries' tables (moussaka, quiche Lorraine, rösti)
-                parts[i] = checked(x, kcal100: f.kcal, p100: f.p, c100: f.c, f100: f.f, source: FoodTable.world.src, match: f.name)
-                if let better = rematched(parts[i], from: f, table: .world) { parts[i] = better }
-            } else if let row = FoodsDB.search(said, limit: 1).first, sameCooking(said, str(row["name"])), plausible(num(row["kcalPer100"]), aiKcal: num(x["kcal"]) ?? 0, grams: g, name: str(x["name"])) {
-                parts[i] = checked(x, kcal100: num(row["kcalPer100"]) ?? 0, p100: num(row["p100"]), c100: num(row["c100"]), f100: num(row["f100"]), source: "list", match: str(row["name"]))
-            } else { ask.append(i) }
+            // Cooked from a raw weight they gave ("Chicken breast, cooked, from 189 g raw"): checked as that much of the
+            // raw food, its cooked grams kept, since all of it is the raw lot's totals whatever it weighs cooked. The
+            // card had raw chicken's numbers on its 142 g cooked guess instead: 139 kcal where 189 g raw is 185, 17 Nov.
+            if let rawG = Sanity.rawWeight(str(x["name"])),
+               str(x["name"]).range(of: #"\b(fried|fry|batter|battered|crumbed|breaded|coated|oil)\b"#, options: [.regularExpression, .caseInsensitive]) == nil {
+                var probe = x
+                probe["name"] = Sanity.rawName(str(x["name"])); probe["grams"] = rawG; probe["tags"] = "raw"
+                if var y = tableMatch(probe) {
+                    y["name"] = x["name"]; y["grams"] = x["grams"]; y["tags"] = x["tags"]
+                    parts[i] = y; continue
+                }
+            }
+            if let y = tableMatch(x) { parts[i] = y } else { ask.append(i) }
         }
         if !ask.isEmpty {
             let names = ask.map { str(parts[$0]["usda_name"]).isEmpty ? str(parts[$0]["name"]) : str(parts[$0]["usda_name"]) }
@@ -1045,6 +1039,30 @@ enum Assistant {
             }
         }
         return guarded(sane(totals(e, parts: parts)))
+    }
+
+    /// A part checked against the food tables on the phone, best first: a species or cut we've checked, their country's
+    /// table, the US dish table, the other countries' tables, then the app's list. Nil when none fits, for the database.
+    @MainActor static func tableMatch(_ x: JSON) -> JSON? {
+        let said = str(x["name"]), g = num(x["grams"]) ?? 0, ai = num(x["kcal"]) ?? 0
+        // a species or cut we've checked: before any list or database, unless its numbers don't fit the kind of food
+        // the part is (a cocoa-dusted tiramisu isn't cocoa powder)
+        if let e = FoodReference.match(said), sameCooking(said, e.name), !wrongFor(checked(x, kcal100: e.kcal, p100: e.p, c100: e.c, f100: e.f, source: "reference")) {
+            return checked(x, kcal100: e.kcal, p100: e.p, c100: e.c, f100: e.f, source: "reference", match: e.name)
+        }
+        // the official numbers for their country (AFCD, CoFID or USDA SR Legacy) before the app's list or the US database,
+        // the entry chosen by the part's tags too (bought, natural, skin on…); then a dish their country's table doesn't
+        // have (biryani, pad thai, chocolate cheesecake) from the US dish table; then the other countries' (moussaka, rösti)
+        for table in [FoodTable.current, .dishes, .world] {
+            if let f = table.best(said, tags: tags(x)), sameCooking(said, f.name), plausible(f.kcal, aiKcal: ai, grams: g, name: said) {
+                let y = checked(x, kcal100: f.kcal, p100: f.p, c100: f.c, f100: f.f, source: table.src, match: f.name)
+                return rematched(y, from: f, table: table) ?? y
+            }
+        }
+        if let row = FoodsDB.search(said, limit: 1).first, sameCooking(said, str(row["name"])), plausible(num(row["kcalPer100"]), aiKcal: ai, grams: g, name: said) {
+            return checked(x, kcal100: num(row["kcalPer100"]) ?? 0, p100: num(row["p100"]), c100: num(row["c100"]), f100: num(row["f100"]), source: "list", match: str(row["name"]))
+        }
+        return nil
     }
 
     /// Fried, battered or crumbed food isn't its lean, no-added-fat version: "Chicken wings, fried with batter" was
