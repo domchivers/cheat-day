@@ -18,7 +18,9 @@ enum FoodReference {
     }()
 
     /// Words that make it a different food from the raw one in the table: cooked, processed, or only flavoured with it.
+    // (boiled, seared, stewed… were missing: "Prawns, boiled" got raw prawns' numbers on its cooked weight)
     private static let otherFood = ["cooked", "grilled", "roast", "fried", "baked", "braised", "steamed", "poached", "smoked", "pulled", "shredded", "bbq", "rotisserie",
+                                    "boiled", "simmered", "seared", "stewed", "sauteed", "sautéed", "barbecued", "charred", "casseroled", "slow cooked", "slow-cooked",
                                     "canned", "tinned", "crumbed", "battered", "dried", "stock", "broth", "sauce", "gravy ", "paste", "powder", "marinade", "seasoning", "flavour",
                                     "burger", "nugget", "schnitzel", "sausage", " pie", "soup", "salad", "dressing", " oil", "cake", "curry", "dumpling", "wrap", "sandwich",
                                     // only on it: "Tiramisu, cocoa dusted" was counted as 170 g of cocoa powder (20 g protein a 100 g)

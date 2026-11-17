@@ -39,7 +39,9 @@ final class FoodBenchmarkTests: XCTestCase {
     func testCocoa() { XCTAssertEqual(num(out(ing("Cocoa powder", 40, 92, 7.8, 9.2, 5.4))["kcal"]) ?? 0, 131, accuracy: 2) }
 
     func testOnlyThePlainRawFoodMatches() {
-        for name in ["Chicken stock", "Smoked salmon", "Fish sauce", "Canned tuna", "Grilled chicken breast", "Peanut butter", "Chicken salad", "Beef burger"] {
+        for name in ["Chicken stock", "Smoked salmon", "Fish sauce", "Canned tuna", "Grilled chicken breast", "Peanut butter", "Chicken salad", "Beef burger",
+                     // cooked, so not the raw entry's numbers on a cooked weight
+                     "Prawns, boiled", "Chicken thigh, boiled", "Seared scotch fillet", "Beef chuck, slow cooked", "Lamb shoulder, stewed"] {
             XCTAssertNil(FoodReference.match(name), name)
         }
         XCTAssertEqual(FoodReference.match("Sashimi grade Atlantic salmon, cubed")?.name, "Salmon")
