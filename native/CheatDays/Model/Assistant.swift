@@ -819,7 +819,8 @@ enum Assistant {
             !Sanity.check(name: name, grams: num(x["grams"]), kcal: num(x["kcal"]) ?? 0, p: num(x["protein_g"]), c: num(x["carbs_g"]), f: num(x["fat_g"]), cookedTag: cooking(x)).flags.isEmpty
         }
         guard wrong(part) else { return nil }
-        for alt in table.alternatives(name, tags: tags(part), matched: first.name, limit: 8).dropFirst() {
+        // never another food altogether ("Couscous salad with herbs" went from couscous to a yoghurt sauce for salads)
+        for alt in table.alternatives(name, tags: tags(part), matched: first.name, limit: 8).dropFirst() where sameFood(name, alt.name) {
             var x = checked(part, kcal100: alt.kcal, p100: alt.p, c100: alt.c, f100: alt.f, source: table.src, match: alt.name)
             guard !wrong(x) else { continue }
             x["swapped"] = "\(name): changed to \(alt.name), as the first match's numbers looked wrong for \(Sanity.range(name)?.label ?? "it")"

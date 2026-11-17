@@ -194,7 +194,11 @@ final class FoodTable {
         if wrongVersion { named.subtract(Self.pieceWords) }
         let others = wrongVersion ? rows.filter { !Set($0.kind).subtracting(Self.pieceWords).isDisjoint(with: Set(want).subtracting(Self.pieceWords)) && !(strict && strayed($0, from: asked)) } : pool
         let fitted = others.filter { !unasked($0) && named.isSubset(of: $0.words) }.max { (fit($0), score($0)) < (fit($1), score($1)) }
-        guard let fitted, wrongVersion || fit(fitted) > fit(baseRow) else { return otherFood ? nil : base }
+        // a coated version nobody asked for, with no plain relative, isn't it either: grilled tenders found only breaded
+        // ones, and the next table or the AI's own numbers do better than batter
+        let coat: Set<String> = ["breaded", "battered", "crumbed", "coated", "breadcrumb"]
+        let coatedUnasked = !baseRow.words.filter { coat.contains($0) && !asked.contains($0) }.isEmpty
+        guard let fitted, wrongVersion || fit(fitted) > fit(baseRow) else { return otherFood || coatedUnasked ? nil : base }
         return fitted.food
     }
 
