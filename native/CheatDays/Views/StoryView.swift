@@ -22,6 +22,7 @@ struct StoryView: View {
     @State private var axis = 0               // the drag going on: 0 not known yet, 1 down (to close), 2 sideways
     @State private var grab: CGSize = .zero   // where the finger was when the drag set off, for the card to go from there
     @GestureState private var touching = false   // a drag is under way; goes false on its own if the drag's cut off
+    @State private var landing: (UUID, Int)?     // a move to another person still sliding, and who it's going to
     @Environment(\.scenePhase) private var scenePhase
     @State private var paused = false
     /// The poster's name was tapped: the story closes and whoever opened it shows their profile as a normal page.
@@ -213,7 +214,10 @@ struct StoryView: View {
                     .ignoresSafeArea(.keyboard, edges: .bottom)
                     .transition(.opacity)
                 }
+                // it's this person's, so it fades out as their card goes and back in with the next one (it read the
+                // next person's name before their card had come, 17 Nov)
                 footer(s[min(slide, s.count - 1)]).frame(height: 52).padding(.horizontal, 8).padding(.bottom, typing ? 6 : 0)
+                    .opacity(max(0, 1 - Double(abs(swipe) / max(1, width * 0.4))))
                 }
                 .animation(.easeOut(duration: 0.18), value: typing)
                 // the row of emoji is open: a tap anywhere else puts it away
@@ -246,6 +250,8 @@ struct StoryView: View {
         .presentationBackground(.clear)
         .gesture(DragGesture().updating($touching) { _, on, _ in on = true }.onChanged { v in
                 let t = v.translation
+                // still sliding to the next person from the last swipe: it's there now, and this drag goes from there
+                if axis == 0, landing != nil { land() }
                 // which way it's going is settled once, at the start, so a swipe sideways that dips doesn't start closing;
                 // and the card goes from where it is then, not by the 10 points the finger had to move first (it
                 // jumped them as it set off, 17 Nov)
@@ -744,13 +750,25 @@ struct StoryView: View {
     private func finish(_ step: Int, speed: CGFloat? = nil) {
         let n = at + step
         paused = true
+        let token = UUID()
+        landing = (token, n)
         let rest = max(1, width - abs(swipe))
         // speed the way it's going (a flick back the other way counts as none)
         let along = speed.map { max(0, step > 0 ? -$0 : $0) }
         withAnimation(along.map { Self.carry(rest: rest, speed: $0, longest: 0.4) } ?? .timingCurve(0.25, 0.5, 0.5, 1, duration: 0.32)) { swipe = step > 0 ? -width : width } completion: {
-            var t = Transaction(); t.disablesAnimations = true
-            withTransaction(t) { at = n; slide = 0; progress = 0; swipe = 0; paused = false }
+            // a swipe started before it got there has landed it already (land)
+            guard landing?.0 == token else { return }
+            land()
         }
+    }
+    /// The move between people put straight where it was going: when it ends, or when a finger takes hold again
+    /// before it got there. Quick swipes one after another jumped (17 Nov): the next drag started from a card
+    /// still sliding, and then the person changed under the finger as the first move finished.
+    private func land() {
+        guard let n = landing?.1 else { return }
+        landing = nil
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t) { at = n; slide = 0; progress = 0; swipe = 0; paused = false }
     }
     /// The rest of the way after the finger lets go, starting at exactly the finger's speed (`speed`, points a second,
     /// over `rest` points): a slow let-go speeds up gently from where it was, a fast one eases off. The curve before

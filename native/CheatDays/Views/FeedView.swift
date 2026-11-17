@@ -467,16 +467,6 @@ struct FeedView: View {
     private var rings: some View {
         ScrollView(.horizontal) {
             HStack(alignment: .top, spacing: 14) {
-                // yours: your day as friends see it, or a new post when there's nothing yet
-                let mine = StoryView.has(feed.me)
-                Button { if mine { askMine = true } else { posting = true } } label: {
-                    ring(feed.me, "Your story", new: mine && !Stories.shared.of(feed.me).isEmpty && !StoryView.seen(feed.me), tag: nil, plus: true)
-                }
-                .buttonStyle(.plain)
-                .confirmationDialog("Your story", isPresented: $askMine) {
-                    Button("Add to your story") { posting = true }
-                    Button("View your story") { openStory { story = StoryStart(people: [feed.me], at: 0) } }
-                }
                 // only friends with something today, the ones you haven't watched first
                 let withStory = friends.people.filter { StoryView.has($0.id) }
                 let order = withStory.filter { !StoryView.seen($0.id) } + withStory.filter { StoryView.seen($0.id) }
@@ -485,6 +475,17 @@ struct FeedView: View {
                 // one run of stories, in the order the rings are in: watching goes on from friends into the people you
                 // follow (they were two separate runs, so it stopped at the last friend)
                 let run = order.map(\.id) + followed
+                // yours: your day as friends see it, or a new post when there's nothing yet
+                let mine = StoryView.has(feed.me)
+                Button { if mine { askMine = true } else { posting = true } } label: {
+                    ring(feed.me, "Your story", new: mine && !Stories.shared.of(feed.me).isEmpty && !StoryView.seen(feed.me), tag: nil, plus: true)
+                }
+                .buttonStyle(.plain)
+                .confirmationDialog("Your story", isPresented: $askMine) {
+                    Button("Add to your story") { posting = true }
+                    // and on into everyone else's, as the rings go (it stopped at the end of yours, 17 Nov)
+                    Button("View your story") { openStory { story = StoryStart(people: [feed.me] + run, at: 0) } }
+                }
                 ForEach(order.indices, id: \.self) { i in
                     let p = order[i]
                     Button { openStory { story = StoryStart(people: run, at: i) } } label: {
