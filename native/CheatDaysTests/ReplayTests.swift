@@ -18,9 +18,62 @@ final class ReplayTests: XCTestCase {
     }
 
     /// The whole chain after the AI, as the chat runs it.
-    private func replay(_ e: JSON, said: String, photos: Bool = false, before: JSON? = nil, earlier: [JSON] = []) async -> JSON {
-        let shown = Assistant.shown(e, said: said, photos: photos, before: before, via: "Claude").estimate
+    private func replay(_ e: JSON, said: String, photos: Bool = false, before: JSON? = nil, earlier: [JSON] = [], reply: String = "") async -> JSON {
+        let shown = Assistant.shown(e, said: said, photos: photos, before: before, via: "Claude", reply: reply).estimate
         return await Assistant.checkedCard(shown, before: before, earlier: earlier)
+    }
+
+    private func dinner(_ chicken: Double = 150, _ rice: Double = 180, _ broccoli: Double = 80) -> JSON {
+        ["name": "Grilled chicken, rice and broccoli", "parts": [
+            part("Chicken breast, grilled", chicken, chicken * 1.65, chicken * 0.31, 0, chicken * 0.036),
+            part("Rice, white, boiled", rice, rice * 1.3, rice * 0.027, rice * 0.28, rice * 0.003),
+            part("Broccoli, steamed", broccoli, broccoli * 0.34, broccoli * 0.028, broccoli * 0.04, broccoli * 0.004),
+        ] as [Any]]
+    }
+    private func grams(_ e: JSON) -> Double { list(e["parts"]).reduce(0) { $0 + (num($1["grams"]) ?? 0) } }
+
+    /// "Weighed it?" with the photo: the AI's split is kept but brought to the scale's total, every part held there,
+    /// and the checks after don't move it.
+    func testAWeighedPlateAddsUpToTheScale() async {
+        offline()
+        let out = await replay(dinner(), said: "Dinner · weighed 520 g in total", photos: true)
+        XCTAssertEqual(grams(out), 520, accuracy: 3)
+        XCTAssertEqual(num(out["weighedTotal"]), 520)
+        for p in list(out["parts"]) { XCTAssertEqual(p["locked"] as? Bool, true, str(p["name"])); XCTAssertEqual(str(p["weighed"]), "share") }
+        let rice = list(out["parts"]).first { str($0["name"]).hasPrefix("Rice") }
+        XCTAssertEqual(num(rice?["grams"]) ?? 0, 180 * 520 / 410, accuracy: 3, "the AI's split kept")
+        XCTAssertGreaterThan(num(out["kcal_total"]) ?? 0, 600)
+    }
+
+    /// The next message about it keeps the weighed grams and says it was weighed.
+    func testAFollowUpKeepsTheScalesWeight() async {
+        offline()
+        let first = await replay(dinner(), said: "Dinner · weighed 520 g in total", photos: true)
+        let out = await replay(dinner(130, 200, 60), said: "The rice was jasmine", before: first)
+        XCTAssertEqual(grams(out), 520, accuracy: 6)
+        XCTAssertEqual(num(out["weighedTotal"]), 520)
+    }
+
+    /// A kitchen scale in the photo, read by the AI: the same hold, marked as read off the scale.
+    func testAScaleReadOffThePhotoIsUsed() async {
+        offline()
+        let out = await replay(dinner(), said: "Dinner", photos: true, reply: "I read 480 g off your scale, so that's what I've shared out.")
+        XCTAssertEqual(grams(out), 480, accuracy: 3)
+        XCTAssertEqual(str(out["weighedFrom"]), "scale")
+        // no scale, no hold
+        let plain = await replay(dinner(), said: "Dinner", photos: true, reply: "Looks like about 410 g.")
+        XCTAssertNil(plain["weighedTotal"])
+    }
+
+    /// A can with its label numbers beside the plate isn't part of what was on the scale.
+    func testALabelledDrinkComesOffTheTotal() async {
+        offline()
+        var e = dinner()
+        e["parts"] = list(e["parts"]) + [part("Coke Zero can", 375, 1, 0, 0, 0, from: "label")]
+        let out = await replay(e, said: "Dinner · weighed 520 g in total", photos: true)
+        let can = list(out["parts"]).first { str($0["name"]).hasPrefix("Coke") }
+        XCTAssertEqual(num(can?["grams"]), 375)
+        XCTAssertEqual(grams(out) - 375, 520, accuracy: 3)
     }
 
     private func part(_ name: String, _ g: Double, _ k: Double, _ p: Double, _ c: Double, _ f: Double, from: String = "estimate") -> JSON {

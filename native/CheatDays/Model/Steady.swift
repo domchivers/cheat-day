@@ -86,6 +86,71 @@ extension Assistant {
         return ((lo / 10).rounded() * 10, (hi / 10).rounded() * 10)
     }
 
+    /// The whole plate's weight from their scale, sent with the photo ("Dinner · weighed 520 g in total"), or nil.
+    static func weighedTotal(_ said: String) -> Double? { firstGrams(#"weighed\s+(\d+(?:\.\d+)?)\s*g\s+in\s+total"#, said) }
+
+    /// A kitchen scale's display read from the photo: the reply says "I read 520 g off your scale", or nil.
+    static func scaleRead(_ reply: String) -> Double? { firstGrams(#"read\s+(?:about\s+)?(\d+(?:\.\d+)?)\s*g\s+off\s+(?:your|the)\s+(?:kitchen\s+)?scale"#, reply) }
+
+    private static func firstGrams(_ pattern: String, _ s: String) -> Double? {
+        guard let rx = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+              let m = rx.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)),
+              let v = Range(m.range(at: 1), in: s).flatMap({ Double(s[$0]) }), v >= 10, v <= 5000 else { return nil }
+        return v
+    }
+
+    /// The parts held to the weight on their scale: those judged by eye share it out (the AI's split kept, only
+    /// brought to the total), and each is fixed there, give or take a little, through every follow-up. A part from a
+    /// label, their numbers or a brand keeps its own weight and comes off the total first (a can beside the plate).
+    /// Weighed plates: a real weight cuts a photo estimate's error by about half (Nov 2026).
+    static func totalled(_ e: JSON, _ total: Double, from: String) -> JSON {
+        var parts = CheatDays.list(e["parts"])
+        func fixed(_ p: JSON) -> Bool {
+            ["label", "them", "brand"].contains(str(p["numbers_from"])) || ["label", "them", "web"].contains(str(p["src"])) || str(p["weighed"]) == "weighed"
+        }
+        let share = parts.indices.filter { !fixed(parts[$0]) && pos(parts[$0]["grams"]) != nil }
+        guard !share.isEmpty else { return e }
+        let own = parts.indices.filter { !share.contains($0) }.reduce(0.0) { $0 + (num(parts[$1]["grams"]) ?? 0) }
+        let target = total - own > total * 0.3 ? total - own : total
+        let now = share.reduce(0.0) { $0 + (num(parts[$1]["grams"]) ?? 0) }
+        let f = target / now
+        for i in share {
+            var p = abs(f - 1) < 0.005 ? parts[i] : regrammed(parts[i], to: (num(parts[i]["grams"]) ?? 0) * f)
+            let g = num(p["grams"]) ?? 0
+            p["low"] = (g * (1 - lockedSlack)).rounded(); p["high"] = (g * (1 + lockedSlack)).rounded()
+            p["locked"] = true; p["weighed"] = "share"
+            parts[i] = p
+        }
+        var out = e
+        out["parts"] = parts
+        func sum(_ k: String) -> Double { parts.reduce(0) { $0 + (num($1[k]) ?? 0) } }
+        out["kcal_total"] = sum("kcal").rounded(); out["protein_g"] = sum("protein_g"); out["carbs_g"] = sum("carbs_g"); out["fat_g"] = sum("fat_g")
+        out["portion_g"] = sum("grams").rounded()
+        out["weighedTotal"] = total.rounded(); out["weighedFrom"] = from
+        return out
+    }
+
+    /// One shared part weighed by itself: the rest of the scale's total goes to the other shared parts, in the
+    /// proportions they had.
+    static func reshared(_ e: JSON, weighed i: Int) -> JSON {
+        guard let total = pos(e["weighedTotal"]) else { return e }
+        var parts = CheatDays.list(e["parts"])
+        let share = parts.indices.filter { $0 != i && str(parts[$0]["weighed"]) == "share" }
+        let own = parts.indices.filter { !share.contains($0) }.reduce(0.0) { $0 + (num(parts[$1]["grams"]) ?? 0) }
+        let now = share.reduce(0.0) { $0 + (num(parts[$1]["grams"]) ?? 0) }
+        guard !share.isEmpty, now > 0, total - own > 0 else { return e }
+        let f = (total - own) / now
+        for j in share {
+            var p = regrammed(parts[j], to: (num(parts[j]["grams"]) ?? 0) * f)
+            let g = num(p["grams"]) ?? 0
+            p["low"] = (g * (1 - lockedSlack)).rounded(); p["high"] = (g * (1 + lockedSlack)).rounded()
+            parts[j] = p
+        }
+        var out = e
+        out["parts"] = parts
+        return out
+    }
+
     /// A part at other grams, its numbers scaled with it.
     private static func regrammed(_ p: JSON, to g: Double) -> JSON {
         guard let was = pos(p["grams"]), abs(was - g) >= 0.5 else { return p }
@@ -167,7 +232,7 @@ extension Assistant {
                                  : locked ? "I've kept the \(label) at \(Fmt.int(wasG)) g from the numbers you gave: they're more reliable than anything I can judge from the photo."
                                         : "Nothing new came in, so the \(label) stays at \(Fmt.int(wasG)) g.")
                 }
-                if let w = was { for k in ["low", "high", "locked", "size"] { p[k] = w[k] } }
+                if let w = was { for k in ["low", "high", "locked", "size", "weighed"] { p[k] = w[k] } }
                 if setByThem { keep((wasG * (1 - lockedSlack), wasG * (1 + lockedSlack)), locked: true) }
                 return p
             }

@@ -15,6 +15,7 @@ struct AssistantView: View {
     private var problem: String? { get { live.problem } nonmutating set { live.problem = newValue } }
     @State private var text = ""
     @State private var pending: [UIImage] = []
+    @State private var plateGrams = ""   // "Weighed it?" under the waiting photos
     @State private var speech = Speech()
     @State private var picked: [PhotosPickerItem] = []
     @State private var camera = false
@@ -261,6 +262,11 @@ struct AssistantView: View {
             // the shop once here, not in every part
             Text((str(e["shop"]).isEmpty ? "" : "\(str(e["shop"])) · ") + "\(Fmt.int(num(e["portion_g"]) ?? 0)) \(str(e["unit"]).isEmpty ? "g" : str(e["unit"]))")
                 .font(.caption).foregroundStyle(.secondary)
+            if let w = pos(e["weighedTotal"]) {
+                // the plate's weight from their scale, which every part is held to
+                (Text(Image(systemName: "scalemass.fill")) + Text(str(e["weighedFrom"]) == "scale" ? " \(Fmt.int(w)) g read off your scale" : " Weighed \(Fmt.int(w)) g in total"))
+                    .font(.caption2.weight(.bold)).foregroundStyle(Theme.accent)
+            }
             macros(k, p, c, f)
             if let r = Assistant.kcalRange(e) {
                 Text("Could be \(Fmt.int(r.low))–\(Fmt.int(r.high)) kcal").font(.caption).monospacedDigit().foregroundStyle(.secondary)
@@ -285,7 +291,7 @@ struct AssistantView: View {
                             }
                             .accessibilityLabel(flagged ? "Check this one" : ok ? "Checked" : "Not checked")
                         Text(str(pt["name"])).font(.subheadline.weight(.medium)).foregroundStyle(.primary).multilineTextAlignment(.leading)
-                        if !str(pt["weighed"]).isEmpty {
+                        if !str(pt["weighed"]).isEmpty, str(pt["weighed"]) != "share" {   // a share of the plate's weight: said once, above
                             (Text(Image(systemName: str(pt["weighed"]) == "counted" ? "number" : "scalemass.fill")) + Text(" " + str(pt["weighed"])))
                                 .font(.caption2.weight(.bold)).foregroundStyle(Theme.accent).fixedSize()
                         }
@@ -374,12 +380,15 @@ struct AssistantView: View {
     /// judged from the photo. A weight typed is the part's, held through every follow-up, and it leaves the box.
     private func weighBox(_ parts: [JSON], _ asking: [Int], turn: UUID) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            (Text("Know how much? ").foregroundStyle(.primary) + Text("Calories and macros will be much more accurate").foregroundStyle(.secondary))
+            (pos(estimate(turn)["weighedTotal"]) != nil
+                ? Text("Weighed each? ").foregroundStyle(.primary) + Text("Only if you split them").foregroundStyle(.secondary)
+                : Text("Know how much? ").foregroundStyle(.primary) + Text("Calories and macros will be much more accurate").foregroundStyle(.secondary))
                 .font(.caption.weight(.semibold)).padding(.vertical, 8)
             ForEach(asking, id: \.self) { i in
                 let pt = parts[i], g = num(pt["grams"]) ?? 0, piece = Assistant.pieces(str(pt["size"]))
                 let name = str(pt["name"]).split(separator: ",").first.map(String.init) ?? str(pt["name"])
-                let hint = piece.map { str(pt["weighed"]) == "counted" ? "\($0.n) × about \(Fmt.int($0.each)) g" : "counted \($0.n) in the photo" }
+                let total = pos(estimate(turn)["weighedTotal"])
+                let hint = str(pt["weighed"]) == "share" && total != nil ? "about \(Fmt.int(g)) of the \(Fmt.int(total ?? 0)) g" : piece.map { str(pt["weighed"]) == "counted" ? "\($0.n) × about \(Fmt.int($0.each)) g" : "counted \($0.n) in the photo" }
                     ?? (pos(pt["low"]).flatMap { l in pos(pt["high"]).map { "looks about \(Fmt.int(l))–\(Fmt.int($0)) g" } } ?? "looks about \(Fmt.int(g)) g")
                 Divider()
                 HStack(spacing: 12) {
@@ -413,6 +422,8 @@ struct AssistantView: View {
                 parts[i]["weighed"] = mark; parts[i]["locked"] = true
                 parts[i]["low"] = (g * (1 - Assistant.lockedSlack)).rounded(); parts[i]["high"] = (g * (1 + Assistant.lockedSlack)).rounded()
                 if let size { parts[i]["size"] = size }
+                // one share of the scale's total weighed by itself: what's left of the total goes to the other shares
+                if let total = estimate(turn)["weighedTotal"] { parts = list(Assistant.reshared(["parts": parts, "weighedTotal": total], weighed: i)["parts"]) }
             }
         }
         logCorrection(turn, mark == "counted" ? "count" : "weighed", part: parts[i], from: was, to: g.rounded())
@@ -1071,6 +1082,24 @@ struct AssistantView: View {
                     .padding(.top, 6).padding(.horizontal, 6)
                 }
                 .frame(height: 70)   // a set height: a sideways scroller takes whatever height it's offered
+                // what their kitchen scale said, if they weighed it: the AI shares out a real total instead of guessing
+                // every part. Optional; empty changes nothing
+                HStack(spacing: 10) {
+                    Image(systemName: "scalemass.fill").foregroundStyle(Theme.accent)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Weighed it?").font(.subheadline.weight(.semibold))
+                        Text("The food only: zero the scale with the plate on first").font(.caption2).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 6)
+                    HStack(spacing: 2) {
+                        TextField("", text: $plateGrams).keyboardType(.numberPad).multilineTextAlignment(.trailing).accessibilityIdentifier("plateGrams")
+                        Text("g").foregroundStyle(.secondary)
+                    }
+                    .font(.subheadline.weight(.bold)).monospacedDigit()
+                    .padding(.horizontal, 12).frame(width: 96, height: 36)
+                    .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                }
+                .padding(.horizontal, 8)
             }
             // return is a new line, shown as the plain return key: it said "send" but only went down a line
             TextField("Ask, or say what you ate", text: $text, axis: .vertical).lineLimit(1...5).focused($typing)
@@ -1184,8 +1213,10 @@ struct AssistantView: View {
             return
         }
         let photos = pending.count
-        turns.append(Assistant.Turn(me: true, text: t.isEmpty ? "What's this?" : t, images: pending))
-        text = ""; pending = []; problem = nil; busy = true
+        // the scale's weight goes with the words, so the AI and every follow-up see it
+        let plate = Fmt.typed(plateGrams).flatMap { photos > 0 && $0 >= 10 ? " · weighed \(Int($0.rounded())) g in total" : nil } ?? ""
+        turns.append(Assistant.Turn(me: true, text: (t.isEmpty ? "What's this?" : t) + plate, images: pending))
+        text = ""; pending = []; plateGrams = ""; problem = nil; busy = true
         // what it's doing, ticked off as it goes. The careful model's own work is one request, so its two steps are paced
         // by time (sizing first, then the parts); reading, spotting and the checks are real
         stepsDone = [photos > 0 ? "Read your message and \(photos) photo\(photos == 1 ? "" : "s")" : "Read your message"]

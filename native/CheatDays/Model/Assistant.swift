@@ -260,6 +260,7 @@ enum Assistant {
     - A packet noodle soup or hotpot kit (noodles with soup base, oil and seasoning packets): when its noodles and solids are gone, they were eaten. Leaving the broth takes off only the soup's share (the soup base, the seasoning and most of the oil), never the noodles. Unless its label splits it, count the noodles and solids as about half of the packet's calories and the soup, oil and seasoning as the other half, so a broth left nearly full takes off most of that half and no more. Say so in the reply ("the noodles count in full; most of the oil and base stayed in the broth").
     - Photo estimates are a range, narrowed as they tell you more. In each sized part's size, start with the range of grams it could really be and then what it's based on, in this form: "range 60–120 g; 10 × ~8 g pieces, against the saucer". grams is the most likely amount, inside that range. In reply say the range and the likely amount in a few words ("half the box is about 60–120 g, most likely 80 g").
     - What a weight is based on, most reliable first: a label, receipt or a weight they give (for the food, the box, the pack); a count they give times the weight of one piece; a size they give; firm things of known size in the photo (plate, cup, saucer, cutlery, a takeaway box); a hand (sizes vary a lot: widen the range when it's all you have); a usual portion. Name the one you used in the part's size.
+    - "weighed N g in total" with a photo is their kitchen scale: the food on it, without the plate. Share exactly N g between the parts on it (not a drink or a packet beside it) by how much of the plate each takes up, so their grams add up to N. Each part's range is about 10% either side. If a photo shows a kitchen scale's display with the food on it, read it the same way, and say in reply "I read N g off your scale" (taking off a plate or bowl if the scale wasn't zeroed with it on).
     - A follow-up can only narrow your range: new grams stay inside the range you gave before, unless they give a weight or count outside it, and then say "that's outside my earlier range, so I'm going with your number". A weight they give is final: never move it for a new look at the photo (a hand, the cup again); say you're sticking with their number. Asked to check again with nothing new, keep the same grams and explain the range rather than giving new ones.
     - How it eats changes the grams, never the calories per 100 g: light, fluffy, airy, whipped or mousse-like means less weight for the size you see (about 0.3 to 0.5 g per cm³, where most food is 0.8 to 1.0); dense, rich, fudgy or heavy means more (0.9 to 1.1). Use it in the very first estimate.
     - Food in pieces (a box of bites, dumplings, nuggets, sushi, cookies): count the pieces in the photo, take how many they had (half the box of 20 is 10), size one piece, and give grams as the count times one piece, written in size as "10 × ~7.5 g". When they correct the count or a piece's size, change only that.
@@ -396,7 +397,7 @@ enum Assistant {
             // held to the last card: the range each part had, a weight they gave, nothing moved by just asking again
             // (new photos are a new thing to work out: a different plate isn't held to the last one's sizes)
             let before = last.images.isEmpty ? turns.dropLast().last { !$0.me && $0.result?["estimate"] != nil }?.result?["estimate"] as? JSON : nil
-            let h = shown(e, said: last.text, photos: !pics.isEmpty, before: before, via: str(answer["via"]))
+            let h = shown(e, said: last.text, photos: !pics.isEmpty, before: before, via: str(answer["via"]), reply: str(answer["reply"]))
             answer["estimate"] = h.estimate
             if !h.notes.isEmpty { answer["reply"] = ([str(answer["reply"])] + h.notes).joined(separator: " ") }
         }
@@ -919,17 +920,27 @@ enum Assistant {
     /// Always empty in the app.
     static var off: Set<String> = []
     static let switchable = ["tidied", "held", "unfolded", "ground", "reference", "rematched", "rawWeight", "plausible", "sameCooking", "sameFood",
-                             "sane", "guarded", "keepingEarlier", "steady", "cookedTags"]
+                             "sane", "guarded", "keepingEarlier", "steady", "cookedTags", "totalled"]
     static func on(_ check: String) -> Bool { !off.contains(check) }
 
     /// The card as it first shows: the AI's estimate tidied, then held to the last card. Each step's result is kept
     /// on the card's trace, with which AI answered.
-    static func shown(_ e: JSON, said: String, photos: Bool, before: JSON?, via: String = "") -> (estimate: JSON, notes: [String]) {
+    static func shown(_ e: JSON, said: String, photos: Bool, before: JSON?, via: String = "", reply: String = "") -> (estimate: JSON, notes: [String]) {
         var cur = traced(via.isEmpty ? "AI" : "AI (\(via))", e)
         if on("tidied") { cur = carried(cur, tidied(cur, said: said, photos: photos), "tidied") }
-        guard on("held") else { return (cur, []) }
-        let h = held(cur, before: before, said: said)
-        return (carried(cur, h.estimate, "held to the last card"), h.notes)
+        var notes: [String] = []
+        if on("held") {
+            let h = held(cur, before: before, said: said)
+            cur = carried(cur, h.estimate, "held to the last card"); notes = h.notes
+        }
+        // the plate's weight from their scale, typed with the photo or read off a scale in it: the parts add up to it
+        if on("totalled"), photos, let w = weighedTotal(said).map({ ($0, "typed") }) ?? scaleRead(reply).map({ ($0, "scale") }) {
+            cur = carried(cur, totalled(cur, w.0, from: w.1), "held to the \(Fmt.int(w.0)) g on their scale")
+        } else if let w = before?["weighedTotal"], cur["weighedTotal"] == nil {
+            // a follow-up on a weighed plate: still the scale's weight (the parts are held by their locks)
+            cur["weighedTotal"] = w; cur["weighedFrom"] = before?["weighedFrom"]
+        }
+        return (cur, notes)
     }
 
     /// Every check after the card shows: parts put back, the food tables, the last card's numbers, earlier cards.

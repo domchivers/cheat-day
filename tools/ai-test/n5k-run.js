@@ -42,7 +42,9 @@ const variant = process.env.VARIANT || '', extra = variant ? '\n' + fs.readFileS
 (async () => {
   const dir = process.argv[2], limit = Number(process.argv[3] || 1e9);
   const picked = JSON.parse(fs.readFileSync(path.join(dir, 'picked.json'), 'utf8')).filter((_, i) => process.env.HALF === 'tune' ? i % 2 === 0 : process.env.HALF === 'check' ? i % 2 === 1 : true).slice(0, limit);
-  const answersFile = path.join(dir, variant ? `answers-${variant}.json` : 'answers.json');
+  // WEIGHED=1: each plate sent with its weighed total, as the app's "Weighed it?" box sends it
+  const weighed = !!process.env.WEIGHED, tag = (variant ? `-${variant}` : '') + (weighed ? '-weighed' : '');
+  const answersFile = path.join(dir, tag ? `answers${tag}.json` : 'answers.json');
   const answers = fs.existsSync(answersFile) ? JSON.parse(fs.readFileSync(answersFile, 'utf8')) : {};
   const ledgerFile = path.join(__dirname, 'results', 'ledger.json'), ledger = JSON.parse(fs.readFileSync(ledgerFile, 'utf8'));
   const client = new Anthropic({ baseURL: 'https://api.anthropic.com' });
@@ -50,7 +52,7 @@ const variant = process.env.VARIANT || '', extra = variant ? '\n' + fs.readFileS
   const todo = picked.filter(d => !answers[d.id]);
   for (let i = 0; i < todo.length; i += 4) {
     await Promise.all(todo.slice(i, i + 4).map(async d => {
-      const text = `You are the assistant inside a cheat-day food diary app called Cheat Days. ${context}They now say: "${say}" (1 photo)\n\n${rules}${extra}`;
+      const text = `You are the assistant inside a cheat-day food diary app called Cheat Days. ${context}They now say: "${say}${weighed ? ` · weighed ${Math.round(d.grams)} g in total` : ''}" (1 photo)\n\n${rules}${extra}`;
       const img = { type: 'image', source: { type: 'base64', media_type: 'image/png', data: fs.readFileSync(path.join(dir, 'photos', d.id + '.png')).toString('base64') } };
       try {
         const r = await client.messages.create({ model: MODEL, max_tokens: 12000, messages: [{ role: 'user', content: [img, { type: 'text', text }] }],
