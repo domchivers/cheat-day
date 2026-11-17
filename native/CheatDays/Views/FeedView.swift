@@ -501,28 +501,28 @@ struct FeedView: View {
                 // the badge coins' rim: something logged today
                 Circle().fill(new ? AnyShapeStyle(AngularGradient(colors: Self.rim + [Self.rim[0]], center: .center, startAngle: .degrees(-90), endAngle: .degrees(270)))
                                   : AnyShapeStyle(Color(.tertiarySystemFill)))
-                // Instagram's size (17 Nov): about four across, the look itself unchanged
+                // Instagram's size (17 Nov): about four across; only the circles grew (the +, names and streaks kept theirs)
                 Circle().fill(Theme.hero).padding(4)
                 Avatar(id: who, size: 75)
             }
             .frame(width: 86, height: 86)
             .overlay(alignment: .bottomTrailing) {
                 if plus {
-                    Image(systemName: "plus").font(.system(size: 14, weight: .black)).foregroundStyle(Theme.onAccent)
-                        .frame(width: 27, height: 27).background(Theme.accent, in: Circle()).overlay(Circle().stroke(Theme.bg, lineWidth: 2.5))
+                    Image(systemName: "plus").font(.system(size: 11, weight: .black)).foregroundStyle(Theme.onAccent)
+                        .frame(width: 21, height: 21).background(Theme.accent, in: Circle()).overlay(Circle().stroke(Theme.bg, lineWidth: 2))
                 }
             }
             .overlay(alignment: .bottom) {
                 if !plus, let tag {
                     // centred on the ring's bottom, no pill or outline: the flame and the number, with a dark glow so it reads over the ring
-                    HStack(spacing: 1) { FluentIcon(emoji: "🔥", size: 15); Text(tag).font(.system(size: 14, weight: .black)).foregroundStyle(Color(red: 1, green: 0.7, blue: 0.36)) }
+                    HStack(spacing: 1) { FluentIcon(emoji: "🔥", size: 13); Text(tag).font(.system(size: 12, weight: .black)).foregroundStyle(Color(red: 1, green: 0.7, blue: 0.36)) }
                         .shadow(color: Theme.bg, radius: 1.5).shadow(color: Theme.bg, radius: 3).shadow(color: .black.opacity(0.6), radius: 1, y: 1)
                         // its middle on the ring's line: 8 pt down sat a touch low, so 6
                         .offset(y: 6)
                         .accessibilityLabel("\(tag) day streak")
                 }
             }
-            Text(name).font(.caption).foregroundStyle(.secondary).lineLimit(1).frame(width: 88)
+            Text(name).font(.caption2).foregroundStyle(.secondary).lineLimit(1).frame(width: 88)
         }
     }
 
