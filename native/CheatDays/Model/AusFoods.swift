@@ -112,14 +112,16 @@ final class FoodTable {
             "natural": (["natural"], ["processed"]), "processed": (["processed"], ["natural"]),
             "raw": (["raw", "uncooked"], cookedWords), "cooked": (cookedWords, ["raw", "uncooked"]),
             "skin on": (["skin"], []), "skin off": ([], ["skin"]),
-            "fried": (["fried"], []), "baked": (["baked", "roasted", "roast"], []), "grilled": (["grilled", "bbq"], []),
-            "boiled": (["boiled"], []), "steamed": (["steamed"], []),
+            // cooked another way isn't fried: baked tofu cubes went to fried tofu, grilled tenders to breaded ones (weighed plates, 17 Nov)
+            "fried": (["fried"], []), "baked": (["baked", "roasted", "roast"], ["fried", "battered", "breaded"]),
+            "grilled": (["grilled", "bbq"], ["fried", "battered", "breaded"]),
+            "boiled": (["boiled"], ["fried"]), "steamed": (["steamed"], ["fried"]),
             "plain": (["plain", "unfilled"], ["filled", "filling"]), "filled": (["filled", "filling"], ["unfilled"]),
             "coated": (["coated", "crumbed", "breadcrumb", "battered"], []), "reduced fat": (["reduced", "light", "lite"], []),
         ]
     }()
     /// Words that make a row a special version of its food: chosen only when the name or a tag asks for it.
-    private static let special: Set<String> = ["processed", "reduced", "light", "lite", "flavoured", "coated", "crumbed", "breadcrumb", "battered",
+    private static let special: Set<String> = ["processed", "reduced", "light", "lite", "flavoured", "coated", "crumbed", "breadcrumb", "battered", "breaded",
                                                "canned", "smoked", "marinated", "frozen", "vitamin", "free", "skin", "homemade",
                                                // a part of the animal, or a takeaway version ("Chicken, shredded, cooked" found chicken feet;
                                                // grilled chicken pieces the coated fast-food ones)

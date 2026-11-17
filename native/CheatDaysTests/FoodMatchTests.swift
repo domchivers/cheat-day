@@ -6,6 +6,16 @@ import XCTest
 final class FoodMatchTests: XCTestCase {
     private func best(_ name: String, _ tags: [String]) -> String? { FoodTable.au.best(name, tags: tags)?.name }
 
+    /// Weighed plates, 17 Nov: baked tofu cubes went to fried tofu and grilled chicken tenders to breaded ones.
+    func testCookedAnotherWayIsntFriedOrBreaded() {
+        for (name, tags) in [("Tofu, firm, baked cubes", ["baked"]), ("Chicken tenders, grilled with BBQ glaze", ["grilled"])] {
+            for table in [FoodTable.au, .us] {
+                let got = table.best(name, tags: tags)?.name.lowercased() ?? ""
+                XCTAssertFalse(got.contains("fried") || got.contains("breaded") || got.contains("battered"), "\(name) → \(got)")
+            }
+        }
+    }
+
     func testUnqualifiedCheeseOnABakeryItemIsNaturalCheddar() {
         XCTAssertEqual(best("Cheese, melted", ["bought", "cooked"]), "Cheese, cheddar, natural, regular fat")
         XCTAssertEqual(best("Melted cheese", ["bought"]), "Cheese, cheddar, natural, regular fat")
