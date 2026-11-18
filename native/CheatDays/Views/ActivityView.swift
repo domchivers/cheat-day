@@ -16,6 +16,7 @@ final class FriendActivity {
         let detail: String
         let photo: String?
         var post: String? = nil
+        var user: String? = nil   // whose it is: their photo on the row, and Follow back
     }
 
     private(set) var items: [Item] = []
@@ -68,25 +69,25 @@ final class FriendActivity {
             let pid = str(r["post_id"])
             out.append(Item(id: "r-\(pid)-\(str(r["user_id"]))-\(str(r["emoji"]))", kind: .reaction, who: name(str(r["user_id"])),
                             at: r["created_at"] != nil ? date(r["created_at"]) : (postAt[pid] ?? .distantPast),
-                            text: "reacted \(str(r["emoji"])) to your post", detail: postName[pid] ?? "", photo: nil, post: pid))
+                            text: "reacted \(str(r["emoji"])) to your post", detail: postName[pid] ?? "", photo: nil, post: pid, user: str(r["user_id"])))
         }
         for c in comments where str(c["user_id"]) != me {
             out.append(Item(id: "c-\(str(c["id"]))", kind: .comment, who: name(str(c["user_id"])), at: date(c["created_at"]),
-                            text: "commented on \(postName[str(c["post_id"])] ?? "your post")", detail: "“\(str(c["text"]))”", photo: nil, post: str(c["post_id"])))
+                            text: "commented on \(postName[str(c["post_id"])] ?? "your post")", detail: "“\(str(c["text"]))”", photo: nil, post: str(c["post_id"]), user: str(c["user_id"])))
         }
         for s in sends {
             out.append(Item(id: "s-\(str(s["id"]))", kind: .sent, who: name(str(s["from_user"])), at: date(s["created_at"]),
-                            text: "sent you \(str(s["name"]))", detail: "\(Int(num(s["kcal"]) ?? 0)) kcal\(str(s["status"]) == "new" ? " · waiting on Today" : "")", photo: nil))
+                            text: "sent you \(str(s["name"]))", detail: "\(Int(num(s["kcal"]) ?? 0)) kcal\(str(s["status"]) == "new" ? " · waiting on Today" : "")", photo: nil, user: str(s["from_user"])))
         }
         for s in shares {
             let pid = str(s["post_id"]), p = posts.first { str($0["id"]) == pid }
             out.append(Item(id: "f-\(str(s["id"]))", kind: .post, who: name(str(s["from_user"])), at: date(s["created_at"]),
                             text: "sent you a post", detail: str(s["note"]).isEmpty ? str(p?["name"]) : "“\(str(s["note"]))”",
-                            photo: p.map(Feed.hasPhoto) == true ? str(p?["photo"]) : nil, post: pid))
+                            photo: p.map(Feed.hasPhoto) == true ? str(p?["photo"]) : nil, post: pid, user: str(s["from_user"])))
         }
         let close = Set(Friends.shared.people.map(\.id) + Follows.shared.following)   // not every public post there is
         for f in Follows.shared.followers {
-            out.append(Item(id: "fo-\(str(f["follower"]))", kind: .request, who: name(str(f["follower"])), at: date(f["created_at"]), text: "started following you", detail: "", photo: nil))
+            out.append(Item(id: "fo-\(str(f["follower"]))", kind: .request, who: name(str(f["follower"])), at: date(f["created_at"]), text: "started following you", detail: "", photo: nil, user: str(f["follower"])))
         }
         for p in posts where str(p["owner"]) != me && close.contains(str(p["owner"])) {
             let kind = str(p["kind"])
@@ -96,10 +97,10 @@ final class FriendActivity {
                 : kind == "moment" ? str(p["name"]) : kind == "photo" ? str(p["caption"]) : "\(str(p["name"])) · \(Int(num(p["kcal"]) ?? 0)) kcal"
             out.append(Item(id: "p-\(str(p["id"]))", kind: .post, who: name(str(p["owner"])), at: date(p["created_at"]),
                             text: what, detail: (str(p["caption"]).isEmpty ? "" : "“\(str(p["caption"]))” · ") + detail,
-                            photo: Feed.hasPhoto(p) ? str(p["photo"]) : nil, post: str(p["id"])))
+                            photo: Feed.hasPhoto(p) ? str(p["photo"]) : nil, post: str(p["id"]), user: str(p["owner"])))
         }
         for r in Friends.shared.requests {
-            out.append(Item(id: "q-\(r.id)", kind: .request, who: r.name, at: Date(), text: "wants to be friends", detail: "", photo: nil))
+            out.append(Item(id: "q-\(r.id)", kind: .request, who: r.name, at: Date(), text: "wants to be friends", detail: "", photo: nil, user: r.from))
         }
         if let x = sample { out.append(x) }
         items = out.sorted { $0.at > $1.at }
@@ -118,45 +119,161 @@ final class FriendActivity {
 struct ActivityView: View {
     @Environment(\.dismiss) private var dismiss
     private var activity: FriendActivity { FriendActivity.shared }
+    private var follows: Follows { Follows.shared }
     @State private var lastSeen = FriendActivity.shared.seen
+    @State private var tab: Tab = .all
+    @State private var profileOf: String?
+
+    /// Tabs along the top (18 Nov), so a busy Activity can be read a kind at a time.
+    enum Tab: String, CaseIterable { case all = "All", follows = "Follows", likes = "Likes", comments = "Comments", sent = "Sent to you", posts = "Friends' posts" }
+
+    /// A row: a follow request (Accept and ✕) or anything else that happened.
+    enum Entry: Identifiable {
+        case ask(String, Date)
+        case item(FriendActivity.Item)
+        var id: String {
+            switch self { case .ask(let who, _): return "ask-" + who; case .item(let it): return it.id }
+        }
+        var at: Date {
+            switch self { case .ask(_, let at): return at; case .item(let it): return it.at }
+        }
+    }
+
+    private func tabOf(_ it: FriendActivity.Item) -> Tab {
+        switch it.kind {
+        case .reaction: return .likes
+        case .comment: return .comments
+        case .sent: return .sent
+        case .request: return .follows
+        case .post: return it.id.hasPrefix("f-") ? .sent : .posts   // a post sent to you, or a friend's own
+        }
+    }
+
+    private func entries(_ t: Tab) -> [Entry] {
+        var out: [Entry] = []
+        if t == .all || t == .follows {
+            for r in follows.requests {
+                let at = ISO.date(str(r["created_at"])) ?? Date()
+                out.append(.ask(str(r["follower"]), at))
+            }
+        }
+        for it in activity.items where t == .all || tabOf(it) == t { out.append(.item(it)) }
+        return out.sorted { $0.at > $1.at }
+    }
+
+    private func isNew(_ e: Entry) -> Bool {
+        switch e { case .ask: return true; case .item(let it): return it.at > lastSeen }
+    }
+
+    struct DayGroup: Identifiable { let id: String; var rows: [Entry] }
+
+    /// Today, Yesterday, This week, Earlier: in that order, only those with something in them.
+    private func sections(_ list: [Entry]) -> [DayGroup] {
+        let cal = Calendar.current, weekAgo = cal.date(byAdding: .day, value: -7, to: cal.startOfDay(for: Date())) ?? Date()
+        func bucket(_ d: Date) -> String {
+            if cal.isDateInToday(d) { return "Today" }
+            if cal.isDateInYesterday(d) { return "Yesterday" }
+            return d >= weekAgo ? "This week" : "Earlier"
+        }
+        var out: [DayGroup] = []
+        for e in list {
+            let b = bucket(e.at)
+            if let i = out.firstIndex(where: { $0.id == b }) { out[i].rows.append(e) } else { out.append(DayGroup(id: b, rows: [e])) }
+        }
+        return out
+    }
 
     var body: some View {
         NavigationStack {
-            List {
-                if activity.items.isEmpty && !activity.loading {
-                    Text("Nothing yet. Reactions, comments, food sent to you and friends' posts show up here.").foregroundStyle(.secondary)
-                }
-                // follow requests on top, with Accept and ✕
-                ForEach(Follows.shared.requests.map { str($0["follower"]) }, id: \.self) { who in
-                    HStack(spacing: 12) {
-                        NavigationLink { ProfileView(id: who) } label: {
-                            HStack(spacing: 12) {
-                                Avatar(id: who, size: 40)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    (Text(Feed.shared.name(who)).bold() + Text(" wants to follow you")).font(.subheadline)
-                                    if !Profiles.shared.handle(who).isEmpty { Text(Profiles.shared.handle(who)).font(.caption).foregroundStyle(.secondary) }
-                                }
-                            }
-                        }
-                        Spacer(minLength: 4)
-                        Button("Accept") { Task { await Follows.shared.accept(who) } }.buttonStyle(.borderedProminent).controlSize(.small).foregroundStyle(Theme.onAccent)
-                        Button { Task { await Follows.shared.remove(who) } } label: { Image(systemName: "xmark") }.buttonStyle(.bordered).controlSize(.small).accessibilityLabel("Decline")
+            VStack(spacing: 0) {
+                chips
+                List {
+                    let list = entries(tab)
+                    if list.isEmpty && !activity.loading {
+                        Text(tab == .all ? "Nothing yet. Reactions, comments, food sent to you and friends' posts show up here." : "Nothing here yet.")
+                            .foregroundStyle(.secondary)
                     }
-                    .listRowBackground(Theme.hero)
+                    ForEach(sections(list)) { section in
+                        Section {
+                            ForEach(section.rows) { e in entryRow(e) }
+                        } header: {
+                            Text(section.id).font(.title3.weight(.bold)).foregroundStyle(.primary).textCase(nil)
+                        }
+                    }
                 }
-                ForEach(activity.items) { it in
-                    Button { go(it) } label: { row(it) }
-                        .buttonStyle(.plain)
-                        .listRowBackground(it.at > lastSeen ? Theme.hero : Color(.secondarySystemGroupedBackground))
-                }
+                .scrollContentBackground(.hidden)
             }
-            .scrollContentBackground(.hidden)
             .background(Theme.bg)
+            .navigationDestination(item: $profileOf) { id in ProfileView(id: id) }
             .navigationTitle("Activity")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() }.fontWeight(.bold) } }
             .refreshable { await activity.load() }
             .task { await activity.load(); activity.seen = Date(); activity.clearSample() }   // opening it marks everything as seen
+        }
+    }
+
+    /// All, then only the tabs with something in them, each with how many are new.
+    private var chips: some View {
+        let shown = Tab.allCases.filter { $0 == .all || !entries($0).isEmpty }
+        return ScrollView(.horizontal) {
+            HStack(spacing: 8) {
+                ForEach(shown, id: \.self) { t in
+                    let fresh = t == .all ? 0 : entries(t).filter(isNew).count
+                    Button { withAnimation(.snappy) { tab = t } } label: { chip(t.rawValue, on: tab == t, count: fresh) }
+                        .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 8)
+        }
+        .scrollIndicators(.hidden)
+        .onChange(of: shown) { _, now in if !now.contains(tab) { tab = .all } }
+    }
+
+    private func chip(_ title: String, on: Bool, count: Int) -> some View {
+        let fill: Color = on ? Theme.accent : Color(.secondarySystemGroupedBackground)
+        let ink: Color = on ? Theme.onAccent : .primary
+        return HStack(spacing: 5) {
+            Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(ink)
+            if count > 0 {
+                Text("\(count)").font(.caption2.weight(.bold)).foregroundStyle(.white)
+                    .padding(.horizontal, 6).padding(.vertical, 1).background(Color.red, in: Capsule())
+            }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 8)
+        .background(fill, in: Capsule())
+    }
+
+    @ViewBuilder private func entryRow(_ e: Entry) -> some View {
+        switch e {
+        case .ask(let who, let at):
+            HStack(spacing: 12) {
+                NavigationLink { ProfileView(id: who) } label: {
+                    HStack(spacing: 12) {
+                        badged(who, kind: .request)
+                        VStack(alignment: .leading, spacing: 2) {
+                            (Text(Feed.shared.name(who)).bold() + Text(" wants to follow you")).font(.subheadline)
+                            Text(at.formatted(.relative(presentation: .named))).font(.caption2).foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+                Spacer(minLength: 4)
+                Button("Accept") { Task { await follows.accept(who) } }.buttonStyle(.borderedProminent).controlSize(.small).foregroundStyle(Theme.onAccent)
+                Button { Task { await follows.remove(who) } } label: { Image(systemName: "xmark") }.buttonStyle(.bordered).controlSize(.small).accessibilityLabel("Decline")
+            }
+            .listRowBackground(Theme.hero)
+        case .item(let it):
+            let back: Color = it.at > lastSeen ? Theme.hero : Color(.secondarySystemGroupedBackground)
+            if it.id.hasPrefix("fo-") {
+                // Follow back is its own button: the row isn't one, so a tap on it can't also open the profile
+                row(it).contentShape(Rectangle())
+                    .onTapGesture { if let u = it.user, !u.isEmpty { profileOf = u } }
+                    .listRowBackground(back)
+            } else {
+                Button { go(it) } label: { row(it) }
+                    .buttonStyle(.plain)
+                    .listRowBackground(back)
+            }
         }
     }
 
@@ -170,23 +287,56 @@ struct ActivityView: View {
         }
     }
 
+    /// Their photo with a small badge for what it was; the kind's own icon when there's no one (the test item).
+    @ViewBuilder private func badged(_ user: String?, kind: FriendActivity.Item.Kind) -> some View {
+        if let user, !user.isEmpty {
+            Avatar(id: user, size: 44)
+                .overlay(alignment: .bottomTrailing) {
+                    Image(systemName: symbol(kind)).font(.system(size: 9, weight: .bold)).foregroundStyle(.white)
+                        .frame(width: 19, height: 19).background(tint(kind), in: Circle())
+                        .overlay(Circle().stroke(Theme.bg, lineWidth: 2))
+                        .offset(x: 3, y: 3)
+                }
+        } else {
+            Image(systemName: symbol(kind)).font(.subheadline.weight(.bold)).foregroundStyle(tint(kind))
+                .frame(width: 44, height: 44).background(tint(kind).opacity(0.15), in: Circle())
+        }
+    }
+
     private func row(_ it: FriendActivity.Item) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: symbol(it.kind)).font(.subheadline.weight(.bold)).foregroundStyle(tint(it.kind))
-                .frame(width: 34, height: 34).background(tint(it.kind).opacity(0.15), in: Circle())
+        HStack(alignment: .center, spacing: 12) {
+            badged(it.user, kind: it.kind)
             VStack(alignment: .leading, spacing: 3) {
                 (Text(it.who).bold() + Text(" " + it.text)).font(.subheadline)
                 if !it.detail.isEmpty { Text(it.detail).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
                 Text(it.at.formatted(.relative(presentation: .named))).font(.caption2).foregroundStyle(.tertiary)
             }
             Spacer(minLength: 0)
-            if !it.id.hasPrefix("test-") { Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary).padding(.top, 10) }
-            if let p = it.photo, let url = URL(string: p) {
+            if it.id.hasPrefix("fo-"), let u = it.user, !u.isEmpty {
+                followBack(u)
+            } else if let p = it.photo, let url = URL(string: p) {
                 FeedPhoto(src: url.absoluteString, fill: true)
                     .frame(width: 46, height: 46).clipShape(RoundedRectangle(cornerRadius: 8))
+            } else if !it.id.hasPrefix("test-") {
+                Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
             }
         }
         .padding(.vertical, 3)
+    }
+
+    /// A new follower: follow them back from the row (Following, or Requested for a private profile, once you have).
+    @ViewBuilder private func followBack(_ u: String) -> some View {
+        switch follows.state(u) {
+        case .none:
+            Button("Follow back") { Task { await follows.follow(u) } }
+                .buttonStyle(.borderedProminent).controlSize(.small).foregroundStyle(Theme.onAccent)
+        case .requested:
+            Text("Requested").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                .padding(.horizontal, 10).padding(.vertical, 6).background(Color(.tertiarySystemFill), in: Capsule())
+        case .following:
+            Text("Following").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                .padding(.horizontal, 10).padding(.vertical, 6).background(Color(.tertiarySystemFill), in: Capsule())
+        }
     }
 
     private func symbol(_ k: FriendActivity.Item.Kind) -> String {
