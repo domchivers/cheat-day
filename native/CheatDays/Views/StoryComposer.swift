@@ -166,15 +166,39 @@ struct FoodStickerPicker: View {
 struct StoryReshare: View {
     let story: JSON
     @Environment(\.dismiss) private var dismiss
-    @State private var ground: UIImage?
-    @State private var items: [JSON] = []
+    /// Their story as it's watched: the photo with everything they put on it (18 Nov: only the bare photo came, so
+    /// their words, drawing and stickers were lost).
+    @State private var whole: UIImage?
+    @State private var full = false   // their story as the whole of yours, or as a card over a soft copy of it
     @State private var failed = false
+
+    private var owner: String { str(story["owner"]) }
+    private var name: String { let u = Profiles.shared.all[owner]?.username ?? ""; return u.isEmpty ? Feed.shared.name(owner) : u }
+    /// Says whose it is: the viewer shows "↻ their name" by yours at the top. Not drawn on the story itself.
+    private var repost: JSON { ["id": "repost", "type": "repost", "user": owner, "name": name, "x": 0.5, "y": 0.02, "scale": 1.0, "rotation": 0.0] }
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            if let ground {
-                StoryEditor(image: ground, video: nil, close: { dismiss() }, posted: { dismiss() }, startItems: items)
+            if let whole {
+                Group {
+                    if full {
+                        StoryEditor(image: whole, video: nil, close: { dismiss() }, posted: { dismiss() }, startItems: [repost])
+                    } else {
+                        StoryEditor(image: StoryArt.backdrop(whole), video: nil, close: { dismiss() }, posted: { dismiss() }, startItems: [
+                            ["id": "theirs", "type": "photo", "local": PhotoStickers.keep(whole),
+                             "w": Double(whole.size.width), "h": Double(whole.size.height), "x": 0.5, "y": 0.45, "scale": 1.25, "rotation": 0.0],
+                            ["id": "whose", "type": "mention", "user": owner, "name": name, "x": 0.5, "y": 0.88, "scale": 0.75, "rotation": 0.0],
+                            repost,
+                        ])
+                    }
+                }
+                .id(full)   // a fresh editor for each way
+                .overlay(alignment: .top) {
+                    Picker("How", selection: $full) { Text("Sticker").tag(false); Text("Full screen").tag(true) }
+                        .pickerStyle(.segmented).frame(width: 220).padding(.top, 118)
+                        .environment(\.colorScheme, .dark)
+                }
             } else if failed {
                 VStack(spacing: 14) {
                     Text("Couldn't open that story.").foregroundStyle(.white)
@@ -186,17 +210,28 @@ struct StoryReshare: View {
         }
         .statusBarHidden()
         .task {
-            guard ground == nil else { return }
+            guard whole == nil else { return }
             guard let img = await ImageStore.load(str(story["media"])) else { failed = true; return }
-            let owner = str(story["owner"]), user = Profiles.shared.all[owner]?.username ?? ""
-            items = [
-                ["id": "theirs", "type": "photo", "local": PhotoStickers.keep(img), "url": str(story["media"]),
-                 "w": Double(img.size.width), "h": Double(img.size.height), "x": 0.5, "y": 0.45, "scale": 1.35, "rotation": 0.0],
-                ["id": "whose", "type": "mention", "user": owner, "name": user.isEmpty ? Feed.shared.name(owner) : user,
-                 "x": 0.5, "y": 0.86, "scale": 0.75, "rotation": 0.0],
-            ]
-            ground = StoryArt.backdrop(img)
+            // the photos stuck on it, here first, so the picture of it is made with them in
+            for src in Stories.pictures(story) where src != str(story["media"]) { _ = await ImageStore.load(src) }
+            whole = Self.render(story, base: img) ?? img
         }
+    }
+
+    /// Their story drawn into one picture at the story's shape: the photo, then what's on it, as it's watched.
+    static func render(_ story: JSON, base: UIImage) -> UIImage? {
+        let w = StoryArt.design, h = w / StoryArt.aspect
+        let on = list(story["overlays"]).filter { !["song", "repost"].contains(str($0["type"])) }
+        let picture = ZStack {
+            Color.black
+            Image(uiImage: base).resizable().scaledToFill().frame(width: w, height: h).clipped()
+            StoryLayer(items: on)
+        }
+        .frame(width: w, height: h).clipped()
+        .environment(\.colorScheme, .dark)
+        let r = ImageRenderer(content: picture)
+        r.scale = 3
+        return r.uiImage
     }
 }
 

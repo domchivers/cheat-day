@@ -21,6 +21,7 @@ struct StoryView: View {
     }
     @State private var adding: JSON?   // your story going into a highlight
     @State private var recipeOf: JSON?   // a recipe sticker tapped: its recipe open over the story
+    @State private var resharing: JSON?  // a story you're tagged in, being added to yours
     @State private var managing: JSON?   // your story's options are open
     @State private var mentioning: JSON? // your story, someone being mentioned on it after it went up
     @State private var failed: String?
@@ -233,6 +234,20 @@ struct StoryView: View {
                 }
                 // it's this person's, so it fades out as their card goes and back in with the next one (it read the
                 // next person's name before their card had come, 17 Nov)
+                // tagged in it: add it to yours from here, as Instagram has it (18 Nov; it was only in your messages)
+                if let st = taggedHere, !typing {
+                    Button { resharing = st } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "plus.circle.fill")
+                            Text("You're tagged · Add to your story")
+                        }
+                        .font(.subheadline.weight(.bold)).foregroundStyle(.black)
+                        .padding(.horizontal, 14).padding(.vertical, 9).background(.white, in: Capsule())
+                        .shadow(color: .black.opacity(0.3), radius: 8, y: 3)
+                    }
+                    .buttonStyle(.plain).padding(.bottom, 66).accessibilityIdentifier("tagged-add")
+                    .opacity(footerIn * max(0, 1 - Double(abs(swipe) / max(1, width * 0.4))))
+                }
                 footer(s[min(slide, s.count - 1)]).frame(height: 52).padding(.horizontal, 8).padding(.bottom, typing ? 6 : 0)
                     .opacity(footerIn * max(0, 1 - Double(abs(swipe) / max(1, width * 0.4))))
                 }
@@ -312,7 +327,7 @@ struct StoryView: View {
                 if case .snap(let st)? = now, Medal.on(st) == nil, waited < 8, Stories.pictures(st).contains(where: { ImageStore.cached($0) == nil }) { waited += dt; continue }
                 // in two, a long chain being slow for the compiler
                 let held: Bool = paused || typing || reacting || tagged != nil || reportOf != nil || sharing != nil
-                let open: Bool = sharingStory != nil || seenBy != nil || adding != nil || managing != nil || mentioning != nil || recipeOf != nil
+                let open: Bool = sharingStory != nil || seenBy != nil || adding != nil || managing != nil || mentioning != nil || recipeOf != nil || resharing != nil
                 if held || open { continue }
                 progress += dt / length; tickAt = at
                 if progress >= 1 { next(); return }
@@ -370,6 +385,21 @@ struct StoryView: View {
         return str(d["day"]) == DayKey.string(Date()) || str(d["day"]).isEmpty ? "today" : "yesterday"
     }
 
+    /// The slide showing, if it's a story someone posted (not their day's meals).
+    private var snapNow: JSON? {
+        let s = slides
+        guard !s.isEmpty, case .snap(let st) = s[min(slide, s.count - 1)] else { return nil }
+        return st
+    }
+    /// Whose story this one is a repost of, if it is.
+    private var repostOf: JSON? { snapNow.flatMap { list($0["overlays"]).first { str($0["type"]) == "repost" } } }
+    /// A story of theirs you're tagged in that can go on yours (a photo, for everyone, not a friends-only one).
+    private var taggedHere: JSON? {
+        guard !isMe, hl == nil, let st = snapNow, str(st["kind"]) != "video", str(st["audience"]) != "friends" else { return nil }
+        let me = Profiles.shared.me
+        return list(st["overlays"]).contains { str($0["type"]) == "mention" && str($0["user"]) == me && $0["hidden"] as? Bool != true } ? st : nil
+    }
+
     private var header: some View {
         HStack(spacing: 9) {
             // their photo and name close the story and open their profile, as a page
@@ -381,6 +411,14 @@ struct StoryView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain).accessibilityIdentifier("story-author")
+            // someone else's story put on theirs: whose it was, beside the name, as Instagram shows a repost (18 Nov)
+            if let r = repostOf {
+                HStack(spacing: 3) {
+                    Image(systemName: "arrow.2.squarepath").font(.system(size: 11, weight: .bold))
+                    Text(str(r["name"])).lineLimit(1)
+                }
+                .font(.footnote.weight(.semibold)).foregroundStyle(.white.opacity(0.85))
+            }
             Text(when).font(.subheadline).foregroundStyle(.white.opacity(0.65))
             Spacer()
             // someone else's: it can be reported (there was no way to from the story itself)
@@ -424,6 +462,7 @@ struct StoryView: View {
         .accessibilityAction(named: "Next") { next() }
         .accessibilityAction(named: "Back") { back() }
         .reportDialog($reportOf)
+        .fullScreenCover(item: Binding(get: { resharing.map { PostBox(post: $0) } }, set: { if $0 == nil { resharing = nil } })) { b in StoryReshare(story: b.post) }
         // a recipe sticker: the recipe, as the feed's Recipe button opens it, to save or have today
         .sheet(item: Binding(get: { recipeOf.map { PostBox(post: RecipeStickerPicker.post($0, owner: who)) } }, set: { if $0 == nil { recipeOf = nil } })) { b in
             PostRecipeSheet(post: b.post, by: Feed.shared.name(who)).presentationDetents([.medium, .large])
