@@ -649,6 +649,9 @@ struct SongCard: View {
     let song: Song
     /// The viewer's own sound switch: the video's sound and the song's together.
     @Binding var muted: Bool
+    /// The card's own height, measured: the sheet is that tall and no taller (18 Nov: a set height left a band of
+    /// empty sheet under the buttons).
+    @State private var tall: CGFloat = 170
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -674,9 +677,11 @@ struct SongCard: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 20).padding(.top, 26)
+        .padding(.horizontal, 20).padding(.top, 26).padding(.bottom, 14)
+        .fixedSize(horizontal: false, vertical: true)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if $0 > 60 { tall = $0 } }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .presentationDetents([.height(200)])
+        .presentationDetents([.height(tall)])
         .presentationDragIndicator(.visible)
     }
 }

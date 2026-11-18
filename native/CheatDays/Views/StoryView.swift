@@ -505,7 +505,6 @@ struct StoryView: View {
         .sheet(item: $songCard) { song in
             let key = "story:" + str(snapNow?["id"])
             SongCard(song: song, muted: Binding(get: { SongPlayer.shared.playing != key }, set: { _ in SongPlayer.shared.flip(song, key: key) }))
-                .presentationDetents([.height(240)])
         }
         // a recipe sticker: the recipe, as the feed's Recipe button opens it, to save or have today
         .sheet(item: Binding(get: { recipeOf.map { PostBox(post: RecipeStickerPicker.post($0, owner: who)) } }, set: { if $0 == nil { recipeOf = nil } })) { b in
