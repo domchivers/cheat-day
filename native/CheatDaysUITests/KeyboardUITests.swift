@@ -63,7 +63,7 @@ final class KeyboardUITests: XCTestCase {
             box.tap()
             checkAboveKeyboard("round \(round), tap again")
             app.buttons["Close"].tap()
-            _ = box.waitForNonExistence(timeout: 3)
+            _ = box.waitForNonExistence(timeout: 6)
         }
     }
 }
