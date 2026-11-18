@@ -189,7 +189,7 @@ struct StoryReshare: View {
                         StoryEditor(image: StoryArt.backdrop(whole), video: nil, close: { dismiss() }, posted: { dismiss() }, startItems: [
                             ["id": "theirs", "type": "photo", "local": PhotoStickers.keep(whole),
                              "w": Double(whole.size.width), "h": Double(whole.size.height), "x": 0.5, "y": 0.45, "scale": 1.25, "rotation": 0.0],
-                            ["id": "whose", "type": "mention", "user": owner, "name": name, "x": 0.5, "y": 0.88, "scale": 0.75, "rotation": 0.0],
+                            // no tag of them put on by itself (18 Nov): the "⟲ their name" by yours at the top says whose it is
                             repost,
                         ], toFull: { withAnimation(.snappy) { full = true } }, softBackground: true)
                     }
