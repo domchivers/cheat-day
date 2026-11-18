@@ -70,6 +70,19 @@ enum Region: String, CaseIterable, Identifiable {
             "Chicken breast, cooked, skinless": [143, 29.8, 0, 2.5], // AFCD: breast, lean flesh, grilled, no added fat
             "Chicken thigh, raw, skinless": [104, 19.1, 0, 3],       // AFCD: thigh, lean flesh, raw
             "Chicken thigh, cooked, skinless": [175, 24.2, 0, 8.7],  // AFCD: thigh, lean flesh, baked, no added fat
+            // the rest of the list checked against the AFCD (18 Nov): the same food 15% or more apart. Cuts that
+            // depend on the trim (steak, chops, leg) are close to one of the AFCD's and left as they are.
+            "Lamb mince, raw": [144, 20.4, 0, 6.9],                  // AFCD: lamb, mince, raw (the list had 280)
+            "Pork mince, raw": [179, 20.9, 0, 10.6],                 // AFCD: pork, mince, untrimmed, raw (260)
+            "Salmon fillet, raw": [231, 20.5, 0, 16.7],              // AFCD: salmon, Atlantic, fillet, raw (200)
+            "Salmon fillet, cooked": [258, 22.9, 0, 18.6],           // AFCD: Atlantic, fillet, grilled (208)
+            "Potato, raw": [58, 2, 11.4, 0],                         // AFCD: potato, peeled, raw (77)
+            "Potato, boiled": [66, 1.7, 13.1, 0],                    // AFCD: peeled, boiled, drained (87)
+            "Sweet potato, raw": [65, 1.4, 13.2, 0.2],               // AFCD: orange flesh, peeled, raw (86)
+            "Rice, white, cooked": [158, 3.1, 34.7, 0.2],            // AFCD: white, boiled or rice cooker (130)
+            "Rice, brown, cooked": [166, 4.1, 33.5, 1.1],            // AFCD: brown, boiled (123)
+            "Pasta, cooked": [137, 5.3, 26.2, 0.4],                  // AFCD: white wheat, boiled from dry (158)
+            "Egg, boiled": [136, 12.4, 0.7, 9.4],                    // AFCD: whole, hard-boiled (155)
         ]
     ]
     static func per100(_ name: String) -> [Double]? { numbers[current]?[name] }
