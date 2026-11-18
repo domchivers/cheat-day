@@ -217,24 +217,66 @@ struct AddToHighlight: View {
     let story: JSON
     @Environment(\.dismiss) private var dismiss
     @State private var newName = ""
+    @State private var done: String?   // the highlight it was just added to: ticked before the sheet goes
     private var highlights: Highlights { Highlights.shared }
+
+    /// A highlight as on your profile: its circle, its name, how many stories, and + (a tick once it's in there).
+    /// It was a plain line of text, and the sheet just went (18 Nov): it didn't feel like anything was tapped.
+    private func row(_ h: JSON, added: Bool) -> some View {
+        let title = str(h["title"]).isEmpty ? "Highlight" : str(h["title"]), n = list(h["items"]).count
+        let cover = str(h["cover"])
+        return HStack(spacing: 12) {
+            ZStack {
+                Color(.tertiarySystemFill)
+                if cover.hasPrefix("http") { FeedPhoto(src: cover, fill: true) }
+            }
+            .frame(width: 46, height: 46).clipShape(Circle())
+            .overlay(Circle().stroke(Color(.separator), lineWidth: 1).padding(-2))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.body.weight(.semibold)).foregroundStyle(.primary)
+                Text("\(n) \(n == 1 ? "story" : "stories")").font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Image(systemName: added ? "checkmark.circle.fill" : "plus.circle")
+                .font(.system(size: 24)).foregroundStyle(added ? Theme.accent : Color.secondary)
+                .contentTransition(.symbolEffect(.replace))
+        }
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+    }
+
     var body: some View {
         NavigationStack {
             List {
                 Section("New highlight") {
                     HStack {
                         TextField("Name", text: $newName)
-                        Button("Create") { Task { if await highlights.create(title: String(newName.prefix(24)), stories: [story]) { dismiss() } } }
-                            .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
+                        Button("Create") {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            Task { if await highlights.create(title: String(newName.prefix(24)), stories: [story]) { dismiss() } }
+                        }
+                        .fontWeight(.semibold)
+                        .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
                 }
                 let mine = highlights.of[highlights.me] ?? []
                 if !mine.isEmpty {
                     Section("Add to") {
                         ForEach(mine.indices, id: \.self) { i in
-                            Button { Task { await highlights.add(story, to: mine[i]); dismiss() } } label: {
-                                Text(str(mine[i]["title"]).isEmpty ? "Highlight" : str(mine[i]["title"]))
-                            }
+                            let h = mine[i], hid = str(h["id"])
+                            let inIt = done == hid || list(h["items"]).contains { str($0["id"]) == str(story["id"]) }
+                            Button {
+                                guard !inIt, done == nil else { return }
+                                // a tap you feel and the row ticking, then the sheet goes
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                withAnimation(.snappy) { done = hid }
+                                Task {
+                                    await highlights.add(story, to: h)
+                                    try? await Task.sleep(for: .milliseconds(450))
+                                    dismiss()
+                                }
+                            } label: { row(h, added: inIt) }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
