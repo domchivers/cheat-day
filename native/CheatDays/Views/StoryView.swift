@@ -407,20 +407,26 @@ struct StoryView: View {
             Button { onProfile?(who); dismiss() } label: {
                 HStack(spacing: 9) {
                     Avatar(id: who, size: 32)
-                    Text(hl.map { str($0["title"]).isEmpty ? "Highlight" : str($0["title"]) } ?? (isMe ? "Your day" : Feed.shared.name(who))).font(.subheadline.weight(.bold)).foregroundStyle(.white)
+                    // the name and when on one line; a repost's "⟲ whose" on a smaller line under them, as Instagram
+                    // has it (18 Nov: beside the name it squeezed "Your day" onto two lines)
+                    VStack(alignment: .leading, spacing: 1) {
+                        HStack(spacing: 9) {
+                            Text(hl.map { str($0["title"]).isEmpty ? "Highlight" : str($0["title"]) } ?? (isMe ? "Your day" : Feed.shared.name(who)))
+                                .font(.subheadline.weight(.bold)).foregroundStyle(.white).lineLimit(1)
+                            Text(when).font(.subheadline).foregroundStyle(.white.opacity(0.65)).lineLimit(1).fixedSize()
+                        }
+                        if let r = repostOf {
+                            HStack(spacing: 3) {
+                                Image(systemName: "arrow.2.squarepath").font(.system(size: 10, weight: .bold))
+                                Text(str(r["name"])).lineLimit(1)
+                            }
+                            .font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.85))
+                        }
+                    }
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain).accessibilityIdentifier("story-author")
-            // someone else's story put on theirs: whose it was, beside the name, as Instagram shows a repost (18 Nov)
-            if let r = repostOf {
-                HStack(spacing: 3) {
-                    Image(systemName: "arrow.2.squarepath").font(.system(size: 11, weight: .bold))
-                    Text(str(r["name"])).lineLimit(1)
-                }
-                .font(.footnote.weight(.semibold)).foregroundStyle(.white.opacity(0.85))
-            }
-            Text(when).font(.subheadline).foregroundStyle(.white.opacity(0.65))
             Spacer()
             // someone else's: it can be reported (there was no way to from the story itself)
             if !isMe, hl == nil {
