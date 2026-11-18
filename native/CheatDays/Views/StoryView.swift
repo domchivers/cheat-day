@@ -22,6 +22,7 @@ struct StoryView: View {
     @State private var adding: JSON?   // your story going into a highlight
     @State private var recipeOf: JSON?   // a recipe sticker tapped: its recipe open over the story
     @State private var resharing: JSON?  // a story you're tagged in, being added to yours
+    @Environment(\.colorScheme) private var scheme   // the app's light or dark, for the Add to your story button
     @State private var songCard: Song?   // the story's song line tapped: its card, sound on or off
     @State private var managing: JSON?   // your story's options are open
     @State private var mentioning: JSON? // your story, someone being mentioned on it after it went up
@@ -238,16 +239,20 @@ struct StoryView: View {
                 // tagged in it: add it to yours from here, as Instagram has it (18 Nov; it was only in your messages)
                 if let st = taggedHere, !typing {
                     Button { resharing = st } label: {
-                        // in the colour their app is set to (Theme.accent), a plain +, and just what it does (18 Nov)
+                        // the app's own dark or light (as their app is set), not the colours; a rounded square, a little
+                        // smaller, and a little up off the message bar: as the owner placed it in the mockups (18 Nov)
+                        let light = scheme == .light
                         HStack(spacing: 5) {
-                            Image(systemName: "plus").font(.system(size: 13, weight: .heavy))
+                            Image(systemName: "plus").font(.system(size: 12, weight: .heavy))
                             Text("Add to your story")
                         }
-                        .font(.subheadline.weight(.bold)).foregroundStyle(Theme.onAccent)
-                        .padding(.horizontal, 16).padding(.vertical, 9).background(Theme.accent, in: Capsule())
+                        .font(.footnote.weight(.bold)).foregroundStyle(light ? Color.black : Color.white)
+                        .padding(.horizontal, 13).padding(.vertical, 8)
+                        .background(light ? Color.white : Color(white: 0.09).opacity(0.92), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(.white.opacity(light ? 0 : 0.12), lineWidth: 1))
                         .shadow(color: .black.opacity(0.3), radius: 8, y: 3)
                     }
-                    .buttonStyle(.plain).padding(.bottom, 66).accessibilityIdentifier("tagged-add")
+                    .buttonStyle(.plain).padding(.bottom, 72).accessibilityIdentifier("tagged-add")
                     .opacity(footerIn * max(0, 1 - Double(abs(swipe) / max(1, width * 0.4))))
                 }
                 footer(s[min(slide, s.count - 1)]).frame(height: 52).padding(.horizontal, 8).padding(.bottom, typing ? 6 : 0)
