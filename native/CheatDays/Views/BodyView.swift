@@ -6,6 +6,7 @@ import SwiftUI
 /// your scale. The chart lives on Progress alone.
 struct BodyView: View {
     @State private var entry: JSON?
+    @State private var editing: GoalKind?   // the goal weight or body fat being typed
     private var store: Store { Store.shared }
     static let metrics: [(key: String, name: String, unit: String)] = [
         ("weight", "Weight", "kg"), ("fat", "Body fat", "%"), ("muscle", "Muscle", "kg"), ("water", "Water", "%"),
@@ -34,7 +35,7 @@ struct BodyView: View {
     var body: some View {
         let all = months
         List {
-            Section { goalCard } header: { head("Goal") }
+            Section { goalCard } header: { head("Your goal") }
             if all.isEmpty {
                 Section { Button { entry = ["new": true, "day": "new"] } label: { Label("Weigh in", systemImage: "plus.circle.fill").font(.headline) } }
             }
@@ -83,12 +84,18 @@ struct BodyView: View {
         let earliest = store.bodyRows.first { str($0["day"]) >= since && pos($0["weight"]) != nil }.flatMap { pos($0["weight"]) }
         let goal = pos(store.doc["goalWeight"]), start = pos(dict(store.doc["goalStart"])["weight"]) ?? earliest
         let now = store.latestWeight?.kg
+        // One goal, said two ways (18 Nov): the goal weight, and the body fat it comes to. Either is typed; the other
+        // follows. It was a − and + for the weight only, with the body-fat goal a row underneath, missing altogether
+        // without readings, so it wasn't clear where either was set.
+        let trend = store.trendWeight ?? now ?? 0
+        let bf = store.fatTrend, fat = store.goalFatShown(now: trend)
         return VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Goal weight").font(.headline)
-                Spacer()
-                Stepper(value: Binding(get: { goal ?? (now.map { ($0 - 3).rounded() } ?? 75) }, set: { store.setGoalWeight($0) }), in: 35...250, step: 0.5) { EmptyView() }.labelsHidden()
-                Text(goal.map { "\(Fmt.one($0)) kg" } ?? "None").font(.headline.weight(.heavy)).monospacedDigit()
+            goalRow("Goal weight", goal.map { Fmt.one($0) }, "kg") { editing = .weight }
+            Divider()
+            if bf != nil { goalRow("Body fat", fat.map { Fmt.dec($0) }, "%") { editing = .fat } }
+            else {
+                HStack { Text("Body fat").font(.headline); Spacer(); Text("Needs 2 readings").font(.subheadline).foregroundStyle(.secondary) }
+                    .padding(.vertical, 6)
             }
             if let goal, let now {
                 let total = abs((start ?? now) - goal), done = max(0, total - abs(now - goal))
@@ -99,20 +106,112 @@ struct BodyView: View {
                     }
                 }
                 .frame(height: 8)
-                Text(goalLine(goal: goal, now: now)).font(.footnote).foregroundStyle(.secondary)
+                Text(goalLine(goal: goal, now: now, fat: fat)).font(.footnote).foregroundStyle(.secondary)
             }
-            BodyFatSummary(now: store.trendWeight ?? now ?? 0)
+            if let bf {
+                Text("Body fat now \(Fmt.dec(bf.pct))%, averaged over your last \(bf.n) readings: scales read body fat roughly, so one reading means little.")
+                    .font(.caption2).foregroundStyle(.tertiary)
+            } else {
+                Text("Weigh in on a scale that measures body fat (or type it in a weigh-in) twice, and your goal shows as body fat too.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
         .padding(.vertical, 4)
+        .sheet(item: $editing) { k in GoalSheet(kind: k, now: trend).presentationDetents([.height(320)]) }
     }
 
-    private func goalLine(goal: Double, now: Double) -> String {
+    /// A goal's name and its number in a box: tap to type it.
+    private func goalRow(_ title: String, _ value: String?, _ unit: String, _ tap: @escaping () -> Void) -> some View {
+        Button(action: tap) {
+            HStack {
+                Text(title).font(.headline).foregroundStyle(.primary)
+                Spacer()
+                HStack(alignment: .firstTextBaseline, spacing: 3) {
+                    Text(value ?? "Set").font(.title3.weight(.heavy)).monospacedDigit().foregroundStyle(value == nil ? Theme.accent : Color.primary)
+                    if value != nil { Text(unit).font(.footnote.weight(.semibold)).foregroundStyle(.secondary) }
+                }
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(value.map { "\(title), \($0) \(unit). Change" } ?? "\(title). Set")
+    }
+
+    private func goalLine(goal: Double, now: Double, fat: Double?) -> String {
         let left = now - goal
         if abs(left) < 0.25 { return "You're there. Nice work." }
         var s = "\(Fmt.one(abs(left))) kg to go"
+        if let fat { s += ", about \(Fmt.dec(fat))% body fat at the muscle you have now" }
         // the same date as Me: the trend weight at the 4-week pace
-        if let d = store.reachDate(goal) { s += ". At your current pace, around \(d.formatted(.dateTime.day().month(.wide)))." }
-        return s
+        if let d = store.reachDate(goal) { s += ". At your current pace, around \(d.formatted(.dateTime.day().month(.wide)))" }
+        return s + "."
+    }
+}
+
+enum GoalKind: String, Identifiable { case weight, fat; var id: String { rawValue } }
+
+/// Type the goal weight or the body fat %: as it's typed, what it comes to in the other.
+struct GoalSheet: View {
+    let kind: GoalKind
+    /// The trend weight now, which both are worked out from.
+    let now: Double
+    @Environment(\.dismiss) private var dismiss
+    @State private var text = ""
+    @FocusState private var typing: Bool
+    private var store: Store { Store.shared }
+    private var value: Double? { Double(text.replacingOccurrences(of: ",", with: ".")) }
+    private var ok: Bool {
+        guard let v = value else { return false }
+        return kind == .weight ? (35...250).contains(v) : (3...50).contains(v)
+    }
+    /// What it means in the other: the body fat a weight comes to, or the weight a body fat does.
+    private var hint: String {
+        guard let v = value, ok, let bf = store.fatTrend, now > 0 else { return kind == .weight ? " " : "Your goal weight changes to match." }
+        if kind == .weight { return "That's about \(Fmt.dec((Store.fatAt(weight: now, fatPct: bf.pct, goal: v) * 10).rounded() / 10))% body fat" }
+        return "That's about \(Fmt.kg(Store.fatGoal(weight: now, fatPct: bf.pct, target: v).weight)) kg"
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 10) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    TextField(kind == .weight ? "76" : "13", text: $text).keyboardType(.decimalPad).focused($typing)
+                        .font(.system(size: 46, weight: .heavy, design: .rounded)).multilineTextAlignment(.center).fixedSize()
+                    Text(kind == .weight ? "kg" : "%").font(.title2.weight(.bold)).foregroundStyle(.secondary)
+                }
+                .padding(.top, 18)
+                Text(hint).font(.subheadline).foregroundStyle(.secondary)
+                if kind == .weight, pos(store.doc["goalWeight"]) != nil {
+                    Button("Remove goal", role: .destructive) {
+                        store.perform(["type": "set", "key": "goalWeight", "value": NSNull()])
+                        store.perform(["type": "set", "key": "goalFat", "value": NSNull()])
+                        dismiss()
+                    }
+                    .font(.subheadline).padding(.top, 8)
+                }
+                Spacer()
+            }
+            .frame(maxWidth: .infinity)
+            .navigationTitle(kind == .weight ? "Goal weight" : "Body-fat goal").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        guard let v = value, ok else { return }
+                        if kind == .weight { store.setGoalWeight(v) } else { store.setGoalFat(v, now: now) }
+                        dismiss()
+                    }
+                    .fontWeight(.bold).disabled(!ok)
+                }
+            }
+            .onAppear {
+                let shown: Double? = kind == .weight ? pos(store.doc["goalWeight"]) : store.goalFatShown(now: now)
+                text = shown.map { kind == .weight ? Fmt.one($0) : Fmt.dec($0) } ?? ""
+                typing = true
+            }
+        }
     }
 }
 
@@ -169,7 +268,7 @@ extension Store {
     }
 
     func setGoalWeight(_ kg: Double) {
-        perform(["type": "set", "key": "goalWeight", "value": (kg * 2).rounded() / 2], syncAfter: 2)
+        perform(["type": "set", "key": "goalWeight", "value": (kg * 10).rounded() / 10], syncAfter: 2)   // typed to a tenth (18 Nov); the steppers go in halves
         if dict(doc["goalStart"]).isEmpty, let w = latestWeight?.kg { perform(["type": "set", "key": "goalStart", "value": ["weight": w, "day": today] as JSON], syncAfter: 2) }
     }
 }
@@ -211,49 +310,3 @@ struct ScaleConnectRow: View {
     }
 }
 
-/// Body fat with the goal in Weigh-ins: the averaged %, and a body-fat goal with the weight it
-/// means and when the trend gets there (the same date maths as the weight goal).
-struct BodyFatSummary: View {
-    let now: Double
-    @State private var setting = false
-    @State private var text = ""
-    private var store: Store { Store.shared }
-
-    var body: some View {
-        if let bf = store.fatTrend, now > 0 {
-            let fatKg = now * bf.pct / 100
-            VStack(alignment: .leading, spacing: 6) {
-                Divider().padding(.vertical, 2)
-                // the goal weight said as body fat: one goal, so the two can't disagree (18 Nov)
-                let shown = store.goalFatShown(now: now)
-                Button {
-                    text = shown.map { Fmt.one($0) } ?? ""; setting = true
-                } label: {
-                    HStack {
-                        Text("Body-fat goal")
-                        Spacer()
-                        Text(shown.map { "\(Fmt.dec($0))%" } ?? "Set").fontWeight(.semibold)
-                        Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
-                    }
-                }
-                .buttonStyle(.plain)
-                if let t = shown, let w2 = pos(store.doc["goalWeight"]) {
-                    Text(abs(w2 - now) < 0.3 ? "You're about there."
-                         : "Your goal of \(Fmt.kg(w2)) kg is about \(Fmt.dec(t))% body fat\(store.reachDate(w2).map { ", around \($0.formatted(.dateTime.day().month(.wide)))" } ?? "").")
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
-                Text("Now \(Fmt.dec(bf.pct))%, averaged over your last \(bf.n) readings: scales read body fat roughly, so one reading means little.")
-                    .font(.caption2).foregroundStyle(.tertiary)
-            }
-            .alert("Body-fat goal", isPresented: $setting) {
-                TextField("%", text: $text).keyboardType(.decimalPad)
-                Button("Save") {
-                    if let v = Double(text.replacingOccurrences(of: ",", with: ".")), v > 3, v < 50 {
-                        store.setGoalFat(v, now: now)
-                    }
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: { Text("The body fat % you're aiming for. Your goal weight changes to the weight that means, counting a little lean loss on the way.") }
-        }
-    }
-}

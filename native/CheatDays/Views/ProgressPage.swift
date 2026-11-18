@@ -148,7 +148,7 @@ struct ProgressPage: View {
     }
 
     private var toGo: String {
-        guard let goal, let now else { return "Set a goal weight in Body" }
+        guard let goal, let now else { return "Set a goal in Your plan below" }
         let left = abs(now - goal)
         if left < 0.3 { return "At your goal of \(Fmt.kg(goal)) kg" }
         var line = "\(Fmt.kg(left)) kg to go"
@@ -483,26 +483,42 @@ struct ProgressPage: View {
     /// The budget a day and the cheat day, which set everything else: tap to change them.
     private var planCard: some View {
         let base = pos(store.doc["budget"]) ?? store.baseBudget(store.today)
-        let cheat = store.cheatWeekday.map { Calendar.current.weekdaySymbols[$0] } ?? "None"
-        return NavigationLink { BudgetView() } label: {
-            HStack(spacing: 0) {
-                VStack(spacing: 3) {
-                    Text("Budget").font(.footnote).foregroundStyle(.secondary)
-                    (Text(Fmt.int(base)).font(.title3.weight(.heavy)) + Text(" a day").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)).foregroundStyle(.primary)
+        let cheat = store.cheatWeekday.map { Calendar.current.shortWeekdaySymbols[$0] } ?? "None"
+        let goal = pos(store.doc["goalWeight"])
+        let fat = store.goalFatShown(now: store.trendWeight ?? store.latestWeight?.kg ?? 0)
+        // Your goal with the rest of the plan (18 Nov): it was only found behind Weigh-ins' See all. Budget and cheat
+        // day open Your plan; the goal opens Weigh-ins, where it's set.
+        return HStack(spacing: 0) {
+            NavigationLink { BudgetView() } label: {
+                HStack(spacing: 0) {
+                    planCell("Budget", Fmt.int(base), nil)
+                    Divider().frame(height: 40)
+                    planCell("Cheat day", cheat, nil)
                 }
-                .frame(maxWidth: .infinity).padding(14)
-                Divider().frame(height: 40)
-                VStack(spacing: 3) {
-                    Text("Cheat day").font(.footnote).foregroundStyle(.secondary)
-                    Text(cheat).font(.title3.weight(.heavy)).foregroundStyle(.primary)
-                }
-                .frame(maxWidth: .infinity).padding(14)
+                .contentShape(Rectangle())
             }
-            .overlay(alignment: .trailing) { Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary).padding(.trailing, 12) }
-            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .buttonStyle(.plain)
+            .accessibilityLabel("Your plan: \(Fmt.int(base)) a day, cheat day \(cheat)")
+            Divider().frame(height: 40)
+            NavigationLink { BodyView() } label: {
+                planCell("Goal", goal.map { "\(Fmt.one($0)) kg" } ?? "Set", fat.map { "\(Fmt.dec($0))%" })
+                    .padding(.trailing, 8).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(goal.map { "Goal \(Fmt.one($0)) kg. Change" } ?? "Set a goal")
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Your plan: \(Fmt.int(base)) a day, cheat day \(cheat)")
+        .overlay(alignment: .trailing) { Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary).padding(.trailing, 10) }
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    /// One of Your plan's three: what it is, its value, and a line under it.
+    private func planCell(_ title: String, _ value: String, _ under: String?) -> some View {
+        VStack(spacing: 3) {
+            Text(title).font(.footnote).foregroundStyle(.secondary)
+            Text(value).font(.title3.weight(.heavy)).foregroundStyle(.primary).lineLimit(1).minimumScaleFactor(0.8)
+            if let under { Text(under).font(.caption).foregroundStyle(.secondary) }
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 14).padding(.horizontal, 6)
     }
 
     private var weighInsHeader: some View {
