@@ -557,7 +557,10 @@ struct PinchFollow: UIGestureRecognizerRepresentable {
     func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
     func makeUIGestureRecognizer(context: Context) -> UIPinchGestureRecognizer { UIPinchGestureRecognizer() }
     func handleUIGestureRecognizerAction(_ recognizer: UIPinchGestureRecognizer, context: Context) {
-        let here = context.converter.location(in: .global)
+        // where the fingers are on the screen, straight from the touches. Through SwiftUI's converter it was worked
+        // out by way of the picture, which this very gesture is moving and sizing, so each frame was a little off
+        // the last: micro jitters while zooming and moving (18 Nov; the likely cause, not proven)
+        let here = recognizer.location(in: recognizer.view?.window)
         switch recognizer.state {
         case .began:
             let c = context.coordinator
