@@ -392,6 +392,13 @@ struct StoryView: View {
         guard !s.isEmpty, case .snap(let st) = s[min(slide, s.count - 1)] else { return nil }
         return st
     }
+    /// The song on the slide showing, found as the player finds it, so the header names what's playing.
+    private var storySong: Song? {
+        guard let tune = snapNow.flatMap({ list($0["overlays"]).first { str($0["type"]) == "song" } }) else { return nil }
+        guard var song = Music.all.first(where: { $0.id == str(tune["id"]) }) else { return nil }
+        song.start = num(tune["start"])   // the part the poster chose, so turning it back on plays the same part
+        return song
+    }
     /// Whose story this one is a repost of, if it is.
     private var repostOf: JSON? { snapNow.flatMap { list($0["overlays"]).first { str($0["type"]) == "repost" } } }
     /// A story of theirs you're tagged in that can go on yours (a photo, for everyone, not a friends-only one).
@@ -404,29 +411,43 @@ struct StoryView: View {
     private var header: some View {
         HStack(spacing: 9) {
             // their photo and name close the story and open their profile, as a page
-            Button { onProfile?(who); dismiss() } label: {
-                HStack(spacing: 9) {
-                    Avatar(id: who, size: 32)
-                    // the name and when on one line; a repost's "⟲ whose" on a smaller line under them, as Instagram
-                    // has it (18 Nov: beside the name it squeezed "Your day" onto two lines)
-                    VStack(alignment: .leading, spacing: 1) {
-                        HStack(spacing: 9) {
-                            Text(hl.map { str($0["title"]).isEmpty ? "Highlight" : str($0["title"]) } ?? (isMe ? "Your day" : Feed.shared.name(who)))
-                                .font(.subheadline.weight(.bold)).foregroundStyle(.white).lineLimit(1)
-                            Text(when).font(.subheadline).foregroundStyle(.white.opacity(0.65)).lineLimit(1).fixedSize()
-                        }
+            // the name and when on one line; under them, smaller, a repost's "⟲ whose" and the story's song, as
+            // Instagram has it (18 Nov: the repost beside the name squeezed "Your day" onto two lines, and a song
+            // played with nothing saying what it was). Their photo and name open their profile; the song line mutes it.
+            Button { onProfile?(who); dismiss() } label: { Avatar(id: who, size: 32) }
+                .buttonStyle(.plain)
+            VStack(alignment: .leading, spacing: 1) {
+                Button { onProfile?(who); dismiss() } label: {
+                    HStack(spacing: 9) {
+                        Text(hl.map { str($0["title"]).isEmpty ? "Highlight" : str($0["title"]) } ?? (isMe ? "Your day" : Feed.shared.name(who)))
+                            .font(.subheadline.weight(.bold)).foregroundStyle(.white).lineLimit(1)
+                        Text(when).font(.subheadline).foregroundStyle(.white.opacity(0.65)).lineLimit(1).fixedSize()
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).accessibilityIdentifier("story-author")
+                if repostOf != nil || storySong != nil {
+                    HStack(spacing: 4) {
                         if let r = repostOf {
-                            HStack(spacing: 3) {
-                                Image(systemName: "arrow.2.squarepath").font(.system(size: 10, weight: .bold))
-                                Text(str(r["name"])).lineLimit(1)
+                            Image(systemName: "arrow.2.squarepath").font(.system(size: 10, weight: .bold))
+                            Text(str(r["name"])).lineLimit(1).fixedSize()
+                            if storySong != nil { Text("·") }
+                        }
+                        if let song = storySong, let id = snapNow.map({ str($0["id"]) }) {
+                            let on = SongPlayer.shared.playing == "story:" + id
+                            Button { SongPlayer.shared.flip(song, key: "story:" + id) } label: {
+                                HStack(spacing: 3) {
+                                    Image(systemName: on ? "music.note" : "speaker.slash.fill").font(.system(size: 10, weight: .bold))
+                                    Marquee(text: song.title, maxWidth: 150)
+                                }
+                                .contentShape(Rectangle())
                             }
-                            .font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.85))
+                            .buttonStyle(.plain).accessibilityLabel(on ? "\(song.title). Mute" : "\(song.title). Sound on")
                         }
                     }
+                    .font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.85))
                 }
-                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain).accessibilityIdentifier("story-author")
             Spacer()
             // someone else's: it can be reported (there was no way to from the story itself)
             if !isMe, hl == nil {
