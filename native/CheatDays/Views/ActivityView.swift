@@ -106,7 +106,7 @@ final class FriendActivity {
         items = out.sorted { $0.at > $1.at }
     }
 
-    /// A pretend item so the bell's count can be seen; gone once Activity is opened.
+    /// A pretend item, for the UI test (Settings' test button that made it is gone, 18 Nov).
     func addSample() {
         let x = Item(id: "test-\(UUID().uuidString)", kind: .reaction, who: "Cheat Days", at: Date(), text: "sent a test notification",
                      detail: "This is how new activity looks. It goes once you've opened this.", photo: nil)

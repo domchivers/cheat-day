@@ -8,7 +8,6 @@ struct SettingsView: View {
     @State private var weighTime = Calendar.current.date(from: DateComponents(hour: 7, minute: 30)) ?? Date()
     @State private var days: Set<Int> = [0]
     @State private var share = true
-    @State private var pushNote: String?
     @AppStorage("region") private var region = ""   // the same setting Region reads; this way the picker shows the change
     @State private var allowed = true
     @State private var loaded = false
@@ -225,7 +224,6 @@ struct SettingsView: View {
         Section {
             Toggle("Share my day with friends", isOn: $share)
             Toggle("Notifications from friends", isOn: Binding(get: { Push.on }, set: { v in Task { await Push.setOn(v) } }))
-            if Push.on { Button("Send a test notification") { Task { pushNote = await Push.test() } } }
             Toggle("Show my workouts in my day", isOn: Binding(get: { store.workoutsInDay }, set: { store.perform(["type": "set", "key": "workoutsInDay", "value": $0]) }))
                 .disabled(!share)
             Picker("Post workouts to the feed", selection: Binding(get: { store.postWorkouts }, set: {
@@ -234,7 +232,6 @@ struct SettingsView: View {
                 Text("Ask each time").tag("ask"); Text("Always").tag("always"); Text("Never").tag("never")
             }
         } footer: { Text("Friends see your calories and what you had today, and your workouts if you show them: they can start one or save it as a routine. The feed is separate, for posts with a photo and a caption.") }
-        .alert("Notifications", isPresented: Binding(get: { pushNote != nil }, set: { if !$0 { pushNote = nil } })) { Button("OK") {} } message: { Text(pushNote ?? "") }
     }
 
     @ViewBuilder private var portionsPage: some View {
