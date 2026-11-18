@@ -436,7 +436,9 @@ struct StoryView: View {
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         case .post(let p):
             ZStack(alignment: .bottomLeading) {
-                if Feed.hasPhoto(p) { FeedPhoto(src: str(p["photo"]), fill: true) }
+                // the slide's size is the story's shape, never the photo's: filled, a wide photo reported its whole
+                // width and the story came out wider than the screen, the name, bars and message box cut off (18 Nov)
+                if Feed.hasPhoto(p) { Color.clear.overlay { FeedPhoto(src: str(p["photo"]), fill: true) }.clipped() }
                 else {
                     LinearGradient(colors: [Theme.hero, Theme.accent.opacity(0.35)], startPoint: .topLeading, endPoint: .bottomTrailing)
                     FoodDot(name: str(p["kind"]) == "workout" ? "Workout" : str(p["name"]), size: 150).frame(maxWidth: .infinity, maxHeight: .infinity)
