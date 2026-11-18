@@ -1358,7 +1358,8 @@ struct ComposeSheet: View {
                            close: { if pickerFirst && !started { dismiss() } else { picking = false } })
             }
             .interactiveDismissDisabled(started)
-            .confirmationDialog("Keep this post to finish later?", isPresented: $leaving, titleVisibility: .visible) {
+            // a box in the middle (18 Nov): as a confirmation dialog, iOS 26 popped it out of the ✕, over the photo
+            .alert("Keep this post to finish later?", isPresented: $leaving) {
                 Button("Save draft") { saveDraft() }
                 Button("Discard", role: .destructive) { dismiss() }
                 Button("Keep editing", role: .cancel) {}

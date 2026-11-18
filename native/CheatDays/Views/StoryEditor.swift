@@ -275,7 +275,8 @@ struct StoryEditor: View {
         .background(Color.black.ignoresSafeArea())
         .onAppear { KeyboardDone.quiet = true }
         .onDisappear { KeyboardDone.quiet = false }
-        .confirmationDialog("Discard your edits?", isPresented: $leaving, titleVisibility: .visible) {
+        // a box in the middle, as New post's (18 Nov): a confirmation dialog popped out of the ✕ on iOS 26
+        .alert("Discard your edits?", isPresented: $leaving) {
             Button("Discard", role: .destructive) { close() }
             Button("Keep editing", role: .cancel) {}
         } message: { Text("Your text, stickers and drawing will be lost.") }
