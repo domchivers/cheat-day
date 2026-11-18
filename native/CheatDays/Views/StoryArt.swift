@@ -213,8 +213,7 @@ struct StoryItem: View {
         case "poll": poll
         case "time": Text(str(o["text"])).font(.system(size: 40, weight: .heavy, design: .rounded)).foregroundStyle(.white).shadow(color: .black.opacity(0.5), radius: 6)
         case "place": pill("📍", str(o["text"]), .white, .black)
-        case "mention": Text("@" + str(o["name"])).font(.system(size: 24, weight: .heavy, design: .rounded)).foregroundStyle(StoryArt.color("8CC4FF"))
-            .padding(.horizontal, 14).padding(.vertical, 8).background(.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        case "mention": mention
         case "emoji": Text(str(o["text"])).font(.system(size: 90))
         case "sticker3d": Image("sticker-" + str(o["code"])).resizable().interpolation(.high).scaledToFit().frame(width: 130, height: 130)
             .shadow(color: .black.opacity(0.25), radius: 8, y: 5)
@@ -256,6 +255,34 @@ struct StoryItem: View {
             .shadow(color: glow ? StoryArt.color(c).opacity(0.9) : (highlight || plain ? .clear : .black.opacity(0.45)), radius: glow ? 10 : 4)
             .shadow(color: glow ? StoryArt.color(c).opacity(0.6) : .clear, radius: glow ? 20 : 0)
             .frame(maxWidth: 330)
+    }
+
+    /// A tag's looks, in the order a tap in the editor goes through them (18 Nov). New ones go on the end: a story
+    /// already up keeps its look by its number.
+    static let mentionStyles = ["Card", "Colour", "Glass", "Outline"]
+
+    /// "@name" in one of its looks: a white card with blue letters, the app's blue-to-violet letters on their own,
+    /// white on dark glass, or white with a white outline.
+    @ViewBuilder private var mention: some View {
+        let name = Text("@" + str(o["name"])).font(.system(size: 24, weight: .heavy, design: .rounded))
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        switch Int(num(o["style"]) ?? 0) % Self.mentionStyles.count {
+        case 1:
+            name.foregroundStyle(LinearGradient(colors: [StoryArt.color("8CC4FF"), StoryArt.color("C4A1FF")], startPoint: .leading, endPoint: .trailing))
+                .padding(.horizontal, 6).padding(.vertical, 4)
+                .shadow(color: .black.opacity(0.45), radius: 4, y: 1)
+        case 2:
+            name.foregroundStyle(.white).padding(.horizontal, 14).padding(.vertical, 8)
+                .background(Color.black.opacity(0.42), in: shape)
+                .overlay(shape.stroke(.white.opacity(0.25), lineWidth: 1))
+        case 3:
+            name.foregroundStyle(.white).padding(.horizontal, 14).padding(.vertical, 8)
+                .overlay(shape.stroke(.white, lineWidth: 2.5))
+                .shadow(color: .black.opacity(0.35), radius: 4)
+        default:
+            name.foregroundStyle(StoryArt.color("8CC4FF")).padding(.horizontal, 14).padding(.vertical, 8)
+                .background(.white, in: shape)
+        }
     }
 
     /// A recipe of theirs (18 Nov): its name, a portion's calories and protein, and how much there is to it. Whoever

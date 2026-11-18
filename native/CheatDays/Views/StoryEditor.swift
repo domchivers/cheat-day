@@ -602,6 +602,12 @@ struct StoryEditor: View {
             let next = (Int(num(o["style"]) ?? 0) + 1) % StoryItem.photoStyles.count
             withAnimation(.snappy(duration: 0.2)) { items[i]["style"] = next }
             flash(StoryItem.photoStyles[next])
+        case "mention":
+            // a tag's next look (18 Nov), as a photo's
+            remember(); UISelectionFeedbackGenerator().selectionChanged()
+            let next = (Int(num(o["style"]) ?? 0) + 1) % StoryItem.mentionStyles.count
+            withAnimation(.snappy(duration: 0.2)) { items[i]["style"] = next }
+            flash(StoryItem.mentionStyles[next])
         default: break
         }
     }
