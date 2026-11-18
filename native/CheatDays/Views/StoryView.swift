@@ -77,11 +77,10 @@ struct StoryView: View {
 
     /// Their slides: posts from today, then each meal they've logged, then workouts.
     static func slides(for id: String) -> [Slide] {
-        let today = DayKey.string(Date())
-        let posts = Feed.shared.posts.filter { str($0["owner"]) == id && str($0["kind"]) != "moment" && str($0["kind"]) != "photo" && ISO.date(str($0["created_at"])).map { DayKey.string($0) } == today }   // the server's time is UTC: by its first ten letters a Melbourne post before 11am was yesterday's
-            .sorted { str($0["created_at"]) < str($1["created_at"]) }
-        // stories they posted come first, then today's posts, meals and workouts
-        var out: [Slide] = Stories.shared.of(id).map { .snap($0) } + posts.map { .post($0) }
+        // stories they posted come first, then today's meals and workouts. Feed posts are no longer put in by
+        // themselves (18 Nov): a meal post showed twice, as the post and in its meal, and a post goes on a story
+        // only when its owner adds it, as on Instagram
+        var out: [Slide] = Stories.shared.of(id).map { .snap($0) }
         let food: [JSON], workouts: [JSON]
         // your own, "as friends see it": a workout only when Settings shares it in your day (it showed here always,
         // so a workout friends never got looked shared, 17 Nov)
