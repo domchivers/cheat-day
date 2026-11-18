@@ -237,12 +237,13 @@ struct StoryView: View {
                 // tagged in it: add it to yours from here, as Instagram has it (18 Nov; it was only in your messages)
                 if let st = taggedHere, !typing {
                     Button { resharing = st } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "plus.circle.fill")
-                            Text("You're tagged · Add to your story")
+                        // in the colour their app is set to (Theme.accent), a plain +, and just what it does (18 Nov)
+                        HStack(spacing: 5) {
+                            Image(systemName: "plus").font(.system(size: 13, weight: .heavy))
+                            Text("Add to your story")
                         }
-                        .font(.subheadline.weight(.bold)).foregroundStyle(.black)
-                        .padding(.horizontal, 14).padding(.vertical, 9).background(.white, in: Capsule())
+                        .font(.subheadline.weight(.bold)).foregroundStyle(Theme.onAccent)
+                        .padding(.horizontal, 16).padding(.vertical, 9).background(Theme.accent, in: Capsule())
                         .shadow(color: .black.opacity(0.3), radius: 8, y: 3)
                     }
                     .buttonStyle(.plain).padding(.bottom, 66).accessibilityIdentifier("tagged-add")
