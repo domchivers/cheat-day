@@ -512,7 +512,9 @@ struct PinchToZoom: ViewModifier {
             let shown = content
                 .background(GeometryReader { g in Color.clear.onAppear { size = g.size }.onChange(of: g.size) { _, s in size = s } })
                 .scaleEffect(scale, anchor: anchor)
-                .offset(pan)
+                // not .offset: that lands on whole pixels, so a slow drag went in steps of a third of a point (the
+                // jitter you could see moving slowly, 18 Nov); a plain transform doesn't, as in the editor (12 Nov)
+                .modifier(Carried(x: pan.width, y: pan.height))
                 .zIndex(held == id ? 5 : 0)
             if #available(iOS 18.0, *) {
                 shown.gesture(PinchFollow(began: { at in
@@ -861,4 +863,16 @@ struct EmojiShower: View {
         .allowsHitTesting(false).accessibilityHidden(true)
         .onAppear { began = Date(); UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
     }
+}
+
+/// Carried this far by a plain transform, not .offset, which lands on whole pixels (steps of a third of a point,
+/// seen as a jitter when moving slowly). It can be animated, so the picture springs back smoothly when let go.
+struct Carried: GeometryEffect {
+    var x: CGFloat
+    var y: CGFloat
+    var animatableData: AnimatablePair<CGFloat, CGFloat> {
+        get { AnimatablePair(x, y) }
+        set { x = newValue.first; y = newValue.second }
+    }
+    func effectValue(size: CGSize) -> ProjectionTransform { ProjectionTransform(CGAffineTransform(translationX: x, y: y)) }
 }
