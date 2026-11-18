@@ -231,6 +231,7 @@ struct StoryItem: View {
         case "hashtag": Text("#" + str(o["text"])).font(.system(size: 26, weight: .heavy, design: .rounded)).foregroundStyle(StoryArt.color("C4A1FF"))
             .padding(.horizontal, 14).padding(.vertical, 8).background(.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
+        case "recipe": recipe
         // a feed post added to a story: whoever watches taps this to open it (18 Nov)
         case "seepost":
             HStack(spacing: 5) {
@@ -246,15 +247,43 @@ struct StoryItem: View {
 
     private var text: some View {
         let size = CGFloat(num(o["size"]) ?? 30), c = str(o["color"]).isEmpty ? "FFFFFF" : str(o["color"]), fontName = str(o["font"])
-        let highlight = o["bg"] as? Bool ?? false, glow = (o["glow"] as? Bool ?? false) || fontName == "neon"
+        let highlight = o["bg"] as? Bool ?? false, plain = o["plain"] as? Bool ?? false, glow = (o["glow"] as? Bool ?? false) || fontName == "neon"
         let align: TextAlignment = str(o["align"]) == "left" ? .leading : str(o["align"]) == "right" ? .trailing : .center
         return Text(str(o["text"])).font(StoryArt.font(fontName, size)).multilineTextAlignment(align)
             .foregroundStyle(highlight ? StoryArt.onColor(c) : StoryArt.color(c))
             .padding(.horizontal, highlight ? 12 : 0).padding(.vertical, highlight ? 6 : 0)
             .background { if highlight { RoundedRectangle(cornerRadius: 10, style: .continuous).fill(StoryArt.color(c)) } }
-            .shadow(color: glow ? StoryArt.color(c).opacity(0.9) : (highlight ? .clear : .black.opacity(0.45)), radius: glow ? 10 : 4)
+            .shadow(color: glow ? StoryArt.color(c).opacity(0.9) : (highlight || plain ? .clear : .black.opacity(0.45)), radius: glow ? 10 : 4)
             .shadow(color: glow ? StoryArt.color(c).opacity(0.6) : .clear, radius: glow ? 20 : 0)
             .frame(maxWidth: 330)
+    }
+
+    /// A recipe of theirs (18 Nov): its name, a portion's calories and protein, and how much there is to it. Whoever
+    /// watches taps it for the recipe, to save to their meals or have today.
+    private var recipe: some View {
+        let n = Int(num(o["n"]) ?? 0), steps = Int(num(o["steps"]) ?? 0)
+        var bits: [String] = []
+        if n > 0 { bits.append(n == 1 ? "1 ingredient" : "\(n) ingredients") }
+        if steps > 0 { bits.append(steps == 1 ? "1 step" : "\(steps) steps") }
+        let what = bits.joined(separator: " · ")
+        return VStack(alignment: .leading, spacing: 5) {
+            Text("RECIPE").font(.system(size: 11, weight: .heavy, design: .rounded)).tracking(1).foregroundStyle(Color(red: 0.76, green: 0.25, blue: 0.05))
+            Text(str(o["name"])).font(.system(size: 21, weight: .heavy, design: .rounded)).foregroundStyle(.black).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 7) {
+                Text("\(Fmt.int(num(o["kcal"]) ?? 0)) kcal").foregroundStyle(.black)
+                if let p = num(o["p"]), p > 0 { Text("\(Int(p)) g protein").foregroundStyle(Color(red: 0.08, green: 0.5, blue: 0.24)) }
+            }
+            .font(.system(size: 14, weight: .bold, design: .rounded))
+            if !what.isEmpty { Text(what).font(.system(size: 12, weight: .medium)).foregroundStyle(.black.opacity(0.55)) }
+            HStack(spacing: 4) { Text("Get the recipe"); Image(systemName: "chevron.right").font(.system(size: 11, weight: .heavy)) }
+                .font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                .frame(maxWidth: .infinity).padding(.vertical, 8)
+                .background(Color(white: 0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .padding(.top, 4)
+        }
+        .padding(15).frame(width: 230, alignment: .leading)
+        .background(Color(red: 1, green: 0.99, blue: 0.97), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .shadow(color: .black.opacity(0.3), radius: 12, y: 6)
     }
 
     /// Three looks, tapped through in the editor: a white card, glass, bold.
@@ -479,6 +508,8 @@ struct StoryLayer: View {
     var holding: ((Bool) -> Void)? = nil
     /// A post's See post was tapped (the post's id): set where the story's being watched.
     var openPost: ((String) -> Void)? = nil
+    /// A recipe sticker was tapped (the sticker): set where the story's being watched.
+    var openRecipe: ((JSON) -> Void)? = nil
     @State private var bubble: String?   // the tag whose bubble is showing, by its id
     private var stories: Stories { Stories.shared }
 
@@ -503,10 +534,11 @@ struct StoryLayer: View {
                                 holding?(bubble != nil)
                             } : nil)
                             .simultaneousGesture(str(o["type"]) == "seepost" && openPost != nil ? TapGesture().onEnded { openPost?(str(o["post"])) } : nil)
+                            .simultaneousGesture(str(o["type"]) == "recipe" && openRecipe != nil ? TapGesture().onEnded { openRecipe?(o) } : nil)
                             .scaleEffect((num(o["scale"]) ?? 1) * k)
                             .rotationEffect(.degrees(num(o["rotation"]) ?? 0))
                             .position(x: (num(o["x"]) ?? 0.5) * g.size.width, y: (num(o["y"]) ?? 0.5) * g.size.height)
-                            .allowsHitTesting(((str(o["type"]) == "poll" || str(o["type"]) == "question") && story != nil) || (str(o["type"]) == "mention" && mention != nil) || (str(o["type"]) == "seepost" && openPost != nil))
+                            .allowsHitTesting(((str(o["type"]) == "poll" || str(o["type"]) == "question") && story != nil) || (str(o["type"]) == "mention" && mention != nil) || (str(o["type"]) == "seepost" && openPost != nil) || (str(o["type"]) == "recipe" && openRecipe != nil))
                     }
                 }
             }

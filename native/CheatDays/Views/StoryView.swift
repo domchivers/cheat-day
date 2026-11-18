@@ -20,6 +20,7 @@ struct StoryView: View {
         highlights.indices.contains(i) ? list(highlights[i]["items"]).map { Slide.snap($0) } : Self.slides(for: people[i])
     }
     @State private var adding: JSON?   // your story going into a highlight
+    @State private var recipeOf: JSON?   // a recipe sticker tapped: its recipe open over the story
     @State private var managing: JSON?   // your story's options are open
     @State private var mentioning: JSON? // your story, someone being mentioned on it after it went up
     @State private var failed: String?
@@ -79,7 +80,7 @@ struct StoryView: View {
     /// What's on a story that can be pressed, so it's drawn above the taps that turn the slides: a poll, a question,
     /// a person tagged.
     static func live(_ o: JSON) -> Bool {
-        ["poll", "question", "seepost"].contains(str(o["type"])) || (str(o["type"]) == "mention" && !str(o["user"]).isEmpty && o["hidden"] as? Bool != true)
+        ["poll", "question", "seepost", "recipe"].contains(str(o["type"])) || (str(o["type"]) == "mention" && !str(o["user"]).isEmpty && o["hidden"] as? Bool != true)
     }
 
     private var who: String { people[min(at, people.count - 1)] }
@@ -189,7 +190,7 @@ struct StoryView: View {
                                         // a post added to the story: it's opened on the feed, the story closed
                                         guard !pid.isEmpty else { return }
                                         dismiss(); Nav.shared.feed(post: pid)
-                                    })
+                                    }, openRecipe: { o in recipeOf = o })
                                         .aspectRatio(StoryArt.aspect, contentMode: .fit)
                                 }
                             }
@@ -309,7 +310,10 @@ struct StoryView: View {
                 try? await Task.sleep(for: .milliseconds(50))
                 let at = Date(), dt = min(0.25, at.timeIntervalSince(last)); last = at
                 if case .snap(let st)? = now, Medal.on(st) == nil, waited < 8, Stories.pictures(st).contains(where: { ImageStore.cached($0) == nil }) { waited += dt; continue }
-                if paused || tagged != nil || reportOf != nil || typing || reacting || sharing != nil || sharingStory != nil || seenBy != nil || adding != nil || managing != nil || mentioning != nil { continue }
+                // in two, a long chain being slow for the compiler
+                let held: Bool = paused || typing || reacting || tagged != nil || reportOf != nil || sharing != nil
+                let open: Bool = sharingStory != nil || seenBy != nil || adding != nil || managing != nil || mentioning != nil || recipeOf != nil
+                if held || open { continue }
                 progress += dt / length; tickAt = at
                 if progress >= 1 { next(); return }
             }
@@ -420,6 +424,10 @@ struct StoryView: View {
         .accessibilityAction(named: "Next") { next() }
         .accessibilityAction(named: "Back") { back() }
         .reportDialog($reportOf)
+        // a recipe sticker: the recipe, as the feed's Recipe button opens it, to save or have today
+        .sheet(item: Binding(get: { recipeOf.map { PostBox(post: RecipeStickerPicker.post($0, owner: who)) } }, set: { if $0 == nil { recipeOf = nil } })) { b in
+            PostRecipeSheet(post: b.post, by: Feed.shared.name(who)).presentationDetents([.medium, .large])
+        }
         .sheet(isPresented: Binding(get: { tagged != nil }, set: { if !$0 { tagged = nil } })) {
             NavigationStack {
                 ProfileView(id: tagged ?? "")

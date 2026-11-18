@@ -175,6 +175,8 @@ struct StoryEditor: View {
     @State private var highlight = false
     @State private var align = "center"
     @State private var glow = false
+    /// The text with no soft shadow behind it (18 Nov): the "A" button goes shadow, highlight, plain.
+    @State private var plain = false
     @State private var size: Double = 30
     @FocusState private var typing: Bool
     // drawing
@@ -197,6 +199,7 @@ struct StoryEditor: View {
     @State private var photoPicks: [PhotosPickerItem] = []
     @State private var picked: String?   // a tile from the tray, added once the tray has closed
     @State private var food = false
+    @State private var choosingRecipe = false   // a saved meal being picked for a recipe sticker
     @State private var polling = false
     @State private var mentioning = false
     @State private var typingSticker: String?   // a question or a hashtag being typed in
@@ -351,6 +354,7 @@ struct StoryEditor: View {
                 .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $food) { FoodStickerPicker { it in addFood(it) }.presentationDetents([.medium, .large]) }
+        .sheet(isPresented: $choosingRecipe) { RecipeStickerPicker { m in place(RecipeStickerPicker.sticker(m)) }.presentationDetents([.medium, .large]) }
         .photosPicker(isPresented: $choosingPhoto, selection: $photoPick, matching: .images)
         .onChange(of: photoPick) { _, item in
             guard let item else { return }
@@ -586,7 +590,7 @@ struct StoryEditor: View {
         switch str(o["type"]) {
         case "text":
             editing = i; draft = str(o["text"]); font = str(o["font"]).isEmpty ? "classic" : str(o["font"])
-            color = str(o["color"]).isEmpty ? "FFFFFF" : str(o["color"]); highlight = o["bg"] as? Bool ?? false
+            color = str(o["color"]).isEmpty ? "FFFFFF" : str(o["color"]); highlight = o["bg"] as? Bool ?? false; plain = o["plain"] as? Bool ?? false
             align = str(o["align"]).isEmpty ? "center" : str(o["align"]); glow = o["glow"] as? Bool ?? false; size = num(o["size"]) ?? 30
             mode = .text; typing = true
         case "food":
@@ -815,7 +819,12 @@ struct StoryEditor: View {
                 }
             case .text:
                 Spacer()
-                round(highlight ? "character.textbox" : "a.square") { highlight.toggle() }.accessibilityLabel("Highlight")
+                // three looks: a soft shadow, on a highlight, plain with no shadow
+                round(highlight ? "character.textbox" : plain ? "textformat" : "a.square") {
+                    if highlight { highlight = false; plain = true; flash("No shadow") }
+                    else if plain { plain = false; flash("Shadow") }
+                    else { highlight = true; flash("Highlight") }
+                }.accessibilityLabel(highlight ? "Highlight" : plain ? "No shadow" : "Shadow")
                 round(align == "left" ? "text.alignleft" : align == "right" ? "text.alignright" : "text.aligncenter") {
                     align = align == "center" ? "left" : align == "left" ? "right" : "center"
                 }.accessibilityLabel("Alignment")
@@ -1008,7 +1017,7 @@ struct StoryEditor: View {
     // MARK: text
 
     private func newText() {
-        editing = nil; draft = ""; font = "classic"; color = "FFFFFF"; highlight = false; align = "center"; glow = false; size = 30
+        editing = nil; draft = ""; font = "classic"; color = "FFFFFF"; highlight = false; plain = false; align = "center"; glow = false; size = 30
         mode = .text; typing = true
     }
 
@@ -1016,15 +1025,25 @@ struct StoryEditor: View {
         ZStack {
             Color.black.opacity(0.45).onTapGesture { finishText() }
             let k = cw / StoryArt.design, glows = glow || font == "neon"
+            let ink = highlight ? StoryArt.onColor(color) : StoryArt.color(color)
+            let textAlign: TextAlignment = align == "left" ? .leading : align == "right" ? .trailing : .center
+            let shade: Color = glows ? StoryArt.color(color).opacity(0.9) : (highlight || plain ? .clear : .black.opacity(0.45))
+            // The words typed are drawn over the field, the field's own letters clear (18 Nov): a colour picked while
+            // typing sometimes didn't recolour what was already typed (the field kept its old colour), only what came after
             TextField("", text: $draft, prompt: Text("Type something").foregroundStyle(.white.opacity(0.5)), axis: .vertical)
                 .focused($typing)
                 .font(StoryArt.font(font, size * k))
-                .foregroundStyle(highlight ? StoryArt.onColor(color) : StoryArt.color(color))
-                .tint(highlight ? StoryArt.onColor(color) : .white)
-                .multilineTextAlignment(align == "left" ? .leading : align == "right" ? .trailing : .center)
+                .foregroundStyle(.clear)
+                .tint(ink)
+                .multilineTextAlignment(textAlign)
+                .overlay(alignment: .top) {
+                    Text(draft).font(StoryArt.font(font, size * k)).foregroundStyle(ink).multilineTextAlignment(textAlign)
+                        .frame(maxWidth: .infinity, alignment: align == "left" ? .leading : align == "right" ? .trailing : .center)
+                        .shadow(color: shade, radius: glows ? 10 * k : 4 * k)
+                        .allowsHitTesting(false)
+                }
                 .padding(.horizontal, highlight ? 12 * k : 0).padding(.vertical, highlight ? 6 * k : 0)
                 .background { if highlight { RoundedRectangle(cornerRadius: 10 * k, style: .continuous).fill(StoryArt.color(color)) } }
-                .shadow(color: glows ? StoryArt.color(color).opacity(0.9) : (highlight ? .clear : .black.opacity(0.45)), radius: glows ? 10 * k : 4 * k)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: 330 * k)
                 .offset(y: -cw * 0.25)
@@ -1086,7 +1105,7 @@ struct StoryEditor: View {
             }
         }
         if !t.isEmpty || editing != nil { remember() }
-        let o: [String: Any] = ["type": "text", "text": String(t.prefix(200)), "font": font, "color": color, "bg": highlight, "align": align, "glow": glow, "size": size]
+        let o: [String: Any] = ["type": "text", "text": String(t.prefix(200)), "font": font, "color": color, "bg": highlight, "plain": plain, "align": align, "glow": glow, "size": size]
         if let i = editing, items.indices.contains(i) {
             if t.isEmpty { items.remove(at: i) } else { items[i].merge(o) { _, n in n } }
         } else if !t.isEmpty {
@@ -1119,6 +1138,7 @@ struct StoryEditor: View {
         switch pick {
         // these open their own sheet once the sticker tray has gone
         case "food": food = true
+        case "recipe": choosingRecipe = true
         case "photo": choosingPhoto = true
         case "poll": polling = true
         case "mention": mentioning = true
@@ -1506,6 +1526,12 @@ struct StickerSheet: View {
         if let b = Self.latestBadge { out.append(("badge", "badge achievement", ["type": "badge", "id": b])) }
         out.append(("rank", "rank level", ["type": "rank", "level": store.rank.level]))
         if let d = Self.daysToCheat { out.append(("cheat", "cheat day countdown", ["type": "cheat", "days": d])) }
+        // a recipe of yours (18 Nov): shown with the first saved meal that has a method, else the first
+        let meals = list(store.doc["meals"]).filter { !str($0["name"]).isEmpty && !list($0["items"]).isEmpty }
+        if let m = meals.first(where: { !(($0["steps"] as? [Any]) ?? []).isEmpty }) ?? meals.first {
+            var s = RecipeStickerPicker.sticker(m); s["meal"] = nil
+            out.append(("recipe", "recipe meal cook share", s))
+        }
         if let w = store.todayWorkouts.last { out.append(("workout", "workout gym", ["type": "workout", "name": str(w["name"]), "minutes": Int(num(w["minutes"]) ?? 0)])) }
         if !forPost {
             out.append(("poll", "poll vote", ["type": "poll", "q": "Cheat day or not?", "a": "Yes", "b": "No"]))

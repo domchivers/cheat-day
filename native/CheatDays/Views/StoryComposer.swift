@@ -310,3 +310,59 @@ struct PostStoryCard: View {
         .padding(.horizontal, 12).padding(.vertical, 10)
     }
 }
+
+/// One of your saved meals for a recipe sticker (18 Nov): the ones with a method first. The sticker carries the meal,
+/// so whoever watches can open the recipe, save it to their meals or have a portion today.
+struct RecipeStickerPicker: View {
+    var pick: (JSON) -> Void
+    @Environment(\.dismiss) private var dismiss
+    private var store: Store { Store.shared }
+
+    private var meals: [JSON] {
+        let all = list(store.doc["meals"]).filter { !str($0["name"]).isEmpty && !list($0["items"]).isEmpty }
+        return all.filter { !Self.steps($0).isEmpty } + all.filter { Self.steps($0).isEmpty }
+    }
+    static func steps(_ m: JSON) -> [String] { (m["steps"] as? [String] ?? []).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty } }
+
+    /// The sticker for a meal: its name, a portion's numbers, how many ingredients and steps, and the meal itself.
+    static func sticker(_ m: JSON) -> JSON {
+        let b = Store.shared.mealBasis(m)
+        var meal = m
+        if str(meal["photo"]).hasPrefix("data:") { meal["photo"] = nil }   // a photo kept in the meal itself is too big to carry
+        return ["type": "recipe", "name": str(b["name"]), "kcal": Int(num(b["kcalPerServing"]) ?? 0), "p": Int(num(b["pServ"]) ?? 0),
+                "c": Int(num(b["cServ"]) ?? 0), "f": Int(num(b["fServ"]) ?? 0), "n": list(m["items"]).count, "steps": steps(m).count, "meal": meal]
+    }
+
+    /// A tapped sticker as the post the recipe card opens with (PostRecipeSheet's meal kind).
+    static func post(_ o: JSON, owner: String) -> JSON {
+        let meal = dict(o["meal"])
+        return ["id": "recipe:" + str(meal["id"]), "kind": "meal", "name": o["name"] ?? "", "kcal": o["kcal"] ?? 0, "owner": owner,
+                "macros": ["p": o["p"] ?? 0, "c": o["c"] ?? 0, "f": o["f"] ?? 0] as JSON, "payload": meal]
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if meals.isEmpty { Text("Save a meal (Me, then Meals) to share it as a recipe.").foregroundStyle(.secondary) }
+                ForEach(meals.indices, id: \.self) { i in
+                    let m = meals[i], b = store.mealBasis(m), method = !Self.steps(m).isEmpty
+                    Button { pick(m); dismiss() } label: {
+                        HStack(spacing: 12) {
+                            FoodDot(name: str(m["name"]), size: 32)
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 6) {
+                                    Text(str(m["name"])).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                                    if method { Text("METHOD").font(.caption2.weight(.heavy)).foregroundStyle(Theme.accent) }
+                                }
+                                Text("\(Fmt.int(num(b["kcalPerServing"]) ?? 0)) kcal · \(Int(num(b["pServ"]) ?? 0)) g protein a portion").font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .navigationTitle("Recipe sticker").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+        }
+    }
+}
