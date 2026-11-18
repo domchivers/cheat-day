@@ -23,6 +23,8 @@ final class Stories {
         UserDefaults.standard.set(d, forKey: Self.keptKey(me))
     }
     private(set) var views: [JSON] = []    // who's watched mine
+    /// Who watched stories of mine that have gone, fetched for a highlight they're in (load() only has the ones up).
+    private(set) var oldViews: [JSON] = []
     private(set) var votes: [JSON] = []    // poll votes on the stories I can see
     /// What I've answered each story with (story id: emoji), kept on the phone too, so a heart given is still red
     /// the next time the story's watched and before the list has come down.
@@ -120,7 +122,20 @@ final class Stories {
 
     func of(_ id: String) -> [JSON] { all.filter { str($0["owner"]) == id } }
     func unwatched(_ id: String) -> Bool { of(id).contains { !watched.contains(str($0["id"])) } }
-    func viewers(_ story: JSON) -> [JSON] { views.filter { str($0["story_id"]) == str(story["id"]) } }
+    func viewers(_ story: JSON) -> [JSON] {
+        let id = str(story["id"]), now = views.filter { str($0["story_id"]) == id }
+        return now.isEmpty ? oldViews.filter { str($0["story_id"]) == id } : now
+    }
+
+    /// Who watched these stories of mine, for a highlight: as the server still has it (18 Nov). Whether it keeps
+    /// them once a story's gone isn't known here; if not, there's simply no one to show.
+    func loadViews(_ ids: [String]) async {
+        let want = ids.filter { !$0.isEmpty }
+        guard !me.isEmpty, !want.isEmpty,
+              let got = try? await rows("/rest/v1/story_views?story_id=in.(\(want.joined(separator: ",")))&select=*&order=created_at.desc") else { return }
+        oldViews.removeAll { want.contains(str($0["story_id"])) }
+        oldViews += got
+    }
 
     /// Seen: theirs hear about it in "Seen by", and the ring goes grey once all are watched.
     func watch(_ story: JSON) {

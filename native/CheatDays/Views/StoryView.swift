@@ -505,9 +505,22 @@ struct StoryView: View {
 
     @ViewBuilder private func footer(_ s: Slide) -> some View {
         if hl != nil {
-            // a highlight: when it was, nothing to reply to from here
+            // a highlight: when it was, nothing to reply to from here; on your own, who watched it (18 Nov)
             if case .snap(let st) = s {
-                Text(ISO.date(str(st["created_at"]))?.formatted(.dateTime.day().month(.wide).year()) ?? "").font(.footnote.weight(.semibold)).foregroundStyle(.white.opacity(0.65)).frame(height: 44)
+                HStack {
+                    if isMe {
+                        Button { seenBy = st } label: {
+                            Label("Seen by \(Stories.shared.viewers(st).count)", systemImage: "eye").font(.subheadline.weight(.bold)).foregroundStyle(.white)
+                        }
+                        Spacer()
+                    }
+                    Text(ISO.date(str(st["created_at"]))?.formatted(.dateTime.day().month(.wide).year()) ?? "").font(.footnote.weight(.semibold)).foregroundStyle(.white.opacity(0.65))
+                }
+                .frame(height: 44).padding(.horizontal, isMe ? 8 : 0)
+                .task(id: str(hl?["id"])) {
+                    if isMe, let h = hl { await Stories.shared.loadViews(list(h["items"]).map { str($0["id"]) }) }
+                }
+                .sheet(item: Binding(get: { seenBy.map { PostBox(post: $0) } }, set: { seenBy = $0?.post })) { b in SeenBySheet(story: b.post).presentationDetents([.medium, .large]) }
             }
         } else if isMe {
             if case .snap(let st) = s {

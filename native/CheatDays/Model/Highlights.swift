@@ -78,7 +78,21 @@ struct StoryThumb: View {
                 LinearGradient(colors: [Theme.hero, Theme.accent.opacity(0.35)], startPoint: .topLeading, endPoint: .bottomTrailing)
                 Image(systemName: "play.fill").font(.title3).foregroundStyle(.white.opacity(0.85))
             }
-        } else { FeedPhoto(src: str(story["media"]), fill: true) }
+        } else {
+            // the story as it's watched, its look, stickers and GIFs on it, its middle showing (18 Nov). It was the
+            // bare photo filling the circle: a photo set small on a story came out half missing, and nothing on it showed
+            GeometryReader { g in
+                let w = g.size.width, media = str(story["media"])
+                StoryPhoto(src: media, also: Stories.pictures(story).filter { $0 != media }) {
+                    StoryLayer(items: list(story["overlays"]).filter { !StoryView.live($0) })
+                }
+                .aspectRatio(StoryArt.aspect, contentMode: .fit)
+                .frame(width: w, height: w / StoryArt.aspect)
+                .frame(width: w, height: g.size.height)
+                .clipped()
+            }
+            .allowsHitTesting(false)
+        }
     }
 }
 
