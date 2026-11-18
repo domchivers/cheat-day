@@ -224,9 +224,10 @@ struct ActivityView: View {
         }
     }
 
-    /// All, then only the tabs with something in them, each with how many are new.
+    /// Every tab, always (18 Nov: only ones with something in them showed, so Likes and Comments seemed missing),
+    /// each with how many are new.
     private var chips: some View {
-        let shown = Tab.allCases.filter { $0 == .all || !entries($0).isEmpty }
+        let shown = Tab.allCases
         return ScrollView(.horizontal) {
             HStack(spacing: 8) {
                 ForEach(shown, id: \.self) { t in
@@ -238,7 +239,6 @@ struct ActivityView: View {
             .padding(.horizontal, 16).padding(.vertical, 8)
         }
         .scrollIndicators(.hidden)
-        .onChange(of: shown) { _, now in if !now.contains(tab) { tab = .all } }
     }
 
     private func chip(_ title: String, on: Bool, count: Int) -> some View {
