@@ -38,6 +38,9 @@ struct StoryEditor: View {
     var toFull: (() -> Void)? = nil
     /// The same, as the whole of yours: a tap on it goes back to the card (it changed the picture's look before).
     var backToCard: (() -> Void)? = nil
+    /// The picture behind is only a soft copy of what's on it (a story or post put on yours): a tap on it does nothing.
+    /// It went through the picture's looks, so a quick tap that missed the card framed and shrank the blur (18 Nov).
+    var softBackground = false
     /// A post's photo: the editor as it's left (what's on it, its look, where it sits, its turns), handed over just
     /// before the finished picture, for opening it again the same.
     var photoKept: ((ClipEdit) -> Void)? = nil
@@ -550,7 +553,10 @@ struct StoryEditor: View {
             dropped(t)
             return
         }
-        guard moved else { if let backToCard { backToCard() } else { nextBgStyle() }; return }
+        guard moved else {
+            if let backToCard { backToCard() } else if !softBackground { nextBgStyle() }
+            return
+        }
         let across = abs(grab.move.width) > 50 && abs(grab.move.width) > abs(grab.move.height) && grab.size == 1
         guard let fill = bgFill(cw, ch) else {
             if across { nextFilter(grab.move.width < 0 ? 1 : -1) }   // a picture that can't move: a swipe changes the filter

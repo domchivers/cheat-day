@@ -191,7 +191,7 @@ struct StoryReshare: View {
                              "w": Double(whole.size.width), "h": Double(whole.size.height), "x": 0.5, "y": 0.45, "scale": 1.25, "rotation": 0.0],
                             ["id": "whose", "type": "mention", "user": owner, "name": name, "x": 0.5, "y": 0.88, "scale": 0.75, "rotation": 0.0],
                             repost,
-                        ], toFull: { withAnimation(.snappy) { full = true } })
+                        ], toFull: { withAnimation(.snappy) { full = true } }, softBackground: true)
                     }
                 }
                 // a fresh editor for each way. Tapping their story goes through its looks and then to full screen; a
@@ -247,7 +247,7 @@ struct PostReshare: View {
         ZStack {
             Color.black.ignoresSafeArea()
             if let ground {
-                StoryEditor(image: ground, video: nil, close: { dismiss() }, posted: { dismiss(); done() }, startItems: items)
+                StoryEditor(image: ground, video: nil, close: { dismiss() }, posted: { dismiss(); done() }, startItems: items, softBackground: true)
             } else {
                 ProgressView().controlSize(.large).tint(.white)
             }
