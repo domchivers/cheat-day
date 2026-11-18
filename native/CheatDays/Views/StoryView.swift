@@ -22,6 +22,7 @@ struct StoryView: View {
     @State private var adding: JSON?   // your story going into a highlight
     @State private var recipeOf: JSON?   // a recipe sticker tapped: its recipe open over the story
     @State private var resharing: JSON?  // a story you're tagged in, being added to yours
+    @State private var songCard: Song?   // the story's song line tapped: its card, sound on or off
     @State private var managing: JSON?   // your story's options are open
     @State private var mentioning: JSON? // your story, someone being mentioned on it after it went up
     @State private var failed: String?
@@ -328,7 +329,7 @@ struct StoryView: View {
                 if case .snap(let st)? = now, Medal.on(st) == nil, waited < 8, Stories.pictures(st).contains(where: { ImageStore.cached($0) == nil }) { waited += dt; continue }
                 // in two, a long chain being slow for the compiler
                 let held: Bool = paused || typing || reacting || tagged != nil || reportOf != nil || sharing != nil
-                let open: Bool = sharingStory != nil || seenBy != nil || adding != nil || managing != nil || mentioning != nil || recipeOf != nil || resharing != nil
+                let open: Bool = sharingStory != nil || seenBy != nil || adding != nil || managing != nil || mentioning != nil || recipeOf != nil || resharing != nil || songCard != nil
                 if held || open { continue }
                 progress += dt / length; tickAt = at
                 if progress >= 1 { next(); return }
@@ -414,9 +415,9 @@ struct StoryView: View {
             // the name and when on one line; under them, smaller, a repost's "⟲ whose" and the story's song, as
             // Instagram has it (18 Nov: the repost beside the name squeezed "Your day" onto two lines, and a song
             // played with nothing saying what it was). Their photo and name open their profile; the song line mutes it.
-            Button { onProfile?(who); dismiss() } label: { Avatar(id: who, size: 32) }
+            Button { onProfile?(who); dismiss() } label: { Avatar(id: who, size: 36) }
                 .buttonStyle(.plain)
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 2) {
                 Button { onProfile?(who); dismiss() } label: {
                     HStack(spacing: 9) {
                         Text(hl.map { str($0["title"]).isEmpty ? "Highlight" : str($0["title"]) } ?? (isMe ? "Your day" : Feed.shared.name(who)))
@@ -426,26 +427,31 @@ struct StoryView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain).accessibilityIdentifier("story-author")
-                if repostOf != nil || storySong != nil {
+                if let r = repostOf {
                     HStack(spacing: 4) {
-                        if let r = repostOf {
-                            Image(systemName: "arrow.2.squarepath").font(.system(size: 10, weight: .bold))
-                            Text(str(r["name"])).lineLimit(1).fixedSize()
-                            if storySong != nil { Text("·") }
-                        }
-                        if let song = storySong, let id = snapNow.map({ str($0["id"]) }) {
-                            let on = SongPlayer.shared.playing == "story:" + id
-                            Button { SongPlayer.shared.flip(song, key: "story:" + id) } label: {
-                                HStack(spacing: 3) {
-                                    Image(systemName: on ? "music.note" : "speaker.slash.fill").font(.system(size: 10, weight: .bold))
-                                    Marquee(text: song.title, maxWidth: 150)
-                                }
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain).accessibilityLabel(on ? "\(song.title). Mute" : "\(song.title). Sound on")
-                        }
+                        Image(systemName: "arrow.2.squarepath").font(.system(size: 11, weight: .bold))
+                        Text(str(r["name"])).lineLimit(1)
                     }
-                    .font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.85))
+                    .font(.footnote.weight(.semibold)).foregroundStyle(.white.opacity(0.9))
+                }
+                // the song, as Instagram's is (the owner's screenshot, 18 Nov): bars that move while it plays, its
+                // mood in bold and its title, and a › for the card it opens (its cover, sound on or off)
+                if let song = storySong, let id = snapNow.map({ str($0["id"]) }) {
+                    let on = SongPlayer.shared.playing == "story:" + id
+                    Button { songCard = song } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: on ? "waveform" : "speaker.slash.fill").font(.system(size: 12, weight: .bold))
+                                .symbolEffect(.variableColor.iterative, isActive: on)
+                            HStack(spacing: 0) {
+                                if !song.mood.isEmpty { Text(song.mood).fontWeight(.semibold); Text(" · ") }
+                                Marquee(text: song.title, maxWidth: 140)
+                            }
+                            Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold))
+                        }
+                        .font(.footnote).foregroundStyle(.white)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).accessibilityLabel("Song: \(song.title)")
                 }
             }
             Spacer()
@@ -491,6 +497,11 @@ struct StoryView: View {
         .accessibilityAction(named: "Back") { back() }
         .reportDialog($reportOf)
         .fullScreenCover(item: Binding(get: { resharing.map { PostBox(post: $0) } }, set: { if $0 == nil { resharing = nil } })) { b in StoryReshare(story: b.post) }
+        .sheet(item: $songCard) { song in
+            let key = "story:" + str(snapNow?["id"])
+            SongCard(song: song, muted: Binding(get: { SongPlayer.shared.playing != key }, set: { _ in SongPlayer.shared.flip(song, key: key) }))
+                .presentationDetents([.height(240)])
+        }
         // a recipe sticker: the recipe, as the feed's Recipe button opens it, to save or have today
         .sheet(item: Binding(get: { recipeOf.map { PostBox(post: RecipeStickerPicker.post($0, owner: who)) } }, set: { if $0 == nil { recipeOf = nil } })) { b in
             PostRecipeSheet(post: b.post, by: Feed.shared.name(who)).presentationDetents([.medium, .large])
