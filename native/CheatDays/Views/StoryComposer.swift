@@ -183,22 +183,20 @@ struct StoryReshare: View {
             if let whole {
                 Group {
                     if full {
-                        StoryEditor(image: whole, video: nil, close: { dismiss() }, posted: { dismiss() }, startItems: [repost])
+                        StoryEditor(image: whole, video: nil, close: { dismiss() }, posted: { dismiss() }, startItems: [repost],
+                                    backToCard: { withAnimation(.snappy) { full = false } })
                     } else {
                         StoryEditor(image: StoryArt.backdrop(whole), video: nil, close: { dismiss() }, posted: { dismiss() }, startItems: [
                             ["id": "theirs", "type": "photo", "local": PhotoStickers.keep(whole),
                              "w": Double(whole.size.width), "h": Double(whole.size.height), "x": 0.5, "y": 0.45, "scale": 1.25, "rotation": 0.0],
                             ["id": "whose", "type": "mention", "user": owner, "name": name, "x": 0.5, "y": 0.88, "scale": 0.75, "rotation": 0.0],
                             repost,
-                        ])
+                        ], toFull: { withAnimation(.snappy) { full = true } })
                     }
                 }
-                .id(full)   // a fresh editor for each way
-                .overlay(alignment: .top) {
-                    Picker("How", selection: $full) { Text("Sticker").tag(false); Text("Full screen").tag(true) }
-                        .pickerStyle(.segmented).frame(width: 220).padding(.top, 118)
-                        .environment(\.colorScheme, .dark)
-                }
+                // a fresh editor for each way. Tapping their story goes through its looks and then to full screen; a
+                // tap on it full screen goes back to the card (18 Nov: it was a Sticker / Full screen switch)
+                .id(full)
             } else if failed {
                 VStack(spacing: 14) {
                     Text("Couldn't open that story.").foregroundStyle(.white)

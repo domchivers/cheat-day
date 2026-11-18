@@ -34,6 +34,10 @@ struct StoryEditor: View {
     var startEdit: ClipEdit? = nil
     /// Things already placed when it opens (someone's story being added to yours: their picture and their name).
     var startItems: [JSON] = []
+    /// A story you're tagged in, as a card (StoryReshare): tapping it past its last look makes it the whole of yours.
+    var toFull: (() -> Void)? = nil
+    /// The same, as the whole of yours: a tap on it goes back to the card (it changed the picture's look before).
+    var backToCard: (() -> Void)? = nil
     /// A post's photo: the editor as it's left (what's on it, its look, where it sits, its turns), handed over just
     /// before the finished picture, for opening it again the same.
     var photoKept: ((ClipEdit) -> Void)? = nil
@@ -546,7 +550,7 @@ struct StoryEditor: View {
             dropped(t)
             return
         }
-        guard moved else { nextBgStyle(); return }
+        guard moved else { if let backToCard { backToCard() } else { nextBgStyle() }; return }
         let across = abs(grab.move.width) > 50 && abs(grab.move.width) > abs(grab.move.height) && grab.size == 1
         guard let fill = bgFill(cw, ch) else {
             if across { nextFilter(grab.move.width < 0 ? 1 : -1) }   // a picture that can't move: a swipe changes the filter
@@ -601,6 +605,8 @@ struct StoryEditor: View {
             // its next look; only a tap does this: a finger that moves more than a few points is moving it
             remember(); UISelectionFeedbackGenerator().selectionChanged()
             let next = (Int(num(o["style"]) ?? 0) + 1) % StoryItem.photoStyles.count
+            // their story, tapped past its last look: full screen, as Instagram's tapping goes (18 Nov)
+            if next == 0, str(o["id"]) == "theirs", let toFull { toFull(); return }
             withAnimation(.snappy(duration: 0.2)) { items[i]["style"] = next }
             flash(StoryItem.photoStyles[next])
         case "mention":
