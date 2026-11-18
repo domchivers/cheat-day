@@ -34,6 +34,13 @@ struct ProfileView: View {
     @State private var honorsOpen = false
     @State private var archive = false   // your old stories
     @State private var counts: (followers: Int, following: Int)?
+    /// The posts count as it last was (kept on the phone), until this profile's posts have come down.
+    @State private var keptPosts: Int?
+    private var postsShown: String? {
+        if locked { return "–" }
+        if arrived { return "\(posts.count)" }
+        return keptPosts.map { "\($0)" }
+    }
     @State private var choosing = false   // public or private, the first time you see your profile
     @State private var friendNote: String?
     @Environment(\.dismiss) private var dismiss
@@ -111,6 +118,7 @@ struct ProfileView: View {
         }
         .task {
             if !arrived, let was = Self.last[id] { posts = was.posts; tagged = was.tagged; kept = was.kept; counts = was.counts; arrived = true }
+            else if !arrived, let top = Self.keptTop(id) { counts = (top.followers, top.following); keptPosts = top.posts }
             await reload()
             if isMe, profiles.mine?.privacyChosen == false { choosing = true }
         }
@@ -156,18 +164,39 @@ struct ProfileView: View {
         } message: { Text("You'll stop seeing each other's days, posts and messages.") }
     }
 
+    /// The numbers at the top as they last were, kept on the phone (18 Nov): opened after the app starts, they're there
+    /// at once and freshened under them, instead of two seconds of grey bars.
+    private static func keptTop(_ id: String) -> (followers: Int, following: Int, posts: Int)? {
+        guard let a = (UserDefaults.standard.dictionary(forKey: "profile.top") ?? [:])[id] as? [Int], a.count == 3 else { return nil }
+        return (a[0], a[1], a[2])
+    }
+    private static func keepTop(_ id: String, _ c: (followers: Int, following: Int), posts: Int) {
+        var d = UserDefaults.standard.dictionary(forKey: "profile.top") ?? [:]
+        d[id] = [c.followers, c.following, posts]
+        UserDefaults.standard.set(d, forKey: "profile.top")
+    }
+
     private func reload() async {
+        // The counts and the posts are asked for at once, first: they were asked one after another behind ten other
+        // requests (and the likes and comments of every post), so the numbers came last, after about two seconds.
+        async let countsQ = Task(operation: { await follows.counts(id) }).value
+        async let postsQ = profiles.posts(of: id)
+        async let taggedQ = profiles.tagged(id)
         if !Friends.shared.loaded { await Friends.shared.load() }
         // asked afresh each time a profile's opened: asked only once, a first load that failed was never tried again,
         // and the button stayed wrong for as long as the app was open
         await follows.load()
         await Task { await profiles.load([id], force: true) }.value
+        if let c = await countsQ { counts = c }
         // badges and rank-ups are stories now, so ones posted before aren't in the grid
-        if let got = await profiles.posts(of: id)?.filter({ str($0["kind"]) != "moment" }) { posts = got; await Feed.shared.loadExtras(got) }
-        if let got = await profiles.tagged(id) { tagged = got; await Feed.shared.loadExtras(got) }
+        if let got = await postsQ?.filter({ str($0["kind"]) != "moment" }) { posts = got }
+        if let got = await taggedQ { tagged = got }
+        arrived = true; keptPosts = nil
+        if let c = counts { Self.keepTop(id, c, posts: posts.count) }
+        // then what goes with the posts: their likes and comments, and your saved ones
+        await Feed.shared.loadExtras(posts)
+        await Feed.shared.loadExtras(tagged)
         if isMe { kept = await Feed.shared.savedPosts(); await Feed.shared.loadExtras(kept) }
-        if let c = await Task(operation: { await follows.counts(id) }).value { counts = c }
-        arrived = true
         Self.last[id] = (posts, tagged, kept, counts)
     }
 
@@ -209,7 +238,7 @@ struct ProfileView: View {
                         if p?.isPrivate == true { Image(systemName: "lock.fill").font(.caption).foregroundStyle(.secondary) }
                     }
                     HStack(spacing: 22) {
-                        stat(locked ? "–" : arrived ? "\(posts.count)" : nil, posts.count == 1 ? "post" : "posts")
+                        stat(postsShown, (keptPosts ?? posts.count) == 1 ? "post" : "posts")
                         // tap either for the people
                         stat(counts.map { "\($0.followers)" } ?? (arrived ? "–" : nil), counts?.followers == 1 ? "follower" : "followers")
                             .contentShape(Rectangle()).onTapGesture { if !locked { listing = "followers" } }
