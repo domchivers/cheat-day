@@ -190,8 +190,13 @@ struct ActivityView: View {
                     // they came out blank both times, the space there and the tabs not, with a blurred band over the
                     // first post. Likely (unproven): on iOS 26 the bar took their own sideways scroll view for the
                     // page's and faded it out. In the list, the list is the page's scroll view.
-                    chips
-                        .listRowInsets(EdgeInsets()).listRowBackground(Color.clear).listRowSeparator(.hidden)
+                    // As a section's header, not a row (18 Nov, once they showed): a row sits in the list's rounded
+                    // card, which cut the last tab off in its corner shape, and came with the list's space over it.
+                    // A header has no card, and the row of tabs can run on past it to the screen's edge.
+                    Section {} header: {
+                        chips.scrollClipDisabled().textCase(nil)
+                            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 4, trailing: 0))
+                    }
                     let list = entries(tab)
                     if list.isEmpty && !activity.loading {
                         Text(tab == .all ? "Nothing yet. Reactions, comments, food sent to you and friends' posts show up here." : "Nothing here yet.")
@@ -206,6 +211,9 @@ struct ActivityView: View {
                     }
                 }
             .scrollContentBackground(.hidden)
+            // the tabs just under the title: the list's own space at its top made a big gap
+            .contentMargins(.top, 2, for: .scrollContent)
+            .listSectionSpacing(.compact)
             .background(Theme.bg)
             .navigationDestination(item: $profileOf) { id in ProfileView(id: id) }
             .navigationTitle("Activity")
