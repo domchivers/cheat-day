@@ -772,7 +772,7 @@ struct StoryView: View {
                 // nobody that way (the first person, back): it gives a little and comes back, so it doesn't feel stuck
                 let there = people.indices.contains(at + (dx < 0 ? 1 : -1))
                 swipe = there ? dx : dx * 0.25
-            } else { drag = max(0, dy) }
+            } else if !typing { drag = max(0, dy) }   // writing, the story stays put: down only puts the keyboard away
         }
     }
     private func dragEnded(_ v: DragGesture.Value) {
@@ -791,8 +791,22 @@ struct StoryView: View {
             else { withAnimation(.spring(duration: 0.32, bounce: 0)) { swipe = 0 }; paused = false }
             return
         }
-        // far enough, or flicked down
         let speed = v.velocity.height
+        // Writing a message: a swipe down puts the keyboard away and nothing more (18 Nov). It closed the whole
+        // story, and the keyboard was left over the feed for a moment as it went.
+        if typing {
+            if down > 30 || speed > 500 { typing = false }
+            withAnimation(.spring(duration: 0.32, bounce: 0)) { drag = 0 }
+            paused = false   // the story waits while there's writing anyway; with the keyboard away it goes on
+            return
+        }
+        // A swipe up on someone else's story opens the message box with the emoji, as Instagram's does (18 Nov)
+        if !isMe, highlight == nil, down < -60 || (down < -20 && speed < -600) {
+            withAnimation(.spring(duration: 0.32, bounce: 0)) { drag = 0 }
+            typing = true; paused = false
+            return
+        }
+        // far enough, or flicked down
         if down > 120 || (down > 30 && speed > 700) {
             // It carries on down from where the finger let go at the finger's own speed, easing off as it goes,
             // then closes with nothing left to slide. It went the rest of the way in a set 0.2 s from a standing
