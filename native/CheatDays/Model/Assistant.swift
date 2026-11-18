@@ -134,7 +134,11 @@ enum Assistant {
             return "\(m): " + its.map { it in
                 let k = num(it["kcal"]) ?? 0, a = FoodMath.amountText(it, kcal: k)
                 let made = (it["ingredients"] as? [String] ?? []).filter { !$0.isEmpty }
-                return "\"\(str(it["name"]))\"\(a.isEmpty ? "" : " \(a)") \(Int(k)) kcal\(made.isEmpty ? "" : " (made of " + made.joined(separator: ", ") + ")")"
+                // its weight too, when the amount is a count ("0.8 breast (189 g)"): the 189 g piece added from the
+                // food list showed as 0.8 breast, and the assistant said it couldn't see it on today's list (18 Nov)
+                let w = FoodMath.amounts(it, kcal: k)
+                let grams = w.grams.flatMap { g -> String? in a.contains(" \(w.unit)") ? nil : " (\(Fmt.int(g)) \(w.unit))" } ?? ""
+                return "\"\(str(it["name"]))\"\(a.isEmpty ? "" : " \(a)")\(grams) \(Int(k)) kcal\(made.isEmpty ? "" : " (made of " + made.joined(separator: ", ") + ")")"
             }.joined(separator: ", ")
         }.joined(separator: "; ")
     }

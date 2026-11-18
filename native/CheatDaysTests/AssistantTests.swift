@@ -3,6 +3,18 @@ import XCTest
 
 /// The assistant's chats are kept like the website's (no photos, newest first, deletions stick), and its schema asks for every answer shape.
 final class AssistantTests: XCTestCase {
+    /// A food counted in pieces is told to the AI with its weight too (18 Nov): the 189 g raw breast added from the food
+    /// list read "0.8 breast", and the assistant said it couldn't see the 189 g piece on today's list.
+    func testTodaysListGivesTheWeightOfACountedFood() {
+        let piece: JSON = ["name": "Chicken breast, raw, skinless", "source": "search", "meal": "Lunch", "unit": "g",
+                           "kcalPer100": 120, "servingSize": 230, "kcalPerServing": 276, "unitLabel": "breast", "kcal": 226.8]
+        let s = Assistant.byMeal([piece])
+        XCTAssertTrue(s.contains("(189 g)"), s)
+        XCTAssertTrue(s.contains("0.8 breast"), s)
+        let weighed: JSON = ["name": "Rice, white, cooked", "source": "search", "meal": "Lunch", "unit": "g", "kcalPer100": 158, "kcal": 237]
+        XCTAssertFalse(Assistant.byMeal([weighed]).contains("("), "a food already in grams isn't given its weight twice")
+    }
+
     func testChatsKeepNoPhotosAndDeletionsStick() {
         var t = Assistant.Turn(me: true, text: "What's this?")
         t.images = [UIImage()]
