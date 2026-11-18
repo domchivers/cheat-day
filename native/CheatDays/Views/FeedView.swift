@@ -768,6 +768,9 @@ struct FeedView: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        // a card with a song (a workout's): its sound on and off at the bottom right, as a photo's is, and it plays
+        // as it comes up the feed the same way (18 Nov: the song was named but couldn't be heard)
+        .overlay { if let song = Music.of(p) { SongSwitch(song: song, key: "post:" + str(p["id"]), volume: Music.mix(p).song) } }
         .padding(.horizontal, 14)
     }
 
