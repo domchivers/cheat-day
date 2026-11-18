@@ -270,11 +270,10 @@ struct AddToHighlight: View {
                                 // a tap you feel and the row ticking, then the sheet goes
                                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                 withAnimation(.snappy) { done = hid }
-                                Task {
-                                    await highlights.add(story, to: h)
-                                    try? await Task.sleep(for: .milliseconds(450))
-                                    dismiss()
-                                }
+                                // saved in the background: the sheet waited on the save and a reload of every
+                                // highlight before, seconds on a slow line with nothing showing, so it seemed stuck
+                                Task { await highlights.add(story, to: h) }
+                                Task { try? await Task.sleep(for: .milliseconds(450)); dismiss() }
                             } label: { row(h, added: inIt) }
                             .buttonStyle(.plain)
                         }
