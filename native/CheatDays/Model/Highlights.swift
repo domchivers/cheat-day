@@ -126,7 +126,13 @@ struct HighlightsRow: View {
         .task { await highlights.load(owner) }
         .sheet(isPresented: $making) { HighlightMaker(existing: nil) }
         .sheet(item: $editing) { b in HighlightMaker(existing: b.post) }
-        .fullScreenCover(item: $playing) { b in StoryView(people: [owner], at: 0, highlight: b.post) }
+        // from the one tapped on through the rest, as people's stories run on (18 Nov)
+        .fullScreenCover(item: $playing) { b in
+            let shelf = (highlights.of[owner] ?? []).filter { !list($0["items"]).isEmpty }
+            let i = shelf.firstIndex { str($0["id"]) == str(b.post["id"]) }
+            if let i { StoryView(people: Array(repeating: owner, count: shelf.count), at: i, highlights: shelf) }
+            else { StoryView(people: [owner], at: 0, highlight: b.post) }
+        }
     }
 
     private func circle(_ inner: some View, _ title: String) -> some View {

@@ -8,6 +8,17 @@ struct StoryView: View {
     @State var at: Int
     /// A highlight from a profile: just its stories, kept after their 24 hours.
     var highlight: JSON? = nil
+    /// A profile's highlights, one after another (18 Nov): each plays as a person's story does, and the next follows
+    /// on or is swiped to. `people` is then the owner once for each, and `at` the highlight showing.
+    var highlights: [JSON] = []
+    /// The highlight showing, if it's highlights being watched.
+    private var hl: JSON? { highlights.isEmpty ? highlight : highlights[min(max(0, at), highlights.count - 1)] }
+    /// One highlight on its own: nothing either side to swipe to.
+    private var lone: Bool { highlight != nil && highlights.isEmpty }
+    /// The slides of person or highlight i.
+    private func slidesAt(_ i: Int) -> [Slide] {
+        highlights.indices.contains(i) ? list(highlights[i]["items"]).map { Slide.snap($0) } : Self.slides(for: people[i])
+    }
     @State private var adding: JSON?   // your story going into a highlight
     @State private var managing: JSON?   // your story's options are open
     @State private var mentioning: JSON? // your story, someone being mentioned on it after it went up
@@ -72,7 +83,7 @@ struct StoryView: View {
     }
 
     private var who: String { people[min(at, people.count - 1)] }
-    private var slides: [Slide] { highlight.map { list($0["items"]).map { Slide.snap($0) } } ?? Self.slides(for: who) }
+    private var slides: [Slide] { hl.map { list($0["items"]).map { Slide.snap($0) } } ?? Self.slides(for: who) }
     private var isMe: Bool { who == Profiles.shared.me }
 
     /// Their slides: posts from today, then each meal they've logged, then workouts.
@@ -142,9 +153,9 @@ struct StoryView: View {
                 ZStack(alignment: .bottom) {
                 ZStack {   // its own, so the cards' order (zIndex) is only among themselves, under the message box
                 // The person before, waiting under this one in the dark (back: this one slides off right to show them)
-                if people.indices.contains(at - 1), highlight == nil {
+                if people.indices.contains(at - 1), !lone {
                     let q = 1 - min(1, max(0, swipe) / width)
-                    peek(people[at - 1]).modifier(Sunk(p: q, width: width)).opacity(swipe < 0 ? 0 : 1).zIndex(0)
+                    peek(at - 1).modifier(Sunk(p: q, width: width)).opacity(swipe < 0 ? 0 : 1).zIndex(0)
                 }
                 VStack(spacing: 6) {
                     // Every slide the one shape (9:16, a story's own), and as big as the screen lets it be: edge to
@@ -197,8 +208,8 @@ struct StoryView: View {
                 .offset(x: swipe > 0 || !people.indices.contains(at + 1) ? swipe : 0)
                 .zIndex(swipe > 0 ? 2 : 1)
                 // the next person, just off the right edge until it's pulled in
-                if people.indices.contains(at + 1), highlight == nil {
-                    peek(people[at + 1]).offset(x: width + min(0, swipe)).shadow(color: .black.opacity(swipe < 0 ? 0.5 : 0), radius: 16).zIndex(3)
+                if people.indices.contains(at + 1), !lone {
+                    peek(at + 1).offset(x: width + min(0, swipe)).shadow(color: .black.opacity(swipe < 0 ? 0.5 : 0), radius: 16).zIndex(3)
                 }
                 }
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { if $0 > 0 { width = $0 } }
@@ -272,7 +283,7 @@ struct StoryView: View {
             progress = 0
             let now = slides.indices.contains(slide) ? slides[slide] : nil
             var length = Self.seconds
-            if case .snap(let st)? = now { if highlight == nil { Stories.shared.watch(st) }; if str(st["kind"]) == "video" { length = max(3, num(st["seconds"]) ?? 15) } }
+            if case .snap(let st)? = now { if hl == nil { Stories.shared.watch(st) }; if str(st["kind"]) == "video" { length = max(3, num(st["seconds"]) ?? 15) } }
             // a story with a song: it plays for as long as the story's showing (it's one of the things put on it, by name)
             if case .snap(let st)? = now, let tune = list(st["overlays"]).first(where: { str($0["type"]) == "song" }),
                var song = Music.all.first(where: { $0.id == str(tune["id"]) }) {
@@ -283,9 +294,9 @@ struct StoryView: View {
             // The last slide's up: this person's story has been watched. It was only counted when the last slide was
             // gone past (by its bar running out or a tap), so closing on the last slide, as most people do, left
             // the ring bright for good.
-            if highlight == nil, slide >= slides.count - 1 { Self.markSeen(who) }
+            if hl == nil, slide >= slides.count - 1 { Self.markSeen(who) }
             // what's coming, fetched while this slide's being watched: the rest of this person's, then the next person's
-            if highlight == nil {
+            if hl == nil {
                 let rest = slides.dropFirst(slide + 1).flatMap(Self.pictures)
                 let after = people.indices.contains(at + 1) ? Self.slides(for: people[at + 1]).flatMap(Self.pictures) : []
                 Stories.shared.fetchSoon(rest + after)
@@ -361,7 +372,7 @@ struct StoryView: View {
             Button { onProfile?(who); dismiss() } label: {
                 HStack(spacing: 9) {
                     Avatar(id: who, size: 32)
-                    Text(highlight.map { str($0["title"]).isEmpty ? "Highlight" : str($0["title"]) } ?? (isMe ? "Your day" : Feed.shared.name(who))).font(.subheadline.weight(.bold)).foregroundStyle(.white)
+                    Text(hl.map { str($0["title"]).isEmpty ? "Highlight" : str($0["title"]) } ?? (isMe ? "Your day" : Feed.shared.name(who))).font(.subheadline.weight(.bold)).foregroundStyle(.white)
                 }
                 .contentShape(Rectangle())
             }
@@ -369,7 +380,7 @@ struct StoryView: View {
             Text(when).font(.subheadline).foregroundStyle(.white.opacity(0.65))
             Spacer()
             // someone else's: it can be reported (there was no way to from the story itself)
-            if !isMe, highlight == nil {
+            if !isMe, hl == nil {
                 Button { reportOf = reportTarget } label: {
                     Image(systemName: "flag").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white.opacity(0.85)).padding(8)
                 }
@@ -493,7 +504,7 @@ struct StoryView: View {
     }
 
     @ViewBuilder private func footer(_ s: Slide) -> some View {
-        if highlight != nil {
+        if hl != nil {
             // a highlight: when it was, nothing to reply to from here
             if case .snap(let st) = s {
                 Text(ISO.date(str(st["created_at"]))?.formatted(.dateTime.day().month(.wide).year()) ?? "").font(.footnote.weight(.semibold)).foregroundStyle(.white.opacity(0.65)).frame(height: 44)
@@ -709,7 +720,7 @@ struct StoryView: View {
 
     private func next() {
         if slide + 1 < slides.count { slide += 1; return }
-        Self.markSeen(who)
+        if hl == nil { Self.markSeen(who) }
         if at + 1 < people.count { go(1) } else { dismiss() }
     }
     /// To the next person (or back one) with the push (B, chosen 16 Nov), as a tap at either end of someone's story does.
@@ -763,7 +774,7 @@ struct StoryView: View {
         // which way it's going is settled once, at the start, so a swipe sideways that dips doesn't start closing;
         // and the card goes from where it is then, not by the 10 points the finger had to move first (it
         // jumped them as it set off, 17 Nov)
-        if axis == 0 { axis = abs(t.width) > abs(t.height) * 1.2 && !typing && highlight == nil ? 2 : 1; grab = t }
+        if axis == 0 { axis = abs(t.width) > abs(t.height) * 1.2 && !typing && !lone ? 2 : 1; grab = t }
         let dx = t.width - grab.width, dy = t.height - grab.height
         paused = true
         // the card follows the finger on a very short spring, so any uneven touch is eased over a few frames
@@ -801,7 +812,7 @@ struct StoryView: View {
             return
         }
         // A swipe up on someone else's story opens the message box with the emoji, as Instagram's does (18 Nov)
-        if !isMe, highlight == nil, down < -60 || (down < -20 && speed < -600) {
+        if !isMe, hl == nil, down < -60 || (down < -20 && speed < -600) {
             withAnimation(.spring(duration: 0.32, bounce: 0)) { drag = 0 }
             typing = true; paused = false
             return
@@ -827,8 +838,9 @@ struct StoryView: View {
     }
     /// The person before or after, as their story will look when it starts: their first slide, empty bars, their name.
     /// Drawn beside the one showing, for the swipe to pull in. Nothing on it can be pressed.
-    @ViewBuilder private func peek(_ p: String) -> some View {
-        let s = Self.slides(for: p)
+    @ViewBuilder private func peek(_ i: Int) -> some View {
+        let p = people[i], s = slidesAt(i)
+        let title = highlights.indices.contains(i) ? (str(highlights[i]["title"]).isEmpty ? "Highlight" : str(highlights[i]["title"])) : nil
         if let first = s.first {
             VStack(spacing: 6) {
                 content(first, of: p)
@@ -846,7 +858,7 @@ struct StoryView: View {
                                 .padding(.top, 6)
                             HStack(spacing: 9) {
                                 Avatar(id: p, size: 32)
-                                Text(p == Profiles.shared.me ? "Your day" : Feed.shared.name(p)).font(.subheadline.weight(.bold)).foregroundStyle(.white)
+                                Text(title ?? (p == Profiles.shared.me ? "Your day" : Feed.shared.name(p))).font(.subheadline.weight(.bold)).foregroundStyle(.white)
                                 Text(Self.whenWord(first, p)).font(.subheadline).foregroundStyle(.white.opacity(0.65))
                                 Spacer()
                                 if p != Profiles.shared.me { Image(systemName: "flag").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white.opacity(0.85)).padding(8) }
