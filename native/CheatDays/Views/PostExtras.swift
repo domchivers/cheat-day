@@ -552,29 +552,57 @@ struct PinchFollow: UIGestureRecognizerRepresentable {
     var changed: (CGFloat, CGSize) -> Void
     var ended: () -> Void
 
-    /// Where the fingers were last, how many there were, how far it's been carried, and how big the two made it.
-    final class Coordinator { var last = CGPoint.zero; var fingers = 0; var moved = CGSize.zero; var size: CGFloat = 1 }
+    /// The fingers as the editor reads them (EditorTouch, 18 Nov): their middle and how far apart, each the mean of
+    /// this reading and the one before. The two fingers are read a moment apart, which puts a small to-and-fro on
+    /// both from one reading to the next; the system's own pinch scale and middle carry it (the micro jitter), and
+    /// the mean of two neighbours cancels exactly that. One finger is followed exactly.
+    final class Coordinator {
+        var fingers = 0
+        var rawMiddle = CGPoint.zero, rawApart: CGFloat = 1   // the last raw reading
+        var lastMiddle = CGPoint.zero                          // the last steadied middle, carried from
+        var startApart: CGFloat = 1                            // the spread that's size 1
+        var moved = CGSize.zero, size: CGFloat = 1
+    }
     func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
     func makeUIGestureRecognizer(context: Context) -> UIPinchGestureRecognizer { UIPinchGestureRecognizer() }
+
+    /// The fingers on the screen, straight from the touches (not through SwiftUI's converter, which worked them out
+    /// by way of the very picture they're moving): their middle, and how far apart for two.
+    private func read(_ r: UIPinchGestureRecognizer) -> (middle: CGPoint, apart: CGFloat?) {
+        let w = r.view?.window
+        if r.numberOfTouches >= 2 {
+            let a = r.location(ofTouch: 0, in: w), b = r.location(ofTouch: 1, in: w)
+            return (CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2), max(1, hypot(b.x - a.x, b.y - a.y)))
+        }
+        return (r.location(in: w), nil)
+    }
+
     func handleUIGestureRecognizerAction(_ recognizer: UIPinchGestureRecognizer, context: Context) {
-        // where the fingers are on the screen, straight from the touches. Through SwiftUI's converter it was worked
-        // out by way of the picture, which this very gesture is moving and sizing, so each frame was a little off
-        // the last: micro jitters while zooming and moving (18 Nov; the likely cause, not proven)
-        let here = recognizer.location(in: recognizer.view?.window)
+        let c = context.coordinator, now = read(recognizer)
+        /// From here on, measured from where the fingers are now: a finger arriving or leaving moves their middle,
+        /// and that mustn't count as a move or a size change.
+        func rebase() {
+            c.fingers = recognizer.numberOfTouches
+            c.rawMiddle = now.middle; c.lastMiddle = now.middle
+            if let a = now.apart { c.rawApart = a; c.startApart = a / max(0.01, c.size) }
+        }
         switch recognizer.state {
         case .began:
-            let c = context.coordinator
-            c.last = here; c.fingers = recognizer.numberOfTouches; c.moved = .zero; c.size = 1
+            c.moved = .zero; c.size = 1
+            rebase()
             began(context.converter.localLocation)
         case .changed:
-            let c = context.coordinator
-            // One finger lifted: the one that's left still carries it about, at the size the two made it. The point
-            // between the fingers jumps to that finger as the other lifts, so the carrying is counted afresh from
-            // there (it used to stop dead at that moment, with the picture stuck until both were up).
-            if recognizer.numberOfTouches != c.fingers { c.fingers = recognizer.numberOfTouches; c.last = here }
-            c.moved.width += here.x - c.last.x; c.moved.height += here.y - c.last.y
-            c.last = here
-            if recognizer.numberOfTouches >= 2 { c.size = recognizer.scale }
+            // one finger lifted (or came back): the one that's left still carries it, at the size the two made it
+            if recognizer.numberOfTouches != c.fingers { rebase() }
+            let m: CGPoint
+            if let a = now.apart {
+                m = CGPoint(x: (now.middle.x + c.rawMiddle.x) / 2, y: (now.middle.y + c.rawMiddle.y) / 2)
+                c.size = ((a + c.rawApart) / 2) / c.startApart
+                c.rawApart = a
+            } else { m = now.middle }
+            c.rawMiddle = now.middle
+            c.moved.width += m.x - c.lastMiddle.x; c.moved.height += m.y - c.lastMiddle.y
+            c.lastMiddle = m
             changed(c.size, c.moved)
         case .ended, .cancelled, .failed: ended()
         default: break
