@@ -1089,8 +1089,18 @@ struct CommentsSheet: View {
 /// Send a post to one friend, with a note: it's in their Activity, and a tap opens it.
 struct SharePostSheet: View {
     let post: JSON
+    @Environment(\.dismiss) private var dismiss
+    @State private var resharing = false
+    /// Your own posts, and anyone's public post, can go on your story (not a badge moment, which has its own).
+    private var canReshare: Bool {
+        let owner = str(post["owner"])
+        guard str(post["kind"]) != "moment" else { return false }
+        return owner == Feed.shared.me || Profiles.shared.all[owner].map { !$0.isPrivate } == true
+    }
     var body: some View {
-        SendToSheet(exclude: str(post["owner"])) { friend, note in await Feed.shared.share(post, to: friend, note: note) }
+        SendToSheet(exclude: str(post["owner"]), send: { friend, note in await Feed.shared.share(post, to: friend, note: note) },
+                    addToStory: canReshare ? { resharing = true } : nil)
+            .fullScreenCover(isPresented: $resharing) { PostReshare(post: post, done: { dismiss() }) }
     }
 }
 

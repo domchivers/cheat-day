@@ -199,3 +199,114 @@ struct StoryReshare: View {
         }
     }
 }
+
+/// A feed post being added to your own story (18 Nov), as Instagram lets you put a post or reel on yours: the post
+/// as a card, straight and in the middle, over a soft copy of its photo, and a See post under it that opens the post
+/// for whoever watches. Everything can be moved, and anything else added, before it's shared.
+struct PostReshare: View {
+    let post: JSON
+    var done: () -> Void = {}
+    @Environment(\.dismiss) private var dismiss
+    @State private var ground: UIImage?
+    @State private var items: [JSON] = []
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            if let ground {
+                StoryEditor(image: ground, video: nil, close: { dismiss() }, posted: { dismiss(); done() }, startItems: items)
+            } else {
+                ProgressView().controlSize(.large).tint(.white)
+            }
+        }
+        .statusBarHidden()
+        .task {
+            guard ground == nil else { return }
+            let photo: UIImage? = Feed.hasPhoto(post) ? await ImageStore.load(str(post["photo"])) : nil
+            let card = PostStoryCard(post: post, photo: photo)
+            let r = ImageRenderer(content: card.environment(\.colorScheme, .dark))
+            r.scale = 3
+            guard let img = r.uiImage else { dismiss(); return }
+            items = [
+                // style 1: the card as it is, rounded, with a soft shadow
+                ["id": "post", "type": "photo", "local": PhotoStickers.keep(img), "style": 1,
+                 "w": Double(img.size.width), "h": Double(img.size.height), "x": 0.5, "y": 0.42, "scale": 1.5, "rotation": 0.0],
+                ["id": "seepost", "type": "seepost", "post": str(post["id"]), "x": 0.5, "y": 0.83, "scale": 1.0, "rotation": 0.0],
+            ]
+            ground = photo.map(StoryArt.backdrop) ?? Self.plainGround()
+        }
+    }
+
+    /// For a post with no photo (a workout): the app's own dark blue, a little lighter at the top.
+    static func plainGround() -> UIImage {
+        let size = CGSize(width: 270, height: 480), format = UIGraphicsImageRendererFormat(); format.scale = 1
+        return UIGraphicsImageRenderer(size: size, format: format).image { c in
+            let colours = [UIColor(Theme.hero).cgColor, UIColor(Theme.bg).cgColor] as CFArray
+            if let g = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colours, locations: [0, 1]) {
+                c.cgContext.drawLinearGradient(g, start: .zero, end: CGPoint(x: 0, y: size.height), options: [])
+            }
+        }
+    }
+}
+
+/// A post drawn as a card for a story: whose it is, its photo, and what it was. Made into a picture once, so it
+/// looks the same for everyone and in every version.
+struct PostStoryCard: View {
+    let post: JSON
+    let photo: UIImage?
+
+    private var owner: String { str(post["owner"]) }
+    private var who: String {
+        let u = Profiles.shared.all[owner]?.username ?? ""
+        if !u.isEmpty { return u }
+        let n = Feed.shared.name(owner)
+        return n == "You" ? Friends.shared.myName : n
+    }
+    private var line: String {
+        let kind = str(post["kind"]), name = str(post["name"])
+        if kind == "workout" { return "Workout · " + name }
+        if kind == "photo" { return str(post["caption"]) }
+        return name
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Text(String(who.prefix(1)).uppercased()).font(.system(size: 13, weight: .heavy)).foregroundStyle(Theme.accent)
+                    .frame(width: 28, height: 28).background(Theme.hero, in: Circle())
+                Text(who).font(.system(size: 15, weight: .bold)).foregroundStyle(.white).lineLimit(1)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            picture
+            if !line.isEmpty || str(post["kind"]) != "photo" { footer }
+        }
+        .frame(width: 300)
+        .background(Color(white: 0.07))
+    }
+
+    @ViewBuilder private var picture: some View {
+        if let photo {
+            // its own shape, kept between 4:5 and 1.91:1 like the feed's
+            let ratio = min(1.91, max(0.8, photo.size.width / max(1, photo.size.height)))
+            Image(uiImage: photo).resizable().scaledToFill().frame(width: 300, height: 300 / ratio).clipped()
+        } else {
+            ZStack {
+                LinearGradient(colors: [Theme.hero, Theme.accent.opacity(0.35)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                Text(str(post["name"])).font(.system(size: 26, weight: .heavy)).foregroundStyle(.white).multilineTextAlignment(.center).padding(20)
+            }
+            .frame(width: 300, height: 220)
+        }
+    }
+
+    private var footer: some View {
+        let kcal = num(post["kcal"]) ?? 0, protein = num(dict(post["macros"])["p"])
+        let food = str(post["kind"]) != "workout" && str(post["kind"]) != "photo"
+        return HStack(spacing: 7) {
+            Text(line).foregroundStyle(.white).lineLimit(1)
+            if food && kcal > 0 { Text("\(Fmt.int(kcal)) kcal").foregroundStyle(.white.opacity(0.7)).fixedSize() }
+            if food, let protein { Text("\(Int(protein)) g protein").foregroundStyle(Theme.walk).fixedSize() }
+        }
+        .font(.system(size: 13, weight: .bold))
+        .padding(.horizontal, 12).padding(.vertical, 10)
+    }
+}

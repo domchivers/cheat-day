@@ -68,7 +68,7 @@ struct StoryView: View {
     /// What's on a story that can be pressed, so it's drawn above the taps that turn the slides: a poll, a question,
     /// a person tagged.
     static func live(_ o: JSON) -> Bool {
-        ["poll", "question"].contains(str(o["type"])) || (str(o["type"]) == "mention" && !str(o["user"]).isEmpty && o["hidden"] as? Bool != true)
+        ["poll", "question", "seepost"].contains(str(o["type"])) || (str(o["type"]) == "mention" && !str(o["user"]).isEmpty && o["hidden"] as? Bool != true)
     }
 
     private var who: String { people[min(at, people.count - 1)] }
@@ -174,7 +174,11 @@ struct StoryView: View {
                                         // whoever opened the story shows the profile once it's closed (the feed); with nobody
                                         // to do that (a story opened from a profile or a chat), it comes up over the story
                                         if let onProfile { onProfile(id); dismiss() } else { tagged = id }
-                                    }, holding: { paused = $0 })
+                                    }, holding: { paused = $0 }, openPost: { pid in
+                                        // a post added to the story: it's opened on the feed, the story closed
+                                        guard !pid.isEmpty else { return }
+                                        dismiss(); Nav.shared.feed(post: pid)
+                                    })
                                         .aspectRatio(StoryArt.aspect, contentMode: .fit)
                                 }
                             }

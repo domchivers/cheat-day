@@ -687,6 +687,8 @@ struct SendToSheet: View {
     var exclude = ""
     /// Send it to this friend, with this note (may be empty).
     var send: (String, String) async -> Void
+    /// A post that can go on your own story: Add to your story along the bottom while nobody's picked.
+    var addToStory: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
     @State private var picked: [String] = []
@@ -744,6 +746,22 @@ struct SendToSheet: View {
                 }
             }
             .scrollDismissesKeyboard(.interactively)
+
+            if picked.isEmpty, let addToStory {
+                HStack {
+                    Button(action: addToStory) {
+                        VStack(spacing: 6) {
+                            Image(systemName: "plus").font(.system(size: 22, weight: .bold)).foregroundStyle(Theme.onAccent)
+                                .frame(width: 54, height: 54).background(Theme.accent, in: Circle())
+                            Text("Add to your story").font(.caption).foregroundStyle(.primary).multilineTextAlignment(.center).frame(width: 76)
+                        }
+                    }
+                    .buttonStyle(.plain).accessibilityIdentifier("post-to-story")
+                    Spacer()
+                }
+                .padding(.horizontal, 20).padding(.top, 12).padding(.bottom, 14)
+                .overlay(alignment: .top) { Divider() }
+            }
 
             if !picked.isEmpty {
                 VStack(spacing: 10) {

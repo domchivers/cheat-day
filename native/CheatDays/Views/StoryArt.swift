@@ -231,6 +231,15 @@ struct StoryItem: View {
         case "hashtag": Text("#" + str(o["text"])).font(.system(size: 26, weight: .heavy, design: .rounded)).foregroundStyle(StoryArt.color("C4A1FF"))
             .padding(.horizontal, 14).padding(.vertical, 8).background(.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
+        // a feed post added to a story: whoever watches taps this to open it (18 Nov)
+        case "seepost":
+            HStack(spacing: 5) {
+                Text("See post").font(.system(size: 17, weight: .bold))
+                Image(systemName: "chevron.right").font(.system(size: 13, weight: .heavy))
+            }
+            .foregroundStyle(.black).padding(.horizontal, 18).padding(.vertical, 10)
+            .background(.white.opacity(0.94), in: Capsule())
+            .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
         default: EmptyView()
         }
     }
@@ -468,6 +477,8 @@ struct StoryLayer: View {
     var mention: ((String) -> Void)? = nil
     /// Told when a tagged name's bubble is up (the story waits) and when it's gone.
     var holding: ((Bool) -> Void)? = nil
+    /// A post's See post was tapped (the post's id): set where the story's being watched.
+    var openPost: ((String) -> Void)? = nil
     @State private var bubble: String?   // the tag whose bubble is showing, by its id
     private var stories: Stories { Stories.shared }
 
@@ -491,10 +502,11 @@ struct StoryLayer: View {
                                 withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) { bubble = bubble == id ? nil : id }
                                 holding?(bubble != nil)
                             } : nil)
+                            .simultaneousGesture(str(o["type"]) == "seepost" && openPost != nil ? TapGesture().onEnded { openPost?(str(o["post"])) } : nil)
                             .scaleEffect((num(o["scale"]) ?? 1) * k)
                             .rotationEffect(.degrees(num(o["rotation"]) ?? 0))
                             .position(x: (num(o["x"]) ?? 0.5) * g.size.width, y: (num(o["y"]) ?? 0.5) * g.size.height)
-                            .allowsHitTesting(((str(o["type"]) == "poll" || str(o["type"]) == "question") && story != nil) || (str(o["type"]) == "mention" && mention != nil))
+                            .allowsHitTesting(((str(o["type"]) == "poll" || str(o["type"]) == "question") && story != nil) || (str(o["type"]) == "mention" && mention != nil) || (str(o["type"]) == "seepost" && openPost != nil))
                     }
                 }
             }
