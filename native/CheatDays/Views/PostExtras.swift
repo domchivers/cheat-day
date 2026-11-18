@@ -657,7 +657,7 @@ struct SongCard: View {
                 SongCover(song: song, size: 68)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(song.title).font(.title3.weight(.bold)).lineLimit(2)
-                    Text(song.mood.isEmpty ? "Song" : song.mood + " · song").font(.subheadline).foregroundStyle(.secondary)
+                    Text(song.artist ?? (song.mood.isEmpty ? "Song" : song.mood + " · song")).font(.subheadline).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
             }

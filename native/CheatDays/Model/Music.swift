@@ -23,6 +23,12 @@ struct Song: Identifiable, Hashable {
     }
     /// How much of a song plays before it goes round again.
     static let part = 30.0
+
+    /// Who made it, where that's known for certain (18 Nov). Only HoliznaCC0's are: the OpenGameArt songs name who
+    /// put them up, not always who wrote them, and FreePD kept no artist. Where it isn't known, the mood stands in.
+    var artist: String? { Music.holizna.contains(id) ? "HoliznaCC0" : nil }
+    /// What's shown before the title: the artist, or else the mood.
+    var byline: String { artist ?? mood }
 }
 
 /// The songs for posts. Every one was released as public domain (CC0): FreePD's collection, HoliznaCC0's lofi, and
@@ -32,6 +38,9 @@ struct Song: Identifiable, Hashable {
 enum Music {
     static let base = "https://domchivers.github.io/cheat-day/music/"
     static let moods = ["Upbeat", "Gym", "Epic", "Chill", "Lofi", "Metal", "Hardcore", "Funny"]
+    /// HoliznaCC0's songs (music/SOURCES.json, collection "HoliznaCC0").
+    static let holizna: Set<String> = ["2-hour-delay", "winter-blues", "first-snow", "snow-drift", "fire-place", "kids", "spring-at-last",
+                                       "sense-of-purpose", "april-showers", "deja-vu", "boredom", "anxiety", "love", "old-age", "dreams"]
     static let all: [Song] = [
         Song(id: "advertime", title: "Advertime", mood: "Upbeat"),
         Song(id: "and-just-like-that", title: "And Just Like That", mood: "Upbeat"),

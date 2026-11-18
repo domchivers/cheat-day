@@ -443,7 +443,7 @@ struct StoryView: View {
                             Image(systemName: on ? "waveform" : "speaker.slash.fill").font(.system(size: 12, weight: .bold))
                                 .symbolEffect(.variableColor.iterative, isActive: on)
                             HStack(spacing: 0) {
-                                if !song.mood.isEmpty { Text(song.mood).fontWeight(.semibold); Text(" · ") }
+                                if !song.byline.isEmpty { Text(song.byline).fontWeight(.semibold); Text(" · ") }
                                 Marquee(text: song.title, maxWidth: 140)
                             }
                             Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold))
