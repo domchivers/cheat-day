@@ -185,9 +185,7 @@ struct ActivityView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                chips
-                List {
+            List {
                     let list = entries(tab)
                     if list.isEmpty && !activity.loading {
                         Text(tab == .all ? "Nothing yet. Reactions, comments, food sent to you and friends' posts show up here." : "Nothing here yet.")
@@ -201,8 +199,10 @@ struct ActivityView: View {
                         }
                     }
                 }
-                .scrollContentBackground(.hidden)
-            }
+            .scrollContentBackground(.hidden)
+            // the tabs pinned under the title. A row of their own above the list came out blank on iOS 26 (the
+            // space was there, the tabs weren't), likely under the bar's fade: there they're the bar's own (18 Nov)
+            .modifier(TopBar { chips })
             .background(Theme.bg)
             .navigationDestination(item: $profileOf) { id in ProfileView(id: id) }
             .navigationTitle("Activity")
@@ -344,5 +344,18 @@ struct ActivityView: View {
     }
     private func tint(_ k: FriendActivity.Item.Kind) -> Color {
         switch k { case .reaction: return .pink; case .comment: return Theme.accent; case .sent: return .green; case .post: return Theme.warn; case .request: return .purple }
+    }
+}
+
+/// Something pinned under the navigation bar, over a list: on iOS 26 as the bar's own (safeAreaBar), so the bar's
+/// fade at the top of the list doesn't cover it; before that, an inset on a material.
+struct TopBar<Bar: View>: ViewModifier {
+    @ViewBuilder var bar: () -> Bar
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.safeAreaBar(edge: .top) { bar() }
+        } else {
+            content.safeAreaInset(edge: .top, spacing: 0) { bar().background(Theme.bg) }
+        }
     }
 }
