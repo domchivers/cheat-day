@@ -2,6 +2,23 @@ import XCTest
 
 /// Steps through the show-me tour, keeping a screenshot of each step to check the outlines sit on what they circle.
 final class TourUITests: XCTestCase {
+    /// Activity's tabs are there and can be pressed (18 Nov: twice they took their space but came out blank on iOS 26).
+    /// The screenshot is the proof that they're drawn: being in the accessibility tree isn't.
+    func testActivityTabs() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-uitest-activity"]
+        app.launch()
+        let all = app.buttons["activity-tab-All"]
+        XCTAssertTrue(all.waitForExistence(timeout: 6), "the All tab")
+        XCTAssertTrue(all.isHittable, "the All tab can be pressed")
+        sleep(1)
+        let a = XCTAttachment(screenshot: app.screenshot()); a.name = "activity-tabs"; a.lifetime = .keepAlways; add(a)
+        let likes = app.buttons["activity-tab-Likes"]
+        XCTAssertTrue(likes.waitForExistence(timeout: 3), "the Likes tab, for the test item")
+        likes.tap()
+        let b = XCTAttachment(screenshot: app.screenshot()); b.name = "activity-likes"; b.lifetime = .keepAlways; add(b)
+    }
+
     func testTourStepsThrough() {
         let app = XCUIApplication()
         app.launchArguments = ["-uitest-tour"]

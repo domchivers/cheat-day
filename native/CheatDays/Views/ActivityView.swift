@@ -224,7 +224,7 @@ struct ActivityView: View {
                 ForEach(shown, id: \.self) { t in
                     let fresh = t == .all ? 0 : entries(t).filter(isNew).count
                     Button { withAnimation(.snappy) { tab = t } } label: { chip(t.rawValue, on: tab == t, count: fresh) }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.plain).accessibilityIdentifier("activity-tab-" + t.rawValue)
                 }
             }
             .padding(.horizontal, 16).padding(.vertical, 8)
@@ -347,5 +347,15 @@ struct ActivityView: View {
     }
     private func tint(_ k: FriendActivity.Item.Kind) -> Color {
         switch k { case .reaction: return .pink; case .comment: return Theme.accent; case .sent: return .green; case .post: return Theme.warn; case .request: return .purple }
+    }
+}
+
+/// For the UI test: Activity as it opens from the bell, over a screen, with one test item so a tab beside All shows.
+struct ActivityHarness: View {
+    @State private var open = false
+    var body: some View {
+        Theme.bg.ignoresSafeArea()
+            .onAppear { FriendActivity.shared.addSample(); open = true }
+            .sheet(isPresented: $open) { ActivityView() }
     }
 }
