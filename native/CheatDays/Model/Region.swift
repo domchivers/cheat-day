@@ -61,13 +61,34 @@ enum Region: String, CaseIterable, Identifiable {
     /// The usual portion for a food-list item here, or nil to keep the list's own.
     static func portion(_ name: String) -> Double? { portions[current]?[name] }
 
+    /// A food-list item's numbers per 100 g (kcal, protein, carbs, fat) from this country's own table, where they
+    /// differ (18 Nov). The list's raw chicken breast is 120 kcal; Australian chicken is 98 (AFCD), so the same 147 g
+    /// was 176 kcal added from the list and 144 from the assistant, which goes by the AFCD.
+    private static let numbers: [Region: [String: [Double]]] = [
+        .au: [
+            "Chicken breast, raw, skinless": [98, 22.5, 0, 0.8],     // AFCD: breast, lean flesh, raw
+            "Chicken breast, cooked, skinless": [143, 29.8, 0, 2.5], // AFCD: breast, lean flesh, grilled, no added fat
+            "Chicken thigh, raw, skinless": [104, 19.1, 0, 3],       // AFCD: thigh, lean flesh, raw
+            "Chicken thigh, cooked, skinless": [175, 24.2, 0, 8.7],  // AFCD: thigh, lean flesh, baked, no added fat
+        ]
+    ]
+    static func per100(_ name: String) -> [Double]? { numbers[current]?[name] }
+
     /// A food-list food saved earlier (in recents or history) with the portion size for here now, so one
     /// chicken thigh is an Australian thigh even if it was first added before. Scanned packs and your own foods are left alone.
+    /// Its numbers are this country's too (per100), so a chicken breast saved at the list's 120 kcal comes back at 98.
     static func adjust(_ basis: JSON) -> JSON {
-        guard str(basis["source"]) == "search", let g = portion(str(basis["name"])), let k100 = pos(basis["kcalPer100"]) else { return basis }
+        guard str(basis["source"]) == "search" else { return basis }
+        let name = str(basis["name"]), here = per100(name)
+        guard portion(name) != nil || here != nil else { return basis }
         var b = basis
-        b["servingSize"] = g
-        b["kcalPerServing"] = (k100 * g / 10).rounded() / 10
+        if let h = here { b["kcalPer100"] = h[0]; b["p100"] = h[1]; b["c100"] = h[2]; b["f100"] = h[3] }
+        guard let k100 = pos(b["kcalPer100"]) else { return b }
+        let g = portion(name) ?? pos(b["servingSize"])
+        if let g {
+            b["servingSize"] = g
+            b["kcalPerServing"] = (k100 * g / 10).rounded() / 10
+        }
         if b["p100"] != nil { b.removeValue(forKey: "pServ"); b.removeValue(forKey: "cServ"); b.removeValue(forKey: "fServ") }   // per-100 macros scale with the new size
         return b
     }

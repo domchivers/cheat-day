@@ -79,9 +79,13 @@ enum FoodMath {
     static func foodItem(_ row: [Any]) -> JSON {
         func at(_ i: Int) -> Any? { i < row.count ? row[i] : nil }
         var item: JSON = ["source": "search", "name": str(at(0)), "unit": str(at(4)).isEmpty ? "g" : str(at(4))]
-        if let k = num(at(1)) { item["kcalPer100"] = k }
-        if let p = num(at(6)) { item["p100"] = p; item["c100"] = num(at(7)) ?? 0; item["f100"] = num(at(8)) ?? 0 }
-        if let serving = Region.portion(str(at(0))) ?? pos(at(2)), let k = num(at(1)) {
+        // this country's own numbers for it, where they differ (Australian chicken is leaner than the list's)
+        let here = Region.per100(str(at(0)))
+        let kcal = here.map { $0[0] } ?? num(at(1))
+        if let k = kcal { item["kcalPer100"] = k }
+        if let h = here { item["p100"] = h[1]; item["c100"] = h[2]; item["f100"] = h[3] }
+        else if let p = num(at(6)) { item["p100"] = p; item["c100"] = num(at(7)) ?? 0; item["f100"] = num(at(8)) ?? 0 }
+        if let serving = Region.portion(str(at(0))) ?? pos(at(2)), let k = kcal {
             item["servingSize"] = serving
             item["kcalPerServing"] = (k * serving / 10).rounded() / 10
         }

@@ -202,5 +202,7 @@ final class SteadyTests: XCTestCase {
         XCTAssertEqual(Assistant.pieces("8 × ~25 g")?.each, 25)
         XCTAssertNil(Assistant.pieces("about 5 × 5 × 4 cm"))
         XCTAssertEqual(Assistant.worthWeighing(card([part("Chicken, broiled", 200, kcal: 330, p: 50, c: 0, f: 14), part("Potato, salted, roasted", 150, kcal: 180, p: 3, c: 30, f: 5)])), [0, 1], "broiled and salted aren't an oil or salt")
+        // weighed raw: its numbers are the raw weight's, so it isn't asked for (18 Nov)
+        XCTAssertEqual(Assistant.worthWeighing(card([part("Chicken breast, cooked, from 147 g raw", 110, kcal: 144, p: 33, c: 0, f: 1)])), [], "a part weighed raw isn't weighed again")
     }
 }

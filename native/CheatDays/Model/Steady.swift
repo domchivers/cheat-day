@@ -59,6 +59,9 @@ extension Assistant {
             return !["label", "them", "web"].contains(str(p["src"])) && !["label", "them", "brand"].contains(str(p["numbers_from"]))
                 && (p["locked"] as? Bool != true || p["weighed"] != nil) && (num(p["kcal"]) ?? 0) >= 60 && pos(p["grams"]) != nil
                 && n.isDisjoint(with: minor)
+                // weighed raw ("Chicken breast, cooked, from 147 g raw"): its numbers are the raw weight's, whatever it
+                // weighs cooked, so weighing it again changes nothing (it asked, 18 Nov)
+                && Sanity.rawWeight(str(p["name"])) == nil
         }.sorted { (num(parts[$0]["kcal"]) ?? 0) > (num(parts[$1]["kcal"]) ?? 0) }.prefix(2)
         return asked.filter { str(parts[$0]["weighed"]) != "weighed" }.sorted()
     }
