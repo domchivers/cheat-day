@@ -171,6 +171,14 @@ struct StoryReshare: View {
     @State private var whole: UIImage?
     @State private var full = false   // their story as the whole of yours, or as a card over a soft copy of it
     @State private var failed = false
+    /// When it last went full screen or back: a tap that came straight after is the same burst of taps and is let
+    /// go, so quick tapping can't flip it back and forth while the new editor comes up (18 Nov).
+    @State private var switched = Date.distantPast
+    private func show(full f: Bool) {
+        guard Date().timeIntervalSince(switched) > 0.5 else { return }
+        switched = Date()
+        withAnimation(.snappy) { full = f }
+    }
 
     private var owner: String { str(story["owner"]) }
     private var name: String { let u = Profiles.shared.all[owner]?.username ?? ""; return u.isEmpty ? Feed.shared.name(owner) : u }
@@ -184,14 +192,14 @@ struct StoryReshare: View {
                 Group {
                     if full {
                         StoryEditor(image: whole, video: nil, close: { dismiss() }, posted: { dismiss() }, startItems: [repost],
-                                    backToCard: { withAnimation(.snappy) { full = false } })
+                                    backToCard: { show(full: false) })
                     } else {
                         StoryEditor(image: StoryArt.backdrop(whole), video: nil, close: { dismiss() }, posted: { dismiss() }, startItems: [
                             ["id": "theirs", "type": "photo", "local": PhotoStickers.keep(whole),
                              "w": Double(whole.size.width), "h": Double(whole.size.height), "x": 0.5, "y": 0.45, "scale": 1.25, "rotation": 0.0],
                             // no tag of them put on by itself (18 Nov): the "⟲ their name" by yours at the top says whose it is
                             repost,
-                        ], toFull: { withAnimation(.snappy) { full = true } }, softBackground: true)
+                        ], toFull: { show(full: true) }, softBackground: true)
                     }
                 }
                 // a fresh editor for each way. Tapping their story goes through its looks and then to full screen; a

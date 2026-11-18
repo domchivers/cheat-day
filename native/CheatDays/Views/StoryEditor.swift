@@ -207,6 +207,7 @@ struct StoryEditor: View {
     @State private var picked: String?   // a tile from the tray, added once the tray has closed
     @State private var food = false
     @State private var choosingRecipe = false   // a saved meal being picked for a recipe sticker
+    @State private var lastLook = Date.distantPast   // when their story last changed look, so taps can't outrun it
     @State private var polling = false
     @State private var mentioning = false
     @State private var typingSticker: String?   // a question or a hashtag being typed in
@@ -609,10 +610,19 @@ struct StoryEditor: View {
             withAnimation(.snappy(duration: 0.2)) { items[i]["style"] = (Int(num(o["style"]) ?? 0) + 1) % 3 }
         case "photo":
             // its next look; only a tap does this: a finger that moves more than a few points is moving it
+            let theirs = str(o["id"]) == "theirs" && toFull != nil
+            // Their story's taps come no faster than its looks can change (18 Nov): a burst of quick taps broke it.
+            if theirs, Date().timeIntervalSince(lastLook) < 0.35 { return }
+            lastLook = Date()
             remember(); UISelectionFeedbackGenerator().selectionChanged()
-            let next = (Int(num(o["style"]) ?? 0) + 1) % StoryItem.photoStyles.count
-            // their story, tapped past its last look: full screen, as Instagram's tapping goes (18 Nov)
-            if next == 0, str(o["id"]) == "theirs", let toFull { toFull(); return }
+            let now = Int(num(o["style"]) ?? 0)
+            let next: Int
+            if theirs {
+                // Frame, Plain, Original, then full screen: no polaroid or round for someone's story (18 Nov)
+                let looks = [0, 1, 4], at = looks.firstIndex(of: now) ?? 0
+                if at + 1 >= looks.count, let toFull { toFull(); return }
+                next = looks[at + 1]
+            } else { next = (now + 1) % StoryItem.photoStyles.count }
             withAnimation(.snappy(duration: 0.2)) { items[i]["style"] = next }
             flash(StoryItem.photoStyles[next])
         case "mention":
