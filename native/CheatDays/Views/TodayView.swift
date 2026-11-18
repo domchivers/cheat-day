@@ -759,8 +759,10 @@ struct TodayView: View {
                     }
                 }
             } footer: {
-                // the next meal, still empty: a way into the planner (on the cheat day, until there's a plan; the card has it then)
-                if offset == 0, lines.isEmpty, meal == nextMeal, !(cheatToday && store.cheatPlan(store.today) != nil) { planHint(meal) }
+                // Every meal still empty today: a way into the planner for it (18 Nov; it was only the next meal by the
+                // clock, so an empty breakfast at lunchtime had none). On the cheat day it plans the whole day, so it's
+                // under the next meal only, until there's a plan (the card has it then).
+                if offset == 0, lines.isEmpty, !cheatToday || (meal == nextMeal && store.cheatPlan(store.today) == nil) { planHint(meal) }
                 // the tip sits under the card, so the card keeps its rounded corners
                 if !lines.isEmpty && meal == Meals.all.first(where: { m in items.contains { Meals.of($0) == m } }) {
                     Text(offset == 0 ? "Tap a food to change the amount. Swipe left to delete." : "Tap a food to add it to today. Swipe left to delete.")
