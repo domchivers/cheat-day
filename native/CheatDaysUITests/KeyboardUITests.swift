@@ -40,7 +40,11 @@ final class KeyboardUITests: XCTestCase {
 
     func testChatBoxRidesTheKeyboard() {
         for round in 1...10 {
-            app.buttons["openAssistant"].tap()
+            // the sheet from the round before can still be going away on a slow run: the button's under it until it
+            // has (twice on 18 Nov this failed as "Failed to tap openAssistant Button: No matches found")
+            let open = app.buttons["openAssistant"]
+            XCTAssertTrue(open.waitForExistence(timeout: 8), "round \(round): the Open assistant button didn't come back")
+            open.tap()
             XCTAssertTrue(box.waitForExistence(timeout: 5), "round \(round): no chat box")
             if round % 2 == 0 { Thread.sleep(forTimeInterval: 0.1) }   // tap straight away while the sheet is still landing
             else { Thread.sleep(forTimeInterval: 1) }
