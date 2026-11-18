@@ -488,25 +488,21 @@ struct ProgressPage: View {
         let fat = store.goalFatShown(now: store.trendWeight ?? store.latestWeight?.kg ?? 0)
         // Your goal with the rest of the plan (18 Nov): it was only found behind Weigh-ins' See all. Budget and cheat
         // day open Your plan; the goal opens Weigh-ins, where it's set.
+        // a link each, so the three are a third of the row each (Budget and Cheat day were one link sharing half, 18 Nov)
         return HStack(spacing: 0) {
-            NavigationLink { BudgetView() } label: {
-                HStack(spacing: 0) {
-                    planCell("Budget", Fmt.int(base), nil)
-                    Divider().frame(height: 40)
-                    planCell("Cheat day", cheat, nil)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Your plan: \(Fmt.int(base)) a day, cheat day \(cheat)")
+            NavigationLink { BudgetView() } label: { planCell("Budget", Fmt.int(base), nil).contentShape(Rectangle()) }
+                .buttonStyle(.plain).accessibilityLabel("Budget, \(Fmt.int(base)) a day")
+            Divider().frame(height: 40)
+            NavigationLink { BudgetView() } label: { planCell("Cheat day", cheat, nil).contentShape(Rectangle()) }
+                .buttonStyle(.plain).accessibilityLabel("Cheat day, \(cheat)")
             Divider().frame(height: 40)
             NavigationLink { BodyView() } label: {
-                planCell("Goal", goal.map { "\(Fmt.one($0)) kg" } ?? "Set", fat.map { "\(Fmt.dec($0))%" })
-                    .padding(.trailing, 8).contentShape(Rectangle())
+                planCell("Goal", goal.map { "\(Fmt.one($0)) kg" } ?? "Set", fat.map { "\(Fmt.dec($0))%" }).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(goal.map { "Goal \(Fmt.one($0)) kg. Change" } ?? "Set a goal")
         }
+        .padding(.trailing, 14)   // room for the chevron, the same for all three
         .overlay(alignment: .trailing) { Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary).padding(.trailing, 10) }
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
