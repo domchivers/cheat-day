@@ -145,20 +145,37 @@ final class Feed {
         id == me ? "You" : ((names[id] ?? Profiles.shared.all[id]?.name ?? Friends.shared.people.first { $0.id == id }?.name).flatMap { $0.isEmpty ? nil : $0 } ?? "Someone")
     }
 
+    /// The last like or unlike sent for each post and emoji: the next one waits for it, so quick taps reach the server in order.
+    @ObservationIgnored private var reacting: [String: Task<Void, Never>] = [:]
+
+    /// A like, on or off. It shows at once and is sent after (18 Nov): the heart waited for the server before, so each
+    /// tap lagged by a round trip. If the server says no, it goes back as it was.
     func toggle(_ post: JSON, _ emoji: String) async {
-        let id = str(post["id"]), mine = reactions.contains { str($0["post_id"]) == id && str($0["user_id"]) == me && str($0["emoji"]) == emoji }
-        do {
-            if mine {
-                let e = emoji.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? emoji
-                _ = try await api.rest("/rest/v1/reactions?post_id=eq.\(id)&user_id=eq.\(me)&emoji=eq.\(e)", method: "DELETE")
-                reactions.removeAll { str($0["post_id"]) == id && str($0["user_id"]) == me && str($0["emoji"]) == emoji }
-            } else {
-                _ = try await api.rest("/rest/v1/reactions", method: "POST", body: [["post_id": post["id"] ?? id, "user_id": me, "emoji": emoji]], prefer: "resolution=ignore-duplicates")
-                reactions.append(["post_id": id, "user_id": me, "emoji": emoji])
-                notify(str(post["owner"]), kind: "react", text: str(post["name"]), extra: ["emoji": emoji, "post": id])
-                Store.shared.perform(["type": "bump", "key": "reactCount"], syncAfter: 3)
+        let id = str(post["id"]), key = id + "|" + emoji
+        func isMine(_ r: JSON) -> Bool { str(r["post_id"]) == id && str(r["user_id"]) == me && str(r["emoji"]) == emoji }
+        let mine = reactions.contains(where: isMine)
+        if mine { reactions.removeAll(where: isMine) } else { reactions.append(["post_id": id, "user_id": me, "emoji": emoji]) }
+        let before = reacting[key]
+        let send = Task { @MainActor in
+            await before?.value
+            do {
+                if mine {
+                    let e = emoji.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? emoji
+                    _ = try await api.rest("/rest/v1/reactions?post_id=eq.\(id)&user_id=eq.\(me)&emoji=eq.\(e)", method: "DELETE")
+                } else {
+                    _ = try await api.rest("/rest/v1/reactions", method: "POST", body: [["post_id": post["id"] ?? id, "user_id": me, "emoji": emoji]], prefer: "resolution=ignore-duplicates")
+                    notify(str(post["owner"]), kind: "react", text: str(post["name"]), extra: ["emoji": emoji, "post": id])
+                    Store.shared.perform(["type": "bump", "key": "reactCount"], syncAfter: 3)
+                }
+            } catch {
+                // back as it was
+                if mine { if !reactions.contains(where: isMine) { reactions.append(["post_id": id, "user_id": me, "emoji": emoji]) } }
+                else { reactions.removeAll(where: isMine) }
+                self.error = Feed.said(error)
             }
-        } catch { self.error = Feed.said(error) }
+        }
+        reacting[key] = send
+        await send.value
     }
 
     /// A comment, or a reply to one (which its writer hears about too).
