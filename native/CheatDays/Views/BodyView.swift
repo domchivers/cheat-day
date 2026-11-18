@@ -224,21 +224,22 @@ struct BodyFatSummary: View {
             let fatKg = now * bf.pct / 100
             VStack(alignment: .leading, spacing: 6) {
                 Divider().padding(.vertical, 2)
+                // the goal weight said as body fat: one goal, so the two can't disagree (18 Nov)
+                let shown = store.goalFatShown(now: now)
                 Button {
-                    text = store.goalFat.map { Fmt.one($0) } ?? ""; setting = true
+                    text = shown.map { Fmt.one($0) } ?? ""; setting = true
                 } label: {
                     HStack {
                         Text("Body-fat goal")
                         Spacer()
-                        Text(store.goalFat.map { "\(Fmt.dec($0))%" } ?? "Set").fontWeight(.semibold)
+                        Text(shown.map { "\(Fmt.dec($0))%" } ?? "Set").fontWeight(.semibold)
                         Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
                     }
                 }
                 .buttonStyle(.plain)
-                if let t = store.goalFat {
-                    let g = Store.fatGoal(weight: now, fatPct: bf.pct, target: t)
-                    Text(abs(g.weight - now) < 0.3 ? "You're about there."
-                         : "\(Fmt.dec(t))% body fat ≈ \(Fmt.kg(g.weight)) kg\(store.reachDate(g.weight).map { ", around \($0.formatted(.dateTime.day().month(.wide)))" } ?? "").")
+                if let t = shown, let w2 = pos(store.doc["goalWeight"]) {
+                    Text(abs(w2 - now) < 0.3 ? "You're about there."
+                         : "Your goal of \(Fmt.kg(w2)) kg is about \(Fmt.dec(t))% body fat\(store.reachDate(w2).map { ", around \($0.formatted(.dateTime.day().month(.wide)))" } ?? "").")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Text("Now \(Fmt.dec(bf.pct))%, averaged over your last \(bf.n) readings: scales read body fat roughly, so one reading means little.")
@@ -248,12 +249,11 @@ struct BodyFatSummary: View {
                 TextField("%", text: $text).keyboardType(.decimalPad)
                 Button("Save") {
                     if let v = Double(text.replacingOccurrences(of: ",", with: ".")), v > 3, v < 50 {
-                        store.perform(["type": "set", "key": "goalFat", "value": v])
+                        store.setGoalFat(v, now: now)
                     }
                 }
-                if store.goalFat != nil { Button("Remove", role: .destructive) { store.perform(["type": "set", "key": "goalFat", "value": NSNull()]) } }
                 Button("Cancel", role: .cancel) {}
-            } message: { Text("The body fat % you're aiming for. It works out the weight that means, counting a little lean loss on the way.") }
+            } message: { Text("The body fat % you're aiming for. Your goal weight changes to the weight that means, counting a little lean loss on the way.") }
         }
     }
 }

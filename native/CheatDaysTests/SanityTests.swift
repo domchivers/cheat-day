@@ -82,6 +82,10 @@ final class SanityTests: XCTestCase {
         let g = Store.fatGoal(weight: 80, fatPct: 14.5, target: 13)
         XCTAssertEqual(g.weight, 78.2, accuracy: 0.15)
         XCTAssertEqual(g.fat / g.weight, 0.13, accuracy: 0.001)
+        // and back: the goal weight that came to says the same body fat (one goal, two ways, 18 Nov)
+        XCTAssertEqual(Store.fatAt(weight: 80, fatPct: 14.5, goal: g.weight), 13, accuracy: 0.1)
+        XCTAssertEqual(Store.fatAt(weight: 80, fatPct: 14.5, goal: 80), 14.5, accuracy: 0.001, "the goal where you are is where you are")
+        XCTAssertLessThan(Store.fatAt(weight: 80, fatPct: 14.5, goal: 75), 14.5, "a lower goal weight is leaner")
     }
 
     func testRangesByKind() {

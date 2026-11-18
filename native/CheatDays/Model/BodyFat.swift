@@ -38,4 +38,27 @@ extension Store {
         let w2 = w - delta
         return ((w2 * 10).rounded() / 10, w2 * t, w2 * (1 - t))
     }
+
+    /// The other way: the body fat % a goal weight means, counting the same fifth of the change as lean.
+    static func fatAt(weight w: Double, fatPct: Double, goal w2: Double, leanShare: Double = 0.2) -> Double {
+        guard w2 > 0 else { return fatPct }
+        let fat = w * fatPct / 100, delta = w - w2
+        return max(0, (fat - (1 - leanShare) * delta) / w2 * 100)
+    }
+
+    /// One goal, two ways to say it (18 Nov). They were kept apart, so a weight goal and a body-fat goal could each
+    /// say something different. The goal weight is the goal; the body-fat goal is shown as what it means, and setting
+    /// one sets the goal weight it comes to, to a tenth of a kilo so the % reads back as typed.
+    func setGoalFat(_ pct: Double, now: Double) {
+        guard let bf = fatTrend, now > 0 else { return }
+        let w2 = Store.fatGoal(weight: now, fatPct: bf.pct, target: pct).weight
+        perform(["type": "set", "key": "goalWeight", "value": w2], syncAfter: 2)
+        perform(["type": "set", "key": "goalFat", "value": pct], syncAfter: 2)
+        if dict(doc["goalStart"]).isEmpty, let w = latestWeight?.kg { perform(["type": "set", "key": "goalStart", "value": ["weight": w, "day": today] as JSON], syncAfter: 2) }
+    }
+    /// The body fat % the goal weight comes to now, if there's a goal weight and enough body-fat readings.
+    func goalFatShown(now: Double) -> Double? {
+        guard let bf = fatTrend, let w2 = pos(doc["goalWeight"]), now > 0 else { return nil }
+        return (Store.fatAt(weight: now, fatPct: bf.pct, goal: w2) * 10).rounded() / 10
+    }
 }
