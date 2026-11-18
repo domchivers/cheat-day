@@ -179,6 +179,11 @@ enum Music {
         get { UserDefaults.standard.object(forKey: "song.auto") as? Bool ?? false }
         set { UserDefaults.standard.set(newValue, forKey: "song.auto") }
     }
+    /// Sound turned off on purpose, anywhere (a post's speaker, a video, a story's song): every song stays quiet until
+    /// it's turned on again, wherever that is (18 Nov: the feed, videos and stories each had their own say). Never
+    /// chosen isn't off: stories and videos play, the feed waits for its first tap.
+    var mutedByChoice: Bool { UserDefaults.standard.object(forKey: "song.auto") as? Bool == false }
+
     /// The speaker on a post, tapped.
     func flip(_ song: Song, key: String, volume: Float = 1) {
         if playing == key { auto = false; stop() } else { auto = true; play(song, key: key, loop: true, volume: volume) }
@@ -196,7 +201,7 @@ enum Music {
     }
 
     /// The song that's playing, louder or quieter (a slider being moved while it's heard).
-    func volume(_ v: Float) { player?.volume = v }
+    func volume(_ v: Float) { target = v; player?.volume = v }
     /// A post with a song has come onto the screen. Nothing if songs are off, or if the phone's already playing
     /// something of its own (their music or a podcast isn't cut off by scrolling past a photo).
     func arrive(_ song: Song, key: String, volume: Float = 1) {
@@ -233,21 +238,45 @@ enum Music {
                 DispatchQueue.main.async { over() }
             }
         }
-        p.volume = volume
+        // in over a third of a second, not all at once (18 Nov: songs cut in and out as posts came and went)
+        target = volume
+        p.volume = 0
         player = p; playing = key
         p.play()
+        ramp(p, to: volume, over: 0.3)
     }
 
+    @ObservationIgnored private var target: Float = 1
+
+    /// Its volume taken to `to` in small steps over `over` seconds; `done` after the last.
+    private func ramp(_ p: AVPlayer, to: Float, over: Double, done: (() -> Void)? = nil) {
+        let from = p.volume, steps = 12
+        var i = 0
+        Timer.scheduledTimer(withTimeInterval: over / Double(steps), repeats: true) { [weak self] t in
+            i += 1
+            // a newer fade on the same player (louder again) takes over from this one
+            if to > from, self?.player !== p { t.invalidate(); return }
+            p.volume = from + (to - from) * Float(i) / Float(steps)
+            if i >= steps { t.invalidate(); done?() }
+        }
+    }
+
+    /// Stopped: it fades out over a quarter of a second (a new song can start meanwhile), then lets the phone's
+    /// own sound back.
     func stop() {
         guard player != nil || playing != nil else { return }
-        player?.pause()
-        if let edge { player?.removeTimeObserver(edge) }
+        let old = player
+        if let edge { old?.removeTimeObserver(edge) }
         edge = nil; player = nil
         if let end { NotificationCenter.default.removeObserver(end) }
         end = nil; playing = nil
-        guard !loud else { return }   // a video's being edited: its own sound is still wanted
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        try? AVAudioSession.sharedInstance().setCategory(.soloAmbient)
+        let release: () -> Void = { [weak self] in
+            old?.pause()
+            guard let self, self.player == nil, !self.loud else { return }   // a new song, or a video being edited, still wants sound
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            try? AVAudioSession.sharedInstance().setCategory(.soloAmbient)
+        }
+        if let old, old.volume > 0.01 { ramp(old, to: 0, over: 0.25, done: release) } else { release() }
     }
 
     /// A video's being edited: its sound, and any song put on it, are heard whether or not the phone's on silent,

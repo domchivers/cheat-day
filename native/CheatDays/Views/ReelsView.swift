@@ -15,7 +15,8 @@ struct ReelsView: View {
     @State private var reportOf: ReportTarget?
     @State private var current: String?
     @State private var paused = false
-    @State private var muted = false
+    /// Off if sound's been turned off anywhere; turning it on or off here is the choice everywhere (18 Nov)
+    @State private var muted = SongPlayer.shared.mutedByChoice
     // Two fingers on the video: it zooms while they're on it and goes back when they lift. Pinching it bigger also
     // clears everything off the screen (just the video); pinching smaller, or the button at the bottom right,
     // brings it all back.
@@ -83,7 +84,7 @@ struct ReelsView: View {
         .preferredColorScheme(.dark)
         .onChange(of: current) { _, _ in paused = false; holding = nil; head.at = 0; head.length = 0; sound() }
         .onChange(of: paused) { _, _ in sound() }
-        .onChange(of: muted) { _, _ in sound() }
+        .onChange(of: muted) { _, now in SongPlayer.shared.auto = !now; sound() }
         .onChange(of: holding) { was, now in
             // let go of the line: the song goes to the moment the video was left on, and both carry on from there
             if now == nil, let at = was { SongPlayer.shared.seek(at) }

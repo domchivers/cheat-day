@@ -311,7 +311,9 @@ struct StoryView: View {
             if case .snap(let st)? = now, let tune = list(st["overlays"]).first(where: { str($0["type"]) == "song" }),
                var song = Music.all.first(where: { $0.id == str(tune["id"]) }) {
                 song.start = num(tune["start"])   // the part of it the poster chose, if they did
-                SongPlayer.shared.play(song, key: "story:" + str(st["id"]), loop: true)
+                // unless sound's been turned off somewhere (one setting for the feed, videos and stories, 18 Nov)
+                if !SongPlayer.shared.mutedByChoice { SongPlayer.shared.play(song, key: "story:" + str(st["id"]), loop: true) }
+                else { SongPlayer.shared.stop() }
             } else { SongPlayer.shared.stop() }
             pace = 1 / length; tickAt = Date()
             // The last slide's up: this person's story has been watched. It was only counted when the last slide was
