@@ -307,8 +307,23 @@ final class Feed {
         if str(r["kind"]) != "moment" { unsure = try await Moderation.shared.gate(kind: "post", text: words, images: (photo.map { [$0] } ?? []) + more) }
         // a video: up to 30 seconds as mp4 into the same bucket as stories' videos; its first frame is the photo
         if let video {
-            let (mp4, _) = try await Stories.compress(video, filter: filter, range: range, muted: muted, crop: crop, overlay: overlay, turns: turns, placed: placed)
-            var x = dict(r["extra"]); x["video"] = try await api.upload(mp4, ext: "mp4", type: "video/mp4"); r["extra"] = x
+            var x = dict(r["extra"])
+            // with a song: the song into the video's own sound, one file (see SongMix). If that can't be done it goes
+            // up as before, the song played beside it.
+            var made: Data?
+            if let song = Music.of(r), let mix = await SongMix.make(song, song: Music.mix(r).song, clip: Music.mix(r).clip) {
+                made = try? await Stories.compress(video, filter: filter, range: range, muted: muted, crop: crop, overlay: overlay, turns: turns, placed: placed, mix: mix).0
+                mix.done()
+                if made != nil {
+                    x["mixed"] = true
+                    if !muted, let own = await Stories.soundOnly(video, range: range), let at = try? await api.upload(own, ext: "m4a", type: "video/mp4") { x["sound"] = at }
+                }
+            }
+            let mp4: Data
+            if let made { mp4 = made } else {
+                mp4 = try await Stories.compress(video, filter: filter, range: range, muted: muted, crop: crop, overlay: overlay, turns: turns, placed: placed).0
+            }
+            x["video"] = try await api.upload(mp4, ext: "mp4", type: "video/mp4"); r["extra"] = x
         }
         if let photo, let jpeg = Self.prepare(photo) {
             r["photo"] = (try? await api.uploadPhoto(jpeg)) ?? NSNull()
@@ -707,12 +722,13 @@ struct FeedView: View {
         let shape = num(dict(p["extra"])["aspect"]).map { min(1.91, max(0.75, $0)) }
         return PostPhotos(post: p)
             .frame(maxWidth: .infinity).frame(height: shape.map { (UIScreen.main.bounds.width / $0).rounded() } ?? 400)
-            .overlay { if let v = Feed.video(p) { FeedVideo(url: v, songKey: Music.of(p) != nil ? "post:" + str(p["id"]) : nil, clipVolume: Music.mix(p).clip) } }   // under the name and numbers
+            // (a mixed one has its levels in it already)
+            .overlay { if let v = Feed.video(p) { FeedVideo(url: v, songKey: Music.of(p) != nil ? "post:" + str(p["id"]) : nil, clipVolume: Music.mixed(p) ? 1 : Music.mix(p).clip) } }   // under the name and numbers
             .clipped()
             .contentShape(Rectangle())
             // a photo with a song: its sound on and off at the bottom right, as Instagram has it
             .overlay {
-                if let song = Music.of(p) { SongSwitch(song: song, key: "post:" + str(p["id"]), volume: Music.mix(p).song) }
+                if let song = Music.of(p) { SongSwitch(song: song, key: "post:" + str(p["id"]), volume: Music.mix(p).song, inVideo: Music.mixed(p)) }
             }
             .overlay(alignment: .bottomLeading) {
                 if str(p["kind"]) != "photo" {   // a photo on its own has no name or numbers
@@ -1116,12 +1132,14 @@ struct SongSwitch: View {
     let song: Song
     let key: String
     var volume: Float = 1
+    /// The song's mixed into the post's video: the video's own sound is it (see SongMix).
+    var inVideo = false
     var body: some View {
         let on = SongPlayer.shared.playing == key
         // the size of the photo, to know when most of it is showing; only the speaker takes touches
         Color.clear
             .overlay(alignment: .bottomTrailing) {
-                Button { SongPlayer.shared.flip(song, key: key, volume: volume) } label: {
+                Button { SongPlayer.shared.flip(song, key: key, volume: volume, inVideo: inVideo) } label: {
                     Image(systemName: on ? "speaker.wave.2.fill" : "speaker.slash.fill").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
                         .frame(width: 32, height: 32).background(.black.opacity(0.45), in: Circle())
                 }
@@ -1129,7 +1147,7 @@ struct SongSwitch: View {
                 .accessibilityLabel(on ? "Sound off" : "Sound on")
             }
             .modifier(MostlyShowing { showing in
-                if showing { SongPlayer.shared.arrive(song, key: key, volume: volume) } else { SongPlayer.shared.leave(key) }
+                if showing { SongPlayer.shared.arrive(song, key: key, volume: volume, inVideo: inVideo) } else { SongPlayer.shared.leave(key) }
             })
             .onDisappear { SongPlayer.shared.leave(key) }
     }

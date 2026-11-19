@@ -135,7 +135,8 @@ struct ReelsView: View {
     /// silenced, together with the clip's own sound (the two blended, as Instagram has them). One without a song is
     /// heard with its own sound alone.
     private func sound() {
-        if let id = current, let p = posts.first(where: { str($0["id"]) == id }), let s = Music.of(p), !muted {
+        // (one with its song mixed in is the video's own sound alone, like one without a song)
+        if let id = current, let p = posts.first(where: { str($0["id"]) == id }), let s = Music.of(p), !Music.mixed(p), !muted {
             // paused, or held on the line along the bottom: the song waits where it is (stopped and started again,
             // it began from its beginning while the video carried on from the middle)
             if SongPlayer.shared.playing != "reel:" + id {
@@ -184,13 +185,13 @@ struct ReelsView: View {
                         // gone round to its start: so does its song
                         if at + 0.5 < head.at, holding == nil { SongPlayer.shared.seek(at) }
                         head.at = at; head.length = length
-                    }, volume: Music.mix(p).clip).aspectRatio(a, contentMode: .fit).allowsHitTesting(false)
+                    }, volume: Music.mixed(p) ? 1 : Music.mix(p).clip).aspectRatio(a, contentMode: .fit).allowsHitTesting(false)
                 } else {
                     LoopingVideo(url: v, paused: paused, muted: muted, scrub: holding, tick: { at, length in
                         // gone round to its start: so does its song
                         if at + 0.5 < head.at, holding == nil { SongPlayer.shared.seek(at) }
                         head.at = at; head.length = length
-                    }, volume: Music.mix(p).clip).allowsHitTesting(false)
+                    }, volume: Music.mixed(p) ? 1 : Music.mix(p).clip).allowsHitTesting(false)
                 }
             } else if let a = num(dict(p["extra"])["aspect"]), a > 0.62 {
                 Color.clear.aspectRatio(a, contentMode: .fit).overlay { FeedPhoto(src: str(p["photo"]), fill: true) }.clipped()

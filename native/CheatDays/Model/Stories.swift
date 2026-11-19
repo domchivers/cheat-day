@@ -237,7 +237,7 @@ final class Stories {
 
     /// A video as a smaller mp4: the trimmed part (at most 30 seconds), through the filter, with or without sound.
     /// Crop is the part of the picture to keep, as fractions of it from the top left (a post's video, zoomed and moved in the editor).
-    static func compress(_ url: URL, filter: String = "Normal", range: ClosedRange<Double>? = nil, muted: Bool = false, crop: CGRect? = nil, overlay: UIImage? = nil, turns: Int = 0, placed: ClipEdit? = nil) async throws -> (Data, Double) {
+    static func compress(_ url: URL, filter: String = "Normal", range: ClosedRange<Double>? = nil, muted: Bool = false, crop: CGRect? = nil, overlay: UIImage? = nil, turns: Int = 0, placed: ClipEdit? = nil, mix: SongMix? = nil) async throws -> (Data, Double) {
         let asset = AVURLAsset(url: url)
         let full = (try? await asset.load(.duration).seconds) ?? 15
         let start = range?.lowerBound ?? 0, end = min(range?.upperBound ?? full, start + 30)
@@ -248,14 +248,33 @@ final class Stories {
             try t.insertTimeRange(span, of: v, at: .zero)
             t.preferredTransform = (try? await v.load(.preferredTransform)) ?? .identity
         }
+        var levels: [AVMutableAudioMixInputParameters] = []
         if !muted, let a = try? await asset.loadTracks(withMediaType: .audio).first, let t = comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
             try? t.insertTimeRange(span, of: a, at: .zero)
+            if let mix { let l = AVMutableAudioMixInputParameters(track: t); l.setVolume(mix.clip, at: .zero); levels.append(l) }
+        }
+        // its song (see SongMix): the part chosen, round again as often as the clip's longer than it
+        if let mix {
+            guard let s = try? await AVURLAsset(url: mix.file).loadTracks(withMediaType: .audio).first,
+                  let t = comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else { throw MixFailed() }
+            let length = end - start
+            var at = 0.0
+            while at < length - 0.01 {
+                let piece = min(mix.span, length - at)
+                try t.insertTimeRange(CMTimeRange(start: CMTime(seconds: mix.from, preferredTimescale: 600), duration: CMTime(seconds: piece, preferredTimescale: 600)),
+                                      of: s, at: CMTime(seconds: at, preferredTimescale: 600))
+                at += piece
+            }
+            let l = AVMutableAudioMixInputParameters(track: t); l.setVolume(mix.song, at: .zero); levels.append(l)
         }
         let out = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
         // 1080 × 1920 like a posted photo (it was 720 × 1280, softer than the photos). HEVC keeps the file about the
         // size the 720 one was in H.264, well under the storage's 50 MB a file for 30 seconds.
         guard let export = AVAssetExportSession(asset: comp, presetName: AVAssetExportPresetHEVC1920x1080)
-                ?? AVAssetExportSession(asset: comp, presetName: AVAssetExportPreset1920x1080) else { return (try Data(contentsOf: url), end - start) }
+                ?? AVAssetExportSession(asset: comp, presetName: AVAssetExportPreset1920x1080) else {
+            if mix != nil { throw MixFailed() }
+            return (try Data(contentsOf: url), end - start)
+        }
         export.outputURL = out; export.outputFileType = .mp4; export.shouldOptimizeForNetworkUse = true
         let quarter = ((turns % 4) + 4) % 4   // quarter turns to the right
         let spun = placed.flatMap { $0.loose ? $0 : nil }   // turned freely: laid into its frame, not cut from the picture
@@ -322,8 +341,11 @@ final class Stories {
                 req.finish(with: StoryArt.filtered(req.sourceImage.clampedToExtent(), filter, frame: req.sourceImage.extent).cropped(to: req.sourceImage.extent), context: nil)
             }
         }
+        if !levels.isEmpty { let m = AVMutableAudioMix(); m.inputParameters = levels; export.audioMix = m }
         await export.export()
         defer { try? FileManager.default.removeItem(at: out) }
+        // a mix that didn't come out isn't passed off as one: the caller posts it unmixed instead
+        if mix != nil, export.status != .completed { throw MixFailed() }
         return (try Data(contentsOf: export.status == .completed ? out : url), end - start)
     }
 }
@@ -362,10 +384,36 @@ struct LoopingVideo: UIViewRepresentable {
         var playing = true
         var tries = 0                // times this clip's player has been built again because it showed nothing
         var tick: ((Double, Double) -> Void)?
+        // Its sound going on or off fades over a third of a second rather than cutting in (19 Nov: a feed video's
+        // sound, and a song mixed into one, jumped in and out as it came and went).
+        var heard: Bool?             // as last asked for (nil: a new player, set straight away)
+        var level: Float = 1
+        var fader: Timer?
+        func sound(on: Bool, level: Float) {
+            guard let p = playerLayer.player else { return }
+            if heard == on {
+                if self.level != level { self.level = level; if fader == nil { p.volume = level } }
+                return
+            }
+            let first = heard == nil
+            heard = on; self.level = level
+            fader?.invalidate(); fader = nil
+            if first { p.isMuted = !on; p.volume = level; return }
+            if on { if p.isMuted { p.volume = 0 }; p.isMuted = false }
+            let from = p.volume, to: Float = on ? level : 0, steps = 12
+            var i = 0
+            fader = Timer.scheduledTimer(withTimeInterval: (on ? 0.3 : 0.25) / Double(steps), repeats: true) { [weak self, weak p] t in
+                i += 1
+                p?.volume = from + (to - from) * Float(i) / Float(steps)
+                guard i >= steps else { return }
+                t.invalidate(); self?.fader = nil
+                if !on { p?.isMuted = true; p?.volume = self?.level ?? 1 }
+            }
+        }
         var watch: Any?              // the player's own clock, watched for `tick`
         weak var watched: AVPlayer?
         func unwatch() { if let watch, let watched { watched.removeTimeObserver(watch) }; watch = nil; watched = nil }
-        deinit { if let ender { NotificationCenter.default.removeObserver(ender) }; unwatch() }
+        deinit { if let ender { NotificationCenter.default.removeObserver(ender) }; unwatch(); fader?.invalidate() }
     }
 
     /// How much smaller than the clip its frames are drawn while it plays with a look (1 for as they are).
@@ -395,8 +443,7 @@ struct LoopingVideo: UIViewRepresentable {
         v.playing = !paused && scrub == nil
         v.tick = tick
         if v.key != key { setUp(v) }
-        v.playerLayer.player?.isMuted = muted
-        if v.playerLayer.player?.volume != volume { v.playerLayer.player?.volume = volume }
+        v.sound(on: !muted, level: volume)
         if let at = scrub {
             v.playerLayer.player?.pause()
             // only when the finger has moved on: a seek for every redraw made it stutter
@@ -462,6 +509,8 @@ struct LoopingVideo: UIViewRepresentable {
         let player = AVQueuePlayer()
         player.isMuted = muted
         player.volume = volume
+        v.fader?.invalidate(); v.fader = nil
+        v.heard = !muted; v.level = volume
         if let r = range {
             v.looper = AVPlayerLooper(player: player, templateItem: item, timeRange: CMTimeRange(start: CMTime(seconds: r.lowerBound, preferredTimescale: 600), end: CMTime(seconds: r.upperBound, preferredTimescale: 600)))
         } else {

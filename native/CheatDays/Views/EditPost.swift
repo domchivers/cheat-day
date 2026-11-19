@@ -318,7 +318,16 @@ struct EditPostSheet: View {
     private func fetchVideo() async {
         guard local == nil, let remote = Feed.video(post), let (tmp, _) = try? await URLSession.shared.download(from: remote) else { return }
         let to = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
-        if (try? FileManager.default.moveItem(at: tmp, to: to)) != nil { local = to }
+        guard (try? FileManager.default.moveItem(at: tmp, to: to)) != nil else { return }
+        // its song mixed in (see SongMix): back to the clip with its own sound, so a song changed here isn't heard
+        // on top of the old one
+        guard Music.mixed(post) else { local = to; return }
+        var sound: URL?
+        if let at = URL(string: str(dict(post["extra"])["sound"])), at.scheme?.hasPrefix("http") == true, let (s, _) = try? await URLSession.shared.download(from: at) {
+            let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".m4a")
+            if (try? FileManager.default.moveItem(at: s, to: file)) != nil { sound = file }
+        }
+        local = await Stories.unmixed(to, sound: sound)
     }
 
     /// The numbers and details an attached food, meal or workout puts in a post's extra, as opposed to the picture's.
@@ -332,8 +341,26 @@ struct EditPostSheet: View {
             let api = Supabase.shared
             do {
                 if isVideo {
-                    if let clip, let local {
-                        let (mp4, _) = try await Stories.compress(local, filter: clip.look, range: clip.range, muted: clip.muted, crop: clip.crop, overlay: clip.overlay, turns: clip.turns, placed: clip)
+                    // made again when it's been cut, or its song or levels changed on one with its song mixed in
+                    let before = Music.of(post), m = Music.mix(post)
+                    let songChanged = song?.id != before?.id || song?.start != before?.start
+                    let levelsChanged = abs(songVol - Double(m.song)) > 0.005 || abs(clipVol - Double(m.clip)) > 0.005
+                    if let local, clip != nil || (Music.mixed(post) && (songChanged || levelsChanged)) {
+                        let e = clip, quiet = clip?.muted ?? false
+                        extra["mixed"] = nil; extra["sound"] = nil
+                        var made: Data?
+                        if let song, let mix = await SongMix.make(song, song: Float(songVol), clip: Float(clipVol)) {
+                            made = try? await Stories.compress(local, filter: e?.look ?? "Normal", range: e?.range, muted: quiet, crop: e?.crop, overlay: e?.overlay, turns: e?.turns ?? 0, placed: e, mix: mix).0
+                            mix.done()
+                            if made != nil {
+                                extra["mixed"] = true
+                                if !quiet, let own = await Stories.soundOnly(local, range: e?.range), let at = try? await api.upload(own, ext: "m4a", type: "video/mp4") { extra["sound"] = at }
+                            }
+                        }
+                        let mp4: Data
+                        if let made { mp4 = made } else {
+                            mp4 = try await Stories.compress(local, filter: e?.look ?? "Normal", range: e?.range, muted: quiet, crop: e?.crop, overlay: e?.overlay, turns: e?.turns ?? 0, placed: e).0
+                        }
                         extra["video"] = try await api.upload(mp4, ext: "mp4", type: "video/mp4")
                     }
                     if let poster, let jpeg = Feed.prepare(poster) {

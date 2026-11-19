@@ -185,8 +185,8 @@ enum Music {
     var mutedByChoice: Bool { UserDefaults.standard.object(forKey: "song.auto") as? Bool == false }
 
     /// The speaker on a post, tapped.
-    func flip(_ song: Song, key: String, volume: Float = 1) {
-        if playing == key { auto = false; stop() } else { auto = true; play(song, key: key, loop: true, volume: volume) }
+    func flip(_ song: Song, key: String, volume: Float = 1, inVideo: Bool = false) {
+        if playing == key { auto = false; stop() } else { auto = true; play(song, key: key, loop: true, volume: volume, inVideo: inVideo) }
     }
     /// The song that's playing, stopped where it is and carried on from there (a story held under a finger).
     func hold(_ on: Bool) { if on { player?.pause() } else { player?.play() } }
@@ -204,18 +204,26 @@ enum Music {
     func volume(_ v: Float) { target = v; player?.volume = v }
     /// A post with a song has come onto the screen. Nothing if songs are off, or if the phone's already playing
     /// something of its own (their music or a podcast isn't cut off by scrolling past a photo).
-    func arrive(_ song: Song, key: String, volume: Float = 1) {
+    func arrive(_ song: Song, key: String, volume: Float = 1, inVideo: Bool = false) {
         guard auto, playing != key, !AVAudioSession.sharedInstance().isOtherAudioPlaying else { return }
         // heard with the ringer off as well: kept to the ringer, a phone on silent (most are) never played one, and
         // it looked as though songs only played when their button was pressed. The speaker turns them all off.
-        play(song, key: key, loop: true, volume: volume)
+        play(song, key: key, loop: true, volume: volume, inVideo: inVideo)
     }
     /// It's gone off the screen again.
     func leave(_ key: String) { if playing == key { stop() } }
 
     /// `loop`: under a post or a video it goes round for as long as that's on screen; in a list of songs it's heard once.
-    func play(_ song: Song, key: String, loop: Bool = false, volume: Float = 1) {
+    /// `inVideo`: the song's mixed into the post's video (see SongMix). Nothing more to play: it's marked as playing,
+    /// which turns the video's own sound on, and the sound's let through with the ringer off as a song is.
+    func play(_ song: Song, key: String, loop: Bool = false, volume: Float = 1, inVideo: Bool = false) {
         stop()
+        if inVideo {
+            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+            try? AVAudioSession.sharedInstance().setActive(true)
+            carried = true; playing = key
+            return
+        }
         // from its longer clip when it has one: the part the poster chose, or the usual 30 seconds of it
         let long = Music.long[song.id]
         guard let url = long != nil ? song.longURL : song.url else { return }
@@ -270,14 +278,22 @@ enum Music {
         edge = nil; player = nil
         if let end { NotificationCenter.default.removeObserver(end) }
         end = nil; playing = nil
+        let wasCarried = carried
+        carried = false
         let release: () -> Void = { [weak self] in
             old?.pause()
-            guard let self, self.player == nil, !self.loud else { return }   // a new song, or a video being edited, still wants sound
+            // a new song (or one in a video), or a video being edited, still wants sound
+            guard let self, self.player == nil, self.playing == nil, !self.loud else { return }
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
             try? AVAudioSession.sharedInstance().setCategory(.soloAmbient)
         }
-        if let old, old.volume > 0.01 { ramp(old, to: 0, over: 0.25, done: release) } else { release() }
+        if let old, old.volume > 0.01 { ramp(old, to: 0, over: 0.25, done: release) }
+        // a song in a video: its sound fades with the video's (LoopingVideo), so the phone's let go of after that
+        else if wasCarried { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: release) }
+        else { release() }
     }
+    /// What's playing is a song mixed into a video, not one of its own.
+    @ObservationIgnored private var carried = false
 
     /// A video's being edited: its sound, and any song put on it, are heard whether or not the phone's on silent,
     /// until the editor's left. Without this the editor was silent on a phone with its ringer off (most are), and
