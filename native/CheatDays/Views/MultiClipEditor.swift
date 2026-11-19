@@ -24,6 +24,7 @@ struct MultiClipEditor: View {
     @State private var watch: Any?
     @State private var adding = false
     @State private var picks: [PhotosPickerItem] = []
+    @State private var wasPlaying: Bool?   // while the scrub bar is dragged: whether it was playing before
     private enum Panel { case trim, sound }
     private let perSecond: CGFloat = 14         // strip points a second
 
@@ -83,7 +84,7 @@ struct MultiClipEditor: View {
             switch panel {
             case .trim: if let i = index { trimPanel(i) }
             case .sound: if let i = index { soundPanel(i) }
-            case nil: strip; actions
+            case nil: scrubBar; strip; actions
             }
         }
         .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 8)
@@ -240,6 +241,50 @@ struct MultiClipEditor: View {
     private func undo() { guard let last = history.popLast() else { return }; withAnimation(.snappy) { clips = last } }
 
     private func seek(_ s: Double) { player.seek(to: CMTime(seconds: max(0, s), preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero); now = s }
+
+    /// The whole video as one bar, a stretch for each clip, to drag along (19 Nov: it could only be played through or
+    /// jumped to a clip's start, not scrubbed as a single video can). The preview follows the finger, held still;
+    /// let go, it plays on if it was playing.
+    private var scrubBar: some View {
+        GeometryReader { g in
+            let w = g.size.width, span = max(total, 0.01)
+            ZStack(alignment: .leading) {
+                HStack(spacing: 2) {
+                    ForEach(clips) { c in
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                            .fill(c.id == selected ? Color.white.opacity(0.55) : Color.white.opacity(0.22))
+                            .frame(width: max(2, w * CGFloat(c.duration / span) - 2))
+                    }
+                }
+                .frame(height: 8)
+                Capsule().fill(.white).frame(width: 3, height: 22)
+                    .offset(x: min(max(0, w * CGFloat(now / span) - 1.5), w - 3))
+            }
+            .frame(width: w, height: 28)
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0)
+                .onChanged { v in
+                    if wasPlaying == nil { wasPlaying = player.rate != 0; player.pause() }
+                    let t = min(max(0, Double(v.location.x / max(w, 1)) * span), max(0, span - 0.05))
+                    // close enough while the finger moves (a seek to the exact frame each time can't keep up), exact at the end
+                    let near = CMTime(seconds: 0.04, preferredTimescale: 600)
+                    player.seek(to: CMTime(seconds: t, preferredTimescale: 600), toleranceBefore: near, toleranceAfter: near)
+                    now = t
+                }
+                .onEnded { _ in
+                    seek(now)
+                    if wasPlaying == true { player.play() }
+                    wasPlaying = nil
+                })
+            .accessibilityElement()
+            .accessibilityLabel("Where in the video")
+            .accessibilityValue("\(Self.clock(now)) of \(Self.clock(total))")
+            .accessibilityAdjustableAction { dir in
+                seek(min(max(0, now + (dir == .increment ? 1 : -1)), max(0, total - 0.05)))
+            }
+        }
+        .frame(height: 28)
+    }
 
     /// The preview made again from the clips as they are now, kept where it was.
     @MainActor private func rebuild(play: Bool) async {
