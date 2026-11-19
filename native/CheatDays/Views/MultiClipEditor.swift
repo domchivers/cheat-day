@@ -21,6 +21,8 @@ struct MultiClipEditor: View {
     var startAttached: JSON? = nil
     /// Its voiceovers and sound effects, as the draft had them.
     var startSounds: [EditSound]? = nil
+    /// The clips and photos over it, as the draft had them.
+    var startPips: [EditPip]? = nil
     var close: () -> Void
     var done: (URL) -> Void
     /// The draft it's auto-saved as (a new edit gets one of its own once it's saved the first time).
@@ -76,11 +78,19 @@ struct MultiClipEditor: View {
     @State private var holding = false
     @State private var recordFrom = 0.0
     @State private var clearVoice = true
+    @State private var pips: [EditPip] = []             // clips and photos over it (Stage D)
+    @State private var selectedPip: UUID?
+    @State private var pipPicking = false
+    @State private var pipPicks: [PhotosPickerItem] = []
+    @State private var pipFrom: MoveKey?
+    @State private var stripZoom: CGFloat = 1             // the strip pinched wider or narrower (Stage D)
+    @State private var stripZoomFrom: CGFloat?
     private struct BarGrab { var id: UUID; var mode: Int; var from: Double; var to: Double; var words: [EditText.Word]?; var start = 0.0 }   // mode: 0 move, 1 start, 2 end
     /// One bar on the timeline: a text, sticker or caption, or a voiceover or sound effect.
-    private struct BarItem: Identifiable { let id: UUID; let from: Double; let to: Double; let label: String; let colour: Color; let sound: Bool }
-    private enum Panel { case trim, sound, speed, join, look, shape, text, stickers, voice, effects, soundItem }
-    private let perSecond: CGFloat = 14         // strip points a second
+    /// kind: 0 over the picture (text, stickers, captions), 1 a sound, 2 a clip or photo over it.
+    private struct BarItem: Identifiable { let id: UUID; let from: Double; let to: Double; let label: String; let colour: Color; let kind: Int }
+    private enum Panel { case trim, sound, speed, join, look, shape, text, stickers, voice, effects, soundItem, pip, motion }
+    private var perSecond: CGFloat { 14 * stripZoom }   // strip points a second, pinched wider or narrower
 
     private var total: Double { ClipJoin.total(clips) }
     private var index: Int? { clips.firstIndex { $0.id == selected } }
@@ -124,16 +134,16 @@ struct MultiClipEditor: View {
         .alert("Save this edit?", isPresented: $leaving) {
             Button("Save draft") {
                 player.pause()
-                let id = autoID ?? draftID, kept = clips, sound = soundOf, shape = look, over = texts, with = Self.data(attached), laid = sounds
-                EditDrafts.queue.async { EditDrafts.save(id: id, clips: kept, soundOf: sound, look: shape, texts: over, attached: with, sounds: laid) }
+                let id = autoID ?? draftID, kept = clips, sound = soundOf, shape = look, over = texts, with = Self.data(attached), laid = sounds, on = pips
+                EditDrafts.queue.async { EditDrafts.save(id: id, clips: kept, soundOf: sound, look: shape, texts: over, attached: with, sounds: laid, pips: on) }
                 close()
             }
             Button("Discard", role: .destructive) {
                 player.pause()
-                let id = autoID ?? draftID, was = opened, sound = startSoundOf, shape = startLook, over = startTexts, with = Self.data(startAttached), laid = startSounds
+                let id = autoID ?? draftID, was = opened, sound = startSoundOf, shape = startLook, over = startTexts, with = Self.data(startAttached), laid = startSounds, on = startPips
                 EditDrafts.queue.async {
                     guard let id else { return }
-                    if let was { EditDrafts.save(id: id, clips: was, soundOf: sound, look: shape, texts: over, attached: with, sounds: laid) } else { EditDrafts.delete(id) }
+                    if let was { EditDrafts.save(id: id, clips: was, soundOf: sound, look: shape, texts: over, attached: with, sounds: laid, pips: on) } else { EditDrafts.delete(id) }
                 }
                 close()
             }
@@ -144,6 +154,7 @@ struct MultiClipEditor: View {
             if let l = startLook, opened == nil { look = l }
             if let t = startTexts, opened == nil, texts.isEmpty { texts = t }
             if let v = startSounds, opened == nil, sounds.isEmpty { sounds = v }
+            if let p = startPips, opened == nil, pips.isEmpty { pips = p }
             if let a = startAttached, attached == nil { attached = a; attach(a) }
             if autoID == nil { autoID = draftID }
             if draftID != nil, opened == nil { opened = clips }
@@ -154,6 +165,11 @@ struct MultiClipEditor: View {
         .task(id: look) { await settle(); await autosave() }
         .task(id: texts) { await autosave() }
         .task(id: sounds) { await settle(); await autosave() }
+        .task(id: pips) { await settle(); await autosave() }
+        .onChange(of: pipPicks) { _, now in
+            guard !now.isEmpty else { return }
+            Task { let got = await Self.clips(from: now); pipPicks = []; if let c = got.first { await addPip(c) } }
+        }
         .sheet(isPresented: Binding(get: { attachMode != nil }, set: { if !$0 { attachMode = nil } })) {
             AttachPicker(start: attachMode == "workout" ? 2 : (attachMode == "recipe" ? 1 : 0)) { picked($0) }
         }
@@ -186,6 +202,12 @@ struct MultiClipEditor: View {
     // Laid out and drawn as the single video editor is (StoryEditor), so the two feel like one (19 Nov): round dark
     // buttons at the top, Done as its white pill, tools as its dark tiles, white trim handles and Next along the bottom.
     private var top: some View {
+        topRow
+            // (on a view of its own, apart from the other pickers)
+            .photosPicker(isPresented: $pipPicking, selection: $pipPicks, maxSelectionCount: 1, matching: .any(of: [.images, .videos]))
+    }
+
+    private var topRow: some View {
         HStack(spacing: 5) {
             // asked first: one tap on the cross threw the whole edit away (19 Nov)
             round("xmark", "Close") { if clips.isEmpty { close() } else { leaving = true } }
@@ -194,7 +216,7 @@ struct MultiClipEditor: View {
             Spacer()
             if panel == nil { round("aspectratio", "Shape and background") { withAnimation(.snappy) { panel = .shape } } }
             if panel != nil {
-                Button { withAnimation(.snappy) { panel = nil; selectedText = nil; selectedSound = nil } } label: {
+                Button { withAnimation(.snappy) { panel = nil; selectedText = nil; selectedSound = nil; selectedPip = nil } } label: {
                     Text("Done").font(.subheadline.weight(.bold)).foregroundStyle(.black).padding(.horizontal, 16).frame(height: 34).background(.white, in: Capsule())
                 }
                 .buttonStyle(.plain)
@@ -233,9 +255,11 @@ struct MultiClipEditor: View {
             case .voice: scrubBar; bars; voicePanel
             case .effects: scrubBar; effectsPanel
             case .soundItem: if let k = sounds.firstIndex(where: { $0.id == selectedSound }) { scrubBar; bars; soundItemPanel(k) }
+            case .pip: if let k = pips.firstIndex(where: { $0.id == selectedPip }) { scrubBar; bars; pipPanel(k) }
+            case .motion: if let i = index { scrubBar; motionPanel(i) }
             case nil:
                 scrubBar
-                if !texts.isEmpty || !sounds.isEmpty { bars }
+                if !texts.isEmpty || !sounds.isEmpty || !pips.isEmpty { bars }
                 strip
                 if selected == nil { addTools } else { actions }
                 Button { finish() } label: {
@@ -317,6 +341,12 @@ struct MultiClipEditor: View {
                 }
                 .accessibilityLabel("Add clips")
             }
+            .simultaneousGesture(MagnificationGesture()
+                .onChanged { m in
+                    if stripZoomFrom == nil { stripZoomFrom = stripZoom }
+                    stripZoom = min(4, max(0.4, (stripZoomFrom ?? 1) * m))
+                }
+                .onEnded { _ in stripZoomFrom = nil })
             .overlay(alignment: .leading) {
                 // where the preview is
                 Capsule().fill(.white).frame(width: 2, height: 70)
@@ -349,6 +379,7 @@ struct MultiClipEditor: View {
             action("snowflake", "Freeze", on: moving) { freezeHere() }
             action("backward.fill", "Reverse", on: moving) { reverseSelected() }
             action("camera.filters", "Filters", on: has) { withAnimation(.snappy) { panel = .look } }
+            action("arrow.up.left.and.arrow.down.right", "Motion", on: has) { withAnimation(.snappy) { panel = .motion } }
             action("speaker.wave.2", "Sound", on: has) { withAnimation(.snappy) { panel = .sound } }
             action("arrow.triangle.2.circlepath", "Replace", on: has) { replacing = true }
             action("plus.square.on.square", "Copy", on: has) {
@@ -525,7 +556,7 @@ struct MultiClipEditor: View {
     // MARK: doing things
 
     private func select(_ id: UUID) {
-        selectedText = nil; selectedSound = nil
+        selectedText = nil; selectedSound = nil; selectedPip = nil
         selected = selected == id ? nil : id
         if let i = clips.firstIndex(where: { $0.id == id }) { seek(startOf(i) + 0.01) }
     }
@@ -608,7 +639,7 @@ struct MultiClipEditor: View {
 
     /// The preview made again from the clips as they are now, kept where it was.
     @MainActor private func rebuild(play: Bool) async {
-        guard let (comp, vc, mix) = await ClipJoin.compose(clips, soundOf: soundOf, look: look, swap: proxies, sounds: sounds) else { return }
+        guard let (comp, vc, mix) = await ClipJoin.compose(clips, soundOf: soundOf, look: look, swap: proxies, sounds: sounds, pips: pips) else { return }
         let item = AVPlayerItem(asset: comp)
         item.videoComposition = vc; item.audioMix = mix
         item.audioTimePitchAlgorithm = .spectral
@@ -640,9 +671,9 @@ struct MultiClipEditor: View {
     private func autosave() async {
         try? await Task.sleep(nanoseconds: 1_000_000_000)
         guard !Task.isCancelled, !clips.isEmpty else { return }
-        let id = autoID ?? UUID().uuidString.lowercased(), kept = clips, sound = soundOf, shape = look, over = texts, with = Self.data(attached), laid = sounds
+        let id = autoID ?? UUID().uuidString.lowercased(), kept = clips, sound = soundOf, shape = look, over = texts, with = Self.data(attached), laid = sounds, on = pips
         if autoID == nil { autoID = id; autosaved(id) }
-        EditDrafts.queue.async { EditDrafts.save(id: id, clips: kept, soundOf: sound, look: shape, texts: over, attached: with, sounds: laid, tidy: false) }
+        EditDrafts.queue.async { EditDrafts.save(id: id, clips: kept, soundOf: sound, look: shape, texts: over, attached: with, sounds: laid, pips: on, tidy: false) }
     }
 
     /// A frame back or on (a 30th of a second), held still.
@@ -705,10 +736,10 @@ struct MultiClipEditor: View {
 
     private func finish() {
         joining = true; progress = 0; player.pause()
-        let kept = clips, sound = soundOf, shape = look, laid = sounds
+        let kept = clips, sound = soundOf, shape = look, laid = sounds, on = pips
         let over = EditOverlays.pieces(texts, frame: frameSize)
         making = Task {
-            let url = await ClipJoin.join(kept, soundOf: sound, look: shape, overlays: over, sounds: laid) { p in if progress != nil { progress = p } }
+            let url = await ClipJoin.join(kept, soundOf: sound, look: shape, overlays: over, sounds: laid, pips: on) { p in if progress != nil { progress = p } }
             guard !Task.isCancelled else { return }
             joining = false; progress = nil; making = nil
             guard let url else { return }
@@ -735,6 +766,33 @@ struct MultiClipEditor: View {
     private var overlayLayer: some View {
         GeometryReader { g in
             let r = Self.fitted(frameSize, in: g.size), k = r.width / EditOverlays.design
+            // a clip or photo over it: drawn in the video itself; here, something to drag and pinch where it is
+            ForEach(pips) { p in
+                if now >= p.from && now < p.to || p.id == selectedPip {
+                    let m = p.place(at: now)
+                    let w = r.width * m.size, h = w / max(p.aspect, 0.1)
+                    RoundedRectangle(cornerRadius: 4).stroke(p.id == selectedPip ? Color.white : Color.white.opacity(0.01), lineWidth: 2)
+                        .contentShape(Rectangle())
+                        .frame(width: w, height: h)
+                        .position(x: r.minX + m.x * r.width, y: r.minY + m.y * r.height)
+                        .onTapGesture { selectPip(p.id) }
+                        .gesture(DragGesture(minimumDistance: 3)
+                            .onChanged { v in
+                                if pipFrom == nil { pipFrom = m }
+                                let start = pipFrom ?? m
+                                setPip(p.id) { $0.x = min(1, max(0, start.x + Double(v.translation.width / max(r.width, 1))))
+                                               $0.y = min(1, max(0, start.y + Double(v.translation.height / max(r.height, 1)))) }
+                            }
+                            .onEnded { _ in pipFrom = nil })
+                        .simultaneousGesture(MagnificationGesture()
+                            .onChanged { s in
+                                if pipFrom == nil { pipFrom = m }
+                                let start = pipFrom ?? m
+                                setPip(p.id) { $0.size = min(1, max(0.12, start.size * Double(s))) }
+                            }
+                            .onEnded { _ in pipFrom = nil })
+                }
+            }
             ForEach(texts) { item in
                 let on = item.id == selectedText
                 if on || (now >= item.from && now < item.to) {
@@ -784,6 +842,7 @@ struct MultiClipEditor: View {
                 action("flame", "Calories", on: true) { attachMode = "calories" }
                 action("mic.fill", "Voice", on: true) { withAnimation(.snappy) { panel = .voice } }
                 action("sparkles", "Effects", on: true) { withAnimation(.snappy) { panel = .effects } }
+                action("rectangle.inset.topright.filled", "Overlay", on: true) { pipPicking = true }
             }
         }
         .padding(.top, 4)
@@ -792,15 +851,16 @@ struct MultiClipEditor: View {
     /// Everything laid over the video as bars, in rows so none covers another: drag one along, or by an end for when it
     /// starts and stops; tap it to change it. Text and stickers, then the sounds.
     private var barItems: [BarItem] {
-        texts.map { BarItem(id: $0.id, from: $0.from, to: $0.to, label: $0.barLabel, colour: $0.barColour, sound: false) }
+        texts.map { BarItem(id: $0.id, from: $0.from, to: $0.to, label: $0.barLabel, colour: $0.barColour, kind: 0) }
             + sounds.map { BarItem(id: $0.id, from: $0.from, to: $0.to, label: ($0.kind == "voice" ? "🎙 " : "✦ ") + $0.name,
-                                   colour: $0.kind == "voice" ? Color(red: 1, green: 0.48, blue: 0.48) : Color(red: 0.55, green: 0.85, blue: 0.85), sound: true) }
+                                   colour: $0.kind == "voice" ? Color(red: 1, green: 0.48, blue: 0.48) : Color(red: 0.55, green: 0.85, blue: 0.85), kind: 1) }
+            + pips.map { BarItem(id: $0.id, from: $0.from, to: $0.to, label: "▣ Overlay" + ($0.keys.isEmpty ? "" : " · ◆"), colour: Color(red: 0.36, green: 0.82, blue: 0.56), kind: 2) }
     }
 
     private var bars: some View {
         var rows: [[BarItem]] = []
         for t in barItems.sorted(by: { $0.from < $1.from }) {
-            if let r = rows.firstIndex(where: { ($0.last?.to ?? 0) <= t.from + 0.01 && $0.last?.sound == t.sound }) { rows[r].append(t) } else { rows.append([t]) }
+            if let r = rows.firstIndex(where: { ($0.last?.to ?? 0) <= t.from + 0.01 && $0.last?.kind == t.kind }) { rows[r].append(t) } else { rows.append([t]) }
         }
         let shownRows = rows
         return GeometryReader { g in
@@ -821,27 +881,39 @@ struct MultiClipEditor: View {
 
     private func bar(_ item: BarItem, w: CGFloat, span: Double) -> some View {
         let x0 = w * CGFloat(min(item.from, span) / span), x1 = w * CGFloat(min(item.to, span) / span)
-        let width = max(16, x1 - x0), on = item.id == selectedText || item.id == selectedSound
+        let width = max(16, x1 - x0), on = item.id == selectedText || item.id == selectedSound || item.id == selectedPip
         return Text(item.label).font(.system(size: 9, weight: .heavy)).lineLimit(1).foregroundStyle(.black.opacity(0.8))
             .padding(.horizontal, 6).frame(width: width, height: 18, alignment: .leading)
             .background(item.colour, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).stroke(on ? Color.white : Color.clear, lineWidth: 2))
             .contentShape(Rectangle())
-            .onTapGesture { if item.sound { selectSound(item.id) } else { selectText(item.id) } }
+            .onTapGesture {
+                switch item.kind {
+                case 1: selectSound(item.id)
+                case 2: selectPip(item.id)
+                default: selectText(item.id)
+                }
+            }
             .gesture(DragGesture(minimumDistance: 2)
                 .onChanged { v in
                     if barGrab == nil {
                         // by its ends, or the middle to move it
                         let mode = v.startLocation.x < 12 ? 1 : (v.startLocation.x > width - 12 ? 2 : 0)
-                        if item.sound, let s = sounds.first(where: { $0.id == item.id }) {
+                        if item.kind == 1, let s = sounds.first(where: { $0.id == item.id }) {
                             barGrab = BarGrab(id: item.id, mode: mode, from: s.from, to: s.to, words: nil, start: s.start)
+                        } else if item.kind == 2, let p = pips.first(where: { $0.id == item.id }) {
+                            barGrab = BarGrab(id: item.id, mode: mode, from: p.from, to: p.to, words: nil, start: p.start)
                         } else if let t = texts.first(where: { $0.id == item.id }) {
                             barGrab = BarGrab(id: item.id, mode: mode, from: t.from, to: t.to, words: t.words)
                         }
                     }
                     guard let g = barGrab else { return }
                     let dt = Double(v.translation.width / max(w, 1)) * span
-                    if item.sound { dragSound(g, dt, span: span) } else { dragText(g, dt, span: span) }
+                    switch item.kind {
+                    case 1: dragSound(g, dt, span: span)
+                    case 2: dragPip(g, dt, span: span)
+                    default: dragText(g, dt, span: span)
+                    }
                 }
                 .onEnded { _ in barGrab = nil })
             .offset(x: x0)
@@ -994,6 +1066,154 @@ struct MultiClipEditor: View {
             clips[k].clean = url
             flash("Clearer: rumble and hum cut, voices lifted.")
         }
+    }
+
+    // MARK: Stage D: overlays and movement
+
+    private func selectPip(_ id: UUID) {
+        selected = nil; selectedText = nil; selectedSound = nil
+        selectedPip = id
+        if let p = pips.first(where: { $0.id == id }), now < p.from || now >= p.to { seek(p.from + 0.01) }
+        withAnimation(.snappy) { panel = .pip }
+    }
+
+    /// A clip or photo picked to go over the edit, from the line: a photo made a still as long as what's left.
+    private func addPip(_ picked: Clip) async {
+        var c = picked
+        if c.still, let img = await ClipJoin.frame(c, at: 0), let url = await ClipJoin.still(img, seconds: max(1, total - now)),
+           let long = await ClipJoin.clip(url, still: true) { c = long }
+        var aspect = 9.0 / 16.0
+        if let v = try? await AVURLAsset(url: c.source).loadTracks(withMediaType: .video).first,
+           let n = try? await v.load(.naturalSize), let tf = try? await v.load(.preferredTransform) {
+            let up = CGRect(origin: .zero, size: n).applying(tf)
+            if up.height != 0 { aspect = Double(abs(up.width) / abs(up.height)) }
+        }
+        let p = EditPip(source: c.source, start: c.start, length: max(0.3, min(c.duration, total - now)), from: now, full: c.length, aspect: aspect)
+        pips.append(p)
+        selectPip(p.id)
+    }
+
+    /// An overlay changed where the line is: with no keyframes, all of it; with some, the one at the line (made there
+    /// if there isn't one), as CapCut's keyframes work.
+    private func setPip(_ id: UUID, _ change: (inout MoveKey) -> Void) {
+        guard let i = pips.firstIndex(where: { $0.id == id }) else { return }
+        var m = pips[i].place(at: now)
+        change(&m)
+        if pips[i].keys.isEmpty {
+            pips[i].x = m.x; pips[i].y = m.y; pips[i].size = m.size; pips[i].opacity = m.opacity
+            return
+        }
+        let at = now - pips[i].from
+        m.at = at
+        if let k = pips[i].keys.firstIndex(where: { abs($0.at - at) < 0.12 }) { pips[i].keys[k] = m } else { pips[i].keys.append(m) }
+    }
+
+    private func dragPip(_ g: BarGrab, _ dt: Double, span: Double) {
+        guard let i = pips.firstIndex(where: { $0.id == g.id }) else { return }
+        let length = g.to - g.from, whole = pips[i].full > 0 ? pips[i].full : g.start + length
+        switch g.mode {
+        case 1:
+            let d = min(max(-g.start, dt), length - 0.3)
+            pips[i].from = max(0, g.from + d); pips[i].start = g.start + d; pips[i].length = length - d
+        case 2:
+            pips[i].length = max(0.3, min(length + dt, whole - g.start, span - g.from))
+        default:
+            pips[i].from = min(max(0, g.from + dt), max(0, span - 0.3))
+        }
+        seek(g.mode == 2 ? max(0, pips[i].to - 0.05) : pips[i].from)
+    }
+
+    /// An overlay picked: its size and see-through, a keyframe at the line, or taken off.
+    private func pipPanel(_ k: Int) -> some View {
+        let p = pips[k], m = p.place(at: now)
+        let at = now - p.from
+        let near = p.keys.firstIndex { abs($0.at - at) < 0.12 }
+        let inside = now >= p.from && now < p.to
+        return VStack(spacing: 10) {
+            HStack(spacing: 12) {
+                Text("Size").font(.subheadline.weight(.semibold)).frame(width: 64, alignment: .leading)
+                Slider(value: Binding(get: { pips[k].place(at: now).size }, set: { v in setPip(p.id) { $0.size = v } }), in: 0.12...1).tint(.white)
+            }
+            HStack(spacing: 12) {
+                Text("See-through").font(.subheadline.weight(.semibold)).frame(width: 64, alignment: .leading).lineLimit(1).minimumScaleFactor(0.7)
+                Slider(value: Binding(get: { pips[k].place(at: now).opacity }, set: { v in setPip(p.id) { $0.opacity = v } }), in: 0.1...1).tint(.white)
+            }
+            HStack(spacing: 10) {
+                Button {
+                    guard inside else { return }
+                    if let near { pips[k].keys.remove(at: near) } else { var key = m; key.at = at; pips[k].keys.append(key) }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    Label(near != nil ? "Remove keyframe" : "Keyframe here", systemImage: near != nil ? "diamond.fill" : "diamond")
+                        .font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).frame(height: 40)
+                        .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .buttonStyle(.plain).foregroundStyle(near != nil ? Color.yellow : Color.white).disabled(!inside).opacity(inside ? 1 : 0.4)
+                Button(role: .destructive) {
+                    let id = p.id
+                    withAnimation(.snappy) { panel = nil; selectedPip = nil }
+                    pips.removeAll { $0.id == id }
+                } label: {
+                    Label("Take it off", systemImage: "trash").font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).frame(height: 40)
+                        .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .buttonStyle(.plain).foregroundStyle(Theme.warn)
+            }
+            Text(p.keys.isEmpty ? "Drag it on the video to move it, pinch to size it. Add keyframes to make it move over time."
+                 : "\(p.keys.count) keyframe\(p.keys.count == 1 ? "" : "s"): it moves and grows between them.")
+                .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        }
+    }
+
+    /// A clip's movement: a slow zoom or drift from start to end, or its own zoom keyframed at the line.
+    private func motionPanel(_ i: Int) -> some View {
+        let c = clips[i], at = now - startOf(i)
+        let inside = at >= -0.01 && at <= c.span + 0.01
+        let m = MoveKey.value(c.moves, at: at, base: MoveKey(at: 0))
+        let near = c.moves.firstIndex { abs($0.at - at) < 0.12 }
+        return VStack(spacing: 10) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    chip("Still", on: c.moves.isEmpty) { remember(); clips[i].moves = [] }
+                    chip("Slow zoom in", on: false) { setMoves(i, [MoveKey(at: 0), MoveKey(at: c.span, size: 1.18)]) }
+                    chip("Slow zoom out", on: false) { setMoves(i, [MoveKey(at: 0, size: 1.18), MoveKey(at: c.span)]) }
+                    chip("Drift left", on: false) { setMoves(i, [MoveKey(at: 0, x: 0.54, size: 1.12), MoveKey(at: c.span, x: 0.46, size: 1.12)]) }
+                    chip("Drift right", on: false) { setMoves(i, [MoveKey(at: 0, x: 0.46, size: 1.12), MoveKey(at: c.span, x: 0.54, size: 1.12)]) }
+                }
+            }
+            HStack(spacing: 12) {
+                Text("Zoom").font(.subheadline.weight(.semibold))
+                Slider(value: Binding(get: { MoveKey.value(clips[i].moves, at: now - startOf(i), base: MoveKey(at: 0)).size },
+                                      set: { v in setClipMove(i) { $0.size = v } }), in: 1...2, onEditingChanged: { if $0 { remember() } }).tint(.white)
+                Button {
+                    guard inside else { return }
+                    remember()
+                    if let near { clips[i].moves.remove(at: near) } else { var key = m; key.at = at; clips[i].moves.append(key) }
+                } label: {
+                    Image(systemName: near != nil ? "diamond.fill" : "diamond").font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(near != nil ? Color.yellow : Color.white).frame(width: 40, height: 40)
+                        .background(.black.opacity(0.55), in: Circle())
+                }
+                .buttonStyle(.plain).disabled(!inside).opacity(inside ? 1 : 0.4)
+                .accessibilityLabel(near != nil ? "Remove the keyframe here" : "Add a keyframe here")
+            }
+            Text(c.moves.isEmpty ? "A slow zoom or drift makes a still shot feel alive." : "\(c.moves.count) keyframe\(c.moves.count == 1 ? "" : "s") on this clip.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private func setMoves(_ i: Int, _ keys: [MoveKey]) {
+        remember(); clips[i].moves = keys
+        seek(startOf(i) + 0.01); player.play()
+    }
+
+    /// The clip's zoom at the line: all of it with no keyframes (as one keyframe), the one at the line with some.
+    private func setClipMove(_ i: Int, _ change: (inout MoveKey) -> Void) {
+        let at = min(max(0, now - startOf(i)), clips[i].span)
+        var m = MoveKey.value(clips[i].moves, at: at, base: MoveKey(at: 0))
+        change(&m); m.at = at
+        if clips[i].moves.isEmpty { clips[i].moves = [m]; return }
+        if let k = clips[i].moves.firstIndex(where: { abs($0.at - at) < 0.12 }) { clips[i].moves[k] = m } else { clips[i].moves.append(m) }
     }
 
     private func addText() {

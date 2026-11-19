@@ -301,3 +301,25 @@ enum EditOverlays {
         return out
     }
 }
+
+/// A second clip or photo over the edit (Stage D; design/editor-all-tools-mockup.html, 7): a reaction, a before and
+/// after. Where and how big it is, and how see-through; with keyframes it moves and grows over time.
+struct EditPip: Identifiable, Codable, Equatable {
+    var id = UUID()
+    var source: URL
+    var start = 0.0            // where in its own file it starts
+    var length: Double         // how much of it shows
+    var from: Double           // where it starts in the video
+    var full = 0.0             // its file's length
+    var aspect = 9.0 / 16.0    // its width over its height, the right way up
+    var x = 0.72, y = 0.28     // its middle, as fractions of the frame
+    var size = 0.36            // its width, as a fraction of the frame's
+    var opacity = 1.0
+    var keys: [MoveKey] = []   // seconds from its start
+    var to: Double { from + length }
+
+    /// Where it is `t` seconds into the video.
+    func place(at t: Double) -> MoveKey {
+        MoveKey.value(keys, at: t - from, base: MoveKey(at: 0, x: x, y: y, size: size, opacity: opacity))
+    }
+}

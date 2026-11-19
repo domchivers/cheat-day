@@ -32,6 +32,9 @@ struct EditLayer {
     var track: CMPersistentTrackID
     var orientation: CGImagePropertyOrientation
     var look: String
+    /// Its zoom and drift (Stage D), timed from `begins`, when it starts in the video.
+    var moves: [MoveKey] = []
+    var begins = 0.0
 }
 
 /// A stretch of the video: one clip, or two while one turns into the next.
@@ -46,14 +49,19 @@ final class EditInstruction: NSObject, AVVideoCompositionInstructionProtocol {
     let fill: String
     /// Text, stickers and captions over the whole edit (Stage B): each drawn while it shows.
     let overlays: [OverlayPiece]
+    /// Clips and photos over it (Stage D).
+    let pips: [PipLayer]
 
-    init(_ range: CMTimeRange, layers: [EditLayer], transition: String?, fill: String, overlays: [OverlayPiece] = []) {
+    init(_ range: CMTimeRange, layers: [EditLayer], transition: String?, fill: String, overlays: [OverlayPiece] = [], pips: [PipLayer] = []) {
         timeRange = range
         self.layers = layers
         self.transition = transition
         self.fill = fill
         self.overlays = overlays
-        requiredSourceTrackIDs = layers.map { NSNumber(value: $0.track) }
+        self.pips = pips
+        // an overlay's track only while it's over this stretch
+        let over = pips.filter { $0.from < range.end.seconds && $0.to > range.start.seconds }.map { NSNumber(value: $0.track) }
+        requiredSourceTrackIDs = layers.map { NSNumber(value: $0.track) } + over
     }
 }
 
@@ -84,7 +92,16 @@ final class EditCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
                     let e = img.extent
                     img = StoryArt.filtered(img.clampedToExtent(), l.look, frame: e).cropped(to: e)
                 }
-                pics.append(Self.placed(img, in: frame, fill: ins.fill))
+                var put = Self.placed(img, in: frame, fill: ins.fill)
+                if !l.moves.isEmpty {
+                    // zoomed about the middle and drifted, as its keyframes have it now
+                    let m = MoveKey.value(l.moves, at: request.compositionTime.seconds - l.begins, base: MoveKey(at: 0))
+                    let zoom = CGAffineTransform(translationX: -frame.midX, y: -frame.midY)
+                        .concatenating(CGAffineTransform(scaleX: m.size, y: m.size))
+                        .concatenating(CGAffineTransform(translationX: frame.midX + (m.x - 0.5) * frame.width, y: frame.midY - (m.y - 0.5) * frame.height))
+                    put = put.transformed(by: zoom).cropped(to: frame)
+                }
+                pics.append(put)
             }
             let black = CIImage(color: .black).cropped(to: frame)
             var shown = pics.first ?? black
@@ -93,8 +110,23 @@ final class EditCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
                 let p = min(1, max(0, (request.compositionTime - r.start).seconds / max(r.duration.seconds, 0.001)))
                 shown = Self.blend(pics[0], pics[1], kind: kind, p: CGFloat(p), frame: frame)
             }
-            // what's over it now, each centred where it was put (Core Image counts up from the bottom)
             let t = request.compositionTime.seconds
+            // a clip or photo over it, where and how big its keyframes have it, see-through as set
+            for p in ins.pips where t >= p.from - 0.0001 && t < p.to {
+                guard let px = request.sourceFrame(byTrackID: p.track) else { continue }
+                var img = CIImage(cvPixelBuffer: px).oriented(p.orientation)
+                img = img.transformed(by: CGAffineTransform(translationX: -img.extent.minX, y: -img.extent.minY))
+                let m = MoveKey.value(p.keys, at: t - p.from, base: p.base)
+                let k = CGFloat(m.size) * size.width / max(img.extent.width, 1)
+                img = img.transformed(by: CGAffineTransform(scaleX: k, y: k))
+                img = img.transformed(by: CGAffineTransform(translationX: m.x * size.width - img.extent.width / 2, y: (1 - m.y) * size.height - img.extent.height / 2))
+                if m.opacity < 0.99 {
+                    img = img.applyingFilter("CIDissolveTransition", parameters: [kCIInputTargetImageKey: CIImage(color: .clear).cropped(to: img.extent),
+                                                                                  kCIInputTimeKey: 1 - max(0, m.opacity)])
+                }
+                shown = img.composited(over: shown)
+            }
+            // what's over it now, each centred where it was put (Core Image counts up from the bottom)
             for o in ins.overlays where t >= o.from - 0.0001 && t < o.to {
                 let e = o.image.extent
                 let at = CGAffineTransform(translationX: o.x * size.width - e.width / 2 - e.minX, y: (1 - o.y) * size.height - e.height / 2 - e.minY)
@@ -169,4 +201,37 @@ final class EditCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
             return dissolve(a, b, p)
         }
     }
+}
+
+/// Where something is at a moment (Stage D): its middle as fractions of the frame, its size (a clip's zoom, an
+/// overlay's width as a fraction of the frame's), and how see-through. `at` is seconds from when it starts.
+struct MoveKey: Codable, Equatable {
+    var at: Double
+    var x = 0.5
+    var y = 0.5
+    var size = 1.0
+    var opacity = 1.0
+
+    /// Between its keyframes at `t`, eased; `base` with none.
+    static func value(_ keys: [MoveKey], at t: Double, base: MoveKey) -> MoveKey {
+        let k = keys.sorted { $0.at < $1.at }
+        guard let first = k.first, let last = k.last else { return base }
+        if t <= first.at { return first }
+        if t >= last.at { return last }
+        guard let i = k.firstIndex(where: { $0.at > t }), i > 0 else { return last }
+        let a = k[i - 1], b = k[i]
+        let raw = (t - a.at) / max(b.at - a.at, 0.001), e = raw * raw * (3 - 2 * raw)
+        func mix(_ p: Double, _ q: Double) -> Double { p + (q - p) * e }
+        return MoveKey(at: t, x: mix(a.x, b.x), y: mix(a.y, b.y), size: mix(a.size, b.size), opacity: mix(a.opacity, b.opacity))
+    }
+}
+
+/// A second clip or photo over the edit (Stage D), as the compositor lays it on.
+struct PipLayer {
+    var track: CMPersistentTrackID
+    var orientation: CGImagePropertyOrientation
+    var from: Double
+    var to: Double
+    var base: MoveKey
+    var keys: [MoveKey]
 }

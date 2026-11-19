@@ -30,6 +30,8 @@ struct Clip: Identifiable, Equatable, Codable {
     var forward: Forward?
     /// Its sound made clearer (Stage C, Clarity): played instead of its own, at the same times.
     var clean: URL?
+    /// Its zoom and drift over time (Stage D): seconds from its start in the video; none, still.
+    var moves: [MoveKey] = []
 
     /// The part of its file kept, seconds of the file.
     var duration: Double { max(0, end - start) }
@@ -121,6 +123,9 @@ enum ClipJoin {
         guard cut - c.start > 0.3, c.end - cut > 0.3 else { return nil }
         var a = c, b = c
         a.end = cut; a.fadeOut = 0; a.transition = nil
+        // each half keeps its own part of the movement, the second's timed from its own start
+        a.moves = c.moves.filter { $0.at <= a.span + 0.001 }
+        b.moves = c.moves.filter { $0.at >= a.span - 0.001 }.map { var m = $0; m.at -= a.span; return m }
         b.id = UUID(); b.start = cut; b.fadeIn = 0
         // each half keeps the keyframes inside it
         a.keys = c.keys.filter { $0.at <= cut }; b.keys = c.keys.filter { $0.at >= cut }
@@ -137,7 +142,7 @@ enum ClipJoin {
     /// transition; `soundOf`: one clip's sound for the whole of it instead, round again if it's shorter. `swap`: a
     /// smaller copy of a file to play instead (a 4K clip's, for the preview).
     static func compose(_ clips: [Clip], soundOf: UUID? = nil, look: EditLook = EditLook(), swap: [URL: URL] = [:], overlays: [OverlayPiece] = [],
-                        sounds: [EditSound] = []) async -> (AVMutableComposition, AVMutableVideoComposition, AVMutableAudioMix)? {
+                        sounds: [EditSound] = [], pips: [EditPip] = []) async -> (AVMutableComposition, AVMutableVideoComposition, AVMutableAudioMix)? {
         let comp = AVMutableComposition()
         guard let v0 = comp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid),
               let v1 = comp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid),
@@ -197,7 +202,8 @@ enum ClipJoin {
                 out = min(tick(tr.length), lasts / 2, tick(clips[i + 1].span / 2))
                 out = max(0, out)
             }
-            let layer = EditLayer(track: videos[track].trackID, orientation: EditCompositor.orientation(tf), look: c.look)
+            let layer = EditLayer(track: videos[track].trackID, orientation: EditCompositor.orientation(tf), look: c.look,
+                                  moves: c.moves, begins: Double(cursor) / 600)
             pieces.append(Piece(at: cursor, lasts: lasts, layer: layer, into: out > 0 ? c.transition?.kind : nil, out: out))
             // its own sound, unless one clip's sound plays over everything; across a transition it fades out as the
             // next fades in
@@ -260,19 +266,33 @@ enum ClipJoin {
             p.setVolume(snd.volume, at: .zero)
             laid.append(p)
         }
+        // clips and photos over it, each on a track of its own, no sound of their own
+        var over: [PipLayer] = []
+        for p in pips {
+            guard let v = try? await AVURLAsset(url: p.source).loadTracks(withMediaType: .video).first,
+                  let range = try? await v.load(.timeRange),
+                  let track = comp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) else { continue }
+            let take = min(p.length, range.end.seconds - p.start, Double(end) / 600 - p.from)
+            guard take > 0.1, (try? track.insertTimeRange(CMTimeRange(start: t(p.start), duration: t(take)), of: v, at: t(p.from))) != nil else {
+                comp.removeTrack(track); continue
+            }
+            let tf = (try? await v.load(.preferredTransform)) ?? .identity
+            over.append(PipLayer(track: track.trackID, orientation: EditCompositor.orientation(tf), from: p.from, to: p.from + take,
+                                 base: MoveKey(at: 0, x: p.x, y: p.y, size: p.size, opacity: p.opacity), keys: p.keys))
+        }
         // the stretches: each clip on its own, then it and the next together while one turns into the other
         var instructions: [EditInstruction] = []
         var from: Int64 = 0
         for (k, p) in pieces.enumerated() {
             let soloEnd = p.at + p.lasts - p.out
             if soloEnd > from {
-                instructions.append(EditInstruction(CMTimeRange(start: tt(from), end: tt(soloEnd)), layers: [p.layer], transition: nil, fill: look.fill, overlays: overlays))
+                instructions.append(EditInstruction(CMTimeRange(start: tt(from), end: tt(soloEnd)), layers: [p.layer], transition: nil, fill: look.fill, overlays: overlays, pips: over))
                 from = soloEnd
             }
             if p.out > 0, k + 1 < pieces.count {
                 let both = p.at + p.lasts
                 instructions.append(EditInstruction(CMTimeRange(start: tt(from), end: tt(both)), layers: [p.layer, pieces[k + 1].layer],
-                                                    transition: p.into, fill: look.fill, overlays: overlays))
+                                                    transition: p.into, fill: look.fill, overlays: overlays, pips: over))
                 from = both
             }
         }
@@ -280,7 +300,7 @@ enum ClipJoin {
         let compEnd = max(end, tick(comp.duration.seconds))
         if let lastIns = instructions.popLast() {
             instructions.append(EditInstruction(CMTimeRange(start: lastIns.timeRange.start, end: tt(compEnd)), layers: lastIns.layers,
-                                                transition: lastIns.transition, fill: look.fill, overlays: overlays))
+                                                transition: lastIns.transition, fill: look.fill, overlays: overlays, pips: over))
         }
         // tracks with nothing on them taken out (an empty sound track can stop the export)
         var mixes: [AVMutableAudioMixInputParameters] = []
@@ -298,9 +318,9 @@ enum ClipJoin {
 
     /// The clips as one video file on the phone, for the editor to take on as it takes a single video. `progress`
     /// hears how far it's got (0 to 1); cancelling the task that asked stops it.
-    static func join(_ clips: [Clip], soundOf: UUID? = nil, look: EditLook = EditLook(), overlays: [OverlayPiece] = [], sounds: [EditSound] = [],
+    static func join(_ clips: [Clip], soundOf: UUID? = nil, look: EditLook = EditLook(), overlays: [OverlayPiece] = [], sounds: [EditSound] = [], pips: [EditPip] = [],
                      progress: @escaping @MainActor (Float) -> Void = { _ in }) async -> URL? {
-        guard let (comp, vc, mix) = await compose(clips, soundOf: soundOf, look: look, overlays: overlays, sounds: sounds),
+        guard let (comp, vc, mix) = await compose(clips, soundOf: soundOf, look: look, overlays: overlays, sounds: sounds, pips: pips),
               let export = AVAssetExportSession(asset: comp, presetName: AVAssetExportPresetHighestQuality) else { return nil }
         let out = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mov")
         export.outputURL = out; export.outputFileType = .mov
@@ -470,7 +490,7 @@ enum ClipJoin {
 
 extension Clip {
     private enum CodingKeys: String, CodingKey {
-        case id, source, length, start, end, still, soundOn, volume, soundStart, soundEnd, fadeIn, fadeOut, keys, speed, transition, look, forward, clean
+        case id, source, length, start, end, still, soundOn, volume, soundStart, soundEnd, fadeIn, fadeOut, keys, speed, transition, look, forward, clean, moves
     }
     /// Read from a draft, a field it was saved without (added in a later build) taking its default.
     init(from decoder: Decoder) throws {
@@ -491,5 +511,6 @@ extension Clip {
         look = try c.decodeIfPresent(String.self, forKey: .look) ?? "Normal"
         forward = try c.decodeIfPresent(Forward.self, forKey: .forward)
         clean = try c.decodeIfPresent(URL.self, forKey: .clean)
+        moves = try c.decodeIfPresent([MoveKey].self, forKey: .moves) ?? []
     }
 }

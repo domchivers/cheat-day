@@ -22,6 +22,7 @@ struct EditFlow: View {
     @State private var draftTexts: [EditText]?
     @State private var draftAttached: JSON?
     @State private var draftSounds: [EditSound]?
+    @State private var draftPips: [EditPip]?
     @State private var attached: JSON?   // a meal, recipe or workout picked in the editor: the post carries it
 
     struct VideoBox: Identifiable { let id = UUID(); let url: URL }
@@ -31,8 +32,8 @@ struct EditFlow: View {
             Theme.bg.ignoresSafeArea()
             if let clips {
                 MultiClipEditor(clips: clips, draftID: draftID, startSoundOf: draftSound, startLook: draftLook,
-                                startTexts: draftTexts, startAttached: draftAttached, startSounds: draftSounds,
-                                close: { self.clips = nil; draftID = nil; draftSound = nil; draftLook = nil; draftTexts = nil; draftAttached = nil; draftSounds = nil; attached = nil; refreshDrafts() },
+                                startTexts: draftTexts, startAttached: draftAttached, startSounds: draftSounds, startPips: draftPips,
+                                close: { self.clips = nil; draftID = nil; draftSound = nil; draftLook = nil; draftTexts = nil; draftAttached = nil; draftSounds = nil; draftPips = nil; attached = nil; refreshDrafts() },
                                 done: { url in
                                     joined = url; self.clips = nil
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { sharing = true }
@@ -78,7 +79,7 @@ struct EditFlow: View {
                            close: { dismiss() },
                            editMode: true,
                            drafts: drafts,
-                           openDraft: { d in draftID = d.id; draftSound = d.soundOf; draftLook = d.look; draftTexts = d.texts; draftAttached = d.attachedJSON; draftSounds = d.sounds; clips = d.clips },
+                           openDraft: { d in draftID = d.id; draftSound = d.soundOf; draftLook = d.look; draftTexts = d.texts; draftAttached = d.attachedJSON; draftSounds = d.sounds; draftPips = d.pips; clips = d.clips },
                            deleteDraft: { d in EditDrafts.queue.async { EditDrafts.delete(d.id) }; refreshDrafts() })
             }
             if working { Color.black.opacity(0.4).ignoresSafeArea(); ProgressView().tint(.white) }
@@ -141,7 +142,7 @@ struct EditFlow: View {
         guard let id = draftID else { refreshDrafts(); return }
         EditDrafts.queue.async {
             let d = EditDrafts.all().first { $0.id == id }
-            DispatchQueue.main.async { if let d { draftSound = d.soundOf; draftLook = d.look; draftTexts = d.texts; draftAttached = d.attachedJSON; draftSounds = d.sounds; clips = d.clips } else { draftID = nil; refreshDrafts() } }
+            DispatchQueue.main.async { if let d { draftSound = d.soundOf; draftLook = d.look; draftTexts = d.texts; draftAttached = d.attachedJSON; draftSounds = d.sounds; draftPips = d.pips; clips = d.clips } else { draftID = nil; refreshDrafts() } }
         }
     }
 
