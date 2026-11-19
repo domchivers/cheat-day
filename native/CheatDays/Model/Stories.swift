@@ -384,31 +384,15 @@ struct LoopingVideo: UIViewRepresentable {
         var playing = true
         var tries = 0                // times this clip's player has been built again because it showed nothing
         var tick: ((Double, Double) -> Void)?
-        // Its sound going on or off fades over a third of a second rather than cutting in (19 Nov: a feed video's
-        // sound, and a song mixed into one, jumped in and out as it came and went).
-        var heard: Bool?             // as last asked for (nil: a new player, set straight away)
+        // Its sound on and off at once, as Instagram's is (a fade was tried on 19 Nov and read as lag beside theirs),
+        // set only when it changes: told again on every redraw, it can hitch
+        var heard: Bool?
         var level: Float = 1
-        var fader: Timer?
+        var fader: Timer?            // (no longer used: kept so a player built again clears nothing it doesn't have)
         func sound(on: Bool, level: Float) {
             guard let p = playerLayer.player else { return }
-            if heard == on {
-                if self.level != level { self.level = level; if fader == nil { p.volume = level } }
-                return
-            }
-            let first = heard == nil
-            heard = on; self.level = level
-            fader?.invalidate(); fader = nil
-            if first { p.isMuted = !on; p.volume = level; return }
-            if on { if p.isMuted { p.volume = 0 }; p.isMuted = false }
-            let from = p.volume, to: Float = on ? level : 0, steps = 12
-            var i = 0
-            fader = Timer.scheduledTimer(withTimeInterval: (on ? 0.3 : 0.25) / Double(steps), repeats: true) { [weak self, weak p] t in
-                i += 1
-                p?.volume = from + (to - from) * Float(i) / Float(steps)
-                guard i >= steps else { return }
-                t.invalidate(); self?.fader = nil
-                if !on { p?.isMuted = true; p?.volume = self?.level ?? 1 }
-            }
+            if heard != on { heard = on; p.isMuted = !on }
+            if self.level != level || p.volume != level { self.level = level; p.volume = level }
         }
         var watch: Any?              // the player's own clock, watched for `tick`
         weak var watched: AVPlayer?

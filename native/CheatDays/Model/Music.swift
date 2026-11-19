@@ -201,7 +201,7 @@ enum Music {
     }
 
     /// The song that's playing, louder or quieter (a slider being moved while it's heard).
-    func volume(_ v: Float) { target = v; player?.volume = v }
+    func volume(_ v: Float) { player?.volume = v }
     /// A post with a song has come onto the screen. Nothing if songs are off, or if the phone's already playing
     /// something of its own (their music or a podcast isn't cut off by scrolling past a photo).
     func arrive(_ song: Song, key: String, volume: Float = 1, inVideo: Bool = false) {
@@ -219,16 +219,14 @@ enum Music {
     func play(_ song: Song, key: String, loop: Bool = false, volume: Float = 1, inVideo: Bool = false) {
         stop()
         if inVideo {
-            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
-            try? AVAudioSession.sharedInstance().setActive(true)
+            Sound.on()
             carried = true; playing = key
             return
         }
         // from its longer clip when it has one: the part the poster chose, or the usual 30 seconds of it
         let long = Music.long[song.id]
         guard let url = long != nil ? song.longURL : song.url else { return }
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
-        try? AVAudioSession.sharedInstance().setActive(true)
+        Sound.on()
         let from = long != nil ? song.from : 0
         base = from
         span = long.map { min(Song.part, $0.len - from) } ?? 0
@@ -246,31 +244,14 @@ enum Music {
                 DispatchQueue.main.async { over() }
             }
         }
-        // in over a third of a second, not all at once (18 Nov: songs cut in and out as posts came and went)
-        target = volume
-        p.volume = 0
+        // straight in, as Instagram's are (19 Nov: side by side with theirs, the fades read as lag)
+        p.volume = volume
         player = p; playing = key
         p.play()
-        ramp(p, to: volume, over: 0.3)
     }
 
-    @ObservationIgnored private var target: Float = 1
-
-    /// Its volume taken to `to` in small steps over `over` seconds; `done` after the last.
-    private func ramp(_ p: AVPlayer, to: Float, over: Double, done: (() -> Void)? = nil) {
-        let from = p.volume, steps = 12
-        var i = 0
-        Timer.scheduledTimer(withTimeInterval: over / Double(steps), repeats: true) { [weak self] t in
-            i += 1
-            // a newer fade on the same player (louder again) takes over from this one
-            if to > from, self?.player !== p { t.invalidate(); return }
-            p.volume = from + (to - from) * Float(i) / Float(steps)
-            if i >= steps { t.invalidate(); done?() }
-        }
-    }
-
-    /// Stopped: it fades out over a quarter of a second (a new song can start meanwhile), then lets the phone's
-    /// own sound back.
+    /// Stopped at once; the phone's own sound comes back a moment later, unless another song or a video's sound
+    /// starts first (scrolling from one post to the next no longer turns the phone's sound off and on in between).
     func stop() {
         guard player != nil || playing != nil else { return }
         let old = player
@@ -278,19 +259,10 @@ enum Music {
         edge = nil; player = nil
         if let end { NotificationCenter.default.removeObserver(end) }
         end = nil; playing = nil
-        let wasCarried = carried
         carried = false
-        let release: () -> Void = { [weak self] in
-            old?.pause()
-            // a new song (or one in a video), or a video being edited, still wants sound
-            guard let self, self.player == nil, self.playing == nil, !self.loud else { return }
-            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-            try? AVAudioSession.sharedInstance().setCategory(.soloAmbient)
-        }
-        if let old, old.volume > 0.01 { ramp(old, to: 0, over: 0.25, done: release) }
-        // a song in a video: its sound fades with the video's (LoopingVideo), so the phone's let go of after that
-        else if wasCarried { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: release) }
-        else { release() }
+        old?.pause()
+        // a video being edited still wants sound
+        if !loud { Sound.off() }
     }
     /// What's playing is a song mixed into a video, not one of its own.
     @ObservationIgnored private var carried = false
@@ -301,12 +273,43 @@ enum Music {
     @ObservationIgnored private var loud = false
     func heard(_ on: Bool) {
         loud = on
-        if on {
-            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
-            try? AVAudioSession.sharedInstance().setActive(true)
-        } else if player == nil {
-            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-            try? AVAudioSession.sharedInstance().setCategory(.soloAmbient)
+        if on { Sound.on() } else if player == nil { Sound.off() }
+    }
+}
+
+/// The phone's sound, switched on and off away from the screen (19 Nov). Each song that started or stopped switched
+/// it on the main thread, which can hold everything up: side by side with Instagram, the feed stood still for 0.7 s
+/// mid-scroll at the moment a post's song came in (the cause is the likeliest one, not proven). Off is put off for a
+/// moment and called off by any sound wanted meanwhile, so moving between posts doesn't switch it off and on again.
+/// Off is `.ambient`: muted videos then play alongside someone's own music instead of stopping it.
+enum Sound {
+    private static let q = DispatchQueue(label: "cheatdays.sound", qos: .userInitiated)
+    // only touched on q
+    private static var ticket = 0
+
+    /// Heard with the ringer off too (`.playback`).
+    static func on(_ m: AVAudioSession.Mode = .default) {
+        q.async {
+            ticket += 1
+            // read from the session itself, as other parts of the app (dictation) change it too
+            let s = AVAudioSession.sharedInstance()
+            if s.category != .playback || s.mode != m { try? s.setCategory(.playback, mode: m) }
+            try? s.setActive(true)
+        }
+    }
+
+    /// Back to the ringer and whatever else was playing, a moment from now unless sound's wanted again first.
+    static func off(after: Double = 1) {
+        q.async {
+            ticket += 1
+            let mine = ticket
+            q.asyncAfter(deadline: .now() + after) {
+                guard mine == ticket else { return }
+                let s = AVAudioSession.sharedInstance()
+                guard s.category == .playback else { return }   // already off, or another part of the app has it
+                try? s.setActive(false, options: .notifyOthersOnDeactivation)
+                try? s.setCategory(.ambient)
+            }
         }
     }
 }

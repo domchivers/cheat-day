@@ -93,14 +93,12 @@ struct ReelsView: View {
         }
         .onAppear {
             // a video they opened plays with its sound, the ringer off or not
-            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
-            try? AVAudioSession.sharedInstance().setActive(true)
+            Sound.on(.moviePlayback)
             sound()
         }
         .onDisappear {
             SongPlayer.shared.stop()
-            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-            try? AVAudioSession.sharedInstance().setCategory(.soloAmbient)
+            Sound.off()
         }
         .sheet(item: $songShown) { s in SongCard(song: s.song, muted: $muted) }
         // deleting asks first: it was one tap in a menu, next to Edit, and there's no getting a post back
@@ -149,8 +147,7 @@ struct ReelsView: View {
         } else {
             SongPlayer.shared.stop()
             // stopping a song hands the sound back to the ringer; here a video is still to be heard
-            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
-            try? AVAudioSession.sharedInstance().setActive(true)
+            Sound.on(.moviePlayback)
         }
     }
 

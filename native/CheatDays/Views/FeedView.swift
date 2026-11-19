@@ -1199,13 +1199,8 @@ extension FeedVideo {
     /// Sound they turned on is heard with the ringer off too (the song button was; the video's speaker button wasn't,
     /// so it looked broken on a silenced phone). Turned off again, the app goes back to respecting the switch.
     func loud(_ on: Bool) {
-        let session = AVAudioSession.sharedInstance()
-        if on {
-            try? session.setCategory(.playback, mode: .moviePlayback)
-            try? session.setActive(true)
-        } else if SongPlayer.shared.playing == nil {
-            try? session.setCategory(.soloAmbient)
-        }
+        // (switched away from the screen: see Sound)
+        if on { Sound.on(.moviePlayback) } else if SongPlayer.shared.playing == nil { Sound.off() }
     }
 }
 
