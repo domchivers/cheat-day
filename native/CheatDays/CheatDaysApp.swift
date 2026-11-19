@@ -20,6 +20,8 @@ struct CheatDaysApp: App {
         // the volume buttons turn sound on (VolumeButtons), heard while the phone's sound is on, quietly, from launch
         Sound.ready()
         VolumeButtons.shared.start()
+        // Apple's own daily reports of hitches, hangs and crashes, kept on the phone (Performance)
+        Performance.shared.start()
         // no scroll bars down the side of the screens; the assistant's chat keeps its own (a long conversation needs one)
         UIScrollView.appearance().showsVerticalScrollIndicator = false
         UIScrollView.appearance().showsHorizontalScrollIndicator = false
