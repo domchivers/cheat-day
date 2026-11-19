@@ -413,6 +413,7 @@ struct FeedView: View {
     @State private var recipe: JSON?
     @State private var flash: String?
     @State private var talking: PostBox?   // the post whose comments are open
+    @State private var songOf: PostBox?   // the post whose song's card is open (its song line, under the name)
     @State private var sharing: PostBox?
     @State private var rewording: PostBox?   // your post whose caption is being changed
     @State private var reels: ReelStart?   // a video opened full screen
@@ -465,6 +466,13 @@ struct FeedView: View {
         // no floating + here (17 Nov): it didn't match the Food page's and a post is made from your profile's + or a workout
         .sheet(item: Binding(get: { recipe.map { PostBox(post: $0) } }, set: { recipe = $0?.post })) { b in PostRecipeSheet(post: b.post) }
         .sheet(item: $talking) { b in CommentsSheet(post: b.post) }
+        .sheet(item: $songOf) { b in
+            if let s = Music.of(b.post) {
+                let key = "post:" + str(b.post["id"])
+                SongCard(song: s, muted: Binding(get: { SongPlayer.shared.playing != key },
+                                                 set: { _ in SongPlayer.shared.flip(s, key: key, volume: Music.mix(b.post).song, inVideo: Music.mixed(b.post)) }))
+            }
+        }
         .sheet(item: $sharing) { b in SharePostSheet(post: b.post).presentationDetents([.medium, .large]) }
         // deleting asks first: it was one tap in a menu, next to Edit, and there's no getting a post back
         .alert("Delete this post?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), presenting: deleting) { b in
@@ -594,12 +602,11 @@ struct FeedView: View {
                         } else {
                             Text(feed.name(owner)).font(.subheadline.weight(.bold)).foregroundStyle(.primary)
                         }
-                        // one line: what, when and who with (it took two, with room to spare), and the song
+                        // one line: what, when and who with (it took two, with room to spare); the song on its own
+                        // line under it, as on stories and Instagram (19 Nov: it was squeezed onto the end of this one)
                         let with = (dict(p["extra"])["tags"] as? [String]).flatMap { $0.isEmpty ? nil : " · with " + TagPicker.names($0) } ?? ""
-                        HStack(spacing: 0) {
-                            Text(Self.what(p) + " · " + Feed.ago(str(p["created_at"])) + with).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                            if let s = Music.of(p) { songTag(s, post: id) }
-                        }
+                        Text(Self.what(p) + " · " + Feed.ago(str(p["created_at"])) + with).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        if let s = Music.of(p) { songTag(s, post: p) }
                     }
                 }
                 .contentShape(Rectangle()).onTapGesture { profileOf = owner }
@@ -668,21 +675,27 @@ struct FeedView: View {
         }
     }
 
-    /// A post's song, at the end of the line under the name ("Worked out · 3 min ago · ♪ Backbeat", 16 Nov): a tap
-    /// plays its 30 seconds, another stops it. It had a row of its own above the post.
-    private func songTag(_ s: Song, post: String) -> some View {
-        let on = SongPlayer.shared.playing == "post:" + post
-        return Button { SongPlayer.shared.toggle(s, key: "post:" + post) } label: {
-            HStack(spacing: 3) {
-                Text(" · ").foregroundStyle(.secondary)
-                Image(systemName: on ? "pause.fill" : "music.note").font(.system(size: 9, weight: .bold))
-                Text(s.title).lineLimit(1)
+    /// A post's song, on its own line under the name, as a story's is (19 Nov; the owner's mockup, option 1): bars
+    /// that move while it plays (a crossed speaker while it's off), the artist or mood, the title, and a › for its
+    /// card. The speaker on the picture is still the one way to turn it off and on.
+    private func songTag(_ s: Song, post p: JSON) -> some View {
+        let on = SongPlayer.shared.playing == "post:" + str(p["id"])
+        return Button { songOf = PostBox(post: p) } label: {
+            HStack(spacing: 5) {
+                Image(systemName: on ? "waveform" : "speaker.slash.fill").font(.system(size: 10, weight: .bold))
+                    .contentTransition(.identity).animation(nil, value: on)
+                    .symbolEffect(.variableColor.iterative, isActive: on)
+                HStack(spacing: 0) {
+                    if !s.byline.isEmpty { Text(s.byline).fontWeight(.bold); Text(" · ") }
+                    Marquee(text: s.title, maxWidth: 170)
+                }
+                Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold))
             }
-            .font(.caption.weight(.semibold)).foregroundStyle(on ? Theme.accent : Color.primary)
-            .padding(.vertical, 6).contentShape(Rectangle())
+            .font(.caption).foregroundStyle(.primary)
+            .padding(.top, 1).contentShape(Rectangle())
         }
-        .buttonStyle(.plain).fixedSize()
-        .accessibilityLabel(on ? "Stop \(s.title)" : "Play \(s.title)")
+        .buttonStyle(.plain)
+        .accessibilityLabel("Song: \(s.title)")
     }
 
     private func songLine(_ s: Song, post: String) -> some View {
