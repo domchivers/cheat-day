@@ -27,6 +27,7 @@ struct ProfileView: View {
     @State private var followBusy = false   // a follow or unfollow on its way
     @State private var watching = false   // your story, from your photo
     @State private var posting = false   // a new post, from the +
+    @State private var makingEdit = false   // Make an edit, from the +
     @State private var listing: String?   // "followers" or "following", open
     @State private var reporting = false
     @State private var removing = false
@@ -93,6 +94,8 @@ struct ProfileView: View {
                         Menu {
                             Button { composing = true } label: { Label("Story", systemImage: "plus.circle") }
                             Button { posting = true } label: { Label("Post", systemImage: "square.grid.3x3") }
+                            // several videos made into one (EditFlow)
+                            Button { makingEdit = true } label: { Label("Make an edit", systemImage: "film.stack") }
                             Divider()
                             Button { archive = true } label: { Label("Story archive", systemImage: "clock.arrow.circlepath") }
                         } label: { Image(systemName: "plus") }
@@ -135,6 +138,7 @@ struct ProfileView: View {
         }
         .navigationDestination(isPresented: $chatting) { ChatView(friend: id) }
         .fullScreenCover(isPresented: $composing) { StoryComposer() }
+        .fullScreenCover(isPresented: $makingEdit) { EditFlow() }
         .fullScreenCover(isPresented: $watching) { StoryView(people: [id], at: 0) }
         .navigationDestination(isPresented: $archive) { StoryArchiveView() }
         .task { await Stories.shared.load() }   // a profile opened before the feed has its stories too

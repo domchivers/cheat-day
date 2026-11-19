@@ -17,6 +17,8 @@ struct StoryComposer: View {
     @State private var extras: [JSON] = []   // the other photos picked with the first, on it as stickers
     @State private var at = 0
     @State private var multi: ClipsBox?   // two or more videos picked, being made into one (MultiClipEditor)
+    /// Opened with a video to make a story of (an edit, from Make an edit): straight into the editor with it.
+    init(video: URL? = nil) { _video = State(initialValue: video) }
 
     var body: some View {
         ZStack {

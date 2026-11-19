@@ -18,6 +18,9 @@ struct PostPicker: View {
     /// A post with no picture (a meal or a workout on its own): shown as a square beside the camera when given.
     var noPhoto: (() -> Void)? = nil
     var close: () -> Void
+    /// Make an edit (19 Nov; design/make-an-edit-mockup.html): opens on Videos with picking several on, no camera, and
+    /// whatever is picked, even one, goes on to the clip editor as clips.
+    var editMode = false
 
     @State private var assets: [PHAsset] = []
     @State private var allowed = true
@@ -70,7 +73,8 @@ struct PostPicker: View {
             }
             .background(Theme.bg.ignoresSafeArea())
             .overlay { if busy { ZStack { Color.black.opacity(0.35).ignoresSafeArea(); ProgressView().controlSize(.large).tint(.white) } } }
-            .navigationTitle("New post").navigationBarTitleDisplayMode(.inline)
+            .navigationTitle(editMode ? "Make an edit" : "New post").navigationBarTitleDisplayMode(.inline)
+            .onAppear { if editMode, !several { several = true; source = "Videos" } }
             // solid: the grid showed through the bar as it scrolled under
             .toolbarBackground(Theme.bg, for: .navigationBar).toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
@@ -164,11 +168,13 @@ struct PostPicker: View {
     private var grid: some View {
         VStack(spacing: 0) {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 4), spacing: 2) {
+                if !editMode {
                 Button { camera() } label: {
                     Color(.secondarySystemGroupedBackground).aspectRatio(1, contentMode: .fit)
                         .overlay { Image(systemName: "camera.fill").font(.system(size: 24)).foregroundStyle(.primary) }
                 }
                 .buttonStyle(.plain).accessibilityLabel("Camera")
+                }
                 if let noPhoto {
                     Button { noPhoto() } label: {
                         Color(.secondarySystemGroupedBackground).aspectRatio(1, contentMode: .fit)
@@ -301,7 +307,7 @@ struct PostPicker: View {
         guard !chosen.isEmpty else { return }
         busy = true
         // several, a video among them: each as a clip, a photo as a short still, for the multi-clip editor
-        if chosen.count > 1, chosen.contains(where: { $0.mediaType == .video }), let clips {
+        if editMode || (chosen.count > 1 && chosen.contains(where: { $0.mediaType == .video })), let clips {
             Task {
                 var out: [Clip] = []
                 for a in chosen {
@@ -312,7 +318,7 @@ struct PostPicker: View {
                     }
                 }
                 busy = false
-                if out.count > 1 { clips(out) } else if let only = out.first { done([], only.source) }
+                if out.count > 1 || (editMode && !out.isEmpty) { clips(out) } else if let only = out.first { done([], only.source) }
             }
             return
         }

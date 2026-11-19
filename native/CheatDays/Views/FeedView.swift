@@ -434,6 +434,7 @@ struct FeedView: View {
     @State private var story: StoryStart?
     @State private var profileAfterStory: String?   // a name tapped in a story: their page opens once the story has closed
     @State private var posting = false   // making a story
+    @State private var makingEdit = false   // Make an edit (EditFlow), from Your story
     @State private var askMine = false
     struct StoryStart: Identifiable { let id = UUID(); let people: [String]; let at: Int }
     private var feed: Feed { Feed.shared }
@@ -495,6 +496,7 @@ struct FeedView: View {
             StoryView(people: s.people, at: s.at, onProfile: { profileAfterStory = $0 })
         }
         .fullScreenCover(isPresented: $posting) { StoryComposer() }
+        .fullScreenCover(isPresented: $makingEdit) { EditFlow() }
         .task { if only == nil { await Stories.shared.load() } }
         .task { if only == nil { await Moderation.shared.load() } }
     }
@@ -520,6 +522,7 @@ struct FeedView: View {
                 .buttonStyle(.plain)
                 .confirmationDialog("Your story", isPresented: $askMine) {
                     Button("Add to your story") { posting = true }
+                    Button("Make an edit") { makingEdit = true }
                     // and on into everyone else's, as the rings go (it stopped at the end of yours, 17 Nov)
                     Button("View your story") { openStory { story = StoryStart(people: [feed.me] + run, at: 0) } }
                 }
@@ -1241,9 +1244,13 @@ struct ComposeSheet: View {
     /// A new post starts as the picker, in this same sheet (not the write-up with the picker coming up over it a
     /// moment later). Not when it's of a workout or food already, or there are drafts to carry on with.
     @State private var firstPick: Bool
-    init(preset: JSON? = nil) {
+    /// A video to post (an edit, from Make an edit): it opens in the video editor straight away, as one picked would.
+    private let startVideo: URL?
+    @State private var startedVideo = false
+    init(preset: JSON? = nil, video: URL? = nil) {
         self.preset = preset
-        _firstPick = State(initialValue: preset == nil && Drafts.all().isEmpty)
+        self.startVideo = video
+        _firstPick = State(initialValue: preset == nil && video == nil && Drafts.all().isEmpty)
     }
     @Environment(\.dismiss) private var dismiss
     @State private var what: JSON?
@@ -1310,6 +1317,8 @@ struct ComposeSheet: View {
                     .background(Theme.bg.ignoresSafeArea())
             }
         }
+        // an edit to post: into the video editor with it, once
+        .onAppear { if let v = startVideo, !startedVideo { startedVideo = true; took([], v, wait: false) } }
     }
 
     private var form: some View {
