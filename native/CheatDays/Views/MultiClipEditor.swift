@@ -24,6 +24,7 @@ struct MultiClipEditor: View {
     @State private var watch: Any?
     @State private var adding = false
     @State private var picks: [PhotosPickerItem] = []
+    @State private var leaving = false   // the cross tapped: asking before the edit is thrown away
     @State private var wasPlaying: Bool?   // while the scrub bar is dragged: whether it was playing before
     private enum Panel { case trim, sound }
     private let perSecond: CGFloat = 14         // strip points a second
@@ -44,6 +45,11 @@ struct MultiClipEditor: View {
             if joining { Color.black.opacity(0.5).ignoresSafeArea(); ProgressView("Putting it together…").tint(.white).foregroundStyle(.white) }
         }
         .preferredColorScheme(.dark)
+        // (an alert, as the single editor asks: on iOS 26 a confirmation dialog hangs off its button)
+        .alert("Discard this edit?", isPresented: $leaving) {
+            Button("Discard", role: .destructive) { player.pause(); close() }
+            Button("Keep editing", role: .cancel) {}
+        } message: { Text("Your clips and the changes to them will be lost.") }
         // made again a moment after a change has settled (not for every step of a handle being dragged)
         .task(id: clips) { await settle() }
         .task(id: soundOf) { await settle() }
@@ -61,7 +67,8 @@ struct MultiClipEditor: View {
     // buttons at the top, Done as its white pill, tools as its dark tiles, white trim handles and Next along the bottom.
     private var top: some View {
         HStack(spacing: 5) {
-            round("xmark", "Close") { close() }
+            // asked first: one tap on the cross threw the whole edit away (19 Nov)
+            round("xmark", "Close") { if clips.isEmpty { close() } else { leaving = true } }
             if !history.isEmpty { round("arrow.uturn.backward", "Undo") { undo() } }
             Spacer()
             if panel != nil {

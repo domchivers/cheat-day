@@ -32,8 +32,11 @@ enum ClipJoin {
     /// A file picked, as a clip: all of it kept.
     static func clip(_ url: URL, still: Bool = false) async -> Clip? {
         let asset = AVURLAsset(url: url)
-        guard let d = try? await asset.load(.duration).seconds, d.isFinite, d > 0.1 else { return nil }
-        return Clip(source: url, length: d, start: 0, end: d, still: still, soundOn: !still)
+        // the picture's own length, not the file's: the sound often runs a little longer, and a clip kept to the
+        // file's end then asked for picture that isn't there, so none of it went in and it came out black (19 Nov)
+        guard let v = try? await asset.loadTracks(withMediaType: .video).first,
+              let range = try? await v.load(.timeRange), case let d = range.end.seconds, d.isFinite, d > 0.1 else { return nil }
+        return Clip(source: url, length: d, start: max(0, range.start.seconds), end: d, still: still, soundOn: !still)
     }
 
     /// One clip in two at `at` seconds into it (its own kept part), or nil if that's too near an end.
@@ -72,7 +75,10 @@ enum ClipJoin {
         for c in clips where c.duration > 0.05 {
             let asset = AVURLAsset(url: c.source)
             guard let v = try? await asset.loadTracks(withMediaType: .video).first else { continue }
-            try? vt.insertTimeRange(CMTimeRange(start: t(c.start), end: t(c.end)), of: v, at: t(cursor))
+            // only what picture there is (a clip kept past its picture's end went in not at all, and showed black)
+            let has = (try? await v.load(.timeRange)) ?? CMTimeRange(start: .zero, end: t(c.end))
+            let shown = max(c.start, has.start.seconds), until = min(c.end, has.end.seconds), dur = until - shown
+            guard dur > 0.05, (try? vt.insertTimeRange(CMTimeRange(start: t(shown), end: t(until)), of: v, at: t(cursor))) != nil else { continue }
             // the clip filled into the frame: turned the right way up, scaled to cover it, centred
             let n = (try? await v.load(.naturalSize)) ?? frame, tf = (try? await v.load(.preferredTransform)) ?? .identity
             let up = CGRect(origin: .zero, size: n).applying(tf)
@@ -83,20 +89,20 @@ enum ClipJoin {
             let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: vt)
             layer.setTransform(place, at: t(cursor))
             let ins = AVMutableVideoCompositionInstruction()
-            ins.timeRange = CMTimeRange(start: t(cursor), duration: t(c.duration))
+            ins.timeRange = CMTimeRange(start: t(cursor), duration: t(dur))
             ins.layerInstructions = [layer]
             instructions.append(ins)
             // its own sound, unless one clip's sound plays over everything
             if soundOf == nil, c.soundOn, !c.still, c.heardEnd - c.heardStart > 0.05,
                let a = try? await asset.loadTracks(withMediaType: .audio).first {
-                let from = cursor + (c.heardStart - c.start), span = c.heardEnd - c.heardStart
-                try? at.insertTimeRange(CMTimeRange(start: t(c.heardStart), end: t(c.heardEnd)), of: a, at: t(from))
+                let from = cursor + (c.heardStart - shown), span = min(c.heardEnd, until) - c.heardStart
+                if span > 0.05 { try? at.insertTimeRange(CMTimeRange(start: t(c.heardStart), duration: t(span)), of: a, at: t(from)) }
                 let fade = min(0.6, span / 3)
                 if c.fadeIn { levels.setVolumeRamp(fromStartVolume: 0, toEndVolume: c.volume, timeRange: CMTimeRange(start: t(from), duration: t(fade))) }
                 else { levels.setVolume(c.volume, at: t(from)) }
                 if c.fadeOut { levels.setVolumeRamp(fromStartVolume: c.volume, toEndVolume: 0, timeRange: CMTimeRange(start: t(from + span - fade), duration: t(fade))) }
             }
-            cursor += c.duration
+            cursor += dur
         }
         // one clip's sound for all of it
         if let id = soundOf, let c = clips.first(where: { $0.id == id }), !c.still,
