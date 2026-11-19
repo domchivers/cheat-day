@@ -55,6 +55,10 @@ enum MediaCache {
         if !known {
             waiting.append(remote)
             if isAhead { ahead.insert(key) }
+            // scrolled fast through many: the oldest of those waiting to be fetched ahead are long gone, so dropped
+            while waiting.count > 6, let old = waiting.firstIndex(where: { ahead.contains($0.absoluteString) }) {
+                ahead.remove(waiting[old].absoluteString); waiting.remove(at: old)
+            }
         } else if !isAhead, ahead.contains(key) {
             // wanted now after all: no longer one that can be called off, and first in line
             ahead.remove(key)
