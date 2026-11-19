@@ -401,14 +401,16 @@ struct StoryView: View {
         return st
     }
     /// The song on the slide showing, found as the player finds it, so the header names what's playing.
-    private var storySong: Song? {
-        guard let tune = snapNow.flatMap({ list($0["overlays"]).first { str($0["type"]) == "song" } }) else { return nil }
+    private var storySong: Song? { snapNow.flatMap(Self.song) }
+    static func song(_ st: JSON) -> Song? {
+        guard let tune = list(st["overlays"]).first(where: { str($0["type"]) == "song" }) else { return nil }
         guard var song = Music.all.first(where: { $0.id == str(tune["id"]) }) else { return nil }
         song.start = num(tune["start"])   // the part the poster chose, so turning it back on plays the same part
         return song
     }
     /// Whose story this one is a repost of, if it is.
-    private var repostOf: JSON? { snapNow.flatMap { list($0["overlays"]).first { str($0["type"]) == "repost" } } }
+    private var repostOf: JSON? { snapNow.flatMap(Self.repost) }
+    static func repost(_ st: JSON) -> JSON? { list(st["overlays"]).first { str($0["type"]) == "repost" } }
     /// A story of theirs you're tagged in that can go on yours (a photo, for everyone, not a friends-only one).
     private var taggedHere: JSON? {
         guard !isMe, hl == nil, let st = snapNow, str(st["kind"]) != "video", str(st["audience"]) != "friends" else { return nil }
@@ -957,19 +959,21 @@ struct StoryView: View {
                             .clipShape(UnevenRoundedRectangle(topLeadingRadius: 16, topTrailingRadius: 16, style: .continuous))
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    // Everything as the story itself has it once it's arrived, in the same sizes and places: its
+                    // stickers, the photo at 36 (it was 32), the repost and song lines under the name. The copy
+                    // was plainer, so at the end of every swipe the photo grew, the name moved and the stickers and
+                    // lines popped in (the owner's recording, 19 Nov).
+                    .overlay {
+                        if case .snap(let st) = first {
+                            let polls = list(st["overlays"]).filter(Self.live)
+                            if !polls.isEmpty { StoryLayer(items: polls, story: str(st["id"])).aspectRatio(StoryArt.aspect, contentMode: .fit) }
+                        }
+                    }
                     .overlay(alignment: .top) {
                         VStack(spacing: 8) {
                             HStack(spacing: 4) { ForEach(0..<s.count, id: \.self) { _ in Capsule().fill(.white.opacity(0.3)).frame(height: 3) } }
                                 .padding(.top, 6)
-                            HStack(spacing: 9) {
-                                Avatar(id: p, size: 32)
-                                Text(title ?? (p == Profiles.shared.me ? "Your day" : Feed.shared.name(p))).font(.subheadline.weight(.bold)).foregroundStyle(.white)
-                                Text(Self.whenWord(first, p)).font(.subheadline).foregroundStyle(.white.opacity(0.65))
-                                Spacer()
-                                if p != Profiles.shared.me { Image(systemName: "flag").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white.opacity(0.85)).padding(8) }
-                                Image(systemName: "xmark").font(.system(size: 18, weight: .semibold)).foregroundStyle(.white).padding(8)
-                            }
-                            .padding(.horizontal, 6)
+                            peekHeader(p, first: first, title: title)
                         }
                         .padding(.horizontal, 8).shadow(color: .black.opacity(0.35), radius: 3)
                     }
@@ -977,6 +981,49 @@ struct StoryView: View {
             }
             .allowsHitTesting(false)
         }
+    }
+
+    /// The name line of a person waiting beside the one showing: `header`'s layout, line for line, with nothing to press.
+    private func peekHeader(_ p: String, first: Slide, title: String?) -> some View {
+        var snap: JSON?
+        if case .snap(let st) = first { snap = st }
+        let repost = snap.flatMap(Self.repost), song = snap.flatMap(Self.song)
+        return HStack(spacing: 9) {
+            Avatar(id: p, size: 36)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 9) {
+                    Text(title ?? (p == Profiles.shared.me ? "Your day" : Feed.shared.name(p)))
+                        .font(.subheadline.weight(.bold)).foregroundStyle(.white).lineLimit(1)
+                    Text(Self.whenWord(first, p)).font(.subheadline).foregroundStyle(.white.opacity(0.65)).lineLimit(1).fixedSize()
+                }
+                if let r = repost {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.2.squarepath").font(.system(size: 11, weight: .bold))
+                        Text(str(r["name"])).lineLimit(1)
+                    }
+                    .font(.footnote.weight(.semibold)).foregroundStyle(.white.opacity(0.9))
+                }
+                if let song {
+                    // as it will be once it's started: playing, unless sound's been turned off
+                    HStack(spacing: 5) {
+                        Image(systemName: SongPlayer.shared.mutedByChoice ? "speaker.slash.fill" : "waveform").font(.system(size: 12, weight: .bold))
+                        HStack(spacing: 0) {
+                            if !song.byline.isEmpty { Text(song.byline).fontWeight(.semibold); Text(" · ") }
+                            Marquee(text: song.title, maxWidth: 140)
+                        }
+                        Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold))
+                    }
+                    .font(.footnote).foregroundStyle(.white)
+                }
+            }
+            Spacer()
+            // the report flag only where the story itself has one: someone else's, not a highlight
+            if p != Profiles.shared.me, title == nil {
+                Image(systemName: "flag").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white.opacity(0.85)).padding(8)
+            }
+            Image(systemName: "xmark").font(.system(size: 18, weight: .semibold)).foregroundStyle(.white).padding(8)
+        }
+        .padding(.horizontal, 6)
     }
 
     private func back() {
