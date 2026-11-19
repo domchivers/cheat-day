@@ -15,6 +15,9 @@ struct EditFlow: View {
     @State private var picks: [PhotosPickerItem] = []
     @State private var note: String?
     @State private var working = false
+    @State private var drafts: [EditDrafts.Draft] = []
+    @State private var draftID: String?          // the draft being carried on with, let go once it's shared
+    @State private var draftSound: UUID?
 
     struct VideoBox: Identifiable { let id = UUID(); let url: URL }
 
@@ -22,7 +25,7 @@ struct EditFlow: View {
         ZStack {
             Theme.bg.ignoresSafeArea()
             if let clips {
-                MultiClipEditor(clips: clips, close: { self.clips = nil }, done: { url in
+                MultiClipEditor(clips: clips, draftID: draftID, startSoundOf: draftSound, close: { self.clips = nil; drafts = EditDrafts.all() }, done: { url in
                     joined = url; self.clips = nil
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { sharing = true }
                 })
@@ -58,11 +61,15 @@ struct EditFlow: View {
                            camera: {},
                            allPhotos: { library = true },
                            close: { dismiss() },
-                           editMode: true)
+                           editMode: true,
+                           drafts: drafts,
+                           openDraft: { d in draftID = d.id; draftSound = d.soundOf; clips = d.clips },
+                           deleteDraft: { d in EditDrafts.delete(d.id); drafts = EditDrafts.all() })
             }
             if working { Color.black.opacity(0.4).ignoresSafeArea(); ProgressView().tint(.white) }
         }
         .preferredColorScheme(.dark)
+        .onAppear { drafts = EditDrafts.all() }
         // All albums, or a library the app can't see: the system's own picker
         .photosPicker(isPresented: $library, selection: $picks, maxSelectionCount: 10, selectionBehavior: .ordered, matching: .any(of: [.images, .videos]))
         .onChange(of: picks) { _, now in
@@ -109,6 +116,7 @@ struct EditFlow: View {
     private func go(_ open: @escaping (URL) -> Void) {
         guard let joined else { return }
         sharing = false
+        if let draftID { EditDrafts.delete(draftID); self.draftID = nil }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { open(joined) }
     }
 

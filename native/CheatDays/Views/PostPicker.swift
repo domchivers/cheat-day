@@ -21,6 +21,10 @@ struct PostPicker: View {
     /// Make an edit (19 Nov; design/make-an-edit-mockup.html): opens on Videos with picking several on, no camera, and
     /// whatever is picked, even one, goes on to the clip editor as clips.
     var editMode = false
+    /// Make an edit's drafts, newest first, along the top (EditDrafts); a tap opens one where it was left.
+    var drafts: [EditDrafts.Draft] = []
+    var openDraft: ((EditDrafts.Draft) -> Void)? = nil
+    var deleteDraft: ((EditDrafts.Draft) -> Void)? = nil
 
     @State private var assets: [PHAsset] = []
     @State private var allowed = true
@@ -45,6 +49,7 @@ struct PostPicker: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                        if editMode && !drafts.isEmpty { draftsRow }
                         preview.id("top")
                         Section {
                             if !allowed { denied } else { grid }
@@ -85,6 +90,31 @@ struct PostPicker: View {
             .task(id: showing?.localIdentifier) { await enlarge() }
         }
         .presentationBackground(Theme.bg)
+    }
+
+    /// The drafts saved from the editor, to carry on with (hold one to delete it).
+    private var draftsRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Drafts").font(.headline.weight(.heavy))
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(drafts) { d in
+                        Button { openDraft?(d) } label: {
+                            Group { if let c = d.clips.first { ClipThumb(clip: c) } else { Color(white: 0.2) } }
+                                .frame(width: 66, height: 104).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .overlay(alignment: .bottomLeading) {
+                                    Text(clock(d.length)).font(.caption2.weight(.heavy)).foregroundStyle(.white).shadow(radius: 2).padding(5)
+                                }
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu { Button(role: .destructive) { deleteDraft?(d) } label: { Label("Delete draft", systemImage: "trash") } }
+                        .accessibilityLabel("Draft, \(clock(d.length)), saved \(d.saved.formatted(date: .abbreviated, time: .shortened))")
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var header: some View {

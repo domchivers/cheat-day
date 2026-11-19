@@ -33,9 +33,24 @@ final class ClipJoinTests: XCTestCase {
     }
 
     func testFadesStayAtTheOuterEnds() throws {
-        var c = clip(0, 10); c.fadeIn = true; c.fadeOut = true
+        var c = clip(0, 10); c.fadeIn = 1; c.fadeOut = 2
         let (a, b) = try XCTUnwrap(ClipJoin.split(c, at: 5))
-        XCTAssertTrue(a.fadeIn); XCTAssertFalse(a.fadeOut)
-        XCTAssertFalse(b.fadeIn); XCTAssertTrue(b.fadeOut)
+        XCTAssertEqual(a.fadeIn, 1); XCTAssertEqual(a.fadeOut, 0)
+        XCTAssertEqual(b.fadeIn, 0); XCTAssertEqual(b.fadeOut, 2)
+    }
+
+    /// Volume keyframes eased between, fades on top, and a split keeping each half its own keyframes.
+    func testLevelFollowsKeyframesAndFades() throws {
+        var c = clip(0, 10)
+        c.keys = [VolumeKey(at: 2, volume: 1), VolumeKey(at: 4, volume: 0.2)]
+        XCTAssertEqual(c.level(at: 1), 1, accuracy: 0.001)       // before the first: its level
+        XCTAssertEqual(c.level(at: 3), 0.6, accuracy: 0.001)     // halfway between
+        XCTAssertEqual(c.level(at: 8), 0.2, accuracy: 0.001)     // after the last: its level
+        c.fadeOut = 2
+        XCTAssertEqual(c.level(at: 9), 0.1, accuracy: 0.001)     // half way through the fade out
+        XCTAssertEqual(c.level(at: 10), 0, accuracy: 0.001)
+        XCTAssertTrue(c.turns.contains(8))                        // where the fade out starts
+        let (a, b) = try XCTUnwrap(ClipJoin.split(c, at: 3))
+        XCTAssertEqual(a.keys.map { $0.at }, [2]); XCTAssertEqual(b.keys.map { $0.at }, [4])
     }
 }

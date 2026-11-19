@@ -3,7 +3,7 @@ import UIKit
 
 /// One clip in a video made of several (19 Nov; design/multi-clip-editor-mockup.html): the part of its file kept, and
 /// its own sound. A photo is a clip too, made into a short silent video first (ClipJoin.still).
-struct Clip: Identifiable, Equatable {
+struct Clip: Identifiable, Equatable, Codable {
     var id = UUID()
     var source: URL
     var length: Double          // the whole file, seconds
@@ -15,12 +15,47 @@ struct Clip: Identifiable, Equatable {
     var volume: Float = 1
     var soundStart: Double?     // only part of its sound kept (the file's own seconds, inside start…end)
     var soundEnd: Double?
-    var fadeIn = false
-    var fadeOut = false
+    /// How long its sound fades in and out, seconds (0: none). As CapCut and Edits have it (19 Nov): a length, not on or off.
+    var fadeIn: Double = 0
+    var fadeOut: Double = 0
+    /// Volume keyframes, as CapCut's diamonds: the volume at moments of the file's own time, eased between; none: `volume` throughout.
+    var keys: [VolumeKey] = []
 
     var duration: Double { max(0, end - start) }
     var heardStart: Double { max(start, soundStart ?? start) }
     var heardEnd: Double { min(end, soundEnd ?? end) }
+
+    /// Its sound's level at a moment of the file's own time: the keyframes (or its volume), then the fades.
+    func level(at t: Double) -> Float {
+        var v = volume
+        let k = keys.sorted { $0.at < $1.at }
+        if let first = k.first, let last = k.last {
+            if t <= first.at { v = first.volume }
+            else if t >= last.at { v = last.volume }
+            else if let i = k.firstIndex(where: { $0.at > t }) {
+                let a = k[i - 1], b = k[i], f = Float((t - a.at) / max(b.at - a.at, 0.001))
+                v = a.volume + (b.volume - a.volume) * f
+            }
+        }
+        if fadeIn > 0.01, t - heardStart < fadeIn { v *= Float(max(0, t - heardStart) / fadeIn) }
+        if fadeOut > 0.01, heardEnd - t < fadeOut { v *= Float(max(0, heardEnd - t) / fadeOut) }
+        return max(0, min(1, v))
+    }
+
+    /// The moments its level changes slope (fade ends, keyframes), inside its sound: where the join's ramps meet.
+    var turns: [Double] {
+        var at = [heardStart, heardEnd]
+        if fadeIn > 0.01 { at.append(heardStart + fadeIn) }
+        if fadeOut > 0.01 { at.append(heardEnd - fadeOut) }
+        at += keys.map(\.at)
+        return Array(Set(at.map { min(heardEnd, max(heardStart, $0)) })).sorted()
+    }
+}
+
+/// A clip's volume at one moment (CapCut's keyframe diamond).
+struct VolumeKey: Equatable, Codable {
+    var at: Double      // the clip file's own seconds
+    var volume: Float
 }
 
 enum ClipJoin {
@@ -44,8 +79,10 @@ enum ClipJoin {
         let cut = c.start + at
         guard cut - c.start > 0.3, c.end - cut > 0.3 else { return nil }
         var a = c, b = c
-        a.end = cut; a.fadeOut = false
-        b.id = UUID(); b.start = cut; b.fadeIn = false
+        a.end = cut; a.fadeOut = 0
+        b.id = UUID(); b.start = cut; b.fadeIn = 0
+        // each half keeps the keyframes inside it
+        a.keys = c.keys.filter { $0.at <= cut }; b.keys = c.keys.filter { $0.at >= cut }
         // the sound kept stays where it was in time, cut with the picture (a half with none of it left is silent)
         a.soundEnd = min(c.soundEnd ?? cut, cut)
         b.soundStart = max(c.soundStart ?? cut, cut)
@@ -97,10 +134,13 @@ enum ClipJoin {
                let a = try? await asset.loadTracks(withMediaType: .audio).first {
                 let from = cursor + (c.heardStart - shown), span = min(c.heardEnd, until) - c.heardStart
                 if span > 0.05 { try? at.insertTimeRange(CMTimeRange(start: t(c.heardStart), duration: t(span)), of: a, at: t(from)) }
-                let fade = min(0.6, span / 3)
-                if c.fadeIn { levels.setVolumeRamp(fromStartVolume: 0, toEndVolume: c.volume, timeRange: CMTimeRange(start: t(from), duration: t(fade))) }
-                else { levels.setVolume(c.volume, at: t(from)) }
-                if c.fadeOut { levels.setVolumeRamp(fromStartVolume: c.volume, toEndVolume: 0, timeRange: CMTimeRange(start: t(from + span - fade), duration: t(fade))) }
+                // its level through it, from its keyframes and fades: a straight ramp between each moment it turns
+                let marks = c.turns.filter { $0 <= c.heardStart + span }
+                levels.setVolume(c.level(at: c.heardStart), at: t(from))
+                for (p, q) in zip(marks, marks.dropFirst()) where q - p > 0.01 {
+                    levels.setVolumeRamp(fromStartVolume: c.level(at: p), toEndVolume: c.level(at: q),
+                                         timeRange: CMTimeRange(start: t(from + p - c.heardStart), duration: t(q - p)))
+                }
             }
             cursor += dur
         }

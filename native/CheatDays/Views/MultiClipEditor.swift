@@ -10,6 +10,10 @@ import SwiftUI
 struct MultiClipEditor: View {
     @State var clips: [Clip]
     var limit: Double = ClipJoin.longest
+    /// The draft it was opened from (EditDrafts): saving goes over it.
+    var draftID: String? = nil
+    /// One clip's sound over everything, as the draft had it.
+    var startSoundOf: UUID? = nil
     var close: () -> Void
     var done: (URL) -> Void
 
@@ -26,6 +30,8 @@ struct MultiClipEditor: View {
     @State private var picks: [PhotosPickerItem] = []
     @State private var leaving = false   // the cross tapped: asking before the edit is thrown away
     @State private var wasPlaying: Bool?   // while the scrub bar is dragged: whether it was playing before
+    @State private var soundTool: SoundTool = .volume   // which sound tool is open
+    private enum SoundTool { case volume, fade }
     private enum Panel { case trim, sound }
     private let perSecond: CGFloat = 14         // strip points a second
 
@@ -46,10 +52,13 @@ struct MultiClipEditor: View {
         }
         .preferredColorScheme(.dark)
         // (an alert, as the single editor asks: on iOS 26 a confirmation dialog hangs off its button)
-        .alert("Discard this edit?", isPresented: $leaving) {
+        // keep it for later, let it go, or carry on (as Instagram asks when a post is left part done)
+        .alert("Save this edit?", isPresented: $leaving) {
+            Button("Save draft") { player.pause(); EditDrafts.save(id: draftID, clips: clips, soundOf: soundOf); close() }
             Button("Discard", role: .destructive) { player.pause(); close() }
             Button("Keep editing", role: .cancel) {}
-        } message: { Text("Your clips and the changes to them will be lost.") }
+        } message: { Text(draftID == nil ? "Keep it as a draft to finish later, or let it go." : "Save the changes to this draft, or leave it as it was.") }
+        .onAppear { if soundOf == nil, let s = startSoundOf { soundOf = s } }
         // made again a moment after a change has settled (not for every step of a handle being dragged)
         .task(id: clips) { await settle() }
         .task(id: soundOf) { await settle() }
@@ -97,7 +106,7 @@ struct MultiClipEditor: View {
             if total > limit + 0.05 { Text("Over \(Int(limit)) seconds: the end will be cut. Trim or take out a clip.").font(.caption).foregroundStyle(Theme.warn) }
             switch panel {
             case .trim: if let i = index { trimPanel(i) }
-            case .sound: if let i = index { soundPanel(i) }
+            case .sound: if let i = index { scrubBar; soundPanel(i) }
             case nil:
                 scrubBar; strip; actions
                 Button { finish() } label: {
@@ -112,14 +121,46 @@ struct MultiClipEditor: View {
     // MARK: the strip
 
     private var strip: some View {
+        HStack(spacing: 8) {
+            allSound
+            stripClips
+        }
+    }
+
+    /// Every clip's sound off, or back on, at once (CapCut's "Mute clip audio" at the start of its timeline).
+    private var allSound: some View {
+        let any = clips.contains { $0.soundOn && !$0.still }
+        return Button {
+            remember()
+            withAnimation(.snappy(duration: 0.2)) { for i in clips.indices where !clips[i].still { clips[i].soundOn = !any } }
+        } label: {
+            VStack(spacing: 3) {
+                Image(systemName: any ? "speaker.wave.2.fill" : "speaker.slash.fill").font(.system(size: 14, weight: .bold))
+                    .frame(width: 34, height: 34).background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                Text("Clip sound").font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary)
+            }
+            .foregroundStyle(.white)
+        }
+        .buttonStyle(.plain).accessibilityLabel(any ? "Turn every clip's sound off" : "Turn every clip's sound on")
+    }
+
+    private var stripClips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 4) {
                 ForEach(clips) { c in
                     let on = c.id == selected
-                    ClipThumb(clip: c)
-                        .frame(width: max(30, CGFloat(c.duration) * perSecond), height: 58)
-                        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(on ? Color.white : .clear, lineWidth: 2))
+                    // its picture, and its sound under it as a wave: green while it's heard, grey when it isn't (as CapCut shows it)
+                    let heard = c.soundOn && !c.still && (soundOf == nil || soundOf == c.id)
+                    VStack(spacing: 3) {
+                        ClipThumb(clip: c)
+                            .frame(height: 44)
+                            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(on ? Color.white : .clear, lineWidth: 2))
+                        Bars(levels: c.still ? [] : (levels[c.id] ?? []), colour: heard ? Theme.walk : Color.white.opacity(0.25))
+                            .frame(height: 14).clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                            .task(id: "\(c.id)|\(c.start)|\(c.end)") { if !c.still { levels[c.id] = await ClipJoin.levels(c, count: 24) } }
+                    }
+                    .frame(width: max(30, CGFloat(c.duration) * perSecond))
                         .overlay(alignment: .bottomLeading) {
                             HStack(spacing: 3) {
                                 if !c.soundOn || c.still || (soundOf != nil && soundOf != c.id) { Image(systemName: "speaker.slash.fill") }
@@ -212,37 +253,132 @@ struct MultiClipEditor: View {
         }
     }
 
+    /// A clip's sound, as CapCut and Edits lay it out (19 Nov; design/edit-sound-drafts-mockup.html): the tools along
+    /// the top (Volume, Fade, Mute, Use for all), the one picked open below.
     private func soundPanel(_ i: Int) -> some View {
         let c = clips[i]
-        return VStack(alignment: .leading, spacing: 10) {
+        return VStack(spacing: 12) {
             if c.still {
-                Text("A photo has no sound of its own.").font(.subheadline).foregroundStyle(.secondary)
+                Text("A photo has no sound of its own.").font(.subheadline).foregroundStyle(.secondary).padding(.vertical, 20)
             } else {
-                Toggle("Clip \(i + 1)'s sound", isOn: Binding(get: { clips[i].soundOn }, set: { v in remember(); clips[i].soundOn = v })).font(.subheadline)
-                if c.soundOn {
-                    // its sound as bars; the blue handles keep only part of it
-                    RangeBar(length: c.length, start: c.heardStart, end: c.heardEnd, colour: .white, limits: c.start...c.end, background: { Bars(levels: levels[c.id] ?? []) }) { s, e in
-                        clips[i].soundStart = s; clips[i].soundEnd = e
-                    } began: { remember() }
-                    .frame(height: 46)
-                    .task(id: c.id) { if levels[c.id] == nil { levels[c.id] = await ClipJoin.levels(c) } }
-                    HStack {
-                        Text("Volume").font(.subheadline)
-                        Slider(value: Binding(get: { Double(clips[i].volume) }, set: { clips[i].volume = Float($0) }), in: 0...1, onEditingChanged: { if $0 { remember() } })
-                        Text("\(Int(clips[i].volume * 100))%").font(.caption).monospacedDigit().frame(width: 40, alignment: .trailing)
+                HStack(spacing: 8) {
+                    soundTile("speaker.wave.2.fill", "Volume", on: soundTool == .volume) { soundTool = .volume }
+                    soundTile("waveform.path", "Fade", on: soundTool == .fade) { soundTool = .fade }
+                    soundTile(c.soundOn ? "speaker.slash" : "speaker.slash.fill", c.soundOn ? "Mute" : "Muted", on: !c.soundOn) {
+                        remember(); clips[i].soundOn.toggle()
                     }
-                    HStack(spacing: 18) {
-                        Toggle("Fade in", isOn: Binding(get: { clips[i].fadeIn }, set: { v in remember(); clips[i].fadeIn = v }))
-                        Toggle("Fade out", isOn: Binding(get: { clips[i].fadeOut }, set: { v in remember(); clips[i].fadeOut = v }))
-                    }
-                    .font(.subheadline)
-                    Toggle("Use this sound for the whole video", isOn: Binding(get: { soundOf == c.id }, set: { v in remember(); soundOf = v ? c.id : nil }))
-                        .font(.subheadline.weight(.semibold)).tint(Theme.accent)
+                    soundTile("music.note", "Use for all", on: soundOf == c.id) { remember(); soundOf = soundOf == c.id ? nil : c.id }
+                }
+                if !c.soundOn {
+                    Text("This clip's sound is off. Tap Mute again to bring it back.").font(.caption).foregroundStyle(.secondary)
+                } else if soundTool == .volume {
+                    volumePanel(i)
+                } else {
+                    fadePanel(i)
                 }
             }
         }
-        .tint(Theme.accent)
+        .task(id: c.id) { if levels[c.id] == nil { levels[c.id] = await ClipJoin.levels(c) } }
     }
+
+    /// The tool tile, white when it's the one picked (the single editor's tile otherwise).
+    private func soundTile(_ icon: String, _ title: String, on: Bool, _ run: @escaping () -> Void) -> some View {
+        Button { UISelectionFeedbackGenerator().selectionChanged(); withAnimation(.snappy(duration: 0.2)) { run() } } label: {
+            VStack(spacing: 5) {
+                Image(systemName: icon).font(.system(size: 17, weight: .semibold)).frame(height: 22)
+                Text(title).font(.caption2.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .foregroundStyle(on ? Color.black : Color.white).frame(maxWidth: .infinity).frame(height: 56)
+            .background(on ? AnyShapeStyle(Color.white) : AnyShapeStyle(Color.black.opacity(0.55)), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Where the line is in the clip's own file, if the line is inside it.
+    private func fileTime(_ i: Int) -> Double? {
+        let into = now - startOf(i)
+        guard into >= -0.01, into <= clips[i].duration + 0.01 else { return nil }
+        return clips[i].start + min(max(0, into), clips[i].duration)
+    }
+
+    /// Volume: one big number and a slider; with keyframes, the number and slider are the level at the line, and
+    /// the diamond adds one there (or takes away the one it's on), as CapCut's does.
+    private func volumePanel(_ i: Int) -> some View {
+        let c = clips[i], at = fileTime(i)
+        let near = at.flatMap { t in c.keys.firstIndex { abs($0.at - t) < 0.15 } }
+        let shown = c.keys.isEmpty ? c.volume : (at.map { c.level(at: $0) } ?? c.volume)
+        return VStack(spacing: 8) {
+            Text("\(Int((shown * 100).rounded()))").font(.system(size: 34, weight: .black, design: .rounded)).monospacedDigit()
+            HStack(spacing: 12) {
+                Slider(value: Binding(get: { Double(shown) }, set: { v in setVolume(i, Float(v)) }), in: 0...1,
+                       onEditingChanged: { if $0 { remember() } })
+                Button {
+                    guard let at else { return }
+                    remember()
+                    if let near { clips[i].keys.remove(at: near) }
+                    else { clips[i].keys.append(VolumeKey(at: at, volume: c.keys.isEmpty ? c.volume : c.level(at: at))) }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    Image(systemName: near != nil ? "diamond.fill" : "diamond").font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(near != nil ? Color.yellow : Color.white).frame(width: 40, height: 40)
+                        .background(.black.opacity(0.55), in: Circle())
+                }
+                .buttonStyle(.plain).disabled(at == nil).opacity(at == nil ? 0.4 : 1)
+                .accessibilityLabel(near != nil ? "Remove the keyframe here" : "Add a keyframe here")
+            }
+            // the clip's sound, its keyframes on it and the line where it is: tap a diamond to go to it
+            GeometryReader { g in
+                let w = g.size.width, span = max(c.duration, 0.01)
+                ZStack(alignment: .leading) {
+                    Bars(levels: levels[c.id] ?? []).clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    ForEach(c.keys.indices, id: \.self) { k in
+                        let x = w * CGFloat((c.keys[k].at - c.start) / span)
+                        Image(systemName: "diamond.fill").font(.system(size: 11, weight: .bold)).foregroundStyle(.yellow)
+                            .shadow(color: .black.opacity(0.6), radius: 2)
+                            .position(x: min(max(6, x), w - 6), y: g.size.height / 2)
+                            .onTapGesture { seek(startOf(i) + c.keys[k].at - c.start) }
+                    }
+                    if let at {
+                        Capsule().fill(.white).frame(width: 2.5, height: g.size.height + 6)
+                            .offset(x: min(max(0, w * CGFloat((at - c.start) / span) - 1.25), w - 2.5)).allowsHitTesting(false)
+                    }
+                }
+            }
+            .frame(height: 34)
+            Text(c.keys.isEmpty ? "Move the line along the bar above, then tap the diamond to set the volume at that moment."
+                 : "\(c.keys.count) keyframe\(c.keys.count == 1 ? "" : "s"): the volume eases between them.")
+                .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        }
+    }
+
+    /// The slider moved: the clip's volume, or with keyframes the one at the line (made there if there isn't one).
+    private func setVolume(_ i: Int, _ v: Float) {
+        guard !clips[i].keys.isEmpty, let at = fileTime(i) else { clips[i].volume = v; return }
+        if let k = clips[i].keys.firstIndex(where: { abs($0.at - at) < 0.15 }) { clips[i].keys[k].volume = v }
+        else { clips[i].keys.append(VolumeKey(at: at, volume: v)) }
+    }
+
+    /// Fade: how long it fades in and out, each up to 3 seconds (and never past half the clip).
+    private func fadePanel(_ i: Int) -> some View {
+        let most = max(0.1, min(3, clips[i].duration / 2))
+        return VStack(spacing: 14) {
+            fadeRow("Fade in", value: Binding(get: { min(clips[i].fadeIn, most) }, set: { clips[i].fadeIn = $0 }), most: most)
+            fadeRow("Fade out", value: Binding(get: { min(clips[i].fadeOut, most) }, set: { clips[i].fadeOut = $0 }), most: most)
+        }
+        .padding(.top, 4)
+    }
+
+    private func fadeRow(_ title: String, value: Binding<Double>, most: Double) -> some View {
+        VStack(spacing: 4) {
+            HStack {
+                Text(title).font(.subheadline.weight(.semibold))
+                Spacer()
+                Text(value.wrappedValue < 0.05 ? "Off" : String(format: "%.1f s", value.wrappedValue)).font(.subheadline).monospacedDigit().foregroundStyle(.secondary)
+            }
+            Slider(value: value, in: 0...most, onEditingChanged: { if $0 { remember() } }).tint(.white)
+        }
+    }
+
 
     // MARK: doing things
 
@@ -417,11 +553,12 @@ struct ClipThumb: View {
 /// Bars for a clip's sound.
 struct Bars: View {
     let levels: [Float]
+    var colour: Color = Color.white.opacity(0.55)
     var body: some View {
         GeometryReader { g in
             HStack(alignment: .center, spacing: 2) {
                 ForEach(levels.indices, id: \.self) { i in
-                    Capsule().fill(Color.white.opacity(0.55)).frame(height: max(3, g.size.height * CGFloat(levels[i])))
+                    Capsule().fill(colour).frame(height: max(3, g.size.height * CGFloat(levels[i])))
                 }
             }
             .frame(width: g.size.width, height: g.size.height)
