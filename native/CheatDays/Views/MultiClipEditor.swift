@@ -57,38 +57,49 @@ struct MultiClipEditor: View {
 
     // MARK: top and bottom
 
+    // Laid out and drawn as the single video editor is (StoryEditor), so the two feel like one (19 Nov): round dark
+    // buttons at the top, Done as its white pill, tools as its dark tiles, white trim handles and Next along the bottom.
     private var top: some View {
-        HStack {
-            Button { close() } label: { Image(systemName: "xmark").font(.headline).frame(width: 40, height: 40).background(.white.opacity(0.12), in: Circle()) }
-                .accessibilityLabel("Close")
-            Button { undo() } label: { Image(systemName: "arrow.uturn.backward").font(.headline).frame(width: 40, height: 40).background(.white.opacity(0.12), in: Circle()) }
-                .disabled(history.isEmpty).opacity(history.isEmpty ? 0.4 : 1).accessibilityLabel("Undo")
+        HStack(spacing: 5) {
+            round("xmark", "Close") { close() }
+            if !history.isEmpty { round("arrow.uturn.backward", "Undo") { undo() } }
             Spacer()
-            Button(panel == nil ? "Next" : "Done") { if panel != nil { withAnimation(.snappy) { panel = nil } } else { finish() } }
-                .font(.subheadline.weight(.bold)).padding(.horizontal, 18).frame(height: 40)
-                .background(Theme.accent, in: Capsule()).foregroundStyle(Theme.onAccent)
-                .disabled(clips.isEmpty || joining)
+            if panel != nil {
+                Button { withAnimation(.snappy) { panel = nil } } label: {
+                    Text("Done").font(.subheadline.weight(.bold)).foregroundStyle(.black).padding(.horizontal, 16).frame(height: 34).background(.white, in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
         }
-        .padding(.horizontal, 14).padding(.vertical, 8).foregroundStyle(.white)
+        .padding(.horizontal, 12).padding(.vertical, 8)
+    }
+
+    private func round(_ symbol: String, _ label: String, _ run: @escaping () -> Void) -> some View {
+        Button(action: run) {
+            Image(systemName: symbol).font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
+                .frame(width: 34, height: 34).background(.black.opacity(0.45), in: Circle())
+        }
+        .buttonStyle(.plain).accessibilityLabel(label)
     }
 
     private var bottom: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(Self.clock(now)).monospacedDigit()
-                Spacer()
-                Text("\(Self.clock(total)) of \(Self.clock(limit))").monospacedDigit().foregroundStyle(total > limit + 0.05 ? Theme.warn : .secondary)
-            }
-            .font(.caption)
+        VStack(spacing: 10) {
+            // where it is and how long, said as the trim strip says it ("0:11 · 0:24 of 0:30")
+            Text("\(Self.clock(now)) · \(Self.clock(total)) of \(Self.clock(limit))")
+                .font(.caption.weight(.heavy)).monospacedDigit().foregroundStyle(total > limit + 0.05 ? Theme.warn : .white)
             if total > limit + 0.05 { Text("Over \(Int(limit)) seconds: the end will be cut. Trim or take out a clip.").font(.caption).foregroundStyle(Theme.warn) }
             switch panel {
             case .trim: if let i = index { trimPanel(i) }
             case .sound: if let i = index { soundPanel(i) }
-            case nil: scrubBar; strip; actions
+            case nil:
+                scrubBar; strip; actions
+                Button { finish() } label: {
+                    Text("Next").font(.headline).foregroundStyle(.black).frame(maxWidth: .infinity).padding(.vertical, 13).background(.white, in: Capsule())
+                }
+                .buttonStyle(.plain).disabled(clips.isEmpty || joining).padding(.top, 4)
             }
         }
-        .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 8)
-        .background(Color(white: 0.05))
+        .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 8)
     }
 
     // MARK: the strip
@@ -165,8 +176,14 @@ struct MultiClipEditor: View {
     }
 
     private func action(_ icon: String, _ title: String, on: Bool, _ run: @escaping () -> Void) -> some View {
+        // the single editor's tool tile
         Button(action: run) {
-            VStack(spacing: 4) { Image(systemName: icon).font(.system(size: 18)); Text(title).font(.caption2) }.frame(maxWidth: .infinity)
+            VStack(spacing: 5) {
+                Image(systemName: icon).font(.system(size: 18, weight: .semibold)).frame(height: 22)
+                Text(title).font(.caption2.weight(.semibold))
+            }
+            .foregroundStyle(.white).frame(maxWidth: 64).frame(height: 56)
+            .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain).foregroundStyle(.white).disabled(!on).opacity(on ? 1 : 0.35)
     }
@@ -178,7 +195,7 @@ struct MultiClipEditor: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack { Text("Clip \(i + 1)"); Spacer(); Text("\(Self.clock(c.duration)) of \(Self.clock(c.length))").monospacedDigit() }
                 .font(.caption).foregroundStyle(.secondary)
-            RangeBar(length: c.length, start: c.start, end: c.end, colour: Color(red: 1, green: 0.8, blue: 0.2), background: { ClipThumb(clip: c, whole: true) }) { s, e in
+            RangeBar(length: c.length, start: c.start, end: c.end, colour: .white, background: { ClipThumb(clip: c, whole: true) }) { s, e in
                 clips[i].start = s; clips[i].end = e
                 // its sound kept inside what's kept of the picture
                 if let ss = clips[i].soundStart { clips[i].soundStart = max(s, min(ss, e)) }
@@ -197,7 +214,7 @@ struct MultiClipEditor: View {
                 Toggle("Clip \(i + 1)'s sound", isOn: Binding(get: { clips[i].soundOn }, set: { v in remember(); clips[i].soundOn = v })).font(.subheadline)
                 if c.soundOn {
                     // its sound as bars; the blue handles keep only part of it
-                    RangeBar(length: c.length, start: c.heardStart, end: c.heardEnd, colour: Theme.accent, limits: c.start...c.end, background: { Bars(levels: levels[c.id] ?? []) }) { s, e in
+                    RangeBar(length: c.length, start: c.heardStart, end: c.heardEnd, colour: .white, limits: c.start...c.end, background: { Bars(levels: levels[c.id] ?? []) }) { s, e in
                         clips[i].soundStart = s; clips[i].soundEnd = e
                     } began: { remember() }
                     .frame(height: 46)
@@ -249,18 +266,23 @@ struct MultiClipEditor: View {
         GeometryReader { g in
             let w = g.size.width, span = max(total, 0.01)
             ZStack(alignment: .leading) {
+                // the clips' frames along it, as the single editor's strip shows its one clip's; the one picked lit
                 HStack(spacing: 2) {
                     ForEach(clips) { c in
-                        RoundedRectangle(cornerRadius: 3, style: .continuous)
-                            .fill(c.id == selected ? Color.white.opacity(0.55) : Color.white.opacity(0.22))
-                            .frame(width: max(2, w * CGFloat(c.duration / span) - 2))
+                        ClipThumb(clip: c)
+                            .frame(width: max(2, w * CGFloat(c.duration / span) - 2), height: 40)
+                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(.black.opacity(c.id == selected || selected == nil ? 0 : 0.35)))
                     }
                 }
-                .frame(height: 8)
-                Capsule().fill(.white).frame(width: 3, height: 22)
-                    .offset(x: min(max(0, w * CGFloat(now / span) - 1.5), w - 3))
+                .frame(height: 40)
+                .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(.white.opacity(0.45), lineWidth: 1))
+                // where it is: yellow while a finger looks through it, as in the single editor; white as it plays
+                Capsule().fill(wasPlaying != nil ? Color.yellow : Color.white).frame(width: 3.5, height: 52)
+                    .shadow(color: .black.opacity(0.6), radius: 2)
+                    .offset(x: min(max(0, w * CGFloat(now / span) - 1.75), w - 3.5))
             }
-            .frame(width: w, height: 28)
+            .frame(width: w, height: 54)
             .contentShape(Rectangle())
             .gesture(DragGesture(minimumDistance: 0)
                 .onChanged { v in
@@ -284,7 +306,7 @@ struct MultiClipEditor: View {
                 seek(min(max(0, now + (dir == .increment ? 1 : -1)), max(0, total - 0.05)))
             }
         }
-        .frame(height: 28)
+        .frame(height: 54)
     }
 
     /// The preview made again from the clips as they are now, kept where it was.
@@ -419,23 +441,33 @@ struct RangeBar<Back: View>: View {
             let lo = limits?.lowerBound ?? 0, hi = limits?.upperBound ?? length
             let x0 = w * start / span, x1 = w * end / span
             ZStack(alignment: .leading) {
+                // drawn as the single video editor's trim strip: dimmed outside what's kept, a light edge round it
+                // all, white edges joining two white handles
                 background().frame(width: w, height: g.size.height).clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 Color.black.opacity(0.6).frame(width: max(0, x0))
                 Color.black.opacity(0.6).frame(width: max(0, w - x1)).offset(x: x1)
-                RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(colour, lineWidth: 3).frame(width: max(14, x1 - x0)).offset(x: x0)
-                handle(at: x0) { x in changed(min(max(lo, x / w * span), end - 0.3), end) }
-                handle(at: x1 - 12) { x in changed(start, max(min(hi, (x + 12) / w * span), start + 0.3)) }
+                RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(.white.opacity(0.45), lineWidth: 1).frame(width: w, height: g.size.height).allowsHitTesting(false)
+                Rectangle().fill(colour).frame(width: max(0, x1 - x0), height: 4).offset(x: x0, y: -g.size.height / 2 + 2).allowsHitTesting(false)
+                Rectangle().fill(colour).frame(width: max(0, x1 - x0), height: 4).offset(x: x0, y: g.size.height / 2 - 2).allowsHitTesting(false)
+                handle(at: x0, left: true) { x in changed(min(max(lo, x / w * span), end - 0.3), end) }
+                handle(at: x1 - grip, left: false) { x in changed(start, max(min(hi, (x + grip) / w * span), start + 0.3)) }
             }
             .coordinateSpace(name: "range")   // the handles follow the finger along the bar
         }
     }
 
-    private func handle(at x: CGFloat, move: @escaping (CGFloat) -> Void) -> some View {
-        RoundedRectangle(cornerRadius: 4, style: .continuous).fill(colour).frame(width: 12)
-            .overlay(Image(systemName: "line.3.horizontal").rotationEffect(.degrees(90)).font(.system(size: 8, weight: .bold)).foregroundStyle(.black))
+    private let grip: CGFloat = 18
+
+    private func handle(at x: CGFloat, left: Bool, move: @escaping (CGFloat) -> Void) -> some View {
+        UnevenRoundedRectangle(topLeadingRadius: left ? 8 : 0, bottomLeadingRadius: left ? 8 : 0, bottomTrailingRadius: left ? 0 : 8, topTrailingRadius: left ? 0 : 8, style: .continuous)
+            .fill(colour).frame(width: grip)
+            .overlay(Image(systemName: left ? "chevron.compact.left" : "chevron.compact.right").font(.system(size: 17, weight: .bold)).foregroundStyle(.black.opacity(0.7)))
+            // a thumb's width to catch it by, not just what shows
+            .padding(.horizontal, 12).contentShape(Rectangle()).padding(.horizontal, -12)
             .offset(x: x)
             .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("range"))
-                .onChanged { v in if !dragging { dragging = true; began() }; move(v.location.x) }
+                .onChanged { v in if !dragging { dragging = true; began(); UISelectionFeedbackGenerator().selectionChanged() }; move(v.location.x) }
                 .onEnded { _ in dragging = false })
+            .accessibilityLabel(left ? "Start" : "End")
     }
 }
