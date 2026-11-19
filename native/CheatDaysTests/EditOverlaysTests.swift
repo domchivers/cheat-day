@@ -19,14 +19,14 @@ final class EditOverlaysTests: XCTestCase {
     }
 
     func testRecipeStepsWrittenAsObjects() {
-        let meal: JSON = ["kind": "meal", "kcal": 300, "payload": ["steps": [["text": "Chop"], ["text": "Fry"]]] as JSON]
+        let meal: JSON = ["kind": "meal", "kcal": 300, "payload": ["steps": [["text": "Chop"] as JSON, ["text": "Fry"] as JSON]] as JSON]
         let made = EditOverlays.recipe(meal, clips: [clip(2), clip(2), clip(2)])
         XCTAssertEqual(made.filter { $0.kind == "step" }.map(\.text), ["1. Chop", "2. Fry"])
     }
 
     func testWorkoutModeAnExerciseAClip() {
-        let w: JSON = ["kind": "workout", "payload": ["lifts": [["exercise": "Bench press", "sets": 3, "reps": 8, "kg": 60],
-                                                                ["exercise": "Push ups", "sets": 2, "reps": 15, "kg": 0]]] as JSON]
+        let w: JSON = ["kind": "workout", "payload": ["lifts": [["exercise": "Bench press", "sets": 3, "reps": 8, "kg": 60] as JSON,
+                                                                ["exercise": "Push ups", "sets": 2, "reps": 15, "kg": 0] as JSON]] as JSON]
         let made = EditOverlays.workout(w, clips: [clip(4), clip(4), clip(4)])
         XCTAssertEqual(made.count, 2)
         XCTAssertEqual(made[0].text, "Bench press"); XCTAssertEqual(made[0].detail, "3 × 8 · 60 kg")

@@ -193,7 +193,7 @@ enum Clarity {
         engine.connect(comp, to: engine.mainMixerNode, format: format)
         do { try engine.enableManualRenderingMode(.offline, format: format, maximumFrameCount: 4096) } catch { return nil }
         do { try engine.start() } catch { return nil }
-        player.scheduleFile(input, at: nil)
+        player.scheduleFile(input, at: nil, completionHandler: nil)
         player.play()
         let out = FileManager.default.temporaryDirectory.appendingPathComponent("clear-" + UUID().uuidString + ".caf")
         guard let written = try? AVAudioFile(forWriting: out, settings: engine.manualRenderingFormat.settings),

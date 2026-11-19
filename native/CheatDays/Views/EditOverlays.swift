@@ -158,6 +158,9 @@ struct EditTextView: View {
     }
 }
 
+/// Whether a one-time answer has been given (the speech handler can be called more than once).
+private final class Once: @unchecked Sendable { var done = false }
+
 /// A picture of one overlay for the finished video, and when it shows (EditCompositor lays it on).
 struct OverlayPiece {
     var image: CIImage
@@ -233,11 +236,11 @@ enum EditOverlays {
         request.shouldReportPartialResults = false
         request.addsPunctuation = true
         let said: SFTranscription = try await withCheckedThrowingContinuation { c in
-            var done = false
+            let once = Once()
             _ = recognizer.recognitionTask(with: request) { result, error in
-                guard !done else { return }
-                if let result, result.isFinal { done = true; c.resume(returning: result.bestTranscription) }
-                else if let error { done = true; c.resume(throwing: error) }
+                guard !once.done else { return }
+                if let result, result.isFinal { once.done = true; c.resume(returning: result.bestTranscription) }
+                else if let error { once.done = true; c.resume(throwing: error) }
             }
         }
         // a caption: up to three words, broken at a pause or the end of a sentence

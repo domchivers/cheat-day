@@ -1062,7 +1062,7 @@ struct MultiClipEditor: View {
         let x = sounds[k]
         return VStack(spacing: 10) {
             HStack { Text(x.name).font(.subheadline.weight(.semibold)); Spacer(); Text("\(Int((x.volume * 100).rounded()))").monospacedDigit().foregroundStyle(.secondary) }
-            Slider(value: Binding(get: { Double(sounds[k].volume) }, set: { sounds[k].volume = Float($0) }), in: 0...1).tint(.white)
+            Slider(value: Binding(get: { sounds.indices.contains(k) ? Double(sounds[k].volume) : 0 }, set: { if sounds.indices.contains(k) { sounds[k].volume = Float($0) } }), in: 0...1).tint(.white)
             Button(role: .destructive) {
                 let id = x.id
                 withAnimation(.snappy) { panel = nil; selectedSound = nil }
@@ -1315,11 +1315,11 @@ struct MultiClipEditor: View {
         return VStack(spacing: 10) {
             HStack(spacing: 12) {
                 Text("Size").font(.subheadline.weight(.semibold)).frame(width: 64, alignment: .leading)
-                Slider(value: Binding(get: { pips[k].place(at: now).size }, set: { v in setPip(p.id) { $0.size = v } }), in: 0.12...1).tint(.white)
+                Slider(value: Binding(get: { pips.indices.contains(k) ? pips[k].place(at: now).size : 0.36 }, set: { v in setPip(p.id) { $0.size = v } }), in: 0.12...1).tint(.white)
             }
             HStack(spacing: 12) {
                 Text("See-through").font(.subheadline.weight(.semibold)).frame(width: 64, alignment: .leading).lineLimit(1).minimumScaleFactor(0.7)
-                Slider(value: Binding(get: { pips[k].place(at: now).opacity }, set: { v in setPip(p.id) { $0.opacity = v } }), in: 0.1...1).tint(.white)
+                Slider(value: Binding(get: { pips.indices.contains(k) ? pips[k].place(at: now).opacity : 1 }, set: { v in setPip(p.id) { $0.opacity = v } }), in: 0.1...1).tint(.white)
             }
             HStack(spacing: 10) {
                 Button {
@@ -1468,7 +1468,7 @@ struct MultiClipEditor: View {
             if item.kind == "sticker" {
                 stickerGrid { e in texts[k].text = e }
             } else if item.kind != "calories" {
-                TextField(item.kind == "caption" ? "What's said" : "Text", text: Binding(get: { texts[k].text }, set: { setText(k, $0) }), axis: .vertical)
+                TextField(item.kind == "caption" ? "What's said" : "Text", text: Binding(get: { texts.indices.contains(k) ? texts[k].text : "" }, set: { if texts.indices.contains(k) { setText(k, $0) } }), axis: .vertical)
                     .lineLimit(1...3).padding(10).background(Color(white: 0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
             if item.kind == "text" {
@@ -1492,7 +1492,7 @@ struct MultiClipEditor: View {
             }
             HStack(spacing: 10) {
                 Image(systemName: "textformat.size.smaller").foregroundStyle(.secondary)
-                Slider(value: Binding(get: { texts[k].size }, set: { texts[k].size = $0 }), in: 0.4...3).tint(.white)
+                Slider(value: Binding(get: { texts.indices.contains(k) ? texts[k].size : 1 }, set: { if texts.indices.contains(k) { texts[k].size = $0 } }), in: 0.4...3).tint(.white)
                 Image(systemName: "textformat.size.larger").foregroundStyle(.secondary)
             }
             Button(role: .destructive) {
@@ -1619,6 +1619,7 @@ struct MultiClipEditor: View {
             let kv = p.split(separator: "=")
             if kv.count == 2, let v = Double(kv[1]) { tunes[String(kv[0])] = v }
         }
+        let known = tunes
         let adjustable = StoryArt.tunes.filter { $0.0 != "t" }   // (straightening is for a single picture)
         let row = adjustable.first { $0.0 == tune } ?? adjustable[0]
         return VStack(spacing: 10) {
@@ -1636,7 +1637,7 @@ struct MultiClipEditor: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
                         ForEach(StoryArt.filters, id: \.self) { n in
-                            chip(n, on: n == name) { remember(); clips[i].look = StoryArt.look(n, tunes) }
+                            chip(n, on: n == name) { remember(); clips[i].look = StoryArt.look(n, known) }
                         }
                     }
                 }
@@ -1648,10 +1649,10 @@ struct MultiClipEditor: View {
                 }
                 HStack {
                     Text(row.1).font(.subheadline.weight(.semibold)); Spacer()
-                    Text("\(Int(tunes[row.0] ?? 0))").font(.subheadline).monospacedDigit().foregroundStyle(.secondary)
+                    Text("\(Int(known[row.0] ?? 0))").font(.subheadline).monospacedDigit().foregroundStyle(.secondary)
                 }
-                Slider(value: Binding(get: { tunes[row.0] ?? 0 }, set: { v in
-                    var next = tunes; next[row.0] = abs(v) < 2 ? 0 : v.rounded()
+                Slider(value: Binding(get: { known[row.0] ?? 0 }, set: { v in
+                    var next = known; next[row.0] = abs(v) < 2 ? 0 : v.rounded()
                     clips[i].look = StoryArt.look(name, next)
                 }), in: row.3...row.4, onEditingChanged: { if $0 { remember() } }).tint(.white)
             }

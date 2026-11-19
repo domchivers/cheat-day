@@ -148,7 +148,7 @@ enum ClipJoin {
               let v1 = comp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid),
               let a0 = comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid),
               let a1 = comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else { return nil }
-        let videos = [v0, v1], sounds = [a0, a1]
+        let videos = [v0, v1], tracks = [a0, a1]
         let levels = [AVMutableAudioMixInputParameters(track: a0), AVMutableAudioMixInputParameters(track: a1)]
         // the frame: the shape asked for, 1080 across; or the first clip's shape, the right way up, at most 1080 across
         var frame = CGSize(width: 1080, height: 1920)
@@ -215,8 +215,8 @@ enum ClipJoin {
                 if before > 0 { heard.fadeIn = max(heard.fadeIn, Double(before) / 600 * rate) }
                 if out > 0 { heard.fadeOut = max(heard.fadeOut, Double(out) / 600 * rate) }
                 let at0 = Double(cursor) / 600 + (heard.heardStart - shown) / rate, span = min(heard.heardEnd, until) - heard.heardStart
-                if span > 0.05, (try? sounds[track].insertTimeRange(CMTimeRange(start: t(heard.heardStart), duration: t(span)), of: a, at: t(at0))) != nil {
-                    if abs(rate - 1) > 0.001 { sounds[track].scaleTimeRange(CMTimeRange(start: t(at0), duration: t(span)), toDuration: t(span / rate)) }
+                if span > 0.05, (try? tracks[track].insertTimeRange(CMTimeRange(start: t(heard.heardStart), duration: t(span)), of: a, at: t(at0))) != nil {
+                    if abs(rate - 1) > 0.001 { tracks[track].scaleTimeRange(CMTimeRange(start: t(at0), duration: t(span)), toDuration: t(span / rate)) }
                     // its level through it, from its keyframes and fades and the dips under a voiceover: a straight
                     // ramp between each moment it turns (in its file's time; the video's is at0 on, at its speed)
                     let video = { (p: Double) -> Double in at0 + (p - heard.heardStart) / rate }
@@ -304,7 +304,7 @@ enum ClipJoin {
         }
         // tracks with nothing on them taken out (an empty sound track can stop the export)
         var mixes: [AVMutableAudioMixInputParameters] = []
-        for (k, track) in sounds.enumerated() { if track.segments.isEmpty { comp.removeTrack(track) } else { mixes.append(levels[k]) } }
+        for (k, track) in tracks.enumerated() { if track.segments.isEmpty { comp.removeTrack(track) } else { mixes.append(levels[k]) } }
         if v1.segments.isEmpty { comp.removeTrack(v1) }
         let vc = AVMutableVideoComposition()
         vc.customVideoCompositorClass = EditCompositor.self
