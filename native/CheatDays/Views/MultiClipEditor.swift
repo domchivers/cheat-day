@@ -266,8 +266,8 @@ struct MultiClipEditor: View {
     /// Which clip (or join) the panel is for, when it's for one.
     private var panelSub: String {
         switch panel {
-        case .trim, .sound, .speed, .look, .motion: return index.map { "Clip ($0 + 1)" } ?? ""
-        case .join: return "Clips (joinAt + 1) and (joinAt + 2)"
+        case .trim, .sound, .speed, .look, .motion: return index.map { "Clip \($0 + 1)" } ?? ""
+        case .join: return "Clips \(joinAt + 1) and \(joinAt + 2)"
         default: return ""
         }
     }
