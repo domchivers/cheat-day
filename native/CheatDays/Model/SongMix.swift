@@ -14,9 +14,15 @@ struct SongMix {
     /// The song fetched to mix: its longer clip from the part chosen, or its usual 30 seconds. Nil if it couldn't be got.
     static func make(_ s: Song, song: Float, clip: Float) async -> SongMix? {
         let long = Music.long[s.id] != nil
-        guard let remote = long ? s.longURL : s.url, let (tmp, _) = try? await URLSession.shared.download(from: remote) else { return nil }
+        guard let remote = long ? s.longURL : s.url else { return nil }
         let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".m4a")
-        guard (try? FileManager.default.moveItem(at: tmp, to: file)) != nil else { return nil }
+        // the copy on the phone when it's been heard (MediaCache), copied so `done` can't take it away
+        if let here = MediaCache.local(remote) {
+            guard (try? FileManager.default.copyItem(at: here, to: file)) != nil else { return nil }
+        } else {
+            guard let (tmp, _) = try? await URLSession.shared.download(from: remote),
+                  (try? FileManager.default.moveItem(at: tmp, to: file)) != nil else { return nil }
+        }
         let from = long ? s.from : 0
         let length = (try? await AVURLAsset(url: file).load(.duration).seconds) ?? 0
         let span = min(Song.part, length - from)

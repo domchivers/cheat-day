@@ -82,7 +82,8 @@ struct ReelsView: View {
         // nothing behind the video but the screen it was opened from, which shows as the video slides away
         .presentationBackground(.clear)
         .preferredColorScheme(.dark)
-        .onChange(of: current) { _, _ in paused = false; holding = nil; head.at = 0; head.length = 0; sound() }
+        .onChange(of: current) { _, now in paused = false; holding = nil; head.at = 0; head.length = 0; sound(); if let now { Feed.warmAhead(now, in: posts) } }
+        .onAppear { if let current { Feed.warmAhead(current, in: posts) } }   // the next two reels fetched while this one plays (MediaCache)
         .onChange(of: paused) { _, _ in sound() }
         .onChange(of: muted) { _, now in SongPlayer.shared.auto = !now; sound() }
         .onChange(of: holding) { was, now in

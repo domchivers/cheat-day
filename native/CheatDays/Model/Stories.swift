@@ -475,7 +475,9 @@ struct LoopingVideo: UIViewRepresentable {
             old.replaceCurrentItem(with: nil)
             v.playerLayer.player = nil
         }
-        let asset = AVURLAsset(url: url)
+        // from the copy on the phone when there is one (see MediaCache); the address stays the key, so a copy arriving
+        // mid-play never builds the player again
+        let asset = AVURLAsset(url: MediaCache.source(url))
         let item = AVPlayerItem(asset: asset)
         if box == nil { v.look.name = filter }
         if always || filter != "Normal" {

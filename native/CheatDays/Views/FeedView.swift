@@ -446,6 +446,7 @@ struct FeedView: View {
                 ForEach(keyed((only ?? feed.posts).filter { str($0["kind"]) != "moment" && !feed.removed.contains(str($0["id"])) && !Profiles.shared.muted.contains(str($0["owner"])) && !Follows.shared.blocked.contains(str($0["owner"])) })) { entry in   // by post id: deleting one can't leave a row past the end
                     let pid = str(entry.item["id"])
                     postView(entry.item).id(pid)
+                        .onAppear { Feed.warmAhead(pid, in: only ?? feed.posts) }   // its video and song, and the next two posts', fetched ahead
                         .zIndex(zoomed == pid ? 5 : 0)   // its picture, pinched bigger, goes over the posts around it
                         .background { if flash == pid { Theme.accent.opacity(0.12).allowsHitTesting(false) } }
                 }

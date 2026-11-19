@@ -232,7 +232,7 @@ enum Music {
         let from = long != nil ? song.from : 0
         base = from
         span = long.map { min(Song.part, $0.len - from) } ?? 0
-        let item = AVPlayerItem(url: url)
+        let item = AVPlayerItem(url: MediaCache.source(url))   // the copy on the phone once it has been heard (MediaCache)
         let p = AVPlayer(playerItem: item)
         if from > 0 { p.seek(to: CMTime(seconds: from, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) }
         // the part's over (or the file is): round again from where it starts, or done
