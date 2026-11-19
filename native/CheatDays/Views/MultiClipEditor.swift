@@ -14,6 +14,8 @@ struct MultiClipEditor: View {
     var draftID: String? = nil
     /// One clip's sound over everything, as the draft had it.
     var startSoundOf: UUID? = nil
+    /// The frame's shape and fill, as the draft had it.
+    var startLook: EditLook? = nil
     var close: () -> Void
     var done: (URL) -> Void
     /// The draft it's auto-saved as (a new edit gets one of its own once it's saved the first time).
@@ -40,12 +42,23 @@ struct MultiClipEditor: View {
     @State private var wasPlaying: Bool?   // while the scrub bar is dragged: whether it was playing before
     @State private var soundTool: SoundTool = .volume   // which sound tool is open
     private enum SoundTool { case volume, fade }
-    private enum Panel { case trim, sound, speed }
+    @State private var look = EditLook()          // the frame's shape and fill (Stage A2)
+    @State private var proxies: [URL: URL] = [:]  // smaller copies of 4K clips, for the preview
+    @State private var proxied: Set<URL> = []     // asked for already
+    @State private var joinAt = 0                  // the join between this clip and the next being set
+    @State private var progress: Float?            // how far the finished video's got, while it's made
+    @State private var making: Task<Void, Never>?
+    @State private var replacing = false
+    @State private var replacePicks: [PhotosPickerItem] = []
+    @State private var snapped: Double?            // the clip edge the line's held on while scrubbing
+    @State private var lookTool = "Filters"
+    @State private var tune = "b"
+    private enum Panel { case trim, sound, speed, join, look, shape }
     private let perSecond: CGFloat = 14         // strip points a second
 
-    private var total: Double { clips.reduce(0) { $0 + $1.span } }
+    private var total: Double { ClipJoin.total(clips) }
     private var index: Int? { clips.firstIndex { $0.id == selected } }
-    private func startOf(_ i: Int) -> Double { clips[..<i].reduce(0) { $0 + $1.span } }
+    private func startOf(_ i: Int) -> Double { ClipJoin.starts(clips)[i] }
 
     var body: some View {
         ZStack {
@@ -55,8 +68,21 @@ struct MultiClipEditor: View {
                 PlayerLayerView(player: player).frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onTapGesture { if player.rate == 0 { player.play() } else { player.pause() } }
                 bottom
+                    // (kept on a view of its own, apart from the Add picker)
+                    .photosPicker(isPresented: $replacing, selection: $replacePicks, maxSelectionCount: 1, matching: .any(of: [.images, .videos]))
             }
-            if joining { Color.black.opacity(0.5).ignoresSafeArea(); ProgressView("Putting it together…").tint(.white).foregroundStyle(.white) }
+            if let progress {
+                Color.black.opacity(0.6).ignoresSafeArea()
+                VStack(spacing: 14) {
+                    Text("Putting it together… \(Int((progress * 100).rounded()))%").font(.subheadline.weight(.semibold)).monospacedDigit()
+                    ProgressView(value: Double(progress)).tint(.white).frame(width: 220)
+                    Button("Cancel") { making?.cancel(); making = nil; self.progress = nil; joining = false }
+                        .font(.subheadline.weight(.bold)).foregroundStyle(.black).padding(.horizontal, 18).frame(height: 36).background(.white, in: Capsule())
+                }
+                .foregroundStyle(.white)
+            } else if joining {
+                Color.black.opacity(0.5).ignoresSafeArea(); ProgressView().tint(.white)
+            }
         }
         .preferredColorScheme(.dark)
         // (an alert, as the single editor asks: on iOS 26 a confirmation dialog hangs off its button)
@@ -64,16 +90,16 @@ struct MultiClipEditor: View {
         .alert("Save this edit?", isPresented: $leaving) {
             Button("Save draft") {
                 player.pause()
-                let id = autoID ?? draftID, kept = clips, sound = soundOf
-                EditDrafts.queue.async { EditDrafts.save(id: id, clips: kept, soundOf: sound) }
+                let id = autoID ?? draftID, kept = clips, sound = soundOf, shape = look
+                EditDrafts.queue.async { EditDrafts.save(id: id, clips: kept, soundOf: sound, look: shape) }
                 close()
             }
             Button("Discard", role: .destructive) {
                 player.pause()
-                let id = autoID ?? draftID, was = opened, sound = startSoundOf
+                let id = autoID ?? draftID, was = opened, sound = startSoundOf, shape = startLook
                 EditDrafts.queue.async {
                     guard let id else { return }
-                    if let was { EditDrafts.save(id: id, clips: was, soundOf: sound) } else { EditDrafts.delete(id) }
+                    if let was { EditDrafts.save(id: id, clips: was, soundOf: sound, look: shape) } else { EditDrafts.delete(id) }
                 }
                 close()
             }
@@ -81,12 +107,22 @@ struct MultiClipEditor: View {
         } message: { Text(opened == nil ? "Keep it as a draft to finish later, or let it go." : "Save the changes to this draft, or leave it as it was.") }
         .onAppear {
             if soundOf == nil, let s = startSoundOf { soundOf = s }
+            if let l = startLook, opened == nil { look = l }
             if autoID == nil { autoID = draftID }
             if draftID != nil, opened == nil { opened = clips }
         }
         // made again a moment after a change has settled (not for every step of a handle being dragged)
         .task(id: clips) { await settle(); await autosave() }
         .task(id: soundOf) { await settle(); await autosave() }
+        .task(id: look) { await settle(); await autosave() }
+        // a 4K clip played from a smaller copy while it's edited (the finished video's made from the file itself)
+        .task(id: Set(clips.map { $0.source })) {
+            for src in Set(clips.map { $0.source }) where !proxied.contains(src) {
+                proxied.insert(src)
+                if let p = await ClipJoin.proxy(src) { proxies[src] = p }
+            }
+        }
+        .task(id: proxies.count) { if !proxies.isEmpty { await settle() } }
         .onDisappear {
             player.pause(); if let watch { player.removeTimeObserver(watch) }
             // the sound given back (19 Nov: left on, the feed's videos went on stopping their Spotify after an edit)
@@ -94,6 +130,10 @@ struct MultiClipEditor: View {
         }
         // more from the library, onto the end, in the order picked
         .photosPicker(isPresented: $adding, selection: $picks, maxSelectionCount: 10, selectionBehavior: .ordered, matching: .any(of: [.images, .videos]))
+        .onChange(of: replacePicks) { _, now in
+            guard !now.isEmpty else { return }
+            Task { let got = await Self.clips(from: now); replacePicks = []; if let c = got.first { replaceSelected(with: c) } }
+        }
         .onChange(of: picks) { _, now in
             guard !now.isEmpty else { return }
             Task { let more = await Self.clips(from: now); picks = []; if !more.isEmpty { change { $0 + more } } } }
@@ -110,6 +150,7 @@ struct MultiClipEditor: View {
             if !history.isEmpty { round("arrow.uturn.backward", "Undo") { undo() } }
             if !future.isEmpty { round("arrow.uturn.forward", "Redo") { redo() } }
             Spacer()
+            if panel == nil { round("aspectratio", "Shape and background") { withAnimation(.snappy) { panel = .shape } } }
             if panel != nil {
                 Button { withAnimation(.snappy) { panel = nil } } label: {
                     Text("Done").font(.subheadline.weight(.bold)).foregroundStyle(.black).padding(.horizontal, 16).frame(height: 34).background(.white, in: Capsule())
@@ -142,6 +183,9 @@ struct MultiClipEditor: View {
             case .trim: if let i = index { trimPanel(i) }
             case .sound: if let i = index { scrubBar; soundPanel(i) }
             case .speed: if let i = index { scrubBar; speedPanel(i) }
+            case .join: if joinAt + 1 < clips.count { strip; joinPanel(joinAt) }
+            case .look: if let i = index { scrubBar; lookPanel(i) }
+            case .shape: scrubBar; shapePanel
             case nil:
                 scrubBar; strip; actions
                 Button { finish() } label: {
@@ -184,6 +228,7 @@ struct MultiClipEditor: View {
             HStack(spacing: 4) {
                 ForEach(clips) { c in
                     let on = c.id == selected
+                    let at = clips.firstIndex(of: c) ?? 0
                     // its picture, and its sound under it as a wave: green while it's heard, grey when it isn't (as CapCut shows it)
                     let heard = c.soundOn && !c.still && (soundOf == nil || soundOf == c.id)
                     VStack(spacing: 3) {
@@ -213,6 +258,8 @@ struct MultiClipEditor: View {
                             return true
                         }
                         .accessibilityLabel("Clip \((clips.firstIndex(of: c) ?? 0) + 1), \(Self.clock(c.span))")
+                        .overlay(alignment: .trailing) { if at + 1 < clips.count { joinSquare(at).offset(x: 13) } }
+                        .zIndex(Double(clips.count - at))
                 }
                 Button { adding = true } label: {
                     Image(systemName: "plus").font(.title3).frame(width: 46, height: 58)
@@ -231,11 +278,13 @@ struct MultiClipEditor: View {
 
     /// The line's place on the strip: through the clips before it (with the gaps between them) and into this one.
     private var playheadX: CGFloat {
-        var x: CGFloat = 0, left = now
-        for c in clips {
+        let starts = ClipJoin.starts(clips)
+        var x: CGFloat = 0
+        for (i, c) in clips.enumerated() {
             let w = max(30, CGFloat(c.span) * perSecond)
-            if left <= c.span { return x + w * CGFloat(left / max(c.span, 0.01)) }
-            left -= c.span; x += w + 4
+            let next = i + 1 < clips.count ? starts[i + 1] : .infinity
+            if now < next || i + 1 == clips.count { return x + w * CGFloat(min(1, max(0, (now - starts[i]) / max(c.span, 0.01)))) }
+            x += w + 4
         }
         return x
     }
@@ -248,7 +297,10 @@ struct MultiClipEditor: View {
             action("square.split.2x1", "Split", on: has) { splitHere() }
             action("gauge.with.dots.needle.67percent", "Speed", on: moving) { withAnimation(.snappy) { panel = .speed } }
             action("snowflake", "Freeze", on: moving) { freezeHere() }
+            action("backward.fill", "Reverse", on: moving) { reverseSelected() }
+            action("camera.filters", "Filters", on: has) { withAnimation(.snappy) { panel = .look } }
             action("speaker.wave.2", "Sound", on: has) { withAnimation(.snappy) { panel = .sound } }
+            action("arrow.triangle.2.circlepath", "Replace", on: has) { replacing = true }
             action("plus.square.on.square", "Copy", on: has) {
                 guard let i = index else { return }
                 change { var all = $0; var c = all[i]; c.id = UUID(); all.insert(c, at: i + 1); return all }
@@ -450,15 +502,17 @@ struct MultiClipEditor: View {
             let w = g.size.width, span = max(total, 0.01)
             ZStack(alignment: .leading) {
                 // the clips' frames along it, as the single editor's strip shows its one clip's; the one picked lit
-                HStack(spacing: 2) {
-                    ForEach(clips) { c in
+                let starts = ClipJoin.starts(clips)
+                ZStack(alignment: .leading) {
+                    ForEach(Array(clips.enumerated()), id: \.element.id) { i, c in
                         ClipThumb(clip: c)
                             .frame(width: max(2, w * CGFloat(c.span / span) - 2), height: 40)
                             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(.black.opacity(c.id == selected || selected == nil ? 0 : 0.35)))
+                            .offset(x: w * CGFloat(starts[i] / span))
                     }
                 }
-                .frame(height: 40)
+                .frame(width: w, height: 40, alignment: .leading).clipped()
                 .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(.white.opacity(0.45), lineWidth: 1))
                 // where it is: yellow while a finger looks through it, as in the single editor; white as it plays
                 Capsule().fill(wasPlaying != nil ? Color.yellow : Color.white).frame(width: 3.5, height: 52)
@@ -471,13 +525,21 @@ struct MultiClipEditor: View {
                 .onChanged { v in
                     if wasPlaying == nil { wasPlaying = player.rate != 0; player.pause() }
                     // (short of the very end, where the preview goes round to the start again)
-                    let t = min(max(0, Double(v.location.x / max(w, 1)) * span), max(0, span - 0.12))
+                    var t = min(max(0, Double(v.location.x / max(w, 1)) * span), max(0, span - 0.12))
+                    // held on a clip's edge when it's near one, with a tick, as CapCut's line snaps
+                    let reach = Double(10 / max(w, 1)) * span
+                    let edges = ClipJoin.starts(clips).dropFirst()
+                    if let e = edges.min(by: { abs($0 - t) < abs($1 - t) }), abs(e - t) < reach {
+                        t = e
+                        if snapped != e { snapped = e; UISelectionFeedbackGenerator().selectionChanged() }
+                    } else { snapped = nil }
                     // close enough while the finger moves (a seek to the exact frame each time can't keep up), exact at the end
                     let near = CMTime(seconds: 0.04, preferredTimescale: 600)
                     player.seek(to: CMTime(seconds: t, preferredTimescale: 600), toleranceBefore: near, toleranceAfter: near)
                     now = t
                 }
                 .onEnded { _ in
+                    snapped = nil
                     seek(now)
                     if wasPlaying == true { player.play() }
                     wasPlaying = nil
@@ -494,7 +556,7 @@ struct MultiClipEditor: View {
 
     /// The preview made again from the clips as they are now, kept where it was.
     @MainActor private func rebuild(play: Bool) async {
-        guard let (comp, vc, mix) = await ClipJoin.compose(clips, soundOf: soundOf) else { return }
+        guard let (comp, vc, mix) = await ClipJoin.compose(clips, soundOf: soundOf, look: look, swap: proxies) else { return }
         let item = AVPlayerItem(asset: comp)
         item.videoComposition = vc; item.audioMix = mix
         item.audioTimePitchAlgorithm = .spectral
@@ -525,9 +587,9 @@ struct MultiClipEditor: View {
     private func autosave() async {
         try? await Task.sleep(nanoseconds: 1_000_000_000)
         guard !Task.isCancelled, !clips.isEmpty else { return }
-        let id = autoID ?? UUID().uuidString.lowercased(), kept = clips, sound = soundOf
+        let id = autoID ?? UUID().uuidString.lowercased(), kept = clips, sound = soundOf, shape = look
         if autoID == nil { autoID = id; autosaved(id) }
-        EditDrafts.queue.async { EditDrafts.save(id: id, clips: kept, soundOf: sound, tidy: false) }
+        EditDrafts.queue.async { EditDrafts.save(id: id, clips: kept, soundOf: sound, look: shape, tidy: false) }
     }
 
     /// A frame back or on (a 30th of a second), held still.
@@ -589,15 +651,186 @@ struct MultiClipEditor: View {
     }
 
     private func finish() {
-        joining = true; player.pause()
-        let kept = clips, sound = soundOf
-        Task {
-            let url = await ClipJoin.join(kept, soundOf: sound)
-            joining = false
+        joining = true; progress = 0; player.pause()
+        let kept = clips, sound = soundOf, shape = look
+        making = Task {
+            let url = await ClipJoin.join(kept, soundOf: sound, look: shape) { p in if progress != nil { progress = p } }
+            guard !Task.isCancelled else { return }
+            joining = false; progress = nil; making = nil
             guard let url else { return }
             if !keepsDraft, let id = autoID { EditDrafts.queue.async { EditDrafts.delete(id) } }
             done(url)
         }
+    }
+
+    // MARK: Stage A2
+
+    /// The square between two clips (design/editor-all-tools-mockup.html, 3): what's set, or + for a straight cut.
+    private func joinSquare(_ i: Int) -> some View {
+        let set = clips[i].transition != nil
+        return Button {
+            joinAt = i
+            withAnimation(.snappy) { panel = .join }
+        } label: {
+            Image(systemName: set ? "arrow.left.arrow.right" : "plus").font(.system(size: 9, weight: .black))
+                .foregroundStyle(set ? Color.black : Color.white).frame(width: 22, height: 22)
+                .background(set ? Color.white : Color(white: 0.25), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(.black.opacity(0.6), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(set ? "Transition between clips \(i + 1) and \(i + 2): \(clips[i].transition?.kind ?? "")" : "Add a transition between clips \(i + 1) and \(i + 2)")
+    }
+
+    /// How one clip turns into the next, how long it takes, and the same for every join.
+    private func joinPanel(_ i: Int) -> some View {
+        let tr = clips[i].transition
+        let most = max(0.2, min(1.5, clips[i].span / 2, clips[i + 1].span / 2))
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("Between clips \(i + 1) and \(i + 2)").font(.caption).foregroundStyle(.secondary)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    chip("None", on: tr == nil) { setJoin(i, nil) }
+                    ForEach(ClipTransition.kinds, id: \.self) { k in
+                        chip(k, on: tr?.kind == k) { setJoin(i, ClipTransition(kind: k, length: min(tr?.length ?? 0.5, most))) }
+                    }
+                }
+            }
+            if let tr {
+                HStack { Text("Length").font(.subheadline.weight(.semibold)); Spacer(); Text(String(format: "%.1f s", min(tr.length, most))).font(.subheadline).monospacedDigit().foregroundStyle(.secondary) }
+                Slider(value: Binding(get: { min(clips[i].transition?.length ?? 0.5, most) }, set: { clips[i].transition?.length = $0 }),
+                       in: 0.2...max(0.21, most), onEditingChanged: { if $0 { remember() } }).tint(.white)
+                Button {
+                    change { all in
+                        var all = all
+                        for k in all.indices.dropLast() { all[k].transition = tr }
+                        return all
+                    }
+                } label: {
+                    Label("Apply to all", systemImage: "square.stack.3d.down.right").font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).frame(height: 40)
+                        .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .buttonStyle(.plain).foregroundStyle(.white)
+            }
+        }
+        .onAppear { seek(max(0, startOf(i + 1) - 0.6)); player.play() }
+    }
+
+    private func setJoin(_ i: Int, _ tr: ClipTransition?) {
+        change { all in var all = all; all[i].transition = tr; return all }
+        // shown straight away: from just before it
+        if tr != nil { DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { seek(max(0, startOf(i + 1) - 0.6)); player.play() } }
+    }
+
+    /// The single editor's chip: white when it's the one picked.
+    private func chip(_ title: String, on: Bool, _ run: @escaping () -> Void) -> some View {
+        Button { UISelectionFeedbackGenerator().selectionChanged(); run() } label: {
+            Text(title).font(.caption.weight(.bold)).padding(.horizontal, 12).frame(height: 34)
+                .foregroundStyle(on ? Color.black : Color.white)
+                .background(on ? AnyShapeStyle(Color.white) : AnyShapeStyle(Color.black.opacity(0.55)), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Filters and Adjust for a clip, as the single editor has them (StoryArt's looks), and the same for every clip.
+    private func lookPanel(_ i: Int) -> some View {
+        let parts = clips[i].look.split(separator: ";").map(String.init)
+        let name = parts.first ?? "Normal"
+        var tunes: [String: Double] = [:]
+        for p in parts.dropFirst() {
+            let kv = p.split(separator: "=")
+            if kv.count == 2, let v = Double(kv[1]) { tunes[String(kv[0])] = v }
+        }
+        let adjustable = StoryArt.tunes.filter { $0.0 != "t" }   // (straightening is for a single picture)
+        let row = adjustable.first { $0.0 == tune } ?? adjustable[0]
+        return VStack(spacing: 10) {
+            HStack(spacing: 6) {
+                chip("Filters", on: lookTool == "Filters") { lookTool = "Filters" }
+                chip("Adjust", on: lookTool == "Adjust") { lookTool = "Adjust" }
+                Spacer()
+                Button("Use for all") {
+                    let l = clips[i].look
+                    change { all in var all = all; for k in all.indices { all[k].look = l }; return all }
+                }
+                .font(.caption.weight(.bold)).foregroundStyle(.white)
+            }
+            if lookTool == "Filters" {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(StoryArt.filters, id: \.self) { n in
+                            chip(n, on: n == name) { remember(); clips[i].look = StoryArt.look(n, tunes) }
+                        }
+                    }
+                }
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(adjustable.indices, id: \.self) { k in chip(adjustable[k].1, on: adjustable[k].0 == row.0) { tune = adjustable[k].0 } }
+                    }
+                }
+                HStack {
+                    Text(row.1).font(.subheadline.weight(.semibold)); Spacer()
+                    Text("\(Int(tunes[row.0] ?? 0))").font(.subheadline).monospacedDigit().foregroundStyle(.secondary)
+                }
+                Slider(value: Binding(get: { tunes[row.0] ?? 0 }, set: { v in
+                    var next = tunes; next[row.0] = abs(v) < 2 ? 0 : v.rounded()
+                    clips[i].look = StoryArt.look(name, next)
+                }), in: row.3...row.4, onEditingChanged: { if $0 { remember() } }).tint(.white)
+            }
+        }
+    }
+
+    /// The frame's shape, and what's behind a clip of another shape.
+    private var shapePanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Shape").font(.caption).foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                ForEach(EditLook.shapes, id: \.self) { sh in chip(sh == "Original" ? "First clip's" : sh, on: look.shape == sh) { look.shape = sh } }
+            }
+            Text("A clip of another shape").font(.caption).foregroundStyle(.secondary).padding(.top, 2)
+            HStack(spacing: 6) {
+                chip("Fill the frame", on: look.fill == "Fill") { look.fill = "Fill" }
+                chip("Whole, blurred behind", on: look.fill == "Blur") { look.fill = "Blur" }
+                chip("Whole, on black", on: look.fill == "Black") { look.fill = "Black" }
+            }
+        }
+    }
+
+    /// The selected clip played backwards (its sound off), or forwards again.
+    private func reverseSelected() {
+        guard let i = index else { return }
+        let c = clips[i]
+        if let f = c.forward {
+            var back = c
+            back.source = f.source; back.length = f.length
+            back.start = max(0, f.end - c.end); back.end = min(f.length, f.end - c.start)
+            back.forward = nil; back.soundOn = f.soundOn
+            change { all in var all = all; all[i] = back; return all }
+            return
+        }
+        joining = true; player.pause()
+        Task {
+            defer { joining = false }
+            guard let url = await ClipJoin.reversed(c), let made = await ClipJoin.clip(url) else { return }
+            var r = c
+            r.source = url; r.length = made.length; r.start = 0; r.end = made.length
+            r.forward = Forward(source: c.source, length: c.length, end: c.end, soundOn: c.soundOn)
+            r.soundOn = false; r.keys = []; r.soundStart = nil; r.soundEnd = nil
+            guard let k = clips.firstIndex(where: { $0.id == c.id }) else { return }
+            change { all in var all = all; all[k] = r; return all }
+        }
+    }
+
+    /// The selected clip swapped for another, keeping how long it was and what was set on it (as CapCut's Replace).
+    private func replaceSelected(with new: Clip) {
+        guard let i = index else { return }
+        let old = clips[i]
+        var c = new
+        if !c.still { c.end = min(c.length, c.start + old.duration) }
+        c.speed = c.still ? 1 : old.speed
+        c.transition = old.transition; c.look = old.look
+        if !c.still { c.volume = old.volume; c.fadeIn = old.fadeIn; c.fadeOut = old.fadeOut }
+        change { all in var all = all; all[i] = c; return all }
+        selected = c.id
     }
 
     /// Things picked from the library as clips, in the order picked: a video as it is, a photo as a short still.

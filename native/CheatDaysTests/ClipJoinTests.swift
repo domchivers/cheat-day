@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 @testable import CheatDays
 
 /// The multi-clip editor's split: the two halves meet where it was cut, and the sound kept stays where it was in time.
@@ -72,5 +73,44 @@ final class ClipJoinTests: XCTestCase {
         XCTAssertEqual(c.speed, 1); XCTAssertEqual(c.volume, 0.5); XCTAssertEqual(c.end, 9)
         let back = try JSONDecoder().decode(Clip.self, from: JSONEncoder().encode(c))
         XCTAssertEqual(back, c)
+    }
+
+    /// A transition plays the two clips over each other: the video is shorter by its length, never more than half a clip.
+    func testTransitionsOverlapTheClips() {
+        var a = clip(0, 4), b = clip(0, 6)
+        let c = clip(0, 2)
+        XCTAssertEqual(ClipJoin.total([a, b, c]), 12, accuracy: 0.001)
+        a.transition = ClipTransition(kind: "Crossfade", length: 0.5)
+        b.transition = ClipTransition(kind: "Slide", length: 3)   // longer than half of the 2 s after it: 1 s
+        XCTAssertEqual(ClipJoin.overlap([a, b, c], after: 0), 0.5, accuracy: 0.001)
+        XCTAssertEqual(ClipJoin.overlap([a, b, c], after: 1), 1, accuracy: 0.001)
+        XCTAssertEqual(ClipJoin.overlap([a, b, c], after: 2), 0)   // the last has nothing to turn into
+        XCTAssertEqual(ClipJoin.starts([a, b, c]), [0, 3.5, 8.5])
+        XCTAssertEqual(ClipJoin.total([a, b, c]), 10.5, accuracy: 0.001)
+    }
+
+    /// Split: the first half cuts straight into the second; the second keeps the way into the next, and the look.
+    func testSplitKeepsTheTransitionOnTheSecondHalf() throws {
+        var c = clip(0, 10); c.transition = ClipTransition(kind: "Zoom"); c.look = "Warm;b=20.0"
+        let (a, b) = try XCTUnwrap(ClipJoin.split(c, at: 4))
+        XCTAssertNil(a.transition); XCTAssertEqual(b.transition?.kind, "Zoom")
+        XCTAssertEqual(a.look, "Warm;b=20.0"); XCTAssertEqual(b.look, "Warm;b=20.0")
+    }
+
+    /// Transitions, looks and a reversed clip's way back go into a draft and come out the same.
+    func testNewPartsRoundTrip() throws {
+        var c = clip(1, 5)
+        c.transition = ClipTransition(kind: "Whip", length: 0.3); c.look = "Mono"
+        c.forward = Forward(source: URL(fileURLWithPath: "/tmp/f.mov"), length: 12, end: 9, soundOn: true)
+        let back = try JSONDecoder().decode(Clip.self, from: JSONEncoder().encode(c))
+        XCTAssertEqual(back, c)
+    }
+
+    /// Which way up a clip's frames go: an iPhone held upright, upside down, either way on its side.
+    func testOrientationFromTheCameraTransform() {
+        XCTAssertEqual(EditCompositor.orientation(CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 1080, ty: 0)), .right)
+        XCTAssertEqual(EditCompositor.orientation(CGAffineTransform(a: 0, b: -1, c: 1, d: 0, tx: 0, ty: 1920)), .left)
+        XCTAssertEqual(EditCompositor.orientation(CGAffineTransform(a: -1, b: 0, c: 0, d: -1, tx: 1920, ty: 1080)), .down)
+        XCTAssertEqual(EditCompositor.orientation(.identity), .up)
     }
 }

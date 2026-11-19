@@ -10,7 +10,9 @@ enum EditDrafts {
         var clips: [Clip]
         var soundOf: UUID?
         var saved: Date
-        var length: Double { clips.reduce(0) { $0 + $1.span } }
+        /// The frame's shape and fill (Stage A2; older drafts have none: the first clip's, filled).
+        var look: EditLook?
+        var length: Double { ClipJoin.total(clips) }
     }
 
     private static let root: URL = {
@@ -26,7 +28,9 @@ enum EditDrafts {
         let found: [Draft] = dirs.compactMap { dir in
             guard let d = try? Data(contentsOf: dir.appendingPathComponent("draft.json")),
                   var draft = try? JSONDecoder().decode(Draft.self, from: d) else { return nil }
-            draft.clips = draft.clips.map { var c = $0; c.source = dir.appendingPathComponent(c.source.lastPathComponent); return c }
+            draft.clips = draft.clips.map { var c = $0; c.source = dir.appendingPathComponent(c.source.lastPathComponent)
+                if let f = c.forward { c.forward?.source = dir.appendingPathComponent(f.source.lastPathComponent) }
+                return c }
             return draft.clips.allSatisfy { FileManager.default.fileExists(atPath: $0.source.path) } ? draft : nil
         }
         return found.sorted { $0.saved > $1.saved }
@@ -34,31 +38,36 @@ enum EditDrafts {
 
     /// Saved (as a new draft, or over the one it was opened from): its clips' files copied in where they aren't already.
     @discardableResult
-    static func save(id: String?, clips: [Clip], soundOf: UUID?, tidy: Bool = true) -> String {
+    static func save(id: String?, clips: [Clip], soundOf: UUID?, look: EditLook? = nil, tidy: Bool = true) -> String {
         let id = id ?? UUID().uuidString.lowercased()
         let dir = folder(id)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         var kept: [Clip] = []
         var copied: [URL: URL] = [:]   // a file used by two clips (a split, a copy) copied once
+        func keep(_ u: URL) -> URL {
+            guard u.deletingLastPathComponent().standardizedFileURL != dir.standardizedFileURL else { return u }
+            if let done = copied[u] { return done }
+            // named after where it came from, so saving again as the edit goes (auto-save) doesn't copy it again
+            let to = dir.appendingPathComponent(name(for: u))
+            if FileManager.default.fileExists(atPath: to.path) || (try? FileManager.default.copyItem(at: u, to: to)) != nil { copied[u] = to; return to }
+            return u
+        }
         for var c in clips {
-            if c.source.deletingLastPathComponent().standardizedFileURL != dir.standardizedFileURL {
-                if let done = copied[c.source] { c.source = done }
-                else {
-                    // named after where it came from, so saving again as the edit goes (auto-save) doesn't copy it again
-                    let to = dir.appendingPathComponent(name(for: c.source))
-                    if FileManager.default.fileExists(atPath: to.path) || (try? FileManager.default.copyItem(at: c.source, to: to)) != nil { copied[c.source] = to; c.source = to }
-                }
-            }
+            c.source = keep(c.source)
+            // a reversed clip's file the right way round too, to turn it back
+            if let f = c.forward { c.forward?.source = keep(f.source) }
             kept.append(c)
         }
         // only the file names go in: the folder moves with the app's own place on the phone
-        let stored = kept.map { var c = $0; c.source = URL(fileURLWithPath: c.source.lastPathComponent); return c }
-        if let d = try? JSONEncoder().encode(Draft(id: id, clips: stored, soundOf: soundOf, saved: Date())) {
+        let stored = kept.map { var c = $0; c.source = URL(fileURLWithPath: c.source.lastPathComponent)
+            if let f = c.forward { c.forward?.source = URL(fileURLWithPath: f.source.lastPathComponent) }
+            return c }
+        if let d = try? JSONEncoder().encode(Draft(id: id, clips: stored, soundOf: soundOf, saved: Date(), look: look)) {
             try? d.write(to: dir.appendingPathComponent("draft.json"), options: .atomic)
         }
         // files no clip uses any more (one deleted from the edit) let go; not while it's auto-saved (Discard may go back to them)
         guard tidy else { return id }
-        let used = Set(kept.map { $0.source.lastPathComponent } + ["draft.json"])
+        let used = Set(kept.map { $0.source.lastPathComponent } + kept.compactMap { $0.forward?.source.lastPathComponent } + ["draft.json"])
         for f in (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? [] where !used.contains(f.lastPathComponent) {
             try? FileManager.default.removeItem(at: f)
         }
