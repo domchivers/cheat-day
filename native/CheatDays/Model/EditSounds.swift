@@ -249,6 +249,14 @@ enum Beats {
         // how suddenly it gets louder, moment to moment
         var onset = [Float](repeating: 0, count: energy.count)
         for k in 1..<energy.count { onset[k] = max(0, log(1 + 100 * energy[k]) - log(1 + 100 * energy[k - 1])) }
+        // spread a step either side, so a pulse a hair off the true beat length still lands on its hits (20 Nov: a
+        // 150 a minute click drifted off its beats over 12 s and was heard at half speed)
+        var spread = onset
+        for k in onset.indices {
+            let before = k > 0 ? onset[k - 1] : 0, after = k + 1 < onset.count ? onset[k + 1] : 0
+            spread[k] = max(onset[k], 0.6 * before, 0.6 * after)
+        }
+        onset = spread
         func at(_ x: Double) -> Float {
             let k = Int(x.rounded())
             return k >= 0 && k < onset.count ? onset[k] : 0
@@ -270,7 +278,7 @@ enum Beats {
                 if score > best.score { best = (score, period, phase) }
                 phase += 1
             }
-            period += 0.1
+            period += 0.04
         }
         guard best.period > 0 else { return [] }
         var out: [Double] = []
