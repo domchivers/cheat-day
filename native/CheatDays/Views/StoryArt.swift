@@ -316,7 +316,7 @@ struct StoryItem: View {
             Text(str(o["name"])).font(.system(size: 21, weight: .heavy, design: .rounded)).foregroundStyle(.black).lineLimit(2).fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 7) {
                 Text("\(Fmt.int(num(o["kcal"]) ?? 0)) kcal").foregroundStyle(.black)
-                if let p = num(o["p"]), p > 0 { Text("\(Int(p)) g protein").foregroundStyle(Color(red: 0.08, green: 0.5, blue: 0.24)) }
+                if let p = num(o["p"]), p > 0 { Text("\(Int(p.rounded())) g protein").foregroundStyle(Color(red: 0.08, green: 0.5, blue: 0.24)) }
             }
             .font(.system(size: 14, weight: .bold, design: .rounded))
             if !what.isEmpty { Text(what).font(.system(size: 12, weight: .medium)).foregroundStyle(.black.opacity(0.55)) }

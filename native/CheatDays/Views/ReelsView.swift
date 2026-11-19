@@ -436,7 +436,7 @@ struct ReelsView: View {
                 HStack(spacing: 8) {
                     Text(str(p["name"])).lineLimit(1)
                     Text(kind == "workout" ? "\(Int(num(dict(p["extra"])["minutes"]) ?? 0)) min" : "\(Fmt.int(num(p["kcal"]) ?? 0)) kcal").foregroundStyle(.white.opacity(0.75))
-                    if let pr = num(dict(p["macros"])["p"]), pr > 0 { Text("\(Int(pr)) g protein").foregroundStyle(Theme.walk) }
+                    if let pr = num(dict(p["macros"])["p"]), pr > 0 { Text("\(Int(pr.rounded())) g protein").foregroundStyle(Theme.walk) }
                 }
                 .font(.caption.weight(.bold)).foregroundStyle(.white)
                 .padding(.horizontal, 11).padding(.vertical, 7).background(.black.opacity(0.45), in: Capsule())

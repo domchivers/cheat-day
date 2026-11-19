@@ -2131,7 +2131,7 @@ struct PostRecipeSheet: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(str(post["name"])).font(.title2.bold())
                         Text("Shared by \(by ?? Feed.shared.name(str(post["owner"])))").font(.caption).foregroundStyle(.secondary)
-                        Text("\(Fmt.int(num(post["kcal"]) ?? 0)) kcal\(num(macros["p"]).map { " · P \(Int($0))g C \(Int(num(macros["c"]) ?? 0))g F \(Int(num(macros["f"]) ?? 0))g" } ?? "")").font(.subheadline.weight(.semibold))
+                        Text("\(Fmt.int(num(post["kcal"]) ?? 0)) kcal\(num(macros["p"]).map { " · P \(Int($0.rounded()))g C \(Int((num(macros["c"]) ?? 0).rounded()))g F \(Int((num(macros["f"]) ?? 0).rounded()))g" } ?? "")").font(.subheadline.weight(.semibold))
                     }
                 }
                 if kind == "meal" {

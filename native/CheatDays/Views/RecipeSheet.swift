@@ -367,9 +367,9 @@ struct RecipeSheet: View {
         let f = used.reduce(0) { $0 + (num($1["fat_g"]) ?? 0) } / portions
         HStack(spacing: 0) {
             stat(Fmt.int(k), "kcal")
-            stat("\(Int(p))g", "protein")
-            stat("\(Int(c))g", "carbs")
-            stat("\(Int(f))g", "fat")
+            stat("\(Int(p.rounded()))g", "protein")
+            stat("\(Int(c.rounded()))g", "carbs")
+            stat("\(Int(f.rounded()))g", "fat")
         }
         .padding(.vertical, 12)
         .background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))

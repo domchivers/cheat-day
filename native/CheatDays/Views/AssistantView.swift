@@ -239,7 +239,7 @@ struct AssistantView: View {
     private func macros(_ k: Double, _ p: Double, _ c: Double, _ f: Double) -> some View {
         HStack(spacing: 14) {
             Text("\(Fmt.int(k)) kcal").font(.headline.weight(.heavy))
-            Text("P \(Int(p))g").foregroundStyle(.secondary); Text("C \(Int(c))g").foregroundStyle(.secondary); Text("F \(Int(f))g").foregroundStyle(.secondary)
+            Text("P \(Int(p.rounded()))g").foregroundStyle(.secondary); Text("C \(Int(c.rounded()))g").foregroundStyle(.secondary); Text("F \(Int(f.rounded()))g").foregroundStyle(.secondary)
         }
         .font(.subheadline.weight(.semibold)).monospacedDigit()
     }
@@ -683,7 +683,7 @@ struct AssistantView: View {
                     FoodDot(name: str(a["name"]), size: 30)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(str(a["name"])).font(.subheadline.weight(.semibold))
-                        Text("\(Fmt.int(num(a["kcal"]) ?? 0)) kcal · P \(Int(num(a["protein_g"]) ?? 0))g · C \(Int(num(a["carbs_g"]) ?? 0))g · F \(Int(num(a["fat_g"]) ?? 0))g")
+                        Text("\(Fmt.int(num(a["kcal"]) ?? 0)) kcal · P \(Int((num(a["protein_g"]) ?? 0).rounded()))g · C \(Int((num(a["carbs_g"]) ?? 0).rounded()))g · F \(Int((num(a["fat_g"]) ?? 0).rounded()))g")
                             .font(.caption).monospacedDigit().foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 6)
@@ -750,7 +750,7 @@ struct AssistantView: View {
                         .font(.subheadline)
                     // each change's numbers before it's made, so a slip shows at a glance
                     if ["add", "update"].contains(str(a["action"])), let k = num(a["kcal"]) {
-                        Text("\(Fmt.int(k)) kcal · P \(Int(num(a["protein_g"]) ?? 0))g · C \(Int(num(a["carbs_g"]) ?? 0))g · F \(Int(num(a["fat_g"]) ?? 0))g")
+                        Text("\(Fmt.int(k)) kcal · P \(Int((num(a["protein_g"]) ?? 0).rounded()))g · C \(Int((num(a["carbs_g"]) ?? 0).rounded()))g · F \(Int((num(a["fat_g"]) ?? 0).rounded()))g")
                             .font(.caption).monospacedDigit().foregroundStyle(.secondary).padding(.leading, 28)
                     }
                 }

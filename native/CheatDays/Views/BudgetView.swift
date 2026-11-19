@@ -226,11 +226,11 @@ struct BudgetView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Text(goalLine(plan)).font(.body.weight(.bold))
                     HStack(spacing: 0) {
-                        stat("\(Int(num(macros["p"]) ?? 0))g", "protein")
+                        stat("\(Int((num(macros["p"]) ?? 0).rounded()))g", "protein")
                         Divider().frame(height: 34)
-                        stat("\(Int(num(macros["c"]) ?? 0))g", "carbs")
+                        stat("\(Int((num(macros["c"]) ?? 0).rounded()))g", "carbs")
                         Divider().frame(height: 34)
-                        stat("\(Int(num(macros["f"]) ?? 0))g", "fat")
+                        stat("\(Int((num(macros["f"]) ?? 0).rounded()))g", "fat")
                     }
                     Text("The weekly check-in can nudge this as your weight moves.").font(.footnote).foregroundStyle(.secondary)
                 }

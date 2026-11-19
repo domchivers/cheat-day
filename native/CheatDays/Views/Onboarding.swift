@@ -478,7 +478,7 @@ struct OnboardingView: View {
                 group {
                     HStack(spacing: 0) {
                         figure(Fmt.int(k), "kcal a day")
-                        if let p = usualProtein { Divider().frame(height: 34); figure("\(Int(p)) g", "protein") }
+                        if let p = usualProtein { Divider().frame(height: 34); figure("\(Int(p.rounded())) g", "protein") }
                     }
                     .padding(.vertical, 12)
                     if !usualNote.isEmpty {

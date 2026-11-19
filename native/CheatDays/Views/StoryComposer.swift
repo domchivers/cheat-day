@@ -345,7 +345,7 @@ struct PostStoryCard: View {
         return HStack(spacing: 7) {
             Text(line).foregroundStyle(.white).lineLimit(1)
             if food && kcal > 0 { Text("\(Fmt.int(kcal)) kcal").foregroundStyle(.white.opacity(0.7)).fixedSize() }
-            if food, let protein { Text("\(Int(protein)) g protein").foregroundStyle(Theme.walk).fixedSize() }
+            if food, let protein { Text("\(Int(protein.rounded())) g protein").foregroundStyle(Theme.walk).fixedSize() }
         }
         .font(.system(size: 13, weight: .bold))
         .padding(.horizontal, 12).padding(.vertical, 10)
@@ -395,7 +395,7 @@ struct RecipeStickerPicker: View {
                                     Text(str(m["name"])).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
                                     if method { Text("METHOD").font(.caption2.weight(.heavy)).foregroundStyle(Theme.accent) }
                                 }
-                                Text("\(Fmt.int(num(b["kcalPerServing"]) ?? 0)) kcal · \(Int(num(b["pServ"]) ?? 0)) g protein a portion").font(.caption).foregroundStyle(.secondary)
+                                Text("\(Fmt.int(num(b["kcalPerServing"]) ?? 0)) kcal · \(Int((num(b["pServ"]) ?? 0).rounded())) g protein a portion").font(.caption).foregroundStyle(.secondary)
                             }
                         }
                     }
