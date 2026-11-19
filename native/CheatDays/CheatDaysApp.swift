@@ -54,6 +54,7 @@ struct RootView: View {
         else if ProcessInfo.processInfo.arguments.contains("-uitest-tabicons") { TabIconsHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-editprofile") { EditProfileHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-review") { ReviewHarness() }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-feed") { FeedHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-cards") { CardsHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-checkin-step") { CheckInHarness(acting: true) }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-checkin") { CheckInHarness(acting: false) }
@@ -627,5 +628,41 @@ enum TabGlyph {
         .withRenderingMode(.alwaysTemplate)
         made[name] = out
         return out
+    }
+}
+
+/// For the feed scroll test (FeedScrollUITests): the real feed on thirty made-up posts, photos and workout cards, with
+/// nothing fetched from the internet, so the hitches measured are the feed's own.
+private struct FeedHarness: View {
+    private static let posts: [JSON] = {
+        // eight photos of the size a posted one is, made here and carried in the posts as data:image
+        let tints: [UIColor] = [.systemOrange, .systemTeal, .systemPink, .systemIndigo, .systemGreen, .systemBrown, .systemRed, .systemPurple]
+        let pics: [String] = tints.enumerated().map { i, c in
+            let size = CGSize(width: 1080, height: i % 3 == 0 ? 1350 : 1080)
+            let img = UIGraphicsImageRenderer(size: size).image { ctx in
+                c.setFill(); ctx.fill(CGRect(origin: .zero, size: size))
+                for k in 0..<40 {
+                    UIColor(white: 1, alpha: 0.08).setFill()
+                    ctx.cgContext.fillEllipse(in: CGRect(x: CGFloat((k * 137) % 1080), y: CGFloat((k * 251) % Int(size.height)), width: 160, height: 160))
+                }
+            }
+            return "data:image/jpeg;base64," + (img.jpegData(compressionQuality: 0.8)?.base64EncodedString() ?? "")
+        }
+        let iso = ISO8601DateFormatter()
+        return (0..<30).map { i -> JSON in
+            let at = iso.string(from: Date().addingTimeInterval(-Double(i) * 3600))
+            if i % 4 == 3 {
+                return ["id": "test-\(i)", "owner": "test-owner-\(i % 3)", "kind": "workout", "name": "Leg", "kcal": 0, "macros": [:] as JSON,
+                        "caption": "", "created_at": at, "photo": NSNull(),
+                        "payload": ["minutes": 85, "lifts": [] as [Any]] as JSON, "extra": ["minutes": 85] as JSON]
+            }
+            let pic = pics[i % pics.count]
+            return ["id": "test-\(i)", "owner": "test-owner-\(i % 3)", "kind": i % 2 == 0 ? "food" : "photo", "name": i % 2 == 0 ? "Pepperoni pizza" : "",
+                    "kcal": i % 2 == 0 ? 640 : 0, "macros": ["p": 32] as JSON, "caption": "Test post \(i)", "created_at": at, "photo": pic,
+                    "payload": [:] as JSON, "extra": ["aspect": i % 3 == 0 ? 0.8 : 1.0] as JSON]
+        }
+    }()
+    var body: some View {
+        NavigationStack { FeedView(only: Self.posts).accessibilityIdentifier("feedHarness") }
     }
 }
