@@ -1205,11 +1205,15 @@ struct FeedVideo: View {
     var clipVolume: Float = 1
     @State private var muted = true
     @State private var showing = false
+    @State private var mostly = false   // most of it on the screen (for the volume buttons)
     var body: some View {
         LoopingVideo(url: url, paused: !showing, muted: songKey.map { SongPlayer.shared.playing != $0 } ?? muted, volume: clipVolume)
             .allowsHitTesting(false)
             .onAppear { showing = true }
             .onDisappear { showing = false; if !muted { muted = true; loud(false) } }
+            // one without a song, mostly on the screen: the volume buttons turn its sound on
+            .modifier(MostlyShowing { mostly = $0 })
+            .onReceive(NotificationCenter.default.publisher(for: .soundOn)) { _ in if songKey == nil, mostly, muted { muted = false; loud(true) } }
             .overlay(alignment: .topTrailing) {
                 if songKey == nil {
                 Button { muted.toggle(); loud(!muted) } label: {

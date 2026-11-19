@@ -512,6 +512,10 @@ struct StoryView: View {
             let key = "story:" + str(snapNow?["id"])
             SongCard(song: song, muted: Binding(get: { SongPlayer.shared.playing != key }, set: { _ in SongPlayer.shared.flip(song, key: key) }))
         }
+        // the volume buttons turned sound on: this story's song comes in
+        .onReceive(NotificationCenter.default.publisher(for: .soundOn)) { _ in
+            if let song = storySong, let id = snapNow.map({ str($0["id"]) }), SongPlayer.shared.playing != "story:" + id { SongPlayer.shared.play(song, key: "story:" + id, loop: true) }
+        }
         // a workout sticker: the workout, as a workout card's Do it opens it, to start it or save it
         .sheet(item: Binding(get: { workoutOf.map { PostBox(post: StoryItem.workoutPost($0, owner: who)) } }, set: { if $0 == nil { workoutOf = nil } })) { b in
             PostRecipeSheet(post: b.post, by: Feed.shared.name(who)).presentationDetents([.medium, .large])

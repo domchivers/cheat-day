@@ -86,6 +86,8 @@ struct ReelsView: View {
         .onAppear { if let current { Feed.warmAhead(current, in: posts, swiped: true) } }   // the next two reels fetched while this one plays (MediaCache)
         .onChange(of: paused) { _, _ in sound() }
         .onChange(of: muted) { _, now in SongPlayer.shared.auto = !now; sound() }
+        // the volume buttons turned sound on
+        .onReceive(NotificationCenter.default.publisher(for: .soundOn)) { _ in if muted { muted = false } }
         .onChange(of: holding) { was, now in
             // let go of the line: the song goes to the moment the video was left on, and both carry on from there
             if now == nil, let at = was { SongPlayer.shared.seek(at) }

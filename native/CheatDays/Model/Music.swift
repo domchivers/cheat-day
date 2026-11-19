@@ -183,6 +183,21 @@ enum Music {
     /// it's turned on again, wherever that is (18 Nov: the feed, videos and stories each had their own say). Never
     /// chosen isn't off: stories and videos play, the feed waits for its first tap.
     var mutedByChoice: Bool { UserDefaults.standard.object(forKey: "song.auto") as? Bool == false }
+    /// The post with a song that's mostly on the screen, whether or not it's playing: what the volume buttons start.
+    @ObservationIgnored private var seen: (song: Song, key: String, volume: Float, inVideo: Bool)?
+
+    /// The volume buttons were pressed (VolumeButtons) while sound was off: it comes on, everywhere, as on Instagram
+    /// (19 Nov; off on posts is off on stories too, and the buttons were no way back). The post on screen plays and
+    /// songs start by themselves from then on; a story or a video showing hears `.soundOn` and starts its own.
+    func volumePressed() {
+        if !auto {
+            auto = true
+            if let s = seen, playing != s.key { play(s.song, key: s.key, loop: true, volume: s.volume, inVideo: s.inVideo) }
+        }
+        // anything still quiet that's showing (a video without a song, a story, a reel) turns its sound on; one already
+        // heard carries on as it is
+        NotificationCenter.default.post(name: .soundOn, object: nil)
+    }
 
     /// The speaker on a post, tapped.
     func flip(_ song: Song, key: String, volume: Float = 1, inVideo: Bool = false) {
@@ -205,13 +220,17 @@ enum Music {
     /// A post with a song has come onto the screen. Nothing if songs are off, or if the phone's already playing
     /// something of its own (their music or a podcast isn't cut off by scrolling past a photo).
     func arrive(_ song: Song, key: String, volume: Float = 1, inVideo: Bool = false) {
+        seen = (song, key, volume, inVideo)
         guard auto, playing != key, !AVAudioSession.sharedInstance().isOtherAudioPlaying else { return }
         // heard with the ringer off as well: kept to the ringer, a phone on silent (most are) never played one, and
         // it looked as though songs only played when their button was pressed. The speaker turns them all off.
         play(song, key: key, loop: true, volume: volume, inVideo: inVideo)
     }
     /// It's gone off the screen again.
-    func leave(_ key: String) { if playing == key { stop() } }
+    func leave(_ key: String) {
+        if seen?.key == key { seen = nil }
+        if playing == key { stop() }
+    }
 
     /// `loop`: under a post or a video it goes round for as long as that's on screen; in a list of songs it's heard once.
     /// `inVideo`: the song's mixed into the post's video (see SongMix). Nothing more to play: it's marked as playing,
@@ -309,7 +328,43 @@ enum Sound {
                 guard s.category == .playback else { return }   // already off, or another part of the app has it
                 try? s.setActive(false, options: .notifyOthersOnDeactivation)
                 try? s.setCategory(.ambient)
+                // kept on, quietly, alongside anything else playing: the volume buttons are only heard while it is
+                try? s.setActive(true)
             }
+        }
+    }
+
+    /// At launch: on, quietly (`.ambient` plays alongside their own music and keeps to the ringer), so the volume
+    /// buttons can be heard (VolumeButtons).
+    static func ready() {
+        q.async {
+            let s = AVAudioSession.sharedInstance()
+            if s.category != .playback { try? s.setCategory(.ambient) }
+            try? s.setActive(true)
+        }
+    }
+}
+
+extension Notification.Name {
+    /// Sound turned on with the volume buttons: whatever's showing starts its sound (SongPlayer.volumePressed).
+    static let soundOn = Notification.Name("soundOn")
+}
+
+/// The volume buttons, pressed (19 Nov): as on Instagram, turning the volume up or down while sound's off turns it
+/// on. Heard as a change in the phone's volume, so a press at the very top or bottom (nothing changes) isn't heard.
+final class VolumeButtons {
+    static let shared = VolumeButtons()
+    private var watch: NSKeyValueObservation?
+    private var back: NSObjectProtocol?
+    func start() {
+        guard watch == nil else { return }
+        // back from another app, the phone may have let the app's sound go: on again, quietly, to hear the buttons
+        back = NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
+            if SongPlayer.shared.playing == nil { Sound.ready() }
+        }
+        watch = AVAudioSession.sharedInstance().observe(\.outputVolume, options: [.old, .new]) { _, change in
+            guard let was = change.oldValue, let now = change.newValue, abs(was - now) > 0.001 else { return }
+            DispatchQueue.main.async { SongPlayer.shared.volumePressed() }
         }
     }
 }

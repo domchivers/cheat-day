@@ -17,6 +17,9 @@ struct CheatDaysApp: App {
         // sound turned on or off on posts lasts until the app's closed, as Instagram's does (the owner, 19 Nov): each
         // launch the feed starts quiet again, stories and videos with their sound
         UserDefaults.standard.removeObject(forKey: "song.auto")
+        // the volume buttons turn sound on (VolumeButtons), heard while the phone's sound is on, quietly, from launch
+        Sound.ready()
+        VolumeButtons.shared.start()
         // no scroll bars down the side of the screens; the assistant's chat keeps its own (a long conversation needs one)
         UIScrollView.appearance().showsVerticalScrollIndicator = false
         UIScrollView.appearance().showsHorizontalScrollIndicator = false
