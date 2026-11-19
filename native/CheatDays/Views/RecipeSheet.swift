@@ -734,7 +734,10 @@ extension RecipeMaker {
         let given: [String] = (other != nil ? [] : list(idea["ingredients"])).map { g -> String in
             "\(Int(num(g["grams"]) ?? 0)) g \(str(g["name"])) (\(Int(num(g["kcal"]) ?? 0)) kcal, \(Fmt.int(num(g["protein"]) ?? 0)) g protein, \(Fmt.int(num(g["carbs"]) ?? 0)) g carbs, \(Fmt.int(num(g["fat"]) ?? 0)) g fat)"
         }
-        let lighter = "Keep the dish's character but make it lighter or higher in protein (less oil and butter, leaner cuts, more veg, swaps that taste close), with fewer calories than the usual dish, and list the changes."
+        // Protein first, from things that keep it the real dish (19 Nov, tools/ai-test/recipe-protein-check.js): a protein
+        // pizza came back as a yoghurt dough with chicken breast on it, butter chicken bulked with cauliflower and a
+        // carbonara with egg whites and courgette; the owner's own gets its protein from vital wheat gluten in a real dough
+        let lighter = "Keep it the real dish, made the way it normally is, and raise the protein first with ingredients that keep it that dish: vital wheat gluten or a high-protein flour in a dough or batter, leaner or extra meat, cured meats with less fat, higher-protein cheese or yoghurt in a sauce. Then trim what doesn't change what it is (a little less oil or butter, a lighter cheese). Never swap its base or heart for a diet stand-in: no cauliflower, chicken or egg-white crust for a pizza, no wraps or lettuce for bread, no courgette for pasta, no protein powder in a savoury dish. Fewer calories than the usual dish, or about the same with much more protein, and list the changes."
         let real = "How it's really made in its home cuisine, true to the dish, with ingredients they can buy there."
         var base = healthier ? lighter : real
         if !given.isEmpty { base = "Exactly these ingredients, amounts and numbers, one portion (portions 1), adding only a pinch of salt or pepper if needed: \(given.joined(separator: "; ")). Give each a cook's amount for those grams." }
