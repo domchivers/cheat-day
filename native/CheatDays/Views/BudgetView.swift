@@ -12,6 +12,9 @@ struct BudgetView: View {
     @State private var cheat = false
     private var store: Store { Store.shared }
     private let order = [1, 2, 3, 4, 5, 6, 0]
+    /// A tab of PlanTabs, which gives the title.
+    var embedded = false
+    init(embedded: Bool = false) { self.embedded = embedded }
     private var varied: Bool { days.contains { $0.value != base } }
     private func budget(_ d: Int) -> Double { days[d] ?? base }
     private var weekly: Double { order.reduce(0) { $0 + budget($1) } }
@@ -44,8 +47,7 @@ struct BudgetView: View {
             .padding(.bottom, 110)
         }
         .background(Theme.bg)
-        .navigationTitle("Your plan")
-        .navigationBarTitleDisplayMode(.inline)
+        .titled("Your plan", unless: embedded)
         .onAppear { if !loaded { load(); loaded = true } }
         .onChange(of: base) { _, _ in save() }
         .onChange(of: days) { _, _ in save() }

@@ -8,6 +8,10 @@ struct BodyView: View {
     @State private var entry: JSON?
     @State private var editing: GoalKind?   // the goal weight or body fat being typed
     private var store: Store { Store.shared }
+    /// A tab of PlanTabs (which gives the title), and whether its tab is the one showing.
+    var embedded = false
+    var active = true
+    init(embedded: Bool = false, active: Bool = true) { self.embedded = embedded; self.active = active }
     static let metrics: [(key: String, name: String, unit: String)] = [
         ("weight", "Weight", "kg"), ("fat", "Body fat", "%"), ("muscle", "Muscle", "kg"), ("water", "Water", "%"),
         ("visceral", "Visceral fat", ""), ("bone", "Bone", "kg"), ("bmi", "BMI", ""), ("age", "Body age", "yrs")
@@ -64,11 +68,13 @@ struct BodyView: View {
         }
         .scrollContentBackground(.hidden)
         .background(Theme.bg)
-        .navigationTitle("Weigh-ins")
-        .navigationBarTitleDisplayMode(.inline)
+        .titled("Weigh-ins", unless: embedded)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { entry = ["new": true, "day": "new"] } label: { Image(systemName: "plus") }.accessibilityLabel("Weigh in")
+            // as a tab of PlanTabs, only while its tab is showing
+            if !embedded || active {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { entry = ["new": true, "day": "new"] } label: { Image(systemName: "plus") }.accessibilityLabel("Weigh in")
+                }
             }
         }
         .refreshable { await store.pullBody(); await HealthSync.pull(force: true) }

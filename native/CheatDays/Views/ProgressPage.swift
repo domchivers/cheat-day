@@ -486,17 +486,16 @@ struct ProgressPage: View {
         let cheat = store.cheatWeekday.map { Calendar.current.shortWeekdaySymbols[$0] } ?? "None"
         let goal = pos(store.doc["goalWeight"])
         let fat = store.goalFatShown(now: store.trendWeight ?? store.latestWeight?.kg ?? 0)
-        // Your goal with the rest of the plan (18 Nov): it was only found behind Weigh-ins' See all. Budget and cheat
-        // day open Your plan; the goal opens Weigh-ins, where it's set.
+        // One screen for both (19 Nov, PlanTabs): Budget and Cheat day open it on Plan, the goal on Goal, where it's set.
         // a link each, so the three are a third of the row each (Budget and Cheat day were one link sharing half, 18 Nov)
         return HStack(spacing: 0) {
-            NavigationLink { BudgetView() } label: { planCell("Budget", Fmt.int(base), nil).contentShape(Rectangle()) }
+            NavigationLink { PlanTabs(start: 0) } label: { planCell("Budget", Fmt.int(base), nil).contentShape(Rectangle()) }
                 .buttonStyle(.plain).accessibilityLabel("Budget, \(Fmt.int(base)) a day")
             Divider().frame(height: 40)
-            NavigationLink { BudgetView() } label: { planCell("Cheat day", cheat, nil).contentShape(Rectangle()) }
+            NavigationLink { PlanTabs(start: 0) } label: { planCell("Cheat day", cheat, nil).contentShape(Rectangle()) }
                 .buttonStyle(.plain).accessibilityLabel("Cheat day, \(cheat)")
             Divider().frame(height: 40)
-            NavigationLink { BodyView() } label: {
+            NavigationLink { PlanTabs(start: 1) } label: {
                 planCell("Goal", goal.map { "\(Fmt.one($0)) kg" } ?? "Set", fat.map { "\(Fmt.dec($0))%" }).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -521,7 +520,7 @@ struct ProgressPage: View {
         HStack {
             Text("Weigh-ins").font(.headline.weight(.heavy)).foregroundStyle(.secondary)
             Spacer()
-            NavigationLink { BodyView() } label: { Text("See all").font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent) }
+            NavigationLink { PlanTabs(start: 1) } label: { Text("See all").font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent) }
         }
         .padding(.horizontal, 18).padding(.top, 22).padding(.bottom, 8)
     }
