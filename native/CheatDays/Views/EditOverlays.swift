@@ -70,7 +70,7 @@ struct EditTextView: View {
     let at: Double
 
     var body: some View {
-        content.scaleEffect(item.size)
+        content   // (its size is the scale it is drawn at: the editor's preview and the finished video both size it)
     }
 
     @ViewBuilder private var content: some View {
@@ -181,7 +181,7 @@ enum EditOverlays {
         func shot(_ item: EditText, at: Double, from: Double, to: Double) {
             guard to > from + 0.01 else { return }
             let r = ImageRenderer(content: EditTextView(item: item, at: at).padding(24))
-            r.scale = scale
+            r.scale = scale * CGFloat(item.size)   // its size drawn in, not scaled after (20 Nov: a big one was cropped)
             if let ui = r.uiImage, let ci = CIImage(image: ui) { out.append(OverlayPiece(image: ci, from: from, to: to, x: item.x, y: item.y)) }
         }
         for item in items {

@@ -829,16 +829,23 @@ struct MultiClipEditor: View {
                         .contentShape(Rectangle())
                         .frame(width: w, height: h)
                         .position(x: r.minX + m.x * r.width, y: r.minY + m.y * r.height)
-                        .onTapGesture { selectPip(p.id) }
                         .accessibilityLabel("Overlay").accessibilityHint("Double tap to change it; drag to move it")
-                        .gesture(DragGesture(minimumDistance: 3)
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityAction { selectPip(p.id) }
+                        .gesture(DragGesture(minimumDistance: 0)
                             .onChanged { v in
-                                if pipFrom == nil { pipFrom = m }
+                                if pipFrom == nil {
+                                    guard hypot(v.translation.width, v.translation.height) > 2 else { return }
+                                    pipFrom = m
+                                }
                                 let start = pipFrom ?? m
                                 setPip(p.id) { $0.x = min(1, max(0, start.x + Double(v.translation.width / max(r.width, 1))))
                                                $0.y = min(1, max(0, start.y + Double(v.translation.height / max(r.height, 1)))) }
                             }
-                            .onEnded { _ in pipFrom = nil })
+                            .onEnded { _ in
+                                if pipFrom == nil { selectPip(p.id) }
+                                pipFrom = nil
+                            })
                         .simultaneousGesture(MagnificationGesture()
                             .onChanged { s in
                                 if pipFrom == nil { pipFrom = m }
@@ -853,20 +860,30 @@ struct MultiClipEditor: View {
                 if on || (now >= item.from && now < item.to) {
                     EditTextView(item: item, at: now).padding(24)
                         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [6])).foregroundStyle(on ? Color.white : Color.clear).padding(14))
-                        .scaleEffect(k)
+                        // sized with its dashed box, so the box grows with it (20 Nov: the box stayed small)
+                        .scaleEffect(k * CGFloat(item.size))
                         .position(x: r.minX + item.x * r.width, y: r.minY + item.y * r.height)
-                        .onTapGesture { selectText(item.id) }
                         .accessibilityLabel(item.kind == "sticker" ? "Sticker \(item.text)" : item.barLabel)
                         .accessibilityHint("Double tap to change it; drag to move it")
-                        .gesture(DragGesture(minimumDistance: 3)
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityAction { selectText(item.id) }
+                        // One gesture, from the first touch: a touch that doesn't move is a tap. (20 Nov: a tap and a
+                        // drag on it held the first move back while the phone worked out which it was.)
+                        .gesture(DragGesture(minimumDistance: 0)
                             .onChanged { v in
                                 guard let i = texts.firstIndex(where: { $0.id == item.id }) else { return }
-                                if moveFrom == nil { moveFrom = (texts[i].x, texts[i].y) }
+                                if moveFrom == nil {
+                                    guard hypot(v.translation.width, v.translation.height) > 2 else { return }
+                                    moveFrom = (texts[i].x, texts[i].y)
+                                }
                                 let start = moveFrom ?? (item.x, item.y)
                                 texts[i].x = min(0.95, max(0.05, start.0 + Double(v.translation.width / max(r.width, 1))))
                                 texts[i].y = min(0.95, max(0.05, start.1 + Double(v.translation.height / max(r.height, 1))))
                             }
-                            .onEnded { _ in moveFrom = nil })
+                            .onEnded { _ in
+                                if moveFrom == nil { selectText(item.id) }
+                                moveFrom = nil
+                            })
                         .simultaneousGesture(MagnificationGesture()
                             .onChanged { m in
                                 guard let i = texts.firstIndex(where: { $0.id == item.id }) else { return }
