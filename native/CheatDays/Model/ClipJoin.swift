@@ -28,6 +28,8 @@ struct Clip: Identifiable, Equatable, Codable {
     var look = "Normal"
     /// Played backwards (Stage A2): the file it was made from, to go forwards again.
     var forward: Forward?
+    /// Its sound made clearer (Stage C, Clarity): played instead of its own, at the same times.
+    var clean: URL?
 
     /// The part of its file kept, seconds of the file.
     var duration: Double { max(0, end - start) }
@@ -134,7 +136,8 @@ enum ClipJoin {
     /// filled or whole on a blurred copy. Each clip's sound at its own level with its fades, dipping across a
     /// transition; `soundOf`: one clip's sound for the whole of it instead, round again if it's shorter. `swap`: a
     /// smaller copy of a file to play instead (a 4K clip's, for the preview).
-    static func compose(_ clips: [Clip], soundOf: UUID? = nil, look: EditLook = EditLook(), swap: [URL: URL] = [:], overlays: [OverlayPiece] = []) async -> (AVMutableComposition, AVMutableVideoComposition, AVMutableAudioMix)? {
+    static func compose(_ clips: [Clip], soundOf: UUID? = nil, look: EditLook = EditLook(), swap: [URL: URL] = [:], overlays: [OverlayPiece] = [],
+                        sounds: [EditSound] = []) async -> (AVMutableComposition, AVMutableVideoComposition, AVMutableAudioMix)? {
         let comp = AVMutableComposition()
         guard let v0 = comp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid),
               let v1 = comp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid),
@@ -159,6 +162,22 @@ enum ClipJoin {
         struct Piece { var at: Int64; var lasts: Int64; var layer: EditLayer; var into: String?; var out: Int64 }
         var pieces: [Piece] = []
         var cursor: Int64 = 0
+        // While a voiceover plays, everything else dips to under a third (CapCut's ducking), easing down and back
+        // up over a fifth of a second either side. The takes' times are merged where they touch.
+        var dips: [(Double, Double)] = []
+        for v in sounds.filter({ $0.kind == "voice" }).sorted(by: { $0.from < $1.from }) {
+            if let lastDip = dips.last, v.from <= lastDip.1 + 0.4 { dips[dips.count - 1].1 = max(lastDip.1, v.to) } else { dips.append((v.from, v.to)) }
+        }
+        let ease = 0.2, low: Float = 0.3
+        func dip(_ v: Double) -> Float {
+            var k: Float = 1
+            for (a, b) in dips {
+                if v >= a && v <= b { k = min(k, low) }
+                else if v > a - ease && v < a { k = min(k, 1 - (1 - low) * Float((v - (a - ease)) / ease)) }
+                else if v > b && v < b + ease { k = min(k, low + (1 - low) * Float((v - b) / ease)) }
+            }
+            return k
+        }
         for (i, c) in clips.enumerated() where c.duration > 0.05 {
             let asset = AVURLAsset(url: swap[c.source] ?? c.source)
             guard let v = try? await asset.loadTracks(withMediaType: .video).first else { continue }
@@ -182,8 +201,9 @@ enum ClipJoin {
             pieces.append(Piece(at: cursor, lasts: lasts, layer: layer, into: out > 0 ? c.transition?.kind : nil, out: out))
             // its own sound, unless one clip's sound plays over everything; across a transition it fades out as the
             // next fades in
+            let heardFrom = c.clean.map { AVURLAsset(url: $0) } ?? asset
             if soundOf == nil, c.soundOn, !c.still, c.heardEnd - c.heardStart > 0.05,
-               let a = try? await asset.loadTracks(withMediaType: .audio).first {
+               let a = try? await heardFrom.loadTracks(withMediaType: .audio).first {
                 var heard = c
                 let before = pieces.count >= 2 ? pieces[pieces.count - 2].out : 0
                 if before > 0 { heard.fadeIn = max(heard.fadeIn, Double(before) / 600 * rate) }
@@ -191,12 +211,18 @@ enum ClipJoin {
                 let at0 = Double(cursor) / 600 + (heard.heardStart - shown) / rate, span = min(heard.heardEnd, until) - heard.heardStart
                 if span > 0.05, (try? sounds[track].insertTimeRange(CMTimeRange(start: t(heard.heardStart), duration: t(span)), of: a, at: t(at0))) != nil {
                     if abs(rate - 1) > 0.001 { sounds[track].scaleTimeRange(CMTimeRange(start: t(at0), duration: t(span)), toDuration: t(span / rate)) }
-                    // its level through it, from its keyframes and fades: a straight ramp between each moment it turns
-                    let marks = heard.turns.filter { $0 <= heard.heardStart + span }
-                    levels[track].setVolume(heard.level(at: heard.heardStart), at: t(at0))
+                    // its level through it, from its keyframes and fades and the dips under a voiceover: a straight
+                    // ramp between each moment it turns (in its file's time; the video's is at0 on, at its speed)
+                    let video = { (p: Double) -> Double in at0 + (p - heard.heardStart) / rate }
+                    let file = { (v: Double) -> Double in heard.heardStart + (v - at0) * rate }
+                    let edges = dips.flatMap { [file($0.0 - ease), file($0.0), file($0.1), file($0.1 + ease)] }
+                        .filter { $0 > heard.heardStart && $0 < heard.heardStart + span }
+                    let marks = Array(Set(heard.turns.filter { $0 <= heard.heardStart + span } + edges)).sorted()
+                    let level = { (p: Double) -> Float in heard.level(at: p) * dip(video(p)) }
+                    levels[track].setVolume(level(heard.heardStart), at: t(at0))
                     for (p, q) in zip(marks, marks.dropFirst()) where q - p > 0.01 {
-                        levels[track].setVolumeRamp(fromStartVolume: heard.level(at: p), toEndVolume: heard.level(at: q),
-                                                    timeRange: CMTimeRange(start: t(at0 + (p - heard.heardStart) / rate), duration: t((q - p) / rate)))
+                        levels[track].setVolumeRamp(fromStartVolume: level(p), toEndVolume: level(q),
+                                                    timeRange: CMTimeRange(start: t(video(p)), duration: t((q - p) / rate)))
                     }
                 }
             }
@@ -215,6 +241,24 @@ enum ClipJoin {
                 put += piece
             }
             levels[0].setVolume(c.volume, at: .zero)
+            for (a, b) in dips {
+                levels[0].setVolumeRamp(fromStartVolume: c.volume, toEndVolume: c.volume * low, timeRange: CMTimeRange(start: t(max(0, a - ease)), duration: t(ease)))
+                levels[0].setVolumeRamp(fromStartVolume: c.volume * low, toEndVolume: c.volume, timeRange: CMTimeRange(start: t(b), duration: t(ease)))
+            }
+        }
+        // voiceovers and sound effects, each on a track of its own, at its own level
+        var laid: [AVMutableAudioMixInputParameters] = []
+        for snd in sounds {
+            guard let url = snd.url, let a = try? await AVURLAsset(url: url).loadTracks(withMediaType: .audio).first,
+                  let range = try? await a.load(.timeRange),
+                  let track = comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else { continue }
+            let take = min(snd.length, range.end.seconds - snd.start, Double(end) / 600 - snd.from)
+            guard take > 0.05, (try? track.insertTimeRange(CMTimeRange(start: t(snd.start), duration: t(take)), of: a, at: t(snd.from))) != nil else {
+                comp.removeTrack(track); continue
+            }
+            let p = AVMutableAudioMixInputParameters(track: track)
+            p.setVolume(snd.volume, at: .zero)
+            laid.append(p)
         }
         // the stretches: each clip on its own, then it and the next together while one turns into the other
         var instructions: [EditInstruction] = []
@@ -248,15 +292,15 @@ enum ClipJoin {
         vc.frameDuration = CMTime(value: 1, timescale: 30)
         vc.instructions = instructions
         let mix = AVMutableAudioMix()
-        mix.inputParameters = mixes
+        mix.inputParameters = mixes + laid
         return (comp, vc, mix)
     }
 
     /// The clips as one video file on the phone, for the editor to take on as it takes a single video. `progress`
     /// hears how far it's got (0 to 1); cancelling the task that asked stops it.
-    static func join(_ clips: [Clip], soundOf: UUID? = nil, look: EditLook = EditLook(), overlays: [OverlayPiece] = [],
+    static func join(_ clips: [Clip], soundOf: UUID? = nil, look: EditLook = EditLook(), overlays: [OverlayPiece] = [], sounds: [EditSound] = [],
                      progress: @escaping @MainActor (Float) -> Void = { _ in }) async -> URL? {
-        guard let (comp, vc, mix) = await compose(clips, soundOf: soundOf, look: look, overlays: overlays),
+        guard let (comp, vc, mix) = await compose(clips, soundOf: soundOf, look: look, overlays: overlays, sounds: sounds),
               let export = AVAssetExportSession(asset: comp, presetName: AVAssetExportPresetHighestQuality) else { return nil }
         let out = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mov")
         export.outputURL = out; export.outputFileType = .mov
@@ -426,7 +470,7 @@ enum ClipJoin {
 
 extension Clip {
     private enum CodingKeys: String, CodingKey {
-        case id, source, length, start, end, still, soundOn, volume, soundStart, soundEnd, fadeIn, fadeOut, keys, speed, transition, look, forward
+        case id, source, length, start, end, still, soundOn, volume, soundStart, soundEnd, fadeIn, fadeOut, keys, speed, transition, look, forward, clean
     }
     /// Read from a draft, a field it was saved without (added in a later build) taking its default.
     init(from decoder: Decoder) throws {
@@ -446,5 +490,6 @@ extension Clip {
         transition = try c.decodeIfPresent(ClipTransition.self, forKey: .transition)
         look = try c.decodeIfPresent(String.self, forKey: .look) ?? "Normal"
         forward = try c.decodeIfPresent(Forward.self, forKey: .forward)
+        clean = try c.decodeIfPresent(URL.self, forKey: .clean)
     }
 }

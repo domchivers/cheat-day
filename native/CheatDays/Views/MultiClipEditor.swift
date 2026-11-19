@@ -19,6 +19,8 @@ struct MultiClipEditor: View {
     /// Its text, stickers and captions, and what's attached (a recipe, a workout), as the draft had them.
     var startTexts: [EditText]? = nil
     var startAttached: JSON? = nil
+    /// Its voiceovers and sound effects, as the draft had them.
+    var startSounds: [EditSound]? = nil
     var close: () -> Void
     var done: (URL) -> Void
     /// The draft it's auto-saved as (a new edit gets one of its own once it's saved the first time).
@@ -67,8 +69,17 @@ struct MultiClipEditor: View {
     @State private var attached: JSON?
     @State private var attachMode: String?           // "recipe", "workout", "calories": the picker open for it
     @State private var note: String?
-    private struct BarGrab { var id: UUID; var mode: Int; var from: Double; var to: Double; var words: [EditText.Word]? }   // mode: 0 move, 1 start, 2 end
-    private enum Panel { case trim, sound, speed, join, look, shape, text, stickers }
+    @State private var sounds: [EditSound] = []       // voiceovers and sound effects (Stage C)
+    @State private var selectedSound: UUID?
+    @State private var recorder = VoiceRecorder()
+    @State private var recording = false
+    @State private var holding = false
+    @State private var recordFrom = 0.0
+    @State private var clearVoice = true
+    private struct BarGrab { var id: UUID; var mode: Int; var from: Double; var to: Double; var words: [EditText.Word]?; var start = 0.0 }   // mode: 0 move, 1 start, 2 end
+    /// One bar on the timeline: a text, sticker or caption, or a voiceover or sound effect.
+    private struct BarItem: Identifiable { let id: UUID; let from: Double; let to: Double; let label: String; let colour: Color; let sound: Bool }
+    private enum Panel { case trim, sound, speed, join, look, shape, text, stickers, voice, effects, soundItem }
     private let perSecond: CGFloat = 14         // strip points a second
 
     private var total: Double { ClipJoin.total(clips) }
@@ -113,16 +124,16 @@ struct MultiClipEditor: View {
         .alert("Save this edit?", isPresented: $leaving) {
             Button("Save draft") {
                 player.pause()
-                let id = autoID ?? draftID, kept = clips, sound = soundOf, shape = look, over = texts, with = Self.data(attached)
-                EditDrafts.queue.async { EditDrafts.save(id: id, clips: kept, soundOf: sound, look: shape, texts: over, attached: with) }
+                let id = autoID ?? draftID, kept = clips, sound = soundOf, shape = look, over = texts, with = Self.data(attached), laid = sounds
+                EditDrafts.queue.async { EditDrafts.save(id: id, clips: kept, soundOf: sound, look: shape, texts: over, attached: with, sounds: laid) }
                 close()
             }
             Button("Discard", role: .destructive) {
                 player.pause()
-                let id = autoID ?? draftID, was = opened, sound = startSoundOf, shape = startLook, over = startTexts, with = Self.data(startAttached)
+                let id = autoID ?? draftID, was = opened, sound = startSoundOf, shape = startLook, over = startTexts, with = Self.data(startAttached), laid = startSounds
                 EditDrafts.queue.async {
                     guard let id else { return }
-                    if let was { EditDrafts.save(id: id, clips: was, soundOf: sound, look: shape, texts: over, attached: with) } else { EditDrafts.delete(id) }
+                    if let was { EditDrafts.save(id: id, clips: was, soundOf: sound, look: shape, texts: over, attached: with, sounds: laid) } else { EditDrafts.delete(id) }
                 }
                 close()
             }
@@ -132,6 +143,7 @@ struct MultiClipEditor: View {
             if soundOf == nil, let s = startSoundOf { soundOf = s }
             if let l = startLook, opened == nil { look = l }
             if let t = startTexts, opened == nil, texts.isEmpty { texts = t }
+            if let v = startSounds, opened == nil, sounds.isEmpty { sounds = v }
             if let a = startAttached, attached == nil { attached = a; attach(a) }
             if autoID == nil { autoID = draftID }
             if draftID != nil, opened == nil { opened = clips }
@@ -141,6 +153,7 @@ struct MultiClipEditor: View {
         .task(id: soundOf) { await settle(); await autosave() }
         .task(id: look) { await settle(); await autosave() }
         .task(id: texts) { await autosave() }
+        .task(id: sounds) { await settle(); await autosave() }
         .sheet(isPresented: Binding(get: { attachMode != nil }, set: { if !$0 { attachMode = nil } })) {
             AttachPicker(start: attachMode == "workout" ? 2 : (attachMode == "recipe" ? 1 : 0)) { picked($0) }
         }
@@ -181,7 +194,7 @@ struct MultiClipEditor: View {
             Spacer()
             if panel == nil { round("aspectratio", "Shape and background") { withAnimation(.snappy) { panel = .shape } } }
             if panel != nil {
-                Button { withAnimation(.snappy) { panel = nil; selectedText = nil } } label: {
+                Button { withAnimation(.snappy) { panel = nil; selectedText = nil; selectedSound = nil } } label: {
                     Text("Done").font(.subheadline.weight(.bold)).foregroundStyle(.black).padding(.horizontal, 16).frame(height: 34).background(.white, in: Capsule())
                 }
                 .buttonStyle(.plain)
@@ -217,9 +230,12 @@ struct MultiClipEditor: View {
             case .shape: scrubBar; shapePanel
             case .text: if let k = texts.firstIndex(where: { $0.id == selectedText }) { scrubBar; bars; textPanel(k) }
             case .stickers: scrubBar; stickerPanel
+            case .voice: scrubBar; bars; voicePanel
+            case .effects: scrubBar; effectsPanel
+            case .soundItem: if let k = sounds.firstIndex(where: { $0.id == selectedSound }) { scrubBar; bars; soundItemPanel(k) }
             case nil:
                 scrubBar
-                if !texts.isEmpty { bars }
+                if !texts.isEmpty || !sounds.isEmpty { bars }
                 strip
                 if selected == nil { addTools } else { actions }
                 Button { finish() } label: {
@@ -393,6 +409,7 @@ struct MultiClipEditor: View {
                         remember(); clips[i].soundOn.toggle()
                     }
                     soundTile("music.note", "Use for all", on: soundOf == c.id) { remember(); soundOf = soundOf == c.id ? nil : c.id }
+                    soundTile("waveform.badge.magnifyingglass", "Clearer", on: c.clean != nil) { clearer(i) }
                 }
                 if !c.soundOn {
                     Text("This clip's sound is off. Tap Mute again to bring it back.").font(.caption).foregroundStyle(.secondary)
@@ -508,7 +525,7 @@ struct MultiClipEditor: View {
     // MARK: doing things
 
     private func select(_ id: UUID) {
-        selectedText = nil
+        selectedText = nil; selectedSound = nil
         selected = selected == id ? nil : id
         if let i = clips.firstIndex(where: { $0.id == id }) { seek(startOf(i) + 0.01) }
     }
@@ -591,7 +608,7 @@ struct MultiClipEditor: View {
 
     /// The preview made again from the clips as they are now, kept where it was.
     @MainActor private func rebuild(play: Bool) async {
-        guard let (comp, vc, mix) = await ClipJoin.compose(clips, soundOf: soundOf, look: look, swap: proxies) else { return }
+        guard let (comp, vc, mix) = await ClipJoin.compose(clips, soundOf: soundOf, look: look, swap: proxies, sounds: sounds) else { return }
         let item = AVPlayerItem(asset: comp)
         item.videoComposition = vc; item.audioMix = mix
         item.audioTimePitchAlgorithm = .spectral
@@ -623,9 +640,9 @@ struct MultiClipEditor: View {
     private func autosave() async {
         try? await Task.sleep(nanoseconds: 1_000_000_000)
         guard !Task.isCancelled, !clips.isEmpty else { return }
-        let id = autoID ?? UUID().uuidString.lowercased(), kept = clips, sound = soundOf, shape = look, over = texts, with = Self.data(attached)
+        let id = autoID ?? UUID().uuidString.lowercased(), kept = clips, sound = soundOf, shape = look, over = texts, with = Self.data(attached), laid = sounds
         if autoID == nil { autoID = id; autosaved(id) }
-        EditDrafts.queue.async { EditDrafts.save(id: id, clips: kept, soundOf: sound, look: shape, texts: over, attached: with, tidy: false) }
+        EditDrafts.queue.async { EditDrafts.save(id: id, clips: kept, soundOf: sound, look: shape, texts: over, attached: with, sounds: laid, tidy: false) }
     }
 
     /// A frame back or on (a 30th of a second), held still.
@@ -688,10 +705,10 @@ struct MultiClipEditor: View {
 
     private func finish() {
         joining = true; progress = 0; player.pause()
-        let kept = clips, sound = soundOf, shape = look
+        let kept = clips, sound = soundOf, shape = look, laid = sounds
         let over = EditOverlays.pieces(texts, frame: frameSize)
         making = Task {
-            let url = await ClipJoin.join(kept, soundOf: sound, look: shape, overlays: over) { p in if progress != nil { progress = p } }
+            let url = await ClipJoin.join(kept, soundOf: sound, look: shape, overlays: over, sounds: laid) { p in if progress != nil { progress = p } }
             guard !Task.isCancelled else { return }
             joining = false; progress = nil; making = nil
             guard let url else { return }
@@ -765,18 +782,25 @@ struct MultiClipEditor: View {
                 action("fork.knife", "Recipe", on: true) { attachMode = "recipe" }
                 action("dumbbell", "Workout", on: true) { attachMode = "workout" }
                 action("flame", "Calories", on: true) { attachMode = "calories" }
+                action("mic.fill", "Voice", on: true) { withAnimation(.snappy) { panel = .voice } }
+                action("sparkles", "Effects", on: true) { withAnimation(.snappy) { panel = .effects } }
             }
         }
         .padding(.top, 4)
     }
 
-    /// The overlays as bars along the video, laid in rows so none covers another: drag one along, or by an end for
-    /// when it shows and goes; tap it to change it.
+    /// Everything laid over the video as bars, in rows so none covers another: drag one along, or by an end for when it
+    /// starts and stops; tap it to change it. Text and stickers, then the sounds.
+    private var barItems: [BarItem] {
+        texts.map { BarItem(id: $0.id, from: $0.from, to: $0.to, label: $0.barLabel, colour: $0.barColour, sound: false) }
+            + sounds.map { BarItem(id: $0.id, from: $0.from, to: $0.to, label: ($0.kind == "voice" ? "🎙 " : "✦ ") + $0.name,
+                                   colour: $0.kind == "voice" ? Color(red: 1, green: 0.48, blue: 0.48) : Color(red: 0.55, green: 0.85, blue: 0.85), sound: true) }
+    }
+
     private var bars: some View {
-        // rows: each bar in the first row it fits in after the last one there
-        var rows: [[EditText]] = []
-        for t in texts.sorted(by: { $0.from < $1.from }) {
-            if let r = rows.firstIndex(where: { ($0.last?.to ?? 0) <= t.from + 0.01 }) { rows[r].append(t) } else { rows.append([t]) }
+        var rows: [[BarItem]] = []
+        for t in barItems.sorted(by: { $0.from < $1.from }) {
+            if let r = rows.firstIndex(where: { ($0.last?.to ?? 0) <= t.from + 0.01 && $0.last?.sound == t.sound }) { rows[r].append(t) } else { rows.append([t]) }
         }
         let shownRows = rows
         return GeometryReader { g in
@@ -795,41 +819,181 @@ struct MultiClipEditor: View {
         .frame(height: min(60, CGFloat(shownRows.count) * 21))
     }
 
-    private func bar(_ item: EditText, w: CGFloat, span: Double) -> some View {
+    private func bar(_ item: BarItem, w: CGFloat, span: Double) -> some View {
         let x0 = w * CGFloat(min(item.from, span) / span), x1 = w * CGFloat(min(item.to, span) / span)
-        let width = max(16, x1 - x0), on = item.id == selectedText
-        return Text(item.barLabel).font(.system(size: 9, weight: .heavy)).lineLimit(1).foregroundStyle(.black.opacity(0.8))
+        let width = max(16, x1 - x0), on = item.id == selectedText || item.id == selectedSound
+        return Text(item.label).font(.system(size: 9, weight: .heavy)).lineLimit(1).foregroundStyle(.black.opacity(0.8))
             .padding(.horizontal, 6).frame(width: width, height: 18, alignment: .leading)
-            .background(item.barColour, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+            .background(item.colour, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).stroke(on ? Color.white : Color.clear, lineWidth: 2))
             .contentShape(Rectangle())
-            .onTapGesture { selectText(item.id) }
+            .onTapGesture { if item.sound { selectSound(item.id) } else { selectText(item.id) } }
             .gesture(DragGesture(minimumDistance: 2)
                 .onChanged { v in
-                    guard let i = texts.firstIndex(where: { $0.id == item.id }) else { return }
                     if barGrab == nil {
                         // by its ends, or the middle to move it
                         let mode = v.startLocation.x < 12 ? 1 : (v.startLocation.x > width - 12 ? 2 : 0)
-                        barGrab = BarGrab(id: item.id, mode: mode, from: texts[i].from, to: texts[i].to, words: texts[i].words)
+                        if item.sound, let s = sounds.first(where: { $0.id == item.id }) {
+                            barGrab = BarGrab(id: item.id, mode: mode, from: s.from, to: s.to, words: nil, start: s.start)
+                        } else if let t = texts.first(where: { $0.id == item.id }) {
+                            barGrab = BarGrab(id: item.id, mode: mode, from: t.from, to: t.to, words: t.words)
+                        }
                     }
                     guard let g = barGrab else { return }
-                    let dt = Double(v.translation.width / max(w, 1)) * span, length = g.to - g.from
-                    switch g.mode {
-                    case 1: texts[i].from = min(max(0, g.from + dt), g.to - 0.3)
-                    case 2: texts[i].to = max(min(span, g.to + dt), g.from + 0.3)
-                    default:
-                        let start = min(max(0, g.from + dt), max(0, span - length))
-                        texts[i].from = start; texts[i].to = start + length
-                    }
-                    if g.mode == 0, let words = g.words {
-                        // a caption's words move with it
-                        let shift = texts[i].from - g.from
-                        texts[i].words = words.map { EditText.Word(text: $0.text, at: $0.at + shift) }
-                    }
-                    seek(g.mode == 2 ? max(0, texts[i].to - 0.05) : texts[i].from)
+                    let dt = Double(v.translation.width / max(w, 1)) * span
+                    if item.sound { dragSound(g, dt, span: span) } else { dragText(g, dt, span: span) }
                 }
                 .onEnded { _ in barGrab = nil })
             .offset(x: x0)
+    }
+
+    private func dragText(_ g: BarGrab, _ dt: Double, span: Double) {
+        guard let i = texts.firstIndex(where: { $0.id == g.id }) else { return }
+        let length = g.to - g.from
+        switch g.mode {
+        case 1: texts[i].from = min(max(0, g.from + dt), g.to - 0.3)
+        case 2: texts[i].to = max(min(span, g.to + dt), g.from + 0.3)
+        default:
+            let start = min(max(0, g.from + dt), max(0, span - length))
+            texts[i].from = start; texts[i].to = start + length
+            if let words = g.words {
+                // a caption's words move with it
+                let shift = start - g.from
+                texts[i].words = words.map { EditText.Word(text: $0.text, at: $0.at + shift) }
+            }
+        }
+        seek(g.mode == 2 ? max(0, texts[i].to - 0.05) : texts[i].from)
+    }
+
+    /// A sound's bar: moved along, its front trimmed off (its start in its own sound moving with it), or its end.
+    private func dragSound(_ g: BarGrab, _ dt: Double, span: Double) {
+        guard let i = sounds.firstIndex(where: { $0.id == g.id }) else { return }
+        let length = g.to - g.from, whole = sounds[i].full > 0 ? sounds[i].full : g.start + length
+        switch g.mode {
+        case 1:
+            let d = min(max(-g.start, dt), length - 0.3)
+            sounds[i].from = max(0, g.from + d); sounds[i].start = g.start + d; sounds[i].length = length - d
+        case 2:
+            sounds[i].length = max(0.3, min(length + dt, whole - g.start, span - g.from))
+        default:
+            sounds[i].from = min(max(0, g.from + dt), max(0, span - 0.3))
+        }
+        seek(g.mode == 2 ? max(0, sounds[i].to - 0.05) : sounds[i].from)
+    }
+
+    // MARK: Stage C: voice and sound
+
+    private func selectSound(_ id: UUID) {
+        selected = nil; selectedText = nil
+        selectedSound = id
+        if let x = sounds.first(where: { $0.id == id }) { seek(x.from) }
+        withAnimation(.snappy) { panel = .soundItem }
+    }
+
+    /// Voiceover: hold the button and talk; it records from the line while the video plays (its sound off, so the
+    /// microphone hears only you), and lands as a bar.
+    private var voicePanel: some View {
+        VStack(spacing: 10) {
+            Toggle("Clear voice (less background noise)", isOn: $clearVoice).font(.subheadline).tint(Theme.walk).disabled(recording)
+            ZStack {
+                Circle().stroke(.white, lineWidth: 4).frame(width: 66, height: 66)
+                RoundedRectangle(cornerRadius: recording ? 8 : 24, style: .continuous).fill(Color(red: 1, green: 0.3, blue: 0.3))
+                    .frame(width: recording ? 28 : 48, height: recording ? 28 : 48)
+            }
+            .frame(width: 80, height: 80).contentShape(Circle())
+            .onLongPressGesture(minimumDuration: 100, maximumDistance: 80, perform: {}, onPressingChanged: { pressing in
+                if pressing { startVoice() } else { stopVoice() }
+            })
+            .accessibilityLabel(recording ? "Recording: let go to stop" : "Hold to record a voiceover")
+            Text(recording ? "Recording from \(Self.clock(recordFrom))… let go to stop" : "Hold to record from the line. The clips' sound dips while you talk.")
+                .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        }
+    }
+
+    private func startVoice() {
+        holding = true
+        player.pause()
+        Task {
+            guard await VoiceRecorder.allowed() else { holding = false; flash("Voiceovers need the microphone: allow it in Settings › Cheat Days."); return }
+            guard holding, !recording else { return }
+            do {
+                recordFrom = now
+                try recorder.start(clear: clearVoice)
+                recording = true
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                player.isMuted = true
+                player.play()
+            } catch {
+                flash("Couldn't start recording.")
+            }
+        }
+    }
+
+    private func stopVoice() {
+        holding = false
+        guard recording else { return }
+        recording = false
+        player.pause(); player.isMuted = false
+        if let (url, length) = recorder.stop() {
+            let n = sounds.filter { $0.kind == "voice" }.count + 1
+            let take = EditSound(kind: "voice", name: "Voice \(n)", file: url, from: recordFrom, length: max(0.3, min(length, total - recordFrom)), full: length)
+            sounds.append(take)
+            selectedSound = take.id
+        }
+        Sound.on(.moviePlayback)
+    }
+
+    /// A few short sounds to drop in at the line.
+    private var effectsPanel: some View {
+        VStack(spacing: 8) {
+            Text("Tap one to put it in at the line").font(.caption).foregroundStyle(.secondary)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
+                ForEach(SoundEffects.names, id: \.self) { name in
+                    Button {
+                        let length = SoundEffects.length(name)
+                        sounds.append(EditSound(kind: "effect", name: name, from: now, length: max(0.05, min(length, total - now)), full: length))
+                        UISelectionFeedbackGenerator().selectionChanged()
+                    } label: {
+                        Text(name).font(.caption.weight(.bold)).foregroundStyle(.white).frame(maxWidth: .infinity).frame(height: 40)
+                            .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    /// A voiceover or effect picked: how loud, or taken off.
+    private func soundItemPanel(_ k: Int) -> some View {
+        let x = sounds[k]
+        return VStack(spacing: 10) {
+            HStack { Text(x.name).font(.subheadline.weight(.semibold)); Spacer(); Text("\(Int((x.volume * 100).rounded()))").monospacedDigit().foregroundStyle(.secondary) }
+            Slider(value: Binding(get: { Double(sounds[k].volume) }, set: { sounds[k].volume = Float($0) }), in: 0...1).tint(.white)
+            Button(role: .destructive) {
+                let id = x.id
+                withAnimation(.snappy) { panel = nil; selectedSound = nil }
+                sounds.removeAll { $0.id == id }
+            } label: {
+                Label("Take it off", systemImage: "trash").font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).frame(height: 40)
+                    .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .buttonStyle(.plain).foregroundStyle(Theme.warn)
+        }
+    }
+
+    /// A clip's sound made clearer (Clarity), or back as it was.
+    private func clearer(_ i: Int) {
+        if clips[i].clean != nil { remember(); clips[i].clean = nil; return }
+        let c = clips[i]
+        joining = true; player.pause()
+        Task {
+            defer { joining = false }
+            guard let url = await Clarity.clearer(c) else { flash("Couldn't make this clip's sound clearer."); return }
+            guard let k = clips.firstIndex(where: { $0.id == c.id }) else { return }
+            remember()
+            clips[k].clean = url
+            flash("Clearer: rumble and hum cut, voices lifted.")
+        }
     }
 
     private func addText() {
