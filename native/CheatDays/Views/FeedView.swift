@@ -1404,7 +1404,8 @@ struct ComposeSheet: View {
             .fullScreenCover(isPresented: $picking) {
                 PostPicker(room: max(1, 10 - shots.count), photosOnly: !shots.isEmpty,
                            done: { images, video in pickerFirst = false; picking = false; took(images, video) },
-                           clips: shots.isEmpty ? { c in pickerFirst = false; picking = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { multi = ClipsBox(clips: c) } } : nil,
+                           // (a post with photos in it shows only photos here, so this is only ever a new post's)
+                           clips: { c in pickerFirst = false; picking = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { multi = ClipsBox(clips: c) } },
                            camera: { pickerFirst = false; picking = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { camera = true } },
                            allPhotos: { pickerFirst = false; picking = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { library = true } },
                            // only while nothing's been started: a post of a meal or a workout alone, written up without a picture
