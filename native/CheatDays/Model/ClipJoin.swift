@@ -134,7 +134,7 @@ enum ClipJoin {
     /// filled or whole on a blurred copy. Each clip's sound at its own level with its fades, dipping across a
     /// transition; `soundOf`: one clip's sound for the whole of it instead, round again if it's shorter. `swap`: a
     /// smaller copy of a file to play instead (a 4K clip's, for the preview).
-    static func compose(_ clips: [Clip], soundOf: UUID? = nil, look: EditLook = EditLook(), swap: [URL: URL] = [:]) async -> (AVMutableComposition, AVMutableVideoComposition, AVMutableAudioMix)? {
+    static func compose(_ clips: [Clip], soundOf: UUID? = nil, look: EditLook = EditLook(), swap: [URL: URL] = [:], overlays: [OverlayPiece] = []) async -> (AVMutableComposition, AVMutableVideoComposition, AVMutableAudioMix)? {
         let comp = AVMutableComposition()
         guard let v0 = comp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid),
               let v1 = comp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid),
@@ -222,13 +222,13 @@ enum ClipJoin {
         for (k, p) in pieces.enumerated() {
             let soloEnd = p.at + p.lasts - p.out
             if soloEnd > from {
-                instructions.append(EditInstruction(CMTimeRange(start: tt(from), end: tt(soloEnd)), layers: [p.layer], transition: nil, fill: look.fill))
+                instructions.append(EditInstruction(CMTimeRange(start: tt(from), end: tt(soloEnd)), layers: [p.layer], transition: nil, fill: look.fill, overlays: overlays))
                 from = soloEnd
             }
             if p.out > 0, k + 1 < pieces.count {
                 let both = p.at + p.lasts
                 instructions.append(EditInstruction(CMTimeRange(start: tt(from), end: tt(both)), layers: [p.layer, pieces[k + 1].layer],
-                                                    transition: p.into, fill: look.fill))
+                                                    transition: p.into, fill: look.fill, overlays: overlays))
                 from = both
             }
         }
@@ -236,7 +236,7 @@ enum ClipJoin {
         let compEnd = max(end, tick(comp.duration.seconds))
         if let lastIns = instructions.popLast() {
             instructions.append(EditInstruction(CMTimeRange(start: lastIns.timeRange.start, end: tt(compEnd)), layers: lastIns.layers,
-                                                transition: lastIns.transition, fill: look.fill))
+                                                transition: lastIns.transition, fill: look.fill, overlays: overlays))
         }
         // tracks with nothing on them taken out (an empty sound track can stop the export)
         var mixes: [AVMutableAudioMixInputParameters] = []
@@ -254,9 +254,9 @@ enum ClipJoin {
 
     /// The clips as one video file on the phone, for the editor to take on as it takes a single video. `progress`
     /// hears how far it's got (0 to 1); cancelling the task that asked stops it.
-    static func join(_ clips: [Clip], soundOf: UUID? = nil, look: EditLook = EditLook(),
+    static func join(_ clips: [Clip], soundOf: UUID? = nil, look: EditLook = EditLook(), overlays: [OverlayPiece] = [],
                      progress: @escaping @MainActor (Float) -> Void = { _ in }) async -> URL? {
-        guard let (comp, vc, mix) = await compose(clips, soundOf: soundOf, look: look),
+        guard let (comp, vc, mix) = await compose(clips, soundOf: soundOf, look: look, overlays: overlays),
               let export = AVAssetExportSession(asset: comp, presetName: AVAssetExportPresetHighestQuality) else { return nil }
         let out = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mov")
         export.outputURL = out; export.outputFileType = .mov

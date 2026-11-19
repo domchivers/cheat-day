@@ -12,6 +12,10 @@ enum EditDrafts {
         var saved: Date
         /// The frame's shape and fill (Stage A2; older drafts have none: the first clip's, filled).
         var look: EditLook?
+        /// Its text, stickers and captions, and what the post's to carry (Stage B).
+        var texts: [EditText]?
+        var attached: Data?
+        var attachedJSON: JSON? { attached.flatMap { try? JSONSerialization.jsonObject(with: $0) as? JSON } }
         var length: Double { ClipJoin.total(clips) }
     }
 
@@ -38,7 +42,7 @@ enum EditDrafts {
 
     /// Saved (as a new draft, or over the one it was opened from): its clips' files copied in where they aren't already.
     @discardableResult
-    static func save(id: String?, clips: [Clip], soundOf: UUID?, look: EditLook? = nil, tidy: Bool = true) -> String {
+    static func save(id: String?, clips: [Clip], soundOf: UUID?, look: EditLook? = nil, texts: [EditText]? = nil, attached: Data? = nil, tidy: Bool = true) -> String {
         let id = id ?? UUID().uuidString.lowercased()
         let dir = folder(id)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -62,7 +66,7 @@ enum EditDrafts {
         let stored = kept.map { var c = $0; c.source = URL(fileURLWithPath: c.source.lastPathComponent)
             if let f = c.forward { c.forward?.source = URL(fileURLWithPath: f.source.lastPathComponent) }
             return c }
-        if let d = try? JSONEncoder().encode(Draft(id: id, clips: stored, soundOf: soundOf, saved: Date(), look: look)) {
+        if let d = try? JSONEncoder().encode(Draft(id: id, clips: stored, soundOf: soundOf, saved: Date(), look: look, texts: texts, attached: attached)) {
             try? d.write(to: dir.appendingPathComponent("draft.json"), options: .atomic)
         }
         // files no clip uses any more (one deleted from the edit) let go; not while it's auto-saved (Discard may go back to them)

@@ -16,6 +16,9 @@ struct MultiClipEditor: View {
     var startSoundOf: UUID? = nil
     /// The frame's shape and fill, as the draft had it.
     var startLook: EditLook? = nil
+    /// Its text, stickers and captions, and what's attached (a recipe, a workout), as the draft had them.
+    var startTexts: [EditText]? = nil
+    var startAttached: JSON? = nil
     var close: () -> Void
     var done: (URL) -> Void
     /// The draft it's auto-saved as (a new edit gets one of its own once it's saved the first time).
@@ -23,6 +26,8 @@ struct MultiClipEditor: View {
     /// Whoever opened it keeps the draft once it's made into a video (Make an edit lets it go when it's shared);
     /// otherwise the auto-saved draft is let go then.
     var keepsDraft = false
+    /// A meal, recipe or workout picked in the editor (recipe and workout mode, the calorie count): for the post to carry.
+    var attach: (JSON?) -> Void = { _ in }
 
     @State private var selected: UUID?
     @State private var soundOf: UUID?          // one clip's sound over the whole video
@@ -53,7 +58,17 @@ struct MultiClipEditor: View {
     @State private var snapped: Double?            // the clip edge the line's held on while scrubbing
     @State private var lookTool = "Filters"
     @State private var tune = "b"
-    private enum Panel { case trim, sound, speed, join, look, shape }
+    @State private var texts: [EditText] = []       // over the edit, each for part of it (Stage B)
+    @State private var selectedText: UUID?
+    @State private var frameSize = CGSize(width: 1080, height: 1920)
+    @State private var moveFrom: (Double, Double)?
+    @State private var sizeFrom: Double?
+    @State private var barGrab: BarGrab?
+    @State private var attached: JSON?
+    @State private var attachMode: String?           // "recipe", "workout", "calories": the picker open for it
+    @State private var note: String?
+    private struct BarGrab { var id: UUID; var mode: Int; var from: Double; var to: Double; var words: [EditText.Word]? }   // mode: 0 move, 1 start, 2 end
+    private enum Panel { case trim, sound, speed, join, look, shape, text, stickers }
     private let perSecond: CGFloat = 14         // strip points a second
 
     private var total: Double { ClipJoin.total(clips) }
@@ -67,6 +82,14 @@ struct MultiClipEditor: View {
                 top
                 PlayerLayerView(player: player).frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onTapGesture { if player.rate == 0 { player.play() } else { player.pause() } }
+                    .overlay { overlayLayer }
+                    .overlay(alignment: .top) {
+                        if let note {
+                            Text(note).font(.subheadline.weight(.semibold)).foregroundStyle(.black).multilineTextAlignment(.center)
+                                .padding(.horizontal, 16).padding(.vertical, 10).background(.white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .padding(.horizontal, 20).padding(.top, 8).transition(.opacity)
+                        }
+                    }
                 bottom
                     // (kept on a view of its own, apart from the Add picker)
                     .photosPicker(isPresented: $replacing, selection: $replacePicks, maxSelectionCount: 1, matching: .any(of: [.images, .videos]))
@@ -90,16 +113,16 @@ struct MultiClipEditor: View {
         .alert("Save this edit?", isPresented: $leaving) {
             Button("Save draft") {
                 player.pause()
-                let id = autoID ?? draftID, kept = clips, sound = soundOf, shape = look
-                EditDrafts.queue.async { EditDrafts.save(id: id, clips: kept, soundOf: sound, look: shape) }
+                let id = autoID ?? draftID, kept = clips, sound = soundOf, shape = look, over = texts, with = Self.data(attached)
+                EditDrafts.queue.async { EditDrafts.save(id: id, clips: kept, soundOf: sound, look: shape, texts: over, attached: with) }
                 close()
             }
             Button("Discard", role: .destructive) {
                 player.pause()
-                let id = autoID ?? draftID, was = opened, sound = startSoundOf, shape = startLook
+                let id = autoID ?? draftID, was = opened, sound = startSoundOf, shape = startLook, over = startTexts, with = Self.data(startAttached)
                 EditDrafts.queue.async {
                     guard let id else { return }
-                    if let was { EditDrafts.save(id: id, clips: was, soundOf: sound, look: shape) } else { EditDrafts.delete(id) }
+                    if let was { EditDrafts.save(id: id, clips: was, soundOf: sound, look: shape, texts: over, attached: with) } else { EditDrafts.delete(id) }
                 }
                 close()
             }
@@ -108,6 +131,8 @@ struct MultiClipEditor: View {
         .onAppear {
             if soundOf == nil, let s = startSoundOf { soundOf = s }
             if let l = startLook, opened == nil { look = l }
+            if let t = startTexts, opened == nil, texts.isEmpty { texts = t }
+            if let a = startAttached, attached == nil { attached = a; attach(a) }
             if autoID == nil { autoID = draftID }
             if draftID != nil, opened == nil { opened = clips }
         }
@@ -115,6 +140,10 @@ struct MultiClipEditor: View {
         .task(id: clips) { await settle(); await autosave() }
         .task(id: soundOf) { await settle(); await autosave() }
         .task(id: look) { await settle(); await autosave() }
+        .task(id: texts) { await autosave() }
+        .sheet(isPresented: Binding(get: { attachMode != nil }, set: { if !$0 { attachMode = nil } })) {
+            AttachPicker(start: attachMode == "workout" ? 2 : (attachMode == "recipe" ? 1 : 0)) { picked($0) }
+        }
         // a 4K clip played from a smaller copy while it's edited (the finished video's made from the file itself)
         .task(id: Set(clips.map { $0.source })) {
             for src in Set(clips.map { $0.source }) where !proxied.contains(src) {
@@ -152,7 +181,7 @@ struct MultiClipEditor: View {
             Spacer()
             if panel == nil { round("aspectratio", "Shape and background") { withAnimation(.snappy) { panel = .shape } } }
             if panel != nil {
-                Button { withAnimation(.snappy) { panel = nil } } label: {
+                Button { withAnimation(.snappy) { panel = nil; selectedText = nil } } label: {
                     Text("Done").font(.subheadline.weight(.bold)).foregroundStyle(.black).padding(.horizontal, 16).frame(height: 34).background(.white, in: Capsule())
                 }
                 .buttonStyle(.plain)
@@ -186,8 +215,13 @@ struct MultiClipEditor: View {
             case .join: if joinAt + 1 < clips.count { strip; joinPanel(joinAt) }
             case .look: if let i = index { scrubBar; lookPanel(i) }
             case .shape: scrubBar; shapePanel
+            case .text: if let k = texts.firstIndex(where: { $0.id == selectedText }) { scrubBar; bars; textPanel(k) }
+            case .stickers: scrubBar; stickerPanel
             case nil:
-                scrubBar; strip; actions
+                scrubBar
+                if !texts.isEmpty { bars }
+                strip
+                if selected == nil { addTools } else { actions }
                 Button { finish() } label: {
                     Text("Next").font(.headline).foregroundStyle(.black).frame(maxWidth: .infinity).padding(.vertical, 13).background(.white, in: Capsule())
                 }
@@ -474,6 +508,7 @@ struct MultiClipEditor: View {
     // MARK: doing things
 
     private func select(_ id: UUID) {
+        selectedText = nil
         selected = selected == id ? nil : id
         if let i = clips.firstIndex(where: { $0.id == id }) { seek(startOf(i) + 0.01) }
     }
@@ -560,6 +595,7 @@ struct MultiClipEditor: View {
         let item = AVPlayerItem(asset: comp)
         item.videoComposition = vc; item.audioMix = mix
         item.audioTimePitchAlgorithm = .spectral
+        frameSize = vc.renderSize
         let at = now
         player.replaceCurrentItem(with: item)
         if watch == nil {
@@ -587,9 +623,9 @@ struct MultiClipEditor: View {
     private func autosave() async {
         try? await Task.sleep(nanoseconds: 1_000_000_000)
         guard !Task.isCancelled, !clips.isEmpty else { return }
-        let id = autoID ?? UUID().uuidString.lowercased(), kept = clips, sound = soundOf, shape = look
+        let id = autoID ?? UUID().uuidString.lowercased(), kept = clips, sound = soundOf, shape = look, over = texts, with = Self.data(attached)
         if autoID == nil { autoID = id; autosaved(id) }
-        EditDrafts.queue.async { EditDrafts.save(id: id, clips: kept, soundOf: sound, look: shape, tidy: false) }
+        EditDrafts.queue.async { EditDrafts.save(id: id, clips: kept, soundOf: sound, look: shape, texts: over, attached: with, tidy: false) }
     }
 
     /// A frame back or on (a 30th of a second), held still.
@@ -653,8 +689,9 @@ struct MultiClipEditor: View {
     private func finish() {
         joining = true; progress = 0; player.pause()
         let kept = clips, sound = soundOf, shape = look
+        let over = EditOverlays.pieces(texts, frame: frameSize)
         making = Task {
-            let url = await ClipJoin.join(kept, soundOf: sound, look: shape) { p in if progress != nil { progress = p } }
+            let url = await ClipJoin.join(kept, soundOf: sound, look: shape, overlays: over) { p in if progress != nil { progress = p } }
             guard !Task.isCancelled else { return }
             joining = false; progress = nil; making = nil
             guard let url else { return }
@@ -662,6 +699,281 @@ struct MultiClipEditor: View {
             done(url)
         }
     }
+
+    // MARK: Stage B: over the video
+
+    /// Where the video is drawn in the preview (fitted, as the player draws it).
+    static func fitted(_ frame: CGSize, in box: CGSize) -> CGRect {
+        let aspect = frame.width / max(frame.height, 1)
+        guard box.width > 0, box.height > 0 else { return .zero }
+        if box.width / box.height > aspect {
+            let w = box.height * aspect
+            return CGRect(x: (box.width - w) / 2, y: 0, width: w, height: box.height)
+        }
+        let h = box.width / aspect
+        return CGRect(x: 0, y: (box.height - h) / 2, width: box.width, height: h)
+    }
+
+    /// The overlays showing now, drawn as they'll be in the video; drag one to move it, pinch to size it, tap to change it.
+    private var overlayLayer: some View {
+        GeometryReader { g in
+            let r = Self.fitted(frameSize, in: g.size), k = r.width / EditOverlays.design
+            ForEach(texts) { item in
+                let on = item.id == selectedText
+                if on || (now >= item.from && now < item.to) {
+                    EditTextView(item: item, at: now).padding(24)
+                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [6])).foregroundStyle(on ? Color.white : Color.clear).padding(14))
+                        .scaleEffect(k)
+                        .position(x: r.minX + item.x * r.width, y: r.minY + item.y * r.height)
+                        .onTapGesture { selectText(item.id) }
+                        .gesture(DragGesture(minimumDistance: 3)
+                            .onChanged { v in
+                                guard let i = texts.firstIndex(where: { $0.id == item.id }) else { return }
+                                if moveFrom == nil { moveFrom = (texts[i].x, texts[i].y) }
+                                let start = moveFrom ?? (item.x, item.y)
+                                texts[i].x = min(0.95, max(0.05, start.0 + Double(v.translation.width / max(r.width, 1))))
+                                texts[i].y = min(0.95, max(0.05, start.1 + Double(v.translation.height / max(r.height, 1))))
+                            }
+                            .onEnded { _ in moveFrom = nil })
+                        .simultaneousGesture(MagnificationGesture()
+                            .onChanged { m in
+                                guard let i = texts.firstIndex(where: { $0.id == item.id }) else { return }
+                                if sizeFrom == nil { sizeFrom = texts[i].size }
+                                texts[i].size = min(3, max(0.4, (sizeFrom ?? 1) * Double(m)))
+                            }
+                            .onEnded { _ in sizeFrom = nil })
+                }
+            }
+        }
+    }
+
+    private func selectText(_ id: UUID) {
+        selected = nil
+        selectedText = id
+        player.pause()
+        if let t = texts.first(where: { $0.id == id }), now < t.from || now >= t.to { seek(t.from + 0.01) }
+        withAnimation(.snappy) { panel = .text }
+    }
+
+    /// What can be put over the video, when no clip is picked (the mockup's bottom row).
+    private var addTools: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                action("textformat", "Text", on: true) { addText() }
+                action("face.smiling", "Stickers", on: true) { withAnimation(.snappy) { panel = .stickers } }
+                action("captions.bubble", "Captions", on: true) { makeCaptions() }
+                action("fork.knife", "Recipe", on: true) { attachMode = "recipe" }
+                action("dumbbell", "Workout", on: true) { attachMode = "workout" }
+                action("flame", "Calories", on: true) { attachMode = "calories" }
+            }
+        }
+        .padding(.top, 4)
+    }
+
+    /// The overlays as bars along the video, laid in rows so none covers another: drag one along, or by an end for
+    /// when it shows and goes; tap it to change it.
+    private var bars: some View {
+        // rows: each bar in the first row it fits in after the last one there
+        var rows: [[EditText]] = []
+        for t in texts.sorted(by: { $0.from < $1.from }) {
+            if let r = rows.firstIndex(where: { ($0.last?.to ?? 0) <= t.from + 0.01 }) { rows[r].append(t) } else { rows.append([t]) }
+        }
+        let shownRows = rows
+        return GeometryReader { g in
+            let w = g.size.width, span = max(total, 0.01)
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(shownRows.indices, id: \.self) { r in
+                        ZStack(alignment: .leading) {
+                            ForEach(shownRows[r]) { item in bar(item, w: w, span: span) }
+                        }
+                        .frame(width: w, height: 18, alignment: .leading)
+                    }
+                }
+            }
+        }
+        .frame(height: min(60, CGFloat(shownRows.count) * 21))
+    }
+
+    private func bar(_ item: EditText, w: CGFloat, span: Double) -> some View {
+        let x0 = w * CGFloat(min(item.from, span) / span), x1 = w * CGFloat(min(item.to, span) / span)
+        let width = max(16, x1 - x0), on = item.id == selectedText
+        return Text(item.barLabel).font(.system(size: 9, weight: .heavy)).lineLimit(1).foregroundStyle(.black.opacity(0.8))
+            .padding(.horizontal, 6).frame(width: width, height: 18, alignment: .leading)
+            .background(item.barColour, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).stroke(on ? Color.white : Color.clear, lineWidth: 2))
+            .contentShape(Rectangle())
+            .onTapGesture { selectText(item.id) }
+            .gesture(DragGesture(minimumDistance: 2)
+                .onChanged { v in
+                    guard let i = texts.firstIndex(where: { $0.id == item.id }) else { return }
+                    if barGrab == nil {
+                        // by its ends, or the middle to move it
+                        let mode = v.startLocation.x < 12 ? 1 : (v.startLocation.x > width - 12 ? 2 : 0)
+                        barGrab = BarGrab(id: item.id, mode: mode, from: texts[i].from, to: texts[i].to, words: texts[i].words)
+                    }
+                    guard let g = barGrab else { return }
+                    let dt = Double(v.translation.width / max(w, 1)) * span, length = g.to - g.from
+                    switch g.mode {
+                    case 1: texts[i].from = min(max(0, g.from + dt), g.to - 0.3)
+                    case 2: texts[i].to = max(min(span, g.to + dt), g.from + 0.3)
+                    default:
+                        let start = min(max(0, g.from + dt), max(0, span - length))
+                        texts[i].from = start; texts[i].to = start + length
+                    }
+                    if g.mode == 0, let words = g.words {
+                        // a caption's words move with it
+                        let shift = texts[i].from - g.from
+                        texts[i].words = words.map { EditText.Word(text: $0.text, at: $0.at + shift) }
+                    }
+                    seek(g.mode == 2 ? max(0, texts[i].to - 0.05) : texts[i].from)
+                }
+                .onEnded { _ in barGrab = nil })
+            .offset(x: x0)
+    }
+
+    private func addText() {
+        player.pause()
+        let t = EditText(kind: "text", text: "Your text", from: now, to: min(max(total, now + 0.5), now + 3))
+        texts.append(t)
+        selectText(t.id)
+    }
+
+    private func addSticker(_ emoji: String) {
+        let t = EditText(kind: "sticker", text: emoji, x: 0.5, y: 0.4, from: now, to: min(max(total, now + 0.5), now + 3))
+        texts.append(t)
+        selectText(t.id)
+    }
+
+    private func flash(_ text: String) {
+        withAnimation { note = text }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) { withAnimation { if note == text { note = nil } } }
+    }
+
+    /// Captions from what's said in it, made on the phone; ones made before are replaced.
+    private func makeCaptions() {
+        player.pause(); joining = true
+        let kept = clips, sound = soundOf
+        Task {
+            defer { joining = false }
+            do {
+                let made = try await EditOverlays.captions(kept, soundOf: sound)
+                texts.removeAll { $0.kind == "caption" }
+                texts += made
+                flash("\(made.count) caption\(made.count == 1 ? "" : "s") made. Tap one to fix a word.")
+            } catch {
+                flash(error.localizedDescription)
+            }
+        }
+    }
+
+    /// A meal, recipe or workout picked for a mode: its overlays made, and it goes with the post.
+    private func picked(_ what: JSON) {
+        let mode = attachMode
+        attachMode = nil
+        switch mode {
+        case "recipe":
+            texts.removeAll { $0.kind == "step" || $0.kind == "macros" }
+            texts += EditOverlays.recipe(what, clips: clips)
+            if str(what["kind"]) != "meal" { flash("A food has no steps: its macros are on the last clip. Pick a saved meal or recipe for steps.") }
+        case "workout":
+            guard str(what["kind"]) == "workout" else { flash("Pick a workout for workout mode."); return }
+            texts.removeAll { $0.kind == "workout" }
+            let made = EditOverlays.workout(what, clips: clips)
+            texts += made
+            if made.isEmpty { flash("That workout has no exercises with sets to show.") }
+        default:
+            let m = what["macros"] as? JSON ?? [:], p = Int(num(m["p"]) ?? 0)
+            let t = EditText(kind: "calories", text: str(what["name"]), detail: p > 0 ? "\(p) g protein" : "", x: 0.5, y: 0.42,
+                             from: now, to: min(max(total, now + 0.5), now + 4), number: num(what["kcal"]) ?? 0)
+            texts.removeAll { $0.kind == "calories" }
+            texts.append(t)
+            selectText(t.id)
+        }
+        attached = what
+        attach(what)
+    }
+
+    /// A text, sticker or caption picked: its words, look, colour and size, or taken off.
+    private func textPanel(_ k: Int) -> some View {
+        let item = texts[k]
+        return VStack(spacing: 10) {
+            if item.kind == "sticker" {
+                stickerGrid { e in texts[k].text = e }
+            } else if item.kind != "calories" {
+                TextField(item.kind == "caption" ? "What's said" : "Text", text: Binding(get: { texts[k].text }, set: { setText(k, $0) }), axis: .vertical)
+                    .lineLimit(1...3).padding(10).background(Color(white: 0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            if item.kind == "text" {
+                HStack(spacing: 6) { ForEach(EditText.textStyles, id: \.self) { st in chip(st, on: item.style == st) { texts[k].style = st } } }
+                HStack(spacing: 10) {
+                    ForEach(EditText.colours, id: \.self) { c in
+                        Circle().fill(EditText.colour(c)).frame(width: 26, height: 26)
+                            .overlay(Circle().stroke(.white, lineWidth: item.colour == c ? 3 : 1))
+                            .onTapGesture { texts[k].colour = c }
+                            .accessibilityLabel(c)
+                    }
+                    Spacer()
+                }
+            }
+            if item.kind == "caption" {
+                HStack(spacing: 6) {
+                    ForEach(EditText.captionStyles, id: \.self) { st in
+                        chip(st, on: item.style == st) { for i in texts.indices where texts[i].kind == "caption" { texts[i].style = st } }
+                    }
+                }
+            }
+            HStack(spacing: 10) {
+                Image(systemName: "textformat.size.smaller").foregroundStyle(.secondary)
+                Slider(value: Binding(get: { texts[k].size }, set: { texts[k].size = $0 }), in: 0.4...3).tint(.white)
+                Image(systemName: "textformat.size.larger").foregroundStyle(.secondary)
+            }
+            Button(role: .destructive) {
+                let id = item.id
+                withAnimation(.snappy) { panel = nil; selectedText = nil }
+                texts.removeAll { $0.id == id }
+            } label: {
+                Label("Take it off", systemImage: "trash").font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).frame(height: 40)
+                    .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .buttonStyle(.plain).foregroundStyle(Theme.warn)
+        }
+    }
+
+    /// A caption's words changed: kept at their times when the count's the same, spread evenly through it otherwise.
+    private func setText(_ k: Int, _ value: String) {
+        texts[k].text = value
+        guard texts[k].kind == "caption" else { return }
+        let parts = value.split(separator: " ").map(String.init)
+        let old = texts[k].words ?? []
+        if parts.count == old.count {
+            texts[k].words = zip(parts, old).map { EditText.Word(text: $0.0, at: $0.1.at) }
+        } else if !parts.isEmpty {
+            let a = texts[k].from, step = (texts[k].to - a) / Double(parts.count)
+            texts[k].words = parts.indices.map { EditText.Word(text: parts[$0], at: a + step * Double($0)) }
+        }
+    }
+
+    private var stickerPanel: some View {
+        VStack(spacing: 8) {
+            Text("Tap one to put it on at the line").font(.caption).foregroundStyle(.secondary)
+            stickerGrid { addSticker($0) }
+        }
+    }
+
+    private func stickerGrid(_ tap: @escaping (String) -> Void) -> some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 8), spacing: 6) {
+            ForEach(EditText.stickers, id: \.self) { e in
+                Button { tap(e) } label: {
+                    Text(e).font(.system(size: 26)).frame(maxWidth: .infinity).frame(height: 40)
+                        .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    static func data(_ j: JSON?) -> Data? { j.flatMap { try? JSONSerialization.data(withJSONObject: $0) } }
 
     // MARK: Stage A2
 

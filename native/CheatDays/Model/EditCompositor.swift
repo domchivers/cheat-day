@@ -44,12 +44,15 @@ final class EditInstruction: NSObject, AVVideoCompositionInstructionProtocol {
     let layers: [EditLayer]          // going, then coming
     let transition: String?
     let fill: String
+    /// Text, stickers and captions over the whole edit (Stage B): each drawn while it shows.
+    let overlays: [OverlayPiece]
 
-    init(_ range: CMTimeRange, layers: [EditLayer], transition: String?, fill: String) {
+    init(_ range: CMTimeRange, layers: [EditLayer], transition: String?, fill: String, overlays: [OverlayPiece] = []) {
         timeRange = range
         self.layers = layers
         self.transition = transition
         self.fill = fill
+        self.overlays = overlays
         requiredSourceTrackIDs = layers.map { NSNumber(value: $0.track) }
     }
 }
@@ -89,6 +92,13 @@ final class EditCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
                 let r = ins.timeRange
                 let p = min(1, max(0, (request.compositionTime - r.start).seconds / max(r.duration.seconds, 0.001)))
                 shown = Self.blend(pics[0], pics[1], kind: kind, p: CGFloat(p), frame: frame)
+            }
+            // what's over it now, each centred where it was put (Core Image counts up from the bottom)
+            let t = request.compositionTime.seconds
+            for o in ins.overlays where t >= o.from - 0.0001 && t < o.to {
+                let e = o.image.extent
+                let at = CGAffineTransform(translationX: o.x * size.width - e.width / 2 - e.minX, y: (1 - o.y) * size.height - e.height / 2 - e.minY)
+                shown = o.image.transformed(by: at).composited(over: shown)
             }
             context.render(shown.composited(over: black).cropped(to: frame), to: out)
             request.finish(withComposedVideoFrame: out)

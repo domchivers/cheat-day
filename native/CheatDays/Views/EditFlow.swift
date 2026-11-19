@@ -19,6 +19,9 @@ struct EditFlow: View {
     @State private var draftID: String?          // the draft being carried on with, let go once it's shared
     @State private var draftSound: UUID?
     @State private var draftLook: EditLook?
+    @State private var draftTexts: [EditText]?
+    @State private var draftAttached: JSON?
+    @State private var attached: JSON?   // a meal, recipe or workout picked in the editor: the post carries it
 
     struct VideoBox: Identifiable { let id = UUID(); let url: URL }
 
@@ -27,13 +30,15 @@ struct EditFlow: View {
             Theme.bg.ignoresSafeArea()
             if let clips {
                 MultiClipEditor(clips: clips, draftID: draftID, startSoundOf: draftSound, startLook: draftLook,
-                                close: { self.clips = nil; draftID = nil; draftSound = nil; draftLook = nil; refreshDrafts() },
+                                startTexts: draftTexts, startAttached: draftAttached,
+                                close: { self.clips = nil; draftID = nil; draftSound = nil; draftLook = nil; draftTexts = nil; draftAttached = nil; attached = nil; refreshDrafts() },
                                 done: { url in
                                     joined = url; self.clips = nil
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { sharing = true }
                                 },
                                 autosaved: { draftID = $0 },   // a new edit's own draft, let go once it's shared
-                                keepsDraft: true)
+                                keepsDraft: true,
+                                attach: { attached = $0 })
             } else if let joined {
                 // the edit, playing, with what to do with it
                 ZStack(alignment: .top) {
@@ -72,7 +77,7 @@ struct EditFlow: View {
                            close: { dismiss() },
                            editMode: true,
                            drafts: drafts,
-                           openDraft: { d in draftID = d.id; draftSound = d.soundOf; draftLook = d.look; clips = d.clips },
+                           openDraft: { d in draftID = d.id; draftSound = d.soundOf; draftLook = d.look; draftTexts = d.texts; draftAttached = d.attachedJSON; clips = d.clips },
                            deleteDraft: { d in EditDrafts.queue.async { EditDrafts.delete(d.id) }; refreshDrafts() })
             }
             if working { Color.black.opacity(0.4).ignoresSafeArea(); ProgressView().tint(.white) }
@@ -88,7 +93,7 @@ struct EditFlow: View {
         }
         .sheet(isPresented: $sharing) { shareSheet.presentationDetents([.height(330)]).presentationDragIndicator(.visible) }
         // a post or a story of it: once that's done, so is this
-        .sheet(item: $posting, onDismiss: { dismiss() }) { b in ComposeSheet(video: b.url) }
+        .sheet(item: $posting, onDismiss: { dismiss() }) { b in ComposeSheet(preset: attached, video: b.url) }
         .fullScreenCover(item: $story, onDismiss: { dismiss() }) { b in StoryComposer(video: b.url) }
     }
 
@@ -135,7 +140,7 @@ struct EditFlow: View {
         guard let id = draftID else { refreshDrafts(); return }
         EditDrafts.queue.async {
             let d = EditDrafts.all().first { $0.id == id }
-            DispatchQueue.main.async { if let d { draftSound = d.soundOf; draftLook = d.look; clips = d.clips } else { draftID = nil; refreshDrafts() } }
+            DispatchQueue.main.async { if let d { draftSound = d.soundOf; draftLook = d.look; draftTexts = d.texts; draftAttached = d.attachedJSON; clips = d.clips } else { draftID = nil; refreshDrafts() } }
         }
     }
 
