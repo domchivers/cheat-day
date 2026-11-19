@@ -377,6 +377,7 @@ struct LoopingVideo: UIViewRepresentable {
         override static var layerClass: AnyClass { AVPlayerLayer.self }
         var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
         var looper: AVPlayerLooper?
+        var entry: VideoPool.Entry?   // its player, when it's one of the pool's (VideoPool)
         var key = ""
         var held: Double?
         let look = Look()
@@ -446,18 +447,39 @@ struct LoopingVideo: UIViewRepresentable {
     // whether there's a look at all, not which: going from none to one is the only change that needs a new player
     private var key: String { "\(url.absoluteString)|\(always || filter != "Normal")|\(range.map { "\($0.lowerBound)-\($0.upperBound)" } ?? "")" }
 
-    private func setUp(_ v: PlayerView) {
+    /// A plain clip on the feed or in reels (no look, no trim): its player can be kept and used again (VideoPool).
+    private var pooled: Bool { !always && filter == "Normal" && range == nil && box == nil }
+
+    private func setUp(_ v: PlayerView, fresh: Bool = false) {
         v.key = key
+        v.unwatch()
+        // one from the pool: given back, paused where it is, for whoever shows the same clip next
+        if let e = v.entry {
+            v.entry = nil
+            v.playerLayer.player = nil; v.looper = nil
+            VideoPool.shared.give(e)
+        }
         // The player before this one, taken right down first. Left to be let go in its own time, its items still
         // held their decoders while the new item tried to get ready, and a phone (and the simulator more so) only
         // has so many: the new one then failed to build its pipeline and the clip froze.
-        v.unwatch()
         if let old = v.playerLayer.player {
             old.pause()
             v.looper?.disableLooping(); v.looper = nil
             (old as? AVQueuePlayer)?.removeAllItems()
             old.replaceCurrentItem(with: nil)
             v.playerLayer.player = nil
+        }
+        if pooled {
+            // the same clip's player if one's waiting (scrolled back to, swiped back to: it carries on where it was),
+            // else a new one that goes into the pool when it's done with
+            let e = VideoPool.shared.take(key, fresh: fresh) {
+                let player = AVQueuePlayer()
+                let looper = AVPlayerLooper(player: player, templateItem: AVPlayerItem(asset: AVURLAsset(url: MediaCache.source(url))))
+                return VideoPool.Entry(key: key, player: player, looper: looper)
+            }
+            v.entry = e
+            attach(v, e.player, looper: e.looper)
+            return
         }
         // from the copy on the phone when there is one (see MediaCache); the address stays the key, so a copy arriving
         // mid-play never builds the player again
@@ -493,15 +515,23 @@ struct LoopingVideo: UIViewRepresentable {
         // (For a while a clip with a look was one item sent back to its start, a guess at a freeze that turned out
         // to be the simulator's alone; on a phone the looper's copies play it round without a gap.)
         let player = AVQueuePlayer()
+        let looper: AVPlayerLooper
+        if let r = range {
+            looper = AVPlayerLooper(player: player, templateItem: item, timeRange: CMTimeRange(start: CMTime(seconds: r.lowerBound, preferredTimescale: 600), end: CMTime(seconds: r.upperBound, preferredTimescale: 600)))
+        } else {
+            looper = AVPlayerLooper(player: player, templateItem: item)
+        }
+        attach(v, player, looper: looper)
+    }
+
+    /// A player put on the view, new or from the pool: its sound as this view wants it, the clock watched for `tick`,
+    /// playing unless paused, and looked at again a moment on in case it never got going.
+    private func attach(_ v: PlayerView, _ player: AVQueuePlayer, looper: AVPlayerLooper?) {
         player.isMuted = muted
         player.volume = volume
         v.fader?.invalidate(); v.fader = nil
         v.heard = !muted; v.level = volume
-        if let r = range {
-            v.looper = AVPlayerLooper(player: player, templateItem: item, timeRange: CMTimeRange(start: CMTime(seconds: r.lowerBound, preferredTimescale: 600), end: CMTime(seconds: r.upperBound, preferredTimescale: 600)))
-        } else {
-            v.looper = AVPlayerLooper(player: player, templateItem: item)
-        }
+        v.looper = looper
         v.playerLayer.player = player
         if tick != nil {
             v.tick = tick
@@ -528,9 +558,71 @@ struct LoopingVideo: UIViewRepresentable {
             guard v.tries < 3 else { return }
             v.tries += 1
             print("LoopingVideo: built again (\(v.tries)), ready \(v.playerLayer.isReadyForDisplay), at \(at), item \(player.currentItem?.status.rawValue ?? -1) \(player.currentItem?.error?.localizedDescription ?? "-"), looper \(v.looper?.status.rawValue ?? -1) \(v.looper?.error?.localizedDescription ?? "-")")
-            setUp(v)
+            setUp(v, fresh: true)   // a new one, not the pool's stuck one back
         }
     }
 
-    static func dismantleUIView(_ v: PlayerView, coordinator: ()) { v.unwatch(); v.playerLayer.player?.pause(); v.looper = nil }
+    static func dismantleUIView(_ v: PlayerView, coordinator: ()) {
+        v.unwatch(); v.playerLayer.player?.pause(); v.looper = nil
+        // the pool's player goes back to it, paused where it got to
+        if let e = v.entry { v.entry = nil; v.playerLayer.player = nil; VideoPool.shared.give(e) }
+    }
+}
+
+/// Players kept for clips on the feed and in reels (19 Nov), as Instagram and TikTok keep a few and use them again:
+/// a clip scrolled or swiped back to carries on from where it was, instead of a new player being built and
+/// loading it again, and fewer are built and taken down while scrolling. One in use is never handed to a second view
+/// (the two would fight over pausing and sound). Only two wait unused: a phone has only so many video decoders, and
+/// players left holding them once made new clips freeze (see LoopingVideo.setUp). Used on the main thread only.
+final class VideoPool {
+    static let shared = VideoPool()
+    final class Entry {
+        let key: String
+        let player: AVQueuePlayer
+        var looper: AVPlayerLooper?
+        var users = 0
+        var used = Date()
+        init(key: String, player: AVQueuePlayer, looper: AVPlayerLooper?) { self.key = key; self.player = player; self.looper = looper }
+    }
+    private var entries: [Entry] = []
+    private let waiting = 2
+
+    /// The clip's player: one waiting for it, or a new one (`fresh`: always new, and any waiting for it let go).
+    func take(_ key: String, fresh: Bool, make: () -> Entry) -> Entry {
+        if fresh {
+            for e in entries where e.key == key && e.users == 0 { tearDown(e) }
+            entries.removeAll { $0.key == key && $0.users == 0 }
+        } else if let e = entries.first(where: { $0.key == key && $0.users == 0 }) {
+            e.users = 1; e.used = Date()
+            return e
+        }
+        let e = make()
+        e.users = 1
+        entries.append(e)
+        trim()
+        return e
+    }
+
+    /// Done with: paused, kept for the same clip next time, the oldest let go past `waiting`.
+    func give(_ e: Entry) {
+        e.users = max(0, e.users - 1)
+        e.used = Date()
+        e.player.pause()
+        trim()
+    }
+
+    private func trim() {
+        let idle = entries.filter { $0.users == 0 }.sorted { $0.used < $1.used }
+        guard idle.count > waiting else { return }
+        for e in idle.prefix(idle.count - waiting) {
+            tearDown(e)
+            entries.removeAll { $0 === e }
+        }
+    }
+
+    private func tearDown(_ e: Entry) {
+        e.player.pause()
+        e.looper?.disableLooping(); e.looper = nil
+        e.player.removeAllItems()
+    }
 }
