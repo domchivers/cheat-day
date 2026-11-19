@@ -221,14 +221,55 @@ struct MultiClipEditor: View {
             if !future.isEmpty { round("arrow.uturn.forward", "Redo") { redo() } }
             Spacer()
             if panel == nil { round("aspectratio", "Shape and background") { withAnimation(.snappy) { panel = .shape } } }
-            if panel != nil {
-                Button { withAnimation(.snappy) { panel = nil; selectedText = nil; selectedSound = nil; selectedPip = nil } } label: {
-                    Text("Done").font(.subheadline.weight(.bold)).foregroundStyle(.black).padding(.horizontal, 16).frame(height: 34).background(.white, in: Capsule())
-                }
-                .buttonStyle(.plain)
-            }
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
+    }
+
+    /// The open panel's bar (design/panel-tick-mockup.html): what it is, which clip, and a ✓ that closes it, as CapCut's.
+    private var panelBar: some View {
+        HStack(spacing: 6) {
+            Text(panelTitle).font(.subheadline.weight(.bold)).foregroundStyle(.white)
+            if !panelSub.isEmpty { Text(panelSub).font(.caption).foregroundStyle(.secondary) }
+            Spacer()
+            Button {
+                withAnimation(.snappy) { panel = nil; selectedText = nil; selectedSound = nil; selectedPip = nil }
+            } label: {
+                Image(systemName: "checkmark").font(.system(size: 17, weight: .heavy)).foregroundStyle(.black)
+                    .frame(width: 38, height: 38).background(.white, in: Circle())
+            }
+            .buttonStyle(.plain).accessibilityLabel("Done")
+        }
+        .padding(.horizontal, 2)
+    }
+
+    private var panelTitle: String {
+        switch panel {
+        case .trim: return "Trim"
+        case .sound: return "Sound"
+        case .speed: return "Speed"
+        case .join: return "Transition"
+        case .look: return "Filters"
+        case .shape: return "Shape"
+        case .text: return texts.first(where: { $0.id == selectedText })?.kind == "caption" ? "Caption" : "Text"
+        case .stickers: return "Stickers"
+        case .voice: return "Voiceover"
+        case .effects: return "Sound effects"
+        case .soundItem: return sounds.first(where: { $0.id == selectedSound })?.name ?? "Sound"
+        case .pip: return "Overlay"
+        case .motion: return "Motion"
+        case .beats: return "Beats"
+        case .templates: return "Templates"
+        case nil: return ""
+        }
+    }
+
+    /// Which clip (or join) the panel is for, when it's for one.
+    private var panelSub: String {
+        switch panel {
+        case .trim, .sound, .speed, .look, .motion: return index.map { "Clip ($0 + 1)" } ?? ""
+        case .join: return "Clips (joinAt + 1) and (joinAt + 2)"
+        default: return ""
+        }
     }
 
     private func round(_ symbol: String, _ label: String, _ run: @escaping () -> Void) -> some View {
@@ -250,21 +291,22 @@ struct MultiClipEditor: View {
             }
             if total > limit + 0.05 { Text("Over \(Int(limit)) seconds: the end will be cut. Trim or take out a clip.").font(.caption).foregroundStyle(Theme.warn) }
             switch panel {
-            case .trim: if let i = index { trimPanel(i) }
-            case .sound: if let i = index { scrubBar; soundPanel(i) }
-            case .speed: if let i = index { scrubBar; speedPanel(i) }
-            case .join: if joinAt + 1 < clips.count { strip; joinPanel(joinAt) }
-            case .look: if let i = index { scrubBar; lookPanel(i) }
-            case .shape: scrubBar; shapePanel
-            case .text: if let k = texts.firstIndex(where: { $0.id == selectedText }) { scrubBar; bars; textPanel(k) }
-            case .stickers: scrubBar; stickerPanel
-            case .voice: scrubBar; bars; voicePanel
-            case .effects: scrubBar; effectsPanel
-            case .soundItem: if let k = sounds.firstIndex(where: { $0.id == selectedSound }) { scrubBar; bars; soundItemPanel(k) }
-            case .pip: if let k = pips.firstIndex(where: { $0.id == selectedPip }) { scrubBar; bars; pipPanel(k) }
-            case .motion: if let i = index { scrubBar; motionPanel(i) }
-            case .beats: scrubBar; strip; beatsPanel
-            case .templates: templatesPanel
+            // each panel under its bar, whose ✓ closes it (20 Nov: Done at the top was too far away to find)
+            case .trim: panelBar; if let i = index { trimPanel(i) }
+            case .sound: scrubBar; panelBar; if let i = index { soundPanel(i) }
+            case .speed: scrubBar; panelBar; if let i = index { speedPanel(i) }
+            case .join: panelBar; if joinAt + 1 < clips.count { strip; joinPanel(joinAt) }
+            case .look: scrubBar; panelBar; if let i = index { lookPanel(i) }
+            case .shape: scrubBar; panelBar; shapePanel
+            case .text: scrubBar; panelBar; if let k = texts.firstIndex(where: { $0.id == selectedText }) { bars; textPanel(k) }
+            case .stickers: scrubBar; panelBar; stickerPanel
+            case .voice: scrubBar; panelBar; bars; voicePanel
+            case .effects: scrubBar; panelBar; effectsPanel
+            case .soundItem: scrubBar; panelBar; if let k = sounds.firstIndex(where: { $0.id == selectedSound }) { bars; soundItemPanel(k) }
+            case .pip: scrubBar; panelBar; if let k = pips.firstIndex(where: { $0.id == selectedPip }) { bars; pipPanel(k) }
+            case .motion: scrubBar; panelBar; if let i = index { motionPanel(i) }
+            case .beats: scrubBar; panelBar; strip; beatsPanel
+            case .templates: panelBar; templatesPanel
             case nil:
                 scrubBar
                 if !texts.isEmpty || !sounds.isEmpty || !pips.isEmpty { bars }
@@ -711,7 +753,6 @@ struct MultiClipEditor: View {
             clips[i].speed = max(0.25, min(4, x))
         })
         return VStack(spacing: 6) {
-            Text("Clip \(i + 1) speed").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
             Text(Self.speedText(c.speed)).font(.system(size: 34, weight: .black, design: .rounded)).monospacedDigit()
             Slider(value: place, in: -2...2, onEditingChanged: { if $0 { remember() } }).tint(.white)
             HStack { ForEach(["0.25×", "0.5×", "1×", "2×", "4×"], id: \.self) { Text($0) }.frame(maxWidth: .infinity) }
@@ -1565,7 +1606,6 @@ struct MultiClipEditor: View {
         let tr = clips[i].transition
         let most = max(0.2, min(1.5, clips[i].span / 2, clips[i + 1].span / 2))
         return VStack(alignment: .leading, spacing: 10) {
-            Text("Between clips \(i + 1) and \(i + 2)").font(.caption).foregroundStyle(.secondary)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
                     chip("None", on: tr == nil) { setJoin(i, nil) }
