@@ -345,6 +345,13 @@ final class Feed {
             var change: JSON = [:]
             if let ph = r["photo"], !(ph is NSNull) { change["photo"] = ph }
             if !str(r["caption"]).isEmpty { change["caption"] = r["caption"] }
+            // the photo's workout sticker, to tap, and its shape, with what the post had already
+            let add = dict(r["extra"])
+            if add["live"] != nil || add["aspect"] != nil {
+                var x = dict(existing["extra"])
+                for k in ["live", "aspect"] { if let v = add[k] { x[k] = v } }
+                change["extra"] = x
+            }
             if !change.isEmpty { _ = try await api.rest("/rest/v1/posts?id=eq.\(str(existing["id"]))&owner=eq.\(me)", method: "PATCH", body: change) }
             await load()
             return
@@ -740,6 +747,14 @@ struct FeedView: View {
             .overlay { if let v = Feed.video(p) { FeedVideo(url: v, songKey: Music.of(p) != nil ? "post:" + str(p["id"]) : nil, clipVolume: Music.mixed(p) ? 1 : Music.mix(p).clip) } }   // under the name and numbers
             .clipped()
             .contentShape(Rectangle())
+            // A workout sticker on it opens its workout (19 Nov). The sticker's drawn into the picture; this is the
+            // same sticker, where it was put, all but see-through, to be tapped.
+            .overlay {
+                let live = list(dict(p["extra"])["live"])
+                if !live.isEmpty {
+                    StoryLayer(items: live, openWorkout: { o in recipe = StoryItem.workoutPost(o, owner: str(p["owner"])) }).opacity(0.02)
+                }
+            }
             // a photo with a song: its sound on and off at the bottom right, as Instagram has it
             .overlay {
                 if let song = Music.of(p) { SongSwitch(song: song, key: "post:" + str(p["id"]), volume: Music.mix(p).song, inVideo: Music.mixed(p)) }
@@ -1466,7 +1481,8 @@ struct ComposeSheet: View {
                     else if shots.count < 10 { shots.append(Shot(source: e.image, out: out, edit: kept)); showing = shots.count - 1; stage = 0; firstPick = false }
                     leftEdit = nil
                     editing = nil
-                }, startShape: later ? nil : e.edit?.shape, lockShape: later, startTool: e.tool, startEdit: e.edit, photoKept: { leftEdit = $0 })
+                }, startShape: later ? nil : e.edit?.shape, lockShape: later, startTool: e.tool, startEdit: e.edit,
+                   startItems: e.edit == nil && e.index == nil && shots.isEmpty ? workoutSticker : [], photoKept: { leftEdit = $0 })
             }
         }
     }
@@ -2004,6 +2020,17 @@ struct ComposeSheet: View {
          "payload": ["minutes": w["minutes"] ?? 0, "lifts": w["lifts"] ?? [Any]()] as JSON, "extra": ["minutes": w["minutes"] ?? 0] as JSON]
     }
 
+    /// Sharing a workout with a photo (19 Nov): the photo's first edit starts with the workout's sticker on it, low
+    /// down, to move, size or take off. Nothing for a post that isn't of a workout.
+    private var workoutSticker: [JSON] {
+        guard let w = what, str(w["kind"]) == "workout" else { return [] }
+        let pay = dict(w["payload"])
+        var s = StoryItem.workoutSticker(["name": w["name"] ?? "", "minutes": pay["minutes"] ?? 0, "lifts": pay["lifts"] ?? [Any]()])
+        s["id"] = String(UUID().uuidString.prefix(8)).lowercased()
+        s["x"] = 0.5; s["y"] = 0.8; s["scale"] = 0.75; s["rotation"] = 0.0
+        return [s]
+    }
+
     private func post() {
         // nothing attached: a photo or video on its own (a progress photo, say), with no numbers to show
         var row = what ?? ["kind": "photo", "name": "", "kcal": 0, "macros": [:] as JSON, "payload": [:] as JSON, "extra": [:] as JSON]
@@ -2028,6 +2055,10 @@ struct ComposeSheet: View {
             row["extra"] = x
         }
         if !tags.isEmpty { var x = dict(row["extra"]); x["tags"] = tags; row["extra"] = x }
+        // a workout sticker stays something to tap on the feed (19 Nov): where it is on the picture, and its workout
+        let placed = (movie != nil ? clip.kept?.items : shots.first?.edit?.kept?.items) ?? []
+        let live = placed.filter { str($0["type"]) == "workout" }
+        if !live.isEmpty { var x = dict(row["extra"]); x["live"] = live; row["extra"] = x }
         // the picture's shape, for the feed to show it whole (a video's is its first frame's)
         if let face { var x = dict(row["extra"]); x["aspect"] = Double(face.size.width / max(face.size.height, 1)); row["extra"] = x }
         SongPlayer.shared.stop()

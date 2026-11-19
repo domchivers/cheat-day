@@ -158,6 +158,24 @@ struct StoryItem: View {
     /// A photo sticker's looks, in the order a tap goes through them.
     /// (New ones go on the end: a story already posted keeps the look it was given by its number.)
     static let photoStyles = ["Frame", "Plain", "Polaroid", "Round", "Original"]
+    /// A workout sticker's looks (19 Nov), in tap order.
+    static let workoutStyles = ["Card", "Light", "Pill", "Big number"]
+
+    /// The sticker for a workout: its name, minutes, how many exercises and the kg lifted (sets × reps × kg, as the
+    /// feed's workout card counts it), with its lifts so a tap can show them.
+    static func workoutSticker(_ w: JSON) -> JSON {
+        let lifts = list(w["lifts"])
+        let kg = lifts.reduce(0.0) { $0 + (num($1["sets"]) ?? 0) * (num($1["reps"]) ?? 0) * (num($1["kg"]) ?? 0) }
+        let slim = lifts.map { l -> JSON in ["exercise": l["exercise"] ?? "", "sets": l["sets"] ?? 0, "reps": l["reps"] ?? 0, "kg": l["kg"] ?? 0] }
+        return ["type": "workout", "name": str(w["name"]).isEmpty ? str(w["type"]) : str(w["name"]), "minutes": Int(num(w["minutes"]) ?? 0),
+                "n": lifts.count, "kg": Int(kg.rounded()), "lifts": slim, "style": 0]
+    }
+
+    /// A tapped workout sticker as the post the workout sheet opens with (PostRecipeSheet's workout kind).
+    static func workoutPost(_ o: JSON, owner: String) -> JSON {
+        ["id": "workout:" + str(o["id"]), "kind": "workout", "name": o["name"] ?? "", "kcal": 0, "owner": owner, "macros": [:] as JSON,
+         "payload": ["minutes": o["minutes"] ?? 0, "lifts": o["lifts"] ?? [Any]()] as JSON, "extra": ["minutes": o["minutes"] ?? 0] as JSON]
+    }
 
     /// A picture of your own stuck on the story, in one of its looks (tap it in the editor for the next): a white
     /// frame, the photo as it is, a polaroid, or a circle. While it's being made the picture is on the phone
@@ -358,15 +376,81 @@ struct StoryItem: View {
         .shadow(color: .black.opacity(0.35), radius: 10, y: 6)
     }
 
+    /// A workout (19 Nov, the owner's mockup): four looks, tapped through in the editor (workoutStyles); tapped where
+    /// it's watched, it opens the workout. One placed before this carries only a name, minutes and a detail line.
     private var workout: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text("🏋️ " + str(o["name"])).font(.system(size: 18, weight: .heavy, design: .rounded)).foregroundStyle(.white).lineLimit(1)
-            Text("\(Int(num(o["minutes"]) ?? 0)) min" + (str(o["detail"]).isEmpty ? "" : " · " + str(o["detail"]))).font(.system(size: 13, weight: .bold)).foregroundStyle(StoryArt.color("A9B8E6"))
+        let style = Int(num(o["style"]) ?? 0)
+        let name = str(o["name"]).isEmpty ? "Workout" : str(o["name"])
+        let mins = Int(num(o["minutes"]) ?? 0), n = Int(num(o["n"]) ?? 0), kg = Int(num(o["kg"]) ?? 0)
+        return Group {
+            switch style {
+            case 2: workoutPill(name, mins, kg)
+            case 3: workoutBig(name, mins, kg)
+            default: workoutCard(name, mins, n, kg, light: style == 1)
+            }
         }
-        .padding(.horizontal, 16).padding(.vertical, 11)
-        .background(LinearGradient(colors: [Color(red: 0.11, green: 0.18, blue: 0.32), Color(red: 0.17, green: 0.13, blue: 0.31)], startPoint: .topLeading, endPoint: .bottomTrailing),
-                    in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    /// The pill: one line.
+    private func workoutPill(_ name: String, _ mins: Int, _ kg: Int) -> some View {
+        var bits = [name]
+        if mins > 0 { bits.append("\(mins) min") }
+        if kg > 0 { bits.append(Fmt.int(Double(kg)) + " kg") }
+        return HStack(spacing: 7) {
+            Text("🏋️")
+            Text(bits.joined(separator: " · ")).lineLimit(1)
+        }
+        .font(.system(size: 16, weight: .bold, design: .rounded)).foregroundStyle(.white)
+        .padding(.horizontal, 15).padding(.vertical, 10)
+        .background(Capsule().fill(Color.black.opacity(0.45)).overlay(Capsule().stroke(.white.opacity(0.18), lineWidth: 1)))
+    }
+
+    /// One big number: what was lifted, or the minutes for a workout without weights.
+    private func workoutBig(_ name: String, _ mins: Int, _ kg: Int) -> some View {
+        let big = kg > 0 ? Fmt.int(Double(kg)) : "\(mins)"
+        let under = (kg > 0 ? "KG LIFTED · " : "MINUTES · ") + name.uppercased()
+        return VStack(alignment: .leading, spacing: 0) {
+            Text(big).font(.system(size: 56, weight: .black, design: .rounded))
+            Text(under).font(.system(size: 14, weight: .heavy, design: .rounded)).tracking(1).lineLimit(1)
+        }
+        .foregroundStyle(.white).shadow(color: .black.opacity(0.55), radius: 8, y: 2)
+    }
+
+    /// The card, as the workout card on the feed; `light` is the same card in white.
+    private func workoutCard(_ name: String, _ mins: Int, _ n: Int, _ kg: Int, light: Bool) -> some View {
+        let soft = light ? Color(white: 0.45) : Color(white: 0.6)
+        let navy = LinearGradient(colors: [Color(red: 0.11, green: 0.16, blue: 0.23), Color(red: 0.17, green: 0.23, blue: 0.32)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        return VStack(alignment: .leading, spacing: 4) {
+            Text("WORKOUT").font(.system(size: 11, weight: .heavy, design: .rounded)).tracking(1)
+                .foregroundStyle(light ? soft : StoryArt.color("8FA8C8"))
+            Text(name).font(.system(size: 22, weight: .heavy, design: .rounded)).lineLimit(1)
+            if n > 0 || kg > 0 {
+                HStack(alignment: .firstTextBaseline, spacing: 16) {
+                    if mins > 0 { workoutNumber("\(mins)", "min", soft) }
+                    if n > 0 { workoutNumber("\(n)", n == 1 ? "exercise" : "exercises", soft) }
+                    if kg > 0 { workoutNumber(Fmt.int(Double(kg)), "kg", soft) }
+                }
+                .padding(.top, 2)
+            } else {
+                // one placed before the numbers were kept
+                let detail = str(o["detail"]).isEmpty ? "" : " · " + str(o["detail"])
+                Text("\(mins) min" + detail).font(.system(size: 14, weight: .bold)).foregroundStyle(light ? soft : StoryArt.color("A9B8E6"))
+            }
+        }
+        .foregroundStyle(light ? Color.black : Color.white)
+        .padding(.horizontal, 16).padding(.vertical, 13)
+        .background {
+            if light { RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.white) }
+            else { RoundedRectangle(cornerRadius: 18, style: .continuous).fill(navy) }
+        }
         .shadow(color: .black.opacity(0.35), radius: 10, y: 6)
+    }
+
+    private func workoutNumber(_ big: String, _ small: String, _ soft: Color) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(big).font(.system(size: 22, weight: .heavy, design: .rounded))
+            Text(small).font(.system(size: 11, weight: .semibold)).foregroundStyle(soft)
+        }
     }
 
     /// A question and two answers. Once you've voted (or it's yours), the split shows on each answer.
@@ -537,8 +621,22 @@ struct StoryLayer: View {
     var openPost: ((String) -> Void)? = nil
     /// A recipe sticker was tapped (the sticker): set where the story's being watched.
     var openRecipe: ((JSON) -> Void)? = nil
+    /// A workout sticker was tapped (the sticker): set where it's being watched.
+    var openWorkout: ((JSON) -> Void)? = nil
     @State private var bubble: String?   // the tag whose bubble is showing, by its id
     private var stories: Stories { Stories.shared }
+
+    /// Whether a placed thing answers a tap here: only where whoever shows it has said what a tap does.
+    private func takesTaps(_ o: JSON) -> Bool {
+        switch str(o["type"]) {
+        case "poll", "question": return story != nil
+        case "mention": return mention != nil
+        case "seepost": return openPost != nil
+        case "recipe": return openRecipe != nil
+        case "workout": return openWorkout != nil
+        default: return false
+        }
+    }
 
     var body: some View {
         GeometryReader { g in
@@ -562,10 +660,11 @@ struct StoryLayer: View {
                             } : nil)
                             .simultaneousGesture(str(o["type"]) == "seepost" && openPost != nil ? TapGesture().onEnded { openPost?(str(o["post"])) } : nil)
                             .simultaneousGesture(str(o["type"]) == "recipe" && openRecipe != nil ? TapGesture().onEnded { openRecipe?(o) } : nil)
+                            .simultaneousGesture(str(o["type"]) == "workout" && openWorkout != nil ? TapGesture().onEnded { openWorkout?(o) } : nil)
                             .scaleEffect((num(o["scale"]) ?? 1) * k)
                             .rotationEffect(.degrees(num(o["rotation"]) ?? 0))
                             .position(x: (num(o["x"]) ?? 0.5) * g.size.width, y: (num(o["y"]) ?? 0.5) * g.size.height)
-                            .allowsHitTesting(((str(o["type"]) == "poll" || str(o["type"]) == "question") && story != nil) || (str(o["type"]) == "mention" && mention != nil) || (str(o["type"]) == "seepost" && openPost != nil) || (str(o["type"]) == "recipe" && openRecipe != nil))
+                            .allowsHitTesting(takesTaps(o))
                     }
                 }
             }

@@ -207,6 +207,7 @@ struct StoryEditor: View {
     @State private var picked: String?   // a tile from the tray, added once the tray has closed
     @State private var food = false
     @State private var choosingRecipe = false   // a saved meal being picked for a recipe sticker
+    @State private var choosingWorkout = false   // a recent workout being picked for a workout sticker
     @State private var lastLook = Date.distantPast   // when their story last changed look, so taps can't outrun it
     @State private var polling = false
     @State private var mentioning = false
@@ -364,6 +365,7 @@ struct StoryEditor: View {
         }
         .sheet(isPresented: $food) { FoodStickerPicker { it in addFood(it) }.presentationDetents([.medium, .large]) }
         .sheet(isPresented: $choosingRecipe) { RecipeStickerPicker { m in place(RecipeStickerPicker.sticker(m)) }.presentationDetents([.medium, .large]) }
+        .sheet(isPresented: $choosingWorkout) { WorkoutStickerPicker { o in place(o) }.presentationDetents([.medium, .large]) }
         .photosPicker(isPresented: $choosingPhoto, selection: $photoPick, matching: .images)
         .onChange(of: photoPick) { _, item in
             guard let item else { return }
@@ -625,6 +627,12 @@ struct StoryEditor: View {
             } else { next = (now + 1) % StoryItem.photoStyles.count }
             withAnimation(.snappy(duration: 0.2)) { items[i]["style"] = next }
             flash(StoryItem.photoStyles[next])
+        case "workout":
+            // a workout sticker's next look (19 Nov)
+            remember(); UISelectionFeedbackGenerator().selectionChanged()
+            let next = (Int(num(o["style"]) ?? 0) + 1) % StoryItem.workoutStyles.count
+            withAnimation(.snappy(duration: 0.2)) { items[i]["style"] = next }
+            flash(StoryItem.workoutStyles[next])
         case "mention":
             // a tag's next look (18 Nov), as a photo's
             remember(); UISelectionFeedbackGenerator().selectionChanged()
@@ -1177,9 +1185,11 @@ struct StoryEditor: View {
         case "streak": place(["type": "streak", "days": s.streakInfo.days])
         case "left": place(["type": "left", "kcal": Int(max(0, s.left))])
         case "workout":
-            if let w = s.todayWorkouts.last {
-                place(["type": "workout", "name": str(w["name"]), "minutes": Int(num(w["minutes"]) ?? 0), "detail": "\(list(w["lifts"]).count) exercises"])
-            } else { flash("No workout today yet") }
+            // just the one in the last two weeks: placed; more: chosen from (WorkoutStickerPicker)
+            let recent = WorkoutStickerPicker.recent()
+            if recent.count == 1 { place(StoryItem.workoutSticker(recent[0].workout)) }
+            else if recent.isEmpty { flash("No workouts in the last two weeks") }
+            else { choosingWorkout = true }
         case "time": place(["type": "time", "text": Date().formatted(date: .omitted, time: .shortened)])
         case "ring": place(["type": "ring", "eaten": Int(s.eaten), "budget": Int(s.budgetToday)])
         case "steps": place(["type": "steps", "steps": Steps.shared.today ?? 0])
@@ -1561,7 +1571,8 @@ struct StickerSheet: View {
             var s = RecipeStickerPicker.sticker(m); s["meal"] = nil
             out.append(("recipe", "recipe meal cook share", s))
         }
-        if let w = store.todayWorkouts.last { out.append(("workout", "workout gym", ["type": "workout", "name": str(w["name"]), "minutes": Int(num(w["minutes"]) ?? 0)])) }
+        // a workout from the last two weeks (the newest shown), as the sticker it makes
+        if let w = WorkoutStickerPicker.recent().first?.workout { out.append(("workout", "workout gym lift training", StoryItem.workoutSticker(w))) }
         if !forPost {
             out.append(("poll", "poll vote", ["type": "poll", "q": "Cheat day or not?", "a": "Yes", "b": "No"]))
             out.append(("question", "question ask me anything", ["type": "question", "q": "Ask me anything"]))

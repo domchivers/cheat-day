@@ -21,6 +21,7 @@ struct StoryView: View {
     }
     @State private var adding: JSON?   // your story going into a highlight
     @State private var recipeOf: JSON?   // a recipe sticker tapped: its recipe open over the story
+    @State private var workoutOf: JSON?   // a workout sticker tapped: its workout open over the story
     @State private var resharing: JSON?  // a story you're tagged in, being added to yours
     @Environment(\.colorScheme) private var scheme   // the app's light or dark, for the Add to your story button
     @State private var songCard: Song?   // the story's song line tapped: its card, sound on or off
@@ -83,7 +84,7 @@ struct StoryView: View {
     /// What's on a story that can be pressed, so it's drawn above the taps that turn the slides: a poll, a question,
     /// a person tagged.
     static func live(_ o: JSON) -> Bool {
-        ["poll", "question", "seepost", "recipe"].contains(str(o["type"])) || (str(o["type"]) == "mention" && !str(o["user"]).isEmpty && o["hidden"] as? Bool != true)
+        ["poll", "question", "seepost", "recipe", "workout"].contains(str(o["type"])) || (str(o["type"]) == "mention" && !str(o["user"]).isEmpty && o["hidden"] as? Bool != true)
     }
 
     private var who: String { people[min(at, people.count - 1)] }
@@ -193,7 +194,7 @@ struct StoryView: View {
                                         // a post added to the story: it's opened on the feed, the story closed
                                         guard !pid.isEmpty else { return }
                                         dismiss(); Nav.shared.feed(post: pid)
-                                    }, openRecipe: { o in recipeOf = o })
+                                    }, openRecipe: { o in recipeOf = o }, openWorkout: { o in workoutOf = o })
                                         .aspectRatio(StoryArt.aspect, contentMode: .fit)
                                 }
                             }
@@ -337,7 +338,8 @@ struct StoryView: View {
                 // in two, a long chain being slow for the compiler
                 let held: Bool = paused || typing || reacting || tagged != nil || reportOf != nil || sharing != nil
                 let open: Bool = sharingStory != nil || seenBy != nil || adding != nil || managing != nil || mentioning != nil || recipeOf != nil || resharing != nil || songCard != nil
-                if held || open { continue }
+                let card: Bool = workoutOf != nil
+                if held || open || card { continue }
                 progress += dt / length; tickAt = at
                 if progress >= 1 { next(); return }
             }
@@ -509,6 +511,10 @@ struct StoryView: View {
         .sheet(item: $songCard) { song in
             let key = "story:" + str(snapNow?["id"])
             SongCard(song: song, muted: Binding(get: { SongPlayer.shared.playing != key }, set: { _ in SongPlayer.shared.flip(song, key: key) }))
+        }
+        // a workout sticker: the workout, as a workout card's Do it opens it, to start it or save it
+        .sheet(item: Binding(get: { workoutOf.map { PostBox(post: StoryItem.workoutPost($0, owner: who)) } }, set: { if $0 == nil { workoutOf = nil } })) { b in
+            PostRecipeSheet(post: b.post, by: Feed.shared.name(who)).presentationDetents([.medium, .large])
         }
         // a recipe sticker: the recipe, as the feed's Recipe button opens it, to save or have today
         .sheet(item: Binding(get: { recipeOf.map { PostBox(post: RecipeStickerPicker.post($0, owner: who)) } }, set: { if $0 == nil { recipeOf = nil } })) { b in
