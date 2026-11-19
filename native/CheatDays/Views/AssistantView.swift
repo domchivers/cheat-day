@@ -320,7 +320,8 @@ struct AssistantView: View {
             else { Text(checked > 0 ? "\(checked) of \(parts.count) parts checked against food databases\(num(e["aiKcal"]).map { " (the AI first said \(Int($0)) kcal)" } ?? ""). An estimate, not a label."
                              : "The AI's estimate: none of the parts could be checked against a food database.")
                 .font(.caption2).foregroundStyle(.secondary) }
-            let tag = "\(turn)-est", added = done[turn, default: ""].contains(tag)
+            // added, and still on the day: one taken off again can be added again
+            let tag = "\(turn)-est", added = done[turn, default: ""].contains(tag) && (live.addedIDs[tag].map { store.hasItem($0) } ?? true)
             let asking = Assistant.worthWeighing(e)
             if !added, !pending, !asking.isEmpty { weighBox(parts, asking, turn: turn) }
             if e["size_unsure"] as? Bool == true, !added {
@@ -356,7 +357,7 @@ struct AssistantView: View {
                     if !str(e["shop"]).isEmpty { b["shop"] = str(e["shop"]) }
                     if let g = pos(e["aiPortion"]) ?? pos(e["portion_g"]) { b["aiGrams"] = g; b["aiKcal"] = num(e["aiPortionKcal"]) ?? k }
                     b["aiMatches"] = parts.map { "\(str($0["name"])) → \(str($0["match"]).isEmpty ? "unchecked" : str($0["match"]))" }.joined(separator: "; ")
-                    store.add(b, kcal: k, meal: meal)
+                    live.addedIDs[tag] = store.add(b, kcal: k, meal: meal)
                     withAnimation { done[turn, default: ""] += "|\(tag)" }
                 } label: {
                     Label(added ? "Added" : "Add to \(meal.lowercased())", systemImage: added ? "checkmark" : "plus.circle.fill")

@@ -79,6 +79,11 @@ final class Store {
     func bringBackYesterday(_ date: String) { perform(["type": "unroll", "date": date]) }
 
     var todayItems: [JSON] { str(day["date"]) == today ? list(day["items"]) : [] }
+    /// Whether a food added is still on its day (today's, or a past one filled in): one taken off isn't.
+    func hasItem(_ id: String) -> Bool {
+        if list(day["items"]).contains(where: { str($0["id"]) == id }) { return true }
+        return list(doc["history"]).contains { h in list(h["items"]).contains { str($0["id"]) == id } }
+    }
     var todayWorkouts: [JSON] { str(day["date"]) == today ? list(day["workouts"]) : [] }
     var burned: Double { todayWorkouts.reduce(0) { $0 + (num($1["kcal"]) ?? 0) } }
     var eaten: Double { todayItems.reduce(0) { $0 + (num($1["kcal"]) ?? 0) } }

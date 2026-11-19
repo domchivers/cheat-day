@@ -15,6 +15,9 @@ final class AssistantLive {
     /// What's been done on the cards (Added, Add as a meal, the foods put on one at a time, the meal's name): kept with
     /// the chat, so closing the assistant or opening the chat again later shows them as they were left
     var done: [UUID: String] = [:]
+    /// The food each card's Add put on the day, by the card's tag: taken off the day again, the card can add it again
+    /// (19 Nov: it stayed Added for good, so a removed one couldn't go back on)
+    var addedIDs: [String: String] = [:]
     var addedFoods: [String: Set<Int>] = [:]
     var mealNames: [String: String] = [:]
 
