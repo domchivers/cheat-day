@@ -67,6 +67,9 @@ function foodData(text) {
 const potato = { model: 'claude-sonnet-5-5', image: 'results/potatoes.png' };
 const chicken = { model: 'claude-sonnet-5-5', image: 'results/chicken-label.jpg' };
 const cases = [
+  // the owner, 19 Nov: Make me a recipe like this, on their own protein pizza post; it came back with protein powder and a yoghurt dough
+  { tag: "protein-pizza", say: "Give me a recipe for Spicy Pepperoni Protein Pizza, about 1,152 kcal a portion with around 74 g protein.", earlier: "" },
+  { tag: "protein-pizza", model: "claude-sonnet-5-5", say: "Give me a recipe for Spicy Pepperoni Protein Pizza, about 1,152 kcal a portion with around 74 g protein.", earlier: "" },
   // the owner's recheck, 15 Nov: the card came back at 1,426 kcal, the soup base 26 g at 793
   { tag: 'hotpot-recheck', model: 'claude-sonnet-5-5', image: 'results/hotpot-after.jpg', say: 'Recheck: I ate all the noodles and veg, only left the broth. The beef rolls are the fatty kind', earlier: "They: Thinking of sharing this between two people, how to add more protein. Also have beef rolls. What's the calories (2 photos)\nYou: Half the pack each with the beef rolls and cabbage. [you worked out: LIHAILONG spicy instant pot with beef rolls and cabbage, 971 kcal: LIHAILONG Spicy Instant Pot - Mild Spicy (half pack) 205 g 695 kcal; Beef rolls, thin sliced 125 g 244 kcal; Cabbage, raw 135 g 32 kcal]\nThey: Left over (1 photo)\nYou: The soup left in the wok looks like about 690 ml. I counted about a quarter of the soup base as drunk. [you worked out: LIHAILONG spicy instant pot with beef rolls and cabbage, leftover soup taken off, 409 kcal: LIHAILONG Spicy Instant Pot - Mild Spicy (half pack) 51 g 173 kcal; Beef rolls, thin sliced, simmered in the soup 125 g 194 kcal; Cabbage, simmered in the soup 135 g 42 kcal]" },
   // the owner's hotpot, 15 Nov: the after photo of the broth left; the noodle pack was cut to a quarter as if all soup
@@ -130,6 +133,7 @@ const PRICE = JSON.parse(source.match(/\[HAIKU\]: (\[[^\]]*\])/)[1]);
     };
     if (a.estimate) a.estimate.parts.forEach(x => console.log('  numbers_from: ' + x.numbers_from + ', servings: ' + x.servings) || show(x.name, x.grams, x.kcal, x.protein_g, x.carbs_g, x.fat_g));
     if (!a[a.kind] && a.kind !== "answer") console.log("  MISSING " + a.kind + " object");
+    if (a.recipe) { const ing = a.recipe.ingredients, n = Math.max(1, a.recipe.portions || 1); console.log(`  recipe: serves ${n}, a portion ${Math.round(ing.reduce((t, i) => t + i.kcal, 0) / n)} kcal, P ${Math.round(ing.reduce((t, i) => t + i.protein_g, 0) / n)} g`); console.log("  " + ing.map(i => `${i.grams} g ${i.name}`).join("; ")); }
     if (a.edit) a.edit.actions.forEach(x => show(x.name || x.target, x.grams, x.kcal, x.protein_g, x.carbs_g, x.fat_g));
   }
   fs.writeFileSync(ledgerFile, JSON.stringify(ledger, null, 1));

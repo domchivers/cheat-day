@@ -245,7 +245,7 @@ enum Assistant {
     Decide what they want and fill exactly one of estimate / plan / edit / recipe / lighter (leave the others empty), or kind=answer for a plain question:
     - estimate: a food or plate to log, as one portion with honest kcal and macros, broken into parts (each component with its cooked grams; oil, butter and the sauces in or on it as separate parts).    - plan: 3 to 5 things for the rest of today that fit the calories left, close the protein gap as far as sensible, and leave room for one treat.
     - edit: they're correcting today's list ("I only had 2 eggs", "remove the toast", "add a banana"), or naming several separate foods at once ("110g cabbage, 170g cucumber": one add each): target is the name of the item on today's list to change or remove; for add and update give the plain food name, its grams and the new kcal and macros. Or logging exercise: action workout with activity (Walk, Run, Cycle, Swim, Gym weights, HIIT, Yoga / stretch, Football, Tennis / padel, Hike, Rowing, Elliptical, Dance, Boxing, Climbing), minutes and effort (easy, moderate, hard).
-    - recipe: a dish to cook with realistic ingredient amounts, kcal and macros per ingredient (standard reference values, so they add up), and short method steps. Respect any calorie limit they give.
+    - recipe: a dish to cook with realistic ingredient amounts, kcal and macros per ingredient (standard reference values, so they add up), and short method steps. Respect any calorie limit they give. A dish named for protein (a protein pizza, protein pancakes) is still the real dish: get the protein from ingredients that keep it that (vital wheat gluten or a high-protein flour in a proper yeast dough, more or leaner meat, lower-fat cured meats, higher-protein cheese), never a diet stand-in (no protein powder in a savoury dish, no yoghurt, cauliflower or chicken base instead of a dough, no egg whites in place of whole eggs, no courgette for pasta).
     - lighter: a lighter way to have something, with tips and the lighter serving's numbers.
     - "How much X can I have" (for some calories, or what's left): an estimate of that amount, so they can add it with one tap.
     Hard rules:
@@ -1097,7 +1097,8 @@ enum Assistant {
         // the entry chosen by the part's tags too (bought, natural, skin on…); then a dish their country's table doesn't
         // have (biryani, pad thai, chocolate cheesecake) from the US dish table; then the other countries' (moussaka, rösti)
         for table in [FoodTable.current, .dishes, .world] {
-            if let f = table.best(said, tags: tags(x)), sameFood(said, f.name), sameCooking(said, f.name), plausible(f.kcal, aiKcal: ai, grams: g, name: said, cookedTag: cooked) {
+            if let f = table.best(said, tags: tags(x)), sameFood(said, f.name), !FoodReference.fatClash(said, f.name, fat100: f.f), sameCooking(said, f.name),
+               plausible(f.kcal, aiKcal: ai, grams: g, name: said, cookedTag: cooked) {
                 let y = checked(x, kcal100: f.kcal, p100: f.p, c100: f.c, f100: f.f, source: table.src, match: f.name)
                 return rematched(y, from: f, table: table) ?? y
             }
@@ -1120,6 +1121,8 @@ enum Assistant {
     /// yoghurt sauce (weighed plates, 17 Nov). How it's cooked or cut doesn't count either way.
     static func sameFood(_ said: String, _ entry: String) -> Bool {
         guard on("sameFood") else { return true }
+        // asked for lean, an entry that isn't ("non-fat" Greek yoghurt took the ~10% fat one): see FoodReference.fatClash
+        if FoodReference.fatClash(said, entry) { return false }
         let ignore = describing.union(["raw", "cooked", "fried", "boiled", "baked", "grilled", "steamed", "roasted", "fresh", "with", "for", "and",
                                        "or", "in", "on", "the", "of", "style", "type", "mixed", "chunk", "cube", "strip", "rasher", "wedge", "flesh"])
         // one spelling for the words the tables spell both ways

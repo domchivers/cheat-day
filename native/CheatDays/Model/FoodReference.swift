@@ -65,7 +65,7 @@ enum FoodReference {
     /// Any other ingredient against their country's food table. Far from the AI's number (under 40% or over 2.5 times) probably
     /// means a wrong match rather than a wrong number, so that's left alone.
     private static func correctedFromData(_ g: JSON, grams: Double) -> (item: JSON, changed: Bool) {
-        guard let f = FoodTable.current.find(str(g["name"])), f.kcal > 0 else { return (g, false) }
+        guard let f = FoodTable.current.find(str(g["name"])), f.kcal > 0, !fatClash(str(g["name"]), f.name, fat100: f.f) else { return (g, false) }
         let said = num(g["kcal"]) ?? 0, kcal = f.kcal * grams / 100
         guard said >= kcal * 0.4, said <= kcal * 2.5, abs(said - kcal) > max(kcal * tolerance, 15) else { return (g, false) }
         var x = g
@@ -114,6 +114,21 @@ enum FoodReference {
     static func sameFood(asked: String, got: String) -> Bool {
         let a = asked.lowercased(), g = got.lowercased()
         return !["canned", "cooked", "puffed", "reduced fat", "low fat", "fat free", "dried", "frozen", "breaded", "fried"].contains { g.contains($0) && !a.contains($0) }
+            && !fatClash(asked, got)
+    }
+
+    /// A food asked for as lean that the table's entry isn't (19 Nov: "Greek yoghurt, non-fat" took the ~10% fat Greek
+    /// yoghurt's numbers, 157 kcal and 12 g fat for 120 g; the table has no non-fat Greek). With no lean entry to be
+    /// had, the part keeps its own numbers rather than a full-fat food's. `fat100`, when known, also rules out a "no
+    /// fat" food with more than 1.5 g in 100 g.
+    static func fatClash(_ asked: String, _ entry: String, fat100: Double? = nil) -> Bool {
+        let a = asked.lowercased(), e = entry.lowercased()
+        let none = a.range(of: #"non[- ]?fat|fat[- ]free|no fat|zero fat|\b0\s?%|\bskim(med)?\b"#, options: .regularExpression) != nil
+        let lean = none || a.range(of: #"\blow[- ]fat|\breduced[- ]fat|\blite\b|\blight(er)?\b"#, options: .regularExpression) != nil
+        guard lean else { return false }
+        if e.range(of: #"regular fat|high fat|full fat|full cream|whole milk|~\s?\d{2}\s?% fat|>\s?\d+\s?% fat"#, options: .regularExpression) != nil { return true }
+        if none, let f = fat100, f > 1.5 { return true }
+        return false
     }
 
     /// A dish that says protein on the name should have some: at least a fifth of its calories.
