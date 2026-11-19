@@ -411,7 +411,7 @@ struct ProfileView: View {
 
     private func cell(_ post: JSON) -> some View {
         let photo = str(post["photo"]), kind = str(post["kind"])
-        let label = kind == "workout" ? "\(Int(num(dict(post["extra"])["minutes"]) ?? 0)) min" : kind == "moment" || kind == "photo" ? "" : Fmt.int(num(post["kcal"]) ?? 0)
+        let label = kind == "workout" ? "\(Int(num(dict(post["extra"])["minutes"]) ?? 0)) min" : kind == "moment" || kind == "photo" ? "" : Fmt.int(num(post["kcal"]) ?? 0) + " kcal"   // "kcal" said: the bare number read like a view count (19 Nov)
         return Button {
             if Feed.video(post) != nil { reels = ReelStart(id: str(post["id"])) } else if tab != 6, let i = posts.firstIndex(where: { str($0["id"]) == str(post["id"]) }) { openAt = i } else { openTagged = str(post["id"]) }
         } label: {

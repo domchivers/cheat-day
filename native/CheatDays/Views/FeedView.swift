@@ -429,6 +429,7 @@ struct FeedView: View {
     @State private var deleting: PostBox?   // a post of yours, about to be deleted: asked first
     @State private var zoomed: String?   // the post whose picture two fingers have pinched bigger
     @State private var profileOf: String?
+    @State private var taggedIn: TagBox?   // who is tagged in a post, from the person in its corner
     @State private var tagOf: String?   // a hashtag tapped in a caption: its posts open
     @State private var reportOf: ReportTarget?
     @State private var story: StoryStart?
@@ -490,6 +491,7 @@ struct FeedView: View {
         .sheet(item: $rewording) { b in EditPostSheet(post: b.post) }
         .fullScreenCover(item: $reels) { r in ReelsView(posts: only ?? feed.posts, startAt: r.id) }
         .navigationDestination(item: $profileOf) { id in ProfileView(id: id) }
+        .sheet(item: $taggedIn) { b in TaggedSheet(ids: b.ids) { id in profileOf = id } }
         .navigationDestination(item: $tagOf) { t in HashtagView(tag: t) }
         .reportDialog($reportOf)
         .fullScreenCover(item: $story, onDismiss: { if let p = profileAfterStory { profileAfterStory = nil; profileOf = p } }) { s in
@@ -763,19 +765,30 @@ struct FeedView: View {
                 if let song = Music.of(p) { SongSwitch(song: song, key: "post:" + str(p["id"]), volume: Music.mix(p).song, inVideo: Music.mixed(p)) }
             }
             .overlay(alignment: .bottomLeading) {
-                if str(p["kind"]) != "photo" {   // a photo on its own has no name or numbers
-                // A small tag: the name has so much room and no more, and one too long for it slides along to show
-                // the rest. It ran the photo's whole width, cut the name short, and lay over the sound button of a post
-                // with a song (at the bottom right).
+                // someone tagged: a person in the corner, as Instagram has it, for who's in it (TaggedSheet)
+                let tagged = (dict(p["extra"])["tags"] as? [String]) ?? []
                 HStack(spacing: 8) {
-                    Marquee(text: str(p["name"]), maxWidth: Music.of(p) != nil ? 130 : 160)
-                    Text(n.kcal).foregroundStyle(.secondary).lineLimit(1).fixedSize()
-                    if let pr = n.protein { Text(pr).foregroundStyle(Theme.walk).lineLimit(1).fixedSize() }
+                    if !tagged.isEmpty {
+                        Button { taggedIn = TagBox(ids: tagged) } label: {
+                            Image(systemName: "person.fill").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                                .frame(width: 30, height: 30).background(.black.opacity(0.5), in: Circle())
+                        }
+                        .buttonStyle(.plain).accessibilityLabel(tagged.count == 1 ? "Tagged: 1 person" : "Tagged: \(tagged.count) people")
+                    }
+                    if str(p["kind"]) != "photo" {   // a photo on its own has no name or numbers
+                        // A small tag: the name has so much room and no more, and one too long for it slides along to
+                        // show the rest. It ran the photo's whole width, cut the name short, and lay over the sound
+                        // button of a post with a song (at the bottom right); with the person beside it, less again.
+                        HStack(spacing: 8) {
+                            Marquee(text: str(p["name"]), maxWidth: (Music.of(p) != nil ? 130 : 160) - (tagged.isEmpty ? 0 : 40))
+                            Text(n.kcal).foregroundStyle(.secondary).lineLimit(1).fixedSize()
+                            if let pr = n.protein { Text(pr).foregroundStyle(Theme.walk).lineLimit(1).fixedSize() }
+                        }
+                        .font(.caption.weight(.bold)).padding(.horizontal, 11).padding(.vertical, 7)
+                        .background(.ultraThinMaterial, in: Capsule()).environment(\.colorScheme, .dark)
+                    }
                 }
-                .font(.caption.weight(.bold)).padding(.horizontal, 11).padding(.vertical, 7)
-                .background(.ultraThinMaterial, in: Capsule()).environment(\.colorScheme, .dark)
                 .padding(12)
-                }
             }
     }
 
