@@ -169,18 +169,6 @@ struct ReelsView: View {
         await say(saved ? "Saved to Photos" : "Couldn't save it")
     }
 
-    /// A post's workout stickers where they are on its video, all but see-through, to be tapped (they're drawn into
-    /// the video itself). Laid over the video's own frame: a tall one shown whole, a squarer one filling the screen.
-    private func liveStickers(_ p: JSON) -> some View {
-        let layer = StoryLayer(items: list(dict(p["extra"])["live"]), openWorkout: { o in
-            recipe = PostBox(post: StoryItem.workoutPost(o, owner: str(p["owner"])))
-        }).opacity(0.02)
-        return Group {
-            if let a = num(dict(p["extra"])["aspect"]), a > 0.62 { Color.clear.aspectRatio(a, contentMode: .fit).overlay { layer } }
-            else { layer }
-        }
-    }
-
     /// The page showing, or one either side of it (made ready ahead: see page).
     private func near(_ id: String) -> Bool {
         guard let c = current, let i = posts.firstIndex(where: { str($0["id"]) == c }),
@@ -240,8 +228,6 @@ struct ReelsView: View {
                         else if v.magnification < 0.87, clean { UIImpactFeedbackGenerator(style: .light).impactOccurred(); withAnimation(.easeOut(duration: 0.2)) { clean = false } }
                     })
                 .accessibilityLabel(paused ? "Play" : "Pause").accessibilityAddTraits(.isButton)
-            // a workout sticker on the video opens its workout, over the taps that pause it (as on the feed)
-            if on, !list(dict(p["extra"])["live"]).isEmpty { liveStickers(p) }
             // paused: everything stays where it was, with sound and play in the middle (as Instagram has it; it
             // used to clear the name, caption and buttons away, which read as something having gone wrong)
             if !clean { chrome(p, rx: rx) } else { backAgain }
