@@ -85,11 +85,14 @@ struct MultiClipEditor: View {
     @State private var pipFrom: MoveKey?
     @State private var stripZoom: CGFloat = 1             // the strip pinched wider or narrower (Stage D)
     @State private var stripZoomFrom: CGFloat?
+    @State private var choosingSong = false               // Stage E
+    @State private var beatEvery = 2
+    @State private var tip: Int?                          // the first-time tip showing
     private struct BarGrab { var id: UUID; var mode: Int; var from: Double; var to: Double; var words: [EditText.Word]?; var start = 0.0 }   // mode: 0 move, 1 start, 2 end
     /// One bar on the timeline: a text, sticker or caption, or a voiceover or sound effect.
     /// kind: 0 over the picture (text, stickers, captions), 1 a sound, 2 a clip or photo over it.
     private struct BarItem: Identifiable { let id: UUID; let from: Double; let to: Double; let label: String; let colour: Color; let kind: Int }
-    private enum Panel { case trim, sound, speed, join, look, shape, text, stickers, voice, effects, soundItem, pip, motion }
+    private enum Panel { case trim, sound, speed, join, look, shape, text, stickers, voice, effects, soundItem, pip, motion, beats, templates }
     private var perSecond: CGFloat { 14 * stripZoom }   // strip points a second, pinched wider or narrower
 
     private var total: Double { ClipJoin.total(clips) }
@@ -104,6 +107,7 @@ struct MultiClipEditor: View {
                 PlayerLayerView(player: player).frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onTapGesture { if player.rate == 0 { player.play() } else { player.pause() } }
                     .overlay { overlayLayer }
+                    .overlay(alignment: .bottom) { if let tip { tipCard(tip) } }
                     .overlay(alignment: .top) {
                         if let note {
                             Text(note).font(.subheadline.weight(.semibold)).foregroundStyle(.black).multilineTextAlignment(.center)
@@ -166,6 +170,8 @@ struct MultiClipEditor: View {
         .task(id: texts) { await autosave() }
         .task(id: sounds) { await settle(); await autosave() }
         .task(id: pips) { await settle(); await autosave() }
+        .sheet(isPresented: $choosingSong) { SongPicker { s in Task { @MainActor in await addSong(s) } } }
+        .onAppear { if !UserDefaults.standard.bool(forKey: "editor.tips.1") { tip = 0 } }
         .onChange(of: pipPicks) { _, now in
             guard !now.isEmpty else { return }
             Task { let got = await Self.clips(from: now); pipPicks = []; if let c = got.first { await addPip(c) } }
@@ -257,6 +263,8 @@ struct MultiClipEditor: View {
             case .soundItem: if let k = sounds.firstIndex(where: { $0.id == selectedSound }) { scrubBar; bars; soundItemPanel(k) }
             case .pip: if let k = pips.firstIndex(where: { $0.id == selectedPip }) { scrubBar; bars; pipPanel(k) }
             case .motion: if let i = index { scrubBar; motionPanel(i) }
+            case .beats: scrubBar; strip; beatsPanel
+            case .templates: templatesPanel
             case nil:
                 scrubBar
                 if !texts.isEmpty || !sounds.isEmpty || !pips.isEmpty { bars }
@@ -597,6 +605,11 @@ struct MultiClipEditor: View {
                 }
                 .frame(width: w, height: 40, alignment: .leading).clipped()
                 .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(.white.opacity(0.45), lineWidth: 1))
+                // the song's beats, as yellow ticks (Stage E)
+                ForEach(songBeats.indices, id: \.self) { b in
+                    Rectangle().fill(Color.yellow.opacity(0.8)).frame(width: 1, height: 10)
+                        .offset(x: w * CGFloat(songBeats[b] / span), y: 22).allowsHitTesting(false)
+                }
                 // where it is: yellow while a finger looks through it, as in the single editor; white as it plays
                 Capsule().fill(wasPlaying != nil ? Color.yellow : Color.white).frame(width: 3.5, height: 52)
                     .shadow(color: .black.opacity(0.6), radius: 2)
@@ -776,6 +789,7 @@ struct MultiClipEditor: View {
                         .frame(width: w, height: h)
                         .position(x: r.minX + m.x * r.width, y: r.minY + m.y * r.height)
                         .onTapGesture { selectPip(p.id) }
+                        .accessibilityLabel("Overlay").accessibilityHint("Double tap to change it; drag to move it")
                         .gesture(DragGesture(minimumDistance: 3)
                             .onChanged { v in
                                 if pipFrom == nil { pipFrom = m }
@@ -801,6 +815,8 @@ struct MultiClipEditor: View {
                         .scaleEffect(k)
                         .position(x: r.minX + item.x * r.width, y: r.minY + item.y * r.height)
                         .onTapGesture { selectText(item.id) }
+                        .accessibilityLabel(item.kind == "sticker" ? "Sticker \(item.text)" : item.barLabel)
+                        .accessibilityHint("Double tap to change it; drag to move it")
                         .gesture(DragGesture(minimumDistance: 3)
                             .onChanged { v in
                                 guard let i = texts.firstIndex(where: { $0.id == item.id }) else { return }
@@ -843,6 +859,9 @@ struct MultiClipEditor: View {
                 action("mic.fill", "Voice", on: true) { withAnimation(.snappy) { panel = .voice } }
                 action("sparkles", "Effects", on: true) { withAnimation(.snappy) { panel = .effects } }
                 action("rectangle.inset.topright.filled", "Overlay", on: true) { pipPicking = true }
+                action("music.note", "Music", on: true) { choosingSong = true }
+                action("metronome", "Beats", on: true) { if songBeats.isEmpty { choosingSong = true } else { withAnimation(.snappy) { panel = .beats } } }
+                action("square.grid.2x2", "Templates", on: true) { withAnimation(.snappy) { panel = .templates } }
             }
         }
         .padding(.top, 4)
@@ -852,8 +871,7 @@ struct MultiClipEditor: View {
     /// starts and stops; tap it to change it. Text and stickers, then the sounds.
     private var barItems: [BarItem] {
         texts.map { BarItem(id: $0.id, from: $0.from, to: $0.to, label: $0.barLabel, colour: $0.barColour, kind: 0) }
-            + sounds.map { BarItem(id: $0.id, from: $0.from, to: $0.to, label: ($0.kind == "voice" ? "🎙 " : "✦ ") + $0.name,
-                                   colour: $0.kind == "voice" ? Color(red: 1, green: 0.48, blue: 0.48) : Color(red: 0.55, green: 0.85, blue: 0.85), kind: 1) }
+            + sounds.map { BarItem(id: $0.id, from: $0.from, to: $0.to, label: Self.soundMark($0.kind) + $0.name, colour: Self.soundColour($0.kind), kind: 1) }
             + pips.map { BarItem(id: $0.id, from: $0.from, to: $0.to, label: "▣ Overlay" + ($0.keys.isEmpty ? "" : " · ◆"), colour: Color(red: 0.36, green: 0.82, blue: 0.56), kind: 2) }
     }
 
@@ -917,6 +935,10 @@ struct MultiClipEditor: View {
                 }
                 .onEnded { _ in barGrab = nil })
             .offset(x: x0)
+            .accessibilityElement()
+            .accessibilityLabel("\(item.label), \(Self.clock(item.from)) to \(Self.clock(item.to))")
+            .accessibilityHint("Double tap to change it")
+            .accessibilityAddTraits(.isButton)
     }
 
     private func dragText(_ g: BarGrab, _ dt: Double, span: Double) {
@@ -1066,6 +1088,167 @@ struct MultiClipEditor: View {
             clips[k].clean = url
             flash("Clearer: rumble and hum cut, voices lifted.")
         }
+    }
+
+    // MARK: Stage E: music, beats, templates, tips
+
+    static func soundMark(_ kind: String) -> String { kind == "voice" ? "🎙 " : (kind == "song" ? "♫ " : "✦ ") }
+    static func soundColour(_ kind: String) -> Color {
+        switch kind {
+        case "voice": return Color(red: 1, green: 0.48, blue: 0.48)
+        case "song": return Color(red: 0.77, green: 0.63, blue: 1)
+        default: return Color(red: 0.55, green: 0.85, blue: 0.85)
+        }
+    }
+
+    /// The song's beats, in the video's seconds, while it plays.
+    private var songBeats: [Double] {
+        guard let s = sounds.first(where: { $0.kind == "song" }) else { return [] }
+        return (s.beats ?? []).map { s.from + $0 - s.start }.filter { $0 >= s.from - 0.001 && $0 <= s.to }
+    }
+
+    /// A song from the app's music under the whole edit (one at a time), its beats found.
+    private func addSong(_ s: Song) async {
+        joining = true
+        defer { joining = false }
+        guard let mix = await SongMix.make(s, song: 1, clip: 1) else { flash("Couldn't get that song. Check your connection."); return }
+        let beats = await Beats.find(mix.file, from: mix.from, length: mix.span)
+        sounds.removeAll { $0.kind == "song" }
+        sounds.append(EditSound(kind: "song", name: s.title, file: mix.file, from: 0, start: mix.from, length: max(0.5, min(mix.span, total)),
+                                full: mix.from + mix.span, beats: beats))
+        if beats.count > 2 { withAnimation(.snappy) { panel = .beats } } else { flash("Added \(s.title). No steady beat found in it to cut to.") }
+    }
+
+    /// Beats: the song's beats, and the clips cut to land on them.
+    private var beatsPanel: some View {
+        VStack(spacing: 10) {
+            HStack {
+                Text(sounds.first(where: { $0.kind == "song" })?.name ?? "No song").font(.subheadline.weight(.semibold))
+                Spacer()
+                Button("Change song") { choosingSong = true }.font(.caption.weight(.bold)).foregroundStyle(.white)
+            }
+            HStack(spacing: 6) {
+                chip("Every beat", on: beatEvery == 1) { beatEvery = 1 }
+                chip("2 beats", on: beatEvery == 2) { beatEvery = 2 }
+                chip("4 beats", on: beatEvery == 4) { beatEvery = 4 }
+            }
+            Button { cutToBeats(every: beatEvery) } label: {
+                Label("Cut to beats", systemImage: "scissors").font(.headline).foregroundStyle(.black).frame(maxWidth: .infinity).frame(height: 44)
+                    .background(.white, in: Capsule())
+            }
+            .buttonStyle(.plain).disabled(songBeats.count < 3).opacity(songBeats.count < 3 ? 0.4 : 1)
+            Text("\(songBeats.count) beats in the song, the yellow ticks above. Each clip is cut to end on one.")
+                .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        }
+    }
+
+    /// Each clip cut to end on the next beat (every `n`th) after it starts, as long as it has that much in it.
+    private func cutToBeats(every n: Int) {
+        let grid = songBeats
+        guard grid.count > 2 else { flash("No beat found in this song."); return }
+        let cuts = stride(from: 0, to: grid.count, by: max(1, n)).map { grid[$0] }
+        var all = clips, cursor = 0.0
+        for i in all.indices {
+            let c = all[i], rate = max(c.speed, 0.01)
+            let most = (c.length - c.start) / rate
+            if let end = cuts.first(where: { $0 > cursor + 0.4 && $0 - cursor <= most + 0.001 }) {
+                all[i].end = min(c.length, c.start + (end - cursor) * rate)
+                if let se = all[i].soundEnd { all[i].soundEnd = min(se, all[i].end) }
+                if let ss = all[i].soundStart { all[i].soundStart = min(ss, all[i].end) }
+            }
+            cursor += all[i].span - ClipJoin.overlap(all, after: i)
+        }
+        change { _ in all }
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        seek(0); player.play()
+    }
+
+    /// A ready-made edit the clips drop into (Stage E): a song, cut to its beat, the joins, a look, and titles.
+    private struct Template {
+        let name: String, about: String, icon: String, song: String, every: Int, join: String?, look: String, titles: [String], recipe: Bool
+    }
+    private static let templates = [
+        Template(name: "Gym montage", about: "Cut to the beat, whips between clips, punchy colour", icon: "dumbbell",
+                 song: "backbeat", every: 2, join: "Whip", look: "Vivid", titles: [], recipe: false),
+        Template(name: "Cooking reel", about: "Warm colour, soft crossfades, your recipe's steps on it", icon: "fork.knife",
+                 song: "city-sunshine", every: 4, join: "Crossfade", look: "Warm", titles: [], recipe: true),
+        Template(name: "Day of eating", about: "A meal a clip, each labelled, sliding along", icon: "sun.max",
+                 song: "be-chillin", every: 4, join: "Slide", look: "Pop", titles: ["Breakfast", "Lunch", "Snack", "Dinner", "Dessert"], recipe: false),
+        Template(name: "Before and after", about: "Two clips, labelled, through black between", icon: "square.split.2x1",
+                 song: "inspiration", every: 4, join: "Fade to black", look: "Normal", titles: ["Before", "After"], recipe: false),
+    ]
+
+    private var templatesPanel: some View {
+        VStack(spacing: 8) {
+            ForEach(Self.templates.indices, id: \.self) { k in
+                let t = Self.templates[k]
+                Button { Task { await apply(t) } } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: t.icon).font(.system(size: 18, weight: .semibold)).frame(width: 40, height: 40)
+                            .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(t.name).font(.subheadline.weight(.bold))
+                            Text(t.about).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Spacer()
+                    }
+                    .foregroundStyle(.white)
+                }
+                .buttonStyle(.plain)
+            }
+            Text("Your clips stay as they are; the template sets the song, the cuts, the joins and the look. Undo takes the cuts back.")
+                .font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        }
+    }
+
+    private func apply(_ t: Template) async {
+        withAnimation(.snappy) { panel = nil }
+        if let s = Music.all.first(where: { $0.id == t.song }) { await addSong(s) }
+        withAnimation(.snappy) { panel = nil }
+        if songBeats.count > 2 { cutToBeats(every: t.every) }
+        let kind = t.join, l = t.look
+        change { all in
+            var all = all
+            for i in all.indices {
+                all[i].look = l
+                all[i].transition = i + 1 < all.count ? kind.map { ClipTransition(kind: $0, length: 0.4) } : nil
+            }
+            return all
+        }
+        // a title on each clip, near the top
+        texts.removeAll { $0.kind == "text" && t.titles.contains($0.text) }
+        let starts = ClipJoin.starts(clips)
+        for i in clips.indices where i < t.titles.count {
+            texts.append(EditText(kind: "text", text: t.titles[i], style: "Box", x: 0.5, y: 0.14, from: starts[i], to: starts[i] + clips[i].span))
+        }
+        if t.recipe { attachMode = "recipe" }
+        flash("\(t.name): done. Change anything you like.")
+    }
+
+    /// The first time the editor's opened, three tips one after another.
+    private static let tips = [
+        "Tap a clip on the strip for its tools: trim, split, speed, filters, sound and more.",
+        "With no clip picked, the row along the bottom adds text, captions, voice, music and more over the whole video.",
+        "Everything added shows as a bar under the video: drag it along, or by an end, for when it shows.",
+    ]
+
+    private func tipCard(_ k: Int) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(Self.tips[k]).font(.subheadline.weight(.semibold)).foregroundStyle(.black).fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Text("\(k + 1) of \(Self.tips.count)").font(.caption).foregroundStyle(.black.opacity(0.55))
+                Spacer()
+                Button(k + 1 < Self.tips.count ? "Next" : "Got it") {
+                    withAnimation(.snappy) {
+                        if k + 1 < Self.tips.count { tip = k + 1 } else { tip = nil; UserDefaults.standard.set(true, forKey: "editor.tips.1") }
+                    }
+                }
+                .font(.subheadline.weight(.bold)).foregroundStyle(.white).padding(.horizontal, 14).frame(height: 32).background(.black, in: Capsule())
+            }
+        }
+        .padding(14).background(.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(.horizontal, 18).padding(.bottom, 10)
+        .transition(.opacity)
     }
 
     // MARK: Stage D: overlays and movement

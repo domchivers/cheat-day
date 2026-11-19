@@ -5,7 +5,7 @@ import AVFoundation
 /// plays, the clips' own sound dips under it.
 struct EditSound: Identifiable, Codable, Equatable {
     var id = UUID()
-    var kind: String            // "voice" or "effect"
+    var kind: String            // "voice", "effect" or "song"
     var name: String            // an effect's name, or "Voice 1"
     var file: URL?              // a voiceover's recording (an effect's sound is made when it's wanted)
     var from: Double            // where it starts in the video
@@ -13,6 +13,7 @@ struct EditSound: Identifiable, Codable, Equatable {
     var length: Double          // how much of it plays
     var volume: Float = 1
     var full = 0.0              // how long its sound is in all (0: not known)
+    var beats: [Double]? = nil  // a song's beats, in its file's own seconds (Stage E)
     var to: Double { from + length }
 
     /// The file it plays from.
@@ -203,6 +204,78 @@ enum Clarity {
             if status == .success { try? written.write(from: buffer) } else if status == .error { break }
         }
         player.stop(); engine.stop()
+        return out
+    }
+}
+
+/// A song's beats (Stage E): its sound read small, where it gets suddenly louder found, the steady pulse through
+/// those (its tempo, 70 to 180 a minute, and where the first beat falls), and every beat of it.
+enum Beats {
+    static let rate = 11_025.0
+
+    /// The beats of a part of a song, in the song file's own seconds.
+    static func find(_ url: URL, from: Double, length: Double) async -> [Double] {
+        let asset = AVURLAsset(url: url)
+        guard let track = try? await asset.loadTracks(withMediaType: .audio).first, let reader = try? AVAssetReader(asset: asset) else { return [] }
+        reader.timeRange = CMTimeRange(start: CMTime(seconds: from, preferredTimescale: 600), duration: CMTime(seconds: length, preferredTimescale: 600))
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
+            AVFormatIDKey: kAudioFormatLinearPCM, AVLinearPCMBitDepthKey: 32, AVLinearPCMIsFloatKey: true,
+            AVLinearPCMIsBigEndianKey: false, AVLinearPCMIsNonInterleaved: false, AVNumberOfChannelsKey: 1, AVSampleRateKey: rate])
+        guard reader.canAdd(output) else { return [] }
+        reader.add(output)
+        guard reader.startReading() else { return [] }
+        var samples: [Float] = []
+        while let sb = output.copyNextSampleBuffer(), let block = CMSampleBufferGetDataBuffer(sb) {
+            let n = CMBlockBufferGetDataLength(block)
+            var chunk = [Float](repeating: 0, count: n / 4)
+            CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: n, destination: &chunk)
+            samples += chunk
+        }
+        return grid(samples, rate: rate).map { $0 + from }
+    }
+
+    /// The beats in some sound, seconds from its start.
+    static func grid(_ samples: [Float], rate: Double) -> [Double] {
+        let hop = 128, step = Double(hop) / rate
+        var energy: [Float] = []
+        var i = 0
+        while i + hop <= samples.count {
+            var e: Float = 0
+            for j in i..<(i + hop) { e += samples[j] * samples[j] }
+            energy.append((e / Float(hop)).squareRoot())
+            i += hop
+        }
+        guard energy.count > 100 else { return [] }
+        // how suddenly it gets louder, moment to moment
+        var onset = [Float](repeating: 0, count: energy.count)
+        for k in 1..<energy.count { onset[k] = max(0, log(1 + 100 * energy[k]) - log(1 + 100 * energy[k - 1])) }
+        func at(_ x: Double) -> Float {
+            let k = Int(x.rounded())
+            return k >= 0 && k < onset.count ? onset[k] : 0
+        }
+        // the pulse: the beat length (in steps) and start that line up with the most of it, leaning a little towards
+        // 120 a minute when two are close (a song at 60 or 240 is heard as 120)
+        var best = (score: Float(-1), period: 0.0, phase: 0.0)
+        var period = 60.0 / 180.0 / step
+        let longest = 60.0 / 70.0 / step
+        while period <= longest {
+            let bpm = 60 / (period * step)
+            let lean = Float(exp(-pow(log2(bpm / 120), 2) * 0.6))
+            var phase = 0.0
+            while phase < period {
+                var sum: Float = 0, n = 0
+                var x = phase
+                while x < Double(onset.count) { sum += at(x); n += 1; x += period }
+                let score = n > 0 ? sum / Float(n) * lean : 0
+                if score > best.score { best = (score, period, phase) }
+                phase += 1
+            }
+            period += 0.1
+        }
+        guard best.period > 0 else { return [] }
+        var out: [Double] = []
+        var x = best.phase
+        while x < Double(onset.count) { out.append(x * step); x += best.period }
         return out
     }
 }
