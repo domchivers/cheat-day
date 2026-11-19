@@ -125,7 +125,9 @@ struct BodyView: View {
             }
         }
         .padding(.vertical, 4)
-        .sheet(item: $editing) { k in GoalSheet(kind: k, now: trend).presentationDetents([.height(320)]) }
+        // as tall as the number and its line (19 Nov: 320 left a band of empty sheet above the keyboard); a goal weight
+        // already set has Remove goal under it too
+        .sheet(item: $editing) { k in GoalSheet(kind: k, now: trend).presentationDetents([.height(k == .weight && pos(store.doc["goalWeight"]) != nil ? 215 : 175)]) }
     }
 
     /// A goal's name and its number in a box: tap to type it.
