@@ -79,8 +79,8 @@ struct VolumeKey: Equatable, Codable {
 }
 
 enum ClipJoin {
-    /// The longest a joined post can be (Stories.compress keeps 30 seconds).
-    static let longest = 30.0
+    /// The longest a joined post can be (Stories.compress keeps that much).
+    static let longest = Stories.longest
     static let photoSeconds = 3.0
     private static func t(_ s: Double) -> CMTime { CMTime(seconds: s, preferredTimescale: 600) }
 

@@ -235,12 +235,32 @@ final class Stories {
         }
     }
 
-    /// A video as a smaller mp4: the trimmed part (at most 30 seconds), through the filter, with or without sound.
+    /// The longest a posted video can be (20 Nov: 90 seconds, up from 30), as long as it fits in a file.
+    static let longest = 90.0
+    /// The storage takes a file of at most 50 MB (Supabase's free plan, which can't be raised): kept a little under.
+    static let mostBytes = 49_000_000
+
+    /// Too big for the storage even at the lower quality: how long it could be.
+    struct TooBig: LocalizedError {
+        let fits: Int
+        var errorDescription: String? { "This video's too big to post. Trim it to about \(fits) seconds and try again." }
+    }
+
+    /// Each video made for posting, newest first: how long it was, how big, at which quality (seen on the
+    /// Performance page), so the real longest that fits can be read off the owner's own videos.
+    static func noteSize(seconds: Double, bytes: Int, quality: String) {
+        let line = String(format: "%.0f s · %.1f MB · %@", seconds, Double(bytes) / 1_000_000, quality)
+        var all = UserDefaults.standard.stringArray(forKey: "video.sizes") ?? []
+        all.insert(line, at: 0)
+        UserDefaults.standard.set(Array(all.prefix(20)), forKey: "video.sizes")
+    }
+
+    /// A video as a smaller mp4: the trimmed part (at most `longest`), through the filter, with or without sound.
     /// Crop is the part of the picture to keep, as fractions of it from the top left (a post's video, zoomed and moved in the editor).
     static func compress(_ url: URL, filter: String = "Normal", range: ClosedRange<Double>? = nil, muted: Bool = false, crop: CGRect? = nil, overlay: UIImage? = nil, turns: Int = 0, placed: ClipEdit? = nil, mix: SongMix? = nil) async throws -> (Data, Double) {
         let asset = AVURLAsset(url: url)
         let full = (try? await asset.load(.duration).seconds) ?? 15
-        let start = range?.lowerBound ?? 0, end = min(range?.upperBound ?? full, start + 30)
+        let start = range?.lowerBound ?? 0, end = min(range?.upperBound ?? full, start + longest)
         let span = CMTimeRange(start: CMTime(seconds: start, preferredTimescale: 600), end: CMTime(seconds: end, preferredTimescale: 600))
         // the picture, and the sound unless it's off, cut to the part kept
         let comp = AVMutableComposition()
@@ -346,7 +366,26 @@ final class Stories {
         defer { try? FileManager.default.removeItem(at: out) }
         // a mix that didn't come out isn't passed off as one: the caller posts it unmixed instead
         if mix != nil, export.status != .completed { throw MixFailed() }
-        return (try Data(contentsOf: export.status == .completed ? out : url), end - start)
+        guard export.status == .completed, let made = try? Data(contentsOf: out) else { return (try Data(contentsOf: url), end - start) }
+        if made.count <= mostBytes {
+            noteSize(seconds: end - start, bytes: made.count, quality: "1080p")
+            return (made, end - start)
+        }
+        // Too big at 1080p (a long video, or a busy one): again, smaller, with everything the same. Only if that
+        // won't fit either is it turned away, saying how long it could be.
+        let small = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
+        defer { try? FileManager.default.removeItem(at: small) }
+        if let again = AVAssetExportSession(asset: comp, presetName: AVAssetExportPreset960x540) {
+            again.outputURL = small; again.outputFileType = .mp4; again.shouldOptimizeForNetworkUse = true
+            again.videoComposition = export.videoComposition; again.audioMix = export.audioMix
+            await again.export()
+            if again.status == .completed, let less = try? Data(contentsOf: small), less.count <= mostBytes {
+                noteSize(seconds: end - start, bytes: less.count, quality: "540p")
+                return (less, end - start)
+            }
+        }
+        noteSize(seconds: end - start, bytes: made.count, quality: "too big")
+        throw TooBig(fits: max(5, Int((end - start) * Double(mostBytes) / Double(made.count))))
     }
 }
 

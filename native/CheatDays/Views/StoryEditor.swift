@@ -1299,8 +1299,8 @@ struct StoryEditor: View {
                 let from = grabbed ?? (left ? range.lowerBound : range.upperBound)
                 if grabbed == nil { grabbed = from; UISelectionFeedbackGenerator().selectionChanged() }
                 let at = min(length, max(0, from + Double(v.translation.width / inner) * length))
-                if left { let s = min(at, range.upperBound - 1); range = max(0, max(s, range.upperBound - 30))...range.upperBound }
-                else { let e = max(at, range.lowerBound + 1); range = range.lowerBound...min(length, min(e, range.lowerBound + 30)) }
+                if left { let s = min(at, range.upperBound - 1); range = max(0, max(s, range.upperBound - Stories.longest))...range.upperBound }
+                else { let e = max(at, range.lowerBound + 1); range = range.lowerBound...min(length, min(e, range.lowerBound + Stories.longest)) }
                 scrub = left ? range.lowerBound : range.upperBound
             }.onEnded { _ in scrub = nil; grabbed = nil })
             .accessibilityLabel(left ? "Start" : "End")
@@ -1344,7 +1344,7 @@ struct StoryEditor: View {
         if let video {
             let asset = AVURLAsset(url: video)
             length = (try? await asset.load(.duration).seconds) ?? 0
-            range = 0...min(length, 30)
+            range = 0...min(length, Stories.longest)
             // the part kept last time, if this is the clip it was kept from
             if let r = startEdit?.range, r.lowerBound >= 0, r.upperBound <= length + 0.05, r.upperBound - r.lowerBound > 0.2 {
                 range = r.lowerBound...min(length, r.upperBound)

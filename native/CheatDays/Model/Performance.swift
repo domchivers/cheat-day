@@ -102,6 +102,11 @@ struct PerformanceView: View {
                 Section { ShareLink(items: files) { Label("Share all reports", systemImage: "square.and.arrow.up") } }
                     footer: { Text("Kept on this phone only. Share them to see how smooth scrolling was, and any hang or crash.") }
             }
+            // how big each posted video came out: the longest that fits in 50 MB, read off real videos
+            let sizes = UserDefaults.standard.stringArray(forKey: "video.sizes") ?? []
+            if !sizes.isEmpty {
+                Section("Videos made for posting") { ForEach(sizes.indices, id: \.self) { Text(sizes[$0]).font(.subheadline).monospacedDigit() } }
+            }
         }
         .navigationTitle("Performance reports").navigationBarTitleDisplayMode(.inline)
     }

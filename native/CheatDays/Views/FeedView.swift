@@ -305,7 +305,7 @@ final class Feed {
         let words = [str(r["name"]), str(r["caption"])].filter { !$0.isEmpty }.joined(separator: "\n")
         var unsure = false
         if str(r["kind"]) != "moment" { unsure = try await Moderation.shared.gate(kind: "post", text: words, images: (photo.map { [$0] } ?? []) + more) }
-        // a video: up to 30 seconds as mp4 into the same bucket as stories' videos; its first frame is the photo
+        // a video: up to Stories.longest as mp4 into the same bucket as stories' videos; its first frame is the photo
         if let video {
             var x = dict(r["extra"])
             // with a song: the song into the video's own sound, one file (see SongMix). If that can't be done it goes
@@ -1369,7 +1369,7 @@ struct ComposeSheet: View {
                         .padding(.horizontal, 14).padding(.top, 14)
                     }
                     if movie != nil {
-                        Text("Up to 30 seconds are posted.").font(.caption).foregroundStyle(.secondary)
+                        Text("Up to \(Int(Stories.longest)) seconds are posted.").font(.caption).foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.top, 8)
                     }
                     Text("ADD TO YOUR POST").font(.caption.weight(.bold)).kerning(1).foregroundStyle(.secondary)

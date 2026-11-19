@@ -93,7 +93,7 @@ struct StoryComposer: View {
                 .padding(.horizontal, 12)
             Spacer()
             Text("Add to your story").font(.title2.bold()).foregroundStyle(.white)
-            Text("A photo or a video up to 30 seconds. It's up for 24 hours.").font(.subheadline).foregroundStyle(.white.opacity(0.7))
+            Text("A photo or a video up to \(Int(Stories.longest)) seconds. It's up for 24 hours.").font(.subheadline).foregroundStyle(.white.opacity(0.7))
             Button { camera = true } label: { bigButton("camera.fill", "Camera") }.buttonStyle(.plain)
             PhotosPicker(selection: $picked, matching: .any(of: [.images, .videos])) { bigButton("photo.on.rectangle", "Library") }
             if loading { ProgressView().tint(.white) }
