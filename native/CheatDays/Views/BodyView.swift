@@ -68,6 +68,8 @@ struct BodyView: View {
         }
         .scrollContentBackground(.hidden)
         .background(Theme.bg)
+        // as a tab it runs on behind the tab bar (PlanTabs), so its last rows need room to come up above it
+        .contentMargins(.bottom, embedded ? 100 : 0, for: .scrollContent)
         .titled("Weigh-ins", unless: embedded)
         .toolbar {
             // as a tab of PlanTabs, only while its tab is showing

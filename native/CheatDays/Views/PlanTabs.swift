@@ -20,6 +20,8 @@ struct PlanTabs: View {
                 BodyView(embedded: true, active: tab == 1).tag(1)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
+            // down behind the tab bar, as the screens it holds were on their own (19 Nov: they stopped above it, on black)
+            .ignoresSafeArea(.container, edges: .bottom)
         }
         .background(Theme.bg)
         .navigationTitle("Your plan")
