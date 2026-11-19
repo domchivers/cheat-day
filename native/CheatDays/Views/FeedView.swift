@@ -1141,6 +1141,7 @@ struct SongSwitch: View {
             .overlay(alignment: .bottomTrailing) {
                 Button { SongPlayer.shared.flip(song, key: key, volume: volume, inVideo: inVideo) } label: {
                     Image(systemName: on ? "speaker.wave.2.fill" : "speaker.slash.fill").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                        .contentTransition(.identity).animation(nil, value: on)
                         .frame(width: 32, height: 32).background(.black.opacity(0.45), in: Circle())
                 }
                 .buttonStyle(.plain).padding(10)
@@ -1184,6 +1185,7 @@ struct FeedVideo: View {
                 if songKey == nil {
                 Button { muted.toggle(); loud(!muted) } label: {
                     Image(systemName: muted ? "speaker.slash.fill" : "speaker.wave.2.fill").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                        .contentTransition(.identity).animation(nil, value: muted)
                         .frame(width: 32, height: 32).background(.black.opacity(0.45), in: Circle())
                 }
                 .buttonStyle(.plain).padding(10).accessibilityLabel(muted ? "Sound on" : "Sound off")

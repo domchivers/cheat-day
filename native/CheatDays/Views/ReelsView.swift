@@ -259,6 +259,7 @@ struct ReelsView: View {
         VStack(spacing: 14) {
             Button { muted.toggle() } label: {
                 Image(systemName: muted ? "speaker.slash.fill" : "speaker.wave.2.fill").font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
+                    .contentTransition(.identity).animation(nil, value: muted)
                     .frame(width: 45, height: 45).background(.black.opacity(0.45), in: Circle())
             }
             .buttonStyle(.plain).accessibilityLabel(muted ? "Sound on" : "Sound off")
