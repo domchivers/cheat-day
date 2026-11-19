@@ -70,6 +70,7 @@ enum ChainMenu {
         var scored: [(Item, Double)] = c.items.map { it in
             let shared = Double(q.intersection(it.words).count)
             var s = 2 * shared / Double(q.count + it.words.count)
+            if !q.isSubset(of: it.words) { s = 0 }   // every word they said is in its name: "vegan sausage roll" isn't the Sausage Roll
             let iSize = it.words.intersection(sizes)
             // a size asked for must be the size matched; with none asked, the usual size of it
             if !qSize.isEmpty, !iSize.isEmpty, qSize != iSize { s -= 0.5 }
@@ -117,12 +118,13 @@ enum ChainMenu {
 
     // MARK: names into words
 
-    private static let sizes: Set<String> = ["small", "medium", "large", "regular", "kids", "junior", "mini"]
+    private static let sizes: Set<String> = ["small", "medium", "large", "regular", "kids", "junior", "mini", "short"]
     private static let stop: Set<String> = ["the", "a", "an", "and", "with", "of", "&", "in", "on", "meal", "x1"]
     private static let same: [String: String] = [
         "lrg": "large", "lg": "large", "med": "medium", "md": "medium", "reg": "regular", "sml": "small", "sm": "small",
         "chips": "fries", "coca": "coke", "cola": "coke", "zero": "nosugar", "nuggets": "mcnuggets", "burgers": "burger",
         "wraps": "wrap", "drinks": "drink", "pcs": "pieces", "pc": "pieces", "piece": "pieces",
+        "tall": "small", "grande": "medium", "venti": "large",   // Starbucks' sizes
     ]
 
     static func plain(_ s: String) -> String {
