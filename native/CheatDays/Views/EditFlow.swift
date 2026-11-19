@@ -25,17 +25,21 @@ struct EditFlow: View {
         ZStack {
             Theme.bg.ignoresSafeArea()
             if let clips {
-                MultiClipEditor(clips: clips, draftID: draftID, startSoundOf: draftSound, close: { self.clips = nil; drafts = EditDrafts.all() }, done: { url in
-                    joined = url; self.clips = nil
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { sharing = true }
-                })
+                MultiClipEditor(clips: clips, draftID: draftID, startSoundOf: draftSound,
+                                close: { self.clips = nil; draftID = nil; draftSound = nil; refreshDrafts() },
+                                done: { url in
+                                    joined = url; self.clips = nil
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { sharing = true }
+                                },
+                                autosaved: { draftID = $0 },   // a new edit's own draft, let go once it's shared
+                                keepsDraft: true)
             } else if let joined {
                 // the edit, playing, with what to do with it
                 ZStack(alignment: .top) {
                     Color.black.ignoresSafeArea()
                     LoopingVideo(url: joined).aspectRatio(9.0 / 16.0, contentMode: .fit).frame(maxHeight: .infinity)
                     HStack {
-                        Button { self.joined = nil } label: {
+                        Button { backToClips() } label: {
                             Image(systemName: "chevron.backward").font(.headline).frame(width: 40, height: 40).background(.white.opacity(0.15), in: Circle())
                         }
                         .accessibilityLabel("Back to the clips")
@@ -64,12 +68,12 @@ struct EditFlow: View {
                            editMode: true,
                            drafts: drafts,
                            openDraft: { d in draftID = d.id; draftSound = d.soundOf; clips = d.clips },
-                           deleteDraft: { d in EditDrafts.delete(d.id); drafts = EditDrafts.all() })
+                           deleteDraft: { d in EditDrafts.queue.async { EditDrafts.delete(d.id) }; refreshDrafts() })
             }
             if working { Color.black.opacity(0.4).ignoresSafeArea(); ProgressView().tint(.white) }
         }
         .preferredColorScheme(.dark)
-        .onAppear { drafts = EditDrafts.all() }
+        .onAppear { refreshDrafts() }
         // All albums, or a library the app can't see: the system's own picker
         .photosPicker(isPresented: $library, selection: $picks, maxSelectionCount: 10, selectionBehavior: .ordered, matching: .any(of: [.images, .videos]))
         .onChange(of: picks) { _, now in
@@ -116,8 +120,23 @@ struct EditFlow: View {
     private func go(_ open: @escaping (URL) -> Void) {
         guard let joined else { return }
         sharing = false
-        if let draftID { EditDrafts.delete(draftID); self.draftID = nil }
+        if let id = draftID { EditDrafts.queue.async { EditDrafts.delete(id) }; draftID = nil }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { open(joined) }
+    }
+
+    /// Back from the finished video to its clips, as they were left (its auto-saved draft).
+    private func backToClips() {
+        joined = nil
+        guard let id = draftID else { refreshDrafts(); return }
+        EditDrafts.queue.async {
+            let d = EditDrafts.all().first { $0.id == id }
+            DispatchQueue.main.async { if let d { draftSound = d.soundOf; clips = d.clips } else { draftID = nil; refreshDrafts() } }
+        }
+    }
+
+    /// The drafts as they are once any saving still going has finished.
+    private func refreshDrafts() {
+        EditDrafts.queue.async { let all = EditDrafts.all(); DispatchQueue.main.async { drafts = all } }
     }
 
     private func save() {

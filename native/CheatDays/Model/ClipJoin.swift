@@ -20,8 +20,13 @@ struct Clip: Identifiable, Equatable, Codable {
     var fadeOut: Double = 0
     /// Volume keyframes, as CapCut's diamonds: the volume at moments of the file's own time, eased between; none: `volume` throughout.
     var keys: [VolumeKey] = []
+    /// How fast it plays, 0.25 to 4 (Stage A1): its sound kept in pitch.
+    var speed: Double = 1
 
+    /// The part of its file kept, seconds of the file.
     var duration: Double { max(0, end - start) }
+    /// How long it lasts in the video: what's kept, at its speed.
+    var span: Double { duration / max(speed, 0.01) }
     var heardStart: Double { max(start, soundStart ?? start) }
     var heardEnd: Double { min(end, soundEnd ?? end) }
 
@@ -108,7 +113,7 @@ enum ClipJoin {
         var instructions: [AVMutableVideoCompositionInstruction] = []
         let levels = AVMutableAudioMixInputParameters(track: at)
         var cursor = 0.0
-        let total = clips.reduce(0) { $0 + $1.duration }
+        let total = clips.reduce(0) { $0 + $1.span }
         for c in clips where c.duration > 0.05 {
             let asset = AVURLAsset(url: c.source)
             guard let v = try? await asset.loadTracks(withMediaType: .video).first else { continue }
@@ -116,6 +121,9 @@ enum ClipJoin {
             let has = (try? await v.load(.timeRange)) ?? CMTimeRange(start: .zero, end: t(c.end))
             let shown = max(c.start, has.start.seconds), until = min(c.end, has.end.seconds), dur = until - shown
             guard dur > 0.05, (try? vt.insertTimeRange(CMTimeRange(start: t(shown), end: t(until)), of: v, at: t(cursor))) != nil else { continue }
+            // at its speed: the stretch put in, made longer or shorter
+            let rate = max(c.speed, 0.01), lasts = dur / rate
+            if abs(rate - 1) > 0.001 { vt.scaleTimeRange(CMTimeRange(start: t(cursor), duration: t(dur)), toDuration: t(lasts)) }
             // the clip filled into the frame: turned the right way up, scaled to cover it, centred
             let n = (try? await v.load(.naturalSize)) ?? frame, tf = (try? await v.load(.preferredTransform)) ?? .identity
             let up = CGRect(origin: .zero, size: n).applying(tf)
@@ -126,23 +134,25 @@ enum ClipJoin {
             let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: vt)
             layer.setTransform(place, at: t(cursor))
             let ins = AVMutableVideoCompositionInstruction()
-            ins.timeRange = CMTimeRange(start: t(cursor), duration: t(dur))
+            ins.timeRange = CMTimeRange(start: t(cursor), duration: t(lasts))
             ins.layerInstructions = [layer]
             instructions.append(ins)
             // its own sound, unless one clip's sound plays over everything
             if soundOf == nil, c.soundOn, !c.still, c.heardEnd - c.heardStart > 0.05,
                let a = try? await asset.loadTracks(withMediaType: .audio).first {
-                let from = cursor + (c.heardStart - shown), span = min(c.heardEnd, until) - c.heardStart
-                if span > 0.05 { try? at.insertTimeRange(CMTimeRange(start: t(c.heardStart), duration: t(span)), of: a, at: t(from)) }
+                let from = cursor + (c.heardStart - shown) / rate, span = min(c.heardEnd, until) - c.heardStart
+                if span > 0.05, (try? at.insertTimeRange(CMTimeRange(start: t(c.heardStart), duration: t(span)), of: a, at: t(from))) != nil, abs(rate - 1) > 0.001 {
+                    at.scaleTimeRange(CMTimeRange(start: t(from), duration: t(span)), toDuration: t(span / rate))
+                }
                 // its level through it, from its keyframes and fades: a straight ramp between each moment it turns
                 let marks = c.turns.filter { $0 <= c.heardStart + span }
                 levels.setVolume(c.level(at: c.heardStart), at: t(from))
                 for (p, q) in zip(marks, marks.dropFirst()) where q - p > 0.01 {
                     levels.setVolumeRamp(fromStartVolume: c.level(at: p), toEndVolume: c.level(at: q),
-                                         timeRange: CMTimeRange(start: t(from + p - c.heardStart), duration: t(q - p)))
+                                         timeRange: CMTimeRange(start: t(from + (p - c.heardStart) / rate), duration: t((q - p) / rate)))
                 }
             }
-            cursor += dur
+            cursor += lasts
         }
         // one clip's sound for all of it
         if let id = soundOf, let c = clips.first(where: { $0.id == id }), !c.still,
@@ -175,12 +185,13 @@ enum ClipJoin {
         let out = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mov")
         export.outputURL = out; export.outputFileType = .mov
         export.videoComposition = vc; export.audioMix = mix
+        export.audioTimePitchAlgorithm = .spectral   // a clip at another speed keeps its voice
         await export.export()
         return export.status == .completed ? out : nil
     }
 
     /// A photo as a short silent video (photoSeconds), at most 1080 across, so it can sit among clips.
-    static func still(_ image: UIImage) async -> URL? {
+    static func still(_ image: UIImage, seconds: Double = photoSeconds) async -> URL? {
         let k = min(1, 1080 / max(image.size.width, 1))
         let size = CGSize(width: (image.size.width * k / 2).rounded() * 2, height: (image.size.height * k / 2).rounded() * 2)
         guard size.width >= 16, size.height >= 16 else { return nil }
@@ -210,14 +221,23 @@ enum ClipJoin {
         }
         CVPixelBufferUnlockBaseAddress(px, [])
         // the same picture at the start and the end: a still for photoSeconds
-        for time in [CMTime.zero, t(photoSeconds - 1.0 / 30)] {
+        for time in [CMTime.zero, t(seconds - 1.0 / 30)] {
             while !input.isReadyForMoreMediaData { try? await Task.sleep(nanoseconds: 5_000_000) }
             adaptor.append(px, withPresentationTime: time)
         }
         input.markAsFinished()
-        writer.endSession(atSourceTime: t(photoSeconds))
+        writer.endSession(atSourceTime: t(seconds))
         await writer.finishWriting()
         return writer.status == .completed ? out : nil
+    }
+
+    /// The frame at a moment of a clip's file, exactly (a freeze holds it).
+    static func frame(_ c: Clip, at seconds: Double) async -> UIImage? {
+        let gen = AVAssetImageGenerator(asset: AVURLAsset(url: c.source))
+        gen.appliesPreferredTrackTransform = true
+        gen.requestedTimeToleranceBefore = .zero; gen.requestedTimeToleranceAfter = .zero
+        guard let img = try? await gen.image(at: t(seconds)).image else { return nil }
+        return UIImage(cgImage: img)
     }
 
     /// A clip's sound as `count` levels from 0 to 1, for the bars drawn under it.
@@ -246,5 +266,27 @@ enum ClipJoin {
         }
         let top = max(peaks.max() ?? 1, 0.01)
         return peaks.map { $0 / top }
+    }
+}
+
+extension Clip {
+    private enum CodingKeys: String, CodingKey {
+        case id, source, length, start, end, still, soundOn, volume, soundStart, soundEnd, fadeIn, fadeOut, keys, speed
+    }
+    /// Read from a draft, a field it was saved without (added in a later build) taking its default.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(source: try c.decode(URL.self, forKey: .source), length: try c.decode(Double.self, forKey: .length),
+                  start: try c.decode(Double.self, forKey: .start), end: try c.decode(Double.self, forKey: .end))
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        still = try c.decodeIfPresent(Bool.self, forKey: .still) ?? false
+        soundOn = try c.decodeIfPresent(Bool.self, forKey: .soundOn) ?? true
+        volume = try c.decodeIfPresent(Float.self, forKey: .volume) ?? 1
+        soundStart = try c.decodeIfPresent(Double.self, forKey: .soundStart)
+        soundEnd = try c.decodeIfPresent(Double.self, forKey: .soundEnd)
+        fadeIn = try c.decodeIfPresent(Double.self, forKey: .fadeIn) ?? 0
+        fadeOut = try c.decodeIfPresent(Double.self, forKey: .fadeOut) ?? 0
+        keys = try c.decodeIfPresent([VolumeKey].self, forKey: .keys) ?? []
+        speed = try c.decodeIfPresent(Double.self, forKey: .speed) ?? 1
     }
 }

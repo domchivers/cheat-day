@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Edits saved for later (19 Nov; design/edit-sound-drafts-mockup.html), kept on the phone as Instagram keeps its
@@ -9,7 +10,7 @@ enum EditDrafts {
         var clips: [Clip]
         var soundOf: UUID?
         var saved: Date
-        var length: Double { clips.reduce(0) { $0 + $1.duration } }
+        var length: Double { clips.reduce(0) { $0 + $1.span } }
     }
 
     private static let root: URL = {
@@ -33,7 +34,7 @@ enum EditDrafts {
 
     /// Saved (as a new draft, or over the one it was opened from): its clips' files copied in where they aren't already.
     @discardableResult
-    static func save(id: String?, clips: [Clip], soundOf: UUID?) -> String {
+    static func save(id: String?, clips: [Clip], soundOf: UUID?, tidy: Bool = true) -> String {
         let id = id ?? UUID().uuidString.lowercased()
         let dir = folder(id)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -43,8 +44,9 @@ enum EditDrafts {
             if c.source.deletingLastPathComponent().standardizedFileURL != dir.standardizedFileURL {
                 if let done = copied[c.source] { c.source = done }
                 else {
-                    let to = dir.appendingPathComponent(UUID().uuidString + "." + (c.source.pathExtension.isEmpty ? "mov" : c.source.pathExtension))
-                    if (try? FileManager.default.copyItem(at: c.source, to: to)) != nil { copied[c.source] = to; c.source = to }
+                    // named after where it came from, so saving again as the edit goes (auto-save) doesn't copy it again
+                    let to = dir.appendingPathComponent(name(for: c.source))
+                    if FileManager.default.fileExists(atPath: to.path) || (try? FileManager.default.copyItem(at: c.source, to: to)) != nil { copied[c.source] = to; c.source = to }
                 }
             }
             kept.append(c)
@@ -54,12 +56,21 @@ enum EditDrafts {
         if let d = try? JSONEncoder().encode(Draft(id: id, clips: stored, soundOf: soundOf, saved: Date())) {
             try? d.write(to: dir.appendingPathComponent("draft.json"), options: .atomic)
         }
-        // files no clip uses any more (one deleted from the edit) let go
+        // files no clip uses any more (one deleted from the edit) let go; not while it's auto-saved (Discard may go back to them)
+        guard tidy else { return id }
         let used = Set(kept.map { $0.source.lastPathComponent } + ["draft.json"])
         for f in (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? [] where !used.contains(f.lastPathComponent) {
             try? FileManager.default.removeItem(at: f)
         }
         return id
+    }
+
+    /// One after another, off the main thread: auto-saves, and Save or Discard after them, in the order asked.
+    static let queue = DispatchQueue(label: "edit-drafts", qos: .utility)
+
+    private static func name(for source: URL) -> String {
+        let hash = SHA256.hash(data: Data(source.standardizedFileURL.path.utf8)).prefix(10).map { String(format: "%02x", $0) }.joined()
+        return hash + "." + (source.pathExtension.isEmpty ? "mov" : source.pathExtension)
     }
 
     static func delete(_ id: String) { try? FileManager.default.removeItem(at: folder(id)) }

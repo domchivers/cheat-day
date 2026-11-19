@@ -53,4 +53,24 @@ final class ClipJoinTests: XCTestCase {
         let (a, b) = try XCTUnwrap(ClipJoin.split(c, at: 3))
         XCTAssertEqual(a.keys.map { $0.at }, [2]); XCTAssertEqual(b.keys.map { $0.at }, [4])
     }
+
+    /// At another speed a clip lasts longer or shorter in the video; a split keeps its speed in both halves.
+    func testSpeedSetsHowLongItLasts() throws {
+        var c = clip(2, 12); c.speed = 0.5
+        XCTAssertEqual(c.span, 20, accuracy: 0.001)
+        c.speed = 4
+        XCTAssertEqual(c.span, 2.5, accuracy: 0.001)
+        let (a, b) = try XCTUnwrap(ClipJoin.split(c, at: 4))
+        XCTAssertEqual(a.speed, 4); XCTAssertEqual(b.speed, 4)
+        XCTAssertEqual(a.span + b.span, 2.5, accuracy: 0.001)
+    }
+
+    /// A draft saved before speed existed still opens, at normal speed.
+    func testOldDraftClipDecodes() throws {
+        let old = #"{"id":"6B1F2C1E-0000-4000-8000-000000000001","source":"file:///x.mov","length":20,"start":1,"end":9,"still":false,"soundOn":true,"volume":0.5,"fadeIn":0,"fadeOut":0,"keys":[]}"#
+        let c = try JSONDecoder().decode(Clip.self, from: Data(old.utf8))
+        XCTAssertEqual(c.speed, 1); XCTAssertEqual(c.volume, 0.5); XCTAssertEqual(c.end, 9)
+        let back = try JSONDecoder().decode(Clip.self, from: JSONEncoder().encode(c))
+        XCTAssertEqual(back, c)
+    }
 }
