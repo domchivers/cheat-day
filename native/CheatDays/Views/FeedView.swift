@@ -1256,6 +1256,7 @@ struct ComposeSheet: View {
     @State private var poster: UIImage?   // and its cover, exactly as it will be posted
     @State private var clip = ClipEdit()   // what the editor did to it
     @State private var cutting: ClipBox?   // a clip in the editor
+    @State private var multi: ClipsBox?   // several clips being made into one video (MultiClipEditor)
     @State private var choosingCover = false
     @State private var picked: [PhotosPickerItem] = []
     // drafts: the ones kept on this phone, the one this post was opened from, and ✕ asking what to do with it
@@ -1443,11 +1444,24 @@ struct ComposeSheet: View {
             .sheet(isPresented: $attaching) { AttachPicker(start: shelf) { what = $0 } }
             .sheet(isPresented: $choosingSong) { SongPicker { song = $0 } }
             .sheet(isPresented: $tagging) { TagPicker(picked: $tags) }
-            .photosPicker(isPresented: $library, selection: $picked, maxSelectionCount: max(1, 10 - shots.count), matching: shots.isEmpty ? PHPickerFilter.any(of: [.images, .videos]) : PHPickerFilter.images)
+            .photosPicker(isPresented: $library, selection: $picked, maxSelectionCount: max(1, 10 - shots.count), selectionBehavior: .ordered, matching: shots.isEmpty ? PHPickerFilter.any(of: [.images, .videos]) : PHPickerFilter.images)
+            // several picked with a video among them: made into one video first (MultiClipEditor), then edited as one
+            .fullScreenCover(item: $multi) { b in
+                MultiClipEditor(clips: b.clips, close: { multi = nil }, done: { url in multi = nil; took([], url) })
+            }
             .fullScreenCover(isPresented: $camera) { CameraPicker { img in camera = false; if let img { DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { editing = EditBox(image: img) } } }.ignoresSafeArea() }
             .onChange(of: picked) { _, items in
                 guard !items.isEmpty else { return }
                 Task {
+                    let movies = items.filter { $0.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }) }.count
+                    if shots.isEmpty, items.count > 1, movies > 0 {
+                        // several with a video among them: one video made of them all
+                        let clips = await MultiClipEditor.clips(from: items)
+                        library = false; picked = []
+                        if clips.count > 1 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { multi = ClipsBox(clips: clips) } }
+                        else if let only = clips.first { took([], only.source) }
+                        return
+                    }
                     if shots.isEmpty, let first = items.first, first.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }),
                        let m = try? await first.loadTransferable(type: PickedMovie.self) {
                         library = false
@@ -2194,6 +2208,8 @@ private struct EditBox: Identifiable { let id = UUID(); let image: UIImage; var 
     /// Opened from the photo as it was picked (so what's put on it is kept apart from it), not from a finished picture.
     var whole = true }
 private struct ClipBox: Identifiable { let id = UUID(); let url: URL; var first: UIImage? = nil }
+/// Clips on their way into the multi-clip editor.
+struct ClipsBox: Identifiable { let id = UUID(); let clips: [Clip] }
 
 /// A post's picture. SwiftUI's AsyncImage stays blank for good if scrolling cancels its download, as a long feed does;
 /// this one is kept once loaded, tries again when it comes back on screen, and retries a failed download.

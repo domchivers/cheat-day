@@ -16,6 +16,7 @@ struct StoryComposer: View {
     @State private var queue: [StoryPick] = []
     @State private var extras: [JSON] = []   // the other photos picked with the first, on it as stickers
     @State private var at = 0
+    @State private var multi: ClipsBox?   // two or more videos picked, being made into one (MultiClipEditor)
 
     var body: some View {
         ZStack {
@@ -25,6 +26,19 @@ struct StoryComposer: View {
                 StoryCamera(captured: { img, url in words = false; queue = []; extras = []; at = 0; image = img; video = url }, close: { dismiss() },
                             wordsOnly: { card in words = true; queue = []; at = 0; image = card; video = nil },
                             capturedMany: { picks in
+                                // Two or more videos: one video made of everything picked, in the order picked
+                                // (MultiClipEditor, 19 Nov), then a story of it
+                                if picks.filter({ $0.video != nil }).count > 1 {
+                                    Task {
+                                        var clips: [Clip] = []
+                                        for p in picks {
+                                            if let v = p.video, let c = await ClipJoin.clip(v) { clips.append(c) }
+                                            else if let img = p.image, let u = await ClipJoin.still(img), let c = await ClipJoin.clip(u, still: true) { clips.append(c) }
+                                        }
+                                        if clips.count > 1 { multi = ClipsBox(clips: clips) }
+                                    }
+                                    return
+                                }
                                 // Several picked from the library: one story. The first is the picture; the other photos go
                                 // on it as stickers, to move and size (each was a story of its own). A video can't be a
                                 // sticker, so any more videos still come after it as stories of their own.
@@ -58,6 +72,11 @@ struct StoryComposer: View {
             }
         }
         .statusBarHidden()
+        .fullScreenCover(item: $multi) { b in
+            MultiClipEditor(clips: b.clips, close: { multi = nil }, done: { url in
+                multi = nil; words = false; queue = []; extras = []; at = 0; image = nil; video = url
+            })
+        }
         .fullScreenCover(isPresented: $camera) {
             MediaCamera { img, url in camera = false; image = img; video = url }.ignoresSafeArea()
         }
