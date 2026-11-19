@@ -265,7 +265,8 @@ struct MultiClipEditor: View {
             .gesture(DragGesture(minimumDistance: 0)
                 .onChanged { v in
                     if wasPlaying == nil { wasPlaying = player.rate != 0; player.pause() }
-                    let t = min(max(0, Double(v.location.x / max(w, 1)) * span), max(0, span - 0.05))
+                    // (short of the very end, where the preview goes round to the start again)
+                    let t = min(max(0, Double(v.location.x / max(w, 1)) * span), max(0, span - 0.12))
                     // close enough while the finger moves (a seek to the exact frame each time can't keep up), exact at the end
                     let near = CMTime(seconds: 0.04, preferredTimescale: 600)
                     player.seek(to: CMTime(seconds: t, preferredTimescale: 600), toleranceBefore: near, toleranceAfter: near)
