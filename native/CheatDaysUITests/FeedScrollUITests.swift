@@ -9,7 +9,8 @@ final class FeedScrollUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-uitest-feed"]
         app.launch()
-        let feed = app.scrollViews.firstMatch
+        // the feed itself by name: firstMatch once found another full-screen scroll view, and nothing scrolled (1.4.0)
+        let feed = app.scrollViews["feedHarness"]
         XCTAssertTrue(feed.waitForExistence(timeout: 15), "no feed")
         Thread.sleep(forTimeInterval: 2)   // the photos made and laid out first
         let options = XCTMeasureOptions()
