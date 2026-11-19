@@ -11,6 +11,8 @@ struct PostPicker: View {
     /// The post already has photos: only photos can be added.
     var photosOnly = false
     var done: ([UIImage], URL?) -> Void
+    /// Several picked with a video among them: all of them as clips, in the order picked (MultiClipEditor).
+    var clips: (([Clip]) -> Void)? = nil
     var camera: () -> Void
     var allPhotos: () -> Void
     /// A post with no picture (a meal or a workout on its own): shown as a square beside the camera when given.
@@ -206,8 +208,10 @@ struct PostPicker: View {
         }
     }
 
-    /// A video can't be one of several (a post is photos, or one video).
-    private func photosOrLocked(_ a: PHAsset) -> Bool { a.mediaType == .video }
+    /// A video can be one of several now (19 Nov): several with a video among them are made into one video in the
+    /// multi-clip editor (`clips`). Only where that can't be (a post that has photos already, or nothing to make the
+    /// clips into) is a video still locked out of a pick of several.
+    private func photosOrLocked(_ a: PHAsset) -> Bool { a.mediaType == .video && (photosOnly || clips == nil) }
 
     private func toggleSeveral() {
         UISelectionFeedbackGenerator().selectionChanged()
@@ -296,6 +300,22 @@ struct PostPicker: View {
         let chosen = picked.compactMap { id in assets.first { $0.localIdentifier == id } }
         guard !chosen.isEmpty else { return }
         busy = true
+        // several, a video among them: each as a clip, a photo as a short still, for the multi-clip editor
+        if chosen.count > 1, chosen.contains(where: { $0.mediaType == .video }), let clips {
+            Task {
+                var out: [Clip] = []
+                for a in chosen {
+                    if a.mediaType == .video {
+                        if let u = await Self.video(a), let c = await ClipJoin.clip(u) { out.append(c) }
+                    } else if let img = await Self.full(a), let u = await ClipJoin.still(img), let c = await ClipJoin.clip(u, still: true) {
+                        out.append(c)
+                    }
+                }
+                busy = false
+                if out.count > 1 { clips(out) } else if let only = out.first { done([], only.source) }
+            }
+            return
+        }
         if let v = chosen.first, v.mediaType == .video {
             let o = PHVideoRequestOptions(); o.isNetworkAccessAllowed = true; o.deliveryMode = .highQualityFormat
             PHImageManager.default().requestAVAsset(forVideo: v, options: o) { av, _, _ in
@@ -312,6 +332,21 @@ struct PostPicker: View {
             for a in chosen where a.mediaType == .image { if let img = await Self.full(a) { out.append(img) } }
             busy = false
             if !out.isEmpty { done(out, nil) }
+        }
+    }
+
+    /// A video from the library, copied where the editors can read it.
+    private static func video(_ a: PHAsset) async -> URL? {
+        await withCheckedContinuation { c in
+            let o = PHVideoRequestOptions(); o.isNetworkAccessAllowed = true; o.deliveryMode = .highQualityFormat
+            var answered = false
+            PHImageManager.default().requestAVAsset(forVideo: a, options: o) { av, _, _ in
+                guard !answered else { return }
+                answered = true
+                guard let u = (av as? AVURLAsset)?.url else { c.resume(returning: nil); return }
+                let to = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "." + u.pathExtension)
+                c.resume(returning: (try? FileManager.default.copyItem(at: u, to: to)) != nil ? to : nil)
+            }
         }
     }
 

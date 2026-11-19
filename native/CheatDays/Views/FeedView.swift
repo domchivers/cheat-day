@@ -1299,6 +1299,8 @@ struct ComposeSheet: View {
             if firstPick && !started {
                 PostPicker(room: 10, photosOnly: false,
                            done: { images, video in took(images, video, wait: false) },
+                           // several with a video among them: into the multi-clip editor, made into one video
+                           clips: { c in multi = ClipsBox(clips: c) },
                            // the camera, the system's picker and the video editor come up over the picker, which is
                            // still there if they're backed out of; it goes once there's something in the post
                            camera: { camera = true },
@@ -1402,6 +1404,7 @@ struct ComposeSheet: View {
             .fullScreenCover(isPresented: $picking) {
                 PostPicker(room: max(1, 10 - shots.count), photosOnly: !shots.isEmpty,
                            done: { images, video in pickerFirst = false; picking = false; took(images, video) },
+                           clips: shots.isEmpty ? { c in pickerFirst = false; picking = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { multi = ClipsBox(clips: c) } } : nil,
                            camera: { pickerFirst = false; picking = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { camera = true } },
                            allPhotos: { pickerFirst = false; picking = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { library = true } },
                            // only while nothing's been started: a post of a meal or a workout alone, written up without a picture
