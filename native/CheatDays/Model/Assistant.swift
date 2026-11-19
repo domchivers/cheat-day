@@ -758,6 +758,8 @@ enum Assistant {
     /// Runs after the card's own check, so it never holds the card up: every item looked up at once, and a shop that
     /// published nothing isn't asked again for 60 days (most small bakeries, like #1000 Bread, publish nothing).
     static func fromShop(_ e: JSON) async -> JSON? {
+        // a chain whose own numbers are on the phone: those, at once (ChainMenu); the web only for the rest
+        if on("chainMenu"), let official = ChainMenu.order(e, code: Region.current.code) { return official }
         let shop = str(e["shop"]).trimmingCharacters(in: .whitespaces), items = shopItems(str(e["shop_items"]))
         guard !shop.isEmpty, !items.isEmpty, items.count <= 4 else { return nil }
         let d = UserDefaults.standard, key = "shops.unpublished", none = d.dictionary(forKey: key) as? [String: Double] ?? [:]
