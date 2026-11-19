@@ -614,7 +614,7 @@ struct StoryView: View {
                 .task(id: str(hl?["id"])) {
                     if isMe, let h = hl { await Stories.shared.loadViews(list(h["items"]).map { str($0["id"]) }) }
                 }
-                .sheet(item: Binding(get: { seenBy.map { PostBox(post: $0) } }, set: { seenBy = $0?.post })) { b in SeenBySheet(story: b.post).presentationDetents([.medium, .large]) }
+                .sheet(item: Binding(get: { seenBy.map { PostBox(post: $0) } }, set: { seenBy = $0?.post })) { b in SeenBySheet(story: b.post) }
             }
         } else if isMe {
             if case .snap(let st) = s {
@@ -635,7 +635,7 @@ struct StoryView: View {
                 }
                 .frame(height: 44).padding(.horizontal, 8)
                 .sheet(item: $sharingStory) { b in ShareStorySheet(story: b.post).presentationDetents([.medium, .large]) }
-                .sheet(item: Binding(get: { seenBy.map { PostBox(post: $0) } }, set: { seenBy = $0?.post })) { b in SeenBySheet(story: b.post).presentationDetents([.medium, .large]) }
+                .sheet(item: Binding(get: { seenBy.map { PostBox(post: $0) } }, set: { seenBy = $0?.post })) { b in SeenBySheet(story: b.post) }
                 .sheet(item: Binding(get: { adding.map { PostBox(post: $0) } }, set: { adding = $0?.post })) { b in AddToHighlight(story: b.post).presentationDetents([.medium, .large]) }
                 .sheet(item: Binding(get: { mentioning.map { PostBox(post: $0) } }, set: { mentioning = $0?.post })) { b in
                     MentionPicker { id, name in
@@ -1071,8 +1071,18 @@ struct SeenBySheet: View {
                 }
             }
             .navigationTitle("Seen by \(Stories.shared.viewers(story).count)").navigationBarTitleDisplayMode(.inline)
+            // the list just under the title (it sat a long way down it)
+            .contentMargins(.top, 4, for: .scrollContent)
             .task { await Stories.shared.load() }
         }
+        // As tall as its list and no taller, up to most of the screen (19 Nov: two names in a half-screen sheet left
+        // it mostly empty); pulled up, it's the whole screen
+        .presentationDetents([.height(Self.height(Stories.shared.viewers(story).count)), .large])
+    }
+
+    /// The title bar, the rows (one for "No one yet") and a margin under them.
+    static func height(_ n: Int) -> CGFloat {
+        min(UIScreen.main.bounds.height * 0.75, 74 + CGFloat(max(1, n)) * 58 + 44)
     }
 }
 
