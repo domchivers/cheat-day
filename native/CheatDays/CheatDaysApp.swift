@@ -14,6 +14,9 @@ struct CheatDaysApp: App {
     @AppStorage(Appearance.key) private var appearance = "dark"   // dark as it's always been, until light or the phone's is picked
     init() {
         KeyboardDone.install()
+        // sound turned on or off on posts lasts until the app's closed, as Instagram's does (the owner, 19 Nov): each
+        // launch the feed starts quiet again, stories and videos with their sound
+        UserDefaults.standard.removeObject(forKey: "song.auto")
         // no scroll bars down the side of the screens; the assistant's chat keeps its own (a long conversation needs one)
         UIScrollView.appearance().showsVerticalScrollIndicator = false
         UIScrollView.appearance().showsHorizontalScrollIndicator = false

@@ -174,7 +174,7 @@ enum Music {
 
     /// Once a speaker on a post has been tapped on, songs start by themselves as their posts come up the feed, as
     /// Instagram's do, until one's tapped off again. Quiet until that first tap, so the feed never makes a sound
-    /// nobody asked for. Kept between launches.
+    /// nobody asked for. Until the app's closed (CheatDaysApp clears it at launch, as Instagram does).
     var auto: Bool {
         get { UserDefaults.standard.object(forKey: "song.auto") as? Bool ?? false }
         set { UserDefaults.standard.set(newValue, forKey: "song.auto") }
