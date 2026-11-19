@@ -87,7 +87,11 @@ struct MultiClipEditor: View {
         // made again a moment after a change has settled (not for every step of a handle being dragged)
         .task(id: clips) { await settle(); await autosave() }
         .task(id: soundOf) { await settle(); await autosave() }
-        .onDisappear { player.pause(); if let watch { player.removeTimeObserver(watch) } }
+        .onDisappear {
+            player.pause(); if let watch { player.removeTimeObserver(watch) }
+            // the sound given back (19 Nov: left on, the feed's videos went on stopping their Spotify after an edit)
+            Sound.off()
+        }
         // more from the library, onto the end, in the order picked
         .photosPicker(isPresented: $adding, selection: $picks, maxSelectionCount: 10, selectionBehavior: .ordered, matching: .any(of: [.images, .videos]))
         .onChange(of: picks) { _, now in

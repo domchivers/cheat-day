@@ -49,6 +49,10 @@ struct EditFlow: View {
                             .background(Theme.accent, in: Capsule()).foregroundStyle(Theme.onAccent)
                     }
                     .foregroundStyle(.white).padding(.horizontal, 14).padding(.top, 8)
+                    // its sound heard with the ringer off, as the editor's was; given back once it's left
+                    Color.clear.frame(width: 0, height: 0)
+                        .onAppear { Sound.on(.moviePlayback) }
+                        .onDisappear { Sound.off() }
                     if let note {
                         Text(note).font(.subheadline.weight(.bold)).foregroundStyle(.black).padding(.horizontal, 16).frame(height: 38)
                             .background(.white, in: Capsule()).padding(.top, 70).transition(.opacity)
