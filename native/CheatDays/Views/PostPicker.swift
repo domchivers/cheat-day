@@ -323,13 +323,12 @@ struct PostPicker: View {
             return
         }
         if let v = chosen.first, v.mediaType == .video {
-            let o = PHVideoRequestOptions(); o.isNetworkAccessAllowed = true; o.deliveryMode = .highQualityFormat
-            PHImageManager.default().requestAVAsset(forVideo: v, options: o) { av, _, _ in
-                guard let u = (av as? AVURLAsset)?.url else { DispatchQueue.main.async { busy = false }; return }
-                let to = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "." + u.pathExtension)
-                try? FileManager.default.copyItem(at: u, to: to)
+            // (a slow-motion one made into a file, not dropped: see `video`)
+            Task {
+                let to = await Self.video(v)
+                busy = false
                 // with the picture of it already showing here, for the editor to open on (not on black while it finds its own)
-                DispatchQueue.main.async { busy = false; done(big.map { [$0] } ?? [], to) }
+                if let to { done(big.map { [$0] } ?? [], to) }
             }
             return
         }
@@ -341,8 +340,32 @@ struct PostPicker: View {
         }
     }
 
-    /// A video from the library, copied where the editors can read it.
-    private static func video(_ a: PHAsset) async -> URL? {
+    /// A video from the library, copied where the editors can read it: fetched from iCloud first if it's only there.
+    /// A slow-motion video comes as a composition rather than a file, and one of those was dropped without a word
+    /// (19 Nov): it's made into a file instead (`exported`).
+    static func video(_ a: PHAsset) async -> URL? {
+        if let u = await copied(a) { return u }
+        return await exported(a)
+    }
+
+    private static func exported(_ a: PHAsset) async -> URL? {
+        let session: AVAssetExportSession? = await withCheckedContinuation { c in
+            let o = PHVideoRequestOptions(); o.isNetworkAccessAllowed = true; o.deliveryMode = .highQualityFormat
+            var answered = false
+            PHImageManager.default().requestExportSession(forVideo: a, options: o, exportPreset: AVAssetExportPresetHighestQuality) { s, _ in
+                guard !answered else { return }
+                answered = true
+                c.resume(returning: s)
+            }
+        }
+        guard let session else { return nil }
+        let to = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mov")
+        session.outputURL = to; session.outputFileType = .mov
+        await session.export()
+        return session.status == .completed ? to : nil
+    }
+
+    private static func copied(_ a: PHAsset) async -> URL? {
         await withCheckedContinuation { c in
             let o = PHVideoRequestOptions(); o.isNetworkAccessAllowed = true; o.deliveryMode = .highQualityFormat
             var answered = false
