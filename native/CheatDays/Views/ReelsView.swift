@@ -169,27 +169,36 @@ struct ReelsView: View {
         await say(saved ? "Saved to Photos" : "Couldn't save it")
     }
 
+    /// The page showing, or one either side of it (made ready ahead: see page).
+    private func near(_ id: String) -> Bool {
+        guard let c = current, let i = posts.firstIndex(where: { str($0["id"]) == c }),
+              let j = posts.firstIndex(where: { str($0["id"]) == id }) else { return current == id }
+        return abs(i - j) <= 1
+    }
+
     private func page(_ p: JSON) -> some View {
         let id = str(p["id"]), on = current == id
         let rx = feed.reactions.filter { str($0["post_id"]) == id }
         return ZStack {
             Color.black
             Group {
-            // only the page on screen plays; its neighbours wait as their first frame
-            if on, let v = Feed.video(p) {
+            // The page on screen plays; the ones either side are made ready, paused and silent, so a swipe lands on
+            // a video that has its first frame up (19 Nov: each was only built once it was reached, as Instagram and
+            // TikTok don't: they keep a few players and get the next one ready). Its picture is under it until then.
+            if let v = Feed.video(p), near(id) {
+                let tall = num(dict(p["extra"])["aspect"]).map { $0 > 0.62 } ?? false
+                let clip = LoopingVideo(url: v, paused: !on || paused, muted: !on || muted, scrub: on ? holding : nil, tick: { at, length in
+                    guard on else { return }
+                    // gone round to its start: so does its song
+                    if at + 0.5 < head.at, holding == nil { SongPlayer.shared.seek(at) }
+                    head.at = at; head.length = length
+                }, volume: Music.mixed(p) ? 1 : Music.mix(p).clip).allowsHitTesting(false)
                 // a tall clip fills the screen; a squarer one is shown whole in the middle
-                if let a = num(dict(p["extra"])["aspect"]), a > 0.62 {
-                    LoopingVideo(url: v, paused: paused, muted: muted, scrub: holding, tick: { at, length in
-                        // gone round to its start: so does its song
-                        if at + 0.5 < head.at, holding == nil { SongPlayer.shared.seek(at) }
-                        head.at = at; head.length = length
-                    }, volume: Music.mixed(p) ? 1 : Music.mix(p).clip).aspectRatio(a, contentMode: .fit).allowsHitTesting(false)
+                if tall, let a = num(dict(p["extra"])["aspect"]) {
+                    clip.aspectRatio(a, contentMode: .fit)
+                        .background { FeedPhoto(src: str(p["photo"]), fill: true) }
                 } else {
-                    LoopingVideo(url: v, paused: paused, muted: muted, scrub: holding, tick: { at, length in
-                        // gone round to its start: so does its song
-                        if at + 0.5 < head.at, holding == nil { SongPlayer.shared.seek(at) }
-                        head.at = at; head.length = length
-                    }, volume: Music.mixed(p) ? 1 : Music.mix(p).clip).allowsHitTesting(false)
+                    clip.background { FeedPhoto(src: str(p["photo"]), fill: true).frame(maxWidth: .infinity, maxHeight: .infinity).clipped() }
                 }
             } else if let a = num(dict(p["extra"])["aspect"]), a > 0.62 {
                 Color.clear.aspectRatio(a, contentMode: .fit).overlay { FeedPhoto(src: str(p["photo"]), fill: true) }.clipped()
