@@ -1147,7 +1147,7 @@ struct AssistantView: View {
         }
         .padding(.horizontal, 10).padding(.top, 6).padding(.bottom, 8)
         .composerBar()
-        .onDisappear { speech.stop() }
+        .onDisappear { speech.cancel() }
     }
 
     /// The camera or the photo library, once the keyboard's down: opened while it was still sliding away, the first
@@ -1200,7 +1200,7 @@ struct AssistantView: View {
     }
 
     private func send() {
-        speech.stop()
+        speech.cancel()   // (what's in the box is what's sent: no words after it)
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !busy, !t.isEmpty || !pending.isEmpty else { return }
         // foods with their numbers typed in: read here, no waiting for the AI, and shown with Add (nothing goes on Today

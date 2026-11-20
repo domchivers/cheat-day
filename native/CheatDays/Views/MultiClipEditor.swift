@@ -100,7 +100,8 @@ struct MultiClipEditor: View {
     @State private var chaseTo: Double?                   // where the finger's got to since
     @State private var dropped = 0                        // a bar let go: the preview made again then
     private struct TrimDrag { var side: Int; var dx: CGFloat }
-    @State private var trimDrag: TrimDrag?                // an end of the picked clip being dragged on the timeline
+    @State private var trimDrag: TrimDrag?
+    @State private var scrubSkip = false                  // this drag is a bar's or a trim handle's, not the timeline's                // an end of the picked clip being dragged on the timeline
     private struct BarGrab { var id: UUID; var mode: Int; var from: Double; var to: Double; var words: [EditText.Word]?; var start = 0.0 }   // mode: 0 move, 1 start, 2 end
     /// One bar on the timeline: a text, sticker or caption, or a voiceover or sound effect.
     /// kind: 0 over the picture (text, stickers, captions), 1 a sound, 2 a clip or photo over it.
@@ -500,7 +501,9 @@ struct MultiClipEditor: View {
             .frame(width: g.size.width, height: g.size.height, alignment: .topLeading)
             .clipped()
             .contentShape(Rectangle())
-            .gesture(DragGesture(minimumDistance: 3)
+            // alongside the clips' own touches, not after them: as a gesture of its own it waited for a clip's hold
+            // (to move it) to give up first, and the timeline stood still a moment before it moved (21 Nov recording)
+            .simultaneousGesture(DragGesture(minimumDistance: 6)
                 .onChanged { v in scrubTimeline(by: v.translation.width, pps: pps) }
                 .onEnded { _ in endScrub() })
             .simultaneousGesture(MagnificationGesture()
@@ -681,7 +684,10 @@ struct MultiClipEditor: View {
 
     /// The timeline slid by a finger: the video under the line follows it, held on a clip's edge when it's near one.
     private func scrubTimeline(by dx: CGFloat, pps: CGFloat) {
+        if scrubSkip { return }
         if scrubFrom == nil {
+            // a bar or a clip's end being dragged has the finger: the timeline keeps still under it
+            if barGrab != nil || trimDrag != nil { scrubSkip = true; return }
             scrubFrom = now
             wasPlaying = player.rate != 0
             player.pause(); playing = false
@@ -716,6 +722,8 @@ struct MultiClipEditor: View {
     }
 
     private func endScrub() {
+        if scrubSkip { scrubSkip = false; return }
+        guard scrubFrom != nil else { return }
         snapped = nil; scrubFrom = nil; chaseTo = nil
         seek(now)
         if wasPlaying == true { player.play(); playing = true }

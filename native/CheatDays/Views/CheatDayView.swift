@@ -464,7 +464,7 @@ struct CheatDayView: View {
                                 .frame(width: 40, height: 40).background(Color.white.opacity(0.1), in: Circle())
                         }
                         .buttonStyle(.plain).accessibilityLabel("Speak")
-                        Button { typing = false; speech.stop(); Task { await send(next: next, plan: plan) } } label: {
+                        Button { typing = false; speech.cancel(); Task { await send(next: next, plan: plan) } } label: {
                             Group {
                                 if busy { ProgressView().tint(Theme.onAccent) }
                                 else { Image(systemName: "arrow.up").font(.system(size: 18, weight: .bold)).foregroundStyle(Theme.onAccent) }
@@ -482,7 +482,7 @@ struct CheatDayView: View {
                 if let p = speech.problem { Text(p).font(.caption).foregroundStyle(Theme.warn).padding(8).offset(y: -34) }
             }
             .padding(.horizontal, 20)
-            .onDisappear { speech.stop() }
+            .onDisappear { speech.cancel() }
         }
         .padding(.top, 8).padding(.bottom, 8).background(Theme.bg)
     }

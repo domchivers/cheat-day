@@ -312,6 +312,7 @@ final class FrameReader {
     private var generation = 0
     private var from = -1.0            // where the reading started (-1: not yet)
     private var waiting: Double?       // a start asked for before the file was open
+    private var startedAt = 0.0        // when the reading last started (they're kept a twelfth of a second apart)
     private let ahead = 5
     var lastUsed = CACurrentMediaTime()
 
@@ -353,6 +354,14 @@ final class FrameReader {
         // behind the oldest frame it still has (a jump back, round again at the end), or well past what it's read:
         // start again there
         if from < 0 || s < oldest - 0.05 || s > last + 0.75 {
+            // not again within a twelfth of a second of the last start: a finger scrubbing back started it again on
+            // every move and threw away what it had, so nothing came through until it stopped (21 Nov recording).
+            // Till then the nearest it has shows.
+            if from >= 0, CACurrentMediaTime() - startedAt < 0.08 {
+                let near = frames.first
+                lock.unlock()
+                return near
+            }
             lock.unlock()
             start(at: s)
             return nil
@@ -370,6 +379,7 @@ final class FrameReader {
         let g = generation
         frames.removeAll()
         from = max(0, s)
+        startedAt = CACurrentMediaTime()
         guard track != nil else { waiting = s; lock.unlock(); return }
         lock.unlock()
         queue.async { [weak self] in self?.read(from: max(0, s), generation: g) }
@@ -388,6 +398,7 @@ final class FrameReader {
         reader.add(out)
         guard reader.startReading() else { return }
         defer { reader.cancelReading() }
+        var first = true, skipped: (Double, CVPixelBuffer)?
         while true {
             // room for more, or a newer start asked for
             while true {
@@ -398,9 +409,19 @@ final class FrameReader {
                 if !full { break }
                 usleep(3_000)
             }
-            guard let sb = out.copyNextSampleBuffer() else { return }   // (the end: the last frame stays)
+            guard let sb = out.copyNextSampleBuffer() else {
+                // the end: if every frame was before the moment asked for (a clip's very end), its last one
+                lock.lock()
+                if g == generation, frames.isEmpty, let skipped { frames.append(skipped) }
+                lock.unlock()
+                return
+            }
             guard let px = CMSampleBufferGetImageBuffer(sb) else { continue }
             let pts = CMSampleBufferGetPresentationTimeStamp(sb).seconds
+            // the frames from the keyframe before the moment asked for aren't kept, only decoded on the way: kept,
+            // they came out one a screen frame, and a jump took a while to catch up
+            if first, pts < s - 0.02 { skipped = (pts, px); continue }
+            first = false
             lock.lock()
             if g == generation { frames.append((pts, px)) }
             lock.unlock()
