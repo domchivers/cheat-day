@@ -49,6 +49,23 @@ final class PreviewEngine {
             guard let self, self.rate != 0 else { return }
             self.restartSound()
         }
+        // a call or another app's sound over it, then let go; or the sound's way out changed (headphones): the
+        // sound engine started afresh
+        let c = NotificationCenter.default
+        watching.append(c.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] n in
+            let raw = n.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
+            if raw == AVAudioSession.InterruptionType.ended.rawValue { self?.wake() }
+        })
+        watching.append(c.addObserver(forName: .AVAudioEngineConfigurationChange, object: nil, queue: .main) { [weak self] _ in self?.wake() })
+    }
+
+    private var watching: [NSObjectProtocol] = []
+
+    /// The sound engine started afresh (back in the app, after a call): the phone may have stopped it meanwhile, and
+    /// a stopped engine still reported running now and then, so it's stopped here and started again as it plays.
+    func wake() {
+        mixer.reset()
+        if rate != 0 { restartSound() }
     }
 
     // MARK: as AVPlayer is called
@@ -91,6 +108,8 @@ final class PreviewEngine {
         for r in readers.values { r.cancel() }
         readers.removeAll()
         onTime = nil; onSize = nil   // (they hold the editor)
+        for w in watching { NotificationCenter.default.removeObserver(w) }
+        watching = []
     }
 
     // MARK: the edit
@@ -510,6 +529,13 @@ final class SoundMixer {
     func shutdown() {
         stop()
         engine.stop()
+    }
+
+    /// Stopped altogether, to be started again the next time it plays.
+    func reset() {
+        stop()
+        engine.stop()
+        engine.reset()
     }
 
     private func player(_ k: Int) -> (AVAudioPlayerNode, AVAudioUnitTimePitch) {

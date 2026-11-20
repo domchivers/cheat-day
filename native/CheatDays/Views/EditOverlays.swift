@@ -158,8 +158,49 @@ struct EditTextView: View {
     }
 }
 
-/// Whether a one-time answer has been given (the speech handler can be called more than once).
-private final class Once: @unchecked Sendable { var done = false }
+/// What's heard in a recording, every part of it (a part comes at each pause), in order, each word once: then
+/// answered once, when the task's finished.
+private final class Hearer: NSObject, SFSpeechRecognitionTaskDelegate, @unchecked Sendable {
+    private var c: CheckedContinuation<[Heard], Error>?
+    private var words: [Heard] = []
+    // kept until it's answered (the task may not keep its delegate)
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var live: Set<Hearer> = []
+    var task: SFSpeechRecognitionTask?
+    init(_ c: CheckedContinuation<[Heard], Error>) {
+        self.c = c
+        super.init()
+        Self.lock.lock(); Self.live.insert(self); Self.lock.unlock()
+    }
+
+    func speechRecognitionTask(_ task: SFSpeechRecognitionTask, didFinishRecognition result: SFSpeechRecognitionResult) {
+        // a part may come with the parts before it again: only words after the last kept. Its words' times are
+        // the recording's; if they're the part's own instead (before where the part's speech starts), moved on
+        let end = words.last.map { $0.at + $0.long } ?? -1
+        let segs = result.bestTranscription.segments
+        let starts = result.speechRecognitionMetadata?.speechStartTimestamp ?? 0
+        let shift = (segs.first.map { $0.timestamp + 0.05 < starts } ?? false) ? starts : 0
+        for seg in segs where !seg.substring.isEmpty {
+            let at = seg.timestamp + shift
+            guard at >= end - 0.05 else { continue }
+            if let last = words.last, abs(last.at - at) < 0.01 { continue }
+            words.append(Heard(text: seg.substring, at: at, long: seg.duration))
+        }
+    }
+
+    func speechRecognitionTask(_ task: SFSpeechRecognitionTask, didFinishSuccessfully ok: Bool) {
+        guard let c else { return }
+        self.c = nil
+        // (finished badly but with words heard: those)
+        if ok || !words.isEmpty { c.resume(returning: words) }
+        else { c.resume(throwing: task.error ?? NSError(domain: "Captions", code: 1, userInfo: [NSLocalizedDescriptionKey: "No words were heard in this edit."])) }
+        self.task = nil
+        Self.lock.lock(); Self.live.remove(self); Self.lock.unlock()
+    }
+}
+
+/// A word heard, and when (seconds into the recording) and for how long.
+private struct Heard { var text: String; var at: Double; var long: Double }
 
 /// A picture of one overlay for the finished video, and when it shows (EditCompositor lays it on).
 struct OverlayPiece {
@@ -235,28 +276,27 @@ enum EditOverlays {
         request.requiresOnDeviceRecognition = true
         request.shouldReportPartialResults = false
         request.addsPunctuation = true
-        let said: SFTranscription = try await withCheckedThrowingContinuation { c in
-            let once = Once()
-            _ = recognizer.recognitionTask(with: request) { result, error in
-                guard !once.done else { return }
-                if let result, result.isFinal { once.done = true; c.resume(returning: result.bestTranscription) }
-                else if let error { once.done = true; c.resume(throwing: error) }
-            }
+        // Heard on the phone, a long recording comes back a part at a time, each part ending at a pause, and the
+        // first part said it was the last (21 Nov: a 45 s edit's captions stopped after a few seconds; a 10 s one
+        // spoken without a pause was whole). So every part is kept until the task says it's finished.
+        let segments: [Heard] = try await withCheckedThrowingContinuation { c in
+            let hearer = Hearer(c)
+            hearer.task = recognizer.recognitionTask(with: request, delegate: hearer)
         }
         // a caption: up to three words, broken at a pause or the end of a sentence
         var out: [EditText] = []
-        var group: [SFTranscriptionSegment] = []
+        var group: [Heard] = []
         func close() {
             guard let first = group.first, let last = group.last else { return }
-            let words = group.map { EditText.Word(text: $0.substring, at: $0.timestamp) }
+            let words = group.map { EditText.Word(text: $0.text, at: $0.at) }
             out.append(EditText(kind: "caption", text: words.map(\.text).joined(separator: " "), style: "Pop", x: 0.5, y: 0.76,
-                                from: first.timestamp, to: last.timestamp + max(0.3, last.duration), words: words))
+                                from: first.at, to: last.at + max(0.3, last.long), words: words))
             group = []
         }
-        for seg in said.segments {
-            if let last = group.last, seg.timestamp - (last.timestamp + last.duration) > 0.6 { close() }
+        for seg in segments {
+            if let last = group.last, seg.at - (last.at + last.long) > 0.6 { close() }
             group.append(seg)
-            let ends = seg.substring.last.map { ".!?,".contains($0) } ?? false
+            let ends = seg.text.last.map { ".!?,".contains($0) } ?? false
             if group.count >= 3 || ends { close() }
         }
         close()

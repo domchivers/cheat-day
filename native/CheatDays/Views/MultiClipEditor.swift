@@ -228,6 +228,16 @@ struct MultiClipEditor: View {
             }
         }
         .task(id: proxies.count) { if !proxies.isEmpty { await settle() } }
+        // left for another app: paused, as CapCut does; back: the editor's sound on again and the player's sound
+        // started afresh (21 Nov: back in the app, nothing could be heard. The likeliest causes, not proven: the
+        // phone stopped the sound engine while the app was away, or the app's sound was put back to the ringer's)
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
+            if player.rate != 0 { player.pause(); playing = false }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            Sound.on(.moviePlayback)
+            player.wake()
+        }
         .onDisappear {
             player.shutdown()
             // the sound given back (19 Nov: left on, the feed's videos went on stopping their Spotify after an edit)
@@ -463,9 +473,11 @@ struct MultiClipEditor: View {
                 Text("Clip\nsound").font(.system(size: 7.5, weight: .medium)).foregroundStyle(Self.quiet).multilineTextAlignment(.center)
             }
             .foregroundStyle(.white).frame(width: 44, height: 64)   // (down past the sound wave: 21 Nov, a gap under it)
-            // solid, a hairline at its edge (21 Nov: the fade into the clips dimmed the first of them too far)
-            .background(Self.sheet)
             .overlay(alignment: .trailing) { Rectangle().fill(Color(white: 0.2)).frame(width: 1, height: 40) }
+            // solid, down past every row of bars under the clips too (21 Nov: captions showed under it; and before,
+            // the fade into the clips dimmed the first of them too far)
+            .frame(width: 44, height: max(64, Self.clipRow + 2 + (laneCount > 0 ? 3 + CGFloat(laneCount) * (Self.laneHeight + 3) : 0)), alignment: .top)
+            .background(Self.sheet)
         }
         .buttonStyle(.plain).accessibilityLabel(any ? "Turn every clip's sound off" : "Turn every clip's sound on")
     }
