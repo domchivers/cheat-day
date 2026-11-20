@@ -101,31 +101,7 @@ struct PostPicker: View {
             Text("Drafts").font(.headline.weight(.heavy))
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(drafts) { d in
-                        Group { if let c = d.clips.first { ClipThumb(clip: c) } else { Color(white: 0.2) } }
-                            .frame(width: 66, height: 104).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            .overlay(alignment: .bottomLeading) {
-                                Text(clock(d.length)).font(.caption2.weight(.heavy)).foregroundStyle(.white).shadow(radius: 2).padding(5)
-                            }
-                            // Held, it only grows a little, whole, and then asks (21 Nov, twice: the phone's own
-                            // hold menu cropped it to the row as it grew, then popped it out on its own)
-                            .scaleEffect(holding == d.id ? 1.08 : 1)
-                            .shadow(color: .black.opacity(holding == d.id ? 0.4 : 0), radius: 8, y: 3)
-                            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            .onTapGesture { openDraft?(d) }
-                            .onLongPressGesture(minimumDuration: 0.45) {
-                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                                deleting = d
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { holding = nil }
-                            } onPressingChanged: { down in
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { holding = down ? d.id : nil }
-                            }
-                            .accessibilityElement(children: .ignore)
-                            .accessibilityAddTraits(.isButton)
-                            .accessibilityLabel("Draft, \(clock(d.length)), saved \(d.saved.formatted(date: .abbreviated, time: .shortened))")
-                            .accessibilityAction { openDraft?(d) }
-                            .accessibilityAction(named: "Delete draft") { deleteDraft?(d) }
-                    }
+                    ForEach(drafts) { d in draftTile(d) }
                 }
                 // room to grow into, and nothing cut off at the row's edges
                 .padding(.vertical, 6).padding(.horizontal, 2)
@@ -141,6 +117,43 @@ struct PostPicker: View {
             Button("Delete draft", role: .destructive) { deleteDraft?(d); deleting = nil }
             Button("Cancel", role: .cancel) { deleting = nil }
         }
+    }
+
+    /// One draft: its first clip's picture and length; tapped, opened; held, grown a little and asked about. (Its own
+    /// function: in the row's one long expression it was too much for the type checker, 21 Nov.)
+    private func draftTile(_ d: EditDrafts.Draft) -> some View {
+        thumb(d)
+            // Held, it only grows a little, whole, and then asks (21 Nov, twice: the phone's own
+            // hold menu cropped it to the row as it grew, then popped it out on its own)
+            .scaleEffect(holding == d.id ? 1.08 : 1)
+            .shadow(color: .black.opacity(holding == d.id ? 0.4 : 0), radius: 8, y: 3)
+            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .onTapGesture { openDraft?(d) }
+            .onLongPressGesture(minimumDuration: 0.45) {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                deleting = d
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { holding = nil }
+            } onPressingChanged: { down in
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { holding = down ? d.id : nil }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel(draftLabel(d))
+            .accessibilityAction { openDraft?(d) }
+            .accessibilityAction(named: "Delete draft") { deleteDraft?(d) }
+    }
+
+    private func thumb(_ d: EditDrafts.Draft) -> some View {
+        Group { if let c = d.clips.first { ClipThumb(clip: c) } else { Color(white: 0.2) } }
+            .frame(width: 66, height: 104).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(alignment: .bottomLeading) {
+                Text(clock(d.length)).font(.caption2.weight(.heavy)).foregroundStyle(.white).shadow(radius: 2).padding(5)
+            }
+    }
+
+    private func draftLabel(_ d: EditDrafts.Draft) -> String {
+        let when = d.saved.formatted(date: .abbreviated, time: .shortened)
+        return "Draft, " + clock(d.length) + ", saved " + when
     }
 
     private var header: some View {
