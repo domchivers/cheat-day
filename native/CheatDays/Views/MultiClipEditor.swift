@@ -633,9 +633,8 @@ struct MultiClipEditor: View {
         let dr = trimLive?.side == 1 ? band(trimLive?.dx ?? 0, rightMin, rightMax) : 0
         let x0 = x + dl, width = max(8, w + dr - dl)
         func handle(_ side: Int) -> some View {
-            UnevenRoundedRectangle(topLeadingRadius: side == 0 ? 5 : 0, bottomLeadingRadius: side == 0 ? 5 : 0,
-                                   bottomTrailingRadius: side == 1 ? 5 : 0, topTrailingRadius: side == 1 ? 5 : 0, style: .continuous)
-                .fill(.white).frame(width: 12, height: 48)
+            // (the white is the frame's, drawn whole below: this is where it's caught, and its grip)
+            Color.clear.frame(width: 12, height: 48)
                 .overlay(Capsule().fill(Color(white: 0.2)).frame(width: 2, height: 14))
                 // a thumb's width to catch it by
                 .padding(.horizontal, 10).contentShape(Rectangle()).padding(.horizontal, -10)
@@ -661,13 +660,19 @@ struct MultiClipEditor: View {
                     })
                 .accessibilityLabel(side == 0 ? "Start of clip \(i + 1)" : "End of clip \(i + 1)")
         }
+        // the frame and its two handles as one white shape, rounded outside, the clip showing through it (21 Nov: drawn
+        // as a frame and two handles, each with its own rounded corners, they left a notch at each corner where they met)
         return ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(.white, lineWidth: 2)
-                .frame(width: width, height: 48).allowsHitTesting(false)
-            handle(0).offset(x: -12)
-            handle(1).offset(x: width)
+            Path { p in
+                p.addRoundedRect(in: CGRect(x: 0, y: 0, width: width + 24, height: 48), cornerSize: CGSize(width: 6, height: 6), style: .continuous)
+                p.addRoundedRect(in: CGRect(x: 12, y: 2, width: width, height: 44), cornerSize: CGSize(width: 4, height: 4), style: .continuous)
+            }
+            .fill(Color.white, style: FillStyle(eoFill: true))
+            .frame(width: width + 24, height: 48).allowsHitTesting(false)
+            handle(0)
+            handle(1).offset(x: width + 12)
         }
-        .offset(x: x0, y: 0)
+        .offset(x: x0 - 12, y: 0)
     }
 
     /// A clip's start or end moved by `by` of its file's seconds, kept in its file and at least a third of a second.
