@@ -464,6 +464,9 @@ struct FeedView: View {
             .padding(.bottom, 120)
         }
         .scrollDisabled(zoomed != nil)   // the list keeps still while a picture's being pinched
+        // the made-up feed's scroll view named on itself, for the scrolling test (21 Nov: named only from outside, on
+        // the whole FeedView, the name stopped reaching it in 1.4.9; why isn't known). A name for tests, never read out.
+        .accessibilityIdentifier(only != nil ? "feedHarness" : "feed")
         .scrollIndicators(.hidden)
         .task(id: Nav.shared.focusPost) { await focus(proxy) }
         .task { if let startAt { try? await Task.sleep(for: .milliseconds(80)); proxy.scrollTo(startAt, anchor: .top) } }

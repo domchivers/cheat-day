@@ -11,7 +11,10 @@ final class FeedScrollUITests: XCTestCase {
         app.launch()
         // the feed itself by name: firstMatch once found another full-screen scroll view, and nothing scrolled (1.4.0)
         let feed = app.scrollViews["feedHarness"]
-        XCTAssertTrue(feed.waitForExistence(timeout: 15), "no feed")
+        // (not found: what is on the screen, said, so the cause can be seen)
+        guard feed.waitForExistence(timeout: 15) else {
+            return XCTFail("no feed; the screen: \(String(app.debugDescription.prefix(4000)))")
+        }
         Thread.sleep(forTimeInterval: 2)   // the photos made and laid out first
         let options = XCTMeasureOptions()
         options.iterationCount = 5
