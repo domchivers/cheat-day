@@ -99,6 +99,8 @@ struct MultiClipEditor: View {
     @State private var seeking = false                    // a seek on its way: the next waits for it
     @State private var chaseTo: Double?                   // where the finger's got to since
     @State private var dropped = 0                        // a bar let go: the preview made again then
+    private struct TrimDrag { var side: Int; var dx: CGFloat }
+    @State private var trimDrag: TrimDrag?                // an end of the picked clip being dragged on the timeline
     private struct BarGrab { var id: UUID; var mode: Int; var from: Double; var to: Double; var words: [EditText.Word]?; var start = 0.0 }   // mode: 0 move, 1 start, 2 end
     /// One bar on the timeline: a text, sticker or caption, or a voiceover or sound effect.
     /// kind: 0 over the picture (text, stickers, captions), 1 a sound, 2 a clip or photo over it.
@@ -201,6 +203,9 @@ struct MultiClipEditor: View {
         .task(id: pips) { guard barGrab == nil else { return }; await settle(); await autosave() }
         .sheet(isPresented: $choosingSong) { SongPicker { s in Task { @MainActor in await addSong(s) } } }
         .onAppear { if !UserDefaults.standard.bool(forKey: "editor.tips.1") { tip = 0 } }
+        // (a trim handle's drag cut short, by another clip picked or a panel opened, leaves nothing behind)
+        .onChange(of: selected) { _, _ in trimDrag = nil }
+        .onChange(of: panel == nil) { _, _ in trimDrag = nil }
         .onChange(of: pipPicks) { _, now in
             guard !now.isEmpty else { return }
             Task { let got = await Self.clips(from: now); pipPicks = []; if let c = got.first { await addPip(c) } }
@@ -242,46 +247,80 @@ struct MultiClipEditor: View {
             .photosPicker(isPresented: $pipPicking, selection: $pipPicks, maxSelectionCount: 1, matching: .any(of: [.images, .videos]))
     }
 
+    /// The controls' sheet under the video (21 Nov, design/pro-ui/pro-editor-mockup.png): a shade off the black the
+    /// video sits on, so the two don't run into each other.
+    static let sheet = Color(red: 0.067, green: 0.067, blue: 0.075)
+    static let quiet = Color(white: 0.47)
+
+    /// A plain icon button, as a pro editor's top bar has them; greyed when there's nothing to do.
+    private func bare(_ symbol: String, _ label: String, size: CGFloat = 17, on: Bool = true, _ run: @escaping () -> Void) -> some View {
+        Button(action: run) {
+            Image(systemName: symbol).font(.system(size: size, weight: .medium)).foregroundStyle(on ? Color.white : Color(white: 0.33))
+                .frame(width: 34, height: 34).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).disabled(!on).accessibilityLabel(label)
+    }
+
     private var topRow: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 6) {
             // asked first: one tap on the cross threw the whole edit away (19 Nov)
-            round("xmark", "Close") { if clips.isEmpty { close() } else { leaving = true } }
-            if !history.isEmpty { round("arrow.uturn.backward", "Undo") { undo() } }
-            if !future.isEmpty { round("arrow.uturn.forward", "Redo") { redo() } }
+            bare("xmark", "Close") { if clips.isEmpty { close() } else { leaving = true } }
+            bare("arrow.uturn.backward", "Undo", on: !history.isEmpty) { undo() }
+            bare("arrow.uturn.forward", "Redo", on: !future.isEmpty) { redo() }
             Spacer()
-            if panel == nil { round("aspectratio", "Shape and background") { withAnimation(.snappy) { panel = .shape } } }
+            if panel == nil {
+                // the shape it's made in, said, as a pro editor shows its frame size
+                Button { withAnimation(.snappy) { panel = .shape } } label: {
+                    HStack(spacing: 4) {
+                        Text(look.shape)
+                        Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold))
+                    }
+                    .font(.caption.weight(.semibold)).foregroundStyle(Color(white: 0.8))
+                    .padding(.horizontal, 9).frame(height: 26).background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                }
+                .buttonStyle(.plain).accessibilityLabel("Shape and background: \(look.shape)")
+            }
             // up here, as CapCut's Export (21 Nov: along the bottom it took room from the video)
             Button { finish() } label: {
                 Text("Next").font(.subheadline.weight(.bold)).foregroundStyle(.black)
-                    .padding(.horizontal, 18).frame(height: 34).background(.white, in: Capsule())
+                    .padding(.horizontal, 16).frame(height: 32).background(.white, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
-            .buttonStyle(.plain).disabled(clips.isEmpty || joining).opacity(clips.isEmpty ? 0.5 : 1)
+            .buttonStyle(.plain).disabled(clips.isEmpty || joining).opacity(clips.isEmpty ? 0.5 : 1).padding(.leading, 4)
         }
-        .padding(.horizontal, 12).padding(.vertical, 8)
+        .padding(.horizontal, 10).padding(.vertical, 6)
     }
+
+    /// A time as a pro editor shows it, minutes and seconds, always two of each ("00:09").
+    static func code(_ s: Double) -> String { String(format: "%02d:%02d", Int(max(0, s)) / 60, Int(max(0, s)) % 60) }
 
     private func togglePlay() {
         if player.rate == 0 { player.play(); playing = true } else { player.pause(); playing = false }
     }
 
-    /// Under the line: play, a frame back and on, where it is, and full screen.
+    /// At the top of the sheet, as a pro editor lays it: where it is of how long on the left, play in the middle, a
+    /// frame back and on and full screen on the right.
     private var timeRow: some View {
-        HStack(spacing: 8) {
-            allSound
+        HStack(spacing: 0) {
+            (Text(Self.code(now)).foregroundColor(.white)
+             + Text(" / " + Self.code(total)).foregroundColor(total > limit + 0.05 ? Theme.warn : Self.quiet))
+                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .frame(width: 112, alignment: .leading)
+                .accessibilityLabel("\(Self.clock(now)) of \(Self.clock(total))")
             Spacer(minLength: 0)
-            frameStep(-1)
             Button { togglePlay() } label: {
-                Image(systemName: playing ? "pause.fill" : "play.fill").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
-                    .frame(width: 34, height: 28).background(.black.opacity(0.45), in: Capsule())
+                Image(systemName: playing ? "pause.fill" : "play.fill").font(.system(size: 20)).foregroundStyle(.white)
+                    .frame(width: 48, height: 36).contentShape(Rectangle())
             }
             .buttonStyle(.plain).accessibilityLabel(playing ? "Pause" : "Play")
-            Text("\(Self.clock(now)) · \(Self.clock(total)) of \(Self.clock(limit))")
-                .font(.caption.weight(.heavy)).monospacedDigit().foregroundStyle(total > limit + 0.05 ? Theme.warn : .white)
-                .lineLimit(1).minimumScaleFactor(0.8)
-            frameStep(1)
             Spacer(minLength: 0)
-            round("arrow.up.left.and.arrow.down.right", "Full screen") { withAnimation(.snappy) { full = true } }
+            HStack(spacing: 2) {
+                frameStep(-1)
+                frameStep(1)
+                bare("arrow.up.left.and.arrow.down.right", "Full screen", size: 14) { withAnimation(.snappy) { full = true } }
+            }
+            .frame(width: 112, alignment: .trailing)
         }
+        .frame(height: 36)
     }
 
     /// Full screen: play or pause, and how far through it is.
@@ -305,20 +344,24 @@ struct MultiClipEditor: View {
     }
 
     /// The open panel's bar (design/panel-tick-mockup.html): what it is, which clip, and a ✓ that closes it, as CapCut's.
+    /// (21 Nov, design/pro-ui: ‹ and the ✓ both close it, a pro editor's header.)
     private var panelBar: some View {
         HStack(spacing: 6) {
+            bare("chevron.left", "Back", size: 16) { closePanel() }
             Text(panelTitle).font(.subheadline.weight(.bold)).foregroundStyle(.white)
-            if !panelSub.isEmpty { Text(panelSub).font(.caption).foregroundStyle(.secondary) }
+            if !panelSub.isEmpty { Text(panelSub).font(.caption).foregroundStyle(Self.quiet) }
             Spacer()
-            Button {
-                withAnimation(.snappy) { panel = nil; selectedText = nil; selectedSound = nil; selectedPip = nil }
-            } label: {
-                Image(systemName: "checkmark").font(.system(size: 17, weight: .heavy)).foregroundStyle(.black)
-                    .frame(width: 38, height: 38).background(.white, in: Circle())
+            Button { closePanel() } label: {
+                Image(systemName: "checkmark").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
+                    .frame(width: 40, height: 36).contentShape(Rectangle())
             }
             .buttonStyle(.plain).accessibilityLabel("Done")
         }
-        .padding(.horizontal, 2)
+        .padding(.horizontal, -6)
+    }
+
+    private func closePanel() {
+        withAnimation(.snappy) { panel = nil; selectedText = nil; selectedSound = nil; selectedPip = nil }
     }
 
     private var panelTitle: String {
@@ -389,20 +432,31 @@ struct MultiClipEditor: View {
                 if selected == nil { addTools } else { actions }
             }
         }
-        .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 8)
+        .padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 8)
+        // on a sheet of its own, a shade off the video's black (design/pro-ui)
+        .background {
+            UnevenRoundedRectangle(topLeadingRadius: 18, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: 18, style: .continuous)
+                .fill(Self.sheet).ignoresSafeArea(edges: .bottom)
+        }
     }
 
     // MARK: the timeline
 
-    /// Every clip's sound off, or back on, at once (CapCut's "Mute clip audio" at the start of its timeline).
+    /// Every clip's sound off, or back on, at once (CapCut's "Mute clip audio" at the start of its timeline), in a
+    /// column of its own at the timeline's left.
     private var allSound: some View {
         let any = clips.contains { $0.soundOn && !$0.still }
         return Button {
             remember()
             withAnimation(.snappy(duration: 0.2)) { for i in clips.indices where !clips[i].still { clips[i].soundOn = !any } }
         } label: {
-            Image(systemName: any ? "speaker.wave.2.fill" : "speaker.slash.fill").font(.system(size: 13, weight: .bold))
-                .foregroundStyle(.white).frame(width: 34, height: 34).background(.black.opacity(0.45), in: Circle())
+            VStack(spacing: 2) {
+                Image(systemName: any ? "speaker.wave.2.fill" : "speaker.slash.fill").font(.system(size: 13, weight: .medium))
+                Text("Clip\nsound").font(.system(size: 7.5, weight: .medium)).foregroundStyle(Self.quiet).multilineTextAlignment(.center)
+            }
+            .foregroundStyle(.white).frame(width: 44, height: 58)
+            .background(LinearGradient(stops: [.init(color: Self.sheet, location: 0.7), .init(color: Self.sheet.opacity(0), location: 1)],
+                                       startPoint: .leading, endPoint: .trailing))
         }
         .buttonStyle(.plain).accessibilityLabel(any ? "Turn every clip's sound off" : "Turn every clip's sound on")
     }
@@ -416,11 +470,12 @@ struct MultiClipEditor: View {
 
     /// How many rows of bars the timeline shows under its clips.
     private var laneCount: Int { min(4, barRows.count) }
+    private static let rulerHeight: CGFloat = 18, clipRow: CGFloat = 58, laneHeight: CGFloat = 15
 
     /// The clips and everything over them as one timeline under a line fixed in the middle, as CapCut and Edits lay
-    /// it out (21 Nov; design/bigger-preview-mockup.html): slide it under the line to look through the video, tap a
-    /// clip for its tools, pinch it wider or narrower. A second is the same width on every row, so each bar sits over
-    /// the clips it shows over.
+    /// it out (21 Nov; design/bigger-preview-mockup.html, then design/pro-ui): a ruler over it, slide it under the line
+    /// to look through the video, tap a clip for its tools and drag its ends to trim it, pinch it wider or narrower. A
+    /// second is the same width on every row, so each bar sits under the clips it plays over.
     private var timeline: some View {
         GeometryReader { g in
             let mid = g.size.width / 2, pps = perSecond, span = max(total, 0.01)
@@ -431,9 +486,16 @@ struct MultiClipEditor: View {
                 TimelineView(.animation(minimumInterval: nil, paused: !playing || scrubFrom != nil)) { _ in
                     rows.offset(x: mid - CGFloat(min(lineTime, span)) * pps)
                 }
-                Capsule().fill(scrubFrom != nil ? Color.yellow : Color.white).frame(width: 2.5, height: g.size.height)
-                    .shadow(color: .black.opacity(0.6), radius: 2)
-                    .offset(x: mid - 1.25).allowsHitTesting(false)
+                // the line: white, a dot on its top, yellow while a finger looks through the video
+                let line = scrubFrom != nil ? Color.yellow : Color.white
+                VStack(spacing: 0) {
+                    Circle().fill(line).frame(width: 9, height: 9)
+                    Rectangle().fill(line).frame(width: 2)
+                }
+                .shadow(color: .black.opacity(0.5), radius: 2)
+                .frame(width: 9, height: g.size.height)
+                .offset(x: mid - 4.5).allowsHitTesting(false)
+                allSound.offset(y: Self.rulerHeight + 2)
             }
             .frame(width: g.size.width, height: g.size.height, alignment: .topLeading)
             .clipped()
@@ -448,64 +510,91 @@ struct MultiClipEditor: View {
                 }
                 .onEnded { _ in stripZoomFrom = nil })
         }
-        .frame(height: 64 + (laneCount > 0 ? 4 + CGFloat(laneCount) * 21 : 0))
+        .frame(height: Self.rulerHeight + 4 + Self.clipRow + (laneCount > 0 ? 3 + CGFloat(laneCount) * (Self.laneHeight + 3) : 0))
         // edge to edge, as CapCut's
         .padding(.horizontal, -14)
+    }
+
+    /// The ruler over the clips: a tick each step, its time on every other, the step chosen so the times don't crowd.
+    private func ruler(width: CGFloat, span: Double, pps: CGFloat) -> some View {
+        let step = [0.5, 1, 2, 5, 10, 15, 30, 60].first { CGFloat($0) * pps >= 54 } ?? 60
+        return Canvas { ctx, size in
+            var t = 0.0, k = 0
+            while t <= span + 0.001 {
+                let x = CGFloat(t) * pps, big = k % 2 == 0
+                ctx.fill(Path(CGRect(x: x, y: size.height - (big ? 6 : 4), width: 1, height: big ? 6 : 4)),
+                         with: .color(Color(white: big ? 0.42 : 0.28)))
+                if big {
+                    ctx.draw(Text(Self.code(t)).font(.system(size: 8.5, weight: .medium, design: .monospaced)).foregroundColor(Self.quiet),
+                             at: CGPoint(x: x, y: size.height - 7), anchor: t < 0.001 ? .bottomLeading : .bottom)
+                }
+                t += step / 2; k += 1
+            }
+        }
+        .frame(width: width + 60, height: Self.rulerHeight)
+        .allowsHitTesting(false)
     }
 
     private func timelineRows(width: CGFloat, span: Double, pps: CGFloat) -> some View {
         let starts = ClipJoin.starts(clips)
         let joins = Array(0..<max(0, clips.count - 1))
         return VStack(alignment: .leading, spacing: 4) {
+            ruler(width: width, span: span, pps: pps)
             ZStack(alignment: .topLeading) {
                 ForEach(Array(clips.enumerated()), id: \.element.id) { i, c in
-                    timelineClip(c, i, w: CGFloat(c.span) * pps).offset(x: CGFloat(starts[i]) * pps)
+                    timelineClip(c, i, w: CGFloat(c.span) * pps).offset(x: CGFloat(starts[i]) * pps, y: 2)
                 }
                 // the song's beats, as yellow ticks (Stage E)
                 ForEach(songBeats.indices, id: \.self) { b in
-                    Rectangle().fill(Color.yellow.opacity(0.85)).frame(width: 1, height: 8)
+                    Rectangle().fill(Color.yellow.opacity(0.85)).frame(width: 1, height: 6)
                         .offset(x: CGFloat(songBeats[b]) * pps, y: 50).allowsHitTesting(false)
                 }
                 // the square for each join, in the middle of where one turns into the next
                 ForEach(joins, id: \.self) { i in
                     let at = starts[i + 1] + ClipJoin.overlap(clips, after: i) / 2
-                    joinSquare(i).offset(x: CGFloat(at) * pps - 11, y: 9)
+                    joinSquare(i).offset(x: CGFloat(at) * pps - 9, y: 16)
                 }
                 Button { adding = true } label: {
-                    Image(systemName: "plus").font(.title3).foregroundStyle(.white).frame(width: 44, height: 54)
-                        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [5])).foregroundStyle(.secondary))
+                    Image(systemName: "plus").font(.system(size: 18, weight: .semibold)).foregroundStyle(.black)
+                        .frame(width: 34, height: 34).background(.white, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
                 .buttonStyle(.plain).accessibilityLabel("Add clips")
-                .offset(x: width + 8)
+                .offset(x: width + 18, y: 7)
+                // the picked clip framed, with a handle on each end to drag it shorter or longer (over the joins'
+                // squares, so a handle caught by its middle trims, not opens the transition)
+                if let i = index, i < starts.count {
+                    trimFrame(i, x: CGFloat(starts[i]) * pps, w: CGFloat(clips[i].span) * pps - 2, pps: pps)
+                }
             }
-            .frame(width: width + 60, height: 60, alignment: .topLeading)
+            .frame(width: width + 60, height: Self.clipRow, alignment: .topLeading)
             if laneCount > 0 { lanes(width: width, span: span) }
         }
-        .padding(.top, 4)
     }
 
-    /// A clip on the timeline: its frames, and its sound under them as a wave, green while it's heard (as CapCut shows it).
+    /// A clip on the timeline: its frames, its length on it, and its sound under them as a fine wave, green while
+    /// it's heard (as CapCut shows it).
     private func timelineClip(_ c: Clip, _ at: Int, w: CGFloat) -> some View {
-        let on = c.id == selected
         let heard = c.soundOn && !c.still && (soundOf == nil || soundOf == c.id)
         return VStack(spacing: 2) {
             ClipThumb(clip: c)
-                .frame(height: 42)
-                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(on ? Color.white : .clear, lineWidth: 2))
-            Bars(levels: c.still ? [] : (levels[c.id] ?? []), colour: heard ? Theme.walk : Color.white.opacity(0.25))
-                .frame(height: 12).clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-                .task(id: "\(c.id)|\(c.start)|\(c.end)") { if !c.still { levels[c.id] = await ClipJoin.levels(c, count: 24) } }
+                .frame(height: 44)
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .overlay(alignment: .bottomLeading) {
+                    HStack(spacing: 3) {
+                        if !c.soundOn || c.still || (soundOf != nil && soundOf != c.id) { Image(systemName: "speaker.slash.fill") }
+                        if abs(c.speed - 1) > 0.001 { Text(Self.speedText(c.speed)) }
+                        Text(String(format: "%.1fs", c.span))
+                    }
+                    .font(.system(size: 8.5, weight: .semibold)).foregroundStyle(.white)
+                    .padding(.horizontal, 4).padding(.vertical, 1)
+                    .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 3, style: .continuous))
+                    .padding(3)
+                }
+            Bars(levels: c.still ? [] : (levels[c.id] ?? []), colour: heard ? Color(red: 0.24, green: 0.86, blue: 0.52) : Color.white.opacity(0.25))
+                .frame(height: 10).clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
+                .task(id: "\(c.id)|\(c.start)|\(c.end)") { if !c.still { levels[c.id] = await ClipJoin.levels(c, count: 48) } }
         }
         .frame(width: max(6, w - 2))
-        .overlay(alignment: .topLeading) {
-            HStack(spacing: 3) {
-                if !c.soundOn || c.still || (soundOf != nil && soundOf != c.id) { Image(systemName: "speaker.slash.fill") }
-                if abs(c.speed - 1) > 0.001 { Text(Self.speedText(c.speed)) }
-                Text(Self.clock(c.span))
-            }
-            .font(.system(size: 10, weight: .bold)).foregroundStyle(.white).shadow(radius: 2).padding(4)
-        }
         .clipped()
         .contentShape(Rectangle())
         .onTapGesture { select(c.id) }
@@ -520,7 +609,63 @@ struct MultiClipEditor: View {
         .accessibilityAddTraits(.isButton)
     }
 
-    /// The bars under the clips, at the timeline's seconds.
+    /// The picked clip's white frame, a handle on each end (design/pro-ui): drag one and the frame follows the finger,
+    /// the preview showing the frame the clip will start or end on; let go and it's trimmed there.
+    private func trimFrame(_ i: Int, x: CGFloat, w: CGFloat, pps: CGFloat) -> some View {
+        let c = clips[i], r = max(c.speed, 0.01)
+        // how far each end may go: out to the file's ends, in to a third of a second
+        let leftMin = -CGFloat(c.start / r) * pps, leftMax = CGFloat((c.duration - 0.3) / r) * pps
+        let rightMin = -CGFloat((c.duration - 0.3) / r) * pps, rightMax = CGFloat((c.length - c.end) / r) * pps
+        let dl = trimDrag?.side == 0 ? min(max(trimDrag?.dx ?? 0, leftMin), leftMax) : 0
+        let dr = trimDrag?.side == 1 ? min(max(trimDrag?.dx ?? 0, rightMin), rightMax) : 0
+        let x0 = x + dl, width = max(8, w + dr - dl)
+        func handle(_ side: Int) -> some View {
+            UnevenRoundedRectangle(topLeadingRadius: side == 0 ? 5 : 0, bottomLeadingRadius: side == 0 ? 5 : 0,
+                                   bottomTrailingRadius: side == 1 ? 5 : 0, topTrailingRadius: side == 1 ? 5 : 0, style: .continuous)
+                .fill(.white).frame(width: 12, height: 48)
+                .overlay(Capsule().fill(Color(white: 0.2)).frame(width: 2, height: 14))
+                // a thumb's width to catch it by
+                .padding(.horizontal, 10).contentShape(Rectangle()).padding(.horizontal, -10)
+                .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                    .onChanged { v in
+                        if trimDrag == nil { player.pause(); playing = false; UISelectionFeedbackGenerator().selectionChanged() }
+                        trimDrag = TrimDrag(side: side, dx: v.translation.width)
+                        // the frame it'll start or end on, under the line
+                        let d = side == 0 ? min(max(v.translation.width, leftMin), leftMax) : min(max(v.translation.width, rightMin), rightMax)
+                        let at = side == 0 ? startOf(i) + Double(d / pps) : startOf(i) + c.span + Double(d / pps) - 0.04
+                        // (inside the clip: past its ends is the next clip's picture, not this one's)
+                        chase(min(max(startOf(i), at), startOf(i) + max(0, c.span - 0.04)))
+                    }
+                    .onEnded { v in
+                        let d = side == 0 ? min(max(v.translation.width, leftMin), leftMax) : min(max(v.translation.width, rightMin), rightMax)
+                        trimDrag = nil; chaseTo = nil
+                        if abs(d) < 0.5 { seek(now) } else { trimEnd(i, side: side, by: Double(d / pps) * r) }
+                    })
+                .accessibilityLabel(side == 0 ? "Start of clip \(i + 1)" : "End of clip \(i + 1)")
+        }
+        return ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(.white, lineWidth: 2)
+                .frame(width: width, height: 48).allowsHitTesting(false)
+            handle(0).offset(x: -12)
+            handle(1).offset(x: width)
+        }
+        .offset(x: x0, y: 0)
+    }
+
+    /// A clip's start or end moved by `by` of its file's seconds, kept in its file and at least a third of a second.
+    private func trimEnd(_ i: Int, side: Int, by d: Double) {
+        guard clips.indices.contains(i), abs(d) > 0.001 else { return }
+        remember()
+        var c = clips[i]
+        if side == 0 { c.start = min(max(0, c.start + d), c.end - 0.3) } else { c.end = max(min(c.length, c.end + d), c.start + 0.3) }
+        // its sound kept inside what's kept of the picture
+        if let ss = c.soundStart { c.soundStart = max(c.start, min(ss, c.end)) }
+        if let se = c.soundEnd { c.soundEnd = max(c.start, min(se, c.end)) }
+        withAnimation(.snappy(duration: 0.2)) { clips[i] = c }
+        seek(side == 0 ? startOf(i) + 0.01 : max(startOf(i), startOf(i) + clips[i].span - 0.05))
+    }
+
+    /// The bars under the clips, at the timeline's seconds: slim tags.
     private func lanes(width: CGFloat, span: Double) -> some View {
         let rows = Array(barRows.prefix(4))
         return VStack(alignment: .leading, spacing: 3) {
@@ -528,9 +673,10 @@ struct MultiClipEditor: View {
                 ZStack(alignment: .leading) {
                     ForEach(rows[r]) { item in bar(item, w: width, span: span, onTimeline: true) }
                 }
-                .frame(width: width, height: 18, alignment: .leading)
+                .frame(width: width, height: Self.laneHeight, alignment: .leading)
             }
         }
+        .padding(.top, 2)
     }
 
     /// The timeline slid by a finger: the video under the line follows it, held on a clip's edge when it's near one.
@@ -579,7 +725,15 @@ struct MultiClipEditor: View {
     private var actions: some View {
         let has = index != nil
         let moving = index.map { !clips[$0].still } ?? false
-        return ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 8) {
+        return HStack(spacing: 0) {
+          // back to the tools for the whole video
+          Button { withAnimation(.snappy) { selected = nil } } label: {
+              Image(systemName: "chevron.left").font(.system(size: 18, weight: .semibold)).foregroundStyle(.white)
+                  .frame(width: 34, height: 54).contentShape(Rectangle())
+          }
+          .buttonStyle(.plain).accessibilityLabel("Back to the tools for the whole video")
+          Rectangle().fill(Color(white: 0.17)).frame(width: 1, height: 30).padding(.trailing, 4)
+          toolRow {
             action("scissors", "Trim", on: has) { withAnimation(.snappy) { panel = .trim } }
             action("square.split.2x1", "Split", on: has) { splitHere() }
             action("gauge.with.dots.needle.67percent", "Speed", on: moving) { withAnimation(.snappy) { panel = .speed } }
@@ -600,21 +754,31 @@ struct MultiClipEditor: View {
                 change { var all = $0; all.remove(at: i); return all }
                 selected = nil
             }
-        } }
-        .padding(.top, 4)
+          }
+        }
+        .padding(.top, 2)
     }
 
+    /// A tool: its icon over its name, plain on the sheet, as a pro editor's tools row (design/pro-ui; the dark tiles
+    /// went, and the names never cut off).
     private func action(_ icon: String, _ title: String, on: Bool, _ run: @escaping () -> Void) -> some View {
-        // the single editor's tool tile
         Button(action: run) {
-            VStack(spacing: 5) {
-                Image(systemName: icon).font(.system(size: 18, weight: .semibold)).frame(height: 22)
-                Text(title).font(.caption2.weight(.semibold))
+            VStack(spacing: 6) {
+                Image(systemName: icon).font(.system(size: 19, weight: .regular)).foregroundStyle(.white).frame(height: 22)
+                Text(title).font(.system(size: 10, weight: .medium)).foregroundStyle(Color(white: 0.74)).lineLimit(1).fixedSize()
             }
-            .foregroundStyle(.white).frame(width: 60, height: 56)
-            .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .frame(minWidth: 52).frame(height: 54).contentShape(Rectangle())
         }
-        .buttonStyle(.plain).foregroundStyle(.white).disabled(!on).opacity(on ? 1 : 0.35)
+        .buttonStyle(.plain).disabled(!on).opacity(on ? 1 : 0.3)
+    }
+
+    /// A row of tools that scrolls, faded at its right edge so it's clear there are more.
+    private func toolRow<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) { content() }.padding(.trailing, 28)
+        }
+        .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.86), .init(color: .clear, location: 1)],
+                             startPoint: .leading, endPoint: .trailing))
     }
 
     // MARK: trim and sound
@@ -651,6 +815,7 @@ struct MultiClipEditor: View {
                     soundTile("music.note", "Use for all", on: soundOf == c.id) { remember(); soundOf = soundOf == c.id ? nil : c.id }
                     soundTile("waveform.badge.magnifyingglass", "Clearer", on: c.clean != nil) { clearer(i) }
                 }
+                .background(alignment: .bottom) { tabLine }
                 if !c.soundOn {
                     Text("This clip's sound is off. Tap Mute again to bring it back.").font(.caption).foregroundStyle(.secondary)
                 } else if soundTool == .volume {
@@ -663,18 +828,22 @@ struct MultiClipEditor: View {
         .task(id: c.id) { if levels[c.id] == nil { levels[c.id] = await ClipJoin.levels(c) } }
     }
 
-    /// The tool tile, white when it's the one picked (the single editor's tile otherwise).
+    /// A panel's tool as a tab: its name, white and underlined when it's the one on (design/pro-ui: the big white
+    /// blocks went). (`icon` kept for its callers; tabs are words.)
     private func soundTile(_ icon: String, _ title: String, on: Bool, _ run: @escaping () -> Void) -> some View {
         Button { UISelectionFeedbackGenerator().selectionChanged(); withAnimation(.snappy(duration: 0.2)) { run() } } label: {
-            VStack(spacing: 5) {
-                Image(systemName: icon).font(.system(size: 17, weight: .semibold)).frame(height: 22)
-                Text(title).font(.caption2.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8)
-            }
-            .foregroundStyle(on ? Color.black : Color.white).frame(maxWidth: .infinity).frame(height: 56)
-            .background(on ? AnyShapeStyle(Color.white) : AnyShapeStyle(Color.black.opacity(0.55)), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            Text(title).font(.system(size: 12.5, weight: on ? .bold : .medium)).foregroundStyle(on ? Color.white : Color(white: 0.55))
+                .lineLimit(1).minimumScaleFactor(0.8)
+                .padding(.vertical, 9).frame(maxWidth: .infinity)
+                .overlay(alignment: .bottom) { if on { Rectangle().fill(.white).frame(height: 2) } }
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
+
+    /// The line under a row of tabs.
+    private var tabLine: some View { Rectangle().fill(Color(white: 0.13)).frame(height: 1) }
 
     /// Where the line is in the clip's own file, if the line is inside it.
     private func fileTime(_ i: Int) -> Double? {
@@ -689,24 +858,15 @@ struct MultiClipEditor: View {
         let c = clips[i], at = fileTime(i)
         let near = at.flatMap { t in c.keys.firstIndex { abs($0.at - t) < 0.15 } }
         let shown = c.keys.isEmpty ? c.volume : (at.map { c.level(at: $0) } ?? c.volume)
-        return VStack(spacing: 8) {
-            Text("\(Int((shown * 100).rounded()))").font(.system(size: 34, weight: .black, design: .rounded)).monospacedDigit()
-            HStack(spacing: 12) {
-                Slider(value: Binding(get: { Double(shown) }, set: { v in setVolume(i, Float(v)) }), in: 0...1,
-                       onEditingChanged: { if $0 { remember() } })
-                Button {
-                    guard let at else { return }
-                    remember()
-                    if let near { clips[i].keys.remove(at: near) }
-                    else { clips[i].keys.append(VolumeKey(at: at, volume: c.keys.isEmpty ? c.volume : c.level(at: at))) }
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                } label: {
-                    Image(systemName: near != nil ? "diamond.fill" : "diamond").font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(near != nil ? Color.yellow : Color.white).frame(width: 40, height: 40)
-                        .background(.black.opacity(0.55), in: Circle())
-                }
-                .buttonStyle(.plain).disabled(at == nil).opacity(at == nil ? 0.4 : 1)
-                .accessibilityLabel(near != nil ? "Remove the keyframe here" : "Add a keyframe here")
+        return VStack(spacing: 10) {
+            ProSlider(value: Binding(get: { Double(shown) }, set: { v in setVolume(i, Float(v)) }), began: { remember() })
+            HStack(spacing: 10) {
+            keyButton(near != nil, on: at != nil) {
+                guard let at else { return }
+                remember()
+                if let near { clips[i].keys.remove(at: near) }
+                else { clips[i].keys.append(VolumeKey(at: at, volume: c.keys.isEmpty ? c.volume : c.level(at: at))) }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }
             // the clip's sound, its keyframes on it and the line where it is: tap a diamond to go to it
             GeometryReader { g in
@@ -726,11 +886,27 @@ struct MultiClipEditor: View {
                     }
                 }
             }
-            .frame(height: 34)
-            Text(c.keys.isEmpty ? "Move the line along the bar above, then tap the diamond to set the volume at that moment."
+            .frame(height: 30)
+            }
+            Text(c.keys.isEmpty ? "Put the line where you want it, then add a keyframe to set the volume there."
                  : "\(c.keys.count) keyframe\(c.keys.count == 1 ? "" : "s"): the volume eases between them.")
-                .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                .font(.system(size: 11)).foregroundStyle(Color(white: 0.43)).fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    /// Add a keyframe here, or take away the one here: a labelled button beside the sound (design/pro-ui).
+    private func keyButton(_ here: Bool, on: Bool, _ run: @escaping () -> Void) -> some View {
+        Button(action: run) {
+            HStack(spacing: 5) {
+                Image(systemName: here ? "diamond.fill" : "diamond").font(.system(size: 11, weight: .bold)).foregroundStyle(here ? Color.yellow : Color.white)
+                Text(here ? "Remove" : "Keyframe").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(.white)
+            }
+            .padding(.horizontal, 10).frame(height: 30)
+            .background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        }
+        .buttonStyle(.plain).disabled(!on).opacity(on ? 1 : 0.4)
+        .accessibilityLabel(here ? "Remove the keyframe here" : "Add a keyframe here")
     }
 
     /// The slider moved: the clip's volume, or with keyframes the one at the line (made there if there isn't one).
@@ -952,8 +1128,8 @@ struct MultiClipEditor: View {
             player.pause(); playing = false
             seek(min(max(0, now + dir / 30), max(0, total - 0.05)))
         } label: {
-            Image(systemName: dir < 0 ? "backward.frame.fill" : "forward.frame.fill").font(.system(size: 14, weight: .bold))
-                .foregroundStyle(.white).frame(width: 34, height: 28).background(.black.opacity(0.45), in: Capsule())
+            Image(systemName: dir < 0 ? "backward.frame" : "forward.frame").font(.system(size: 15, weight: .medium))
+                .foregroundStyle(Color(white: 0.82)).frame(width: 34, height: 34).contentShape(Rectangle())
         }
         .buttonStyle(.plain).accessibilityLabel(dir < 0 ? "A frame back" : "A frame on")
     }
@@ -1121,8 +1297,7 @@ struct MultiClipEditor: View {
 
     /// What can be put over the video, when no clip is picked (the mockup's bottom row).
     private var addTools: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+        toolRow {
                 action("textformat", "Text", on: true) { addText() }
                 action("face.smiling", "Stickers", on: true) { withAnimation(.snappy) { panel = .stickers } }
                 action("captions.bubble", "Captions", on: true) { makeCaptions() }
@@ -1135,9 +1310,8 @@ struct MultiClipEditor: View {
                 action("music.note", "Music", on: true) { choosingSong = true }
                 action("metronome", "Beats", on: true) { if songBeats.isEmpty { choosingSong = true } else { withAnimation(.snappy) { panel = .beats } } }
                 action("square.grid.2x2", "Templates", on: true) { withAnimation(.snappy) { panel = .templates } }
-            }
         }
-        .padding(.top, 4)
+        .padding(.top, 2)
     }
 
     /// Everything laid over the video as bars, in rows so none covers another: drag one along, or by an end for when it
@@ -1180,10 +1354,12 @@ struct MultiClipEditor: View {
     private func bar(_ item: BarItem, w: CGFloat, span: Double, onTimeline: Bool = false) -> some View {
         let x0 = w * CGFloat(min(item.from, span) / span), x1 = w * CGFloat(min(item.to, span) / span)
         let width = max(16, x1 - x0), on = item.id == selectedText || item.id == selectedSound || item.id == selectedPip
-        return Text(item.label).font(.system(size: 9, weight: .heavy)).lineLimit(1).foregroundStyle(.black.opacity(0.8))
-            .padding(.horizontal, 6).frame(width: width, height: 18, alignment: .leading)
-            .background(item.colour, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).stroke(on ? Color.white : Color.clear, lineWidth: 2))
+        // (on the timeline a slim tag, design/pro-ui)
+        let h: CGFloat = onTimeline ? Self.laneHeight : 18, corner: CGFloat = onTimeline ? 4 : 5
+        return Text(item.label).font(.system(size: onTimeline ? 8 : 9, weight: onTimeline ? .bold : .heavy)).lineLimit(1).foregroundStyle(.black.opacity(0.82))
+            .padding(.horizontal, 5).frame(width: width, height: h, alignment: .leading)
+            .background(item.colour.opacity(onTimeline ? 0.88 : 1), in: RoundedRectangle(cornerRadius: corner, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: corner, style: .continuous).stroke(on ? Color.white : Color.clear, lineWidth: 1.5))
             .contentShape(Rectangle())
             .onTapGesture {
                 switch item.kind {
@@ -1361,6 +1537,7 @@ struct MultiClipEditor: View {
                 if home { soundTile("arrow.up.to.line", "Put back", on: false) { putBack(x.id) } }
                 soundTile("trash", "Take off", on: false) { takeOff(x.id) }
             }
+            .background(alignment: .bottom) { tabLine }
             if soundTool == .fade { barFadePanel(k) } else { barVolumePanel(k) }
         }
     }
@@ -1377,25 +1554,16 @@ struct MultiClipEditor: View {
         let s = sounds[k], at = barFileTime(k), keys = s.keys ?? []
         let near = at.flatMap { t in keys.firstIndex { abs($0.at - t) < 0.15 } }
         let shown = keys.isEmpty ? s.volume : s.keyLevel(at: at ?? s.start)
-        return VStack(spacing: 8) {
-            Text("\(Int((shown * 100).rounded()))").font(.system(size: 34, weight: .black, design: .rounded)).monospacedDigit()
-            HStack(spacing: 12) {
-                Slider(value: Binding(get: { Double(shown) }, set: { v in setBarVolume(k, Float(v)) }), in: 0...1,
-                       onEditingChanged: { if $0 { remember() } })
-                Button {
-                    guard let at, sounds.indices.contains(k) else { return }
-                    remember()
-                    var all = sounds[k].keys ?? []
-                    if let near { all.remove(at: near) } else { all.append(VolumeKey(at: at, volume: keys.isEmpty ? s.volume : s.keyLevel(at: at))) }
-                    sounds[k].keys = all.isEmpty ? nil : all
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                } label: {
-                    Image(systemName: near != nil ? "diamond.fill" : "diamond").font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(near != nil ? Color.yellow : Color.white).frame(width: 40, height: 40)
-                        .background(.black.opacity(0.55), in: Circle())
-                }
-                .buttonStyle(.plain).disabled(at == nil).opacity(at == nil ? 0.4 : 1)
-                .accessibilityLabel(near != nil ? "Remove the keyframe here" : "Add a keyframe here")
+        return VStack(spacing: 10) {
+            ProSlider(value: Binding(get: { Double(shown) }, set: { v in setBarVolume(k, Float(v)) }), began: { remember() })
+            HStack(spacing: 10) {
+            keyButton(near != nil, on: at != nil) {
+                guard let at, sounds.indices.contains(k) else { return }
+                remember()
+                var all = sounds[k].keys ?? []
+                if let near { all.remove(at: near) } else { all.append(VolumeKey(at: at, volume: keys.isEmpty ? s.volume : s.keyLevel(at: at))) }
+                sounds[k].keys = all.isEmpty ? nil : all
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }
             // the bar, its keyframes on it and the line where it is: tap a diamond to go to it
             GeometryReader { g in
@@ -1416,9 +1584,11 @@ struct MultiClipEditor: View {
                 }
             }
             .frame(height: 30)
-            Text(keys.isEmpty ? "Move the line over the bar, then tap the diamond to set the volume at that moment."
+            }
+            Text(keys.isEmpty ? "Put the line over the bar, then add a keyframe to set the volume there."
                  : "\(keys.count) keyframe\(keys.count == 1 ? "" : "s"): the volume eases between them.")
-                .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                .font(.system(size: 11)).foregroundStyle(Color(white: 0.43)).fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -1926,10 +2096,13 @@ struct MultiClipEditor: View {
             joinAt = i
             withAnimation(.snappy) { panel = .join }
         } label: {
-            Image(systemName: set ? "arrow.left.arrow.right" : "plus").font(.system(size: 9, weight: .black))
-                .foregroundStyle(set ? Color.black : Color.white).frame(width: 22, height: 22)
-                .background(set ? Color.white : Color(white: 0.25), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(.black.opacity(0.6), lineWidth: 1))
+            // a small square on the join, edged in the sheet's colour so it stands off the clips (design/pro-ui)
+            Image(systemName: set ? "arrow.left.arrow.right" : "plus").font(.system(size: 7.5, weight: .black))
+                .foregroundStyle(set ? Color.black : Color.white).frame(width: 18, height: 18)
+                .background(set ? Color.white : Color(white: 0.22), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).stroke(Self.sheet, lineWidth: 2))
+                // a bigger target than it looks
+                .padding(6).contentShape(Rectangle()).padding(-6)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(set ? "Transition between clips \(i + 1) and \(i + 2): \(clips[i].transition?.kind ?? "")" : "Add a transition between clips \(i + 1) and \(i + 2)")
@@ -2147,20 +2320,74 @@ struct ClipThumb: View {
     }
 }
 
-/// Bars for a clip's sound.
+/// A clip's sound as a fine wave: a thin line every three points, as tall as the sound there (21 Nov,
+/// design/pro-ui/pro-editor-mockup.png: the fat rounded bars looked like a toy's).
 struct Bars: View {
     let levels: [Float]
     var colour: Color = Color.white.opacity(0.55)
     var body: some View {
-        GeometryReader { g in
-            HStack(alignment: .center, spacing: 2) {
-                ForEach(levels.indices, id: \.self) { i in
-                    Capsule().fill(colour).frame(height: max(3, g.size.height * CGFloat(levels[i])))
+        Canvas { ctx, size in
+            guard !levels.isEmpty, size.width > 1 else { return }
+            let n = max(1, Int(size.width / 3))
+            for j in 0..<n {
+                let level = CGFloat(levels[min(levels.count - 1, j * levels.count / n)])
+                let h = max(1, size.height * level)
+                ctx.fill(Path(CGRect(x: CGFloat(j) * 3, y: (size.height - h) / 2, width: 1.2, height: h)), with: .color(colour))
+            }
+        }
+        .background(colour.opacity(0.12))
+    }
+}
+
+/// A pro editor's volume slider (design/pro-ui): a thin track, a white knob, its number in a bubble over the knob and
+/// a scale under it. `value` 0…1, shown 0…100; `began` when a finger first takes it (for Undo).
+struct ProSlider: View {
+    @Binding var value: Double
+    var began: () -> Void = {}
+    @State private var holding = false
+    @GestureState private var touching = false   // (back to false however the drag ends, cut short too)
+
+    var body: some View {
+        VStack(spacing: 7) {
+            GeometryReader { g in
+                let w = max(g.size.width, 1), x = w * CGFloat(min(1, max(0, value)))
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color(white: 0.17)).frame(height: 4)
+                    Capsule().fill(.white).frame(width: x, height: 4)
+                    Circle().fill(.white).frame(width: 20, height: 20).shadow(color: .black.opacity(0.5), radius: 3)
+                        .offset(x: min(max(0, x - 10), w - 20))
+                    Text("\(Int((value * 100).rounded()))").font(.system(size: 11, weight: .bold)).monospacedDigit().foregroundStyle(.black)
+                        .frame(width: 38, height: 20).background(.white, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .offset(x: min(max(0, x - 19), w - 38), y: -27)
+                }
+                .frame(width: w, height: 24)
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 0)
+                    .updating($touching) { _, t, _ in t = true }
+                    .onChanged { v in
+                        if !holding { holding = true; began() }
+                        value = Double(min(1, max(0, v.location.x / w)))
+                    }
+                    .onEnded { _ in holding = false })
+                .onChange(of: touching) { _, now in if !now { holding = false } }
+            }
+            .frame(height: 24)
+            HStack(spacing: 0) {
+                ForEach([0, 25, 50, 75, 100], id: \.self) { n in
+                    Text("\(n)")
+                    if n < 100 { Spacer(minLength: 0) }
                 }
             }
-            .frame(width: g.size.width, height: g.size.height)
+            .font(.system(size: 9, weight: .medium, design: .monospaced)).foregroundStyle(Color(white: 0.37))
         }
-        .background(Color(white: 0.12))
+        .padding(.top, 26)
+        .accessibilityElement()
+        .accessibilityLabel("Volume")
+        .accessibilityValue("\(Int((value * 100).rounded()))")
+        .accessibilityAdjustableAction { dir in
+            began()
+            value = min(1, max(0, value + (dir == .increment ? 0.05 : -0.05)))
+        }
     }
 }
 
