@@ -294,4 +294,20 @@ final class FoodMatchTests: XCTestCase {
         XCTAssertFalse((best("Tomato, boiled", []) ?? "").lowercased().contains("sundried"))
         XCTAssertFalse((best("Tomato, boiled", []) ?? "").lowercased().contains("added fat"))
     }
+
+    /// The same tinga, later (21 Nov): "Tomato, simmered" tagged cooked went past the raw tomato to a relative,
+    /// "Tomato, cooked, added fat" (and sundried would have fitted the tag as well). Tagged, the rules still hold.
+    func testTaggedCookedKeepsTheSameRules() {
+        let t = (best("Tomato, simmered", ["cooked"]) ?? "").lowercased()
+        for no in ["added fat", "sundried", "puree", "paste", "canned", "stuffed"] { XCTAssertFalse(t.contains(no), "\(t) for a simmered tomato") }
+        XCTAssertTrue((best("Red onion, cooked in the tinga", ["cooked"]) ?? "").lowercased().contains("red"))
+        XCTAssertTrue((best("Tomato, fried in olive oil", ["cooked"]) ?? "").lowercased().contains("tomato"))
+    }
+
+    /// Rice vinegar isn't cooked rice (it was called off at 20 kcal a 100 g, 21 Nov).
+    func testRiceVinegarIsntRice() {
+        XCTAssertNotEqual(Sanity.range("Rice vinegar")?.label, "cooked rice or pasta")
+        XCTAssertNotEqual(Sanity.range("Rice paper rolls")?.label, "cooked rice or pasta")
+        XCTAssertEqual(Sanity.range("Rice, white, cooked")?.label, "cooked rice or pasta")
+    }
 }

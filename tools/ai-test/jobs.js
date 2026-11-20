@@ -33,8 +33,8 @@ function narrow(name, hits, want) {
   else if (/\b(with|in)\s+(\w+\s+)?(oil|fat|butter)\b/.test(n)) keep(f => /added fat/.test(f) && !f.includes('no added fat'));
   // boiled, steamed or simmered isn't the added-fat version (a simmered tomato found "Tomato, cooked, added fat")
   else if (/\b(boiled|steamed)\b/.test(n)) keep(f => !/added fat/.test(f) || f.includes('no added fat'));
-  // said fresh, it isn't the canned one (a simmered fresh tomato found canned tomatoes)
-  if (/\bfresh\b/.test(n)) keep(f => !f.includes('canned'));
+  // said fresh, or boiled and not said canned, it isn't the canned one (a simmered fresh tomato found canned tomatoes)
+  if (/\bfresh\b/.test(n) || (/\b(boiled|steamed)\b/.test(n) && !/\b(canned|tinned)\b/.test(n))) keep(f => !f.includes('canned'));
   keep(f => { const v = f.match(/\b(coliban|desiree|sebago|pontiac|kipfler|nicola|new|pale skin|red skin|spring|pickled|sundried|stuffed|paste|puree|cherry|roma)\b/); return !v || n.includes(v[1]); });
   return h;
 }

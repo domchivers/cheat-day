@@ -164,7 +164,13 @@ final class FoodTable {
         func fit(_ r: Row) -> Int {
             tags.reduce(0) { n, t in let w = Self.tagWords[t]!; return n + (w.yes.contains(where: r.words.contains) ? 1 : 0) - (w.no.contains(where: r.words.contains) ? 1 : 0) }
         }
-        func unasked(_ r: Row) -> Bool { r.words.contains { Self.special.contains($0) && !asked.contains($0) } }
+        // and the same as narrow: a variety only when it's said, and an added-fat entry only when oil or fat is (21 Nov:
+        // "Tomato, simmered", tagged cooked, went past narrow's raw tomato to "Tomato, cooked, added fat")
+        let fatSaid = name.range(of: #"\b(oil|fat|butter|ghee|lard|fried|fry)\b"#, options: [.regularExpression, .caseInsensitive]) != nil
+        func addedFat(_ r: Row) -> Bool { let s = r.food.name.lowercased(); return s.contains("added fat") && !s.contains("no added fat") }
+        func unasked(_ r: Row) -> Bool {
+            r.words.contains { Self.special.contains($0) && !asked.contains($0) } || Self.strayVariety(r.food.name, name) || (!fatSaid && addedFat(r))
+        }
         func score(_ r: Row) -> Double {
             // the food's own words count most; a descriptor ("skin" in "skin on") a little, and a row that's about it
             // ("Chicken, skin") isn't the food
@@ -241,14 +247,22 @@ final class FoodTable {
         else if has(n, #"\b(with|in)\s+(\w+\s+)?(oil|fat|butter)\b"#) { keep { $0.contains("added fat") && !$0.contains("no added fat") } }
         // boiled, steamed or simmered isn't the added-fat version (a simmered tomato found "Tomato, cooked, added fat")
         else if has(n, #"\b(boiled|steamed)\b"#) { keep { !$0.contains("added fat") || $0.contains("no added fat") } }
-        // said fresh, it isn't the canned one (a simmered fresh tomato found canned tomatoes)
-        if has(n, #"\bfresh\b"#) { keep { !$0.contains("canned") } }
-        keep { f in
-            // (a spring or pickled onion is another food from an onion: 21 Nov, a plain cooked onion found the fried spring one)
-            guard let r = f.range(of: #"\b(coliban|desiree|sebago|pontiac|kipfler|nicola|new|pale skin|red skin|spring|pickled|sundried|stuffed|paste|puree|cherry|roma)\b"#, options: .regularExpression) else { return true }
-            return n.contains(f[r])
-        }
+        // said fresh, or boiled and not said canned, it isn't the canned one (a simmered fresh tomato found canned tomatoes)
+        if has(n, #"\bfresh\b"#) || (has(n, #"\b(boiled|steamed)\b"#) && !has(n, #"\b(canned|tinned)\b"#)) { keep { !$0.contains("canned") } }
+        keep { !strayVariety($0, n) }
         return h
+    }
+
+    /// Kinds of a food that are another thing from it, chosen only when they're said: a potato's varieties, a spring or
+    /// pickled onion (21 Nov: a plain cooked onion found the fried spring one), a sundried, stuffed, cherry or roma
+    /// tomato, a paste or puree.
+    private static let varieties = #"\b(coliban|desiree|sebago|pontiac|kipfler|nicola|new|pale skin|red skin|spring|pickled|sundried|stuffed|paste|puree|cherry|roma)\b"#
+
+    /// Whether an entry is one of those kinds and the name didn't say it.
+    static func strayVariety(_ entry: String, _ name: String) -> Bool {
+        let e = entry.lowercased()
+        guard let r = e.range(of: varieties, options: .regularExpression) else { return false }
+        return !name.lowercased().contains(e[r])
     }
 
     /// Words that split a message into the foods it names ("2 eggs on toast with butter": eggs | toast | butter).

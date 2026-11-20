@@ -47,7 +47,9 @@ enum Sanity {
             return Range(label: "a sauce or dressing", lo: 5, hi: oil ? 900 : 760, proteinMax: 5)
         }
         // a whole pho or ramen isn't plain noodles
+        // (nor rice vinegar, rice paper or rice flour: "Rice vinegar" was called off for cooked rice, 21 Nov)
         if has(["rice", "pasta", "spaghetti", "noodle", "penne", "couscous"]) && !mentions(["soup", "broth", "pho", "ramen", "laksa"])
+            && !mentions(["vinegar", "wine", "mirin", "paper", "flour", "cracker", "cake", "milk", "bran", "puffed", "syrup"])
             && (cooked || !raw && !mentions(["dry", "uncooked"])) {
             return Range(label: "cooked rice or pasta", lo: 95, hi: 190, proteinMax: 7)
         }

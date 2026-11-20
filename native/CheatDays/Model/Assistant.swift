@@ -1000,7 +1000,8 @@ enum Assistant {
                 for c in CheatDays.list(ta["combos"]) { out.append("    \(str(c["title"])) · \(Int(num(c["kcal"]) ?? 0)) kcal · P\(Int(num(c["protein_g"]) ?? 0))") }
             }
             // the recipe card as it showed (21 Nov: left out, a tinga chat's recipes came through as "total 0 kcal")
-            if let rc = t.result?["recipe"] as? JSON {
+            // (only one that's there: a turn with no recipe has an empty one, which the chat doesn't show)
+            if let rc = t.result?["recipe"] as? JSON, !CheatDays.list(rc["ingredients"]).isEmpty {
                 let ings = CheatDays.list(rc["ingredients"]), portions = max(1, num(rc["portions"]) ?? 1)
                 let sum = { (k: String) in ings.reduce(0) { $0 + (num($1[k]) ?? 0) } }
                 out.append("  [recipe \(str(rc["name"])) · \(Fmt.one(portions)) portion\(portions == 1 ? "" : "s") · per portion \(Int((sum("kcal") / portions).rounded())) kcal · P\(Fmt.one(sum("protein_g") / portions)) C\(Fmt.one(sum("carbs_g") / portions)) F\(Fmt.one(sum("fat_g") / portions))]")
