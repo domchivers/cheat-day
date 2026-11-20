@@ -211,7 +211,11 @@ enum ClipJoin {
             // its own sound, unless one clip's sound plays over everything; across a transition it fades out as the
             // next fades in
             let heardFrom = c.clean.map { AVURLAsset(url: $0) } ?? asset
-            if soundOf == nil, c.soundOn, !c.still, c.heardEnd - c.heardStart > 0.05,
+            // (a muted clip's sound goes in too, at nothing: then muting it, or its volume, is only a change to the
+            // mix, which the editor's preview can take as it plays (21 Nov: a mute made the whole preview again, and it
+            // stuttered))
+            let on: Float = c.soundOn ? 1 : 0
+            if soundOf == nil, !c.still, c.heardEnd - c.heardStart > 0.05,
                let a = try? await heardFrom.loadTracks(withMediaType: .audio).first {
                 var heard = c
                 let before = pieces.count >= 2 ? pieces[pieces.count - 2].out : 0
@@ -227,7 +231,7 @@ enum ClipJoin {
                     let edges = dips.flatMap { [file($0.0 - ease), file($0.0), file($0.1), file($0.1 + ease)] }
                         .filter { $0 > heard.heardStart && $0 < heard.heardStart + span }
                     let marks = Array(Set(heard.turns.filter { $0 <= heard.heardStart + span } + edges)).sorted()
-                    let level = { (p: Double) -> Float in heard.level(at: p) * dip(video(p)) }
+                    let level = { (p: Double) -> Float in heard.level(at: p) * dip(video(p)) * on }
                     levels[track].setVolume(level(heard.heardStart), at: t(at0))
                     for (p, q) in zip(marks, marks.dropFirst()) where q - p > 0.01 {
                         levels[track].setVolumeRamp(fromStartVolume: level(p), toEndVolume: level(q),

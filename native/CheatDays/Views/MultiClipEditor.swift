@@ -94,6 +94,10 @@ struct MultiClipEditor: View {
     @State private var full = false                       // the preview full screen (design/bigger-preview-mockup.html)
     @State private var playing = false
     @State private var scrubFrom: Double?                 // where the timeline was when a finger began sliding it
+    @State private var shownShape: String?                // what the preview playing was made of (its tracks)
+    @State private var seeking = false                    // a seek on its way: the next waits for it
+    @State private var chaseTo: Double?                   // where the finger's got to since
+    @State private var dropped = 0                        // a bar let go: the preview made again then
     private struct BarGrab { var id: UUID; var mode: Int; var from: Double; var to: Double; var words: [EditText.Word]?; var start = 0.0 }   // mode: 0 move, 1 start, 2 end
     /// One bar on the timeline: a text, sticker or caption, or a voiceover or sound effect.
     /// kind: 0 over the picture (text, stickers, captions), 1 a sound, 2 a clip or photo over it.
@@ -188,8 +192,10 @@ struct MultiClipEditor: View {
         .task(id: soundOf) { await settle(); await autosave() }
         .task(id: look) { await settle(); await autosave() }
         .task(id: texts) { await autosave() }
-        .task(id: sounds) { await settle(); await autosave() }
-        .task(id: pips) { await settle(); await autosave() }
+        // (not while a bar's being dragged: made again under the finger, the preview stuttered (21 Nov); once it's let go)
+        .task(id: sounds) { guard barGrab == nil else { return }; await settle(); await autosave() }
+        .task(id: dropped) { if dropped > 0 { await settle(); await autosave() } }
+        .task(id: pips) { guard barGrab == nil else { return }; await settle(); await autosave() }
         .sheet(isPresented: $choosingSong) { SongPicker { s in Task { @MainActor in await addSong(s) } } }
         .onAppear { if !UserDefaults.standard.bool(forKey: "editor.tips.1") { tip = 0 } }
         .onChange(of: pipPicks) { _, now in
@@ -398,6 +404,13 @@ struct MultiClipEditor: View {
         .buttonStyle(.plain).accessibilityLabel(any ? "Turn every clip's sound off" : "Turn every clip's sound on")
     }
 
+    /// Where the timeline's line is: the player's own time while it plays, else where it was put.
+    private var lineTime: Double {
+        guard playing, scrubFrom == nil, barGrab == nil else { return now }
+        let t = player.currentTime().seconds
+        return t.isFinite ? max(0, t) : now
+    }
+
     /// How many rows of bars the timeline shows under its clips.
     private var laneCount: Int { min(4, barRows.count) }
 
@@ -408,9 +421,13 @@ struct MultiClipEditor: View {
     private var timeline: some View {
         GeometryReader { g in
             let mid = g.size.width / 2, pps = perSecond, span = max(total, 0.01)
+            let rows = timelineRows(width: CGFloat(span) * pps, span: span, pps: pps)
             ZStack(alignment: .topLeading) {
-                timelineRows(width: CGFloat(span) * pps, span: span, pps: pps)
-                    .offset(x: mid - CGFloat(min(now, span)) * pps)
+                // While it plays, slid on every frame the screen draws, from the player's own clock (21 Nov: moved
+                // only on the 20-a-second time updates, it stepped along)
+                TimelineView(.animation(minimumInterval: nil, paused: !playing || scrubFrom != nil)) { _ in
+                    rows.offset(x: mid - CGFloat(min(lineTime, span)) * pps)
+                }
                 Capsule().fill(scrubFrom != nil ? Color.yellow : Color.white).frame(width: 2.5, height: g.size.height)
                     .shadow(color: .black.opacity(0.6), radius: 2)
                     .offset(x: mid - 1.25).allowsHitTesting(false)
@@ -529,13 +546,28 @@ struct MultiClipEditor: View {
             t = e
             if snapped != e { snapped = e; UISelectionFeedbackGenerator().selectionChanged() }
         } else { snapped = nil }
-        let near = CMTime(seconds: 0.04, preferredTimescale: 600)
-        player.seek(to: CMTime(seconds: t, preferredTimescale: 600), toleranceBefore: near, toleranceAfter: near)
+        chase(t)
         now = t
     }
 
+    /// A finger looking through the video: one seek at a time, each to where the finger is when the last one's done
+    /// (Apple's "chase" seek). (21 Nov: a seek for every move piled up behind each other, and the picture froze.)
+    private func chase(_ t: Double) {
+        chaseTo = t
+        if !seeking { seekToChase() }
+    }
+
+    private func seekToChase() {
+        guard let t = chaseTo else { return }
+        chaseTo = nil; seeking = true
+        let near = CMTime(seconds: 0.04, preferredTimescale: 600)
+        player.seek(to: CMTime(seconds: t, preferredTimescale: 600), toleranceBefore: near, toleranceAfter: near) { _ in
+            DispatchQueue.main.async { MainActor.assumeIsolated { seeking = false; if chaseTo != nil { seekToChase() } } }
+        }
+    }
+
     private func endScrub() {
-        snapped = nil; scrubFrom = nil
+        snapped = nil; scrubFrom = nil; chaseTo = nil
         seek(now)
         if wasPlaying == true { player.play(); playing = true }
         wasPlaying = nil
@@ -844,12 +876,11 @@ struct MultiClipEditor: View {
                         if snapped != e { snapped = e; UISelectionFeedbackGenerator().selectionChanged() }
                     } else { snapped = nil }
                     // close enough while the finger moves (a seek to the exact frame each time can't keep up), exact at the end
-                    let near = CMTime(seconds: 0.04, preferredTimescale: 600)
-                    player.seek(to: CMTime(seconds: t, preferredTimescale: 600), toleranceBefore: near, toleranceAfter: near)
+                    chase(t)
                     now = t
                 }
                 .onEnded { _ in
-                    snapped = nil
+                    snapped = nil; chaseTo = nil
                     seek(now)
                     if wasPlaying == true { player.play(); playing = true }
                     wasPlaying = nil
@@ -865,9 +896,33 @@ struct MultiClipEditor: View {
         .frame(height: 38)
     }
 
+    /// What the preview's tracks are made of: what's put where, not how loud or how it looks. Two edits alike in this
+    /// make compositions with the same tracks.
+    private var shape: String {
+        var s = soundOf?.uuidString ?? "-"
+        for c in clips {
+            s += "|\(proxies[c.source]?.path ?? c.source.path),\(c.start),\(c.end),\(c.speed),\(c.still),\(c.clean?.path ?? ""),\(c.soundStart ?? -1),\(c.soundEnd ?? -1)"
+            s += ",\(c.transition?.kind ?? ""),\(c.transition?.length ?? 0)"
+        }
+        for x in sounds { s += "|s\(x.url?.path ?? x.name),\(x.from),\(x.start),\(x.length),\(x.speed)" }
+        for p in pips { s += "|p\(p.source.path),\(p.from),\(p.start),\(p.length)" }
+        return s
+    }
+
     /// The preview made again from the clips as they are now, kept where it was.
     @MainActor private func rebuild(play: Bool) async {
+        let made = shape
         guard let (comp, vc, mix) = await ClipJoin.compose(clips, soundOf: soundOf, look: look, swap: proxies, sounds: sounds, pips: pips) else { return }
+        // Made of the same pieces as the one playing (a mute, a volume, a fade, a filter, a move): only its picture and
+        // mix change, on the item playing, which carries on without a hitch (21 Nov: each made the whole preview
+        // again, and it stuttered). The tracks come out the same, so the new mix and picture fit the old item.
+        if made == shownShape, let current = player.currentItem {
+            current.videoComposition = vc; current.audioMix = mix
+            frameSize = vc.renderSize
+            if player.rate == 0 { seek(now) }   // (held still, the frame drawn again with the change)
+            return
+        }
+        shownShape = made
         let item = AVPlayerItem(asset: comp)
         item.videoComposition = vc; item.audioMix = mix
         item.audioTimePitchAlgorithm = .spectral
@@ -877,6 +932,8 @@ struct MultiClipEditor: View {
         if watch == nil {
             watch = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.05, preferredTimescale: 600), queue: .main) { t in
                 MainActor.assumeIsolated {
+                    // (not while a finger's looking through it: the seeks' own times fought the finger (21 Nov))
+                    guard scrubFrom == nil, wasPlaying == nil else { return }
                     now = t.seconds
                     if playing != (player.rate != 0), scrubFrom == nil, wasPlaying == nil { playing = player.rate != 0 }
                     // round again at the end
@@ -1154,6 +1211,9 @@ struct MultiClipEditor: View {
             .gesture(DragGesture(minimumDistance: 2)
                 .onChanged { v in
                     if barGrab == nil {
+                        // held still under the finger while it's moved (21 Nov: playing on, the timeline slid away
+                        // under the bar being dragged)
+                        player.pause(); playing = false
                         // by its ends, or the middle to move it
                         let mode = v.startLocation.x < 12 ? 1 : (v.startLocation.x > width - 12 ? 2 : 0)
                         if item.kind == 1, let s = sounds.first(where: { $0.id == item.id }) {
@@ -1175,7 +1235,10 @@ struct MultiClipEditor: View {
                 }
                 .onEnded { _ in
                     if onTimeline, barGrab != nil, let b = barItems.first(where: { $0.id == item.id }) { seek(min(b.from, max(0, total - 0.05))) }
+                    let moved = barGrab != nil && item.kind != 0
                     barGrab = nil
+                    // a sound or overlay moved: the preview made again with it, now it's let go
+                    if moved { dropped += 1 }
                 })
             .offset(x: x0)
             .accessibilityElement()
