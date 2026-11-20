@@ -5,19 +5,59 @@ import AVFoundation
 /// plays, the clips' own sound dips under it.
 struct EditSound: Identifiable, Codable, Equatable {
     var id = UUID()
-    var kind: String            // "voice", "effect" or "song"
+    var kind: String            // "voice", "effect", "song", or "clip": a clip's own sound, separated from it
     var name: String            // an effect's name, or "Voice 1"
-    var file: URL?              // a voiceover's recording (an effect's sound is made when it's wanted)
+    var file: URL?              // a voiceover's recording, the song, or the clip's video (an effect's is made when wanted)
     var from: Double            // where it starts in the video
     var start = 0.0             // where in its own sound it starts (trimmed off the front)
-    var length: Double          // how much of it plays
+    var length: Double          // how much of the video it plays over
     var volume: Float = 1
     var full = 0.0              // how long its sound is in all (0: not known)
     var beats: [Double]? = nil  // a song's beats, in its file's own seconds (Stage E)
+    // (21 Nov, design/separate-audio-mockup.html; optional, so older drafts still read)
+    var fadeIn: Double? = nil   // seconds of the video it fades in over
+    var fadeOut: Double? = nil
+    var keys: [VolumeKey]? = nil  // its volume at moments of its own sound (its file's seconds), eased between
+    var clip: UUID? = nil       // kind "clip": the clip its sound was separated from, to put it back
+    var rate: Double? = nil     // kind "clip": that clip's speed, which its sound keeps
     var to: Double { from + length }
 
     /// The file it plays from.
     var url: URL? { kind == "effect" ? SoundEffects.url(name) : file }
+
+    var speed: Double { max(rate ?? 1, 0.01) }
+    /// Its own sound's seconds at a moment of the video, and back.
+    func fileTime(_ v: Double) -> Double { start + (v - from) * speed }
+    func videoTime(_ p: Double) -> Double { from + (p - start) / speed }
+
+    /// Its volume from its keyframes alone, at a moment of its own sound.
+    func keyLevel(at p: Double) -> Float {
+        let k = (keys ?? []).sorted { $0.at < $1.at }
+        guard let first = k.first, let last = k.last else { return volume }
+        if p <= first.at { return first.volume }
+        if p >= last.at { return last.volume }
+        guard let i = k.firstIndex(where: { $0.at > p }) else { return last.volume }
+        let a = k[i - 1], b = k[i], f = Float((p - a.at) / max(b.at - a.at, 0.001))
+        return a.volume + (b.volume - a.volume) * f
+    }
+
+    /// Its volume at a moment of the video: its keyframes (or its one volume), and its fades.
+    func level(at v: Double) -> Float {
+        var x = (keys ?? []).isEmpty ? volume : keyLevel(at: fileTime(v))
+        let fi = fadeIn ?? 0, fo = fadeOut ?? 0
+        if fi > 0.01, v - from < fi { x *= Float(max(0, v - from) / fi) }
+        if fo > 0.01, to - v < fo { x *= Float(max(0, to - v) / fo) }
+        return max(0, min(1, x))
+    }
+
+    /// The moments of the video its level turns at, start and end included: between them it's a straight ramp.
+    var turns: [Double] {
+        var at = [from, to]
+        if let fi = fadeIn, fi > 0.01 { at.append(from + fi) }
+        if let fo = fadeOut, fo > 0.01 { at.append(to - fo) }
+        at += (keys ?? []).map { videoTime($0.at) }
+        return Array(Set(at.map { min(to, max(from, $0)) })).sorted()
+    }
 }
 
 /// A few short sounds for edits, made here from tones and noise (nothing downloaded, nobody else's sound): each made

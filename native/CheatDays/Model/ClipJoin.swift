@@ -252,18 +252,30 @@ enum ClipJoin {
                 levels[0].setVolumeRamp(fromStartVolume: c.volume * low, toEndVolume: c.volume, timeRange: CMTimeRange(start: t(b), duration: t(ease)))
             }
         }
-        // voiceovers and sound effects, each on a track of its own, at its own level
+        // voiceovers, sound effects, the song and clips' separated sound, each on a track of its own, at its own level
         var laid: [AVMutableAudioMixInputParameters] = []
         for snd in sounds {
             guard let url = snd.url, let a = try? await AVURLAsset(url: url).loadTracks(withMediaType: .audio).first,
                   let range = try? await a.load(.timeRange),
                   let track = comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else { continue }
-            let take = min(snd.length, range.end.seconds - snd.start, Double(end) / 600 - snd.from)
-            guard take > 0.05, (try? track.insertTimeRange(CMTimeRange(start: t(snd.start), duration: t(take)), of: a, at: t(snd.from))) != nil else {
+            // (a clip's separated sound keeps the clip's speed: so much of its file, played over so much of the video)
+            let r = snd.speed
+            let take = min(snd.length, (range.end.seconds - snd.start) / r, Double(end) / 600 - snd.from)
+            guard take > 0.05, (try? track.insertTimeRange(CMTimeRange(start: t(snd.start), duration: t(take * r)), of: a, at: t(snd.from))) != nil else {
                 comp.removeTrack(track); continue
             }
+            if abs(r - 1) > 0.001 { track.scaleTimeRange(CMTimeRange(start: t(snd.from), duration: t(take * r)), toDuration: t(take)) }
+            // its level through it: its keyframes and fades, and for a clip's own sound the dips under a voiceover,
+            // as it had on its clip; a straight ramp between each moment it turns
             let p = AVMutableAudioMixInputParameters(track: track)
-            p.setVolume(snd.volume, at: .zero)
+            let ducks = snd.kind == "clip", stop = snd.from + take
+            let edges = ducks ? dips.flatMap { [$0.0 - ease, $0.0, $0.1, $0.1 + ease] } : []
+            let marks = Array(Set((snd.turns + edges + [stop]).filter { $0 >= snd.from && $0 <= stop })).sorted()
+            let level = { (v: Double) -> Float in snd.level(at: v) * (ducks ? dip(v) : 1) }
+            p.setVolume(level(snd.from), at: t(snd.from))
+            for (x, y) in zip(marks, marks.dropFirst()) where y - x > 0.01 {
+                p.setVolumeRamp(fromStartVolume: level(x), toEndVolume: level(y), timeRange: CMTimeRange(start: t(x), duration: t(y - x)))
+            }
             laid.append(p)
         }
         // clips and photos over it, each on a track of its own, no sound of their own
@@ -338,6 +350,17 @@ enum ClipJoin {
             export.cancelExport()
         }
         watch.cancel()
+        return export.status == .completed ? out : nil
+    }
+
+    /// Part of a finished video as a file of its own, as it is (nothing made again): the 90 seconds of a longer edit
+    /// picked to post.
+    static func part(_ url: URL, from: Double, length: Double) async -> URL? {
+        guard let export = AVAssetExportSession(asset: AVURLAsset(url: url), presetName: AVAssetExportPresetPassthrough) else { return nil }
+        let out = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mov")
+        export.outputURL = out; export.outputFileType = .mov
+        export.timeRange = CMTimeRange(start: CMTime(seconds: from, preferredTimescale: 600), duration: CMTime(seconds: length, preferredTimescale: 600))
+        await export.export()
         return export.status == .completed ? out : nil
     }
 

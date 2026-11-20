@@ -1,3 +1,4 @@
+import AVFoundation
 import Photos
 import PhotosUI
 import SwiftUI
@@ -24,8 +25,12 @@ struct EditFlow: View {
     @State private var draftSounds: [EditSound]?
     @State private var draftPips: [EditPip]?
     @State private var attached: JSON?   // a meal, recipe or workout picked in the editor: the post carries it
+    @State private var joinedLength = 0.0
+    @State private var longFor: Share?   // a post or story of an edit over the limit: asking what to keep
+    @State private var choosing: Share?  // picking which part to keep
 
     struct VideoBox: Identifiable { let id = UUID(); let url: URL }
+    enum Share: String, Identifiable { case post, story; var id: String { rawValue } }
 
     var body: some View {
         ZStack {
@@ -35,7 +40,8 @@ struct EditFlow: View {
                                 startTexts: draftTexts, startAttached: draftAttached, startSounds: draftSounds, startPips: draftPips,
                                 close: { self.clips = nil; draftID = nil; draftSound = nil; draftLook = nil; draftTexts = nil; draftAttached = nil; draftSounds = nil; draftPips = nil; attached = nil; refreshDrafts() },
                                 done: { url in
-                                    joined = url; self.clips = nil
+                                    joined = url; self.clips = nil; joinedLength = 0
+                                    Task { joinedLength = (try? await AVURLAsset(url: url).load(.duration).seconds) ?? 0 }
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { sharing = true }
                                 },
                                 autosaved: { draftID = $0 },   // a new edit's own draft, let go once it's shared
@@ -97,13 +103,30 @@ struct EditFlow: View {
         // a post or a story of it: once that's done, so is this
         .sheet(item: $posting, onDismiss: { dismiss() }) { b in ComposeSheet(preset: attached, video: b.url) }
         .fullScreenCover(item: $story, onDismiss: { dismiss() }) { b in StoryComposer(video: b.url) }
+        // over the limit: what to keep (design: the 21 Nov chat; the whole of it can still be saved to Photos)
+        .alert("Longer than \(Int(Stories.longest)) seconds", isPresented: Binding(get: { longFor != nil }, set: { if !$0 { longFor = nil } })) {
+            Button("Use the first \(Int(Stories.longest)) seconds") { if let k = longFor { longFor = nil; send(k) } }
+            Button("Choose which \(Int(Stories.longest)) seconds") { let k = longFor; longFor = nil; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { choosing = k } }
+            Button("Save the whole video to Photos") { longFor = nil; save() }
+            Button("Cancel", role: .cancel) { longFor = nil }
+        } message: {
+            Text("A \(longFor == .story ? "story" : "post") keeps \(Int(Stories.longest)) seconds of it. Saved to Photos, it keeps all \(Self.clock(joinedLength)).")
+        }
+        .sheet(item: $choosing) { k in
+            if let joined {
+                PartPicker(url: joined, length: joinedLength) { from in
+                    choosing = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { sendPart(k, from: from) }
+                }
+            }
+        }
     }
 
     private var shareSheet: some View {
         VStack(spacing: 10) {
             Text("Share your edit").font(.headline).padding(.top, 18)
-            option("square.grid.3x3", "Post", "On your profile and the feed") { go { posting = VideoBox(url: $0) } }
-            option("plus.circle", "Story", "For 24 hours") { go { story = VideoBox(url: $0) } }
+            option("square.grid.3x3", "Post", "On your profile and the feed") { share(.post) }
+            option("plus.circle", "Story", "For 24 hours") { share(.story) }
             option("square.and.arrow.down", "Save to Photos", "Keep the video") { sharing = false; save() }
             Spacer(minLength: 0)
         }
@@ -128,12 +151,43 @@ struct EditFlow: View {
         .buttonStyle(.plain)
     }
 
-    /// The sheet put away first, then on to the post or story with the edit.
-    private func go(_ open: @escaping (URL) -> Void) {
+    /// A post or story of the edit; one over the limit asks first what to keep (21 Nov: it was cut at the limit
+    /// without a word).
+    private func share(_ kind: Share) {
+        guard joinedLength > Stories.longest + 0.05 else { send(kind); return }
+        sharing = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { longFor = kind }
+    }
+
+    private func send(_ kind: Share, _ url: URL? = nil) {
+        go(url) { u in if kind == .post { posting = VideoBox(url: u) } else { story = VideoBox(url: u) } }
+    }
+
+    /// The part picked, as a file of its own, then on to the post or story with it.
+    private func sendPart(_ kind: Share, from: Double) {
         guard let joined else { return }
+        working = true
+        Task {
+            let part = await ClipJoin.part(joined, from: from, length: Stories.longest)
+            working = false
+            if let part { send(kind, part) } else { flash("Couldn't keep that part. Try again.") }
+        }
+    }
+
+    private func flash(_ s: String) {
+        Task {
+            withAnimation { note = s }
+            try? await Task.sleep(for: .seconds(2.2))
+            withAnimation { note = nil }
+        }
+    }
+
+    /// The sheet put away first, then on to the post or story with the edit (or `url`, part of it).
+    private func go(_ url: URL? = nil, _ open: @escaping (URL) -> Void) {
+        guard let file = url ?? joined else { return }
         sharing = false
         if let id = draftID { EditDrafts.queue.async { EditDrafts.delete(id) }; draftID = nil }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { open(joined) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { open(file) }
     }
 
     /// Back from the finished video to its clips, as they were left (its auto-saved draft).
@@ -150,6 +204,8 @@ struct EditFlow: View {
     private func refreshDrafts() {
         EditDrafts.queue.async { let all = EditDrafts.all(); DispatchQueue.main.async { drafts = all } }
     }
+
+    static func clock(_ s: Double) -> String { String(format: "%d:%02d", Int(s) / 60, Int(s) % 60) }
 
     private func save() {
         guard let joined else { return }

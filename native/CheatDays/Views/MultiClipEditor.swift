@@ -39,8 +39,11 @@ struct MultiClipEditor: View {
     @State private var now = 0.0               // where the preview is, in the joined video's seconds
     @State private var panel: Panel?
     @State private var joining = false
-    @State private var history: [[Clip]] = []  // for Undo
-    @State private var future: [[Clip]] = []   // for Redo: what was undone
+    /// What Undo goes back to: the clips, and the sounds over them (21 Nov: a sound separated from its clip has to
+    /// come back with it).
+    private struct Snap { var clips: [Clip]; var sounds: [EditSound] }
+    @State private var history: [Snap] = []  // for Undo
+    @State private var future: [Snap] = []   // for Redo: what was undone
     @State private var autoID: String?           // the draft it's kept in as it goes (Stage A1)
     @State private var opened: [Clip]?           // as it was when opened from a draft: Discard goes back to it
     @State private var levels: [UUID: [Float]] = [:]
@@ -351,7 +354,8 @@ struct MultiClipEditor: View {
         VStack(spacing: 10) {
             // where it is and how long, said as the trim strip says it ("0:11 · 0:24 of 0:30")
             timeRow
-            if total > limit + 0.05 { Text("Over \(Int(limit)) seconds: the end will be cut. Trim or take out a clip.").font(.caption).foregroundStyle(Theme.warn) }
+            // (21 Nov: longer is allowed; it's only a post that's kept to the limit, and it asks which part when posted)
+            if total > limit + 0.05 { Text("Longer than \(Int(limit)) seconds: you can save it all to Photos, but a post keeps \(Int(limit)) seconds.").font(.caption).foregroundStyle(Theme.warn).multilineTextAlignment(.center) }
             switch panel {
             // each panel under its bar, whose ✓ closes it (20 Nov: Done at the top was too far away to find)
             case .trim: panelBar; if let i = index { trimPanel(i) }
@@ -549,6 +553,8 @@ struct MultiClipEditor: View {
             action("camera.filters", "Filters", on: has) { withAnimation(.snappy) { panel = .look } }
             action("arrow.up.left.and.arrow.down.right", "Motion", on: has) { withAnimation(.snappy) { panel = .motion } }
             action("speaker.wave.2", "Sound", on: has) { withAnimation(.snappy) { panel = .sound } }
+            action("arrow.down.to.line", "Separate", on: moving && soundOf == nil && (index.map { clips[$0].soundOn } ?? false)) { separateSelected() }
+                .accessibilityLabel("Separate audio")
             action("arrow.triangle.2.circlepath", "Replace", on: has) { replacing = true }
             action("plus.square.on.square", "Copy", on: has) {
                 guard let i = index else { return }
@@ -738,10 +744,58 @@ struct MultiClipEditor: View {
         selected = b.id
     }
 
-    private func remember() { history.append(clips); future = []; if history.count > 30 { history.removeFirst() } }
+    private func remember() { history.append(Snap(clips: clips, sounds: sounds)); future = []; if history.count > 30 { history.removeFirst() } }
     private func change(_ f: ([Clip]) -> [Clip]) { remember(); withAnimation(.snappy) { clips = f(clips) } }
-    private func undo() { guard let last = history.popLast() else { return }; future.append(clips); withAnimation(.snappy) { clips = last } }
-    private func redo() { guard let next = future.popLast() else { return }; history.append(clips); withAnimation(.snappy) { clips = next } }
+    private func undo() {
+        guard let last = history.popLast() else { return }
+        future.append(Snap(clips: clips, sounds: sounds)); restore(last)
+    }
+    private func redo() {
+        guard let next = future.popLast() else { return }
+        history.append(Snap(clips: clips, sounds: sounds)); restore(next)
+    }
+    private func restore(_ s: Snap) {
+        withAnimation(.snappy) { clips = s.clips; sounds = s.sounds }
+        // a sound's panel shut if its sound has gone
+        if let id = selectedSound, !s.sounds.contains(where: { $0.id == id }) {
+            selectedSound = nil
+            if panel == .soundItem { panel = nil }
+        }
+    }
+
+    /// The picked clip's own sound as a bar of its own (21 Nov; design/separate-audio-mockup.html): the clip goes
+    /// quiet and the same sound starts in the same place, at the same level, fades and speed, so nothing sounds
+    /// different until the bar's moved or trimmed. Then it can run under the next clip, or start before its own.
+    private func separateSelected() {
+        guard let i = index, !clips[i].still, clips[i].soundOn, soundOf == nil else { return }
+        let c = clips[i], r = max(c.speed, 0.01)
+        let a = c.heardStart, b = c.heardEnd
+        guard b - a > 0.05 else { return }
+        var s = EditSound(kind: "clip", name: "Clip \(i + 1) sound", file: c.clean ?? c.source,
+                          from: startOf(i) + (a - c.start) / r, start: a, length: (b - a) / r, volume: c.volume, full: c.length)
+        if !c.keys.isEmpty { s.keys = c.keys }
+        if c.fadeIn > 0.01 { s.fadeIn = c.fadeIn / r }
+        if c.fadeOut > 0.01 { s.fadeOut = c.fadeOut / r }
+        if abs(r - 1) > 0.001 { s.rate = r }
+        s.clip = c.id
+        remember()
+        clips[i].soundOn = false
+        withAnimation(.snappy) { sounds.append(s) }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        flash("Clip \(i + 1)'s sound is its own bar now: drag it, or by an end, to move it under other clips.")
+    }
+
+    /// A separated sound back on its clip, as the clip had it.
+    private func putBack(_ id: UUID) {
+        guard let s = sounds.first(where: { $0.id == id }), let ci = clips.firstIndex(where: { $0.id == s.clip }) else { return }
+        remember()
+        withAnimation(.snappy) { panel = nil; selectedSound = nil; sounds.removeAll { $0.id == id }; clips[ci].soundOn = true }
+    }
+
+    private func takeOff(_ id: UUID) {
+        remember()
+        withAnimation(.snappy) { panel = nil; selectedSound = nil; sounds.removeAll { $0.id == id } }
+    }
 
     private func seek(_ s: Double) { player.seek(to: CMTime(seconds: max(0, s), preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero); now = s }
 
@@ -1103,6 +1157,7 @@ struct MultiClipEditor: View {
                         // by its ends, or the middle to move it
                         let mode = v.startLocation.x < 12 ? 1 : (v.startLocation.x > width - 12 ? 2 : 0)
                         if item.kind == 1, let s = sounds.first(where: { $0.id == item.id }) {
+                            remember()   // (a sound moved can be undone)
                             barGrab = BarGrab(id: item.id, mode: mode, from: s.from, to: s.to, words: nil, start: s.start)
                         } else if item.kind == 2, let p = pips.first(where: { $0.id == item.id }) {
                             barGrab = BarGrab(id: item.id, mode: mode, from: p.from, to: p.to, words: nil, start: p.start)
@@ -1150,13 +1205,15 @@ struct MultiClipEditor: View {
     /// A sound's bar: moved along, its front trimmed off (its start in its own sound moving with it), or its end.
     private func dragSound(_ g: BarGrab, _ dt: Double, span: Double, follow: Bool = true) {
         guard let i = sounds.firstIndex(where: { $0.id == g.id }) else { return }
-        let length = g.to - g.from, whole = sounds[i].full > 0 ? sounds[i].full : g.start + length
+        // (dt is the video's seconds; a clip's separated sound runs at its clip's speed through its own)
+        let r = sounds[i].speed
+        let length = g.to - g.from, whole = sounds[i].full > 0 ? sounds[i].full : g.start + length * r
         switch g.mode {
         case 1:
-            let d = min(max(-g.start, dt), length - 0.3)
-            sounds[i].from = max(0, g.from + d); sounds[i].start = g.start + d; sounds[i].length = length - d
+            let d = min(max(-g.start / r, -g.from, dt), length - 0.3)
+            sounds[i].from = g.from + d; sounds[i].start = g.start + d * r; sounds[i].length = length - d
         case 2:
-            sounds[i].length = max(0.3, min(length + dt, whole - g.start, span - g.from))
+            sounds[i].length = max(0.3, min(length + dt, (whole - g.start) / r, span - g.from))
         default:
             sounds[i].from = min(max(0, g.from + dt), max(0, span - 0.3))
         }
@@ -1245,22 +1302,97 @@ struct MultiClipEditor: View {
         }
     }
 
-    /// A voiceover or effect picked: how loud, or taken off.
+    /// A sound's bar picked (a voiceover, an effect, the song, or a clip's separated sound): the clip Sound panel's
+    /// tools (21 Nov; design/separate-audio-mockup.html, 4): Volume with keyframes, Fade, Put back, Take off.
     private func soundItemPanel(_ k: Int) -> some View {
         let x = sounds[k]
-        return VStack(spacing: 10) {
-            HStack { Text(x.name).font(.subheadline.weight(.semibold)); Spacer(); Text("\(Int((x.volume * 100).rounded()))").monospacedDigit().foregroundStyle(.secondary) }
-            Slider(value: Binding(get: { sounds.indices.contains(k) ? Double(sounds[k].volume) : 0 }, set: { if sounds.indices.contains(k) { sounds[k].volume = Float($0) } }), in: 0...1).tint(.white)
-            Button(role: .destructive) {
-                let id = x.id
-                withAnimation(.snappy) { panel = nil; selectedSound = nil }
-                sounds.removeAll { $0.id == id }
-            } label: {
-                Label("Take it off", systemImage: "trash").font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).frame(height: 40)
-                    .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        let home = x.kind == "clip" && clips.contains { $0.id == x.clip }
+        return VStack(spacing: 12) {
+            HStack(spacing: 8) {
+                soundTile("speaker.wave.2.fill", "Volume", on: soundTool == .volume) { soundTool = .volume }
+                soundTile("waveform.path", "Fade", on: soundTool == .fade) { soundTool = .fade }
+                if home { soundTile("arrow.up.to.line", "Put back", on: false) { putBack(x.id) } }
+                soundTile("trash", "Take off", on: false) { takeOff(x.id) }
             }
-            .buttonStyle(.plain).foregroundStyle(Theme.warn)
+            if soundTool == .fade { barFadePanel(k) } else { barVolumePanel(k) }
         }
+    }
+
+    /// Where the line is in a sound's own seconds, if the line is over its bar.
+    private func barFileTime(_ k: Int) -> Double? {
+        let s = sounds[k]
+        guard now >= s.from - 0.01, now <= s.to + 0.01 else { return nil }
+        return s.fileTime(min(max(now, s.from), s.to))
+    }
+
+    /// A bar's volume: as a clip's (volumePanel), the number and slider the level at the line, the diamond a keyframe.
+    private func barVolumePanel(_ k: Int) -> some View {
+        let s = sounds[k], at = barFileTime(k), keys = s.keys ?? []
+        let near = at.flatMap { t in keys.firstIndex { abs($0.at - t) < 0.15 } }
+        let shown = keys.isEmpty ? s.volume : s.keyLevel(at: at ?? s.start)
+        return VStack(spacing: 8) {
+            Text("\(Int((shown * 100).rounded()))").font(.system(size: 34, weight: .black, design: .rounded)).monospacedDigit()
+            HStack(spacing: 12) {
+                Slider(value: Binding(get: { Double(shown) }, set: { v in setBarVolume(k, Float(v)) }), in: 0...1,
+                       onEditingChanged: { if $0 { remember() } })
+                Button {
+                    guard let at, sounds.indices.contains(k) else { return }
+                    remember()
+                    var all = sounds[k].keys ?? []
+                    if let near { all.remove(at: near) } else { all.append(VolumeKey(at: at, volume: keys.isEmpty ? s.volume : s.keyLevel(at: at))) }
+                    sounds[k].keys = all.isEmpty ? nil : all
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    Image(systemName: near != nil ? "diamond.fill" : "diamond").font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(near != nil ? Color.yellow : Color.white).frame(width: 40, height: 40)
+                        .background(.black.opacity(0.55), in: Circle())
+                }
+                .buttonStyle(.plain).disabled(at == nil).opacity(at == nil ? 0.4 : 1)
+                .accessibilityLabel(near != nil ? "Remove the keyframe here" : "Add a keyframe here")
+            }
+            // the bar, its keyframes on it and the line where it is: tap a diamond to go to it
+            GeometryReader { g in
+                let w = g.size.width, span = max(s.length, 0.01)
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Self.soundColour(s.kind).opacity(0.35))
+                    ForEach(keys.indices, id: \.self) { j in
+                        let v = s.videoTime(keys[j].at)
+                        Image(systemName: "diamond.fill").font(.system(size: 11, weight: .bold)).foregroundStyle(.yellow)
+                            .shadow(color: .black.opacity(0.6), radius: 2)
+                            .position(x: min(max(6, w * CGFloat((v - s.from) / span)), w - 6), y: g.size.height / 2)
+                            .onTapGesture { seek(v) }
+                    }
+                    if at != nil {
+                        Capsule().fill(.white).frame(width: 2.5, height: g.size.height + 6)
+                            .offset(x: min(max(0, w * CGFloat((now - s.from) / span) - 1.25), w - 2.5)).allowsHitTesting(false)
+                    }
+                }
+            }
+            .frame(height: 30)
+            Text(keys.isEmpty ? "Move the line over the bar, then tap the diamond to set the volume at that moment."
+                 : "\(keys.count) keyframe\(keys.count == 1 ? "" : "s"): the volume eases between them.")
+                .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        }
+    }
+
+    /// The slider moved: the sound's volume, or with keyframes the one at the line (made there if there isn't one).
+    private func setBarVolume(_ k: Int, _ v: Float) {
+        guard sounds.indices.contains(k) else { return }
+        guard var keys = sounds[k].keys, !keys.isEmpty, let at = barFileTime(k) else { sounds[k].volume = v; return }
+        if let j = keys.firstIndex(where: { abs($0.at - at) < 0.15 }) { keys[j].volume = v } else { keys.append(VolumeKey(at: at, volume: v)) }
+        sounds[k].keys = keys
+    }
+
+    /// A bar's fades: each up to 3 seconds, never past half of it (a song faded out at the end, say).
+    private func barFadePanel(_ k: Int) -> some View {
+        let most = max(0.1, min(3, sounds[k].length / 2))
+        return VStack(spacing: 14) {
+            fadeRow("Fade in", value: Binding(get: { sounds.indices.contains(k) ? min(sounds[k].fadeIn ?? 0, most) : 0 },
+                                              set: { if sounds.indices.contains(k) { sounds[k].fadeIn = $0 < 0.05 ? nil : $0 } }), most: most)
+            fadeRow("Fade out", value: Binding(get: { sounds.indices.contains(k) ? min(sounds[k].fadeOut ?? 0, most) : 0 },
+                                               set: { if sounds.indices.contains(k) { sounds[k].fadeOut = $0 < 0.05 ? nil : $0 } }), most: most)
+        }
+        .padding(.top, 4)
     }
 
     /// A clip's sound made clearer (Clarity), or back as it was.
@@ -1280,11 +1412,19 @@ struct MultiClipEditor: View {
 
     // MARK: Stage E: music, beats, templates, tips
 
-    static func soundMark(_ kind: String) -> String { kind == "voice" ? "🎙 " : (kind == "song" ? "♫ " : "✦ ") }
+    static func soundMark(_ kind: String) -> String {
+        switch kind {
+        case "voice": return "🎙 "
+        case "song": return "♫ "
+        case "clip": return "⇣ "
+        default: return "✦ "
+        }
+    }
     static func soundColour(_ kind: String) -> Color {
         switch kind {
         case "voice": return Color(red: 1, green: 0.48, blue: 0.48)
         case "song": return Color(red: 0.77, green: 0.63, blue: 1)
+        case "clip": return Color(red: 0.37, green: 0.77, blue: 0.91)
         default: return Color(red: 0.55, green: 0.85, blue: 0.85)
         }
     }

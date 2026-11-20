@@ -129,8 +129,8 @@ final class EditFramesTests: XCTestCase {
     }
 
     /// Every half second of the edit: red while the first clip shows, blue while the second does, never black.
-    private func check(_ clips: [Clip], soundOf: UUID? = nil, swap: [URL: URL] = [:], _ label: String) async throws {
-        guard let (comp, vc, _) = await ClipJoin.compose(clips, soundOf: soundOf, swap: swap) else { return XCTFail("\(label): nothing made") }
+    private func check(_ clips: [Clip], soundOf: UUID? = nil, swap: [URL: URL] = [:], sounds: [EditSound] = [], _ label: String) async throws {
+        guard let (comp, vc, _) = await ClipJoin.compose(clips, soundOf: soundOf, swap: swap, sounds: sounds) else { return XCTFail("\(label): nothing made") }
         let starts = ClipJoin.starts(clips), total = ClipJoin.total(clips)
         let join = ClipJoin.overlap(clips, after: 0)
         var t = 0.25
@@ -170,6 +170,15 @@ final class EditFramesTests: XCTestCase {
         try await check(c, "part of its sound kept")
         c = clips; c[0].soundOn = false; c[1].soundOn = false
         try await check(c, "every clip muted")
+        // the first clip's sound separated, run on under the second, sped up, faded and keyframed (21 Nov)
+        c = clips; c[0].soundOn = false
+        var s = EditSound(kind: "clip", name: "Clip 1 sound", file: clips[0].source, from: 0.5, start: 0.5, length: 3, volume: 0.8, full: 3)
+        s.fadeOut = 1; s.rate = 0.8; s.keys = [VolumeKey(at: 1, volume: 0.3)]; s.clip = clips[0].id
+        try await check(c, sounds: [s], "a clip's sound separated and run on under the next")
+        let made = await ClipJoin.compose(c, sounds: [s])
+        let (comp, _, mix) = try XCTUnwrap(made)
+        XCTAssertEqual(comp.tracks(withMediaType: .audio).count, 2, "the second clip's own sound and the separated one")
+        XCTAssertEqual(mix.inputParameters.count, 2)
     }
 
     func testFramesWithClearerSound() async throws {
