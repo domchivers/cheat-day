@@ -438,7 +438,8 @@ struct MultiClipEditor: View {
                 if selected == nil { addTools } else { actions }
             }
         }
-        .padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 8)
+        // (no more under the tools than the home bar's own room: 21 Nov, a gap at the bottom)
+        .padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 0)
         // on a sheet of its own, a shade off the video's black (design/pro-ui)
         .background {
             UnevenRoundedRectangle(topLeadingRadius: 18, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: 18, style: .continuous)
@@ -461,8 +462,9 @@ struct MultiClipEditor: View {
                 Text("Clip\nsound").font(.system(size: 7.5, weight: .medium)).foregroundStyle(Self.quiet).multilineTextAlignment(.center)
             }
             .foregroundStyle(.white).frame(width: 44, height: 58)
-            .background(LinearGradient(stops: [.init(color: Self.sheet, location: 0.7), .init(color: Self.sheet.opacity(0), location: 1)],
-                                       startPoint: .leading, endPoint: .trailing))
+            // solid, a hairline at its edge (21 Nov: the fade into the clips dimmed the first of them too far)
+            .background(Self.sheet)
+            .overlay(alignment: .trailing) { Rectangle().fill(Color(white: 0.2)).frame(width: 1, height: 40) }
         }
         .buttonStyle(.plain).accessibilityLabel(any ? "Turn every clip's sound off" : "Turn every clip's sound on")
     }
@@ -558,7 +560,8 @@ struct MultiClipEditor: View {
                         .offset(x: CGFloat(songBeats[b]) * pps, y: 50).allowsHitTesting(false)
                 }
                 // the square for each join, in the middle of where one turns into the next
-                ForEach(joins, id: \.self) { i in
+                // (not the picked clip's two: its trim handles are there, and a square under one hid it, 21 Nov)
+                ForEach(joins.filter { index == nil || ($0 != index && $0 + 1 != index) }, id: \.self) { i in
                     let at = starts[i + 1] + ClipJoin.overlap(clips, after: i) / 2
                     joinSquare(i).offset(x: CGFloat(at) * pps - 9, y: 16)
                 }
@@ -624,8 +627,10 @@ struct MultiClipEditor: View {
         // how far each end may go: out to the file's ends, in to a third of a second
         let leftMin = -CGFloat(c.start / r) * pps, leftMax = CGFloat((c.duration - 0.3) / r) * pps
         let rightMin = -CGFloat((c.duration - 0.3) / r) * pps, rightMax = CGFloat((c.length - c.end) / r) * pps
-        let dl = trimLive?.side == 0 ? min(max(trimLive?.dx ?? 0, leftMin), leftMax) : 0
-        let dr = trimLive?.side == 1 ? min(max(trimLive?.dx ?? 0, rightMin), rightMax) : 0
+        // past where it can go (the start or end of the video), a little stretch, as CapCut's, so it doesn't look stuck
+        func band(_ d: CGFloat, _ lo: CGFloat, _ hi: CGFloat) -> CGFloat { let c = min(max(d, lo), hi); return c + (d - c) * 0.12 }
+        let dl = trimLive?.side == 0 ? band(trimLive?.dx ?? 0, leftMin, leftMax) : 0
+        let dr = trimLive?.side == 1 ? band(trimLive?.dx ?? 0, rightMin, rightMax) : 0
         let x0 = x + dl, width = max(8, w + dr - dl)
         func handle(_ side: Int) -> some View {
             UnevenRoundedRectangle(topLeadingRadius: side == 0 ? 5 : 0, bottomLeadingRadius: side == 0 ? 5 : 0,
@@ -638,6 +643,10 @@ struct MultiClipEditor: View {
                     .updating($trimLive) { v, live, _ in live = TrimDrag(side: side, dx: v.translation.width) }
                     .onChanged { v in
                         if trimDrag == nil { player.pause(); playing = false; UISelectionFeedbackGenerator().selectionChanged() }
+                        // a tap the moment it reaches the end of the video
+                        let lo = side == 0 ? leftMin : rightMin, hi = side == 0 ? leftMax : rightMax
+                        let out = v.translation.width < lo - 0.5 || v.translation.width > hi + 0.5
+                        if out, let was = trimDrag, !(was.dx < lo - 0.5 || was.dx > hi + 0.5) { UIImpactFeedbackGenerator(style: .rigid).impactOccurred() }
                         trimDrag = TrimDrag(side: side, dx: v.translation.width)
                         // the frame it'll start or end on, under the line
                         let d = side == 0 ? min(max(v.translation.width, leftMin), leftMax) : min(max(v.translation.width, rightMin), rightMax)
@@ -803,7 +812,7 @@ struct MultiClipEditor: View {
                 Image(systemName: icon).font(.system(size: 19, weight: .regular)).foregroundStyle(.white).frame(height: 22)
                 Text(title).font(.system(size: 10, weight: .medium)).foregroundStyle(Color(white: 0.74)).lineLimit(1).fixedSize()
             }
-            .frame(minWidth: 52).frame(height: 54).contentShape(Rectangle())
+            .frame(minWidth: 52).frame(height: 50).contentShape(Rectangle())
         }
         .buttonStyle(.plain).disabled(!on).opacity(on ? 1 : 0.3)
     }
