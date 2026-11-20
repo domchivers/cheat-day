@@ -440,8 +440,13 @@ final class FrameReader {
             // the frames from the keyframe before the moment asked for aren't kept, only decoded on the way: kept,
             // they came out one a screen frame, and a jump took a while to catch up
             if first, pts < s - 0.02 { skipped = (pts, px); continue }
-            first = false
             lock.lock()
+            // the frame on screen at the moment asked for is the last one before it, when the next is still to come:
+            // kept first. A photo is two frames, its start and its end; without this, asked for its middle, it had
+            // only the end, behind which the moment fell, so it started again and again and never showed (21 Nov:
+            // a photo overlay put on, and hidden)
+            if first, pts > s + 0.02, let skipped, g == generation { frames.append(skipped) }
+            first = false
             if g == generation { frames.append((pts, px)) }
             lock.unlock()
         }
