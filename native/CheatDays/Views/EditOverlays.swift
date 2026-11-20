@@ -19,11 +19,18 @@ struct EditText: Identifiable, Codable, Equatable {
     var to: Double
     var words: [Word]? = nil    // a caption's words, each when it's said
     var number = 0.0            // the calories counted up to
+    /// A caption's lit word's colour, its own (design/captions-editing-mockup.html); nil, yellow.
+    var highlight: String? = nil
 
     struct Word: Codable, Equatable { var text: String; var at: Double }
 
     static let textStyles = ["Shadow", "Box", "Plain"]
-    static let captionStyles = ["Pop", "Box", "Plain"]
+    static let captionStyles = ["Pop", "Bold", "Box", "Plain"]
+    static let highlights = ["yellow", "green", "red", "blue", "white"]
+    /// How much a caption holds: a word, a few, a line's worth, a sentence (the panel's "On screen at a time").
+    static let captionGroups: [(id: String, name: String)] = [("word", "1 word"), ("few", "A few words"), ("line", "A line"), ("sentence", "A sentence")]
+    /// The lit word's colour.
+    var lit: Color { EditText.colour(highlight ?? "yellow") }
     static let colours = ["white", "yellow", "black", "red", "green"]
     static let stickers = ["💪", "🔥", "🏋️", "🍕", "🥗", "🍔", "🥩", "🍳", "😋", "🎉", "✅", "⭐️", "❤️", "👀", "😮‍💨", "🏃"]
 
@@ -33,6 +40,7 @@ struct EditText: Identifiable, Codable, Equatable {
         case "black": return .black
         case "red": return Color(red: 1, green: 0.35, blue: 0.37)
         case "green": return Color(red: 0.36, green: 0.82, blue: 0.56)
+        case "blue": return Color(red: 0.36, green: 0.66, blue: 0.95)
         default: return .white
         }
     }
@@ -127,13 +135,15 @@ struct EditTextView: View {
         }
     }
 
-    /// The words said, the one being said lit (yellow behind it, or in yellow).
+    /// The words said, the one being said lit in the caption's own colour (behind it, or the word in it). Long ones
+    /// go onto a second line rather than off the sides.
     @ViewBuilder private var caption: some View {
         let words = item.words ?? item.text.split(separator: " ").map { EditText.Word(text: String($0), at: item.from) }
         let lit = item.lit(at: at)
+        let ink = item.lit
         let line = words.indices.reduce(Text("")) { sum, i in
             let w = Text((i == 0 ? "" : " ") + words[i].text)
-            return sum + (i == lit && item.style != "Pop" ? w.foregroundColor(EditText.colour("yellow")) : w)
+            return sum + (i == lit && item.style != "Pop" ? w.foregroundColor(ink) : w)
         }
         let base = line.font(.system(size: 26, weight: .black)).multilineTextAlignment(.center).frame(maxWidth: 330)
         switch item.style {
@@ -142,18 +152,68 @@ struct EditTextView: View {
                 .background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         case "Plain":
             base.foregroundStyle(.white).shadow(color: .black.opacity(0.8), radius: 3, y: 1)
+        case "Bold":
+            // bigger, edged in black all round
+            line.font(.system(size: 30, weight: .black)).multilineTextAlignment(.center).frame(maxWidth: 340).foregroundStyle(.white)
+                .shadow(color: .black, radius: 0, x: 1.5, y: 1.5).shadow(color: .black, radius: 0, x: -1.5, y: -1.5)
+                .shadow(color: .black, radius: 0, x: 1.5, y: -1.5).shadow(color: .black, radius: 0, x: -1.5, y: 1.5)
         default:
-            // Pop: the word being said in a yellow box of its own, the rest white
-            HStack(spacing: 5) {
+            // Pop: the word being said in a box of its own, the rest white
+            WordRows(spacing: 5, rowSpacing: 4) {
                 ForEach(words.indices, id: \.self) { i in
+                    let on = i == lit
                     Text(words[i].text).font(.system(size: 26, weight: .black))
-                        .foregroundStyle(i == lit ? Color.black : Color.white)
-                        .padding(.horizontal, i == lit ? 4 : 0)
-                        .background(i == lit ? EditText.colour("yellow") : Color.clear, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
-                        .shadow(color: i == lit ? .clear : .black.opacity(0.8), radius: 3, y: 1)
+                        .foregroundStyle(on ? Color.black : Color.white)
+                        .padding(.horizontal, on ? 4 : 0)
+                        .background(on ? ink : Color.clear, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                        .shadow(color: on ? .clear : .black.opacity(0.8), radius: 3, y: 1)
                 }
             }
-            .frame(maxWidth: 360)
+            .frame(maxWidth: 340)
+        }
+    }
+}
+
+/// Words side by side, onto the next row when there's no more room, each row centred.
+struct WordRows: Layout {
+    var spacing: CGFloat = 5, rowSpacing: CGFloat = 4
+
+    private func rows(_ sizes: [CGSize], width: CGFloat) -> [[Int]] {
+        var out: [[Int]] = [[]], used: CGFloat = 0
+        for (i, s) in sizes.enumerated() {
+            let need = (out[out.count - 1].isEmpty ? 0 : spacing) + s.width
+            if !out[out.count - 1].isEmpty, used + need > width { out.append([]); used = 0 }
+            used += (out[out.count - 1].isEmpty ? 0 : spacing) + s.width
+            out[out.count - 1].append(i)
+        }
+        return out
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        let width = proposal.width ?? .infinity
+        let rs = rows(sizes, width: width)
+        var w: CGFloat = 0, h: CGFloat = 0
+        for (k, r) in rs.enumerated() {
+            let rw = r.reduce(0) { $0 + sizes[$1].width } + spacing * CGFloat(max(0, r.count - 1))
+            w = max(w, rw)
+            h += (r.map { sizes[$0].height }.max() ?? 0) + (k > 0 ? rowSpacing : 0)
+        }
+        return CGSize(width: min(w, width), height: h)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        var y = bounds.minY
+        for r in rows(sizes, width: bounds.width) {
+            let rw = r.reduce(0) { $0 + sizes[$1].width } + spacing * CGFloat(max(0, r.count - 1))
+            let rh = r.map { sizes[$0].height }.max() ?? 0
+            var x = bounds.midX - rw / 2
+            for i in r {
+                subviews[i].place(at: CGPoint(x: x, y: y + (rh - sizes[i].height) / 2), proposal: ProposedViewSize(sizes[i]))
+                x += sizes[i].width + spacing
+            }
+            y += rh + rowSpacing
         }
     }
 }
@@ -248,6 +308,75 @@ enum EditOverlays {
             }
         }
         return out
+    }
+
+    /// The captions made again from their words, each holding as much as `by` says (a word, a few, a line's worth,
+    /// a sentence), never more than `lines` lines' worth (21 Nov, CapCut's way): straight away, as every word keeps
+    /// when it's said. Each new one looks like the caption its first word was in.
+    static func regroup(_ caps: [EditText], by: String, lines: Int) -> [EditText] {
+        let sorted = caps.sorted { $0.from < $1.from }
+        // every word, with when it ends and the caption it was in
+        var all: [(w: EditText.Word, end: Double, from: Int)] = []
+        for (k, c) in sorted.enumerated() {
+            let ws = c.words ?? []
+            for i in ws.indices { all.append((ws[i], i + 1 < ws.count ? ws[i + 1].at : c.to, k)) }
+        }
+        guard !all.isEmpty else { return caps }
+        let most = lines > 1 ? 44 : 24   // letters a line holds, near enough, at the caption's size
+        var out: [EditText] = []
+        var group: [(w: EditText.Word, end: Double, from: Int)] = []
+        func close() {
+            guard let first = group.first, let last = group.last else { return }
+            var c = sorted[first.from]
+            c.id = UUID()
+            c.words = group.map(\.w)
+            c.text = group.map(\.w.text).joined(separator: " ")
+            c.from = first.w.at
+            c.to = max(first.w.at + 0.3, last.end)
+            out.append(c)
+            group = []
+        }
+        for item in all {
+            if let last = group.last {
+                let pause = item.w.at - last.end
+                let length = group.map(\.w.text.count).reduce(0, +) + group.count + item.w.text.count
+                let ended = last.w.text.last.map { ".!?".contains($0) } ?? false
+                let comma = last.w.text.last.map { ",;:".contains($0) } ?? false
+                let full: Bool
+                switch by {
+                case "word": full = true
+                case "line": full = length > most || pause > 1.0
+                case "sentence": full = ended || length > most * 2 || pause > 1.2
+                default: full = group.count >= 3 || ended || comma || pause > 0.6 || length > most
+                }
+                if full || length > most * (by == "sentence" ? 2 : 1) { close() }
+            }
+            group.append(item)
+        }
+        close()
+        // each held until the next one comes, if that's soon
+        for i in out.indices.dropLast() where out[i + 1].from - out[i].to < 0.8 { out[i].to = out[i + 1].from }
+        return out
+    }
+
+    /// A caption in two, the second starting at word `at` (each keeps its words' times), or nil at its ends.
+    static func split(_ c: EditText, at: Int) -> (EditText, EditText)? {
+        guard let ws = c.words, at > 0, at < ws.count else { return nil }
+        var a = c, b = c
+        b.id = UUID()
+        a.words = Array(ws[..<at]); b.words = Array(ws[at...])
+        a.text = a.words!.map(\.text).joined(separator: " "); b.text = b.words!.map(\.text).joined(separator: " ")
+        a.to = ws[at].at; b.from = ws[at].at
+        return (a, b)
+    }
+
+    /// Two captions as one, looking as the first does.
+    static func join(_ a: EditText, _ b: EditText) -> EditText {
+        var c = a
+        c.words = (a.words ?? []) + (b.words ?? [])
+        c.text = a.text + " " + b.text
+        c.from = min(a.from, b.from); c.to = max(a.to, b.to)
+        return c
     }
 
     /// Captions from what's said in the edit (Stage B): its sound as heard, made into words on the phone itself

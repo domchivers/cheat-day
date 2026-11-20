@@ -68,6 +68,11 @@ struct MultiClipEditor: View {
     @State private var tune = "b"
     @State private var texts: [EditText] = []       // over the edit, each for part of it (Stage B)
     @State private var selectedText: UUID?
+    // the captions' panel (21 Nov, design/captions-editing-mockup.html): how much each holds, how many lines, and
+    // the caption picked in the list
+    @State private var captionGroup = "few"
+    @State private var captionLines = 1
+    @State private var listPicked: UUID?
     @State private var frameSize = CGSize(width: 1080, height: 1920)
     @State private var moveFrom: (Double, Double)?
     @State private var sizeFrom: Double?
@@ -110,7 +115,7 @@ struct MultiClipEditor: View {
     /// One bar on the timeline: a text, sticker or caption, or a voiceover or sound effect.
     /// kind: 0 over the picture (text, stickers, captions), 1 a sound, 2 a clip or photo over it.
     private struct BarItem: Identifiable { let id: UUID; let from: Double; let to: Double; let label: String; let colour: Color; let kind: Int }
-    private enum Panel { case trim, sound, speed, join, look, shape, text, stickers, voice, effects, soundItem, pip, motion, beats, templates }
+    private enum Panel { case trim, sound, speed, join, look, shape, text, stickers, voice, effects, soundItem, pip, motion, beats, templates, captions, captionList }
     private var perSecond: CGFloat { 30 * stripZoom }   // timeline points a second, pinched wider or narrower
 
     private var total: Double { ClipJoin.total(clips) }
@@ -398,6 +403,8 @@ struct MultiClipEditor: View {
         case .motion: return "Motion"
         case .beats: return "Beats"
         case .templates: return "Templates"
+        case .captions: return "Captions"
+        case .captionList: return "Edit all"
         case nil: return ""
         }
     }
@@ -434,6 +441,8 @@ struct MultiClipEditor: View {
             case .look: scrubBar; panelBar; if let i = index { lookPanel(i) }
             case .shape: scrubBar; panelBar; shapePanel
             case .text: scrubBar; panelBar; if let k = texts.firstIndex(where: { $0.id == selectedText }) { bars; textPanel(k) }
+            case .captions: scrubBar; panelBar; bars; captionsPanel
+            case .captionList: scrubBar; panelBar; captionList
             case .stickers: scrubBar; panelBar; stickerPanel
             case .voice: scrubBar; panelBar; bars; voicePanel
             case .effects: scrubBar; panelBar; effectsPanel
@@ -1365,7 +1374,9 @@ struct MultiClipEditor: View {
         toolRow {
                 action("textformat", "Text", on: true) { addText() }
                 action("face.smiling", "Stickers", on: true) { withAnimation(.snappy) { panel = .stickers } }
-                action("captions.bubble", "Captions", on: true) { makeCaptions() }
+                action("captions.bubble", "Captions", on: true) {
+                    if texts.contains(where: { $0.kind == "caption" }) { withAnimation(.snappy) { panel = .captions } } else { makeCaptions() }
+                }
                 action("fork.knife", "Recipe", on: true) { attachMode = "recipe" }
                 action("dumbbell", "Workout", on: true) { attachMode = "workout" }
                 action("flame", "Calories", on: true) { attachMode = "calories" }
@@ -2065,10 +2076,12 @@ struct MultiClipEditor: View {
         Task {
             defer { joining = false }
             do {
-                let made = try await EditOverlays.captions(kept, soundOf: sound)
+                let heard = try await EditOverlays.captions(kept, soundOf: sound)
+                let made = EditOverlays.regroup(heard, by: captionGroup, lines: captionLines)
                 texts.removeAll { $0.kind == "caption" }
                 texts += made
-                flash("\(made.count) caption\(made.count == 1 ? "" : "s") made. Tap one to fix a word.")
+                flash("\(made.count) caption\(made.count == 1 ? "" : "s") made. Edit all to fix a word or split a line.")
+                withAnimation(.snappy) { panel = .captions }
             } catch {
                 flash(error.localizedDescription)
             }
@@ -2125,10 +2138,32 @@ struct MultiClipEditor: View {
                 }
             }
             if item.kind == "caption" {
+                // this caption's own look (21 Nov: each line can have its own); Apply to all gives every caption it
                 HStack(spacing: 6) {
-                    ForEach(EditText.captionStyles, id: \.self) { st in
-                        chip(st, on: item.style == st) { for i in texts.indices where texts[i].kind == "caption" { texts[i].style = st } }
+                    ForEach(EditText.captionStyles, id: \.self) { st in chip(st, on: item.style == st) { texts[k].style = st } }
+                    Spacer(minLength: 0)
+                }
+                HStack(spacing: 10) {
+                    ForEach(EditText.highlights, id: \.self) { c in
+                        Circle().fill(EditText.colour(c)).frame(width: 26, height: 26)
+                            .overlay(Circle().stroke(.white, lineWidth: (item.highlight ?? "yellow") == c ? 3 : 1))
+                            .onTapGesture { texts[k].highlight = c }
+                            .accessibilityLabel("Highlight " + c)
                     }
+                    Spacer()
+                }
+                segments([("top", "Top"), ("middle", "Middle"), ("bottom", "Bottom")], item.y < 0.35 ? "top" : (item.y < 0.62 ? "middle" : "bottom")) { w in
+                    texts[k].y = w == "top" ? 0.2 : (w == "middle" ? 0.5 : 0.76)
+                }
+                HStack(spacing: 8) {
+                    wide("Apply to all", "square.stack.3d.down.right") {
+                        let l = texts[k]
+                        for i in texts.indices where texts[i].kind == "caption" {
+                            texts[i].style = l.style; texts[i].highlight = l.highlight; texts[i].size = l.size; texts[i].y = l.y; texts[i].x = l.x
+                        }
+                        flash("Every caption looks like this one now.")
+                    }
+                    wide("Edit all", "list.bullet") { listPicked = item.id; withAnimation(.snappy) { panel = .captionList } }
                 }
             }
             HStack(spacing: 10) {
@@ -2160,6 +2195,151 @@ struct MultiClipEditor: View {
             let a = texts[k].from, step = (texts[k].to - a) / Double(parts.count)
             texts[k].words = parts.indices.map { EditText.Word(text: parts[$0], at: a + step * Double($0)) }
         }
+    }
+
+    /// A row of choices, one picked (the captions' panels).
+    private func segments(_ options: [(String, String)], _ value: String, _ pick: @escaping (String) -> Void) -> some View {
+        HStack(spacing: 3) {
+            ForEach(options.indices, id: \.self) { i in
+                let o = options[i]
+                Button { UISelectionFeedbackGenerator().selectionChanged(); pick(o.0) } label: {
+                    Text(o.1).font(.caption.weight(.bold)).lineLimit(1).minimumScaleFactor(0.8).frame(maxWidth: .infinity).frame(height: 32)
+                        .foregroundStyle(value == o.0 ? Color.black : Color.white)
+                        .background(value == o.0 ? Color.white : Color.clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(3).background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    /// A wide dark button (the captions' panels).
+    private func wide(_ title: String, _ icon: String, warn: Bool = false, _ run: @escaping () -> Void) -> some View {
+        Button(action: run) {
+            Label(title, systemImage: icon).font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8)
+                .frame(maxWidth: .infinity).frame(height: 40)
+                .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain).foregroundStyle(warn ? Theme.warn : .white)
+    }
+
+    private var captionIndices: [Int] { texts.indices.filter { texts[$0].kind == "caption" }.sorted { texts[$0].from < texts[$1].from } }
+
+    /// Every caption made again from its words, as much in each as picked (straight away: no listening again).
+    private func regroupCaptions() {
+        let caps = texts.filter { $0.kind == "caption" }
+        guard !caps.isEmpty else { return }
+        texts.removeAll { $0.kind == "caption" }
+        texts += EditOverlays.regroup(caps, by: captionGroup, lines: captionLines)
+        listPicked = nil
+    }
+
+    /// The captions as a whole (design/captions-editing-mockup.html, 1): how much is on screen at a time, how many
+    /// lines, the look of every one, and the list to edit them in.
+    private var captionsPanel: some View {
+        let caps = captionIndices
+        let style = caps.first.map { texts[$0].style } ?? "Pop"
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("On screen at a time").font(.caption.weight(.semibold)).foregroundStyle(Self.quiet)
+            segments(EditText.captionGroups.map { ($0.id, $0.name) }, captionGroup) { g in captionGroup = g; regroupCaptions() }
+            Text("Lines").font(.caption.weight(.semibold)).foregroundStyle(Self.quiet)
+            segments([("1", "1"), ("2", "Up to 2")], String(captionLines)) { l in captionLines = Int(l) ?? 1; regroupCaptions() }
+            Text("Style").font(.caption.weight(.semibold)).foregroundStyle(Self.quiet)
+            HStack(spacing: 6) {
+                ForEach(EditText.captionStyles, id: \.self) { st in
+                    chip(st, on: caps.allSatisfy { texts[$0].style == st } && style == st) { for i in caps { texts[i].style = st } }
+                }
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 8) {
+                wide("Edit all", "list.bullet") { listPicked = nil; withAnimation(.snappy) { panel = .captionList } }
+                wide("Again", "arrow.clockwise") { makeCaptions() }
+                wide("Take off", "trash", warn: true) {
+                    texts.removeAll { $0.kind == "caption" }
+                    withAnimation(.snappy) { panel = nil }
+                }
+            }
+            Text("\(caps.count) caption\(caps.count == 1 ? "" : "s"). Tap one on the video for its own look.").font(.caption2).foregroundStyle(Self.quiet)
+        }
+    }
+
+    /// Every caption as a list (design/captions-editing-mockup.html, 2), as CapCut's Edit captions: tap one to go there
+    /// and fix its words, tap a word to start a new caption there, or join it to the next.
+    private var captionList: some View {
+        let caps = captionIndices
+        return ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: 6) {
+                    ForEach(caps, id: \.self) { k in
+                        captionRow(k, last: k == caps.last).id(texts[k].id)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            .frame(maxHeight: 300)
+            .onAppear { if let p = listPicked { proxy.scrollTo(p, anchor: .center) } }
+        }
+    }
+
+    @ViewBuilder private func captionRow(_ k: Int, last: Bool) -> some View {
+        let c = texts[k], on = c.id == listPicked
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(Self.code(c.from)).font(.system(size: 11, weight: .semibold, design: .monospaced)).foregroundStyle(Self.quiet).frame(width: 38, alignment: .leading)
+                if on {
+                    TextField("What's said", text: Binding(get: { texts.indices.contains(k) ? texts[k].text : "" }, set: { if texts.indices.contains(k) { setText(k, $0) } }), axis: .vertical)
+                        .font(.subheadline).lineLimit(1...3)
+                } else {
+                    Text(c.text).font(.subheadline).foregroundStyle(.white).frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            if on {
+                let words = c.words ?? []
+                if words.count > 1 {
+                    Text("Tap a word to start a new caption there").font(.caption2).foregroundStyle(Self.quiet)
+                    WordRows(spacing: 5, rowSpacing: 5) {
+                        ForEach(words.indices, id: \.self) { i in
+                            Text(words[i].text).font(.caption.weight(.semibold))
+                                .padding(.horizontal, 8).frame(height: 28)
+                                .foregroundStyle(i == 0 ? Self.quiet : .white)
+                                .background(Color.white.opacity(i == 0 ? 0.04 : 0.1), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                                .onTapGesture {
+                                    guard i > 0, let (a, b) = EditOverlays.split(texts[k], at: i) else { return }
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    texts[k] = a; texts.append(b); listPicked = b.id; seek(b.from + 0.01)
+                                }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                HStack(spacing: 8) {
+                    if !last { wide("Join next", "arrow.down.to.line") { joinNext(k) } }
+                    wide("Its look", "paintbrush") { selectText(c.id) }
+                    wide("", "trash", warn: true) {
+                        let id = c.id
+                        texts.removeAll { $0.id == id }; listPicked = nil
+                    }
+                    .frame(width: 56)
+                }
+            }
+        }
+        .padding(.horizontal, 11).padding(.vertical, 9)
+        .background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(on ? Color.white : .clear, lineWidth: 1.5))
+        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .onTapGesture { if !on { player.pause(); playing = false; listPicked = c.id; seek(c.from + 0.01) } }
+    }
+
+    /// A caption and the one after it as one.
+    private func joinNext(_ k: Int) {
+        let caps = captionIndices
+        guard let at = caps.firstIndex(of: k), at + 1 < caps.count else { return }
+        let n = caps[at + 1]
+        let joined = EditOverlays.join(texts[k], texts[n])
+        let gone = texts[n].id
+        texts[k] = joined
+        texts.removeAll { $0.id == gone }
+        listPicked = joined.id
     }
 
     private var stickerPanel: some View {
