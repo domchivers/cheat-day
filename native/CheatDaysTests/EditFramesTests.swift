@@ -55,7 +55,7 @@ final class EditFramesTests: XCTestCase {
         CMAudioFormatDescriptionCreate(allocator: nil, asbd: &asbd, layoutSize: 0, layout: nil, magicCookieSize: 0, magicCookie: nil,
                                        extensions: nil, formatDescriptionOut: &format)
         let chunk = 4410, sound = Int(seconds * rate)
-        var at = 0
+        var at = 0, soundDone = false
         // The sound goes in alongside the picture, never all after it, and whenever the writer will take it: it holds
         // one track back until the other catches up. (21 Nov: written picture first, the writer stopped taking frames
         // and waited for ever; then with the sound fed only between frames, it stalled two seconds in.)
@@ -75,6 +75,9 @@ final class EditFramesTests: XCTestCase {
             a.append(sb)
             at += chunk
           }
+          // the sound's end said as soon as it's all in: the writer waits for more of it before the last frames
+          // (21 Nov: told only after the picture, two cases stalled at frame 85 of 90)
+          if at >= sound, !soundDone { a.markAsFinished(); soundDone = true }
         }
         // the picture: thirty frames a second of the one colour (one row made, copied down the frame)
         let frames = Int(seconds * 30)
@@ -101,7 +104,7 @@ final class EditFramesTests: XCTestCase {
             try await ready(a, writer, "sound at sample \(at)")
             addSound(until: sound)
         }
-        a.markAsFinished()
+        if !soundDone { a.markAsFinished() }
         await writer.finishWriting()
         XCTAssertEqual(writer.status, .completed, "\(String(describing: writer.error))")
         return out
