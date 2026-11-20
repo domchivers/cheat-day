@@ -749,34 +749,78 @@ struct AnimatedGIF: UIViewRepresentable {
     }
     func updateUIView(_ v: UIImageView, context: Context) { if v.accessibilityIdentifier != url { load(into: v) } }
 
-    private func load(into v: UIImageView) {
+    /// GIPHY's smaller copy of the same GIF (its 100-pixel one, which the tray shows).
+    private static func smaller(_ url: String) -> String? {
+        url.contains("/200w.gif") ? url.replacingOccurrences(of: "/200w.gif", with: "/100w.gif") : nil
+    }
+
+    /// 21 Nov: a GIF sticker that didn't load (its download failed, or it was slow) sat on the story with nothing showing,
+    /// only to be found by dragging it to the bin. Now: the tray's smaller copy straight away if it's been seen, a
+    /// spinner till there's something, a second try, and the smaller copy if the bigger one never comes.
+    @MainActor private func load(into v: UIImageView) {
         v.accessibilityIdentifier = url
         let key = "\(url)|\(maxPixel)"
-        if let kept = Self.cache.object(forKey: key as NSString) { v.image = kept; v.startAnimating(); return }
-        guard let u = URL(string: url) else { return }
+        if let kept = Self.cache.object(forKey: key as NSString) { Self.show(kept, in: v); return }
+        let small = Self.smaller(url)
+        if let small, let seen = Self.cache.object(forKey: "\(small)|200" as NSString) { Self.show(seen, in: v) } else { Self.spin(v) }
         let want = url, px = maxPixel
         Task.detached(priority: .userInitiated) {
-            guard let (d, _) = try? await URLSession.shared.data(from: u), let img = Self.animated(d, maxPixel: px) else { return }
-            Self.cache.setObject(img, forKey: key as NSString)
-            await MainActor.run { if v.accessibilityIdentifier == want { v.image = img; v.startAnimating() } }
+            var img: UIImage?
+            for (i, address) in ([want, want] + (small.map { [$0] } ?? [])).enumerated() {
+                guard let u = URL(string: address) else { continue }
+                if i == 1 { try? await Task.sleep(nanoseconds: 800_000_000) }   // (once more, a moment later)
+                if let (d, r) = try? await URLSession.shared.data(from: u), (r as? HTTPURLResponse)?.statusCode ?? 200 < 400,
+                   let got = Self.animated(d, maxPixel: px) {
+                    img = got
+                    if i < 2 { Self.cache.setObject(got, forKey: key as NSString) }
+                    break
+                }
+            }
+            let shown = img
+            await MainActor.run {
+                guard v.accessibilityIdentifier == want else { return }
+                if let shown { Self.show(shown, in: v) } else { Self.unspin(v) }
+            }
         }
     }
 
+    @MainActor private static func show(_ img: UIImage, in v: UIImageView) {
+        unspin(v)
+        v.image = img; v.startAnimating()
+    }
+
+    @MainActor private static func spin(_ v: UIImageView) {
+        guard !v.subviews.contains(where: { $0 is UIActivityIndicatorView }) else { return }
+        let s = UIActivityIndicatorView(style: .medium)
+        s.color = .white; s.translatesAutoresizingMaskIntoConstraints = false; s.startAnimating()
+        v.addSubview(s)
+        NSLayoutConstraint.activate([s.centerXAnchor.constraint(equalTo: v.centerXAnchor), s.centerYAnchor.constraint(equalTo: v.centerYAnchor)])
+    }
+
+    @MainActor private static func unspin(_ v: UIImageView) {
+        for s in v.subviews where s is UIActivityIndicatorView { s.removeFromSuperview() }
+    }
+
+    /// Its frames, at most 150 of them: a long one is played from every other frame (or fewer), each held as long, so it
+    /// takes the same time; read in full, a few hundred big frames took long enough to look like nothing came.
     static func animated(_ data: Data, maxPixel: Int = 400) -> UIImage? {
         guard let src = CGImageSourceCreateWithData(data as CFData, nil) else { return UIImage(data: data) }
         let n = CGImageSourceGetCount(src)
         guard n > 1 else { return UIImage(data: data) }
+        let step = max(1, Int((Double(n) / 150).rounded(.up)))
         var frames: [UIImage] = [], total = 0.0
         for i in 0..<n {
-            let opts: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: maxPixel,
-                                         kCGImageSourceCreateThumbnailWithTransform: true]
-            guard let cg = CGImageSourceCreateThumbnailAtIndex(src, i, opts as CFDictionary) ?? CGImageSourceCreateImageAtIndex(src, i, nil) else { continue }
             let props = CGImageSourceCopyPropertiesAtIndex(src, i, nil) as? [CFString: Any]
             let gif = props?[kCGImagePropertyGIFDictionary] as? [CFString: Any]
             let delay = (gif?[kCGImagePropertyGIFUnclampedDelayTime] as? Double) ?? (gif?[kCGImagePropertyGIFDelayTime] as? Double) ?? 0.1
             total += max(0.02, delay)
+            guard i % step == 0 else { continue }
+            let opts: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: maxPixel,
+                                         kCGImageSourceCreateThumbnailWithTransform: true]
+            guard let cg = CGImageSourceCreateThumbnailAtIndex(src, i, opts as CFDictionary) ?? CGImageSourceCreateImageAtIndex(src, i, nil) else { continue }
             frames.append(UIImage(cgImage: cg))
         }
+        guard !frames.isEmpty else { return nil }
         return UIImage.animatedImage(with: frames, duration: total)
     }
 }
