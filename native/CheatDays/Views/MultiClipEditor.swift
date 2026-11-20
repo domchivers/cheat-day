@@ -1323,7 +1323,9 @@ struct MultiClipEditor: View {
             ForEach(texts) { item in
                 let on = item.id == selectedText
                 if on || (now >= item.from && now < item.to) {
-                    EditTextView(item: item, at: now).padding(24)
+                    // a calorie count held still shows its number, not the 0 it counts up from (21 Nov: "always 0":
+                    // put on at the line, it was drawn at the very start of its count); playing, it counts as posted
+                    EditTextView(item: item, at: item.kind == "calories" && !playing ? max(now, item.from + 1.3) : now).padding(24)
                         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [6])).foregroundStyle(on ? Color.white : Color.clear).padding(14))
                         // sized with its dashed box, so the box grows with it (20 Nov: the box stayed small)
                         .scaleEffect(k * CGFloat(item.size))
