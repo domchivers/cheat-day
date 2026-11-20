@@ -281,4 +281,17 @@ final class FoodMatchTests: XCTestCase {
         XCTAssertFalse((FoodTable.au.best("Black beans", tags: ["cooked"])?.name ?? "").lowercased().contains("sauce"))
         XCTAssertFalse((FoodTable.au.best("Black beans", tags: [])?.name ?? "").lowercased().contains("sauce"))
     }
+
+    /// A tinga, 21 Nov: "Onion, cooked in chicken water" found the fried spring onion, and any cooked tomato sundried
+    /// tomato (a sanity check threw that out; it shouldn't have come up). Cooked in water is boiled; a spring onion,
+    /// sundried tomato or tomato paste is another food unless it's said; simmered isn't the added-fat version; and
+    /// fresh isn't canned.
+    func testCookedInWaterAndVarietiesOnlyWhenSaid() {
+        XCTAssertEqual(best("Onion, cooked in chicken water", []), "Onion, mature, peeled, boiled, microwaved or steamed, drained")
+        XCTAssertEqual(best("Tomato, fresh, simmered", []), "Tomato, common, raw")
+        XCTAssertEqual(best("Spring onion", []), "Onion, spring, fresh, raw")
+        XCTAssertEqual(best("Sundried tomato", []), "Tomato, sundried")
+        XCTAssertFalse((best("Tomato, boiled", []) ?? "").lowercased().contains("sundried"))
+        XCTAssertFalse((best("Tomato, boiled", []) ?? "").lowercased().contains("added fat"))
+    }
 }

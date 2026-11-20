@@ -229,6 +229,9 @@ final class FoodTable {
         for (said, row) in [("fry", "fried"), ("boil", "boiled"), ("bake", "baked"), ("grill", "grilled"), ("steam", "steamed")] {
             n = n.replacingOccurrences(of: "\\b\(said)(ing)?\\b", with: row, options: .regularExpression)   // "will pan fry" is fried
         }
+        // cooked in water or stock is boiled (21 Nov: "Onion, cooked in chicken water" found a fried onion)
+        n = n.replacingOccurrences(of: #"\b(simmer(ed|ing)?|poach(ed|ing)?|(cooked|softened|sweated) in (\w+ )?(water|stock|broth))\b"#,
+                                   with: "boiled", options: .regularExpression)
         var h = hits
         func keep(_ test: (String) -> Bool) { let k = h.filter { test($0.food.name.lowercased()) }; if !k.isEmpty { h = k } }
         func has(_ s: String, _ p: String) -> Bool { s.range(of: p, options: .regularExpression) != nil }
@@ -236,8 +239,13 @@ final class FoodTable {
         for m in ["boiled", "fried", "baked", "roast", "grilled", "steamed", "microwaved"] where n.contains(m) { keep { $0.contains(m) } }
         if has(n, #"\b(no|without)\s+(added\s+)?(oil|fat|butter)\b"#) { keep { $0.contains("no added fat") } }
         else if has(n, #"\b(with|in)\s+(\w+\s+)?(oil|fat|butter)\b"#) { keep { $0.contains("added fat") && !$0.contains("no added fat") } }
+        // boiled, steamed or simmered isn't the added-fat version (a simmered tomato found "Tomato, cooked, added fat")
+        else if has(n, #"\b(boiled|steamed)\b"#) { keep { !$0.contains("added fat") || $0.contains("no added fat") } }
+        // said fresh, it isn't the canned one (a simmered fresh tomato found canned tomatoes)
+        if has(n, #"\bfresh\b"#) { keep { !$0.contains("canned") } }
         keep { f in
-            guard let r = f.range(of: #"\b(coliban|desiree|sebago|pontiac|kipfler|nicola|new|pale skin|red skin)\b"#, options: .regularExpression) else { return true }
+            // (a spring or pickled onion is another food from an onion: 21 Nov, a plain cooked onion found the fried spring one)
+            guard let r = f.range(of: #"\b(coliban|desiree|sebago|pontiac|kipfler|nicola|new|pale skin|red skin|spring|pickled|sundried|stuffed|paste|puree|cherry|roma)\b"#, options: .regularExpression) else { return true }
             return n.contains(f[r])
         }
         return h

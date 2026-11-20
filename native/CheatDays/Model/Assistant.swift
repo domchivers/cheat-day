@@ -999,6 +999,18 @@ enum Assistant {
                 out.append("  [planned from \(str(ta["restaurant"])) for \(Int(num(ta["kcal"]) ?? 0)) kcal, \(Int(num(ta["aim"]) ?? 0)) g protein · \(str(ta["source"]))]")
                 for c in CheatDays.list(ta["combos"]) { out.append("    \(str(c["title"])) · \(Int(num(c["kcal"]) ?? 0)) kcal · P\(Int(num(c["protein_g"]) ?? 0))") }
             }
+            // the recipe card as it showed (21 Nov: left out, a tinga chat's recipes came through as "total 0 kcal")
+            if let rc = t.result?["recipe"] as? JSON {
+                let ings = CheatDays.list(rc["ingredients"]), portions = max(1, num(rc["portions"]) ?? 1)
+                let sum = { (k: String) in ings.reduce(0) { $0 + (num($1[k]) ?? 0) } }
+                out.append("  [recipe \(str(rc["name"])) · \(Fmt.one(portions)) portion\(portions == 1 ? "" : "s") · per portion \(Int((sum("kcal") / portions).rounded())) kcal · P\(Fmt.one(sum("protein_g") / portions)) C\(Fmt.one(sum("carbs_g") / portions)) F\(Fmt.one(sum("fat_g") / portions))]")
+                for i in ings {
+                    out.append("    \(str(i["name"])) · \(Int((num(i["grams"]) ?? 0).rounded())) g · \(Int((num(i["kcal"]) ?? 0).rounded())) kcal · P\(Fmt.one(num(i["protein_g"]) ?? 0)) C\(Fmt.one(num(i["carbs_g"]) ?? 0)) F\(Fmt.one(num(i["fat_g"]) ?? 0))")
+                }
+                let steps = (rc["steps"] as? [Any])?.map { str($0) } ?? []
+                for (n, s) in steps.enumerated() { out.append("    \(n + 1). \(s)") }
+                out.append("    batch \(Int(sum("kcal").rounded())) kcal")
+            }
             if let pl = t.result?["places"] as? JSON {
                 out.append("  [places in \(str(pl["area"])) for \(Int(num(pl["kcal"]) ?? 0)) kcal, \(Int(num(pl["protein"]) ?? 0)) g protein]")
                 for x in CheatDays.list(pl["places"]) {

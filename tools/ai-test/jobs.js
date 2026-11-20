@@ -23,13 +23,19 @@ function narrow(name, hits, want) {
   let n = name.toLowerCase();
   for (const [said, row] of [['fry', 'fried'], ['boil', 'boiled'], ['bake', 'baked'], ['grill', 'grilled'], ['steam', 'steamed']])
     n = n.replace(new RegExp(`\\b${said}(ing)?\\b`, 'g'), row);   // "will pan fry" is fried
+  // cooked in water or stock is boiled ("Onion, cooked in chicken water" found a fried onion, 21 Nov)
+  n = n.replace(/\b(simmer(ed|ing)?|poach(ed|ing)?|(cooked|softened|sweated) in (\w+ )?(water|stock|broth))\b/g, 'boiled');
   let h = hits;
   const keep = test => { const k = h.filter(x => test(x.f.name.toLowerCase())); if (k.length) h = k; };   // only when something's left
   keep(f => words(f.split(',')[0]).join(' ') === want.join(' '));   // a potato is a potato, not a sweet potato
   for (const m of METHODS) if (n.includes(m)) keep(f => f.includes(m));
   if (/\b(no|without)\s+(added\s+)?(oil|fat|butter)\b/.test(n)) keep(f => f.includes('no added fat'));
   else if (/\b(with|in)\s+(\w+\s+)?(oil|fat|butter)\b/.test(n)) keep(f => /added fat/.test(f) && !f.includes('no added fat'));
-  keep(f => { const v = f.match(/\b(coliban|desiree|sebago|pontiac|kipfler|nicola|new|pale skin|red skin)\b/); return !v || n.includes(v[1]); });
+  // boiled, steamed or simmered isn't the added-fat version (a simmered tomato found "Tomato, cooked, added fat")
+  else if (/\b(boiled|steamed)\b/.test(n)) keep(f => !/added fat/.test(f) || f.includes('no added fat'));
+  // said fresh, it isn't the canned one (a simmered fresh tomato found canned tomatoes)
+  if (/\bfresh\b/.test(n)) keep(f => !f.includes('canned'));
+  keep(f => { const v = f.match(/\b(coliban|desiree|sebago|pontiac|kipfler|nicola|new|pale skin|red skin|spring|pickled|sundried|stuffed|paste|puree|cherry|roma)\b/); return !v || n.includes(v[1]); });
   return h;
 }
 function resolve(name) {
