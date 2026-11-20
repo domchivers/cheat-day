@@ -78,6 +78,10 @@ struct MultiClipEditor: View {
     @FocusState private var typingFocus: Bool
     @State private var stickering = false
     @State private var stickerPick: String?
+    // the recipe laid over it (design/editor-recipe-mockup.html), and how
+    @State private var recipe: JSON?
+    @State private var plan = EditOverlays.RecipePlan()
+    @State private var stepPicked: Int?
     @State private var frameSize = CGSize(width: 1080, height: 1920)
     @State private var moveFrom: (Double, Double)?
     @State private var sizeFrom: Double?
@@ -120,7 +124,7 @@ struct MultiClipEditor: View {
     /// One bar on the timeline: a text, sticker or caption, or a voiceover or sound effect.
     /// kind: 0 over the picture (text, stickers, captions), 1 a sound, 2 a clip or photo over it.
     private struct BarItem: Identifiable { let id: UUID; let from: Double; let to: Double; let label: String; let colour: Color; let kind: Int }
-    private enum Panel { case trim, sound, speed, join, look, shape, text, stickers, voice, effects, soundItem, pip, motion, beats, templates, captions, captionList }
+    private enum Panel { case trim, sound, speed, join, look, shape, text, stickers, voice, effects, soundItem, pip, motion, beats, templates, captions, captionList, recipe, recipeSteps }
     private var perSecond: CGFloat { 30 * stripZoom }   // timeline points a second, pinched wider or narrower
 
     private var total: Double { ClipJoin.total(clips) }
@@ -419,6 +423,8 @@ struct MultiClipEditor: View {
         case .templates: return "Templates"
         case .captions: return "Captions"
         case .captionList: return "Edit all"
+        case .recipe: return "Recipe"
+        case .recipeSteps: return "Method"
         case nil: return ""
         }
     }
@@ -457,6 +463,8 @@ struct MultiClipEditor: View {
             case .text: scrubBar; panelBar; if let k = texts.firstIndex(where: { $0.id == selectedText }) { bars; textPanel(k) }
             case .captions: scrubBar; panelBar; bars; captionsPanel
             case .captionList: scrubBar; panelBar; captionList
+            case .recipe: scrubBar; panelBar; bars; recipePanel
+            case .recipeSteps: scrubBar; panelBar; recipeSteps
             case .stickers: scrubBar; panelBar; stickerPanel
             case .voice: scrubBar; panelBar; bars; voicePanel
             case .effects: scrubBar; panelBar; effectsPanel
@@ -1395,7 +1403,7 @@ struct MultiClipEditor: View {
                 action("captions.bubble", "Captions", on: true) {
                     if texts.contains(where: { $0.kind == "caption" }) { withAnimation(.snappy) { panel = .captions } } else { makeCaptions() }
                 }
-                action("fork.knife", "Recipe", on: true) { attachMode = "recipe" }
+                action("fork.knife", "Recipe", on: true) { if recipe != nil { withAnimation(.snappy) { panel = .recipe } } else { attachMode = "recipe" } }
                 action("dumbbell", "Workout", on: true) { attachMode = "workout" }
                 action("mic.fill", "Voice", on: true) { withAnimation(.snappy) { panel = .voice } }
                 action("sparkles", "Effects", on: true) { withAnimation(.snappy) { panel = .effects } }
@@ -2270,9 +2278,12 @@ struct MultiClipEditor: View {
         attachMode = nil
         switch mode {
         case "recipe":
-            texts.removeAll { $0.kind == "step" || $0.kind == "macros" }
-            texts += EditOverlays.recipe(what, clips: clips)
-            if str(what["kind"]) != "meal" { flash("A food has no steps: its macros are on the last clip. Pick a saved meal or recipe for steps.") }
+            // a saved meal or recipe: a food has no method to show (21 Nov)
+            guard str(what["kind"]) == "meal" else { flash("Pick a saved meal or recipe: a single food has no method to show."); return }
+            recipe = what
+            plan = EditOverlays.RecipePlan()
+            remakeRecipe()
+            withAnimation(.snappy) { panel = .recipe }
         case "workout":
             guard str(what["kind"]) == "workout" else { flash("Pick a workout for workout mode."); return }
             texts.removeAll { $0.kind == "workout" }
@@ -2507,6 +2518,133 @@ struct MultiClipEditor: View {
         texts[k] = joined
         texts.removeAll { $0.id == gone }
         listPicked = joined.id
+    }
+
+    /// The recipe's overlays made again from the plan (the ones it made before taken off first, and an old recipe's).
+    private func remakeRecipe() {
+        texts.removeAll { $0.part == "recipe" || ($0.part == nil && ($0.kind == "step" || $0.kind == "macros")) }
+        guard let recipe else { return }
+        texts += EditOverlays.reel(recipe, clips: clips, plan: plan)
+    }
+
+    /// A toggle row: its name, what it is, and the switch.
+    private func toggleRow(_ title: String, _ about: String, _ on: Binding<Bool>) -> some View {
+        Toggle(isOn: on) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.subheadline.weight(.semibold))
+                Text(about).font(.caption).foregroundStyle(Self.quiet)
+            }
+        }
+        .tint(Color(red: 0.19, green: 0.82, blue: 0.35))
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func planBinding(_ key: WritableKeyPath<EditOverlays.RecipePlan, Bool>) -> Binding<Bool> {
+        Binding(get: { plan[keyPath: key] }, set: { plan[keyPath: key] = $0; remakeRecipe() })
+    }
+
+    /// The recipe as a whole (design/editor-recipe-mockup.html, 1): its four parts, each on or off, their look, and
+    /// the end's numbers.
+    private var recipePanel: some View {
+        let meal = recipe ?? [:]
+        let steps = EditOverlays.steps(of: meal)
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text(str(meal["name"])).font(.subheadline.weight(.heavy)).lineLimit(1)
+                    Spacer()
+                    Button("Change recipe") { attachMode = "recipe" }.font(.caption.weight(.bold)).foregroundStyle(.white)
+                }
+                toggleRow("Title card", "At the start", planBinding(\.title))
+                toggleRow("Ingredients", "With amounts, after the title", planBinding(\.ingredients))
+                HStack(spacing: 6) {
+                    toggleRow("Method", steps.isEmpty ? "This recipe has no steps saved" : "\(steps.count) step\(steps.count == 1 ? "" : "s")", planBinding(\.method))
+                    if plan.method && !steps.isEmpty {
+                        Button { withAnimation(.snappy) { panel = .recipeSteps } } label: {
+                            Image(systemName: "list.number").font(.system(size: 15, weight: .bold)).frame(width: 46, height: 54)
+                                .background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                        .buttonStyle(.plain).foregroundStyle(.white).accessibilityLabel("The steps")
+                    }
+                }
+                toggleRow("Macros at the end", "A portion's numbers on the last clip", planBinding(\.macros))
+                if plan.macros {
+                    segments([("count", "Counts up"), ("still", "Shown still")], plan.countUp ? "count" : "still") { v in plan.countUp = v == "count"; remakeRecipe() }
+                    HStack(spacing: 6) {
+                        ForEach(["p", "c", "f"], id: \.self) { k in
+                            let name = ["p": "Protein", "c": "Carbs", "f": "Fat"][k] ?? k
+                            chip(name, on: plan.show.contains(k)) {
+                                if plan.show.contains(k) { plan.show.remove(k) } else { plan.show.insert(k) }
+                                remakeRecipe()
+                            }
+                        }
+                        Spacer(minLength: 0)
+                    }
+                }
+                Text("Look").font(.caption.weight(.semibold)).foregroundStyle(Self.quiet).padding(.top, 4)
+                HStack(spacing: 6) {
+                    ForEach(EditOverlays.RecipePlan.looks, id: \.self) { l in chip(l, on: plan.look == l) { plan.look = l; remakeRecipe() } }
+                    Spacer(minLength: 0)
+                }
+                wide("Take the recipe off", "trash", warn: true) {
+                    recipe = nil; remakeRecipe()
+                    withAnimation(.snappy) { panel = nil }
+                }
+                .padding(.top, 4)
+            }
+        }
+        .frame(maxHeight: 330)
+    }
+
+    /// The method a step at a time (design/editor-recipe-mockup.html, 2): a clip each or spread evenly, each step's
+    /// clip, and its words to shorten.
+    private var recipeSteps: some View {
+        let meal = recipe ?? [:]
+        let steps = EditOverlays.steps(of: meal)
+        let room = max(1, plan.macros && clips.count > 1 ? clips.count - 1 : clips.count)
+        let even = plan.spread || steps.count > room
+        return VStack(alignment: .leading, spacing: 8) {
+            segments([("clip", "A clip each"), ("even", "Spread evenly")], even ? "even" : "clip") { v in plan.spread = v == "even"; remakeRecipe() }
+            if !plan.spread && steps.count > room {
+                Text("More steps than clips, so they're spread evenly. Add clips to give each its own.").font(.caption2).foregroundStyle(Theme.warn)
+            }
+            ScrollView {
+                VStack(spacing: 6) {
+                    ForEach(steps.indices, id: \.self) { i in
+                        let on = stepPicked == i
+                        HStack(alignment: .center, spacing: 10) {
+                            Text("\(i + 1)").font(.caption.weight(.black)).foregroundStyle(.black).frame(width: 22, height: 22).background(.white, in: Circle())
+                            if on {
+                                TextField("Step", text: Binding(get: { plan.words[i] ?? steps[i] }, set: { plan.words[i] = $0; remakeRecipe() }), axis: .vertical)
+                                    .font(.subheadline).lineLimit(1...3)
+                            } else {
+                                Text(plan.words[i] ?? steps[i]).font(.subheadline).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            if !even {
+                                Menu {
+                                    ForEach(clips.indices, id: \.self) { k in
+                                        Button("Clip \(k + 1)") { plan.clipOf[i] = k; remakeRecipe(); seek(startOf(k) + 0.01) }
+                                    }
+                                } label: {
+                                    Text("Clip \(min(plan.clipOf[i] ?? i, clips.count - 1) + 1) ▾").font(.caption2.weight(.heavy)).foregroundStyle(Color(white: 0.85))
+                                        .padding(.horizontal, 7).frame(height: 24).background(.black, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 11).padding(.vertical, 9)
+                        .background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(on ? Color.white : .clear, lineWidth: 1.5))
+                        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .onTapGesture {
+                            stepPicked = i
+                            if let t = texts.first(where: { $0.part == "recipe" && $0.kind == "step" && $0.detail.hasPrefix("\(i + 1)/") }) { player.pause(); playing = false; seek(t.from + 0.01) }
+                        }
+                    }
+                }
+            }
+            .frame(maxHeight: 260)
+        }
     }
 
     private var stickerPanel: some View {

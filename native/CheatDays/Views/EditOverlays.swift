@@ -25,6 +25,8 @@ struct EditText: Identifiable, Codable, Equatable {
     var font: String? = nil
     /// A story sticker on the video (kind "card"): the sticker as stories keep it, as JSON (StoryItem draws it).
     var card: String? = nil
+    /// What made it, when it's one of a set made again together: "recipe" (the recipe panel's).
+    var part: String? = nil
 
     struct Word: Codable, Equatable { var text: String; var at: Double }
 
@@ -119,9 +121,32 @@ struct EditTextView: View {
         case "card":
             StoryItem(o: item.cardJSON ?? [:])
         case "step":
-            Text(item.text).font(.system(size: 22, weight: .bold)).foregroundStyle(.white).multilineTextAlignment(.center)
-                .padding(.horizontal, 14).padding(.vertical, 9).frame(maxWidth: 330)
-                .background(.black.opacity(0.62), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            // its number ("2/5") in yellow before it, as the recipe's look has it (design/editor-recipe-mockup.html)
+            let line = (item.detail.isEmpty ? Text("") : Text(item.detail + "  ").foregroundColor(EditText.colour("yellow"))) + Text(item.text)
+            switch item.style {
+            case "Caption":
+                line.font(.system(size: 26, weight: .black)).foregroundStyle(.white).multilineTextAlignment(.center).frame(maxWidth: 340)
+                    .shadow(color: .black, radius: 0, x: 1.5, y: 1.5).shadow(color: .black, radius: 0, x: -1.5, y: -1.5)
+                    .shadow(color: .black, radius: 0, x: 1.5, y: -1.5).shadow(color: .black, radius: 0, x: -1.5, y: 1.5)
+            case "Minimal":
+                line.font(.system(size: 18, weight: .semibold)).foregroundStyle(.white).multilineTextAlignment(.center).frame(maxWidth: 320)
+                    .shadow(color: .black.opacity(0.8), radius: 3, y: 1)
+            default:
+                line.font(.system(size: 22, weight: .bold)).foregroundStyle(.white).multilineTextAlignment(.leading)
+                    .padding(.horizontal, 14).padding(.vertical, 10).frame(maxWidth: 340, alignment: .leading)
+                    .background(.black.opacity(0.66), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+        case "ingredients":
+            // a line each, as many as fit and how many more
+            let lines = item.text.split(separator: "\n").map(String.init)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("INGREDIENTS").font(.system(size: 11, weight: .heavy, design: .rounded)).tracking(1).foregroundStyle(EditText.colour("yellow"))
+                ForEach(lines.indices, id: \.self) { i in
+                    Text(lines[i]).font(.system(size: item.style == "Minimal" ? 15 : 17, weight: .bold)).foregroundStyle(.white.opacity(lines[i].hasPrefix("+") ? 0.6 : 1))
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12).frame(maxWidth: 300, alignment: .leading)
+            .background(.black.opacity(item.style == "Minimal" ? 0.35 : 0.62), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         case "macros":
             VStack(spacing: 4) {
                 Text(item.text).font(.system(size: 30, weight: .black, design: .rounded))
@@ -505,6 +530,101 @@ enum EditOverlays {
         // each held until the next one comes, if that's soon
         for i in out.indices.dropLast() where out[i + 1].from - out[i].to < 0.8 { out[i].to = out[i + 1].from }
         if out.isEmpty { throw Problem(errorDescription: "No words were heard in this edit.") }
+        return out
+    }
+
+    /// How a recipe is laid over the video (design/editor-recipe-mockup.html): which parts, their look, where the
+    /// steps go (a clip each, the ones moved by hand, or spread evenly), any step's words shortened, and the end's numbers.
+    struct RecipePlan: Equatable {
+        var title = true, ingredients = true, method = true, macros = true
+        var look = "Card"                   // "Card", "Caption", "Minimal"
+        var spread = false                  // the steps shared out evenly, not one a clip
+        var clipOf: [Int: Int] = [:]        // a step moved to another clip
+        var words: [Int: String] = [:]      // a step's words changed
+        var countUp = true
+        var show: Set<String> = ["p", "c", "f"]
+        static let looks = ["Card", "Caption", "Minimal"]
+    }
+
+    /// A saved meal's method, a line a step.
+    static func steps(of meal: JSON) -> [String] {
+        let payload = meal["payload"] as? JSON ?? [:]
+        var steps: [String] = list(payload["steps"]).map { str($0["text"]) }
+        if steps.allSatisfy({ $0.isEmpty }) { steps = (payload["steps"] as? [String]) ?? [] }
+        return steps.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+    }
+
+    /// Its ingredients, a line each with how much: at most six, then how many more.
+    static func ingredients(of meal: JSON) -> [String] {
+        let items = list((meal["payload"] as? JSON)?["items"])
+        var out: [String] = items.compactMap { it in
+            let name = str(it["name"])
+            guard !name.isEmpty else { return nil }
+            guard let g = num(it["grams"]), g > 0 else { return name }
+            let unit = str(it["unit"]).isEmpty ? "g" : str(it["unit"])
+            return "\(Fmt.int(g)) \(unit) \(name)"
+        }
+        if out.count > 6 { let more = out.count - 5; out = Array(out.prefix(5)) + ["+\(more) more"] }
+        return out
+    }
+
+    /// A saved recipe as a cooking reel over the clips (21 Nov): its card at the start, its ingredients after, its method
+    /// a step at a time, a portion's numbers on the last clip. Each is marked as the recipe's, to be made again together.
+    static func reel(_ meal: JSON, clips: [Clip], plan: RecipePlan) -> [EditText] {
+        let starts = ClipJoin.starts(clips), total = ClipJoin.total(clips)
+        guard !clips.isEmpty, total > 0.2 else { return [] }
+        let name = str(meal["name"]), kcal = num(meal["kcal"]) ?? 0
+        let m = meal["macros"] as? JSON ?? [:]
+        let p = Int(num(m["p"]) ?? 0), c = Int(num(m["c"]) ?? 0), fat = Int(num(m["f"]) ?? 0)
+        let steps = Self.steps(of: meal), items = Self.ingredients(of: meal)
+        var out: [EditText] = []
+        func add(_ t: EditText) { var t = t; t.part = "recipe"; out.append(t) }
+        // the end: the last clip, or the last 2.5 s of one
+        let endAt = plan.macros ? (clips.count > 1 ? starts[clips.count - 1] : max(0, total - 2.5)) : total
+        var at = 0.0
+        if plan.title {
+            let o: JSON = ["type": "recipe", "name": name, "kcal": Int(kcal), "p": p, "c": c, "f": fat,
+                           "n": list((meal["payload"] as? JSON)?["items"]).count, "steps": steps.count]
+            if let d = try? JSONSerialization.data(withJSONObject: o), let json = String(data: d, encoding: .utf8) {
+                var t = EditText(kind: "card", text: name.isEmpty ? "Recipe" : name, x: 0.5, y: 0.36, from: 0, to: min(endAt, 2.2))
+                t.card = json
+                add(t)
+                at = t.to
+            }
+        }
+        if plan.ingredients, !items.isEmpty, at < endAt - 0.3 {
+            add(EditText(kind: "ingredients", text: items.joined(separator: "\n"), style: plan.look, x: 0.5, y: 0.3, from: at, to: min(endAt, at + 2.8)))
+        }
+        if plan.method, !steps.isEmpty {
+            // a clip each (the clips before the end's), unless there are more steps than that or they're spread
+            let room = max(1, plan.macros && clips.count > 1 ? clips.count - 1 : clips.count)
+            let even = plan.spread || steps.count > room
+            for i in steps.indices {
+                var from: Double, to: Double
+                if even {
+                    let step = endAt / Double(steps.count)
+                    from = step * Double(i); to = step * Double(i + 1)
+                } else {
+                    let k = min(max(0, plan.clipOf[i] ?? i), clips.count - 1)
+                    from = starts[k]; to = starts[k] + clips[k].span
+                }
+                guard to > from + 0.2 else { continue }
+                add(EditText(kind: "step", text: plan.words[i] ?? steps[i], detail: "\(i + 1)/\(steps.count)", style: plan.look,
+                             x: 0.5, y: 0.8, from: from, to: to))
+            }
+        }
+        if plan.macros {
+            var bits: [String] = []
+            if plan.show.contains("p") { bits.append("P \(p) g") }
+            if plan.show.contains("c") { bits.append("C \(c) g") }
+            if plan.show.contains("f") { bits.append("F \(fat) g") }
+            let detail = bits.joined(separator: " · ")
+            if plan.countUp {
+                add(EditText(kind: "calories", text: name, detail: detail, x: 0.5, y: 0.42, from: endAt, to: total, number: kcal))
+            } else {
+                add(EditText(kind: "macros", text: "\(Int(kcal)) kcal", detail: detail, x: 0.5, y: 0.42, from: endAt, to: total))
+            }
+        }
         return out
     }
 
