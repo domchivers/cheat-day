@@ -1,6 +1,7 @@
 import AVFoundation
 import CoreImage
 import XCTest
+import UIKit
 @testable import CheatDays
 
 /// The clip editor's own player (21 Nov): it shows the right clip at each moment, from the clips themselves, and an
