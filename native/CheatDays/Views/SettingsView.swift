@@ -3,6 +3,7 @@ import UserNotifications
 
 /// Settings: one short list, like the iPhone's own; each row opens its own page (reminders, sharing, portions, the assistant, data, account).
 struct SettingsView: View {
+    @Environment(\.colorScheme) private var scheme
     @State private var lunch = true
     @State private var weighOn = true
     @State private var weighTime = Calendar.current.date(from: DateComponents(hour: 7, minute: 30)) ?? Date()
@@ -139,6 +140,20 @@ struct SettingsView: View {
             .navigationBarTitleDisplayMode(.inline)
     }
 
+    private func previewStat(_ value: String, _ label: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(value).font(.headline.weight(.heavy)).monospacedDigit()
+            Text(label).font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    /// The logo in the panel's corner, as Today has it: navy in light mode, silver in dark.
+    private var previewLogo: some View {
+        let light = LinearGradient(colors: [Color(red: 0.094, green: 0.137, blue: 0.227), Color(red: 0.039, green: 0.059, blue: 0.110)], startPoint: .top, endPoint: .bottom)
+        let dark = LinearGradient(colors: [Color(red: 0.957, green: 0.965, blue: 0.984), Color(red: 0.788, green: 0.816, blue: 0.886)], startPoint: .top, endPoint: .bottom)
+        return LogoMark().fill(scheme == .light ? light : dark).frame(width: 41, height: 22).accessibilityHidden(true)
+    }
+
     /// The app's colour: a preview of Left to eat, then every colour to pick from. Changes straight away.
     @ViewBuilder private var colourPage: some View {
         let p = Palette.current
@@ -147,34 +162,43 @@ struct SettingsView: View {
                 .pickerStyle(.segmented).listRowBackground(Color.clear).listRowInsets(EdgeInsets())
         }
         Section {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("LEFT TO EAT").font(.caption2.weight(.heavy)).tracking(0.8).foregroundStyle(p.heroLabel)
-                    Spacer()
-                    Text("Plan").font(.caption.weight(.heavy)).padding(.horizontal, 10).padding(.vertical, 4)
-                        .background(p.accent.opacity(0.2), in: Capsule()).foregroundStyle(p.accent)
+            // drawn as Today's Left to eat panel is now (21 Nov: this was the old one, its Plan pill and Ideas for
+            // dinner long gone from Today, so the two didn't look alike)
+            VStack(alignment: .leading, spacing: 14) {
+                Eyebrow(text: "Left to eat", color: p.heroLabel)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("1,394").font(.system(size: 54, weight: .heavy, design: .rounded))
+                    Text("kcal").font(.headline).foregroundStyle(.secondary)
                 }
-                Text("1,094").font(.system(size: 40, weight: .heavy, design: .rounded))
-                GeometryReader { g in
-                    HStack(spacing: 0) {
-                        Theme.meal("Breakfast").frame(width: g.size.width * 0.2)
-                        Theme.meal("Lunch").frame(width: g.size.width * 0.22)
-                        Theme.meal("Snacks").frame(width: g.size.width * 0.1)
-                        Theme.meal("Dinner").frame(width: g.size.width * 0.14)
-                        p.track
+                VStack(alignment: .leading, spacing: 8) {
+                    GeometryReader { g in
+                        ZStack(alignment: .leading) {
+                            p.track
+                            HStack(spacing: 2) {
+                                Theme.meal("Breakfast").frame(width: g.size.width * 0.2 - 2)
+                                Theme.meal("Lunch").frame(width: g.size.width * 0.21 - 2)
+                            }
+                        }
                     }
-                    .clipShape(Capsule())
+                    .frame(height: 12).clipShape(Capsule())
+                    HStack(spacing: 12) {
+                        ForEach(["Breakfast", "Lunch"], id: \.self) { m in
+                            HStack(spacing: 4) {
+                                Circle().fill(Theme.meal(m)).frame(width: 7, height: 7)
+                                Text(m).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
                 }
-                .frame(height: 8)
                 HStack {
-                    Text("Ideas for dinner ›").font(.footnote.weight(.semibold)).foregroundStyle(p.accent)
-                    Spacer()
-                    Image(systemName: "plus").font(.title3.weight(.bold)).foregroundStyle(p.onAccent)
-                        .frame(width: 44, height: 44).background(p.accentFill, in: Circle())
+                    previewStat("956", "eaten"); Spacer(); previewStat("86 / 180g", "protein"); Spacer(); previewStat("2,350", "budget")
                 }
             }
-            .padding(14)
-            .background(p.heroFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .padding(.horizontal, 20).padding(.vertical, 18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(p.heroFill, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .overlay(alignment: .topTrailing) { previewLogo.padding(.top, 16).padding(.trailing, 20) }
+            .accessibilityElement(children: .combine)
             .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
         }
         Section {
