@@ -15,9 +15,11 @@ final class Speech {
     private var task: SFSpeechRecognitionTask?
     /// Which listen the words coming in belong to: once it's done (stopped and its last words in, or sent), any words
     /// still on their way are let go.
-    private var generation = 0
-    /// What was heard before the recognizer began again from nothing, and what it has heard since.
-    private var kept = "", last = ""
+    @ObservationIgnored private var generation = 0
+    /// What was heard before the recognizer began again from nothing, and what it has heard since. (One to a line:
+    /// the Observation macro takes a single variable a declaration.)
+    @ObservationIgnored private var kept = ""
+    @ObservationIgnored private var last = ""
 
     /// Starts listening; `heard` gets everything said so far each time it changes.
     func start(_ heard: @escaping (String) -> Void) async {
