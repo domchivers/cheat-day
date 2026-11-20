@@ -101,6 +101,9 @@ struct MultiClipEditor: View {
     @State private var dropped = 0                        // a bar let go: the preview made again then
     private struct TrimDrag { var side: Int; var dx: CGFloat }
     @State private var trimDrag: TrimDrag?
+    // where the handle is drawn while it's held: back to nothing however the drag ends, cut short too (21 Nov: a drag
+    // the timeline took over left the handle stranded, apart from its clip)
+    @GestureState private var trimLive: TrimDrag?
     @State private var scrubSkip = false                  // this drag is a bar's or a trim handle's, not the timeline's                // an end of the picked clip being dragged on the timeline
     private struct BarGrab { var id: UUID; var mode: Int; var from: Double; var to: Double; var words: [EditText.Word]?; var start = 0.0 }   // mode: 0 move, 1 start, 2 end
     /// One bar on the timeline: a text, sticker or caption, or a voiceover or sound effect.
@@ -207,6 +210,8 @@ struct MultiClipEditor: View {
         // (a trim handle's drag cut short, by another clip picked or a panel opened, leaves nothing behind)
         .onChange(of: selected) { _, _ in trimDrag = nil }
         .onChange(of: panel == nil) { _, _ in trimDrag = nil }
+        // a handle's drag cut short (no end to it): nothing left held, the picture back where the line is
+        .onChange(of: trimLive == nil) { _, gone in if gone, trimDrag != nil { trimDrag = nil; chaseTo = nil; seek(now) } }
         .onChange(of: pipPicks) { _, now in
             guard !now.isEmpty else { return }
             Task { let got = await Self.clips(from: now); pipPicks = []; if let c = got.first { await addPip(c) } }
@@ -504,7 +509,7 @@ struct MultiClipEditor: View {
             // alongside the clips' own touches, not after them: as a gesture of its own it waited for a clip's hold
             // (to move it) to give up first, and the timeline stood still a moment before it moved (21 Nov recording)
             .simultaneousGesture(DragGesture(minimumDistance: 6)
-                .onChanged { v in scrubTimeline(by: v.translation.width, pps: pps) }
+                .onChanged { v in scrubTimeline(by: v.translation.width, from: v.startLocation, mid: mid, pps: pps) }
                 .onEnded { _ in endScrub() })
             .simultaneousGesture(MagnificationGesture()
                 .onChanged { m in
@@ -619,8 +624,8 @@ struct MultiClipEditor: View {
         // how far each end may go: out to the file's ends, in to a third of a second
         let leftMin = -CGFloat(c.start / r) * pps, leftMax = CGFloat((c.duration - 0.3) / r) * pps
         let rightMin = -CGFloat((c.duration - 0.3) / r) * pps, rightMax = CGFloat((c.length - c.end) / r) * pps
-        let dl = trimDrag?.side == 0 ? min(max(trimDrag?.dx ?? 0, leftMin), leftMax) : 0
-        let dr = trimDrag?.side == 1 ? min(max(trimDrag?.dx ?? 0, rightMin), rightMax) : 0
+        let dl = trimLive?.side == 0 ? min(max(trimLive?.dx ?? 0, leftMin), leftMax) : 0
+        let dr = trimLive?.side == 1 ? min(max(trimLive?.dx ?? 0, rightMin), rightMax) : 0
         let x0 = x + dl, width = max(8, w + dr - dl)
         func handle(_ side: Int) -> some View {
             UnevenRoundedRectangle(topLeadingRadius: side == 0 ? 5 : 0, bottomLeadingRadius: side == 0 ? 5 : 0,
@@ -630,6 +635,7 @@ struct MultiClipEditor: View {
                 // a thumb's width to catch it by
                 .padding(.horizontal, 10).contentShape(Rectangle()).padding(.horizontal, -10)
                 .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                    .updating($trimLive) { v, live, _ in live = TrimDrag(side: side, dx: v.translation.width) }
                     .onChanged { v in
                         if trimDrag == nil { player.pause(); playing = false; UISelectionFeedbackGenerator().selectionChanged() }
                         trimDrag = TrimDrag(side: side, dx: v.translation.width)
@@ -683,11 +689,13 @@ struct MultiClipEditor: View {
     }
 
     /// The timeline slid by a finger: the video under the line follows it, held on a clip's edge when it's near one.
-    private func scrubTimeline(by dx: CGFloat, pps: CGFloat) {
+    private func scrubTimeline(by dx: CGFloat, from start: CGPoint, mid: CGFloat, pps: CGFloat) {
         if scrubSkip { return }
         if scrubFrom == nil {
-            // a bar or a clip's end being dragged has the finger: the timeline keeps still under it
-            if barGrab != nil || trimDrag != nil { scrubSkip = true; return }
+            // a bar or a clip's end being dragged has the finger: the timeline keeps still under it. Told by where the
+            // finger came down, not only by the bar's own drag having begun: that came too late, and the timeline slid
+            // under a trim handle being dragged, the handle drifting from the finger (21 Nov recording)
+            if barGrab != nil || trimDrag != nil || onHandleOrBar(start, mid: mid, pps: pps) { scrubSkip = true; return }
             scrubFrom = now
             wasPlaying = player.rate != 0
             player.pause(); playing = false
@@ -703,6 +711,26 @@ struct MultiClipEditor: View {
         } else { snapped = nil }
         chase(t)
         now = t
+    }
+
+    /// Whether a point on the timeline (its own coordinates) is on the picked clip's trim handles or on a bar.
+    private func onHandleOrBar(_ p: CGPoint, mid: CGFloat, pps: CGFloat) -> Bool {
+        let shift = mid - CGFloat(now) * pps
+        let clipTop = Self.rulerHeight + 4, lanesTop = clipTop + Self.clipRow + 4 + 2
+        let starts = ClipJoin.starts(clips)
+        if let i = index, i < starts.count, p.y >= clipTop - 4, p.y <= clipTop + Self.clipRow {
+            let a = shift + CGFloat(starts[i]) * pps, b = a + CGFloat(clips[i].span) * pps - 2
+            // each handle 12 wide outside the clip's edge, with 10 more each side to catch it by
+            if (p.x >= a - 22 && p.x <= a + 10) || (p.x >= b - 10 && p.x <= b + 22) { return true }
+        }
+        guard p.y >= lanesTop else { return false }
+        let r = Int((p.y - lanesTop) / (Self.laneHeight + 3))
+        let rows = Array(barRows.prefix(4))
+        guard r >= 0, r < rows.count else { return false }
+        return rows[r].contains { item in
+            let x0 = shift + CGFloat(item.from) * pps, x1 = x0 + max(16, CGFloat(item.to - item.from) * pps)
+            return p.x >= x0 - 4 && p.x <= x1 + 4
+        }
     }
 
     /// A finger looking through the video: one seek at a time, each to where the finger is when the last one's done
