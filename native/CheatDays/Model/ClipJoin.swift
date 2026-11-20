@@ -83,6 +83,9 @@ struct VolumeKey: Equatable, Codable {
 }
 
 enum ClipJoin {
+    /// Why the last sound laid over an edit couldn't go in (for the tests to say).
+    nonisolated(unsafe) static var lastSoundMiss: String?
+
     /// The longest a joined post can be (Stories.compress keeps that much).
     static let longest = Stories.longest
     static let photoSeconds = 3.0
@@ -237,8 +240,9 @@ enum ClipJoin {
         guard let last = pieces.last else { return nil }
         let end = last.at + last.lasts
         // one clip's sound for all of it
-        if let id = soundOf, let c = clips.first(where: { $0.id == id }), !c.still,
-           let a = try? await AVURLAsset(url: c.source).loadTracks(withMediaType: .audio).first {
+        let soundFile = soundOf.flatMap { id in clips.first(where: { $0.id == id }) }.map { AVURLAsset(url: $0.source) }
+        if let id = soundOf, let c = clips.first(where: { $0.id == id }), !c.still, let soundFile,
+           let a = try? await soundFile.loadTracks(withMediaType: .audio).first {
             let span = c.heardEnd - c.heardStart, total = Double(end) / 600
             var put = 0.0
             while span > 0.2, put < total - 0.01 {
@@ -251,19 +255,32 @@ enum ClipJoin {
                 levels[0].setVolumeRamp(fromStartVolume: c.volume, toEndVolume: c.volume * low, timeRange: CMTimeRange(start: t(max(0, a - ease)), duration: t(ease)))
                 levels[0].setVolumeRamp(fromStartVolume: c.volume * low, toEndVolume: c.volume, timeRange: CMTimeRange(start: t(b), duration: t(ease)))
             }
+            withExtendedLifetime(soundFile) {}
         }
         // voiceovers, sound effects, the song and clips' separated sound, each on a track of its own, at its own level
         var laid: [AVMutableAudioMixInputParameters] = []
         for snd in sounds {
-            guard let url = snd.url, let a = try? await AVURLAsset(url: url).loadTracks(withMediaType: .audio).first,
-                  let range = try? await a.load(.timeRange),
-                  let track = comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else { continue }
+            // (the file kept open in a local of its own while its track goes in: a track doesn't keep its file, and
+            // made inline and let go, the insert found nothing (21 Nov: a separated sound never played))
+            guard let url = snd.url else { continue }
+            let file = AVURLAsset(url: url)
+            guard let a = try? await file.loadTracks(withMediaType: .audio).first, let range = try? await a.load(.timeRange) else {
+                lastSoundMiss = "\(snd.kind) from \(snd.from) s: no sound found in \(url.lastPathComponent)"; continue
+            }
+            guard let track = comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else {
+                lastSoundMiss = "\(snd.kind) from \(snd.from) s: no track to put it on"; continue
+            }
             // (a clip's separated sound keeps the clip's speed: so much of its file, played over so much of the video)
             let r = snd.speed
             let take = min(snd.length, (range.end.seconds - snd.start) / r, Double(end) / 600 - snd.from)
-            guard take > 0.05, (try? track.insertTimeRange(CMTimeRange(start: t(snd.start), duration: t(take * r)), of: a, at: t(snd.from))) != nil else {
+            do {
+                guard take > 0.05 else { throw CocoaError(.coderValueNotFound) }
+                try track.insertTimeRange(CMTimeRange(start: t(snd.start), duration: t(take * r)), of: a, at: t(snd.from))
+            } catch {
+                lastSoundMiss = "\(snd.kind) from \(snd.from) s, \(take) s of \(range.start.seconds)–\(range.end.seconds): \(error)"
                 comp.removeTrack(track); continue
             }
+            withExtendedLifetime(file) {}
             if abs(r - 1) > 0.001 { track.scaleTimeRange(CMTimeRange(start: t(snd.from), duration: t(take * r)), toDuration: t(take)) }
             // its level through it: its keyframes and fades, and for a clip's own sound the dips under a voiceover,
             // as it had on its clip; a straight ramp between each moment it turns
@@ -280,8 +297,11 @@ enum ClipJoin {
         }
         // clips and photos over it, each on a track of its own, no sound of their own
         var over: [PipLayer] = []
+        var opened: [AVURLAsset] = []   // (kept open until the end, as the sounds' files)
         for p in pips {
-            guard let v = try? await AVURLAsset(url: p.source).loadTracks(withMediaType: .video).first,
+            let file = AVURLAsset(url: p.source)
+            opened.append(file)
+            guard let v = try? await file.loadTracks(withMediaType: .video).first,
                   let range = try? await v.load(.timeRange),
                   let track = comp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) else { continue }
             let take = min(p.length, range.end.seconds - p.start, Double(end) / 600 - p.from)
@@ -292,6 +312,7 @@ enum ClipJoin {
             over.append(PipLayer(track: track.trackID, orientation: EditCompositor.orientation(tf), from: p.from, to: p.from + take,
                                  base: MoveKey(at: 0, x: p.x, y: p.y, size: p.size, opacity: p.opacity), keys: p.keys))
         }
+        withExtendedLifetime(opened) {}
         // the stretches: each clip on its own, then it and the next together while one turns into the other
         var instructions: [EditInstruction] = []
         var from: Int64 = 0

@@ -175,6 +175,7 @@ final class EditFramesTests: XCTestCase {
         var s = EditSound(kind: "clip", name: "Clip 1 sound", file: clips[0].source, from: 0.5, start: 0.5, length: 3, volume: 0.8, full: 3)
         s.fadeOut = 1; s.rate = 0.8; s.keys = [VolumeKey(at: 1, volume: 0.3)]; s.clip = clips[0].id
         try await check(c, sounds: [s], "a clip's sound separated and run on under the next")
+        ClipJoin.lastSoundMiss = nil
         let made = await ClipJoin.compose(c, sounds: [s])
         let (comp, _, mix) = try XCTUnwrap(made)
         // what's heard where: the separated sound from 0.5 s, the second clip's own from its start
@@ -182,7 +183,7 @@ final class EditFramesTests: XCTestCase {
         let spans = audio.map { tr in tr.segments.filter { !$0.isEmpty }.map {
             String(format: "%.2f+%.2f", $0.timeMapping.target.start.seconds, $0.timeMapping.target.duration.seconds) } }
         let src = try? await AVURLAsset(url: clips[0].source).loadTracks(withMediaType: .audio).first?.load(.timeRange)
-        let said = "tracks \(spans), mix inputs \(mix.inputParameters.count), the first clip's sound \(src.map { "\($0.start.seconds)–\($0.end.seconds)" } ?? "none")"
+        let said = "tracks \(spans), mix inputs \(mix.inputParameters.count), the first clip's sound \(src.map { "\($0.start.seconds)–\($0.end.seconds)" } ?? "none"), missed: \(ClipJoin.lastSoundMiss ?? "nothing")"
         let starts = ClipJoin.starts(c)
         XCTAssertTrue(audio.contains { $0.segments.contains { !$0.isEmpty && abs($0.timeMapping.target.start.seconds - 0.5) < 0.02 } },
                       "no separated sound from 0.5 s: \(said)")
