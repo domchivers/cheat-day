@@ -168,10 +168,10 @@ final class PreviewEngine {
             let turn = info[c.source]?.turn ?? .up
             pics.append((CIImage(cvPixelBuffer: px), EditLayer(track: 0, orientation: turn, look: c.look, moves: c.moves, begins: starts[i])))
         }
-        var progress: CGFloat = 0, kind: String?
+        var progress: CGFloat = 0, kind: ClipTransition?
         if showing.count == 2 {
             let a = showing[0].0
-            kind = clips[a].transition?.kind
+            kind = clips[a].transition
             let join = max(ClipJoin.overlap(clips, after: a), 0.01)
             progress = CGFloat(min(1, max(0, (t - starts[a + 1]) / join)))
         }

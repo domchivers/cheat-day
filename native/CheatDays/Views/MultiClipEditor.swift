@@ -1134,7 +1134,7 @@ struct MultiClipEditor: View {
         var s = soundOf?.uuidString ?? "-"
         for c in clips {
             s += "|\(proxies[c.source]?.path ?? c.source.path),\(c.start),\(c.end),\(c.speed),\(c.still),\(c.clean?.path ?? ""),\(c.soundStart ?? -1),\(c.soundEnd ?? -1)"
-            s += ",\(c.transition?.kind ?? ""),\(c.transition?.length ?? 0)"
+            s += ",\(c.transition?.kind ?? ""),\(c.transition?.length ?? 0),\(c.transition?.direction ?? "")"
         }
         for x in sounds { s += "|s\(x.url?.path ?? x.name),\(x.from),\(x.start),\(x.length),\(x.speed)" }
         for p in pips { s += "|p\(p.source.path),\(p.from),\(p.start),\(p.length)" }
@@ -1800,11 +1800,11 @@ struct MultiClipEditor: View {
         Template(name: "Gym montage", about: "Cut to the beat, whips between clips, punchy colour", icon: "dumbbell",
                  song: "backbeat", every: 2, join: "Whip", look: "Vivid", titles: [], recipe: false),
         Template(name: "Cooking reel", about: "Warm colour, soft crossfades, your recipe's steps on it", icon: "fork.knife",
-                 song: "city-sunshine", every: 4, join: "Crossfade", look: "Warm", titles: [], recipe: true),
+                 song: "city-sunshine", every: 4, join: "Dissolve", look: "Warm", titles: [], recipe: true),
         Template(name: "Day of eating", about: "A meal a clip, each labelled, sliding along", icon: "sun.max",
-                 song: "be-chillin", every: 4, join: "Slide", look: "Pop", titles: ["Breakfast", "Lunch", "Snack", "Dinner", "Dessert"], recipe: false),
+                 song: "be-chillin", every: 4, join: "Push", look: "Pop", titles: ["Breakfast", "Lunch", "Snack", "Dinner", "Dessert"], recipe: false),
         Template(name: "Before and after", about: "Two clips, labelled, through black between", icon: "square.split.2x1",
-                 song: "inspiration", every: 4, join: "Fade to black", look: "Normal", titles: ["Before", "After"], recipe: false),
+                 song: "inspiration", every: 4, join: "Black", look: "Normal", titles: ["Before", "After"], recipe: false),
     ]
 
     private var templatesPanel: some View {
@@ -2189,7 +2189,7 @@ struct MultiClipEditor: View {
                 .padding(6).contentShape(Rectangle()).padding(-6)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(set ? "Transition between clips \(i + 1) and \(i + 2): \(clips[i].transition?.kind ?? "")" : "Add a transition between clips \(i + 1) and \(i + 2)")
+        .accessibilityLabel(set ? "Transition between clips \(i + 1) and \(i + 2): \(clips[i].transition?.name ?? "")" : "Add a transition between clips \(i + 1) and \(i + 2)")
     }
 
     /// How one clip turns into the next, how long it takes, and the same for every join.
@@ -2201,8 +2201,27 @@ struct MultiClipEditor: View {
                 HStack(spacing: 6) {
                     chip("None", on: tr == nil) { setJoin(i, nil) }
                     ForEach(ClipTransition.kinds, id: \.self) { k in
-                        chip(k, on: tr?.kind == k) { setJoin(i, ClipTransition(kind: k, length: min(tr?.length ?? 0.5, most))) }
+                        chip(k, on: tr?.name == k) { setJoin(i, ClipTransition(kind: k, length: min(tr?.length ?? 0.5, most), direction: tr?.direction)) }
                     }
+                }
+            }
+            // which way it goes, for the ones that move (design/transitions-mockup.html)
+            if let tr, ClipTransition.moving.contains(tr.name) {
+                HStack(spacing: 6) {
+                    ForEach(ClipTransition.directions, id: \.self) { d in
+                        let icon = ["left": "arrow.left", "right": "arrow.right", "up": "arrow.up", "down": "arrow.down"][d] ?? "arrow.left"
+                        Button {
+                            UISelectionFeedbackGenerator().selectionChanged()
+                            var n = tr; n.direction = d; setJoin(i, n)
+                        } label: {
+                            let on = (tr.direction ?? "left") == d
+                            Image(systemName: icon).font(.system(size: 13, weight: .bold)).frame(width: 44, height: 34)
+                                .foregroundStyle(on ? Color.black : Color.white)
+                                .background(on ? AnyShapeStyle(Color.white) : AnyShapeStyle(Color.black.opacity(0.55)), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
+                        .buttonStyle(.plain).accessibilityLabel("Goes \(d)")
+                    }
+                    Spacer()
                 }
             }
             if let tr {

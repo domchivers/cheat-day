@@ -24,7 +24,26 @@ struct EditLook: Codable, Equatable {
 struct ClipTransition: Codable, Equatable {
     var kind: String
     var length: Double = 0.5
-    static let kinds = ["Crossfade", "Slide", "Zoom", "Fade to black", "Whip"]
+    /// Which way Push, Slide over and Whip go: "left" (the new clip comes in from the right; nil, as before), "right",
+    /// "up", "down".
+    var direction: String?
+    /// The set since 21 Nov (design/transitions-mockup.html): the five before were half muddled (a zoom that only grew
+    /// the old clip, a whip blurred the whole way).
+    static let kinds = ["Dissolve", "Black", "White flash", "Push", "Slide over", "Whip", "Zoom in", "Blur"]
+    static let directions = ["left", "right", "up", "down"]
+    /// The kinds that go one way or another.
+    static let moving: Set<String> = ["Push", "Slide over", "Whip"]
+    /// A kind by its name now: edits saved before 21 Nov carry the old names.
+    static func named(_ k: String) -> String {
+        switch k {
+        case "Crossfade": return "Dissolve"
+        case "Fade to black": return "Black"
+        case "Slide": return "Push"
+        case "Zoom": return "Zoom in"
+        default: return k
+        }
+    }
+    var name: String { Self.named(kind) }
 }
 
 /// One clip's picture in a stretch of the video: the track it's on, which way up it goes, and its look.
@@ -45,14 +64,14 @@ final class EditInstruction: NSObject, AVVideoCompositionInstructionProtocol {
     let requiredSourceTrackIDs: [NSValue]?
     let passthroughTrackID = kCMPersistentTrackID_Invalid
     let layers: [EditLayer]          // going, then coming
-    let transition: String?
+    let transition: ClipTransition?
     let fill: String
     /// Text, stickers and captions over the whole edit (Stage B): each drawn while it shows.
     let overlays: [OverlayPiece]
     /// Clips and photos over it (Stage D).
     let pips: [PipLayer]
 
-    init(_ range: CMTimeRange, layers: [EditLayer], transition: String?, fill: String, overlays: [OverlayPiece] = [], pips: [PipLayer] = []) {
+    init(_ range: CMTimeRange, layers: [EditLayer], transition: ClipTransition?, fill: String, overlays: [OverlayPiece] = [], pips: [PipLayer] = []) {
         timeRange = range
         self.layers = layers
         self.transition = transition
@@ -104,7 +123,7 @@ final class EditCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
     /// One frame of the edit, from the frames of what's in it now: the finished video's (above), and the editor's
     /// own preview's (PreviewEngine), so the two are drawn alike. `pics`: one clip, or two while one turns into the
     /// next, `progress` of the way through; `pips`: the clips and photos over it now.
-    static func frame(_ pics: [(CIImage, EditLayer)], transition: String?, progress: CGFloat, fill: String,
+    static func frame(_ pics: [(CIImage, EditLayer)], transition: ClipTransition?, progress: CGFloat, fill: String,
                       pips: [(CIImage, PipLayer)], overlays: [OverlayPiece], at t: Double, size: CGSize) -> CIImage {
         let frame = CGRect(origin: .zero, size: size)
         var placedPics: [CIImage] = []
@@ -128,8 +147,8 @@ final class EditCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
         }
         let black = CIImage(color: .black).cropped(to: frame)
         var shown = placedPics.first ?? black
-        if placedPics.count == 2, let kind = transition {
-            shown = blend(placedPics[0], placedPics[1], kind: kind, p: progress, frame: frame)
+        if placedPics.count == 2, let tr = transition {
+            shown = blend(placedPics[0], placedPics[1], kind: tr.name, direction: tr.direction ?? "left", p: progress, frame: frame)
         }
         // a clip or photo over it, where and how big its keyframes have it, see-through as set
         for (src, p) in pips {
@@ -185,37 +204,77 @@ final class EditCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
         return front.composited(over: back).cropped(to: frame)
     }
 
-    /// One clip turning into the next, `p` of the way through.
-    static func blend(_ a: CIImage, _ b: CIImage, kind: String, p: CGFloat, frame: CGRect) -> CIImage {
+    /// One clip turning into the next, `p` of the way through (design/transitions-mockup.html, the bottom row): the
+    /// movement packed into the middle of the join, still at its ends, as CapCut's are.
+    static func blend(_ a: CIImage, _ b: CIImage, kind: String, direction: String, p: CGFloat, frame: CGRect) -> CIImage {
         let black = CIImage(color: .black).cropped(to: frame)
-        let eased = p * p * (3 - 2 * p)
+        let w = frame.width, h = frame.height
+        func ease(_ x: CGFloat) -> CGFloat { x * x * (3 - 2 * x) }
+        // cubic: still at the ends, quick in the middle
+        func inOut(_ x: CGFloat) -> CGFloat { x < 0.5 ? 4 * x * x * x : 1 - pow(-2 * x + 2, 3) / 2 }
         func dissolve(_ x: CIImage, _ y: CIImage, _ t: CGFloat) -> CIImage {
-            x.applyingFilter("CIDissolveTransition", parameters: [kCIInputTargetImageKey: y, kCIInputTimeKey: t]).cropped(to: frame)
+            x.applyingFilter("CIDissolveTransition", parameters: [kCIInputTargetImageKey: y, kCIInputTimeKey: min(1, max(0, t))]).cropped(to: frame)
         }
-        func slid(_ k: CGFloat) -> CIImage {
-            let w = frame.width
-            let going = a.transformed(by: CGAffineTransform(translationX: -w * k, y: 0))
-            let coming = b.transformed(by: CGAffineTransform(translationX: w * (1 - k), y: 0))
-            return coming.composited(over: going).composited(over: black).cropped(to: frame)
+        // the way the pictures move, a whole frame's worth (Core Image counts up from the bottom)
+        let way: CGVector
+        switch direction {
+        case "right": way = CGVector(dx: w, dy: 0)
+        case "up": way = CGVector(dx: 0, dy: h)
+        case "down": way = CGVector(dx: 0, dy: -h)
+        default: way = CGVector(dx: -w, dy: 0)
         }
-        switch kind {
-        case "Slide":
-            return slid(eased)
-        case "Whip":
-            // fast in the middle, blurred along the way it moves
-            let k = eased * eased * (3 - 2 * eased)
-            let r = sin(Double(p) * Double.pi) * 70
-            return slid(k).clampedToExtent().applyingFilter("CIMotionBlur", parameters: [kCIInputRadiusKey: r, kCIInputAngleKey: 0]).cropped(to: frame)
-        case "Zoom":
-            let z = 1 + 0.5 * eased
-            let grown = a.transformed(by: CGAffineTransform(translationX: -frame.midX, y: -frame.midY)
+        func moved(_ x: CIImage, _ k: CGFloat) -> CIImage { x.transformed(by: CGAffineTransform(translationX: way.dx * k, y: way.dy * k)) }
+        // the going clip moved k of the way off, the coming one k of the way on
+        func pushed(_ k: CGFloat) -> CIImage { moved(b, k - 1).composited(over: moved(a, k)).composited(over: black).cropped(to: frame) }
+        func zoomed(_ x: CIImage, _ z: CGFloat) -> CIImage {
+            x.transformed(by: CGAffineTransform(translationX: -frame.midX, y: -frame.midY)
                 .concatenating(CGAffineTransform(scaleX: z, y: z))
                 .concatenating(CGAffineTransform(translationX: frame.midX, y: frame.midY))).cropped(to: frame)
-            return dissolve(grown, b, eased)
-        case "Fade to black":
-            return p < 0.5 ? dissolve(a, black, p * 2) : dissolve(black, b, p * 2 - 1)
-        default:
-            return dissolve(a, b, p)
+        }
+        // blurred small and drawn back up: a sixteenth of the work (as placed() does it)
+        func soft(_ x: CIImage, _ sigma: CGFloat) -> CIImage {
+            guard sigma > 0.5 else { return x }
+            let small = x.transformed(by: CGAffineTransform(scaleX: 0.25, y: 0.25))
+            return small.clampedToExtent().applyingGaussianBlur(sigma: Double(sigma / 4)).cropped(to: small.extent)
+                .transformed(by: CGAffineTransform(scaleX: 4, y: 4)).cropped(to: frame)
+        }
+        switch kind {
+        case "Black":
+            // down to black, a beat there, up out of it
+            return p < 0.5 ? dissolve(a, black, 1 - ease(max(0, 1 - p / 0.42))) : dissolve(black, b, ease(max(0, (p - 0.58) / 0.42)))
+        case "White flash":
+            let f = pow(max(0, 1 - abs(p - 0.5) / 0.5), 1.6)
+            return dissolve(p < 0.5 ? a : b, CIImage(color: .white).cropped(to: frame), f)
+        case "Push":
+            return pushed(inOut(p))
+        case "Slide over":
+            // the new one over the old, which dims and stays put
+            let k = inOut(p)
+            let dim = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 0.45 * k)).cropped(to: frame)
+            return moved(b, k - 1).composited(over: dim.composited(over: a)).composited(over: black).cropped(to: frame)
+        case "Whip":
+            // sharp, a hard smear on the cut, sharp again
+            let k = p < 0.5 ? pow(p * 2, 3) / 2 : 1 - pow((1 - p) * 2, 3) / 2
+            let v = p < 0.5 ? 3 * pow(p * 2, 2) : 3 * pow((1 - p) * 2, 2)
+            let r = Double(v * 0.06 * (way.dx != 0 ? w : h))
+            let shot = pushed(k)
+            guard r > 1 else { return shot }
+            return shot.clampedToExtent().applyingFilter("CIMotionBlur", parameters: [kCIInputRadiusKey: r, kCIInputAngleKey: way.dx != 0 ? 0 : Double.pi / 2]).cropped(to: frame)
+        case "Zoom in":
+            // into the old one with a zoom blur; the new one arrives close and settles back
+            let near = p < 0.5 ? inOut(p * 2) : 1 - inOut((p - 0.5) * 2)
+            var shot = zoomed(p < 0.5 ? a : b, 1 + 1.4 * near)
+            if near > 0.02 {
+                shot = shot.clampedToExtent().applyingFilter("CIZoomBlur", parameters: ["inputCenter": CIVector(x: frame.midX, y: frame.midY),
+                                                                                        "inputAmount": Double(near * 0.04 * w)]).cropped(to: frame)
+            }
+            let f = pow(1 - abs(p - 0.5) * 2, 3)
+            return f > 0.01 ? dissolve(shot, CIImage(color: .white).cropped(to: frame), 0.25 * f) : shot
+        case "Blur":
+            let sigma = (1 - abs(p - 0.5) * 2) * 0.03 * w
+            return dissolve(soft(a, sigma), soft(b, sigma), ease(p))
+        default:   // Dissolve
+            return dissolve(a, b, ease(p))
         }
     }
 }

@@ -167,7 +167,7 @@ enum ClipJoin {
         // rounding between two and the video won't play.
         func tick(_ x: Double) -> Int64 { Int64((x * 600).rounded()) }
         func tt(_ n: Int64) -> CMTime { CMTime(value: n, timescale: 600) }
-        struct Piece { var at: Int64; var lasts: Int64; var layer: EditLayer; var into: String?; var out: Int64 }
+        struct Piece { var at: Int64; var lasts: Int64; var layer: EditLayer; var into: ClipTransition?; var out: Int64 }
         var pieces: [Piece] = []
         var cursor: Int64 = 0
         // While a voiceover plays, everything else dips to under a third (CapCut's ducking), easing down and back
@@ -207,7 +207,7 @@ enum ClipJoin {
             }
             let layer = EditLayer(track: videos[track].trackID, orientation: EditCompositor.orientation(tf), look: c.look,
                                   moves: c.moves, begins: Double(cursor) / 600)
-            pieces.append(Piece(at: cursor, lasts: lasts, layer: layer, into: out > 0 ? c.transition?.kind : nil, out: out))
+            pieces.append(Piece(at: cursor, lasts: lasts, layer: layer, into: out > 0 ? c.transition : nil, out: out))
             // its own sound, unless one clip's sound plays over everything; across a transition it fades out as the
             // next fades in
             let heardFrom = c.clean.map { AVURLAsset(url: $0) } ?? asset
