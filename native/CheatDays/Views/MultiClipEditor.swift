@@ -104,7 +104,8 @@ struct MultiClipEditor: View {
     // where the handle is drawn while it's held: back to nothing however the drag ends, cut short too (21 Nov: a drag
     // the timeline took over left the handle stranded, apart from its clip)
     @GestureState private var trimLive: TrimDrag?
-    @State private var scrubSkip = false                  // this drag is a bar's or a trim handle's, not the timeline's                // an end of the picked clip being dragged on the timeline
+    @State private var scrubSkip = false
+    @State private var barSnap: Double?                   // what a bar being dragged is held on (for the tap, once)                  // this drag is a bar's or a trim handle's, not the timeline's                // an end of the picked clip being dragged on the timeline
     private struct BarGrab { var id: UUID; var mode: Int; var from: Double; var to: Double; var words: [EditText.Word]?; var start = 0.0 }   // mode: 0 move, 1 start, 2 end
     /// One bar on the timeline: a text, sticker or caption, or a voiceover or sound effect.
     /// kind: 0 over the picture (text, stickers, captions), 1 a sound, 2 a clip or photo over it.
@@ -461,7 +462,7 @@ struct MultiClipEditor: View {
                 Image(systemName: any ? "speaker.wave.2.fill" : "speaker.slash.fill").font(.system(size: 13, weight: .medium))
                 Text("Clip\nsound").font(.system(size: 7.5, weight: .medium)).foregroundStyle(Self.quiet).multilineTextAlignment(.center)
             }
-            .foregroundStyle(.white).frame(width: 44, height: 58)
+            .foregroundStyle(.white).frame(width: 44, height: 64)   // (down past the sound wave: 21 Nov, a gap under it)
             // solid, a hairline at its edge (21 Nov: the fade into the clips dimmed the first of them too far)
             .background(Self.sheet)
             .overlay(alignment: .trailing) { Rectangle().fill(Color(white: 0.2)).frame(width: 1, height: 40) }
@@ -685,7 +686,8 @@ struct MultiClipEditor: View {
         if let ss = c.soundStart { c.soundStart = max(c.start, min(ss, c.end)) }
         if let se = c.soundEnd { c.soundEnd = max(c.start, min(se, c.end)) }
         withAnimation(.snappy(duration: 0.2)) { clips[i] = c }
-        seek(side == 0 ? startOf(i) + 0.01 : max(startOf(i), startOf(i) + clips[i].span - 0.05))
+        // the line stays where it was (21 Nov: it jumped to the trimmed end); only kept inside the video if it's shorter
+        seek(min(now, max(0, total - 0.05)))
     }
 
     /// The bars under the clips, at the timeline's seconds: slim tags.
@@ -994,7 +996,7 @@ struct MultiClipEditor: View {
     private func select(_ id: UUID) {
         selectedText = nil; selectedSound = nil; selectedPip = nil
         selected = selected == id ? nil : id
-        if let i = clips.firstIndex(where: { $0.id == id }) { seek(startOf(i) + 0.01) }
+        // (the line stays where it is: 21 Nov, it jumped to the clip's start, and the timeline with it)
     }
 
     /// The selected clip in two at the line (the line has to be inside it).
@@ -1401,6 +1403,15 @@ struct MultiClipEditor: View {
         .frame(height: min(60, CGFloat(shownRows.count) * 21))
     }
 
+    /// Where a bar's edge at `t` is held: the nearest within `reach` of a clip's start or end, another bar's start or end,
+    /// or the line.
+    private func snapTarget(_ t: Double, reach: Double, except: UUID) -> Double? {
+        var targets = ClipJoin.starts(clips) + [total, now]
+        for b in barItems where b.id != except { targets.append(b.from); targets.append(b.to) }
+        guard let best = targets.min(by: { abs($0 - t) < abs($1 - t) }), abs(best - t) <= reach else { return nil }
+        return best
+    }
+
     /// `onTimeline`: there the line stays put while a bar's dragged (else the timeline slides under the finger), and
     /// goes to the bar after.
     private func bar(_ item: BarItem, w: CGFloat, span: Double, onTimeline: Bool = false) -> some View {
@@ -1442,16 +1453,33 @@ struct MultiClipEditor: View {
                         }
                     }
                     guard let g = barGrab else { return }
-                    let dt = Double(v.translation.width / max(w, 1)) * span
+                    var dt = Double(v.translation.width / max(w, 1)) * span
+                    // held on a clip's start or end, another bar's, or the line, when it comes within 8 points of
+                    // one, with a tap; anywhere else it goes where the finger puts it (21 Nov: the owner, "snap to
+                    // the in or outs or where the cursor is")
+                    let reach = Double(8 / max(w, 1)) * span
+                    let edges = g.mode == 2 ? [g.to] : (g.mode == 1 ? [g.from] : [g.from, g.to])
+                    var held: (dt: Double, at: Double)?
+                    for e in edges {
+                        if let at = snapTarget(e + dt, reach: reach, except: g.id), held == nil || abs(at - e - dt) < abs(held!.dt - dt) {
+                            held = (at - e, at)
+                        }
+                    }
+                    if let held {
+                        dt = held.dt
+                        if barSnap != held.at { barSnap = held.at; UISelectionFeedbackGenerator().selectionChanged() }
+                    } else { barSnap = nil }
+                    // the line stays where it is while it's moved (21 Nov: it followed the bar, and the timeline jumped)
                     switch item.kind {
-                    case 1: dragSound(g, dt, span: span, follow: !onTimeline)
-                    case 2: dragPip(g, dt, span: span, follow: !onTimeline)
-                    default: dragText(g, dt, span: span, follow: !onTimeline)
+                    case 1: dragSound(g, dt, span: span, follow: false)
+                    case 2: dragPip(g, dt, span: span, follow: false)
+                    default: dragText(g, dt, span: span, follow: false)
                     }
                 }
                 .onEnded { _ in
-                    if onTimeline, barGrab != nil, let b = barItems.first(where: { $0.id == item.id }) { seek(min(b.from, max(0, total - 0.05))) }
+                    // (the line left where it was: 21 Nov, it jumped to the bar's start when it was let go)
                     let moved = barGrab != nil && item.kind != 0
+                    barSnap = nil
                     barGrab = nil
                     // a sound or overlay moved: the preview made again with it, now it's let go
                     if moved { dropped += 1 }

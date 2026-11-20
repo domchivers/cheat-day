@@ -107,6 +107,9 @@ struct PostPicker: View {
                                 }
                         }
                         .buttonStyle(.plain)
+                        // held: the draft lifts as its own rounded picture (21 Nov: the lift took a rectangle round it,
+                        // grew past the picture and filled in before the menu popped)
+                        .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 10, style: .continuous))
                         .contextMenu { Button(role: .destructive) { deleteDraft?(d) } label: { Label("Delete draft", systemImage: "trash") } }
                         .accessibilityLabel("Draft, \(clock(d.length)), saved \(d.saved.formatted(date: .abbreviated, time: .shortened))")
                     }
