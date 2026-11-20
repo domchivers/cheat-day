@@ -35,7 +35,8 @@ struct MultiClipEditor: View {
 
     @State private var selected: UUID?
     @State private var soundOf: UUID?          // one clip's sound over the whole video
-    @State private var player = AVPlayer()
+    // The editor's own player (PreviewEngine, 21 Nov): plays the edit straight from the clips, drawn by EditPreviewView.
+    @State private var player = PreviewEngine()
     @State private var now = 0.0               // where the preview is, in the joined video's seconds
     @State private var panel: Panel?
     @State private var joining = false
@@ -114,7 +115,9 @@ struct MultiClipEditor: View {
             Color.black.ignoresSafeArea()
             VStack(spacing: 0) {
                 if !full { top }
-                PlayerLayerView(player: player).frame(maxWidth: .infinity, maxHeight: .infinity)
+                // drawn by the app on every frame, the last real frame always up: never blank while the edit's made
+                // again (21 Nov: Apple's player view flashed black each time)
+                EditPreviewView(engine: player).frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onTapGesture { togglePlay() }
                     .overlay { overlayLayer.allowsHitTesting(!full) }
                     .overlay(alignment: .bottom) { if let tip, !full { tipCard(tip) } }
@@ -214,7 +217,7 @@ struct MultiClipEditor: View {
         }
         .task(id: proxies.count) { if !proxies.isEmpty { await settle() } }
         .onDisappear {
-            player.pause(); if let watch { player.removeTimeObserver(watch) }
+            player.shutdown()
             // the sound given back (19 Nov: left on, the feed's videos went on stopping their Spotify after an edit)
             Sound.off()
         }
@@ -910,47 +913,28 @@ struct MultiClipEditor: View {
     }
 
     /// The preview made again from the clips as they are now, kept where it was.
+    /// The edit as it is now given to the editor's own player: nothing's made, it plays on from where it is with the
+    /// change (21 Nov: the preview was made again for each change, and flashed).
     @MainActor private func rebuild(play: Bool) async {
-        let made = shape
-        guard let (comp, vc, mix) = await ClipJoin.compose(clips, soundOf: soundOf, look: look, swap: proxies, sounds: sounds, pips: pips) else { return }
-        // Made of the same pieces as the one playing (a mute, a volume, a fade, a filter, a move): only its picture and
-        // mix change, on the item playing, which carries on without a hitch (21 Nov: each made the whole preview
-        // again, and it stuttered). The tracks come out the same, so the new mix and picture fit the old item.
-        if made == shownShape, let current = player.currentItem {
-            current.videoComposition = vc; current.audioMix = mix
-            frameSize = vc.renderSize
-            if player.rate == 0 { seek(now) }   // (held still, the frame drawn again with the change)
-            return
-        }
-        shownShape = made
-        let item = AVPlayerItem(asset: comp)
-        item.videoComposition = vc; item.audioMix = mix
-        item.audioTimePitchAlgorithm = .spectral
-        frameSize = vc.renderSize
-        let at = now
-        player.replaceCurrentItem(with: item)
-        if watch == nil {
-            watch = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.05, preferredTimescale: 600), queue: .main) { t in
-                MainActor.assumeIsolated {
-                    // (not while a finger's looking through it: the seeks' own times fought the finger (21 Nov))
-                    guard scrubFrom == nil, wasPlaying == nil else { return }
-                    now = t.seconds
-                    if playing != (player.rate != 0), scrubFrom == nil, wasPlaying == nil { playing = player.rate != 0 }
-                    // round again at the end
-                    if let d = player.currentItem?.duration.seconds, d.isFinite, d > 0, t.seconds >= d - 0.05 { seek(0); player.play() }
-                }
+        if player.onTime == nil {
+            player.onTime = { t in
+                // (not while a finger's looking through it: the seeks' own times fought the finger)
+                guard scrubFrom == nil, wasPlaying == nil else { return }
+                now = t
+                if playing != (player.rate != 0) { playing = player.rate != 0 }
             }
+            player.onSize = { frameSize = $0 }
         }
-        seek(min(at, max(0, total - 0.05)))
+        player.update(clips: clips, soundOf: soundOf, look: look, sounds: sounds, pips: pips, swap: proxies)
+        frameSize = player.frameSize
+        if player.rate == 0, abs(player.currentTime().seconds - now) > 0.001 { seek(min(now, max(0, total - 0.05))) }
         Sound.on(.moviePlayback)
         if play { player.play(); playing = true }
     }
 
     private func settle() async {
-        let first = player.currentItem == nil
-        if !first { try? await Task.sleep(nanoseconds: 250_000_000) }
         guard !Task.isCancelled else { return }
-        await rebuild(play: first)
+        await rebuild(play: !player.loaded)
     }
 
     /// Kept as a draft as it goes (Stage A1: a crash or a call loses nothing), a second after a change has settled.

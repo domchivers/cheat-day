@@ -81,60 +81,77 @@ final class EditCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
             guard let ins = request.videoCompositionInstruction as? EditInstruction, let out = request.renderContext.newPixelBuffer() else {
                 request.finish(with: NSError(domain: "EditCompositor", code: 1)); return
             }
-            let size = request.renderContext.size
-            let frame = CGRect(origin: .zero, size: size)
-            var pics: [CIImage] = []
+            let t = request.compositionTime.seconds
+            var pics: [(CIImage, EditLayer)] = []
             for l in ins.layers {
                 guard let px = request.sourceFrame(byTrackID: l.track) else { continue }
-                var img = CIImage(cvPixelBuffer: px).oriented(l.orientation)
-                img = img.transformed(by: CGAffineTransform(translationX: -img.extent.minX, y: -img.extent.minY))
-                if l.look != "Normal" {
-                    let e = img.extent
-                    img = StoryArt.filtered(img.clampedToExtent(), l.look, frame: e).cropped(to: e)
-                }
-                var put = Self.placed(img, in: frame, fill: ins.fill)
-                if !l.moves.isEmpty {
-                    // zoomed about the middle and drifted, as its keyframes have it now
-                    let m = MoveKey.value(l.moves, at: request.compositionTime.seconds - l.begins, base: MoveKey(at: 0))
-                    let zoom = CGAffineTransform(translationX: -frame.midX, y: -frame.midY)
-                        .concatenating(CGAffineTransform(scaleX: m.size, y: m.size))
-                        .concatenating(CGAffineTransform(translationX: frame.midX + (m.x - 0.5) * frame.width, y: frame.midY - (m.y - 0.5) * frame.height))
-                    put = put.transformed(by: zoom).cropped(to: frame)
-                }
-                pics.append(put)
+                pics.append((CIImage(cvPixelBuffer: px), l))
             }
-            let black = CIImage(color: .black).cropped(to: frame)
-            var shown = pics.first ?? black
-            if pics.count == 2, let kind = ins.transition {
-                let r = ins.timeRange
-                let p = min(1, max(0, (request.compositionTime - r.start).seconds / max(r.duration.seconds, 0.001)))
-                shown = Self.blend(pics[0], pics[1], kind: kind, p: CGFloat(p), frame: frame)
-            }
-            let t = request.compositionTime.seconds
-            // a clip or photo over it, where and how big its keyframes have it, see-through as set
+            var over: [(CIImage, PipLayer)] = []
             for p in ins.pips where t >= p.from - 0.0001 && t < p.to {
                 guard let px = request.sourceFrame(byTrackID: p.track) else { continue }
-                var img = CIImage(cvPixelBuffer: px).oriented(p.orientation)
-                img = img.transformed(by: CGAffineTransform(translationX: -img.extent.minX, y: -img.extent.minY))
-                let m = MoveKey.value(p.keys, at: t - p.from, base: p.base)
-                let k = CGFloat(m.size) * size.width / max(img.extent.width, 1)
-                img = img.transformed(by: CGAffineTransform(scaleX: k, y: k))
-                img = img.transformed(by: CGAffineTransform(translationX: m.x * size.width - img.extent.width / 2, y: (1 - m.y) * size.height - img.extent.height / 2))
-                if m.opacity < 0.99 {
-                    img = img.applyingFilter("CIDissolveTransition", parameters: [kCIInputTargetImageKey: CIImage(color: .clear).cropped(to: img.extent),
-                                                                                  kCIInputTimeKey: 1 - max(0, m.opacity)])
-                }
-                shown = img.composited(over: shown)
+                over.append((CIImage(cvPixelBuffer: px), p))
             }
-            // what's over it now, each centred where it was put (Core Image counts up from the bottom)
-            for o in ins.overlays where t >= o.from - 0.0001 && t < o.to {
-                let e = o.image.extent
-                let at = CGAffineTransform(translationX: o.x * size.width - e.width / 2 - e.minX, y: (1 - o.y) * size.height - e.height / 2 - e.minY)
-                shown = o.image.transformed(by: at).composited(over: shown)
-            }
-            context.render(shown.composited(over: black).cropped(to: frame), to: out)
+            let r = ins.timeRange
+            let p = min(1, max(0, (request.compositionTime - r.start).seconds / max(r.duration.seconds, 0.001)))
+            let shown = Self.frame(pics, transition: ins.transition, progress: CGFloat(p), fill: ins.fill, pips: over,
+                                   overlays: ins.overlays, at: t, size: request.renderContext.size)
+            context.render(shown, to: out)
             request.finish(withComposedVideoFrame: out)
         }
+    }
+
+    /// One frame of the edit, from the frames of what's in it now: the finished video's (above), and the editor's
+    /// own preview's (PreviewEngine), so the two are drawn alike. `pics`: one clip, or two while one turns into the
+    /// next, `progress` of the way through; `pips`: the clips and photos over it now.
+    static func frame(_ pics: [(CIImage, EditLayer)], transition: String?, progress: CGFloat, fill: String,
+                      pips: [(CIImage, PipLayer)], overlays: [OverlayPiece], at t: Double, size: CGSize) -> CIImage {
+        let frame = CGRect(origin: .zero, size: size)
+        var placedPics: [CIImage] = []
+        for (src, l) in pics {
+            var img = src.oriented(l.orientation)
+            img = img.transformed(by: CGAffineTransform(translationX: -img.extent.minX, y: -img.extent.minY))
+            if l.look != "Normal" {
+                let e = img.extent
+                img = StoryArt.filtered(img.clampedToExtent(), l.look, frame: e).cropped(to: e)
+            }
+            var put = placed(img, in: frame, fill: fill)
+            if !l.moves.isEmpty {
+                // zoomed about the middle and drifted, as its keyframes have it now
+                let m = MoveKey.value(l.moves, at: t - l.begins, base: MoveKey(at: 0))
+                let zoom = CGAffineTransform(translationX: -frame.midX, y: -frame.midY)
+                    .concatenating(CGAffineTransform(scaleX: m.size, y: m.size))
+                    .concatenating(CGAffineTransform(translationX: frame.midX + (m.x - 0.5) * frame.width, y: frame.midY - (m.y - 0.5) * frame.height))
+                put = put.transformed(by: zoom).cropped(to: frame)
+            }
+            placedPics.append(put)
+        }
+        let black = CIImage(color: .black).cropped(to: frame)
+        var shown = placedPics.first ?? black
+        if placedPics.count == 2, let kind = transition {
+            shown = blend(placedPics[0], placedPics[1], kind: kind, p: progress, frame: frame)
+        }
+        // a clip or photo over it, where and how big its keyframes have it, see-through as set
+        for (src, p) in pips {
+            var img = src.oriented(p.orientation)
+            img = img.transformed(by: CGAffineTransform(translationX: -img.extent.minX, y: -img.extent.minY))
+            let m = MoveKey.value(p.keys, at: t - p.from, base: p.base)
+            let k = CGFloat(m.size) * size.width / max(img.extent.width, 1)
+            img = img.transformed(by: CGAffineTransform(scaleX: k, y: k))
+            img = img.transformed(by: CGAffineTransform(translationX: m.x * size.width - img.extent.width / 2, y: (1 - m.y) * size.height - img.extent.height / 2))
+            if m.opacity < 0.99 {
+                img = img.applyingFilter("CIDissolveTransition", parameters: [kCIInputTargetImageKey: CIImage(color: .clear).cropped(to: img.extent),
+                                                                              kCIInputTimeKey: 1 - max(0, m.opacity)])
+            }
+            shown = img.composited(over: shown)
+        }
+        // what's over it now, each centred where it was put (Core Image counts up from the bottom)
+        for o in overlays where t >= o.from - 0.0001 && t < o.to {
+            let e = o.image.extent
+            let at = CGAffineTransform(translationX: o.x * size.width - e.width / 2 - e.minX, y: (1 - o.y) * size.height - e.height / 2 - e.minY)
+            shown = o.image.transformed(by: at).composited(over: shown)
+        }
+        return shown.composited(over: black).cropped(to: frame)
     }
 
     /// Which way up a track's frames go, from its transform (as the camera wrote it).
