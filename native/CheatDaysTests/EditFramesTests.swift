@@ -177,8 +177,18 @@ final class EditFramesTests: XCTestCase {
         try await check(c, sounds: [s], "a clip's sound separated and run on under the next")
         let made = await ClipJoin.compose(c, sounds: [s])
         let (comp, _, mix) = try XCTUnwrap(made)
-        XCTAssertEqual(comp.tracks(withMediaType: .audio).count, 2, "the second clip's own sound and the separated one")
-        XCTAssertEqual(mix.inputParameters.count, 2)
+        // what's heard where: the separated sound from 0.5 s, the second clip's own from its start
+        let audio = comp.tracks(withMediaType: .audio)
+        let spans = audio.map { tr in tr.segments.filter { !$0.isEmpty }.map {
+            String(format: "%.2f+%.2f", $0.timeMapping.target.start.seconds, $0.timeMapping.target.duration.seconds) } }
+        let src = try? await AVURLAsset(url: clips[0].source).loadTracks(withMediaType: .audio).first?.load(.timeRange)
+        let said = "tracks \(spans), mix inputs \(mix.inputParameters.count), the first clip's sound \(src.map { "\($0.start.seconds)–\($0.end.seconds)" } ?? "none")"
+        let starts = ClipJoin.starts(c)
+        XCTAssertTrue(audio.contains { $0.segments.contains { !$0.isEmpty && abs($0.timeMapping.target.start.seconds - 0.5) < 0.02 } },
+                      "no separated sound from 0.5 s: \(said)")
+        XCTAssertTrue(audio.contains { $0.segments.contains { !$0.isEmpty && abs($0.timeMapping.target.start.seconds - starts[1]) < 0.05 } },
+                      "no second clip's own sound from \(starts[1]) s: \(said)")
+        XCTAssertEqual(mix.inputParameters.count, audio.count, said)
     }
 
     func testFramesWithClearerSound() async throws {
