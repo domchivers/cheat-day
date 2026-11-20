@@ -40,6 +40,7 @@ struct StoryView: View {
     @GestureState private var touching = false   // a drag is under way; goes false on its own if the drag's cut off
     @State private var landing: (UUID, Int)?     // a move to another person still sliding, and who it's going to
     @State private var pressAt: Date?            // a finger down on the card, since when (a tap, a hold, or a swipe)
+    @State private var bare = false              // held: the bars, the name and the bottom bar faded out, as Instagram's
     @State private var footerIn = 1.0            // the message bar coming back in with the next person
     @Environment(\.scenePhase) private var scenePhase
     @State private var paused = false
@@ -177,6 +178,7 @@ struct StoryView: View {
                         .overlay(alignment: .top) {
                             LinearGradient(colors: [.black.opacity(0.45), .clear], startPoint: .top, endPoint: .bottom).frame(height: 120)
                                 .clipShape(UnevenRoundedRectangle(topLeadingRadius: 16, topTrailingRadius: 16, style: .continuous)).allowsHitTesting(false)
+                                .opacity(bare ? 0 : 1)
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                         .overlay { taps }
@@ -202,6 +204,7 @@ struct StoryView: View {
                         // over the taps, so the name and the cross can be pressed
                         .overlay(alignment: .top) {
                             VStack(spacing: 8) { bars(s.count); header }.padding(.horizontal, 8).shadow(color: .black.opacity(0.35), radius: 3)
+                                .opacity(bare ? 0 : 1).allowsHitTesting(!bare)
                         }
                     // and the one height kept under it, whatever goes there, so the slide above doesn't change size either
                     Color.clear.frame(height: 52)
@@ -254,10 +257,10 @@ struct StoryView: View {
                         .shadow(color: .black.opacity(0.3), radius: 8, y: 3)
                     }
                     .buttonStyle(.plain).padding(.bottom, 72).accessibilityIdentifier("tagged-add")
-                    .opacity(footerIn * max(0, 1 - Double(abs(swipe) / max(1, width * 0.4))))
+                    .opacity((bare ? 0 : 1) * footerIn * max(0, 1 - Double(abs(swipe) / max(1, width * 0.4))))
                 }
                 footer(s[min(slide, s.count - 1)]).frame(height: 52).padding(.horizontal, 8).padding(.bottom, typing ? 6 : 0)
-                    .opacity(footerIn * max(0, 1 - Double(abs(swipe) / max(1, width * 0.4))))
+                    .opacity((bare ? 0 : 1) * footerIn * max(0, 1 - Double(abs(swipe) / max(1, width * 0.4))))
                 }
                 .animation(.easeOut(duration: 0.18), value: typing)
                 // the row of emoji is open: a tap anywhere else puts it away
@@ -491,12 +494,22 @@ struct StoryView: View {
                 // finger would hardly seem to move
                 .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .global).updating($touching) { _, on, _ in on = true }
                     .onChanged { v in
-                        if pressAt == nil { pressAt = Date(); paused = true }
+                        if pressAt == nil {
+                            let down = Date()
+                            pressAt = down; paused = true
+                            // still held a quarter of a second on, not swiping: everything but the story fades away
+                            // (21 Nov: "like insta, when you hold it hides the UI"); a tap is over before then
+                            Task { @MainActor in
+                                try? await Task.sleep(nanoseconds: 250_000_000)
+                                if pressAt == down, axis == 0 { withAnimation(.easeOut(duration: 0.18)) { bare = true } }
+                            }
+                        }
                         if axis != 0 || hypot(v.translation.width, v.translation.height) > 10 { dragChanged(v) }
                     }
                     .onEnded { v in
                         let held = pressAt.map { Date().timeIntervalSince($0) } ?? 0
                         pressAt = nil
+                        if bare { withAnimation(.easeOut(duration: 0.18)) { bare = false } }
                         if axis != 0 { dragEnded(v); return }
                         paused = false
                         if held < 0.25 { if v.startLocation.x - g.frame(in: .global).minX < g.size.width * 0.4 { back() } else { next() } }
@@ -948,6 +961,7 @@ struct StoryView: View {
     /// back where it was. It stayed half way across before (17 Nov), as nothing told it the drag was over.
     private func settle() {
         if pressAt != nil { pressAt = nil; paused = false }   // a hold cut off
+        if bare { withAnimation(.easeOut(duration: 0.18)) { bare = false } }
         guard axis != 0 else { return }
         axis = 0; grab = .zero
         withAnimation(.spring(duration: 0.32, bounce: 0)) { swipe = 0; drag = 0 }
