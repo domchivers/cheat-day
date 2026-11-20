@@ -88,12 +88,15 @@ struct MultiClipEditor: View {
     @State private var choosingSong = false               // Stage E
     @State private var beatEvery = 2
     @State private var tip: Int?                          // the first-time tip showing
+    @State private var full = false                       // the preview full screen (design/bigger-preview-mockup.html)
+    @State private var playing = false
+    @State private var scrubFrom: Double?                 // where the timeline was when a finger began sliding it
     private struct BarGrab { var id: UUID; var mode: Int; var from: Double; var to: Double; var words: [EditText.Word]?; var start = 0.0 }   // mode: 0 move, 1 start, 2 end
     /// One bar on the timeline: a text, sticker or caption, or a voiceover or sound effect.
     /// kind: 0 over the picture (text, stickers, captions), 1 a sound, 2 a clip or photo over it.
     private struct BarItem: Identifiable { let id: UUID; let from: Double; let to: Double; let label: String; let colour: Color; let kind: Int }
     private enum Panel { case trim, sound, speed, join, look, shape, text, stickers, voice, effects, soundItem, pip, motion, beats, templates }
-    private var perSecond: CGFloat { 14 * stripZoom }   // strip points a second, pinched wider or narrower
+    private var perSecond: CGFloat { 30 * stripZoom }   // timeline points a second, pinched wider or narrower
 
     private var total: Double { ClipJoin.total(clips) }
     private var index: Int? { clips.firstIndex { $0.id == selected } }
@@ -103,11 +106,22 @@ struct MultiClipEditor: View {
         ZStack {
             Color.black.ignoresSafeArea()
             VStack(spacing: 0) {
-                top
+                if !full { top }
                 PlayerLayerView(player: player).frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .onTapGesture { if player.rate == 0 { player.play() } else { player.pause() } }
-                    .overlay { overlayLayer }
-                    .overlay(alignment: .bottom) { if let tip { tipCard(tip) } }
+                    .onTapGesture { togglePlay() }
+                    .overlay { overlayLayer.allowsHitTesting(!full) }
+                    .overlay(alignment: .bottom) { if let tip, !full { tipCard(tip) } }
+                    .overlay(alignment: .topTrailing) {
+                        if full {
+                            round("arrow.down.right.and.arrow.up.left", "Leave full screen") { withAnimation(.snappy) { full = false } }
+                                .padding(14)
+                        }
+                    }
+                    .overlay(alignment: .bottom) { if full { fullBar } }
+                    // full screen: a swipe down goes back
+                    .simultaneousGesture(DragGesture(minimumDistance: 30).onEnded { v in
+                        if full, v.translation.height > 80 { withAnimation(.snappy) { full = false } }
+                    })
                     .overlay(alignment: .top) {
                         if let note {
                             Text(note).font(.subheadline.weight(.semibold)).foregroundStyle(.black).multilineTextAlignment(.center)
@@ -115,9 +129,11 @@ struct MultiClipEditor: View {
                                 .padding(.horizontal, 20).padding(.top, 8).transition(.opacity)
                         }
                     }
-                bottom
-                    // (kept on a view of its own, apart from the Add picker)
-                    .photosPicker(isPresented: $replacing, selection: $replacePicks, maxSelectionCount: 1, matching: .any(of: [.images, .videos]))
+                if !full {
+                    bottom
+                        // (kept on a view of its own, apart from the Add picker)
+                        .photosPicker(isPresented: $replacing, selection: $replacePicks, maxSelectionCount: 1, matching: .any(of: [.images, .videos]))
+                }
             }
             if let progress {
                 Color.black.opacity(0.6).ignoresSafeArea()
@@ -133,6 +149,7 @@ struct MultiClipEditor: View {
             }
         }
         .preferredColorScheme(.dark)
+        .statusBarHidden(full)
         // (an alert, as the single editor asks: on iOS 26 a confirmation dialog hangs off its button)
         // keep it for later, let it go, or carry on (as Instagram asks when a post is left part done)
         .alert("Save this edit?", isPresented: $leaving) {
@@ -221,8 +238,58 @@ struct MultiClipEditor: View {
             if !future.isEmpty { round("arrow.uturn.forward", "Redo") { redo() } }
             Spacer()
             if panel == nil { round("aspectratio", "Shape and background") { withAnimation(.snappy) { panel = .shape } } }
+            // up here, as CapCut's Export (21 Nov: along the bottom it took room from the video)
+            Button { finish() } label: {
+                Text("Next").font(.subheadline.weight(.bold)).foregroundStyle(.black)
+                    .padding(.horizontal, 18).frame(height: 34).background(.white, in: Capsule())
+            }
+            .buttonStyle(.plain).disabled(clips.isEmpty || joining).opacity(clips.isEmpty ? 0.5 : 1)
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
+    }
+
+    private func togglePlay() {
+        if player.rate == 0 { player.play(); playing = true } else { player.pause(); playing = false }
+    }
+
+    /// Under the line: play, a frame back and on, where it is, and full screen.
+    private var timeRow: some View {
+        HStack(spacing: 8) {
+            allSound
+            Spacer(minLength: 0)
+            frameStep(-1)
+            Button { togglePlay() } label: {
+                Image(systemName: playing ? "pause.fill" : "play.fill").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                    .frame(width: 34, height: 28).background(.black.opacity(0.45), in: Capsule())
+            }
+            .buttonStyle(.plain).accessibilityLabel(playing ? "Pause" : "Play")
+            Text("\(Self.clock(now)) · \(Self.clock(total)) of \(Self.clock(limit))")
+                .font(.caption.weight(.heavy)).monospacedDigit().foregroundStyle(total > limit + 0.05 ? Theme.warn : .white)
+                .lineLimit(1).minimumScaleFactor(0.8)
+            frameStep(1)
+            Spacer(minLength: 0)
+            round("arrow.up.left.and.arrow.down.right", "Full screen") { withAnimation(.snappy) { full = true } }
+        }
+    }
+
+    /// Full screen: play or pause, and how far through it is.
+    private var fullBar: some View {
+        HStack(spacing: 12) {
+            Button { togglePlay() } label: {
+                Image(systemName: playing ? "pause.fill" : "play.fill").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+                    .frame(width: 36, height: 36).background(.black.opacity(0.45), in: Circle())
+            }
+            .buttonStyle(.plain).accessibilityLabel(playing ? "Pause" : "Play")
+            GeometryReader { g in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.white.opacity(0.3))
+                    Capsule().fill(.white).frame(width: g.size.width * CGFloat(min(1, max(0, now / max(total, 0.01)))))
+                }
+            }
+            .frame(height: 4)
+            Text(Self.clock(now)).font(.caption.weight(.bold)).monospacedDigit().foregroundStyle(.white)
+        }
+        .padding(.horizontal, 16).padding(.bottom, 18)
     }
 
     /// The open panel's bar (design/panel-tick-mockup.html): what it is, which clip, and a ✓ that closes it, as CapCut's.
@@ -283,19 +350,14 @@ struct MultiClipEditor: View {
     private var bottom: some View {
         VStack(spacing: 10) {
             // where it is and how long, said as the trim strip says it ("0:11 · 0:24 of 0:30")
-            HStack(spacing: 14) {
-                frameStep(-1)
-                Text("\(Self.clock(now)) · \(Self.clock(total)) of \(Self.clock(limit))")
-                    .font(.caption.weight(.heavy)).monospacedDigit().foregroundStyle(total > limit + 0.05 ? Theme.warn : .white)
-                frameStep(1)
-            }
+            timeRow
             if total > limit + 0.05 { Text("Over \(Int(limit)) seconds: the end will be cut. Trim or take out a clip.").font(.caption).foregroundStyle(Theme.warn) }
             switch panel {
             // each panel under its bar, whose ✓ closes it (20 Nov: Done at the top was too far away to find)
             case .trim: panelBar; if let i = index { trimPanel(i) }
             case .sound: scrubBar; panelBar; if let i = index { soundPanel(i) }
             case .speed: scrubBar; panelBar; if let i = index { speedPanel(i) }
-            case .join: panelBar; if joinAt + 1 < clips.count { strip; joinPanel(joinAt) }
+            case .join: panelBar; if joinAt + 1 < clips.count { timeline; joinPanel(joinAt) }
             case .look: scrubBar; panelBar; if let i = index { lookPanel(i) }
             case .shape: scrubBar; panelBar; shapePanel
             case .text: scrubBar; panelBar; if let k = texts.firstIndex(where: { $0.id == selectedText }) { bars; textPanel(k) }
@@ -305,30 +367,19 @@ struct MultiClipEditor: View {
             case .soundItem: scrubBar; panelBar; if let k = sounds.firstIndex(where: { $0.id == selectedSound }) { bars; soundItemPanel(k) }
             case .pip: scrubBar; panelBar; if let k = pips.firstIndex(where: { $0.id == selectedPip }) { bars; pipPanel(k) }
             case .motion: scrubBar; panelBar; if let i = index { motionPanel(i) }
-            case .beats: scrubBar; panelBar; strip; beatsPanel
+            case .beats: panelBar; timeline; beatsPanel
             case .templates: panelBar; templatesPanel
             case nil:
-                scrubBar
-                if !texts.isEmpty || !sounds.isEmpty || !pips.isEmpty { bars }
-                strip
+                // one timeline in place of the scrub bar, the bars and the strip (21 Nov: stacked, they left the video
+                // a third of the screen)
+                timeline
                 if selected == nil { addTools } else { actions }
-                Button { finish() } label: {
-                    Text("Next").font(.headline).foregroundStyle(.black).frame(maxWidth: .infinity).padding(.vertical, 13).background(.white, in: Capsule())
-                }
-                .buttonStyle(.plain).disabled(clips.isEmpty || joining).padding(.top, 4)
             }
         }
         .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 8)
     }
 
-    // MARK: the strip
-
-    private var strip: some View {
-        HStack(spacing: 8) {
-            allSound
-            stripClips
-        }
-    }
+    // MARK: the timeline
 
     /// Every clip's sound off, or back on, at once (CapCut's "Mute clip audio" at the start of its timeline).
     private var allSound: some View {
@@ -337,86 +388,153 @@ struct MultiClipEditor: View {
             remember()
             withAnimation(.snappy(duration: 0.2)) { for i in clips.indices where !clips[i].still { clips[i].soundOn = !any } }
         } label: {
-            VStack(spacing: 3) {
-                Image(systemName: any ? "speaker.wave.2.fill" : "speaker.slash.fill").font(.system(size: 14, weight: .bold))
-                    .frame(width: 34, height: 34).background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                Text("Clip sound").font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary)
-            }
-            .foregroundStyle(.white)
+            Image(systemName: any ? "speaker.wave.2.fill" : "speaker.slash.fill").font(.system(size: 13, weight: .bold))
+                .foregroundStyle(.white).frame(width: 34, height: 34).background(.black.opacity(0.45), in: Circle())
         }
         .buttonStyle(.plain).accessibilityLabel(any ? "Turn every clip's sound off" : "Turn every clip's sound on")
     }
 
-    private var stripClips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
-                ForEach(clips) { c in
-                    let on = c.id == selected
-                    let at = clips.firstIndex(of: c) ?? 0
-                    // its picture, and its sound under it as a wave: green while it's heard, grey when it isn't (as CapCut shows it)
-                    let heard = c.soundOn && !c.still && (soundOf == nil || soundOf == c.id)
-                    VStack(spacing: 3) {
-                        ClipThumb(clip: c)
-                            .frame(height: 44)
-                            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(on ? Color.white : .clear, lineWidth: 2))
-                        Bars(levels: c.still ? [] : (levels[c.id] ?? []), colour: heard ? Theme.walk : Color.white.opacity(0.25))
-                            .frame(height: 14).clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                            .task(id: "\(c.id)|\(c.start)|\(c.end)") { if !c.still { levels[c.id] = await ClipJoin.levels(c, count: 24) } }
-                    }
-                    .frame(width: max(30, CGFloat(c.span) * perSecond))
-                        .overlay(alignment: .bottomLeading) {
-                            HStack(spacing: 3) {
-                                if !c.soundOn || c.still || (soundOf != nil && soundOf != c.id) { Image(systemName: "speaker.slash.fill") }
-                                if abs(c.speed - 1) > 0.001 { Text(Self.speedText(c.speed)) }
-                                Text(Self.clock(c.span))
-                            }
-                            .font(.system(size: 10, weight: .bold)).foregroundStyle(.white).shadow(radius: 2).padding(4)
-                        }
-                        .onTapGesture { select(c.id) }
-                        // hold and drag onto another to move it there
-                        .draggable(c.id.uuidString)
-                        .dropDestination(for: String.self) { ids, _ in
-                            guard let raw = ids.first, let from = clips.firstIndex(where: { $0.id.uuidString == raw }), let to = clips.firstIndex(of: c), from != to else { return false }
-                            change { var all = $0; let moved = all.remove(at: from); all.insert(moved, at: to); return all }
-                            return true
-                        }
-                        .accessibilityLabel("Clip \((clips.firstIndex(of: c) ?? 0) + 1), \(Self.clock(c.span))")
-                        .overlay(alignment: .trailing) { if at + 1 < clips.count { joinSquare(at).offset(x: 13) } }
-                        .zIndex(Double(clips.count - at))
-                }
-                Button { adding = true } label: {
-                    Image(systemName: "plus").font(.title3).frame(width: 46, height: 58)
-                        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [5])).foregroundStyle(.secondary))
-                }
-                .accessibilityLabel("Add clips")
+    /// How many rows of bars the timeline shows under its clips.
+    private var laneCount: Int { min(4, barRows.count) }
+
+    /// The clips and everything over them as one timeline under a line fixed in the middle, as CapCut and Edits lay
+    /// it out (21 Nov; design/bigger-preview-mockup.html): slide it under the line to look through the video, tap a
+    /// clip for its tools, pinch it wider or narrower. A second is the same width on every row, so each bar sits over
+    /// the clips it shows over.
+    private var timeline: some View {
+        GeometryReader { g in
+            let mid = g.size.width / 2, pps = perSecond, span = max(total, 0.01)
+            ZStack(alignment: .topLeading) {
+                timelineRows(width: CGFloat(span) * pps, span: span, pps: pps)
+                    .offset(x: mid - CGFloat(min(now, span)) * pps)
+                Capsule().fill(scrubFrom != nil ? Color.yellow : Color.white).frame(width: 2.5, height: g.size.height)
+                    .shadow(color: .black.opacity(0.6), radius: 2)
+                    .offset(x: mid - 1.25).allowsHitTesting(false)
             }
+            .frame(width: g.size.width, height: g.size.height, alignment: .topLeading)
+            .clipped()
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 3)
+                .onChanged { v in scrubTimeline(by: v.translation.width, pps: pps) }
+                .onEnded { _ in endScrub() })
             .simultaneousGesture(MagnificationGesture()
                 .onChanged { m in
                     if stripZoomFrom == nil { stripZoomFrom = stripZoom }
                     stripZoom = min(4, max(0.4, (stripZoomFrom ?? 1) * m))
                 }
                 .onEnded { _ in stripZoomFrom = nil })
-            .overlay(alignment: .leading) {
-                // where the preview is
-                Capsule().fill(.white).frame(width: 2, height: 70)
-                    .offset(x: playheadX).allowsHitTesting(false)
+        }
+        .frame(height: 64 + (laneCount > 0 ? 4 + CGFloat(laneCount) * 21 : 0))
+        // edge to edge, as CapCut's
+        .padding(.horizontal, -14)
+    }
+
+    private func timelineRows(width: CGFloat, span: Double, pps: CGFloat) -> some View {
+        let starts = ClipJoin.starts(clips)
+        let joins = Array(0..<max(0, clips.count - 1))
+        return VStack(alignment: .leading, spacing: 4) {
+            ZStack(alignment: .topLeading) {
+                ForEach(Array(clips.enumerated()), id: \.element.id) { i, c in
+                    timelineClip(c, i, w: CGFloat(c.span) * pps).offset(x: CGFloat(starts[i]) * pps)
+                }
+                // the song's beats, as yellow ticks (Stage E)
+                ForEach(songBeats.indices, id: \.self) { b in
+                    Rectangle().fill(Color.yellow.opacity(0.85)).frame(width: 1, height: 8)
+                        .offset(x: CGFloat(songBeats[b]) * pps, y: 50).allowsHitTesting(false)
+                }
+                // the square for each join, in the middle of where one turns into the next
+                ForEach(joins, id: \.self) { i in
+                    let at = starts[i + 1] + ClipJoin.overlap(clips, after: i) / 2
+                    joinSquare(i).offset(x: CGFloat(at) * pps - 11, y: 9)
+                }
+                Button { adding = true } label: {
+                    Image(systemName: "plus").font(.title3).foregroundStyle(.white).frame(width: 44, height: 54)
+                        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [5])).foregroundStyle(.secondary))
+                }
+                .buttonStyle(.plain).accessibilityLabel("Add clips")
+                .offset(x: width + 8)
             }
-            .padding(.vertical, 6)
+            .frame(width: width + 60, height: 60, alignment: .topLeading)
+            if laneCount > 0 { lanes(width: width, span: span) }
+        }
+        .padding(.top, 4)
+    }
+
+    /// A clip on the timeline: its frames, and its sound under them as a wave, green while it's heard (as CapCut shows it).
+    private func timelineClip(_ c: Clip, _ at: Int, w: CGFloat) -> some View {
+        let on = c.id == selected
+        let heard = c.soundOn && !c.still && (soundOf == nil || soundOf == c.id)
+        return VStack(spacing: 2) {
+            ClipThumb(clip: c)
+                .frame(height: 42)
+                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(on ? Color.white : .clear, lineWidth: 2))
+            Bars(levels: c.still ? [] : (levels[c.id] ?? []), colour: heard ? Theme.walk : Color.white.opacity(0.25))
+                .frame(height: 12).clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+                .task(id: "\(c.id)|\(c.start)|\(c.end)") { if !c.still { levels[c.id] = await ClipJoin.levels(c, count: 24) } }
+        }
+        .frame(width: max(6, w - 2))
+        .overlay(alignment: .topLeading) {
+            HStack(spacing: 3) {
+                if !c.soundOn || c.still || (soundOf != nil && soundOf != c.id) { Image(systemName: "speaker.slash.fill") }
+                if abs(c.speed - 1) > 0.001 { Text(Self.speedText(c.speed)) }
+                Text(Self.clock(c.span))
+            }
+            .font(.system(size: 10, weight: .bold)).foregroundStyle(.white).shadow(radius: 2).padding(4)
+        }
+        .clipped()
+        .contentShape(Rectangle())
+        .onTapGesture { select(c.id) }
+        // hold and drag onto another to move it there
+        .draggable(c.id.uuidString)
+        .dropDestination(for: String.self) { ids, _ in
+            guard let raw = ids.first, let from = clips.firstIndex(where: { $0.id.uuidString == raw }), let to = clips.firstIndex(of: c), from != to else { return false }
+            change { var all = $0; let moved = all.remove(at: from); all.insert(moved, at: to); return all }
+            return true
+        }
+        .accessibilityLabel("Clip \(at + 1), \(Self.clock(c.span))")
+        .accessibilityAddTraits(.isButton)
+    }
+
+    /// The bars under the clips, at the timeline's seconds.
+    private func lanes(width: CGFloat, span: Double) -> some View {
+        let rows = Array(barRows.prefix(4))
+        return VStack(alignment: .leading, spacing: 3) {
+            ForEach(rows.indices, id: \.self) { r in
+                ZStack(alignment: .leading) {
+                    ForEach(rows[r]) { item in bar(item, w: width, span: span, onTimeline: true) }
+                }
+                .frame(width: width, height: 18, alignment: .leading)
+            }
         }
     }
 
-    /// The line's place on the strip: through the clips before it (with the gaps between them) and into this one.
-    private var playheadX: CGFloat {
-        let starts = ClipJoin.starts(clips)
-        var x: CGFloat = 0
-        for (i, c) in clips.enumerated() {
-            let w = max(30, CGFloat(c.span) * perSecond)
-            let next = i + 1 < clips.count ? starts[i + 1] : .infinity
-            if now < next || i + 1 == clips.count { return x + w * CGFloat(min(1, max(0, (now - starts[i]) / max(c.span, 0.01)))) }
-            x += w + 4
+    /// The timeline slid by a finger: the video under the line follows it, held on a clip's edge when it's near one.
+    private func scrubTimeline(by dx: CGFloat, pps: CGFloat) {
+        if scrubFrom == nil {
+            scrubFrom = now
+            wasPlaying = player.rate != 0
+            player.pause(); playing = false
         }
-        return x
+        let span = max(total, 0.01)
+        // (short of the very end, where the preview goes round to the start again)
+        var t = min(max(0, (scrubFrom ?? 0) - Double(dx / max(pps, 1))), max(0, span - 0.12))
+        let reach = Double(8 / max(pps, 1))
+        let edges = ClipJoin.starts(clips).dropFirst()
+        if let e = edges.min(by: { abs($0 - t) < abs($1 - t) }), abs(e - t) < reach {
+            t = e
+            if snapped != e { snapped = e; UISelectionFeedbackGenerator().selectionChanged() }
+        } else { snapped = nil }
+        let near = CMTime(seconds: 0.04, preferredTimescale: 600)
+        player.seek(to: CMTime(seconds: t, preferredTimescale: 600), toleranceBefore: near, toleranceAfter: near)
+        now = t
+    }
+
+    private func endScrub() {
+        snapped = nil; scrubFrom = nil
+        seek(now)
+        if wasPlaying == true { player.play(); playing = true }
+        wasPlaying = nil
     }
 
     private var actions: some View {
@@ -639,29 +757,29 @@ struct MultiClipEditor: View {
                 ZStack(alignment: .leading) {
                     ForEach(Array(clips.enumerated()), id: \.element.id) { i, c in
                         ClipThumb(clip: c)
-                            .frame(width: max(2, w * CGFloat(c.span / span) - 2), height: 40)
+                            .frame(width: max(2, w * CGFloat(c.span / span) - 2), height: 26)
                             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(.black.opacity(c.id == selected || selected == nil ? 0 : 0.35)))
                             .offset(x: w * CGFloat(starts[i] / span))
                     }
                 }
-                .frame(width: w, height: 40, alignment: .leading).clipped()
+                .frame(width: w, height: 26, alignment: .leading).clipped()
                 .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(.white.opacity(0.45), lineWidth: 1))
                 // the song's beats, as yellow ticks (Stage E)
                 ForEach(songBeats.indices, id: \.self) { b in
                     Rectangle().fill(Color.yellow.opacity(0.8)).frame(width: 1, height: 10)
-                        .offset(x: w * CGFloat(songBeats[b] / span), y: 22).allowsHitTesting(false)
+                        .offset(x: w * CGFloat(songBeats[b] / span), y: 14).allowsHitTesting(false)
                 }
                 // where it is: yellow while a finger looks through it, as in the single editor; white as it plays
-                Capsule().fill(wasPlaying != nil ? Color.yellow : Color.white).frame(width: 3.5, height: 52)
+                Capsule().fill(wasPlaying != nil ? Color.yellow : Color.white).frame(width: 3.5, height: 36)
                     .shadow(color: .black.opacity(0.6), radius: 2)
                     .offset(x: min(max(0, w * CGFloat(now / span) - 1.75), w - 3.5))
             }
-            .frame(width: w, height: 54)
+            .frame(width: w, height: 38)
             .contentShape(Rectangle())
             .gesture(DragGesture(minimumDistance: 0)
                 .onChanged { v in
-                    if wasPlaying == nil { wasPlaying = player.rate != 0; player.pause() }
+                    if wasPlaying == nil { wasPlaying = player.rate != 0; player.pause(); playing = false }
                     // (short of the very end, where the preview goes round to the start again)
                     var t = min(max(0, Double(v.location.x / max(w, 1)) * span), max(0, span - 0.12))
                     // held on a clip's edge when it's near one, with a tick, as CapCut's line snaps
@@ -679,7 +797,7 @@ struct MultiClipEditor: View {
                 .onEnded { _ in
                     snapped = nil
                     seek(now)
-                    if wasPlaying == true { player.play() }
+                    if wasPlaying == true { player.play(); playing = true }
                     wasPlaying = nil
                 })
             .accessibilityElement()
@@ -689,7 +807,8 @@ struct MultiClipEditor: View {
                 seek(min(max(0, now + (dir == .increment ? 1 : -1)), max(0, total - 0.05)))
             }
         }
-        .frame(height: 54)
+        // thin, over a tool's panel: the panel has the room (design/bigger-preview-mockup.html)
+        .frame(height: 38)
     }
 
     /// The preview made again from the clips as they are now, kept where it was.
@@ -705,6 +824,7 @@ struct MultiClipEditor: View {
             watch = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.05, preferredTimescale: 600), queue: .main) { t in
                 MainActor.assumeIsolated {
                     now = t.seconds
+                    if playing != (player.rate != 0), scrubFrom == nil, wasPlaying == nil { playing = player.rate != 0 }
                     // round again at the end
                     if let d = player.currentItem?.duration.seconds, d.isFinite, d > 0, t.seconds >= d - 0.05 { seek(0); player.play() }
                 }
@@ -712,7 +832,7 @@ struct MultiClipEditor: View {
         }
         seek(min(at, max(0, total - 0.05)))
         Sound.on(.moviePlayback)
-        if play { player.play() }
+        if play { player.play(); playing = true }
     }
 
     private func settle() async {
@@ -734,7 +854,7 @@ struct MultiClipEditor: View {
     /// A frame back or on (a 30th of a second), held still.
     private func frameStep(_ dir: Double) -> some View {
         Button {
-            player.pause()
+            player.pause(); playing = false
             seek(min(max(0, now + dir / 30), max(0, total - 0.05)))
         } label: {
             Image(systemName: dir < 0 ? "backward.frame.fill" : "forward.frame.fill").font(.system(size: 14, weight: .bold))
@@ -933,12 +1053,17 @@ struct MultiClipEditor: View {
             + pips.map { BarItem(id: $0.id, from: $0.from, to: $0.to, label: "▣ Overlay" + ($0.keys.isEmpty ? "" : " · ◆"), colour: Color(red: 0.36, green: 0.82, blue: 0.56), kind: 2) }
     }
 
-    private var bars: some View {
+    /// The bars in rows, so none covers another and each row is one kind.
+    private var barRows: [[BarItem]] {
         var rows: [[BarItem]] = []
         for t in barItems.sorted(by: { $0.from < $1.from }) {
             if let r = rows.firstIndex(where: { ($0.last?.to ?? 0) <= t.from + 0.01 && $0.last?.kind == t.kind }) { rows[r].append(t) } else { rows.append([t]) }
         }
-        let shownRows = rows
+        return rows
+    }
+
+    private var bars: some View {
+        let shownRows = barRows
         return GeometryReader { g in
             let w = g.size.width, span = max(total, 0.01)
             ScrollView(.vertical, showsIndicators: false) {
@@ -955,7 +1080,9 @@ struct MultiClipEditor: View {
         .frame(height: min(60, CGFloat(shownRows.count) * 21))
     }
 
-    private func bar(_ item: BarItem, w: CGFloat, span: Double) -> some View {
+    /// `onTimeline`: there the line stays put while a bar's dragged (else the timeline slides under the finger), and
+    /// goes to the bar after.
+    private func bar(_ item: BarItem, w: CGFloat, span: Double, onTimeline: Bool = false) -> some View {
         let x0 = w * CGFloat(min(item.from, span) / span), x1 = w * CGFloat(min(item.to, span) / span)
         let width = max(16, x1 - x0), on = item.id == selectedText || item.id == selectedSound || item.id == selectedPip
         return Text(item.label).font(.system(size: 9, weight: .heavy)).lineLimit(1).foregroundStyle(.black.opacity(0.8))
@@ -986,12 +1113,15 @@ struct MultiClipEditor: View {
                     guard let g = barGrab else { return }
                     let dt = Double(v.translation.width / max(w, 1)) * span
                     switch item.kind {
-                    case 1: dragSound(g, dt, span: span)
-                    case 2: dragPip(g, dt, span: span)
-                    default: dragText(g, dt, span: span)
+                    case 1: dragSound(g, dt, span: span, follow: !onTimeline)
+                    case 2: dragPip(g, dt, span: span, follow: !onTimeline)
+                    default: dragText(g, dt, span: span, follow: !onTimeline)
                     }
                 }
-                .onEnded { _ in barGrab = nil })
+                .onEnded { _ in
+                    if onTimeline, barGrab != nil, let b = barItems.first(where: { $0.id == item.id }) { seek(min(b.from, max(0, total - 0.05))) }
+                    barGrab = nil
+                })
             .offset(x: x0)
             .accessibilityElement()
             .accessibilityLabel("\(item.label), \(Self.clock(item.from)) to \(Self.clock(item.to))")
@@ -999,7 +1129,7 @@ struct MultiClipEditor: View {
             .accessibilityAddTraits(.isButton)
     }
 
-    private func dragText(_ g: BarGrab, _ dt: Double, span: Double) {
+    private func dragText(_ g: BarGrab, _ dt: Double, span: Double, follow: Bool = true) {
         guard let i = texts.firstIndex(where: { $0.id == g.id }) else { return }
         let length = g.to - g.from
         switch g.mode {
@@ -1014,11 +1144,11 @@ struct MultiClipEditor: View {
                 texts[i].words = words.map { EditText.Word(text: $0.text, at: $0.at + shift) }
             }
         }
-        seek(g.mode == 2 ? max(0, texts[i].to - 0.05) : texts[i].from)
+        if follow { seek(g.mode == 2 ? max(0, texts[i].to - 0.05) : texts[i].from) }
     }
 
     /// A sound's bar: moved along, its front trimmed off (its start in its own sound moving with it), or its end.
-    private func dragSound(_ g: BarGrab, _ dt: Double, span: Double) {
+    private func dragSound(_ g: BarGrab, _ dt: Double, span: Double, follow: Bool = true) {
         guard let i = sounds.firstIndex(where: { $0.id == g.id }) else { return }
         let length = g.to - g.from, whole = sounds[i].full > 0 ? sounds[i].full : g.start + length
         switch g.mode {
@@ -1030,7 +1160,7 @@ struct MultiClipEditor: View {
         default:
             sounds[i].from = min(max(0, g.from + dt), max(0, span - 0.3))
         }
-        seek(g.mode == 2 ? max(0, sounds[i].to - 0.05) : sounds[i].from)
+        if follow { seek(g.mode == 2 ? max(0, sounds[i].to - 0.05) : sounds[i].from) }
     }
 
     // MARK: Stage C: voice and sound
@@ -1285,9 +1415,9 @@ struct MultiClipEditor: View {
 
     /// The first time the editor's opened, three tips one after another.
     private static let tips = [
-        "Tap a clip on the strip for its tools: trim, split, speed, filters, sound and more.",
+        "Slide the timeline under the line to look through the video. Tap a clip on it for its tools: trim, split, speed, filters, sound and more.",
         "With no clip picked, the row along the bottom adds text, captions, voice, music and more over the whole video.",
-        "Everything added shows as a bar under the video: drag it along, or by an end, for when it shows.",
+        "Everything added shows as a bar under the clips: drag it along, or by an end, for when it shows.",
     ]
 
     private func tipCard(_ k: Int) -> some View {
@@ -1349,7 +1479,7 @@ struct MultiClipEditor: View {
         if let k = pips[i].keys.firstIndex(where: { abs($0.at - at) < 0.12 }) { pips[i].keys[k] = m } else { pips[i].keys.append(m) }
     }
 
-    private func dragPip(_ g: BarGrab, _ dt: Double, span: Double) {
+    private func dragPip(_ g: BarGrab, _ dt: Double, span: Double, follow: Bool = true) {
         guard let i = pips.firstIndex(where: { $0.id == g.id }) else { return }
         let length = g.to - g.from, whole = pips[i].full > 0 ? pips[i].full : g.start + length
         switch g.mode {
@@ -1361,7 +1491,7 @@ struct MultiClipEditor: View {
         default:
             pips[i].from = min(max(0, g.from + dt), max(0, span - 0.3))
         }
-        seek(g.mode == 2 ? max(0, pips[i].to - 0.05) : pips[i].from)
+        if follow { seek(g.mode == 2 ? max(0, pips[i].to - 0.05) : pips[i].from) }
     }
 
     /// An overlay picked: its size and see-through, a keyframe at the line, or taken off.
