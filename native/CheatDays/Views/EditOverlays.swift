@@ -251,7 +251,7 @@ struct WordRows: Layout {
         return out
     }
 
-    func sizeThatFits(_ proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
         let width = proposal.width ?? .infinity
         let rs = rows(sizes, width: width)
