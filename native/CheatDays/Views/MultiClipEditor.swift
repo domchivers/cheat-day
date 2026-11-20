@@ -699,6 +699,7 @@ struct MultiClipEditor: View {
                 .frame(width: width, height: Self.laneHeight, alignment: .leading)
             }
         }
+        .coordinateSpace(name: "bars")
         .padding(.top, 2)
     }
 
@@ -1394,6 +1395,7 @@ struct MultiClipEditor: View {
                         .frame(width: w, height: 18, alignment: .leading)
                     }
                 }
+                .coordinateSpace(name: "bars")
             }
         }
         .frame(height: min(60, CGFloat(shownRows.count) * 21))
@@ -1418,14 +1420,18 @@ struct MultiClipEditor: View {
                 default: selectText(item.id)
                 }
             }
-            .gesture(DragGesture(minimumDistance: 2)
+            // measured in the bars' rows, which keep still, not in the bar itself: the bar moves as it's dragged, so
+            // measured in it, each step counted part of its own move back, and the bar jumped about under the finger
+            // (21 Nov: a separated sound dragged on the timeline)
+            .gesture(DragGesture(minimumDistance: 2, coordinateSpace: .named("bars"))
                 .onChanged { v in
                     if barGrab == nil {
                         // held still under the finger while it's moved (21 Nov: playing on, the timeline slid away
                         // under the bar being dragged)
                         player.pause(); playing = false
                         // by its ends, or the middle to move it
-                        let mode = v.startLocation.x < 12 ? 1 : (v.startLocation.x > width - 12 ? 2 : 0)
+                        let at = v.startLocation.x - x0   // (where on the bar: it hasn't moved yet)
+                        let mode = at < 12 ? 1 : (at > width - 12 ? 2 : 0)
                         if item.kind == 1, let s = sounds.first(where: { $0.id == item.id }) {
                             remember()   // (a sound moved can be undone)
                             barGrab = BarGrab(id: item.id, mode: mode, from: s.from, to: s.to, words: nil, start: s.start)
