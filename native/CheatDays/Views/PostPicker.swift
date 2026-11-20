@@ -31,7 +31,7 @@ struct PostPicker: View {
     @State private var several = false
     @State private var picked: [String] = []   // their ids, in the order picked
     @State private var showing: PHAsset?
-    @State private var holding: UUID?                    // a draft a finger's on, grown a little
+    @State private var holding: String?                  // a draft a finger's on, grown a little
     @State private var deleting: EditDrafts.Draft?       // a draft held long enough: asked about
     @State private var big: UIImage?
     @State private var busy = false
