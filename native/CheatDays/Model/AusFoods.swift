@@ -229,8 +229,8 @@ final class FoodTable {
         for (said, row) in [("fry", "fried"), ("boil", "boiled"), ("bake", "baked"), ("grill", "grilled"), ("steam", "steamed")] {
             n = n.replacingOccurrences(of: "\\b\(said)(ing)?\\b", with: row, options: .regularExpression)   // "will pan fry" is fried
         }
-        // cooked in water or stock is boiled (21 Nov: "Onion, cooked in chicken water" found a fried onion)
-        n = n.replacingOccurrences(of: #"\b(simmer(ed|ing)?|poach(ed|ing)?|(cooked|softened|sweated) in (\w+ )?(water|stock|broth))\b"#,
+        // cooked in water or stock is boiled (poached stays poached: there's a poached egg) (21 Nov: "Onion, cooked in chicken water" found a fried onion)
+        n = n.replacingOccurrences(of: #"\b(simmer(ed|ing)?|(cooked|softened|sweated) in (\w+ )?(water|stock|broth))\b"#,
                                    with: "boiled", options: .regularExpression)
         var h = hits
         func keep(_ test: (String) -> Bool) { let k = h.filter { test($0.food.name.lowercased()) }; if !k.isEmpty { h = k } }

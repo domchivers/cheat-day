@@ -23,8 +23,8 @@ function narrow(name, hits, want) {
   let n = name.toLowerCase();
   for (const [said, row] of [['fry', 'fried'], ['boil', 'boiled'], ['bake', 'baked'], ['grill', 'grilled'], ['steam', 'steamed']])
     n = n.replace(new RegExp(`\\b${said}(ing)?\\b`, 'g'), row);   // "will pan fry" is fried
-  // cooked in water or stock is boiled ("Onion, cooked in chicken water" found a fried onion, 21 Nov)
-  n = n.replace(/\b(simmer(ed|ing)?|poach(ed|ing)?|(cooked|softened|sweated) in (\w+ )?(water|stock|broth))\b/g, 'boiled');
+  // cooked in water or stock is boiled (poached stays poached: there's a poached egg) ("Onion, cooked in chicken water" found a fried onion, 21 Nov)
+  n = n.replace(/\b(simmer(ed|ing)?|(cooked|softened|sweated) in (\w+ )?(water|stock|broth))\b/g, 'boiled');
   let h = hits;
   const keep = test => { const k = h.filter(x => test(x.f.name.toLowerCase())); if (k.length) h = k; };   // only when something's left
   keep(f => words(f.split(',')[0]).join(' ') === want.join(' '));   // a potato is a potato, not a sweet potato
