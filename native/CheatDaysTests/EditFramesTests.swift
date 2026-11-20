@@ -13,10 +13,12 @@ final class EditFramesTests: XCTestCase {
     /// A test video that couldn't be written: the case fails with why, instead of the run hanging.
     private struct Stuck: Error, CustomStringConvertible { let what: String; var description: String { what } }
 
-    /// Waits for the writer to take more, at most 20 s; a failed writer stops it at once.
-    private func ready(_ input: AVAssetWriterInput, _ writer: AVAssetWriter, _ what: String) async throws {
+    /// Waits for the writer to take more, at most 20 s; a failed writer stops it at once. `meanwhile` runs while it
+    /// waits (the other track fed, which may be what the writer's waiting for).
+    private func ready(_ input: AVAssetWriterInput, _ writer: AVAssetWriter, _ what: String, meanwhile: () -> Void = {}) async throws {
         let began = Date()
         while !input.isReadyForMoreMediaData {
+            meanwhile()
             if writer.status == .failed { throw Stuck(what: "the writer failed at \(what): \(String(describing: writer.error))") }
             if Date().timeIntervalSince(began) > 20 {
                 throw Stuck(what: "the writer stuck at \(what): status \(writer.status.rawValue) \(String(describing: writer.error))")
@@ -54,11 +56,11 @@ final class EditFramesTests: XCTestCase {
                                        extensions: nil, formatDescriptionOut: &format)
         let chunk = 4410, sound = Int(seconds * rate)
         var at = 0
-        // The sound goes in alongside the picture, never all after it. (21 Nov: written picture first, a 4K clip's
-        // frames got so far ahead of its still-empty sound track that the writer stopped taking frames, and waited
-        // for ever.)
-        func addSound(until end: Int) async throws {
-          while at < min(end, sound) {
+        // The sound goes in alongside the picture, never all after it, and whenever the writer will take it: it holds
+        // one track back until the other catches up. (21 Nov: written picture first, the writer stopped taking frames
+        // and waited for ever; then with the sound fed only between frames, it stalled two seconds in.)
+        func addSound(until end: Int) {
+          while at < min(end, sound), a.isReadyForMoreMediaData {
             var samples = (0..<chunk).map { Float(sin(2 * Double.pi * 440 * Double(at + $0) / rate) * 0.3) }
             var block: CMBlockBuffer?
             CMBlockBufferCreateWithMemoryBlock(allocator: nil, memoryBlock: nil, blockLength: chunk * 4, blockAllocator: nil,
@@ -70,7 +72,6 @@ final class EditFramesTests: XCTestCase {
                                                                  sampleCount: chunk, presentationTimeStamp: CMTime(value: CMTimeValue(at), timescale: CMTimeScale(rate)),
                                                                  packetDescriptions: nil, sampleBufferOut: &sb)
             guard let sb else { break }
-            try await ready(a, writer, "sound at sample \(at)")
             a.append(sb)
             at += chunk
           }
@@ -80,8 +81,8 @@ final class EditFramesTests: XCTestCase {
         var line = [UInt8](repeating: 255, count: Int(size.width) * 4)
         for x in 0..<Int(size.width) { line[x * 4] = colour.2; line[x * 4 + 1] = colour.1; line[x * 4 + 2] = colour.0 }
         for f in 0..<frames {
-            // sound up to a tenth of a second past this frame first
-            try await addSound(until: Int(Double(f + 3) / 30 * rate))
+            // sound up to a second past this frame first, as far as the writer will take it now
+            addSound(until: Int(Double(f + 30) / 30 * rate))
             guard let pool = adaptor.pixelBufferPool else { throw Stuck(what: "no pixel buffer pool: \(writer.status.rawValue) \(String(describing: writer.error))") }
             var px: CVPixelBuffer?
             CVPixelBufferPoolCreatePixelBuffer(nil, pool, &px)
@@ -92,11 +93,14 @@ final class EditFramesTests: XCTestCase {
                 for y in 0..<Int(size.height) { memcpy(base + y * row, src.baseAddress!, src.count) }
             }
             CVPixelBufferUnlockBaseAddress(px, [])
-            try await ready(v, writer, "frame \(f) of \(Int(size.width))x\(Int(size.height))")
+            try await ready(v, writer, "frame \(f) of \(Int(size.width))x\(Int(size.height))") { addSound(until: sound) }
             adaptor.append(px, withPresentationTime: CMTime(value: CMTimeValue(f), timescale: 30))
         }
         v.markAsFinished()
-        try await addSound(until: sound)
+        while at < sound {
+            try await ready(a, writer, "sound at sample \(at)")
+            addSound(until: sound)
+        }
         a.markAsFinished()
         await writer.finishWriting()
         XCTAssertEqual(writer.status, .completed, "\(String(describing: writer.error))")
