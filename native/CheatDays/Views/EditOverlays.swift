@@ -21,10 +21,38 @@ struct EditText: Identifiable, Codable, Equatable {
     var number = 0.0            // the calories counted up to
     /// A caption's lit word's colour, its own (design/captions-editing-mockup.html); nil, yellow.
     var highlight: String? = nil
+    /// A text's typeface (design/editor-text-stickers-mockup.html): "classic" (nil), "rounded", "serif", "mono", "marker".
+    var font: String? = nil
+    /// A story sticker on the video (kind "card"): the sticker as stories keep it, as JSON (StoryItem draws it).
+    var card: String? = nil
 
     struct Word: Codable, Equatable { var text: String; var at: Double }
 
-    static let textStyles = ["Shadow", "Box", "Plain"]
+    static let textStyles = ["Shadow", "Box", "Outline", "Plain"]
+    static let fonts = ["classic", "rounded", "serif", "mono", "marker"]
+    /// The text colours (21 Nov: five were too few), as hex; any other is picked with the wheel.
+    static let palette = ["#FFFFFF", "#000000", "#FFD60A", "#FF9F0A", "#FF453A", "#FF375F", "#BF5AF2", "#5E5CE6", "#0A84FF",
+                          "#64D2FF", "#30D158", "#A2845E", "#FFB3C7", "#B5F2C8", "#C9B8FF", "#FFE5A0", "#8E8E93", "#3A3A3C"]
+
+    /// The typeface at `size`, heavy as text on a video wants it.
+    static func font(_ id: String?, size: CGFloat) -> Font {
+        switch id {
+        case "rounded": return .system(size: size, weight: .heavy, design: .rounded)
+        case "serif": return .system(size: size, weight: .bold, design: .serif)
+        case "mono": return .system(size: size, weight: .bold, design: .monospaced)
+        case "marker": return .custom("MarkerFelt-Wide", size: size)
+        default: return .system(size: size, weight: .heavy)
+        }
+    }
+
+    /// Text on a colour: dark on light ones, white on dark.
+    static func ink(on name: String) -> Color {
+        if name.hasPrefix("#") { return StoryArt.onColor(String(name.dropFirst())) }
+        return name == "white" || name == "yellow" ? .black : .white
+    }
+
+    /// The sticker, as stories keep it.
+    var cardJSON: JSON? { card.flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? JSON } }
     static let captionStyles = ["Pop", "Bold", "Box", "Plain"]
     static let highlights = ["yellow", "green", "red", "blue", "white"]
     /// How much a caption holds: a word, a few, a line's worth, a sentence (the panel's "On screen at a time").
@@ -35,6 +63,7 @@ struct EditText: Identifiable, Codable, Equatable {
     static let stickers = ["💪", "🔥", "🏋️", "🍕", "🥗", "🍔", "🥩", "🍳", "😋", "🎉", "✅", "⭐️", "❤️", "👀", "😮‍💨", "🏃"]
 
     static func colour(_ name: String) -> Color {
+        if name.hasPrefix("#") { return StoryArt.color(name) }
         switch name {
         case "yellow": return Color(red: 1, green: 0.8, blue: 0.2)
         case "black": return .black
@@ -87,6 +116,8 @@ struct EditTextView: View {
             Text(item.text).font(.system(size: 72))
         case "caption":
             caption
+        case "card":
+            StoryItem(o: item.cardJSON ?? [:])
         case "step":
             Text(item.text).font(.system(size: 22, weight: .bold)).foregroundStyle(.white).multilineTextAlignment(.center)
                 .padding(.horizontal, 14).padding(.vertical, 9).frame(maxWidth: 330)
@@ -122,12 +153,18 @@ struct EditTextView: View {
 
     @ViewBuilder private var plainText: some View {
         let ink = EditText.colour(item.colour)
-        let t = Text(item.text).font(.system(size: 30, weight: .heavy)).multilineTextAlignment(.center).frame(maxWidth: 330)
+        let t = Text(item.text).font(EditText.font(item.font, size: 30)).multilineTextAlignment(.center).frame(maxWidth: 330)
         switch item.style {
         case "Box":
-            t.foregroundStyle(item.colour == "white" || item.colour == "yellow" ? Color.black : Color.white)
+            t.foregroundStyle(EditText.ink(on: item.colour))
                 .padding(.horizontal, 12).padding(.vertical, 6)
                 .background(ink, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        case "Outline":
+            // edged all round in black, or white for a dark colour
+            let edge = EditText.ink(on: item.colour) == .black ? Color.black : Color.white
+            t.foregroundStyle(ink)
+                .shadow(color: edge, radius: 0, x: 1.5, y: 1.5).shadow(color: edge, radius: 0, x: -1.5, y: -1.5)
+                .shadow(color: edge, radius: 0, x: 1.5, y: -1.5).shadow(color: edge, radius: 0, x: -1.5, y: 1.5)
         case "Plain":
             t.foregroundStyle(ink)
         default:
@@ -274,6 +311,19 @@ struct OverlayPiece {
 enum EditOverlays {
     static let design: CGFloat = 390
 
+    /// The GIF stickers' frames, by address, read before the video's made (`prepare`).
+    @MainActor static var gifs: [String: UIImage] = [:]
+
+    /// Each GIF sticker's frames fetched, if they aren't already.
+    @MainActor static func prepare(_ items: [EditText]) async {
+        for item in items where item.kind == "card" {
+            let o = item.cardJSON ?? [:]
+            let url = str(o["url"])
+            guard str(o["type"]) == "gif", gifs[url] == nil, let u = URL(string: url) else { continue }
+            if let (d, _) = try? await URLSession.shared.data(from: u), let img = AnimatedGIF.animated(d, maxPixel: 480) { gifs[url] = img }
+        }
+    }
+
     /// Every overlay as pictures at the finished video's size: one for most; one a word for a caption (that word lit),
     /// and the count's steps for the calories.
     @MainActor static func pieces(_ items: [EditText], frame: CGSize) -> [OverlayPiece] {
@@ -287,6 +337,29 @@ enum EditOverlays {
         }
         for item in items {
             switch item.kind {
+            case "card" where str(item.cardJSON?["type"]) == "gif":
+                // a GIF moves in the finished video: each of its frames for its own moment, round again till it's
+                // off (the frames made once, the same pictures each time round)
+                let o = item.cardJSON ?? [:]
+                guard let gif = gifs[str(o["url"])], let frames = gif.images, !frames.isEmpty, gif.duration > 0.05 else {
+                    shot(item, at: item.from, from: item.from, to: item.to); continue
+                }
+                let w = num(o["w"]) ?? 200, h = num(o["h"]) ?? 200
+                let side = 170 * scale * CGFloat(item.size)   // as StoryItem draws it, in the video's pixels
+                let size = CGSize(width: side, height: side * h / max(1, w))
+                let pics: [CIImage] = frames.compactMap { f in
+                    guard let cg = f.cgImage else { return nil }
+                    let ci = CIImage(cgImage: cg)
+                    return ci.transformed(by: CGAffineTransform(scaleX: size.width / max(1, ci.extent.width), y: size.height / max(1, ci.extent.height)))
+                }
+                guard !pics.isEmpty else { continue }
+                let each = gif.duration / Double(pics.count)
+                var t = item.from, i = 0
+                while t < item.to - 0.001 {
+                    let end = min(item.to, t + each)
+                    out.append(OverlayPiece(image: pics[i % pics.count], from: t, to: end, x: item.x, y: item.y))
+                    t = end; i += 1
+                }
             case "caption":
                 let words = item.words ?? []
                 if words.isEmpty { shot(item, at: item.from, from: item.from, to: item.to); continue }

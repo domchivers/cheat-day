@@ -73,6 +73,11 @@ struct MultiClipEditor: View {
     @State private var captionGroup = "few"
     @State private var captionLines = 1
     @State private var listPicked: UUID?
+    // text typed straight onto the video, and the stories' sticker tray (21 Nov, design/editor-text-stickers-mockup.html)
+    @State private var typing: UUID?
+    @FocusState private var typingFocus: Bool
+    @State private var stickering = false
+    @State private var stickerPick: String?
     @State private var frameSize = CGSize(width: 1080, height: 1920)
     @State private var moveFrom: (Double, Double)?
     @State private var sizeFrom: Double?
@@ -224,6 +229,15 @@ struct MultiClipEditor: View {
         }
         .sheet(isPresented: Binding(get: { attachMode != nil }, set: { if !$0 { attachMode = nil } })) {
             AttachPicker(start: attachMode == "workout" ? 2 : (attachMode == "recipe" ? 1 : 0)) { picked($0) }
+        }
+        // the stories' sticker tray: yours, 3D and GIPHY's (a tile that needs more asks once the tray's gone)
+        .sheet(isPresented: $stickering, onDismiss: { if let p = stickerPick { stickerPick = nil; addCard(p) } }) {
+            StickerSheet(forVideo: true, pick: { id in stickerPick = id; stickering = false }, place: { o in stickering = false; placeCard(o) })
+                .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
+        }
+        // text typed on the video itself, everything else dimmed behind
+        .fullScreenCover(isPresented: Binding(get: { typing != nil }, set: { if !$0 { endTyping() } })) {
+            if let k = texts.firstIndex(where: { $0.id == typing }) { typingView(k) }
         }
         // a 4K clip played from a smaller copy while it's edited (the finished video's made from the file itself)
         .task(id: Set(clips.map { $0.source })) {
@@ -1256,8 +1270,10 @@ struct MultiClipEditor: View {
     private func finish() {
         joining = true; progress = 0; player.pause()
         let kept = clips, sound = soundOf, shape = look, laid = sounds, on = pips
-        let over = EditOverlays.pieces(texts, frame: frameSize)
+        let items = texts, size = frameSize
         making = Task {
+            await EditOverlays.prepare(items)
+            let over = EditOverlays.pieces(items, frame: size)
             let url = await ClipJoin.join(kept, soundOf: sound, look: shape, overlays: over, sounds: laid, pips: on) { p in if progress != nil { progress = p } }
             guard !Task.isCancelled else { return }
             joining = false; progress = nil; making = nil
@@ -1375,13 +1391,12 @@ struct MultiClipEditor: View {
     private var addTools: some View {
         toolRow {
                 action("textformat", "Text", on: true) { addText() }
-                action("face.smiling", "Stickers", on: true) { withAnimation(.snappy) { panel = .stickers } }
+                action("face.smiling", "Stickers", on: true) { player.pause(); playing = false; stickering = true }
                 action("captions.bubble", "Captions", on: true) {
                     if texts.contains(where: { $0.kind == "caption" }) { withAnimation(.snappy) { panel = .captions } } else { makeCaptions() }
                 }
                 action("fork.knife", "Recipe", on: true) { attachMode = "recipe" }
                 action("dumbbell", "Workout", on: true) { attachMode = "workout" }
-                action("flame", "Calories", on: true) { attachMode = "calories" }
                 action("mic.fill", "Voice", on: true) { withAnimation(.snappy) { panel = .voice } }
                 action("sparkles", "Effects", on: true) { withAnimation(.snappy) { panel = .effects } }
                 action("rectangle.inset.topright.filled", "Overlay", on: true) { pipPicking = true }
@@ -2054,10 +2069,169 @@ struct MultiClipEditor: View {
     }
 
     private func addText() {
-        player.pause()
-        let t = EditText(kind: "text", text: "Your text", from: now, to: min(max(total, now + 0.5), now + 3))
+        player.pause(); playing = false
+        let t = EditText(kind: "text", text: "", from: now, to: min(max(total, now + 0.5), now + 3))
         texts.append(t)
         selectText(t.id)
+        startTyping(t.id)
+    }
+
+    /// Typing on the video (design/editor-text-stickers-mockup.html, 1): opened at once, no slide up.
+    private func startTyping(_ id: UUID) {
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t) { typing = id }
+    }
+
+    /// Typing done: an empty one taken off.
+    private func endTyping() {
+        if let id = typing, let k = texts.firstIndex(where: { $0.id == id }), texts[k].text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            texts.remove(at: k)
+            if selectedText == id { selectedText = nil; withAnimation(.snappy) { panel = nil } }
+        }
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t) { typing = nil }
+    }
+
+    /// The text being typed, large in the middle of the dimmed video: its typefaces along the top, its size on the
+    /// left, its looks and colours over the keyboard (as Instagram's and CapCut's are).
+    private func typingView(_ k: Int) -> some View {
+        let item = texts[k]
+        let ink = EditText.colour(item.colour)
+        let words = Binding(get: { texts.indices.contains(k) ? texts[k].text : "" }, set: { if texts.indices.contains(k) { texts[k].text = $0 } })
+        let field = TextField("Type something", text: words, axis: .vertical)
+            .font(EditText.font(item.font, size: 38 * CGFloat(item.size)))
+            .multilineTextAlignment(.center).lineLimit(1...6)
+            .focused($typingFocus)
+            .tint(Color(red: 1, green: 0.84, blue: 0.04))
+        return ZStack {
+            Color.black.opacity(0.55).ignoresSafeArea().onTapGesture { endTyping() }
+            VStack(spacing: 0) {
+                HStack(spacing: 6) {
+                    ForEach(EditText.fonts, id: \.self) { fo in
+                        Button { texts[k].font = fo == "classic" ? nil : fo } label: {
+                            Text("Aa").font(EditText.font(fo, size: 14)).frame(width: 36, height: 36)
+                                .foregroundStyle((item.font ?? "classic") == fo ? Color.black : Color.white)
+                                .background((item.font ?? "classic") == fo ? Color.white : Color.black.opacity(0.5), in: Circle())
+                                .overlay(Circle().stroke(.white.opacity(0.35), lineWidth: 1))
+                        }
+                        .buttonStyle(.plain).accessibilityLabel("Typeface " + fo)
+                    }
+                    Spacer()
+                    Button { endTyping() } label: {
+                        Text("Done").font(.subheadline.weight(.heavy)).foregroundStyle(.black).padding(.horizontal, 16).frame(height: 34).background(.white, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 14).padding(.top, 10)
+                Spacer(minLength: 10)
+                Group {
+                    switch item.style {
+                    case "Box":
+                        field.foregroundStyle(EditText.ink(on: item.colour)).padding(.horizontal, 14).padding(.vertical, 8)
+                            .background(ink, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    case "Outline":
+                        let edge = EditText.ink(on: item.colour) == .black ? Color.black : Color.white
+                        field.foregroundStyle(ink)
+                            .shadow(color: edge, radius: 0, x: 1.5, y: 1.5).shadow(color: edge, radius: 0, x: -1.5, y: -1.5)
+                            .shadow(color: edge, radius: 0, x: 1.5, y: -1.5).shadow(color: edge, radius: 0, x: -1.5, y: 1.5)
+                    case "Plain": field.foregroundStyle(ink)
+                    default: field.foregroundStyle(ink).shadow(color: .black.opacity(0.7), radius: 4, y: 2)
+                    }
+                }
+                .padding(.horizontal, 44)
+                Spacer(minLength: 10)
+                VStack(spacing: 10) {
+                    HStack(spacing: 6) {
+                        ForEach(EditText.textStyles, id: \.self) { st in
+                            Button { UISelectionFeedbackGenerator().selectionChanged(); texts[k].style = st } label: {
+                                Text(st).font(.caption.weight(.heavy)).padding(.horizontal, 12).frame(height: 30)
+                                    .foregroundStyle(item.style == st ? Color.black : Color.white)
+                                    .background(item.style == st ? Color.white : Color.black.opacity(0.55), in: Capsule())
+                                    .overlay(Capsule().stroke(.white.opacity(0.25), lineWidth: 1))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            // any colour, from the wheel
+                            ColorPicker("Any colour", selection: Binding(get: { EditText.colour(texts.indices.contains(k) ? texts[k].colour : "white") },
+                                                                         set: { c in if texts.indices.contains(k) { texts[k].colour = Self.hex(c) } }), supportsOpacity: false)
+                                .labelsHidden().frame(width: 30, height: 30)
+                            ForEach(EditText.palette, id: \.self) { c in
+                                Circle().fill(StoryArt.color(c)).frame(width: 28, height: 28)
+                                    .overlay(Circle().stroke(.white.opacity(0.75), lineWidth: 2))
+                                    .padding(3)
+                                    .overlay(Circle().stroke(.white, lineWidth: item.colour.uppercased() == c ? 2 : 0))
+                                    .onTapGesture { texts[k].colour = c }
+                                    .accessibilityLabel("Colour " + c)
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+                .padding(.horizontal, 12).padding(.bottom, 10)
+            }
+            // its size, up the left side
+            HStack {
+                Slider(value: Binding(get: { texts.indices.contains(k) ? texts[k].size : 1 }, set: { if texts.indices.contains(k) { texts[k].size = $0 } }), in: 0.5...2.5)
+                    .tint(.white).frame(width: 200).rotationEffect(.degrees(-90)).frame(width: 30, height: 200)
+                    .accessibilityLabel("Text size")
+                Spacer()
+            }
+            .padding(.leading, 6).offset(y: -40)
+        }
+        .presentationBackground(.clear)
+        .onAppear { typingFocus = true }
+    }
+
+    /// A colour as "#RRGGBB".
+    static func hex(_ c: Color) -> String {
+        var r: CGFloat = 1, g: CGFloat = 1, b: CGFloat = 1, a: CGFloat = 1
+        UIColor(c).getRed(&r, green: &g, blue: &b, alpha: &a)
+        func two(_ v: CGFloat) -> String { String(format: "%02X", Int((min(1, max(0, v)) * 255).rounded())) }
+        return "#" + two(r) + two(g) + two(b)
+    }
+
+    /// A tile picked in the sticker tray that wasn't placed straight away: made from today's numbers, or asked for.
+    private func addCard(_ id: String) {
+        let s = Store.shared
+        switch id {
+        // a food's calories, counting up (21 Nov: what the Calories button was)
+        case "food": attachMode = "calories"
+        case "photo": pipPicking = true
+        case "macros":
+            let m = s.macros(s.todayItems)
+            placeCard(["type": "macros", "p": Int(m.p), "c": Int(m.c), "f": Int(m.f), "kcal": Int(s.eaten)])
+        case "streak": placeCard(["type": "streak", "days": s.streakInfo.days])
+        case "left": placeCard(["type": "left", "kcal": Int(max(0, s.left))])
+        case "time": placeCard(["type": "time", "text": Date().formatted(date: .omitted, time: .shortened)])
+        case "ring": placeCard(["type": "ring", "eaten": Int(s.eaten), "budget": Int(s.budgetToday)])
+        case "steps": placeCard(["type": "steps", "steps": Steps.shared.today ?? 0])
+        case "badge":
+            if let b = StickerSheet.latestBadge { placeCard(["type": "badge", "id": b]) } else { flash("Earn a badge first") }
+        case "rank": placeCard(["type": "rank", "level": s.rank.level])
+        case "cheat":
+            if let d = StickerSheet.daysToCheat { placeCard(["type": "cheat", "days": d]) } else { flash("Set a cheat day first") }
+        case "hashtag": placeCard(["type": "hashtag", "text": "cheatday"])
+        case "place":
+            Task { if let sub = await Locator.shared.suburb() { placeCard(["type": "place", "text": sub]) } else { flash("Couldn't find your suburb") } }
+        default: addSticker(id)
+        }
+    }
+
+    /// A story sticker put on at the line, for three seconds; a GIF's frames fetched for the finished video meanwhile.
+    private func placeCard(_ o: JSON) {
+        if str(o["type"]) == "emoji" { addSticker(str(o["text"])); return }
+        guard let d = try? JSONSerialization.data(withJSONObject: o), let json = String(data: d, encoding: .utf8) else { return }
+        let names = ["gif": "GIF", "sticker3d": "Sticker", "macros": "Macros", "streak": "Streak", "left": "Calories left", "ring": "Today",
+                     "steps": "Steps", "badge": "Badge", "rank": "Rank", "cheat": "Cheat day", "time": "Time", "place": "Place", "hashtag": "#" + str(o["text"])]
+        var t = EditText(kind: "card", text: names[str(o["type"])] ?? "Sticker", x: 0.5, y: 0.4, from: now, to: min(max(total, now + 0.5), now + 3))
+        t.card = json
+        texts.append(t)
+        selectText(t.id)
+        if str(o["type"]) == "gif" { Task { await EditOverlays.prepare([t]) } }
     }
 
     private func addSticker(_ emoji: String) {
@@ -2123,21 +2297,12 @@ struct MultiClipEditor: View {
         return VStack(spacing: 10) {
             if item.kind == "sticker" {
                 stickerGrid { e in texts[k].text = e }
-            } else if item.kind != "calories" {
+            } else if item.kind == "text" {
+                // typed on the video, with its looks (21 Nov: typed down here, the keyboard pushed the video away)
+                wide(item.text.isEmpty ? "Type" : "Edit text", "character.cursor.ibeam") { startTyping(item.id) }
+            } else if item.kind != "calories" && item.kind != "card" {
                 TextField(item.kind == "caption" ? "What's said" : "Text", text: Binding(get: { texts.indices.contains(k) ? texts[k].text : "" }, set: { if texts.indices.contains(k) { setText(k, $0) } }), axis: .vertical)
                     .lineLimit(1...3).padding(10).background(Color(white: 0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-            if item.kind == "text" {
-                HStack(spacing: 6) { ForEach(EditText.textStyles, id: \.self) { st in chip(st, on: item.style == st) { texts[k].style = st } } }
-                HStack(spacing: 10) {
-                    ForEach(EditText.colours, id: \.self) { c in
-                        Circle().fill(EditText.colour(c)).frame(width: 26, height: 26)
-                            .overlay(Circle().stroke(.white, lineWidth: item.colour == c ? 3 : 1))
-                            .onTapGesture { texts[k].colour = c }
-                            .accessibilityLabel(c)
-                    }
-                    Spacer()
-                }
             }
             if item.kind == "caption" {
                 // this caption's own look (21 Nov: each line can have its own); Apply to all gives every caption it

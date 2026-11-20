@@ -1532,6 +1532,9 @@ struct StoryEditor: View {
 /// (poll, question, mention), the fun ones (time, place, hashtag); then 3D stickers built in, and GIPHY's.
 struct StickerSheet: View {
     var forPost = false
+    /// On a video (the clip editor, 21 Nov): GIFs (they move in the video), none of the ones a story's viewers answer,
+    /// and no recipe or workout (the editor has its own for those).
+    var forVideo = false
     var pick: (String) -> Void
     var place: (JSON) -> Void
     @State private var q = ""
@@ -1573,7 +1576,7 @@ struct StickerSheet: View {
         }
         // a workout from the last two weeks (the newest shown), as the sticker it makes
         if let w = WorkoutStickerPicker.recent().first?.workout { out.append(("workout", "workout gym lift training", StoryItem.workoutSticker(w))) }
-        if !forPost {
+        if !forPost && !forVideo {
             out.append(("poll", "poll vote", ["type": "poll", "q": "Cheat day or not?", "a": "Yes", "b": "No"]))
             out.append(("question", "question ask me anything", ["type": "question", "q": "Ask me anything"]))
             out.append(("mention", "mention friend", ["type": "mention", "name": "friend"]))
@@ -1581,7 +1584,7 @@ struct StickerSheet: View {
         out.append(("time", "time clock", ["type": "time", "text": Date().formatted(date: .omitted, time: .shortened)]))
         out.append(("place", "location place suburb", ["type": "place", "text": "Your suburb"]))
         out.append(("hashtag", "hashtag tag", ["type": "hashtag", "text": "mealprep"]))
-        return out.map { (id: $0.0, words: $0.1, sample: $0.2) }
+        return out.filter { !forVideo || !["recipe", "workout"].contains($0.0) }.map { (id: $0.0, words: $0.1, sample: $0.2) }
     }
 
     var body: some View {
