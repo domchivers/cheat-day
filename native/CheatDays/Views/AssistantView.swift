@@ -19,6 +19,7 @@ struct AssistantView: View {
     @State private var speech = Speech()
     @State private var picked: [PhotosPickerItem] = []
     @State private var camera = false
+    @State private var scanning = false   // a barcode, as the Add sheet scans one (21 Nov: "match what we have")
     @State private var library = false
     private var done: [UUID: String] { get { live.done } nonmutating set { live.done = newValue } }
     @State private var showChats = false
@@ -125,6 +126,14 @@ struct AssistantView: View {
                 guard k != keptKey, !turns.isEmpty, !busy else { return }
                 keeping?.cancel()
                 keeping = Task { try? await Task.sleep(for: .seconds(1.5)); guard !Task.isCancelled else { return }; keptKey = k; live.keep(store) }
+            }
+            // the Add sheet's own scanner: scan, how much, and it's logged to this meal, as it is from Add. Not found
+            // and they'd rather take a picture of the label: the camera, into the chat
+            .sheet(isPresented: $scanning) {
+                ScanSheet(meal: meal, onAdded: { scanning = false }, onFlow: { f in
+                    scanning = false
+                    if f.view == "scan" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { openPhotos(camera: true) } }
+                })
             }
             .fullScreenCover(isPresented: $camera) { CameraPicker { img in camera = false; if let img { Task { pending.append(await Self.shrunk(img)) } } }.ignoresSafeArea() }
             .fullScreenCover(item: $viewing) { PhotoViewer(photos: $0) }
@@ -1114,8 +1123,9 @@ struct AssistantView: View {
                 Menu {
                     Button { openPhotos(camera: true) } label: { Label("Take a photo", systemImage: "camera") }
                     Button { openPhotos(camera: false) } label: { Label("Choose photos", systemImage: "photo.on.rectangle") }
+                    Button { scanning = true } label: { Label("Scan a barcode", systemImage: "barcode.viewfinder") }
                 } label: { roundButton("plus") }
-                .accessibilityLabel("Add a photo")
+                .accessibilityLabel("Add a photo or scan a barcode")
                 if speech.listening {
                     SpeechBars(level: speech.level).frame(maxWidth: .infinity)
                     Button { speech.stop() } label: {
