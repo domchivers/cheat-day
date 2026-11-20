@@ -98,8 +98,10 @@ final class PreviewEngineTests: XCTestCase {
         let img = UIGraphicsImageRenderer(size: CGSize(width: 360, height: 640)).image { c in
             UIColor(red: 0.1, green: 0.85, blue: 0.2, alpha: 1).setFill(); c.fill(CGRect(x: 0, y: 0, width: 360, height: 640))
         }
-        let url = try XCTUnwrap(await ClipJoin.still(img, seconds: 4)); made.append(url)
-        let photo = try XCTUnwrap(await ClipJoin.clip(url, still: true))
+        let still = await ClipJoin.still(img, seconds: 4)
+        let url = try XCTUnwrap(still); made.append(url)
+        let clip = await ClipJoin.clip(url, still: true)
+        let photo = try XCTUnwrap(clip)
         let e = PreviewEngine()
         e.update(clips: [photo], soundOf: nil, look: EditLook(), sounds: [], pips: [], swap: [:])
         let mid = try await colour(e, at: 2, "the photo's middle")
