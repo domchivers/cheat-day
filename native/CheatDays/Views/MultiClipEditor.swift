@@ -1400,6 +1400,13 @@ struct MultiClipEditor: View {
     }
 
     /// The overlays showing now, drawn as they'll be in the video; drag one to move it, pinch to size it, tap to change it.
+    /// A caption picked and held up while paused: the others aren't drawn with it (21 Nov: two drawn over each other
+    /// after a split).
+    private var heldCaption: UUID? {
+        guard !playing, let id = selectedText, texts.contains(where: { (x: EditText) -> Bool in x.id == id && x.kind == "caption" }) else { return nil }
+        return id
+    }
+
     private var overlayLayer: some View {
         GeometryReader { g in
             let r = Self.fitted(frameSize, in: g.size), k = r.width / EditOverlays.design
@@ -1442,7 +1449,7 @@ struct MultiClipEditor: View {
                 let on = item.id == selectedText
                 // the one picked is held up while it's edited; playing, only what's on at the line shows (21 Nov: the
                 // picked caption stayed up while the others played under it)
-                if (on && !playing) || (now >= item.from && now < item.to) {
+                if (on && !playing) || (now >= item.from && now < item.to && !(item.kind == "caption" && heldCaption != nil)) {
                     // a calorie count held still shows its number, not the 0 it counts up from (21 Nov: "always 0":
                     // put on at the line, it was drawn at the very start of its count); playing, it counts as posted
                     EditTextView(item: item, at: item.kind == "calories" && !playing ? max(now, item.from + 1.3) : now).padding(24)
@@ -2621,7 +2628,9 @@ struct MultiClipEditor: View {
                 if words.count > 1 {
                     // (21 Nov: tapping a word to split wasn't found; a pair of scissors between words is)
                     Text("Tap \(Image(systemName: "scissors")) between two words to split the caption there").font(.caption2).foregroundStyle(Self.quiet)
-                    WordRows(spacing: 4, rowSpacing: 6) {
+                    // one line, slid along when long (21 Nov: the wrapping rows drew over the buttons after a split)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                      HStack(spacing: 6) {
                         ForEach(words.indices, id: \.self) { i in
                             HStack(spacing: 4) {
                                 if i > 0 {
@@ -2629,16 +2638,18 @@ struct MultiClipEditor: View {
                                         guard let (a, b) = EditOverlays.split(texts[k], at: i) else { return }
                                         remember()
                                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                        texts[k] = a; texts.append(b); listPicked = b.id; seek(b.from + 0.01)
+                                        texts[k] = a; texts.append(b); listPicked = b.id; if selectedText != nil { selectedText = b.id }; seek(b.from + 0.01)
                                     } label: {
                                         Image(systemName: "scissors").font(.system(size: 11, weight: .bold)).foregroundStyle(.black)
                                             .frame(width: 24, height: 24).background(Color.yellow, in: Circle())
                                     }
                                     .buttonStyle(.plain).accessibilityLabel("Split before \(words[i].text)")
                                 }
-                                Text(words[i].text).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                                Text(words[i].text).font(.subheadline.weight(.semibold)).foregroundStyle(.white).fixedSize()
                             }
                         }
+                      }
+                      .padding(.vertical, 2)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -2658,7 +2669,7 @@ struct MultiClipEditor: View {
         .background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(on ? Color.white : .clear, lineWidth: 1.5))
         .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .onTapGesture { if !on { player.pause(); playing = false; listPicked = c.id; seek(c.from + 0.01) } }
+        .onTapGesture { if !on { player.pause(); playing = false; listPicked = c.id; if selectedText != nil { selectedText = c.id }; seek(c.from + 0.01) } }
     }
 
     /// A caption and the one after it as one.
@@ -2671,7 +2682,7 @@ struct MultiClipEditor: View {
         let gone = texts[n].id
         texts[k] = joined
         texts.removeAll { $0.id == gone }
-        listPicked = joined.id
+        listPicked = joined.id; if selectedText != nil { selectedText = joined.id }
     }
 
     /// The recipe's overlays made again from the plan (the ones it made before taken off first, and an old recipe's).
