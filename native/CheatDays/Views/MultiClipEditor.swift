@@ -471,7 +471,7 @@ struct MultiClipEditor: View {
             case .recipeSteps: scrubBar; panelBar; recipeSteps
             case .stickers: scrubBar; panelBar; stickerPanel
             case .voice: scrubBar; panelBar; bars; voicePanel
-            case .effects: scrubBar; panelBar; effectsPanel
+            case .effects: scrubBar; panelBar; bars; effectsPanel   // (the bars shown: 21 Nov, an effect went in and nobody could see where)
             case .soundItem: scrubBar; panelBar; if let k = sounds.firstIndex(where: { $0.id == selectedSound }) { bars; soundItemPanel(k) }
             case .pip: scrubBar; panelBar; if let k = pips.firstIndex(where: { $0.id == selectedPip }) { bars; pipPanel(k) }
             case .motion: scrubBar; panelBar; if let i = index { motionPanel(i) }
@@ -1467,7 +1467,7 @@ struct MultiClipEditor: View {
                 action("fork.knife", "Recipe", on: true) { if recipe != nil { withAnimation(.snappy) { panel = .recipe } } else { attachMode = "recipe" } }
                 action("dumbbell", "Workout", on: true) { attachMode = "workout" }
                 action("mic.fill", "Voice", on: true) { withAnimation(.snappy) { panel = .voice } }
-                action("sparkles", "Effects", on: true) { withAnimation(.snappy) { panel = .effects } }
+                action("waveform", "Sound FX", on: true) { withAnimation(.snappy) { panel = .effects } }
                 action("rectangle.inset.topright.filled", "Overlay", on: true) { pipPicking = true }
                 action("music.note", "Music", on: true) { choosingSong = true }
                 action("metronome", "Beats", on: true) { if songBeats.isEmpty { choosingSong = true } else { withAnimation(.snappy) { panel = .beats } } }
@@ -1701,13 +1701,15 @@ struct MultiClipEditor: View {
     /// A few short sounds to drop in at the line.
     private var effectsPanel: some View {
         VStack(spacing: 8) {
-            Text("Tap one to put it in at the line").font(.caption).foregroundStyle(.secondary)
+            Text("Tap one to put it in at \(Self.code(now)), where the line is").font(.caption).foregroundStyle(.secondary)
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
                 ForEach(SoundEffects.names, id: \.self) { name in
                     Button {
                         let length = SoundEffects.length(name)
+                        remember()
                         sounds.append(EditSound(kind: "effect", name: name, from: now, length: max(0.05, min(length, total - now)), full: length))
                         UISelectionFeedbackGenerator().selectionChanged()
+                        flash("\(name) added at \(Self.code(now)). It's the new bar above: tap it to move or change it.")
                     } label: {
                         Text(name).font(.caption.weight(.bold)).foregroundStyle(.white).frame(maxWidth: .infinity).frame(height: 40)
                             .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
