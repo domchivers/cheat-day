@@ -27,6 +27,9 @@ struct EditText: Identifiable, Codable, Equatable {
     var card: String? = nil
     /// What made it, when it's one of a set made again together: "recipe" (the recipe panel's).
     var part: String? = nil
+    /// The timeline row it's on, chosen by holding and dragging it there (design/capcut-timeline-mockup.html); nil:
+    /// put in a row of its own kind. The higher row (lower number) is drawn on top.
+    var lane: Int? = nil
 
     /// A word said, and when in the video; and where it was said, so it goes where that goes (21 Nov: a clip trimmed
     /// or moved left its captions behind): the clip (or voiceover) it's in, that file's name, and the moment in it.
@@ -823,6 +826,7 @@ struct EditPip: Identifiable, Codable, Equatable {
     var size = 0.36            // its width, as a fraction of the frame's
     var opacity = 1.0
     var keys: [MoveKey] = []   // seconds from its start
+    var lane: Int? = nil       // the timeline row it's on, as a text's
     var to: Double { from + length }
 
     /// Where it is `t` seconds into the video.

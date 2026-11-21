@@ -20,6 +20,7 @@ struct EditSound: Identifiable, Codable, Equatable {
     var keys: [VolumeKey]? = nil  // its volume at moments of its own sound (its file's seconds), eased between
     var clip: UUID? = nil       // kind "clip": the clip its sound was separated from, to put it back
     var rate: Double? = nil     // kind "clip": that clip's speed, which its sound keeps
+    var lane: Int? = nil        // the timeline row it's on, as a text's
     var to: Double { from + length }
 
     /// The file it plays from.
