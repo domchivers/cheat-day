@@ -56,7 +56,7 @@ struct EditText: Identifiable, Codable, Equatable {
     /// The sticker, as stories keep it.
     var cardJSON: JSON? { card.flatMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? JSON } }
     static let captionStyles = ["Pop", "Bold", "Box", "Plain"]
-    static let highlights = ["yellow", "green", "red", "blue", "white"]
+    static let highlights = ["yellow", "green", "red", "blue", "white", "none"]
     /// How much a caption holds: a word, a few, a line's worth, a sentence (the panel's "On screen at a time").
     static let captionGroups: [(id: String, name: String)] = [("word", "1 word"), ("few", "A few words"), ("line", "A line"), ("sentence", "A sentence")]
     /// The lit word's colour.
@@ -201,13 +201,19 @@ struct EditTextView: View {
     /// go onto a second line rather than off the sides.
     @ViewBuilder private var caption: some View {
         let words = item.words ?? item.text.split(separator: " ").map { EditText.Word(text: String($0), at: item.from) }
-        let lit = item.lit(at: at)
+        // no highlight: every word the same (21 Nov: "might not want it")
+        let lit = item.highlight == "none" ? nil : item.lit(at: at)
         let ink = item.lit
+        // one line: never onto a second, a long one a little smaller instead (21 Nov: "says 1 line but is more")
+        let oneLine = item.detail == "1"
+        let letters = words.reduce(0) { $0 + $1.text.count + 1 }
+        let size: CGFloat = oneLine ? min(26, 26 * 19 / CGFloat(max(19, letters))) : 26
         let line = words.indices.reduce(Text("")) { sum, i in
             let w = Text((i == 0 ? "" : " ") + words[i].text)
             return sum + (i == lit && item.style != "Pop" ? w.foregroundColor(ink) : w)
         }
-        let base = line.font(.system(size: 26, weight: .black)).multilineTextAlignment(.center).frame(maxWidth: 330)
+        let base = line.font(.system(size: 26, weight: .black)).multilineTextAlignment(.center)
+            .lineLimit(oneLine ? 1 : nil).minimumScaleFactor(oneLine ? 0.5 : 1).frame(maxWidth: 330)
         switch item.style {
         case "Box":
             base.foregroundStyle(.white).padding(.horizontal, 12).padding(.vertical, 6)
@@ -216,7 +222,8 @@ struct EditTextView: View {
             base.foregroundStyle(.white).shadow(color: .black.opacity(0.8), radius: 3, y: 1)
         case "Bold":
             // bigger, edged in black all round
-            line.font(.system(size: 30, weight: .black)).multilineTextAlignment(.center).frame(maxWidth: 340).foregroundStyle(.white)
+            line.font(.system(size: 30, weight: .black)).multilineTextAlignment(.center)
+                .lineLimit(oneLine ? 1 : nil).minimumScaleFactor(oneLine ? 0.5 : 1).frame(maxWidth: 340).foregroundStyle(.white)
                 .shadow(color: .black, radius: 0, x: 1.5, y: 1.5).shadow(color: .black, radius: 0, x: -1.5, y: -1.5)
                 .shadow(color: .black, radius: 0, x: 1.5, y: -1.5).shadow(color: .black, radius: 0, x: -1.5, y: 1.5)
         default:
@@ -224,14 +231,14 @@ struct EditTextView: View {
             WordRows(spacing: 5, rowSpacing: 4) {
                 ForEach(words.indices, id: \.self) { i in
                     let on = i == lit
-                    Text(words[i].text).font(.system(size: 26, weight: .black))
+                    Text(words[i].text).font(.system(size: size, weight: .black))
                         .foregroundStyle(on ? Color.black : Color.white)
                         .padding(.horizontal, on ? 4 : 0)
                         .background(on ? ink : Color.clear, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
                         .shadow(color: on ? .clear : .black.opacity(0.8), radius: 3, y: 1)
                 }
             }
-            .frame(maxWidth: 340)
+            .frame(maxWidth: oneLine ? 2000 : 340)
         }
     }
 }
@@ -420,7 +427,7 @@ enum EditOverlays {
             for i in ws.indices { all.append((ws[i], i + 1 < ws.count ? ws[i + 1].at : c.to, k)) }
         }
         guard !all.isEmpty else { return caps }
-        let most = lines > 1 ? 44 : 24   // letters a line holds, near enough, at the caption's size
+        let most = lines > 1 ? 36 : 18   // letters a line holds at the caption's size (24 wrapped: 21 Nov)
         var out: [EditText] = []
         var group: [(w: EditText.Word, end: Double, from: Int)] = []
         func close() {
@@ -431,6 +438,7 @@ enum EditOverlays {
             c.text = group.map(\.w.text).joined(separator: " ")
             c.from = first.w.at
             c.to = max(first.w.at + 0.3, last.end)
+            c.detail = lines > 1 ? "" : "1"   // (drawn on one line, never wrapped)
             out.append(c)
             group = []
         }

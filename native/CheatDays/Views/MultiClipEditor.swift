@@ -2362,10 +2362,11 @@ struct MultiClipEditor: View {
                 }
                 HStack(spacing: 10) {
                     ForEach(EditText.highlights, id: \.self) { c in
-                        Circle().fill(EditText.colour(c)).frame(width: 26, height: 26)
+                        Circle().fill(c == "none" ? Color.clear : EditText.colour(c)).frame(width: 26, height: 26)
+                            .overlay { if c == "none" { Image(systemName: "nosign").font(.system(size: 15, weight: .bold)).foregroundStyle(.white) } }
                             .overlay(Circle().stroke(.white, lineWidth: (item.highlight ?? "yellow") == c ? 3 : 1))
                             .onTapGesture { texts[k].highlight = c }
-                            .accessibilityLabel("Highlight " + c)
+                            .accessibilityLabel(c == "none" ? "No highlight" : "Highlight " + c)
                     }
                     Spacer()
                 }
@@ -2462,6 +2463,11 @@ struct MultiClipEditor: View {
             segments(EditText.captionGroups.map { ($0.id, $0.name) }, captionGroup) { g in captionGroup = g; regroupCaptions() }
             Text("Lines").font(.caption.weight(.semibold)).foregroundStyle(Self.quiet)
             segments([("1", "1"), ("2", "Up to 2")], String(captionLines)) { l in captionLines = Int(l) ?? 1; regroupCaptions() }
+            Text("Highlight the word being said").font(.caption.weight(.semibold)).foregroundStyle(Self.quiet)
+            segments([("on", "On"), ("off", "Off")], caps.allSatisfy { texts[$0].highlight == "none" } ? "off" : "on") { v in
+                remember()
+                for i in caps { texts[i].highlight = v == "off" ? "none" : (texts[i].highlight == "none" ? nil : texts[i].highlight) }
+            }
             Text("Style").font(.caption.weight(.semibold)).foregroundStyle(Self.quiet)
             HStack(spacing: 6) {
                 ForEach(EditText.captionStyles, id: \.self) { st in

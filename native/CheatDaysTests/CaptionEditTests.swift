@@ -63,4 +63,13 @@ final class CaptionEditTests: XCTestCase {
         let c = try JSONDecoder().decode(EditText.self, from: Data(json.utf8))
         XCTAssertNil(c.highlight); XCTAssertEqual(c.text, "hi")
     }
+
+    /// One line means one line: a line's worth is short enough to fit, and each caption is marked to stay on one
+    /// (21 Nov: "says 1 line but is more").
+    func testOneLineStaysOneLine() {
+        let caps = said("We ran our first firing in Jingdezhen. It started calm enough. We picked our pieces")
+        for c in EditOverlays.regroup(caps, by: "line", lines: 1) { XCTAssertLessThanOrEqual(c.text.count, 22, c.text); XCTAssertEqual(c.detail, "1") }
+        for c in EditOverlays.regroup(caps, by: "line", lines: 2) { XCTAssertEqual(c.detail, "") }
+        XCTAssertTrue(EditText.highlights.contains("none"))
+    }
 }
