@@ -997,7 +997,7 @@ enum Assistant {
             out.append((t.me ? "Me: " : "Assistant: ") + t.text + (t.images.isEmpty ? "" : " (\(t.images.count) photo\(t.images.count == 1 ? "" : "s"))"))
             if let ta = t.result?["takeaway"] as? JSON {
                 out.append("  [planned from \(str(ta["restaurant"])) for \(Int(num(ta["kcal"]) ?? 0)) kcal, \(Int(num(ta["aim"]) ?? 0)) g protein · \(str(ta["source"]))]")
-                for c in CheatDays.list(ta["combos"]) { out.append("    \(str(c["title"])) · \(Int(num(c["kcal"]) ?? 0)) kcal · P\(Int(num(c["protein_g"]) ?? 0))") }
+                for c in CheatDays.list(ta["combos"]) { out.append("    \(str(c["title"])) · \(Int(num(c["kcal"]) ?? 0)) kcal · P\(Int(num(c["p"]) ?? 0))") }
             }
             // the recipe card as it showed (21 Nov: left out, a tinga chat's recipes came through as "total 0 kcal")
             // (only one that's there: a turn with no recipe has an empty one, which the chat doesn't show)

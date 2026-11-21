@@ -268,4 +268,14 @@ final class TakeawayTests: XCTestCase {
         XCTAssertEqual(names, ["Guzman y Gomez", "Zambrero", "Mad Mex"], "the two under 700 first, most protein first; the one over last")
         XCTAssertFalse(str(out["reply"]).contains("g protein"), str(out["reply"]))
     }
+
+    /// "Don't see boneless" after a card (21 Nov, PUBCHA): the router may put the card's whole title in avoid; the
+    /// dish goes either way, and the word alone takes every boneless one.
+    func testADishTheyCantSeeIsLeftOut() {
+        let whole = Takeaway.plan(menu: gami, home: [], kcal: 1400, protein: 80, avoid: ["Original boneless, 7 pcs, a water shake and ice cream"], place: "Gami")
+        XCTAssertFalse(whole.combos.contains { $0.0.item.name.contains("boneless") })
+        let word = Takeaway.plan(menu: gami, home: [], kcal: 1400, protein: 80, avoid: ["boneless"], place: "Gami")
+        XCTAssertFalse(word.combos.contains { $0.0.item.name.lowercased().contains("boneless") })
+        XCTAssertFalse(word.combos.isEmpty)
+    }
 }
