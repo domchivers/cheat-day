@@ -119,7 +119,8 @@ struct MultiClipEditor: View {
     // the timeline took over left the handle stranded, apart from its clip)
     @GestureState private var trimLive: TrimDrag?
     @State private var scrubSkip = false
-    @State private var barSnap: Double?                   // what a bar being dragged is held on (for the tap, once)                  // this drag is a bar's or a trim handle's, not the timeline's                // an end of the picked clip being dragged on the timeline
+    @State private var barSnap: Double?
+    @State private var stripHeld: CGFloat?                // the keyframe a strip's scrub is held on (for the tap, once)                   // what a bar being dragged is held on (for the tap, once)                  // this drag is a bar's or a trim handle's, not the timeline's                // an end of the picked clip being dragged on the timeline
     private struct BarGrab { var id: UUID; var mode: Int; var from: Double; var to: Double; var words: [EditText.Word]?; var start = 0.0 }   // mode: 0 move, 1 start, 2 end
     /// One bar on the timeline: a text, sticker or caption, or a voiceover or sound effect.
     /// kind: 0 over the picture (text, stickers, captions), 1 a sound, 2 a clip or photo over it.
@@ -984,6 +985,11 @@ struct MultiClipEditor: View {
                             .offset(x: min(max(0, w * CGFloat((at - c.start) / span) - 1.25), w - 2.5)).allowsHitTesting(false)
                     }
                 }
+                .contentShape(Rectangle())
+                // drag along it to move the line through the clip, held on a diamond when near one (21 Nov)
+                .gesture(stripScrub(width: w, marks: c.keys.map { w * CGFloat(($0.at - c.start) / span) }) { x in
+                    startOf(i) + Double(x / max(w, 1)) * span / max(c.speed, 0.01)
+                })
             }
             .frame(height: 30)
             }
@@ -995,6 +1001,22 @@ struct MultiClipEditor: View {
     }
 
     /// Add a keyframe here, or take away the one here: a labelled button beside the sound (design/pro-ui).
+    /// A keyframe strip's scrub: the line goes where the finger is along it (paused), held on a keyframe's diamond
+    /// when it comes within 10 points of one, with a tap; a tap on a diamond goes to it.
+    private func stripScrub(width w: CGFloat, marks: [CGFloat], time: @escaping (CGFloat) -> Double) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { v in
+                if player.rate != 0 { player.pause(); playing = false }
+                var x = min(max(0, v.location.x), w)
+                if let m = marks.min(by: { abs($0 - x) < abs($1 - x) }), abs(m - x) <= 10 {
+                    if abs(m - x) > 0.5, stripHeld != m { UISelectionFeedbackGenerator().selectionChanged() }
+                    stripHeld = m; x = m
+                } else { stripHeld = nil }
+                seek(min(max(0, time(x)), max(0, total - 0.01)))
+            }
+            .onEnded { _ in stripHeld = nil }
+    }
+
     private func keyButton(_ here: Bool, on: Bool, _ run: @escaping () -> Void) -> some View {
         Button(action: run) {
             HStack(spacing: 5) {
@@ -1753,6 +1775,10 @@ struct MultiClipEditor: View {
                             .offset(x: min(max(0, w * CGFloat((now - s.from) / span) - 1.25), w - 2.5)).allowsHitTesting(false)
                     }
                 }
+                .contentShape(Rectangle())
+                .gesture(stripScrub(width: w, marks: keys.map { w * CGFloat((s.videoTime($0.at) - s.from) / span) }) { x in
+                    s.from + Double(x / max(w, 1)) * span
+                })
             }
             .frame(height: 30)
             }
