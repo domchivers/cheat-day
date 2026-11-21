@@ -471,7 +471,7 @@ struct MultiClipEditor: View {
             case .look: scrubBar; panelBar; if let i = index { lookPanel(i) }
             case .shape: scrubBar; panelBar; shapePanel
             case .text: scrubBar; panelBar; if let k = texts.firstIndex(where: { $0.id == selectedText }) { bars; textPanel(k) }
-            case .captions: scrubBar; panelBar; bars; captionsPanel
+            case .captions: scrubBar; panelBar; captionsPanel   // (no bars: squashed to a letter each they said nothing the list doesn't, 21 Nov)
             case .captionList: scrubBar; panelBar; captionList
             case .recipe: scrubBar; panelBar; bars; recipePanel
             case .recipeSteps: scrubBar; panelBar; recipeSteps
