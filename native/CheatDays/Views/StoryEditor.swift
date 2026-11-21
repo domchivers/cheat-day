@@ -211,6 +211,7 @@ struct StoryEditor: View {
     @State private var lastLook = Date.distantPast   // when their story last changed look, so taps can't outrun it
     @State private var polling = false
     @State private var mentioning = false
+    @State private var moreTools = false   // the tools' column opened to all of them
     @State private var typingSticker: String?   // a question or a hashtag being typed in
     @State private var stickerText = ""
     @State private var note: String?
@@ -268,10 +269,13 @@ struct StoryEditor: View {
                         if mixing {
                             mixPanel.frame(width: min(screen.size.width - 20, 430)).padding(.bottom, 10)
                                 .transition(.move(edge: .bottom).combined(with: .opacity))
-                        } else {
-                            toolbar.frame(width: screen.size.width).padding(.bottom, 10)
-                                .opacity(mode == .none && active == nil ? 1 : 0).allowsHitTesting(mode == .none && active == nil)
                         }
+                    }
+                    // the tools down the right, under the top bar, as Instagram's (21 Nov, design/story-tools-mockup.html,
+                    // 1): along the bottom they covered whatever was put there, so the bottom of the story is all clear
+                    .overlay(alignment: .topTrailing) {
+                        toolbar.padding(.top, 66).padding(.trailing, 10)
+                            .opacity(mode == .none && active == nil && !mixing ? 1 : 0).allowsHitTesting(mode == .none && active == nil && !mixing)
                     }
                 bottomBar.frame(width: screen.size.width - 28)
             }
@@ -731,17 +735,19 @@ struct StoryEditor: View {
         .accessibilityIdentifier("mix-panel")
     }
 
-    /// The tools, each with its name, in a row under the picture that slides sideways: as bare round icons over the
-    /// picture they covered it, and nobody could tell the frame button from the filters one.
+    /// The tools in a slim column down the right (21 Nov): the five most used as round icons, and an arrow that opens
+    /// the rest, each named beside it while it's open (as Instagram's), so the column takes a strip 40 points wide.
     private var toolbar: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 8) {
+        VStack(alignment: .trailing, spacing: 9) {
+            Group {
                 if !forPost || postSong != nil { tool("music.note", "Audio", "Audio") { if postSong != nil || song != nil { withAnimation(.snappy(duration: 0.22)) { mixing = true } } else { choosingSong = true } } }
                 tool("textformat", "Text", "Text") { newText() }
                 // more photos onto this one, to move, size and turn like any sticker: several in one picture
                 tool("photo.badge.plus", "Add", "Add photos") { addingPhotos = true }
                 tool("face.smiling", "Stickers", "Stickers") { stickers = true }
                 tool("scribble.variable", "Draw", "Draw") { mode = .draw }
+            }
+            if moreTools {
                 tool("camera.filters", "Filter", "Filters") { mode = .filters }
                 tool("slider.horizontal.3", "Adjust", "Adjust") { mode = .adjust }
                 if forPost && !lockShape { tool("aspectratio", "Shape", "Shape") { nextShape() } }
@@ -752,10 +758,12 @@ struct StoryEditor: View {
                 }
                 if !forPost && (image != nil || video != nil) { tool("arrow.down.to.line", "Save", "Save to Photos") { Task { await save() } } }
             }
-            .padding(.horizontal, 8)
+            Button { UISelectionFeedbackGenerator().selectionChanged(); withAnimation(.snappy(duration: 0.22)) { moreTools.toggle() } } label: {
+                Image(systemName: moreTools ? "chevron.up" : "chevron.down").font(.system(size: 13, weight: .heavy)).foregroundStyle(.white)
+                    .frame(width: 40, height: 28).background(.black.opacity(0.4), in: Capsule())
+            }
+            .buttonStyle(.plain).accessibilityLabel(moreTools ? "Fewer tools" : "More tools")
         }
-        .scrollIndicators(.hidden)
-        .frame(height: 56)
         .photosPicker(isPresented: $addingPhotos, selection: $photoPicks, maxSelectionCount: 6, selectionBehavior: .ordered, matching: .images)
         .onChange(of: photoPicks) { _, items in
             guard !items.isEmpty else { return }
@@ -769,13 +777,17 @@ struct StoryEditor: View {
     }
 
     private func tool(_ symbol: String, _ title: String, _ label: String, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 5) {
-                Image(systemName: symbol).font(.system(size: 18, weight: .semibold)).frame(height: 22)
-                Text(title).font(.caption2.weight(.semibold))
+        Button {
+            if moreTools { withAnimation(.snappy(duration: 0.22)) { moreTools = false } }
+            action()
+        } label: {
+            HStack(spacing: 8) {
+                // named while the column's open, the name over the picture with a shadow
+                if moreTools { Text(title).font(.footnote.weight(.bold)).foregroundStyle(.white).shadow(color: .black.opacity(0.7), radius: 3) }
+                Image(systemName: symbol).font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
+                    .frame(width: 40, height: 40).background(.black.opacity(0.45), in: Circle())
             }
-            .foregroundStyle(.white).frame(width: 64, height: 56)
-            .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain).accessibilityLabel(label)
     }
