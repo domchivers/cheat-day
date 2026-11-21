@@ -28,7 +28,15 @@ struct EditText: Identifiable, Codable, Equatable {
     /// What made it, when it's one of a set made again together: "recipe" (the recipe panel's).
     var part: String? = nil
 
-    struct Word: Codable, Equatable { var text: String; var at: Double }
+    /// A word said, and when in the video; and where it was said, so it goes where that goes (21 Nov: a clip trimmed
+    /// or moved left its captions behind): the clip (or voiceover) it's in, that file's name, and the moment in it.
+    struct Word: Codable, Equatable {
+        var text: String
+        var at: Double
+        var clip: UUID? = nil      // the clip, or the voiceover, it was said in
+        var file: String? = nil    // that clip's file's name: a clip split in two keeps its words in either half
+        var src: Double? = nil     // the moment in that file (or recording)
+    }
 
     static let textStyles = ["Shadow", "Box", "Outline", "Plain"]
     static let fonts = ["classic", "rounded", "serif", "mono", "marker"]
@@ -525,8 +533,77 @@ enum EditOverlays {
         guard let file = s.file else { throw CaptionProblem(errorDescription: "This sound has nothing to hear.") }
         let heard = try await hear(file).filter { $0.at >= s.start - 0.05 && $0.at <= s.fileTime(s.to) + 0.05 }
             .map { Heard(text: $0.text, at: s.videoTime($0.at), long: $0.long / s.speed) }
-        let out = group(heard)
+        var out = group(heard)
         if out.isEmpty { throw CaptionProblem(errorDescription: "No words were heard in \(s.name).") }
+        // each word held to the voiceover it was said in, wherever that's moved
+        for k in out.indices {
+            out[k].words = out[k].words?.map { var w = $0; w.clip = s.id; w.src = s.fileTime(w.at); return w }
+        }
+        return out
+    }
+
+    /// Each caption word not yet tied to where it was said, tied to the clip it's heard over in `clips`.
+    static func anchor(_ texts: [EditText], clips: [Clip]) -> [EditText] {
+        let starts = ClipJoin.starts(clips)
+        return texts.map { t in
+            guard t.kind == "caption", let words = t.words else { return t }
+            var u = t
+            u.words = words.map { w in
+                guard w.src == nil, let i = starts.lastIndex(where: { $0 <= w.at + 0.001 }), w.at < starts[i] + clips[i].span + 0.001 else { return w }
+                let c = clips[i]
+                var x = w
+                x.clip = c.id; x.file = c.source.lastPathComponent; x.src = c.start + (w.at - starts[i]) * max(c.speed, 0.01)
+                return x
+            }
+            return u
+        }
+    }
+
+    /// The captions put where their words now are (21 Nov: "when you move stuff around or adjust length it breaks
+    /// the captions"): a word goes with the moment it was said in, wherever its clip (or voiceover) now plays; a
+    /// word trimmed out goes; a caption whose words now play apart (a clip trimmed or moved between them) becomes
+    /// one for each part. A caption never runs past the clip its last word's in, nor over the next. Captions with
+    /// words not tied anywhere are left as they are.
+    static func reanchor(_ texts: [EditText], clips: [Clip], sounds: [EditSound]) -> [EditText] {
+        let starts = ClipJoin.starts(clips)
+        // where a word plays now, and where the stretch it's in ends
+        func place(_ w: EditText.Word) -> (at: Double, end: Double)? {
+            guard let src = w.src else { return nil }
+            if let id = w.clip, let s = sounds.first(where: { $0.id == id }) {
+                guard src >= s.start - 0.01, src <= s.fileTime(s.to) + 0.01 else { return nil }
+                return (s.videoTime(src), s.to)
+            }
+            func inside(_ i: Int) -> Bool { src >= clips[i].start - 0.01 && src < clips[i].end }
+            guard let i = clips.indices.first(where: { clips[$0].id == w.clip && inside($0) })
+                    ?? clips.indices.first(where: { w.file != nil && clips[$0].source.lastPathComponent == w.file && inside($0) }) else { return nil }
+            let c = clips[i]
+            return (starts[i] + max(0, src - c.start) / max(c.speed, 0.01), starts[i] + c.span)
+        }
+        var out: [EditText] = []
+        for t in texts {
+            guard t.kind == "caption", let words = t.words, !words.isEmpty, words.allSatisfy({ $0.src != nil }) else { out.append(t); continue }
+            let placed = words.compactMap { w in place(w).map { (word: w, at: $0.at, end: $0.end) } }.sorted { $0.at < $1.at }
+            guard !placed.isEmpty else { continue }
+            // apart where they're more than a moment apart (a clip trimmed or moved between them)
+            var runs: [[(word: EditText.Word, at: Double, end: Double)]] = []
+            for p in placed {
+                if let last = runs.last?.last, p.at - last.at < 1.2 { runs[runs.count - 1].append(p) } else { runs.append([p]) }
+            }
+            let whole = runs.count == 1 && placed.count == words.count
+            let tail = whole ? min(2, max(0.3, t.to - (words.last?.at ?? t.from))) : 0.5
+            for (n, run) in runs.enumerated() {
+                var c = t
+                if n > 0 { c.id = UUID() }
+                c.words = run.map { var w = $0.word; w.at = $0.at; return w }
+                if !whole { c.text = run.map { $0.word.text }.joined(separator: " ") }
+                c.from = run[0].at
+                c.to = max(c.from + 0.1, min(run.last!.at + tail, run.last!.end))
+                out.append(c)
+            }
+        }
+        // none over the next (the list itself kept in its order: it's the order they're drawn in)
+        let caps = out.indices.filter { out[$0].kind == "caption" }.sorted { out[$0].from < out[$1].from }
+        for (a, b) in zip(caps, caps.dropFirst()) where out[a].to > out[b].from { out[a].to = max(out[a].from + 0.1, out[b].from) }
         return out
     }
 

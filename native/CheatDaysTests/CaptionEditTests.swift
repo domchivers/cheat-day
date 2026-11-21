@@ -95,4 +95,37 @@ final class CaptionEditTests: XCTestCase {
         let close = EditOverlays.merge(old, [EditText(kind: "caption", text: "late", style: "Pop", x: 0.5, y: 0.76, from: 2.4, to: 3)])
         for (a, b) in zip(close, close.dropFirst()) { XCTAssertLessThanOrEqual(a.to, b.from + 0.0001) }
     }
+
+    /// Captions go with their words (21 Nov: "when you move stuff around or adjust length it breaks the captions").
+    func testCaptionsGoWithWhatsSaid() throws {
+        let a = Clip(source: URL(fileURLWithPath: "/tmp/a.mov"), length: 10, start: 0, end: 10)
+        let b = Clip(source: URL(fileURLWithPath: "/tmp/b.mov"), length: 10, start: 0, end: 10)
+        let first = said("one two three", at: 1)       // 1.0 to 2.2, in a
+        let across = [EditText(kind: "caption", text: "so I was", style: "Pop", x: 0.5, y: 0.76, from: 9.2, to: 10.6,
+                               words: [.init(text: "so", at: 9.2), .init(text: "I", at: 9.6), .init(text: "was", at: 10.2)])]   // over the join
+        let tied = EditOverlays.anchor(first + across, clips: [a, b])
+        XCTAssertTrue(tied.allSatisfy { ($0.words ?? []).allSatisfy { $0.src != nil } })
+        XCTAssertEqual(tied[1].words?[2].clip, b.id); XCTAssertEqual(try XCTUnwrap(tied[1].words?[2].src), 0.2, accuracy: 0.001)
+
+        // nothing changed: nothing moves
+        let same = EditOverlays.reanchor(tied, clips: [a, b], sounds: [])
+        XCTAssertEqual(same.map(\.text), tied.map(\.text)); XCTAssertEqual(same[0].from, 1, accuracy: 0.001)
+
+        // a's front trimmed by 1.2 s and its end at 9.4: "one" goes, "I" goes, "was" comes back with b
+        var a2 = a; a2.start = 1.2; a2.end = 9.4
+        let out = EditOverlays.reanchor(tied, clips: [a2, b], sounds: [])
+        XCTAssertEqual(out.map(\.text), ["two three", "so was"])
+        XCTAssertEqual(out[0].from, 0.2, accuracy: 0.001)
+        XCTAssertEqual(out[1].from, 8.0, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(out[1].words?.last?.at), 8.4, accuracy: 0.001, "b now starts at 8.2")
+
+        // the clips swapped: the words go with them
+        let swapped = EditOverlays.reanchor(tied, clips: [b, a], sounds: []).sorted { $0.from < $1.from }
+        XCTAssertEqual(swapped.first?.text, "was"); XCTAssertEqual(try XCTUnwrap(swapped.first?.from), 0.2, accuracy: 0.001)
+        XCTAssertEqual(swapped.first(where: { $0.text == "one two three" })?.from ?? 0, 11, accuracy: 0.001)
+
+        // a split in two: the second half's words stay (the same file)
+        let (h1, h2) = try XCTUnwrap(ClipJoin.split(a, at: 5))
+        XCTAssertEqual(EditOverlays.reanchor(tied, clips: [h1, h2, b], sounds: []).map(\.text), tied.map(\.text))
+    }
 }

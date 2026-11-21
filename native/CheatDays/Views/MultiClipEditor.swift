@@ -225,6 +225,11 @@ struct MultiClipEditor: View {
         // what's over a clip moves with it when a transition, a trim or a move shifts where it starts (21 Nov: a
         // transition added, the captions after it ran behind what was said)
         .onChange(of: clips) { old, new in follow(from: old, to: new) }
+        // a voiceover moved or trimmed: the captions of what's said in it go with it
+        .onChange(of: sounds.filter { $0.kind == "voice" }.map { [$0.from, $0.start, $0.length] }) { _, _ in
+            guard texts.contains(where: { t in t.kind == "caption" && (t.words ?? []).contains { w in sounds.contains { $0.id == w.clip } } }) else { return }
+            texts = EditOverlays.reanchor(texts, clips: clips, sounds: sounds)
+        }
         .sheet(isPresented: $choosingSong) { SongPicker { s in Task { @MainActor in await addSong(s) } } }
         .onAppear { if !UserDefaults.standard.bool(forKey: "editor.tips.1") { tip = 0 } }
         // (a trim handle's drag cut short, by another clip picked or a panel opened, leaves nothing behind)
@@ -1091,7 +1096,11 @@ struct MultiClipEditor: View {
             guard let i = was.lastIndex(where: { $0 <= t + 0.001 }), let n = at[old[i].id] else { return 0 }
             return n - was[i]
         }
-        for k in texts.indices where texts[k].part != "recipe" {
+        // captions go with their words (21 Nov): each word tied to the clip and moment it was said in, then put
+        // where that now plays; trimmed-out words go
+        texts = EditOverlays.anchor(texts, clips: old)
+        let tied = Set(texts.filter { $0.kind == "caption" && !($0.words ?? []).isEmpty && ($0.words ?? []).allSatisfy { $0.src != nil } }.map(\.id))
+        for k in texts.indices where texts[k].part != "recipe" && !tied.contains(texts[k].id) {
             let d = moved(texts[k].from)
             guard abs(d) > 0.0005 else { continue }
             texts[k].from = max(0, texts[k].from + d); texts[k].to = max(texts[k].from + 0.1, texts[k].to + d)
@@ -1105,6 +1114,7 @@ struct MultiClipEditor: View {
             let d = moved(pips[k].from)
             if abs(d) > 0.0005 { pips[k].from = max(0, pips[k].from + d) }
         }
+        texts = EditOverlays.reanchor(texts, clips: new, sounds: sounds)
         // a caption running across a join stays while the next moves back with its clip: each one ends where
         // the next begins, so two are never shown over each other (21 Nov: "Unglazed" drawn over "turns black")
         let caps = texts.indices.filter { texts[$0].kind == "caption" }.sorted { texts[$0].from < texts[$1].from }
@@ -2469,7 +2479,7 @@ struct MultiClipEditor: View {
         let parts = value.split(separator: " ").map(String.init)
         let old = texts[k].words ?? []
         if parts.count == old.count {
-            texts[k].words = zip(parts, old).map { EditText.Word(text: $0.0, at: $0.1.at) }
+            texts[k].words = zip(parts, old).map { var w = $0.1; w.text = $0.0; return w }
         } else if !parts.isEmpty {
             let a = texts[k].from, step = (texts[k].to - a) / Double(parts.count)
             texts[k].words = parts.indices.map { EditText.Word(text: parts[$0], at: a + step * Double($0)) }
