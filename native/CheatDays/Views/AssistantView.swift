@@ -985,6 +985,20 @@ struct AssistantView: View {
                 }
                 .buttonStyle(.plain).accessibilityHint("Shows this one")
             }
+            orderingTips((ta["tips"] as? [String]) ?? [])
+        }
+    }
+
+    /// A few tips for ordering at that place (its lightest flavour, what to skip, a deal), from the menu lookup.
+    @ViewBuilder private func orderingTips(_ advice: [String]) -> some View {
+        if !advice.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("ORDERING TIPS").font(.caption2.weight(.heavy)).foregroundStyle(.secondary)
+                ForEach(advice.indices, id: \.self) { i in
+                    Text("• " + advice[i]).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(.horizontal, 6).frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -1067,6 +1081,10 @@ struct AssistantView: View {
     /// "851 kcal · 66 g", the protein green when it reaches the aim.
     private func comboTotal(_ c: JSON, aim: Double) -> Text {
         let p = num(c["p"]) ?? 0
+        // a guessed dish: the range, as the PUBCHA chat gave it (design/takeaway-combos-mockup.html)
+        if let lo = num(c["kcalLo"]), let hi = num(c["kcalHi"]), let pl = num(c["pLo"]), let ph = num(c["pHi"]) {
+            return Text("\(Fmt.int(lo))–\(Fmt.int(hi)) kcal · ") + Text("\(Int(pl))–\(Int(ph)) g").foregroundStyle(p >= aim - 0.5 ? Theme.walk : Theme.warn)
+        }
         return Text("\(Fmt.int(num(c["kcal"]) ?? 0)) kcal · ") + Text("\(Int(p.rounded())) g").foregroundStyle(p >= aim - 0.5 ? Theme.walk : Theme.warn)
     }
 

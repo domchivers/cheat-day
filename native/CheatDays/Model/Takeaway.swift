@@ -15,19 +15,32 @@ enum Takeaway {
         var amounts: [Double]
     }
 
-    /// One way to have it: a menu item and how much of each home food (0 for none).
-    struct Combo { var item: Item; var home: [(Home, Double)]
-        var kcal: Double { item.kcal + home.reduce(0.0) { $0 + $1.0.kcal100 * $1.1 / 100 } }
-        var p: Double { item.p + home.reduce(0.0) { $0 + $1.0.p100 * $1.1 / 100 } }
-        var c: Double { item.c + home.reduce(0.0) { $0 + $1.0.c100 * $1.1 / 100 } }
-        var f: Double { item.f + home.reduce(0.0) { $0 + $1.0.f100 * $1.1 / 100 } }
+    /// One way to have it: one or two of the menu's dishes, each with how much of it (½: eat half, the rest keeps), and
+    /// how much of each home food (0 for none). Two dishes and a part of one came with the PUBCHA chat the owner shared
+    /// (21 Nov, design/takeaway-combos-mockup.html): "the bulgogi bowl and the small chicken, eat about half of it".
+    struct Combo {
+        var dishes: [(Item, Double)]
+        var home: [(Home, Double)]
+        init(item: Item, home: [(Home, Double)]) { dishes = [(item, 1)]; self.home = home }
+        init(dishes: [(Item, Double)], home: [(Home, Double)] = []) { self.dishes = dishes; self.home = home }
+        var item: Item { dishes[0].0 }
+        private func sum(_ v: (Item) -> Double, _ h: (Home) -> Double) -> Double {
+            dishes.reduce(0.0) { $0 + v($1.0) * $1.1 } + home.reduce(0.0) { $0 + h($1.0) * $1.1 / 100 }
+        }
+        var kcal: Double { sum({ $0.kcal }, { $0.kcal100 }) }
+        var p: Double { sum({ $0.p }, { $0.p100 }) }
+        var c: Double { sum({ $0.c }, { $0.c100 }) }
+        var f: Double { sum({ $0.f }, { $0.f100 }) }
         func grams(_ k: Home.Kind) -> Double { home.filter { $0.0.kind == k }.reduce(0.0) { $0 + $1.1 } }
-        /// More restaurant food and dessert, less plain powder.
+        /// Which dishes and how much of each, the same whichever way round: an order already shown isn't shown again.
+        var key: String { dishes.map { "\($0.0.name.lowercased())@\(Int(($0.1 * 100).rounded()))" }.sorted().joined(separator: "|") }
+        /// More restaurant food and dessert, less plain powder; a dish only partly eaten counts a little against it.
         var enjoyment: Double {
             func weight(_ k: Home.Kind) -> Double {
                 switch k { case .dessert: return 1; case .yoghurt: return 0.5; case .powder: return -0.5; case .milk: return 0 }
             }
-            return item.kcal + home.reduce(0.0) { s, h in s + h.0.kcal100 * h.1 / 100 * weight(h.0.kind) }
+            let food = dishes.reduce(0.0) { $0 + $1.0.kcal * $1.1 }, partial = Double(dishes.filter { $0.1 < 0.99 }.count)
+            return food - 40 * partial + home.reduce(0.0) { s, h in s + h.0.kcal100 * h.1 / 100 * weight(h.0.kind) }
         }
     }
 
@@ -125,7 +138,10 @@ enum Takeaway {
     /// within 10 over, then the most enjoyable among those close to the calories), the most protein, and the most
     /// restaurant food, each with a different dish. Low-protein dishes and sides that can't fit with a dish are listed
     /// apart. Asked-for dishes are used even when they don't fit, and say how far over.
-    static func plan(menu: [Item], home: [Home], kcal: Double, protein: Double, want: [String] = [], avoid: [String] = [], place: String = "the menu") -> Picks {
+    /// With no food from home, an order can be two dishes, or part of one (design/takeaway-combos-mockup.html). \`shown\`:
+    /// orders already shown ("any other options?"), left out; \`count\`: how many to give.
+    static func plan(menu: [Item], home: [Home], kcal: Double, protein: Double, want: [String] = [], avoid: [String] = [], place: String = "the menu",
+                     shown: Set<String> = [], count: Int = 3) -> Picks {
         let avoid = avoid.map { $0.lowercased() }.filter { !$0.isEmpty }
         // "no milk": the milk goes, not the Milk Chocolate protein powder. A kind of home food is matched by its kind
         let kinds: [String: Home.Kind] = ["milk": .milk, "powder": .powder, "protein powder": .powder, "shake": .powder, "yoghurt": .yoghurt, "yogurt": .yoghurt, "ice cream": .dessert, "dessert": .dessert]
@@ -164,9 +180,30 @@ enum Takeaway {
         mixes = mixes.map { $0.filter { $0.1 > 0 } }
             .filter { m in !(m.contains { $0.0.kind == .milk } && !m.contains { $0.0.kind == .powder }) }   // milk only in a shake
             .filter { m in m.filter { $0.0.kind != .milk }.count <= 2 }   // a shake and one more at most, not shake, yoghurt and ice cream
-        var tried = 0, best: [Combo] = []
+        // two dishes, or part of one: only with nothing from home (asked for, those are what's added) and something that fits
+        let pairing = home.isEmpty && !tooBig
+        let partners = menu.filter { ($0.kind == "main" || $0.kind == "side") && !lowProtein($0) }
+        // "Small Fried Chicken" with "Large Fried Chicken" is the one dish twice
+        let sizes: Set<String> = ["small", "large", "regular", "medium", "half", "whole"]
+        func sameDish(_ a: Item, _ b: Item) -> Bool {
+            let wa = Set(words(a.name).filter { !sizes.contains($0) }), wb = Set(words(b.name).filter { !sizes.contains($0) })
+            return !wa.isEmpty && wa == wb
+        }
+        var tried = 0, best: [Combo] = [], every: [Item: [Combo]] = [:]
         for item in pool {
-            let all = mixes.map { Combo(item: item, home: $0) }; tried += all.count
+            var all = mixes.map { Combo(item: item, home: $0) }
+            if pairing {
+                let asked = wanted.contains(item)
+                for s in asked ? [2.0 / 3, 0.5, 1.0 / 3] : [2.0 / 3, 0.5] { all.append(Combo(dishes: [(item, s)])) }
+                for s in asked ? [1, 0.5, 1.0 / 3] : [1.0] {
+                    for b in partners where b != item && !sameDish(b, item) {
+                        for share in [1, 0.5, 1.0 / 3] { all.append(Combo(dishes: [(item, s), (b, share)])) }
+                    }
+                }
+            }
+            all = all.filter { !shown.contains($0.key) }
+            tried += all.count
+            every[item] = all
             let fits = over ? all : all.filter { $0.kcal <= kcal + 10 }
             if let b = pick(fits, kcal: kcal, protein: protein, over: over) { best.append(b) }
         }
@@ -174,8 +211,19 @@ enum Takeaway {
         let first = pick(best, kcal: kcal, protein: protein, over: over)!
         var out: [(Combo, String)] = [(first, "Best fit")]
         var rest = best.filter { $0.item != first.item }
-        if let m = rest.filter({ $0.kcal <= kcal + 10 }).max(by: { $0.p < $1.p }), m.p > first.p + 2 { out.append((m, "Most protein")); rest.removeAll { $0.item == m.item } }
-        while out.count < 3, let n = pick(rest, kcal: kcal, protein: protein, over: over) {
+        // a dish asked about ("what about the seafood pancake?"): the whole of it, and some of it, as well as the pick
+        if pairing, !wanted.isEmpty {
+            let theirs = wanted.flatMap { every[$0] ?? [] }
+            func share(_ c: Combo) -> Double { c.dishes.first { wanted.contains($0.0) }?.1 ?? 0 }
+            let ways: [((Double) -> Bool, String)] = [({ $0 >= 0.99 }, "With the whole one"), ({ $0 > 0 && $0 < 0.99 }, "Some of it")]
+            for (keep, note) in ways where out.count < count {
+                if let c = pick(theirs.filter { keep(share($0)) }, kcal: kcal, protein: protein, over: true), !out.contains(where: { $0.0.key == c.key }) {
+                    out.append((c, note)); rest.removeAll { $0.item == c.item }
+                }
+            }
+        }
+        if out.count < count, let m = rest.filter({ $0.kcal <= kcal + 10 }).max(by: { $0.p < $1.p }), m.p > first.p + 2 { out.append((m, "Most protein")); rest.removeAll { $0.item == m.item } }
+        while out.count < count, let n = pick(rest, kcal: kcal, protein: protein, over: over) {
             let note = n.item.kcal > first.item.kcal + 20 ? "More from " + place : n.grams(.dessert) > 0 && first.grams(.dessert) == 0 ? "With dessert" : ""
             out.append((n, note)); rest.removeAll { $0.item == n.item }
         }
@@ -194,7 +242,9 @@ enum Takeaway {
             if !close.isEmpty { return close.max { ($0.enjoyment, -abs(kcal - $0.kcal)) < ($1.enjoyment, -abs(kcal - $1.kcal)) } }
             return fit.min { abs(kcal - $0.kcal) < abs(kcal - $1.kcal) }
         }
-        return cs.max { ($0.p, -$0.kcal) < ($1.p, -$1.kcal) }
+        // (a dish asked about that can't reach it: the most protein within the calories, before any over them)
+        let within = cs.filter { $0.kcal <= kcal + 10 }
+        return (within.isEmpty ? cs : within).max { ($0.p, -$0.kcal) < ($1.p, -$1.kcal) }
     }
 
     private static func words(_ s: String) -> [String] {
@@ -204,17 +254,26 @@ enum Takeaway {
 
     // MARK: the card
 
-    /// A combo for the card and the chat record: its lines (a dish, a shake of powder and milk, a yoghurt, a dessert),
-    /// each with the foods it adds, and the totals added up from them.
+    /// How much of a dish: "½", "⅓", "⅔".
+    static func frac(_ s: Double) -> String {
+        abs(s - 0.5) < 0.01 ? "½" : abs(s - 1.0 / 3) < 0.01 ? "⅓" : abs(s - 2.0 / 3) < 0.01 ? "⅔" : abs(s - 0.25) < 0.01 ? "¼" : "\(Int((s * 100).rounded()))%"
+    }
+
+    /// A combo for the card and the chat record: its lines (each dish, with how much of it; a shake of powder and milk, a
+    /// yoghurt, a dessert), each with the foods it adds, and the totals added up from them; with an estimated dish, the
+    /// totals as a range too.
     static func json(_ c: Combo, note: String, restaurant: String, kcal: Double) -> JSON {
         func food(_ h: Home, _ a: Double) -> JSON {
             ["name": h.name, "grams": a, "unit": h.unit, "kcal": (h.kcal100 * a / 100).rounded(), "p": h.p100 * a / 100, "c": h.c100 * a / 100, "f": h.f100 * a / 100]
         }
         // "30 g powder + 150 ml milk": the shake's parts by what they are, their full names on the foods it adds
         func amount(_ h: Home, _ a: Double) -> String { "\(Fmt.one(a)) \(h.unit) \(h.kind == .powder ? "powder" : h.kind == .milk ? "milk" : h.name)" }
-        let i = c.item
-        var lines: [JSON] = [["name": i.name, "detail": "", "tag": i.tier, "kcal": i.kcal.rounded(), "p": i.p,
-                              "add": [["name": "\(restaurant) \(i.name)", "grams": 0, "unit": "g", "kcal": i.kcal.rounded(), "p": i.p, "c": i.c, "f": i.f] as JSON]]]
+        var lines: [JSON] = c.dishes.map { d -> JSON in
+            let (i, s) = d, part = s < 0.99
+            let add: JSON = ["name": "\(restaurant) \(i.name)" + (part ? " (\(frac(s)))" : ""), "grams": 0, "unit": "g", "kcal": (i.kcal * s).rounded(), "p": i.p * s, "c": i.c * s, "f": i.f * s]
+            return ["name": i.name, "detail": part ? "Eat \(frac(s)), the rest keeps" : "", "tag": i.tier, "dish": true, "share": s,
+                    "kcal": (i.kcal * s).rounded(), "p": i.p * s, "add": [add]]
+        }
         let powder = c.home.first { $0.0.kind == .powder }, milk = c.home.first { $0.0.kind == .milk }
         if let powder {
             let parts = [powder] + (milk.map { [$0] } ?? [])
@@ -226,20 +285,50 @@ enum Takeaway {
             lines.append(["name": h.name, "detail": "\(Fmt.one(a)) \(h.unit)", "tag": h.label ? "label" : "log",
                           "kcal": (h.kcal100 * a / 100).rounded(), "p": h.p100 * a / 100, "add": [food(h, a)]])
         }
-        // "Chicken Burger, shake and ice cream"
-        var bits = [i.name.components(separatedBy: CharacterSet(charactersIn: ",(")).first ?? i.name]
+        // "Beef Bulgogi Rice Bowl + ½ Small Fried Chicken", "Chicken Burger, shake and ice cream"
+        func cut(_ n: String) -> String { n.components(separatedBy: CharacterSet(charactersIn: ",(")).first ?? n }
+        var bits = [c.dishes.map { ($0.1 < 0.99 ? frac($0.1) + " " : "") + cut($0.0.name) }.joined(separator: " + ")]
         if let _ = powder { bits.append(milk == nil ? "a water shake" : "shake") }
         for (h, _) in c.home where h.kind == .yoghurt { bits.append("yoghurt") }
         for (h, _) in c.home where h.kind == .dessert { bits.append(h.name.lowercased().contains("gelato") ? "gelato" : "ice cream") }
         let title = bits.count > 1 ? bits.dropLast().joined(separator: ", ") + " and " + bits.last! : bits[0]
-        // where the numbers came from, once under the card rather than a tag on every line; amber when the dish was guessed
-        let dish = bits[0], warn = i.tier == "none"
-        let fromDish = i.tier == "full" ? "\(dish) from \(restaurant)'s menu"
-                     : i.tier == "energy" ? "\(dish) from \(restaurant)'s kJ, protein estimated"
-                     : "\(dish) estimated: its kJ wasn't on \(restaurant)'s listing. Type it or send a screenshot"
-        let fromHome = c.home.isEmpty ? "" : c.home.allSatisfy { $0.0.label } ? " · the rest from your labels" : " · the rest from your log"
-        return ["title": title, "note": note, "lines": lines, "kcal": c.kcal.rounded(), "p": c.p.rounded(), "c": c.c.rounded(), "f": c.f.rounded(),
-                "over": max(0, c.kcal - kcal).rounded(), "source": fromDish + fromHome, "warn": warn]
+        var out: JSON = ["title": title, "note": note, "lines": lines, "kcal": c.kcal.rounded(), "p": c.p.rounded(), "c": c.c.rounded(), "f": c.f.rounded(),
+                         "over": max(0, c.kcal - kcal).rounded(), "key": c.key]
+        out["source"] = source(dishes: lines.filter { $0["dish"] as? Bool == true }, homes: lines.filter { $0["dish"] as? Bool != true }, restaurant: restaurant)
+        out["warn"] = c.dishes.contains { $0.0.tier == "none" }
+        for (k, v) in spread(lines) { out[k] = v }
+        return out
+    }
+
+    /// Where the numbers came from, said once under the card; amber (warn) when a dish was guessed.
+    static func source(dishes: [JSON], homes: [JSON], restaurant r: String) -> String {
+        let tiers = dishes.map { str($0["tag"]) }
+        var fromDish = ""
+        if dishes.count == 1 {
+            let name = str(dishes[0]["name"]).components(separatedBy: CharacterSet(charactersIn: ",(")).first ?? ""
+            fromDish = tiers[0] == "full" ? "\(name) from \(r)'s menu" : tiers[0] == "energy" ? "\(name) from \(r)'s kJ, protein estimated"
+                : "\(name) estimated: its kJ wasn't on \(r)'s listing. Type it or send a screenshot"
+        } else if dishes.count > 1 {
+            fromDish = tiers.allSatisfy { $0 == "full" } ? "From \(r)'s menu"
+                : tiers.contains("none") ? "Estimates, give or take about 20%: \(r)'s listing has no kJ. Type it or send a screenshot"
+                : "From \(r)'s kJ, protein estimated"
+        }
+        let tags = homes.map { str($0["tag"]) }
+        let fromHome = tags.isEmpty ? "" : tags.allSatisfy { $0 == "label" } ? "the rest from your labels" : "the rest from your log"
+        return [fromDish, fromHome].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    /// With a guessed dish (nothing published), the totals as a range, give or take a fifth of what's guessed
+    /// ("1,300–1,450 kcal · 75–85 g"), as the PUBCHA chat gave them; nothing guessed, none.
+    static func spread(_ lines: [JSON]) -> JSON {
+        var lo = 0.0, hi = 0.0, plo = 0.0, phi = 0.0, guessed = false
+        for l in lines {
+            let k = num(l["kcal"]) ?? 0, p = num(l["p"]) ?? 0, e = l["dish"] as? Bool == true && str(l["tag"]) == "none" ? 0.2 : 0
+            if e > 0 { guessed = true }
+            lo += k * (1 - e); hi += k * (1 + e); plo += p * (1 - e); phi += p * (1 + e)
+        }
+        guard guessed else { return [:] }
+        return ["kcalLo": (lo / 50).rounded(.down) * 50, "kcalHi": (hi / 50).rounded(.up) * 50, "pLo": (plo / 5).rounded(.down) * 5, "pHi": (phi / 5).rounded(.up) * 5]
     }
 
     // MARK: asking
@@ -253,8 +342,8 @@ enum Takeaway {
         "avoid": ["type": "array", "items": s] as JSON,
         "seen": ["type": "array", "items": ["type": "object", "required": ["name", "kj"], "properties": ["name": s, "kj": n] as JSON] as JSON] as JSON,
         "kcal": n, "protein": n] as JSON]
-    static let menuSchema: JSON = ["type": "object", "required": ["found", "restaurant", "source", "items"], "properties": [
-        "found": ["type": "boolean"] as JSON, "restaurant": s, "source": s,
+    static let menuSchema: JSON = ["type": "object", "required": ["found", "restaurant", "source", "items", "tips"], "properties": [
+        "found": ["type": "boolean"] as JSON, "restaurant": s, "source": s, "tips": ["type": "array", "items": s] as JSON,
         "items": ["type": "array", "items": ["type": "object", "required": ["name", "kind", "published", "kj", "kcal", "protein_g", "carbs_g", "fat_g"], "properties": [
             "name": s, "kind": ["type": "string", "enum": ["main", "side", "drink", "dessert"]] as JSON,
             "published": ["type": "string", "enum": ["full", "energy", "none"]] as JSON,
@@ -284,7 +373,7 @@ enum Takeaway {
         """
         Find the current menu of "\(restaurant)"\(area.isEmpty ? "" : " in \(area)"), a restaurant, takeaway or chain in \(Plan.country), and the nutrition it publishes. Look first for the nutrition it publishes itself: chains in Australia list kJ (often protein too) on their own website's menu or nutrition page, or a nutrition PDF; search the web for "\(restaurant) nutrition information" first, then open its own page or PDF from those results with web_fetch (a page can only be opened once a search has shown it) and read each item's numbers from it. DoorDash, Uber Eats and Menulog pages usually can't be opened, but their search results show the current menu's item names and often kJ in each name ("Chicken Burger (2280 kJ)"): use them for names and any kJ shown.\(want.isEmpty ? "" : " They want: \(want.joined(separator: ", ")). Make sure those dishes are in the list if it sells them, with the kJ its listing shows today, not an old menu's.")\(seen.isEmpty ? "" : " They read these on its listing today: \(seen.joined(separator: ", ")). List each with exactly that kJ, and estimate its protein, carbs and fat for that energy.") List up to 30 of its items, mains first, each as one serving as sold (with its size or pieces in the name, "Original tenders, 4 pcs").\(want.isEmpty ? "" : " When a dish they want comes another way it sells (another base such as high protein, gluten free or thin, or a protein option), list that way as its own item named with it (\"Pepperoni pizza, high protein base\"), with its own numbers.")
         For each item: published is full when the restaurant gives its calories and protein, energy when it gives only kJ or kcal, none when it gives nothing. kj: exactly as published, else 0. kcal: as published, else kJ ÷ 4.184, else your estimate. protein_g, carbs_g and fat_g: as published, else your honest estimate from what the item is and its usual portion. kind: main, side, drink or dessert.
-        found false if you can't find its menu at all. source: where the numbers came from, a few words. When its own figures and a delivery listing's kJ disagree, the delivery listing is today's menu: use its number. Never guess a kJ: an item whose energy you didn't read on a page has kj 0 and published none.
+        found false if you can't find its menu at all. tips: up to 3 short tips for ordering there with fewer calories or more protein, from what its menu has (its lightest flavour or sauce, a dish to skip, a deal on now), each under 15 words; empty when there are none worth giving. source: where the numbers came from, a few words. When its own figures and a delivery listing's kJ disagree, the delivery listing is today's menu: use its number. Never guess a kJ: an item whose energy you didn't read on a page has kj 0 and published none.
         """
     }
 
@@ -325,7 +414,8 @@ enum Takeaway {
 
     /// The dishes they asked for, without the foods from home they named with them ("a shake and ice cream").
     static func dishes(_ want: [String]) -> [String] {
-        want.filter { w in kind(w) == nil && !["shake", "milk", "ice cream", "yoghurt", "yogurt"].contains { w.lowercased().contains($0) } && !words(w).isEmpty }
+        // (and not "high protein" alone: how they'd like it, not a dish. "Any other options?" came with it, 21 Nov)
+        want.filter { w in kind(w) == nil && !["shake", "milk", "ice cream", "yoghurt", "yogurt"].contains { w.lowercased().contains($0) } && !words(core(w)).isEmpty }
     }
 
     /// Words that say how they'd like a dish, not which dish. "Protein pepperoni pizza" from Crust is its pepperoni pizza,
@@ -551,8 +641,26 @@ enum Takeaway {
                                 || ["doordash", "door dash", "uber", "menulog"].contains { said.lowercased().contains($0) })
         // their numbers from earlier in the chat too: "check on DoorDash" gave none, and the protein they asked for was lost
         let earlierProtein = turns.dropLast().reversed().compactMap { t -> Double? in (t.result?["takeaway"] as? JSON).flatMap { pos($0["aim"]) } }.first
-        decided?.set(true); return await choose(name, area: str(route["area"]), want: want, seen: seen, avoid: route["avoid"] as? [String] ?? [], said: last.text, earlier: earlier,
-                            kcal: pos(route["kcal"]) ?? theirKcal, protein: pos(route["protein"]) ?? (proteinTalk ? earlierProtein : nil), meal: nil, store: store, step: step, fresh: again)
+        // the orders already shown in this chat, and their dishes
+        let shownCombos = turns.dropLast().flatMap { t -> [JSON] in list((t.result?["takeaway"] as? JSON)?["combos"]) }
+        let shownDishes = Set(shownCombos.flatMap { c -> [String] in
+            let ls = list(c["lines"]), marked = ls.filter { $0["dish"] as? Bool == true }
+            return (marked.isEmpty ? Array(ls.prefix(1)) : marked).map { cutName(str($0["name"])).lowercased() }
+        })
+        // "what else is there?" came back with every dish already suggested as avoided, which would leave the half chicken
+        // out of every other pairing: one stays avoided only when they said something about it ("don't see boneless")
+        let lower = said.lowercased()
+        let avoidList = (route["avoid"] as? [String] ?? []).filter { a in
+            let al = cutName(a).lowercased()
+            let wasShown = shownDishes.contains { $0.contains(al) || al.contains($0) }
+            return !wasShown || words(a).contains { lower.contains($0) }
+        }
+        // "any other options?": four more, none already shown
+        let others = planned && dishes(want).isEmpty && lower.range(of: #"\b(other|else|another|alternatives?|options?|ideas?)\b"#, options: .regularExpression) != nil
+        let before = others ? Set(shownCombos.map { str($0["key"]) }.filter { !$0.isEmpty }) : []
+        decided?.set(true); return await choose(name, area: str(route["area"]), want: want, seen: seen, avoid: avoidList, said: last.text, earlier: earlier,
+                            kcal: pos(route["kcal"]) ?? theirKcal, protein: pos(route["protein"]) ?? (proteinTalk ? earlierProtein : nil), meal: nil, store: store, step: step, fresh: again,
+                            before: before, count: others ? 4 : 3, followUp: planned)
     }
 
     /// Calories they gave for the meal earlier in the chat ("a burrito for under 700cals"), the latest; nil when none.
@@ -681,7 +789,8 @@ enum Takeaway {
     /// The card for one restaurant: its menu found (or kept), the home foods, the plan.
     @MainActor static func choose(_ name: String, area: String, want: [String], seen: [JSON], avoid: [String], said text: String, earlier: String,
                                   kcal theirKcal: Double?, protein theirProtein: Double?, meal named: String?, store: Store,
-                                  step: (@MainActor (String, String) -> Void)?, fresh: Bool = false) async -> JSON {
+                                  step: (@MainActor (String, String) -> Void)?, fresh: Bool = false,
+                                  before: Set<String> = [], count: Int = 3, followUp: Bool = false) async -> JSON {
         step?("Asked about \(name)", fresh ? "Looking at \(name)'s menu again…" : "Finding \(name)'s menu…")
         guard let m = await menu(name, area: area, want: want, seen: seen, fresh: fresh) else {
             return ["kind": "answer", "menuMissing": true, "reply": "I couldn't find \(name)'s menu online. Tell me what's on it (the names and kJ from the app you order on) and I'll put it together."]
@@ -711,12 +820,29 @@ enum Takeaway {
                  : !asked.ways.isEmpty ? "\(shown) doesn't give numbers for its \(asked.ways[0].lowercased()), so these are on its usual base. "
                  : asked.plain.first(where: { isWay($0.said) || core($0.said) != $0.said }).map { isWay($0.said) ? "On its \($0.said.lowercased()): " : "\(shown) doesn't list a \($0.said.lowercased()), so here's its \($0.dish.lowercased()). " } ?? ""
         let proteinAsked = theirProtein != nil || talk.lowercased().contains("protein") || homeToo
-        let p = plan(menu: menuItems, home: homeToo ? home : [], kcal: kcal, protein: protein, want: asked.want, avoid: avoid, place: shown)
-
+        let p = plan(menu: menuItems, home: homeToo ? home : [], kcal: kcal, protein: protein, want: asked.want, avoid: avoid, place: shown,
+                     shown: before, count: count)
+        // "what about the seafood pancake?" after a card: said straight whether it suits, and what's still best (the PUBCHA chat)
+        var verdict = "", still = ""
+        if followUp, let w = asked.want.first, let i = menuItems.first(where: { has([$0], w) }) {
+            let per = i.p / max(i.kcal, 1) * 100, est = i.tier == "none" ? "about " : ""
+            verdict = per < 5 ? "\(cutName(i.name)) isn't a great pick for this: \(est)\(Fmt.int(i.kcal)) kcal for \(Int(i.p.rounded())) g protein. "
+                              : "\(cutName(i.name)) can work: \(est)\(Fmt.int(i.kcal)) kcal and \(Int(i.p.rounded())) g protein. "
+            let plain = plan(menu: menuItems, home: homeToo ? home : [], kcal: kcal, protein: protein, avoid: avoid, place: shown)
+            if let b = plain.combos.first?.0, !b.dishes.contains(where: { $0.0 == i }) {
+                still = "\n\nStill the best for what you're after: " + str(json(b, note: "", restaurant: shown, kcal: kcal)["title"]) + "."
+            }
+        }
+        let advice = Array((m["tips"] as? [String] ?? []).filter { !$0.isEmpty }.prefix(3))
         let smallest = menuItems.filter { $0.kind == "main" }.map { $0.kcal }.min() ?? 0
-        return result(p, home: homeToo ? home : [], tips: homeToo ? [] : home, menu: menuItems, shown: shown, kcal: kcal, protein: protein, meal: meal,
-                      smallest: smallest, source: str(m["source"]), lead: lead, proteinAsked: proteinAsked)
+        var out = result(p, home: homeToo ? home : [], tips: homeToo ? [] : home, menu: menuItems, shown: shown, kcal: kcal, protein: protein, meal: meal,
+                         smallest: smallest, source: str(m["source"]), lead: lead + verdict, proteinAsked: proteinAsked, advice: advice, others: !before.isEmpty)
+        if !still.isEmpty, str(out["kind"]) == "takeaway" { out["reply"] = str(out["reply"]) + still }
+        return out
     }
+
+    /// A dish's name without its size or pieces: "Seafood Pancake" from "Seafood Pancake, large".
+    static func cutName(_ n: String) -> String { n.components(separatedBy: CharacterSet(charactersIn: ",(")).first ?? n }
 
     /// They brought up food from home: a shake, ice cream, yoghurt, milk, powder or "from home".
     static func asksForHome(_ text: String) -> Bool {
@@ -752,9 +878,11 @@ enum Takeaway {
             // "Chicken Burger, shake and ice cream" → "Original tenders, shake and ice cream"
             let was = short(str(lines[0]["name"]))
             if title.hasPrefix(was) { title = short(str(d["name"])) + title.dropFirst(was.count) }
-            lines[0] = ["name": str(d["name"]), "detail": "", "tag": str(d["tier"]), "kcal": num(d["kcal"]) ?? 0, "p": num(d["p"]) ?? 0,
+            lines[0] = ["name": str(d["name"]), "detail": "", "tag": str(d["tier"]), "dish": true, "share": 1.0, "kcal": num(d["kcal"]) ?? 0, "p": num(d["p"]) ?? 0,
                         "add": [["name": "\(restaurant) \(str(d["name"]))", "grams": 0, "unit": "g", "kcal": num(d["kcal"]) ?? 0, "p": num(d["p"]) ?? 0, "c": num(d["c"]) ?? 0, "f": num(d["f"]) ?? 0] as JSON]]
         }
+        // a card from before dishes were marked: its first line is the dish
+        if !lines.isEmpty, !lines.contains(where: { $0["dish"] != nil }) { lines[0]["dish"] = true }
         if tip, let t = dict(c["tip"])["line"] as? JSON { lines.append(t) }
         let on = lines.indices.filter { !off.contains($0) }
         func sum(_ k: String) -> Double { on.flatMap { list(lines[$0]["add"]) }.reduce(0.0) { $0 + (num($1[k]) ?? 0) } }
@@ -764,15 +892,12 @@ enum Takeaway {
         out["kcal"] = sum("kcal").rounded(); out["p"] = sum("p").rounded(); out["c"] = sum("c").rounded(); out["f"] = sum("f").rounded()
         out["over"] = max(0, sum("kcal") - kcal).rounded()
         out["count"] = on.count
-        // where the numbers came from, for what's still on the card
-        let dishOn = !off.contains(0) && !lines.isEmpty, tier = dishOn ? str(lines[0]["tag"]) : ""
-        let name = dishOn ? (str(lines[0]["name"]).components(separatedBy: CharacterSet(charactersIn: ",(")).first ?? "") : ""
-        let fromDish = !dishOn ? "" : tier == "full" ? "\(name) from \(restaurant)'s menu" : tier == "energy" ? "\(name) from \(restaurant)'s kJ, protein estimated"
-                     : "\(name) estimated: its kJ wasn't on \(restaurant)'s listing. Type it or send a screenshot"
-        let homes = on.filter { $0 > 0 }.map { str(lines[$0]["tag"]) }
-        let fromHome = homes.isEmpty ? "" : homes.allSatisfy { $0 == "label" } ? "the rest from your labels" : "the rest from your log"
-        out["source"] = [fromDish, fromHome].filter { !$0.isEmpty }.joined(separator: " · ")
-        out["warn"] = dishOn && tier == "none"
+        // where the numbers came from, and the range when a dish is guessed, for what's still on the card
+        let kept = on.map { lines[$0] }
+        out["source"] = source(dishes: kept.filter { $0["dish"] as? Bool == true }, homes: kept.filter { $0["dish"] as? Bool != true }, restaurant: restaurant)
+        out["warn"] = kept.contains { $0["dish"] as? Bool == true && str($0["tag"]) == "none" }
+        for k in ["kcalLo", "kcalHi", "pLo", "pHi"] { out[k] = nil }
+        for (k, v) in spread(kept) { out[k] = v }
         return out
     }
 
@@ -780,7 +905,7 @@ enum Takeaway {
     /// its numbers came from, with dishes to swap in and, when it's short of protein and nothing from home was asked for,
     /// one shake offered. (The low-protein and won't-fit lists were too much at once; they're left out.)
     static func result(_ p: Picks, home: [Home], tips: [Home] = [], menu: [Item] = [], shown: String, kcal: Double, protein: Double, meal: String,
-                       smallest: Double, source: String = "", lead: String = "", proteinAsked: Bool = true) -> JSON {
+                       smallest: Double, source: String = "", lead: String = "", proteinAsked: Bool = true, advice: [String] = [], others: Bool = false) -> JSON {
         let names = home.map { short($0.name) }
         let mine = names.count > 1 ? names.dropLast().joined(separator: ", ") + " and " + names.last! : names.first ?? ""
         let used = "\(shown)'s menu" + (mine.isEmpty ? "" : " · your \(mine)")
@@ -794,16 +919,20 @@ enum Takeaway {
             return j
         }
         let first = combos[0], title = str(first["title"]), over = num(first["over"]) ?? 0
-        var reply = over > 10 ? "\(title) is \(Fmt.int(over)) kcal over what's left, but it's the closest:"
+        var reply = others ? "\(combos.count == 1 ? "One more" : "\(combos.count) more") from \(shown):"
+                  : over > 10 ? "\(title) is \(Fmt.int(over)) kcal over what's left, but it's the closest:"
                   : p.meets ? "\(title) gets you there:"
                   : proteinAsked ? "\(title) gets you closest, \(Fmt.int(top.p)) g of your \(Int(protein)) g protein:"
                   : "\(title) fits in \(Fmt.int(kcal)) kcal, with \(Fmt.int(top.p)) g protein:"
         // said first when the dish's own energy wasn't found; the card's amber line says how to give it
-        if top.item.tier == "none" { reply = "I couldn't find its kJ on \(shown)'s listing, so it's estimated. " + reply }
+        // said first when a dish's own energy wasn't found: ranges on the card (the PUBCHA chat's "give or take about 20%")
+        if top.dishes.contains(where: { $0.0.tier == "none" }) {
+            reply = "\(shown) doesn't publish kJ\(top.dishes.count > 1 || others ? " for these" : " for this"), so the numbers are estimates, give or take about 20%. " + reply
+        }
         reply = lead + reply
         if home.isEmpty && tips.isEmpty && !p.meets && proteinAsked { reply += "\n\nScan your protein powder or yoghurt in Plan a meal and I can add them from home." }
         return ["kind": "takeaway", "reply": reply, "meal": meal, "trail": [used],
-                "takeaway": ["restaurant": shown, "source": source, "combos": combos, "aim": protein, "kcal": kcal] as JSON]
+                "takeaway": ["restaurant": shown, "source": source, "combos": combos, "aim": protein, "kcal": kcal, "tips": advice] as JSON]
     }
 
     /// "Milk Chocolate Protein Powder" → "protein powder", for the trail.

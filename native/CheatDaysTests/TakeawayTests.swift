@@ -217,8 +217,8 @@ final class TakeawayTests: XCTestCase {
         let p = Takeaway.plan(menu: gami, home: [], kcal: 600, protein: 45, place: "Gami")
         let r = Takeaway.result(p, home: [], tips: home, menu: gami, shown: "Gami", kcal: 600, protein: 45, meal: "Lunch", smallest: 545)
         let c = list(dict(r["takeaway"])["combos"])[0]
-        XCTAssertEqual(list(c["lines"]).count, 1, "just the dish")
-        XCTAssertNotNil(c["tip"], "a shake offered, not added")
+        XCTAssertTrue(list(c["lines"]).allSatisfy { $0["dish"] as? Bool == true }, "only Gami's dishes, nothing from home")
+        if !p.meets { XCTAssertNotNil(c["tip"], "short of the protein: a shake offered, not added") }
         XCTAssertFalse(list(c["swaps"]).isEmpty, "other dishes to swap in")
         XCTAssertFalse(str(r["reply"]).contains("Scan"), "no nudge to scan when a shake is on offer")
     }
@@ -246,7 +246,7 @@ final class TakeawayTests: XCTestCase {
         let before = num(lone["p"]) ?? 0
         lone["tip"] = Takeaway.tip(for: best, protein: 45, home: home)
         let added = Takeaway.edited(lone, off: [], dish: nil, tip: true, restaurant: "Gami", kcal: 600)
-        XCTAssertEqual(list(added["lines"]).count, 2)
+        XCTAssertEqual(list(added["lines"]).count, list(lone["lines"]).count + 1)
         XCTAssertGreaterThan(num(added["p"]) ?? 0, before)
     }
 
@@ -277,5 +277,50 @@ final class TakeawayTests: XCTestCase {
         let word = Takeaway.plan(menu: gami, home: [], kcal: 1400, protein: 80, avoid: ["boneless"], place: "Gami")
         XCTAssertFalse(word.combos.contains { $0.0.item.name.lowercased().contains("boneless") })
         XCTAssertFalse(word.combos.isEmpty)
+    }
+
+    /// PUBCHA as the owner's claude.ai chat did it (21 Nov, design/takeaway-combos-mockup.html): nothing published, 1,400
+    /// kcal and 80 g. Two dishes or part of one reach it; the card adds up and shows a range; asked again for others,
+    /// none already shown come back; a dish asked about comes whole and as some of it.
+    private let pubcha: [Takeaway.Item] = [
+        .init(name: "Small Fried Boneless Chicken", kind: "main", tier: "none", kcal: 700, p: 40, c: 40, f: 40),
+        .init(name: "Large Fried Boneless Chicken", kind: "main", tier: "none", kcal: 1300, p: 75, c: 75, f: 75),
+        .init(name: "Beef Bulgogi Rice Bowl", kind: "main", tier: "none", kcal: 750, p: 32, c: 90, f: 25),
+        .init(name: "Ginseng Chicken Soup", kind: "main", tier: "none", kcal: 650, p: 45, c: 50, f: 25),
+        .init(name: "Seafood Pancake", kind: "main", tier: "none", kcal: 900, p: 28, c: 90, f: 45),
+        .init(name: "Kimchi Dumplings, 6 pcs", kind: "side", tier: "none", kcal: 380, p: 14, c: 45, f: 15),
+        .init(name: "Tteokbokki", kind: "main", tier: "none", kcal: 550, p: 10, c: 100, f: 10)]
+
+    func testTwoDishesAndPartsOfOne() throws {
+        let p = Takeaway.plan(menu: pubcha, home: [], kcal: 1400, protein: 80, place: "PUBCHA")
+        XCTAssertTrue(p.meets)
+        let best = p.combos[0].0
+        XCTAssertLessThanOrEqual(best.kcal, 1410); XCTAssertGreaterThanOrEqual(best.p, 79.5)
+        XCTAssertGreaterThanOrEqual(best.kcal, 1340, "close to what they have, not far under")
+        XCTAssertFalse(p.combos.contains { $0.0.dishes.contains { $0.0.name == "Tteokbokki" } }, "low protein: never in an order")
+        XCTAssertFalse(p.combos.contains { c in c.0.dishes.count == 2 && c.0.dishes[0].0.name.contains("Fried Boneless") && c.0.dishes[1].0.name.contains("Fried Boneless") },
+                       "not the small and the large chicken together")
+        let j = Takeaway.json(best, note: "Best fit", restaurant: "PUBCHA", kcal: 1400)
+        XCTAssertEqual(list(j["lines"]).reduce(0) { $0 + (num($1["kcal"]) ?? 0) }, num(j["kcal"]) ?? 0, accuracy: 2, "the card adds up")
+        let lo = try XCTUnwrap(num(j["kcalLo"])), hi = try XCTUnwrap(num(j["kcalHi"]))
+        XCTAssertLessThan(lo, num(j["kcal"]) ?? 0); XCTAssertGreaterThan(hi, num(j["kcal"]) ?? 0)
+        XCTAssertTrue(str(j["source"]).contains("Type it"))
+        // half of a dish: said on its line and in its name when added
+        let half = Takeaway.json(Takeaway.Combo(dishes: [(pubcha[2], 1), (pubcha[0], 0.5)]), note: "", restaurant: "PUBCHA", kcal: 1400)
+        XCTAssertEqual(str(half["title"]), "Beef Bulgogi Rice Bowl + ½ Small Fried Boneless Chicken")
+        XCTAssertEqual(num(half["kcal"]), 1100)
+        XCTAssertEqual(str(list(list(half["lines"])[1]["add"])[0]["name"]), "PUBCHA Small Fried Boneless Chicken (½)")
+
+        // "any other options?": four more, none already shown
+        let shown = Set(p.combos.map { $0.0.key })
+        let more = Takeaway.plan(menu: pubcha, home: [], kcal: 1400, protein: 80, place: "PUBCHA", shown: shown, count: 4)
+        XCTAssertEqual(more.combos.count, 4)
+        XCTAssertTrue(more.combos.allSatisfy { !shown.contains($0.0.key) })
+
+        // "what about the seafood pancake?": with it, the whole one and some of it
+        let pancake = Takeaway.plan(menu: pubcha, home: [], kcal: 1400, protein: 80, want: ["seafood pancake"], place: "PUBCHA")
+        XCTAssertTrue(pancake.combos.allSatisfy { c in c.0.dishes.contains { $0.0.name == "Seafood Pancake" } })
+        XCTAssertTrue(pancake.combos.contains { c in c.0.dishes.contains { $0.0.name == "Seafood Pancake" && $0.1 < 0.99 } }, "some of it, to fit")
+        XCTAssertEqual(Takeaway.dishes(["high protein"]), [], "how they'd like it, not a dish")
     }
 }
