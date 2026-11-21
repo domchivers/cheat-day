@@ -531,7 +531,8 @@ struct MultiClipEditor: View {
 
     /// How many rows of bars the timeline shows under its clips.
     private var laneCount: Int { min(4, barRows.count) }
-    private static let rulerHeight: CGFloat = 18, clipRow: CGFloat = 58, laneHeight: CGFloat = 15
+    // the bars as tall as CapCut's, their words readable (21 Nov, design/capcut-timeline-mockup.html: 15 pt bars read as slivers)
+    private static let rulerHeight: CGFloat = 18, clipRow: CGFloat = 49, laneHeight: CGFloat = 34
 
     /// The clips and everything over them as one timeline under a line fixed in the middle, as CapCut and Edits lay
     /// it out (21 Nov; design/bigger-preview-mockup.html, then design/pro-ui): a ruler over it, slide it under the line
@@ -1571,9 +1572,9 @@ struct MultiClipEditor: View {
         let x0 = w * CGFloat(min(item.from, span) / span), x1 = w * CGFloat(min(item.to, span) / span)
         let width = max(16, x1 - x0), on = item.id == selectedText || item.id == selectedSound || item.id == selectedPip
         // (on the timeline a slim tag, design/pro-ui)
-        let h: CGFloat = onTimeline ? Self.laneHeight : 18, corner: CGFloat = onTimeline ? 4 : 5
-        return Text(item.label).font(.system(size: onTimeline ? 8 : 9, weight: onTimeline ? .bold : .heavy)).lineLimit(1).foregroundStyle(.black.opacity(0.82))
-            .padding(.horizontal, 5).frame(width: width, height: h, alignment: .leading)
+        let h: CGFloat = onTimeline ? Self.laneHeight : 18, corner: CGFloat = onTimeline ? 7 : 5
+        return Text(item.label).font(.system(size: onTimeline ? 11 : 9, weight: onTimeline ? .semibold : .heavy)).lineLimit(1).foregroundStyle(.black.opacity(0.82))
+            .padding(.horizontal, onTimeline ? 8 : 5).frame(width: width, height: h, alignment: .leading)
             .background(item.colour.opacity(onTimeline ? 0.88 : 1), in: RoundedRectangle(cornerRadius: corner, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: corner, style: .continuous).stroke(on ? Color.white : Color.clear, lineWidth: 1.5))
             .contentShape(Rectangle())
