@@ -423,7 +423,7 @@ struct MultiClipEditor: View {
         case .soundItem: return sounds.first(where: { $0.id == selectedSound })?.name ?? "Sound"
         case .pip: return "Overlay"
         case .motion: return "Motion"
-        case .beats: return "Beats"
+        case .beats: return "Music"
         case .templates: return "Templates"
         case .captions: return "Captions"
         case .captionList: return "Edit all"
@@ -1469,8 +1469,10 @@ struct MultiClipEditor: View {
                 action("mic.fill", "Voice", on: true) { withAnimation(.snappy) { panel = .voice } }
                 action("waveform", "Sound FX", on: true) { withAnimation(.snappy) { panel = .effects } }
                 action("rectangle.inset.topright.filled", "Overlay", on: true) { pipPicking = true }
-                action("music.note", "Music", on: true) { choosingSong = true }
-                action("metronome", "Beats", on: true) { if songBeats.isEmpty { choosingSong = true } else { withAnimation(.snappy) { panel = .beats } } }
+                // Music and its beats as one (21 Nov: "both are the same? Let's just have music")
+                action("music.note", "Music", on: true) {
+                    if sounds.contains(where: { $0.kind == "song" }) { withAnimation(.snappy) { panel = .beats } } else { choosingSong = true }
+                }
                 action("square.grid.2x2", "Templates", on: true) { withAnimation(.snappy) { panel = .templates } }
         }
         .padding(.top, 2)
@@ -1860,17 +1862,31 @@ struct MultiClipEditor: View {
         sounds.removeAll { $0.kind == "song" }
         sounds.append(EditSound(kind: "song", name: s.title, file: mix.file, from: 0, start: mix.from, length: max(0.5, min(mix.span, total)),
                                 full: mix.from + mix.span, beats: beats))
-        if beats.count > 2 { withAnimation(.snappy) { panel = .beats } } else { flash("Added \(s.title). No steady beat found in it to cut to.") }
+        withAnimation(.snappy) { panel = .beats }
     }
 
-    /// Beats: the song's beats, and the clips cut to land on them.
+    /// Music: the song, its volume and fades, taking it off, and its beats with the clips cut to land on them.
     private var beatsPanel: some View {
-        VStack(spacing: 10) {
+        let song = sounds.first(where: { $0.kind == "song" })
+        return VStack(spacing: 10) {
             HStack {
-                Text(sounds.first(where: { $0.kind == "song" })?.name ?? "No song").font(.subheadline.weight(.semibold))
+                Image(systemName: "music.note").foregroundStyle(Self.soundColour("song"))
+                Text(song?.name ?? "No song").font(.subheadline.weight(.semibold)).lineLimit(1)
                 Spacer()
-                Button("Change song") { choosingSong = true }.font(.caption.weight(.bold)).foregroundStyle(.white)
+                Button(song == nil ? "Add a song" : "Change song") { choosingSong = true }.font(.caption.weight(.bold)).foregroundStyle(.white)
             }
+            if let song {
+                HStack(spacing: 8) {
+                    wide("Volume and fade", "slider.horizontal.3") { selectSound(song.id) }
+                    wide("Take off", "trash", warn: true) {
+                        remember()
+                        sounds.removeAll { $0.kind == "song" }
+                        withAnimation(.snappy) { panel = nil }
+                    }
+                }
+            }
+            if songBeats.count > 2 {
+            Text("Cut to the beat").font(.caption.weight(.semibold)).foregroundStyle(Self.quiet).frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: 6) {
                 chip("Every beat", on: beatEvery == 1) { beatEvery = 1 }
                 chip("2 beats", on: beatEvery == 2) { beatEvery = 2 }
@@ -1883,6 +1899,9 @@ struct MultiClipEditor: View {
             .buttonStyle(.plain).disabled(songBeats.count < 3).opacity(songBeats.count < 3 ? 0.4 : 1)
             Text("\(songBeats.count) beats in the song, the yellow ticks above. Each clip is cut to end on one.")
                 .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            } else if song != nil {
+                Text("No steady beat found in this song to cut to.").font(.caption).foregroundStyle(.secondary)
+            }
         }
     }
 
