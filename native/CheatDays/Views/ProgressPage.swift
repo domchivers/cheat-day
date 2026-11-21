@@ -173,6 +173,19 @@ struct ProgressPage: View {
         return rows.indices.filter { rows[$0].0 >= since }.map { Point(id: rows[$0].0, date: DayKey.date(rows[$0].0), kg: rows[$0].1, trend: trend[$0]) }
     }
 
+    /// The measures with a tab: see the chips.
+    private var shownMetrics: [(key: String, name: String, unit: String)] {
+        let recent = DayKey.shift(store.today, days: -60)
+        let health: Set<String> = ["weight", "fat", "lean", "bmi"]
+        return BodyView.metrics.filter { m in
+            let always = health.contains(m.key)
+            return store.bodyRows.contains { r in
+                guard pos(r[m.key]) != nil else { return false }
+                return always || str(r["day"]) >= recent
+            }
+        }
+    }
+
     private var chartCard: some View {
         let pts = points
         let goalLine = metric == "weight" ? goal : nil
@@ -180,11 +193,14 @@ struct ProgressPage: View {
         let lo = vals.min() ?? 0, hi = vals.max() ?? 1, pad = max(0.5, (hi - lo) * 0.25)   // room above and below the line
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                let have = BodyView.metrics.filter { m in store.bodyRows.contains { pos($0[m.key]) != nil } }
+                // Apple Health's measures whenever there are any; the others (muscle, water…, which only a screenshot or
+                // typing brings) only with a reading in the last 60 days (21 Nov: Muscle stood as a tab with one reading
+                // from October, and the lean mass every weigh-in brings had no tab)
+                let have = shownMetrics
                 if have.count > 1 {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
-                            ForEach(have.prefix(4), id: \.key) { m in
+                            ForEach(have.prefix(6), id: \.key) { m in
                                 Button { withAnimation(.easeInOut(duration: 0.25)) { metric = m.key; picked = nil } } label: {
                                     Text(m.name).font(.footnote.weight(.bold)).foregroundStyle(metric == m.key ? .primary : .secondary)
                                         .padding(.horizontal, 10).padding(.vertical, 5)

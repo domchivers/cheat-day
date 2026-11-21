@@ -13,8 +13,10 @@ struct BodyView: View {
     var active = true
     init(embedded: Bool = false, active: Bool = true) { self.embedded = embedded; self.active = active }
     static let metrics: [(key: String, name: String, unit: String)] = [
-        ("weight", "Weight", "kg"), ("fat", "Body fat", "%"), ("muscle", "Muscle", "kg"), ("water", "Water", "%"),
-        ("visceral", "Visceral fat", ""), ("bone", "Bone", "kg"), ("bmi", "BMI", ""), ("age", "Body age", "yrs")
+        // Apple Health's four first (what a scale sends every weigh-in), then what only a screenshot or typing brings
+        ("weight", "Weight", "kg"), ("fat", "Body fat", "%"), ("lean", "Lean mass", "kg"), ("bmi", "BMI", ""),
+        ("muscle", "Muscle", "kg"), ("water", "Water", "%"),
+        ("visceral", "Visceral fat", ""), ("bone", "Bone", "kg"), ("age", "Body age", "yrs")
     ]
 
     private struct Month: Identifiable { let id: String; let rows: [JSON] }
