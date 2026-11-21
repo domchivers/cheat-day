@@ -1101,9 +1101,13 @@ struct StoryEditor: View {
                             .buttonStyle(.plain).accessibilityIdentifier("tag-suggestion")
                         }
                     }
-                    .padding(.horizontal, 12)
+                    .padding(.leading, 46).padding(.trailing, 12)   // (clear of the size slider down the left)
                 }
-                .scrollIndicators(.hidden).offset(y: cw * 0.06)
+                .scrollIndicators(.hidden)
+                // just over the keyboard, out of the way of what's being typed and the slider (21 Nov: they sat across
+                // the middle, over both)
+                .frame(maxHeight: .infinity, alignment: .bottom).padding(.bottom, 10)
+                .modifier(KeyboardLift())
             }
         }
     }

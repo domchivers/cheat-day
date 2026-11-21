@@ -220,6 +220,9 @@ struct MultiClipEditor: View {
         .task(id: sounds) { guard barGrab == nil else { return }; await settle(); await autosave() }
         .task(id: dropped) { if dropped > 0 { await settle(); await autosave() } }
         .task(id: pips) { guard barGrab == nil else { return }; await settle(); await autosave() }
+        // what's over a clip moves with it when a transition, a trim or a move shifts where it starts (21 Nov: a
+        // transition added, the captions after it ran behind what was said)
+        .onChange(of: clips) { old, new in follow(from: old, to: new) }
         .sheet(isPresented: $choosingSong) { SongPicker { s in Task { @MainActor in await addSong(s) } } }
         .onAppear { if !UserDefaults.standard.bool(forKey: "editor.tips.1") { tip = 0 } }
         // (a trim handle's drag cut short, by another clip picked or a panel opened, leaves nothing behind)
@@ -998,7 +1001,7 @@ struct MultiClipEditor: View {
                 Image(systemName: here ? "diamond.fill" : "diamond").font(.system(size: 11, weight: .bold)).foregroundStyle(here ? Color.yellow : Color.white)
                 Text(here ? "Remove" : "Keyframe").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(.white)
             }
-            .padding(.horizontal, 10).frame(height: 30)
+            .frame(width: 96, height: 30)   // the same width whichever it says (21 Nov: the strip beside it jumped)
             .background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
         }
         .buttonStyle(.plain).disabled(!on).opacity(on ? 1 : 0.4)
@@ -1052,6 +1055,34 @@ struct MultiClipEditor: View {
     }
 
     private func remember() { history.append(Snap(clips: clips, sounds: sounds)); future = []; if history.count > 30 { history.removeFirst() } }
+    /// Every text, caption, sticker, sound and overlay moved as far as the clip it starts over has moved.
+    private func follow(from old: [Clip], to new: [Clip]) {
+        guard !old.isEmpty, !new.isEmpty else { return }
+        let was = ClipJoin.starts(old), now = ClipJoin.starts(new)
+        var at: [UUID: Double] = [:]
+        for (i, c) in new.enumerated() { at[c.id] = now[i] }
+        // how far the clip under `t` has moved (nothing for one taken out)
+        func moved(_ t: Double) -> Double {
+            guard let i = was.lastIndex(where: { $0 <= t + 0.001 }), let n = at[old[i].id] else { return 0 }
+            return n - was[i]
+        }
+        for k in texts.indices where texts[k].part != "recipe" {
+            let d = moved(texts[k].from)
+            guard abs(d) > 0.0005 else { continue }
+            texts[k].from = max(0, texts[k].from + d); texts[k].to = max(texts[k].from + 0.1, texts[k].to + d)
+            if let w = texts[k].words { texts[k].words = w.map { EditText.Word(text: $0.text, at: max(0, $0.at + d)) } }
+        }
+        for k in sounds.indices where sounds[k].kind != "song" {
+            let d = moved(sounds[k].from)
+            if abs(d) > 0.0005 { sounds[k].from = max(0, sounds[k].from + d) }
+        }
+        for k in pips.indices {
+            let d = moved(pips[k].from)
+            if abs(d) > 0.0005 { pips[k].from = max(0, pips[k].from + d) }
+        }
+        if recipe != nil { remakeRecipe() }
+    }
+
     private func change(_ f: ([Clip]) -> [Clip]) { remember(); withAnimation(.snappy) { clips = f(clips) } }
     private func undo() {
         guard let last = history.popLast() else { return }
@@ -1063,6 +1094,8 @@ struct MultiClipEditor: View {
     }
     private func restore(_ s: Snap) {
         withAnimation(.snappy) { clips = s.clips; sounds = s.sounds }
+        // the sounds as they were with these clips: put back after follow() has moved them with the clips
+        DispatchQueue.main.async { sounds = s.sounds }
         // a sound's panel shut if its sound has gone
         if let id = selectedSound, !s.sounds.contains(where: { $0.id == id }) {
             selectedSound = nil
@@ -2945,6 +2978,7 @@ struct ProSlider: View {
     @Binding var value: Double
     var began: () -> Void = {}
     @State private var holding = false
+    @State private var from: Double?
     @GestureState private var touching = false   // (back to false however the drag ends, cut short too)
 
     var body: some View {
@@ -2965,11 +2999,13 @@ struct ProSlider: View {
                 .gesture(DragGesture(minimumDistance: 0)
                     .updating($touching) { _, t, _ in t = true }
                     .onChanged { v in
-                        if !holding { holding = true; began() }
-                        value = Double(min(1, max(0, v.location.x / w)))
+                        if !holding { holding = true; began(); from = value }
+                        // moved as far as the finger has, from where it was (21 Nov: it jumped to where the finger
+                        // landed, so a touch near it snapped the volume)
+                        value = Double(min(1, max(0, (from ?? value) + Double(v.translation.width / w))))
                     }
-                    .onEnded { _ in holding = false })
-                .onChange(of: touching) { _, now in if !now { holding = false } }
+                    .onEnded { _ in holding = false; from = nil })
+                .onChange(of: touching) { _, now in if !now { holding = false; from = nil } }
             }
             .frame(height: 24)
             HStack(spacing: 0) {

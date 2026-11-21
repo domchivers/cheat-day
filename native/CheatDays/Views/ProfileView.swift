@@ -375,7 +375,10 @@ struct ProfileView: View {
                 let on = tab == t.0
                 Button { withAnimation(.snappy(duration: 0.25)) { tab = t.0 } } label: {
                     VStack(spacing: 9) {
-                        Image(systemName: t.1).font(.system(size: 21, weight: on ? .semibold : .regular))
+                        // each fitted into the same square, so they read the same size (21 Nov: the grid stood bigger
+                        // than the play, tagged and saved icons at one font size)
+                        Image(systemName: t.1).resizable().scaledToFit().fontWeight(on ? .semibold : .regular)
+                            .frame(width: 23, height: 23)
                             .foregroundStyle(on ? Color.primary : Color.secondary).frame(height: 26)
                         ZStack {
                             Color.clear

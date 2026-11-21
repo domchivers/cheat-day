@@ -103,10 +103,11 @@ struct PostPicker: View {
                 HStack(spacing: 8) {
                     ForEach(drafts) { d in draftTile(d) }
                 }
-                // room to grow into, and nothing cut off at the row's edges
-                .padding(.vertical, 6).padding(.horizontal, 2)
+                // room inside the row to grow into, so a held one isn't cut, while scrolled ones stay inside the
+                // panel (21 Nov: let out of the row, they slid past the panel's edges)
+                .padding(.vertical, 9).padding(.horizontal, 6)
             }
-            .scrollClipDisabled()
+            .padding(.horizontal, -6)
         }
         .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -125,7 +126,7 @@ struct PostPicker: View {
         thumb(d)
             // Held, it only grows a little, whole, and then asks (21 Nov, twice: the phone's own
             // hold menu cropped it to the row as it grew, then popped it out on its own)
-            .scaleEffect(holding == d.id ? 1.08 : 1)
+            .scaleEffect(holding == d.id ? 1.14 : 1)
             .shadow(color: .black.opacity(holding == d.id ? 0.4 : 0), radius: 8, y: 3)
             .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .onTapGesture { openDraft?(d) }
