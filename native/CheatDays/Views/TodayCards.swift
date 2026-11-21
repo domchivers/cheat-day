@@ -85,6 +85,8 @@ struct CheatDayCard: View {
 /// weigh-in; ✕ hides it.
 struct WeighInCard: View {
     var hide: () -> Void
+    /// The weekly check-in opened, to use its new budget now.
+    var review: () -> Void = {}
     private var store: Store { Store.shared }
 
     /// Today's weigh-in, if there is one.
@@ -117,6 +119,17 @@ struct WeighInCard: View {
              + Text("  kg").font(.subheadline.weight(.bold)).foregroundColor(.secondary)).monospacedDigit()
             if recent.count >= 3 { Spark(values: recent).frame(height: 40) }
             Text(meaning(change: change, before: before)).font(.footnote).fixedSize(horizontal: false, vertical: true)
+            let a = advice
+            VStack(alignment: .leading, spacing: 3) {
+                Text(a.title).font(.subheadline.weight(.bold))
+                Text(a.text).font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                if a.change {
+                    Button(action: review) { Text("Review the new budget ›").font(.footnote.weight(.semibold)) }
+                        .buttonStyle(.borderless).foregroundStyle(Theme.accent).padding(.top, 2)
+                }
+            }
+            .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             goalBar(kg)
         }
         .padding(.vertical, 6)
@@ -143,12 +156,25 @@ struct WeighInCard: View {
             let said = parts.joined(separator: ", ")
             s += " " + said.prefix(1).uppercased() + String(said.dropFirst()) + "."
         }
-        if let step = c.step {
-            s += " Monday's check-in will likely suggest \(step > 0 ? "+" : "−")\(Fmt.int(abs(step))) kcal a day."
-        } else if let pace = c.pace, let want = c.want, !Adaptive.off(pace, want: want, tol: c.tol ?? 0.12) {
-            s += " On track for your plan, so your budget stays as it is."
-        }
         return s
+    }
+
+    /// What to do about the budget, every time (21 Nov: "doesn't give any advice whether to adjust calories or stay"):
+    /// the check-in's own call, worked out as Monday's will be. One reading never changes it; the trend does.
+    private var advice: (title: String, text: String, change: Bool) {
+        let c = store.checkIn
+        if let step = c.step {
+            let more = step > 0
+            return ("\(more ? "Eat a little more" : "Eat a little less"): \(more ? "+" : "−")\(Fmt.int(abs(step))) kcal a day",
+                    c.verdict.isEmpty ? "Your trend has been off your plan for a while." : c.verdict, true)
+        }
+        if let pace = c.pace, let want = c.want, !Adaptive.off(pace, want: want, tol: c.tol ?? 0.12) {
+            return ("Stay on your budget", "You're on track for your plan. Nothing to change.", false)
+        }
+        if c.pace != nil, !c.verdict.isEmpty {
+            return ("Stay on your budget for now", c.verdict, false)
+        }
+        return ("Stay on your budget for now", "A few more weigh-ins and logged days, and the check-in can tell whether your budget should change.", false)
     }
 
     @ViewBuilder private func goalBar(_ kg: Double) -> some View {

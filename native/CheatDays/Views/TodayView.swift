@@ -163,7 +163,7 @@ struct TodayView: View {
                 if offset == 0, let w = store.weighInToConfirm { Section { WeighInConfirmCard(day: w.day, kg: w.kg, at: w.at) } }
                 // after a weigh-in: what it means (design/today-cards-mockup.html, 3); not while the scale's reading is being confirmed
                 else if offset == 0, weighCardHidden != store.today, WeighInCard.today != nil {
-                    Section { WeighInCard(hide: { withAnimation { weighCardHidden = store.today } }) }
+                    Section { WeighInCard(hide: { withAnimation { weighCardHidden = store.today } }, review: { showCheckIn = true }) }
                 }
                 if offset == 0, reviewHidden != store.today, let r = store.weekReview { reviewCard(r) }
                 if offset == 0, let n = store.nudge, nudgeHidden != store.today + "|" + n.meal { nudgeCard(n) }

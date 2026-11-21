@@ -42,7 +42,7 @@ struct MultiClipEditor: View {
     @State private var joining = false
     /// What Undo goes back to: the clips, and the sounds over them (21 Nov: a sound separated from its clip has to
     /// come back with it).
-    private struct Snap { var clips: [Clip]; var sounds: [EditSound] }
+    private struct Snap { var clips: [Clip]; var sounds: [EditSound]; var texts: [EditText] = [] }
     @State private var history: [Snap] = []  // for Undo
     @State private var future: [Snap] = []   // for Redo: what was undone
     @State private var autoID: String?           // the draft it's kept in as it goes (Stage A1)
@@ -1054,7 +1054,7 @@ struct MultiClipEditor: View {
         selected = b.id
     }
 
-    private func remember() { history.append(Snap(clips: clips, sounds: sounds)); future = []; if history.count > 30 { history.removeFirst() } }
+    private func remember() { history.append(Snap(clips: clips, sounds: sounds, texts: texts)); future = []; if history.count > 30 { history.removeFirst() } }
     /// Every text, caption, sticker, sound and overlay moved as far as the clip it starts over has moved.
     private func follow(from old: [Clip], to new: [Clip]) {
         guard !old.isEmpty, !new.isEmpty else { return }
@@ -1080,22 +1080,28 @@ struct MultiClipEditor: View {
             let d = moved(pips[k].from)
             if abs(d) > 0.0005 { pips[k].from = max(0, pips[k].from + d) }
         }
+        // a caption running across a join stays while the next moves back with its clip: each one ends where
+        // the next begins, so two are never shown over each other (21 Nov: "Unglazed" drawn over "turns black")
+        let caps = texts.indices.filter { texts[$0].kind == "caption" }.sorted { texts[$0].from < texts[$1].from }
+        for (a, b) in zip(caps, caps.dropFirst()) where texts[a].to > texts[b].from {
+            texts[a].to = max(texts[a].from + 0.1, texts[b].from)
+        }
         if recipe != nil { remakeRecipe() }
     }
 
     private func change(_ f: ([Clip]) -> [Clip]) { remember(); withAnimation(.snappy) { clips = f(clips) } }
     private func undo() {
         guard let last = history.popLast() else { return }
-        future.append(Snap(clips: clips, sounds: sounds)); restore(last)
+        future.append(Snap(clips: clips, sounds: sounds, texts: texts)); restore(last)
     }
     private func redo() {
         guard let next = future.popLast() else { return }
-        history.append(Snap(clips: clips, sounds: sounds)); restore(next)
+        history.append(Snap(clips: clips, sounds: sounds, texts: texts)); restore(next)
     }
     private func restore(_ s: Snap) {
-        withAnimation(.snappy) { clips = s.clips; sounds = s.sounds }
-        // the sounds as they were with these clips: put back after follow() has moved them with the clips
-        DispatchQueue.main.async { sounds = s.sounds }
+        withAnimation(.snappy) { clips = s.clips; sounds = s.sounds; texts = s.texts }
+        // the sounds and texts as they were with these clips: put back after follow() has moved them with the clips
+        DispatchQueue.main.async { sounds = s.sounds; texts = s.texts }
         // a sound's panel shut if its sound has gone
         if let id = selectedSound, !s.sounds.contains(where: { $0.id == id }) {
             selectedSound = nil
@@ -2440,6 +2446,7 @@ struct MultiClipEditor: View {
     private func regroupCaptions() {
         let caps = texts.filter { $0.kind == "caption" }
         guard !caps.isEmpty else { return }
+        remember()
         texts.removeAll { $0.kind == "caption" }
         texts += EditOverlays.regroup(caps, by: captionGroup, lines: captionLines)
         listPicked = nil
@@ -2507,18 +2514,25 @@ struct MultiClipEditor: View {
             if on {
                 let words = c.words ?? []
                 if words.count > 1 {
-                    Text("Tap a word to start a new caption there").font(.caption2).foregroundStyle(Self.quiet)
-                    WordRows(spacing: 5, rowSpacing: 5) {
+                    // (21 Nov: tapping a word to split wasn't found; a pair of scissors between words is)
+                    Text("Tap \(Image(systemName: "scissors")) between two words to split the caption there").font(.caption2).foregroundStyle(Self.quiet)
+                    WordRows(spacing: 4, rowSpacing: 6) {
                         ForEach(words.indices, id: \.self) { i in
-                            Text(words[i].text).font(.caption.weight(.semibold))
-                                .padding(.horizontal, 8).frame(height: 28)
-                                .foregroundStyle(i == 0 ? Self.quiet : .white)
-                                .background(Color.white.opacity(i == 0 ? 0.04 : 0.1), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                                .onTapGesture {
-                                    guard i > 0, let (a, b) = EditOverlays.split(texts[k], at: i) else { return }
-                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                    texts[k] = a; texts.append(b); listPicked = b.id; seek(b.from + 0.01)
+                            HStack(spacing: 4) {
+                                if i > 0 {
+                                    Button {
+                                        guard let (a, b) = EditOverlays.split(texts[k], at: i) else { return }
+                                        remember()
+                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                        texts[k] = a; texts.append(b); listPicked = b.id; seek(b.from + 0.01)
+                                    } label: {
+                                        Image(systemName: "scissors").font(.system(size: 11, weight: .bold)).foregroundStyle(.black)
+                                            .frame(width: 24, height: 24).background(Color.yellow, in: Circle())
+                                    }
+                                    .buttonStyle(.plain).accessibilityLabel("Split before \(words[i].text)")
                                 }
+                                Text(words[i].text).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                            }
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -2528,6 +2542,7 @@ struct MultiClipEditor: View {
                     wide("Its look", "paintbrush") { selectText(c.id) }
                     wide("", "trash", warn: true) {
                         let id = c.id
+                        remember()
                         texts.removeAll { $0.id == id }; listPicked = nil
                     }
                     .frame(width: 56)
@@ -2545,6 +2560,7 @@ struct MultiClipEditor: View {
     private func joinNext(_ k: Int) {
         let caps = captionIndices
         guard let at = caps.firstIndex(of: k), at + 1 < caps.count else { return }
+        remember()
         let n = caps[at + 1]
         let joined = EditOverlays.join(texts[k], texts[n])
         let gone = texts[n].id
