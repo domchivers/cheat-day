@@ -83,6 +83,7 @@ struct EditText: Identifiable, Codable, Equatable {
         case "caption": return Color(red: 0.48, green: 0.82, blue: 1)
         case "step", "macros": return Color(red: 0.36, green: 0.82, blue: 0.56)
         case "workout": return Color(red: 1, green: 0.48, blue: 0.48)
+        case "label": return Color(red: 1, green: 0.62, blue: 0.3)
         default: return Color(red: 0.77, green: 0.63, blue: 1)
         }
     }
@@ -161,6 +162,15 @@ struct EditTextView: View {
             }
             .foregroundStyle(.white).multilineTextAlignment(.center).padding(.horizontal, 18).padding(.vertical, 10)
             .background(Color(red: 0.85, green: 0.25, blue: 0.3).opacity(0.85), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        case "label":
+            // a template slot's words (design/templates-mockup.html): what it is, and its numbers under
+            VStack(alignment: .leading, spacing: 2) {
+                if !item.text.isEmpty { Text(item.text).font(.system(size: 22, weight: .heavy)) }
+                if !item.detail.isEmpty { Text(item.detail).font(.system(size: 16, weight: .bold)).monospacedDigit().opacity(0.88) }
+            }
+            .foregroundStyle(.white).frame(maxWidth: 320, alignment: .leading).fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 16).padding(.vertical, 10)
+            .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         case "calories":
             // counting up over its first second and a bit, easing in to the number
             let k = min(1, max(0, (at - item.from) / 1.2)), eased = 1 - pow(1 - k, 3)

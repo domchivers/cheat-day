@@ -104,6 +104,7 @@ struct MultiClipEditor: View {
     @State private var stripZoom: CGFloat = 1             // the strip pinched wider or narrower (Stage D)
     @State private var stripZoomFrom: CGFloat?
     @State private var choosingSong = false               // Stage E
+    @State private var templating = false                 // the templates open (design/templates-mockup.html)
     @State private var beatEvery = 2
     @State private var tip: Int?                          // the first-time tip showing
     @State private var full = false                       // the preview full screen (design/bigger-preview-mockup.html)
@@ -125,7 +126,7 @@ struct MultiClipEditor: View {
     /// One bar on the timeline: a text, sticker or caption, or a voiceover or sound effect.
     /// kind: 0 over the picture (text, stickers, captions), 1 a sound, 2 a clip or photo over it.
     private struct BarItem: Identifiable { let id: UUID; let from: Double; let to: Double; let label: String; let colour: Color; let kind: Int }
-    private enum Panel { case trim, sound, speed, join, look, shape, text, stickers, voice, effects, soundItem, pip, motion, beats, templates, captions, captionList, recipe, recipeSteps }
+    private enum Panel { case trim, sound, speed, join, look, shape, text, stickers, voice, effects, soundItem, pip, motion, beats, captions, captionList, recipe, recipeSteps }
     private var perSecond: CGFloat { 30 * stripZoom }   // timeline points a second, pinched wider or narrower
 
     private var total: Double { ClipJoin.total(clips) }
@@ -244,6 +245,9 @@ struct MultiClipEditor: View {
                 .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
         }
         // text typed on the video itself, everything else dimmed behind
+        .fullScreenCover(isPresented: $templating) {
+            TemplateMaker(clips: clips, make: { t, c, s, m in Task { @MainActor in await makeTemplate(t, c, s, m) } }, close: { templating = false })
+        }
         .fullScreenCover(isPresented: Binding(get: { typing != nil }, set: { if !$0 { endTyping() } })) {
             if let k = texts.firstIndex(where: { $0.id == typing }) { typingView(k) }
         }
@@ -424,7 +428,6 @@ struct MultiClipEditor: View {
         case .pip: return "Overlay"
         case .motion: return "Motion"
         case .beats: return "Music"
-        case .templates: return "Templates"
         case .captions: return "Captions"
         case .captionList: return "Edit all"
         case .recipe: return "Recipe"
@@ -476,7 +479,6 @@ struct MultiClipEditor: View {
             case .pip: scrubBar; panelBar; if let k = pips.firstIndex(where: { $0.id == selectedPip }) { bars; pipPanel(k) }
             case .motion: scrubBar; panelBar; if let i = index { motionPanel(i) }
             case .beats: panelBar; timeline; beatsPanel
-            case .templates: panelBar; templatesPanel
             case nil:
                 // one timeline in place of the scrub bar, the bars and the strip (21 Nov: stacked, they left the video
                 // a third of the screen)
@@ -1473,7 +1475,7 @@ struct MultiClipEditor: View {
                 action("music.note", "Music", on: true) {
                     if sounds.contains(where: { $0.kind == "song" }) { withAnimation(.snappy) { panel = .beats } } else { choosingSong = true }
                 }
-                action("square.grid.2x2", "Templates", on: true) { withAnimation(.snappy) { panel = .templates } }
+                action("square.grid.2x2", "Templates", on: true) { player.pause(); templating = true }
         }
         .padding(.top, 2)
     }
@@ -1926,66 +1928,36 @@ struct MultiClipEditor: View {
         seek(0); player.play()
     }
 
-    /// A ready-made edit the clips drop into (Stage E): a song, cut to its beat, the joins, a look, and titles.
-    private struct Template {
-        let name: String, about: String, icon: String, song: String, every: Int, join: String?, look: String, titles: [String], recipe: Bool
-    }
-    private static let templates = [
-        Template(name: "Gym montage", about: "Cut to the beat, whips between clips, punchy colour", icon: "dumbbell",
-                 song: "backbeat", every: 2, join: "Whip", look: "Vivid", titles: [], recipe: false),
-        Template(name: "Cooking reel", about: "Warm colour, soft crossfades, your recipe's steps on it", icon: "fork.knife",
-                 song: "city-sunshine", every: 4, join: "Dissolve", look: "Warm", titles: [], recipe: true),
-        Template(name: "Day of eating", about: "A meal a clip, each labelled, sliding along", icon: "sun.max",
-                 song: "be-chillin", every: 4, join: "Push", look: "Pop", titles: ["Breakfast", "Lunch", "Snack", "Dinner", "Dessert"], recipe: false),
-        Template(name: "Before and after", about: "Two clips, labelled, through black between", icon: "square.split.2x1",
-                 song: "inspiration", every: 4, join: "Black", look: "Normal", titles: ["Before", "After"], recipe: false),
-    ]
-
-    private var templatesPanel: some View {
-        VStack(spacing: 8) {
-            ForEach(Self.templates.indices, id: \.self) { k in
-                let t = Self.templates[k]
-                Button { Task { await apply(t) } } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: t.icon).font(.system(size: 18, weight: .semibold)).frame(width: 40, height: 40)
-                            .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(t.name).font(.subheadline.weight(.bold))
-                            Text(t.about).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                        }
-                        Spacer()
-                    }
-                    .foregroundStyle(.white)
-                }
-                .buttonStyle(.plain)
-            }
-            Text("Your clips stay as they are; the template sets the song, the cuts, the joins and the look. Undo takes the cuts back.")
-                .font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.center)
+    /// A template made (21 Nov, design/templates-mockup.html): its song, the clips picked cut to their slots on its
+    /// beat, the joins and look, and each slot's words over its clip. The clips that weren't picked go; Undo brings
+    /// them back.
+    private func makeTemplate(_ t: EditTemplate, _ picked: [Clip], _ slots: [EditTemplate.Slot], _ meal: JSON?) async {
+        templating = false
+        player.pause(); joining = true
+        defer { joining = false }
+        var song: EditSound?, beats: [Double] = []
+        if let s = Music.all.first(where: { $0.id == t.song }), let mix = await SongMix.make(s, song: 1, clip: 1) {
+            let found = await Beats.find(mix.file, from: mix.from, length: mix.span)
+            beats = found.map { $0 - mix.from }
+            song = EditSound(kind: "song", name: s.title, file: mix.file, from: 0, start: mix.from, length: mix.span, full: mix.from + mix.span, beats: found)
         }
-    }
-
-    private func apply(_ t: Template) async {
-        withAnimation(.snappy) { panel = nil }
-        if let s = Music.all.first(where: { $0.id == t.song }) { await addSong(s) }
-        withAnimation(.snappy) { panel = nil }
-        if songBeats.count > 2 { cutToBeats(every: t.every) }
-        let kind = t.join, l = t.look
-        change { all in
-            var all = all
-            for i in all.indices {
-                all[i].look = l
-                all[i].transition = i + 1 < all.count ? kind.map { ClipTransition(kind: $0, length: 0.4) } : nil
-            }
-            return all
-        }
-        // a title on each clip, near the top
-        texts.removeAll { $0.kind == "text" && t.titles.contains($0.text) }
-        let starts = ClipJoin.starts(clips)
-        for i in clips.indices where i < t.titles.count {
-            texts.append(EditText(kind: "text", text: t.titles[i], style: "Box", x: 0.5, y: 0.14, from: starts[i], to: starts[i] + clips[i].span))
-        }
-        if t.recipe { attachMode = "recipe" }
-        flash("\(t.name): done. Change anything you like.")
+        let laid = EditTemplate.lay(picked, slots: slots, beats: beats, join: t.join, look: t.look)
+        guard !laid.isEmpty else { return }
+        let long = ClipJoin.total(laid)
+        var laidSounds = sounds.filter { $0.kind != "song" }
+        if var song { song.length = max(0.5, min(song.length, long)); laidSounds.append(song) }
+        let words = EditTemplate.labels(laid, slots: slots)
+        var over = texts.filter { $0.part != "template" }
+        over += words
+        remember()
+        selected = nil; selectedText = nil; selectedSound = nil; selectedPip = nil
+        withAnimation(.snappy) { clips = laid; panel = nil }
+        // put after follow() has moved what was there with the clips (as Undo does)
+        DispatchQueue.main.async { sounds = laidSounds; texts = over }
+        if let meal { attached = meal; attach(meal) }
+        if song == nil { flash("\(t.name): made, cut half a second a beat (the song couldn't be fetched). Change anything you like.") }
+        else { flash("\(t.name): made. Change anything you like.") }
+        seek(0); player.play()
     }
 
     /// The first time the editor's opened, three tips one after another.
@@ -2397,6 +2369,11 @@ struct MultiClipEditor: View {
             } else if item.kind == "text" {
                 // typed on the video, with its looks (21 Nov: typed down here, the keyboard pushed the video away)
                 wide(item.text.isEmpty ? "Type" : "Edit text", "character.cursor.ibeam") { startTyping(item.id) }
+            } else if item.kind == "label" {
+                TextField("Words", text: Binding(get: { texts.indices.contains(k) ? texts[k].text : "" }, set: { if texts.indices.contains(k) { texts[k].text = $0 } }))
+                    .padding(10).background(Color(white: 0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                TextField("Under it", text: Binding(get: { texts.indices.contains(k) ? texts[k].detail : "" }, set: { if texts.indices.contains(k) { texts[k].detail = $0 } }))
+                    .padding(10).background(Color(white: 0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             } else if item.kind != "calories" && item.kind != "card" {
                 TextField(item.kind == "caption" ? "What's said" : "Text", text: Binding(get: { texts.indices.contains(k) ? texts[k].text : "" }, set: { if texts.indices.contains(k) { setText(k, $0) } }), axis: .vertical)
                     .lineLimit(1...3).padding(10).background(Color(white: 0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
