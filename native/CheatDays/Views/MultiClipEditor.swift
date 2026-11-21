@@ -226,10 +226,8 @@ struct MultiClipEditor: View {
         // transition added, the captions after it ran behind what was said)
         .onChange(of: clips) { old, new in follow(from: old, to: new) }
         // a voiceover moved or trimmed: the captions of what's said in it go with it
-        .onChange(of: sounds.filter { $0.kind == "voice" }.map { [$0.from, $0.start, $0.length] }) { _, _ in
-            guard texts.contains(where: { t in t.kind == "caption" && (t.words ?? []).contains { w in sounds.contains { $0.id == w.clip } } }) else { return }
-            texts = EditOverlays.reanchor(texts, clips: clips, sounds: sounds)
-        }
+        // (kept out of this chain: inline, it was too much for the compiler, 21 Nov)
+        .onChange(of: voiceSpans) { _, _ in voiceMoved() }
         .sheet(isPresented: $choosingSong) { SongPicker { s in Task { @MainActor in await addSong(s) } } }
         .onAppear { if !UserDefaults.standard.bool(forKey: "editor.tips.1") { tip = 0 } }
         // (a trim handle's drag cut short, by another clip picked or a panel opened, leaves nothing behind)
@@ -1082,6 +1080,19 @@ struct MultiClipEditor: View {
         guard let (a, b) = ClipJoin.split(clips[i], at: into) else { return }
         change { var all = $0; all[i] = a; all.insert(b, at: i + 1); return all }
         selected = b.id
+    }
+
+    /// Where each voiceover plays and which part of it: a change moves the captions of what's said in it.
+    private var voiceSpans: [[Double]] {
+        sounds.filter { (s: EditSound) -> Bool in s.kind == "voice" }.map { (s: EditSound) -> [Double] in [s.from, s.start, s.length] }
+    }
+    private func voiceMoved() {
+        let ids: Set<UUID> = Set(sounds.map { (s: EditSound) -> UUID in s.id })
+        let tied = texts.contains { (t: EditText) -> Bool in
+            guard t.kind == "caption", let words = t.words else { return false }
+            return words.contains { (w: EditText.Word) -> Bool in w.clip.map { ids.contains($0) } ?? false }
+        }
+        if tied { texts = EditOverlays.reanchor(texts, clips: clips, sounds: sounds) }
     }
 
     private func remember() { history.append(Snap(clips: clips, sounds: sounds, texts: texts)); future = []; if history.count > 30 { history.removeFirst() } }
