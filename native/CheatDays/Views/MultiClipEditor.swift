@@ -491,7 +491,7 @@ struct MultiClipEditor: View {
                 // one timeline in place of the scrub bar, the bars and the strip (21 Nov: stacked, they left the video
                 // a third of the screen)
                 timeline
-                if selected == nil { addTools } else { actions }
+                if selected != nil { actions } else if let b = pickedBar { barTools(b) } else { addTools }
             }
         }
         // (no more under the tools than the home bar's own room: 21 Nov, a gap at the bottom)
@@ -1515,6 +1515,75 @@ struct MultiClipEditor: View {
         withAnimation(.snappy) { panel = .text }
     }
 
+    /// The bar picked on the timeline (its tools under it), if one is.
+    private var pickedBar: BarItem? {
+        guard let id = selectedText ?? selectedSound ?? selectedPip else { return nil }
+        return barItems.first { $0.id == id }
+    }
+
+    /// A bar picked on the timeline: just picked, the line at it if it isn't already over it; no panel.
+    private func pickBar(_ item: BarItem) {
+        selected = nil; selectedText = nil; selectedSound = nil; selectedPip = nil
+        switch item.kind {
+        case 1: selectedSound = item.id
+        case 2: selectedPip = item.id
+        default: selectedText = item.id
+        }
+        player.pause(); playing = false
+        if now < item.from || now >= item.to { seek(item.from + 0.01) }
+        UISelectionFeedbackGenerator().selectionChanged()
+    }
+
+    /// A picked bar's tools, as CapCut's row changes for what's picked: its panel (Edit), the captions' list, a copy,
+    /// taking it off; ‹ goes back to the tools for the whole video.
+    private func barTools(_ b: BarItem) -> some View {
+        let caption = b.kind == 0 && texts.first(where: { $0.id == b.id })?.kind == "caption"
+        return HStack(spacing: 0) {
+            Button { withAnimation(.snappy) { selectedText = nil; selectedSound = nil; selectedPip = nil } } label: {
+                Image(systemName: "chevron.left").font(.system(size: 18, weight: .semibold)).foregroundStyle(.white)
+                    .frame(width: 34, height: 54).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).accessibilityLabel("Back to the tools for the whole video")
+            Rectangle().fill(Color(white: 0.17)).frame(width: 1, height: 30).padding(.trailing, 4)
+            toolRow {
+                action("slider.horizontal.3", caption ? "Style" : "Edit", on: true) {
+                    switch b.kind {
+                    case 1: selectSound(b.id)
+                    case 2: selectPip(b.id)
+                    default: selectText(b.id)
+                    }
+                }
+                if caption {
+                    action("list.bullet", "Edit captions", on: true) { listPicked = b.id; withAnimation(.snappy) { panel = .captionList } }
+                }
+                if b.kind == 0 { action("plus.square.on.square", "Copy", on: true) { copyText(b.id) } }
+                action("trash", "Delete", on: true) { deleteBar(b) }
+            }
+        }
+    }
+
+    /// A text, sticker or caption copied, straight after itself, and picked.
+    private func copyText(_ id: UUID) {
+        guard let t = texts.first(where: { $0.id == id }) else { return }
+        remember()
+        var c = t, len = t.to - t.from
+        len = max(0.3, len)
+        c.id = UUID(); c.from = min(t.to, max(0, total - len)); c.to = c.from + len
+        if let w = t.words { c.words = w.map { var x = $0; x.at += c.from - t.from; x.src = nil; return x } }
+        texts.append(c)
+        selectedText = c.id
+    }
+
+    /// A picked bar taken off.
+    private func deleteBar(_ b: BarItem) {
+        switch b.kind {
+        case 1: takeOff(b.id)
+        case 2: pips.removeAll { $0.id == b.id }
+        default: remember(); texts.removeAll { $0.id == b.id }
+        }
+        selectedText = nil; selectedSound = nil; selectedPip = nil
+    }
+
     /// What can be put over the video, when no clip is picked (the mockup's bottom row).
     private var addTools: some View {
         toolRow {
@@ -1725,12 +1794,16 @@ struct MultiClipEditor: View {
 
     /// The finger off a bar: a tap picks it; a move is done.
     private func barEnded(_ v: DragGesture.Value, _ item: BarItem) {
-        // a tap (not held, not moved): it's picked
+        // a tap (not held, not moved): it's picked. On the timeline, only picked: the timeline stays, with its trim
+        // frame, and the row under it is its tools (CapCut's, 21 Nov: the panel opened at once and hid the timeline
+        // the bar was on, so its ends couldn't be trimmed nor it held there). In a panel's bars, its panel, as before.
         if barGrab == nil, lifted == nil, hypot(v.translation.width, v.translation.height) < 6 {
-            switch item.kind {
-            case 1: selectSound(item.id)
-            case 2: selectPip(item.id)
-            default: selectText(item.id)
+            if panel == nil { pickBar(item) } else {
+                switch item.kind {
+                case 1: selectSound(item.id)
+                case 2: selectPip(item.id)
+                default: selectText(item.id)
+                }
             }
         }
         if let d = dropRow { dropBar(item.id, on: d) }
