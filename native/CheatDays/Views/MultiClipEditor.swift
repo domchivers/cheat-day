@@ -120,6 +120,9 @@ struct MultiClipEditor: View {
     // the timeline took over left the handle stranded, apart from its clip)
     @GestureState private var trimLive: TrimDrag?
     @State private var scrubSkip = false
+    @State private var pressed: UUID?        // the bar a finger's on (design/capcut-timeline-mockup.html: hold to lift)
+    @State private var pressMoved = false    // it moved before the hold was up: a scroll, not a hold
+    @State private var lifted: UUID?         // the bar held long enough to move
     @State private var barSnap: Double?
     @State private var stripHeld: CGFloat?                // the keyframe a strip's scrub is held on (for the tap, once)                   // what a bar being dragged is held on (for the tap, once)                  // this drag is a bar's or a trim handle's, not the timeline's                // an end of the picked clip being dragged on the timeline
     private struct BarGrab { var id: UUID; var mode: Int; var from: Double; var to: Double; var words: [EditText.Word]?; var start = 0.0 }   // mode: 0 move, 1 start, 2 end
@@ -761,6 +764,8 @@ struct MultiClipEditor: View {
     /// The timeline slid by a finger: the video under the line follows it, held on a clip's edge when it's near one.
     private func scrubTimeline(by dx: CGFloat, from start: CGPoint, mid: CGFloat, pps: CGFloat) {
         if scrubSkip { return }
+        // a bar held and lifted, or being moved: the timeline keeps still under it from then on
+        if lifted != nil || barGrab != nil { return }
         if scrubFrom == nil {
             // a bar or a clip's end being dragged has the finger: the timeline keeps still under it. Told by where the
             // finger came down, not only by the bar's own drag having begun: that came too late, and the timeline slid
@@ -797,9 +802,11 @@ struct MultiClipEditor: View {
         let r = Int((p.y - lanesTop) / (Self.laneHeight + 3))
         let rows = Array(barRows.prefix(4))
         guard r >= 0, r < rows.count else { return false }
+        // a bar's middle is the timeline's until the bar's held (lifted); a picked bar's ends are its own, to trim it
         return rows[r].contains { item in
             let x0 = shift + CGFloat(item.from) * pps, x1 = x0 + max(16, CGFloat(item.to - item.from) * pps)
-            return p.x >= x0 - 4 && p.x <= x1 + 4
+            let picked = item.id == selectedText || item.id == selectedSound || item.id == selectedPip
+            return picked && ((p.x >= x0 - 4 && p.x <= x0 + 12) || (p.x >= x1 - 12 && p.x <= x1 + 4))
         }
     }
 
@@ -1572,77 +1579,105 @@ struct MultiClipEditor: View {
         let x0 = w * CGFloat(min(item.from, span) / span), x1 = w * CGFloat(min(item.to, span) / span)
         let width = max(16, x1 - x0), on = item.id == selectedText || item.id == selectedSound || item.id == selectedPip
         // (on the timeline a slim tag, design/pro-ui)
-        let h: CGFloat = onTimeline ? Self.laneHeight : 18, corner: CGFloat = onTimeline ? 7 : 5
+        let h: CGFloat = onTimeline ? Self.laneHeight : 18, corner: CGFloat = onTimeline ? 7 : 5, up = lifted == item.id
         return Text(item.label).font(.system(size: onTimeline ? 11 : 9, weight: onTimeline ? .semibold : .heavy)).lineLimit(1).foregroundStyle(.black.opacity(0.82))
             .padding(.horizontal, onTimeline ? 8 : 5).frame(width: width, height: h, alignment: .leading)
             .background(item.colour.opacity(onTimeline ? 0.88 : 1), in: RoundedRectangle(cornerRadius: corner, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: corner, style: .continuous).stroke(on ? Color.white : Color.clear, lineWidth: 1.5))
             .contentShape(Rectangle())
-            .onTapGesture {
-                switch item.kind {
-                case 1: selectSound(item.id)
-                case 2: selectPip(item.id)
-                default: selectText(item.id)
-                }
-            }
-            // measured in the bars' rows, which keep still, not in the bar itself: the bar moves as it's dragged, so
-            // measured in it, each step counted part of its own move back, and the bar jumped about under the finger
-            // (21 Nov: a separated sound dragged on the timeline)
-            .gesture(DragGesture(minimumDistance: 2, coordinateSpace: .named("bars"))
-                .onChanged { v in
-                    if barGrab == nil {
-                        // held still under the finger while it's moved (21 Nov: playing on, the timeline slid away
-                        // under the bar being dragged)
-                        player.pause(); playing = false
-                        // by its ends, or the middle to move it
-                        let at = v.startLocation.x - x0   // (where on the bar: it hasn't moved yet)
-                        let mode = at < 12 ? 1 : (at > width - 12 ? 2 : 0)
-                        if item.kind == 1, let s = sounds.first(where: { $0.id == item.id }) {
-                            remember()   // (a sound moved can be undone)
-                            barGrab = BarGrab(id: item.id, mode: mode, from: s.from, to: s.to, words: nil, start: s.start)
-                        } else if item.kind == 2, let p = pips.first(where: { $0.id == item.id }) {
-                            barGrab = BarGrab(id: item.id, mode: mode, from: p.from, to: p.to, words: nil, start: p.start)
-                        } else if let t = texts.first(where: { $0.id == item.id }) {
-                            barGrab = BarGrab(id: item.id, mode: mode, from: t.from, to: t.to, words: t.words)
-                        }
-                    }
-                    guard let g = barGrab else { return }
-                    var dt = Double(v.translation.width / max(w, 1)) * span
-                    // held on a clip's start or end, another bar's, or the line, when it comes within 8 points of
-                    // one, with a tap; anywhere else it goes where the finger puts it (21 Nov: the owner, "snap to
-                    // the in or outs or where the cursor is")
-                    let reach = Double(8 / max(w, 1)) * span
-                    let edges = g.mode == 2 ? [g.to] : (g.mode == 1 ? [g.from] : [g.from, g.to])
-                    var held: (dt: Double, at: Double)?
-                    for e in edges {
-                        if let at = snapTarget(e + dt, reach: reach, except: g.id), held == nil || abs(at - e - dt) < abs(held!.dt - dt) {
-                            held = (at - e, at)
-                        }
-                    }
-                    if let held {
-                        dt = held.dt
-                        if barSnap != held.at { barSnap = held.at; UISelectionFeedbackGenerator().selectionChanged() }
-                    } else { barSnap = nil }
-                    // the line stays where it is while it's moved (21 Nov: it followed the bar, and the timeline jumped)
-                    switch item.kind {
-                    case 1: dragSound(g, dt, span: span, follow: false)
-                    case 2: dragPip(g, dt, span: span, follow: false)
-                    default: dragText(g, dt, span: span, follow: false)
-                    }
-                }
-                .onEnded { _ in
-                    // (the line left where it was: 21 Nov, it jumped to the bar's start when it was let go)
-                    let moved = barGrab != nil && item.kind != 0
-                    barSnap = nil
-                    barGrab = nil
-                    // a sound or overlay moved: the preview made again with it, now it's let go
-                    if moved { dropped += 1 }
-                })
+            // held, it lifts (as CapCut's do, 21 Nov, design/capcut-timeline-mockup.html): see-through and a little
+            // bigger under the finger while it's moved
+            .opacity(up ? 0.62 : 1)
+            .scaleEffect(up ? 1.05 : 1)
+            .shadow(color: .black.opacity(up ? 0.6 : 0), radius: 8, y: 5)
+            .zIndex(up ? 2 : 0)
+            // A tap picks it; held a third of a second it lifts, with a tick, and only then moves (21 Nov: a drag
+            // moved it at once, so a slightly-off scroll or tap moved a bar). A picked bar's ends trim it straight
+            // away; a drag anywhere else is the timeline's. Measured in the bars' rows, which keep still, not in the
+            // bar itself: measured in it, each step counted part of its own move back (21 Nov: a separated sound)
+            .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("bars"))
+                .onChanged { barChanged($0, item, x0: x0, width: width, on: on, w: w, span: span) }
+                .onEnded { barEnded($0, item) })
             .offset(x: x0)
             .accessibilityElement()
             .accessibilityLabel("\(item.label), \(Self.clock(item.from)) to \(Self.clock(item.to))")
             .accessibilityHint("Double tap to change it")
             .accessibilityAddTraits(.isButton)
+    }
+
+    /// A finger on a bar, moving (kept out of bar()'s chain: the compiler timed out on a long one, 1.4.21).
+    private func barChanged(_ v: DragGesture.Value, _ item: BarItem, x0: CGFloat, width: CGFloat, on: Bool, w: CGFloat, span: Double) {
+        let dist = hypot(v.translation.width, v.translation.height)
+        if pressed != item.id {
+            pressed = item.id; pressMoved = false; lifted = nil
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(300))
+                guard pressed == item.id, !pressMoved, barGrab == nil else { return }
+                lifted = item.id
+                player.pause(); playing = false
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            }
+        }
+        if dist > 8, lifted == nil, barGrab == nil { pressMoved = true }
+        if barGrab == nil {
+            // by its ends once it's picked, or anywhere once it's lifted to move it
+            let at = v.startLocation.x - x0   // (where on the bar: it hasn't moved yet)
+            let mode = lifted == item.id ? 0 : (at < 12 ? 1 : (at > width - 12 ? 2 : 0))
+            guard lifted == item.id || (mode != 0 && on && dist > 2) else { return }
+            // held still under the finger while it's moved (21 Nov: playing on, the timeline slid away
+            // under the bar being dragged)
+            player.pause(); playing = false
+            if item.kind == 1, let s = sounds.first(where: { $0.id == item.id }) {
+                remember()   // (a sound moved can be undone)
+                barGrab = BarGrab(id: item.id, mode: mode, from: s.from, to: s.to, words: nil, start: s.start)
+            } else if item.kind == 2, let p = pips.first(where: { $0.id == item.id }) {
+                barGrab = BarGrab(id: item.id, mode: mode, from: p.from, to: p.to, words: nil, start: p.start)
+            } else if let t = texts.first(where: { $0.id == item.id }) {
+                barGrab = BarGrab(id: item.id, mode: mode, from: t.from, to: t.to, words: t.words)
+            }
+        }
+        guard let g = barGrab else { return }
+        var dt = Double(v.translation.width / max(w, 1)) * span
+        // held on a clip's start or end, another bar's, or the line, when it comes within 8 points of
+        // one, with a tap; anywhere else it goes where the finger puts it (21 Nov: the owner, "snap to
+        // the in or outs or where the cursor is")
+        let reach = Double(8 / max(w, 1)) * span
+        let edges = g.mode == 2 ? [g.to] : (g.mode == 1 ? [g.from] : [g.from, g.to])
+        var held: (dt: Double, at: Double)?
+        for e in edges {
+            if let at = snapTarget(e + dt, reach: reach, except: g.id), held == nil || abs(at - e - dt) < abs(held!.dt - dt) {
+                held = (at - e, at)
+            }
+        }
+        if let held {
+            dt = held.dt
+            if barSnap != held.at { barSnap = held.at; UISelectionFeedbackGenerator().selectionChanged() }
+        } else { barSnap = nil }
+        // the line stays where it is while it's moved (21 Nov: it followed the bar, and the timeline jumped)
+        switch item.kind {
+        case 1: dragSound(g, dt, span: span, follow: false)
+        case 2: dragPip(g, dt, span: span, follow: false)
+        default: dragText(g, dt, span: span, follow: false)
+        }
+    }
+
+    /// The finger off a bar: a tap picks it; a move is done.
+    private func barEnded(_ v: DragGesture.Value, _ item: BarItem) {
+        // a tap (not held, not moved): it's picked
+        if barGrab == nil, lifted == nil, hypot(v.translation.width, v.translation.height) < 6 {
+            switch item.kind {
+            case 1: selectSound(item.id)
+            case 2: selectPip(item.id)
+            default: selectText(item.id)
+            }
+        }
+        pressed = nil; pressMoved = false; lifted = nil
+        // (the line left where it was: 21 Nov, it jumped to the bar's start when it was let go)
+        let moved = barGrab != nil && item.kind != 0
+        barSnap = nil
+        barGrab = nil
+        // a sound or overlay moved: the preview made again with it, now it's let go
+        if moved { dropped += 1 }
     }
 
     private func dragText(_ g: BarGrab, _ dt: Double, span: Double, follow: Bool = true) {
