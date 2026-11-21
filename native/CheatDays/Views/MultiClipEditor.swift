@@ -517,11 +517,11 @@ struct MultiClipEditor: View {
                 Image(systemName: any ? "speaker.wave.2.fill" : "speaker.slash.fill").font(.system(size: 13, weight: .medium))
                 Text("Clip\nsound").font(.system(size: 7.5, weight: .medium)).foregroundStyle(Self.quiet).multilineTextAlignment(.center)
             }
-            .foregroundStyle(.white).frame(width: 44, height: 64)   // (down past the sound wave: 21 Nov, a gap under it)
+            .foregroundStyle(.white).frame(width: 44, height: Self.clipRow + 4)   // (as tall as the clips' row, its sound wave in it)
             .overlay(alignment: .trailing) { Rectangle().fill(Color(white: 0.2)).frame(width: 1, height: 40) }
             // solid, down past every row of bars under the clips too (21 Nov: captions showed under it; and before,
             // the fade into the clips dimmed the first of them too far)
-            .frame(width: 44, height: max(64, Self.clipRow + 2 + (laneCount > 0 ? 3 + CGFloat(laneCount) * (Self.laneHeight + 3) : 0)), alignment: .top)
+            .frame(width: 44, height: max(Self.clipRow + 4, Self.clipRow + 2 + (laneCount > 0 ? 3 + CGFloat(laneCount) * (Self.laneHeight + 3) : 0)), alignment: .top)
             .background(Self.sheet)
         }
         .buttonStyle(.plain).accessibilityLabel(any ? "Turn every clip's sound off" : "Turn every clip's sound on")
@@ -563,6 +563,8 @@ struct MultiClipEditor: View {
                 .frame(width: 9, height: g.size.height)
                 .offset(x: mid - 4.5).allowsHitTesting(false)
                 allSound.offset(y: Self.rulerHeight + 2)
+                // each row's tile beside it, lined up with it (22 Nov: "match cap where we have ui that lines up with things")
+                laneHeads.offset(x: 7, y: Self.rulerHeight + 4 + Self.clipRow + 4 + 2)
             }
             .frame(width: g.size.width, height: g.size.height, alignment: .topLeading)
             .clipped()
@@ -754,6 +756,8 @@ struct MultiClipEditor: View {
         return VStack(alignment: .leading, spacing: 3) {
             ForEach(rows.indices, id: \.self) { r in
                 ZStack(alignment: .leading) {
+                    // the row's rail, the whole way along, so where each row is shows even where it's empty (CapCut's)
+                    RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color(white: 0.13))
                     // where a held bar would go: its row outlined
                     if dropRow == r { RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(Color.white.opacity(0.5), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])) }
                     ForEach(rows[r]) { item in bar(item, w: width, span: span, onTimeline: true) }
@@ -768,6 +772,42 @@ struct MultiClipEditor: View {
         }
         .coordinateSpace(name: "bars")
         .padding(.top, 2)
+    }
+
+    /// A tile for each row of bars, in the timeline's left column, lined up with its row: what's on it (captions, text,
+    /// stickers, voice, music, sound FX, overlays; mixed, a stack), as CapCut heads its tracks.
+    private var laneHeads: some View {
+        let rows = Array(barRows.prefix(6))
+        return VStack(spacing: 3) {
+            ForEach(rows.indices, id: \.self) { r in
+                Image(systemName: laneIcon(rows[r])).font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.85))
+                    .frame(width: 30, height: Self.laneHeight)
+                    .background(Color(white: 0.17), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func laneIcon(_ row: [BarItem]) -> String {
+        let icons = Set(row.map { item -> String in
+            switch item.kind {
+            case 1:
+                switch sounds.first(where: { $0.id == item.id })?.kind {
+                case "voice": return "mic.fill"
+                case "song": return "music.note"
+                case "clip": return "speaker.wave.2.fill"
+                default: return "waveform"
+                }
+            case 2: return "rectangle.inset.topright.filled"
+            default:
+                switch texts.first(where: { $0.id == item.id })?.kind {
+                case "caption": return "captions.bubble"
+                case "sticker", "card": return "face.smiling"
+                default: return "textformat"
+                }
+            }
+        })
+        return icons.count == 1 ? icons.first! : "square.stack.fill"
     }
 
     /// The timeline slid by a finger: the video under the line follows it, held on a clip's edge when it's near one.
