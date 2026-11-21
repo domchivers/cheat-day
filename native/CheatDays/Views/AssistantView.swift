@@ -900,6 +900,8 @@ struct AssistantView: View {
                     Spacer()
                     comboTotal(c, aim: aim).font(.subheadline.weight(.bold))
                 }
+                // the rest of its macros, to track it (the PUBCHA chat's "give me the macros and cals to track")
+                Text("\(Fmt.int(num(c["c"]) ?? 0)) g carbs · \(Fmt.int(num(c["f"]) ?? 0)) g fat").font(.caption).foregroundStyle(.secondary).monospacedDigit()
                 ForEach(list(c["lines"]).indices, id: \.self) { i in
                     let l = list(c["lines"])[i], off = l["off"] as? Bool == true
                     HStack(spacing: 11) {

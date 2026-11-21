@@ -93,6 +93,36 @@ enum CheatPlan {
         .sorted { str($0["time"]) < str($1["time"]) }
     }
 
+    /// A takeaway order (the takeaway planner's card, design/cheat-day-planner-mockup.html) as a slot: the place, its
+    /// dishes and how much of each, its numbers (a range when they're guessed), its tips. "place" marks it, so the
+    /// planner's rewrites leave it as the menu made it.
+    static func slot(_ c: JSON, place: String, tips: [String], time: String) -> JSON {
+        let lines = list(c["lines"])
+        func sum(_ l: JSON, _ k: String) -> Double { list(l["add"]).reduce(0) { $0 + (num($1[k]) ?? 0) } }
+        let parts = lines.map { l -> JSON in
+            var p: JSON = ["name": str(l["name"]), "grams": 0, "kcal": num(l["kcal"]) ?? 0, "protein": num(l["p"]) ?? 0, "carbs": sum(l, "c"), "fat": sum(l, "f"), "tag": str(l["tag"])]
+            if l["dish"] as? Bool == true { p["share"] = num(l["share"]) ?? 1 }
+            return p
+        }
+        let detail = parts.map { p -> String in let sh = num(p["share"]) ?? 1; return (sh < 0.99 ? "\(Takeaway.frac(sh)) " : "") + str(p["name"]) }.joined(separator: "\n")
+        var s: JSON = ["time": time, "title": place, "place": place, "workout": false, "saved": "", "parts": parts, "tips": tips, "source": str(c["source"]),
+                       "detail": detail, "kcal": num(c["kcal"]) ?? 0, "protein": num(c["p"]) ?? 0, "carbs": num(c["c"]) ?? 0, "fat": num(c["f"]) ?? 0]
+        for k in ["kcalLo", "kcalHi", "pLo", "pHi"] { if let v = num(c[k]) { s[k] = v } }
+        return s
+    }
+
+    /// A place's slot stays as its menu made it when the planner rewrites the day (it's told to keep slots as they are,
+    /// but it would write its own numbers over the menu's): the planner's time for it is kept.
+    static func keepingPlaces(_ new: [JSON], from old: [JSON]) -> [JSON] {
+        new.map { s -> JSON in
+            guard let was = old.first(where: { $0["place"] != nil && str($0["title"]).lowercased() == str(s["title"]).lowercased() }) else { return s }
+            var x = was
+            if !str(s["time"]).isEmpty { x["time"] = s["time"] }
+            return x
+        }
+        .sorted { str($0["time"]) < str($1["time"]) }
+    }
+
     /// A slot as an idea, for the recipe screen and for logging.
     static func idea(_ slot: JSON) -> JSON {
         var i: JSON = ["name": str(slot["title"]), "kcal": num(slot["kcal"]) ?? 0, "protein": num(slot["protein"]) ?? 0, "carbs": num(slot["carbs"]) ?? 0,
@@ -117,6 +147,8 @@ struct CheatDayView: View {
     @State private var setupSize = 1.3
     @FocusState private var typing: Bool
     @State private var showEaten = false   // the day's food so far, opened from its one line
+    @State private var macroFor: SlotBox?   // a slot's numbers, ready to log (design/cheat-day-planner-mockup.html)
+    struct SlotBox: Identifiable { let id = UUID(); let slot: JSON }
     /// The cheat day's own colours, the beta pass's blue to lavender (#8ec5ff to #c4a1ff): the day's name, what's
     /// free to enjoy, the day picked. The owner wasn't a fan of the yellow.
     static let tint = Color(red: 0.769, green: 0.631, blue: 1.0)
@@ -152,6 +184,7 @@ struct CheatDayView: View {
                 // a saved meal keeps its own real numbers; anything else follows what its recipe adds up to
                 RecipeSheet(idea: r.idea, onNumbers: str(r.idea["saved"]).isEmpty ? { recipe, k, p, c, f in follow(r.id, recipe, k, p, c, f) } : nil)
             }
+            .sheet(item: $macroFor) { b in macroSheet(b.slot) }
         }
     }
 
@@ -314,12 +347,19 @@ struct CheatDayView: View {
     private func choose(_ o: JSON) {
         guard let date = store.nextCheat?.date, var plan = store.cheatPlan(date) else { return }
         var slots = list(plan["slots"]), x = o
-        // 15 minutes after the last thing in the plan ("19:30" then "19:45"), never past midnight
-        let hm = (slots.last.map { str($0["time"]) } ?? "").split(separator: ":").compactMap { Int($0) }
-        if hm.count == 2 { let t = min(hm[0] * 60 + hm[1] + 15, 23 * 60 + 59); x["time"] = String(format: "%02d:%02d", t / 60, t % 60) }
+        var dropped: JSON?
+        if !str(o["place"]).isEmpty, let k = slots.firstIndex(where: { str($0["place"]).lowercased() == str(o["place"]).lowercased() }) {
+            // another order from the same place: in its slot's place, the one it replaces back among the options
+            x["time"] = slots[k]["time"]; dropped = slots.remove(at: k)
+        } else {
+            // 15 minutes after the last thing in the plan ("19:30" then "19:45"), never past midnight
+            let hm = (slots.last.map { str($0["time"]) } ?? "").split(separator: ":").compactMap { Int($0) }
+            if hm.count == 2 { let t = min(hm[0] * 60 + hm[1] + 15, 23 * 60 + 59); x["time"] = String(format: "%02d:%02d", t / 60, t % 60) }
+        }
         slots.append(x)
-        plan["slots"] = slots
-        plan["options"] = list(plan["options"]).filter { str($0["title"]) != str(o["title"]) }
+        plan["slots"] = slots.sorted { str($0["time"]) < str($1["time"]) }
+        // (a place's orders share its name: told apart by what's in them)
+        plan["options"] = list(plan["options"]).filter { !(str($0["title"]) == str(o["title"]) && str($0["detail"]) == str(o["detail"])) } + (dropped.map { [$0] } ?? [])
         store.perform(["type": "cheatPlan", "date": date, "plan": plan])
     }
 
@@ -365,8 +405,10 @@ struct CheatDayView: View {
         let kcal = num(eaten?["kcal"]) ?? num(s["kcal"]) ?? 0, protein = eaten.map { store.macros([$0]).p } ?? num(s["protein"]) ?? 0
         // the planner's guess until its recipe is written; a saved meal and anything logged are real numbers
         let est = !done && s["recipe"] == nil && str(s["saved"]).isEmpty ? "est. " : ""
+        let place = s["place"] != nil, tips = (s["tips"] as? [String] ?? []).prefix(2)
         return HStack(spacing: 12) {
-            Button { if !isWorkout { open = IdeaRef(id: title, idea: CheatPlan.idea(s)) } } label: {
+            // a place's order: its numbers to log, with how much of each dish; anything else: its recipe
+            Button { if place { macroFor = SlotBox(slot: s) } else if !isWorkout { open = IdeaRef(id: title, idea: CheatPlan.idea(s)) } } label: {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     Text(str(s["time"])).font(.caption.weight(.bold)).monospacedDigit().foregroundStyle(.secondary).frame(width: 40, alignment: .leading)
                     VStack(alignment: .leading, spacing: 3) {
@@ -374,9 +416,10 @@ struct CheatDayView: View {
                         if !str(s["detail"]).isEmpty { Text(str(s["detail"])).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.leading) }
                         if kcal > 0 || done {
                             ((done ? Text("✓ Logged · ").foregroundStyle(Theme.walk) : Text(""))
-                                + Text("\(est)\(Fmt.int(kcal)) kcal · \(est)\(Int(protein.rounded())) g protein"))
+                                + Text(slotNumbers(s, done: done, kcal: kcal, protein: protein, est: est)))
                                 .font(.caption.weight(.semibold)).monospacedDigit().padding(.top, 1)
                         }
+                        if !done { ForEach(tips.indices, id: \.self) { i in Text("• " + tips[i]).font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.leading) } }
                     }
                     Spacer(minLength: 0)
                 }
@@ -388,7 +431,8 @@ struct CheatDayView: View {
                     .buttonStyle(.borderless).accessibilityLabel("Add \(title) to \(CheatPlan.meal(of: s).lowercased())")
             }
             Menu {
-                if !isWorkout { Button { open = IdeaRef(id: title, idea: CheatPlan.idea(s)) } label: { Label("See the recipe", systemImage: "book") } }
+                if !place && !isWorkout { Button { open = IdeaRef(id: title, idea: CheatPlan.idea(s)) } label: { Label("See the recipe", systemImage: "book") } }
+                if !isWorkout && !list(s["parts"]).isEmpty { Button { macroFor = SlotBox(slot: s) } label: { Label("Macros and how much", systemImage: "chart.bar.doc.horizontal") } }
                 Button(role: .destructive) { withAnimation(.snappy) { remove(s, logged: eaten) } } label: {
                     Label(done ? "Remove from today and the plan" : "Remove from plan", systemImage: "minus.circle")
                 }
@@ -398,6 +442,28 @@ struct CheatDayView: View {
         .padding(.leading, 14).padding(.trailing, 8).padding(.vertical, 11)
         .background(Theme.hero, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .transition(.opacity.combined(with: .move(edge: .bottom)))
+    }
+
+    /// A slot's numbers: a range when they're guessed ("est. 1,250–1,400 kcal · 70–80 g protein"), as the PUBCHA chat gave them.
+    private func slotNumbers(_ s: JSON, done: Bool, kcal: Double, protein: Double, est: String) -> String {
+        if !done, let lo = num(s["kcalLo"]), let hi = num(s["kcalHi"]), let pl = num(s["pLo"]), let ph = num(s["pHi"]) {
+            return "est. \(Fmt.int(lo))–\(Fmt.int(hi)) kcal · \(Int(pl))–\(Int(ph)) g protein"
+        }
+        return "\(est)\(Fmt.int(kcal)) kcal · \(est)\(Int(protein.rounded())) g protein"
+    }
+
+    /// A slot's numbers, ready to log: how much of each part, then logged or kept in the plan as set.
+    private func macroSheet(_ s: JSON) -> some View {
+        let today = store.nextCheat?.date == store.today
+        return SlotMacros(slot: s, canLog: today && !CheatPlan.logged(s, in: store.todayItems),
+                          log: { x in keepSlot(x, was: s); logSlot(x) }, keep: { x in keepSlot(x, was: s) })
+    }
+
+    /// A slot as it was set in its numbers sheet, in the plan where it was.
+    private func keepSlot(_ x: JSON, was: JSON) {
+        guard let date = store.nextCheat?.date, var plan = store.cheatPlan(date) else { return }
+        plan["slots"] = list(plan["slots"]).map { str($0["title"]) == str(was["title"]) && str($0["time"]) == str(was["time"]) ? x : $0 }
+        store.perform(["type": "cheatPlan", "date": date, "plan": plan])
     }
 
     private var moreLabel: some View {
@@ -500,6 +566,11 @@ struct CheatDayView: View {
         busy = true; problem = nil; sent = said; typing = false
         draft = ""
         defer { busy = false; sent = nil }
+        // a place named ("PUBCHA for dinner"): planned from its real menu by the takeaway planner, as one slot with how
+        // much of each dish, its range and its tips (the PUBCHA chat the owner shared, 21 Nov); anything else, as before
+        if let made = await fromPlace(said, next: next, plan: plan) {
+            store.perform(["type": "cheatPlan", "date": next.date, "plan": made]); starting = false; return
+        }
         let isToday = next.date == store.today, logged = loggedItems(next), saved = savedMeals
         let c = Calendar.current.dateComponents([.hour, .minute], from: Date()), now = String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
         let had = logged.map { "\(str($0["name"])) (\(Int(num($0["kcal"]) ?? 0)) kcal)" }.joined(separator: ", ")
@@ -549,7 +620,7 @@ struct CheatDayView: View {
         do {
             var a = try await Gemini.ask(schema: schema, parts: [["text": prompt]], quick: false, tries: 4, job: "chat")
             let slots = await CheatPlan.checked(list(a["slots"]))
-            a["slots"] = CheatPlan.tidied(CheatPlan.keepingRecipes(slots, from: list(plan?["slots"])), saved: saved)
+            a["slots"] = CheatPlan.keepingPlaces(CheatPlan.tidied(CheatPlan.keepingRecipes(slots, from: list(plan?["slots"])), saved: saved), from: list(plan?["slots"]))
             let inPlan = Set(list(a["slots"]).map { str($0["title"]).lowercased() })
             a["options"] = CheatPlan.tidied(await CheatPlan.checked(list(a["options"]).filter { !inPlan.contains(str($0["title"]).lowercased()) }), saved: saved)
             a["at"] = ISO.now()
@@ -560,6 +631,53 @@ struct CheatDayView: View {
             problem = error.localizedDescription
             draft = said   // nothing lost: it's back in the box to try again
         }
+    }
+
+    /// The takeaway planner's answer when the message is about a place (nil when it isn't, or it couldn't plan it): the
+    /// place's slot made from its best order, its other orders as options to swap in, the chat so far going along so
+    /// "any other options?" and "what about the seafood pancake?" work as they do in the assistant.
+    private func fromPlace(_ said: String, next: (date: String, kcal: Double, extra: Double), plan: JSON?) async -> JSON? {
+        var turns: [Assistant.Turn] = []
+        for e in list(plan?["chat"]).suffix(8) {
+            if !str(e["me"]).isEmpty { turns.append(Assistant.Turn(me: true, text: str(e["me"]))) }
+            if let ta = e["ta"] as? JSON { turns.append(Assistant.Turn(me: false, text: "", result: ["takeaway": ta])) }
+        }
+        turns.append(Assistant.Turn(me: true, text: said))
+        let logged = loggedItems(next), slots = list(plan?["slots"])
+        // what's free for it: the day, less what's eaten and the rest of the plan (a place's slot is what's being changed)
+        let rest = slots.filter { $0["place"] == nil && !CheatPlan.logged($0, in: logged) }
+        let room = max(0, budget(next) - CheatPlan.total(slots: rest, logged: logged))
+        let pLeft = store.proteinGoal.map { g in max(0, g - store.macros(logged).p - rest.reduce(0.0) { $0 + (num($1["protein"]) ?? 0) }) }
+        guard let r = await Takeaway.answer(turns, store: store, step: nil, room: room, proteinLeft: pLeft), str(r["kind"]) == "takeaway",
+              let ta = r["takeaway"] as? JSON, let best = list(ta["combos"]).first else { return nil }
+        let place = str(ta["restaurant"]), tips = ta["tips"] as? [String] ?? []
+        let was = slots.first { str($0["place"]).lowercased() == place.lowercased() }
+        let time = str(was?["time"]).isEmpty ? Self.time(for: said, isToday: next.date == store.today) : str(was?["time"])
+        var p = plan ?? [:]
+        p["slots"] = (slots.filter { str($0["place"]).lowercased() != place.lowercased() } + [CheatPlan.slot(best, place: place, tips: tips, time: time)])
+            .sorted { str($0["time"]) < str($1["time"]) }
+        p["options"] = list(ta["combos"]).dropFirst().map { CheatPlan.slot($0, place: place, tips: tips, time: time) }
+        p["reply"] = str(r["reply"])
+        if str(p["title"]).isEmpty { p["title"] = "Cheat day: \(place)" }
+        p["at"] = ISO.now()
+        // the orders shown, kept small, for the next message's context (what's been suggested, what not to show again)
+        var small = ta
+        small["combos"] = list(ta["combos"]).map { c -> JSON in
+            ["title": str(c["title"]), "key": str(c["key"]), "lines": list(c["lines"]).map { l -> JSON in ["name": str(l["name"]), "dish": l["dish"] as? Bool ?? false] }]
+        }
+        p["chat"] = Array(list(plan?["chat"]).suffix(11)) + [["me": said, "ta": small] as JSON]
+        return p
+    }
+
+    /// When a place's order goes in the day: the meal they name, else dinner; today, never before now.
+    static func time(for said: String, isToday: Bool) -> String {
+        let meal = Meals.named(in: said) ?? "Dinner"
+        var m = ["Breakfast": 9 * 60, "Lunch": 12 * 60 + 30, "Snacks": 15 * 60 + 30, "Dinner": 19 * 60][meal] ?? 19 * 60
+        if isToday {
+            let c = Calendar.current.dateComponents([.hour, .minute], from: Date()), now = (c.hour ?? 0) * 60 + (c.minute ?? 0)
+            if m <= now { m = min(23 * 60 + 30, ((now + 44) / 15) * 15) }
+        }
+        return String(format: "%02d:%02d", m / 60, m % 60)
     }
 
     // MARK: no cheat day yet

@@ -579,8 +579,10 @@ enum Takeaway {
     @MainActor
     /// With a photo of a delivery-app page (Gami's Chicken Burger, 2280 kJ, on DoorDash), what the quick look read off it
     /// goes along: its dishes' kJ win, and a dish named in the message ("this burger") is the one wanted.
+    /// \`room\` and \`proteinLeft\`: what's free for it when it isn't everything left today (the cheat day planner: the
+    /// rest of the day's plan taken off), used when they don't give their own numbers.
     static func answer(_ turns: [Assistant.Turn], store: Store, step: (@MainActor (String, String) -> Void)?, photo: Assistant.Spotted? = nil,
-                       decided: Decision? = nil) async -> JSON? {
+                       decided: Decision? = nil, room: Double? = nil, proteinLeft: Double? = nil) async -> JSON? {
         // every typed message is asked (no list of words to say first): it runs alongside the assistant's own answer
         guard let last = turns.last, last.me, last.images.isEmpty || photo != nil else { return nil }
         let earlier = turns.dropLast().suffix(6).map { t -> String in
@@ -659,7 +661,8 @@ enum Takeaway {
         let others = planned && dishes(want).isEmpty && lower.range(of: #"\b(other|else|another|alternatives?|options?|ideas?)\b"#, options: .regularExpression) != nil
         let before = others ? Set(shownCombos.map { str($0["key"]) }.filter { !$0.isEmpty }) : []
         decided?.set(true); return await choose(name, area: str(route["area"]), want: want, seen: seen, avoid: avoidList, said: last.text, earlier: earlier,
-                            kcal: pos(route["kcal"]) ?? theirKcal, protein: pos(route["protein"]) ?? (proteinTalk ? earlierProtein : nil), meal: nil, store: store, step: step, fresh: again,
+                            kcal: pos(route["kcal"]) ?? theirKcal ?? room, protein: pos(route["protein"]) ?? (proteinTalk ? earlierProtein : nil) ?? proteinLeft,
+                            meal: nil, store: store, step: step, fresh: again,
                             before: before, count: others ? 4 : 3, followUp: planned)
     }
 
