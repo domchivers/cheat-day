@@ -1189,7 +1189,15 @@ struct MultiClipEditor: View {
         withAnimation(.snappy) { panel = nil; selectedSound = nil; sounds.removeAll { $0.id == id } }
     }
 
-    private func seek(_ s: Double) { player.seek(to: CMTime(seconds: max(0, s), preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero); now = s }
+    private func seek(_ s: Double) { player.seek(to: CMTime(seconds: max(0, s), preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero); now = s; followCaption(s) }
+
+    /// A caption being edited, and the line moves on (played or slid) into another: that one's picked, as CapCut
+    /// does, so the panel is always for the caption on screen.
+    private func followCaption(_ t: Double) {
+        guard let id = selectedText, let cur = texts.first(where: { (x: EditText) -> Bool in x.id == id }), cur.kind == "caption" else { return }
+        guard t < cur.from || t >= cur.to else { return }
+        if let next = texts.first(where: { (x: EditText) -> Bool in x.kind == "caption" && t >= x.from && t < x.to }) { selectedText = next.id }
+    }
 
     /// The whole video as one bar, a stretch for each clip, to drag along (19 Nov: it could only be played through or
     /// jumped to a clip's start, not scrubbed as a single video can). The preview follows the finger, held still;
@@ -1279,6 +1287,7 @@ struct MultiClipEditor: View {
                 guard scrubFrom == nil, wasPlaying == nil else { return }
                 now = t
                 if playing != (player.rate != 0) { playing = player.rate != 0 }
+                followCaption(t)
             }
             player.onSize = { frameSize = $0 }
         }
@@ -1431,7 +1440,9 @@ struct MultiClipEditor: View {
             }
             ForEach(texts) { item in
                 let on = item.id == selectedText
-                if on || (now >= item.from && now < item.to) {
+                // the one picked is held up while it's edited; playing, only what's on at the line shows (21 Nov: the
+                // picked caption stayed up while the others played under it)
+                if (on && !playing) || (now >= item.from && now < item.to) {
                     // a calorie count held still shows its number, not the 0 it counts up from (21 Nov: "always 0":
                     // put on at the line, it was drawn at the very start of its count); playing, it counts as posted
                     EditTextView(item: item, at: item.kind == "calories" && !playing ? max(now, item.from + 1.3) : now).padding(24)
