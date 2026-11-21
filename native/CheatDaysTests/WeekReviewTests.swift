@@ -71,4 +71,13 @@ final class WeekReviewTests: XCTestCase {
     func testTooFewDaysSaysNothing() {
         XCTAssertNil(WeekReview.make(days: [day([brownie]), day([brownie]), day([])], proteinGoal: 100, pace: nil, want: nil))
     }
+
+    /// The card at a glance (21 Nov): each goal as one number, and the tip in one sentence.
+    func testAtAGlance() {
+        XCTAssertEqual(WeekReviewCard.short("7 of 7 days"), "7/7")
+        XCTAssertEqual(WeekReviewCard.short("−0.4 kg a week"), "−0.4 kg")
+        let full = (0..<7).map { _ in day([food("Chicken breast", kcal: 1800, p100: 31, k100: 165, meal: "Dinner")]) }
+        let r = WeekReview.make(days: full, proteinGoal: 100, pace: -0.6, want: 0)
+        XCTAssertEqual(r?.line, "You're eating your budget, so Monday's check-in will suggest a higher one.")
+    }
 }

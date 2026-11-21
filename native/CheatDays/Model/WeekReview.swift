@@ -10,6 +10,8 @@ struct WeekReview: Equatable {
     let rows: [Row]
     let tip: String
     var plan: String? = nil   // a meal to get ideas for
+    /// The tip in one sentence, for the card's glance (21 Nov: the card was a lot to read); the tip itself is behind Why.
+    var line: String = ""
 
     /// One logged day: its foods, budget and calories.
     struct Day { let items: [JSON]; let budget: Double; let kcal: Double }
@@ -61,7 +63,7 @@ struct WeekReview: Equatable {
             if let star = favourite(days, where: proteinRich) {
                 tip += " Your \(star.name.lowercased())'s earning its place: \(Int(star.p.rounded())) g protein for \(Int(star.kcal.rounded())) kcal."
             }
-            return WeekReview(status: "On track", title: "A good week", rows: rows, tip: tip)
+            return WeekReview(status: "On track", title: "A good week", rows: rows, tip: tip, line: "Keep doing what you're doing.")
         }
         let misses = [budgetOK, proteinOK, weightOK].filter { !$0 }.count
         let status = misses == 1 ? "Nearly there" : "Needs a look"
@@ -75,7 +77,8 @@ struct WeekReview: Equatable {
             if let s = swap { tip = "Your \(s.food.lowercased()) came up \(s.days) days. \(s.pick) instead saves \(Fmt.int(s.saves)) kcal each time." }
             else if all > 0, snacks / all > 0.22 { tip = "Snacks are \(Int(snacks / all * 100))% of your food: the easiest place to trim." }
             else { tip = "The over days ran about \(Fmt.int(by)) kcal past budget: one lighter meal on those days would do it." }
-            return WeekReview(status: status, title: "A few days over budget", rows: rows, tip: tip)
+            let line = swap.map { "\($0.pick) instead of your \($0.food.lowercased()) would do it." } ?? "One lighter meal on the over days would do it."
+            return WeekReview(status: status, title: "A few days over budget", rows: rows, tip: tip, line: line)
         }
         if !proteinOK {
             // the main meal with the least protein on the short days
@@ -87,7 +90,8 @@ struct WeekReview: Equatable {
             let name = low.meal == "Lunch" ? "Lunches" : low.meal + "s"
             let idea = low.meal == "Breakfast" ? "Eggs or Greek yoghurt" : "A chicken, fish or lean beef \(low.meal.lowercased())"
             return WeekReview(status: status, title: "Protein's short", rows: rows,
-                              tip: "\(name) are where it drops: about \(Int(low.avg.rounded())) g on the short days. \(idea) would close the gap.", plan: low.meal)
+                              tip: "\(name) are where it drops: about \(Int(low.avg.rounded())) g on the short days. \(idea) would close the gap.", plan: low.meal,
+                              line: "\(name) are where it drops.")
         }
         let pace = pace ?? 0, aim = w == 0 ? "holding steady" : "\(w < 0 ? "losing" : "gaining") \(Fmt.kg(abs(w))) kg a week"
         let over = method.hasPrefix("last 4") || method.hasPrefix("last 6") ? "over the \(method)" : "over your \(method)"
@@ -96,24 +100,28 @@ struct WeekReview: Equatable {
         let full = allowed > 0 && ate >= allowed * 0.95
         if pace < w {
             // under the goal's line: losing faster, losing on a plan to hold or gain, or gaining too slowly
+            let line = full ? "You're eating your budget, so Monday's check-in will suggest a higher one."
+                            : "Eat up to your budget; Monday's check-in will raise it if this carries on."
             let fix = full ? "You're eating your budget, so it's the budget that's too low. Monday's check-in will suggest a higher one."
                            : "Eat up to your budget, and if it carries on, Monday's check-in will raise it."
             if pace < -0.05 {
                 return WeekReview(status: status, title: w > 0 ? "Losing instead of gaining" : w == 0 ? "Losing when you meant to hold" : "Losing faster than planned", rows: rows,
-                                  tip: "You've lost \(Fmt.one(abs(pace))) kg a week \(over), and your plan is \(aim). Losing like this can cost muscle. \(fix)")
+                                  tip: "You've lost \(Fmt.one(abs(pace))) kg a week \(over), and your plan is \(aim). Losing like this can cost muscle. \(fix)", line: line)
             }
             return WeekReview(status: status, title: pace > 0.05 ? "Gaining slower than planned" : "Weight's not moving", rows: rows,
-                              tip: "Your plan is \(aim). \(fix)")
+                              tip: "Your plan is \(aim). \(fix)", line: line)
         }
+        let line = full ? "Monday's check-in will lower your budget if this carries on."
+                        : "Check what isn't getting logged: drinks, bites and oil."
         // over the goal's line: losing too slowly, or going up
         let fix = full ? "You're eating your budget, so either it's a little high or something isn't getting logged: drinks, bites and oil. Monday's check-in will lower it if it carries on."
                        : "Your days look good on paper, so the gap is usually what doesn't get logged: drinks, bites and oil. Log everything for a week."
         if pace > 0.05 {
             return WeekReview(status: status, title: w > 0 ? "Gaining faster than planned" : w == 0 ? "Gaining when you meant to hold" : "Weight's going up", rows: rows,
-                              tip: "You've gained \(Fmt.one(pace)) kg a week \(over), and your plan is \(aim). \(fix)")
+                              tip: "You've gained \(Fmt.one(pace)) kg a week \(over), and your plan is \(aim). \(fix)", line: line)
         }
         return WeekReview(status: status, title: pace < -0.05 ? "Losing slower than planned" : "Weight's not moving", rows: rows,
-                          tip: "Your plan is \(aim). \(fix)")
+                          tip: "Your plan is \(aim). \(fix)", line: line)
     }
 
     /// The food that came up on the most days (3 or more) among those that pass the test, with its usual numbers.

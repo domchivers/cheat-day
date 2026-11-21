@@ -45,7 +45,8 @@ struct TodayView: View {
     @AppStorage("today.more") private var moreOpen = false
     @AppStorage("nudge.hidden") private var nudgeHidden = ""   // "day|meal" of the card you closed
     @AppStorage("review.hidden") private var reviewHidden = ""   // the day the week review was closed
-    @AppStorage("cheatCard.hidden") private var cheatCardHidden = ""   // the cheat day its card was closed on
+    @AppStorage("cheatCard.hidden") private var cheatCardHidden = ""
+    @AppStorage("weighCard.hidden") private var weighCardHidden = ""   // the day the weigh-in card was closed   // the cheat day its card was closed on
     @AppStorage("dailyTips") private var dailyTipsOn = true
     @State private var pop: MealPop?
     /// How long after the last food added to a meal before it's looked at: time to add the rest of it.
@@ -152,14 +153,18 @@ struct TodayView: View {
                     }
                 }
                 if offset == 0, cheatToday, cheatCardHidden != store.today {
-                    Section { cheatCard }
-                        .listRowBackground(LinearGradient(colors: [Color(red: 0.557, green: 0.773, blue: 1.0).opacity(0.16), CheatDayView.tint.opacity(0.22)],
-                                                          startPoint: .leading, endPoint: .trailing))
+                    // (21 Nov, design/today-cards-mockup.html, 1: a card worth tapping, not a thin banner)
+                    Section { CheatDayCard(open: { showCheat = true }, hide: { withAnimation { cheatCardHidden = store.today } }) }
+                        .listRowBackground(CheatDayCard.background)
                 }
                 Section { hero }
                     .listRowBackground(Color.clear)   // the panel draws its own card, so the trim and badge can sit on its top edge
                     .listRowInsets(EdgeInsets())
                 if offset == 0, let w = store.weighInToConfirm { Section { WeighInConfirmCard(day: w.day, kg: w.kg, at: w.at) } }
+                // after a weigh-in: what it means (design/today-cards-mockup.html, 3); not while the scale's reading is being confirmed
+                else if offset == 0, weighCardHidden != store.today, WeighInCard.today != nil {
+                    Section { WeighInCard(hide: { withAnimation { weighCardHidden = store.today } }) }
+                }
                 if offset == 0, reviewHidden != store.today, let r = store.weekReview { reviewCard(r) }
                 if offset == 0, let n = store.nudge, nudgeHidden != store.today + "|" + n.meal { nudgeCard(n) }
                 if offset == 0 && store.checkInDue {
