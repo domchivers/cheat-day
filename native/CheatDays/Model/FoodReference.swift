@@ -113,7 +113,10 @@ enum FoodReference {
     /// Whether a database row is really the food asked for: raw isn't canned, oats aren't puffed, peanut butter isn't reduced fat.
     static func sameFood(asked: String, got: String) -> Bool {
         let a = asked.lowercased(), g = got.lowercased()
-        return !["canned", "cooked", "puffed", "reduced fat", "low fat", "fat free", "dried", "frozen", "breaded", "fried"].contains { g.contains($0) && !a.contains($0) }
+        // and a sweet or filled version, or one made for a toddler or baby, only when it was said (21 Nov: a youtiao was
+        // counted as a glazed doughnut, doujiang as toddler soy formula)
+        return !["canned", "cooked", "puffed", "reduced fat", "low fat", "fat free", "dried", "frozen", "breaded", "fried",
+                 "glazed", "frosted", "sugared", "jelly filling", "creme filling", "toddler", "infant", "baby"].contains { g.contains($0) && !a.contains($0) }
             && !fatClash(asked, got)
     }
 

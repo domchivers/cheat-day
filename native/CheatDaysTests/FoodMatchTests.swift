@@ -310,4 +310,12 @@ final class FoodMatchTests: XCTestCase {
         XCTAssertNotEqual(Sanity.range("Rice paper rolls")?.label, "cooked rice or pasta")
         XCTAssertEqual(Sanity.range("Rice, white, cooked")?.label, "cooked rice or pasta")
     }
+
+    /// Doujiang is soy milk, not toddler soy formula; a youtiao isn't a glazed doughnut (21 Nov, a Shanghai breakfast).
+    func testSoyMilkAndFriedDough() {
+        XCTAssertEqual(FoodTable.au.find("Soy milk, doujiang")?.name, "Soy beverage, regular fat (~3%), unfortified")
+        XCTAssertFalse(FoodReference.sameFood(asked: "Soy milk, doujiang", got: "Toddler milk, soy, made with water"))
+        XCTAssertFalse(FoodReference.sameFood(asked: "Youtiao, fried dough stick", got: "Doughnuts, yeast-leavened, glazed, enriched (includes honey buns)"))
+        XCTAssertTrue(FoodReference.sameFood(asked: "Glazed doughnut", got: "Doughnuts, yeast-leavened, glazed, enriched (includes honey buns)"))
+    }
 }
