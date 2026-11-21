@@ -72,4 +72,27 @@ final class CaptionEditTests: XCTestCase {
         for c in EditOverlays.regroup(caps, by: "line", lines: 2) { XCTAssertEqual(c.detail, "") }
         XCTAssertTrue(EditText.highlights.contains("none"))
     }
+
+    /// Sound added after (21 Nov: "you'd have to do it all over again"): Fill gaps adds only where there are none,
+    /// a stretch made again keeps the rest, and the new ones take the look of what's there.
+    func testFillGapsAndCaptionThis() {
+        var old = said("one two three four five six")          // 0 to 2.4 s
+        for i in old.indices { old[i].style = "Box"; old[i].text += "!" }   // edited by hand
+        let voice = said("seven eight nine", at: 5)              // a voiceover added after
+        let again = said("one two three four five six") + voice  // everything heard again
+
+        let filled = EditOverlays.merge(old, again)
+        XCTAssertEqual(filled.count, 3)
+        XCTAssertEqual(filled.prefix(2).map(\.text), old.map(\.text), "the hand edits kept")
+        XCTAssertEqual(filled.last?.text, "seven eight nine")
+        XCTAssertEqual(filled.last?.style, "Box", "in the look the others have")
+
+        // the voiceover's stretch made again: the rest as it was
+        let redone = EditOverlays.merge(filled, said("seven eight ten", at: 5), over: 5...6.2)
+        XCTAssertEqual(redone.map(\.text), old.map(\.text) + ["seven eight ten"])
+
+        // none runs over the next
+        let close = EditOverlays.merge(old, [EditText(kind: "caption", text: "late", style: "Pop", x: 0.5, y: 0.76, from: 2.4, to: 3)])
+        for (a, b) in zip(close, close.dropFirst()) { XCTAssertLessThanOrEqual(a.to, b.from + 0.0001) }
+    }
 }

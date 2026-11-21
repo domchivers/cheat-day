@@ -844,6 +844,7 @@ struct MultiClipEditor: View {
             action("camera.filters", "Filters", on: has) { withAnimation(.snappy) { panel = .look } }
             action("arrow.up.left.and.arrow.down.right", "Motion", on: has) { withAnimation(.snappy) { panel = .motion } }
             action("speaker.wave.2", "Sound", on: has) { withAnimation(.snappy) { panel = .sound } }
+            action("captions.bubble", "Caption this", on: has && soundOf == nil) { if let i = index { makeCaptions(.clip(clips[i].id)) } }
             action("arrow.down.to.line", "Separate", on: moving && soundOf == nil && (index.map { clips[$0].soundOn } ?? false)) { separateSelected() }
                 .accessibilityLabel("Separate audio")
             action("arrow.triangle.2.circlepath", "Replace", on: has) { replacing = true }
@@ -1734,6 +1735,7 @@ struct MultiClipEditor: View {
                 soundTile("speaker.wave.2.fill", "Volume", on: soundTool == .volume) { soundTool = .volume }
                 soundTile("waveform.path", "Fade", on: soundTool == .fade) { soundTool = .fade }
                 if home { soundTile("arrow.up.to.line", "Put back", on: false) { putBack(x.id) } }
+                if x.kind == "voice" || x.kind == "clip" { soundTile("captions.bubble", "Caption this", on: false) { makeCaptions(.sound(x.id)) } }
                 soundTile("trash", "Take off", on: false) { takeOff(x.id) }
             }
             .background(alignment: .bottom) { tabLine }
@@ -2311,18 +2313,53 @@ struct MultiClipEditor: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) { withAnimation { if note == text { note = nil } } }
     }
 
-    /// Captions from what's said in it, made on the phone; ones made before are replaced.
-    private func makeCaptions() {
+    /// What captions are made for (21 Nov: a voiceover or clips added after meant making them all again).
+    private enum CaptionJob: Equatable { case all, gaps, sound(UUID), clip(UUID) }
+
+    /// Captions from what's said in it, made on the phone: all of it again (the clips and every voiceover), only the
+    /// gaps (what's said where there are none yet), or one voiceover or clip, the rest left as they are.
+    private func makeCaptions(_ job: CaptionJob = .all) {
         player.pause(); joining = true
-        let kept = clips, sound = soundOf
+        let kept = clips, sound = soundOf, voices = sounds.filter { ($0.kind == "voice" || $0.kind == "clip") && $0.file != nil }
+        let before = texts.filter { $0.kind == "caption" }.count
         Task {
             defer { joining = false }
             do {
-                let heard = try await EditOverlays.captions(kept, soundOf: sound)
-                let made = EditOverlays.regroup(heard, by: captionGroup, lines: captionLines)
+                var heard: [EditText] = [], over: ClosedRange<Double>?, lastError: Error?
+                func edit() async { do { heard += try await EditOverlays.captions(kept, soundOf: sound) } catch { lastError = error } }
+                func voice(_ s: EditSound) async { do { heard += try await EditOverlays.captions(of: s) } catch { lastError = error } }
+                switch job {
+                case .sound(let id):
+                    guard let s = voices.first(where: { $0.id == id }) else { return }
+                    await voice(s); over = s.from...max(s.from + 0.1, s.to)
+                case .clip(let id):
+                    guard let i = kept.firstIndex(where: { $0.id == id }) else { return }
+                    let at = ClipJoin.starts(kept)[i]
+                    await edit(); over = at...(at + kept[i].span)
+                case .all, .gaps:
+                    await edit()
+                    for v in voices {
+                        // a voiceover's words stand in for whatever the clips said under it
+                        let before = heard
+                        await voice(v)
+                        let mine = heard.filter { !before.contains($0) }
+                        heard = before.filter { $0.to <= v.from + 0.05 || $0.from >= v.to - 0.05 } + mine
+                    }
+                }
+                if heard.isEmpty, let lastError { throw lastError }
+                let made = EditOverlays.regroup(heard.sorted { $0.from < $1.from }, by: captionGroup, lines: captionLines)
+                let old = texts.filter { $0.kind == "caption" }   // (Redo all: all of them made again, in the look they had)
+                if job == .all { over = -3600...3600 }
+                let merged = EditOverlays.merge(old, made, over: over)
+                remember()
                 texts.removeAll { $0.kind == "caption" }
-                texts += made
-                flash("\(made.count) caption\(made.count == 1 ? "" : "s") made. Edit all to fix a word or split a line.")
+                texts += merged
+                let added = job == .all ? merged.count : max(0, merged.count - before)
+                switch job {
+                case .gaps: flash(added == 0 ? "No gaps with words in them: every bit that's said has a caption." : "\(added) caption\(added == 1 ? "" : "s") added where there were none.")
+                case .all: flash("\(added) caption\(added == 1 ? "" : "s") made. Edit all to fix a word or split a line.")
+                default: flash("Captioned. The other captions are as they were.")
+                }
                 withAnimation(.snappy) { panel = .captions }
             } catch {
                 flash(error.localizedDescription)
@@ -2501,12 +2538,18 @@ struct MultiClipEditor: View {
             }
             HStack(spacing: 8) {
                 wide("Edit all", "list.bullet") { listPicked = nil; withAnimation(.snappy) { panel = .captionList } }
-                wide("Again", "arrow.clockwise") { makeCaptions() }
+                wide("Fill gaps", "text.badge.plus") { makeCaptions(.gaps) }
+            }
+            HStack(spacing: 8) {
+                wide("Redo all", "arrow.clockwise") { makeCaptions(.all) }
                 wide("Take off", "trash", warn: true) {
+                    remember()
                     texts.removeAll { $0.kind == "caption" }
                     withAnimation(.snappy) { panel = nil }
                 }
             }
+            Text("Added a voiceover or more clips? Fill gaps captions only what's new; your edits stay. Or pick a clip or a voiceover and tap Caption this.")
+                .font(.caption2).foregroundStyle(Self.quiet)
             Text("\(caps.count) caption\(caps.count == 1 ? "" : "s"). Tap one on the video for its own look.").font(.caption2).foregroundStyle(Self.quiet)
         }
     }

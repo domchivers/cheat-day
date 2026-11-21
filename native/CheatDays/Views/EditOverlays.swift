@@ -497,14 +497,10 @@ enum EditOverlays {
 
     /// Captions from what's said in the edit (Stage B): its sound as heard, made into words on the phone itself
     /// (nothing sent, nothing paid), each with when it's said, grouped a few words a caption.
+    struct CaptionProblem: LocalizedError { let errorDescription: String? }
+
     static func captions(_ clips: [Clip], soundOf: UUID?) async throws -> [EditText] {
-        struct Problem: LocalizedError { let errorDescription: String? }
-        let ok = await withCheckedContinuation { c in SFSpeechRecognizer.requestAuthorization { c.resume(returning: $0) } }
-        guard ok == .authorized else { throw Problem(errorDescription: "Captions need Speech Recognition: turn it on in Settings › Cheat Days.") }
-        guard let recognizer = SFSpeechRecognizer(locale: Locale.current) ?? SFSpeechRecognizer(), recognizer.isAvailable,
-              recognizer.supportsOnDeviceRecognition else {
-            throw Problem(errorDescription: "Captions are made on the phone itself, and this phone can't do that in your language yet.")
-        }
+        typealias Problem = CaptionProblem
         // the edit's sound as it will be heard, as one file
         guard let (comp, _, mix) = await ClipJoin.compose(clips, soundOf: soundOf),
               !(try await comp.loadTracks(withMediaType: .audio)).isEmpty,
@@ -517,6 +513,54 @@ enum EditOverlays {
         export.audioTimePitchAlgorithm = .spectral
         await export.export()
         guard export.status == .completed else { throw Problem(errorDescription: "Couldn't hear this edit's sound.") }
+        let words = try await hear(file)
+        let out = group(words)
+        if out.isEmpty { throw Problem(errorDescription: "No words were heard in this edit.") }
+        return out
+    }
+
+    /// A voiceover's (or a separated clip sound's) captions, heard from its own recording (21 Nov: a voiceover added
+    /// after had none, and making them again meant all of them): its words at their times in the video.
+    static func captions(of s: EditSound) async throws -> [EditText] {
+        guard let file = s.file else { throw CaptionProblem(errorDescription: "This sound has nothing to hear.") }
+        let heard = try await hear(file).filter { $0.at >= s.start - 0.05 && $0.at <= s.fileTime(s.to) + 0.05 }
+            .map { Heard(text: $0.text, at: s.videoTime($0.at), long: $0.long / s.speed) }
+        let out = group(heard)
+        if out.isEmpty { throw CaptionProblem(errorDescription: "No words were heard in \(s.name).") }
+        return out
+    }
+
+    /// New captions put in with the ones there (21 Nov: "adding in sound after… you'd have to do it all over
+    /// again"). With `over`, a stretch made again: what was in it goes and the new ones in it come in. Without, the
+    /// gaps filled: only new ones that don't run into one already there. New ones take the look of the ones there;
+    /// none runs over the next.
+    static func merge(_ old: [EditText], _ made: [EditText], over: ClosedRange<Double>? = nil) -> [EditText] {
+        let caps = old.filter { $0.kind == "caption" }
+        var keep: [EditText], add: [EditText]
+        if let r = over {
+            keep = caps.filter { $0.to <= r.lowerBound + 0.05 || $0.from >= r.upperBound - 0.05 }
+            add = made.filter { $0.from >= r.lowerBound - 0.05 && $0.from < r.upperBound }
+        } else {
+            keep = caps
+            add = made.filter { n in !caps.contains { min($0.to, n.to) - max($0.from, n.from) > 0.05 } }
+        }
+        if let like = caps.first {
+            for i in add.indices { add[i].style = like.style; add[i].highlight = like.highlight; add[i].y = like.y; add[i].size = like.size; add[i].x = like.x }
+        }
+        var all = (keep + add).sorted { $0.from < $1.from }
+        for i in all.indices.dropLast() where all[i].to > all[i + 1].from { all[i].to = max(all[i].from + 0.1, all[i + 1].from) }
+        return all
+    }
+
+    /// The words said in a recording, on the phone.
+    private static func hear(_ file: URL) async throws -> [Heard] {
+        typealias Problem = CaptionProblem
+        let ok = await withCheckedContinuation { c in SFSpeechRecognizer.requestAuthorization { c.resume(returning: $0) } }
+        guard ok == .authorized else { throw Problem(errorDescription: "Captions need Speech Recognition: turn it on in Settings › Cheat Days.") }
+        guard let recognizer = SFSpeechRecognizer(locale: Locale.current) ?? SFSpeechRecognizer(), recognizer.isAvailable,
+              recognizer.supportsOnDeviceRecognition else {
+            throw Problem(errorDescription: "Captions are made on the phone itself, and this phone can't do that in your language yet.")
+        }
         let request = SFSpeechURLRecognitionRequest(url: file)
         request.requiresOnDeviceRecognition = true
         request.shouldReportPartialResults = false
@@ -524,10 +568,14 @@ enum EditOverlays {
         // Heard on the phone, a long recording comes back a part at a time, each part ending at a pause, and the
         // first part said it was the last (21 Nov: a 45 s edit's captions stopped after a few seconds; a 10 s one
         // spoken without a pause was whole). So every part is kept until the task says it's finished.
-        let segments: [Heard] = try await withCheckedThrowingContinuation { c in
+        return try await withCheckedThrowingContinuation { c in
             let hearer = Hearer(c)
             hearer.task = recognizer.recognitionTask(with: request, delegate: hearer)
         }
+    }
+
+    /// Words heard made into captions.
+    private static func group(_ segments: [Heard]) -> [EditText] {
         // a caption: up to three words, broken at a pause or the end of a sentence
         var out: [EditText] = []
         var group: [Heard] = []
@@ -547,7 +595,6 @@ enum EditOverlays {
         close()
         // each held until the next one comes, if that's soon
         for i in out.indices.dropLast() where out[i + 1].from - out[i].to < 0.8 { out[i].to = out[i + 1].from }
-        if out.isEmpty { throw Problem(errorDescription: "No words were heard in this edit.") }
         return out
     }
 
