@@ -437,7 +437,7 @@ struct MultiClipEditor: View {
         case .motion: return "Motion"
         case .beats: return "Music"
         case .captions: return "Captions"
-        case .captionList: return "Edit all"
+        case .captionList: return "Edit captions"
         case .recipe: return "Recipe"
         case .recipeSteps: return "Method"
         case nil: return ""
@@ -2654,7 +2654,7 @@ struct MultiClipEditor: View {
                         }
                         flash("Every caption looks like this one now.")
                     }
-                    wide("Edit all", "list.bullet") { listPicked = item.id; withAnimation(.snappy) { panel = .captionList } }
+                    wide("Edit captions", "list.bullet") { listPicked = item.id; withAnimation(.snappy) { panel = .captionList } }
                 }
             }
             HStack(spacing: 10) {
@@ -2749,7 +2749,7 @@ struct MultiClipEditor: View {
                 Spacer(minLength: 0)
             }
             HStack(spacing: 8) {
-                wide("Edit all", "list.bullet") { listPicked = nil; withAnimation(.snappy) { panel = .captionList } }
+                wide("Edit captions", "list.bullet") { listPicked = nil; withAnimation(.snappy) { panel = .captionList } }
                 wide("Fill gaps", "text.badge.plus") { makeCaptions(.gaps) }
             }
             HStack(spacing: 8) {
@@ -2766,83 +2766,93 @@ struct MultiClipEditor: View {
         }
     }
 
-    /// Every caption as a list (design/captions-editing-mockup.html, 2), as CapCut's Edit captions: tap one to go there
-    /// and fix its words, tap a word to start a new caption there, or join it to the next.
+    /// Every caption as a list, as CapCut's Edit captions (21 Nov, design/capcut-timeline-mockup.html): a row each with
+    /// a play button and its time, its words typed where they are; the one picked or being said in white, kept in view
+    /// as it plays. Over the keyboard: Split at the cursor, Merge up, Merge down, its look, Delete (CaptionField).
     private var captionList: some View {
         let caps = captionIndices
+        let saying = caps.first { now >= texts[$0].from && now < texts[$0].to }.map { texts[$0].id }
         return ScrollViewReader { proxy in
             ScrollView {
-                VStack(spacing: 6) {
-                    ForEach(caps, id: \.self) { k in
-                        captionRow(k, last: k == caps.last).id(texts[k].id)
+                LazyVStack(spacing: 0) {
+                    ForEach(caps.indices, id: \.self) { n in
+                        captionRow(caps[n], first: n == 0, last: n == caps.count - 1, saying: saying).id(texts[caps[n]].id)
                     }
                 }
-                .padding(.vertical, 2)
             }
             .frame(maxHeight: 300)
-            .onAppear { if let p = listPicked { proxy.scrollTo(p, anchor: .center) } }
+            .onAppear { if let p = listPicked ?? saying { proxy.scrollTo(p, anchor: .center) } }
+            // as it plays, the caption being said stays in view
+            .onChange(of: saying) { _, id in if playing, let id { withAnimation(.snappy) { proxy.scrollTo(id, anchor: .center) } } }
         }
     }
 
-    @ViewBuilder private func captionRow(_ k: Int, last: Bool) -> some View {
-        let c = texts[k], on = c.id == listPicked
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text(Self.code(c.from)).font(.system(size: 11, weight: .semibold, design: .monospaced)).foregroundStyle(Self.quiet).frame(width: 38, alignment: .leading)
-                if on {
-                    TextField("What's said", text: Binding(get: { texts.indices.contains(k) ? texts[k].text : "" }, set: { if texts.indices.contains(k) { setText(k, $0) } }), axis: .vertical)
-                        .font(.subheadline).lineLimit(1...3)
-                } else {
-                    Text(c.text).font(.subheadline).foregroundStyle(.white).frame(maxWidth: .infinity, alignment: .leading)
-                }
+    private func captionRow(_ k: Int, first: Bool, last: Bool, saying: UUID?) -> some View {
+        let c = texts[k], on = c.id == (listPicked ?? saying), talking = playing && c.id == saying
+        return HStack(spacing: 8) {
+            Button { playCaption(c.id) } label: {
+                Image(systemName: talking ? "pause.fill" : "play.fill").font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(on ? Color.white : Self.quiet).frame(width: 28, height: 44).contentShape(Rectangle())
             }
-            if on {
-                let words = c.words ?? []
-                if words.count > 1 {
-                    // (21 Nov: tapping a word to split wasn't found; a pair of scissors between words is)
-                    Text("Tap \(Image(systemName: "scissors")) between two words to split the caption there").font(.caption2).foregroundStyle(Self.quiet)
-                    // one line, slid along when long (21 Nov: the wrapping rows drew over the buttons after a split)
-                    ScrollView(.horizontal, showsIndicators: false) {
-                      HStack(spacing: 6) {
-                        ForEach(words.indices, id: \.self) { i in
-                            HStack(spacing: 4) {
-                                if i > 0 {
-                                    Button {
-                                        guard let (a, b) = EditOverlays.split(texts[k], at: i) else { return }
-                                        remember()
-                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                        texts[k] = a; texts.append(b); listPicked = b.id; if selectedText != nil { selectedText = b.id }; seek(b.from + 0.01)
-                                    } label: {
-                                        Image(systemName: "scissors").font(.system(size: 11, weight: .bold)).foregroundStyle(.black)
-                                            .frame(width: 24, height: 24).background(Color.yellow, in: Circle())
-                                    }
-                                    .buttonStyle(.plain).accessibilityLabel("Split before \(words[i].text)")
-                                }
-                                Text(words[i].text).font(.subheadline.weight(.semibold)).foregroundStyle(.white).fixedSize()
-                            }
-                        }
-                      }
-                      .padding(.vertical, 2)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                HStack(spacing: 8) {
-                    if !last { wide("Join next", "arrow.down.to.line") { joinNext(k) } }
-                    wide("Its look", "paintbrush") { selectText(c.id) }
-                    wide("", "trash", warn: true) {
-                        let id = c.id
-                        remember()
-                        texts.removeAll { $0.id == id }; listPicked = nil
-                    }
-                    .frame(width: 56)
-                }
-            }
+            .buttonStyle(.plain).accessibilityLabel(talking ? "Pause" : "Play from \(Self.code(c.from))")
+            Text(Self.code(c.from)).font(.system(size: 12, weight: .semibold, design: .monospaced)).foregroundStyle(Self.quiet).frame(width: 40, alignment: .leading)
+            CaptionField(text: Binding(get: { texts.indices.contains(k) ? texts[k].text : "" }, set: { if texts.indices.contains(k) { setText(k, $0) } }),
+                         active: on, canUp: !first, canDown: !last,
+                         focused: { pickCaption(c.id) },
+                         split: { splitCaption(c.id, at: $0) },
+                         mergeUp: { mergeCaption(c.id, up: true) },
+                         mergeDown: { mergeCaption(c.id, up: false) },
+                         style: { selectText(c.id) },
+                         delete: { deleteCaption(c.id) })
+                .frame(height: 44)
         }
-        .padding(.horizontal, 11).padding(.vertical, 9)
-        .background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(on ? Color.white : .clear, lineWidth: 1.5))
-        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .onTapGesture { if !on { player.pause(); playing = false; listPicked = c.id; if selectedText != nil { selectedText = c.id }; seek(c.from + 0.01) } }
+        .padding(.horizontal, 4)
+        .overlay(alignment: .bottom) { Rectangle().fill(Color.white.opacity(0.07)).frame(height: 1) }
+    }
+
+    /// A caption's words tapped to type in: it's the one picked, the video at it.
+    private func pickCaption(_ id: UUID) {
+        guard listPicked != id, let c = texts.first(where: { $0.id == id }) else { return }
+        player.pause(); playing = false
+        listPicked = id; if selectedText != nil { selectedText = id }
+        seek(c.from + 0.01)
+    }
+
+    /// A row's play button: from its start, the list following what's said; tapped while it's being said, paused.
+    private func playCaption(_ id: UUID) {
+        guard let c = texts.first(where: { $0.id == id }) else { return }
+        if playing, now >= c.from, now < c.to { player.pause(); playing = false; return }
+        listPicked = nil
+        seek(c.from + 0.01); player.play(); playing = true
+    }
+
+    /// Split at the cursor: the words before it stay, the rest a caption of its own from when its first word's said.
+    private func splitCaption(_ id: UUID, at cursor: Int) {
+        guard let k = texts.firstIndex(where: { $0.id == id }) else { return }
+        let t = texts[k].text, head = String(t.prefix(max(0, min(cursor, t.count))))
+        guard let (a, b) = EditOverlays.split(texts[k], at: head.split(separator: " ").count) else {
+            flash("Put the cursor between two words to split there.")
+            return
+        }
+        remember()
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        texts[k] = a; texts.append(b)
+        listPicked = b.id; if selectedText != nil { selectedText = b.id }
+        seek(b.from + 0.01)
+    }
+
+    /// With the one before (up) or the one after (down), as one.
+    private func mergeCaption(_ id: UUID, up: Bool) {
+        let caps = captionIndices
+        guard let n = caps.firstIndex(where: { texts[$0].id == id }) else { return }
+        if up { if n > 0 { joinNext(caps[n - 1]) } } else { joinNext(caps[n]) }
+    }
+
+    private func deleteCaption(_ id: UUID) {
+        remember()
+        texts.removeAll { $0.id == id }
+        if listPicked == id { listPicked = nil }
+        if selectedText == id { selectedText = nil }
     }
 
     /// A caption and the one after it as one.
