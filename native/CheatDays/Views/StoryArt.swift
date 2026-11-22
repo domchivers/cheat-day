@@ -158,6 +158,13 @@ struct StoryItem: View {
     /// A photo sticker's looks, in the order a tap goes through them.
     /// (New ones go on the end: a story already posted keeps the look it was given by its number.)
     static let photoStyles = ["Frame", "Plain", "Polaroid", "Round", "Original"]
+
+    /// Whether it moves: a GIF, or someone's story with one on it (carried live in "on", 22 Nov).
+    static func moves(_ o: JSON) -> Bool {
+        if str(o["type"]) == "gif" { return true }
+        for inner in list(o["on"]) where moves(inner) { return true }
+        return false
+    }
     /// A workout sticker's looks (19 Nov), in tap order.
     static let workoutStyles = ["Card", "Light", "Pill", "Big number"]
 
@@ -187,6 +194,9 @@ struct StoryItem: View {
             Color(white: 0.15)
             if let img = PhotoStickers.local[str(o["local"])] { Image(uiImage: img).resizable().scaledToFill() }
             else if !str(o["url"]).isEmpty { FeedPhoto(src: str(o["url"]), fill: true) }
+            // someone's story as a card: what moves on it, and what they put over that, live in the card
+            let on = list(o["on"])
+            if !on.isEmpty { StoryLayer(items: on).allowsHitTesting(false) }
         }
         switch Int(num(o["style"]) ?? 0) % Self.photoStyles.count {
         case 1:
@@ -236,6 +246,9 @@ struct StoryItem: View {
         case "sticker3d": Image("sticker-" + str(o["code"])).resizable().interpolation(.high).scaledToFit().frame(width: 130, height: 130)
             .shadow(color: .black.opacity(0.25), radius: 8, y: 5)
         case "photo": photo
+        // what's live of someone's story that's the whole of yours, over its picture and placed as that is
+        case "layer":
+            StoryLayer(items: list(o["on"])).frame(width: StoryArt.design, height: StoryArt.design / StoryArt.aspect).clipped().allowsHitTesting(false)
         case "gif":
             let w = num(o["w"]) ?? 200, h = num(o["h"]) ?? 200
             GIFSticker(url: str(o["url"])).frame(width: 170, height: 170 * h / max(1, w))

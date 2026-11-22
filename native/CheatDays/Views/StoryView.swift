@@ -54,7 +54,7 @@ struct StoryView: View {
         guard !s.isEmpty else { return ReportTarget(user: who, what: "Story", kind: "profile", target: who) }
         switch s[min(slide, s.count - 1)] {
         case .snap(let st):
-            let words = list(st["overlays"]).map { str($0["text"]) + str($0["q"]) }.filter { !$0.isEmpty }.joined(separator: "\n")
+            let words = Stories.everyThing(list(st["overlays"])).map { str($0["text"]) + str($0["q"]) }.filter { !$0.isEmpty }.joined(separator: "\n")
             let video = str(st["kind"]) == "video"
             return ReportTarget(user: who, what: "Story: \(str(st["id"]))", kind: "story", target: str(st["id"]), text: words, media: video ? "" : str(st["media"]), video: video)
         case .post(let p):

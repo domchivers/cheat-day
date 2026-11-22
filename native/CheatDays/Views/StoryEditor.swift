@@ -34,10 +34,10 @@ struct StoryEditor: View {
     var startEdit: ClipEdit? = nil
     /// Things already placed when it opens (someone's story being added to yours: their picture and their name).
     var startItems: [JSON] = []
-    /// A story you're tagged in, as a card (StoryReshare): tapping it past its last look makes it the whole of yours.
-    var toFull: (() -> Void)? = nil
-    /// The same, as the whole of yours: a tap on it goes back to the card (it changed the picture's look before).
-    var backToCard: (() -> Void)? = nil
+    /// A story you're tagged in (StoryReshare): its picture, and what stays live over that (its GIFs, 22 Nov). A card
+    /// to start; tapped past its last look it's the whole of yours, and a tap on that makes it the card again, all in
+    /// the one editor (22 Nov: an editor for each way dimmed the screen and lost the song, undo and what was added).
+    var theirStory: (whole: UIImage, on: [JSON])? = nil
     /// The picture behind is only a soft copy of what's on it (a story or post put on yours): a tap on it does nothing.
     /// It went through the picture's looks, so a quick tap that missed the card framed and shrank the blur (18 Nov).
     var softBackground = false
@@ -216,7 +216,9 @@ struct StoryEditor: View {
     @State private var stickerText = ""
     @State private var note: String?
     @State private var canvasWidth: CGFloat = 360
-    @State private var history: [(items: [JSON], strokes: [JSON])] = []   // for Undo, newest last
+    @State private var history: [(items: [JSON], strokes: [JSON], whole: Bool)] = []   // for Undo, newest last
+    @State private var wholeUp = false   // their story is the whole of yours, not a card
+    @State private var theirCard: JSON?  // the card as it was, while it isn't
     @State private var leaving = false   // ✕ with changes: ask first
     private var stories: Stories { Stories.shared }
 
@@ -433,7 +435,7 @@ struct StoryEditor: View {
                 let live: AnyView? = mode == .adjust && !comparing ? (lite ?? work ?? image).map { AnyView(LivePhoto(base: $0, box: photoBox)) } : nil
                 StoryBackdrop(photo: shown, cw: cw, ch: ch, scale: bgScale, offset: bgOffset, spin: bgSpin,
                               tilt: comparing ? 0 : (tune["t"] ?? 0), style: bgStyle,
-                              movable: mode == .none || mode == .filters, grab: grab, live: live)
+                              movable: mode == .none || mode == .filters, grab: grab, live: live, over: liveOver)
             }
             if mode == .adjust && video == nil {
                 // a finger held on the photo shows it as it came, to compare
@@ -561,7 +563,7 @@ struct StoryEditor: View {
             return
         }
         guard moved else {
-            if let backToCard { backToCard() } else if !softBackground { nextBgStyle() }
+            if wholeUp { backToCard() } else if !softBackground { nextBgStyle() }
             return
         }
         let across = abs(grab.move.width) > 50 && abs(grab.move.width) > abs(grab.move.height) && grab.size == 1
@@ -616,7 +618,7 @@ struct StoryEditor: View {
             withAnimation(.snappy(duration: 0.2)) { items[i]["style"] = (Int(num(o["style"]) ?? 0) + 1) % 3 }
         case "photo":
             // its next look; only a tap does this: a finger that moves more than a few points is moving it
-            let theirs = str(o["id"]) == "theirs" && toFull != nil
+            let theirs = str(o["id"]) == "theirs" && theirStory != nil
             // Their story's taps come no faster than its looks can change (18 Nov): a burst of quick taps broke it.
             if theirs, Date().timeIntervalSince(lastLook) < 0.35 { return }
             lastLook = Date()
@@ -626,10 +628,11 @@ struct StoryEditor: View {
             if theirs {
                 // Frame, Plain, Original, then full screen: no polaroid or round for someone's story (18 Nov)
                 let looks = [0, 1, 4], at = looks.firstIndex(of: now) ?? 0
-                if at + 1 >= looks.count, let toFull { toFull(); return }
+                if at + 1 >= looks.count { toWhole(i); return }
                 next = looks[at + 1]
             } else { next = (now + 1) % StoryItem.photoStyles.count }
-            withAnimation(.snappy(duration: 0.2)) { items[i]["style"] = next }
+            // (their story changes at once: faded from one look to the next it dipped towards black)
+            if theirs { items[i]["style"] = next } else { withAnimation(.snappy(duration: 0.2)) { items[i]["style"] = next } }
             flash(StoryItem.photoStyles[next])
         case "workout":
             // a workout sticker's next look (19 Nov)
@@ -645,6 +648,66 @@ struct StoryEditor: View {
             flash(StoryItem.mentionStyles[next])
         default: break
         }
+    }
+
+    /// Their card past its last look: their story the whole of yours. Everything else stays as it is.
+    private func toWhole(_ i: Int) {
+        theirCard = items[i]
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t) {
+            items.remove(at: i)
+            showWhole(true)
+        }
+    }
+
+    /// A tap on their story as the whole of yours: the card again, where it was, in its first look.
+    private func backToCard() {
+        guard Date().timeIntervalSince(lastLook) >= 0.35 else { return }
+        guard var card = theirCard ?? startItems.first(where: { (o: JSON) -> Bool in str(o["id"]) == "theirs" }) else { return }
+        lastLook = Date()
+        remember(); UISelectionFeedbackGenerator().selectionChanged()
+        card["style"] = 0
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t) {
+            items.insert(card, at: 0)
+            showWhole(false)
+        }
+    }
+
+    /// The picture behind swapped, their story or the soft copy of it, in this same editor.
+    private func showWhole(_ on: Bool) {
+        guard let theirStory, let next = on ? theirStory.whole : image else { return }
+        wholeUp = on
+        work = next; preview = nil; lite = nil; photoTurns = 0; note = nil
+        bgScale = 1; bgOffset = .zero; bgSpin = 0; bgStyle = 0
+        let l = flatLook
+        Task {
+            await refilter(l)
+            let t = await Task.detached(priority: .userInitiated) { () -> [String: UIImage] in
+                let small = next.preparingThumbnail(of: CGSize(width: 140, height: 140 / next.size.width * next.size.height)) ?? next
+                var out: [String: UIImage] = [:]
+                for f in StoryArt.filters { out[f] = StoryArt.filtered(small, f) }
+                return out
+            }.value
+            if wholeUp == on { thumbs = t }
+        }
+    }
+
+    /// What's live over their story while it's the whole of yours.
+    private var liveOver: [JSON] { wholeUp ? (theirStory?.on ?? []) : [] }
+
+    /// The same as one of the story's own things, placed as the picture is: zoomed, moved, turned and straightened.
+    private var wholeLayer: [JSON] {
+        let on = liveOver
+        guard !on.isEmpty, canvasWidth > 0 else { return [] }
+        let tilt: Double = tune["t"] ?? 0
+        let lean: Double = abs(tilt) * Double.pi / 180
+        let tall: Double = Double(max(ratio, 1 / ratio))
+        let grow: Double = cos(lean) + tall * sin(lean)   // (as StoryBackdrop grows a straightened picture)
+        let x: Double = 0.5 + Double(bgOffset.width / canvasWidth)
+        let y: Double = 0.5 + Double(bgOffset.height / (canvasWidth / ratio))
+        let layer: JSON = ["id": "theirs-live", "type": "layer", "on": on, "x": x, "y": y, "scale": Double(bgScale) * grow, "rotation": bgSpin + tilt]
+        return [layer]
     }
 
     private func nextFilter(_ step: Int) {
@@ -751,7 +814,7 @@ struct StoryEditor: View {
                 tool("camera.filters", "Filter", "Filters") { mode = .filters }
                 tool("slider.horizontal.3", "Adjust", "Adjust") { mode = .adjust }
                 if forPost && !lockShape { tool("aspectratio", "Shape", "Shape") { nextShape() } }
-                if video == nil ? image != nil : clipOnly { tool("rotate.right", "Rotate", "Rotate") { turn() } }
+                if !wholeUp, video == nil ? image != nil : clipOnly { tool("rotate.right", "Rotate", "Rotate") { turn() } }
                 if video != nil {
                     tool(muted ? "speaker.slash.fill" : "speaker.wave.2.fill", "Sound", muted ? "Sound off" : "Sound on") { muted.toggle(); flash(muted ? "Sound off" : "Sound on") }
                     tool("scissors", "Trim", "Trim") { mode = .trim }
@@ -897,13 +960,18 @@ struct StoryEditor: View {
 
     /// Before a change: what it was, for Undo (thirty steps back).
     private func remember() {
-        history.append((items, strokes))
+        history.append((items, strokes, wholeUp))
         if history.count > 30 { history.removeFirst() }
     }
     private func undo() {
         guard let last = history.popLast() else { return }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        withAnimation(.snappy(duration: 0.22)) { items = last.items; strokes = last.strokes }
+        if last.whole != wholeUp {
+            var t = Transaction(); t.disablesAnimations = true
+            withTransaction(t) { items = last.items; strokes = last.strokes; showWhole(last.whole) }
+        } else {
+            withAnimation(.snappy(duration: 0.22)) { items = last.items; strokes = last.strokes }
+        }
     }
     private var edited: Bool { !items.isEmpty || !strokes.isEmpty || filter != "Normal" || !tune.isEmpty || abs(bgScale - 1) > 0.01 || bgSpin != 0 || turns != 0 || storySong != nil }
 
@@ -1347,6 +1415,7 @@ struct StoryEditor: View {
                 for f in StoryArt.filters { t[f] = StoryArt.filtered(small, f) }
                 return (w, t)
             }.value
+            guard !wholeUp else { return }   // (their story was made the whole of it while this was made)
             work = w; thumbs = t
             let long = max(w.size.width, w.size.height)
             if long > 1100 { lite = await w.byPreparingThumbnail(ofSize: CGSize(width: w.size.width * 1100 / long, height: w.size.height * 1100 / long)) }
@@ -1401,10 +1470,11 @@ struct StoryEditor: View {
     private func refilter(_ f: String) async {
         guard let src = (sliding ? lite : nil) ?? work ?? image else { return }
         if f == "Normal" { preview = nil; return }
+        let was = wholeUp
         try? await Task.sleep(for: .milliseconds(12))
         if Task.isCancelled { return }
         let out = await Task.detached { StoryArt.filtered(src, f) }.value
-        if !Task.isCancelled { preview = out }
+        if !Task.isCancelled, was == wholeUp { preview = out }
     }
 
     /// The photo as framed (zoom, position, turn, look), 1080 wide (1920 high for a story): the editor's own view of
@@ -1420,8 +1490,11 @@ struct StoryEditor: View {
     }
 
     private var everything: [JSON] {
-        (strokes.isEmpty ? [] : [["type": "drawing", "strokes": strokes]]) + items
-            + (storySong.map { s -> [JSON] in var j: JSON = s.tag; j["type"] = "song"; return [j] } ?? [])
+        var all: [JSON] = wholeLayer
+        if !strokes.isEmpty { all.append(["type": "drawing", "strokes": strokes]) }
+        all += items
+        if let s = storySong { var j: JSON = s.tag; j["type"] = "song"; all.append(j) }
+        return all
     }
 
     @ViewBuilder private var bottomBar: some View {
@@ -1892,6 +1965,8 @@ struct StoryBackdrop: View {
     var grab = Grab()
     /// Over the photo while Adjust's sliders move (the editor only).
     var live: AnyView? = nil
+    /// Moving with the photo, over it: what's live of someone's story that's the whole of yours (the editor only).
+    var over: [JSON] = []
 
     /// The photo's size when it just fills the frame.
     static func fill(_ img: UIImage, _ cw: CGFloat, _ ch: CGFloat) -> CGSize {
@@ -1914,6 +1989,7 @@ struct StoryBackdrop: View {
                 Self.styled(ZStack {
                     Image(uiImage: photo).resizable()
                     if let live { live }
+                    if !over.isEmpty { StoryLayer(items: over).allowsHitTesting(false) }
                 }
                     .frame(width: full.width, height: full.height)
                     .rotationEffect(.degrees(tilt)).scaleEffect(grow)

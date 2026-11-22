@@ -190,16 +190,10 @@ struct StoryReshare: View {
     /// Their story as it's watched: the photo with everything they put on it (18 Nov: only the bare photo came, so
     /// their words, drawing and stickers were lost).
     @State private var whole: UIImage?
-    @State private var full = false   // their story as the whole of yours, or as a card over a soft copy of it
+    @State private var soft: UIImage?     // the soft copy behind the card
+    @State private var live: [JSON] = []  // what isn't in their picture: what moves, and what they put over that
+    @State private var start: [JSON] = []
     @State private var failed = false
-    /// When it last went full screen or back: a tap that came straight after is the same burst of taps and is let
-    /// go, so quick tapping can't flip it back and forth while the new editor comes up (18 Nov).
-    @State private var switched = Date.distantPast
-    private func show(full f: Bool) {
-        guard Date().timeIntervalSince(switched) > 0.5 else { return }
-        switched = Date()
-        withAnimation(.snappy) { full = f }
-    }
 
     private var owner: String { str(story["owner"]) }
     private var name: String { let u = Profiles.shared.all[owner]?.username ?? ""; return u.isEmpty ? Feed.shared.name(owner) : u }
@@ -209,23 +203,11 @@ struct StoryReshare: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            if let whole {
-                Group {
-                    if full {
-                        StoryEditor(image: whole, video: nil, close: { dismiss() }, posted: { dismiss() }, startItems: [repost],
-                                    backToCard: { show(full: false) })
-                    } else {
-                        StoryEditor(image: StoryArt.backdrop(whole), video: nil, close: { dismiss() }, posted: { dismiss() }, startItems: [
-                            ["id": "theirs", "type": "photo", "local": PhotoStickers.keep(whole),
-                             "w": Double(whole.size.width), "h": Double(whole.size.height), "x": 0.5, "y": 0.45, "scale": 1.25, "rotation": 0.0],
-                            // no tag of them put on by itself (18 Nov): the "⟲ their name" by yours at the top says whose it is
-                            repost,
-                        ], toFull: { show(full: true) }, softBackground: true)
-                    }
-                }
-                // a fresh editor for each way. Tapping their story goes through its looks and then to full screen; a
-                // tap on it full screen goes back to the card (18 Nov: it was a Sticker / Full screen switch)
-                .id(full)
+            if let whole, let soft {
+                // one editor: tapping their story goes through its looks and then to full screen, and a tap on it full
+                // screen goes back to the card, with the song, undo and what's been added kept (22 Nov)
+                StoryEditor(image: soft, video: nil, close: { dismiss() }, posted: { dismiss() }, startItems: start,
+                            theirStory: (whole: whole, on: live), softBackground: true)
             } else if failed {
                 VStack(spacing: 14) {
                     Text("Couldn't open that story.").foregroundStyle(.white)
@@ -241,19 +223,31 @@ struct StoryReshare: View {
             guard let img = await ImageStore.load(str(story["media"])) else { failed = true; return }
             // the photos stuck on it, here first, so the picture of it is made with them in
             for src in Stories.pictures(story) where src != str(story["media"]) { _ = await ImageStore.load(src) }
-            // and each GIF on it, for a frame of it
-            for o in list(story["overlays"]) where str(o["type"]) == "gif" {
-                let url = str(o["url"])
-                if AnimatedGIF.stills[url] == nil, let gif = await AnimatedGIF.fetch(url, maxPixel: 400) { AnimatedGIF.keepStill(gif, for: url) }
-            }
-            whole = Self.render(story, base: img) ?? img
+            let parts = Self.split(list(story["overlays"]))
+            let picture = Self.render(parts.under, base: img) ?? img
+            var card: JSON = ["id": "theirs", "type": "photo", "local": PhotoStickers.keep(picture),
+                              "w": Double(picture.size.width), "h": Double(picture.size.height), "x": 0.5, "y": 0.45, "scale": 1.25, "rotation": 0.0]
+            if !parts.over.isEmpty { card["on"] = parts.over }
+            // no tag of them put on by itself (18 Nov): the "⟲ their name" by yours at the top says whose it is
+            start = [card, repost]
+            live = parts.over
+            soft = StoryArt.backdrop(picture)
+            whole = picture
         }
     }
 
-    /// Their story drawn into one picture at the story's shape: the photo, then what's on it, as it's watched.
-    static func render(_ story: JSON, base: UIImage) -> UIImage? {
+    /// What's on their story, in two: what can be drawn into its picture, and what stays live over it, which is the
+    /// first thing that moves and everything they put over that, so it's all still in their order (22 Nov: "gif from
+    /// person who tagged you is frozen").
+    static func split(_ overlays: [JSON]) -> (under: [JSON], over: [JSON]) {
+        let shown = overlays.filter { !["song", "repost"].contains(str($0["type"])) && $0["hidden"] as? Bool != true }
+        guard let cut = shown.firstIndex(where: { (o: JSON) -> Bool in StoryItem.moves(o) }) else { return (shown, []) }
+        return (Array(shown[..<cut]), Array(shown[cut...]))
+    }
+
+    /// Their story drawn into one picture at the story's shape: the photo, then what's under anything that moves.
+    static func render(_ on: [JSON], base: UIImage) -> UIImage? {
         let w = StoryArt.design, h = w / StoryArt.aspect
-        let on = list(story["overlays"]).filter { !["song", "repost"].contains(str($0["type"])) }
         let picture = ZStack {
             Color.black
             Image(uiImage: base).resizable().scaledToFill().frame(width: w, height: h).clipped()

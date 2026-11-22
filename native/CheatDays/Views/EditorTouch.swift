@@ -289,7 +289,7 @@ struct PlacedItem: View {
         return (String(data: data, encoding: .utf8) ?? "") + "\(cw)"
     }
 
-    private var drawn: Bool { str(o["type"]) != "gif" }
+    private var drawn: Bool { !StoryItem.moves(o) }
     // Room for a shadow round the picture a sticker's drawn as. Every card, pill and sticker has one (10 points soft and
     // 6 down at most), and glowing or neon text spreads furthest: two glows, the wider 20 points soft.
     private static let margin: CGFloat = 60   // a GIF moves, so it stays live

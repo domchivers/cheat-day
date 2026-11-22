@@ -71,7 +71,13 @@ final class Stories {
     /// Every picture a story shows: its own (not a video's) and each photo stuck on it.
     static func pictures(_ st: JSON) -> [String] {
         (str(st["kind"]) == "video" || str(st["media"]).isEmpty ? [] : [str(st["media"])])
-            + list(st["overlays"]).filter { str($0["type"]) == "photo" }.map { str($0["url"]) }.filter { !$0.isEmpty }
+            + everyThing(list(st["overlays"])).filter { str($0["type"]) == "photo" }.map { str($0["url"]) }.filter { !$0.isEmpty }
+    }
+    /// What's on a story, with what's carried live inside someone's reshared story ("on").
+    static func everyThing(_ overlays: [JSON]) -> [JSON] {
+        var out: [JSON] = []
+        for o in overlays { out.append(o); out += everyThing(list(o["on"])) }
+        return out
     }
     private func fetchAhead(_ stories: [JSON]) {
         // each story's own picture and the photos stuck on it (they're pictures of their own, fetched apart)
@@ -199,7 +205,7 @@ final class Stories {
         defer { keep.end() }
         // The AI's look first (see Moderation): refused, it isn't shared and says why. A video has no picture to show
         // it here, so only its words are looked at.
-        let words = overlays.map { str($0["text"]) + str($0["q"]) }.filter { !$0.isEmpty }.joined(separator: "\n")
+        let words = Self.everyThing(overlays).map { str($0["text"]) + str($0["q"]) }.filter { !$0.isEmpty }.joined(separator: "\n")
         var unsure = false
         do { unsure = try await Moderation.shared.gate(kind: "story", text: words, image: image) }
         catch let no as Moderation.Blocked { self.error = no.errorDescription; return false }
