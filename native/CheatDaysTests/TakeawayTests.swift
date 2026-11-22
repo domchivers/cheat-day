@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 @testable import CheatDays
 
 /// The takeaway planner, with Gami's 2026 kJ (from its menu PDF, as in design's takeaway spec; protein estimated) and
@@ -19,6 +20,81 @@ final class TakeawayTests: XCTestCase {
         Takeaway.home(name: "Pauls PLUS+ milk", kcal100: 68, p100: 6, c100: 5, f100: 1, serving: nil, label: true)!,
         Takeaway.home(name: "Kenny's salted caramel ice cream", kcal100: 106, p100: 7.2, c100: 11.6, f100: 3.4, serving: nil, label: true)!,
         Takeaway.home(name: "Lyttos Light Greek yoghurt", kcal100: 67, p100: 5.5, c100: 5, f100: 2, serving: nil, label: false)!]
+
+    private func dish(_ name: String, _ kcal: Double, _ p: Double, kind: String = "main") -> Takeaway.Item {
+        Takeaway.Item(name: name, kind: kind, tier: "none", kcal: kcal, p: p, c: 40, f: 20)
+    }
+    private var cheesesteaks: [Takeaway.Item] {
+        [dish("Proper Cheesesteak, regular", 600, 38), dish("Proper Cheesesteak (extra cheese)", 640, 41),
+         dish("Proper Cheesesteak, mushroom", 620, 39), dish("Plain wings", 400, 36), dish("Loaded tenders", 520, 40)]
+    }
+
+    /// 22 Nov, "then got stuck": A + B offered again as B + A, and three cheesesteak orders with the one title.
+    func testNoOrderIsOfferedTwice() {
+        let p = Takeaway.plan(menu: cheesesteaks, home: [], kcal: 1100, protein: 70, place: "Sparrows")
+        let keys: [String] = p.combos.map { $0.0.key }
+        XCTAssertEqual(keys.count, 3, "filled with other orders")
+        XCTAssertEqual(Set(keys).count, keys.count)
+        let shown: [String] = p.combos.map { (c: (Takeaway.Combo, String)) -> String in
+            str(Takeaway.json(c.0, note: c.1, restaurant: "Sparrows", kcal: 1100)["title"])
+        }
+        XCTAssertEqual(Set(shown).count, shown.count)
+    }
+
+    func testPhillyCheesesteakIsTheProperOne() {
+        let found = Takeaway.onMenu(["Philly cheesesteak"], cheesesteaks)
+        XCTAssertTrue(found.missing.isEmpty)
+        XCTAssertEqual(found.want, ["Proper Cheesesteak, regular"])
+        XCTAssertEqual(Takeaway.onMenu(["seafood pancake"], [dish("Kimchi pancake", 600, 12)]).missing, ["seafood pancake"], "not a style")
+        XCTAssertEqual(Takeaway.whose("Sparrows"), "Sparrows'")
+        XCTAssertEqual(Takeaway.whose("Nando's"), "Nando's")
+        XCTAssertEqual(Takeaway.whose("Gami"), "Gami's")
+    }
+
+    func testNoWingsIsACorrectionAndNotALog() {
+        XCTAssertTrue(Takeaway.correcting("No wings on DoorDash"))
+        XCTAssertTrue(Takeaway.correcting("don’t see the boneless option"))
+        XCTAssertFalse(Takeaway.correcting("had it, no sauce on the app"))
+        XCTAssertFalse(Takeaway.correcting("no dips"))
+        let card: JSON = ["takeaway": ["restaurant": "Sparrows"] as JSON]
+        let turns = [Assistant.Turn(me: false, text: "", result: card), Assistant.Turn(me: true, text: "No wings on DoorDash")]
+        XCTAssertEqual(str(Takeaway.correctedCard(turns)?["restaurant"]), "Sparrows")
+    }
+
+    func testNoWingsKeepsTheCheesesteak() {
+        let lines: [JSON] = [["name": "Proper Cheesesteak, regular"], ["name": "Plain wings"]]
+        let card: JSON = ["combos": [["lines": lines] as JSON] as [JSON]]
+        let kept: [String] = Takeaway.keptDish(card, said: "No wings on DoorDash")
+        XCTAssertEqual(kept, ["Proper Cheesesteak"])
+        XCTAssertTrue(Takeaway.keptDish(card, said: "no cheesesteak on DoorDash").isEmpty)
+        let p = Takeaway.plan(menu: cheesesteaks, home: [], kcal: 1100, protein: 70, want: kept, avoid: ["wings"], place: "Sparrows")
+        XCTAssertFalse(p.combos.isEmpty)
+        for (c, _) in p.combos {
+            XCTAssertTrue(c.item.name.hasPrefix("Proper Cheesesteak"))
+            XCTAssertFalse(c.dishes.contains { $0.0.name == "Plain wings" })
+        }
+    }
+
+    @MainActor func testAnOldPhotoLetsGoOnceTheChatMovesOn() {
+        let photo = UIImage()
+        var turns = [Assistant.Turn(me: true, text: "No wings on DoorDash", images: [photo]),
+                     Assistant.Turn(me: false, text: "Just the cheesesteak"),
+                     Assistant.Turn(me: true, text: "how much was the bread?")]
+        XCTAssertEqual(Assistant.carriedPhotos(turns).count, 1, "still about it")
+        let card: JSON = ["takeaway": ["restaurant": "Thai Social"] as JSON]
+        turns[2] = Assistant.Turn(me: true, text: "From Thai social?")
+        turns.append(Assistant.Turn(me: false, text: "", result: card))
+        turns.append(Assistant.Turn(me: true, text: "Bbq noodle bar is a new place on DoorDash"))
+        XCTAssertTrue(Assistant.carriedPhotos(turns).isEmpty, "moved on")
+        turns[4] = Assistant.Turn(me: true, text: "what was in that photo?")
+        XCTAssertEqual(Assistant.carriedPhotos(turns).count, 1, "asked about by name")
+    }
+
+    func testAPlaceTypedInTheMessage() {
+        XCTAssertTrue(Takeaway.typed("Bbq noodle bar", in: "Bbq noodle bar is a new place on DoorDash"))
+        XCTAssertTrue(Takeaway.typed("KFC", in: "kfc"))
+        XCTAssertFalse(Takeaway.typed("Sparrows", in: "how much was the bread?"))
+    }
 
     /// "Chicken Burger (2280 kJ)": 545 kcal, the kJ taken out of the name, protein kept and carbs and fat fitted to it.
     func testKilojoulesFromTheName() {

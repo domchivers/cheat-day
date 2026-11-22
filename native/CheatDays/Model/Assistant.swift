@@ -323,6 +323,19 @@ enum Assistant {
         return lines.isEmpty ? "" : "Their training, the last three weeks, newest first (kg × reps):\n\(lines.joined(separator: "\n"))\n"
     }
 
+    /// The photos a typed message still goes with: the last ones sent, until the planner has answered something typed
+    /// after them (the chat's moved on to a restaurant), or whenever the message mentions them.
+    static func carriedPhotos(_ turns: [Turn]) -> [UIImage] {
+        let before: [Turn] = Array(turns.dropLast())
+        guard let last = turns.last, let at = before.lastIndex(where: { (t: Turn) -> Bool in t.me && !t.images.isEmpty }) else { return [] }
+        let aboutThem = #"\b(photos?|pics?|pictures?|images?|screenshots?)\b"#
+        if last.text.lowercased().range(of: aboutThem, options: .regularExpression) != nil { return before[at].images }
+        // (the first answer after them is their own)
+        let later = before[(at + 1)...].filter { (t: Turn) -> Bool in !t.me }.dropFirst()
+        let movedOn: Bool = later.contains { (t: Turn) -> Bool in Takeaway.isPlanned(t.result) }
+        return movedOn ? [] : before[at].images
+    }
+
     /// Ask, then check an estimate's parts against the food list and database afterwards (`ground` false: the caller does it later).
     @MainActor
     static func ask(_ turns: [Turn], store: Store, ground groundNow: Bool = true, spotted: (@MainActor (Spotted) -> Void)? = nil,
@@ -336,8 +349,18 @@ enum Assistant {
         // With photos in the chat, "couldn't find its menu online" is no answer: a packet's label taken for a menu (a
         // brand, its importer) went off to look for a restaurant, and the photos were never read. The careful answer,
         // which reads them, is given instead.
-        let photosHere = !last.images.isEmpty || turns.contains { $0.me && !$0.images.isEmpty }
-        func planned(_ t: JSON?) -> JSON? { t.flatMap { $0["menuMissing"] as? Bool == true && photosHere ? nil : $0 } }
+        // Only photos the chat is still about, and never over a place typed by name: one photo of a cheesesteak had every
+        // place named after it answered with that cheesesteak (22 Nov). Told once already that a menu wasn't found, the
+        // dishes they type next go to the careful answer, not the same "couldn't find" again.
+        let oldPhotos: [UIImage] = last.images.isEmpty ? carriedPhotos(turns) : []
+        let toldMissing: Bool = turns.dropLast().last { (t: Turn) -> Bool in !t.me }?.result?["menuMissing"] as? Bool == true
+        func planned(_ t: JSON?) -> JSON? {
+            guard let t else { return nil }
+            guard t["menuMissing"] as? Bool == true else { return t }
+            if !last.images.isEmpty { return nil }
+            if t["named"] as? Bool == true { return t }
+            return oldPhotos.isEmpty && !toldMissing ? t : nil
+        }
         let takeaway: Task<JSON?, Never>? = last.images.isEmpty ? Task {
             let r = await Takeaway.answer(turns, store: store, step: step, decided: decision)
             decision.set(r != nil)
@@ -349,6 +372,11 @@ enum Assistant {
         if !last.images.isEmpty, let s = await spot(last.images, said: last.text) { seen = s; spotted?(s) }
         // a delivery-app page in the photo, and they're choosing ("this burger for dinner"): the takeaway planner, with its kJ
         if let s = seen, !s.listing.isEmpty, let t = planned(await Takeaway.answer(turns, store: store, step: step, photo: s)) { return t }
+        // "No wings on DoorDash", with or without the page's kJ showing: the card planned again without them
+        if !last.images.isEmpty, seen?.listing.isEmpty ?? true, Takeaway.correctedCard(turns) != nil {
+            let page: Spotted = seen ?? Spotted(foods: [], shop: "")
+            if let t = planned(await Takeaway.answer(turns, store: store, step: step, photo: page)) { return t }
+        }
         let earlier = turns.dropLast().suffix(8).map { t -> String in
             if t.me { return "They: \(t.text)" }
             var line = "You: \(t.text)"
@@ -361,7 +389,7 @@ enum Assistant {
             return line
         }.joined(separator: "\n")
         // photos come along from the last message that had some, when this one has none
-        let pics = last.images.isEmpty ? (turns.dropLast().last { $0.me && !$0.images.isEmpty }?.images ?? []) : last.images
+        let pics: [UIImage] = last.images.isEmpty ? oldPhotos : last.images
         // the rules first, the same for everyone and marked to be cached (later requests read them at a tenth of the
         // price); then the photos, then this person and this message
         var parts: [JSON] = [["text": "You are the assistant inside a cheat-day food diary app called Cheat Days.\n\(rules)", "cache": true]]
@@ -403,7 +431,9 @@ enum Assistant {
             if let s = seen, !s.listing.isEmpty { e["shopNote"] = "Energy from the kJ on \(s.shop.isEmpty ? "the menu" : s.shop + "'s") page in your photo" }
             // held to the last card: the range each part had, a weight they gave, nothing moved by just asking again
             // (new photos are a new thing to work out: a different plate isn't held to the last one's sizes)
-            let before = last.images.isEmpty ? turns.dropLast().last { !$0.me && $0.result?["estimate"] != nil }?.result?["estimate"] as? JSON : nil
+            // (nor to a card from before the chat moved on to a restaurant)
+            let lastTurn: Turn? = turns.dropLast().last { (t: Turn) -> Bool in !t.me && (t.result?["estimate"] != nil || Takeaway.isPlanned(t.result)) }
+            let before: JSON? = last.images.isEmpty ? lastTurn?.result?["estimate"] as? JSON : nil
             let h = shown(e, said: last.text, photos: !pics.isEmpty, before: before, via: str(answer["via"]), reply: str(answer["reply"]))
             answer["estimate"] = h.estimate
             if !h.notes.isEmpty { answer["reply"] = ([str(answer["reply"])] + h.notes).joined(separator: " ") }
@@ -1018,7 +1048,8 @@ enum Assistant {
                     out.append("    \(str(x["name"])): \(str(x["dish"])) · \(Int(num(x["kcal"]) ?? 0)) kcal · P\(Int(num(x["protein_g"]) ?? 0)) · \(str(x["published"]) == "none" ? "estimated" : "published")")
                 }
             }
-            guard let e = t.result?["estimate"] as? JSON else { continue }
+            // (an empty one isn't a card: a spoken answer came through as "total 0 kcal")
+            guard let e = t.result?["estimate"] as? JSON, !CheatDays.list(e["parts"]).isEmpty || (num(e["kcal_total"]) ?? 0) > 0 else { continue }
             for st in CheatDays.list(e["trace"]) {
                 out.append("  [\(str(st["step"]))]")
                 out += (st["lines"] as? [String] ?? []).map { "    " + $0 }

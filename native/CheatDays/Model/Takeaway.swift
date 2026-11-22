@@ -33,7 +33,15 @@ enum Takeaway {
         var f: Double { sum({ $0.f }, { $0.f100 }) }
         func grams(_ k: Home.Kind) -> Double { home.filter { $0.0.kind == k }.reduce(0.0) { $0 + $1.1 } }
         /// Which dishes and how much of each, the same whichever way round: an order already shown isn't shown again.
-        var key: String { dishes.map { "\($0.0.name.lowercased())@\(Int(($0.1 * 100).rounded()))" }.sorted().joined(separator: "|") }
+        /// (by the names the card shows: three "Proper Cheesesteak + Plain wings" came from three sizes of the one name)
+        var key: String {
+            let parts: [String] = dishes.map { (d: (Item, Double)) -> String in
+                let name: String = Takeaway.cutName(d.0.name).lowercased().trimmingCharacters(in: .whitespaces)
+                let share: Int = Int((d.1 * 100).rounded())
+                return "\(name)@\(share)"
+            }
+            return parts.sorted().joined(separator: "|")
+        }
         /// More restaurant food and dessert, less plain powder; a dish only partly eaten counts a little against it.
         var enjoyment: Double {
             func weight(_ k: Home.Kind) -> Double {
@@ -186,6 +194,7 @@ enum Takeaway {
         // "Small Fried Chicken" with "Large Fried Chicken" is the one dish twice
         let sizes: Set<String> = ["small", "large", "regular", "medium", "half", "whole"]
         func sameDish(_ a: Item, _ b: Item) -> Bool {
+            if cutName(a.name).lowercased() == cutName(b.name).lowercased() { return true }
             let wa = Set(words(a.name).filter { !sizes.contains($0) }), wb = Set(words(b.name).filter { !sizes.contains($0) })
             return !wa.isEmpty && wa == wb
         }
@@ -210,7 +219,19 @@ enum Takeaway {
         guard !best.isEmpty else { return Picks(combos: [], low: low, sides: sides, tried: tried, meets: false) }
         let first = pick(best, kcal: kcal, protein: protein, over: over)!
         var out: [(Combo, String)] = [(first, "Best fit")]
-        var rest = best.filter { $0.item != first.item }
+        // each dish's best order, or its next best when that's one already given: A + B was offered again as B + A
+        func left() -> [Combo] {
+            var cs: [Combo] = []
+            for b in best where !out.contains(where: { $0.0.item == b.item }) {
+                let given: Set<String> = Set(out.map { $0.0.key })
+                if !given.contains(b.key) { cs.append(b); continue }
+                let others: [Combo] = (every[b.item] ?? []).filter { (c: Combo) -> Bool in
+                    (over || c.kcal <= kcal + 10) && !given.contains(c.key)
+                }
+                if let next = pick(others, kcal: kcal, protein: protein, over: over) { cs.append(next) }
+            }
+            return cs
+        }
         // a dish asked about ("what about the seafood pancake?"): the whole of it, and some of it, as well as the pick
         if pairing, !wanted.isEmpty {
             let theirs = wanted.flatMap { every[$0] ?? [] }
@@ -218,14 +239,14 @@ enum Takeaway {
             let ways: [((Double) -> Bool, String)] = [({ $0 >= 0.99 }, "With the whole one"), ({ $0 > 0 && $0 < 0.99 }, "Some of it")]
             for (keep, note) in ways where out.count < count {
                 if let c = pick(theirs.filter { keep(share($0)) }, kcal: kcal, protein: protein, over: true), !out.contains(where: { $0.0.key == c.key }) {
-                    out.append((c, note)); rest.removeAll { $0.item == c.item }
+                    out.append((c, note))
                 }
             }
         }
-        if out.count < count, let m = rest.filter({ $0.kcal <= kcal + 10 }).max(by: { $0.p < $1.p }), m.p > first.p + 2 { out.append((m, "Most protein")); rest.removeAll { $0.item == m.item } }
-        while out.count < count, let n = pick(rest, kcal: kcal, protein: protein, over: over) {
+        if out.count < count, let m = left().filter({ $0.kcal <= kcal + 10 }).max(by: { $0.p < $1.p }), m.p > first.p + 2 { out.append((m, "Most protein")) }
+        while out.count < count, let n = pick(left(), kcal: kcal, protein: protein, over: over) {
             let note = n.item.kcal > first.item.kcal + 20 ? "More from " + place : n.grams(.dessert) > 0 && first.grams(.dessert) == 0 ? "With dessert" : ""
-            out.append((n, note)); rest.removeAll { $0.item == n.item }
+            out.append((n, note))
         }
         return Picks(combos: out, low: Array(low.prefix(4)), sides: Array(sides.prefix(4)), tried: tried, meets: first.p >= protein - 0.5)
     }
@@ -306,12 +327,12 @@ enum Takeaway {
         var fromDish = ""
         if dishes.count == 1 {
             let name = str(dishes[0]["name"]).components(separatedBy: CharacterSet(charactersIn: ",(")).first ?? ""
-            fromDish = tiers[0] == "full" ? "\(name) from \(r)'s menu" : tiers[0] == "energy" ? "\(name) from \(r)'s kJ, protein estimated"
-                : "\(name) estimated: its kJ wasn't on \(r)'s listing. Type it or send a screenshot"
+            fromDish = tiers[0] == "full" ? "\(name) from \(whose(r)) menu" : tiers[0] == "energy" ? "\(name) from \(whose(r)) kJ, protein estimated"
+                : "\(name) estimated: its kJ wasn't on \(whose(r)) listing. Type it or send a screenshot"
         } else if dishes.count > 1 {
-            fromDish = tiers.allSatisfy { $0 == "full" } ? "From \(r)'s menu"
-                : tiers.contains("none") ? "Estimates, give or take about 20%: \(r)'s listing has no kJ. Type it or send a screenshot"
-                : "From \(r)'s kJ, protein estimated"
+            fromDish = tiers.allSatisfy { $0 == "full" } ? "From \(whose(r)) menu"
+                : tiers.contains("none") ? "Estimates, give or take about 20%: \(whose(r)) listing has no kJ. Type it or send a screenshot"
+                : "From \(whose(r)) kJ, protein estimated"
         }
         let tags = homes.map { str($0["tag"]) }
         let fromHome = tags.isEmpty ? "" : tags.allSatisfy { $0 == "label" } ? "the rest from your labels" : "the rest from your log"
@@ -425,6 +446,8 @@ enum Takeaway {
                                       "large", "small", "big", "medium", "regular"]
     /// The kind of dish, which a menu's names often leave out at a place that only sells it.
     static let generic: Set<String> = ["pizza", "pizzas", "burger", "burgers", "pasta", "bowl", "bowls", "wrap", "wraps", "salad", "sandwich", "sub", "meal"]
+    /// A dish's style, which a menu often names its own way: Sparrow's Philly cheesesteak is its Proper Cheesesteak (22 Nov).
+    static let style: Set<String> = ["philly", "classic", "original", "proper", "signature", "famous", "traditional", "authentic"]
     /// The dish without those words ("pepperoni pizza").
     static func core(_ dish: String) -> String {
         dish.split(separator: " ").filter { !manner.contains($0.lowercased().trimmingCharacters(in: .punctuationCharacters)) }.joined(separator: " ")
@@ -459,7 +482,13 @@ enum Takeaway {
             let kinds = c.split(separator: " ").map { String($0).lowercased() }.filter { generic.contains($0) }
             let sold = kinds.allSatisfy { k in items.contains { $0.name.lowercased().contains(k.hasSuffix("s") ? String(k.dropLast()) : k) } }
             let bare = c.split(separator: " ").filter { !generic.contains(String($0).lowercased()) }.joined(separator: " ")
-            let found = ((c == d ? [] : [c]) + (sold && !kinds.isEmpty ? [bare] : [])).filter { !words($0).isEmpty }.lazy.compactMap { k in
+            let unstyled: String = c.split(separator: " ").filter { !style.contains(String($0).lowercased()) }.joined(separator: " ")
+            // (not "classic burger" to any burger: what's left has to name a dish)
+            let namesDish: Bool = words(unstyled).contains { (w: String) -> Bool in !generic.contains(w) }
+            var tries: [String] = c == d ? [] : [c]
+            if sold && !kinds.isEmpty { tries.append(bare) }
+            if unstyled != c && namesDish { tries.append(unstyled) }
+            let found = tries.filter { !words($0).isEmpty }.lazy.compactMap { k in
                 items.first { i in words(k).allSatisfy { i.name.lowercased().contains($0) } }
             }.first
             if let found { plain.append((d, found.name)) } else { missing.append(d) }
@@ -486,6 +515,61 @@ enum Takeaway {
         return t.contains("?") || t.range(of: #"\b(for (dinner|lunch|tea|breakfast|brekkie|tonight)|want|wanna|fancy|craving|i'?d like|should|what|which|can i|plan|order|ordering|getting|thinking)\b"#, options: .regularExpression) != nil
     }
 
+    /// "Gami's", "Sparrows'".
+    static func whose(_ name: String) -> String {
+        let endsInS: Bool = name.lowercased().hasSuffix("s")
+        if name.lowercased().hasSuffix("'s") || name.lowercased().hasSuffix("’s") { return name }
+        return endsInS ? name + "'" : name + "'s"
+    }
+
+    /// The name of a place typed in this message, not just still in mind from the chat or read off a photo.
+    static func typed(_ name: String, in text: String) -> Bool {
+        let t: String = text.lowercased(), n: String = name.lowercased()
+        guard !n.isEmpty else { return false }
+        return t.contains(n) || words(n).contains { (w: String) -> Bool in t.contains(w) }
+    }
+
+    /// Saying something on a planned card isn't there to order ("No wings on DoorDash"), not that they didn't eat it.
+    static func correcting(_ text: String) -> Bool {
+        let t: String = text.lowercased().replacingOccurrences(of: "’", with: "'")
+        if t.range(of: #"\b(had|ate|eaten|didn't have|didn't eat)\b"#, options: .regularExpression) != nil { return false }
+        let gone = #"\b(no|not|isn't|aren't|don't|doesn't|can't)\b.*\b(doordash|door dash|uber|menulog|menu|app|listed|available|see|sell)\b|\bsold out\b"#
+        return t.range(of: gone, options: .regularExpression) != nil
+    }
+
+    /// The planner's answers: a card, a list of places, or that it couldn't find a menu.
+    static func isPlanned(_ r: JSON?) -> Bool {
+        guard let r else { return false }
+        return r["takeaway"] != nil || r["places"] != nil || r["menuMissing"] as? Bool == true
+    }
+
+    /// The card this message corrects: the answer just before it, when that was one and they say part of it isn't there.
+    static func correctedCard(_ turns: [Assistant.Turn]) -> JSON? {
+        guard let last = turns.last, last.me, correcting(last.text) else { return nil }
+        return turns.dropLast().last { (t: Assistant.Turn) -> Bool in !t.me }?.result?["takeaway"] as? JSON
+    }
+
+    /// The dish a corrected card was built on (the first in every one of its orders: the cheesesteak, not the wings with
+    /// it), unless that's the one they say isn't there.
+    static func keptDish(_ card: JSON, said: String) -> [String] {
+        var firsts: Set<String> = []
+        for c in list(card["combos"]) {
+            guard let l = list(c["lines"]).first else { continue }
+            firsts.insert(cutName(str(l["name"])).trimmingCharacters(in: .whitespaces))
+        }
+        guard firsts.count == 1, let dish = firsts.first else { return [] }
+        let t: String = said.lowercased()
+        let struck: Bool = words(dish).contains { (w: String) -> Bool in t.contains(w) }
+        return struck ? [] : [dish]
+    }
+
+    /// Two ways of writing the one place ("Zambrero", "Zambrero Melbourne").
+    static func samePlace(_ a: String, _ b: String) -> Bool {
+        let x: String = a.lowercased(), y: String = b.lowercased()
+        if x == y { return !x.isEmpty }
+        return x.count > 3 && y.count > 3 && (x.contains(y) || y.contains(x))
+    }
+
     /// A restaurant's menu, kept on the phone for a week, so asking again costs nothing; looked up again when a dish
     /// they ask for isn't on the one kept (Gami's 2026 PDF had no Chicken Burger; its DoorDash listing does).
     /// Asked again too when they quote a dish's kJ that the kept one doesn't have at about that energy, so its protein
@@ -508,7 +592,7 @@ enum Takeaway {
         let ask: [JSON] = [["text": menuAsk(restaurant, area: area, want: wanted, seen: quoted)]], country: JSON = ["country": Region.current.code]
         let fetched = await Gemini.askClaude("menu", schema: menuSchema, parts: ask, extra: country)
         guard var m = fetched != nil ? fetched : await Gemini.askClaude("lookup", schema: menuSchema, parts: ask, extra: country),
-              m["found"] as? Bool == true, !items(m).isEmpty else { return nil }
+              m["found"] as? Bool == true, !items(m).isEmpty else { return fresh ? kept[key]?["menu"] as? JSON : nil }   // looked again, found nothing: the one kept
         if let was = kept[key]?["menu"] as? JSON { m = steady(m, was: was) }
         kept = kept.filter { Date().timeIntervalSince1970 - (num($0.value["at"]) ?? 0) < 7 * 86400 }
         kept[key] = ["at": Date().timeIntervalSince1970, "menu": m]
@@ -611,9 +695,11 @@ enum Takeaway {
         // "from the pictures I sent") is the assistant's to answer. It was planned all over again, the same card each
         // time, because the place's name was still in mind and the message read like choosing.
         let planned = turns.dropLast().contains { $0.result?["takeaway"] != nil }
-        let page = photo.map { p in "a menu page\(p.shop.isEmpty ? "" : " from \(p.shop)") showing " + p.listing.map { "\(str($0["name"])) (\(Fmt.int(num($0["kj"]) ?? 0)) kJ)" }.joined(separator: ", ") } ?? ""
+        let page = photo.map { p -> String in p.listing.isEmpty ? "the place's page on the app they order from" : "a menu page\(p.shop.isEmpty ? "" : " from \(p.shop)") showing " + p.listing.map { "\(str($0["name"])) (\(Fmt.int(num($0["kj"]) ?? 0)) kJ)" }.joined(separator: ", ") } ?? ""
         // with a menu page, choosing or logging is decided here: Claude called "this burger for dinner" a log one time in three
-        if photo != nil, !choosing(last.text) { return nil }
+        // ("No wings on DoorDash", with the screenshot: the card planned again without them, not the photo taken for a plate)
+        let corrected: JSON? = photo == nil ? nil : correctedCard(turns)
+        if photo != nil, corrected == nil, !choosing(last.text) { return nil }
         guard let route = await Gemini.askClaude("quick", schema: routeSchema, parts: [["text": routeAsk(last.text, earlier: earlier, photo: page)]]),
               // choose; or a restaurant named in a question or a wish, nothing they had, in case it's called something else
               photo != nil || ["choose", "find"].contains(str(route["intent"])) || (!str(route["restaurant"]).isEmpty && choosing(last.text) && !(planned && str(route["intent"]) == "other")) else { return nil }
@@ -624,9 +710,21 @@ enum Takeaway {
             decided?.set(true); return await find(area: str(route["area"]), want: route["want"] as? [String] ?? [], asked: last.text, kcal: pos(route["kcal"]) ?? theirKcal, protein: pos(route["protein"]),
                                                 proteinAsked: pos(route["protein"]) != nil || proteinTalk, store: store, step: step)
         }
-        let named = str(route["restaurant"]).trimmingCharacters(in: .whitespaces)
-        // "the poke one": a place from the list, with its dish's kJ
-        if photo == nil, let pl = shown, !named.isEmpty, let p = place(named, in: pl) { decided?.set(true); return await chosen(p, from: pl, store: store, step: step) }
+        var named = str(route["restaurant"]).trimmingCharacters(in: .whitespaces)
+        if let c = corrected { named = str(c["restaurant"]) }
+        // "the poke one": a place from the list, with its dish's kJ. Not once it's been planned: "Any other suggestions"
+        // after Zambrero's card came back as that same card (22 Nov)
+        var listed: JSON?
+        if photo == nil, let pl = shown, !named.isEmpty, let p = place(named, in: pl) {
+            let placeName: String = str(p["name"])
+            let been: Bool = turns.dropLast().contains { (t: Assistant.Turn) -> Bool in
+                guard let ta = t.result?["takeaway"] as? JSON else { return false }
+                return samePlace(str(ta["restaurant"]), placeName)
+            }
+            if !been { decided?.set(true); return await chosen(p, from: pl, store: store, step: step) }
+            listed = p
+            named = placeName
+        }
         // "gami Windsor" as "Gami Windsor": a word typed all in lower case gets its capital
         let name = (named.isEmpty ? (photo?.shop ?? "") : named).split(separator: " ").map { w in w == w.lowercased() ? w.prefix(1).uppercased() + w.dropFirst() : String(w) }.joined(separator: " ")
         guard !name.isEmpty else { return nil }
@@ -634,7 +732,8 @@ enum Takeaway {
         for l in photo?.listing ?? [] where !seen.contains(where: { str($0["name"]).lowercased() == str(l["name"]).lowercased() }) { seen.append(l) }
         var want = route["want"] as? [String] ?? []
         // "this burger for dinner" with the page: the dish on it that the message names, else the page's first
-        if let p = photo, dishes(want).isEmpty, let first = p.listing.first {
+        if let c = corrected { want = keptDish(c, said: said) }
+        if let p = photo, corrected == nil, dishes(want).isEmpty, let first = p.listing.first {
             let named = p.listing.first { l in words(str(l["name"])).contains { last.text.lowercased().contains($0) } }
             want.append(str((named ?? first)["name"]))
         }
@@ -660,10 +759,43 @@ enum Takeaway {
         // "any other options?": four more, none already shown
         let others = planned && dishes(want).isEmpty && lower.range(of: #"\b(other|else|another|alternatives?|options?|ideas?)\b"#, options: .regularExpression) != nil
         let before = others ? Set(shownCombos.map { str($0["key"]) }.filter { !$0.isEmpty }) : []
-        decided?.set(true); return await choose(name, area: str(route["area"]), want: want, seen: seen, avoid: avoidList, said: last.text, earlier: earlier,
-                            kcal: pos(route["kcal"]) ?? theirKcal ?? room, protein: pos(route["protein"]) ?? (proteinTalk ? earlierProtein : nil) ?? proteinLeft,
-                            meal: nil, store: store, step: step, fresh: again,
-                            before: before, count: others ? 4 : 3, followUp: planned)
+        var avoiding: [String] = avoidList
+        // said to be off the app, and the router named none: the card's dishes their message names
+        if corrected != nil && avoiding.isEmpty {
+            avoiding = Array(shownDishes).filter { (d: String) -> Bool in words(d).contains { (w: String) -> Bool in lower.contains(w) } }
+        }
+        // what was struck off this place's last card stays off ("no wings", then "any other options?"), unless it's asked for now
+        let lastCard: JSON? = turns.dropLast().last { (t: Assistant.Turn) -> Bool in t.result?["takeaway"] != nil }?.result?["takeaway"] as? JSON
+        if let c = lastCard, samePlace(str(c["restaurant"]), name) {
+            let wants: String = want.joined(separator: " ").lowercased()
+            for a in c["avoid"] as? [String] ?? [] where !avoiding.contains(a) {
+                let askedFor: Bool = words(a).contains { (w: String) -> Bool in wants.contains(w) }
+                if !askedFor { avoiding.append(a) }
+            }
+        }
+        var area: String = str(route["area"]).trimmingCharacters(in: .whitespaces)
+        if area.isEmpty, let p = listed { area = str(p["area"]) }
+        // a place nobody can find by its name alone is looked for again where they've been looking (22 Nov: a noodle bar
+        // found nothing with no city, and its menu with Melbourne)
+        let searched: String = str(shown?["area"])
+        let near: String = searched.isEmpty ? (UserDefaults.standard.string(forKey: "takeaway.area") ?? "") : searched
+        var toKcal: Double? = pos(route["kcal"]) ?? theirKcal ?? room
+        var toProtein: Double? = pos(route["protein"]) ?? (proteinTalk ? earlierProtein : nil) ?? proteinLeft
+        if listed != nil, let pl = shown {
+            toKcal = toKcal ?? pos(pl["kcal"])
+            if pl["proteinAsked"] as? Bool ?? true { toProtein = toProtein ?? pos(pl["protein"]) }
+        }
+        decided?.set(true)
+        var out: JSON = await choose(name, area: area, want: want, seen: seen, avoid: avoiding, said: last.text, earlier: earlier,
+                                     kcal: toKcal, protein: toProtein,
+                                     meal: nil, store: store, step: step, fresh: again,
+                                     before: before, count: others ? 4 : 3, followUp: planned, near: near)
+        if str(route["intent"]) == "choose" && typed(named, in: said) { out["named"] = true }
+        if var ta = out["takeaway"] as? JSON, !avoiding.isEmpty {
+            ta["avoid"] = avoiding
+            out["takeaway"] = ta
+        }
+        return out
     }
 
     /// Calories they gave for the meal earlier in the chat ("a burrito for under 700cals"), the latest; nil when none.
@@ -770,7 +902,7 @@ enum Takeaway {
                 : hits > 0 ? "For \(meal.lowercased()) \(aim), \(hits) of these \(ranked.count) in \(area) fit (listed first, most protein first); the rest are over. Tap one to plan it:"
                 : "Nothing I found in \(area) comes in \(aim) for \(meal.lowercased()). These are the closest. Tap one to plan it:"
         } else if hits == ranked.count { reply = "For \(meal.lowercased()) \(aim), \(ranked.count == 1 ? "this place" : "these \(ranked.count)") in \(area) fit. Tap one to plan it:" }
-        else if hits > 0 { reply = "For \(meal.lowercased()) \(aim), \(hits) of these \(ranked.count) in \(area) \(hits == 1 ? "gets" : "get") there (listed first). The rest fall short on protein. Tap one to plan it:" }
+        else if hits > 0 { reply = "For \(meal.lowercased()) \(aim), \(hits) of these \(ranked.count) in \(area) \(hits == 1 ? "gets" : "get") there (listed first). \(ranked.count - hits == 1 ? "The other falls" : "The rest fall") short on protein. Tap one to plan it:" }
         else { reply = "Nothing I found in \(area) gets to \(Int(protein)) g protein in around \(Fmt.int(kcal)) kcal for \(meal.lowercased()). These come closest, most protein first. Tap one to plan it:" }
         return ["kind": "places", "reply": reply, "meal": meal, "trail": ["Searched the web for places in \(area)"],
                 "places": ["area": area, "asked": asked, "meal": meal, "kcal": kcal, "protein": protein, "proteinAsked": proteinAsked, "places": ranked] as JSON]
@@ -793,22 +925,41 @@ enum Takeaway {
     @MainActor static func choose(_ name: String, area: String, want: [String], seen: [JSON], avoid: [String], said text: String, earlier: String,
                                   kcal theirKcal: Double?, protein theirProtein: Double?, meal named: String?, store: Store,
                                   step: (@MainActor (String, String) -> Void)?, fresh: Bool = false,
-                                  before: Set<String> = [], count: Int = 3, followUp: Bool = false) async -> JSON {
-        step?("Asked about \(name)", fresh ? "Looking at \(name)'s menu again…" : "Finding \(name)'s menu…")
-        guard let m = await menu(name, area: area, want: want, seen: seen, fresh: fresh) else {
-            return ["kind": "answer", "menuMissing": true, "reply": "I couldn't find \(name)'s menu online. Tell me what's on it (the names and kJ from the app you order on) and I'll put it together."]
+                                  before: Set<String> = [], count: Int = 3, followUp: Bool = false, near: String = "") async -> JSON {
+        step?("Asked about \(name)", fresh ? "Looking at \(whose(name)) menu again…" : "Finding \(whose(name)) menu…")
+        // what to aim for: their own numbers, else everything left at dinner, else this meal's share
+        let a = aim(store, said: text, meal: named), meal = a.meal
+        let kcal = theirKcal ?? a.kcal, protein = theirProtein ?? a.protein
+        // (a few cold sides alone are no menu to plan a meal from)
+        func usable(_ m: JSON?) -> JSON? {
+            guard let m else { return nil }
+            let hasMain: Bool = items(m).contains { (i: Item) -> Bool in i.kind == "main" }
+            return hasMain || !seen.isEmpty ? m : nil
+        }
+        var got: JSON? = usable(await menu(name, area: area, want: want, seen: seen, fresh: fresh))
+        var foundNear = ""
+        if got == nil, area.isEmpty, !vague(near) {
+            step?("Nothing by that name alone", "Looking for \(name) in \(near)…")
+            got = usable(await menu(name, area: near, want: want, seen: seen, fresh: fresh))
+            if let g = got {
+                let who: String = str(g["restaurant"]).isEmpty ? name : str(g["restaurant"])
+                foundNear = "I took that to be \(who), looking in \(near). If it's another shop, send a screenshot of its menu. "
+            }
+        }
+        guard let m = got else {
+            let target: String = "\(Int(protein)) g protein in about \(Fmt.int(kcal)) kcal"
+            let searchedIn: String = !area.isEmpty ? " in \(area)" : vague(near) ? "" : " in \(near)"
+            let reply: String = "I couldn't find \(whose(name)) menu online\(searchedIn). Send a screenshot of it, or type a few of its dishes, and I'll pick for \(target)."
+            return ["kind": "answer", "menuMissing": true, "reply": reply]
         }
         let menuItems = withSeen(items(m), seen, want: want), shown = name   // their own name for it reads better than "Gami Chicken (Gami Chicken & Beer)"
         let energyOnly = menuItems.filter { $0.tier == "energy" }.count * 2 >= menuItems.count, full = menuItems.allSatisfy { $0.tier == "full" }
         let every = menuItems.allSatisfy { $0.tier != "none" } ? "every item" : "most items"
-        let found = full ? "Found \(shown)'s menu with its nutrition" : energyOnly ? "Found \(shown)'s menu: kJ on \(every)" : "Found \(shown)'s menu"
+        let found = full ? "Found \(whose(shown)) menu with its nutrition" : energyOnly ? "Found \(whose(shown)) menu: kJ on \(every)" : "Found \(whose(shown)) menu"
         let scans = PantryItem.Saved.load(UserDefaults.standard.string(forKey: "pantry.scans") ?? "[]")
         let home = homeFoods(store, scans: scans)
         step?(found, home.isEmpty ? "Putting it together…" : "Adding what you have at home…")
 
-        // what to aim for: their own numbers, else everything left at dinner, else this meal's share
-        let a = aim(store, said: text, meal: named), meal = a.meal
-        let kcal = theirKcal ?? a.kcal, protein = theirProtein ?? a.protein
         // food from home only when they bring it up ("with a shake", "and ice cream"): "want something from Gami
         // tomorrow" came back with a protein shake and ice cream nobody asked for, and so did "1400 kcal, 80 g protein"
         // from PUBCHA (21 Nov: "a water shake and ice cream" on every option). Short of the protein, one shake is
@@ -819,7 +970,7 @@ enum Takeaway {
         let homeToo = asksForHome(talk)
         // "What if I did a wrap?" at a place with no wraps: said, not the same card again as if it had been heard
         let asked = onMenu(want, menuItems), missing = asked.missing
-        let lead = !missing.isEmpty ? "\(shown)'s menu doesn't have \(missing.count == 1 ? "a " + missing[0].lowercased() : missing.joined(separator: " or ").lowercased()), so here's the closest. "
+        let lead = !missing.isEmpty ? "\(whose(shown)) menu doesn't have \(missing.count == 1 ? "a " + missing[0].lowercased() : missing.joined(separator: " or ").lowercased()), so here's the closest. "
                  : !asked.ways.isEmpty ? "\(shown) doesn't give numbers for its \(asked.ways[0].lowercased()), so these are on its usual base. "
                  : asked.plain.first(where: { isWay($0.said) || core($0.said) != $0.said }).map { isWay($0.said) ? "On its \($0.said.lowercased()): " : "\(shown) doesn't list a \($0.said.lowercased()), so here's its \($0.dish.lowercased()). " } ?? ""
         let proteinAsked = theirProtein != nil || talk.lowercased().contains("protein") || homeToo
@@ -839,7 +990,7 @@ enum Takeaway {
         let advice = Array((m["tips"] as? [String] ?? []).filter { !$0.isEmpty }.prefix(3))
         let smallest = menuItems.filter { $0.kind == "main" }.map { $0.kcal }.min() ?? 0
         var out = result(p, home: homeToo ? home : [], tips: homeToo ? [] : home, menu: menuItems, shown: shown, kcal: kcal, protein: protein, meal: meal,
-                         smallest: smallest, source: str(m["source"]), lead: lead + verdict, proteinAsked: proteinAsked, advice: advice, others: !before.isEmpty)
+                         smallest: smallest, source: str(m["source"]), lead: foundNear + lead + verdict, proteinAsked: proteinAsked, advice: advice, others: !before.isEmpty)
         if !still.isEmpty, str(out["kind"]) == "takeaway" { out["reply"] = str(out["reply"]) + still }
         return out
     }
@@ -911,7 +1062,7 @@ enum Takeaway {
                        smallest: Double, source: String = "", lead: String = "", proteinAsked: Bool = true, advice: [String] = [], others: Bool = false) -> JSON {
         let names = home.map { short($0.name) }
         let mine = names.count > 1 ? names.dropLast().joined(separator: ", ") + " and " + names.last! : names.first ?? ""
-        let used = "\(shown)'s menu" + (mine.isEmpty ? "" : " · your \(mine)")
+        let used = "\(whose(shown)) menu" + (mine.isEmpty ? "" : " · your \(mine)")
         guard let top = p.combos.first?.0 else {
             return ["kind": "answer", "trail": [used], "reply": "Nothing at \(shown) fits in \(Fmt.int(kcal)) kcal. The smallest dish is \(Fmt.int(smallest)) kcal."]
         }
