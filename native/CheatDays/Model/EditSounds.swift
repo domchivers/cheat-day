@@ -242,6 +242,8 @@ final class VoiceRecorder {
     private var file: AVAudioFile?
     private(set) var url: URL?
     private var began = Date()
+    /// How loud it's hearing, for the level shown as it records.
+    let meter = VoiceMeter()
 
     static func allowed() async -> Bool { await AVAudioApplication.requestRecordPermission() }
 
@@ -256,10 +258,23 @@ final class VoiceRecorder {
         file = try AVAudioFile(forWriting: out, settings: format.settings)
         url = out
         input.removeTap(onBus: 0)
-        input.installTap(onBus: 0, bufferSize: 2048, format: format) { [weak self] buffer, _ in try? self?.file?.write(from: buffer) }
+        let meter: VoiceMeter = self.meter
+        meter.clear()
+        input.installTap(onBus: 0, bufferSize: 2048, format: format) { [weak self] buffer, _ in
+            try? self?.file?.write(from: buffer)
+            meter.add(VoiceRecorder.peak(buffer))
+        }
         engine.prepare()
         try engine.start()
         began = Date()
+    }
+
+    /// The loudest moment in a buffer, 0 to 1.
+    static func peak(_ buffer: AVAudioPCMBuffer) -> Float {
+        guard let channel = buffer.floatChannelData?[0] else { return 0 }
+        var top: Float = 0
+        for i in 0..<Int(buffer.frameLength) { top = max(top, abs(channel[i])) }
+        return min(1, top)
     }
 
     /// Stopped: the recording, and how long it is.

@@ -136,7 +136,12 @@ struct MultiClipEditor: View {
     @State private var pipPicks: [PhotosPickerItem] = []
     @State private var stripZoom: CGFloat = 1             // the strip pinched wider or narrower (Stage D)
     @State private var stripZoomFrom: CGFloat?
-    @State private var choosingSong = false               // Stage E
+    @State private var songPicked: Song?                  // the song picked in the chooser, with its part
+    @State private var press = VoicePress()               // the record button's
+    @State private var countdown = false                  // a tap counts down 3 seconds first
+    @State private var count: Int?                        // the countdown showing
+    @State private var pressTask: Task<Void, Never>?      // a hold or a countdown being timed
+    @State private var recordBegan = Date()
     @State private var templating = false                 // the templates open (design/templates-mockup.html)
     @State private var beatEvery = 2
     @State private var tip: Int?                          // the first-time tip showing
@@ -174,7 +179,7 @@ struct MultiClipEditor: View {
     /// One bar on the timeline: a text, sticker or caption, or a voiceover or sound effect.
     /// kind: 0 over the picture (text, stickers, captions), 1 a sound, 2 a clip or photo over it.
     private struct BarItem: Identifiable { let id: UUID; let from: Double; let to: Double; let label: String; let colour: Color; let kind: Int; var lane: Int? = nil; var off: Bool = false }
-    private enum Panel { case trim, sound, speed, join, look, shape, text, stickers, voice, effects, soundItem, pip, motion, beats, captions, captionList, recipe, recipeSteps }
+    private enum Panel { case trim, sound, speed, join, look, shape, text, stickers, voice, effects, soundItem, pip, motion, beats, songs, captions, captionList, recipe, recipeSteps }
     private var perSecond: CGFloat { 30 * stripZoom }   // timeline points a second, pinched wider or narrower
 
     private var total: Double { ClipJoin.total(clips) }
@@ -268,7 +273,6 @@ struct MultiClipEditor: View {
         // a voiceover moved or trimmed: the captions of what's said in it go with it
         // (kept out of this chain: inline, it was too much for the compiler, 21 Nov)
         .onChange(of: voiceSpans) { _, _ in voiceMoved() }
-        .sheet(isPresented: $choosingSong) { SongPicker { s in Task { @MainActor in await addSong(s) } } }
         .onAppear { if !UserDefaults.standard.bool(forKey: "editor.tips.1") { tip = 0 } }
         // (a trim handle's drag cut short, by another clip picked or a panel opened, leaves nothing behind)
         .onChange(of: selected) { _, _ in trimDrag = nil }
@@ -313,6 +317,8 @@ struct MultiClipEditor: View {
             player.wake()
         }
         .onDisappear {
+            pressTask?.cancel()
+            if recording { _ = recorder.stop() }
             motion.end()
             player.shutdown()
             // the sound given back (19 Nov: left on, the feed's videos went on stopping their Spotify after an edit)
@@ -341,6 +347,8 @@ struct MultiClipEditor: View {
     }
 
     private func wentAway() {
+        endVoice()
+        SongPlayer.shared.stop()
         stopGlide()
         if player.rate != 0 { player.pause(); playing = false }
         // (saved as it's left: the last second's changes hadn't been)
@@ -438,7 +446,7 @@ struct MultiClipEditor: View {
     private var topRow: some View {
         HStack(spacing: 6) {
             // asked first: one tap on the cross threw the whole edit away (19 Nov)
-            bare("xmark", "Close") { if clips.isEmpty { close() } else { leaving = true } }
+            bare("xmark", "Close") { endVoice(); if clips.isEmpty { close() } else { leaving = true } }
             bare("arrow.uturn.backward", "Undo", on: edits.canUndo) { undo() }
             bare("arrow.uturn.forward", "Redo", on: edits.canRedo) { redo() }
             Spacer()
@@ -468,6 +476,11 @@ struct MultiClipEditor: View {
     static func code(_ s: Double) -> String { String(format: "%02d:%02d", Int(max(0, s)) / 60, Int(max(0, s)) % 60) }
 
     private func togglePlay() {
+        // (recording, play and pause are its stop)
+        if recording || count != nil {
+            endVoice()
+            return
+        }
         if motion.gliding {
             motion.end()
             finishScrub(resume: false)
@@ -544,6 +557,7 @@ struct MultiClipEditor: View {
         case .pip: return "Overlay"
         case .motion: return "Motion"
         case .beats: return "Music"
+        case .songs: return "Add music"
         case .captions: return "Captions"
         case .captionList: return "Edit captions"
         case .recipe: return "Recipe"
@@ -582,6 +596,8 @@ struct MultiClipEditor: View {
             return SheetAction(icon: "chevron.left", name: "Captions", run: { backToCaptions() })
         case .recipeSteps:
             return SheetAction(icon: "chevron.left", name: "Recipe", run: { backToRecipe() })
+        case .songs:
+            return SheetAction(icon: "chevron.left", name: "Back", run: { leaveSongs() })
         default:
             return nil
         }
@@ -766,9 +782,54 @@ struct MultiClipEditor: View {
 
     /// Every other panel (design/editor-panels-mockup.html): the one sheet, no rows of bars on any.
     private func panelSheet(_ open: Panel) -> some View {
-        ProSheet(title: panelTitle, left: panelLeft(open), done: { closePanel() },
-                 head: { captionHead },
+        ProSheet(title: panelTitle, left: panelLeft(open), done: { panelDone(open) },
+                 head: { sheetHead(open) },
                  main: { panelMain(open) })
+    }
+
+    @ViewBuilder private func sheetHead(_ open: Panel) -> some View {
+        // (choosing a song has the room; recording, the line stays with the voice)
+        if open != .songs {
+            captionHead
+                .allowsHitTesting(!recording)
+                .opacity(recording ? 0.5 : 1)
+        }
+    }
+
+    private func panelDone(_ open: Panel) {
+        if open == .songs, let song = songPicked {
+            takeSong(song)
+        } else {
+            closePanel()
+        }
+    }
+
+    private func openSongs() {
+        player.pause(); playing = false
+        songPicked = nil
+        withAnimation(.snappy) { panel = .songs }
+    }
+
+    private func leaveSongs() {
+        songPicked = nil
+        let music: Bool = sounds.contains { (s: EditSound) -> Bool in s.kind == "song" }
+        if music {
+            withAnimation(.snappy) { panel = .beats }
+        } else {
+            closePanel()
+        }
+    }
+
+    private func takeSong(_ song: Song) {
+        SongPlayer.shared.stop()
+        Sound.on(.moviePlayback)
+        Task { @MainActor in await addSong(song) }
+    }
+
+    /// Something's to be heard by itself: the edit stops for it.
+    private func hearAlone() {
+        if player.rate != 0 { player.pause() }
+        playing = false
     }
 
     @ViewBuilder private func panelMain(_ open: Panel) -> some View {
@@ -809,6 +870,7 @@ struct MultiClipEditor: View {
         case .effects: liveEffects
         case .soundItem: if let k = sounds.firstIndex(where: { (s: EditSound) -> Bool in s.id == selectedSound }) { liveSoundItem(k) }
         case .beats: liveMusic
+        case .songs: SongChooser(picked: $songPicked, hearing: { hearAlone() })
         case .captions: captionsPanel
         case .captionList: liveList
         default: EmptyView()
@@ -1555,6 +1617,7 @@ struct MultiClipEditor: View {
     }
 
     private func panelChanged() {
+        endVoice()
         trimDrag = nil
         fingerHeld = false
         stopGlide()
@@ -2025,6 +2088,7 @@ struct MultiClipEditor: View {
 
     private func change(_ f: ([Clip]) -> [Clip]) { remember(); withAnimation(.snappy) { clips = f(clips) } }
     private func undo() {
+        endVoice()
         stopGlide()
         let current: Snap = snap
         var h: EditHistory<Snap> = edits
@@ -2033,6 +2097,7 @@ struct MultiClipEditor: View {
         if let last { restore(last) }
     }
     private func redo() {
+        endVoice()
         stopGlide()
         let current: Snap = snap
         var h: EditHistory<Snap> = edits
@@ -2258,6 +2323,10 @@ struct MultiClipEditor: View {
             player.onTime = { t in
                 // (not while a finger's looking through it: the seeks' own times fought the finger)
                 guard scrubFrom == nil, wasPlaying == nil else { return }
+                if voiceRanOut(at: t) {
+                    stopVoice()
+                    return
+                }
                 now = t
                 if playing != (player.rate != 0) { playing = player.rate != 0 }
                 followCaption(t)
@@ -2354,6 +2423,8 @@ struct MultiClipEditor: View {
     }
 
     private func finish() {
+        endVoice()
+        SongPlayer.shared.stop()
         motion.end()
         finishScrub(resume: false)
         joining = true; progress = 0; player.pause()
@@ -2435,6 +2506,7 @@ struct MultiClipEditor: View {
 
     private func overlayHeld(_ on: Bool) {
         if on {
+            endVoice()
             stopGlide()
             captionStep()
             if player.rate != 0 { player.pause() }
@@ -2658,7 +2730,7 @@ struct MultiClipEditor: View {
                 action("rectangle.inset.topright.filled", "Overlay", on: true) { pipPicking = true }
                 // Music and its beats as one (21 Nov: "both are the same? Let's just have music")
                 action("music.note", "Music", on: true) {
-                    if sounds.contains(where: { $0.kind == "song" }) { withAnimation(.snappy) { panel = .beats } } else { choosingSong = true }
+                    if sounds.contains(where: { $0.kind == "song" }) { withAnimation(.snappy) { panel = .beats } } else { openSongs() }
                 }
                 action("square.grid.2x2", "Templates", on: true) { player.pause(); templating = true }
         }
@@ -3013,20 +3085,128 @@ struct MultiClipEditor: View {
         withAnimation(.snappy) { panel = open }
     }
 
+    /// Voiceover: tap to start and stop, or hold to talk, from the line while the video plays (its sound off, so the
+    /// microphone hears only you); it lands as a bar.
     private var voicePanel: some View {
         VStack(spacing: 0) {
             Live {
                 ProLead(title: recording ? "Recording" : "From \(Self.code(now))",
                         sub: recording ? "from \(Self.code(recordFrom))" : "") {
-                    if !recording { clearVoiceSwitch }
+                    if recording { RecordTimer(began: recordBegan) } else { clearVoiceSwitch }
                 }
             }
-            ProBody(height: 144, spacing: 12) {
-                recordButton
-                Text(recording ? "Let go to stop. The clips get quieter while you talk." : "Hold to talk. The clips get quieter while you do.")
-                    .font(.system(size: 12)).foregroundStyle(ProInk.quiet).lineLimit(1).minimumScaleFactor(0.8)
+            ProBody(height: 144, spacing: 6) {
+                if recording { LiveMeter(meter: recorder.meter) } else { countdownPick }
+                RecordButton(recording: recording, count: count, pressed: { voicePressed() }, released: { voiceReleased() })
+                Text(voiceHint).font(.system(size: 12)).foregroundStyle(ProInk.quiet).lineLimit(1).minimumScaleFactor(0.8)
             }
         }
+    }
+
+    private var voiceHint: String {
+        if count != nil { return "Tap to cancel" }
+        guard recording else { return "Tap to start, or hold to talk" }
+        let how: String = press.phase == .going ? "Tap to stop." : "Let go to stop."
+        return how + " The clips get quieter while you talk."
+    }
+
+    private var countdownPick: some View {
+        HStack(spacing: 14) {
+            Text("Countdown").font(.system(size: 11)).foregroundStyle(ProInk.quiet)
+            countdownChoice("Off", on: false)
+            countdownChoice("3 s", on: true)
+        }
+        .frame(height: 24)
+    }
+
+    private func countdownChoice(_ name: String, on: Bool) -> some View {
+        let here: Bool = countdown == on
+        return Button {
+            guard press.phase == .idle else { return }
+            countdown = on
+        } label: {
+            Text(name).font(.system(size: 13, weight: here ? .semibold : .regular))
+                .foregroundStyle(here ? Color.white : ProInk.quiet)
+                .frame(minWidth: 30, minHeight: 24).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func voicePressed() {
+        var p: VoicePress = press
+        let act: VoicePress.Act = p.pressed(countdown: countdown)
+        press = p
+        voiceAct(act)
+        guard p.phase == .down else { return }
+        pressTask?.cancel()
+        pressTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(VoicePress.hold))
+            guard !Task.isCancelled else { return }
+            var held: VoicePress = press
+            let next: VoicePress.Act = held.heldLong()
+            press = held
+            voiceAct(next)
+        }
+    }
+
+    private func voiceReleased() {
+        var p: VoicePress = press
+        let act: VoicePress.Act = p.released()
+        press = p
+        // (the hold's timing over; a countdown just begun times itself)
+        if act != .count, p.phase != .counting {
+            pressTask?.cancel()
+            pressTask = nil
+        }
+        voiceAct(act)
+    }
+
+    private func voiceAct(_ act: VoicePress.Act) {
+        switch act {
+        case .none:
+            break
+        case .start:
+            count = nil
+            startVoice()
+        case .count:
+            countDown()
+        case .stopCount:
+            pressTask?.cancel()
+            pressTask = nil
+            count = nil
+        case .stop:
+            stopVoice()
+        }
+    }
+
+    private func countDown() {
+        stopGlide()
+        player.pause(); playing = false
+        pressTask?.cancel()
+        pressTask = Task { @MainActor in
+            for n in [3, 2, 1] {
+                count = n
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                try? await Task.sleep(for: .seconds(1))
+                if Task.isCancelled { return }
+            }
+            var p: VoicePress = press
+            let act: VoicePress.Act = p.counted()
+            press = p
+            voiceAct(act)
+        }
+    }
+
+    /// Anything else done: the countdown's off, and what's recorded is kept.
+    private func endVoice() {
+        guard recording || holding || count != nil || press.phase != .idle else { return }
+        stopVoice()
+    }
+
+    /// Recording, and played to the end of the video (it goes round again there): stopped.
+    private func voiceRanOut(at t: Double) -> Bool {
+        guard recording else { return false }
+        return t < recordFrom - 0.2 || t >= total - 0.07
     }
 
     private var clearVoiceSwitch: some View {
@@ -3038,34 +3218,36 @@ struct MultiClipEditor: View {
         }
     }
 
-    private var recordButton: some View {
-        ZStack {
-            Circle().stroke(Color.white, lineWidth: 3).frame(width: 56, height: 56)
-            RoundedRectangle(cornerRadius: recording ? 5 : 21, style: .continuous).fill(Color(red: 1, green: 0.3, blue: 0.3))
-                .frame(width: recording ? 24 : 42, height: recording ? 24 : 42)
-        }
-        .frame(width: 80, height: 72).contentShape(Rectangle())
-        .onLongPressGesture(minimumDuration: 100, maximumDistance: 80, perform: {}, onPressingChanged: { (pressing: Bool) in
-            if pressing { startVoice() } else { stopVoice() }
-        })
-        .accessibilityLabel(recording ? "Recording: let go to stop" : "Hold to record a voiceover")
-    }
 
     private func startVoice() {
         holding = true
         stopGlide()
         player.pause()
         Task {
-            guard await VoiceRecorder.allowed() else { holding = false; flash("Voiceovers need the microphone: allow it in Settings › Cheat Days."); return }
+            guard await VoiceRecorder.allowed() else {
+                holding = false
+                press.reset()
+                flash("Voiceovers need the microphone: allow it in Settings › Cheat Days.")
+                return
+            }
             guard holding, !recording else { return }
+            guard total - now > 0.35 else {
+                holding = false
+                press.reset()
+                flash("Move the line back from the end to record there.")
+                return
+            }
             do {
                 recordFrom = now
                 try recorder.start(clear: clearVoice)
+                recordBegan = Date()
                 recording = true
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 player.isMuted = true
-                player.play()
+                player.play(); playing = true
             } catch {
+                holding = false
+                press.reset()
                 flash("Couldn't start recording.")
             }
         }
@@ -3073,9 +3255,14 @@ struct MultiClipEditor: View {
 
     private func stopVoice() {
         holding = false
+        pressTask?.cancel()
+        pressTask = nil
+        count = nil
+        press.reset()
         guard recording else { return }
         recording = false
         player.pause(); player.isMuted = false
+        playing = false
         if let (url, length) = recorder.stop() {
             remember()
             let n = sounds.filter { $0.kind == "voice" }.count + 1
@@ -3086,31 +3273,16 @@ struct MultiClipEditor: View {
         Sound.on(.moviePlayback)
     }
 
-    /// A few short sounds to drop in at the line.
+    /// A few short sounds: tap one to hear it, + to drop it in at the line.
     private var effectsPanel: some View {
-        let columns: [GridItem] = Array(repeating: GridItem(.flexible(), spacing: 8), count: 4)
-        return VStack(spacing: 0) {
-            ProLead(title: "Goes in at \(Self.code(now))", sub: "tap one to add it") { EmptyView() }
+        VStack(spacing: 0) {
+            ProLead(title: "Goes in at \(Self.code(now))", sub: "tap one to hear it") { EmptyView() }
             ProBody(height: 144) {
-                LazyVGrid(columns: columns, spacing: 8) {
-                    ForEach(SoundEffects.names, id: \.self) { (name: String) in effectTile(name) }
-                }
+                EffectsBoard(hearing: { hearAlone() }, add: { (name: String) in addEffect(name) })
             }
         }
     }
 
-    private func effectTile(_ name: String) -> some View {
-        Button { addEffect(name) } label: {
-            VStack(spacing: 6) {
-                Image(systemName: "waveform").font(.system(size: 17))
-                Text(name).font(.system(size: 11)).lineLimit(1)
-            }
-            .foregroundStyle(ProInk.soft)
-            .frame(maxWidth: .infinity).frame(height: 60)
-            .background(ProInk.tile, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-        }
-        .buttonStyle(.plain)
-    }
 
     private func addEffect(_ name: String) {
         let length: Double = SoundEffects.length(name)
@@ -3291,7 +3463,7 @@ struct MultiClipEditor: View {
             musicPanel(k)
         } else {
             ProLead(title: "No song", sub: "") {
-                ProAction(icon: "plus", name: "Add a song", run: { choosingSong = true })
+                ProAction(icon: "plus", name: "Add a song", run: { openSongs() })
             }
         }
     }
@@ -3300,7 +3472,7 @@ struct MultiClipEditor: View {
         let s: EditSound = sounds[k]
         return VStack(spacing: 0) {
             ProLead(title: s.name, sub: s.toEnd == true ? "to the end" : "") {
-                ProAction(icon: "arrow.left.arrow.right", name: "Change", run: { choosingSong = true })
+                ProAction(icon: "arrow.left.arrow.right", name: "Change", run: { openSongs() })
                 ProDelete(name: "Take off", run: { takeOff(s.id) })
             }
             soundTabs(beats: true)
@@ -3555,37 +3727,23 @@ struct MultiClipEditor: View {
         }
     }
 
-    private struct MotionPreset: Identifiable {
-        var id: String
-        var icon: String
-        var keys: [MoveKey]
-    }
-
-    private static func motions(span: Double) -> [MotionPreset] {
-        let still = MotionPreset(id: "Still", icon: "rectangle.portrait", keys: [])
-        let zoomIn = MotionPreset(id: "Zoom in", icon: "plus.magnifyingglass",
+    private static func motions(span: Double) -> [MoveChoice] {
+        let still = MoveChoice(id: "Still", icon: "rectangle.portrait", keys: [])
+        let zoomIn = MoveChoice(id: "Zoom in", icon: "plus.magnifyingglass",
                                   keys: [MoveKey(at: 0), MoveKey(at: span, size: 1.18)])
-        let zoomOut = MotionPreset(id: "Zoom out", icon: "minus.magnifyingglass",
+        let zoomOut = MoveChoice(id: "Zoom out", icon: "minus.magnifyingglass",
                                    keys: [MoveKey(at: 0, size: 1.18), MoveKey(at: span)])
-        let left = MotionPreset(id: "Drift left", icon: "arrow.left",
+        let left = MoveChoice(id: "Drift left", icon: "arrow.left",
                                 keys: [MoveKey(at: 0, x: 0.54, size: 1.12), MoveKey(at: span, x: 0.46, size: 1.12)])
-        let right = MotionPreset(id: "Drift right", icon: "arrow.right",
+        let right = MoveChoice(id: "Drift right", icon: "arrow.right",
                                  keys: [MoveKey(at: 0, x: 0.46, size: 1.12), MoveKey(at: span, x: 0.54, size: 1.12)])
         return [still, zoomIn, zoomOut, left, right]
     }
 
     private func motionTiles(_ i: Int, _ c: Clip) -> some View {
-        let all: [MotionPreset] = Self.motions(span: c.span)
-        return HStack(spacing: 8) {
-            ForEach(all) { (m: MotionPreset) in motionTile(i, m, on: c.moves == m.keys) }
-        }
+        MotionStrip(clip: c, choices: Self.motions(span: c.span), pick: { (m: MoveChoice) in pickMotion(i, m.keys) })
     }
 
-    private func motionTile(_ i: Int, _ m: MotionPreset, on: Bool) -> some View {
-        ProTile(name: m.id, on: on, tall: 66, pick: { pickMotion(i, m.keys) }, preview: {
-            Image(systemName: m.icon).font(.system(size: 19))
-        })
-    }
 
     private func pickMotion(_ i: Int, _ keys: [MoveKey]) {
         guard clips.indices.contains(i) else { return }
@@ -4595,36 +4753,11 @@ struct MultiClipEditor: View {
     }
 
     private func joinTiles(_ i: Int, _ tr: ClipTransition?, most: Double) -> some View {
-        let names: [String] = ["None"] + ClipTransition.kinds
-        return ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(names, id: \.self) { (name: String) in joinTile(i, name, tr, most: most) }
-            }
-            .padding(.horizontal, 16)
-        }
+        JoinStrip(from: clips[i], into: clips[i + 1], picked: tr?.name ?? "None", direction: tr?.direction ?? "left",
+                  pick: { (name: String) in pickJoin(i, name, tr, most: most) })
     }
 
-    private func joinTile(_ i: Int, _ name: String, _ tr: ClipTransition?, most: Double) -> some View {
-        let on: Bool = (tr?.name ?? "None") == name
-        return ProTile(name: name, on: on, tall: 66, pick: { pickJoin(i, name, tr, most: most) }, preview: {
-            Image(systemName: Self.joinIcon(name)).font(.system(size: 19))
-        })
-        .frame(width: 62)
-    }
 
-    private static func joinIcon(_ name: String) -> String {
-        switch name {
-        case "Dissolve": return "circle.lefthalf.filled"
-        case "Black": return "square.fill"
-        case "White flash": return "sun.max.fill"
-        case "Push": return "arrow.left.square"
-        case "Slide over": return "square.on.square"
-        case "Whip": return "wind"
-        case "Zoom in": return "plus.magnifyingglass"
-        case "Blur": return "drop"
-        default: return "nosign"
-        }
-    }
 
     private func pickJoin(_ i: Int, _ name: String, _ tr: ClipTransition?, most: Double) {
         if name == "None" {
@@ -4718,8 +4851,7 @@ struct MultiClipEditor: View {
     }
 
     private func filterBody(_ i: Int, name: String, known: [String: Double]) -> some View {
-        let options: [ProOption] = StoryArt.filters.map { (f: String) -> ProOption in ProOption(id: f, name: f) }
-        return ProPick(title: "", options: options, value: name, pick: { (f: String) in setFilter(i, f, known) })
+        FilterStrip(clip: clips[i], picked: name, pick: { (f: String) in setFilter(i, f, known) })
     }
 
     private func setFilter(_ i: Int, _ name: String, _ known: [String: Double]) {
@@ -4770,16 +4902,9 @@ struct MultiClipEditor: View {
     }
 
     private var shapeTiles: some View {
-        HStack(spacing: 8) {
-            ForEach(EditLook.shapes, id: \.self) { (s: String) in shapeTile(s) }
-        }
+        ShapeStrip(clip: clips.first, background: false, picked: look.shape, pick: { (s: String) in setShape(s) })
     }
 
-    private func shapeTile(_ s: String) -> some View {
-        ProTile(name: s == "Original" ? "First clip's" : s, on: look.shape == s, pick: { setShape(s) }, preview: {
-            ShapeMark(shape: s)
-        })
-    }
 
     private func setShape(_ s: String) {
         guard look.shape != s else { return }
@@ -4788,20 +4913,10 @@ struct MultiClipEditor: View {
     }
 
     private var fillTiles: some View {
-        HStack(spacing: 8) {
-            ForEach(EditLook.fills, id: \.self) { (f: String) in fillTile(f) }
-        }
+        let shown: Clip? = index.map { (i: Int) -> Clip in clips[i] } ?? clips.first
+        return ShapeStrip(clip: shown, background: true, picked: look.fill, pick: { (f: String) in setFill(f) })
     }
 
-    private func fillTile(_ f: String) -> some View {
-        let name: String
-        switch f {
-        case "Blur": name = "Blurred behind"
-        case "Black": name = "On black"
-        default: name = "Fill the frame"
-        }
-        return ProTile(name: name, on: look.fill == f, pick: { setFill(f) }, preview: { FillMark(fill: f) })
-    }
 
     private func setFill(_ f: String) {
         guard look.fill != f else { return }
