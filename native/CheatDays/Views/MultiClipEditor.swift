@@ -72,7 +72,8 @@ struct MultiClipEditor: View {
     @State private var restores = 0
     @State private var autoID: String?           // the draft it's kept in as it goes (Stage A1)
     @State private var opened: [Clip]?           // as it was when opened from a draft: Discard goes back to it
-    @State private var levels: [UUID: [Float]] = [:]
+    @State private var waves = Waveforms()
+    @State private var pauseHeld: Double?        // the pause a handle's held on, in its file's seconds
     @State private var watch: Any?
     @State private var adding = false
     @State private var picks: [PhotosPickerItem] = []
@@ -967,7 +968,7 @@ struct MultiClipEditor: View {
     // the bars as tall as CapCut's, their words readable (21 Nov, design/capcut-timeline-mockup.html: 15 pt bars read as slivers)
     // A clip's row is what's in it: 2 over it, its picture, 2, and its sound's wave (22 Nov, "things not lining up":
     // made 49 in 1.4.25 with the clip left 56 tall, its wave ran into the first row of bars and under it).
-    private static let thumbHeight: CGFloat = 44, waveHeight: CGFloat = 10
+    private static let thumbHeight: CGFloat = 44, waveHeight: CGFloat = 18
     private static let rulerHeight: CGFloat = 18, clipRow: CGFloat = 2 + thumbHeight + 2 + waveHeight, laneHeight: CGFloat = 34
 
     /// The clips and everything over them as one timeline under a line fixed in the middle, as CapCut and Edits lay
@@ -1122,7 +1123,6 @@ struct MultiClipEditor: View {
     /// A clip on the timeline: its frames, its length on it, and its sound under them as a fine wave, green while
     /// it's heard (as CapCut shows it).
     private func timelineClip(_ c: Clip, _ at: Int, w: CGFloat) -> some View {
-        let heard = c.soundOn && !c.still && (soundOf == nil || soundOf == c.id)
         return VStack(spacing: 2) {
             ClipThumb(clip: c)
                 .frame(height: Self.thumbHeight)
@@ -1138,9 +1138,7 @@ struct MultiClipEditor: View {
                     .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 3, style: .continuous))
                     .padding(3)
                 }
-            Bars(levels: c.still ? [] : (levels[c.id] ?? []), colour: heard ? Color(red: 0.24, green: 0.86, blue: 0.52) : Color.white.opacity(0.25))
-                .frame(height: Self.waveHeight).clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
-                .task(id: "\(c.id)|\(c.start)|\(c.end)") { if !c.still { levels[c.id] = await ClipJoin.levels(c, count: 48) } }
+            clipWave(c, at, width: max(6, w - 2))
         }
         .frame(width: max(6, w - 2))
         .clipped()
@@ -1157,6 +1155,24 @@ struct MultiClipEditor: View {
         .accessibilityAddTraits(.isButton)
     }
 
+    /// A clip's wave, at the timeline's own detail (design/timeline-waveforms-pro-mockup.html).
+    private func clipWave(_ c: Clip, _ at: Int, width: CGFloat) -> some View {
+        let url: URL = c.clean ?? c.source
+        let heard: Bool = c.soundOn && !c.still && (soundOf == nil || soundOf == c.id)
+        let starts: [Double] = ClipJoin.starts(clips)
+        let start: Double = starts.indices.contains(at) ? starts[at] : 0
+        var under: [ClosedRange<Double>] = []
+        if heard {
+            for v in sounds where v.kind == "voice" {
+                let low: Double = max(0, v.from - start), high: Double = min(c.span, v.to - start)
+                if high > low { under.append(low...high) }
+            }
+        }
+        return ClipWave(clip: c, file: waves.files[url], heard: heard, width: width, height: Self.waveHeight, pps: perSecond, under: under)
+            .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
+            .task(id: url) { if !c.still { await waves.load(url) } }
+    }
+
     /// The picked clip's white frame, a handle on each end (design/pro-ui): drag one and the frame follows the finger,
     /// the preview showing the frame the clip will start or end on; let go and it's trimmed there.
     private func trimFrame(_ i: Int, x: CGFloat, w: CGFloat, pps: CGFloat) -> some View {
@@ -1168,6 +1184,7 @@ struct MultiClipEditor: View {
         func band(_ d: CGFloat, _ lo: CGFloat, _ hi: CGFloat) -> CGFloat { let c = min(max(d, lo), hi); return c + (d - c) * 0.12 }
         let dl = trimLive?.side == 0 ? band(trimLive?.dx ?? 0, leftMin, leftMax) : 0
         let dr = trimLive?.side == 1 ? band(trimLive?.dx ?? 0, rightMin, rightMax) : 0
+        let live: TrimDrag? = trimLive
         let x0 = x + dl, width = max(8, w + dr - dl)
         func handle(_ side: Int) -> some View {
             // (the white is the frame's, drawn whole below: this is where it's caught, and its grip)
@@ -1176,8 +1193,10 @@ struct MultiClipEditor: View {
                 // a thumb's width to catch it by
                 .padding(.horizontal, 10).contentShape(Rectangle()).padding(.horizontal, -10)
                 .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .global)
-                    .updating($trimLive) { v, live, _ in live = TrimDrag(side: side, dx: v.translation.width) }
+                    .updating($trimLive) { v, live, _ in live = TrimDrag(side: side, dx: heldTrim(c, side: side, dx: v.translation.width, pps: pps).dx) }
                     .onChanged { v in
+                        let held: (dx: CGFloat, pause: Double?) = heldTrim(c, side: side, dx: v.translation.width, pps: pps)
+                        trimHeld(held.pause)
                         if trimDrag == nil { player.pause(); playing = false; UISelectionFeedbackGenerator().selectionChanged() }
                         // a tap the moment it reaches the end of the video
                         let lo = side == 0 ? leftMin : rightMin, hi = side == 0 ? leftMax : rightMax
@@ -1185,13 +1204,15 @@ struct MultiClipEditor: View {
                         if out, let was = trimDrag, !(was.dx < lo - 0.5 || was.dx > hi + 0.5) { UIImpactFeedbackGenerator(style: .rigid).impactOccurred() }
                         trimDrag = TrimDrag(side: side, dx: v.translation.width)
                         // the frame it'll start or end on, under the line
-                        let d = side == 0 ? min(max(v.translation.width, leftMin), leftMax) : min(max(v.translation.width, rightMin), rightMax)
+                        let d = side == 0 ? min(max(held.dx, leftMin), leftMax) : min(max(held.dx, rightMin), rightMax)
                         let at = side == 0 ? startOf(i) + Double(d / pps) : startOf(i) + c.span + Double(d / pps) - 0.04
                         // (inside the clip: past its ends is the next clip's picture, not this one's)
                         chase(min(max(startOf(i), at), startOf(i) + max(0, c.span - 0.04)))
                     }
                     .onEnded { v in
-                        let d = side == 0 ? min(max(v.translation.width, leftMin), leftMax) : min(max(v.translation.width, rightMin), rightMax)
+                        let dx: CGFloat = heldTrim(c, side: side, dx: v.translation.width, pps: pps).dx
+                        let d = side == 0 ? min(max(dx, leftMin), leftMax) : min(max(dx, rightMin), rightMax)
+                        pauseHeld = nil
                         trimDrag = nil
                         let clicked: Bool = abs(v.translation.width) < TimelineRows.dragStarts
                         if clicked || abs(d) < 0.5 { seek(now) } else { trimEnd(i, side: side, by: Double(d / pps) * r) }
@@ -1209,8 +1230,51 @@ struct MultiClipEditor: View {
             .frame(width: width + 24, height: 48).allowsHitTesting(false)
             handle(0)
             handle(1).offset(x: width + 12)
+            if let live { clipPauses(c, live, x: x + 12 - x0, width: width, pps: pps) }
         }
         .offset(x: x0 - 12, y: 0)
+    }
+
+    /// A clip's handle held on a pause in what's said in it (a click still moves nothing; drag past and it lets go).
+    private func heldTrim(_ c: Clip, side: Int, dx: CGFloat, pps: CGFloat) -> (dx: CGFloat, pause: Double?) {
+        guard !c.still, c.soundOn, abs(dx) >= TimelineRows.dragStarts, let file = waves.files[c.clean ?? c.source] else { return (dx, nil) }
+        let perPoint: Double = max(c.speed, 0.01) / Double(max(pps, 1))
+        let edge: Double = side == 0 ? c.start : c.end
+        let reach: Double = Double(TimelineRows.snapReach) * 1.4 * perPoint
+        guard let p = WaveMath.pause(file.pauses, near: edge + Double(dx) * perPoint, reach: reach) else { return (dx, nil) }
+        // (only where the end can go: at least a third of a second left)
+        let allowed: Bool = side == 0 ? (p >= 0 && p <= c.end - 0.3) : (p <= c.length && p >= c.start + 0.3)
+        guard allowed else { return (dx, nil) }
+        return (CGFloat((p - edge) / perPoint), p)
+    }
+
+    private func trimHeld(_ pause: Double?) {
+        guard pauseHeld != pause else { return }
+        if pause != nil { UISelectionFeedbackGenerator().selectionChanged() }
+        pauseHeld = pause
+    }
+
+    /// The pauses along a clip as it's trimmed. `x`: where the clip's start is, in its frame.
+    private func clipPauses(_ c: Clip, _ live: TrimDrag, x: CGFloat, width: CGFloat, pps: CGFloat) -> some View {
+        let url: URL = c.clean ?? c.source
+        let pauses: [Double] = c.soundOn && !c.still ? (waves.files[url]?.pauses ?? []) : []
+        let perSource: CGFloat = pps / CGFloat(max(c.speed, 0.01))
+        let place: (Double) -> CGFloat = { (p: Double) -> CGFloat in x + CGFloat(p - c.start) * perSource }
+        let left: Double = c.duration + Double(live.dx / perSource) * (live.side == 0 ? -1 : 1)
+        let edge: CGFloat = live.side == 0 ? 12 : 12 + width
+        let names: Set<String> = [c.source.lastPathComponent]
+        return ZStack(alignment: .topLeading) {
+            PauseMarks(places: pauses.map(place), held: pauseHeld.map(place), height: Self.waveHeight + 6)
+                .frame(width: max(width, 1), height: Self.waveHeight + 6, alignment: .topLeading)
+                .offset(y: Self.thumbHeight + 1)
+            if let p = pauseHeld {
+                pauseBubble(c.id, files: names, at: p, seconds: left / max(c.speed, 0.01))
+                    .frame(width: 280)
+                    .offset(x: edge - 140, y: 9)
+            }
+        }
+        .frame(width: max(width + 24, 1), height: Self.clipRow, alignment: .topLeading)
+        .allowsHitTesting(false)
     }
 
     /// A clip's start or end moved by `by` of its file's seconds, kept in its file and at least a third of a second.
@@ -1316,6 +1380,7 @@ struct MultiClipEditor: View {
                 barFrame(item, row: r, barWidth: wide, w: w, span: span)
                 barHandle(item, side: 1, row: r, bars: rows[r], barWidth: wide, w: w, span: span)
                 barHandle(item, side: 2, row: r, bars: rows[r], barWidth: wide, w: w, span: span)
+                barPauses(item, row: r, w: w, span: span)
             }
         }
     }
@@ -1332,7 +1397,10 @@ struct MultiClipEditor: View {
         // Drawn where it is, not drawn and then moved there: its width and its place came a frame apart as it was
         // trimmed, and the far handle jumped, a dark gap in it (22 Nov recording). Trimmed, the bar's colour is its too.
         return ZStack(alignment: .topLeading) {
-            if trimming { trimFill(item, hole: hole) }
+            if trimming {
+                trimGhosts(item, w: w, span: span)
+                trimFill(item, hole: hole)
+            }
             Path { p in
                 p.addRoundedRect(in: outside, cornerSize: CGSize(width: 6, height: 6), style: .continuous)
                 p.addRect(hole)
@@ -1349,16 +1417,47 @@ struct MultiClipEditor: View {
 
     /// The picked bar as it's trimmed, in the frame.
     private func trimFill(_ item: BarItem, hole: CGRect) -> some View {
-        ZStack(alignment: .topLeading) {
+        let ink: Color = item.off ? Color.white.opacity(0.5) : Color.black.opacity(0.82)
+        return ZStack(alignment: .topLeading) {
             Path(hole).fill(Color(white: 0.13))
             Path(hole).fill(item.colour.opacity(0.88))
-            Text(item.label).font(.system(size: 11, weight: .semibold)).lineLimit(1)
-                .foregroundStyle(item.off ? Color.white.opacity(0.5) : Color.black.opacity(0.82))
-                .padding(.horizontal, 8)
-                .frame(width: hole.width, height: Self.laneHeight, alignment: .leading)
+            barFace(item, width: hole.width, height: Self.laneHeight, ink: ink)
                 .clipped()
                 .offset(x: hole.minX)
         }
+    }
+
+    /// What's being trimmed off a sound, faded, so it's seen what goes.
+    private func trimGhosts(_ item: BarItem, w: CGFloat, span: Double) -> some View {
+        let gone: [EditSound] = trimmedAway(item)
+        return ZStack(alignment: .topLeading) {
+            ForEach(gone.indices, id: \.self) { (i: Int) in ghost(gone[i], w: w, span: span) }
+        }
+    }
+
+    private func ghost(_ s: EditSound, w: CGFloat, span: Double) -> some View {
+        let left: CGFloat = w * CGFloat(s.from / span)
+        let wide: CGFloat = w * CGFloat(s.length / span)
+        let file: WaveFile? = s.url.flatMap { (u: URL) -> WaveFile? in waves.files[u] }
+        return SoundBarWave(sound: s, file: file, width: wide, height: Self.laneHeight, pps: perSecond, ink: Self.waveInk(s.kind))
+            .background(Self.soundColour(s.kind))
+            .opacity(0.3)
+            .offset(x: left)
+    }
+
+    private func trimmedAway(_ item: BarItem) -> [EditSound] {
+        guard item.kind == 1, let g = barGrab, g.id == item.id, g.mode != 0 else { return [] }
+        guard let s = sounds.first(where: { (x: EditSound) -> Bool in x.id == g.id }), s.kind != "song" else { return [] }
+        let low: Double = g.mode == 1 ? g.from : s.to
+        let high: Double = g.mode == 1 ? s.from : g.to
+        guard high - low > 0.02 else { return [] }
+        var part: EditSound = s
+        part.from = low
+        part.start = g.start + (low - g.from) * s.speed
+        part.length = high - low
+        part.fadeIn = nil
+        part.fadeOut = nil
+        return [part]
     }
 
     private func gripMarks(_ outside: CGRect, grip: CGFloat) -> some View {
@@ -1663,6 +1762,7 @@ struct MultiClipEditor: View {
     }
 
     private func trimReleased(_ gone: Bool) {
+        if gone, pauseHeld != nil, barGrab == nil { pauseHeld = nil }
         guard gone, trimDrag != nil else { return }
         trimDrag = nil
         seek(now)
@@ -1844,7 +1944,7 @@ struct MultiClipEditor: View {
                 }
             }
         }
-        .task(id: c.id) { if levels[c.id] == nil { levels[c.id] = await ClipJoin.levels(c) } }
+        .task(id: c.clean ?? c.source) { if !c.still { await waves.load(c.clean ?? c.source) } }
     }
 
     @ViewBuilder private func clipSoundActions(_ i: Int, _ c: Clip) -> some View {
@@ -1903,13 +2003,18 @@ struct MultiClipEditor: View {
             volumeSlide(Double(shown), set: { (v: Double) in setVolume(i, Float(v)) })
             HStack(spacing: 12) {
                 keyAction(near != nil, enabled: at != nil, run: { toggleClipKey(i) })
-                KeyframeStrip(levels: levels[c.id] ?? [], colour: Self.clipWave, keys: marks, line: line,
+                KeyframeStrip(levels: clipLevels(c), colour: Self.clipGreen, keys: marks, line: line,
                               scrub: { (f: Double) in scrubClipStrip(i, f) })
             }
         }
     }
 
-    private static let clipWave = Color(red: 0.24, green: 0.86, blue: 0.52)
+    private static let clipGreen = Color(red: 0.24, green: 0.86, blue: 0.52)
+
+    /// A clip's wave for its panels' strips.
+    private func clipLevels(_ c: Clip) -> [Float] {
+        waves.files[c.clean ?? c.source]?.part(from: c.start, to: c.end, count: 120) ?? []
+    }
 
     private func volumeSlide(_ value: Double, set: @escaping (Double) -> Void) -> some View {
         ProSlide(name: "Volume", value: value, range: 0...1, shown: ProSlide.percent(value),
@@ -1961,7 +2066,7 @@ struct MultiClipEditor: View {
         let most: Double = max(0.1, min(3, c.duration / 2))
         let span: Double = max(c.duration, 0.01)
         return VStack(spacing: 4) {
-            FadeWave(levels: levels[c.id] ?? [], colour: Self.clipWave, fadeIn: c.fadeIn / span, fadeOut: c.fadeOut / span)
+            FadeWave(levels: clipLevels(c), colour: Self.clipGreen, fadeIn: c.fadeIn / span, fadeOut: c.fadeOut / span)
             fadeRow("Fade in", value: clipValue(i, \.fadeIn, most: most), most: most)
             fadeRow("Fade out", value: clipValue(i, \.fadeOut, most: most), most: most)
         }
@@ -2855,6 +2960,67 @@ struct MultiClipEditor: View {
         return best
     }
 
+    /// The pause in what's said that a trimmed sound's end is by.
+    private func soundPause(_ g: BarGrab, dt: Double, reach: Double) -> (dt: Double, at: Double, file: Double)? {
+        guard let s = sounds.first(where: { (x: EditSound) -> Bool in x.id == g.id }), s.kind == "voice" || s.kind == "clip" else { return nil }
+        guard let url = s.url, let file = waves.files[url] else { return nil }
+        let edge: Double = g.mode == 1 ? g.from : g.to
+        let at: Double = g.start + (edge + dt - g.from) * s.speed
+        guard let p = WaveMath.pause(file.pauses, near: at, reach: reach * s.speed) else { return nil }
+        let video: Double = g.from + (p - g.start) / s.speed
+        guard video >= 0 else { return nil }
+        return (video - edge, video, p)
+    }
+
+    /// The pauses along a sound as it's trimmed, and the words either side of the one it's held on.
+    @ViewBuilder private func barPauses(_ item: BarItem, row: Int, w: CGFloat, span: Double) -> some View {
+        if let g = barGrab, g.id == item.id, g.mode != 0, item.kind == 1,
+           let s = sounds.first(where: { (x: EditSound) -> Bool in x.id == g.id }), s.kind == "voice" || s.kind == "clip" {
+            pauseGuide(s, g, row: row, w: w, span: span)
+        }
+    }
+
+    private func pauseGuide(_ s: EditSound, _ g: BarGrab, row: Int, w: CGFloat, span: Double) -> some View {
+        let pauses: [Double] = s.url.flatMap { (u: URL) -> [Double]? in waves.files[u]?.pauses } ?? []
+        let place: (Double) -> CGFloat = { (p: Double) -> CGFloat in w * CGFloat((g.from + (p - g.start) / s.speed) / span) }
+        let shown: [CGFloat] = pauses.map(place).filter { (x: CGFloat) -> Bool in x >= 0 && x <= w }
+        let held: CGFloat? = pauseHeld.map(place)
+        let top: CGFloat = CGFloat(row) * (Self.laneHeight + 3)
+        return ZStack(alignment: .topLeading) {
+            PauseMarks(places: shown, held: held, height: Self.laneHeight + 16)
+                .frame(width: max(w, 1), height: Self.laneHeight + 16, alignment: .topLeading)
+                .offset(y: top - 8)
+            if let held, let p = pauseHeld {
+                // (up over the clips' frames, off the captions)
+                pauseBubble(s.id, files: [], at: p, seconds: s.length)
+                    .frame(width: 280)
+                    .offset(x: held - 140, y: -(Self.clipRow - 2))
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func pauseBubble(_ id: UUID, files: Set<String>, at p: Double, seconds: Double) -> some View {
+        let sides: (before: String, after: String) = WaveMath.between(wordsSaid(id, files: files), p)
+        return PauseBubble(before: sides.before, after: sides.after, seconds: seconds)
+    }
+
+    /// The words said in a clip or sound, by when in its file, those trimmed off it too.
+    private func wordsSaid(_ id: UUID, files: Set<String>) -> [(text: String, at: Double)] {
+        var all: [EditText] = texts.filter { (t: EditText) -> Bool in t.kind == "caption" }
+        all += cutWords
+        for s in sounds { all += s.cut ?? [] }
+        var out: [(text: String, at: Double)] = []
+        for t in all {
+            for word in t.words ?? [] {
+                guard let at = word.src else { continue }
+                let inFile: Bool = word.file.map { (f: String) -> Bool in files.contains(f) } ?? false
+                if word.clip == id || inFile { out.append((text: word.text, at: at)) }
+            }
+        }
+        return out
+    }
+
     /// `onTimeline`: there the line stays put while a bar's dragged (else the timeline slides under the finger), and
     /// goes to the bar after.
     private func bar(_ item: BarItem, w: CGFloat, span: Double, onTimeline: Bool = false, among row: [BarItem] = []) -> some View {
@@ -2868,8 +3034,7 @@ struct MultiClipEditor: View {
         let corner: CGFloat = framed ? 0 : (onTimeline ? 7 : 5)
         let outline: Color = on && !framed ? Color.white : Color.clear
         let ink: Color = item.off ? Color.white.opacity(0.5) : Color.black.opacity(0.82)
-        return Text(item.label).font(.system(size: onTimeline ? 11 : 9, weight: onTimeline ? .semibold : .heavy)).lineLimit(1).foregroundStyle(ink)
-            .padding(.horizontal, onTimeline ? 8 : 5).frame(width: width, height: h, alignment: .leading)
+        return barFace(item, width: width, height: h, ink: ink)
             .background(item.colour.opacity(onTimeline && !up ? 0.88 : 1), in: RoundedRectangle(cornerRadius: corner, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: corner, style: .continuous).stroke(outline, lineWidth: 1.5))
             .contentShape(Rectangle())
@@ -2890,6 +3055,39 @@ struct MultiClipEditor: View {
             .accessibilityHint("Double tap to change it")
             .accessibilityAddTraits(.isButton)
             .zIndex(up ? 2 : 0)   // (last, for its row to see)
+    }
+
+    /// What's in a bar: a sound's wave and its name, anything else's name.
+    @ViewBuilder private func barFace(_ item: BarItem, width: CGFloat, height: CGFloat, ink: Color) -> some View {
+        if item.kind == 1, let s = sounds.first(where: { (x: EditSound) -> Bool in x.id == item.id }) {
+            soundFace(s, label: item.label, width: width, height: height)
+        } else {
+            Text(item.label).font(.system(size: 11, weight: .semibold)).lineLimit(1).foregroundStyle(ink)
+                .padding(.horizontal, 8).frame(width: width, height: height, alignment: .leading)
+        }
+    }
+
+    private func soundFace(_ s: EditSound, label: String, width: CGFloat, height: CGFloat) -> some View {
+        let url: URL? = s.url
+        let file: WaveFile? = url.flatMap { (u: URL) -> WaveFile? in waves.files[u] }
+        let corner = RoundedRectangle(cornerRadius: 7, style: .continuous)
+        return SoundBarWave(sound: s, file: file, width: width, height: height, pps: perSecond, ink: Self.waveInk(s.kind))
+            .clipShape(corner)
+            .overlay(alignment: .topLeading) {
+                if width > 24 { PinnedName(name: label, width: width) }
+            }
+            .task(id: url) {
+                if let url { await waves.load(url) }
+            }
+    }
+
+    private static func waveInk(_ kind: String) -> Color {
+        switch kind {
+        case "voice": return Color(red: 0.43, green: 0.08, blue: 0.125)
+        case "song": return Color(red: 0.25, green: 0.125, blue: 0.435)
+        case "clip": return Color(red: 0.06, green: 0.27, blue: 0.36)
+        default: return Color(red: 0.06, green: 0.3, blue: 0.3)
+        }
     }
 
     /// Whether a finger's holding still on this bar, on its way to lifting it.
@@ -2969,6 +3167,15 @@ struct MultiClipEditor: View {
                 held = (at - e, at)
             }
         }
+        var pause: Double?
+        if item.kind == 1, g.mode != 0, let near = soundPause(g, dt: dt, reach: reach * 1.4) {
+            let better: Bool = held.map { (h: (dt: Double, at: Double)) -> Bool in abs(near.dt - dt) <= abs(h.dt - dt) } ?? true
+            if better {
+                held = (near.dt, near.at)
+                pause = near.file
+            }
+        }
+        if pauseHeld != pause { pauseHeld = pause }
         if let held {
             dt = held.dt
             if barSnap != held.at { barSnap = held.at; UISelectionFeedbackGenerator().selectionChanged() }
@@ -3015,6 +3222,7 @@ struct MultiClipEditor: View {
         // (the line left where it was: 21 Nov, it jumped to the bar's start when it was let go)
         let changed = barGrab != nil
         barSnap = nil
+        pauseHeld = nil
         barGrab = nil
         guard changed, item.kind != 0 else { return }
         // a sound or overlay moved: the preview made again with it, now it's let go
