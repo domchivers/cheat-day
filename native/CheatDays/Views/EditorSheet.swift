@@ -24,22 +24,27 @@ struct ProSheet<Head: View, Main: View>: View {
     let title: String
     let left: SheetAction?
     let done: () -> Void
+    /// How tall with the keyboard up, when the transport and strip make way.
+    var whileTyping: CGFloat = 244
     @ViewBuilder let head: () -> Head
     @ViewBuilder let main: () -> Main
     @State private var typing = false
 
     static var height: CGFloat { 310 }
-    /// With the keyboard up the transport and strip make way, or a small phone has no room left for the video.
-    static var typingHeight: CGFloat { 244 }
 
     var body: some View {
         VStack(spacing: 0) {
-            if !typing { head() }
+            // (there still, with no height: taken out, a row scrolled along came back at its start)
+            VStack(spacing: 0) { head() }
+                .frame(height: typing ? 0 : nil, alignment: .top).clipped()
+                .opacity(typing ? 0 : 1)
+                .allowsHitTesting(!typing)
+                .accessibilityHidden(typing)
             VStack(spacing: 0) { main() }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             ProFoot(title: title, left: left, done: done)
         }
-        .frame(height: typing ? Self.typingHeight : Self.height)
+        .frame(height: typing ? whileTyping : Self.height)
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in typing = true }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in typing = false }
         .foregroundStyle(Color.white)

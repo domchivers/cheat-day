@@ -1,3 +1,4 @@
+import AVFoundation
 import CoreMedia
 import PhotosUI
 import SwiftUI
@@ -11,7 +12,9 @@ struct TemplateMaker: View {
     /// The edit's shape, and the smaller copies of its 4K clips, for what plays here.
     var editLook: EditLook = EditLook()
     var proxies: [URL: URL] = [:]
-    var make: (EditTemplate, [Clip], [EditTemplate.Slot], JSON?) -> Void
+    /// What's on the edit already, which Make it keeps.
+    var carry = EditCarry()
+    var make: (EditTemplate, TemplateCut, JSON?) -> Void
     var close: () -> Void
 
     @State private var picked: EditTemplate?
@@ -30,6 +33,11 @@ struct TemplateMaker: View {
     @State private var importFailure: ImportFailure?
 
     @State private var music: TemplateMusic?
+    @State private var musicFor: String?             // the template whose song has come, or couldn't
+    @State private var lastOpened: String?
+    @State private var frozen: TemplateCut?          // the tiles' pictures while a moment's dragged
+    @State private var reels: [[CGImage]] = []
+    @State private var typing = false
     @State private var cut = TemplateCut()
     @State private var player = PreviewEngine()
     @State private var clock = EditPlayhead()
@@ -111,7 +119,7 @@ struct TemplateMaker: View {
         if let t = picked {
             filling(t)
         } else if let log {
-            TemplateGallery(clips: library, log: log, pick: { (t: EditTemplate) in open(t) }, close: close)
+            TemplateGallery(clips: library, log: log, pick: { (t: EditTemplate) in open(t) }, close: close, reels: $reels)
         }
     }
 
@@ -143,10 +151,19 @@ struct TemplateMaker: View {
     }
 
     private func loadMusic() async {
+        guard let t = picked, musicFor != t.id else { return }
         music = nil
-        guard let t = picked else { return }
+        musicFor = nil
         let made: TemplateMusic? = await TemplateMusic.load(t)
-        if !Task.isCancelled { music = made }
+        guard !Task.isCancelled else { return }
+        music = made
+        musicFor = t.id
+    }
+
+    /// Its song's still coming: made now, it would be cut differently.
+    private var gettingMusic: Bool {
+        guard let picked else { return false }
+        return musicFor != picked.id
     }
 
     private func load(_ items: [PhotosPickerItem]) {
@@ -167,6 +184,17 @@ struct TemplateMaker: View {
 
     private func open(_ t: EditTemplate) {
         guard let log else { return }
+        if t.id == lastOpened, !filled.isEmpty {
+            // (back to the one being filled: as it was left)
+            picked = t
+            Sound.on(.moviePlayback)
+            show(0)
+            play()
+            return
+        }
+        lastOpened = t.id
+        music = nil
+        musicFor = nil
         let count: Int = t.slots(log, recipe: nil).count
         var first: [UUID?] = Array(repeating: nil, count: count)
         // the edit's clips into the slots, in order, to start with
@@ -203,24 +231,34 @@ struct TemplateMaker: View {
         slotOn = min(slotOn, max(0, count - 1))
     }
 
-    /// Cut again as Make it will cut it, and on playing.
     private func recut() {
-        guard let t = picked else { return }
+        guard picked != nil else { return }
         let began: Bool = cut.clips.isEmpty
-        let made: TemplateCut = TemplateCut.make(t, library: library, filled: filled, moments: moments, slots: slots, music: music)
+        let made: TemplateCut = cutNow()
         cut = made
-        player.update(clips: made.clips, soundOf: nil, look: editLook, sounds: made.sounds, pips: [], swap: proxies)
+        player.update(clips: made.clips, soundOf: nil, look: editLook, sounds: made.sounds, pips: made.pips, swap: proxies)
         frameSize = player.frameSize
         guard !made.clips.isEmpty else {
             pause()
             return
         }
-        if choosing, let at = made.start(of: slotOn) {
-            show(at + 0.01)
+        if choosing {
+            showSlot(slotOn)
         } else if began {
             show(0)
             play()
         }
+    }
+
+    private func cutNow() -> TemplateCut {
+        guard let t = picked else { return TemplateCut() }
+        return TemplateCut.make(t, library: library, filled: filled, moments: moments, slots: slots, music: music, carry: carry)
+    }
+
+    /// Just past the join into a slot, where it's that slot's clip that's seen.
+    private func showSlot(_ slot: Int) {
+        guard let at = cut.start(of: slot) else { return }
+        show(at + midJoin(slot))
     }
 
     private func show(_ t: Double) {
@@ -241,15 +279,19 @@ struct TemplateMaker: View {
 
     private func filling(_ t: EditTemplate) -> some View {
         VStack(spacing: 0) {
-            topBar(t)
+            // (typing: the room to the video, to see the words on it)
+            if !typing { topBar(t) }
             video
             sheet(t)
         }
         .foregroundStyle(Color.white)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in typing = true }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in typing = false }
+        .onDisappear { typing = false }
     }
 
     private func topBar(_ t: EditTemplate) -> some View {
-        let ready: Bool = filled.contains { (id: UUID?) -> Bool in id != nil }
+        let ready: Bool = !gettingMusic && filled.contains { (id: UUID?) -> Bool in id != nil }
         return HStack(spacing: 12) {
             Button { leave() } label: {
                 Image(systemName: "chevron.left").font(.system(size: 18, weight: .medium)).frame(width: 44, height: 44).contentShape(Rectangle())
@@ -272,7 +314,7 @@ struct TemplateMaker: View {
         EditPreviewView(engine: player)
             .opacity(cut.clips.isEmpty ? 0 : 1)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .overlay { TemplateWords(clock: clock, words: cut.words, frameSize: frameSize, outlined: tab == "Words") }
+            .overlay { TemplateWords(clock: clock, words: cut.words, sounds: cut.sounds, frameSize: frameSize, outlined: tab == "Words") }
             .overlay {
                 if cut.clips.isEmpty { Text("Pick a clip to see it play.").font(.system(size: 13)).foregroundStyle(ProInk.quiet) }
             }
@@ -283,7 +325,10 @@ struct TemplateMaker: View {
 
     private func sheet(_ t: EditTemplate) -> some View {
         let count: Int = slots.count
-        return ProSheet(title: "Slot \(min(slotOn + 1, count)) of \(count)", left: nil, done: { slotDone(t) },
+        let name: String = slots.indices.contains(slotOn) ? slots[slotOn].name : ""
+        var title = "Slot \(min(slotOn + 1, count)) of \(count)"
+        if tab == "Words" && !name.isEmpty { title = name }
+        return ProSheet(title: title, left: nil, done: { slotDone(t) }, whileTyping: 192,
                         head: { sheetHead(t) },
                         main: { sheetMain })
     }
@@ -315,25 +360,27 @@ struct TemplateMaker: View {
         .frame(height: 38)
     }
 
-    /// The song it's cut to; for the recipe, the recipe to change.
     @ViewBuilder private func fromWhat(_ t: EditTemplate) -> some View {
-        if t.id == "recipe" {
-            Button { choosingRecipe = true } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "fork.knife").font(.system(size: 12))
-                    Text(recipe == nil ? "Pick a recipe" : "Change recipe").font(.system(size: 11))
+        let song: String = gettingMusic ? "Getting the song…" : (music?.song.name ?? "No song")
+        let recipes: Bool = t.id == "recipe"
+        HStack(spacing: 10) {
+            if recipes {
+                Button { choosingRecipe = true } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "fork.knife").font(.system(size: 12))
+                        Text(recipe == nil ? "Pick" : "Change").font(.system(size: 11))
+                    }
+                    .frame(height: 38).contentShape(Rectangle())
                 }
-                .foregroundStyle(ProInk.soft).frame(height: 38).contentShape(Rectangle())
+                .buttonStyle(.plain).accessibilityLabel(recipe == nil ? "Pick a recipe" : "Change the recipe")
             }
-            .buttonStyle(.plain)
-        } else {
             HStack(spacing: 5) {
                 Image(systemName: "music.note").font(.system(size: 12))
-                Text(music?.song.name ?? "No song yet").font(.system(size: 11)).lineLimit(1)
+                Text(song).font(.system(size: 11)).lineLimit(1)
             }
-            .foregroundStyle(ProInk.soft)
-            .frame(maxWidth: 118, alignment: .trailing)
         }
+        .foregroundStyle(ProInk.soft)
+        .frame(maxWidth: 118, alignment: .trailing)
     }
 
     private var slotRow: some View {
@@ -353,8 +400,8 @@ struct TemplateMaker: View {
     }
 
     private func slotTile(_ i: Int, _ s: EditTemplate.Slot) -> some View {
-        let clip: Clip? = cut.clip(of: i)
-        let seconds: Double = clip?.span ?? Double(max(1, s.beats)) * 0.5
+        let clip: Clip? = (frozen ?? cut).clip(of: i)
+        let seconds: Double = cut.shows(i) ?? Double(max(1, s.beats)) * 0.5
         return TemplateSlotTile(name: s.name.isEmpty ? "Slot \(i + 1)" : s.name, seconds: seconds, clip: clip, on: i == slotOn,
                                 pick: { pickSlot(i) }, empty: { emptySlot(i) })
     }
@@ -386,13 +433,9 @@ struct TemplateMaker: View {
 
     private func pickSlot(_ i: Int) {
         slotOn = i
-        guard let at = cut.start(of: i) else { return }
-        if tab != "Clips" {
-            pause()
-            show(at + midJoin(i))
-        } else {
-            show(at + 0.01)
-        }
+        guard cut.start(of: i) != nil else { return }
+        if tab != "Clips" { pause() }
+        showSlot(i)
     }
 
     private func emptySlot(_ i: Int) {
@@ -514,7 +557,7 @@ struct TemplateMaker: View {
     private func moment(_ laid: Clip, whole: Clip) -> some View {
         let lasts: Double = laid.duration
         let room: Double = max(0, whole.length - lasts)
-        let plays: String = String(format: "%.1f s plays, cut on the beat", laid.span)
+        let plays: String = String(format: "%.1f s plays, cut on the beat", cut.shows(slotOn) ?? laid.span)
         return VStack(spacing: 10) {
             MomentWindow(clip: whole, start: laid.start, lasts: lasts,
                          held: { (on: Bool) in momentHeld(on) },
@@ -534,9 +577,11 @@ struct TemplateMaker: View {
             resume = player.rate != 0
             pause()
             choosing = true
-            if let at = cut.start(of: slotOn) { show(at + 0.01) }
+            frozen = cut
+            showSlot(slotOn)
         } else {
             choosing = false
+            frozen = nil
             if resume { play() }
             resume = false
         }
@@ -546,22 +591,12 @@ struct TemplateMaker: View {
         moments[slotOn] = min(room, max(0, at))
     }
 
-    /// The filled slots, in order, each with its clip and its words.
     private func finish(_ t: EditTemplate) {
-        let all: [EditTemplate.Slot] = slots
-        let chosen: (clips: [Clip], slots: [Int]) = TemplateCut.picked(library: library, filled: filled, moments: moments)
-        var used: [Clip] = [], kept: [EditTemplate.Slot] = []
-        var seen: Set<UUID> = []
-        for (n, i) in chosen.slots.enumerated() where all.indices.contains(i) {
-            var c: Clip = chosen.clips[n]
-            // (the editor's own copies: the preview's ids are only the preview's)
-            if !seen.insert(filled[i] ?? c.id).inserted { c.id = UUID() }
-            used.append(c)
-            kept.append(all[i])
-        }
-        guard !used.isEmpty else { return }
+        guard !gettingMusic else { return }
+        let made: TemplateCut = cutNow()
+        guard !made.clips.isEmpty else { return }
         pause()
-        make(t, used, kept, t.id == "recipe" ? recipe : nil)
+        make(t, made, t.id == "recipe" ? recipe : nil)
     }
 }
 

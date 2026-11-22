@@ -294,7 +294,7 @@ struct MultiClipEditor: View {
         }
         // text typed on the video itself, everything else dimmed behind
         .fullScreenCover(isPresented: $templating) {
-            TemplateMaker(clips: clips, editLook: look, proxies: proxies, make: { t, c, s, m in Task { @MainActor in await makeTemplate(t, c, s, m) } }, close: { templating = false })
+            templatesScreen
         }
         .fullScreenCover(isPresented: Binding(get: { typing != nil }, set: { if !$0 { endTyping() } })) {
             if let k = texts.firstIndex(where: { $0.id == typing }) { typingView(k) }
@@ -1189,7 +1189,8 @@ struct MultiClipEditor: View {
                 if high > low { under.append(low...high) }
             }
         }
-        return ClipWave(clip: c, file: waves.files[url], heard: heard, width: width, height: Self.waveHeight, pps: perSecond, under: under)
+        return ClipWave(clip: c, file: waves.files[url], heard: heard, width: width, height: Self.waveHeight, pps: perSecond, under: under,
+                        clock: clock, from: start)
             .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
             .task(id: url) { if !c.still { await waves.load(url) } }
     }
@@ -1261,7 +1262,8 @@ struct MultiClipEditor: View {
         guard !c.still, c.soundOn, abs(dx) >= TimelineRows.dragStarts, let file = waves.files[c.clean ?? c.source] else { return (dx, nil) }
         let perPoint: Double = max(c.speed, 0.01) / Double(max(pps, 1))
         let edge: Double = side == 0 ? c.start : c.end
-        let reach: Double = Double(TimelineRows.snapReach) * 1.4 * perPoint
+        // (zoomed right out, seven points is most of the way to the next pause)
+        let reach: Double = min(Double(TimelineRows.snapReach) * 1.4 * perPoint, 0.25 * max(c.speed, 0.01))
         guard let p = WaveMath.pause(file.pauses, near: edge + Double(dx) * perPoint, reach: reach) else { return (dx, nil) }
         // (only where the end can go: at least a third of a second left)
         let allowed: Bool = side == 0 ? (p >= 0 && p <= c.end - 0.3) : (p <= c.length && p >= c.start + 0.3)
@@ -1460,7 +1462,7 @@ struct MultiClipEditor: View {
         let left: CGFloat = w * CGFloat(s.from / span)
         let wide: CGFloat = w * CGFloat(s.length / span)
         let file: WaveFile? = s.url.flatMap { (u: URL) -> WaveFile? in waves.files[u] }
-        return SoundBarWave(sound: s, file: file, width: wide, height: Self.laneHeight, pps: perSecond, ink: Self.waveInk(s.kind))
+        return SoundBarWave(sound: s, file: file, width: wide, height: Self.laneHeight, pps: perSecond, ink: Self.waveInk(s.kind), clock: clock)
             .background(Self.soundColour(s.kind))
             .opacity(0.3)
             .offset(x: left)
@@ -2169,44 +2171,16 @@ struct MultiClipEditor: View {
     }
 
     private func recordEdit() { edits.record(snap) }
-    /// Every text, caption, sticker, sound and overlay moved as far as the clip it starts over has moved.
     private func follow(from old: [Clip], to new: [Clip]) {
         // (Undo has put what's over them where it was: followed as well, a voiceover's captions lost their hand trims)
         if let back = restoring, back == new { return }
         guard !old.isEmpty, !new.isEmpty else { return }
-        let was = ClipJoin.starts(old), now = ClipJoin.starts(new)
-        var at: [UUID: Double] = [:]
-        for (i, c) in new.enumerated() { at[c.id] = now[i] }
-        // how far the clip under `t` has moved (nothing for one taken out)
-        func moved(_ t: Double) -> Double {
-            guard let i = was.lastIndex(where: { $0 <= t + 0.001 }), let n = at[old[i].id] else { return 0 }
-            return n - was[i]
-        }
-        // captions go with their words (21 Nov): each word tied to the clip and moment it was said in, then put
-        // where that now plays; trimmed-out words go
-        texts = EditOverlays.anchor(texts, clips: old)
-        let tied = Set(texts.filter { $0.kind == "caption" && !($0.words ?? []).isEmpty && ($0.words ?? []).allSatisfy { $0.src != nil } }.map(\.id))
-        for k in texts.indices where texts[k].part != "recipe" && !tied.contains(texts[k].id) {
-            let d = moved(texts[k].from)
-            guard abs(d) > 0.0005 else { continue }
-            texts[k].from = max(0, texts[k].from + d); texts[k].to = max(texts[k].from + 0.1, texts[k].to + d)
-            if let w = texts[k].words { texts[k].words = w.map { EditText.Word(text: $0.text, at: max(0, $0.at + d)) } }
-        }
-        for k in sounds.indices where sounds[k].kind != "song" {
-            let d = moved(sounds[k].from)
-            if abs(d) > 0.0005 { sounds[k].from = max(0, sounds[k].from + d) }
-        }
-        for k in pips.indices {
-            let d = moved(pips[k].from)
-            if abs(d) > 0.0005 { pips[k].from = max(0, pips[k].from + d) }
-        }
-        // music that runs to the end of the edit still does
-        let long: Double = ClipJoin.total(new)
-        for k in sounds.indices where sounds[k].toEnd == true { sounds[k].length = max(0.3, long - sounds[k].from) }
-        // (22 Nov audit: the words outside every clip were dropped for good: kept, and back in as it's drawn out again)
-        let trimmed: (texts: [EditText], kept: [EditText]) = ClipCuts.trimmed(texts, kept: cutWords, clips: new, sounds: sounds)
-        texts = trimmed.texts
-        if trimmed.kept != cutWords { cutWords = trimmed.kept }
+        let before = EditCarry(clips: old, texts: texts, sounds: sounds, pips: pips, cut: cutWords)
+        let after: EditCarry = before.moved(to: new)
+        texts = after.texts
+        if after.sounds != sounds { sounds = after.sounds }
+        if after.pips != pips { pips = after.pips }
+        if after.cut != cutWords { cutWords = after.cut }
         // (reanchor ends each where the next in its layer begins: 21 Nov, "Unglazed" drawn over "turns black")
         settleLayers()
         if recipe != nil { remakeRecipe() }
@@ -2867,7 +2841,7 @@ struct MultiClipEditor: View {
                 action("music.note", "Music", on: true) {
                     if sounds.contains(where: { $0.kind == "song" }) { withAnimation(.snappy) { panel = .beats } } else { openSongs() }
                 }
-                action("square.grid.2x2", "Templates", on: true) { player.pause(); templating = true }
+                action("square.grid.2x2", "Templates", on: true) { hearAlone(); templating = true }
         }
         .padding(.top, 2)
     }
@@ -2996,10 +2970,20 @@ struct MultiClipEditor: View {
         guard let url = s.url, let file = waves.files[url] else { return nil }
         let edge: Double = g.mode == 1 ? g.from : g.to
         let at: Double = g.start + (edge + dt - g.from) * s.speed
-        guard let p = WaveMath.pause(file.pauses, near: at, reach: reach * s.speed) else { return nil }
+        guard let p = WaveMath.pause(file.pauses, near: at, reach: min(reach, 0.25) * s.speed) else { return nil }
         let video: Double = g.from + (p - g.start) / s.speed
         guard video >= 0 else { return nil }
-        return (video - edge, video, p)
+        // (as far as dragSound lets it)
+        let moved: Double = video - edge, length: Double = g.to - g.from
+        if g.mode == 1 {
+            guard moved >= max(-g.start / s.speed, -g.from) - 0.001, moved <= length - 0.3 else { return nil }
+        } else {
+            let span: Double = max(total, 0.01)
+            let whole: Double = s.full > 0 ? s.full : g.start + length * s.speed
+            let room: Double = s.loopStart != nil ? span - g.from : min((whole - g.start) / s.speed, span - g.from)
+            guard length + moved >= 0.3, length + moved <= room + 0.001 else { return nil }
+        }
+        return (moved, video, p)
     }
 
     /// The pauses along a sound as it's trimmed, and the words either side of the one it's held on.
@@ -3022,7 +3006,7 @@ struct MultiClipEditor: View {
                 .offset(y: top - 8)
             if let held, let p = pauseHeld {
                 // (up over the clips' frames, off the captions)
-                pauseBubble(s.id, files: [], at: p, seconds: s.length)
+                pauseBubble(s.id, files: saidIn(s), at: p, seconds: s.length)
                     .frame(width: 280)
                     .offset(x: held - 140, y: -(Self.clipRow - 2))
             }
@@ -3036,8 +3020,16 @@ struct MultiClipEditor: View {
     }
 
     /// The words said in a clip or sound, by when in its file, those trimmed off it too.
+    /// The files a sound's words are known by: a separated clip sound's are the clip's as well.
+    private func saidIn(_ s: EditSound) -> Set<String> {
+        guard s.kind == "clip", let c = clips.first(where: { (x: Clip) -> Bool in x.id == s.clip }) else { return [] }
+        return [c.source.lastPathComponent]
+    }
+
     private func wordsSaid(_ id: UUID, files: Set<String>) -> [(text: String, at: Double)] {
-        var all: [EditText] = texts.filter { (t: EditText) -> Bool in t.kind == "caption" }
+        // (captions just made aren't tied to their clips till the clips change)
+        let shown: [EditText] = texts.filter { (t: EditText) -> Bool in t.kind == "caption" }
+        var all: [EditText] = EditOverlays.anchor(shown, clips: clips)
         all += cutWords
         for s in sounds { all += s.cut ?? [] }
         var out: [(text: String, at: Double)] = []
@@ -3101,7 +3093,7 @@ struct MultiClipEditor: View {
         let url: URL? = s.url
         let file: WaveFile? = url.flatMap { (u: URL) -> WaveFile? in waves.files[u] }
         let corner = RoundedRectangle(cornerRadius: 7, style: .continuous)
-        return SoundBarWave(sound: s, file: file, width: width, height: height, pps: perSecond, ink: Self.waveInk(s.kind))
+        return SoundBarWave(sound: s, file: file, width: width, height: height, pps: perSecond, ink: Self.waveInk(s.kind), clock: clock)
             .clipShape(corner)
             .overlay(alignment: .topLeading) {
                 if width > 24 { PinnedName(name: label, width: width) }
@@ -3421,7 +3413,7 @@ struct MultiClipEditor: View {
 
     private func countDown() {
         stopGlide()
-        player.pause(); playing = false
+        hearAlone()
         pressTask?.cancel()
         pressTask = Task { @MainActor in
             for n in [3, 2, 1] {
@@ -3791,34 +3783,49 @@ struct MultiClipEditor: View {
         seek(0); player.play()
     }
 
-    /// A template made (21 Nov, design/templates-mockup.html): its song, the clips picked cut to their slots on its
-    /// beat, the joins and look, and each slot's words over its clip. The clips that weren't picked go; Undo brings
-    /// them back.
-    private func makeTemplate(_ t: EditTemplate, _ picked: [Clip], _ slots: [EditTemplate.Slot], _ meal: JSON?) async {
+    private var templatesScreen: TemplateMaker {
+        let carry = EditCarry(clips: clips, texts: texts, sounds: sounds, pips: pips, cut: cutWords, recipe: recipe, plan: plan)
+        return TemplateMaker(clips: clips, editLook: look, proxies: proxies, carry: carry,
+                             make: { (t: EditTemplate, cut: TemplateCut, meal: JSON?) in makeTemplate(t, cut, meal) },
+                             close: { templating = false })
+    }
+
+    /// Make it: the very cut that played, with what it kept of the edit.
+    private func makeTemplate(_ t: EditTemplate, _ cut: TemplateCut, _ meal: JSON?) {
         templating = false
-        player.pause(); joining = true
-        defer { joining = false }
-        // (got as the preview got it, so what's made is what played)
-        let music: TemplateMusic? = await TemplateMusic.load(t)
-        let song: EditSound? = music?.song
-        let beats: [Double] = music?.beats ?? []
-        let laid = EditTemplate.lay(picked, slots: slots, beats: beats, join: t.join, look: t.look)
-        guard !laid.isEmpty else { return }
-        let long = ClipJoin.total(laid)
-        var laidSounds = sounds.filter { $0.kind != "song" }
-        if var song { song.length = max(0.5, long); laidSounds.append(song) }
-        let words = EditTemplate.labels(laid, slots: slots)
-        var over = texts.filter { $0.part != "template" }
-        over += words
+        guard !cut.clips.isEmpty else { return }
+        player.pause(); playing = false
         remember()
+        var over: [EditText] = cut.words
+        // (the preview's labels have ids of the preview's)
+        for i in over.indices where over[i].part == "template" { over[i].id = UUID() }
+        let made: [EditText] = over
+        // (already with its clips: follow() leaves them be, as it does for an Undo)
+        restoring = cut.clips
+        restores += 1
+        let turn: Int = restores
+        edits.touched()
         selected = nil; selectedText = nil; selectedSound = nil; selectedPip = nil
-        withAnimation(.snappy) { clips = laid; panel = nil }
-        // put after follow() has moved what was there with the clips (as Undo does)
-        DispatchQueue.main.async { sounds = laidSounds; texts = over }
+        withAnimation(.snappy) {
+            clips = cut.clips
+            // (left on, a clip that wasn't picked silenced every clip in the finished video)
+            soundOf = nil
+            texts = made; sounds = cut.sounds; pips = cut.pips; cutWords = cut.cutWords
+            panel = nil
+        }
+        DispatchQueue.main.async {
+            guard turn == restores else { return }
+            texts = made; sounds = cut.sounds; pips = cut.pips; cutWords = cut.cutWords
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            guard turn == restores else { return }
+            restoring = nil
+        }
         if let meal { attached = meal; attach(meal) }
-        if song == nil { flash("\(t.name): made, cut half a second a beat (the song couldn't be fetched). Change anything you like.") }
-        else { flash("\(t.name): made. Change anything you like.") }
-        seek(0); player.play()
+        let music: Bool = cut.sounds.contains { (s: EditSound) -> Bool in s.kind == "song" }
+        if music { flash("\(t.name): made. Change anything you like.") }
+        else { flash("\(t.name): made, cut half a second a beat (the song couldn't be fetched). Change anything you like.") }
+        seek(0); player.play(); playing = true
     }
 
     /// The first time the editor's opened, three tips one after another.
@@ -4816,6 +4823,8 @@ struct MultiClipEditor: View {
     }
 
     private func setCountUp(_ on: Bool) {
+        // (made again for nothing, the recipe's words lost where they'd been moved to)
+        guard plan.countUp != on else { return }
         plan.countUp = on
         remakeRecipe()
     }
@@ -4888,6 +4897,7 @@ struct MultiClipEditor: View {
     }
 
     private func setSpread(_ on: Bool) {
+        guard plan.spread != on else { return }
         plan.spread = on
         remakeRecipe()
     }

@@ -26,6 +26,9 @@ struct TemplateCut: Equatable {
     var clips: [Clip] = []
     var words: [EditText] = []
     var sounds: [EditSound] = []
+    var pips: [EditPip] = []
+    /// The captions' words with nowhere to play in it, kept.
+    var cutWords: [EditText] = []
     /// Which slot each clip is.
     var slots: [Int] = []
     var total = 0.0
@@ -34,12 +37,22 @@ struct TemplateCut: Equatable {
     static func picked(library: [Clip], filled: [UUID?], moments: [Int: Double]) -> (clips: [Clip], slots: [Int]) {
         var out: [Clip] = [], at: [Int] = []
         var seen: Set<UUID> = []
+        // (a copy made by the template before this one can be among them)
+        var taken: Set<UUID> = Set(library.map { (x: Clip) -> UUID in x.id })
         for (i, id) in filled.enumerated() {
             guard let id, var c = library.first(where: { (x: Clip) -> Bool in x.id == id }) else { continue }
-            if !seen.insert(id).inserted { c.id = copy(of: id, slot: i) }
+            if !seen.insert(id).inserted {
+                var other: UUID = copy(of: id, slot: i)
+                while taken.contains(other) { other = copy(of: other, slot: i) }
+                taken.insert(other)
+                c.id = other
+            }
             if let start = moments[i] {
                 c.start = min(max(0, start), max(0, c.length - 0.05))
                 c.end = c.length
+                // (the sound's trim was of the part it played before)
+                c.soundStart = nil
+                c.soundEnd = nil
             }
             out.append(c)
             at.append(i)
@@ -56,7 +69,7 @@ struct TemplateCut: Equatable {
     }
 
     static func make(_ t: EditTemplate, library: [Clip], filled: [UUID?], moments: [Int: Double],
-                     slots: [EditTemplate.Slot], music: TemplateMusic?) -> TemplateCut {
+                     slots: [EditTemplate.Slot], music: TemplateMusic?, carry: EditCarry? = nil) -> TemplateCut {
         let chosen: (clips: [Clip], slots: [Int]) = picked(library: library, filled: filled, moments: moments)
         var clips: [Clip] = [], kept: [EditTemplate.Slot] = [], at: [Int] = []
         for (n, i) in chosen.slots.enumerated() where slots.indices.contains(i) {
@@ -70,13 +83,21 @@ struct TemplateCut: Equatable {
         out.clips = EditTemplate.lay(clips, slots: kept, beats: music?.beats ?? [], join: t.join, look: t.look)
         out.slots = at
         out.total = ClipJoin.total(out.clips)
+        var over: [EditText] = []
+        if let carry {
+            let stays: EditCarry = carry.kept(on: out.clips)
+            over = stays.texts
+            out.sounds = stays.sounds
+            out.pips = stays.pips
+            out.cutWords = stays.cut
+        }
         if var song = music?.song {
             song.length = max(0.5, out.total)
-            out.sounds = [song]
+            out.sounds.append(song)
         }
         var words: [EditText] = EditTemplate.labels(out.clips, slots: kept)
         for i in words.indices { words[i].id = label(i) }
-        out.words = words
+        out.words = over + words
         return out
     }
 
@@ -93,6 +114,15 @@ struct TemplateCut: Equatable {
         guard let n = slots.firstIndex(of: slot) else { return nil }
         let starts: [Double] = ClipJoin.starts(clips)
         return starts.indices.contains(n) ? starts[n] : nil
+    }
+
+    /// How long a slot shows: till the next one starts.
+    func shows(_ slot: Int) -> Double? {
+        guard let n = slots.firstIndex(of: slot) else { return nil }
+        let starts: [Double] = ClipJoin.starts(clips)
+        guard starts.indices.contains(n) else { return nil }
+        let next: Double = n + 1 < starts.count ? starts[n + 1] : total
+        return next - starts[n]
     }
 
     /// A slot's clip as it's cut.

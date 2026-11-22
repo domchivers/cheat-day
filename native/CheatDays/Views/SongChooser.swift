@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 
 /// Choosing a song in the editor's sheet (design/editor-panels-mockup.html, 3): looked for or by mood, heard as
@@ -193,7 +194,7 @@ private struct PartWindow: View {
                 .frame(width: wide, height: h).offset(x: x)
         }
         .contentShape(Rectangle())
-        .onTapGesture(count: 1, coordinateSpace: .local) { (p: CGPoint) in jumped(p.x, width: w, wide: wide) }
+        .onTapGesture(count: 1, coordinateSpace: .local) { (p: CGPoint) in jumped(p.x, width: w, left: x, wide: wide) }
         // (alongside the list's own scroll, and only for a sideways finger)
         .simultaneousGesture(DragGesture(minimumDistance: 8)
             .updating($touching) { _, on, _ in on = true }
@@ -218,8 +219,9 @@ private struct PartWindow: View {
         moved((from ?? start) + Double(v.translation.width / width) * length)
     }
 
-    private func jumped(_ x: CGFloat, width: CGFloat, wide: CGFloat) {
-        moved(Double((x - wide / 2) / width) * length)
+    private func jumped(_ x: CGFloat, width: CGFloat, left: CGFloat, wide: CGFloat) {
+        let inside: Bool = x >= left - 8 && x <= left + wide + 8
+        if !inside { moved(Double((x - wide / 2) / width) * length) }
         ended()
     }
 

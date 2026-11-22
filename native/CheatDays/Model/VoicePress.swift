@@ -44,6 +44,11 @@ struct VoicePress: Equatable {
             phase = .going
             return .none
         }
+        // (and the other way: let go of a hold before its timer was heard)
+        if phase == .down, !countdown, let seconds, seconds >= Self.hold {
+            phase = .idle
+            return .stop
+        }
         switch phase {
         case .down:
             phase = countdown ? .counting : .going

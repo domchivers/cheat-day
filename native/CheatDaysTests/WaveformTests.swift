@@ -32,6 +32,18 @@ final class WaveformTests: XCTestCase {
         XCTAssertTrue(WaveFile.findPauses(levels([(seconds: 3, level: 0.6)])).isEmpty)
     }
 
+    func testPausesInAMostlyQuietRecording() {
+        let said: [Float] = levels([(seconds: 30, level: 0.002), (seconds: 1, level: 0.5), (seconds: 0.5, level: 0.002),
+                                    (seconds: 0.8, level: 0.45), (seconds: 30, level: 0.002)])
+        XCTAssertEqual(WaveFile.findPauses(said).count, 3)
+    }
+
+    func testOneClapDoesntHideTheTalking() {
+        let said: [Float] = levels([(seconds: 1, level: 0.1), (seconds: 0.5, level: 0.002), (seconds: 1, level: 0.1),
+                                    (seconds: 0.02, level: 1)])
+        XCTAssertEqual(WaveFile.findPauses(said).count, 1)
+    }
+
     func testTheLoudestOfAStretch() {
         let file = WaveFile(levels: [0.1, 0.9, 0.2, 0.3])
         XCTAssertEqual(file.peak(from: 0, to: 0.04), 0.9)

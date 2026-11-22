@@ -7,7 +7,8 @@ struct TemplateGallery: View {
     let log: EditTemplate.Log
     let pick: (EditTemplate) -> Void
     let close: () -> Void
-    @State private var reels: [[CGImage]] = []
+    /// The maker's, so coming back doesn't make them again.
+    @Binding var reels: [[CGImage]]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -48,6 +49,7 @@ struct TemplateGallery: View {
     }
 
     private func load() async {
+        if !reels.isEmpty && reels.count >= min(clips.count, TemplateReel.most) { return }
         var made: [[CGImage]] = []
         for c in clips.prefix(TemplateReel.most) {
             let frames: [CGImage] = await TemplateReel.frames(c)

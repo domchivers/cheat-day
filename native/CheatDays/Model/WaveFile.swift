@@ -41,9 +41,13 @@ struct WaveFile: Equatable, Sendable {
         guard levels.count >= 10 else { return [] }
         let sorted: [Float] = levels.sorted()
         let quiet: Float = sorted[sorted.count / 10]
-        let loud: Float = sorted[sorted.count * 95 / 100]
-        // (as loud all the way through, music or noise: nothing to hold on)
-        guard loud - quiet > 0.12 else { return [] }
+        // (the talking's loudness, however little of the file it is: of the whole, the 95th was the silence)
+        let floor: Float = max(0.01, quiet * 3)
+        let heard: [Float] = sorted.filter { (v: Float) -> Bool in v > floor }
+        let loud: Float = heard.count >= 5 ? heard[heard.count * 95 / 100] : sorted[sorted.count * 95 / 100]
+        // (as loud all the way through, music or noise: nothing to hold on. Relative too: one clap made the talking small)
+        let apart: Float = loud - quiet
+        guard apart > 0.12 || (loud > 0.02 && apart > loud * 0.6) else { return [] }
         let line: Float = quiet + (loud - quiet) * 0.16
         let least: Int = Int(0.22 * rate)
         var out: [Double] = []

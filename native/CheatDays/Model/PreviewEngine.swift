@@ -510,6 +510,8 @@ final class SoundMixer {
     private var playing: [(SoundPiece, Int)] = []
     private var buffers: [URL: AVAudioPCMBuffer] = [:]
     private var loading: Set<URL> = []
+    /// What any mixer has read, while one still holds it: Templates' had a second copy of the editor's.
+    @MainActor private static let decoded = NSMapTable<NSURL, AVAudioPCMBuffer>.strongToWeakObjects()
     private let format = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 2)!
     /// Silent: stopped altogether, so it's out of the way while a voiceover's recorded (which has the sound of its own).
     var muted = false { didSet { if muted { stop(); engine.stop() } } }
@@ -522,8 +524,12 @@ final class SoundMixer {
             loading.insert(u)
             let f = format
             Task.detached(priority: .utility) { [weak self] in
-                let b = await SoundMixer.read(u, f)
+                let kept: AVAudioPCMBuffer? = await MainActor.run { SoundMixer.decoded.object(forKey: u as NSURL) }
+                var found: AVAudioPCMBuffer? = kept
+                if found == nil { found = await SoundMixer.read(u, f) }
+                let b: AVAudioPCMBuffer? = found
                 await MainActor.run {
+                    if let b { SoundMixer.decoded.setObject(b, forKey: u as NSURL) }
                     guard let self else { return }
                     self.loading.remove(u)
                     if let b { self.buffers[u] = b; self.onLoaded?() }

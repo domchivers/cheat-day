@@ -4,6 +4,7 @@ import SwiftUI
 struct TemplateWords: View {
     let clock: EditPlayhead
     let words: [EditText]
+    let sounds: [EditSound]
     let frameSize: CGSize
     let outlined: Bool
 
@@ -16,17 +17,18 @@ struct TemplateWords: View {
 
     private func layer(_ r: CGRect, size: CGSize) -> some View {
         let t: Double = clock.time
-        let shown: [EditText] = words.filter { (w: EditText) -> Bool in t >= w.from && t < w.to }
-        let scale: CGFloat = max(0.01, r.width / EditOverlays.design)
+        let placed: [EditText] = CaptionLayers.placed(words, sounds: sounds)
+        let shown: [EditText] = placed.filter { (w: EditText) -> Bool in t >= w.from && t < w.to }
         return ZStack(alignment: .topLeading) {
-            ForEach(shown) { (word: EditText) in label(word, frame: r, scale: scale) }
+            ForEach(shown) { (word: EditText) in drawn(word, frame: r, at: t) }
         }
         .frame(width: size.width, height: size.height, alignment: .topLeading)
     }
 
-    private func label(_ word: EditText, frame r: CGRect, scale: CGFloat) -> some View {
-        let line: Color = outlined ? Color.white : Color.clear
-        return EditTextView(item: word, at: word.from)
+    private func drawn(_ word: EditText, frame r: CGRect, at t: Double) -> some View {
+        let scale: CGFloat = max(0.01, r.width / EditOverlays.design * CGFloat(word.size))
+        let line: Color = outlined && word.part == "template" ? Color.white : Color.clear
+        return EditTextView(item: word, at: t)
             .overlay(RoundedRectangle(cornerRadius: 12 / scale).stroke(line, lineWidth: 1 / scale))
             .scaleEffect(scale)
             .position(x: r.minX + CGFloat(word.x) * r.width, y: r.minY + CGFloat(word.y) * r.height)
@@ -101,7 +103,7 @@ struct TemplateClipTile: View {
             ZStack(alignment: .topTrailing) {
                 ProInk.tile
                 FillPicture(image: picture)
-                if let number { badge(number) }
+                if let number { numberBadge(number) }
                 if !clip.still { length }
             }
             .frame(width: 62, height: 84)
@@ -117,7 +119,7 @@ struct TemplateClipTile: View {
         }
     }
 
-    private func badge(_ n: Int) -> some View {
+    private func numberBadge(_ n: Int) -> some View {
         Text("\(n)").font(.system(size: 11, weight: .black)).foregroundStyle(Color.black)
             .frame(width: 18, height: 18).background(ProInk.key, in: Circle()).padding(4)
     }
@@ -159,8 +161,10 @@ struct MomentWindow: View {
     private func strip(_ size: CGSize) -> some View {
         let w: CGFloat = max(size.width, 1), h: CGFloat = size.height
         let length: Double = max(clip.length, 0.01)
-        let x: CGFloat = w * CGFloat(min(1, max(0, start / length)))
-        let wide: CGFloat = max(22, w * CGFloat(min(1, lasts / length)))
+        let wide: CGFloat = min(w, max(22, w * CGFloat(min(1, lasts / length))))
+        let room: Double = max(length - lasts, 0.001)
+        let perPoint: Double = room / Double(max(w - wide, 1))
+        let x: CGFloat = (w - wide) * CGFloat(min(1, max(0, start / room)))
         let dark = Color.black.opacity(0.65)
         return ZStack(alignment: .topLeading) {
             ClipThumb(clip: clip, whole: true).frame(width: w, height: h)
@@ -173,7 +177,7 @@ struct MomentWindow: View {
         .contentShape(Rectangle())
         .gesture(DragGesture(minimumDistance: 0)
             .updating($touching) { _, on, _ in on = true }
-            .onChanged { (v: DragGesture.Value) in dragged(v, width: w, x: x, wide: wide, length: length) }
+            .onChanged { (v: DragGesture.Value) in dragged(v, x: x, wide: wide, perPoint: perPoint) }
             .onEnded { _ in letGo() })
         .onChange(of: touching) { (_: Bool, on: Bool) in
             if !on { letGo() }
@@ -181,14 +185,14 @@ struct MomentWindow: View {
         .onDisappear { letGo() }
     }
 
-    private func dragged(_ v: DragGesture.Value, width: CGFloat, x: CGFloat, wide: CGFloat, length: Double) {
+    private func dragged(_ v: DragGesture.Value, x: CGFloat, wide: CGFloat, perPoint: Double) {
         if from == nil {
             let inside: Bool = v.startLocation.x >= x - 10 && v.startLocation.x <= x + wide + 10
             // (outside the window: it comes to the finger)
-            from = inside ? start : Double((v.startLocation.x - wide / 2) / width) * length
+            from = inside ? start : Double(v.startLocation.x - wide / 2) * perPoint
             held(true)
         }
-        moved((from ?? start) + Double(v.translation.width / width) * length)
+        moved((from ?? start) + Double(v.translation.width) * perPoint)
     }
 
     private func letGo() {

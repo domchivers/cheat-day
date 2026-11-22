@@ -210,7 +210,7 @@ struct EditTextView: View {
                 if !item.text.isEmpty { Text(item.text).font(.system(size: 22, weight: .heavy)) }
                 if !item.detail.isEmpty { Text(item.detail).font(.system(size: 16, weight: .bold)).monospacedDigit().opacity(0.88) }
             }
-            .foregroundStyle(.white).frame(maxWidth: 320, alignment: .leading).fixedSize(horizontal: false, vertical: true)
+            .foregroundStyle(.white).modifier(HugWidth.UpTo(most: 320))
             .padding(.horizontal, 16).padding(.vertical, 10)
             .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         case "calories":

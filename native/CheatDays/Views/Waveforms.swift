@@ -7,13 +7,19 @@ import SwiftUI
 final class Waveforms {
     private(set) var files: [URL: WaveFile] = [:]
     @ObservationIgnored private var reading: Set<URL> = []
+    @ObservationIgnored private var last: Task<WaveFile, Never>?
 
     func load(_ url: URL) async {
         guard files[url] == nil, !reading.contains(url) else { return }
         reading.insert(url)
-        let made: WaveFile = await Task.detached(priority: .utility) { () -> WaveFile in
-            await WaveFile.read(url)
-        }.value
+        // (one after another: all at once, they held up the preview's own sound)
+        let before: Task<WaveFile, Never>? = last
+        let job: Task<WaveFile, Never> = Task.detached(priority: .utility) { () -> WaveFile in
+            _ = await before?.value
+            return await WaveFile.read(url)
+        }
+        last = job
+        let made: WaveFile = await job.value
         reading.remove(url)
         files[url] = made
     }
@@ -25,6 +31,41 @@ private enum WaveTiles {
 
     static func count(_ whole: CGFloat) -> Int { max(1, Int((whole / width).rounded(.up))) }
     static func wide(_ k: Int, of whole: CGFloat) -> CGFloat { max(0, min(width, whole - CGFloat(k) * width)) }
+
+    /// More than a screen's width either side of the line.
+    static let near: CGFloat = 1000
+
+    /// The pieces near the line, which is so far along the wave.
+    static func shown(line: CGFloat, of whole: CGFloat) -> [Int] {
+        let last: Int = count(whole) - 1
+        guard line + near >= 0, line - near <= whole else { return [] }
+        let low: Int = max(0, min(last, Int((line - near) / width)))
+        let high: Int = max(low, min(last, Int((line + near) / width)))
+        return Array(low...high)
+    }
+}
+
+/// The pieces of a long wave that are by the line, put where they go.
+private struct WaveRun<Piece: View>: View {
+    let clock: EditPlayhead
+    let from: Double
+    let width: CGFloat
+    let height: CGFloat
+    let pps: CGFloat
+    @ViewBuilder let piece: (Int) -> Piece
+
+    var body: some View {
+        let shown: [Int] = WaveTiles.shown(line: CGFloat(clock.time - from) * pps, of: width)
+        ZStack(alignment: .topLeading) {
+            Color.clear
+            ForEach(shown, id: \.self) { (k: Int) in
+                piece(k)
+                    .frame(width: WaveTiles.wide(k, of: width), height: height)
+                    .offset(x: CGFloat(k) * WaveTiles.width)
+            }
+        }
+        .frame(width: width, height: height, alignment: .topLeading)
+    }
 }
 
 /// A clip's wave under its frames: as loud as it'll be heard, flat grey with its sound off, faded under a voiceover.
@@ -38,18 +79,17 @@ struct ClipWave: View {
     let pps: CGFloat
     /// Where a voiceover plays over it, seconds along it.
     let under: [ClosedRange<Double>]
+    let clock: EditPlayhead
+    /// Where the clip starts in the video.
+    let from: Double
 
     private static let green = Color(red: 0.24, green: 0.86, blue: 0.52)
 
     var body: some View {
         let colour: Color = heard ? Self.green : Color.white.opacity(0.25)
-        return HStack(spacing: 0) {
-            ForEach(0..<WaveTiles.count(width), id: \.self) { (k: Int) in
-                ClipWaveTile(clip: clip, file: file, heard: heard, pps: pps, left: CGFloat(k) * WaveTiles.width, colour: colour)
-                    .frame(width: WaveTiles.wide(k, of: width), height: height)
-            }
+        return WaveRun(clock: clock, from: from, width: width, height: height, pps: pps) { (k: Int) in
+            ClipWaveTile(clip: clip, file: file, heard: heard, pps: pps, left: CGFloat(k) * WaveTiles.width, colour: colour)
         }
-        .frame(width: width, height: height, alignment: .leading)
         .background(colour.opacity(0.12))
         .overlay(alignment: .leading) { shade }
         .allowsHitTesting(false)
@@ -101,15 +141,12 @@ struct SoundBarWave: View {
     let height: CGFloat
     let pps: CGFloat
     let ink: Color
+    let clock: EditPlayhead
 
     var body: some View {
-        HStack(spacing: 0) {
-            ForEach(0..<WaveTiles.count(width), id: \.self) { (k: Int) in
-                SoundWaveTile(sound: sound, file: file, pps: pps, left: CGFloat(k) * WaveTiles.width, ink: ink)
-                    .frame(width: WaveTiles.wide(k, of: width), height: height)
-            }
+        WaveRun(clock: clock, from: sound.from, width: width, height: height, pps: pps) { (k: Int) in
+            SoundWaveTile(sound: sound, file: file, pps: pps, left: CGFloat(k) * WaveTiles.width, ink: ink)
         }
-        .frame(width: width, height: height, alignment: .leading)
         .overlay(alignment: .topLeading) { marks }
         .allowsHitTesting(false)
     }

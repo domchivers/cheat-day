@@ -24,6 +24,7 @@ struct CaptionPanel<Head: View>: View {
     @State private var tab = CaptionTab.style
     @State private var before: EditText?
     @FocusState private var typingWords: Bool
+    @State private var keyboard = false
 
     private var saved: SavedColours { SavedColours.shared }
 
@@ -35,7 +36,9 @@ struct CaptionPanel<Head: View>: View {
             case .dropper: dropper
             }
         }
-        .frame(height: screen == .dropper ? 108 : 310)
+        .frame(height: tall)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboard = true }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboard = false }
         .foregroundStyle(Color.white)
         .onChange(of: item.style) { (_: String, style: String) in
             if style != "Box" && part == .box { part = .lit }
@@ -48,8 +51,17 @@ struct CaptionPanel<Head: View>: View {
 
     // MARK: the panel
 
+    private var tall: CGFloat {
+        if screen == .dropper { return 108 }
+        return screen == .main && keyboard ? 244 : 310
+    }
+
     @ViewBuilder private var main: some View {
-        head()
+        VStack(spacing: 0) { head() }
+            .frame(height: keyboard ? 0 : nil, alignment: .top).clipped()
+            .opacity(keyboard ? 0 : 1)
+            .allowsHitTesting(!keyboard)
+            .accessibilityHidden(keyboard)
         wordsRow.padding(.horizontal, 16).padding(.top, 4)
         tabs
         VStack(spacing: 0) {
