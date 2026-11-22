@@ -507,27 +507,39 @@ struct MultiClipEditor: View {
 
     // MARK: the timeline
 
-    /// Every clip's sound off, or back on, at once (CapCut's "Mute clip audio" at the start of its timeline), in a
-    /// column of its own at the timeline's left.
+    /// Every clip's sound off, or back on, at once (CapCut's "Mute clip audio"): a tile against the timeline's start,
+    /// going along with it (22 Nov, design/timeline-left-gap-mockup.html, B: held at the screen's edge, it and the
+    /// rows' tiles had a gap between them and what they head at 0:00).
     private var allSound: some View {
-        let any = clips.contains { $0.soundOn && !$0.still }
-        return Button {
-            remember()
-            withAnimation(.snappy(duration: 0.2)) { for i in clips.indices where !clips[i].still { clips[i].soundOn = !any } }
-        } label: {
-            VStack(spacing: 2) {
-                Image(systemName: any ? "speaker.wave.2.fill" : "speaker.slash.fill").font(.system(size: 13, weight: .medium))
-                Text("Clip\nsound").font(.system(size: 7.5, weight: .medium)).foregroundStyle(Self.quiet).multilineTextAlignment(.center)
-            }
-            .foregroundStyle(.white).frame(width: 44, height: Self.clipRow + 4)   // (as tall as the clips' row, its sound wave in it)
-            .overlay(alignment: .trailing) { Rectangle().fill(Color(white: 0.2)).frame(width: 1, height: 40) }
-            // solid, down past every row of bars under the clips too (21 Nov: captions showed under it; and before,
-            // the fade into the clips dimmed the first of them too far)
-            .frame(width: 44, height: max(Self.clipRow + 4, Self.clipRow + 2 + (laneCount > 0 ? 3 + CGFloat(laneCount) * (Self.laneHeight + 3) : 0)), alignment: .top)
-            .background(Self.sheet)
+        let any: Bool = clips.contains { (c: Clip) -> Bool in c.soundOn && !c.still }
+        return VStack(spacing: 2) {
+            Image(systemName: any ? "speaker.wave.2.fill" : "speaker.slash.fill").font(.system(size: 13, weight: .medium))
+            Text("Clip\nsound").font(.system(size: 7.5, weight: .medium)).foregroundStyle(Self.quiet).multilineTextAlignment(.center)
         }
-        .buttonStyle(.plain).accessibilityLabel(any ? "Turn every clip's sound off" : "Turn every clip's sound on")
+        .foregroundStyle(.white).frame(width: Self.soundTileWidth, height: Self.clipRow)
+        .background(Color(white: 0.17), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .contentShape(Rectangle())
+        // a tap by the screen's measure, not a Button: the tile goes along under a finger sliding the timeline, so a
+        // Button was still under it when it lifted, and would switch the sound
+        .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .global).onEnded { tappedAllSound($0) })
+        .accessibilityElement()
+        .accessibilityLabel(any ? "Turn every clip's sound off" : "Turn every clip's sound on")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { toggleAllSound() }
     }
+
+    private func tappedAllSound(_ v: DragGesture.Value) {
+        if hypot(v.translation.width, v.translation.height) < 6 { toggleAllSound() }
+    }
+
+    private func toggleAllSound() {
+        let any: Bool = clips.contains { (c: Clip) -> Bool in c.soundOn && !c.still }
+        remember()
+        withAnimation(.snappy(duration: 0.2)) { for i in clips.indices where !clips[i].still { clips[i].soundOn = !any } }
+    }
+
+    // The tiles against the start: their width, and the room between them and 0:00 (a picked bar's handle goes there).
+    private static let soundTileWidth: CGFloat = 42, headWidth: CGFloat = 30, headGap: CGFloat = 14
 
     /// Where the timeline's line is: the player's own time while it plays, else where it was put.
     private var lineTime: Double {
@@ -566,9 +578,6 @@ struct MultiClipEditor: View {
                 .shadow(color: .black.opacity(0.5), radius: 2)
                 .frame(width: 9, height: g.size.height)
                 .offset(x: mid - 4.5).allowsHitTesting(false)
-                allSound.offset(y: Self.rulerHeight + 2)
-                // each row's tile beside it, lined up with it (22 Nov: "match cap where we have ui that lines up with things")
-                laneHeads.offset(x: 7, y: Self.rulerHeight + 4 + Self.clipRow + 4 + 2)
             }
             .frame(width: g.size.width, height: g.size.height, alignment: .topLeading)
             .clipShape(TimelineEdge(below: spareBelow))
@@ -620,6 +629,8 @@ struct MultiClipEditor: View {
         return VStack(alignment: .leading, spacing: 4) {
             ruler(width: width, span: span, pps: pps)
             ZStack(alignment: .topLeading) {
+                // before 0:00, under the first clip's handle
+                allSound.offset(x: -(Self.soundTileWidth + Self.headGap), y: 2)
                 ForEach(Array(clips.enumerated()), id: \.element.id) { i, c in
                     timelineClip(c, i, w: CGFloat(c.span) * pps).offset(x: CGFloat(starts[i]) * pps, y: 2)
                 }
@@ -777,6 +788,8 @@ struct MultiClipEditor: View {
             // while a bar's lifted, a rail under the last: a new row for it if it's dropped there
             if lifted != nil, rows.count < 6 { emptyRail(wanted: dropRow == rows.count, width: width) }
         }
+        // each row's tile just before 0:00, lined up with it, under a picked bar's handle
+        .background(alignment: .topLeading) { laneHeads.offset(x: -(Self.headWidth + Self.headGap)) }
         .overlay(alignment: .topLeading) { barHandles(rows, width: width, span: span) }
         .coordinateSpace(name: "bars")
         .padding(.top, 2)
@@ -873,14 +886,14 @@ struct MultiClipEditor: View {
         moveBar(v, item, w: w, span: span)
     }
 
-    /// A tile for each row of bars, in the timeline's left column, lined up with its row: what's on it (captions, text,
+    /// A tile for each row of bars, against the timeline's start and lined up with its row: what's on it (captions, text,
     /// stickers, voice, music, sound FX, overlays; mixed, a stack), as CapCut heads its tracks.
     private var laneHeads: some View {
         let rows = Array(barRows.prefix(6))
         return VStack(spacing: 3) {
             ForEach(rows.indices, id: \.self) { r in
                 Image(systemName: laneIcon(rows[r])).font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.85))
-                    .frame(width: 30, height: Self.laneHeight)
+                    .frame(width: Self.headWidth, height: Self.laneHeight)
                     .background(Color(white: 0.17), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
             }
         }
