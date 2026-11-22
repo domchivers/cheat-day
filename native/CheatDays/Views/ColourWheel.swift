@@ -37,6 +37,7 @@ struct ColourWheel: View {
         .onChange(of: touching) { (_: Bool, on: Bool) in
             if !on { letGo() }
         }
+        .onDisappear { letGo() }
         .accessibilityLabel("Colour wheel")
     }
 

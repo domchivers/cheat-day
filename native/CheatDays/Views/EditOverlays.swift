@@ -94,7 +94,9 @@ struct EditText: Identifiable, Codable, Equatable {
     /// The word in Pop's box: black on the named highlights, as it's always been; on any other, by how light it is.
     var popInk: Color {
         guard let name = highlight, name.hasPrefix("#") else { return .black }
-        return EditText.ink(on: name)
+        // (the five there were, picked again from the saved ones: as they always were)
+        let five: [String] = ["yellow", "green", "red", "blue", "white"].map { (n: String) -> String in ColourCode.hex(named: n) }
+        return five.contains(name.uppercased()) ? Color.black : EditText.ink(on: name)
     }
     /// Bold's edge: black, or white round dark words.
     var boldEdge: Color {

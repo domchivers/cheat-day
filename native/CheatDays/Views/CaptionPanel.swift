@@ -25,6 +25,7 @@ struct CaptionPanel<Head: View>: View {
     @State private var before: EditText?
     @State private var hsb = ColourCode.HSB(hue: 0, saturation: 0, brightness: 1)
     @State private var code = ""
+    @FocusState private var typingWords: Bool
 
     private var saved: SavedColours { SavedColours.shared }
 
@@ -45,6 +46,7 @@ struct CaptionPanel<Head: View>: View {
         .onAppear {
             if item.style != "Box" && part == .box { part = .lit }
         }
+        .onDisappear { held(false) }
     }
 
     // MARK: the panel
@@ -70,6 +72,9 @@ struct CaptionPanel<Head: View>: View {
         let text = Binding<String>(get: { item.text }, set: { (new: String) in words(new) })
         return HStack(spacing: 14) {
             TextField("What's said", text: text).font(.system(size: 16)).frame(maxWidth: .infinity)
+                .focused($typingWords)
+                // (held while it's typed in: one step, and the panel doesn't go on to the next caption)
+                .onChange(of: typingWords) { (_: Bool, on: Bool) in held(on) }
             Button(action: editAll) {
                 HStack(spacing: 6) {
                     Image(systemName: "list.bullet").font(.system(size: 14))
@@ -227,7 +232,9 @@ struct CaptionPanel<Head: View>: View {
     private func savedSwatch(_ s: SavedColours.Saved) -> some View {
         let same: Bool = item.hex(of: part) == s.hex && abs(item.alpha(of: part) - s.alpha) < 0.006
         let on: Bool = same && !item.isClear(part)
-        return Button { use(s) } label: {
+        return Button {
+            if !on { use(s) }
+        } label: {
             RoundedRectangle(cornerRadius: 5, style: .continuous).fill(StoryArt.color(s.hex).opacity(max(0.12, s.alpha)))
                 .frame(width: 28, height: 28)
                 .overlay(picked(on))

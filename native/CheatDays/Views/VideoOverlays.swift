@@ -41,6 +41,9 @@ struct VideoOverlays: View {
     @State private var hold: Hold?
     @State private var pipHold: PipHold?
     @GestureState private var touching = false
+    @GestureState private var magnifying = false
+    /// This touch has been a pinch or a sizing: what's left of it neither moves nor taps.
+    @State private var spent = false
 
     private static let space = "video"
 
@@ -69,7 +72,25 @@ struct VideoOverlays: View {
         .coordinateSpace(name: Self.space)
         .onChange(of: touching) { (_: Bool, down: Bool) in
             // a drag cut short has no end of its own
-            if !down { DispatchQueue.main.async { finish() } }
+            if !down { released() }
+        }
+        .onChange(of: magnifying) { (_: Bool, on: Bool) in
+            if !on { released() }
+        }
+        .onDisappear { finish() }
+    }
+
+    private func letUp() {
+        finish()
+        released()
+    }
+
+    /// Every finger up, however the gestures ended.
+    private func released() {
+        DispatchQueue.main.async {
+            guard !touching, !magnifying else { return }
+            finish()
+            spent = false
         }
     }
 
@@ -115,13 +136,14 @@ struct VideoOverlays: View {
         // (a count held still shows its number, not the 0 it counts up from)
         let moment: Double = item.kind == "calories" && !playing ? max(t, item.from + 1.3) : t
         // a line and a dot as thin at any size: drawn that much the thinner, then sized with it
+        let room: CGFloat = 8 / scale
+        // (the room round it takes none of the width it wraps in: as padding, a small one wrapped unlike the video)
         let look = EditTextView(item: item, at: moment)
-            .padding(8 / scale)
             .frame(minWidth: least, minHeight: least)
-            .contentShape(Rectangle())
-            .overlay(RoundedRectangle(cornerRadius: 3 / scale).stroke(line, lineWidth: 1 / scale).allowsHitTesting(false))
+            .contentShape(Rectangle().inset(by: -room))
+            .overlay(outline(line, scale: scale, room: room))
             .overlay(alignment: .bottomTrailing) {
-                if on { sizeDot(item, middle: middle, scale: scale) }
+                if on { sizeDot(item, middle: middle, scale: scale).offset(x: room, y: room) }
             }
             .scaleEffect(scale)
         return handled(look, item: item, frame: r).position(middle)
@@ -136,13 +158,20 @@ struct VideoOverlays: View {
                 .onChanged { (v: DragGesture.Value) in dragged(item, v.translation, frame: r) }
                 .onEnded { _ in dragEnded(item) })
             .simultaneousGesture(MagnificationGesture()
+                .updating($magnifying) { _, on, _ in on = true }
                 .onChanged { (m: CGFloat) in pinched(item, m) }
-                .onEnded { _ in finish() })
+                .onEnded { _ in letUp() })
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(said)
             .accessibilityHint("Double tap to change it; drag to move it")
             .accessibilityAddTraits(.isButton)
             .accessibilityAction { pick(item.id) }
+    }
+
+    private func outline(_ line: Color, scale: CGFloat, room: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: 3 / scale).stroke(line, lineWidth: 1 / scale)
+            .padding(-room)
+            .allowsHitTesting(false)
     }
 
     private func sizeDot(_ item: EditText, middle: CGPoint, scale: CGFloat) -> some View {
@@ -153,7 +182,7 @@ struct VideoOverlays: View {
             .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .named(Self.space))
                 .updating($touching) { _, down, _ in down = true }
                 .onChanged { (v: DragGesture.Value) in cornered(item, v, middle: middle) }
-                .onEnded { _ in finish() })
+                .onEnded { _ in letUp() })
             .offset(x: catchSize / 2, y: catchSize / 2)
     }
 
@@ -165,6 +194,7 @@ struct VideoOverlays: View {
     }
 
     private func dragged(_ item: EditText, _ by: CGSize, frame r: CGRect) {
+        if spent || magnifying { return }
         if hold == nil {
             guard hypot(by.width, by.height) > 2 else { return }
             begun(item)
@@ -183,10 +213,15 @@ struct VideoOverlays: View {
     }
 
     private func dragEnded(_ item: EditText) {
+        if spent || magnifying {
+            released()
+            return
+        }
         if hold == nil { pick(item.id) } else { finish() }
     }
 
     private func pinched(_ item: EditText, _ m: CGFloat) {
+        if !spent { spent = true }
         if hold == nil || hold?.sized == false {
             begun(item)
             guard var h = hold, h.id == item.id else { return }
@@ -204,6 +239,7 @@ struct VideoOverlays: View {
     }
 
     private func cornered(_ item: EditText, _ v: DragGesture.Value, middle: CGPoint) {
+        if !spent { spent = true }
         begun(item)
         guard var h = hold, h.id == item.id, !h.moved else { return }
         let was: CGFloat = max(8, hypot(v.startLocation.x - middle.x, v.startLocation.y - middle.y))
@@ -241,12 +277,11 @@ struct VideoOverlays: View {
             .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.space))
                 .updating($touching) { _, down, _ in down = true }
                 .onChanged { (v: DragGesture.Value) in pipDragged(p, m, v.translation, frame: r) }
-                .onEnded { _ in
-                    if pipHold == nil { pickPip(p.id) } else { finish() }
-                })
+                .onEnded { _ in pipDragEnded(p) })
             .simultaneousGesture(MagnificationGesture()
+                .updating($magnifying) { _, on, _ in on = true }
                 .onChanged { (s: CGFloat) in pipPinched(p, m, s) }
-                .onEnded { _ in finish() })
+                .onEnded { _ in letUp() })
             .accessibilityLabel("Overlay")
             .accessibilityHint("Double tap to change it; drag to move it")
             .accessibilityAddTraits(.isButton)
@@ -254,7 +289,16 @@ struct VideoOverlays: View {
             .position(middle)
     }
 
+    private func pipDragEnded(_ p: EditPip) {
+        if spent || magnifying {
+            released()
+            return
+        }
+        if pipHold == nil { pickPip(p.id) } else { finish() }
+    }
+
     private func pipDragged(_ p: EditPip, _ m: MoveKey, _ by: CGSize, frame r: CGRect) {
+        if spent || magnifying { return }
         if pipHold == nil {
             guard hypot(by.width, by.height) > 2 else { return }
             pipHold = PipHold(id: p.id, start: m, live: m)
@@ -268,6 +312,7 @@ struct VideoOverlays: View {
     }
 
     private func pipPinched(_ p: EditPip, _ m: MoveKey, _ s: CGFloat) {
+        if !spent { spent = true }
         if pipHold == nil {
             pipHold = PipHold(id: p.id, start: m, live: m)
             held(true)

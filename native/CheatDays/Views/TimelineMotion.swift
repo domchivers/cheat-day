@@ -13,11 +13,12 @@ final class TimelineMotion: NSObject {
     private var began = 0.0
     private var move: ((Double) -> Bool)?
     private var ended: (() -> Void)?
-    private var stoppedAt = 0.0
     private lazy var feedback = UISelectionFeedbackGenerator()
 
-    /// A touch that stopped a glide is only that, not a tap on what was under it.
-    var justStopped: Bool { CACurrentMediaTime() - stoppedAt < 0.35 }
+    /// A touch that stopped a glide is only that till it lifts: not a tap, or a hold, on what was under it.
+    private(set) var justStopped = false
+
+    func clearTouch() { justStopped = false }
 
     func ready() { feedback.prepare() }
 
@@ -53,7 +54,7 @@ final class TimelineMotion: NSObject {
     /// A finger on it: stopped where it is.
     func stopByTouch() {
         guard gliding else { return }
-        stoppedAt = CACurrentMediaTime()
+        justStopped = true
         end()
     }
 

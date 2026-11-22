@@ -23,8 +23,17 @@ guard let pem = try? String(contentsOfFile: keyPath, encoding: .utf8) else { fai
 guard let key = try? P256.Signing.PrivateKey(pemRepresentation: pem) else { fail("couldn't read the API key at \(keyPath)") }
 
 let here = URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent()
-let whatsNew = (try? String(contentsOf: here.appendingPathComponent("../native/WhatsNew.txt"), encoding: .utf8))?
+let allNotes = (try? String(contentsOf: here.appendingPathComponent("../native/WhatsNew.txt"), encoding: .utf8))?
     .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+/// The newest of the notes (they're newest first), to a whole sentence inside what Apple takes: 4,000 characters.
+func newest(_ text: String, most: Int = 3900) -> String {
+    guard text.count > most else { return text }
+    let head = String(text.prefix(most))
+    guard let end = head.range(of: ". ", options: .backwards) else { return head }
+    return String(head[..<end.lowerBound]) + "."
+}
+let whatsNew = newest(allNotes)
 
 func b64url(_ d: Data) -> String {
     d.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")

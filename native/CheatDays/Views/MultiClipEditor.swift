@@ -68,6 +68,8 @@ struct MultiClipEditor: View {
         var attached: SameJSON
     }
     @State private var edits = EditHistory<Snap>()   // for Undo and Redo
+    @State private var restoring: [Clip]?            // the clips an Undo or Redo is putting back
+    @State private var restores = 0
     @State private var autoID: String?           // the draft it's kept in as it goes (Stage A1)
     @State private var opened: [Clip]?           // as it was when opened from a draft: Discard goes back to it
     @State private var levels: [UUID: [Float]] = [:]
@@ -173,7 +175,11 @@ struct MultiClipEditor: View {
 
     private var total: Double { ClipJoin.total(clips) }
     private var index: Int? { clips.firstIndex { $0.id == selected } }
-    private func startOf(_ i: Int) -> Double { ClipJoin.starts(clips)[i] }
+    private func startOf(_ i: Int) -> Double {
+        let starts: [Double] = ClipJoin.starts(clips)
+        // (asked by something put off, or on its way out, after Undo has taken that clip)
+        return starts.indices.contains(i) ? starts[i] : (starts.last ?? 0)
+    }
 
     var body: some View {
         ZStack {
@@ -262,7 +268,7 @@ struct MultiClipEditor: View {
         .onAppear { if !UserDefaults.standard.bool(forKey: "editor.tips.1") { tip = 0 } }
         // (a trim handle's drag cut short, by another clip picked or a panel opened, leaves nothing behind)
         .onChange(of: selected) { _, _ in trimDrag = nil }
-        .onChange(of: panel == nil) { _, _ in trimDrag = nil }
+        .onChange(of: panel) { (_: Panel?, _: Panel?) in panelChanged() }
         // a handle's drag cut short (no end to it): nothing left held, the picture back where the line is
         .onChange(of: pipPicks) { _, now in
             guard !now.isEmpty else { return }
@@ -331,6 +337,7 @@ struct MultiClipEditor: View {
     }
 
     private func wentAway() {
+        stopGlide()
         if player.rate != 0 { player.pause(); playing = false }
         // (saved as it's left: the last second's changes hadn't been)
         Task { @MainActor in await saveNow(tidy: false) }
@@ -588,7 +595,7 @@ struct MultiClipEditor: View {
         let id: UUID = item.id
         return CaptionPanel(item: item, screen: $captionScreen, part: $captionPart,
                             change: { (edit: (inout EditText) -> Void) in changeText(id, edit) },
-                            step: { remember() },
+                            step: { captionStep() },
                             held: { (on: Bool) in sliderHeld(on) },
                             words: { (text: String) in captionWords(id, text) },
                             editAll: { editEveryCaption(id) },
@@ -597,6 +604,23 @@ struct MultiClipEditor: View {
                             done: { closePanel() },
                             head: { captionHead })
             .background { Self.captionBack.ignoresSafeArea(edges: .bottom) }
+            .onChange(of: captionScreen) { (_: CaptionScreen, to: CaptionScreen) in screenChanged(to) }
+    }
+
+    private func screenChanged(_ to: CaptionScreen) {
+        guard to != .main else { return }
+        player.pause()
+        playing = false
+    }
+
+    /// A step of Undo: not inside the wheel or the eyedropper, which are one from start to finish.
+    private func captionStep() {
+        if captionScreen == .main { remember() }
+    }
+
+    private func editHeld(_ on: Bool) {
+        if on { captionStep() }
+        fingerHeld = on
     }
 
     private static let captionBack = Color(red: 0.086, green: 0.086, blue: 0.094)
@@ -629,8 +653,11 @@ struct MultiClipEditor: View {
     }
 
     private func sliderHeld(_ on: Bool) {
-        if on { remember() }
-        fingerHeld = on
+        if on {
+            player.pause()
+            playing = false
+        }
+        editHeld(on)
     }
 
     private func captionWords(_ id: UUID, _ text: String) {
@@ -803,6 +830,7 @@ struct MultiClipEditor: View {
             slidable(face, mid: mid, pps: pps)
         }
         .frame(height: Self.rulerHeight + 4 + Self.clipRow + (laneCount > 0 ? 3 + CGFloat(laneCount) * (Self.laneHeight + 3) : 0))
+        .onDisappear { timelineGone() }
         // edge to edge, as CapCut's
         .padding(.horizontal, -14)
         .zIndex(spareBelow > 0 ? 1 : 0)
@@ -819,7 +847,8 @@ struct MultiClipEditor: View {
             // a touch stops a glide at once, before it's gone far enough to be a slide
             .simultaneousGesture(DragGesture(minimumDistance: 0)
                 .updating($onTimeline) { _, down, _ in down = true }
-                .onChanged { _ in touchedTimeline() })
+                .onChanged { _ in touchedTimeline() }
+                .onEnded { _ in timelineReleased(false) })
             .onChange(of: onTimeline) { (_: Bool, down: Bool) in timelineReleased(down) }
             // a handle's drag cut short (no end to it): nothing left held, the picture back where the line is
             .onChange(of: trimLive == nil) { (_: Bool, gone: Bool) in trimReleased(gone) }
@@ -892,9 +921,10 @@ struct MultiClipEditor: View {
                     timelineClip(c, i, w: CGFloat(c.span) * pps).offset(x: CGFloat(starts[i]) * pps, y: 2)
                 }
                 // the song's beats, as yellow ticks (Stage E)
-                ForEach(songBeats.indices, id: \.self) { b in
+                let beats: [Double] = songBeats
+                ForEach(beats.indices, id: \.self) { b in
                     Rectangle().fill(Color.yellow.opacity(0.85)).frame(width: 1, height: 6)
-                        .offset(x: CGFloat(songBeats[b]) * pps, y: 50).allowsHitTesting(false)
+                        .offset(x: CGFloat(beats[b]) * pps, y: 50).allowsHitTesting(false)
                 }
                 // the square for each join, in the middle of where one turns into the next
                 // (not the picked clip's two: its trim handles are there, and a square under one hid it, 21 Nov)
@@ -902,7 +932,7 @@ struct MultiClipEditor: View {
                     let at = starts[i + 1] + ClipJoin.overlap(clips, after: i) / 2
                     joinSquare(i).offset(x: CGFloat(at) * pps - 9, y: 16)
                 }
-                Button { adding = true } label: {
+                Button { if !motion.justStopped { stopGlide(); adding = true } } label: {
                     Image(systemName: "plus").font(.system(size: 18, weight: .semibold)).foregroundStyle(.black)
                         .frame(width: 34, height: 34).background(.white, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
@@ -1410,6 +1440,30 @@ struct MultiClipEditor: View {
         wasPlaying = nil
     }
 
+    private func stopGlide() {
+        guard motion.gliding else { return }
+        motion.end()
+        finishScrub(resume: false)
+    }
+
+    private func panelChanged() {
+        trimDrag = nil
+        fingerHeld = false
+        stopGlide()
+    }
+
+    /// The timeline taken away (a panel, full screen) with a slide or glide under way.
+    private func timelineGone() {
+        motion.end()
+        motion.clearTouch()
+        scrubSkip = false
+        finishScrub(resume: false)
+    }
+
+    private func stripGone() {
+        if scrubFrom == nil, wasPlaying != nil { wasPlaying = nil }
+    }
+
     private func touchedTimeline() {
         guard motion.gliding else { return }
         motion.stopByTouch()
@@ -1423,6 +1477,10 @@ struct MultiClipEditor: View {
             guard !onTimeline else { return }
             scrubSkip = false
             if !motion.gliding { finishScrub(resume: true) }
+        }
+        // (after the tap that lifting it is)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+            if !onTimeline { motion.clearTouch() }
         }
     }
 
@@ -1509,7 +1567,7 @@ struct MultiClipEditor: View {
     /// A tool: its icon over its name, plain on the sheet, as a pro editor's tools row (design/pro-ui; the dark tiles
     /// went, and the names never cut off).
     private func action(_ icon: String, _ title: String, on: Bool, _ run: @escaping () -> Void) -> some View {
-        Button(action: run) {
+        Button { stopGlide(); run() } label: {
             VStack(spacing: 6) {
                 Image(systemName: icon).font(.system(size: 19, weight: .regular)).foregroundStyle(.white).frame(height: 22)
                 Text(title).font(.system(size: 10, weight: .medium)).foregroundStyle(Color(white: 0.74)).lineLimit(1).fixedSize()
@@ -1536,11 +1594,16 @@ struct MultiClipEditor: View {
             HStack { Text("Clip \(i + 1)"); Spacer(); Text("\(Self.clock(c.duration)) of \(Self.clock(c.length))").monospacedDigit() }
                 .font(.caption).foregroundStyle(.secondary)
             RangeBar(length: c.length, start: c.start, end: c.end, colour: .white, background: { ClipThumb(clip: c, whole: true) }) { s, e in
+                guard clips.indices.contains(i) else { return }
                 clips[i].start = s; clips[i].end = e
                 // its sound kept inside what's kept of the picture
                 if let ss = clips[i].soundStart { clips[i].soundStart = max(s, min(ss, e)) }
                 if let se = clips[i].soundEnd { clips[i].soundEnd = max(s, min(se, e)) }
-            } began: { remember() }
+            } began: {
+                editHeld(true)
+            } ended: {
+                editHeld(false)
+            }
             .frame(height: 58)
         }
     }
@@ -1557,6 +1620,7 @@ struct MultiClipEditor: View {
                     soundTile("speaker.wave.2.fill", "Volume", on: soundTool == .volume) { soundTool = .volume }
                     soundTile("waveform.path", "Fade", on: soundTool == .fade) { soundTool = .fade }
                     soundTile(c.soundOn ? "speaker.slash" : "speaker.slash.fill", c.soundOn ? "Mute" : "Muted", on: !c.soundOn) {
+                        guard clips.indices.contains(i) else { return }
                         remember(); clips[i].soundOn.toggle()
                     }
                     soundTile("music.note", "Use for all", on: soundOf == c.id) { remember(); soundOf = soundOf == c.id ? nil : c.id }
@@ -1606,10 +1670,10 @@ struct MultiClipEditor: View {
         let near = at.flatMap { t in c.keys.firstIndex { abs($0.at - t) < 0.15 } }
         let shown = c.keys.isEmpty ? c.volume : (at.map { c.level(at: $0) } ?? c.volume)
         return VStack(spacing: 10) {
-            ProSlider(value: Binding(get: { Double(shown) }, set: { v in setVolume(i, Float(v)) }), began: { remember() })
+            ProSlider(value: Binding(get: { Double(shown) }, set: { v in setVolume(i, Float(v)) }), began: { editHeld(true) }, ended: { editHeld(false) })
             HStack(spacing: 10) {
             keyButton(near != nil, on: at != nil) {
-                guard let at else { return }
+                guard let at, clips.indices.contains(i) else { return }
                 remember()
                 if let near { clips[i].keys.remove(at: near) }
                 else { clips[i].keys.append(VolumeKey(at: at, volume: c.keys.isEmpty ? c.volume : c.level(at: at))) }
@@ -1679,6 +1743,7 @@ struct MultiClipEditor: View {
 
     /// The slider moved: the clip's volume, or with keyframes the one at the line (made there if there isn't one).
     private func setVolume(_ i: Int, _ v: Float) {
+        guard clips.indices.contains(i) else { return }
         guard !clips[i].keys.isEmpty, let at = fileTime(i) else { clips[i].volume = v; return }
         if let k = clips[i].keys.firstIndex(where: { abs($0.at - at) < 0.15 }) { clips[i].keys[k].volume = v }
         else { clips[i].keys.append(VolumeKey(at: at, volume: v)) }
@@ -1688,10 +1753,15 @@ struct MultiClipEditor: View {
     private func fadePanel(_ i: Int) -> some View {
         let most = max(0.1, min(3, clips[i].duration / 2))
         return VStack(spacing: 14) {
-            fadeRow("Fade in", value: Binding(get: { min(clips[i].fadeIn, most) }, set: { clips[i].fadeIn = $0 }), most: most)
-            fadeRow("Fade out", value: Binding(get: { min(clips[i].fadeOut, most) }, set: { clips[i].fadeOut = $0 }), most: most)
+            fadeRow("Fade in", value: clipValue(i, \.fadeIn, most: most), most: most)
+            fadeRow("Fade out", value: clipValue(i, \.fadeOut, most: most), most: most)
         }
         .padding(.top, 4)
+    }
+
+    private func clipValue(_ i: Int, _ key: WritableKeyPath<Clip, Double>, most: Double) -> Binding<Double> {
+        Binding<Double>(get: { clips.indices.contains(i) ? min(clips[i][keyPath: key], most) : 0 },
+                        set: { (v: Double) in if clips.indices.contains(i) { clips[i][keyPath: key] = v } })
     }
 
     private func fadeRow(_ title: String, value: Binding<Double>, most: Double) -> some View {
@@ -1701,7 +1771,7 @@ struct MultiClipEditor: View {
                 Spacer()
                 Text(value.wrappedValue < 0.05 ? "Off" : String(format: "%.1f s", value.wrappedValue)).font(.subheadline).monospacedDigit().foregroundStyle(.secondary)
             }
-            Slider(value: value, in: 0...most, onEditingChanged: { if $0 { remember() } }).tint(.white)
+            Slider(value: value, in: 0...most, onEditingChanged: { editHeld($0) }).tint(.white)
         }
     }
 
@@ -1731,7 +1801,7 @@ struct MultiClipEditor: View {
     private func voiceMoved() {
         // (once it's let go, not each step: made again as it was trimmed, the words passed on the way were dropped for
         // good when it was dragged back out, and every step of the drag had that work to do)
-        guard barGrab == nil else { return }
+        guard barGrab == nil, restoring == nil else { return }
         let ids: Set<UUID> = Set(sounds.map { (s: EditSound) -> UUID in s.id })
         let tied = texts.contains { (t: EditText) -> Bool in
             guard t.kind == "caption", let words = t.words else { return false }
@@ -1762,7 +1832,7 @@ struct MultiClipEditor: View {
     }
 
     private func editChanged() {
-        if !edits.changed { edits.touched() }
+        if restoring == nil, !edits.changed { edits.touched() }
     }
 
     private func midEdit() -> Bool {
@@ -1773,6 +1843,8 @@ struct MultiClipEditor: View {
     private func recordEdit() { edits.record(snap) }
     /// Every text, caption, sticker, sound and overlay moved as far as the clip it starts over has moved.
     private func follow(from old: [Clip], to new: [Clip]) {
+        // (Undo has put what's over them where it was: followed as well, a voiceover's captions lost their hand trims)
+        if let back = restoring, back == new { return }
         guard !old.isEmpty, !new.isEmpty else { return }
         let was = ClipJoin.starts(old), now = ClipJoin.starts(new)
         var at: [UUID: Double] = [:]
@@ -1814,6 +1886,7 @@ struct MultiClipEditor: View {
 
     private func change(_ f: ([Clip]) -> [Clip]) { remember(); withAnimation(.snappy) { clips = f(clips) } }
     private func undo() {
+        stopGlide()
         let current: Snap = snap
         var h: EditHistory<Snap> = edits
         let last: Snap? = h.undo(from: current)
@@ -1821,6 +1894,7 @@ struct MultiClipEditor: View {
         if let last { restore(last) }
     }
     private func redo() {
+        stopGlide()
         let current: Snap = snap
         var h: EditHistory<Snap> = edits
         let next: Snap? = h.redo(from: current)
@@ -1828,6 +1902,10 @@ struct MultiClipEditor: View {
         if let next { restore(next) }
     }
     private func restore(_ s: Snap) {
+        restoring = s.clips
+        restores += 1
+        let turn: Int = restores
+        fingerHeld = false
         let carried: Bool = s.attached != SameJSON(value: attached)
         withAnimation(.snappy) {
             clips = s.clips; soundOf = s.soundOf; look = s.look
@@ -1841,7 +1919,11 @@ struct MultiClipEditor: View {
         closeGone(s)
         // what's over them as it was with these clips: put back after follow() has moved it with the clips
         DispatchQueue.main.async { layBack(s) }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { edits.absorb(snap) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            guard turn == restores else { return }   // (a second Undo meanwhile has its own)
+            edits.absorb(snap)
+            restoring = nil
+        }
     }
 
     private func layBack(_ s: Snap) {
@@ -1887,11 +1969,25 @@ struct MultiClipEditor: View {
     private func putBack(_ id: UUID) {
         guard let s = sounds.first(where: { $0.id == id }), let ci = clips.firstIndex(where: { $0.id == s.clip }) else { return }
         remember()
-        withAnimation(.snappy) { panel = nil; selectedSound = nil; sounds.removeAll { $0.id == id }; clips[ci].soundOn = true }
+        let home: Clip = clips[ci]
+        let said: [EditText] = CaptionLayers.returned(texts, from: s, clip: home)
+        let kept: [EditText] = CaptionLayers.returned(s.cut ?? [], from: s, clip: home)
+        withAnimation(.snappy) {
+            panel = nil; selectedSound = nil
+            texts = said
+            cutWords += kept
+            sounds.removeAll { $0.id == id }
+            clips[ci].soundOn = true
+        }
     }
 
     private func takeOff(_ id: UUID) {
         remember()
+        if let s = sounds.first(where: { (x: EditSound) -> Bool in x.id == id && x.kind == "clip" }) {
+            // (tied to a sound that's gone, its captions went for good at the next trim)
+            let home: Clip? = clips.first { (c: Clip) -> Bool in c.id == s.clip }
+            texts = CaptionLayers.returned(texts, from: s, clip: home)
+        }
         withAnimation(.snappy) {
             panel = nil; selectedSound = nil
             // a voiceover takes its captions with it, and the video's own under it come back on
@@ -1918,6 +2014,8 @@ struct MultiClipEditor: View {
     /// A caption being edited, and the line moves on (played or slid) into another: that one's picked, as CapCut
     /// does, so the panel is always for the caption on screen.
     private func followCaption(_ t: Double) {
+        // (not while it's being changed: the colour or size went onto the next one as the line went into it)
+        if fingerHeld || captionScreen != .main { return }
         guard let id = selectedText, let cur = texts.first(where: { (x: EditText) -> Bool in x.id == id }), cur.kind == "caption" else { return }
         guard t < cur.from || t >= cur.to else { return }
         // (the next in its own layer)
@@ -1954,9 +2052,10 @@ struct MultiClipEditor: View {
                 .frame(width: w, height: tall, alignment: .leading).clipped()
                 .overlay(RoundedRectangle(cornerRadius: corner, style: .continuous).stroke(.white.opacity(slim ? 0 : 0.45), lineWidth: 1))
                 // the song's beats, as yellow ticks (Stage E)
-                ForEach(songBeats.indices, id: \.self) { b in
+                let beats: [Double] = songBeats
+                ForEach(beats.indices, id: \.self) { b in
                     Rectangle().fill(Color.yellow.opacity(0.8)).frame(width: 1, height: 10)
-                        .offset(x: w * CGFloat(songBeats[b] / span), y: 14).allowsHitTesting(false)
+                        .offset(x: w * CGFloat(beats[b] / span), y: 14).allowsHitTesting(false)
                 }
                 // where it is: yellow while a finger looks through it, as in the single editor; white as it plays
                 Capsule().fill(wasPlaying != nil ? Color.yellow : Color.white).frame(width: lineWide, height: lineTall)
@@ -1967,7 +2066,7 @@ struct MultiClipEditor: View {
             .contentShape(Rectangle())
             .gesture(DragGesture(minimumDistance: 0)
                 .onChanged { v in
-                    if wasPlaying == nil { wasPlaying = player.rate != 0; player.pause(); playing = false }
+                    if wasPlaying == nil { stopGlide(); wasPlaying = player.rate != 0; player.pause(); playing = false }
                     // (short of the very end, where the preview goes round to the start again)
                     var t = min(max(0, Double(v.location.x / max(w, 1)) * span), max(0, span - 0.12))
                     // held on a clip's edge when it's near one, with a tick, as CapCut's line snaps
@@ -1996,6 +2095,7 @@ struct MultiClipEditor: View {
         }
         // thin, over a tool's panel: the panel has the room (design/bigger-preview-mockup.html)
         .frame(height: room)
+        .onDisappear { stripGone() }
     }
 
     /// What the preview's tracks are made of: what's put where, not how loud or how it looks. Two edits alike in this
@@ -2064,14 +2164,15 @@ struct MultiClipEditor: View {
     private func speedPanel(_ i: Int) -> some View {
         let c = clips[i]
         // the slider runs evenly through the halvings and doublings: 0.25, 0.5, 1, 2, 4
-        let place = Binding<Double>(get: { log2(max(0.25, min(4, clips[i].speed))) }, set: { v in
+        let place = Binding<Double>(get: { clips.indices.contains(i) ? log2(max(0.25, min(4, clips[i].speed))) : 0 }, set: { v in
+            guard clips.indices.contains(i) else { return }
             var x = (pow(2.0, v) * 20).rounded() / 20
             for stop in [0.25, 0.5, 1, 2, 4] where abs(log2(x) - log2(stop)) < 0.08 { x = stop }
             clips[i].speed = max(0.25, min(4, x))
         })
         return VStack(spacing: 6) {
             Text(Self.speedText(c.speed)).font(.system(size: 34, weight: .black, design: .rounded)).monospacedDigit()
-            Slider(value: place, in: -2...2, onEditingChanged: { if $0 { remember() } }).tint(.white)
+            Slider(value: place, in: -2...2, onEditingChanged: { editHeld($0) }).tint(.white)
             HStack { ForEach(["0.25×", "0.5×", "1×", "2×", "4×"], id: \.self) { Text($0) }.frame(maxWidth: .infinity) }
                 .font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
             Text("\(String(format: "%.1f", c.duration)) s → \(String(format: "%.1f", c.span)) s · its sound keeps its pitch")
@@ -2180,7 +2281,8 @@ struct MultiClipEditor: View {
 
     private func overlayHeld(_ on: Bool) {
         if on {
-            remember()
+            stopGlide()
+            captionStep()
             if player.rate != 0 { player.pause() }
             playing = false
             movedAll = nil
@@ -2272,6 +2374,11 @@ struct MultiClipEditor: View {
         var all: [EditText] = texts
         for i in all.indices where all[i].kind == "caption" { edit(&all[i]) }
         texts = all
+        changeKept(edit)
+    }
+
+    /// The captions kept of what's trimmed off clips and sounds.
+    private func changeKept(_ edit: (inout EditText) -> Void) {
         var kept: [EditText] = cutWords
         for i in kept.indices { edit(&kept[i]) }
         if kept != cutWords { cutWords = kept }
@@ -2372,6 +2479,11 @@ struct MultiClipEditor: View {
         remember()
         texts.removeAll { (t: EditText) -> Bool in t.id == id }
         cutWords.removeAll { (t: EditText) -> Bool in t.id == id }
+        for k in sounds.indices {
+            guard let cut = sounds[k].cut else { continue }
+            let left: [EditText] = cut.filter { (t: EditText) -> Bool in t.id != id }
+            if left.count != cut.count { sounds[k].cut = left.isEmpty ? nil : left }
+        }
     }
 
     /// What can be put over the video, when no clip is picked (the mockup's bottom row).
@@ -2582,7 +2694,7 @@ struct MultiClipEditor: View {
             Task { @MainActor in
                 // (22 Nov: 300 was "a little long", 225 "could be quicker still")
                 try? await Task.sleep(for: .milliseconds(170))
-                guard press == pressCount, pressed == item.id, !pressMoved, barGrab == nil, scrubFrom == nil, !handleDown else { return }
+                guard press == pressCount, pressed == item.id, !pressMoved, barGrab == nil, scrubFrom == nil, !handleDown, !motion.justStopped else { return }
                 holdRows()
                 lifted = item.id
                 player.pause(); playing = false
@@ -2781,6 +2893,7 @@ struct MultiClipEditor: View {
 
     private func startVoice() {
         holding = true
+        stopGlide()
         player.pause()
         Task {
             guard await VoiceRecorder.allowed() else { holding = false; flash("Voiceovers need the microphone: allow it in Settings › Cheat Days."); return }
@@ -2866,7 +2979,7 @@ struct MultiClipEditor: View {
         let near = at.flatMap { t in keys.firstIndex { abs($0.at - t) < 0.15 } }
         let shown = keys.isEmpty ? s.volume : s.keyLevel(at: at ?? s.start)
         return VStack(spacing: 10) {
-            ProSlider(value: Binding(get: { Double(shown) }, set: { v in setBarVolume(k, Float(v)) }), began: { remember() })
+            ProSlider(value: Binding(get: { Double(shown) }, set: { v in setBarVolume(k, Float(v)) }), began: { editHeld(true) }, ended: { editHeld(false) })
             HStack(spacing: 10) {
             keyButton(near != nil, on: at != nil) {
                 guard let at, sounds.indices.contains(k) else { return }
@@ -2929,6 +3042,7 @@ struct MultiClipEditor: View {
 
     /// A clip's sound made clearer (Clarity), or back as it was.
     private func clearer(_ i: Int) {
+        guard clips.indices.contains(i) else { return }
         if clips[i].clean != nil { remember(); clips[i].clean = nil; return }
         let c = clips[i]
         joining = true; player.pause()
@@ -3175,11 +3289,11 @@ struct MultiClipEditor: View {
         return VStack(spacing: 10) {
             HStack(spacing: 12) {
                 Text("Size").font(.subheadline.weight(.semibold)).frame(width: 64, alignment: .leading)
-                Slider(value: Binding(get: { pips.indices.contains(k) ? pips[k].place(at: now).size : 0.36 }, set: { v in setPip(p.id) { $0.size = v } }), in: 0.12...1).tint(.white)
+                Slider(value: Binding(get: { pips.indices.contains(k) ? pips[k].place(at: now).size : 0.36 }, set: { v in setPip(p.id) { $0.size = v } }), in: 0.12...1, onEditingChanged: { editHeld($0) }).tint(.white)
             }
             HStack(spacing: 12) {
                 Text("See-through").font(.subheadline.weight(.semibold)).frame(width: 64, alignment: .leading).lineLimit(1).minimumScaleFactor(0.7)
-                Slider(value: Binding(get: { pips.indices.contains(k) ? pips[k].place(at: now).opacity : 1 }, set: { v in setPip(p.id) { $0.opacity = v } }), in: 0.1...1).tint(.white)
+                Slider(value: Binding(get: { pips.indices.contains(k) ? pips[k].place(at: now).opacity : 1 }, set: { v in setPip(p.id) { $0.opacity = v } }), in: 0.1...1, onEditingChanged: { editHeld($0) }).tint(.white)
             }
             HStack(spacing: 10) {
                 Button {
@@ -3219,7 +3333,7 @@ struct MultiClipEditor: View {
         return VStack(spacing: 10) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
-                    chip("Still", on: c.moves.isEmpty) { remember(); clips[i].moves = [] }
+                    chip("Still", on: c.moves.isEmpty) { if clips.indices.contains(i) { remember(); clips[i].moves = [] } }
                     chip("Slow zoom in", on: false) { setMoves(i, [MoveKey(at: 0), MoveKey(at: c.span, size: 1.18)]) }
                     chip("Slow zoom out", on: false) { setMoves(i, [MoveKey(at: 0, size: 1.18), MoveKey(at: c.span)]) }
                     chip("Drift left", on: false) { setMoves(i, [MoveKey(at: 0, x: 0.54, size: 1.12), MoveKey(at: c.span, x: 0.46, size: 1.12)]) }
@@ -3228,10 +3342,9 @@ struct MultiClipEditor: View {
             }
             HStack(spacing: 12) {
                 Text("Zoom").font(.subheadline.weight(.semibold))
-                Slider(value: Binding(get: { MoveKey.value(clips[i].moves, at: now - startOf(i), base: MoveKey(at: 0)).size },
-                                      set: { v in setClipMove(i) { $0.size = v } }), in: 1...2, onEditingChanged: { if $0 { remember() } }).tint(.white)
+                Slider(value: zoomValue(i), in: 1...2, onEditingChanged: { editHeld($0) }).tint(.white)
                 Button {
-                    guard inside else { return }
+                    guard inside, clips.indices.contains(i) else { return }
                     remember()
                     if let near { clips[i].moves.remove(at: near) } else { var key = m; key.at = at; clips[i].moves.append(key) }
                 } label: {
@@ -3247,13 +3360,24 @@ struct MultiClipEditor: View {
         }
     }
 
+    private func zoomValue(_ i: Int) -> Binding<Double> {
+        Binding<Double>(get: { () -> Double in
+            guard clips.indices.contains(i) else { return 1 }
+            return MoveKey.value(clips[i].moves, at: now - startOf(i), base: MoveKey(at: 0)).size
+        }, set: { (v: Double) in
+            setClipMove(i) { (m: inout MoveKey) in m.size = v }
+        })
+    }
+
     private func setMoves(_ i: Int, _ keys: [MoveKey]) {
+        guard clips.indices.contains(i) else { return }
         remember(); clips[i].moves = keys
         seek(startOf(i) + 0.01); player.play()
     }
 
     /// The clip's zoom at the line: all of it with no keyframes (as one keyframe), the one at the line with some.
     private func setClipMove(_ i: Int, _ change: (inout MoveKey) -> Void) {
+        guard clips.indices.contains(i) else { return }
         let at = min(max(0, now - startOf(i)), clips[i].span)
         var m = MoveKey.value(clips[i].moves, at: at, base: MoveKey(at: 0))
         change(&m); m.at = at
@@ -3646,7 +3770,7 @@ struct MultiClipEditor: View {
             }
             HStack(spacing: 10) {
                 Image(systemName: "textformat.size.smaller").foregroundStyle(.secondary)
-                Slider(value: Binding(get: { texts.indices.contains(k) ? texts[k].size : 1 }, set: { if texts.indices.contains(k) { texts[k].size = $0 } }), in: 0.4...3).tint(.white)
+                Slider(value: Binding(get: { texts.indices.contains(k) ? texts[k].size : 1 }, set: { if texts.indices.contains(k) { texts[k].size = $0 } }), in: 0.4...3, onEditingChanged: { editHeld($0) }).tint(.white)
                 Image(systemName: "textformat.size.larger").foregroundStyle(.secondary)
             }
             Button(role: .destructive) {
@@ -3678,7 +3802,7 @@ struct MultiClipEditor: View {
     private func styleCaptions(_ caps: [Int], _ style: String) {
         remember()
         for i in caps { texts[i].style = style }
-        for i in cutWords.indices { cutWords[i].style = style }   // (those trimmed off come back the same)
+        changeKept { (t: inout EditText) in t.style = style }   // (those trimmed off come back the same)
     }
 
     private func highlightCaptions(_ caps: [Int], on: Bool) {
@@ -3687,7 +3811,7 @@ struct MultiClipEditor: View {
             if !on { t.highlight = "none" } else if t.highlight == "none" { t.highlight = nil }
         }
         for i in caps { set(&texts[i]) }
-        for i in cutWords.indices { set(&cutWords[i]) }
+        changeKept(set)
     }
 
     private func takeOffCaptions() {
@@ -4055,6 +4179,7 @@ struct MultiClipEditor: View {
     private func joinSquare(_ i: Int) -> some View {
         let set = clips[i].transition != nil
         return Button {
+            guard !motion.justStopped else { return }
             joinAt = i
             withAnimation(.snappy) { panel = .join }
         } label: {
@@ -4104,8 +4229,7 @@ struct MultiClipEditor: View {
             }
             if let tr {
                 HStack { Text("Length").font(.subheadline.weight(.semibold)); Spacer(); Text(String(format: "%.1f s", min(tr.length, most))).font(.subheadline).monospacedDigit().foregroundStyle(.secondary) }
-                Slider(value: Binding(get: { min(clips[i].transition?.length ?? 0.5, most) }, set: { clips[i].transition?.length = $0 }),
-                       in: 0.2...max(0.21, most), onEditingChanged: { if $0 { remember() } }).tint(.white)
+                Slider(value: joinLength(i, most: most), in: 0.2...max(0.21, most), onEditingChanged: { editHeld($0) }).tint(.white)
                 Button {
                     change { all in
                         var all = all
@@ -4122,10 +4246,26 @@ struct MultiClipEditor: View {
         .onAppear { seek(max(0, startOf(i + 1) - 0.6)); player.play() }
     }
 
+    private func joinLength(_ i: Int, most: Double) -> Binding<Double> {
+        Binding<Double>(get: { () -> Double in
+            guard clips.indices.contains(i) else { return min(0.5, most) }
+            return min(clips[i].transition?.length ?? 0.5, most)
+        }, set: { (v: Double) in
+            if clips.indices.contains(i) { clips[i].transition?.length = v }
+        })
+    }
+
     private func setJoin(_ i: Int, _ tr: ClipTransition?) {
+        guard clips.indices.contains(i) else { return }
         change { all in var all = all; all[i].transition = tr; return all }
         // shown straight away: from just before it
-        if tr != nil { DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { seek(max(0, startOf(i + 1) - 0.6)); player.play() } }
+        if tr != nil { DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { showJoin(i) } }
+    }
+
+    private func showJoin(_ i: Int) {
+        guard clips.indices.contains(i + 1), clips[i].transition != nil else { return }
+        seek(max(0, startOf(i + 1) - 0.6))
+        player.play()
     }
 
     /// The single editor's chip: white when it's the one picked.
@@ -4156,6 +4296,7 @@ struct MultiClipEditor: View {
                 chip("Adjust", on: lookTool == "Adjust") { lookTool = "Adjust" }
                 Spacer()
                 Button("Use for all") {
+                    guard clips.indices.contains(i) else { return }
                     let l = clips[i].look
                     change { all in var all = all; for k in all.indices { all[k].look = l }; return all }
                 }
@@ -4165,7 +4306,7 @@ struct MultiClipEditor: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
                         ForEach(StoryArt.filters, id: \.self) { n in
-                            chip(n, on: n == name) { remember(); clips[i].look = StoryArt.look(n, known) }
+                            chip(n, on: n == name) { if clips.indices.contains(i) { remember(); clips[i].look = StoryArt.look(n, known) } }
                         }
                     }
                 }
@@ -4181,8 +4322,8 @@ struct MultiClipEditor: View {
                 }
                 Slider(value: Binding(get: { known[row.0] ?? 0 }, set: { v in
                     var next = known; next[row.0] = abs(v) < 2 ? 0 : v.rounded()
-                    clips[i].look = StoryArt.look(name, next)
-                }), in: row.3...row.4, onEditingChanged: { if $0 { remember() } }).tint(.white)
+                    if clips.indices.contains(i) { clips[i].look = StoryArt.look(name, next) }
+                }), in: row.3...row.4, onEditingChanged: { editHeld($0) }).tint(.white)
             }
         }
     }
@@ -4336,6 +4477,7 @@ struct Bars: View {
 struct ProSlider: View {
     @Binding var value: Double
     var began: () -> Void = {}
+    var ended: () -> Void = {}
     @State private var holding = false
     @State private var from: Double?
     @GestureState private var touching = false   // (back to false however the drag ends, cut short too)
@@ -4363,8 +4505,11 @@ struct ProSlider: View {
                         // landed, so a touch near it snapped the volume)
                         value = Double(min(1, max(0, (from ?? value) + Double(v.translation.width / w))))
                     }
-                    .onEnded { _ in holding = false; from = nil })
-                .onChange(of: touching) { _, now in if !now { holding = false; from = nil } }
+                    .onEnded { _ in letGo() })
+                .onChange(of: touching) { (_: Bool, down: Bool) in
+                    if !down { letGo() }
+                }
+                .onDisappear { letGo() }
             }
             .frame(height: 24)
             HStack(spacing: 0) {
@@ -4382,7 +4527,15 @@ struct ProSlider: View {
         .accessibilityAdjustableAction { dir in
             began()
             value = min(1, max(0, value + (dir == .increment ? 0.05 : -0.05)))
+            ended()
         }
+    }
+
+    private func letGo() {
+        guard holding else { return }
+        holding = false
+        from = nil
+        ended()
     }
 }
 
@@ -4396,6 +4549,7 @@ struct RangeBar<Back: View>: View {
     @ViewBuilder var background: () -> Back
     let changed: (Double, Double) -> Void
     var began: () -> Void = {}
+    var ended: () -> Void = {}
     @State private var dragging = false
 
     var body: some View {
@@ -4417,6 +4571,13 @@ struct RangeBar<Back: View>: View {
             }
             .coordinateSpace(name: "range")   // the handles follow the finger along the bar
         }
+        .onDisappear { letGo() }
+    }
+
+    private func letGo() {
+        guard dragging else { return }
+        dragging = false
+        ended()
     }
 
     private let grip: CGFloat = 18
@@ -4430,7 +4591,7 @@ struct RangeBar<Back: View>: View {
             .offset(x: x)
             .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("range"))
                 .onChanged { v in if !dragging { dragging = true; began(); UISelectionFeedbackGenerator().selectionChanged() }; move(v.location.x) }
-                .onEnded { _ in dragging = false })
+                .onEnded { _ in letGo() })
             .accessibilityLabel(left ? "Start" : "End")
     }
 }

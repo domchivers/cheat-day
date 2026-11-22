@@ -155,16 +155,57 @@ enum CaptionLayers {
     static func restore(_ kept: EditText, into all: inout [EditText]) -> Bool {
         guard let i = all.firstIndex(where: { (t: EditText) -> Bool in t.id == kept.id }) else { all.append(kept); return true }
         var words: [EditText.Word] = all[i].words ?? []
-        var added = false
+        var added: [EditText.Word] = []
         for w in kept.words ?? [] {
-            let there: Bool = words.contains { (x: EditText.Word) -> Bool in x.src == w.src && x.clip == w.clip }
-            if !there { words.append(w); added = true }
+            let there: Bool = (words + added).contains { (x: EditText.Word) -> Bool in x.src == w.src && x.clip == w.clip }
+            if !there { added.append(w) }
         }
-        guard added else { return false }
+        guard !added.isEmpty else { return false }
+        // split since, with another's words between: a caption of its own (put on the first half, it was said out of
+        // turn and cut short by the second)
+        if parted(words + added, of: kept.id, in: all) {
+            var own: EditText = kept
+            own.id = UUID()
+            own.words = added
+            own.text = joined(added)
+            all.append(own)
+            return true
+        }
+        words += added
         words.sort { (a: EditText.Word, b: EditText.Word) -> Bool in (a.src ?? 0) < (b.src ?? 0) }
         all[i].words = words
         all[i].text = joined(words)
         return true
+    }
+
+    /// Whether another caption has words said between these.
+    private static func parted(_ words: [EditText.Word], of id: UUID, in all: [EditText]) -> Bool {
+        let moments: [Double] = words.compactMap { (w: EditText.Word) -> Double? in w.src }
+        guard let low = moments.min(), let high = moments.max(), let one = words.last else { return false }
+        for t in all where t.id != id && t.kind == "caption" {
+            for w in t.words ?? [] {
+                guard let at = w.src, at > low, at < high else { continue }
+                if w.clip != nil && w.clip == one.clip { return true }
+                if let file = w.file, file == one.file { return true }
+            }
+        }
+        return false
+    }
+
+    /// A separated sound gone back on its clip, or taken off: the words heard in it are that clip's again.
+    static func returned(_ texts: [EditText], from s: EditSound, clip: Clip?) -> [EditText] {
+        texts.map { (t: EditText) -> EditText in
+            guard let words = t.words, words.contains(where: { (w: EditText.Word) -> Bool in w.clip == s.id }) else { return t }
+            var out: EditText = t
+            out.words = words.map { (w: EditText.Word) -> EditText.Word in
+                guard w.clip == s.id else { return w }
+                var x: EditText.Word = w
+                x.clip = clip?.id
+                x.file = clip?.source.lastPathComponent ?? s.file?.lastPathComponent
+                return x
+            }
+            return out
+        }
     }
 
     static func joined(_ words: [EditText.Word]) -> String {

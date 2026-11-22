@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import CheatDays
 
@@ -75,6 +76,39 @@ final class EditorFixesTests: XCTestCase {
         XCTAssertTrue(cut.texts.isEmpty)
         let back = ClipCuts.trimmed(cut.texts, kept: cut.kept, clips: [made.clip], sounds: [])
         XCTAssertEqual(back.texts.map { (t: EditText) -> String in t.text }, ["we glaze pots"])
+    }
+
+    func testAWordDoesntComeBackOutOfTurnAfterASplit() throws {
+        let made: (clip: Clip, texts: [EditText]) = captioned()
+        var short: Clip = made.clip
+        short.end = 2.5
+        let cut = ClipCuts.trimmed(made.texts, kept: [], clips: [short], sounds: [])
+        let left: EditText = try XCTUnwrap(cut.texts.first)
+        let halves: (EditText, EditText) = try XCTUnwrap(EditOverlays.split(left, at: 1))
+
+        let back = ClipCuts.trimmed([halves.0, halves.1], kept: cut.kept, clips: [made.clip], sounds: [])
+        let inOrder: [EditText] = back.texts.sorted { (a: EditText, b: EditText) -> Bool in a.from < b.from }
+        XCTAssertEqual(inOrder.map { (t: EditText) -> String in t.text }, ["we", "glaze", "pots"])
+    }
+
+    func testASeparatedSoundsWordsGoBackToItsClip() {
+        let clip = Clip(source: URL(fileURLWithPath: "/tmp/talk.mov"), length: 5, start: 0, end: 5)
+        let sound = EditSound(kind: "clip", name: "Clip 1 sound", file: clip.source, from: 0, length: 5)
+        var word = EditText.Word(text: "hi", at: 1)
+        word.clip = sound.id
+        word.src = 1
+        let caption = EditText(kind: "caption", text: "hi", from: 1, to: 2, words: [word])
+        let back: [EditText] = CaptionLayers.returned([caption], from: sound, clip: clip)
+        XCTAssertEqual(back.first?.words?.first?.clip, clip.id)
+        XCTAssertEqual(back.first?.words?.first?.file, "talk.mov")
+    }
+
+    func testTheFiveOldHighlightsKeepTheirBlackInk() {
+        for name in ["yellow", "green", "red", "blue", "white"] {
+            var t = EditText(kind: "caption", text: "hi", from: 0, to: 1)
+            t.highlight = ColourCode.hex(named: name)
+            XCTAssertEqual(t.popInk, .black, name)
+        }
     }
 
     // MARK: music

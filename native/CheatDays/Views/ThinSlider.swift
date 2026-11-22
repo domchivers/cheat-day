@@ -46,6 +46,7 @@ struct ThinSlider: View {
         .onChange(of: touching) { (_: Bool, down: Bool) in
             if !down { letGo() }
         }
+        .onDisappear { letGo() }
     }
 
     @ViewBuilder private func rail(width: CGFloat, x: CGFloat) -> some View {
@@ -61,6 +62,7 @@ struct ThinSlider: View {
 
     private func dragged(_ dx: CGFloat, width: CGFloat) {
         if from == nil {
+            guard abs(dx) > 0.5 else { return }   // (only touched: nothing's changed, and it's no step)
             from = value
             held(true)
         }
