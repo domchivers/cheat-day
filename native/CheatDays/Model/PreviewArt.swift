@@ -14,6 +14,10 @@ enum PreviewArt {
         let gen = AVAssetImageGenerator(asset: AVURLAsset(url: c.source))
         gen.appliesPreferredTrackTransform = true
         gen.maximumSize = CGSize(width: 360, height: 360)
+        // (left alone it gives the nearest keyframe: both sides of a split were the same picture)
+        let near = CMTime(seconds: 0.05, preferredTimescale: 600)
+        gen.requestedTimeToleranceBefore = near
+        gen.requestedTimeToleranceAfter = near
         let time = CMTime(seconds: min(max(0, seconds), max(0, c.length - 0.05)), preferredTimescale: 600)
         return try? await gen.image(at: time).image
     }

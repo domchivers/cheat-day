@@ -294,7 +294,7 @@ struct MultiClipEditor: View {
         }
         // text typed on the video itself, everything else dimmed behind
         .fullScreenCover(isPresented: $templating) {
-            TemplateMaker(clips: clips, frame: look, swap: proxies, make: { t, c, s, m in Task { @MainActor in await makeTemplate(t, c, s, m) } }, close: { templating = false })
+            TemplateMaker(clips: clips, editLook: look, proxies: proxies, make: { t, c, s, m in Task { @MainActor in await makeTemplate(t, c, s, m) } }, close: { templating = false })
         }
         .fullScreenCover(isPresented: Binding(get: { typing != nil }, set: { if !$0 { endTyping() } })) {
             if let k = texts.firstIndex(where: { $0.id == typing }) { typingView(k) }
@@ -314,10 +314,10 @@ struct MultiClipEditor: View {
             wentAway()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-            Sound.on(.moviePlayback)
-            player.wake()
+            editorBack()
         }
         .onDisappear {
+            holding = false
             pressTask?.cancel()
             if recording { _ = recorder.stop() }
             motion.end()
@@ -345,6 +345,12 @@ struct MultiClipEditor: View {
             .modifier(EditorTroubleAlert(trouble: $trouble, retry: { finish() }))
             .modifier(EditWatch<Snap>(edit: snap, began: { startHistory() }, changed: { editChanged() },
                                       busy: { midEdit() }, settled: { recordEdit() }))
+    }
+
+    private func editorBack() {
+        guard !recording else { return }
+        Sound.on(.moviePlayback)
+        player.wake()
     }
 
     private func wentAway() {
@@ -485,6 +491,10 @@ struct MultiClipEditor: View {
         if motion.gliding {
             motion.end()
             finishScrub(resume: false)
+        }
+        if panel == .songs {
+            SongPlayer.shared.stop()
+            Sound.on(.moviePlayback)
         }
         if player.rate == 0 { player.play(); playing = true } else { player.pause(); playing = false }
     }
@@ -791,9 +801,10 @@ struct MultiClipEditor: View {
     @ViewBuilder private func sheetHead(_ open: Panel) -> some View {
         // (choosing a song has the room; recording, the line stays with the voice)
         if open != .songs {
+            let held: Bool = recording || count != nil || press.phase != .idle
             captionHead
-                .allowsHitTesting(!recording)
-                .opacity(recording ? 0.5 : 1)
+                .disabled(held)
+                .opacity(held ? 0.5 : 1)
         }
     }
 
@@ -827,9 +838,19 @@ struct MultiClipEditor: View {
         Task { @MainActor in await addSong(song) }
     }
 
+    /// The chooser's gone: the sound the editor's again, unless the editor's gone with it (the feed stopped their
+    /// Spotify).
+    private func songsLeft() {
+        guard player.onTime != nil else { return }
+        Sound.on(.moviePlayback)
+    }
+
     /// Something's to be heard by itself: the edit stops for it.
     private func hearAlone() {
-        if player.rate != 0 { player.pause() }
+        if player.rate != 0 {
+            player.pause()
+            now = player.currentTime().seconds   // (the last it was told is up to a twentieth behind)
+        }
         playing = false
     }
 
@@ -871,7 +892,7 @@ struct MultiClipEditor: View {
         case .effects: liveEffects
         case .soundItem: if let k = sounds.firstIndex(where: { (s: EditSound) -> Bool in s.id == selectedSound }) { liveSoundItem(k) }
         case .beats: liveMusic
-        case .songs: SongChooser(picked: $songPicked, hearing: { hearAlone() })
+        case .songs: SongChooser(picked: $songPicked, hearing: { hearAlone() }, left: { songsLeft() })
         case .captions: captionsPanel
         case .captionList: liveList
         default: EmptyView()
@@ -2193,6 +2214,10 @@ struct MultiClipEditor: View {
 
     private func change(_ f: ([Clip]) -> [Clip]) { remember(); withAnimation(.snappy) { clips = f(clips) } }
     private func undo() {
+        if recording {
+            endVoice()   // (kept: the same tap took off what it had just recorded)
+            return
+        }
         endVoice()
         stopGlide()
         let current: Snap = snap
@@ -2202,6 +2227,10 @@ struct MultiClipEditor: View {
         if let last { restore(last) }
     }
     private func redo() {
+        if recording {
+            endVoice()   // (kept: the same tap took off what it had just recorded)
+            return
+        }
         endVoice()
         stopGlide()
         let current: Snap = snap
@@ -2364,7 +2393,7 @@ struct MultiClipEditor: View {
                 let beats: [Double] = songBeats
                 ForEach(beats.indices, id: \.self) { b in
                     Rectangle().fill(Color.yellow.opacity(0.8)).frame(width: 1, height: 10)
-                        .offset(x: w * CGFloat(beats[b] / span), y: 14).allowsHitTesting(false)
+                        .offset(x: w * CGFloat(beats[b] / span), y: slim ? 6 : 14).allowsHitTesting(false)
                 }
                 // where it is: yellow while a finger looks through it, as in the single editor; white as it plays
                 Capsule().fill(wasPlaying != nil ? Color.yellow : Color.white).frame(width: lineWide, height: lineTall)
@@ -2441,7 +2470,7 @@ struct MultiClipEditor: View {
         player.update(clips: clips, soundOf: soundOf, look: look, sounds: sounds, pips: pips, swap: proxies)
         frameSize = player.frameSize
         if player.rate == 0, abs(player.currentTime().seconds - now) > 0.001 { seek(min(now, max(0, total - 0.05))) }
-        Sound.on(.moviePlayback)
+        if !recording { Sound.on(.moviePlayback) }   // (a 4K copy finishing switched the microphone off mid-take)
         if play { player.play(); playing = true }
     }
 
@@ -2530,6 +2559,7 @@ struct MultiClipEditor: View {
     private func finish() {
         endVoice()
         SongPlayer.shared.stop()
+        Sound.on(.moviePlayback)   // (Cancel, or it failing, comes back here)
         motion.end()
         finishScrub(resume: false)
         joining = true; progress = 0; player.pause()
@@ -3305,10 +3335,12 @@ struct MultiClipEditor: View {
             }
             ProBody(height: 144, spacing: 6) {
                 if recording { LiveMeter(meter: recorder.meter) } else { countdownPick }
-                RecordButton(recording: recording, count: count, pressed: { voicePressed() }, released: { voiceReleased() })
+                RecordButton(recording: recording, count: count, pressed: { voicePressed() }, released: { (seconds: Double?) in voiceReleased(after: seconds) })
                 Text(voiceHint).font(.system(size: 12)).foregroundStyle(ProInk.quiet).lineLimit(1).minimumScaleFactor(0.8)
             }
         }
+        // (asked as it opens: asked at the first tap, the question itself called that take off)
+        .task { _ = await VoiceRecorder.allowed() }
     }
 
     private var voiceHint: String {
@@ -3357,9 +3389,9 @@ struct MultiClipEditor: View {
         }
     }
 
-    private func voiceReleased() {
+    private func voiceReleased(after seconds: Double?) {
         var p: VoicePress = press
-        let act: VoicePress.Act = p.released()
+        let act: VoicePress.Act = p.released(after: seconds)
         press = p
         // (the hold's timing over; a countdown just begun times itself)
         if act != .count, p.phase != .counting {
@@ -3430,7 +3462,7 @@ struct MultiClipEditor: View {
     private func startVoice() {
         holding = true
         stopGlide()
-        player.pause()
+        hearAlone()
         Task {
             guard await VoiceRecorder.allowed() else {
                 holding = false
@@ -3438,7 +3470,11 @@ struct MultiClipEditor: View {
                 flash("Voiceovers need the microphone: allow it in Settings › Cheat Days.")
                 return
             }
-            guard holding, !recording else { return }
+            // (nor once the editor's closed)
+            guard holding, !recording, player.onTime != nil else { return }
+            // (a finger still on the strip would have moved it on under the take)
+            finishScrub(resume: false)
+            wasPlaying = nil
             guard total - now > 0.35 else {
                 holding = false
                 press.reset()
@@ -3448,12 +3484,16 @@ struct MultiClipEditor: View {
             do {
                 recordFrom = now
                 try recorder.start(clear: clearVoice)
+                recorder.broke = { endVoice() }
                 recordBegan = Date()
                 recording = true
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 player.isMuted = true
+                player.loops = false
                 player.play(); playing = true
             } catch {
+                _ = recorder.stop()
+                Sound.on(.moviePlayback)
                 holding = false
                 press.reset()
                 flash("Couldn't start recording.")
@@ -3469,6 +3509,7 @@ struct MultiClipEditor: View {
         press.reset()
         guard recording else { return }
         recording = false
+        player.loops = true
         player.pause(); player.isMuted = false
         playing = false
         if let (url, length) = recorder.stop() {
@@ -3945,7 +3986,7 @@ struct MultiClipEditor: View {
     }
 
     private func motionTiles(_ i: Int, _ c: Clip) -> some View {
-        MotionStrip(clip: c, choices: Self.motions(span: c.span), pick: { (m: MoveChoice) in pickMotion(i, m.keys) })
+        MotionStrip(clip: c, choices: Self.motions(span: c.span), paused: joining, pick: { (m: MoveChoice) in pickMotion(i, m.keys) })
     }
 
 
@@ -4395,7 +4436,8 @@ struct MultiClipEditor: View {
     @ViewBuilder private func itemFields(_ item: EditText) -> some View {
         let id: UUID = item.id
         if item.kind != "sticker" && item.kind != "card" && item.kind != "calories" {
-            wordsField("Words", text: Binding<String>(get: { item.text }, set: { (new: String) in captionWords(id, new) }))
+            wordsField("Words", text: Binding<String>(get: { item.text }, set: { (new: String) in captionWords(id, new) }),
+                       lines: item.kind == "label" ? 1 : 3)
         }
         if item.kind == "label" {
             wordsField("Under it", text: Binding<String>(get: { item.detail }, set: { (new: String) in setDetail(id, new) }))
@@ -4408,12 +4450,13 @@ struct MultiClipEditor: View {
         }
     }
 
-    private func wordsField(_ name: String, text: Binding<String>) -> some View {
-        HStack(spacing: 12) {
+    private func wordsField(_ name: String, text: Binding<String>, lines: Int = 1) -> some View {
+        let axis: Axis = lines > 1 ? .vertical : .horizontal
+        return HStack(spacing: 12) {
             Text(name).font(.system(size: 12)).foregroundStyle(ProInk.quiet).frame(width: 58, alignment: .leading)
-            TextField(name, text: text).font(.system(size: 14))
+            TextField(name, text: text, axis: axis).font(.system(size: 14)).lineLimit(1...lines)
         }
-        .frame(height: 38)
+        .frame(minHeight: 38)
         .overlay(alignment: .bottom) { Rectangle().fill(ProInk.rule).frame(height: 0.5) }
     }
 
@@ -4604,18 +4647,19 @@ struct MultiClipEditor: View {
                          style: { selectText(c.id) },
                          delete: { deleteCaption(c.id) })
                 .frame(height: 48)
-            if on { captionRowTools(c.id) }
+            if on { captionRowTools(c.id, canSplit: wordAtLine(c) > 0) }
         }
         .overlay(alignment: .bottom) { Rectangle().fill(Color.white.opacity(0.07)).frame(height: 1) }
     }
 
     /// The picked row's own Split and Delete.
-    private func captionRowTools(_ id: UUID) -> some View {
+    private func captionRowTools(_ id: UUID, canSplit: Bool) -> some View {
         HStack(spacing: 0) {
             Button { splitCaptionAtLine(id) } label: {
                 Image(systemName: "scissors").font(.system(size: 13)).frame(width: 34, height: 48).contentShape(Rectangle())
             }
-            .buttonStyle(.plain).accessibilityLabel("Split at the line")
+            .buttonStyle(.plain).disabled(!canSplit).opacity(canSplit ? 1 : 0.35)
+            .accessibilityLabel("Split at the line").accessibilityHint("Once the line's past its first word")
             Button { deleteCaption(id) } label: {
                 Image(systemName: "trash").font(.system(size: 13)).frame(width: 30, height: 48).contentShape(Rectangle())
             }
@@ -4628,7 +4672,7 @@ struct MultiClipEditor: View {
     private func splitCaptionAtLine(_ id: UUID) {
         guard let k = texts.firstIndex(where: { (t: EditText) -> Bool in t.id == id }) else { return }
         let c: EditText = texts[k]
-        let word: Int = now >= c.from && now < c.to ? (c.lit(at: now) ?? 0) : 0
+        let word: Int = wordAtLine(c)
         guard let halves = EditOverlays.split(c, at: word) else {
             flash("Slide the line to the word it should split before, or put the cursor there and tap Split.")
             return
@@ -4637,6 +4681,12 @@ struct MultiClipEditor: View {
         texts[k] = halves.0
         texts.append(halves.1)
         listPicked = halves.1.id
+    }
+
+    /// Which of a caption's words the line's on; the first when it's not on it.
+    private func wordAtLine(_ c: EditText) -> Int {
+        guard now >= c.from, now < c.to else { return 0 }
+        return c.lit(at: now) ?? 0
     }
 
     /// A caption's words tapped to type in: it's the one picked, the video at it.
@@ -4848,14 +4898,14 @@ struct MultiClipEditor: View {
         return HStack(spacing: 12) {
             Text("\(n + 1)").font(.system(size: 12, weight: .medium, design: .monospaced)).frame(width: 16, alignment: .leading)
             if on {
-                TextField("Step", text: words).font(.system(size: 14))
+                TextField("Step", text: words, axis: .vertical).font(.system(size: 14)).lineLimit(1...3).padding(.vertical, 6)
             } else {
-                Text(plan.words[n] ?? saved).font(.system(size: 14)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                Text(plan.words[n] ?? saved).font(.system(size: 14)).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
             }
             if !even { stepClip(n) }
         }
         .foregroundStyle(on ? Color.white : ProInk.quiet)
-        .frame(height: 48)
+        .frame(minHeight: 48)
         .overlay(alignment: .bottom) { Rectangle().fill(ProInk.rule).frame(height: 0.5) }
         .contentShape(Rectangle())
         .onTapGesture { pickStep(n) }
@@ -4926,6 +4976,8 @@ struct MultiClipEditor: View {
             guard !motion.justStopped else { return }
             joinAt = i
             withAnimation(.snappy) { panel = .join }
+            seek(max(0, startOf(i + 1) - 0.6))
+            player.play()
         } label: {
             // a small square on the join, edged in the sheet's colour so it stands off the clips (design/pro-ui)
             Image(systemName: set ? "arrow.left.arrow.right" : "plus").font(.system(size: 7.5, weight: .black))
@@ -4953,12 +5005,11 @@ struct MultiClipEditor: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .onAppear { seek(max(0, startOf(i + 1) - 0.6)); player.play() }
     }
 
     private func joinTiles(_ i: Int, _ tr: ClipTransition?, most: Double) -> some View {
         JoinStrip(from: clips[i], into: clips[i + 1], picked: tr?.name ?? "None", direction: tr?.direction ?? "left",
-                  pick: { (name: String) in pickJoin(i, name, tr, most: most) })
+                  paused: joining, pick: { (name: String) in pickJoin(i, name, tr, most: most) })
     }
 
 

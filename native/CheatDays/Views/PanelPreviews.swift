@@ -54,6 +54,7 @@ struct JoinStrip: View {
     let into: Clip
     let picked: String
     let direction: String
+    let paused: Bool
     let pick: (String) -> Void
     @State private var frames: [String: [CGImage]] = [:]
     @Environment(\.accessibilityReduceMotion) private var still
@@ -64,11 +65,9 @@ struct JoinStrip: View {
 
     var body: some View {
         let names: [String] = ["None"] + ClipTransition.kinds
-        return TimelineView(.animation(minimumInterval: 1.0 / 20.0, paused: still)) { context in
-            strip(names, step: step(at: context.date.timeIntervalSinceReferenceDate))
-        }
-        .frame(height: 85)
-        .task(id: source) { await load(names) }
+        return strip(names)
+            .frame(height: 85)
+            .task(id: source) { await load(names) }
     }
 
     private func step(at seconds: Double) -> Int {
@@ -76,12 +75,19 @@ struct JoinStrip: View {
         return Int((p * Double(PreviewArt.steps - 1)).rounded())
     }
 
-    private func strip(_ names: [String], step: Int) -> some View {
+    private func strip(_ names: [String]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(names, id: \.self) { (name: String) in tile(name, step: step) }
+            LazyHStack(spacing: 8) {
+                ForEach(names, id: \.self) { (name: String) in live(name) }
             }
             .padding(.horizontal, 16)
+        }
+    }
+
+    /// Each turns by itself, so those scrolled off don't.
+    private func live(_ name: String) -> some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 20.0, paused: still || paused)) { context in
+            tile(name, step: step(at: context.date.timeIntervalSinceReferenceDate))
         }
     }
 
@@ -117,12 +123,13 @@ struct MoveChoice: Identifiable {
 struct MotionStrip: View {
     let clip: Clip
     let choices: [MoveChoice]
+    let paused: Bool
     let pick: (MoveChoice) -> Void
     @State private var picture: CGImage?
     @Environment(\.accessibilityReduceMotion) private var still
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: still)) { context in
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: still || paused)) { context in
             tiles(progress: still ? 0.5 : PreviewArt.progress(at: context.date.timeIntervalSinceReferenceDate, length: 1.8, rest: 0.4))
         }
         .frame(height: 85)

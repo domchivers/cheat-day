@@ -39,7 +39,8 @@ struct TemplateGallery: View {
     private var cards: some View {
         let columns: [GridItem] = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
         return LazyVGrid(columns: columns, spacing: 12) {
-            ForEach(Array(EditTemplate.all.enumerated()), id: \.element.id) { (n: Int, t: EditTemplate) in
+            ForEach(EditTemplate.all.indices, id: \.self) { (n: Int) in
+                let t: EditTemplate = EditTemplate.all[n]
                 TemplateCard(template: t, slots: t.slots(log, recipe: nil), reels: reels, offset: n, pick: { pick(t) })
             }
         }

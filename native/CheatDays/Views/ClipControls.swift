@@ -23,9 +23,10 @@ struct SpeedRuler: View {
                 ruler(g.size)
             }
             .frame(height: 34)
-            HStack(spacing: 0) {
-                ForEach(Self.stops, id: \.self) { (stop: Double) in mark(stop) }
+            GeometryReader { g in
+                labels(width: max(g.size.width - 20, 1))
             }
+            .frame(height: 24)
         }
         .accessibilityElement()
         .accessibilityLabel("Speed")
@@ -41,6 +42,14 @@ struct SpeedRuler: View {
         while s.hasSuffix("0") { s.removeLast() }
         if s.hasSuffix(".") { s.removeLast() }
         return s + "×"
+    }
+
+    private func labels(width w: CGFloat) -> some View {
+        ZStack(alignment: .topLeading) {
+            ForEach(Self.stops, id: \.self) { (stop: Double) in
+                mark(stop).frame(width: 52).position(x: 10 + w * CGFloat((log2(stop) + 2) / 4), y: 12)
+            }
+        }
     }
 
     private func ruler(_ size: CGSize) -> some View {

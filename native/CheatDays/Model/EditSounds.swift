@@ -153,9 +153,21 @@ enum SoundEffects {
               let ch = buffer.floatChannelData?[0] else { return nil }
         buffer.frameLength = AVAudioFrameCount(samples.count)
         for i in samples.indices { ch[i] = samples[i] }
-        guard let file = try? AVAudioFile(forWriting: out, settings: format.settings) else { return nil }
-        do { try file.write(from: buffer) } catch { return nil }
-        return out
+        // (written apart and moved in: a tap read the half being made)
+        let part: URL = dir.appendingPathComponent(UUID().uuidString + ".caf")
+        do {
+            let file = try AVAudioFile(forWriting: part, settings: format.settings)
+            try file.write(from: buffer)
+        } catch {
+            try? FileManager.default.removeItem(at: part)
+            return nil
+        }
+        do {
+            try FileManager.default.moveItem(at: part, to: out)
+        } catch {
+            try? FileManager.default.removeItem(at: part)   // (the other one got there first)
+        }
+        return FileManager.default.fileExists(atPath: out.path) ? out : nil
     }
 
     /// How long each is, seconds.
@@ -244,6 +256,9 @@ final class VoiceRecorder {
     private var began = Date()
     /// How loud it's hearing, for the level shown as it records.
     let meter = VoiceMeter()
+    /// The phone stopped it: a call, Siri, headphones put in.
+    var broke: (() -> Void)?
+    private var watching: [NSObjectProtocol] = []
 
     static func allowed() async -> Bool { await AVAudioApplication.requestRecordPermission() }
 
@@ -267,6 +282,27 @@ final class VoiceRecorder {
         engine.prepare()
         try engine.start()
         began = Date()
+        watch()
+    }
+
+    private func watch() {
+        unwatch()
+        let center = NotificationCenter.default
+        watching.append(center.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
+            // (starting changes it too, and is still running after)
+            guard let self, !self.engine.isRunning else { return }
+            self.broke?()
+        })
+        watching.append(center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] (note: Notification) in
+            guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  AVAudioSession.InterruptionType(rawValue: raw) == .began else { return }
+            self?.broke?()
+        })
+    }
+
+    private func unwatch() {
+        for token in watching { NotificationCenter.default.removeObserver(token) }
+        watching = []
     }
 
     /// The loudest moment in a buffer, 0 to 1.
@@ -279,11 +315,16 @@ final class VoiceRecorder {
 
     /// Stopped: the recording, and how long it is.
     func stop() -> (URL, Double)? {
+        unwatch()
+        broke = nil
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         try? engine.inputNode.setVoiceProcessingEnabled(false)
+        // (what's in the file: stopped by the phone, the clock went on after the sound had ended)
+        var written: Double = 0
+        if let file { written = Double(file.length) / file.processingFormat.sampleRate }
         file = nil
-        let length = Date().timeIntervalSince(began)
+        let length: Double = min(written, Date().timeIntervalSince(began))
         guard let url, length > 0.25 else { return nil }
         return (url, length)
     }

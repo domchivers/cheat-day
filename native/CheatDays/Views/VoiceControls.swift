@@ -5,8 +5,10 @@ struct RecordButton: View {
     let recording: Bool
     let count: Int?
     let pressed: () -> Void
-    let released: () -> Void
+    /// How long the finger was on it, when that's known.
+    let released: (Double?) -> Void
     @State private var down = false
+    @State private var began: Date?
     @GestureState private var touching = false
 
     var body: some View {
@@ -25,31 +27,38 @@ struct RecordButton: View {
         .contentShape(Rectangle())
         .gesture(DragGesture(minimumDistance: 0)
             .updating($touching) { _, on, _ in on = true }
-            .onChanged { _ in touched() }
-            .onEnded { _ in lifted() })
+            .onChanged { (v: DragGesture.Value) in touched(v.time) }
+            .onEnded { (v: DragGesture.Value) in ended(v.time) })
         .onChange(of: touching) { (_: Bool, on: Bool) in
-            if !on { lifted() }
+            // (after onEnded, which knows how long it was; by itself when the touch was called off)
+            if !on { DispatchQueue.main.async { lifted(nil) } }
         }
-        .onDisappear { lifted() }
+        .onDisappear { lifted(nil) }
         .accessibilityElement()
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel(recording ? "Recording: tap to stop" : "Tap to record a voiceover, or hold to talk")
         .accessibilityAction {
             pressed()
-            released()
+            released(nil)
         }
     }
 
-    private func touched() {
+    private func touched(_ at: Date) {
         guard !down else { return }
         down = true
+        began = at
         pressed()
     }
 
-    private func lifted() {
+    private func ended(_ at: Date) {
+        lifted(began.map { (start: Date) -> Double in at.timeIntervalSince(start) })
+    }
+
+    private func lifted(_ seconds: Double?) {
         guard down else { return }
         down = false
-        released()
+        began = nil
+        released(seconds)
     }
 }
 

@@ -38,7 +38,12 @@ struct VoicePress: Equatable {
     }
 
     /// The finger off it.
-    mutating func released() -> Act {
+    mutating func released(after seconds: Double? = nil) -> Act {
+        // (the phone was busy starting the microphone, and the hold's timer was heard before the finger lifting)
+        if phase == .held, let seconds, seconds < Self.hold {
+            phase = .going
+            return .none
+        }
         switch phase {
         case .down:
             phase = countdown ? .counting : .going

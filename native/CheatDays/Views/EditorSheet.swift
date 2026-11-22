@@ -26,17 +26,22 @@ struct ProSheet<Head: View, Main: View>: View {
     let done: () -> Void
     @ViewBuilder let head: () -> Head
     @ViewBuilder let main: () -> Main
+    @State private var typing = false
 
     static var height: CGFloat { 310 }
+    /// With the keyboard up the transport and strip make way, or a small phone has no room left for the video.
+    static var typingHeight: CGFloat { 244 }
 
     var body: some View {
         VStack(spacing: 0) {
-            head()
+            if !typing { head() }
             VStack(spacing: 0) { main() }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             ProFoot(title: title, left: left, done: done)
         }
-        .frame(height: Self.height)
+        .frame(height: typing ? Self.typingHeight : Self.height)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in typing = true }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in typing = false }
         .foregroundStyle(Color.white)
         .background { ProInk.back.ignoresSafeArea(edges: .bottom) }
     }
@@ -171,12 +176,19 @@ struct ProTabs: View {
 
 /// The 104 points under a panel's tabs (144 with no tabs).
 struct ProBody<Content: View>: View {
-    var height: CGFloat = 104
-    var spacing: CGFloat = 10
-    @ViewBuilder let content: () -> Content
+    private let height: CGFloat
+    private let spacing: CGFloat
+    private let content: Content
+
+    // (made now, not in this view's own body: that ran after the caller had checked the clip or sound was still there)
+    init(height: CGFloat = 104, spacing: CGFloat = 10, @ViewBuilder content: () -> Content) {
+        self.height = height
+        self.spacing = spacing
+        self.content = content()
+    }
 
     var body: some View {
-        VStack(spacing: spacing) { content() }
+        VStack(spacing: spacing) { content }
             .frame(maxWidth: .infinity)
             .frame(height: height)
             .padding(.horizontal, 16)
@@ -244,7 +256,7 @@ struct ProPick: View {
     private func choice(_ o: ProOption) -> some View {
         let here: Bool = o.id == value
         return Button {
-            guard !here else { return }
+            // (the one shown as picked too: it can be what some have, or what's to be done again)
             UISelectionFeedbackGenerator().selectionChanged()
             pick(o.id)
         } label: {

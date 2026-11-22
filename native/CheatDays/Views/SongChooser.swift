@@ -5,6 +5,7 @@ import SwiftUI
 struct SongChooser: View {
     @Binding var picked: Song?
     let hearing: () -> Void
+    let left: () -> Void
     @State private var words = ""
     @State private var mood = SongSearch.all
 
@@ -82,7 +83,8 @@ struct SongChooser: View {
         var part = ""
         if let chosen {
             let from: Double = Music.long[chosen.id] == nil ? 0 : chosen.from
-            part = "\(MultiClipEditor.clock(from)) – \(MultiClipEditor.clock(from + Song.part))"
+            let plays: Double = Self.plays(chosen, from: from)
+            part = "\(MultiClipEditor.clock(from)) – \(MultiClipEditor.clock(from + plays))"
         }
         return Button { tapped(song) } label: {
             HStack(spacing: 12) {
@@ -104,12 +106,18 @@ struct SongChooser: View {
                        ended: { hearPart() })
                 .padding(.bottom, 4)
         } else {
-            ProHint(words: "This one has the one part, 30 seconds. It goes round to the end of your video.")
+            ProHint(words: "This one has the one part, \(Int(Self.plays(song, from: 0))) seconds. It goes round to the end of your video.")
                 .frame(height: 42)
         }
     }
 
     private static func key(_ song: Song) -> String { "edit:" + song.id }
+
+    /// How much of it plays.
+    private static func plays(_ song: Song, from: Double) -> Double {
+        guard let long = Music.long[song.id] else { return Song.part }
+        return max(0, min(Song.part, long.len - from))
+    }
 
     private func tapped(_ song: Song) {
         hearing()
@@ -141,8 +149,8 @@ struct SongChooser: View {
 
     private func leave() {
         if player.playing?.hasPrefix("edit:") == true { player.stop() }
-        // (a song stopped switches the phone's sound off: the editor still wants it)
-        Sound.on(.moviePlayback)
+        // (a song stopped switches the phone's sound off: the editor says whether it still wants it)
+        left()
     }
 }
 
@@ -154,6 +162,7 @@ private struct PartWindow: View {
     let moved: (Double) -> Void
     let ended: () -> Void
     @State private var from: Double?
+    @State private var scrolling = false
     @GestureState private var touching = false
 
     private static let pink = Color(red: 1, green: 0.56, blue: 0.74)
@@ -184,7 +193,9 @@ private struct PartWindow: View {
                 .frame(width: wide, height: h).offset(x: x)
         }
         .contentShape(Rectangle())
-        .gesture(DragGesture(minimumDistance: 0)
+        .onTapGesture(count: 1, coordinateSpace: .local) { (p: CGPoint) in jumped(p.x, width: w, wide: wide) }
+        // (alongside the list's own scroll, and only for a sideways finger)
+        .simultaneousGesture(DragGesture(minimumDistance: 8)
             .updating($touching) { _, on, _ in on = true }
             .onChanged { (v: DragGesture.Value) in dragged(v, width: w, x: x, wide: wide) }
             .onEnded { _ in letGo() })
@@ -194,7 +205,12 @@ private struct PartWindow: View {
     }
 
     private func dragged(_ v: DragGesture.Value, width: CGFloat, x: CGFloat, wide: CGFloat) {
+        if scrolling { return }
         if from == nil {
+            if abs(v.translation.height) > abs(v.translation.width) {
+                scrolling = true
+                return
+            }
             let inside: Bool = v.startLocation.x >= x - 8 && v.startLocation.x <= x + wide + 8
             // (outside the window: it comes to the finger)
             from = inside ? start : Double((v.startLocation.x - wide / 2) / width) * length
@@ -202,7 +218,13 @@ private struct PartWindow: View {
         moved((from ?? start) + Double(v.translation.width / width) * length)
     }
 
+    private func jumped(_ x: CGFloat, width: CGFloat, wide: CGFloat) {
+        moved(Double((x - wide / 2) / width) * length)
+        ended()
+    }
+
     private func letGo() {
+        scrolling = false
         guard from != nil else { return }
         from = nil
         ended()

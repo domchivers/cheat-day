@@ -28,6 +28,8 @@ final class PreviewEngine {
 
     /// Told where it's got to, about twenty times a second while it plays.
     var onTime: ((Double) -> Void)?
+    /// Round again at the end; off while a voiceover records, which ends there.
+    var loops = true
     /// Told when the finished video's size is known or changes.
     var onSize: ((CGSize) -> Void)?
 
@@ -188,10 +190,20 @@ final class PreviewEngine {
         guard loaded, !clips.isEmpty else { return nil }
         var t = time(at: host)
         if rate != 0 {
-            // round again at the end
-            if t >= total - 0.01 { pause(); held = 0; play(); t = 0 }
-            mixer.levels(at: t)
-            if abs(t - lastTold) >= 0.05 { lastTold = t; onTime?(t) }
+            if t >= total - 0.01 {
+                pause()
+                if loops {
+                    // round again at the end
+                    held = 0; play(); t = 0
+                } else {
+                    held = max(0, total - 0.01); t = held
+                    lastTold = t; onTime?(t)
+                }
+            }
+            if rate != 0 {
+                mixer.levels(at: t)
+                if abs(t - lastTold) >= 0.05 { lastTold = t; onTime?(t) }
+            }
         }
         let full = frameSize
         let k = min(1, 720 / max(full.width, 1))   // drawn at most 720 across: the screen's preview is no bigger

@@ -9,8 +9,8 @@ import SwiftUI
 struct TemplateMaker: View {
     var clips: [Clip]
     /// The edit's shape, and the smaller copies of its 4K clips, for what plays here.
-    var frame: EditLook = EditLook()
-    var swap: [URL: URL] = [:]
+    var editLook: EditLook = EditLook()
+    var proxies: [URL: URL] = [:]
     var make: (EditTemplate, [Clip], [EditTemplate.Slot], JSON?) -> Void
     var close: () -> Void
 
@@ -209,7 +209,7 @@ struct TemplateMaker: View {
         let began: Bool = cut.clips.isEmpty
         let made: TemplateCut = TemplateCut.make(t, library: library, filled: filled, moments: moments, slots: slots, music: music)
         cut = made
-        player.update(clips: made.clips, soundOf: nil, look: frame, sounds: made.sounds, pips: [], swap: swap)
+        player.update(clips: made.clips, soundOf: nil, look: editLook, sounds: made.sounds, pips: [], swap: proxies)
         frameSize = player.frameSize
         guard !made.clips.isEmpty else {
             pause()

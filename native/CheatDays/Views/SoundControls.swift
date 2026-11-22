@@ -61,6 +61,7 @@ struct KeyframeStrip: View {
             p.addLine(to: CGPoint(x: w, y: Self.y(last.level, height: h)))
         }
         .stroke(Color.white, lineWidth: 1.2)
+        .clipped()   // (a keyframe left outside a trimmed part took the line over the button beside it)
     }
 
     private func moved(_ x: CGFloat, width w: CGFloat, keys: [StripKey]) {

@@ -3,6 +3,21 @@ import XCTest
 
 /// 22 Nov, design/editor-panels-mockup.html: the previews, the record button, choosing a song.
 final class EditorToolsTests: XCTestCase {
+    func testAQuickTapHeardLateIsStillATap() {
+        var p = VoicePress()
+        XCTAssertEqual(p.pressed(countdown: false), VoicePress.Act.start)
+        XCTAssertEqual(p.heldLong(), VoicePress.Act.none)
+        XCTAssertEqual(p.released(after: 0.1), VoicePress.Act.none)
+        XCTAssertEqual(p.phase, VoicePress.Phase.going)
+    }
+
+    func testALongPressStillStopsAsItsLetGo() {
+        var p = VoicePress()
+        _ = p.pressed(countdown: false)
+        _ = p.heldLong()
+        XCTAssertEqual(p.released(after: 1.2), VoicePress.Act.stop)
+    }
+
     func testATapStartsAndATapStops() {
         var p = VoicePress()
         XCTAssertEqual(p.pressed(countdown: false), VoicePress.Act.start)
