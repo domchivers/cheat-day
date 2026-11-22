@@ -496,7 +496,12 @@ struct MultiClipEditor: View {
             SongPlayer.shared.stop()
             Sound.on(.moviePlayback)
         }
-        if player.rate == 0 { player.play(); playing = true } else { player.pause(); playing = false }
+        if player.rate == 0 {
+            listPicked = nil   // (from here it's the one being said: left picked, it stayed white all through)
+            player.play(); playing = true
+        } else {
+            player.pause(); playing = false
+        }
     }
 
     /// At the top of the sheet, as a pro editor lays it: where it is of how long on the left, play in the middle, a
@@ -637,6 +642,7 @@ struct MultiClipEditor: View {
 
     private func editAllCaptions() {
         listPicked = nil
+        selectedText = nil
         withAnimation(.snappy) { panel = .captionList }
     }
 
@@ -746,8 +752,15 @@ struct MultiClipEditor: View {
     }
 
     private func editEveryCaption(_ id: UUID) {
-        listPicked = id
         captionScreen = .main
+        showInList(id)
+    }
+
+    /// Edit captions, at that one; none held up on the video (paused, it showed in place of the one being said).
+    private func showInList(_ id: UUID) {
+        listPicked = id
+        selectedText = nil
+        if let c = texts.first(where: { (t: EditText) -> Bool in t.id == id }), now < c.from || now >= c.to { seek(c.from + 0.01) }
         withAnimation(.snappy) { panel = .captionList }
     }
 
@@ -2782,7 +2795,7 @@ struct MultiClipEditor: View {
                     }
                 }
                 if caption {
-                    action("list.bullet", "Edit captions", on: true) { listPicked = b.id; withAnimation(.snappy) { panel = .captionList } }
+                    action("list.bullet", "Edit captions", on: true) { showInList(b.id) }
                 }
                 if b.kind == 0 { action("plus.square.on.square", "Copy", on: true) { copyText(b.id) } }
                 action("trash", "Delete", on: true) { deleteBar(b) }
@@ -4615,11 +4628,13 @@ struct MultiClipEditor: View {
     private var captionList: some View {
         let caps = captionIndices
         let saying = caps.first { now >= texts[$0].from && now < texts[$0].to }.map { texts[$0].id }
+        let picked: EditText? = texts.first { (t: EditText) -> Bool in t.id == listPicked }
+        let lit: UUID? = CaptionFocus.row(picked: picked, saying: saying, at: now, playing: playing)
         return ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(caps.indices, id: \.self) { n in
-                        layeredRow(caps[n], saying: saying).id(texts[caps[n]].id)
+                        layeredRow(caps[n], saying: saying, lit: lit).id(texts[caps[n]].id)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -4631,13 +4646,13 @@ struct MultiClipEditor: View {
     }
 
     /// A row, knowing whether there's one before or after it in its own layer to merge with.
-    private func layeredRow(_ k: Int, saying: UUID?) -> some View {
+    private func layeredRow(_ k: Int, saying: UUID?, lit: UUID?) -> some View {
         let mates: [Int] = layerMates(texts[k].id)
-        return captionRow(k, first: mates.first == k, last: mates.last == k, saying: saying)
+        return captionRow(k, first: mates.first == k, last: mates.last == k, saying: saying, lit: lit)
     }
 
-    private func captionRow(_ k: Int, first: Bool, last: Bool, saying: UUID?) -> some View {
-        let c = texts[k], on = c.id == (listPicked ?? saying), talking = playing && c.id == saying
+    private func captionRow(_ k: Int, first: Bool, last: Bool, saying: UUID?, lit: UUID?) -> some View {
+        let c = texts[k], on = c.id == lit, talking = playing && c.id == saying
         return HStack(spacing: 8) {
             Button { playCaption(c.id) } label: {
                 Image(systemName: talking ? "pause.fill" : "play.fill").font(.system(size: 12, weight: .bold))
@@ -4698,7 +4713,9 @@ struct MultiClipEditor: View {
 
     /// A caption's words tapped to type in: it's the one picked, the video at it.
     private func pickCaption(_ id: UUID) {
-        guard listPicked != id, let c = texts.first(where: { $0.id == id }) else { return }
+        guard let c = texts.first(where: { $0.id == id }) else { return }
+        // (picked already, the line has to still be in it: it can have played on)
+        if listPicked == id, !playing, now >= c.from, now < c.to { return }
         player.pause(); playing = false
         listPicked = id; if selectedText != nil { selectedText = id }
         seek(c.from + 0.01)

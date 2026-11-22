@@ -157,6 +157,25 @@ enum ColourCode {
 }
 
 /// Something dragged on the video: where it goes, held on the middle when it's near it.
+/// Which caption shows as the one picked.
+enum CaptionFocus {
+    /// Edit captions' white row: the one being said as it plays; paused, the one picked while the line's still in it.
+    static func row(picked: EditText?, saying: UUID?, at t: Double, playing: Bool) -> UUID? {
+        guard !playing, let picked, t >= picked.from, t < picked.to else { return saying }
+        return picked.id
+    }
+
+    /// The caption held up by itself on the paused video: the one picked, unless the line's gone on into another.
+    static func held(picked: UUID?, in texts: [EditText], at t: Double, playing: Bool) -> UUID? {
+        guard !playing, let picked else { return nil }
+        let shown: [EditText] = texts.filter { (x: EditText) -> Bool in x.kind == "caption" && x.hidden != true }
+        guard let mine = shown.first(where: { (x: EditText) -> Bool in x.id == picked }) else { return nil }
+        if t >= mine.from && t < mine.to { return picked }
+        let another: Bool = shown.contains { (x: EditText) -> Bool in t >= x.from && t < x.to }
+        return another ? nil : picked
+    }
+}
+
 enum OverlayDrag {
     struct Place: Equatable {
         var x: Double

@@ -3,6 +3,23 @@ import XCTest
 
 /// 22 Nov, design/editor-panels-mockup.html: every editor panel on the one sheet.
 final class EditorPanelsTests: XCTestCase {
+    func testTheListFollowsWhatsSaidAsItPlays() {
+        let early = EditText(kind: "caption", text: "hello my friend", from: 8, to: 9)
+        let said = UUID()
+        XCTAssertEqual(CaptionFocus.row(picked: early, saying: said, at: 14, playing: true), said)
+        XCTAssertEqual(CaptionFocus.row(picked: early, saying: said, at: 14, playing: false), said)
+        XCTAssertEqual(CaptionFocus.row(picked: early, saying: said, at: 8.5, playing: false), early.id)
+    }
+
+    func testPausedLaterTheOneBeingSaidShows() {
+        let early = EditText(kind: "caption", text: "how's it going?", from: 9, to: 10)
+        let later = EditText(kind: "caption", text: "bury it", from: 17, to: 18)
+        let both: [EditText] = [early, later]
+        XCTAssertNil(CaptionFocus.held(picked: early.id, in: both, at: 17.5, playing: false))
+        XCTAssertEqual(CaptionFocus.held(picked: early.id, in: both, at: 9.5, playing: false), early.id)
+        XCTAssertEqual(CaptionFocus.held(picked: early.id, in: both, at: 12, playing: false), early.id)
+    }
+
     @MainActor func testTheSpeedRulerHoldsOnItsStops() {
         XCTAssertEqual(SpeedRuler.speed(at: 0.05), 1)
         XCTAssertEqual(SpeedRuler.speed(at: 0.97), 2)

@@ -56,7 +56,7 @@ struct VideoOverlays: View {
     private func layer(_ r: CGRect, size: CGSize) -> some View {
         let t: Double = clock.time
         let items: [EditText] = drawn
-        let held: UUID? = heldCaption
+        let held: UUID? = CaptionFocus.held(picked: selected, in: texts, at: t, playing: playing)
         // (all from the one top left corner)
         return ZStack(alignment: .topLeading) {
             if rounded { corners(r) }
@@ -106,12 +106,6 @@ struct VideoOverlays: View {
         return CaptionLayers.placed(all, sounds: sounds)
     }
 
-    /// A caption picked and held up while paused: the others aren't drawn with it.
-    private var heldCaption: UUID? {
-        guard !playing, let id = selected else { return nil }
-        let up: Bool = texts.contains { (x: EditText) -> Bool in x.id == id && x.kind == "caption" && x.hidden != true }
-        return up ? id : nil
-    }
 
     private func shows(_ p: EditPip, at t: Double) -> Bool {
         if p.id == selectedPip || p.id == pipHold?.id { return true }
@@ -120,7 +114,7 @@ struct VideoOverlays: View {
 
     private func shows(_ item: EditText, at t: Double, held: UUID?) -> Bool {
         if item.id == hold?.id { return true }
-        if item.id == selected && !playing { return true }
+        if item.id == selected && !playing && (item.kind != "caption" || item.id == held) { return true }
         guard t >= item.from, t < item.to else { return false }
         return !(item.kind == "caption" && held != nil)
     }
@@ -338,6 +332,12 @@ struct VideoOverlays: View {
                 p.addRect(CGRect(x: r.minX, y: r.minY + r.height * 0.83, width: r.width, height: r.height * 0.17))
             }
             .fill(red)
+            Text("Covered by buttons and the caption")
+                .font(.system(size: 11)).foregroundStyle(Color(red: 1, green: 0.702, blue: 0.702))
+                .lineLimit(1).minimumScaleFactor(0.7)
+                .padding(6)
+                .frame(width: r.width, height: r.height * 0.17, alignment: .top)
+                .offset(x: r.minX, y: r.minY + r.height * 0.83)
             if h.middleX {
                 Rectangle().fill(Color.yellow).frame(width: 1, height: r.height).offset(x: r.midX - 0.5, y: r.minY)
             }
