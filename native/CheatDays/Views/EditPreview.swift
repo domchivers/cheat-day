@@ -21,6 +21,9 @@ struct EditPreviewView: UIViewRepresentable {
         v.isOpaque = true
         v.preferredFramesPerSecond = 120   // (as fast as the screen goes: 60 on one that can't)
         v.autoResizeDrawable = true
+        // (resized, the picture already drawn at the new size is fitted, not stretched, till the next frame's drawn:
+        // 23 Nov, opening a text squashed the video tall and thin)
+        v.layer.contentsGravity = .resizeAspect
         v.delegate = context.coordinator
         return v
     }

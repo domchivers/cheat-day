@@ -225,6 +225,7 @@ struct MultiClipEditor: View {
                         .photosPicker(isPresented: $replacing, selection: $replacePicks, maxSelectionCount: 1, matching: .any(of: [.images, .videos]))
                 }
             }
+            .modifier(KeyboardSpace(own: textPanelUp))
             if let progress {
                 Color.black.opacity(0.6).ignoresSafeArea()
                 VStack(spacing: 14) {
@@ -663,14 +664,17 @@ struct MultiClipEditor: View {
     private var bottom: some View {
         VStack(spacing: 0) {
             if let item = editedWords {
-                wordsSheet(item)
+                wordsSheet(item).transition(sheetSwap)
             } else if let open = panel {
                 panelSheet(open)
             } else {
-                timelineSheet
+                timelineSheet.transition(sheetSwap)
             }
         }
     }
+
+    /// Opening a text just added: no fade, the panel rises as the video makes room.
+    private var sheetSwap: AnyTransition { typing != nil ? AnyTransition.identity : AnyTransition.opacity }
 
     /// A caption's own sheet (design/caption-panel-pro-mockup.html): flat, one height, no rows of bars.
     private func captionSheet(_ item: EditText) -> some View {
@@ -2638,6 +2642,9 @@ struct MultiClipEditor: View {
         let isCaption: Bool = texts.contains { (t: EditText) -> Bool in t.id == id && t.kind == "caption" }
         return isCaption ? id : nil
     }
+
+    /// A text's panel on its main screen, which keeps the keyboard's room itself (the wheel's hex box doesn't).
+    private var textPanelUp: Bool { editingText != nil && captionScreen == .main }
 
     /// The text whose panel is open.
     private var editingText: UUID? {

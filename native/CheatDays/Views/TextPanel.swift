@@ -22,6 +22,9 @@ struct TextPanel<Head: View>: View {
     @State private var tab = "Style"
     @State private var before: EditText?
     @State private var appeared = false
+    /// The keyboard's height over the home bar: kept clear under the words while typing, so the panel is where it'll
+    /// be before the keyboard's up (23 Nov: the video grew as the panel came, then shrank as the keyboard did).
+    @State private var room: CGFloat = TypingRoom.last
     @FocusState private var focused: Bool
 
     private static var keyboard: String { "Keyboard" }
@@ -37,6 +40,7 @@ struct TextPanel<Head: View>: View {
             case .wheel: wheel
             case .dropper: DropperSheet(hex: hex, back: { backOut() }, take: { take() })
             }
+            if typing { Color.clear.frame(height: room) }
         }
         .frame(height: tall)
         .fixedSize(horizontal: false, vertical: typing)
@@ -44,6 +48,9 @@ struct TextPanel<Head: View>: View {
         .background { ProInk.back.ignoresSafeArea(edges: .bottom) }
         .onAppear { opened() }
         .onChange(of: focused) { (_: Bool, on: Bool) in focusChanged(on) }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { (n: Notification) in
+            keyboardMoved(n)
+        }
         // (the wheel's hex box keeps the keyboard's Done; the words have a tick of their own)
         .onChange(of: screen) { (_: CaptionScreen, now: CaptionScreen) in KeyboardDone.quiet = now == .main }
         .onDisappear { closed() }
@@ -144,6 +151,13 @@ struct TextPanel<Head: View>: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             if tab == Self.keyboard { focused = true }
         }
+    }
+
+    /// The keyboard's real height, kept for next time (a guess till it's first been up).
+    private func keyboardMoved(_ n: Notification) {
+        guard typing, let r = TypingRoom.measured(n), abs(r - room) > 0.5 else { return }
+        TypingRoom.last = r
+        withAnimation(.snappy(duration: 0.25)) { room = r }
     }
 
     private func focusChanged(_ on: Bool) {
@@ -296,5 +310,37 @@ struct TextPanel<Head: View>: View {
         step()
         paint(s.hex)
         fade(s.alpha)
+    }
+}
+/// The keyboard's height over the home bar, as last seen.
+enum TypingRoom {
+    private static let key = "editor.keyboardRoom"
+
+    /// (Before it's been up: a usual iPhone keyboard's, with its row of suggestions.)
+    static var last: CGFloat {
+        get {
+            let v: Double = UserDefaults.standard.double(forKey: key)
+            return v > 0 ? CGFloat(v) : 302
+        }
+        set { UserDefaults.standard.set(Double(newValue), forKey: key) }
+    }
+
+    /// From a keyboard that's coming or changing; nil for one going away.
+    static func measured(_ n: Notification) -> CGFloat? {
+        guard let f = n.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return nil }
+        let screen: CGFloat = UIScreen.main.bounds.height
+        guard f.height > 1, f.minY < screen - 1 else { return nil }
+        let window: UIWindow? = UIApplication.shared.connectedScenes.compactMap { (s: UIScene) -> UIWindow? in (s as? UIWindowScene)?.keyWindow }.first
+        let inset: CGFloat = window?.safeAreaInsets.bottom ?? 0
+        return max(0, screen - f.minY - inset)
+    }
+}
+
+/// A text's panel makes the keyboard's room itself, so the editor doesn't move for the keyboard as well.
+struct KeyboardSpace: ViewModifier {
+    let own: Bool
+
+    func body(content: Content) -> some View {
+        content.ignoresSafeArea(own ? SafeAreaRegions.keyboard : SafeAreaRegions())
     }
 }
