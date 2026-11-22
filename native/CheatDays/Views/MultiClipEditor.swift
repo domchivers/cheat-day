@@ -125,6 +125,7 @@ struct MultiClipEditor: View {
     @State private var lifted: UUID?         // the bar held long enough to move
     @State private var liftDY: CGFloat = 0    // how far up or down it's been dragged
     @State private var dropRow: Int?          // the row it'd go on if let go now
+    @State private var heldRows: [UUID: Int] = [:]   // each bar's row as it was when one was caught, till it's let go
     @State private var barSnap: Double?
     @State private var stripHeld: CGFloat?                // the keyframe a strip's scrub is held on (for the tap, once)                   // what a bar being dragged is held on (for the tap, once)                  // this drag is a bar's or a trim handle's, not the timeline's                // an end of the picked clip being dragged on the timeline
     private struct BarGrab { var id: UUID; var mode: Int; var from: Double; var to: Double; var words: [EditText.Word]?; var start = 0.0 }   // mode: 0 move, 1 start, 2 end
@@ -535,7 +536,9 @@ struct MultiClipEditor: View {
     }
 
     /// How many rows of bars the timeline shows under its clips.
-    private var laneCount: Int { min(6, barRows.count + (dropRow != nil && dropRow == barRows.count ? 1 : 0)) }
+    // (an empty rail always kept under the last, to drop onto: one that came and went as a bar was dragged grew and
+    // shrank the timeline under the finger, 22 Nov)
+    private var laneCount: Int { let n = barRows.count; return n == 0 ? 0 : min(6, n + 1) }
     // the bars as tall as CapCut's, their words readable (21 Nov, design/capcut-timeline-mockup.html: 15 pt bars read as slivers)
     private static let rulerHeight: CGFloat = 18, clipRow: CGFloat = 49, laneHeight: CGFloat = 34
 
@@ -639,7 +642,7 @@ struct MultiClipEditor: View {
                 }
             }
             .frame(width: width + 60, height: Self.clipRow, alignment: .topLeading)
-            if laneCount > 0 { lanes(width: width, span: span) }
+            if laneCount > 0 { lanes(width: width, span: span).zIndex(1) }
         }
     }
 
@@ -758,20 +761,92 @@ struct MultiClipEditor: View {
                 ZStack(alignment: .leading) {
                     // the row's rail, the whole way along, so where each row is shows even where it's empty (CapCut's)
                     RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color(white: 0.13))
-                    // where a held bar would go: its row outlined
-                    if dropRow == r { RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(Color.white.opacity(0.5), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])) }
+                    // where a held bar would go: the row outlined, or a line where it'd be a new row of its own
+                    if dropRow == r { dropMark(r, rows[r]) }
                     ForEach(rows[r]) { item in bar(item, w: width, span: span, onTimeline: true) }
                 }
                 .frame(width: width, height: Self.laneHeight, alignment: .leading)
+                // (over the other rows' rails while its bar's lifted: under them, it vanished as it was dragged, 22 Nov)
+                .zIndex(hasLifted(rows[r]) ? 1 : 0)
             }
-            // the new row under the last, while a bar's held over it
-            if let d = dropRow, d == rows.count, rows.count < 6 {
-                RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(Color.white.opacity(0.5), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
-                    .frame(width: width, height: Self.laneHeight)
-            }
+            // the empty rail under the last, a new row for a bar dropped on it
+            if rows.count < 6 { emptyRail(wanted: dropRow == rows.count, width: width) }
         }
+        .overlay(alignment: .topLeading) { barHandles(rows, width: width, span: span) }
         .coordinateSpace(name: "bars")
         .padding(.top, 2)
+    }
+
+    private func hasLifted(_ row: [BarItem]) -> Bool {
+        guard let id = lifted else { return false }
+        return row.contains { (b: BarItem) -> Bool in b.id == id }
+    }
+
+    private func emptyRail(wanted: Bool, width: CGFloat) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 7, style: .continuous)
+        let dash = StrokeStyle(lineWidth: 1.5, dash: [5, 4])
+        return shape.fill(Color(white: 0.13))
+            .overlay(shape.strokeBorder(Color.white.opacity(wanted ? 0.5 : 0), style: dash))
+            .frame(width: width, height: Self.laneHeight)
+    }
+
+    /// Where the lifted bar would land on row r.
+    @ViewBuilder private func dropMark(_ r: Int, _ row: [BarItem]) -> some View {
+        if let id = lifted, let item = barItems.first(where: { (b: BarItem) -> Bool in b.id == id }) {
+            if joins(item, row) {
+                RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(Color.white.opacity(0.5), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+            } else {
+                let down = r >= (rowOf(id) ?? r)
+                Capsule().fill(Color.white).frame(height: 3)
+                    .frame(maxHeight: .infinity, alignment: down ? .bottom : .top)
+            }
+        }
+    }
+
+    // The picked bar's handles: a grip outside each end, caught 44 points wide and high. No more than a quarter of the
+    // bar is the handle's, so a short one can still be held to move it.
+    private static let gripWidth: CGFloat = 14, catchSize: CGFloat = 44
+
+    private static func catchInside(_ barWidth: CGFloat) -> CGFloat { min(8, barWidth / 4) }
+
+    /// The picked bar's two white handles, over every row (22 Nov: "not handles?").
+    @ViewBuilder private func barHandles(_ rows: [[BarItem]], width w: CGFloat, span: Double) -> some View {
+        if lifted == nil, selected == nil, let item = pickedBar, let r = rows.firstIndex(where: { (row: [BarItem]) -> Bool in row.contains { (b: BarItem) -> Bool in b.id == item.id } }) {
+            barHandle(item, side: 1, row: r, w: w, span: span)
+            barHandle(item, side: 2, row: r, w: w, span: span)
+        }
+    }
+
+    /// side: 1 its start, 2 its end (as BarGrab's modes).
+    private func barHandle(_ item: BarItem, side: Int, row: Int, w: CGFloat, span: Double) -> some View {
+        let left: CGFloat = w * CGFloat(min(item.from, span) / span)
+        let right: CGFloat = w * CGFloat(min(item.to, span) / span)
+        let barWidth: CGFloat = max(16, right - left)
+        let size: CGFloat = Self.catchSize, inside: CGFloat = Self.catchInside(barWidth)
+        let x: CGFloat = side == 1 ? left - (size - inside) : left + barWidth - inside
+        let gripX: CGFloat = side == 1 ? size - inside - Self.gripWidth : inside
+        let y: CGFloat = CGFloat(row) * (Self.laneHeight + 3) - (size - Self.laneHeight) / 2
+        let grip = UnevenRoundedRectangle(topLeadingRadius: side == 1 ? 6 : 0, bottomLeadingRadius: side == 1 ? 6 : 0,
+                                          bottomTrailingRadius: side == 2 ? 6 : 0, topTrailingRadius: side == 2 ? 6 : 0, style: .continuous)
+        return grip.fill(Color.white)
+            .frame(width: Self.gripWidth, height: Self.laneHeight)
+            .overlay(Capsule().fill(Color(white: 0.2)).frame(width: 2, height: 14))
+            .offset(x: gripX)
+            .frame(width: size, height: size, alignment: .leading)
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("bars"))
+                .onChanged { handleChanged($0, item, side: side, w: w, span: span) }
+                .onEnded { _ in letGo(item) })
+            .accessibilityLabel(side == 1 ? "Start of \(item.label)" : "End of \(item.label)")
+            .offset(x: x, y: y)
+    }
+
+    private func handleChanged(_ v: DragGesture.Value, _ item: BarItem, side: Int, w: CGFloat, span: Double) {
+        if barGrab == nil {
+            guard abs(v.translation.width) > 1 else { return }
+            grabBar(item, mode: side)
+        }
+        moveBar(v, item, w: w, span: span)
     }
 
     /// A tile for each row of bars, in the timeline's left column, lined up with its row: what's on it (captions, text,
@@ -847,16 +922,16 @@ struct MultiClipEditor: View {
             // each handle 12 wide outside the clip's edge, with 10 more each side to catch it by
             if (p.x >= a - 22 && p.x <= a + 10) || (p.x >= b - 10 && p.x <= b + 22) { return true }
         }
-        guard p.y >= lanesTop else { return false }
-        let r = Int((p.y - lanesTop) / (Self.laneHeight + 3))
-        let rows = Array(barRows.prefix(6))
-        guard r >= 0, r < rows.count else { return false }
-        // a bar's middle is the timeline's until the bar's held (lifted); a picked bar's ends are its own, to trim it
-        return rows[r].contains { item in
-            let x0 = shift + CGFloat(item.from) * pps, x1 = x0 + max(16, CGFloat(item.to - item.from) * pps)
-            let picked = item.id == selectedText || item.id == selectedSound || item.id == selectedPip
-            return picked && ((p.x >= x0 - 4 && p.x <= x0 + 12) || (p.x >= x1 - 12 && p.x <= x1 + 4))
-        }
+        // a bar's middle is the timeline's until the bar's held (lifted); a picked bar's handles are its own
+        guard selected == nil, let item = pickedBar, let r = rowOf(item.id), r < 6 else { return false }
+        let top: CGFloat = lanesTop + CGFloat(r) * (Self.laneHeight + 3) - (Self.catchSize - Self.laneHeight) / 2
+        guard p.y >= top, p.y <= top + Self.catchSize else { return false }
+        let end: Double = min(item.to, max(total, 0.01))
+        let x0: CGFloat = shift + CGFloat(item.from) * pps
+        let barWidth: CGFloat = max(16, CGFloat(end - item.from) * pps)
+        let inside: CGFloat = Self.catchInside(barWidth), outside: CGFloat = Self.catchSize - inside
+        let x1: CGFloat = x0 + barWidth
+        return (p.x >= x0 - outside && p.x <= x0 + inside) || (p.x >= x1 - inside && p.x <= x1 + outside)
     }
 
     /// A finger looking through the video: one seek at a time, each to where the finger is when the last one's done
@@ -1144,6 +1219,9 @@ struct MultiClipEditor: View {
         sounds.filter { (s: EditSound) -> Bool in s.kind == "voice" }.map { (s: EditSound) -> [Double] in [s.from, s.start, s.length] }
     }
     private func voiceMoved() {
+        // (once it's let go, not each step: made again as it was trimmed, the words passed on the way were dropped for
+        // good when it was dragged back out, and every step of the drag had that work to do)
+        guard barGrab == nil else { return }
         let ids: Set<UUID> = Set(sounds.map { (s: EditSound) -> UUID in s.id })
         let tied = texts.contains { (t: EditText) -> Bool in
             guard t.kind == "caption", let words = t.words else { return false }
@@ -1662,11 +1740,18 @@ struct MultiClipEditor: View {
     /// they don't cover another, as before. Empty rows close up.
     private var barRows: [[BarItem]] {
         var rows: [[BarItem]] = []
-        let placed = barItems.filter { $0.lane != nil }
-        for t in placed { let l = max(0, t.lane ?? 0); while rows.count <= l { rows.append([]) }; rows[l].append(t) }
+        // (while one's held, each keeps the row it had: packed again as it moved, the bar under the finger jumped
+        // rows, so was a new view each time and lost the finger, 22 Nov)
+        let held = heldRows
+        for t in barItems {
+            guard let lane = held[t.id] ?? t.lane else { continue }
+            let l = max(0, lane)
+            while rows.count <= l { rows.append([]) }
+            rows[l].append(t)
+        }
         rows = rows.filter { !$0.isEmpty }.map { $0.sorted { $0.from < $1.from } }
         let fixed = rows.count
-        for t in barItems.filter({ $0.lane == nil }).sorted(by: { $0.from < $1.from }) {
+        for t in barItems.filter({ held[$0.id] == nil && $0.lane == nil }).sorted(by: { $0.from < $1.from }) {
             let free = rows.indices.first { r in
                 r >= fixed && rows[r].last?.kind == t.kind && (rows[r].last?.to ?? 0) <= t.from + 0.01
             }
@@ -1678,6 +1763,24 @@ struct MultiClipEditor: View {
     /// The row a bar's on now.
     private func rowOf(_ id: UUID) -> Int? { barRows.firstIndex { $0.contains { $0.id == id } } }
 
+    /// The rows as they are, held like that till the bar that's been caught is let go.
+    private func holdRows() {
+        guard heldRows.isEmpty else { return }
+        var held: [UUID: Int] = [:]
+        for (r, row) in barRows.enumerated() { for item in row { held[item.id] = r } }
+        heldRows = held
+    }
+
+    /// Whether a bar can be on a row as it is: only with its own kind (sound with sound, as CapCut's tracks) and
+    /// covering none there.
+    private func joins(_ item: BarItem, _ row: [BarItem]) -> Bool {
+        for o in row where o.id != item.id {
+            if o.kind != item.kind { return false }
+            if min(o.to, item.to) - max(o.from, item.from) > 0.01 { return false }
+        }
+        return true
+    }
+
     /// A bar held and dropped on another row (or the new one under the last): every bar keeps the row it's shown on,
     /// this one goes to that row (a new row there when it would cover one already on it), and the texts and overlays
     /// are drawn in row order, the top row on top (design/capcut-timeline-mockup.html).
@@ -1685,18 +1788,17 @@ struct MultiClipEditor: View {
         var rows = barRows.map { $0.map(\.id) }
         guard let from = rows.firstIndex(where: { $0.contains(id) }) else { return }
         guard let item = barItems.first(where: { $0.id == id }) else { return }
+        let shown = barRows
         rows[from].removeAll { $0 == id }
         var to = min(max(0, target), rows.count)
-        let covers = to < rows.count && rows[to].contains { other in
-            guard let o = barItems.first(where: { $0.id == other }) else { return false }
-            return min(o.to, item.to) - max(o.from, item.from) > 0.01
-        }
-        if to == rows.count { rows.append([id]) } else if covers { rows.insert([id], at: to) } else { rows[to].append(id) }
+        if to == rows.count { rows.append([id]) }
+        else if joins(item, shown[to]) { rows[to].append(id) }
+        // a new row of its own: past that one going down (above it would be where it came from), over it going up
+        else { rows.insert([id], at: to >= from ? to + 1 : to) }
         rows = rows.filter { !$0.isEmpty }
         to = rows.firstIndex { $0.contains(id) } ?? to
         var lane: [UUID: Int] = [:]
         for (r, ids) in rows.enumerated() { for i in ids { lane[i] = r } }
-        remember()
         for k in texts.indices { texts[k].lane = lane[texts[k].id] }
         for k in sounds.indices { sounds[k].lane = lane[sounds[k].id] }
         for k in pips.indices { pips[k].lane = lane[pips[k].id] }
@@ -1749,39 +1851,39 @@ struct MultiClipEditor: View {
         let h: CGFloat = onTimeline ? Self.laneHeight : 18, corner: CGFloat = onTimeline ? 7 : 5, up = lifted == item.id
         return Text(item.label).font(.system(size: onTimeline ? 11 : 9, weight: onTimeline ? .semibold : .heavy)).lineLimit(1).foregroundStyle(.black.opacity(0.82))
             .padding(.horizontal, onTimeline ? 8 : 5).frame(width: width, height: h, alignment: .leading)
-            .background(item.colour.opacity(onTimeline ? 0.88 : 1), in: RoundedRectangle(cornerRadius: corner, style: .continuous))
+            .background(item.colour.opacity(onTimeline && !up ? 0.88 : 1), in: RoundedRectangle(cornerRadius: corner, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: corner, style: .continuous).stroke(on ? Color.white : Color.clear, lineWidth: 1.5))
             .contentShape(Rectangle())
-            // held, it lifts (as CapCut's do, 21 Nov, design/capcut-timeline-mockup.html): see-through and a little
-            // bigger under the finger while it's moved
-            .opacity(up ? 0.62 : 1)
-            .scaleEffect(up ? 1.05 : 1)
+            // held, it lifts (as CapCut's do): solid, a little bigger, a shadow under it, in the row it would go on
+            // (22 Nov: see-through and loose under the finger, "doesn't feel as smooth as CapCut")
+            .scaleEffect(up ? 1.08 : 1)
             .shadow(color: .black.opacity(up ? 0.6 : 0), radius: 8, y: 5)
-            .zIndex(up ? 2 : 0)
             .offset(y: up ? liftDY : 0)
             // A tap picks it; held a third of a second it lifts, with a tick, and only then moves (21 Nov: a drag
             // moved it at once, so a slightly-off scroll or tap moved a bar). A picked bar's ends trim it straight
             // away; a drag anywhere else is the timeline's. Measured in the bars' rows, which keep still, not in the
             // bar itself: measured in it, each step counted part of its own move back (21 Nov: a separated sound)
             .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("bars"))
-                .onChanged { barChanged($0, item, x0: x0, width: width, on: on, w: w, span: span, rowHeight: onTimeline ? Self.laneHeight + 3 : 21) }
+                .onChanged { barChanged($0, item, x0: x0, width: width, endsTrim: on && !onTimeline, w: w, span: span, rowHeight: onTimeline ? Self.laneHeight + 3 : 21) }
                 .onEnded { barEnded($0, item) })
             .offset(x: x0)
             .accessibilityElement()
             .accessibilityLabel("\(item.label), \(Self.clock(item.from)) to \(Self.clock(item.to))")
             .accessibilityHint("Double tap to change it")
             .accessibilityAddTraits(.isButton)
+            .zIndex(up ? 2 : 0)   // (last, for its row to see)
     }
 
     /// A finger on a bar, moving (kept out of bar()'s chain: the compiler timed out on a long one, 1.4.21).
-    private func barChanged(_ v: DragGesture.Value, _ item: BarItem, x0: CGFloat, width: CGFloat, on: Bool, w: CGFloat, span: Double, rowHeight: CGFloat) {
+    private func barChanged(_ v: DragGesture.Value, _ item: BarItem, x0: CGFloat, width: CGFloat, endsTrim: Bool, w: CGFloat, span: Double, rowHeight: CGFloat) {
         let dist = hypot(v.translation.width, v.translation.height)
         if pressed != item.id {
             pressed = item.id; pressMoved = false; lifted = nil
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(300))
                 guard pressed == item.id, !pressMoved, barGrab == nil else { return }
-                lifted = item.id
+                holdRows()
+                withAnimation(.snappy(duration: 0.15)) { lifted = item.id }
                 player.pause(); playing = false
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             }
@@ -1791,27 +1893,40 @@ struct MultiClipEditor: View {
             // by its ends once it's picked, or anywhere once it's lifted to move it
             let at = v.startLocation.x - x0   // (where on the bar: it hasn't moved yet)
             let mode = lifted == item.id ? 0 : (at < 12 ? 1 : (at > width - 12 ? 2 : 0))
-            guard lifted == item.id || (mode != 0 && on && dist > 2) else { return }
-            // held still under the finger while it's moved (21 Nov: playing on, the timeline slid away
-            // under the bar being dragged)
-            player.pause(); playing = false
-            if item.kind == 1, let s = sounds.first(where: { $0.id == item.id }) {
-                remember()   // (a sound moved can be undone)
-                barGrab = BarGrab(id: item.id, mode: mode, from: s.from, to: s.to, words: nil, start: s.start)
-            } else if item.kind == 2, let p = pips.first(where: { $0.id == item.id }) {
-                barGrab = BarGrab(id: item.id, mode: mode, from: p.from, to: p.to, words: nil, start: p.start)
-            } else if let t = texts.first(where: { $0.id == item.id }) {
-                barGrab = BarGrab(id: item.id, mode: mode, from: t.from, to: t.to, words: t.words)
-            }
+            guard lifted == item.id || (mode != 0 && endsTrim && dist > 2) else { return }
+            grabBar(item, mode: mode)
         }
-        guard let g = barGrab else { return }
-        // lifted: up or down onto another row (or the new one under the last), shown outlined until it's let go
-        if lifted == item.id, let here = rowOf(item.id) {
-            liftDY = v.translation.height
+        // lifted: up or down a row at a time, into the row it would go on (the empty rail under the last too)
+        if lifted == item.id, barGrab != nil, let here = rowOf(item.id) {
             let to = min(max(0, here + Int((v.translation.height / rowHeight).rounded())), min(barRows.count, 5))
             let next: Int? = to == here ? nil : to
-            if next != dropRow { dropRow = next; UISelectionFeedbackGenerator().selectionChanged() }
+            if next != dropRow {
+                withAnimation(.snappy(duration: 0.15)) { dropRow = next; liftDY = CGFloat(to - here) * rowHeight }
+                UISelectionFeedbackGenerator().selectionChanged()
+            }
         }
+        moveBar(v, item, w: w, span: span)
+    }
+
+    /// A bar caught, to move it (mode 0) or trim its start (1) or end (2).
+    private func grabBar(_ item: BarItem, mode: Int) {
+        // held still under the finger while it's moved (21 Nov: playing on, the timeline slid away
+        // under the bar being dragged)
+        player.pause(); playing = false
+        holdRows()
+        remember()   // (moved or trimmed, it can be undone)
+        if item.kind == 1, let s = sounds.first(where: { $0.id == item.id }) {
+            barGrab = BarGrab(id: item.id, mode: mode, from: s.from, to: s.to, words: nil, start: s.start)
+        } else if item.kind == 2, let p = pips.first(where: { $0.id == item.id }) {
+            barGrab = BarGrab(id: item.id, mode: mode, from: p.from, to: p.to, words: nil, start: p.start)
+        } else if let t = texts.first(where: { $0.id == item.id }) {
+            barGrab = BarGrab(id: item.id, mode: mode, from: t.from, to: t.to, words: t.words)
+        }
+    }
+
+    /// The bar that's caught, moved or trimmed as far as the finger's gone.
+    private func moveBar(_ v: DragGesture.Value, _ item: BarItem, w: CGFloat, span: Double) {
+        guard let g = barGrab else { return }
         var dt = Double(v.translation.width / max(w, 1)) * span
         // held on a clip's start or end, another bar's, or the line, when it comes within 8 points of
         // one, with a tap; anywhere else it goes where the finger puts it (21 Nov: the owner, "snap to
@@ -1850,15 +1965,29 @@ struct MultiClipEditor: View {
                 }
             }
         }
-        if let d = dropRow { dropBar(item.id, on: d) }
-        dropRow = nil; liftDY = 0
+        letGo(item)
+    }
+
+    /// The finger off a bar or one of its handles.
+    private func letGo(_ item: BarItem) {
+        if barGrab != nil, let here = rowOf(item.id), let moved = barItems.first(where: { (b: BarItem) -> Bool in b.id == item.id }) {
+            let covers = barRows[here].contains { (o: BarItem) -> Bool in
+                o.id != moved.id && min(o.to, moved.to) - max(o.from, moved.from) > 0.01
+            }
+            // onto the row it was dragged to; moved over another on its own row, a row of its own beside it
+            if let d = dropRow { dropBar(item.id, on: d) } else if covers { dropBar(item.id, on: here) }
+        }
+        dropRow = nil; liftDY = 0; heldRows = [:]
         pressed = nil; pressMoved = false; lifted = nil
         // (the line left where it was: 21 Nov, it jumped to the bar's start when it was let go)
-        let moved = barGrab != nil && item.kind != 0
+        let changed = barGrab != nil
         barSnap = nil
         barGrab = nil
+        guard changed, item.kind != 0 else { return }
         // a sound or overlay moved: the preview made again with it, now it's let go
-        if moved { dropped += 1 }
+        dropped += 1
+        // and a voiceover's captions put with it
+        if item.kind == 1 { voiceMoved() }
     }
 
     private func dragText(_ g: BarGrab, _ dt: Double, span: Double, follow: Bool = true) {
