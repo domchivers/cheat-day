@@ -1,9 +1,32 @@
+import UIKit
 import XCTest
 @testable import CheatDays
 
 /// Stage B's overlays: recipe and workout mode laid one a clip, a caption's lit word, and drafts keeping them.
 final class EditOverlaysTests: XCTestCase {
     private func clip(_ seconds: Double) -> Clip { Clip(source: URL(fileURLWithPath: "/tmp/x.mov"), length: 20, start: 0, end: seconds) }
+
+    /// 22 Nov, "Gif not working??": a GIF is never drawn by ImageRenderer (which makes it a yellow box).
+    @MainActor func testAGIFIsItsFramesNeverARenderedBox() {
+        let url = "https://media.giphy.com/media/test-only/200w.gif"
+        defer { EditOverlays.gifs[url] = nil }
+        var t = EditText(kind: "card", text: "GIF", x: 0.5, y: 0.4, from: 1, to: 2)
+        t.card = "{\"type\":\"gif\",\"url\":\"\(url)\",\"w\":200,\"h\":100}"
+        XCTAssertEqual(EditOverlays.gifURLs([t]), [url])
+        let size = CGSize(width: 1080, height: 1920)
+
+        EditOverlays.gifs[url] = nil
+        XCTAssertTrue(EditOverlays.pieces([t], frame: size).isEmpty, "none loaded: nothing drawn")
+
+        let one = UIGraphicsImageRenderer(size: CGSize(width: 200, height: 100)).image { c in UIColor.red.setFill(); c.fill(CGRect(x: 0, y: 0, width: 200, height: 100)) }
+        EditOverlays.gifs[url] = one
+        let still = EditOverlays.pieces([t], frame: size)
+        XCTAssertEqual(still.count, 1, "one frame: held")
+        XCTAssertEqual(still.first?.to ?? 0, 2, accuracy: 0.001)
+
+        EditOverlays.gifs[url] = UIImage.animatedImage(with: [one, one], duration: 0.5)
+        XCTAssertEqual(EditOverlays.pieces([t], frame: size).count, 4, "two frames a quarter of a second each, round again")
+    }
 
     func testRecipeModeStepsOneAClipMacrosOnTheLast() {
         let clips = [clip(3), clip(4), clip(5)]

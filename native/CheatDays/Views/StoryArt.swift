@@ -238,7 +238,7 @@ struct StoryItem: View {
         case "photo": photo
         case "gif":
             let w = num(o["w"]) ?? 200, h = num(o["h"]) ?? 200
-            AnimatedGIF(url: str(o["url"])).frame(width: 170, height: 170 * h / max(1, w))
+            GIFSticker(url: str(o["url"])).frame(width: 170, height: 170 * h / max(1, w))
         case "ring": ring
         case "steps": pill("👟", "\(Fmt.int(num(o["steps"]) ?? 0)) steps", .white, .black)
         case "badge": badge
@@ -734,11 +734,55 @@ struct StoryLayer: View {
 
 /// An animated GIF from GIPHY, kept once loaded. SwiftUI's Image doesn't move, so this is a UIImageView playing the
 /// frames ImageIO reads out of it.
+private struct FlatPictureKey: EnvironmentKey { static let defaultValue = false }
+extension EnvironmentValues {
+    /// Being drawn into a picture (ImageRenderer), not shown: what only a UIKit view can show is drawn as a still.
+    var flatPicture: Bool {
+        get { self[FlatPictureKey.self] }
+        set { self[FlatPictureKey.self] = newValue }
+    }
+}
+
+/// A story's GIF sticker: moving where it's shown; one of its frames where it's drawn into a picture. ImageRenderer
+/// can't draw a UIKit view and puts a yellow box with a no sign in its place (22 Nov: "Gif not working??").
+struct GIFSticker: View {
+    let url: String
+    @Environment(\.flatPicture) private var flat
+
+    var body: some View {
+        if flat {
+            if let still = AnimatedGIF.stills[url] { Image(uiImage: still).resizable().scaledToFit() } else { Color.clear }
+        } else {
+            AnimatedGIF(url: url)
+        }
+    }
+}
+
 struct AnimatedGIF: UIViewRepresentable {
     let url: String
     /// The largest side to decode frames at: the tray's small tiles needn't decode every frame full size.
     var maxPixel: Int = 400
     private static let cache = NSCache<NSString, UIImage>()
+    /// A frame of each GIF that's been on as a sticker, for when it's drawn into a picture (GIFSticker). Its middle
+    /// one: a sticker's first is often still empty.
+    @MainActor static var stills: [String: UIImage] = [:]
+
+    @MainActor static func keepStill(_ img: UIImage, for url: String) {
+        if let all = img.images, !all.isEmpty { stills[url] = all[all.count / 2] } else { stills[url] = img }
+    }
+
+    /// Fetched, with a second try and then GIPHY's smaller copy; nil if none of them came.
+    nonisolated static func fetch(_ url: String, maxPixel: Int) async -> UIImage? {
+        for (i, address) in ([url, url] + (smaller(url).map { [$0] } ?? [])).enumerated() {
+            guard let u = URL(string: address) else { continue }
+            if i == 1 { try? await Task.sleep(nanoseconds: 800_000_000) }   // (once more, a moment later)
+            if let (d, r) = try? await URLSession.shared.data(from: u), (r as? HTTPURLResponse)?.statusCode ?? 200 < 400,
+               let got = animated(d, maxPixel: maxPixel) {
+                return got
+            }
+        }
+        return nil
+    }
 
     func makeUIView(context: Context) -> UIImageView {
         let v = UIImageView(); v.contentMode = .scaleAspectFit; v.clipsToBounds = true
@@ -750,7 +794,7 @@ struct AnimatedGIF: UIViewRepresentable {
     func updateUIView(_ v: UIImageView, context: Context) { if v.accessibilityIdentifier != url { load(into: v) } }
 
     /// GIPHY's smaller copy of the same GIF (its 100-pixel one, which the tray shows).
-    private static func smaller(_ url: String) -> String? {
+    nonisolated private static func smaller(_ url: String) -> String? {
         url.contains("/200w.gif") ? url.replacingOccurrences(of: "/200w.gif", with: "/100w.gif") : nil
     }
 
@@ -760,24 +804,19 @@ struct AnimatedGIF: UIViewRepresentable {
     @MainActor private func load(into v: UIImageView) {
         v.accessibilityIdentifier = url
         let key = "\(url)|\(maxPixel)"
-        if let kept = Self.cache.object(forKey: key as NSString) { Self.show(kept, in: v); return }
+        if let kept = Self.cache.object(forKey: key as NSString) {
+            Self.show(kept, in: v)
+            if maxPixel > 200 { Self.keepStill(kept, for: url) }   // (a sticker, not the tray's tile)
+            return
+        }
         let small = Self.smaller(url)
         if let small, let seen = Self.cache.object(forKey: "\(small)|200" as NSString) { Self.show(seen, in: v) } else { Self.spin(v) }
         let want = url, px = maxPixel
         Task.detached(priority: .userInitiated) {
-            var img: UIImage?
-            for (i, address) in ([want, want] + (small.map { [$0] } ?? [])).enumerated() {
-                guard let u = URL(string: address) else { continue }
-                if i == 1 { try? await Task.sleep(nanoseconds: 800_000_000) }   // (once more, a moment later)
-                if let (d, r) = try? await URLSession.shared.data(from: u), (r as? HTTPURLResponse)?.statusCode ?? 200 < 400,
-                   let got = Self.animated(d, maxPixel: px) {
-                    img = got
-                    if i < 2 { Self.cache.setObject(got, forKey: key as NSString) }
-                    break
-                }
-            }
-            let shown = img
+            let shown = await Self.fetch(want, maxPixel: px)
+            if let shown { Self.cache.setObject(shown, forKey: key as NSString) }
             await MainActor.run {
+                if let shown, px > 200 { Self.keepStill(shown, for: want) }
                 guard v.accessibilityIdentifier == want else { return }
                 if let shown { Self.show(shown, in: v) } else { Self.unspin(v) }
             }
@@ -803,7 +842,7 @@ struct AnimatedGIF: UIViewRepresentable {
 
     /// Its frames, at most 150 of them: a long one is played from every other frame (or fewer), each held as long, so it
     /// takes the same time; read in full, a few hundred big frames took long enough to look like nothing came.
-    static func animated(_ data: Data, maxPixel: Int = 400) -> UIImage? {
+    nonisolated static func animated(_ data: Data, maxPixel: Int = 400) -> UIImage? {
         guard let src = CGImageSourceCreateWithData(data as CFData, nil) else { return UIImage(data: data) }
         let n = CGImageSourceGetCount(src)
         guard n > 1 else { return UIImage(data: data) }

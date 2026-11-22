@@ -1498,7 +1498,7 @@ struct StoryEditor: View {
     /// is made with it over every frame. Nil when there's nothing on it.
     private func overlayPicture() -> UIImage? {
         guard !everything.isEmpty else { return nil }
-        let r = ImageRenderer(content: StoryLayer(items: everything).frame(width: StoryArt.design, height: StoryArt.design / ratio))
+        let r = ImageRenderer(content: StoryLayer(items: everything).frame(width: StoryArt.design, height: StoryArt.design / ratio).environment(\.flatPicture, true))
         r.scale = 1080 / StoryArt.design; r.isOpaque = false
         return r.uiImage
     }
@@ -1511,6 +1511,7 @@ struct StoryEditor: View {
             StoryLayer(items: everything)
         }
         .frame(width: StoryArt.design, height: StoryArt.design / ratio)
+        .environment(\.flatPicture, true)
         let r = ImageRenderer(content: layer); r.scale = 1080 / StoryArt.design
         return r.uiImage
     }

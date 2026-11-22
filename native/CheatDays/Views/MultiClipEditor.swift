@@ -1431,7 +1431,11 @@ struct MultiClipEditor: View {
         let kept = clips, sound = soundOf, shape = look, laid = sounds, on = pips
         let items = texts, size = frameSize
         making = Task {
-            await EditOverlays.prepare(items)
+            guard await EditOverlays.prepare(items) else {
+                // (22 Nov: made without its frames, a GIF was a yellow box in the video)
+                if !Task.isCancelled { joining = false; progress = nil; making = nil; flash("A GIF didn't load. Check your connection and try again, or take it off.") }
+                return
+            }
             let over = EditOverlays.pieces(items, frame: size)
             let url = await ClipJoin.join(kept, soundOf: sound, look: shape, overlays: over, sounds: laid, pips: on) { p in if progress != nil { progress = p } }
             guard !Task.isCancelled else { return }

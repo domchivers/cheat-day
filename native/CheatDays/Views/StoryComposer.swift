@@ -241,6 +241,11 @@ struct StoryReshare: View {
             guard let img = await ImageStore.load(str(story["media"])) else { failed = true; return }
             // the photos stuck on it, here first, so the picture of it is made with them in
             for src in Stories.pictures(story) where src != str(story["media"]) { _ = await ImageStore.load(src) }
+            // and each GIF on it, for a frame of it
+            for o in list(story["overlays"]) where str(o["type"]) == "gif" {
+                let url = str(o["url"])
+                if AnimatedGIF.stills[url] == nil, let gif = await AnimatedGIF.fetch(url, maxPixel: 400) { AnimatedGIF.keepStill(gif, for: url) }
+            }
             whole = Self.render(story, base: img) ?? img
         }
     }
@@ -256,6 +261,7 @@ struct StoryReshare: View {
         }
         .frame(width: w, height: h).clipped()
         .environment(\.colorScheme, .dark)
+        .environment(\.flatPicture, true)
         let r = ImageRenderer(content: picture)
         r.scale = 3
         return r.uiImage

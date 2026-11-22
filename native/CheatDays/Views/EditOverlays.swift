@@ -367,14 +367,21 @@ enum EditOverlays {
     /// The GIF stickers' frames, by address, read before the video's made (`prepare`).
     @MainActor static var gifs: [String: UIImage] = [:]
 
-    /// Each GIF sticker's frames fetched, if they aren't already.
-    @MainActor static func prepare(_ items: [EditText]) async {
-        for item in items where item.kind == "card" {
-            let o = item.cardJSON ?? [:]
-            let url = str(o["url"])
-            guard str(o["type"]) == "gif", gifs[url] == nil, let u = URL(string: url) else { continue }
-            if let (d, _) = try? await URLSession.shared.data(from: u), let img = AnimatedGIF.animated(d, maxPixel: 480) { gifs[url] = img }
+    /// The addresses of the GIF stickers among the items.
+    static func gifURLs(_ items: [EditText]) -> [String] {
+        items.compactMap { (item: EditText) -> String? in
+            guard item.kind == "card", let o = item.cardJSON, str(o["type"]) == "gif" else { return nil }
+            return str(o["url"])
         }
+    }
+
+    /// Each GIF sticker's frames fetched, if they aren't already; false when any didn't come (the video's not made then).
+    @discardableResult @MainActor static func prepare(_ items: [EditText]) async -> Bool {
+        var all = true
+        for url in gifURLs(items) where gifs[url] == nil {
+            if let img = await AnimatedGIF.fetch(url, maxPixel: 480) { gifs[url] = img } else { all = false }
+        }
+        return all
     }
 
     /// Every overlay as pictures at the finished video's size: one for most; one a word for a caption (that word lit),
@@ -394,9 +401,11 @@ enum EditOverlays {
                 // a GIF moves in the finished video: each of its frames for its own moment, round again till it's
                 // off (the frames made once, the same pictures each time round)
                 let o = item.cardJSON ?? [:]
-                guard let gif = gifs[str(o["url"])], let frames = gif.images, !frames.isEmpty, gif.duration > 0.05 else {
-                    shot(item, at: item.from, from: item.from, to: item.to); continue
-                }
+                // never through shot(): ImageRenderer draws a GIF's view as a yellow box (22 Nov). One of one frame is
+                // that frame, held; one that never came is left out (finish() won't make the video without it)
+                guard let gif = gifs[str(o["url"])] else { continue }
+                let moving = (gif.images?.count ?? 0) > 1 && gif.duration > 0.05
+                let frames: [UIImage] = moving ? (gif.images ?? []) : [gif.images?.first ?? gif]
                 let w = num(o["w"]) ?? 200, h = num(o["h"]) ?? 200
                 let side = 170 * scale * CGFloat(item.size)   // as StoryItem draws it, in the video's pixels
                 let size = CGSize(width: side, height: side * h / max(1, w))
@@ -406,7 +415,7 @@ enum EditOverlays {
                     return ci.transformed(by: CGAffineTransform(scaleX: size.width / max(1, ci.extent.width), y: size.height / max(1, ci.extent.height)))
                 }
                 guard !pics.isEmpty else { continue }
-                let each = gif.duration / Double(pics.count)
+                let each = moving ? gif.duration / Double(pics.count) : item.to - item.from
                 var t = item.from, i = 0
                 while t < item.to - 0.001 {
                     let end = min(item.to, t + each)
