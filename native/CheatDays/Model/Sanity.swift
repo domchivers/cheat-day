@@ -97,7 +97,8 @@ enum Sanity {
             return Range(label: "eggs", lo: 125, hi: 210, proteinMax: 14)
         }
         if word(#"\b(bread|toast|buns?|rolls?|bagels?|baguette|sourdough|pitta|pita|crumpets?)\b"#)
-            && !mentions(["protein", "breadcrumb", "garlic bread", "pudding", "rolled", "spring roll", "sausage roll", "sushi", "cinnamon", "french toast"])
+            && !mentions(["protein", "breadcrumb", "garlic bread", "pudding", "rolled", "spring roll", "sausage roll", "sushi", "cinnamon", "french toast",
+                          "bean curd", "beancurd", "tofu", "yuba", "enoki"])
             && (!mentions(["sandwich"]) || mentions(["sandwich bread", "sandwich loaf"]))   // a whole sandwich isn't just bread; sandwich bread is
             // meat, chicken or fish named with it isn't bread: hotpot's "beef and lamb rolls" are rolled slices of meat
             && ![FoodKind.meat, .poultry, .fish].contains(FoodKind.of(n)) && !mentions(["hotpot", "hot pot", "shabu"]) {

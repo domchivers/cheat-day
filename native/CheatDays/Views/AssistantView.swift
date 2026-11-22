@@ -1274,9 +1274,11 @@ struct AssistantView: View {
                 busy = false   // the answer's in; the checks after it show on the card, not as "working"
                 if str(r["kind"]) == "estimate", r["scaled"] == nil, let e = r["estimate"] as? JSON {
                     // what a follow-up didn't change keeps the numbers the last card had
-                    let before = turns.last { !$0.me && $0.id != turn.id && $0.result?["estimate"] != nil }?.result?["estimate"] as? JSON
+                    let last: Assistant.Turn? = turns.last { (t: Assistant.Turn) -> Bool in !t.me && t.id != turn.id && t.result?["estimate"] != nil }
+                    let before: JSON? = Assistant.roughCard(last?.result) ? nil : last?.result?["estimate"] as? JSON
                     // and a food already worked out in this chat, under another name or amount, keeps those numbers too
-                    let cards = turns.filter { !$0.me && $0.id != turn.id }.compactMap { $0.result?["estimate"] as? JSON }
+                    let others: [Assistant.Turn] = turns.filter { (t: Assistant.Turn) -> Bool in !t.me && t.id != turn.id && !Assistant.roughCard(t.result) }
+                    let cards: [JSON] = others.compactMap { (t: Assistant.Turn) -> JSON? in t.result?["estimate"] as? JSON }
                     let checked = await Assistant.checkedCard(e, before: before, earlier: cards)
                     // the parts no food table had (the sparkle): kept, so the tables can be filled where they're used
                     let gaps = CheatDays.list(checked["parts"]).filter { str($0["src"]) == "ai" }.map { str($0["name"]) }

@@ -278,6 +278,7 @@ enum Assistant {
     - Tag every part so it's matched to the right entry: homemade or bought (bakery, café, takeaway, packaged); natural or processed (cheese, meats); raw or cooked and how (fried, baked, grilled, boiled, steamed) for meat, fish, veg and grains; skin on or skin off; plain or filled; coated (crumbed, battered); reduced fat. Cheese on bakery or takeaway food is natural unless it looks like a processed slice. Noodles and rice in a soup are boiled, never their dry weight. Thin raw beef slices in pho, hotpot or shabu shabu are "Rare beef", a lean cut. Roast, BBQ or rotisserie chicken is skin on unless the photo shows it off.
     - Looks like takeaway, delivery or a café or restaurant (takeaway boxes, branded packaging, a delivery bag, a menu) but they haven't said where from: still give your estimate, and in reply ask in a few words where it's from and what they ordered as it's named on the menu, so the shop's own numbers can be looked up. Ask once: if they've already said, or said they don't know, don't ask again.
     - Food from a named shop, café, bakery or chain (said, or a logo in the photo): fill shop and shop_items, and still break the parts down as usual (pastry, filling, cheese), with numbers_from estimate unless they gave numbers or showed a label. Never put the shop's name in a part's name. The app looks for the shop's own published numbers and uses them if it finds them.
+    - Asked what or how much to have, or what you recommend, from an order or menu you're estimating: when what they said comes to more than they have left, say plainly that it goes over, then name which dishes and how much of each would fit, high protein first and the oily or starchy ones cut first (still no totals in reply). The estimate stays what they said they'd have.
     - For edit: never say a change is done, added or logged. Say it's ready and to tap Make these changes.
     - Only talk about foods actually in the conversation, their photos, their day or their meals. Never invent placeholders.
     - Log only what their latest message (or its photos) names. Foods from earlier in the chat or already on today's list are dealt with: never add them again or fold them into a new estimate. "1/2 tsp sesame oil" is just the oil.
@@ -326,6 +327,20 @@ enum Assistant {
     /// "In the photo", "the pics I sent".
     static func mentionsPhotos(_ text: String) -> Bool {
         text.lowercased().range(of: #"\b(photos?|pics?|pictures?|images?|screenshots?|receipt)\b"#, options: .regularExpression) != nil
+    }
+
+    /// "(Kabana)", the shop taken off it, is "Kabana"; "Yam pasta (starch sheet)" keeps both its brackets.
+    static func unwrapped(_ name: String) -> String {
+        name.hasPrefix("(") && name.hasSuffix(")") ? String(name.dropFirst().dropLast()) : name
+    }
+
+    /// A card the backup model made when Claude didn't answer, none of it set by them: a rough guess, never what the next
+    /// is held to (22 Nov: its 2,400 for a receipt Claude puts near 3,800 was halved and copied, and came out 700 low).
+    static func roughCard(_ result: JSON?) -> Bool {
+        guard let r = result, str(r["via"]).hasPrefix("Gemini"), let e = r["estimate"] as? JSON else { return false }
+        let parts: [JSON] = CheatDays.list(e["parts"])
+        guard !parts.isEmpty else { return false }
+        return !parts.contains { (p: JSON) -> Bool in p["locked"] as? Bool == true }
     }
 
     /// The photos a typed message still goes with: the last ones sent, until the planner has answered something typed
@@ -388,6 +403,10 @@ enum Assistant {
             if let r = t.result, let e = r["estimate"] as? JSON {
                 let parts = CheatDays.list(e["parts"]).map { "\(str($0["name"])) \(Int(num($0["grams"]) ?? 0)) g \(Int(num($0["kcal"]) ?? 0)) kcal" }
                 line += " [you worked out: \(str(e["name"])), \(Int(num(e["kcal_total"]) ?? 0)) kcal\(parts.isEmpty ? "" : ": " + parts.joined(separator: "; "))]"
+                // tested word for word in tools/ai-test/receipt-backup-check.js
+                if roughCard(t.result) {
+                    line += " [a backup model made that card and its sizes and calories can be far off: size and count every part afresh now, keeping only which dishes they are and the share they say]"
+                }
             }
             if let r = t.result, let rc = r["recipe"] as? JSON { line += " [recipe \(str(rc["name"])): \(CheatDays.list(rc["ingredients"]).map { "\(str($0["name"])) \(Int(num($0["grams"]) ?? 0)) g" }.joined(separator: ", "))]" }
             return line
@@ -437,10 +456,14 @@ enum Assistant {
             // (new photos are a new thing to work out: a different plate isn't held to the last one's sizes)
             // (nor to a card from before the chat moved on to a restaurant)
             let lastTurn: Turn? = turns.dropLast().last { (t: Turn) -> Bool in !t.me && (t.result?["estimate"] != nil || Takeaway.isPlanned(t.result)) }
-            let before: JSON? = last.images.isEmpty ? lastTurn?.result?["estimate"] as? JSON : nil
+            let holds: Bool = last.images.isEmpty && !roughCard(lastTurn?.result)
+            let before: JSON? = holds ? lastTurn?.result?["estimate"] as? JSON : nil
             let h = shown(e, said: last.text, photos: !pics.isEmpty, before: before, via: str(answer["via"]), reply: str(answer["reply"]))
             answer["estimate"] = h.estimate
             if !h.notes.isEmpty { answer["reply"] = ([str(answer["reply"])] + h.notes).joined(separator: " ") }
+            if !pics.isEmpty && roughCard(answer) {
+                answer["reply"] = str(answer["reply"]) + " Claude didn't answer, so a backup model made this one and it can be well out. Before you add it, tell me how much you had, or send the photo again in a new chat."
+            }
         }
         // "pieces about 1.5 m": asked, never quietly taken one way or the other
         if let q = unitQuestion(last.text), !str(answer["reply"]).contains(q) { answer["reply"] = str(answer["reply"]) + " " + q }
@@ -733,8 +756,10 @@ enum Assistant {
             if !shop.isEmpty {
                 let bare = str(p["name"]).replacingOccurrences(of: shopPattern, with: "", options: [.regularExpression, .caseInsensitive])
                     .replacingOccurrences(of: "()", with: "").replacingOccurrences(of: #"\s{2,}"#, with: " ", options: .regularExpression)
-                    .trimmingCharacters(in: CharacterSet.whitespaces.union(CharacterSet(charactersIn: "-–·,()")))
-                if !bare.isEmpty { x["name"] = bare.prefix(1).uppercased() + bare.dropFirst() }
+                    .trimmingCharacters(in: CharacterSet.whitespaces.union(CharacterSet(charactersIn: "-–·,")))
+                // (a bracket at the end is the name's own, unless the shop was all that was outside it)
+                let name: String = unwrapped(bare)
+                if !name.isEmpty { x["name"] = name.prefix(1).uppercased() + name.dropFirst() }
             }
             return x
         }
@@ -864,7 +889,7 @@ enum Assistant {
         }
         guard wrong(part) else { return nil }
         // never another food altogether ("Couscous salad with herbs" went from couscous to a yoghurt sauce for salads)
-        for alt in table.alternatives(name, tags: tags(part), matched: first.name, limit: 8).dropFirst() where sameFood(name, alt.name) {
+        for alt in table.alternatives(name, tags: tags(part), matched: first.name, limit: 8).dropFirst() where sameFood(name, alt.name) && !FoodReference.differentDish(name, alt.name) {
             var x = checked(part, kcal100: alt.kcal, p100: alt.p, c100: alt.c, f100: alt.f, source: table.src, match: alt.name)
             guard !wrong(x) else { continue }
             x["swapped"] = "\(name): changed to \(alt.name), as the first match's numbers looked wrong for \(Sanity.range(name)?.label ?? "it")"
@@ -1119,7 +1144,8 @@ enum Assistant {
                 guard let found = await findFoods(asked) else { continue }
                 for (k, i) in batch.enumerated() where k < found.count {
                     guard let r = found[k] as? JSON, FoodReference.sameFood(asked: asked[k], got: str(r["name"])),
-                          sameCooking(str(parts[i]["name"]), str(r["name"])) else { continue }
+                          sameCooking(str(parts[i]["name"]), str(r["name"])),
+                          !FoodReference.differentDish(str(parts[i]["name"]), str(r["name"])) else { continue }
                     let x = parts[i]
                     if plausible(num(r["kcal100"]), aiKcal: num(x["kcal"]) ?? 0, grams: num(x["grams"]) ?? 0, name: str(x["name"])) {
                         parts[i] = checked(x, kcal100: num(r["kcal100"]) ?? 0, p100: num(r["p100"]), c100: num(r["c100"]), f100: num(r["f100"]), source: "usda", match: str(r["name"]))
@@ -1137,7 +1163,7 @@ enum Assistant {
         // a species or cut we've checked: before any list or database, unless its numbers don't fit the kind of food
         // the part is (a cocoa-dusted tiramisu isn't cocoa powder). Its entries are raw, so never for a part tagged
         // cooked: raw numbers on a cooked weight are a quarter or more too low.
-        if on("reference"), cooked != true, let e = FoodReference.match(said), sameCooking(said, e.name),
+        if on("reference"), cooked != true, let e = FoodReference.match(said), sameCooking(said, e.name), !FoodReference.differentDish(said, e.name),
            !wrongFor(checked(x, kcal100: e.kcal, p100: e.p, c100: e.c, f100: e.f, source: "reference")) {
             return checked(x, kcal100: e.kcal, p100: e.p, c100: e.c, f100: e.f, source: "reference", match: e.name)
         }
@@ -1146,12 +1172,14 @@ enum Assistant {
         // have (biryani, pad thai, chocolate cheesecake) from the US dish table; then the other countries' (moussaka, rösti)
         for table in [FoodTable.current, .dishes, .world] {
             if let f = table.best(said, tags: tags(x)), sameFood(said, f.name), !FoodReference.fatClash(said, f.name, fat100: f.f), sameCooking(said, f.name),
+               !FoodReference.differentDish(said, f.name),
                plausible(f.kcal, aiKcal: ai, grams: g, name: said, cookedTag: cooked) {
                 let y = checked(x, kcal100: f.kcal, p100: f.p, c100: f.c, f100: f.f, source: table.src, match: f.name)
                 return rematched(y, from: f, table: table) ?? y
             }
         }
-        if let row = FoodsDB.search(said, limit: 1).first, sameFood(said, str(row["name"])), sameCooking(said, str(row["name"])), plausible(num(row["kcalPer100"]), aiKcal: ai, grams: g, name: said, cookedTag: cooked) {
+        if let row = FoodsDB.search(said, limit: 1).first, sameFood(said, str(row["name"])), sameCooking(said, str(row["name"])),
+           !FoodReference.differentDish(said, str(row["name"])), plausible(num(row["kcalPer100"]), aiKcal: ai, grams: g, name: said, cookedTag: cooked) {
             return checked(x, kcal100: num(row["kcalPer100"]) ?? 0, p100: num(row["p100"]), c100: num(row["c100"]), f100: num(row["f100"]), source: "list", match: str(row["name"]))
         }
         return nil

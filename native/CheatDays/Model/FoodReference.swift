@@ -134,6 +134,23 @@ enum FoodReference {
         return false
     }
 
+    /// An entry that's another dish from the one named, or a leaner cut of it (the owner's receipt, 22 Nov: rib skewers
+    /// counted as lean lamb fillet, roasted tofu as ravioli filled with it, tofu skin and bean curd rolls as fried tofu,
+    /// a yam starch sheet as rice noodles). The part keeps its own numbers.
+    static func differentDish(_ said: String, _ entry: String) -> Bool {
+        let s: String = said.lowercased(), e: String = entry.lowercased()
+        func has(_ t: String, _ p: String) -> Bool { t.range(of: p, options: .regularExpression) != nil }
+        let fattyCut: Bool = has(s, #"\b(skewers?|ribs?|belly|brisket|chops?)\b"#)
+        let saidLean: Bool = has(s, #"\b(lean|fillet|breast|tenderloin|trimmed)\b"#)
+        if fattyCut && !saidLean && has(e, #"\blean\b(?! and fat)|\b(fillet|tenderloin)\b"#) { return true }
+        for pasta in ["ravioli", "tortellini", "cannelloni"] where e.contains(pasta) && !s.contains(pasta) { return true }
+        let tofuDish: Bool = has(s, #"\b(tofu skins?|yuba|stinky tofu|bean ?curd (skins?|rolls?|sheets?|and))\b"#)
+        if tofuDish && !has(e, #"\b(skins?|yuba|stinky)\b"#) { return true }
+        let starchSheet: Bool = has(s, #"\byam (pasta|noodles?)\b|\bstarch (noodle )?(sheets?|noodles?)\b|\bsweet potato starch\b"#)
+        if starchSheet && !has(e, #"\b(starch|glass|cellophane)\b"#) { return true }
+        return false
+    }
+
     /// A dish that says protein on the name should have some: at least a fifth of its calories.
     static func protein(promisedBy dish: String, in items: [JSON]) -> String? {
         let kcal = items.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }, p = items.reduce(0) { $0 + (num($1["protein_g"]) ?? 0) }

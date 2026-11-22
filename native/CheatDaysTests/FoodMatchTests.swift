@@ -6,6 +6,40 @@ import XCTest
 final class FoodMatchTests: XCTestCase {
     private func best(_ name: String, _ tags: [String]) -> String? { FoodTable.au.best(name, tags: tags)?.name }
 
+    /// The owner's receipt, 22 Nov: the tables' swaps took the fat out of it and made other dishes of it.
+    func testAReceiptsDishesArentSwappedForOthers() {
+        let swaps: [(String, String)] = [
+            ("Spicy lamb skewers, grilled", "Lamb, fillet, lean, grilled, no added fat"),
+            ("Small lamb chops, grilled", "Lamb, loin chop, lean, grilled, no added fat"),
+            ("Roasted tofu", "Ravioli filled with tofu, in tomato sauce, prepacked"),
+            ("Tofu skin skewers, grilled", "Tofu, fried"),
+            ("Grilled Changsha stinky tofu", "Tofu, salted and fermented (fuyu)"),
+            ("Bean curd and enoki mushroom rolls", "Tofu, fried"),
+            ("Grilled yam pasta (sweet potato starch sheet)", "Rice noodles, cooked")]
+        for (said, entry) in swaps { XCTAssertTrue(FoodReference.differentDish(said, entry), said) }
+        let same: [(String, String)] = [
+            ("Lamb fillet skewers, lean", "Lamb, fillet, lean, grilled, no added fat"),
+            ("Lamb souvlaki", "Lamb, kebab, marinated, cooked, added fat"),
+            ("Pork ribs, roasted", "Pork, spareribs, separable lean and fat, roasted"),
+            ("Tofu, firm, baked cubes", "Tofu, firm, baked"),
+            ("Onion, chopped", "Onion, brown, raw")]
+        for (said, entry) in same { XCTAssertFalse(FoodReference.differentDish(said, entry), said) }
+        XCTAssertNil(Sanity.range("Bean curd and enoki mushroom rolls, grilled"), "not bread")
+    }
+
+    func testABackupModelsCardIsntHeldTo() {
+        let part: JSON = ["name": "Lamb skewers", "grams": 250.0, "kcal": 400.0]
+        let e: JSON = ["parts": [part] as [JSON]]
+        XCTAssertTrue(Assistant.roughCard(["via": "Gemini (Claude didn't answer)", "estimate": e] as JSON))
+        XCTAssertFalse(Assistant.roughCard(["via": "Claude", "estimate": e] as JSON))
+        var weighed: JSON = part
+        weighed["locked"] = true
+        let set: JSON = ["parts": [weighed] as [JSON]]
+        XCTAssertFalse(Assistant.roughCard(["via": "Gemini (Claude didn't answer)", "estimate": set] as JSON), "their weight stands")
+        let named: JSON = ["shop": "Noodle & BBQ", "parts": [["name": "Grilled yam pasta (sweet potato starch sheet)", "grams": 50.0, "kcal": 68.0] as JSON] as [JSON]]
+        XCTAssertEqual(str(list(Assistant.tidied(named, said: "half", photos: true)["parts"]).first?["name"]), "Grilled yam pasta (sweet potato starch sheet)")
+    }
+
     /// Weighed plates, 17 Nov: baked tofu cubes went to fried tofu and grilled chicken tenders to breaded ones.
     func testCookedAnotherWayIsntFriedOrBreaded() {
         for (name, tags) in [("Tofu, firm, baked cubes", ["baked"]), ("Chicken tenders, grilled with BBQ glaze", ["grilled"])] {

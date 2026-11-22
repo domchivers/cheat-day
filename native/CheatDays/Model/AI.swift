@@ -60,9 +60,22 @@ enum Gemini {
 
     private static func claude(_ job: String, schema: JSON, parts: [JSON], extra: JSON = [:]) async -> JSON? {
         let body: JSON = ["parts": parts, "schema": schema, "maxTokens": 12000].merging(extra) { _, new in new }
-        guard let (d, status) = try? await Supabase.shared.call("/functions/v1/ai?job=\(job)", body: body, timeout: 60), status == 200,
-              let reply = try? JSONSerialization.jsonObject(with: d) as? JSON, let data = str(reply["text"]).data(using: .utf8) else { return nil }
-        return try? JSONSerialization.jsonObject(with: data) as? JSON
+        // The careful model took 25 to 51 s on a nine-dish receipt before any upload (22 Nov): at 60 it was given up on,
+        // and the backup's low guess became the card. Given longer, and asked again when it fails straight away.
+        let careful: Bool = ["photos", "chat", "careful"].contains(job)
+        let wait: TimeInterval = careful ? 120 : 60
+        for attempt in 0..<2 {
+            let began = Date()
+            let got: (Data, Int)? = try? await Supabase.shared.call("/functions/v1/ai?job=\(job)", body: body, timeout: wait)
+            if let (d, status) = got, status == 200 {
+                guard let reply = try? JSONSerialization.jsonObject(with: d) as? JSON, let data = str(reply["text"]).data(using: .utf8) else { return nil }
+                return try? JSONSerialization.jsonObject(with: data) as? JSON
+            }
+            let dropped: Bool = got == nil || got?.1 == 502 || got?.1 == 503
+            let atOnce: Bool = Date().timeIntervalSince(began) < 15
+            guard careful, attempt == 0, dropped, atOnce, !Task.isCancelled else { return nil }
+        }
+        return nil
     }
 
     private static let labelSchema: JSON = ["type": "object", "required": ["found", "serving_g", "kcal", "protein_g", "carbs_g", "fat_g", "source"], "properties": [

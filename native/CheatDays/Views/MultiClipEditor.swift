@@ -2060,8 +2060,8 @@ struct MultiClipEditor: View {
             pressCount += 1
             let press = pressCount   // (a tap's hold, still counting, mustn't lift the press after it)
             Task { @MainActor in
-                // (22 Nov: 300 was "a little long", so a quarter quicker)
-                try? await Task.sleep(for: .milliseconds(225))
+                // (22 Nov: 300 was "a little long", 225 "could be quicker still")
+                try? await Task.sleep(for: .milliseconds(170))
                 guard press == pressCount, pressed == item.id, !pressMoved, barGrab == nil else { return }
                 holdRows()
                 lifted = item.id
@@ -3861,17 +3861,21 @@ private struct BarLift: ViewModifier {
         let shade: [Double] = [0, 0.35, 0.5], blur: [CGFloat] = [0, 7, 12], drop: [CGFloat] = [0, 4, 8]
         let moving: Animation
         if stage == 1 {
-            moving = .easeOut(duration: 0.17).delay(0.05)   // under way well before the 225 ms are up
+            moving = .easeOut(duration: 0.11).delay(0.02)   // under way well before the 170 ms are up
         } else if stage == 2 && !still {
-            moving = .spring(response: 0.28, dampingFraction: 0.55)
+            moving = .spring(response: 0.18, dampingFraction: 0.65)
         } else {
-            moving = .easeOut(duration: 0.15)
+            moving = .easeOut(duration: 0.08)
         }
-        return content
-            .scaleEffect(still ? 1 : sizes[stage])
-            .shadow(color: .black.opacity(shade[stage]), radius: blur[stage], y: drop[stage])
-            .offset(y: still ? 0 : rises[stage])
-            .animation(moving, value: stage)
+        let size: CGFloat = still ? 1 : sizes[stage], rise: CGFloat = still ? 0 : rises[stage]
+        let dark: Color = .black.opacity(shade[stage]), soft: CGFloat = blur[stage], below: CGFloat = drop[stage]
+        // only these three move. Animating by value took the bar's place along with them: picked, it slid after the
+        // timeline into its frame, which was already there (22 Nov recording, "select animation could be quicker still")
+        return content.animation(moving) { view in
+            view.scaleEffect(size)
+                .shadow(color: dark, radius: soft, y: below)
+                .offset(y: rise)
+        }
     }
 }
 
