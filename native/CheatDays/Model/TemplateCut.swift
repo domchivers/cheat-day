@@ -60,6 +60,42 @@ struct TemplateCut: Equatable {
         return (out, at)
     }
 
+    /// The edit's clips into the slots to start with, in order: fewer clips than slots, the longer ones again at moments
+    /// further along them, as many as they've two seconds for (23 Nov: one long clip filled one slot, and Make it
+    /// made two seconds of video).
+    static func spread(library: [Clip], slots count: Int) -> (filled: [UUID?], moments: [Int: Double]) {
+        var filled: [UUID?] = Array(repeating: nil, count: max(0, count))
+        var moments: [Int: Double] = [:]
+        let clips: [Clip] = Array(library.prefix(max(0, count)))
+        guard !clips.isEmpty else { return (filled, moments) }
+        var times: [Int] = Array(repeating: 1, count: clips.count)
+        var spare: Int = count - clips.count
+        while spare > 0 {
+            var best: Int?
+            var longest: Double = 0
+            for (i, c) in clips.enumerated() where !c.still {
+                guard c.duration >= Double(times[i] + 1) * 2 else { continue }
+                let each: Double = c.duration / Double(times[i])
+                if each > longest {
+                    longest = each
+                    best = i
+                }
+            }
+            guard let best else { break }
+            times[best] += 1
+            spare -= 1
+        }
+        var slot = 0
+        for (i, c) in clips.enumerated() {
+            for k in 0..<times[i] {
+                filled[slot] = c.id
+                if times[i] > 1 { moments[slot] = c.start + c.duration * Double(k) / Double(times[i]) }
+                slot += 1
+            }
+        }
+        return (filled, moments)
+    }
+
     /// The same id for the same copy each time it's cut again, so the preview isn't started again for it.
     static func copy(of id: UUID, slot: Int) -> UUID {
         var bytes: uuid_t = id.uuid
@@ -132,11 +168,9 @@ struct TemplateCut: Equatable {
     }
 }
 
-/// The templates' cards, playing on the edit's own clips.
+/// The templates' cards, going round their slots.
 enum TemplateReel {
     static let rate = 10.0      // pictures a second
-    static let seconds = 2.0    // of each clip
-    static let most = 7         // clips at most
 
     /// How long a template runs, about: half a second a beat.
     static func length(_ slots: [EditTemplate.Slot]) -> Double {
@@ -157,23 +191,4 @@ enum TemplateReel {
         return (slots.count - 1, 0, 1)
     }
 
-    /// A couple of seconds of a clip, small, from the part kept.
-    static func frames(_ c: Clip) async -> [CGImage] {
-        let gen = AVAssetImageGenerator(asset: AVURLAsset(url: c.source))
-        gen.appliesPreferredTrackTransform = true
-        gen.maximumSize = CGSize(width: 240, height: 240)
-        let near = CMTime(seconds: 0.5 / rate, preferredTimescale: 600)
-        gen.requestedTimeToleranceBefore = near
-        gen.requestedTimeToleranceAfter = near
-        let lasts: Double = c.still ? 0.1 : min(seconds, c.duration)
-        let from: Double = c.start + max(0, c.duration - lasts) * 0.4
-        let count: Int = max(1, Int(lasts * rate))
-        var out: [CGImage] = []
-        for i in 0..<count {
-            if Task.isCancelled { break }
-            let time = CMTime(seconds: from + Double(i) / rate, preferredTimescale: 600)
-            if let img = try? await gen.image(at: time).image { out.append(img) }
-        }
-        return out
-    }
 }

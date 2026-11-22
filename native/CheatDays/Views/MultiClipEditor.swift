@@ -103,9 +103,8 @@ struct MultiClipEditor: View {
     @State private var captionGroup = "few"
     @State private var captionLines = 1
     @State private var listPicked: UUID?
-    // text typed straight onto the video, and the stories' sticker tray (21 Nov, design/editor-text-stickers-mockup.html)
+    // the text being typed in its panel (design/text-typing-mockup.html), and the stories' sticker tray
     @State private var typing: UUID?
-    @FocusState private var typingFocus: Bool
     @State private var stickering = false
     @State private var stickerPick: String?
     // the recipe laid over it (design/editor-recipe-mockup.html), and how
@@ -295,9 +294,6 @@ struct MultiClipEditor: View {
         // text typed on the video itself, everything else dimmed behind
         .fullScreenCover(isPresented: $templating) {
             templatesScreen
-        }
-        .fullScreenCover(isPresented: Binding(get: { typing != nil }, set: { if !$0 { endTyping() } })) {
-            if let k = texts.firstIndex(where: { $0.id == typing }) { typingView(k) }
         }
         // a 4K clip played from a smaller copy while it's edited (the finished video's made from the file itself)
         .task(id: Set(clips.map { $0.source })) {
@@ -792,16 +788,40 @@ struct MultiClipEditor: View {
 
     private func textSheet(_ item: EditText) -> some View {
         let id: UUID = item.id
-        return TextPanel(item: item, screen: $captionScreen,
+        return TextPanel(item: item, screen: $captionScreen, typeFirst: typing == id,
                          change: { (edit: (inout EditText) -> Void) in changeText(id, edit) },
                          step: { captionStep() },
                          held: { (on: Bool) in sliderHeld(on) },
-                         edit: { startTyping(id) },
+                         typed: { (on: Bool) in textTyped(id, on) },
                          delete: { deleteFromPanel(id) },
                          done: { closePanel() },
+                         left: { textLeft(id) },
                          head: { captionHead })
             .id(id)
             .onChange(of: captionScreen) { (_: CaptionScreen, to: CaptionScreen) in screenChanged(to) }
+    }
+
+    /// Typing a text: one step till the keyboard's away, and for one just added the adding's that step.
+    private func textTyped(_ id: UUID, _ on: Bool) {
+        if on {
+            player.pause(); playing = false
+            if typing != id { remember() }
+            typing = id
+        } else if typing == id {
+            typing = nil
+        }
+    }
+
+    /// Its panel's gone: one with nothing typed in it is taken off.
+    private func textLeft(_ id: UUID) {
+        if typing == id { typing = nil }
+        guard let k = texts.firstIndex(where: { (t: EditText) -> Bool in t.id == id }), texts[k].kind == "text" else { return }
+        guard texts[k].text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        texts.remove(at: k)
+        if selectedText == id {
+            selectedText = nil
+            if panel == .text { panel = nil }
+        }
     }
 
     /// Every other panel (design/editor-panels-mockup.html): the one sheet, no rows of bars on any.
@@ -4052,158 +4072,13 @@ struct MultiClipEditor: View {
         if let k = clips[i].moves.firstIndex(where: { abs($0.at - at) < 0.12 }) { clips[i].moves[k] = m } else { clips[i].moves.append(m) }
     }
 
-    /// The colours saved for captions, for text too.
-    private func savedTextColours(_ item: EditText) -> some View {
-        let id: UUID = item.id
-        return ForEach(SavedColours.shared.list, id: \.self) { (s: SavedColours.Saved) in
-            Button { useForText(id, s) } label: {
-                RoundedRectangle(cornerRadius: 5, style: .continuous).fill(StoryArt.color(s.hex).opacity(max(0.12, s.alpha)))
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Saved colour \(s.hex)")
-        }
-    }
-
-    private func useForText(_ id: UUID, _ s: SavedColours.Saved) {
-        changeText(id) { (t: inout EditText) in
-            t.colour = s.hex
-            t.colourAlpha = s.alpha < 1 ? s.alpha : nil
-        }
-    }
-
-    private func textOpacity(_ item: EditText) -> some View {
-        let id: UUID = item.id
-        let alpha: Double = item.colourAlpha ?? 1
-        return HStack(spacing: 12) {
-            Text("Opacity").font(.system(size: 12))
-            ThinSlider(name: "Opacity", value: alpha, range: 0...1, held: { (_: Bool) in },
-                       set: { (v: Double) in changeText(id) { (t: inout EditText) in t.colourAlpha = v } })
-            Text("\(Int((alpha * 100).rounded()))%").font(.system(size: 12, weight: .medium, design: .monospaced))
-                .frame(width: 40, alignment: .trailing)
-        }
-        .foregroundStyle(Color.white)
-    }
-
     private func addText() {
         player.pause(); playing = false
         remember()
         let t = EditText(kind: "text", text: "", from: now, to: min(max(total, now + 0.5), now + 3))
+        typing = t.id   // (its panel opens on the keyboard)
         texts.append(t)
         selectText(t.id)
-        startTyping(t.id)
-    }
-
-    /// Typing on the video (design/editor-text-stickers-mockup.html, 1): opened at once, no slide up.
-    private func startTyping(_ id: UUID) {
-        var t = Transaction(); t.disablesAnimations = true
-        withTransaction(t) { typing = id }
-    }
-
-    /// Typing done: an empty one taken off.
-    private func endTyping() {
-        if let id = typing, let k = texts.firstIndex(where: { $0.id == id }), texts[k].text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            texts.remove(at: k)
-            if selectedText == id { selectedText = nil; withAnimation(.snappy) { panel = nil } }
-        }
-        var t = Transaction(); t.disablesAnimations = true
-        withTransaction(t) { typing = nil }
-    }
-
-    /// The text being typed, large in the middle of the dimmed video: its typefaces along the top, its size on the
-    /// left, its looks and colours over the keyboard (as Instagram's and CapCut's are).
-    private func typingView(_ k: Int) -> some View {
-        let item = texts[k]
-        let ink = EditText.colour(item.colour).opacity(item.colourAlpha ?? 1)
-        let words = Binding(get: { texts.indices.contains(k) ? texts[k].text : "" }, set: { if texts.indices.contains(k) { texts[k].text = $0 } })
-        let field = TextField("Type something", text: words, axis: .vertical)
-            .font(EditText.font(item.font, size: 38 * CGFloat(item.size)))
-            .multilineTextAlignment(.center).lineLimit(1...6)
-            .focused($typingFocus)
-            .tint(Color(red: 1, green: 0.84, blue: 0.04))
-        return ZStack {
-            Color.black.opacity(0.55).ignoresSafeArea().onTapGesture { endTyping() }
-            VStack(spacing: 0) {
-                HStack(spacing: 6) {
-                    ForEach(EditText.fonts, id: \.self) { fo in
-                        Button { texts[k].font = fo == "classic" ? nil : fo } label: {
-                            Text("Aa").font(EditText.font(fo, size: 14)).frame(width: 36, height: 36)
-                                .foregroundStyle((item.font ?? "classic") == fo ? Color.black : Color.white)
-                                .background((item.font ?? "classic") == fo ? Color.white : Color.black.opacity(0.5), in: Circle())
-                                .overlay(Circle().stroke(.white.opacity(0.35), lineWidth: 1))
-                        }
-                        .buttonStyle(.plain).accessibilityLabel("Typeface " + fo)
-                    }
-                    Spacer()
-                    Button { endTyping() } label: {
-                        Text("Done").font(.subheadline.weight(.heavy)).foregroundStyle(.black).padding(.horizontal, 16).frame(height: 34).background(.white, in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 14).padding(.top, 10)
-                Spacer(minLength: 10)
-                Group {
-                    switch item.style {
-                    case "Box":
-                        field.foregroundStyle(EditText.ink(on: item.colour)).padding(.horizontal, 14).padding(.vertical, 8)
-                            .background(ink, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    case "Outline":
-                        let edge = EditText.ink(on: item.colour) == .black ? Color.black : Color.white
-                        field.foregroundStyle(ink)
-                            .shadow(color: edge, radius: 0, x: 1.5, y: 1.5).shadow(color: edge, radius: 0, x: -1.5, y: -1.5)
-                            .shadow(color: edge, radius: 0, x: 1.5, y: -1.5).shadow(color: edge, radius: 0, x: -1.5, y: 1.5)
-                    case "Plain": field.foregroundStyle(ink)
-                    default: field.foregroundStyle(ink).shadow(color: .black.opacity(0.7), radius: 4, y: 2)
-                    }
-                }
-                .padding(.horizontal, 44)
-                Spacer(minLength: 10)
-                VStack(spacing: 10) {
-                    HStack(spacing: 6) {
-                        ForEach(EditText.textStyles, id: \.self) { st in
-                            Button { UISelectionFeedbackGenerator().selectionChanged(); texts[k].style = st } label: {
-                                Text(st).font(.caption.weight(.heavy)).padding(.horizontal, 12).frame(height: 30)
-                                    .foregroundStyle(item.style == st ? Color.black : Color.white)
-                                    .background(item.style == st ? Color.white : Color.black.opacity(0.55), in: Capsule())
-                                    .overlay(Capsule().stroke(.white.opacity(0.25), lineWidth: 1))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        Spacer(minLength: 0)
-                    }
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            // any colour, from the wheel
-                            ColorPicker("Any colour", selection: Binding(get: { EditText.colour(texts.indices.contains(k) ? texts[k].colour : "white") },
-                                                                         set: { c in if texts.indices.contains(k) { texts[k].colour = Self.hex(c) } }), supportsOpacity: false)
-                                .labelsHidden().frame(width: 30, height: 30)
-                            savedTextColours(item)
-                            ForEach(EditText.palette, id: \.self) { c in
-                                Circle().fill(StoryArt.color(c)).frame(width: 28, height: 28)
-                                    .overlay(Circle().stroke(.white.opacity(0.75), lineWidth: 2))
-                                    .padding(3)
-                                    .overlay(Circle().stroke(.white, lineWidth: item.colour.uppercased() == c ? 2 : 0))
-                                    .onTapGesture { texts[k].colour = c }
-                                    .accessibilityLabel("Colour " + c)
-                            }
-                        }
-                        .padding(.vertical, 2)
-                    }
-                    textOpacity(item)
-                }
-                .padding(.horizontal, 12).padding(.bottom, 10)
-            }
-            // its size, up the left side
-            HStack {
-                Slider(value: Binding(get: { texts.indices.contains(k) ? texts[k].size : 1 }, set: { if texts.indices.contains(k) { texts[k].size = $0 } }), in: 0.5...2.5)
-                    .tint(.white).frame(width: 200).rotationEffect(.degrees(-90)).frame(width: 30, height: 200)
-                    .accessibilityLabel("Text size")
-                Spacer()
-            }
-            .padding(.leading, 6).offset(y: -40)
-        }
-        .presentationBackground(.clear)
-        .onAppear { typingFocus = true }
     }
 
     /// A colour as "#RRGGBB".

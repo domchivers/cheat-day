@@ -53,7 +53,7 @@ struct EditTemplate: Identifiable, Equatable {
             for meal in Meals.all {
                 let had = log.items.filter { Meals.of($0) == meal }
                 guard !had.isEmpty else { continue }
-                out.append(Slot(name: Self.single(meal), detail: Self.foods(had)))
+                out.append(Slot(name: Self.single(meal), detail: Self.mealWords(had)))
             }
             return out.isEmpty ? ["Breakfast", "Lunch", "Snack", "Dinner"].map { Slot(name: $0) } : out
         case "cheat":
@@ -86,9 +86,7 @@ struct EditTemplate: Identifiable, Equatable {
             return [Slot(name: "Before", detail: Fmt.one(first.kg) + " kg · " + Self.day(first.day), beats: 8),
                     Slot(name: "Now", detail: Fmt.one(last.kg) + " kg · " + Self.day(last.day), beats: 8)]
         default:   // a week
-            let days = ([(date: log.today, items: log.items)] + log.history)
-                .filter { !$0.items.isEmpty && $0.date > DayKey.shift(log.today, days: -7) }
-                .sorted { $0.date < $1.date }
+            let days: [(date: String, items: [JSON])] = Self.week(log)
             guard !days.isEmpty else { return ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map { Slot(name: $0) } }
             return days.map { d in
                 Slot(name: DayKey.date(d.date).formatted(.dateTime.weekday(.wide)),
@@ -97,11 +95,67 @@ struct EditTemplate: Identifiable, Equatable {
         }
     }
 
+    /// The last week's days with food on them, oldest first.
+    private static func week(_ log: Log) -> [(date: String, items: [JSON])] {
+        let since: String = DayKey.shift(log.today, days: -7)
+        var days: [(date: String, items: [JSON])] = [(date: log.today, items: log.items)]
+        days += log.history
+        return days.filter { (d: (date: String, items: [JSON])) -> Bool in !d.items.isEmpty && d.date > since }
+            .sorted { (a: (date: String, items: [JSON]), b: (date: String, items: [JSON])) -> Bool in a.date < b.date }
+    }
+
+    /// What it's for, in a few words, on its card.
+    var purpose: String {
+        switch id {
+        case "day": return "Each meal, labelled"
+        case "cheat": return "Fast cuts, then your total"
+        case "gym": return "Each lift, named"
+        case "recipe": return "Steps, then macros"
+        case "before": return "Then and now"
+        default: return "A day a clip"
+        }
+    }
+
+    /// The food each slot's of, for its card's picture: a meal's biggest, or the food itself.
+    func foods(for log: Log) -> [String] {
+        let named: [Slot] = slots(log, recipe: nil)
+        switch id {
+        case "day":
+            var out: [String] = []
+            for meal in Meals.all {
+                let had: [JSON] = log.items.filter { (x: JSON) -> Bool in Meals.of(x) == meal }
+                guard !had.isEmpty else { continue }
+                let top: JSON? = had.max { (a: JSON, b: JSON) -> Bool in (num(a["kcal"]) ?? 0) < (num(b["kcal"]) ?? 0) }
+                out.append(str(top?["name"]))
+            }
+            return out.isEmpty ? named.map { (s: Slot) -> String in s.name } : out
+        case "cheat":
+            // (the last is the day's total: no food of its own)
+            return named.dropLast().map { (s: Slot) -> String in s.name }
+        default:
+            return []
+        }
+    }
+
+    /// The week's days for its card, each as a part of the biggest.
+    func bars(for log: Log) -> [Double] {
+        guard id == "week" else { return [] }
+        var totals: [Double] = []
+        for d in Self.week(log) {
+            var sum: Double = 0
+            for item in d.items { sum += num(item["kcal"]) ?? 0 }
+            totals.append(sum)
+        }
+        let most: Double = totals.max() ?? 0
+        guard most > 0 else { return [] }
+        return totals.map { (v: Double) -> Double in v / most }
+    }
+
     private static func single(_ meal: String) -> String { meal == "Snacks" ? "Snack" : meal }
     static func kcal(_ k: Double) -> String { "\(Int(k.rounded())) kcal" }
     private static func day(_ d: String) -> String { DayKey.date(d).formatted(.dateTime.day().month(.abbreviated)) }
     /// A meal's foods, the biggest two by name, and its calories: "Oats, Berries · 420 kcal".
-    private static func foods(_ items: [JSON]) -> String {
+    private static func mealWords(_ items: [JSON]) -> String {
         let names = items.sorted { (num($0["kcal"]) ?? 0) > (num($1["kcal"]) ?? 0) }.prefix(2).map { str($0["name"]) }.filter { !$0.isEmpty }
         let k = items.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }
         return (names.isEmpty ? "" : names.joined(separator: ", ") + (items.count > 2 ? " +\(items.count - 2)" : "") + " · ") + kcal(k)

@@ -61,6 +61,34 @@ final class TemplateCutTests: XCTestCase {
         XCTAssertEqual(cut.shows(1) ?? 0, 2, accuracy: 0.001)
     }
 
+    func testOneLongClipFillsEverySlotInOrder() {
+        let long = Clip(source: URL(fileURLWithPath: "/tmp/long.mov"), length: 45, start: 0, end: 45)
+        let start: (filled: [UUID?], moments: [Int: Double]) = TemplateCut.spread(library: [long], slots: 3)
+        XCTAssertEqual(start.filled, [long.id, long.id, long.id])
+        XCTAssertEqual(start.moments[0] ?? -1, 0, accuracy: 0.001)
+        XCTAssertEqual(start.moments[1] ?? -1, 15, accuracy: 0.001)
+        XCTAssertEqual(start.moments[2] ?? -1, 30, accuracy: 0.001)
+    }
+
+    func testEnoughClipsHaveOneEach() {
+        let start: (filled: [UUID?], moments: [Int: Double]) = TemplateCut.spread(library: [a, b], slots: 2)
+        XCTAssertEqual(start.filled, [a.id, b.id])
+        XCTAssertTrue(start.moments.isEmpty)
+    }
+
+    func testAClipTooShortIsntUsedAgain() {
+        let short = Clip(source: URL(fileURLWithPath: "/tmp/short.mov"), length: 3, start: 0, end: 3)
+        let start: (filled: [UUID?], moments: [Int: Double]) = TemplateCut.spread(library: [short], slots: 3)
+        XCTAssertEqual(start.filled, [short.id, nil, nil])
+    }
+
+    func testACardsFoodsFollowItsSlots() {
+        let items: [JSON] = [["name": "Yoghurt", "kcal": 248.0], ["name": "Noodles", "kcal": 1155.0]]
+        let log = EditTemplate.Log(today: "2026-11-23", items: items)
+        let cheat: EditTemplate = EditTemplate.all[1]
+        XCTAssertEqual(cheat.foods(for: log), ["Noodles", "Yoghurt"])
+    }
+
     func testBlankWordsShowNothing() {
         let blank: [EditTemplate.Slot] = [EditTemplate.Slot(name: "", detail: "")]
         let cut: TemplateCut = TemplateCut.make(template, library: [a], filled: [a.id], moments: [:], slots: blank, music: nil)

@@ -36,7 +36,7 @@ struct TemplateMaker: View {
     @State private var musicFor: String?             // the template whose song has come, or couldn't
     @State private var lastOpened: String?
     @State private var frozen: TemplateCut?          // the tiles' pictures while a moment's dragged
-    @State private var reels: [[CGImage]] = []
+    @State private var untouched = true              // the slots as they were first filled
     @State private var typing = false
     @State private var cut = TemplateCut()
     @State private var player = PreviewEngine()
@@ -119,7 +119,7 @@ struct TemplateMaker: View {
         if let t = picked {
             filling(t)
         } else if let log {
-            TemplateGallery(clips: library, log: log, pick: { (t: EditTemplate) in open(t) }, close: close, reels: $reels)
+            TemplateGallery(log: log, pick: { (t: EditTemplate) in open(t) }, close: close)
         }
     }
 
@@ -174,11 +174,21 @@ struct TemplateMaker: View {
             let got: [Clip] = loaded.clips
             let go: () -> Void = {
                 library += got
-                for c in got { put(c.id) }
+                putAll(got)
             }
             if loaded.failed.isEmpty { go(); return }
             try? await Task.sleep(for: .milliseconds(450))
             importFailure = ImportFailure(total: items.count, failed: loaded.failed, retry: { load(items) }, carryOn: got.isEmpty ? nil : go)
+        }
+    }
+
+    /// Several added: a slot each. Every slot full, they take the places of those from the picked one on.
+    private func putAll(_ got: [Clip]) {
+        for c in got {
+            let here: Int = slotOn
+            put(c.id)
+            let full: Bool = !filled.contains { (id: UUID?) -> Bool in id == nil }
+            if full && got.count > 1 && !filled.isEmpty { slotOn = (here + 1) % filled.count }
         }
     }
 
@@ -196,12 +206,12 @@ struct TemplateMaker: View {
         music = nil
         musicFor = nil
         let count: Int = t.slots(log, recipe: nil).count
-        var first: [UUID?] = Array(repeating: nil, count: count)
-        // the edit's clips into the slots, in order, to start with
-        for (i, c) in library.prefix(count).enumerated() { first[i] = c.id }
+        let start: (filled: [UUID?], moments: [Int: Double]) = TemplateCut.spread(library: library, slots: count)
+        let first: [UUID?] = start.filled
         recipe = nil
         edited = [:]
-        moments = [:]
+        moments = start.moments
+        untouched = true
         tab = "Clips"
         cut = TemplateCut()
         clock.time = 0
@@ -222,6 +232,13 @@ struct TemplateMaker: View {
         recipe = what
         edited = [:]
         let count: Int = logged.count
+        if untouched {
+            let start: (filled: [UUID?], moments: [Int: Double]) = TemplateCut.spread(library: library, slots: count)
+            filled = start.filled
+            moments = start.moments
+            slotOn = min(slotOn, max(0, count - 1))
+            return
+        }
         if filled.count > count {
             filled = Array(filled.prefix(count))
         } else {
@@ -440,6 +457,7 @@ struct TemplateMaker: View {
 
     private func emptySlot(_ i: Int) {
         guard filled.indices.contains(i) else { return }
+        untouched = false
         filled[i] = nil
         moments[i] = nil
         slotOn = i
@@ -481,6 +499,7 @@ struct TemplateMaker: View {
     private func put(_ id: UUID) {
         guard filled.indices.contains(slotOn) else { return }
         let here: Int = slotOn
+        untouched = false
         if filled[here] != id { moments[here] = nil }
         var next: [UUID?] = filled
         next[here] = id
@@ -588,6 +607,7 @@ struct TemplateMaker: View {
     }
 
     private func moveMoment(_ at: Double, room: Double) {
+        untouched = false
         moments[slotOn] = min(room, max(0, at))
     }
 
