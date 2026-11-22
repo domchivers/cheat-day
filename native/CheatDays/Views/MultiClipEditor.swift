@@ -133,7 +133,7 @@ struct MultiClipEditor: View {
     private struct BarGrab { var id: UUID; var mode: Int; var from: Double; var to: Double; var words: [EditText.Word]?; var start = 0.0 }   // mode: 0 move, 1 start, 2 end
     /// One bar on the timeline: a text, sticker or caption, or a voiceover or sound effect.
     /// kind: 0 over the picture (text, stickers, captions), 1 a sound, 2 a clip or photo over it.
-    private struct BarItem: Identifiable { let id: UUID; let from: Double; let to: Double; let label: String; let colour: Color; let kind: Int; var lane: Int? = nil }
+    private struct BarItem: Identifiable { let id: UUID; let from: Double; let to: Double; let label: String; let colour: Color; let kind: Int; var lane: Int? = nil; var off: Bool = false }
     private enum Panel { case trim, sound, speed, join, look, shape, text, stickers, voice, effects, soundItem, pip, motion, beats, captions, captionList, recipe, recipeSteps }
     private var perSecond: CGFloat { 30 * stripZoom }   // timeline points a second, pinched wider or narrower
 
@@ -553,7 +553,7 @@ struct MultiClipEditor: View {
     /// How many rows of bars the timeline shows under its clips.
     // (only the rows there are: the empty rail to drop onto, kept under them, read as an "extra layer for no reason",
     // 22 Nov. While a bar's lifted it lies over the tools under the timeline, so the timeline's height stays put)
-    private var laneCount: Int { min(6, barRows.count) }
+    private var laneCount: Int { min(TimelineRows.most, barRows.count) }
     // the bars as tall as CapCut's, their words readable (21 Nov, design/capcut-timeline-mockup.html: 15 pt bars read as slivers)
     // A clip's row is what's in it: 2 over it, its picture, 2, and its sound's wave (22 Nov, "things not lining up":
     // made 49 in 1.4.25 with the clip left 56 tall, its wave ran into the first row of bars and under it).
@@ -796,7 +796,7 @@ struct MultiClipEditor: View {
 
     /// The bars under the clips, at the timeline's seconds: slim tags.
     private func lanes(width: CGFloat, span: Double) -> some View {
-        let rows = Array(barRows.prefix(6))
+        let rows = Array(barRows.prefix(TimelineRows.most))
         return VStack(alignment: .leading, spacing: 3) {
             ForEach(rows.indices, id: \.self) { r in
                 ZStack(alignment: .leading) {
@@ -813,7 +813,7 @@ struct MultiClipEditor: View {
             // while a bar's lifted, a rail under the last: a new row for it if it's dropped there
             if canAddRow { emptyRail(wanted: dropRow == rows.count, width: width) }
         }
-        // each row's tile just before 0:00, lined up with it, under a picked bar's handle
+        // each row's tile (a caption row's, its eye) just before 0:00, lined up with it, under a picked bar's handle
         .background(alignment: .topLeading) { laneHeads.offset(x: -(Self.headWidth + Self.headGap)) }
         .overlay(alignment: .topLeading) { barHandles(rows, width: width, span: span) }
         .coordinateSpace(name: "bars")
@@ -917,15 +917,87 @@ struct MultiClipEditor: View {
     /// A tile for each row of bars, against the timeline's start and lined up with its row: what's on it (captions, text,
     /// stickers, voice, music, sound FX, overlays; mixed, a stack), as CapCut heads its tracks.
     private var laneHeads: some View {
-        let rows = Array(barRows.prefix(6))
+        let rows = Array(barRows.prefix(TimelineRows.most))
         return VStack(spacing: 3) {
-            ForEach(rows.indices, id: \.self) { r in
-                Image(systemName: laneIcon(rows[r])).font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.85))
-                    .frame(width: Self.headWidth, height: Self.laneHeight)
-                    .background(Color(white: 0.17), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-            }
+            ForEach(rows.indices, id: \.self) { r in laneHead(rows[r]) }
         }
-        .allowsHitTesting(false)
+    }
+
+    /// One row's tile: what's on it; a row of captions', the eye that switches them on and off.
+    @ViewBuilder private func laneHead(_ row: [BarItem]) -> some View {
+        let caps: Set<UUID> = captionsOn(row)
+        if caps.isEmpty {
+            laneTile(laneIcon(row), lit: true).allowsHitTesting(false)
+        } else {
+            let showing: Bool = row.contains { (b: BarItem) -> Bool in caps.contains(b.id) && !b.off }
+            laneTile(showing ? "eye" : "eye.slash", lit: showing)
+                .contentShape(Rectangle())
+                // by the screen's measure, as Clip sound: a slide of the timeline that starts here mustn't switch it
+                .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .global).onEnded { tappedEye($0, caps, hide: showing) })
+                .accessibilityElement()
+                .accessibilityLabel(showing ? "Switch this row's captions off" : "Switch this row's captions on")
+                .accessibilityAddTraits(.isButton)
+                .accessibilityAction { switchCaptions(caps, hide: showing) }
+        }
+    }
+
+    private func laneTile(_ icon: String, lit: Bool) -> some View {
+        Image(systemName: icon).font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.white.opacity(lit ? 0.85 : 0.4))
+            .frame(width: Self.headWidth, height: Self.laneHeight)
+            .background(Color(white: 0.17), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+    }
+
+    private func captionsOn(_ row: [BarItem]) -> Set<UUID> {
+        var ids: Set<UUID> = []
+        for b in row where b.kind == 0 { ids.insert(b.id) }
+        guard !ids.isEmpty else { return [] }
+        var out: Set<UUID> = []
+        for t in texts where t.kind == "caption" && ids.contains(t.id) { out.insert(t.id) }
+        return out
+    }
+
+    private func tappedEye(_ v: DragGesture.Value, _ ids: Set<UUID>, hide: Bool) {
+        if hypot(v.translation.width, v.translation.height) < 6 { switchCaptions(ids, hide: hide) }
+    }
+
+    /// A row's captions switched off, or on.
+    private func switchCaptions(_ ids: Set<UUID>, hide: Bool) {
+        remember()
+        // every bar keeps its row: one on and one off don't share
+        pinRows(barRows.map { (row: [BarItem]) -> [UUID] in row.map(\.id) })
+        for i in texts.indices where ids.contains(texts[i].id) { texts[i].hidden = hide ? true : nil }
+        UISelectionFeedbackGenerator().selectionChanged()
+    }
+
+    /// Every bar on the row these rows give it.
+    private func pinRows(_ rows: [[UUID]]) {
+        var lane: [UUID: Int] = [:]
+        for (r, ids) in rows.enumerated() { for id in ids { lane[id] = r } }
+        var t = texts, s = sounds, p = pips
+        for k in t.indices { t[k].lane = lane[t[k].id] }
+        for k in s.indices { s[k].lane = lane[s[k].id] }
+        for k in p.indices { p[k].lane = lane[p[k].id] }
+        texts = t
+        if s != sounds { sounds = s }
+        if p != pips { pips = p }
+    }
+
+    /// The captions changed to these, and put in their layers' rows.
+    private func setLayered(_ changed: [EditText], sounds laid: [EditSound]) {
+        let before: [[UUID]] = barRows.map { (row: [BarItem]) -> [UUID] in row.map(\.id) }
+        var live: Set<UUID> = []
+        for t in changed where t.kind != "caption" { live.insert(t.id) }
+        for s in laid { live.insert(s.id) }
+        for p in pips { live.insert(p.id) }
+        let rows: [[UUID]] = CaptionLayers.rows(before, texts: changed, sounds: laid, live: live)
+        texts = changed
+        pinRows(rows)
+    }
+
+    /// A voiceover or the clips under it moved: the video's captions switched off are those under it now.
+    private func settleLayers() {
+        let settled: [EditText] = CaptionLayers.settled(texts, sounds: sounds)
+        if settled != texts { setLayered(settled, sounds: sounds) }
     }
 
     private func laneIcon(_ row: [BarItem]) -> String {
@@ -988,7 +1060,7 @@ struct MultiClipEditor: View {
             if (p.x >= a - 22 && p.x <= a + 10) || (p.x >= b - 10 && p.x <= b + 22) { return true }
         }
         // a bar's middle is the timeline's until the bar's held (lifted); a picked bar's handles are its own
-        guard selected == nil, let item = pickedBar, let r = rowOf(item.id), r < 6 else { return false }
+        guard selected == nil, let item = pickedBar, let r = rowOf(item.id), r < TimelineRows.most else { return false }
         let top: CGFloat = lanesTop + CGFloat(r) * (Self.laneHeight + 3) - (Self.catchSize - Self.laneHeight) / 2
         guard p.y >= top, p.y <= top + Self.catchSize else { return false }
         let end: Double = min(item.to, max(total, 0.01))
@@ -1293,6 +1365,7 @@ struct MultiClipEditor: View {
             return words.contains { (w: EditText.Word) -> Bool in w.clip.map { ids.contains($0) } ?? false }
         }
         if tied { texts = EditOverlays.reanchor(texts, clips: clips, sounds: sounds) }
+        settleLayers()
     }
 
     private func remember() { history.append(Snap(clips: clips, sounds: sounds, texts: texts)); future = []; if history.count > 30 { history.removeFirst() } }
@@ -1326,12 +1399,8 @@ struct MultiClipEditor: View {
             if abs(d) > 0.0005 { pips[k].from = max(0, pips[k].from + d) }
         }
         texts = EditOverlays.reanchor(texts, clips: new, sounds: sounds)
-        // a caption running across a join stays while the next moves back with its clip: each one ends where
-        // the next begins, so two are never shown over each other (21 Nov: "Unglazed" drawn over "turns black")
-        let caps = texts.indices.filter { texts[$0].kind == "caption" }.sorted { texts[$0].from < texts[$1].from }
-        for (a, b) in zip(caps, caps.dropFirst()) where texts[a].to > texts[b].from {
-            texts[a].to = max(texts[a].from + 0.1, texts[b].from)
-        }
+        // (reanchor ends each where the next in its layer begins: 21 Nov, "Unglazed" drawn over "turns black")
+        settleLayers()
         if recipe != nil { remakeRecipe() }
     }
 
@@ -1386,7 +1455,15 @@ struct MultiClipEditor: View {
 
     private func takeOff(_ id: UUID) {
         remember()
-        withAnimation(.snappy) { panel = nil; selectedSound = nil; sounds.removeAll { $0.id == id } }
+        withAnimation(.snappy) {
+            panel = nil; selectedSound = nil
+            // a voiceover takes its captions with it, and the video's own under it come back on
+            if sounds.contains(where: { (s: EditSound) -> Bool in s.id == id && s.kind == "voice" }) {
+                let kept: [EditText] = CaptionLayers.removed(id, texts: texts, sounds: sounds)
+                if kept != texts { setLayered(kept, sounds: sounds) }
+            }
+            sounds.removeAll { $0.id == id }
+        }
     }
 
     private func seek(_ s: Double) { player.seek(to: CMTime(seconds: max(0, s), preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero); now = s; followCaption(s) }
@@ -1396,7 +1473,13 @@ struct MultiClipEditor: View {
     private func followCaption(_ t: Double) {
         guard let id = selectedText, let cur = texts.first(where: { (x: EditText) -> Bool in x.id == id }), cur.kind == "caption" else { return }
         guard t < cur.from || t >= cur.to else { return }
-        if let next = texts.first(where: { (x: EditText) -> Bool in x.kind == "caption" && t >= x.from && t < x.to }) { selectedText = next.id }
+        // (the next in its own layer)
+        let voices: Set<UUID> = CaptionLayers.voiceIDs(sounds)
+        let layer: UUID? = CaptionLayers.track(cur, voices: voices)
+        let off: Bool = cur.hidden == true
+        for x in texts where x.kind == "caption" && t >= x.from && t < x.to && (x.hidden == true) == off {
+            if CaptionLayers.track(x, voices: voices) == layer { selectedText = x.id; return }
+        }
     }
 
     /// The whole video as one bar, a stretch for each clip, to drag along (19 Nov: it could only be played through or
@@ -1572,7 +1655,7 @@ struct MultiClipEditor: View {
     private func finish() {
         joining = true; progress = 0; player.pause()
         let kept = clips, sound = soundOf, shape = look, laid = sounds, on = pips
-        let items = texts, size = frameSize
+        let items = CaptionLayers.placed(texts, sounds: sounds), size = frameSize
         making = Task {
             guard await EditOverlays.prepare(items) else {
                 // (22 Nov: made without its frames, a GIF was a yellow box in the video)
@@ -1607,7 +1690,7 @@ struct MultiClipEditor: View {
     /// A caption picked and held up while paused: the others aren't drawn with it (21 Nov: two drawn over each other
     /// after a split).
     private var heldCaption: UUID? {
-        guard !playing, let id = selectedText, texts.contains(where: { (x: EditText) -> Bool in x.id == id && x.kind == "caption" }) else { return nil }
+        guard !playing, let id = selectedText, texts.contains(where: { (x: EditText) -> Bool in x.id == id && x.kind == "caption" && x.hidden != true }) else { return nil }
         return id
     }
 
@@ -1649,7 +1732,7 @@ struct MultiClipEditor: View {
                             .onEnded { _ in pipFrom = nil })
                 }
             }
-            ForEach(texts) { item in
+            ForEach(CaptionLayers.placed(texts, sounds: sounds)) { item in
                 let on = item.id == selectedText
                 // the one picked is held up while it's edited; playing, only what's on at the line shows (21 Nov: the
                 // picked caption stayed up while the others played under it)
@@ -1672,7 +1755,7 @@ struct MultiClipEditor: View {
                                 guard let i = texts.firstIndex(where: { $0.id == item.id }) else { return }
                                 if moveFrom == nil {
                                     guard hypot(v.translation.width, v.translation.height) > 2 else { return }
-                                    moveFrom = (texts[i].x, texts[i].y)
+                                    moveFrom = (item.x, item.y)   // (from where it's drawn, which can be raised over a voiceover's)
                                 }
                                 let start = moveFrom ?? (item.x, item.y)
                                 texts[i].x = min(0.95, max(0.05, start.0 + Double(v.translation.width / max(r.width, 1))))
@@ -1796,10 +1879,20 @@ struct MultiClipEditor: View {
     /// Everything laid over the video as bars, in rows so none covers another: drag one along, or by an end for when it
     /// starts and stops; tap it to change it. Text and stickers, then the sounds.
     private var barItems: [BarItem] {
-        texts.map { BarItem(id: $0.id, from: $0.from, to: $0.to, label: $0.barLabel, colour: $0.barColour, kind: 0, lane: $0.lane) }
+        textBars
             + sounds.map { BarItem(id: $0.id, from: $0.from, to: $0.to, label: Self.soundMark($0.kind) + $0.name, colour: Self.soundColour($0.kind), kind: 1, lane: $0.lane) }
             + pips.map { BarItem(id: $0.id, from: $0.from, to: $0.to, label: "▣ Overlay" + ($0.keys.isEmpty ? "" : " · ◆"), colour: Color(red: 0.36, green: 0.82, blue: 0.56), kind: 2, lane: $0.lane) }
     }
+
+    /// The texts' bars: a caption switched off greyed.
+    private var textBars: [BarItem] {
+        texts.map { (t: EditText) -> BarItem in
+            let off: Bool = t.hidden == true
+            let colour: Color = off ? Self.offBar : t.barColour
+            return BarItem(id: t.id, from: t.from, to: t.to, label: t.barLabel, colour: colour, kind: 0, lane: t.lane, off: off)
+        }
+    }
+    private static let offBar = Color(red: 0.2, green: 0.25, blue: 0.28)
 
     /// The bars in rows: one put on a row (held and dragged there) is on it; the rest in rows of their own kind where
     /// they don't cover another, as before. Empty rows close up.
@@ -1842,7 +1935,7 @@ struct MultiClipEditor: View {
     /// covering none there.
     private func joins(_ item: BarItem, _ row: [BarItem]) -> Bool {
         for o in row where o.id != item.id {
-            if o.kind != item.kind { return false }
+            if o.kind != item.kind || o.off != item.off { return false }
             if Self.covers(o, item) { return false }
         }
         return true
@@ -1915,7 +2008,8 @@ struct MultiClipEditor: View {
         let framed: Bool = onTimeline && on && lifted == nil && selected == nil
         let corner: CGFloat = framed ? 0 : (onTimeline ? 7 : 5)
         let outline: Color = on && !framed ? Color.white : Color.clear
-        return Text(item.label).font(.system(size: onTimeline ? 11 : 9, weight: onTimeline ? .semibold : .heavy)).lineLimit(1).foregroundStyle(.black.opacity(0.82))
+        let ink: Color = item.off ? Color.white.opacity(0.5) : Color.black.opacity(0.82)
+        return Text(item.label).font(.system(size: onTimeline ? 11 : 9, weight: onTimeline ? .semibold : .heavy)).lineLimit(1).foregroundStyle(ink)
             .padding(.horizontal, onTimeline ? 8 : 5).frame(width: width, height: h, alignment: .leading)
             .background(item.colour.opacity(onTimeline && !up ? 0.88 : 1), in: RoundedRectangle(cornerRadius: corner, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: corner, style: .continuous).stroke(outline, lineWidth: 1.5))
@@ -2052,7 +2146,7 @@ struct MultiClipEditor: View {
             if let d = dropRow { dropBar(item.id, on: d) } else if covers { dropBar(item.id, on: here) }
             else if pulledPast {
                 // (22 Nov, "can't go to a new line?": it was offered one, and the row it left closed up behind it)
-                flash(barRows[here].count == 1 ? "It's already on a row of its own." : "Six rows is the most the timeline shows.")
+                flash(barRows[here].count == 1 ? "It's already on a row of its own." : "\(TimelineRows.most) rows is the most the timeline shows.")
             }
         }
         pulledPast = false
@@ -2784,51 +2878,116 @@ struct MultiClipEditor: View {
     /// gaps (what's said where there are none yet), or one voiceover or clip, the rest left as they are.
     private func makeCaptions(_ job: CaptionJob = .all) {
         player.pause(); joining = true
-        let kept = clips, sound = soundOf, voices = sounds.filter { ($0.kind == "voice" || $0.kind == "clip") && $0.file != nil }
-        let before = texts.filter { $0.kind == "caption" }.count
+        let kept = clips, sound = soundOf, talking = sounds.filter { ($0.kind == "voice" || $0.kind == "clip") && $0.file != nil }
         Task {
             defer { joining = false }
             do {
-                var heard: [EditText] = [], over: ClosedRange<Double>?, lastError: Error?
+                // the video's own talking (the clips', and any sound separated from one), and each voiceover's
+                var heard: [EditText] = [], spoken: [UUID: [EditText]] = [:]
+                var over: ClosedRange<Double>?, lastError: Error?
                 func edit() async { do { heard += try await EditOverlays.captions(kept, soundOf: sound) } catch { lastError = error } }
-                func voice(_ s: EditSound) async { do { heard += try await EditOverlays.captions(of: s) } catch { lastError = error } }
+                func listen(_ s: EditSound) async {
+                    do {
+                        let said = try await EditOverlays.captions(of: s)
+                        if s.kind == "voice" {
+                            spoken[s.id] = said
+                        } else {
+                            // a separated sound's words stand in for the clips' under it
+                            heard = heard.filter { $0.to <= s.from + 0.05 || $0.from >= s.to - 0.05 } + said
+                        }
+                    } catch { lastError = error }
+                }
                 switch job {
                 case .sound(let id):
-                    guard let s = voices.first(where: { $0.id == id }) else { return }
-                    await voice(s); over = s.from...max(s.from + 0.1, s.to)
+                    guard let s = talking.first(where: { $0.id == id }) else { return }
+                    await listen(s); over = s.from...max(s.from + 0.1, s.to)
                 case .clip(let id):
                     guard let i = kept.firstIndex(where: { $0.id == id }) else { return }
                     let at = ClipJoin.starts(kept)[i]
                     await edit(); over = at...(at + kept[i].span)
                 case .all, .gaps:
                     await edit()
-                    for v in voices {
-                        // a voiceover's words stand in for whatever the clips said under it
-                        let before = heard
-                        await voice(v)
-                        let mine = heard.filter { !before.contains($0) }
-                        heard = before.filter { $0.to <= v.from + 0.05 || $0.from >= v.to - 0.05 } + mine
-                    }
+                    for s in talking { await listen(s) }
                 }
-                if heard.isEmpty, let lastError { throw lastError }
-                let made = EditOverlays.regroup(heard.sorted { $0.from < $1.from }, by: captionGroup, lines: captionLines)
-                let old = texts.filter { $0.kind == "caption" }   // (Redo all: all of them made again, in the look they had)
+                if heard.isEmpty, spoken.isEmpty, let lastError { throw lastError }
+                // (Redo all: all of them made again, in the look they had; a layer with nothing heard stays)
                 if job == .all { over = -3600...3600 }
-                let merged = EditOverlays.merge(old, made, over: over)
+                let done = layerCaptions(heard, spoken: spoken, over: over, redo: job == .all)
                 remember()
-                texts.removeAll { $0.kind == "caption" }
-                texts += merged
-                let added = job == .all ? merged.count : max(0, merged.count - before)
-                switch job {
-                case .gaps: flash(added == 0 ? "No gaps with words in them: every bit that's said has a caption." : "\(added) caption\(added == 1 ? "" : "s") added where there were none.")
-                case .all: flash("\(added) caption\(added == 1 ? "" : "s") made. Edit all to fix a word or split a line.")
-                default: flash("Captioned. The other captions are as they were.")
+                setLayered(done.texts, sounds: sounds)
+                let added: Int = done.added, plural: String = added == 1 ? "" : "s"
+                if let under = done.coveredBy {
+                    flash("The video's own captions under \(under) are kept, switched off. Tap the eye to show them.")
+                } else {
+                    switch job {
+                    case .gaps: flash(added == 0 ? "No gaps with words in them: every bit that's said has a caption." : "\(added) caption\(plural) added where there were none.")
+                    case .all: flash("\(added) caption\(plural) made. Edit captions to fix a word or split a line.")
+                    default: flash("Captioned. The other captions are as they were.")
+                    }
                 }
                 withAnimation(.snappy) { panel = .captions }
             } catch {
                 flash(error.localizedDescription)
             }
         }
+    }
+
+    /// What was heard put in its layers: the video's own with the video's own, each voiceover's with its own, and the
+    /// video's own under a voiceover that's just been captioned switched off (design/voiceover-caption-layers-mockup.html).
+    /// coveredBy: the voiceover to name when some were.
+    private func layerCaptions(_ heard: [EditText], spoken: [UUID: [EditText]], over: ClosedRange<Double>?, redo: Bool)
+        -> (texts: [EditText], added: Int, coveredBy: String?) {
+        let voices: Set<UUID> = CaptionLayers.voiceIDs(sounds)
+        let wasOwn: [EditText] = CaptionLayers.own(texts, voices: voices)
+        let wasOff: Int = wasOwn.filter { (t: EditText) -> Bool in t.hidden == true }.count
+        var out: [EditText] = texts
+        var fresh: Set<UUID> = []     // the video's own just made
+        var added: Int = 0
+
+        if !heard.isEmpty {
+            let inOrder: [EditText] = heard.sorted { (a: EditText, b: EditText) -> Bool in a.from < b.from }
+            let made: [EditText] = EditOverlays.regroup(inOrder, by: captionGroup, lines: captionLines)
+            let merged: [EditText] = EditOverlays.merge(wasOwn, made, over: over)
+            let had: Set<UUID> = Set(wasOwn.map(\.id))
+            for c in merged where !had.contains(c.id) { fresh.insert(c.id) }
+            added += fresh.count
+            out.removeAll { (t: EditText) -> Bool in had.contains(t.id) }
+            out += merged
+        }
+
+        var captioned: [EditSound] = []   // the voiceovers given captions just now
+        for v in sounds where v.kind == "voice" {
+            guard let said = spoken[v.id] else { continue }
+            let was: [EditText] = CaptionLayers.spoken(out, by: v.id, voices: voices)
+            let grouped: [EditText] = EditOverlays.regroup(said, by: captionGroup, lines: captionLines)
+            // Caption this and Redo all make all of its again; Fill gaps only where it has none
+            let again: ClosedRange<Double>? = over == nil ? nil : -3600...3600
+            let made: [EditText] = CaptionLayers.stamped(grouped, voice: v, like: was.first ?? wasOwn.first)
+            let merged: [EditText] = EditOverlays.merge(was, made, over: again)
+            let had: Set<UUID> = Set(was.map(\.id))
+            var count: Int = 0
+            for c in merged where !had.contains(c.id) { count += 1 }
+            guard count > 0 || redo else { continue }
+            added += count
+            captioned.append(v)
+            out.removeAll { (t: EditText) -> Bool in had.contains(t.id) }
+            out += merged
+        }
+
+        for v in sounds where v.kind == "voice" {
+            if captioned.contains(v) {
+                out = CaptionLayers.cover(out, by: v, voices: voices)
+            } else if !fresh.isEmpty, !CaptionLayers.spoken(out, by: v.id, voices: voices).isEmpty {
+                // the video's own made just now under one captioned before
+                out = CaptionLayers.cover(out, by: v, voices: voices, only: fresh)
+            }
+        }
+        let isOff: Int = CaptionLayers.own(out, voices: voices).filter { (t: EditText) -> Bool in t.hidden == true }.count
+        var coveredBy: String?
+        if !captioned.isEmpty, isOff > 0, redo || isOff != wasOff || over != nil {
+            coveredBy = captioned.count == 1 ? captioned[0].name : "your voiceovers"
+        }
+        return (texts: out, added: added, coveredBy: coveredBy)
     }
 
     /// A meal, recipe or workout picked for a mode: its overlays made, and it goes with the post.
@@ -2966,15 +3125,36 @@ struct MultiClipEditor: View {
         .buttonStyle(.plain).foregroundStyle(warn ? Theme.warn : .white)
     }
 
-    private var captionIndices: [Int] { texts.indices.filter { texts[$0].kind == "caption" }.sorted { texts[$0].from < texts[$1].from } }
+    private var captionIndices: [Int] {
+        let shown: [Int] = texts.indices.filter { (i: Int) -> Bool in texts[i].kind == "caption" && texts[i].hidden != true }
+        return shown.sorted { (a: Int, b: Int) -> Bool in texts[a].from < texts[b].from }
+    }
+
+    /// The captions on in the same layer as this one, in order.
+    private func layerMates(_ id: UUID) -> [Int] {
+        guard let mine = texts.first(where: { (t: EditText) -> Bool in t.id == id }) else { return [] }
+        let voices: Set<UUID> = CaptionLayers.voiceIDs(sounds)
+        let layer: UUID? = CaptionLayers.track(mine, voices: voices)
+        return captionIndices.filter { (i: Int) -> Bool in CaptionLayers.track(texts[i], voices: voices) == layer }
+    }
 
     /// Every caption made again from its words, as much in each as picked (straight away: no listening again).
     private func regroupCaptions() {
         let caps = texts.filter { $0.kind == "caption" }
         guard !caps.isEmpty else { return }
         remember()
+        // each layer by itself, and what's switched off apart: run together, the two layers' words mixed
+        let voices: Set<UUID> = CaptionLayers.voiceIDs(sounds)
+        var groups: [String: [EditText]] = [:]
+        for c in caps {
+            let layer: String = CaptionLayers.track(c, voices: voices)?.uuidString ?? "own"
+            let state: String = c.hidden == true ? "off" : "on"
+            groups[layer + state, default: []].append(c)
+        }
+        var made: [EditText] = []
+        for key in groups.keys.sorted() { made += EditOverlays.regroup(groups[key] ?? [], by: captionGroup, lines: captionLines) }
         texts.removeAll { $0.kind == "caption" }
-        texts += EditOverlays.regroup(caps, by: captionGroup, lines: captionLines)
+        texts += made
         listPicked = nil
     }
 
@@ -3012,7 +3192,7 @@ struct MultiClipEditor: View {
                     withAnimation(.snappy) { panel = nil }
                 }
             }
-            Text("Added a voiceover or more clips? Fill gaps captions only what's new; your edits stay. Or pick a clip or a voiceover and tap Caption this.")
+            Text("Added a voiceover or more clips? Fill gaps captions only what's new; your edits stay. Or pick one and tap Caption this. A voiceover switches off the video's captions under it: the eye on their row brings them back.")
                 .font(.caption2).foregroundStyle(Self.quiet)
             Text("\(caps.count) caption\(caps.count == 1 ? "" : "s"). Tap one on the video for its own look.").font(.caption2).foregroundStyle(Self.quiet)
         }
@@ -3028,7 +3208,7 @@ struct MultiClipEditor: View {
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(caps.indices, id: \.self) { n in
-                        captionRow(caps[n], first: n == 0, last: n == caps.count - 1, saying: saying).id(texts[caps[n]].id)
+                        layeredRow(caps[n], saying: saying).id(texts[caps[n]].id)
                     }
                 }
             }
@@ -3037,6 +3217,12 @@ struct MultiClipEditor: View {
             // as it plays, the caption being said stays in view
             .onChange(of: saying) { _, id in if playing, let id { withAnimation(.snappy) { proxy.scrollTo(id, anchor: .center) } } }
         }
+    }
+
+    /// A row, knowing whether there's one before or after it in its own layer to merge with.
+    private func layeredRow(_ k: Int, saying: UUID?) -> some View {
+        let mates: [Int] = layerMates(texts[k].id)
+        return captionRow(k, first: mates.first == k, last: mates.last == k, saying: saying)
     }
 
     private func captionRow(_ k: Int, first: Bool, last: Bool, saying: UUID?) -> some View {
@@ -3095,7 +3281,7 @@ struct MultiClipEditor: View {
 
     /// With the one before (up) or the one after (down), as one.
     private func mergeCaption(_ id: UUID, up: Bool) {
-        let caps = captionIndices
+        let caps = layerMates(id)
         guard let n = caps.firstIndex(where: { texts[$0].id == id }) else { return }
         if up { if n > 0 { joinNext(caps[n - 1]) } } else { joinNext(caps[n]) }
     }
@@ -3109,7 +3295,7 @@ struct MultiClipEditor: View {
 
     /// A caption and the one after it as one.
     private func joinNext(_ k: Int) {
-        let caps = captionIndices
+        let caps = layerMates(texts[k].id)
         guard let at = caps.firstIndex(of: k), at + 1 < caps.count else { return }
         remember()
         let n = caps[at + 1]

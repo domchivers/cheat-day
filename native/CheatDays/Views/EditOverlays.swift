@@ -30,6 +30,12 @@ struct EditText: Identifiable, Codable, Equatable {
     /// The timeline row it's on, chosen by holding and dragging it there (design/capcut-timeline-mockup.html); nil:
     /// put in a row of its own kind. The higher row (lower number) is drawn on top.
     var lane: Int? = nil
+    /// A caption switched off by its row's eye, or by a voiceover captioned over it: not drawn, not in the video.
+    var hidden: Bool? = nil
+    /// The voiceover that switched it off, to switch it on again when that's taken off.
+    var under: UUID? = nil
+    /// The voiceover it captions (CaptionLayers); nil, the video's own talking.
+    var voice: UUID? = nil
 
     /// A word said, and when in the video; and where it was said, so it goes where that goes (21 Nov: a clip trimmed
     /// or moved left its captions behind): the clip (or voiceover) it's in, that file's name, and the moment in it.
@@ -395,7 +401,7 @@ enum EditOverlays {
             r.scale = scale * CGFloat(item.size)   // its size drawn in, not scaled after (20 Nov: a big one was cropped)
             if let ui = r.uiImage, let ci = CIImage(image: ui) { out.append(OverlayPiece(image: ci, from: from, to: to, x: item.x, y: item.y)) }
         }
-        for item in items {
+        for item in items where item.hidden != true {
             switch item.kind {
             case "card" where str(item.cardJSON?["type"]) == "gif":
                 // a GIF moves in the finished video: each of its frames for its own moment, round again till it's
@@ -613,10 +619,9 @@ enum EditOverlays {
                 out.append(c)
             }
         }
-        // none over the next (the list itself kept in its order: it's the order they're drawn in)
-        let caps = out.indices.filter { out[$0].kind == "caption" }.sorted { out[$0].from < out[$1].from }
-        for (a, b) in zip(caps, caps.dropFirst()) where out[a].to > out[b].from { out[a].to = max(out[a].from + 0.1, out[b].from) }
-        return out
+        // none over the next in its layer: a voiceover's may run over the video's own (the list itself kept in its
+        // order: it's the order they're drawn in)
+        return CaptionLayers.clamped(out, voices: CaptionLayers.voiceIDs(sounds))
     }
 
     /// New captions put in with the ones there (21 Nov: "adding in sound after… you'd have to do it all over

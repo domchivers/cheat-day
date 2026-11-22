@@ -27,7 +27,8 @@ final class TimelineRowsTests: XCTestCase {
     }
 
     func testNoMoreThanTheTimelineShows() {
-        let full: [[UUID]] = [[caption], [voice, effect], [UUID()], [UUID()], [UUID()], [UUID()]]
+        var full: [[UUID]] = [[caption], [voice, effect]]
+        while full.count < TimelineRows.most { full.append([UUID()]) }
         XCTAssertFalse(TimelineRows.canAddRow(for: effect, rows: full))
     }
 }

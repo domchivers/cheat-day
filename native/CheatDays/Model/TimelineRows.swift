@@ -2,8 +2,8 @@ import Foundation
 
 /// The clip editor's rows of bars, by id, and what a bar dropped on another row does to them.
 enum TimelineRows {
-    /// The most rows the timeline shows.
-    static let most = 6
+    /// The most rows the timeline shows (8 since captions came in layers: six were full with a voiceover's and music).
+    static let most = 8
 
     /// Whether a bar can have a new row under the last. Not one that has the last to itself: the row it left would
     /// close up, and it would be back where it was (22 Nov: "can't go to a new line?").
