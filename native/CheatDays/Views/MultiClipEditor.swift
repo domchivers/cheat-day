@@ -126,6 +126,7 @@ struct MultiClipEditor: View {
     @State private var lifted: UUID?         // the bar held long enough to move
     @State private var liftDY: CGFloat = 0    // how far up or down it's been dragged
     @State private var dropRow: Int?          // the row it'd go on if let go now
+    @State private var pulledPast = false     // dragged down past where there's a row for it
     @State private var heldRows: [UUID: Int] = [:]   // each bar's row as it was when one was caught, till it's let go
     @State private var barSnap: Double?
     @State private var stripHeld: CGFloat?                // the keyframe a strip's scrub is held on (for the tap, once)                   // what a bar being dragged is held on (for the tap, once)                  // this drag is a bar's or a trim handle's, not the timeline's                // an end of the picked clip being dragged on the timeline
@@ -474,7 +475,7 @@ struct MultiClipEditor: View {
             case .trim: panelBar; if let i = index { trimPanel(i) }
             case .sound: scrubBar; panelBar; if let i = index { soundPanel(i) }
             case .speed: scrubBar; panelBar; if let i = index { speedPanel(i) }
-            case .join: panelBar; if joinAt + 1 < clips.count { timeline; joinPanel(joinAt) }
+            case .join: panelBar; if joinAt + 1 < clips.count { timeline; joinPanel(joinAt).opacity(underOpacity) }
             case .look: scrubBar; panelBar; if let i = index { lookPanel(i) }
             case .shape: scrubBar; panelBar; shapePanel
             case .text: scrubBar; panelBar; if let k = texts.firstIndex(where: { $0.id == selectedText }) { bars; textPanel(k) }
@@ -488,12 +489,12 @@ struct MultiClipEditor: View {
             case .soundItem: scrubBar; panelBar; if let k = sounds.firstIndex(where: { $0.id == selectedSound }) { bars; soundItemPanel(k) }
             case .pip: scrubBar; panelBar; if let k = pips.firstIndex(where: { $0.id == selectedPip }) { bars; pipPanel(k) }
             case .motion: scrubBar; panelBar; if let i = index { motionPanel(i) }
-            case .beats: panelBar; timeline; beatsPanel
+            case .beats: panelBar; timeline; beatsPanel.opacity(underOpacity)
             case nil:
                 // one timeline in place of the scrub bar, the bars and the strip (21 Nov: stacked, they left the video
                 // a third of the screen)
                 timeline
-                if selected != nil { actions } else if let b = pickedBar { barTools(b) } else { addTools }
+                underTimeline
             }
         }
         // (no more under the tools than the home bar's own room: 21 Nov, a gap at the bottom)
@@ -516,7 +517,7 @@ struct MultiClipEditor: View {
             Image(systemName: any ? "speaker.wave.2.fill" : "speaker.slash.fill").font(.system(size: 13, weight: .medium))
             Text("Clip\nsound").font(.system(size: 7.5, weight: .medium)).foregroundStyle(Self.quiet).multilineTextAlignment(.center)
         }
-        .foregroundStyle(.white).frame(width: Self.soundTileWidth, height: Self.clipRow)
+        .foregroundStyle(.white).frame(width: Self.headWidth, height: Self.clipRow - 2)
         .background(Color(white: 0.17), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
         .contentShape(Rectangle())
         // a tap by the screen's measure, not a Button: the tile goes along under a finger sliding the timeline, so a
@@ -538,8 +539,9 @@ struct MultiClipEditor: View {
         withAnimation(.snappy(duration: 0.2)) { for i in clips.indices where !clips[i].still { clips[i].soundOn = !any } }
     }
 
-    // The tiles against the start: their width, and the room between them and 0:00 (a picked bar's handle goes there).
-    private static let soundTileWidth: CGFloat = 42, headWidth: CGFloat = 30, headGap: CGFloat = 14
+    // The tiles against the start, one column: all the one width (22 Nov: "kind of bad since they're different
+    // sizes"), only as tall as what each heads, and the room between them and 0:00.
+    private static let headWidth: CGFloat = 40, headGap: CGFloat = 8
 
     /// Where the timeline's line is: the player's own time while it plays, else where it was put.
     private var lineTime: Double {
@@ -553,7 +555,10 @@ struct MultiClipEditor: View {
     // 22 Nov. While a bar's lifted it lies over the tools under the timeline, so the timeline's height stays put)
     private var laneCount: Int { min(6, barRows.count) }
     // the bars as tall as CapCut's, their words readable (21 Nov, design/capcut-timeline-mockup.html: 15 pt bars read as slivers)
-    private static let rulerHeight: CGFloat = 18, clipRow: CGFloat = 49, laneHeight: CGFloat = 34
+    // A clip's row is what's in it: 2 over it, its picture, 2, and its sound's wave (22 Nov, "things not lining up":
+    // made 49 in 1.4.25 with the clip left 56 tall, its wave ran into the first row of bars and under it).
+    private static let thumbHeight: CGFloat = 44, waveHeight: CGFloat = 10
+    private static let rulerHeight: CGFloat = 18, clipRow: CGFloat = 2 + thumbHeight + 2 + waveHeight, laneHeight: CGFloat = 34
 
     /// The clips and everything over them as one timeline under a line fixed in the middle, as CapCut and Edits lay
     /// it out (21 Nov; design/bigger-preview-mockup.html, then design/pro-ui): a ruler over it, slide it under the line
@@ -601,7 +606,26 @@ struct MultiClipEditor: View {
     }
 
     /// How far under the timeline the rail to drop a lifted bar on shows.
-    private var spareBelow: CGFloat { lifted == nil ? 0 : Self.laneHeight + 10 }
+    private var spareBelow: CGFloat { canAddRow ? Self.laneHeight + 8 : 0 }
+
+    /// Whether the lifted bar can have a new row under the last.
+    private var canAddRow: Bool {
+        guard let id = lifted else { return false }
+        return TimelineRows.canAddRow(for: id, rows: barRows.map { (row: [BarItem]) -> [UUID] in row.map(\.id) })
+    }
+
+    /// What's under the timeline stands aside for that rail, keeping its room, so the timeline doesn't move under the
+    /// finger (22 Nov: "new line covers the UI below"; grown for the rail, the timeline would've slid up from under it).
+    private var underOpacity: Double { canAddRow ? 0 : 1 }
+
+    /// The tools under the timeline.
+    private var underTimeline: some View {
+        Group {
+            if selected != nil { actions } else if let b = pickedBar { barTools(b) } else { addTools }
+        }
+        .opacity(underOpacity)
+        .animation(.easeOut(duration: 0.15), value: underOpacity)
+    }
 
     /// The ruler over the clips: a tick each step, its time on every other, the step chosen so the times don't crowd.
     private func ruler(width: CGFloat, span: Double, pps: CGFloat) -> some View {
@@ -614,7 +638,8 @@ struct MultiClipEditor: View {
                          with: .color(Color(white: big ? 0.42 : 0.28)))
                 if big {
                     ctx.draw(Text(Self.code(t)).font(.system(size: 8.5, weight: .medium, design: .monospaced)).foregroundColor(Self.quiet),
-                             at: CGPoint(x: x, y: size.height - 7), anchor: t < 0.001 ? .bottomLeading : .bottom)
+                             // (0:00 just right of the line's knob, which sat on it)
+                             at: CGPoint(x: t < 0.001 ? x + 7 : x, y: size.height - 7), anchor: t < 0.001 ? .bottomLeading : .bottom)
                 }
                 t += step / 2; k += 1
             }
@@ -630,7 +655,7 @@ struct MultiClipEditor: View {
             ruler(width: width, span: span, pps: pps)
             ZStack(alignment: .topLeading) {
                 // before 0:00, under the first clip's handle
-                allSound.offset(x: -(Self.soundTileWidth + Self.headGap), y: 2)
+                allSound.offset(x: -(Self.headWidth + Self.headGap), y: 2)
                 ForEach(Array(clips.enumerated()), id: \.element.id) { i, c in
                     timelineClip(c, i, w: CGFloat(c.span) * pps).offset(x: CGFloat(starts[i]) * pps, y: 2)
                 }
@@ -668,7 +693,7 @@ struct MultiClipEditor: View {
         let heard = c.soundOn && !c.still && (soundOf == nil || soundOf == c.id)
         return VStack(spacing: 2) {
             ClipThumb(clip: c)
-                .frame(height: 44)
+                .frame(height: Self.thumbHeight)
                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .overlay(alignment: .bottomLeading) {
                     HStack(spacing: 3) {
@@ -682,7 +707,7 @@ struct MultiClipEditor: View {
                     .padding(3)
                 }
             Bars(levels: c.still ? [] : (levels[c.id] ?? []), colour: heard ? Color(red: 0.24, green: 0.86, blue: 0.52) : Color.white.opacity(0.25))
-                .frame(height: 10).clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
+                .frame(height: Self.waveHeight).clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
                 .task(id: "\(c.id)|\(c.start)|\(c.end)") { if !c.still { levels[c.id] = await ClipJoin.levels(c, count: 48) } }
         }
         .frame(width: max(6, w - 2))
@@ -786,7 +811,7 @@ struct MultiClipEditor: View {
                 .zIndex(hasLifted(rows[r]) ? 1 : 0)
             }
             // while a bar's lifted, a rail under the last: a new row for it if it's dropped there
-            if lifted != nil, rows.count < 6 { emptyRail(wanted: dropRow == rows.count, width: width) }
+            if canAddRow { emptyRail(wanted: dropRow == rows.count, width: width) }
         }
         // each row's tile just before 0:00, lined up with it, under a picked bar's handle
         .background(alignment: .topLeading) { laneHeads.offset(x: -(Self.headWidth + Self.headGap)) }
@@ -1828,14 +1853,9 @@ struct MultiClipEditor: View {
         guard let from = rows.firstIndex(where: { $0.contains(id) }) else { return }
         guard let item = barItems.first(where: { $0.id == id }) else { return }
         let shown = barRows
-        rows[from].removeAll { $0 == id }
-        var to = min(max(0, target), rows.count)
-        if to == rows.count { rows.append([id]) }
-        else if joins(item, shown[to]) { rows[to].append(id) }
-        // a new row of its own: past that one going down (above it would be where it came from), over it going up
-        else { rows.insert([id], at: to >= from ? to + 1 : to) }
-        rows = rows.filter { !$0.isEmpty }
-        to = rows.firstIndex { $0.contains(id) } ?? to
+        let to: Int = min(max(0, target), rows.count)
+        let fits: Bool = to < shown.count && joins(item, shown[to])
+        rows = TimelineRows.moved(id, from: from, to: to, rows: rows, fits: fits)
         var lane: [UUID: Int] = [:]
         for (r, ids) in rows.enumerated() { for i in ids { lane[i] = r } }
         for k in texts.indices { texts[k].lane = lane[texts[k].id] }
@@ -1946,7 +1966,12 @@ struct MultiClipEditor: View {
         }
         // lifted: up or down a row at a time, into the row it would go on (the empty rail under the last too)
         if lifted == item.id, barGrab != nil, let here = rowOf(item.id) {
-            let to = min(max(0, here + Int((v.translation.height / rowHeight).rounded())), min(barRows.count, 5))
+            let want: Int = here + Int((v.translation.height / rowHeight).rounded())
+            let count: Int = barRows.count
+            let last: Int = canAddRow ? count : count - 1
+            let to: Int = min(max(0, want), last)
+            // pulled down for a new row when it has one to itself at the bottom already: said when it's let go
+            pulledPast = want > last
             let next: Int? = to == here ? nil : to
             if next != dropRow {
                 withAnimation(.snappy(duration: 0.15)) { dropRow = next; liftDY = CGFloat(to - here) * rowHeight }
@@ -2022,7 +2047,12 @@ struct MultiClipEditor: View {
             let covers = barRows[here].contains { (o: BarItem) -> Bool in o.id != moved.id && Self.covers(o, moved) }
             // onto the row it was dragged to; moved over another on its own row, a row of its own beside it
             if let d = dropRow { dropBar(item.id, on: d) } else if covers { dropBar(item.id, on: here) }
+            else if pulledPast {
+                // (22 Nov, "can't go to a new line?": it was offered one, and the row it left closed up behind it)
+                flash(barRows[here].count == 1 ? "It's already on a row of its own." : "Six rows is the most the timeline shows.")
+            }
         }
+        pulledPast = false
         dropRow = nil; liftDY = 0; heldRows = [:]
         pressed = nil; pressMoved = false; lifted = nil
         // (the line left where it was: 21 Nov, it jumped to the bar's start when it was let go)
