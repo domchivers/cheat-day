@@ -821,7 +821,8 @@ struct MultiClipEditor: View {
     }
 
     private func hasLifted(_ row: [BarItem]) -> Bool {
-        guard let id = lifted else { return false }
+        // (on its way up too: under the next row's rail, the start of the lift didn't show)
+        guard let id = lifted ?? (pressMoved ? nil : pressed) else { return false }
         return row.contains { (b: BarItem) -> Bool in b.id == id }
     }
 
@@ -876,9 +877,15 @@ struct MultiClipEditor: View {
         }
         .fill(Color.white, style: FillStyle(eoFill: true))
         .frame(width: outside.width, height: h)
+        .overlay(alignment: .leading) { gripMark.padding(.leading, (grip - 2) / 2) }
+        .overlay(alignment: .trailing) { gripMark.padding(.trailing, (grip - 2) / 2) }
+        // (lifting with its bar: left where it was, the bar grew out from inside it)
+        .modifier(BarLift(up: false, pressing: holdingBar(item.id)))
         .offset(x: left - grip, y: CGFloat(row) * (h + 3))
         .allowsHitTesting(false)
     }
+
+    private var gripMark: some View { Capsule().fill(Color(white: 0.2)).frame(width: 2, height: 14) }
 
     /// side: 1 its start, 2 its end (as BarGrab's modes).
     private func barHandle(_ item: BarItem, side: Int, row: Int, w: CGFloat, span: Double) -> some View {
@@ -887,14 +894,10 @@ struct MultiClipEditor: View {
         let barWidth: CGFloat = max(16, right - left)
         let size: CGFloat = Self.catchSize, inside: CGFloat = Self.catchInside(barWidth)
         let x: CGFloat = side == 1 ? left - (size - inside) : left + barWidth - inside
-        let gripX: CGFloat = side == 1 ? size - inside - Self.gripWidth : inside
         let y: CGFloat = CGFloat(row) * (Self.laneHeight + 3) - (size - Self.laneHeight) / 2
-        // (the white is the frame's: this is where it's caught, and its grip)
+        // (the white and its grips are the frame's: this is only where it's caught)
         return Color.clear
-            .frame(width: Self.gripWidth, height: Self.laneHeight)
-            .overlay(Capsule().fill(Color(white: 0.2)).frame(width: 2, height: 14))
-            .offset(x: gripX)
-            .frame(width: size, height: size, alignment: .leading)
+            .frame(width: size, height: size)
             .contentShape(Rectangle())
             .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("bars"))
                 .onChanged { handleChanged($0, item, side: side, w: w, span: span) }
@@ -3640,23 +3643,33 @@ struct RangeBar<Back: View>: View {
     }
 }
 
-/// A bar under the finger: it sinks a little while it's held, then springs up off its row with a shadow as it lifts,
-/// and back as it's let go (22 Nov: "a lift animation maybe?"). With Reduce Motion, the shadow alone.
+/// A bar under the finger: it starts to lift almost as the finger lands, then springs the rest of the way as the hold's
+/// taken, and back as it's let go or the finger scrolls off (22 Nov: "should start almost instant but not once it's
+/// recognised you're holding it"). A moment's wait first, so a flick across the bars doesn't move each one it touches.
+/// One animation for the three: with one for the press and one for the lift, the press's won and the spring never
+/// played. With Reduce Motion, the shadow alone.
 private struct BarLift: ViewModifier {
     var up: Bool
     var pressing: Bool
     @Environment(\.accessibilityReduceMotion) private var still
 
     func body(content: Content) -> some View {
-        let size: CGFloat = still ? 1 : (up ? 1.1 : (pressing ? 0.95 : 1))
-        let rise: CGFloat = up && !still ? -4 : 0
-        let spring: Animation = still ? .easeOut(duration: 0.15) : .spring(response: 0.28, dampingFraction: 0.55)
+        let stage: Int = up ? 2 : (pressing ? 1 : 0)
+        let sizes: [CGFloat] = [1, 1.05, 1.1], rises: [CGFloat] = [0, -2.5, -4]
+        let shade: [Double] = [0, 0.35, 0.5], blur: [CGFloat] = [0, 7, 12], drop: [CGFloat] = [0, 4, 8]
+        let moving: Animation
+        if stage == 1 {
+            moving = .easeOut(duration: 0.17).delay(0.05)   // under way well before the 225 ms are up
+        } else if stage == 2 && !still {
+            moving = .spring(response: 0.28, dampingFraction: 0.55)
+        } else {
+            moving = .easeOut(duration: 0.15)
+        }
         return content
-            .scaleEffect(size)
-            .shadow(color: .black.opacity(up ? 0.5 : 0), radius: up ? 12 : 0, y: up ? 8 : 0)
-            .offset(y: rise)
-            .animation(.easeOut(duration: 0.225), value: pressing)
-            .animation(spring, value: up)
+            .scaleEffect(still ? 1 : sizes[stage])
+            .shadow(color: .black.opacity(shade[stage]), radius: blur[stage], y: drop[stage])
+            .offset(y: still ? 0 : rises[stage])
+            .animation(moving, value: stage)
     }
 }
 
