@@ -79,7 +79,11 @@ struct MultiClipEditor: View {
     @State private var leaving = false   // the cross tapped: asking before the edit is thrown away
     @State private var wasPlaying: Bool?   // while the scrub bar is dragged: whether it was playing before
     @State private var soundTool: SoundTool = .volume   // which sound tool is open
-    private enum SoundTool { case volume, fade }
+    private enum SoundTool { case volume, fade, beats }
+    @State private var shapeTab = "Shape"
+    @State private var recipeTab = "Show"
+    @State private var captionsTab = "On screen"
+    @State private var changingSticker = false     // a sticker's emoji being picked again, in its panel
     @State private var look = EditLook()          // the frame's shape and fill (Stage A2)
     @State private var proxies: [URL: URL] = [:]  // smaller copies of 4K clips, for the preview
     @State private var proxied: Set<URL> = []     // asked for already
@@ -517,25 +521,10 @@ struct MultiClipEditor: View {
         .padding(.horizontal, 16).padding(.bottom, 18)
     }
 
-    /// The open panel's bar (design/panel-tick-mockup.html): what it is, which clip, and a ✓ that closes it, as CapCut's.
-    /// (21 Nov, design/pro-ui: ‹ and the ✓ both close it, a pro editor's header.)
-    private var panelBar: some View {
-        HStack(spacing: 6) {
-            bare("chevron.left", "Back", size: 16) { closePanel() }
-            Text(panelTitle).font(.subheadline.weight(.bold)).foregroundStyle(.white)
-            if !panelSub.isEmpty { Text(panelSub).font(.caption).foregroundStyle(Self.quiet) }
-            Spacer()
-            Button { closePanel() } label: {
-                Image(systemName: "checkmark").font(.system(size: 18, weight: .bold)).foregroundStyle(.white)
-                    .frame(width: 40, height: 36).contentShape(Rectangle())
-            }
-            .buttonStyle(.plain).accessibilityLabel("Done")
-        }
-        .padding(.horizontal, -6)
-    }
 
     private func closePanel() {
         captionScreen = .main
+        changingSticker = false
         withAnimation(.snappy) { panel = nil; selectedText = nil; selectedSound = nil; selectedPip = nil }
     }
 
@@ -547,7 +536,7 @@ struct MultiClipEditor: View {
         case .join: return "Transition"
         case .look: return "Filters"
         case .shape: return "Shape"
-        case .text: return texts.first(where: { $0.id == selectedText })?.kind == "caption" ? "Caption" : "Text"
+        case .text: return textTitle
         case .stickers: return "Stickers"
         case .voice: return "Voiceover"
         case .effects: return "Sound effects"
@@ -563,14 +552,76 @@ struct MultiClipEditor: View {
         }
     }
 
-    /// Which clip (or join) the panel is for, when it's for one.
-    private var panelSub: String {
-        switch panel {
-        case .trim, .sound, .speed, .look, .motion: return index.map { "Clip \($0 + 1)" } ?? ""
-        case .join: return "Clips \(joinAt + 1) and \(joinAt + 2)"
-        default: return ""
+    /// A picked thing's name, by what it is.
+    private var textTitle: String {
+        guard let item = texts.first(where: { (t: EditText) -> Bool in t.id == selectedText }) else { return "Text" }
+        switch item.kind {
+        case "caption": return "Caption"
+        case "sticker", "card": return "Sticker"
+        case "label": return "Label"
+        case "step": return "Recipe step"
+        case "ingredients": return "Ingredients"
+        case "macros": return "Macros"
+        case "workout": return "Exercise"
+        case "calories": return "Calories"
+        default: return "Text"
         }
     }
+
+    /// What's on the left of a panel's bottom bar.
+    private func panelLeft(_ open: Panel) -> SheetAction? {
+        switch open {
+        case .look:
+            return SheetAction(icon: "square.stack.3d.down.right", name: "Use for all", run: { lookForAll() })
+        case .join:
+            guard clips.indices.contains(joinAt), clips[joinAt].transition != nil else { return nil }
+            return SheetAction(icon: "square.stack.3d.down.right", name: "Apply to all", run: { joinForAll() })
+        case .captions:
+            return SheetAction(icon: "list.bullet", name: "Edit all", run: { editAllCaptions() })
+        case .captionList:
+            return SheetAction(icon: "chevron.left", name: "Captions", run: { backToCaptions() })
+        case .recipeSteps:
+            return SheetAction(icon: "chevron.left", name: "Recipe", run: { backToRecipe() })
+        default:
+            return nil
+        }
+    }
+
+    private func lookForAll() {
+        guard let i = index else { return }
+        let l: String = clips[i].look
+        change { (all: [Clip]) -> [Clip] in
+            var out: [Clip] = all
+            for k in out.indices { out[k].look = l }
+            return out
+        }
+        flash("Every clip has this look now.")
+    }
+
+    private func joinForAll() {
+        guard clips.indices.contains(joinAt), let tr = clips[joinAt].transition else { return }
+        change { (all: [Clip]) -> [Clip] in
+            var out: [Clip] = all
+            for k in out.indices.dropLast() { out[k].transition = tr }
+            return out
+        }
+        flash("Every join is like this one now.")
+    }
+
+    private func editAllCaptions() {
+        listPicked = nil
+        withAnimation(.snappy) { panel = .captionList }
+    }
+
+    private func backToCaptions() {
+        selectedText = nil
+        withAnimation(.snappy) { panel = .captions }
+    }
+
+    private func backToRecipe() {
+        withAnimation(.snappy) { panel = .recipe }
+    }
+
 
     private func round(_ symbol: String, _ label: String, _ run: @escaping () -> Void) -> some View {
         Button(action: run) {
@@ -582,10 +633,12 @@ struct MultiClipEditor: View {
 
     private var bottom: some View {
         VStack(spacing: 0) {
-            if let id = editingCaption, let item = texts.first(where: { (t: EditText) -> Bool in t.id == id }) {
-                captionSheet(item)
+            if let item = editedWords {
+                wordsSheet(item)
+            } else if let open = panel {
+                panelSheet(open)
             } else {
-                toolsSheet
+                timelineSheet
             }
         }
     }
@@ -687,38 +740,92 @@ struct MultiClipEditor: View {
         flash("Every caption looks like this one now.")
     }
 
-    private var toolsSheet: some View {
+    /// A caption or text with its panel open: each has a sheet of its own.
+    private var editedWords: EditText? {
+        guard let id = editingCaption ?? editingText else { return nil }
+        return texts.first { (t: EditText) -> Bool in t.id == id }
+    }
+
+    @ViewBuilder private func wordsSheet(_ item: EditText) -> some View {
+        if item.kind == "caption" { captionSheet(item) } else { textSheet(item) }
+    }
+
+    private func textSheet(_ item: EditText) -> some View {
+        let id: UUID = item.id
+        return TextPanel(item: item, screen: $captionScreen,
+                         change: { (edit: (inout EditText) -> Void) in changeText(id, edit) },
+                         step: { captionStep() },
+                         held: { (on: Bool) in sliderHeld(on) },
+                         edit: { startTyping(id) },
+                         delete: { deleteFromPanel(id) },
+                         done: { closePanel() },
+                         head: { captionHead })
+            .id(id)
+            .onChange(of: captionScreen) { (_: CaptionScreen, to: CaptionScreen) in screenChanged(to) }
+    }
+
+    /// Every other panel (design/editor-panels-mockup.html): the one sheet, no rows of bars on any.
+    private func panelSheet(_ open: Panel) -> some View {
+        ProSheet(title: panelTitle, left: panelLeft(open), done: { closePanel() },
+                 head: { captionHead },
+                 main: { panelMain(open) })
+    }
+
+    @ViewBuilder private func panelMain(_ open: Panel) -> some View {
+        switch open {
+        case .trim, .sound, .speed, .join, .look, .motion, .shape: clipMain(open)
+        case .text, .stickers, .pip, .recipe, .recipeSteps: overMain(open)
+        default: soundMain(open)
+        }
+    }
+
+    @ViewBuilder private func clipMain(_ open: Panel) -> some View {
+        switch open {
+        case .trim: if let i = index { trimPanel(i) }
+        case .sound: if let i = index { liveSound(i) }
+        case .speed: if let i = index { speedPanel(i) }
+        case .look: if let i = index { lookPanel(i) }
+        case .motion: if let i = index { liveMotion(i) }
+        case .join: if joinAt + 1 < clips.count { joinPanel(joinAt) }
+        case .shape: shapePanel
+        default: EmptyView()
+        }
+    }
+
+    @ViewBuilder private func overMain(_ open: Panel) -> some View {
+        switch open {
+        case .text: if let k = texts.firstIndex(where: { (t: EditText) -> Bool in t.id == selectedText }) { textPanel(k) }
+        case .pip: if let k = pips.firstIndex(where: { (p: EditPip) -> Bool in p.id == selectedPip }) { livePip(k) }
+        case .stickers: stickerPanel
+        case .recipe: recipePanel
+        case .recipeSteps: recipeSteps
+        default: EmptyView()
+        }
+    }
+
+    @ViewBuilder private func soundMain(_ open: Panel) -> some View {
+        switch open {
+        case .voice: voicePanel
+        case .effects: liveEffects
+        case .soundItem: if let k = sounds.firstIndex(where: { (s: EditSound) -> Bool in s.id == selectedSound }) { liveSoundItem(k) }
+        case .beats: liveMusic
+        case .captions: captionsPanel
+        case .captionList: liveList
+        default: EmptyView()
+        }
+    }
+
+    /// No panel open: the timeline and the tools under it.
+    private var timelineSheet: some View {
         VStack(spacing: 10) {
             // where it is and how long, said as the trim strip says it ("0:11 · 0:24 of 0:30")
             Live { timeRow }
             // (21 Nov: longer is allowed; it's only a post that's kept to the limit, and it asks which part when posted)
             if total > limit + 0.05 { Text("Longer than \(Int(limit)) seconds: you can save it all to Photos, but a post keeps \(Int(limit)) seconds.").font(.caption).foregroundStyle(Theme.warn).multilineTextAlignment(.center) }
-            switch panel {
-            // each panel under its bar, whose ✓ closes it (20 Nov: Done at the top was too far away to find)
-            case .trim: panelBar; if let i = index { trimPanel(i) }
-            case .sound: scrubBar; panelBar; if let i = index { liveSound(i) }
-            case .speed: scrubBar; panelBar; if let i = index { speedPanel(i) }
-            case .join: panelBar; if joinAt + 1 < clips.count { timeline; joinPanel(joinAt).opacity(underOpacity) }
-            case .look: scrubBar; panelBar; if let i = index { lookPanel(i) }
-            case .shape: scrubBar; panelBar; shapePanel
-            case .text: scrubBar; panelBar; if let k = texts.firstIndex(where: { $0.id == selectedText }) { bars; textPanel(k) }
-            case .captions: scrubBar; panelBar; captionsPanel   // (no bars: squashed to a letter each they said nothing the list doesn't, 21 Nov)
-            case .captionList: scrubBar; panelBar; liveList
-            case .recipe: scrubBar; panelBar; bars; recipePanel
-            case .recipeSteps: scrubBar; panelBar; recipeSteps
-            case .stickers: scrubBar; panelBar; stickerPanel
-            case .voice: scrubBar; panelBar; bars; voicePanel
-            case .effects: scrubBar; panelBar; bars; liveEffects   // (the bars shown: 21 Nov, an effect went in and nobody could see where)
-            case .soundItem: scrubBar; panelBar; if let k = sounds.firstIndex(where: { $0.id == selectedSound }) { bars; liveSoundItem(k) }
-            case .pip: scrubBar; panelBar; if let k = pips.firstIndex(where: { $0.id == selectedPip }) { bars; livePip(k) }
-            case .motion: scrubBar; panelBar; if let i = index { liveMotion(i) }
-            case .beats: panelBar; timeline; beatsPanel.opacity(underOpacity)
-            case nil:
-                // one timeline in place of the scrub bar, the bars and the strip (21 Nov: stacked, they left the video
-                // a third of the screen)
-                timeline
-                underTimeline
-            }
+            // one timeline in place of the scrub bar, the bars and the strip (21 Nov: stacked, they left the video
+            // a third of the screen)
+            timeline
+            underTimeline
         }
         // (no more under the tools than the home bar's own room: 21 Nov, a gap at the bottom)
         .padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 0)
@@ -745,6 +852,7 @@ struct MultiClipEditor: View {
     }
     private var liveList: some View { Live { captionList } }
     private var liveEffects: some View { Live { effectsPanel } }
+    private var liveMusic: some View { Live { beatsPanel } }
 
     // MARK: the timeline
 
@@ -1589,72 +1697,126 @@ struct MultiClipEditor: View {
     // MARK: trim and sound
 
     private func trimPanel(_ i: Int) -> some View {
-        let c = clips[i]
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack { Text("Clip \(i + 1)"); Spacer(); Text("\(Self.clock(c.duration)) of \(Self.clock(c.length))").monospacedDigit() }
-                .font(.caption).foregroundStyle(.secondary)
-            RangeBar(length: c.length, start: c.start, end: c.end, colour: .white, background: { ClipThumb(clip: c, whole: true) }) { s, e in
-                guard clips.indices.contains(i) else { return }
-                clips[i].start = s; clips[i].end = e
-                // its sound kept inside what's kept of the picture
-                if let ss = clips[i].soundStart { clips[i].soundStart = max(s, min(ss, e)) }
-                if let se = clips[i].soundEnd { clips[i].soundEnd = max(s, min(se, e)) }
-            } began: {
-                editHeld(true)
-            } ended: {
-                editHeld(false)
+        let c: Clip = clips[i]
+        let sub: String = String(format: "%.1f s of %.1f s", c.duration, c.length)
+        return VStack(spacing: 0) {
+            ProLead(title: "Clip \(i + 1)", sub: sub) { EmptyView() }
+            ProBody(height: 144, spacing: 20) {
+                trimStrip(i, c)
+                trimNumbers(c)
             }
-            .frame(height: 58)
         }
     }
 
-    /// A clip's sound, as CapCut and Edits lay it out (19 Nov; design/edit-sound-drafts-mockup.html): the tools along
-    /// the top (Volume, Fade, Mute, Use for all), the one picked open below.
+    private func trimStrip(_ i: Int, _ c: Clip) -> some View {
+        RangeBar(length: c.length, start: c.start, end: c.end, colour: .white, background: { ClipThumb(clip: c, whole: true) }) { s, e in
+            guard clips.indices.contains(i) else { return }
+            clips[i].start = s; clips[i].end = e
+            // its sound kept inside what's kept of the picture
+            if let ss = clips[i].soundStart { clips[i].soundStart = max(s, min(ss, e)) }
+            if let se = clips[i].soundEnd { clips[i].soundEnd = max(s, min(se, e)) }
+        } began: {
+            editHeld(true)
+        } ended: {
+            editHeld(false)
+        }
+        .frame(height: 56)
+        .overlay { Live { trimLine(i) } }
+    }
+
+    /// Where the line is in the clip's whole file, on its strip.
+    private func trimLine(_ i: Int) -> some View {
+        let at: Double? = clips.indices.contains(i) ? fileTime(i) : nil
+        let length: Double = clips.indices.contains(i) ? max(clips[i].length, 0.01) : 1
+        return GeometryReader { g in
+            if let at {
+                Rectangle().fill(Color.white).frame(width: 2, height: g.size.height + 10)
+                    .offset(x: g.size.width * CGFloat(min(1, at / length)) - 1, y: -5)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func trimNumbers(_ c: Clip) -> some View {
+        HStack(spacing: 0) {
+            trimNumber("Start", Self.tenths(c.start))
+            Spacer(minLength: 0)
+            trimNumber("Kept", String(format: "%.1f s", c.duration))
+            Spacer(minLength: 0)
+            trimNumber("End", Self.tenths(c.end))
+        }
+    }
+
+    private func trimNumber(_ name: String, _ value: String) -> some View {
+        HStack(spacing: 7) {
+            Text(name).font(.system(size: 11)).foregroundStyle(ProInk.quiet)
+            Text(value).font(.system(size: 12, weight: .medium, design: .monospaced))
+        }
+    }
+
+    /// A time to the tenth, as "00:08.0".
+    static func tenths(_ s: Double) -> String {
+        let all: Int = Int((max(0, s) * 10).rounded())
+        return String(format: "%02d:%02d.%d", all / 600, (all / 10) % 60, all % 10)
+    }
+
     private func soundPanel(_ i: Int) -> some View {
-        let c = clips[i]
-        return VStack(spacing: 12) {
+        let c: Clip = clips[i]
+        return VStack(spacing: 0) {
+            ProLead(title: "Clip \(i + 1)", sub: "") {
+                if !c.still { clipSoundActions(i, c) }
+            }
             if c.still {
-                Text("A photo has no sound of its own.").font(.subheadline).foregroundStyle(.secondary).padding(.vertical, 20)
+                ProBody(height: 144) { ProHint(words: "A photo has no sound of its own.") }
             } else {
-                HStack(spacing: 8) {
-                    soundTile("speaker.wave.2.fill", "Volume", on: soundTool == .volume) { soundTool = .volume }
-                    soundTile("waveform.path", "Fade", on: soundTool == .fade) { soundTool = .fade }
-                    soundTile(c.soundOn ? "speaker.slash" : "speaker.slash.fill", c.soundOn ? "Mute" : "Muted", on: !c.soundOn) {
-                        guard clips.indices.contains(i) else { return }
-                        remember(); clips[i].soundOn.toggle()
+                soundTabs(beats: false)
+                ProBody {
+                    if !c.soundOn {
+                        ProHint(words: "This clip's sound is off. Tap Muted to bring it back.")
+                    } else if soundTool == .fade {
+                        fadePanel(i)
+                    } else {
+                        volumePanel(i)
                     }
-                    soundTile("music.note", "Use for all", on: soundOf == c.id) { remember(); soundOf = soundOf == c.id ? nil : c.id }
-                    soundTile("waveform.badge.magnifyingglass", "Clearer", on: c.clean != nil) { clearer(i) }
-                }
-                .background(alignment: .bottom) { tabLine }
-                if !c.soundOn {
-                    Text("This clip's sound is off. Tap Mute again to bring it back.").font(.caption).foregroundStyle(.secondary)
-                } else if soundTool == .volume {
-                    volumePanel(i)
-                } else {
-                    fadePanel(i)
                 }
             }
         }
         .task(id: c.id) { if levels[c.id] == nil { levels[c.id] = await ClipJoin.levels(c) } }
     }
 
-    /// A panel's tool as a tab: its name, white and underlined when it's the one on (design/pro-ui: the big white
-    /// blocks went). (`icon` kept for its callers; tabs are words.)
-    private func soundTile(_ icon: String, _ title: String, on: Bool, _ run: @escaping () -> Void) -> some View {
-        Button { UISelectionFeedbackGenerator().selectionChanged(); withAnimation(.snappy(duration: 0.2)) { run() } } label: {
-            Text(title).font(.system(size: 12.5, weight: on ? .bold : .medium)).foregroundStyle(on ? Color.white : Color(white: 0.55))
-                .lineLimit(1).minimumScaleFactor(0.8)
-                .padding(.vertical, 9).frame(maxWidth: .infinity)
-                .overlay(alignment: .bottom) { if on { Rectangle().fill(.white).frame(height: 2) } }
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(on ? .isSelected : [])
+    @ViewBuilder private func clipSoundActions(_ i: Int, _ c: Clip) -> some View {
+        ProAction(icon: c.soundOn ? "speaker.slash" : "speaker.slash.fill", name: c.soundOn ? "Mute" : "Muted", on: !c.soundOn,
+                  run: { toggleClipSound(i) })
+        ProAction(icon: "music.note", name: "Use for all", on: soundOf == c.id, run: { toggleSoundForAll(c.id) })
+        ProAction(icon: "waveform", name: "Clearer", on: c.clean != nil, run: { clearer(i) })
     }
 
-    /// The line under a row of tabs.
-    private var tabLine: some View { Rectangle().fill(Color(white: 0.13)).frame(height: 1) }
+    private func toggleClipSound(_ i: Int) {
+        guard clips.indices.contains(i) else { return }
+        remember()
+        clips[i].soundOn.toggle()
+    }
+
+    private func toggleSoundForAll(_ id: UUID) {
+        remember()
+        soundOf = soundOf == id ? nil : id
+    }
+
+    /// Volume and Fade, and for music Cut to beat.
+    private func soundTabs(beats: Bool) -> some View {
+        var names: [String] = ["Volume", "Fade"]
+        if beats { names.append("Cut to beat") }
+        var here = "Volume"
+        if soundTool == .fade { here = "Fade" } else if beats && soundTool == .beats { here = "Cut to beat" }
+        return ProTabs(names: names, on: here, pick: { (name: String) in
+            switch name {
+            case "Fade": soundTool = .fade
+            case "Cut to beat": soundTool = .beats
+            default: soundTool = .volume
+            }
+        })
+    }
+
 
     /// Where the line is in the clip's own file, if the line is inside it.
     private func fileTime(_ i: Int) -> Double? {
@@ -1663,83 +1825,64 @@ struct MultiClipEditor: View {
         return clips[i].start + min(max(0, into) * clips[i].speed, clips[i].duration)
     }
 
-    /// Volume: one big number and a slider; with keyframes, the number and slider are the level at the line, and
-    /// the diamond adds one there (or takes away the one it's on), as CapCut's does.
+    /// Volume: with keyframes, the number and slider are the level at the line, and the diamond adds one there (or
+    /// takes away the one it's on), as CapCut's does.
     private func volumePanel(_ i: Int) -> some View {
-        let c = clips[i], at = fileTime(i)
-        let near = at.flatMap { t in c.keys.firstIndex { abs($0.at - t) < 0.15 } }
-        let shown = c.keys.isEmpty ? c.volume : (at.map { c.level(at: $0) } ?? c.volume)
-        return VStack(spacing: 10) {
-            ProSlider(value: Binding(get: { Double(shown) }, set: { v in setVolume(i, Float(v)) }), began: { editHeld(true) }, ended: { editHeld(false) })
-            HStack(spacing: 10) {
-            keyButton(near != nil, on: at != nil) {
-                guard let at, clips.indices.contains(i) else { return }
-                remember()
-                if let near { clips[i].keys.remove(at: near) }
-                else { clips[i].keys.append(VolumeKey(at: at, volume: c.keys.isEmpty ? c.volume : c.level(at: at))) }
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        let c: Clip = clips[i]
+        let at: Double? = fileTime(i)
+        let near: Int? = at.flatMap { (t: Double) -> Int? in c.keys.firstIndex { (k: VolumeKey) -> Bool in abs(k.at - t) < 0.15 } }
+        var shown: Float = c.volume
+        if !c.keys.isEmpty, let at { shown = c.level(at: at) }
+        let span: Double = max(c.duration, 0.01)
+        let marks: [StripKey] = c.keys.map { (k: VolumeKey) -> StripKey in StripKey(at: (k.at - c.start) / span, level: Double(k.volume)) }
+        let line: Double? = at.map { (t: Double) -> Double in (t - c.start) / span }
+        return VStack(spacing: 14) {
+            volumeSlide(Double(shown), set: { (v: Double) in setVolume(i, Float(v)) })
+            HStack(spacing: 12) {
+                keyAction(near != nil, enabled: at != nil, run: { toggleClipKey(i) })
+                KeyframeStrip(levels: levels[c.id] ?? [], colour: Self.clipWave, keys: marks, line: line,
+                              scrub: { (f: Double) in scrubClipStrip(i, f) })
             }
-            // the clip's sound, its keyframes on it and the line where it is: tap a diamond to go to it
-            GeometryReader { g in
-                let w = g.size.width, span = max(c.duration, 0.01)
-                ZStack(alignment: .leading) {
-                    Bars(levels: levels[c.id] ?? []).clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                    ForEach(c.keys.indices, id: \.self) { k in
-                        let x = w * CGFloat((c.keys[k].at - c.start) / span)
-                        Image(systemName: "diamond.fill").font(.system(size: 11, weight: .bold)).foregroundStyle(.yellow)
-                            .shadow(color: .black.opacity(0.6), radius: 2)
-                            .position(x: min(max(6, x), w - 6), y: g.size.height / 2)
-                            .onTapGesture { seek(startOf(i) + (c.keys[k].at - c.start) / max(c.speed, 0.01)) }
-                    }
-                    if let at {
-                        Capsule().fill(.white).frame(width: 2.5, height: g.size.height + 6)
-                            .offset(x: min(max(0, w * CGFloat((at - c.start) / span) - 1.25), w - 2.5)).allowsHitTesting(false)
-                    }
-                }
-                .contentShape(Rectangle())
-                // drag along it to move the line through the clip, held on a diamond when near one (21 Nov)
-                .gesture(stripScrub(width: w, marks: c.keys.map { w * CGFloat(($0.at - c.start) / span) }) { x in
-                    startOf(i) + Double(x / max(w, 1)) * span / max(c.speed, 0.01)
-                })
-            }
-            .frame(height: 30)
-            }
-            Text(c.keys.isEmpty ? "Put the line where you want it, then add a keyframe to set the volume there."
-                 : "\(c.keys.count) keyframe\(c.keys.count == 1 ? "" : "s"): the volume eases between them.")
-                .font(.system(size: 11)).foregroundStyle(Color(white: 0.43)).fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
-    /// Add a keyframe here, or take away the one here: a labelled button beside the sound (design/pro-ui).
-    /// A keyframe strip's scrub: the line goes where the finger is along it (paused), held on a keyframe's diamond
-    /// when it comes within 10 points of one, with a tap; a tap on a diamond goes to it.
-    private func stripScrub(width w: CGFloat, marks: [CGFloat], time: @escaping (CGFloat) -> Double) -> some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { v in
-                if player.rate != 0 { player.pause(); playing = false }
-                var x = min(max(0, v.location.x), w)
-                if let m = marks.min(by: { abs($0 - x) < abs($1 - x) }), abs(m - x) <= 10 {
-                    if abs(m - x) > 0.5, stripHeld != m { UISelectionFeedbackGenerator().selectionChanged() }
-                    stripHeld = m; x = m
-                } else { stripHeld = nil }
-                seek(min(max(0, time(x)), max(0, total - 0.01)))
-            }
-            .onEnded { _ in stripHeld = nil }
+    private static let clipWave = Color(red: 0.24, green: 0.86, blue: 0.52)
+
+    private func volumeSlide(_ value: Double, set: @escaping (Double) -> Void) -> some View {
+        ProSlide(name: "Volume", value: value, range: 0...1, shown: ProSlide.percent(value),
+                 held: { (on: Bool) in editHeld(on) }, set: set)
     }
 
-    private func keyButton(_ here: Bool, on: Bool, _ run: @escaping () -> Void) -> some View {
-        Button(action: run) {
-            HStack(spacing: 5) {
-                Image(systemName: here ? "diamond.fill" : "diamond").font(.system(size: 11, weight: .bold)).foregroundStyle(here ? Color.yellow : Color.white)
-                Text(here ? "Remove" : "Keyframe").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(.white)
-            }
-            .frame(width: 96, height: 30)   // the same width whichever it says (21 Nov: the strip beside it jumped)
-            .background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-        }
-        .buttonStyle(.plain).disabled(!on).opacity(on ? 1 : 0.4)
-        .accessibilityLabel(here ? "Remove the keyframe here" : "Add a keyframe here")
+    private func keyAction(_ here: Bool, enabled: Bool, run: @escaping () -> Void) -> some View {
+        ProAction(icon: here ? "diamond.fill" : "diamond", name: here ? "Remove" : "Keyframe", on: here, enabled: enabled,
+                  lit: ProInk.key, run: run)
+            .frame(width: 74, alignment: .leading)   // the same width whichever it says (21 Nov: the strip beside it jumped)
     }
+
+    private func toggleClipKey(_ i: Int) {
+        guard clips.indices.contains(i), let at = fileTime(i) else { return }
+        let c: Clip = clips[i]
+        remember()
+        if let near = c.keys.firstIndex(where: { (k: VolumeKey) -> Bool in abs(k.at - at) < 0.15 }) {
+            clips[i].keys.remove(at: near)
+        } else {
+            let level: Float = c.keys.isEmpty ? c.volume : c.level(at: at)
+            clips[i].keys.append(VolumeKey(at: at, volume: level))
+        }
+    }
+
+    private func scrubClipStrip(_ i: Int, _ f: Double) {
+        guard clips.indices.contains(i) else { return }
+        stripSeek(startOf(i) + f * clips[i].span)
+    }
+
+    /// The line moved from a sound's strip.
+    private func stripSeek(_ t: Double) {
+        if player.rate != 0 { player.pause(); playing = false }
+        seek(min(max(0, t), max(0, total - 0.01)))
+    }
+
+
 
     /// The slider moved: the clip's volume, or with keyframes the one at the line (made there if there isn't one).
     private func setVolume(_ i: Int, _ v: Float) {
@@ -1751,12 +1894,14 @@ struct MultiClipEditor: View {
 
     /// Fade: how long it fades in and out, each up to 3 seconds (and never past half the clip).
     private func fadePanel(_ i: Int) -> some View {
-        let most = max(0.1, min(3, clips[i].duration / 2))
-        return VStack(spacing: 14) {
+        let c: Clip = clips[i]
+        let most: Double = max(0.1, min(3, c.duration / 2))
+        let span: Double = max(c.duration, 0.01)
+        return VStack(spacing: 4) {
+            FadeWave(levels: levels[c.id] ?? [], colour: Self.clipWave, fadeIn: c.fadeIn / span, fadeOut: c.fadeOut / span)
             fadeRow("Fade in", value: clipValue(i, \.fadeIn, most: most), most: most)
             fadeRow("Fade out", value: clipValue(i, \.fadeOut, most: most), most: most)
         }
-        .padding(.top, 4)
     }
 
     private func clipValue(_ i: Int, _ key: WritableKeyPath<Clip, Double>, most: Double) -> Binding<Double> {
@@ -1765,14 +1910,8 @@ struct MultiClipEditor: View {
     }
 
     private func fadeRow(_ title: String, value: Binding<Double>, most: Double) -> some View {
-        VStack(spacing: 4) {
-            HStack {
-                Text(title).font(.subheadline.weight(.semibold))
-                Spacer()
-                Text(value.wrappedValue < 0.05 ? "Off" : String(format: "%.1f s", value.wrappedValue)).font(.subheadline).monospacedDigit().foregroundStyle(.secondary)
-            }
-            Slider(value: value, in: 0...most, onEditingChanged: { editHeld($0) }).tint(.white)
-        }
+        ProSlide(name: title, value: value.wrappedValue, range: 0...most, shown: ProSlide.seconds(value.wrappedValue),
+                 held: { (on: Bool) in editHeld(on) }, set: { (v: Double) in value.wrappedValue = v })
     }
 
 
@@ -1837,7 +1976,7 @@ struct MultiClipEditor: View {
 
     private func midEdit() -> Bool {
         if barGrab != nil || typing != nil || recording || fingerHeld { return true }
-        return captionScreen != .main && editingCaption != nil   // the wheel and the eyedropper: one step
+        return captionScreen != .main && (editingCaption ?? editingText) != nil   // the wheel and the eyedropper: one step
     }
 
     private func recordEdit() { edits.record(snap) }
@@ -2160,24 +2299,32 @@ struct MultiClipEditor: View {
         .buttonStyle(.plain).accessibilityLabel(dir < 0 ? "A frame back" : "A frame on")
     }
 
-    /// Speed (design/editor-all-tools-mockup.html): a quarter to four times, the clip on the strip as long as it now lasts.
+    /// Speed (design/editor-panels-mockup.html, 1): a quarter to four times on a ruler, the clip on the strip as long
+    /// as it now lasts.
     private func speedPanel(_ i: Int) -> some View {
-        let c = clips[i]
-        // the slider runs evenly through the halvings and doublings: 0.25, 0.5, 1, 2, 4
-        let place = Binding<Double>(get: { clips.indices.contains(i) ? log2(max(0.25, min(4, clips[i].speed))) : 0 }, set: { v in
-            guard clips.indices.contains(i) else { return }
-            var x = (pow(2.0, v) * 20).rounded() / 20
-            for stop in [0.25, 0.5, 1, 2, 4] where abs(log2(x) - log2(stop)) < 0.08 { x = stop }
-            clips[i].speed = max(0.25, min(4, x))
-        })
-        return VStack(spacing: 6) {
-            Text(Self.speedText(c.speed)).font(.system(size: 34, weight: .black, design: .rounded)).monospacedDigit()
-            Slider(value: place, in: -2...2, onEditingChanged: { editHeld($0) }).tint(.white)
-            HStack { ForEach(["0.25×", "0.5×", "1×", "2×", "4×"], id: \.self) { Text($0) }.frame(maxWidth: .infinity) }
-                .font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
-            Text("\(String(format: "%.1f", c.duration)) s → \(String(format: "%.1f", c.span)) s · its sound keeps its pitch")
-                .font(.caption).foregroundStyle(.secondary).padding(.top, 2)
+        let c: Clip = clips[i]
+        let lasts: String = String(format: "%.1f s → %.1f s", c.duration, c.span) + ". Its sound keeps its pitch."
+        let normal: Bool = abs(c.speed - 1) < 0.001
+        return VStack(spacing: 0) {
+            ProLead(title: "Clip \(i + 1)", sub: "") {
+                ProAction(icon: "arrow.counterclockwise", name: "Reset", enabled: !normal, run: { resetSpeed(i) })
+            }
+            ProBody(height: 144, spacing: 4) {
+                Text(Self.speedText(c.speed)).font(.system(size: 25, weight: .bold)).monospacedDigit().frame(height: 30)
+                SpeedRuler(speed: c.speed, held: { (on: Bool) in editHeld(on) }, set: { (v: Double) in setSpeed(i, v) })
+                Text(lasts).font(.system(size: 12)).foregroundStyle(ProInk.quiet)
+            }
         }
+    }
+
+    private func setSpeed(_ i: Int, _ v: Double) {
+        guard clips.indices.contains(i), clips[i].speed != v else { return }
+        clips[i].speed = v
+    }
+
+    private func resetSpeed(_ i: Int) {
+        remember()
+        setSpeed(i, 1)
     }
 
     /// The frame at the line held for 2 seconds, as a clip of its own put in there (the clip split round it).
@@ -2253,7 +2400,7 @@ struct MultiClipEditor: View {
     private var overVideo: some View {
         ZStack(alignment: .top) {
             videoLayer
-            if captionScreen == .dropper, let id = editingCaption {
+            if captionScreen == .dropper, let id = editingCaption ?? editingText {
                 VideoDropper(engine: player, frameSize: frameSize, pick: { (hex: String) in pickedColour(id, hex) })
             } else if let m = movedAll, !full {
                 movedPill(m).padding(.top, 8)
@@ -2264,7 +2411,7 @@ struct MultiClipEditor: View {
     private var videoLayer: VideoOverlays {
         VideoOverlays(clock: clock, texts: texts, sounds: sounds, pips: pips, frameSize: frameSize,
                       selected: selectedText, selectedPip: selectedPip, playing: playing,
-                      rounded: editingCaption != nil,
+                      rounded: panel != nil,
                       held: { (on: Bool) in overlayHeld(on) },
                       pick: { (id: UUID) in selectText(id) },
                       pickPip: { (id: UUID) in selectPip(id) },
@@ -2277,6 +2424,13 @@ struct MultiClipEditor: View {
         guard panel == .text, let id = selectedText else { return nil }
         let isCaption: Bool = texts.contains { (t: EditText) -> Bool in t.id == id && t.kind == "caption" }
         return isCaption ? id : nil
+    }
+
+    /// The text whose panel is open.
+    private var editingText: UUID? {
+        guard panel == .text, let id = selectedText else { return nil }
+        let isText: Bool = texts.contains { (t: EditText) -> Bool in t.id == id && t.kind == "text" }
+        return isText ? id : nil
     }
 
     private func overlayHeld(_ on: Bool) {
@@ -2393,13 +2547,16 @@ struct MultiClipEditor: View {
 
     private func pickedColour(_ id: UUID, _ hex: String) {
         let part: CaptionPart = captionPart
-        changeText(id) { (t: inout EditText) in t.paint(part, hex: hex) }
+        changeText(id) { (t: inout EditText) in
+            if t.kind == "caption" { t.paint(part, hex: hex) } else { t.colour = hex }
+        }
     }
 
     private func selectText(_ id: UUID) {
         selected = nil
         selectedText = id
         captionScreen = .main
+        changingSticker = false
         player.pause(); playing = false
         if let t = texts.first(where: { $0.id == id }), now < t.from || now >= t.to { seek(t.from + 0.01) }
         withAnimation(.snappy) { panel = .text }
@@ -2612,24 +2769,6 @@ struct MultiClipEditor: View {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
-    private var bars: some View {
-        let shownRows = barRows
-        return GeometryReader { g in
-            let w = g.size.width, span = max(total, 0.01)
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 3) {
-                    ForEach(shownRows.indices, id: \.self) { r in
-                        ZStack(alignment: .leading) {
-                            ForEach(shownRows[r]) { item in bar(item, w: w, span: span) }
-                        }
-                        .frame(width: w, height: 18, alignment: .leading)
-                    }
-                }
-                .coordinateSpace(name: "bars")
-            }
-        }
-        .frame(height: min(60, CGFloat(shownRows.count) * 21))
-    }
 
     /// Where a bar's edge at `t` is held: the nearest within `reach` of a clip's start or end, another bar's start or end,
     /// or the line.
@@ -2867,28 +3006,49 @@ struct MultiClipEditor: View {
     private func selectSound(_ id: UUID) {
         selected = nil; selectedText = nil
         selectedSound = id
-        if let x = sounds.first(where: { $0.id == id }) { seek(x.from) }
-        withAnimation(.snappy) { panel = .soundItem }
+        let picked: EditSound? = sounds.first { (s: EditSound) -> Bool in s.id == id }
+        if let picked { seek(picked.from) }
+        // (music has the one panel: its beats are there too)
+        let open: Panel = picked?.kind == "song" ? .beats : .soundItem
+        withAnimation(.snappy) { panel = open }
     }
 
-    /// Voiceover: hold the button and talk; it records from the line while the video plays (its sound off, so the
-    /// microphone hears only you), and lands as a bar.
     private var voicePanel: some View {
-        VStack(spacing: 10) {
-            Toggle("Clear voice (less background noise)", isOn: $clearVoice).font(.subheadline).tint(Theme.walk).disabled(recording)
-            ZStack {
-                Circle().stroke(.white, lineWidth: 4).frame(width: 66, height: 66)
-                RoundedRectangle(cornerRadius: recording ? 8 : 24, style: .continuous).fill(Color(red: 1, green: 0.3, blue: 0.3))
-                    .frame(width: recording ? 28 : 48, height: recording ? 28 : 48)
+        VStack(spacing: 0) {
+            Live {
+                ProLead(title: recording ? "Recording" : "From \(Self.code(now))",
+                        sub: recording ? "from \(Self.code(recordFrom))" : "") {
+                    if !recording { clearVoiceSwitch }
+                }
             }
-            .frame(width: 80, height: 80).contentShape(Circle())
-            .onLongPressGesture(minimumDuration: 100, maximumDistance: 80, perform: {}, onPressingChanged: { pressing in
-                if pressing { startVoice() } else { stopVoice() }
-            })
-            .accessibilityLabel(recording ? "Recording: let go to stop" : "Hold to record a voiceover")
-            Text(recording ? "Recording from \(Self.clock(recordFrom))… let go to stop" : "Hold to record from the line. The clips' sound dips while you talk.")
-                .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            ProBody(height: 144, spacing: 12) {
+                recordButton
+                Text(recording ? "Let go to stop. The clips get quieter while you talk." : "Hold to talk. The clips get quieter while you do.")
+                    .font(.system(size: 12)).foregroundStyle(ProInk.quiet).lineLimit(1).minimumScaleFactor(0.8)
+            }
         }
+    }
+
+    private var clearVoiceSwitch: some View {
+        HStack(spacing: 2) {
+            Text("Clear voice").font(.system(size: 11)).foregroundStyle(ProInk.soft)
+            Toggle("Clear voice (less background noise)", isOn: $clearVoice).labelsHidden()
+                .tint(Color(red: 0.19, green: 0.82, blue: 0.35))
+                .scaleEffect(0.72).frame(width: 44)
+        }
+    }
+
+    private var recordButton: some View {
+        ZStack {
+            Circle().stroke(Color.white, lineWidth: 3).frame(width: 56, height: 56)
+            RoundedRectangle(cornerRadius: recording ? 5 : 21, style: .continuous).fill(Color(red: 1, green: 0.3, blue: 0.3))
+                .frame(width: recording ? 24 : 42, height: recording ? 24 : 42)
+        }
+        .frame(width: 80, height: 72).contentShape(Rectangle())
+        .onLongPressGesture(minimumDuration: 100, maximumDistance: 80, perform: {}, onPressingChanged: { (pressing: Bool) in
+            if pressing { startVoice() } else { stopVoice() }
+        })
+        .accessibilityLabel(recording ? "Recording: let go to stop" : "Hold to record a voiceover")
     }
 
     private func startVoice() {
@@ -2928,42 +3088,59 @@ struct MultiClipEditor: View {
 
     /// A few short sounds to drop in at the line.
     private var effectsPanel: some View {
-        VStack(spacing: 8) {
-            Text("Tap one to put it in at \(Self.code(now)), where the line is").font(.caption).foregroundStyle(.secondary)
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
-                ForEach(SoundEffects.names, id: \.self) { name in
-                    Button {
-                        let length = SoundEffects.length(name)
-                        remember()
-                        sounds.append(EditSound(kind: "effect", name: name, from: now, length: max(0.05, min(length, total - now)), full: length))
-                        UISelectionFeedbackGenerator().selectionChanged()
-                        flash("\(name) added at \(Self.code(now)). It's the new bar above: tap it to move or change it.")
-                    } label: {
-                        Text(name).font(.caption.weight(.bold)).foregroundStyle(.white).frame(maxWidth: .infinity).frame(height: 40)
-                            .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
+        let columns: [GridItem] = Array(repeating: GridItem(.flexible(), spacing: 8), count: 4)
+        return VStack(spacing: 0) {
+            ProLead(title: "Goes in at \(Self.code(now))", sub: "tap one to add it") { EmptyView() }
+            ProBody(height: 144) {
+                LazyVGrid(columns: columns, spacing: 8) {
+                    ForEach(SoundEffects.names, id: \.self) { (name: String) in effectTile(name) }
                 }
             }
         }
     }
 
-    /// A sound's bar picked (a voiceover, an effect, the song, or a clip's separated sound): the clip Sound panel's
-    /// tools (21 Nov; design/separate-audio-mockup.html, 4): Volume with keyframes, Fade, Put back, Take off.
-    private func soundItemPanel(_ k: Int) -> some View {
-        let x = sounds[k]
-        let home = x.kind == "clip" && clips.contains { $0.id == x.clip }
-        return VStack(spacing: 12) {
-            HStack(spacing: 8) {
-                soundTile("speaker.wave.2.fill", "Volume", on: soundTool == .volume) { soundTool = .volume }
-                soundTile("waveform.path", "Fade", on: soundTool == .fade) { soundTool = .fade }
-                if home { soundTile("arrow.up.to.line", "Put back", on: false) { putBack(x.id) } }
-                if x.kind == "voice" || x.kind == "clip" { soundTile("captions.bubble", "Caption this", on: false) { makeCaptions(.sound(x.id)) } }
-                soundTile("trash", "Take off", on: false) { takeOff(x.id) }
+    private func effectTile(_ name: String) -> some View {
+        Button { addEffect(name) } label: {
+            VStack(spacing: 6) {
+                Image(systemName: "waveform").font(.system(size: 17))
+                Text(name).font(.system(size: 11)).lineLimit(1)
             }
-            .background(alignment: .bottom) { tabLine }
-            if soundTool == .fade { barFadePanel(k) } else { barVolumePanel(k) }
+            .foregroundStyle(ProInk.soft)
+            .frame(maxWidth: .infinity).frame(height: 60)
+            .background(ProInk.tile, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
+        .buttonStyle(.plain)
+    }
+
+    private func addEffect(_ name: String) {
+        let length: Double = SoundEffects.length(name)
+        remember()
+        sounds.append(EditSound(kind: "effect", name: name, from: now, length: max(0.05, min(length, total - now)), full: length))
+        UISelectionFeedbackGenerator().selectionChanged()
+        flash("\(name) added at \(Self.code(now)).")
+    }
+
+    /// A sound's bar picked (a voiceover, an effect, or a clip's separated sound): the clip Sound panel's tools
+    /// (21 Nov; design/separate-audio-mockup.html, 4): Volume with keyframes, Fade, Put back, Take off.
+    private func soundItemPanel(_ k: Int) -> some View {
+        let s: EditSound = sounds[k]
+        return VStack(spacing: 0) {
+            ProLead(title: s.name, sub: "") { soundItemActions(s) }
+            soundTabs(beats: false)
+            ProBody {
+                if soundTool == .fade { barFadePanel(k) } else { barVolumePanel(k) }
+            }
+        }
+    }
+
+    @ViewBuilder private func soundItemActions(_ s: EditSound) -> some View {
+        if s.kind == "voice" || s.kind == "clip" {
+            ProAction(icon: "captions.bubble", name: "Caption this", run: { makeCaptions(.sound(s.id)) })
+        }
+        if s.kind == "clip" && clips.contains(where: { (c: Clip) -> Bool in c.id == s.clip }) {
+            ProAction(icon: "arrow.up.to.line", name: "Put back", run: { putBack(s.id) })
+        }
+        ProDelete(name: "Take off", run: { takeOff(s.id) })
     }
 
     /// Where the line is in a sound's own seconds, if the line is over its bar.
@@ -2975,49 +3152,41 @@ struct MultiClipEditor: View {
 
     /// A bar's volume: as a clip's (volumePanel), the number and slider the level at the line, the diamond a keyframe.
     private func barVolumePanel(_ k: Int) -> some View {
-        let s = sounds[k], at = barFileTime(k), keys = s.keys ?? []
-        let near = at.flatMap { t in keys.firstIndex { abs($0.at - t) < 0.15 } }
-        let shown = keys.isEmpty ? s.volume : s.keyLevel(at: at ?? s.start)
-        return VStack(spacing: 10) {
-            ProSlider(value: Binding(get: { Double(shown) }, set: { v in setBarVolume(k, Float(v)) }), began: { editHeld(true) }, ended: { editHeld(false) })
-            HStack(spacing: 10) {
-            keyButton(near != nil, on: at != nil) {
-                guard let at, sounds.indices.contains(k) else { return }
-                remember()
-                var all = sounds[k].keys ?? []
-                if let near { all.remove(at: near) } else { all.append(VolumeKey(at: at, volume: keys.isEmpty ? s.volume : s.keyLevel(at: at))) }
-                sounds[k].keys = all.isEmpty ? nil : all
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            }
-            // the bar, its keyframes on it and the line where it is: tap a diamond to go to it
-            GeometryReader { g in
-                let w = g.size.width, span = max(s.length, 0.01)
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Self.soundColour(s.kind).opacity(0.35))
-                    ForEach(keys.indices, id: \.self) { j in
-                        let v = s.videoTime(keys[j].at)
-                        Image(systemName: "diamond.fill").font(.system(size: 11, weight: .bold)).foregroundStyle(.yellow)
-                            .shadow(color: .black.opacity(0.6), radius: 2)
-                            .position(x: min(max(6, w * CGFloat((v - s.from) / span)), w - 6), y: g.size.height / 2)
-                            .onTapGesture { seek(v) }
-                    }
-                    if at != nil {
-                        Capsule().fill(.white).frame(width: 2.5, height: g.size.height + 6)
-                            .offset(x: min(max(0, w * CGFloat((now - s.from) / span) - 1.25), w - 2.5)).allowsHitTesting(false)
-                    }
-                }
-                .contentShape(Rectangle())
-                .gesture(stripScrub(width: w, marks: keys.map { w * CGFloat((s.videoTime($0.at) - s.from) / span) }) { x in
-                    s.from + Double(x / max(w, 1)) * span
-                })
-            }
-            .frame(height: 30)
-            }
-            Text(keys.isEmpty ? "Put the line over the bar, then add a keyframe to set the volume there."
-                 : "\(keys.count) keyframe\(keys.count == 1 ? "" : "s"): the volume eases between them.")
-                .font(.system(size: 11)).foregroundStyle(Color(white: 0.43)).fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
+        let s: EditSound = sounds[k]
+        let at: Double? = barFileTime(k)
+        let keys: [VolumeKey] = s.keys ?? []
+        let near: Int? = at.flatMap { (t: Double) -> Int? in keys.firstIndex { (key: VolumeKey) -> Bool in abs(key.at - t) < 0.15 } }
+        let shown: Float = keys.isEmpty ? s.volume : s.keyLevel(at: at ?? s.start)
+        let span: Double = max(s.length, 0.01)
+        let marks: [StripKey] = keys.map { (key: VolumeKey) -> StripKey in
+            StripKey(at: (s.videoTime(key.at) - s.from) / span, level: Double(key.volume))
         }
+        let line: Double? = at == nil ? nil : (now - s.from) / span
+        let colour: Color = Self.soundColour(s.kind)
+        return VStack(spacing: 14) {
+            volumeSlide(Double(shown), set: { (v: Double) in setBarVolume(k, Float(v)) })
+            HStack(spacing: 12) {
+                keyAction(near != nil, enabled: at != nil, run: { toggleBarKey(k) })
+                SoundWaveLoader(sound: s) { (wave: [Float]) in
+                    KeyframeStrip(levels: wave, colour: colour, keys: marks, line: line,
+                                  scrub: { (f: Double) in stripSeek(s.from + f * span) })
+                }
+            }
+        }
+    }
+
+    private func toggleBarKey(_ k: Int) {
+        guard sounds.indices.contains(k), let at = barFileTime(k) else { return }
+        let s: EditSound = sounds[k]
+        var all: [VolumeKey] = s.keys ?? []
+        remember()
+        if let near = all.firstIndex(where: { (key: VolumeKey) -> Bool in abs(key.at - at) < 0.15 }) {
+            all.remove(at: near)
+        } else {
+            let level: Float = all.isEmpty ? s.volume : s.keyLevel(at: at)
+            all.append(VolumeKey(at: at, volume: level))
+        }
+        sounds[k].keys = all.isEmpty ? nil : all
     }
 
     /// The slider moved: the sound's volume, or with keyframes the one at the line (made there if there isn't one).
@@ -3030,14 +3199,27 @@ struct MultiClipEditor: View {
 
     /// A bar's fades: each up to 3 seconds, never past half of it (a song faded out at the end, say).
     private func barFadePanel(_ k: Int) -> some View {
-        let most = max(0.1, min(3, sounds[k].length / 2))
-        return VStack(spacing: 14) {
-            fadeRow("Fade in", value: Binding(get: { sounds.indices.contains(k) ? min(sounds[k].fadeIn ?? 0, most) : 0 },
-                                              set: { if sounds.indices.contains(k) { sounds[k].fadeIn = $0 < 0.05 ? nil : $0 } }), most: most)
-            fadeRow("Fade out", value: Binding(get: { sounds.indices.contains(k) ? min(sounds[k].fadeOut ?? 0, most) : 0 },
-                                               set: { if sounds.indices.contains(k) { sounds[k].fadeOut = $0 < 0.05 ? nil : $0 } }), most: most)
+        let s: EditSound = sounds[k]
+        let most: Double = max(0.1, min(3, s.length / 2))
+        let span: Double = max(s.length, 0.01)
+        let colour: Color = Self.soundColour(s.kind)
+        return VStack(spacing: 4) {
+            SoundWaveLoader(sound: s) { (wave: [Float]) in
+                FadeWave(levels: wave, colour: colour, fadeIn: (s.fadeIn ?? 0) / span, fadeOut: (s.fadeOut ?? 0) / span)
+            }
+            fadeRow("Fade in", value: barFade(k, \.fadeIn, most: most), most: most)
+            fadeRow("Fade out", value: barFade(k, \.fadeOut, most: most), most: most)
         }
-        .padding(.top, 4)
+    }
+
+    private func barFade(_ k: Int, _ key: WritableKeyPath<EditSound, Double?>, most: Double) -> Binding<Double> {
+        Binding<Double>(get: { () -> Double in
+            guard sounds.indices.contains(k) else { return 0 }
+            return min(sounds[k][keyPath: key] ?? 0, most)
+        }, set: { (v: Double) in
+            guard sounds.indices.contains(k) else { return }
+            sounds[k][keyPath: key] = v < 0.05 ? nil : v
+        })
     }
 
     /// A clip's sound made clearer (Clarity), or back as it was.
@@ -3103,44 +3285,68 @@ struct MultiClipEditor: View {
         song.fadeOut = min(1.2, song.length / 4)
     }
 
-    /// Music: the song, its volume and fades, taking it off, and its beats with the clips cut to land on them.
-    private var beatsPanel: some View {
-        let song = sounds.first(where: { $0.kind == "song" })
-        return VStack(spacing: 10) {
-            HStack {
-                Image(systemName: "music.note").foregroundStyle(Self.soundColour("song"))
-                Text(song?.name ?? "No song").font(.subheadline.weight(.semibold)).lineLimit(1)
-                Spacer()
-                Button(song == nil ? "Add a song" : "Change song") { choosingSong = true }.font(.caption.weight(.bold)).foregroundStyle(.white)
-            }
-            if let song {
-                HStack(spacing: 8) {
-                    wide("Volume and fade", "slider.horizontal.3") { selectSound(song.id) }
-                    wide("Take off", "trash", warn: true) {
-                        remember()
-                        sounds.removeAll { $0.kind == "song" }
-                        withAnimation(.snappy) { panel = nil }
-                    }
-                }
-            }
-            if songBeats.count > 2 {
-            Text("Cut to the beat").font(.caption.weight(.semibold)).foregroundStyle(Self.quiet).frame(maxWidth: .infinity, alignment: .leading)
-            HStack(spacing: 6) {
-                chip("Every beat", on: beatEvery == 1) { beatEvery = 1 }
-                chip("2 beats", on: beatEvery == 2) { beatEvery = 2 }
-                chip("4 beats", on: beatEvery == 4) { beatEvery = 4 }
-            }
-            Button { cutToBeats(every: beatEvery) } label: {
-                Label("Cut to beats", systemImage: "scissors").font(.headline).foregroundStyle(.black).frame(maxWidth: .infinity).frame(height: 44)
-                    .background(.white, in: Capsule())
-            }
-            .buttonStyle(.plain).disabled(songBeats.count < 3).opacity(songBeats.count < 3 ? 0.4 : 1)
-            Text("\(songBeats.count) beats in the song, the yellow ticks above. Each clip is cut to end on one.")
-                .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            } else if song != nil {
-                Text("No steady beat found in this song to cut to.").font(.caption).foregroundStyle(.secondary)
+    /// Music: the song, its volume with keyframes, its fades, and its beats with the clips cut to land on them.
+    @ViewBuilder private var beatsPanel: some View {
+        if let k = sounds.firstIndex(where: { (s: EditSound) -> Bool in s.kind == "song" }) {
+            musicPanel(k)
+        } else {
+            ProLead(title: "No song", sub: "") {
+                ProAction(icon: "plus", name: "Add a song", run: { choosingSong = true })
             }
         }
+    }
+
+    private func musicPanel(_ k: Int) -> some View {
+        let s: EditSound = sounds[k]
+        return VStack(spacing: 0) {
+            ProLead(title: s.name, sub: s.toEnd == true ? "to the end" : "") {
+                ProAction(icon: "arrow.left.arrow.right", name: "Change", run: { choosingSong = true })
+                ProDelete(name: "Take off", run: { takeOff(s.id) })
+            }
+            soundTabs(beats: true)
+            ProBody {
+                switch soundTool {
+                case .volume: barVolumePanel(k)
+                case .fade: barFadePanel(k)
+                case .beats: beatCuts(s)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private func beatCuts(_ s: EditSound) -> some View {
+        let found: [Double] = songBeats
+        let span: Double = max(s.length, 0.01)
+        let marks: [Double] = found.map { (b: Double) -> Double in (b - s.from) / span }
+        if found.count > 2 {
+            SoundWaveLoader(sound: s) { (wave: [Float]) in
+                BeatStrip(levels: wave, beats: marks, every: beatEvery)
+            }
+            HStack(spacing: 8) {
+                ProPick(title: "", options: Self.beatOptions, value: String(beatEvery), pick: { (v: String) in beatEvery = Int(v) ?? 2 })
+                cutButton
+            }
+        } else {
+            ProHint(words: "No steady beat found in this song to cut to.")
+        }
+    }
+
+    private static let beatOptions: [ProOption] = [ProOption(id: "1", name: "Every beat"), ProOption(id: "2", name: "2 beats"),
+                                                   ProOption(id: "4", name: "4 beats")]
+
+    private var cutButton: some View {
+        Button { cutToBeats(every: beatEvery) } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "scissors")
+                Text("Cut clips")
+            }
+            .font(.system(size: 13)).foregroundStyle(Color.white)
+            .padding(.horizontal, 9).frame(height: 30)
+            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(Color(white: 0.4), lineWidth: 0.5))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
     }
 
     /// Each clip cut to end on the next beat (every `n`th) after it starts, as long as it has that much in it.
@@ -3280,94 +3486,132 @@ struct MultiClipEditor: View {
         if follow { seek(g.mode == 2 ? max(0, pips[i].to - 0.05) : pips[i].from) }
     }
 
-    /// An overlay picked: its size and see-through, a keyframe at the line, or taken off.
+    /// An overlay picked: its size and opacity, a keyframe at the line, or taken off.
     private func pipPanel(_ k: Int) -> some View {
-        let p = pips[k], m = p.place(at: now)
-        let at = now - p.from
-        let near = p.keys.firstIndex { abs($0.at - at) < 0.12 }
-        let inside = now >= p.from && now < p.to
-        return VStack(spacing: 10) {
-            HStack(spacing: 12) {
-                Text("Size").font(.subheadline.weight(.semibold)).frame(width: 64, alignment: .leading)
-                Slider(value: Binding(get: { pips.indices.contains(k) ? pips[k].place(at: now).size : 0.36 }, set: { v in setPip(p.id) { $0.size = v } }), in: 0.12...1, onEditingChanged: { editHeld($0) }).tint(.white)
+        let p: EditPip = pips[k]
+        let m: MoveKey = p.place(at: now)
+        let at: Double = now - p.from
+        let here: Bool = p.keys.contains { (key: MoveKey) -> Bool in abs(key.at - at) < 0.12 }
+        let inside: Bool = now >= p.from && now < p.to
+        let sub: String = p.keys.isEmpty ? "" : "\(p.keys.count) keyframe\(p.keys.count == 1 ? "" : "s")"
+        return VStack(spacing: 0) {
+            ProLead(title: "Overlay", sub: sub) {
+                ProAction(icon: here ? "diamond.fill" : "diamond", name: here ? "Remove" : "Keyframe", on: here,
+                          enabled: inside, lit: ProInk.key, run: { togglePipKey(p.id) })
+                ProDelete(name: "Take it off", run: { removePip(p.id) })
             }
-            HStack(spacing: 12) {
-                Text("See-through").font(.subheadline.weight(.semibold)).frame(width: 64, alignment: .leading).lineLimit(1).minimumScaleFactor(0.7)
-                Slider(value: Binding(get: { pips.indices.contains(k) ? pips[k].place(at: now).opacity : 1 }, set: { v in setPip(p.id) { $0.opacity = v } }), in: 0.1...1, onEditingChanged: { editHeld($0) }).tint(.white)
+            ProBody(height: 144, spacing: 14) {
+                ProSlide(name: "Size", value: m.size, range: 0.12...1, shown: ProSlide.percent(m.size),
+                         held: { (on: Bool) in editHeld(on) },
+                         set: { (v: Double) in setPip(p.id) { (key: inout MoveKey) in key.size = v } })
+                ProSlide(name: "Opacity", value: m.opacity, range: 0.1...1, shown: ProSlide.percent(m.opacity),
+                         held: { (on: Bool) in editHeld(on) },
+                         set: { (v: Double) in setPip(p.id) { (key: inout MoveKey) in key.opacity = v } })
+                ProHint(words: "Drag it on the video to move it, or pinch it to size it.")
             }
-            HStack(spacing: 10) {
-                Button {
-                    guard inside else { return }
-                    remember()
-                    if let near { pips[k].keys.remove(at: near) } else { var key = m; key.at = at; pips[k].keys.append(key) }
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                } label: {
-                    Label(near != nil ? "Remove keyframe" : "Keyframe here", systemImage: near != nil ? "diamond.fill" : "diamond")
-                        .font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).frame(height: 40)
-                        .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
-                .buttonStyle(.plain).foregroundStyle(near != nil ? Color.yellow : Color.white).disabled(!inside).opacity(inside ? 1 : 0.4)
-                Button(role: .destructive) {
-                    let id = p.id
-                    remember()
-                    withAnimation(.snappy) { panel = nil; selectedPip = nil }
-                    pips.removeAll { $0.id == id }
-                } label: {
-                    Label("Take it off", systemImage: "trash").font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).frame(height: 40)
-                        .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
-                .buttonStyle(.plain).foregroundStyle(Theme.warn)
-            }
-            Text(p.keys.isEmpty ? "Drag it on the video to move it, pinch to size it. Add keyframes to make it move over time."
-                 : "\(p.keys.count) keyframe\(p.keys.count == 1 ? "" : "s"): it moves and grows between them.")
-                .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
         }
+    }
+
+    private func togglePipKey(_ id: UUID) {
+        guard let k = pips.firstIndex(where: { (p: EditPip) -> Bool in p.id == id }) else { return }
+        let p: EditPip = pips[k]
+        guard now >= p.from, now < p.to else { return }
+        let at: Double = now - p.from
+        remember()
+        if let near = p.keys.firstIndex(where: { (key: MoveKey) -> Bool in abs(key.at - at) < 0.12 }) {
+            pips[k].keys.remove(at: near)
+        } else {
+            var key: MoveKey = p.place(at: now)
+            key.at = at
+            pips[k].keys.append(key)
+        }
+    }
+
+    private func removePip(_ id: UUID) {
+        remember()
+        withAnimation(.snappy) { panel = nil; selectedPip = nil }
+        pips.removeAll { (p: EditPip) -> Bool in p.id == id }
     }
 
     /// A clip's movement: a slow zoom or drift from start to end, or its own zoom keyframed at the line.
     private func motionPanel(_ i: Int) -> some View {
-        let c = clips[i], at = now - startOf(i)
-        let inside = at >= -0.01 && at <= c.span + 0.01
-        let m = MoveKey.value(c.moves, at: at, base: MoveKey(at: 0))
-        let near = c.moves.firstIndex { abs($0.at - at) < 0.12 }
-        return VStack(spacing: 10) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    chip("Still", on: c.moves.isEmpty) { if clips.indices.contains(i) { remember(); clips[i].moves = [] } }
-                    chip("Slow zoom in", on: false) { setMoves(i, [MoveKey(at: 0), MoveKey(at: c.span, size: 1.18)]) }
-                    chip("Slow zoom out", on: false) { setMoves(i, [MoveKey(at: 0, size: 1.18), MoveKey(at: c.span)]) }
-                    chip("Drift left", on: false) { setMoves(i, [MoveKey(at: 0, x: 0.54, size: 1.12), MoveKey(at: c.span, x: 0.46, size: 1.12)]) }
-                    chip("Drift right", on: false) { setMoves(i, [MoveKey(at: 0, x: 0.46, size: 1.12), MoveKey(at: c.span, x: 0.54, size: 1.12)]) }
-                }
+        let c: Clip = clips[i]
+        let at: Double = now - startOf(i)
+        let inside: Bool = at >= -0.01 && at <= c.span + 0.01
+        let here: Bool = c.moves.contains { (k: MoveKey) -> Bool in abs(k.at - at) < 0.12 }
+        let zoom: Double = MoveKey.value(c.moves, at: at, base: MoveKey(at: 0)).size
+        let sub: String = c.moves.isEmpty ? "" : "\(c.moves.count) keyframe\(c.moves.count == 1 ? "" : "s")"
+        return VStack(spacing: 0) {
+            ProLead(title: "Clip \(i + 1)", sub: sub) {
+                ProAction(icon: here ? "diamond.fill" : "diamond", name: here ? "Remove" : "Keyframe", on: here,
+                          enabled: inside, lit: ProInk.key, run: { toggleMoveKey(i) })
             }
-            HStack(spacing: 12) {
-                Text("Zoom").font(.subheadline.weight(.semibold))
-                Slider(value: zoomValue(i), in: 1...2, onEditingChanged: { editHeld($0) }).tint(.white)
-                Button {
-                    guard inside, clips.indices.contains(i) else { return }
-                    remember()
-                    if let near { clips[i].moves.remove(at: near) } else { var key = m; key.at = at; clips[i].moves.append(key) }
-                } label: {
-                    Image(systemName: near != nil ? "diamond.fill" : "diamond").font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(near != nil ? Color.yellow : Color.white).frame(width: 40, height: 40)
-                        .background(.black.opacity(0.55), in: Circle())
-                }
-                .buttonStyle(.plain).disabled(!inside).opacity(inside ? 1 : 0.4)
-                .accessibilityLabel(near != nil ? "Remove the keyframe here" : "Add a keyframe here")
+            ProBody(height: 144) {
+                motionTiles(i, c)
+                ProSlide(name: "Zoom", value: zoom, range: 1...2, shown: ProSlide.percent(zoom),
+                         held: { (on: Bool) in editHeld(on) },
+                         set: { (v: Double) in setClipMove(i) { (m: inout MoveKey) in m.size = v } })
             }
-            Text(c.moves.isEmpty ? "A slow zoom or drift makes a still shot feel alive." : "\(c.moves.count) keyframe\(c.moves.count == 1 ? "" : "s") on this clip.")
-                .font(.caption).foregroundStyle(.secondary)
         }
     }
 
-    private func zoomValue(_ i: Int) -> Binding<Double> {
-        Binding<Double>(get: { () -> Double in
-            guard clips.indices.contains(i) else { return 1 }
-            return MoveKey.value(clips[i].moves, at: now - startOf(i), base: MoveKey(at: 0)).size
-        }, set: { (v: Double) in
-            setClipMove(i) { (m: inout MoveKey) in m.size = v }
+    private struct MotionPreset: Identifiable {
+        var id: String
+        var icon: String
+        var keys: [MoveKey]
+    }
+
+    private static func motions(span: Double) -> [MotionPreset] {
+        let still = MotionPreset(id: "Still", icon: "rectangle.portrait", keys: [])
+        let zoomIn = MotionPreset(id: "Zoom in", icon: "plus.magnifyingglass",
+                                  keys: [MoveKey(at: 0), MoveKey(at: span, size: 1.18)])
+        let zoomOut = MotionPreset(id: "Zoom out", icon: "minus.magnifyingglass",
+                                   keys: [MoveKey(at: 0, size: 1.18), MoveKey(at: span)])
+        let left = MotionPreset(id: "Drift left", icon: "arrow.left",
+                                keys: [MoveKey(at: 0, x: 0.54, size: 1.12), MoveKey(at: span, x: 0.46, size: 1.12)])
+        let right = MotionPreset(id: "Drift right", icon: "arrow.right",
+                                 keys: [MoveKey(at: 0, x: 0.46, size: 1.12), MoveKey(at: span, x: 0.54, size: 1.12)])
+        return [still, zoomIn, zoomOut, left, right]
+    }
+
+    private func motionTiles(_ i: Int, _ c: Clip) -> some View {
+        let all: [MotionPreset] = Self.motions(span: c.span)
+        return HStack(spacing: 8) {
+            ForEach(all) { (m: MotionPreset) in motionTile(i, m, on: c.moves == m.keys) }
+        }
+    }
+
+    private func motionTile(_ i: Int, _ m: MotionPreset, on: Bool) -> some View {
+        ProTile(name: m.id, on: on, tall: 66, pick: { pickMotion(i, m.keys) }, preview: {
+            Image(systemName: m.icon).font(.system(size: 19))
         })
     }
+
+    private func pickMotion(_ i: Int, _ keys: [MoveKey]) {
+        guard clips.indices.contains(i) else { return }
+        if keys.isEmpty {
+            remember()
+            clips[i].moves = []
+        } else {
+            setMoves(i, keys)
+        }
+    }
+
+    private func toggleMoveKey(_ i: Int) {
+        guard clips.indices.contains(i) else { return }
+        let c: Clip = clips[i]
+        let at: Double = now - startOf(i)
+        guard at >= -0.01, at <= c.span + 0.01 else { return }
+        remember()
+        if let near = c.moves.firstIndex(where: { (k: MoveKey) -> Bool in abs(k.at - at) < 0.12 }) {
+            clips[i].moves.remove(at: near)
+        } else {
+            var key: MoveKey = MoveKey.value(c.moves, at: at, base: MoveKey(at: 0))
+            key.at = at
+            clips[i].moves.append(key)
+        }
+    }
+
 
     private func setMoves(_ i: Int, _ keys: [MoveKey]) {
         guard clips.indices.contains(i) else { return }
@@ -3750,39 +3994,69 @@ struct MultiClipEditor: View {
         attach(what)
     }
 
-    /// A text, sticker or caption picked: its words, look, colour and size, or taken off.
+    /// A sticker, label, recipe step, exercise or count picked: its words where it has them, and its size.
     private func textPanel(_ k: Int) -> some View {
-        let item = texts[k]
-        return VStack(spacing: 10) {
-            if item.kind == "sticker" {
-                stickerGrid { e in texts[k].text = e }
-            } else if item.kind == "text" {
-                // typed on the video, with its looks (21 Nov: typed down here, the keyboard pushed the video away)
-                wide(item.text.isEmpty ? "Type" : "Edit text", "character.cursor.ibeam") { startTyping(item.id) }
-            } else if item.kind == "label" {
-                TextField("Words", text: Binding(get: { texts.indices.contains(k) ? texts[k].text : "" }, set: { if texts.indices.contains(k) { texts[k].text = $0 } }))
-                    .padding(10).background(Color(white: 0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                TextField("Under it", text: Binding(get: { texts.indices.contains(k) ? texts[k].detail : "" }, set: { if texts.indices.contains(k) { texts[k].detail = $0 } }))
-                    .padding(10).background(Color(white: 0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            } else if item.kind != "calories" && item.kind != "card" {
-                TextField(item.kind == "caption" ? "What's said" : "Text", text: Binding(get: { texts.indices.contains(k) ? texts[k].text : "" }, set: { if texts.indices.contains(k) { setText(k, $0) } }), axis: .vertical)
-                    .lineLimit(1...3).padding(10).background(Color(white: 0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        let item: EditText = texts[k]
+        let emoji: Bool = item.kind == "sticker"
+        return VStack(spacing: 0) {
+            ProLead(title: leadTitle(item), sub: "") {
+                if emoji {
+                    ProAction(icon: "arrow.left.arrow.right", name: "Change", on: changingSticker, run: { changingSticker.toggle() })
+                }
+                ProDelete(name: "Take it off", run: { deleteFromPanel(item.id) })
             }
-            HStack(spacing: 10) {
-                Image(systemName: "textformat.size.smaller").foregroundStyle(.secondary)
-                Slider(value: Binding(get: { texts.indices.contains(k) ? texts[k].size : 1 }, set: { if texts.indices.contains(k) { texts[k].size = $0 } }), in: 0.4...3, onEditingChanged: { editHeld($0) }).tint(.white)
-                Image(systemName: "textformat.size.larger").foregroundStyle(.secondary)
+            ProBody(height: 144, spacing: 8) {
+                if emoji && changingSticker {
+                    stickerGrid(picked: item.text, tap: { (e: String) in changeSticker(item.id, e) })
+                } else {
+                    itemFields(item)
+                }
             }
-            Button(role: .destructive) {
-                let id = item.id
-                withAnimation(.snappy) { panel = nil; selectedText = nil }
-                removeText(id)
-            } label: {
-                Label("Take it off", systemImage: "trash").font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).frame(height: 40)
-                    .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-            .buttonStyle(.plain).foregroundStyle(Theme.warn)
         }
+    }
+
+    private func leadTitle(_ item: EditText) -> String {
+        switch item.kind {
+        case "sticker", "card": return item.text
+        case "calories": return "\(Int(item.number)) kcal"
+        case "label": return "Template label"
+        default: return textTitle
+        }
+    }
+
+    private func changeSticker(_ id: UUID, _ emoji: String) {
+        remember()
+        changeText(id) { (t: inout EditText) in t.text = emoji }
+        changingSticker = false
+    }
+
+    @ViewBuilder private func itemFields(_ item: EditText) -> some View {
+        let id: UUID = item.id
+        if item.kind != "sticker" && item.kind != "card" && item.kind != "calories" {
+            wordsField("Words", text: Binding<String>(get: { item.text }, set: { (new: String) in captionWords(id, new) }))
+        }
+        if item.kind == "label" {
+            wordsField("Under it", text: Binding<String>(get: { item.detail }, set: { (new: String) in setDetail(id, new) }))
+        }
+        ProSlide(name: "Size", value: item.size, range: 0.4...3, shown: ProSlide.percent(item.size),
+                 held: { (on: Bool) in editHeld(on) },
+                 set: { (v: Double) in changeText(id) { (t: inout EditText) in t.size = v } })
+        if item.kind == "sticker" || item.kind == "card" || item.kind == "calories" {
+            ProHint(words: "Drag it on the video to move it.")
+        }
+    }
+
+    private func wordsField(_ name: String, text: Binding<String>) -> some View {
+        HStack(spacing: 12) {
+            Text(name).font(.system(size: 12)).foregroundStyle(ProInk.quiet).frame(width: 58, alignment: .leading)
+            TextField(name, text: text).font(.system(size: 14))
+        }
+        .frame(height: 38)
+        .overlay(alignment: .bottom) { Rectangle().fill(ProInk.rule).frame(height: 0.5) }
+    }
+
+    private func setDetail(_ id: UUID, _ words: String) {
+        changeText(id) { (t: inout EditText) in t.detail = words }
     }
 
     /// A caption's words changed: kept at their times when the count's the same, spread evenly through it otherwise.
@@ -3821,31 +4095,7 @@ struct MultiClipEditor: View {
         for i in sounds.indices where sounds[i].cut != nil { sounds[i].cut = nil }
     }
 
-    /// A row of choices, one picked (the captions' panels).
-    private func segments(_ options: [(String, String)], _ value: String, _ pick: @escaping (String) -> Void) -> some View {
-        HStack(spacing: 3) {
-            ForEach(options.indices, id: \.self) { i in
-                let o = options[i]
-                Button { UISelectionFeedbackGenerator().selectionChanged(); pick(o.0) } label: {
-                    Text(o.1).font(.caption.weight(.bold)).lineLimit(1).minimumScaleFactor(0.8).frame(maxWidth: .infinity).frame(height: 32)
-                        .foregroundStyle(value == o.0 ? Color.black : Color.white)
-                        .background(value == o.0 ? Color.white : Color.clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(3).background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
 
-    /// A wide dark button (the captions' panels).
-    private func wide(_ title: String, _ icon: String, warn: Bool = false, _ run: @escaping () -> Void) -> some View {
-        Button(action: run) {
-            Label(title, systemImage: icon).font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8)
-                .frame(maxWidth: .infinity).frame(height: 40)
-                .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        }
-        .buttonStyle(.plain).foregroundStyle(warn ? Theme.warn : .white)
-    }
 
     private var captionIndices: [Int] {
         let shown: [Int] = texts.indices.filter { (i: Int) -> Bool in texts[i].kind == "caption" && texts[i].hidden != true }
@@ -3880,42 +4130,71 @@ struct MultiClipEditor: View {
         listPicked = nil
     }
 
-    /// The captions as a whole (design/captions-editing-mockup.html, 1): how much is on screen at a time, how many
+    /// The captions as a whole (design/editor-panels-mockup.html, 3): how much is on screen at a time, how many
     /// lines, the look of every one, and the list to edit them in.
     private var captionsPanel: some View {
-        let caps = captionIndices
-        let style = caps.first.map { texts[$0].style } ?? "Pop"
-        return VStack(alignment: .leading, spacing: 8) {
-            Text("On screen at a time").font(.caption.weight(.semibold)).foregroundStyle(Self.quiet)
-            segments(EditText.captionGroups.map { ($0.id, $0.name) }, captionGroup) { g in captionGroup = g; regroupCaptions() }
-            Text("Lines").font(.caption.weight(.semibold)).foregroundStyle(Self.quiet)
-            segments([("1", "1"), ("2", "Up to 2")], String(captionLines)) { l in captionLines = Int(l) ?? 1; regroupCaptions() }
-            Text("Highlight the word being said").font(.caption.weight(.semibold)).foregroundStyle(Self.quiet)
-            segments([("on", "On"), ("off", "Off")], caps.allSatisfy { texts[$0].highlight == "none" } ? "off" : "on") { v in
-                highlightCaptions(caps, on: v != "off")
+        let caps: [Int] = captionIndices
+        let count: String = "\(caps.count) caption\(caps.count == 1 ? "" : "s")"
+        return VStack(spacing: 0) {
+            ProLead(title: count, sub: "") {
+                ProAction(icon: "text.badge.plus", name: "Fill gaps", run: { makeCaptions(.gaps) })
+                ProAction(icon: "arrow.clockwise", name: "Redo all", run: { makeCaptions(.all) })
+                ProDelete(name: "Take the captions off", run: { takeCaptionsOff() })
             }
-            Text("Style").font(.caption.weight(.semibold)).foregroundStyle(Self.quiet)
-            HStack(spacing: 6) {
-                ForEach(EditText.captionStyles, id: \.self) { st in
-                    chip(st, on: caps.allSatisfy { texts[$0].style == st } && style == st) { styleCaptions(caps, st) }
-                }
-                Spacer(minLength: 0)
+            ProTabs(names: ["On screen", "Style"], on: captionsTab, pick: { (tab: String) in captionsTab = tab })
+            ProBody(spacing: 4) {
+                if captionsTab == "Style" { captionTiles(caps) } else { captionChoices(caps) }
             }
-            HStack(spacing: 8) {
-                wide("Edit captions", "list.bullet") { listPicked = nil; withAnimation(.snappy) { panel = .captionList } }
-                wide("Fill gaps", "text.badge.plus") { makeCaptions(.gaps) }
-            }
-            HStack(spacing: 8) {
-                wide("Redo all", "arrow.clockwise") { makeCaptions(.all) }
-                wide("Take off", "trash", warn: true) {
-                    takeOffCaptions()
-                    withAnimation(.snappy) { panel = nil }
-                }
-            }
-            Text("Added a voiceover or more clips? Fill gaps captions only what's new; your edits stay. Or pick one and tap Caption this. A voiceover switches off the video's captions under it: the eye on their row brings them back.")
-                .font(.caption2).foregroundStyle(Self.quiet)
-            Text("\(caps.count) caption\(caps.count == 1 ? "" : "s"). Tap one on the video for its own look.").font(.caption2).foregroundStyle(Self.quiet)
         }
+    }
+
+    private func takeCaptionsOff() {
+        takeOffCaptions()
+        withAnimation(.snappy) { panel = nil }
+    }
+
+    private static let groupOptions: [ProOption] = [ProOption(id: "word", name: "1 word"), ProOption(id: "few", name: "A few"),
+                                                    ProOption(id: "line", name: "A line"), ProOption(id: "sentence", name: "Sentence")]
+    private static let lineOptions: [ProOption] = [ProOption(id: "1", name: "1"), ProOption(id: "2", name: "Up to 2")]
+    private static let onOptions: [ProOption] = [ProOption(id: "on", name: "On"), ProOption(id: "off", name: "Off")]
+
+    @ViewBuilder private func captionChoices(_ caps: [Int]) -> some View {
+        let unlit: Bool = caps.allSatisfy { (i: Int) -> Bool in texts[i].highlight == "none" }
+        ProPick(title: "At a time", options: Self.groupOptions, value: captionGroup, pick: { (v: String) in setGroup(v) })
+        ProPick(title: "Lines", options: Self.lineOptions, value: String(captionLines), pick: { (v: String) in setLines(v) })
+        ProPick(title: "Highlight", options: Self.onOptions, value: unlit ? "off" : "on",
+                pick: { (v: String) in highlightCaptions(captionIndices, on: v != "off") })
+    }
+
+    private func setGroup(_ v: String) {
+        captionGroup = v
+        regroupCaptions()
+    }
+
+    private func setLines(_ v: String) {
+        captionLines = Int(v) ?? 1
+        regroupCaptions()
+    }
+
+    private func captionTiles(_ caps: [Int]) -> some View {
+        let first: EditText? = caps.first.map { (i: Int) -> EditText in texts[i] }
+        let same: Bool = caps.allSatisfy { (i: Int) -> Bool in texts[i].style == first?.style }
+        return HStack(spacing: 8) {
+            ForEach(EditText.captionStyles, id: \.self) { (style: String) in
+                captionTile(style, like: first, on: same && first?.style == style)
+            }
+        }
+    }
+
+    private func captionTile(_ style: String, like: EditText?, on: Bool) -> some View {
+        var sample = EditText(kind: "caption", text: "Say it", style: style, from: 0, to: 2,
+                              words: [EditText.Word(text: "Say", at: 0), EditText.Word(text: "it", at: 1)])
+        if let like { sample.takeColours(from: like) }
+        sample.detail = "1"
+        let shown: EditText = sample
+        return ProTile(name: style, on: on, pick: { styleCaptions(captionIndices, style) }, preview: {
+            EditTextView(item: shown, at: 0).fixedSize().scaleEffect(0.56)
+        })
     }
 
     /// Every caption as a list, as CapCut's Edit captions (21 Nov, design/capcut-timeline-mockup.html): a row each with
@@ -3931,8 +4210,8 @@ struct MultiClipEditor: View {
                         layeredRow(caps[n], saying: saying).id(texts[caps[n]].id)
                     }
                 }
+                .padding(.horizontal, 16)
             }
-            .frame(maxHeight: 300)
             .onAppear { if let p = listPicked ?? saying { proxy.scrollTo(p, anchor: .center) } }
             // as it plays, the caption being said stays in view
             .onChange(of: saying) { _, id in if playing, let id { withAnimation(.snappy) { proxy.scrollTo(id, anchor: .center) } } }
@@ -3962,10 +4241,40 @@ struct MultiClipEditor: View {
                          mergeDown: { mergeCaption(c.id, up: false) },
                          style: { selectText(c.id) },
                          delete: { deleteCaption(c.id) })
-                .frame(height: 44)
+                .frame(height: 48)
+            if on { captionRowTools(c.id) }
         }
-        .padding(.horizontal, 4)
         .overlay(alignment: .bottom) { Rectangle().fill(Color.white.opacity(0.07)).frame(height: 1) }
+    }
+
+    /// The picked row's own Split and Delete.
+    private func captionRowTools(_ id: UUID) -> some View {
+        HStack(spacing: 0) {
+            Button { splitCaptionAtLine(id) } label: {
+                Image(systemName: "scissors").font(.system(size: 13)).frame(width: 34, height: 48).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).accessibilityLabel("Split at the line")
+            Button { deleteCaption(id) } label: {
+                Image(systemName: "trash").font(.system(size: 13)).frame(width: 30, height: 48).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).accessibilityLabel("Delete this caption")
+        }
+        .foregroundStyle(ProInk.soft)
+    }
+
+    /// Split before the word being said at the line. (At the cursor, from the bar over the keyboard.)
+    private func splitCaptionAtLine(_ id: UUID) {
+        guard let k = texts.firstIndex(where: { (t: EditText) -> Bool in t.id == id }) else { return }
+        let c: EditText = texts[k]
+        let word: Int = now >= c.from && now < c.to ? (c.lit(at: now) ?? 0) : 0
+        guard let halves = EditOverlays.split(c, at: word) else {
+            flash("Slide the line to the word it should split before, or put the cursor there and tap Split.")
+            return
+        }
+        remember()
+        texts[k] = halves.0
+        texts.append(halves.1)
+        listPicked = halves.1.id
     }
 
     /// A caption's words tapped to type in: it's the one picked, the video at it.
@@ -4032,143 +4341,216 @@ struct MultiClipEditor: View {
         texts += EditOverlays.reel(recipe, clips: clips, plan: plan)
     }
 
-    /// A toggle row: its name, what it is, and the switch.
-    private func toggleRow(_ title: String, _ about: String, _ on: Binding<Bool>) -> some View {
-        Toggle(isOn: on) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.subheadline.weight(.semibold))
-                Text(about).font(.caption).foregroundStyle(Self.quiet)
-            }
-        }
-        .tint(Color(red: 0.19, green: 0.82, blue: 0.35))
-        .padding(.horizontal, 12).padding(.vertical, 8)
-        .background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
 
     private func planBinding(_ key: WritableKeyPath<EditOverlays.RecipePlan, Bool>) -> Binding<Bool> {
         Binding(get: { plan[keyPath: key] }, set: { plan[keyPath: key] = $0; remakeRecipe() })
     }
 
-    /// The recipe as a whole (design/editor-recipe-mockup.html, 1): its four parts, each on or off, their look, and
-    /// the end's numbers.
     private var recipePanel: some View {
-        let meal = recipe ?? [:]
-        let steps = EditOverlays.steps(of: meal)
-        return ScrollView {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text(str(meal["name"])).font(.subheadline.weight(.heavy)).lineLimit(1)
-                    Spacer()
-                    Button("Change recipe") { attachMode = "recipe" }.font(.caption.weight(.bold)).foregroundStyle(.white)
+        let meal: JSON = recipe ?? [:]
+        let name: String = str(meal["name"])
+        return VStack(spacing: 0) {
+            ProLead(title: name.isEmpty ? "Recipe" : name, sub: "") {
+                ProAction(icon: "arrow.left.arrow.right", name: "Change", run: { attachMode = "recipe" })
+                ProDelete(name: "Take the recipe off", run: { takeRecipeOff() })
+            }
+            ProTabs(names: ["Show", "Macros", "Look"], on: recipeTab, pick: { (tab: String) in recipeTab = tab })
+            ProBody {
+                switch recipeTab {
+                case "Macros": recipeMacros
+                case "Look": recipeLooks
+                default: recipeParts(EditOverlays.steps(of: meal))
                 }
-                toggleRow("Title card", "At the start", planBinding(\.title))
-                toggleRow("Ingredients", "With amounts, after the title", planBinding(\.ingredients))
-                HStack(spacing: 6) {
-                    toggleRow("Method", steps.isEmpty ? "This recipe has no steps saved" : "\(steps.count) step\(steps.count == 1 ? "" : "s")", planBinding(\.method))
-                    if plan.method && !steps.isEmpty {
-                        Button { withAnimation(.snappy) { panel = .recipeSteps } } label: {
-                            Image(systemName: "list.number").font(.system(size: 15, weight: .bold)).frame(width: 46, height: 54)
-                                .background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        }
-                        .buttonStyle(.plain).foregroundStyle(.white).accessibilityLabel("The steps")
-                    }
-                }
-                toggleRow("Macros at the end", "A portion's numbers on the last clip", planBinding(\.macros))
-                if plan.macros {
-                    segments([("count", "Counts up"), ("still", "Shown still")], plan.countUp ? "count" : "still") { v in plan.countUp = v == "count"; remakeRecipe() }
-                    HStack(spacing: 6) {
-                        ForEach(["p", "c", "f"], id: \.self) { k in
-                            let name = ["p": "Protein", "c": "Carbs", "f": "Fat"][k] ?? k
-                            chip(name, on: plan.show.contains(k)) {
-                                if plan.show.contains(k) { plan.show.remove(k) } else { plan.show.insert(k) }
-                                remakeRecipe()
-                            }
-                        }
-                        Spacer(minLength: 0)
-                    }
-                }
-                Text("Look").font(.caption.weight(.semibold)).foregroundStyle(Self.quiet).padding(.top, 4)
-                HStack(spacing: 6) {
-                    ForEach(EditOverlays.RecipePlan.looks, id: \.self) { l in chip(l, on: plan.look == l) { plan.look = l; remakeRecipe() } }
-                    Spacer(minLength: 0)
-                }
-                wide("Take the recipe off", "trash", warn: true) {
-                    recipe = nil; remakeRecipe()
-                    withAnimation(.snappy) { panel = nil }
-                }
-                .padding(.top, 4)
             }
         }
-        .frame(maxHeight: 330)
     }
 
-    /// The method a step at a time (design/editor-recipe-mockup.html, 2): a clip each or spread evenly, each step's
-    /// clip, and its words to shorten.
-    private var recipeSteps: some View {
-        let meal = recipe ?? [:]
-        let steps = EditOverlays.steps(of: meal)
-        let room = max(1, plan.macros && clips.count > 1 ? clips.count - 1 : clips.count)
-        let even = plan.spread || steps.count > room
-        return VStack(alignment: .leading, spacing: 8) {
-            segments([("clip", "A clip each"), ("even", "Spread evenly")], even ? "even" : "clip") { v in plan.spread = v == "even"; remakeRecipe() }
-            if !plan.spread && steps.count > room {
-                Text("More steps than clips, so they're spread evenly. Add clips to give each its own.").font(.caption2).foregroundStyle(Theme.warn)
+    private func recipeParts(_ steps: [String]) -> some View {
+        let count: Int = steps.count
+        let method: String = count == 0 ? "No steps saved" : "\(count) step\(count == 1 ? "" : "s") ›"
+        var open: (() -> Void)?
+        if plan.method && count > 0 { open = { openSteps() } }
+        return VStack(spacing: 4) {
+            HStack(spacing: 18) {
+                ProSwitch(title: "Title card", sub: "At the start", on: planBinding(\.title))
+                ProSwitch(title: "Ingredients", sub: "After the title", on: planBinding(\.ingredients))
             }
-            ScrollView {
-                VStack(spacing: 6) {
-                    ForEach(steps.indices, id: \.self) { i in
-                        let on = stepPicked == i
-                        HStack(alignment: .center, spacing: 10) {
-                            Text("\(i + 1)").font(.caption.weight(.black)).foregroundStyle(.black).frame(width: 22, height: 22).background(.white, in: Circle())
-                            if on {
-                                TextField("Step", text: Binding(get: { plan.words[i] ?? steps[i] }, set: { plan.words[i] = $0; remakeRecipe() }), axis: .vertical)
-                                    .font(.subheadline).lineLimit(1...3)
-                            } else {
-                                Text(plan.words[i] ?? steps[i]).font(.subheadline).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            if !even {
-                                Menu {
-                                    ForEach(clips.indices, id: \.self) { k in
-                                        Button("Clip \(k + 1)") { plan.clipOf[i] = k; remakeRecipe(); seek(startOf(k) + 0.01) }
-                                    }
-                                } label: {
-                                    Text("Clip \(min(plan.clipOf[i] ?? i, clips.count - 1) + 1) ▾").font(.caption2.weight(.heavy)).foregroundStyle(Color(white: 0.85))
-                                        .padding(.horizontal, 7).frame(height: 24).background(.black, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 11).padding(.vertical, 9)
-                        .background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(on ? Color.white : .clear, lineWidth: 1.5))
-                        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .onTapGesture {
-                            stepPicked = i
-                            if let t = texts.first(where: { $0.part == "recipe" && $0.kind == "step" && $0.detail.hasPrefix("\(i + 1)/") }) { player.pause(); playing = false; seek(t.from + 0.01) }
-                        }
-                    }
-                }
+            HStack(spacing: 18) {
+                ProSwitch(title: "Method", sub: method, on: planBinding(\.method), open: open)
+                ProSwitch(title: "Macros", sub: "On the last clip", on: planBinding(\.macros))
             }
-            .frame(maxHeight: 260)
         }
+    }
+
+    private func openSteps() {
+        withAnimation(.snappy) { panel = .recipeSteps }
+    }
+
+    @ViewBuilder private var recipeMacros: some View {
+        if plan.macros {
+            ProPick(title: "Number", options: [ProOption(id: "count", name: "Counts up"), ProOption(id: "still", name: "Shown still")],
+                    value: plan.countUp ? "count" : "still", pick: { (v: String) in setCountUp(v == "count") })
+            HStack(spacing: 16) {
+                Text("Show").font(.system(size: 12)).foregroundStyle(ProInk.quiet).frame(width: 58, alignment: .leading)
+                macroToggle("p", "Protein")
+                macroToggle("c", "Carbs")
+                macroToggle("f", "Fat")
+                Spacer(minLength: 0)
+            }
+            .frame(height: 30)
+        } else {
+            ProHint(words: "Macros are off. Switch them on under Show.")
+        }
+    }
+
+    private func setCountUp(_ on: Bool) {
+        plan.countUp = on
+        remakeRecipe()
+    }
+
+    private func macroToggle(_ key: String, _ name: String) -> some View {
+        let on: Bool = plan.show.contains(key)
+        return Button { toggleMacro(key) } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).opacity(on ? 1 : 0)
+                Text(name).font(.system(size: 13, weight: on ? .semibold : .regular))
+            }
+            .foregroundStyle(on ? Color.white : ProInk.quiet)
+            .frame(height: 30).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func toggleMacro(_ key: String) {
+        if plan.show.contains(key) { plan.show.remove(key) } else { plan.show.insert(key) }
+        remakeRecipe()
+    }
+
+    private var recipeLooks: some View {
+        HStack(spacing: 8) {
+            ForEach(EditOverlays.RecipePlan.looks, id: \.self) { (l: String) in recipeLook(l) }
+        }
+    }
+
+    private func recipeLook(_ l: String) -> some View {
+        let sample = EditText(kind: "step", text: "Marinate", detail: "1/5", style: l, from: 0, to: 2)
+        return ProTile(name: l, on: plan.look == l, pick: { setRecipeLook(l) }, preview: {
+            EditTextView(item: sample, at: 0).fixedSize().scaleEffect(0.5)
+        })
+    }
+
+    private func setRecipeLook(_ l: String) {
+        plan.look = l
+        remakeRecipe()
+    }
+
+    private func takeRecipeOff() {
+        remember()
+        recipe = nil
+        remakeRecipe()
+        withAnimation(.snappy) { panel = nil }
+    }
+
+    private var recipeSteps: some View {
+        let steps: [String] = EditOverlays.steps(of: recipe ?? [:])
+        let room: Int = max(1, plan.macros && clips.count > 1 ? clips.count - 1 : clips.count)
+        let even: Bool = plan.spread || steps.count > room
+        let crowded: Bool = !plan.spread && steps.count > room
+        return VStack(spacing: 0) {
+            ProPick(title: "Steps", options: [ProOption(id: "clip", name: "A clip each"), ProOption(id: "even", name: "Spread evenly")],
+                    value: even ? "even" : "clip", pick: { (v: String) in setSpread(v == "even") })
+                .frame(height: 48)
+                .overlay(alignment: .bottom) { Rectangle().fill(ProInk.rule).frame(height: 0.5) }
+                .padding(.horizontal, 16)
+            ScrollView {
+                VStack(spacing: 0) {
+                    if crowded {
+                        ProHint(words: "More steps than clips, so they're spread evenly. Add clips to give each its own.", warn: true)
+                            .frame(height: 40)
+                    }
+                    ForEach(steps.indices, id: \.self) { (n: Int) in stepRow(n, saved: steps[n], even: even) }
+                }
+                .padding(.horizontal, 16)
+            }
+        }
+    }
+
+    private func setSpread(_ on: Bool) {
+        plan.spread = on
+        remakeRecipe()
+    }
+
+    private func stepRow(_ n: Int, saved: String, even: Bool) -> some View {
+        let on: Bool = stepPicked == n
+        let words = Binding<String>(get: { plan.words[n] ?? saved }, set: { (new: String) in setStep(n, new) })
+        return HStack(spacing: 12) {
+            Text("\(n + 1)").font(.system(size: 12, weight: .medium, design: .monospaced)).frame(width: 16, alignment: .leading)
+            if on {
+                TextField("Step", text: words).font(.system(size: 14))
+            } else {
+                Text(plan.words[n] ?? saved).font(.system(size: 14)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if !even { stepClip(n) }
+        }
+        .foregroundStyle(on ? Color.white : ProInk.quiet)
+        .frame(height: 48)
+        .overlay(alignment: .bottom) { Rectangle().fill(ProInk.rule).frame(height: 0.5) }
+        .contentShape(Rectangle())
+        .onTapGesture { pickStep(n) }
+    }
+
+    private func setStep(_ n: Int, _ words: String) {
+        plan.words[n] = words
+        remakeRecipe()
+    }
+
+    private func stepClip(_ n: Int) -> some View {
+        let clip: Int = min(plan.clipOf[n] ?? n, clips.count - 1) + 1
+        return Menu {
+            ForEach(clips.indices, id: \.self) { (k: Int) in
+                Button("Clip \(k + 1)") { moveStep(n, to: k) }
+            }
+        } label: {
+            Text("Clip \(clip) ▾").font(.system(size: 11)).foregroundStyle(ProInk.soft).frame(height: 44)
+        }
+    }
+
+    private func moveStep(_ n: Int, to k: Int) {
+        plan.clipOf[n] = k
+        remakeRecipe()
+        seek(startOf(k) + 0.01)
+    }
+
+    private func pickStep(_ n: Int) {
+        stepPicked = n
+        let mark = "\(n + 1)/"
+        guard let t = texts.first(where: { (x: EditText) -> Bool in x.part == "recipe" && x.kind == "step" && x.detail.hasPrefix(mark) }) else { return }
+        player.pause(); playing = false
+        seek(t.from + 0.01)
     }
 
     private var stickerPanel: some View {
-        VStack(spacing: 8) {
-            Text("Tap one to put it on at the line").font(.caption).foregroundStyle(.secondary)
-            stickerGrid { addSticker($0) }
+        VStack(spacing: 0) {
+            Live { ProLead(title: "Goes on at \(Self.code(now))", sub: "") { EmptyView() } }
+            ProBody(height: 144) { stickerGrid(picked: "", tap: { (e: String) in addSticker(e) }) }
         }
     }
 
-    private func stickerGrid(_ tap: @escaping (String) -> Void) -> some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 8), spacing: 6) {
-            ForEach(EditText.stickers, id: \.self) { e in
-                Button { tap(e) } label: {
-                    Text(e).font(.system(size: 26)).frame(maxWidth: .infinity).frame(height: 40)
-                        .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                }
-                .buttonStyle(.plain)
-            }
+    /// The sixteen emoji, all at once.
+    private func stickerGrid(picked: String, tap: @escaping (String) -> Void) -> some View {
+        let columns: [GridItem] = Array(repeating: GridItem(.flexible(), spacing: 6), count: 8)
+        return LazyVGrid(columns: columns, spacing: 6) {
+            ForEach(EditText.stickers, id: \.self) { (e: String) in emojiButton(e, on: e == picked, tap: tap) }
         }
+    }
+
+    private func emojiButton(_ e: String, on: Bool, tap: @escaping (String) -> Void) -> some View {
+        Button { tap(e) } label: {
+            Text(e).font(.system(size: 25)).frame(maxWidth: .infinity).frame(height: 48)
+                .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(on ? Color.white : Color.clear, lineWidth: 1.5))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     static func data(_ j: JSON?) -> Data? { j.flatMap { try? JSONSerialization.data(withJSONObject: $0) } }
@@ -4197,53 +4579,92 @@ struct MultiClipEditor: View {
 
     /// How one clip turns into the next, how long it takes, and the same for every join.
     private func joinPanel(_ i: Int) -> some View {
-        let tr = clips[i].transition
-        let most = max(0.2, min(1.5, clips[i].span / 2, clips[i + 1].span / 2))
-        return VStack(alignment: .leading, spacing: 10) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    chip("None", on: tr == nil) { setJoin(i, nil) }
-                    ForEach(ClipTransition.kinds, id: \.self) { k in
-                        chip(k, on: tr?.name == k) { setJoin(i, ClipTransition(kind: k, length: min(tr?.length ?? 0.5, most), direction: tr?.direction)) }
-                    }
-                }
-            }
-            // which way it goes, for the ones that move (design/transitions-mockup.html)
-            if let tr, ClipTransition.moving.contains(tr.name) {
-                HStack(spacing: 6) {
-                    ForEach(ClipTransition.directions, id: \.self) { d in
-                        let icon = ["left": "arrow.left", "right": "arrow.right", "up": "arrow.up", "down": "arrow.down"][d] ?? "arrow.left"
-                        Button {
-                            UISelectionFeedbackGenerator().selectionChanged()
-                            var n = tr; n.direction = d; setJoin(i, n)
-                        } label: {
-                            let on = (tr.direction ?? "left") == d
-                            Image(systemName: icon).font(.system(size: 13, weight: .bold)).frame(width: 44, height: 34)
-                                .foregroundStyle(on ? Color.black : Color.white)
-                                .background(on ? AnyShapeStyle(Color.white) : AnyShapeStyle(Color.black.opacity(0.55)), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        }
-                        .buttonStyle(.plain).accessibilityLabel("Goes \(d)")
-                    }
-                    Spacer()
-                }
-            }
+        let tr: ClipTransition? = clips[i].transition
+        let most: Double = max(0.2, min(1.5, clips[i].span / 2, clips[i + 1].span / 2))
+        return VStack(alignment: .leading, spacing: 4) {
+            Text("Between clips \(i + 1) and \(i + 2)").font(.system(size: 12)).foregroundStyle(ProInk.quiet)
+                .frame(height: 22).padding(.horizontal, 16)
+            joinTiles(i, tr, most: most)
             if let tr {
-                HStack { Text("Length").font(.subheadline.weight(.semibold)); Spacer(); Text(String(format: "%.1f s", min(tr.length, most))).font(.subheadline).monospacedDigit().foregroundStyle(.secondary) }
-                Slider(value: joinLength(i, most: most), in: 0.2...max(0.21, most), onEditingChanged: { editHeld($0) }).tint(.white)
-                Button {
-                    change { all in
-                        var all = all
-                        for k in all.indices.dropLast() { all[k].transition = tr }
-                        return all
-                    }
-                } label: {
-                    Label("Apply to all", systemImage: "square.stack.3d.down.right").font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).frame(height: 40)
-                        .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
-                .buttonStyle(.plain).foregroundStyle(.white)
+                if ClipTransition.moving.contains(tr.name) { joinWays(i, tr) }
+                joinSlide(i, tr, most: most).padding(.horizontal, 16)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear { seek(max(0, startOf(i + 1) - 0.6)); player.play() }
+    }
+
+    private func joinTiles(_ i: Int, _ tr: ClipTransition?, most: Double) -> some View {
+        let names: [String] = ["None"] + ClipTransition.kinds
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(names, id: \.self) { (name: String) in joinTile(i, name, tr, most: most) }
+            }
+            .padding(.horizontal, 16)
+        }
+    }
+
+    private func joinTile(_ i: Int, _ name: String, _ tr: ClipTransition?, most: Double) -> some View {
+        let on: Bool = (tr?.name ?? "None") == name
+        return ProTile(name: name, on: on, tall: 66, pick: { pickJoin(i, name, tr, most: most) }, preview: {
+            Image(systemName: Self.joinIcon(name)).font(.system(size: 19))
+        })
+        .frame(width: 62)
+    }
+
+    private static func joinIcon(_ name: String) -> String {
+        switch name {
+        case "Dissolve": return "circle.lefthalf.filled"
+        case "Black": return "square.fill"
+        case "White flash": return "sun.max.fill"
+        case "Push": return "arrow.left.square"
+        case "Slide over": return "square.on.square"
+        case "Whip": return "wind"
+        case "Zoom in": return "plus.magnifyingglass"
+        case "Blur": return "drop"
+        default: return "nosign"
+        }
+    }
+
+    private func pickJoin(_ i: Int, _ name: String, _ tr: ClipTransition?, most: Double) {
+        if name == "None" {
+            setJoin(i, nil)
+        } else {
+            let length: Double = min(tr?.length ?? 0.5, most)
+            setJoin(i, ClipTransition(kind: name, length: length, direction: tr?.direction))
+        }
+    }
+
+    /// Which way it goes, for the ones that move (design/transitions-mockup.html).
+    private func joinWays(_ i: Int, _ tr: ClipTransition) -> some View {
+        HStack(spacing: 12) {
+            Text("Direction").font(.system(size: 12)).foregroundStyle(ProInk.quiet).frame(width: 58, alignment: .leading)
+            ForEach(ClipTransition.directions, id: \.self) { (way: String) in joinWay(i, tr, way) }
+        }
+        .frame(height: 30)
+        .padding(.horizontal, 16)
+    }
+
+    private func joinWay(_ i: Int, _ tr: ClipTransition, _ way: String) -> some View {
+        let on: Bool = (tr.direction ?? "left") == way
+        return Button {
+            UISelectionFeedbackGenerator().selectionChanged()
+            var next: ClipTransition = tr
+            next.direction = way
+            setJoin(i, next)
+        } label: {
+            Image(systemName: "arrow." + way).font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(on ? Color.white : ProInk.quiet)
+                .frame(width: 34, height: 30).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).accessibilityLabel("Goes \(way)")
+    }
+
+    private func joinSlide(_ i: Int, _ tr: ClipTransition, most: Double) -> some View {
+        let value: Double = min(tr.length, most)
+        let length: Binding<Double> = joinLength(i, most: most)
+        return ProSlide(name: "Length", value: value, range: 0.2...max(0.21, most), shown: String(format: "%.1f s", value),
+                        held: { (on: Bool) in editHeld(on) }, set: { (v: Double) in length.wrappedValue = v })
     }
 
     private func joinLength(_ i: Int, most: Double) -> Binding<Double> {
@@ -4268,80 +4689,124 @@ struct MultiClipEditor: View {
         player.play()
     }
 
-    /// The single editor's chip: white when it's the one picked.
-    private func chip(_ title: String, on: Bool, _ run: @escaping () -> Void) -> some View {
-        Button { UISelectionFeedbackGenerator().selectionChanged(); run() } label: {
-            Text(title).font(.caption.weight(.bold)).padding(.horizontal, 12).frame(height: 34)
-                .foregroundStyle(on ? Color.black : Color.white)
-                .background(on ? AnyShapeStyle(Color.white) : AnyShapeStyle(Color.black.opacity(0.55)), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        }
-        .buttonStyle(.plain)
-    }
 
     /// Filters and Adjust for a clip, as the single editor has them (StoryArt's looks), and the same for every clip.
     private func lookPanel(_ i: Int) -> some View {
-        let parts = clips[i].look.split(separator: ";").map(String.init)
-        let name = parts.first ?? "Normal"
+        let parts: (name: String, tunes: [String: Double]) = Self.lookParts(clips[i].look)
+        let adjusting: Bool = lookTool == "Adjust"
+        return VStack(spacing: 0) {
+            ProLead(title: "Clip \(i + 1)", sub: "") {
+                if adjusting {
+                    ProAction(icon: "arrow.counterclockwise", name: "Reset", enabled: !parts.tunes.isEmpty, run: { resetTunes(i) })
+                }
+            }
+            ProTabs(names: ["Filters", "Adjust"], on: lookTool, pick: { (name: String) in lookTool = name })
+            ProBody {
+                if adjusting { adjustBody(i, name: parts.name, known: parts.tunes) } else { filterBody(i, name: parts.name, known: parts.tunes) }
+            }
+        }
+    }
+
+    static func lookParts(_ look: String) -> (name: String, tunes: [String: Double]) {
+        let parts: [String] = look.split(separator: ";").map { (s: Substring) -> String in String(s) }
         var tunes: [String: Double] = [:]
         for p in parts.dropFirst() {
-            let kv = p.split(separator: "=")
-            if kv.count == 2, let v = Double(kv[1]) { tunes[String(kv[0])] = v }
+            let pair: [Substring] = p.split(separator: "=")
+            if pair.count == 2, let v = Double(String(pair[1])) { tunes[String(pair[0])] = v }
         }
-        let known = tunes
-        let adjustable = StoryArt.tunes.filter { $0.0 != "t" }   // (straightening is for a single picture)
-        let row = adjustable.first { $0.0 == tune } ?? adjustable[0]
+        return (parts.first ?? "Normal", tunes)
+    }
+
+    private func filterBody(_ i: Int, name: String, known: [String: Double]) -> some View {
+        let options: [ProOption] = StoryArt.filters.map { (f: String) -> ProOption in ProOption(id: f, name: f) }
+        return ProPick(title: "", options: options, value: name, pick: { (f: String) in setFilter(i, f, known) })
+    }
+
+    private func setFilter(_ i: Int, _ name: String, _ known: [String: Double]) {
+        guard clips.indices.contains(i) else { return }
+        remember()
+        clips[i].look = StoryArt.look(name, known)
+    }
+
+    private func adjustBody(_ i: Int, name: String, known: [String: Double]) -> some View {
+        // (straightening is for a single picture)
+        let rows: [(String, String, String, Double, Double)] = StoryArt.tunes.filter { $0.0 != "t" }
+        let tools: [(id: String, name: String, icon: String)] = rows.map { (id: $0.0, name: $0.1, icon: $0.2) }
+        let row: (String, String, String, Double, Double) = rows.first { $0.0 == tune } ?? rows[0]
+        let value: Double = known[row.0] ?? 0
+        let whole: Int = Int(value.rounded())
+        let shown: String = whole > 0 ? "+\(whole)" : "\(whole)"
         return VStack(spacing: 10) {
-            HStack(spacing: 6) {
-                chip("Filters", on: lookTool == "Filters") { lookTool = "Filters" }
-                chip("Adjust", on: lookTool == "Adjust") { lookTool = "Adjust" }
-                Spacer()
-                Button("Use for all") {
-                    guard clips.indices.contains(i) else { return }
-                    let l = clips[i].look
-                    change { all in var all = all; for k in all.indices { all[k].look = l }; return all }
-                }
-                .font(.caption.weight(.bold)).foregroundStyle(.white)
-            }
-            if lookTool == "Filters" {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(StoryArt.filters, id: \.self) { n in
-                            chip(n, on: n == name) { if clips.indices.contains(i) { remember(); clips[i].look = StoryArt.look(n, known) } }
-                        }
-                    }
-                }
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(adjustable.indices, id: \.self) { k in chip(adjustable[k].1, on: adjustable[k].0 == row.0) { tune = adjustable[k].0 } }
-                    }
-                }
-                HStack {
-                    Text(row.1).font(.subheadline.weight(.semibold)); Spacer()
-                    Text("\(Int(known[row.0] ?? 0))").font(.subheadline).monospacedDigit().foregroundStyle(.secondary)
-                }
-                Slider(value: Binding(get: { known[row.0] ?? 0 }, set: { v in
-                    var next = known; next[row.0] = abs(v) < 2 ? 0 : v.rounded()
-                    if clips.indices.contains(i) { clips[i].look = StoryArt.look(name, next) }
-                }), in: row.3...row.4, onEditingChanged: { editHeld($0) }).tint(.white)
-            }
+            TuneTools(tools: tools, on: row.0, pick: { (id: String) in tune = id })
+            ProSlide(name: row.1, value: value, range: row.3...row.4, shown: shown,
+                     held: { (on: Bool) in editHeld(on) },
+                     set: { (v: Double) in setTune(i, row.0, v, name: name, known: known) })
         }
+    }
+
+    private func setTune(_ i: Int, _ id: String, _ v: Double, name: String, known: [String: Double]) {
+        guard clips.indices.contains(i) else { return }
+        var next: [String: Double] = known
+        next[id] = abs(v) < 2 ? 0 : v.rounded()
+        clips[i].look = StoryArt.look(name, next)
+    }
+
+    private func resetTunes(_ i: Int) {
+        guard clips.indices.contains(i) else { return }
+        remember()
+        clips[i].look = Self.lookParts(clips[i].look).name
     }
 
     /// The frame's shape, and what's behind a clip of another shape.
     private var shapePanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Shape").font(.caption).foregroundStyle(.secondary)
-            HStack(spacing: 6) {
-                ForEach(EditLook.shapes, id: \.self) { sh in chip(sh == "Original" ? "First clip's" : sh, on: look.shape == sh) { remember(); look.shape = sh } }
-            }
-            Text("A clip of another shape").font(.caption).foregroundStyle(.secondary).padding(.top, 2)
-            HStack(spacing: 6) {
-                chip("Fill the frame", on: look.fill == "Fill") { remember(); look.fill = "Fill" }
-                chip("Whole, blurred behind", on: look.fill == "Blur") { remember(); look.fill = "Blur" }
-                chip("Whole, on black", on: look.fill == "Black") { remember(); look.fill = "Black" }
+        let background: Bool = shapeTab == "Background"
+        return VStack(spacing: 0) {
+            ProLead(title: background ? "A clip of another shape" : "Every clip", sub: "") { EmptyView() }
+            ProTabs(names: ["Shape", "Background"], on: shapeTab, pick: { (name: String) in shapeTab = name })
+            ProBody {
+                if background { fillTiles } else { shapeTiles }
             }
         }
+    }
+
+    private var shapeTiles: some View {
+        HStack(spacing: 8) {
+            ForEach(EditLook.shapes, id: \.self) { (s: String) in shapeTile(s) }
+        }
+    }
+
+    private func shapeTile(_ s: String) -> some View {
+        ProTile(name: s == "Original" ? "First clip's" : s, on: look.shape == s, pick: { setShape(s) }, preview: {
+            ShapeMark(shape: s)
+        })
+    }
+
+    private func setShape(_ s: String) {
+        guard look.shape != s else { return }
+        remember()
+        look.shape = s
+    }
+
+    private var fillTiles: some View {
+        HStack(spacing: 8) {
+            ForEach(EditLook.fills, id: \.self) { (f: String) in fillTile(f) }
+        }
+    }
+
+    private func fillTile(_ f: String) -> some View {
+        let name: String
+        switch f {
+        case "Blur": name = "Blurred behind"
+        case "Black": name = "On black"
+        default: name = "Fill the frame"
+        }
+        return ProTile(name: name, on: look.fill == f, pick: { setFill(f) }, preview: { FillMark(fill: f) })
+    }
+
+    private func setFill(_ f: String) {
+        guard look.fill != f else { return }
+        remember()
+        look.fill = f
     }
 
     /// The selected clip played backwards (its sound off), or forwards again.
@@ -4469,73 +4934,6 @@ struct Bars: View {
             }
         }
         .background(colour.opacity(0.12))
-    }
-}
-
-/// A pro editor's volume slider (design/pro-ui): a thin track, a white knob, its number in a bubble over the knob and
-/// a scale under it. `value` 0…1, shown 0…100; `began` when a finger first takes it (for Undo).
-struct ProSlider: View {
-    @Binding var value: Double
-    var began: () -> Void = {}
-    var ended: () -> Void = {}
-    @State private var holding = false
-    @State private var from: Double?
-    @GestureState private var touching = false   // (back to false however the drag ends, cut short too)
-
-    var body: some View {
-        VStack(spacing: 7) {
-            GeometryReader { g in
-                let w = max(g.size.width, 1), x = w * CGFloat(min(1, max(0, value)))
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color(white: 0.17)).frame(height: 4)
-                    Capsule().fill(.white).frame(width: x, height: 4)
-                    Circle().fill(.white).frame(width: 20, height: 20).shadow(color: .black.opacity(0.5), radius: 3)
-                        .offset(x: min(max(0, x - 10), w - 20))
-                    Text("\(Int((value * 100).rounded()))").font(.system(size: 11, weight: .bold)).monospacedDigit().foregroundStyle(.black)
-                        .frame(width: 38, height: 20).background(.white, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                        .offset(x: min(max(0, x - 19), w - 38), y: -27)
-                }
-                .frame(width: w, height: 24)
-                .contentShape(Rectangle())
-                .gesture(DragGesture(minimumDistance: 0)
-                    .updating($touching) { _, t, _ in t = true }
-                    .onChanged { v in
-                        if !holding { holding = true; began(); from = value }
-                        // moved as far as the finger has, from where it was (21 Nov: it jumped to where the finger
-                        // landed, so a touch near it snapped the volume)
-                        value = Double(min(1, max(0, (from ?? value) + Double(v.translation.width / w))))
-                    }
-                    .onEnded { _ in letGo() })
-                .onChange(of: touching) { (_: Bool, down: Bool) in
-                    if !down { letGo() }
-                }
-                .onDisappear { letGo() }
-            }
-            .frame(height: 24)
-            HStack(spacing: 0) {
-                ForEach([0, 25, 50, 75, 100], id: \.self) { n in
-                    Text("\(n)")
-                    if n < 100 { Spacer(minLength: 0) }
-                }
-            }
-            .font(.system(size: 9, weight: .medium, design: .monospaced)).foregroundStyle(Color(white: 0.37))
-        }
-        .padding(.top, 26)
-        .accessibilityElement()
-        .accessibilityLabel("Volume")
-        .accessibilityValue("\(Int((value * 100).rounded()))")
-        .accessibilityAdjustableAction { dir in
-            began()
-            value = min(1, max(0, value + (dir == .increment ? 0.05 : -0.05)))
-            ended()
-        }
-    }
-
-    private func letGo() {
-        guard holding else { return }
-        holding = false
-        from = nil
-        ended()
     }
 }
 

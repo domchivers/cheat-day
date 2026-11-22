@@ -23,8 +23,6 @@ struct CaptionPanel<Head: View>: View {
 
     @State private var tab = CaptionTab.style
     @State private var before: EditText?
-    @State private var hsb = ColourCode.HSB(hue: 0, saturation: 0, brightness: 1)
-    @State private var code = ""
     @FocusState private var typingWords: Bool
 
     private var saved: SavedColours { SavedColours.shared }
@@ -39,7 +37,6 @@ struct CaptionPanel<Head: View>: View {
         }
         .frame(height: screen == .dropper ? 108 : 310)
         .foregroundStyle(Color.white)
-        .onChange(of: part) { (_: CaptionPart, _: CaptionPart) in loadWheel() }
         .onChange(of: item.style) { (_: String, style: String) in
             if style != "Box" && part == .box { part = .lit }
         }
@@ -325,91 +322,24 @@ struct CaptionPanel<Head: View>: View {
 
     // MARK: the wheel, and picking from the video
 
-    @ViewBuilder private var wheel: some View {
-        parts(size: 14, gap: 26).padding(.horizontal, 16).frame(height: 50)
-        HStack(spacing: 22) {
-            ColourWheel(hue: hsb.hue, saturation: hsb.saturation, held: held,
-                        pick: { (hue: Double, strength: Double) in turned(hue, strength) },
-                        diameter: 138)
-            adjust
-        }
-        .padding(.horizontal, 16)
-        .frame(height: 150)
-        savedRow
-        Spacer(minLength: 0)
-        foot("Colour", leftIcon: "chevron.left", leftName: "Back", left: { backOut() }, tick: { take() })
+    private var wheel: some View {
+        ColourSheet(key: part.rawValue + item.id.uuidString, hex: item.hex(of: part), alpha: item.alpha(of: part), held: held,
+                    paint: { (hex: String) in change { (t: inout EditText) in t.paint(part, hex: hex) } },
+                    fade: { (v: Double) in fade(v) },
+                    use: { (s: SavedColours.Saved) in use(s) },
+                    dropper: { screen = .dropper },
+                    back: { backOut() },
+                    take: { take() },
+                    top: { parts(size: 14, gap: 26) })
     }
 
-    private var adjust: some View {
-        let colour: Color = StoryArt.color(item.hex(of: part))
-        let bright: Color = Color(hue: hsb.hue, saturation: hsb.saturation, brightness: 1)
-        return VStack(spacing: 2) {
-            HStack(spacing: 9) {
-                RoundedRectangle(cornerRadius: 5).fill(colour).frame(width: 22, height: 22)
-                TextField("#FFFFFF", text: $code)
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .textInputAutocapitalization(.characters).autocorrectionDisabled()
-                    .onChange(of: code) { (_: String, new: String) in typed(new) }
-                Button { screen = .dropper } label: {
-                    Image(systemName: "eyedropper").frame(width: 30, height: 30).contentShape(Rectangle())
-                }
-                .buttonStyle(.plain).accessibilityLabel("Pick a colour from the video")
-            }
-            .frame(height: 30)
-            caption("Brightness", hsb.brightness)
-            ThinSlider(name: "Brightness", value: hsb.brightness, range: 0...1, track: [Color.black, bright],
-                       held: held, set: { (v: Double) in brightened(v) })
-            caption("Opacity", item.alpha(of: part))
-            ThinSlider(name: "Opacity", value: item.alpha(of: part), range: 0...1, track: [colour.opacity(0.08), colour],
-                       held: held, set: { (v: Double) in fade(v) })
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private func caption(_ name: String, _ value: Double) -> some View {
-        HStack {
-            Text(name).foregroundStyle(CaptionInk.quiet)
-            Spacer(minLength: 0)
-            Text("\(Int((value * 100).rounded()))%").monospacedDigit()
-        }
-        .font(.system(size: 12))
-        .frame(height: 18)
-    }
-
-    private var savedRow: some View {
-        HStack(spacing: 10) {
-            Text("Saved").font(.system(size: 11)).foregroundStyle(CaptionInk.quiet)
-            toolSwatch("plus", "Save this colour") {
-                saved.add(hex: item.hex(of: part), alpha: item.alpha(of: part))
-                UISelectionFeedbackGenerator().selectionChanged()
-            }
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(saved.list, id: \.self) { (s: SavedColours.Saved) in savedSwatch(s) }
-                }
-                .padding(3)
-            }
-        }
-        .padding(.horizontal, 16)
-        .frame(height: 56)
-    }
-
-    @ViewBuilder private var dropper: some View {
-        HStack(spacing: 10) {
-            RoundedRectangle(cornerRadius: 5).fill(StoryArt.color(item.hex(of: part))).frame(width: 22, height: 22)
-            Text("Drag on the video to pick a colour").font(.system(size: 13)).foregroundStyle(CaptionInk.soft)
-            Spacer(minLength: 0)
-            Text(item.hex(of: part)).font(.system(size: 12, weight: .medium, design: .monospaced))
-        }
-        .padding(.horizontal, 16)
-        .frame(height: 60)
-        foot("Pick from video", leftIcon: "chevron.left", leftName: "Back", left: { backOut() }, tick: { take() })
+    private var dropper: some View {
+        DropperSheet(hex: item.hex(of: part), back: { backOut() }, take: { take() })
     }
 
     private func open(_ next: CaptionScreen) {
         step()
         before = item
-        loadWheel()
         screen = next
     }
 
@@ -425,42 +355,6 @@ struct CaptionPanel<Head: View>: View {
         screen = .main
     }
 
-    private func loadWheel() {
-        let hex: String = item.hex(of: part)
-        hsb = ColourCode.hsb(hex)
-        code = hex
-    }
-
-    private func turned(_ hue: Double, _ strength: Double) {
-        var c: ColourCode.HSB = hsb
-        c.hue = hue
-        c.saturation = strength
-        // (from black, round the wheel stayed black)
-        if c.brightness < 0.02 { c.brightness = 1 }
-        show(c)
-    }
-
-    private func brightened(_ v: Double) {
-        var c: ColourCode.HSB = hsb
-        c.brightness = v
-        show(c)
-    }
-
-    private func show(_ c: ColourCode.HSB) {
-        let hex: String = ColourCode.hex(c)
-        hsb = c
-        code = hex
-        change { (t: inout EditText) in t.paint(part, hex: hex) }
-    }
-
-    private func typed(_ text: String) {
-        guard let hex = ColourCode.typed(text), hex != ColourCode.hex(hsb) else { return }
-        // (the wheel's own colour back, not typed)
-        guard hex != item.hex(of: part) else { return }
-        hsb = ColourCode.hsb(hex)
-        change { (t: inout EditText) in t.paint(part, hex: hex) }
-    }
-
     private func fade(_ v: Double) {
         change { (t: inout EditText) in t.fade(part, to: v) }
     }
@@ -472,8 +366,6 @@ struct CaptionPanel<Head: View>: View {
             t.paint(part, hex: s.hex)
             t.fade(part, to: s.alpha)
         }
-        hsb = ColourCode.hsb(s.hex)
-        code = s.hex
     }
 }
 

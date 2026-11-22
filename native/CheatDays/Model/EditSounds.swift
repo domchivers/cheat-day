@@ -81,6 +81,27 @@ struct EditSound: Identifiable, Codable, Equatable {
         return out.sorted()
     }
 
+    /// Levels read from part of its file ('low' to 'high') put where they play along it, a song's as often as it
+    /// goes round.
+    func waveAcross(_ part: [Float], from low: Double, to high: Double, count: Int) -> [Float] {
+        guard !part.isEmpty, high > low, count > 0 else { return [] }
+        let parts: [Stretch] = stretches(until: to)
+        var out: [Float] = []
+        var k = 0
+        for i in 0..<count {
+            let v: Double = from + length * (Double(i) + 0.5) / Double(count)
+            while k < parts.count && v >= parts[k].from + parts[k].length { k += 1 }
+            guard k < parts.count else {
+                out.append(0)
+                continue
+            }
+            let at: Double = parts[k].fileStart + (v - parts[k].from) * speed
+            let place: Double = min(1, max(0, (at - low) / (high - low)))
+            out.append(part[min(part.count - 1, Int(place * Double(part.count)))])
+        }
+        return out
+    }
+
     /// Its own sound's seconds at a moment of the video, and back.
     func fileTime(_ v: Double) -> Double { start + (v - from) * speed }
     func videoTime(_ p: Double) -> Double { from + (p - start) / speed }

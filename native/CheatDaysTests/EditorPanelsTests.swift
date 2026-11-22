@@ -1,0 +1,43 @@
+import XCTest
+@testable import CheatDays
+
+/// 22 Nov, design/editor-panels-mockup.html: every editor panel on the one sheet.
+final class EditorPanelsTests: XCTestCase {
+    @MainActor func testTheSpeedRulerHoldsOnItsStops() {
+        XCTAssertEqual(SpeedRuler.speed(at: 0.05), 1)
+        XCTAssertEqual(SpeedRuler.speed(at: 0.97), 2)
+        XCTAssertEqual(SpeedRuler.speed(at: -2.5), 0.25)
+        XCTAssertEqual(SpeedRuler.speed(at: 9), 4)
+        XCTAssertEqual(SpeedRuler.speed(at: log2(1.5)), 1.5, accuracy: 0.001)
+    }
+
+    @MainActor func testSpeedsAreNamedShort() {
+        XCTAssertEqual(SpeedRuler.name(0.25), "0.25×")
+        XCTAssertEqual(SpeedRuler.name(0.5), "0.5×")
+        XCTAssertEqual(SpeedRuler.name(4), "4×")
+    }
+
+    @MainActor func testResetKnowsTheFilterFromItsAdjusting() {
+        let parts: (name: String, tunes: [String: Double]) = MultiClipEditor.lookParts("Warm;b=20.0;c=-5.0")
+        XCTAssertEqual(parts.name, "Warm")
+        XCTAssertEqual(parts.tunes, ["b": 20, "c": -5])
+        XCTAssertTrue(MultiClipEditor.lookParts("Normal").tunes.isEmpty)
+    }
+
+    @MainActor func testTimesToTheTenth() {
+        XCTAssertEqual(MultiClipEditor.tenths(8), "00:08.0")
+        XCTAssertEqual(MultiClipEditor.tenths(65.25), "01:05.3")
+    }
+
+    func testASongsWaveGoesRoundWithIt() {
+        var s = EditSound(kind: "song", name: "Song", from: 0, start: 0, length: 40, full: 20)
+        s.loopFrom = 0
+        XCTAssertEqual(s.waveAcross([0.2, 0.8], from: 0, to: 20, count: 4), [0.2, 0.8, 0.2, 0.8])
+    }
+
+    func testAVoiceoversWaveIsJustIts() {
+        let v = EditSound(kind: "voice", name: "Voice 1", from: 3, start: 1, length: 2, full: 5)
+        XCTAssertEqual(v.waveAcross([0.1, 0.9], from: 1, to: 3, count: 2), [0.1, 0.9])
+        XCTAssertTrue(v.waveAcross([], from: 1, to: 3, count: 2).isEmpty, "not read yet")
+    }
+}

@@ -7,6 +7,8 @@ struct ThinSlider: View {
     let value: Double
     let range: ClosedRange<Double>
     var track: [Color]? = nil
+    /// Its value as it's said, when that's not a percentage.
+    var said: String? = nil
     let held: (Bool) -> Void
     let set: (Double) -> Void
     @State private var from: Double?
@@ -21,7 +23,7 @@ struct ThinSlider: View {
         .frame(height: 28)
         .accessibilityElement()
         .accessibilityLabel(name)
-        .accessibilityValue("\(Int((value * 100).rounded())) percent")
+        .accessibilityValue(said ?? "\(Int((value * 100).rounded())) percent")
         .accessibilityAdjustableAction { (direction: AccessibilityAdjustmentDirection) in
             let step: Double = (range.upperBound - range.lowerBound) / 20
             let next: Double = direction == .increment ? value + step : value - step
