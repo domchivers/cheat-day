@@ -85,6 +85,56 @@ final class CaptionLayersTests: XCTestCase {
         XCTAssertTrue(EditOverlays.pieces([off], frame: CGSize(width: 1080, height: 1920)).isEmpty)
     }
 
+    /// 22 Nov recording: the voiceover's start let go a moment past "hello", and that caption was gone for good.
+    func testTrimmingAVoiceoverNeverLosesItsCaptions() {
+        var v: EditSound = voice
+        v.full = 3
+        func said(_ text: String, _ at: Double) -> EditText {
+            let word = EditText.Word(text: text, at: at, clip: v.id, src: at - 4)
+            var t = EditText(kind: "caption", text: text, from: at, to: at + 0.5, words: [word])
+            t.voice = v.id
+            return t
+        }
+        let all: [EditText] = [said("hello", 4.1), said("my", 5), said("friend", 6)]
+        var short: EditSound = v
+        short.from = 4.5; short.start = 0.5; short.length = 2.5
+        let cut = CaptionLayers.trimmed(all, clips: [], sounds: [short])
+        XCTAssertEqual(cut.texts.map(\.text), ["my", "friend"])
+        XCTAssertEqual(cut.sounds[0].cut?.map(\.text), ["hello"], "kept on the voiceover")
+        // trimmed again, it's still kept
+        var shorter: EditSound = cut.sounds[0]
+        shorter.from = 5.5; shorter.start = 1.5; shorter.length = 1.5
+        let more = CaptionLayers.trimmed(cut.texts, clips: [], sounds: [shorter])
+        XCTAssertEqual(more.texts.map(\.text), ["friend"])
+        var back: EditSound = more.sounds[0]
+        back.from = 4; back.start = 0; back.length = 3
+        let out = CaptionLayers.trimmed(more.texts, clips: [], sounds: [back])
+        XCTAssertEqual(out.texts.sorted { $0.from < $1.from }.map(\.text), ["hello", "my", "friend"])
+        XCTAssertNil(out.sounds[0].cut)
+    }
+
+    func testACaptionCutInTheMiddleGetsItsWordsBack() {
+        var v: EditSound = voice
+        v.full = 3
+        let words: [EditText.Word] = [EditText.Word(text: "hello", at: 4.1, clip: v.id, src: 0.1), EditText.Word(text: "friend", at: 4.8, clip: v.id, src: 0.8)]
+        var t = EditText(kind: "caption", text: "hello friend", from: 4.1, to: 5.3, words: words)
+        t.voice = v.id
+        var short: EditSound = v
+        short.from = 4.5; short.start = 0.5; short.length = 2.5
+        let cut = CaptionLayers.trimmed([t], clips: [], sounds: [short])
+        XCTAssertEqual(cut.texts.map(\.text), ["friend"])
+        var back: EditSound = cut.sounds[0]
+        back.from = 4; back.start = 0; back.length = 3
+        XCTAssertEqual(CaptionLayers.trimmed(cut.texts, clips: [], sounds: [back]).texts.map(\.text), ["hello friend"])
+    }
+
+    func testAVoiceoversHandleIsntHeldOnCaptions() {
+        let bars: [(from: Double, to: Double, caption: Bool, off: Bool)] = [
+            (from: 1, to: 2, caption: true, off: false), (from: 3, to: 4, caption: true, off: true), (from: 5, to: 6, caption: false, off: false)]
+        XCTAssertEqual(TimelineRows.snapTargets(fixed: [0], bars: bars, movingCaption: false), [0, 5, 6])
+        XCTAssertEqual(TimelineRows.snapTargets(fixed: [0], bars: bars, movingCaption: true), [0, 1, 2, 5, 6], "never what's switched off")
+    }
+
     func testADraftFromBeforeLayersStillOpens() throws {
         let old = caption("we glaze", 4.5, 6)
         let data = try JSONEncoder().encode(old)

@@ -21,6 +21,7 @@ struct EditSound: Identifiable, Codable, Equatable {
     var clip: UUID? = nil       // kind "clip": the clip its sound was separated from, to put it back
     var rate: Double? = nil     // kind "clip": that clip's speed, which its sound keeps
     var lane: Int? = nil        // the timeline row it's on, as a text's
+    var cut: [EditText]? = nil  // a voiceover's captions of what's trimmed off it, for when it's drawn out again
     var to: Double { from + length }
 
     /// The file it plays from.

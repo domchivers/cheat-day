@@ -115,6 +115,60 @@ enum CaptionLayers {
         return out
     }
 
+    /// A voiceover (or a clip's separated sound) moved or trimmed: its captions where their words now play. Those of what's trimmed off are kept on
+    /// it and come back as it's drawn out again (22 Nov recording: let go a moment short of "hello", that caption was
+    /// gone for good).
+    static func trimmed(_ texts: [EditText], clips: [Clip], sounds: [EditSound]) -> (texts: [EditText], sounds: [EditSound]) {
+        var all: [EditText] = texts
+        for v in sounds {
+            for kept in v.cut ?? [] { restore(kept, into: &all) }
+        }
+        var laid: [EditSound] = sounds
+        for k in laid.indices where laid[k].kind == "voice" || laid[k].kind == "clip" {
+            let cut: [EditText] = trimmedOff(all, of: laid[k])
+            laid[k].cut = cut.isEmpty ? nil : cut
+        }
+        return (EditOverlays.reanchor(all, clips: clips, sounds: laid), laid)
+    }
+
+    /// What of the captions is outside the part of a voiceover that plays.
+    private static func trimmedOff(_ texts: [EditText], of v: EditSound) -> [EditText] {
+        let low: Double = v.start - 0.01, high: Double = v.fileTime(v.to) + 0.01
+        var out: [EditText] = []
+        for t in texts where t.kind == "caption" {
+            guard let words = t.words, words.allSatisfy({ (w: EditText.Word) -> Bool in w.src != nil }) else { continue }
+            let lost: [EditText.Word] = words.filter { (w: EditText.Word) -> Bool in
+                guard w.clip == v.id, let at = w.src else { return false }
+                return at < low || at > high
+            }
+            guard !lost.isEmpty else { continue }
+            var c: EditText = t
+            c.words = lost
+            if lost.count < words.count { c.text = joined(lost) }   // (all of it: as it was typed)
+            out.append(c)
+        }
+        return out
+    }
+
+    /// Words trimmed off put back in their caption, or their caption back when all of it went.
+    private static func restore(_ kept: EditText, into all: inout [EditText]) {
+        guard let i = all.firstIndex(where: { (t: EditText) -> Bool in t.id == kept.id }) else { all.append(kept); return }
+        var words: [EditText.Word] = all[i].words ?? []
+        var added = false
+        for w in kept.words ?? [] {
+            let there: Bool = words.contains { (x: EditText.Word) -> Bool in x.src == w.src && x.clip == w.clip }
+            if !there { words.append(w); added = true }
+        }
+        guard added else { return }
+        words.sort { (a: EditText.Word, b: EditText.Word) -> Bool in (a.src ?? 0) < (b.src ?? 0) }
+        all[i].words = words
+        all[i].text = joined(words)
+    }
+
+    private static func joined(_ words: [EditText.Word]) -> String {
+        words.map { (w: EditText.Word) -> String in w.text }.joined(separator: " ")
+    }
+
     /// Captions in one layer don't run over the next in it; in different layers they may.
     static func clamped(_ texts: [EditText], voices: Set<UUID>) -> [EditText] {
         var out = texts

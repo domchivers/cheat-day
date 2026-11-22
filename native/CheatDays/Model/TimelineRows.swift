@@ -2,6 +2,22 @@ import Foundation
 
 /// The clip editor's rows of bars, by id, and what a bar dropped on another row does to them.
 enum TimelineRows {
+    /// How near, in points, an edge comes before it's held on a target; and how far a finger goes before it moves or
+    /// trims anything (a click isn't a drag).
+    static let snapReach: CGFloat = 5, dragStarts: CGFloat = 5
+
+    /// What a dragged edge is held on: the clips' edges and the line (the fixed ones), and the other bars' ends. Not
+    /// what's switched off; and captions only for a caption (22 Nov recording: every few points along there was a
+    /// caption's edge, so a voiceover's handle could stop nowhere else, and jumped from one to the next).
+    static func snapTargets(fixed: [Double], bars: [(from: Double, to: Double, caption: Bool, off: Bool)], movingCaption: Bool) -> [Double] {
+        var out: [Double] = fixed
+        for b in bars where !b.off && (movingCaption || !b.caption) {
+            out.append(b.from)
+            out.append(b.to)
+        }
+        return out
+    }
+
     /// The most rows the timeline shows (8 since captions came in layers: six were full with a voiceover's and music).
     static let most = 8
 
