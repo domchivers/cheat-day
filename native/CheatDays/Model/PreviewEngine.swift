@@ -300,8 +300,12 @@ final class PreviewEngine {
         for s in sounds {
             guard let url = s.url else { continue }
             let ducks = s.kind == "clip", snd = s
-            out.append(SoundPiece(key: "s\(s.id)", url: url, from: s.from, fileStart: s.start, length: min(s.length, max(0, total - s.from)), rate: s.speed,
-                                  level: { v in snd.level(at: v) * (ducks ? dip(v) : 1) }))
+            let parts: [EditSound.Stretch] = s.stretches(until: total)
+            for (n, part) in parts.enumerated() {
+                let level: (Double) -> Float = { (v: Double) -> Float in snd.level(at: v) * (ducks ? dip(v) : 1) }
+                out.append(SoundPiece(key: "s\(s.id)-\(n)", url: url, from: part.from, fileStart: part.fileStart, length: part.length,
+                                      rate: s.speed, level: level))
+            }
         }
         return out
     }

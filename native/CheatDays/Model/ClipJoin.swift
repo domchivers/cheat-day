@@ -276,10 +276,17 @@ enum ClipJoin {
             }
             // (a clip's separated sound keeps the clip's speed: so much of its file, played over so much of the video)
             let r = snd.speed
-            let take = min(snd.length, (range.end.seconds - snd.start) / r, Double(end) / 600 - snd.from)
+            let parts: [EditSound.Stretch] = snd.stretches(until: Double(end) / 600, fileEnd: range.end.seconds)
+            let take: Double = parts.reduce(0.0) { (sum: Double, part: EditSound.Stretch) -> Double in sum + part.length }
             do {
                 guard take > 0.05 else { throw CocoaError(.coderValueNotFound) }
-                try track.insertTimeRange(CMTimeRange(start: t(snd.start), duration: t(take * r)), of: a, at: t(snd.from))
+                // (each on the exact tick the last ended: worked out apart, a rounding split them)
+                var at: CMTime = t(snd.from)
+                for part in parts {
+                    let lasts: CMTime = t(part.length * r)
+                    try track.insertTimeRange(CMTimeRange(start: t(part.fileStart), duration: lasts), of: a, at: at)
+                    at = CMTimeAdd(at, lasts)
+                }
             } catch {
                 lastSoundMiss = "\(snd.kind) from \(snd.from) s, \(take) s of \(range.start.seconds)–\(range.end.seconds): \(error)"
                 comp.removeTrack(track); continue

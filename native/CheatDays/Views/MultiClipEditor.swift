@@ -48,9 +48,20 @@ struct MultiClipEditor: View {
     @State private var joining = false
     /// What Undo goes back to: the clips, and the sounds over them (21 Nov: a sound separated from its clip has to
     /// come back with it).
-    private struct Snap { var clips: [Clip]; var sounds: [EditSound]; var texts: [EditText] = [] }
-    @State private var history: [Snap] = []  // for Undo
-    @State private var future: [Snap] = []   // for Redo: what was undone
+    /// All of the edit, as Undo keeps it.
+    private struct Snap: Equatable {
+        var clips: [Clip]
+        var sounds: [EditSound]
+        var texts: [EditText]
+        var pips: [EditPip]
+        var look: EditLook
+        var soundOf: UUID?
+        var cut: [EditText]
+        var plan: EditOverlays.RecipePlan
+        var recipe: SameJSON
+        var attached: SameJSON
+    }
+    @State private var edits = EditHistory<Snap>()   // for Undo and Redo
     @State private var autoID: String?           // the draft it's kept in as it goes (Stage A1)
     @State private var opened: [Clip]?           // as it was when opened from a draft: Discard goes back to it
     @State private var levels: [UUID: [Float]] = [:]
@@ -91,6 +102,7 @@ struct MultiClipEditor: View {
     @State private var frameSize = CGSize(width: 1080, height: 1920)
     @State private var moveFrom: (Double, Double)?
     @State private var sizeFrom: Double?
+    private var overlayHeld: Bool { moveFrom != nil || sizeFrom != nil || pipFrom != nil }
     @State private var barGrab: BarGrab?
     @State private var attached: JSON?
     @State private var attachMode: String?           // "recipe", "workout", "calories": the picker open for it
@@ -300,6 +312,8 @@ struct MultiClipEditor: View {
         Color.black.ignoresSafeArea()
             .importFailed($importFailure)
             .modifier(EditorTroubleAlert(trouble: $trouble, retry: { finish() }))
+            .modifier(EditWatch<Snap>(edit: snap, began: { startHistory() }, changed: { editChanged() },
+                                      busy: { midEdit() }, settled: { recordEdit() }))
     }
 
     private func wentAway() {
@@ -400,8 +414,8 @@ struct MultiClipEditor: View {
         HStack(spacing: 6) {
             // asked first: one tap on the cross threw the whole edit away (19 Nov)
             bare("xmark", "Close") { if clips.isEmpty { close() } else { leaving = true } }
-            bare("arrow.uturn.backward", "Undo", on: !history.isEmpty) { undo() }
-            bare("arrow.uturn.forward", "Redo", on: !future.isEmpty) { redo() }
+            bare("arrow.uturn.backward", "Undo", on: edits.canUndo) { undo() }
+            bare("arrow.uturn.forward", "Redo", on: edits.canRedo) { redo() }
             Spacer()
             if panel == nil {
                 // the shape it's made in, said, as a pro editor shows its frame size
@@ -1526,7 +1540,28 @@ struct MultiClipEditor: View {
         settleLayers()
     }
 
-    private func remember() { history.append(Snap(clips: clips, sounds: sounds, texts: texts)); future = []; if history.count > 30 { history.removeFirst() } }
+    private var snap: Snap {
+        Snap(clips: clips, sounds: sounds, texts: texts, pips: pips, look: look, soundOf: soundOf, cut: cutWords, plan: plan,
+             recipe: SameJSON(value: recipe), attached: SameJSON(value: attached))
+    }
+
+    /// A change is about to be made that's a step of its own: what's been changed till now is the step before it.
+    private func remember() { edits.record(snap) }
+
+    private func startHistory() {
+        // (a draft's parts go in as it appears, and what follows from them)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            if edits.base == nil { edits.start(snap) }
+        }
+    }
+
+    private func editChanged() {
+        if !edits.changed { edits.touched() }
+    }
+
+    private func midEdit() -> Bool { barGrab != nil || typing != nil || recording || overlayHeld }
+
+    private func recordEdit() { edits.record(snap) }
     /// Every text, caption, sticker, sound and overlay moved as far as the clip it starts over has moved.
     private func follow(from old: [Clip], to new: [Clip]) {
         guard !old.isEmpty, !new.isEmpty else { return }
@@ -1556,7 +1591,13 @@ struct MultiClipEditor: View {
             let d = moved(pips[k].from)
             if abs(d) > 0.0005 { pips[k].from = max(0, pips[k].from + d) }
         }
-        texts = EditOverlays.reanchor(texts, clips: new, sounds: sounds)
+        // music that runs to the end of the edit still does
+        let long: Double = ClipJoin.total(new)
+        for k in sounds.indices where sounds[k].toEnd == true { sounds[k].length = max(0.3, long - sounds[k].from) }
+        // (22 Nov audit: the words outside every clip were dropped for good: kept, and back in as it's drawn out again)
+        let trimmed: (texts: [EditText], kept: [EditText]) = ClipCuts.trimmed(texts, kept: cutWords, clips: new, sounds: sounds)
+        texts = trimmed.texts
+        if trimmed.kept != cutWords { cutWords = trimmed.kept }
         // (reanchor ends each where the next in its layer begins: 21 Nov, "Unglazed" drawn over "turns black")
         settleLayers()
         if recipe != nil { remakeRecipe() }
@@ -1564,22 +1605,49 @@ struct MultiClipEditor: View {
 
     private func change(_ f: ([Clip]) -> [Clip]) { remember(); withAnimation(.snappy) { clips = f(clips) } }
     private func undo() {
-        guard let last = history.popLast() else { return }
-        future.append(Snap(clips: clips, sounds: sounds, texts: texts)); restore(last)
+        let current: Snap = snap
+        var h: EditHistory<Snap> = edits
+        let last: Snap? = h.undo(from: current)
+        edits = h
+        if let last { restore(last) }
     }
     private func redo() {
-        guard let next = future.popLast() else { return }
-        history.append(Snap(clips: clips, sounds: sounds, texts: texts)); restore(next)
+        let current: Snap = snap
+        var h: EditHistory<Snap> = edits
+        let next: Snap? = h.redo(from: current)
+        edits = h
+        if let next { restore(next) }
     }
     private func restore(_ s: Snap) {
-        withAnimation(.snappy) { clips = s.clips; sounds = s.sounds; texts = s.texts }
-        // the sounds and texts as they were with these clips: put back after follow() has moved them with the clips
-        DispatchQueue.main.async { sounds = s.sounds; texts = s.texts }
-        // a sound's panel shut if its sound has gone
-        if let id = selectedSound, !s.sounds.contains(where: { $0.id == id }) {
-            selectedSound = nil
-            if panel == .soundItem { panel = nil }
+        let carried: Bool = s.attached != SameJSON(value: attached)
+        withAnimation(.snappy) {
+            clips = s.clips; soundOf = s.soundOf; look = s.look
+            recipe = s.recipe.value; plan = s.plan
+            layBack(s)
         }
+        if carried {
+            attached = s.attached.value
+            attach(s.attached.value)
+        }
+        closeGone(s)
+        // what's over them as it was with these clips: put back after follow() has moved it with the clips
+        DispatchQueue.main.async { layBack(s) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { edits.absorb(snap) }
+    }
+
+    private func layBack(_ s: Snap) {
+        sounds = s.sounds; texts = s.texts; pips = s.pips; cutWords = s.cut
+    }
+
+    /// What's picked, and its panel, let go if Undo or Redo took it away.
+    private func closeGone(_ s: Snap) {
+        var gone = false
+        if let id = selected, !s.clips.contains(where: { (c: Clip) -> Bool in c.id == id }) { selected = nil; gone = true }
+        if let id = selectedText, !s.texts.contains(where: { (t: EditText) -> Bool in t.id == id }) { selectedText = nil; gone = true }
+        if let id = selectedSound, !s.sounds.contains(where: { (x: EditSound) -> Bool in x.id == id }) { selectedSound = nil; gone = true }
+        if let id = selectedPip, !s.pips.contains(where: { (p: EditPip) -> Bool in p.id == id }) { selectedPip = nil; gone = true }
+        if s.recipe.value == nil, panel == .recipe || panel == .recipeSteps { gone = true }
+        if gone { panel = nil }
     }
 
     /// The picked clip's own sound as a bar of its own (21 Nov; design/separate-audio-mockup.html): the clip goes
@@ -2015,10 +2083,17 @@ struct MultiClipEditor: View {
     private func deleteBar(_ b: BarItem) {
         switch b.kind {
         case 1: takeOff(b.id)
-        case 2: pips.removeAll { $0.id == b.id }
-        default: remember(); texts.removeAll { $0.id == b.id }
+        case 2: remember(); pips.removeAll { $0.id == b.id }
+        default: removeText(b.id)
         }
         selectedText = nil; selectedSound = nil; selectedPip = nil
+    }
+
+    /// A text, sticker or caption taken off, and what was kept of it trimmed off with it.
+    private func removeText(_ id: UUID) {
+        remember()
+        texts.removeAll { (t: EditText) -> Bool in t.id == id }
+        cutWords.removeAll { (t: EditText) -> Bool in t.id == id }
     }
 
     /// What can be put over the video, when no clip is picked (the mockup's bottom row).
@@ -2367,9 +2442,21 @@ struct MultiClipEditor: View {
             s.from = g.from + d; s.start = g.start + d * r; s.length = length - d
             sounds[i] = s
         case 2:
-            sounds[i].length = max(0.3, min(length + dt, (whole - g.start) / r, span - g.from))
+            var s: EditSound = sounds[i]
+            let most: Double = s.loopStart != nil ? span - g.from : min((whole - g.start) / r, span - g.from)
+            s.length = max(0.3, min(length + dt, most))
+            // a song drawn out to the end stays there (one from before this too)
+            if s.kind == "song" {
+                let reaches: Bool = s.to >= span - 0.05
+                s.toEnd = reaches ? true : nil
+                if reaches, s.fadeOut == nil { s.fadeOut = 1.2 }
+            }
+            sounds[i] = s
         default:
-            sounds[i].from = min(max(0, g.from + dt), max(0, span - 0.3))
+            var s: EditSound = sounds[i]
+            s.from = min(max(0, g.from + dt), max(0, span - 0.3))
+            if s.toEnd == true { s.length = max(0.3, span - s.from) }
+            sounds[i] = s
         }
         if follow { seek(g.mode == 2 ? max(0, sounds[i].to - 0.05) : sounds[i].from) }
     }
@@ -2428,6 +2515,7 @@ struct MultiClipEditor: View {
         recording = false
         player.pause(); player.isMuted = false
         if let (url, length) = recorder.stop() {
+            remember()
             let n = sounds.filter { $0.kind == "voice" }.count + 1
             let take = EditSound(kind: "voice", name: "Voice \(n)", file: url, from: recordFrom, length: max(0.3, min(length, total - recordFrom)), full: length)
             sounds.append(take)
@@ -2444,6 +2532,7 @@ struct MultiClipEditor: View {
                 ForEach(SoundEffects.names, id: \.self) { name in
                     Button {
                         let length = SoundEffects.length(name)
+                        remember()
                         remember()
                         sounds.append(EditSound(kind: "effect", name: name, from: now, length: max(0.05, min(length, total - now)), full: length))
                         UISelectionFeedbackGenerator().selectionChanged()
@@ -2587,7 +2676,7 @@ struct MultiClipEditor: View {
     /// The song's beats, in the video's seconds, while it plays.
     private var songBeats: [Double] {
         guard let s = sounds.first(where: { $0.kind == "song" }) else { return [] }
-        return (s.beats ?? []).map { s.from + $0 - s.start }.filter { $0 >= s.from - 0.001 && $0 <= s.to }
+        return s.beatTimes(until: total)
     }
 
     /// A song from the app's music under the whole edit (one at a time), its beats found.
@@ -2596,10 +2685,20 @@ struct MultiClipEditor: View {
         defer { joining = false }
         guard let mix = await SongMix.make(s, song: 1, clip: 1) else { flash("Couldn't get that song. Check your connection."); return }
         let beats = await Beats.find(mix.file, from: mix.from, length: mix.span)
+        remember()
         sounds.removeAll { $0.kind == "song" }
-        sounds.append(EditSound(kind: "song", name: s.title, file: mix.file, from: 0, start: mix.from, length: max(0.5, min(mix.span, total)),
-                                full: mix.from + mix.span, beats: beats))
+        var song = EditSound(kind: "song", name: s.title, file: mix.file, from: 0, start: mix.from, length: max(0.5, total),
+                             full: mix.from + mix.span, beats: beats)
+        Self.runToEnd(&song, loopFrom: mix.from)
+        sounds.append(song)
         withAnimation(.snappy) { panel = .beats }
+    }
+
+    /// A song to the end of the edit, round again as often as that takes, fading out there.
+    private static func runToEnd(_ song: inout EditSound, loopFrom: Double) {
+        song.loopFrom = loopFrom
+        song.toEnd = true
+        song.fadeOut = min(1.2, song.length / 4)
     }
 
     /// Music: the song, its volume and fades, taking it off, and its beats with the clips cut to land on them.
@@ -2674,13 +2773,15 @@ struct MultiClipEditor: View {
         if let s = Music.all.first(where: { $0.id == t.song }), let mix = await SongMix.make(s, song: 1, clip: 1) {
             let found = await Beats.find(mix.file, from: mix.from, length: mix.span)
             beats = found.map { $0 - mix.from }
-            song = EditSound(kind: "song", name: s.title, file: mix.file, from: 0, start: mix.from, length: mix.span, full: mix.from + mix.span, beats: found)
+            var made = EditSound(kind: "song", name: s.title, file: mix.file, from: 0, start: mix.from, length: mix.span, full: mix.from + mix.span, beats: found)
+            Self.runToEnd(&made, loopFrom: mix.from)
+            song = made
         }
         let laid = EditTemplate.lay(picked, slots: slots, beats: beats, join: t.join, look: t.look)
         guard !laid.isEmpty else { return }
         let long = ClipJoin.total(laid)
         var laidSounds = sounds.filter { $0.kind != "song" }
-        if var song { song.length = max(0.5, min(song.length, long)); laidSounds.append(song) }
+        if var song { song.length = max(0.5, long); laidSounds.append(song) }
         let words = EditTemplate.labels(laid, slots: slots)
         var over = texts.filter { $0.part != "template" }
         over += words
@@ -2742,6 +2843,7 @@ struct MultiClipEditor: View {
             if up.height != 0 { aspect = Double(abs(up.width) / abs(up.height)) }
         }
         let p = EditPip(source: c.source, start: c.start, length: max(0.3, min(c.duration, total - now)), from: now, full: c.length, aspect: aspect)
+        remember()
         pips.append(p)
         selectPip(p.id)
     }
@@ -2794,6 +2896,7 @@ struct MultiClipEditor: View {
             HStack(spacing: 10) {
                 Button {
                     guard inside else { return }
+                    remember()
                     if let near { pips[k].keys.remove(at: near) } else { var key = m; key.at = at; pips[k].keys.append(key) }
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 } label: {
@@ -2804,6 +2907,7 @@ struct MultiClipEditor: View {
                 .buttonStyle(.plain).foregroundStyle(near != nil ? Color.yellow : Color.white).disabled(!inside).opacity(inside ? 1 : 0.4)
                 Button(role: .destructive) {
                     let id = p.id
+                    remember()
                     withAnimation(.snappy) { panel = nil; selectedPip = nil }
                     pips.removeAll { $0.id == id }
                 } label: {
@@ -2871,6 +2975,7 @@ struct MultiClipEditor: View {
 
     private func addText() {
         player.pause(); playing = false
+        remember()
         let t = EditText(kind: "text", text: "", from: now, to: min(max(total, now + 0.5), now + 3))
         texts.append(t)
         selectText(t.id)
@@ -3028,6 +3133,7 @@ struct MultiClipEditor: View {
         guard let d = try? JSONSerialization.data(withJSONObject: o), let json = String(data: d, encoding: .utf8) else { return }
         let names = ["gif": "GIF", "sticker3d": "Sticker", "macros": "Macros", "streak": "Streak", "left": "Calories left", "ring": "Today",
                      "steps": "Steps", "badge": "Badge", "rank": "Rank", "cheat": "Cheat day", "time": "Time", "place": "Place", "hashtag": "#" + str(o["text"])]
+        remember()
         var t = EditText(kind: "card", text: names[str(o["type"])] ?? "Sticker", x: 0.5, y: 0.4, from: now, to: min(max(total, now + 0.5), now + 3))
         t.card = json
         texts.append(t)
@@ -3036,6 +3142,7 @@ struct MultiClipEditor: View {
     }
 
     private func addSticker(_ emoji: String) {
+        remember()
         let t = EditText(kind: "sticker", text: emoji, x: 0.5, y: 0.4, from: now, to: min(max(total, now + 0.5), now + 3))
         texts.append(t)
         selectText(t.id)
@@ -3169,6 +3276,7 @@ struct MultiClipEditor: View {
     private func picked(_ what: JSON) {
         let mode = attachMode
         attachMode = nil
+        remember()
         switch mode {
         case "recipe":
             // a saved meal or recipe: a food has no method to show (21 Nov)
@@ -3251,7 +3359,7 @@ struct MultiClipEditor: View {
             Button(role: .destructive) {
                 let id = item.id
                 withAnimation(.snappy) { panel = nil; selectedText = nil }
-                texts.removeAll { $0.id == id }
+                removeText(id)
             } label: {
                 Label("Take it off", systemImage: "trash").font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity).frame(height: 40)
                     .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -3272,6 +3380,13 @@ struct MultiClipEditor: View {
             let a = texts[k].from, step = (texts[k].to - a) / Double(parts.count)
             texts[k].words = parts.indices.map { EditText.Word(text: parts[$0], at: a + step * Double($0)) }
         }
+    }
+
+    private func takeOffCaptions() {
+        remember()
+        texts.removeAll { (t: EditText) -> Bool in t.kind == "caption" }
+        cutWords = []
+        for i in sounds.indices where sounds[i].cut != nil { sounds[i].cut = nil }
     }
 
     /// A row of choices, one picked (the captions' panels).
@@ -3351,7 +3466,7 @@ struct MultiClipEditor: View {
             Text("Style").font(.caption.weight(.semibold)).foregroundStyle(Self.quiet)
             HStack(spacing: 6) {
                 ForEach(EditText.captionStyles, id: \.self) { st in
-                    chip(st, on: caps.allSatisfy { texts[$0].style == st } && style == st) { for i in caps { texts[i].style = st } }
+                    chip(st, on: caps.allSatisfy { texts[$0].style == st } && style == st) { remember(); for i in caps { texts[i].style = st } }
                 }
                 Spacer(minLength: 0)
             }
@@ -3362,8 +3477,7 @@ struct MultiClipEditor: View {
             HStack(spacing: 8) {
                 wide("Redo all", "arrow.clockwise") { makeCaptions(.all) }
                 wide("Take off", "trash", warn: true) {
-                    remember()
-                    texts.removeAll { $0.kind == "caption" }
+                    takeOffCaptions()
                     withAnimation(.snappy) { panel = nil }
                 }
             }
@@ -3462,8 +3576,7 @@ struct MultiClipEditor: View {
     }
 
     private func deleteCaption(_ id: UUID) {
-        remember()
-        texts.removeAll { $0.id == id }
+        removeText(id)
         if listPicked == id { listPicked = nil }
         if selectedText == id { selectedText = nil }
     }
@@ -3772,13 +3885,13 @@ struct MultiClipEditor: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Shape").font(.caption).foregroundStyle(.secondary)
             HStack(spacing: 6) {
-                ForEach(EditLook.shapes, id: \.self) { sh in chip(sh == "Original" ? "First clip's" : sh, on: look.shape == sh) { look.shape = sh } }
+                ForEach(EditLook.shapes, id: \.self) { sh in chip(sh == "Original" ? "First clip's" : sh, on: look.shape == sh) { remember(); look.shape = sh } }
             }
             Text("A clip of another shape").font(.caption).foregroundStyle(.secondary).padding(.top, 2)
             HStack(spacing: 6) {
-                chip("Fill the frame", on: look.fill == "Fill") { look.fill = "Fill" }
-                chip("Whole, blurred behind", on: look.fill == "Blur") { look.fill = "Blur" }
-                chip("Whole, on black", on: look.fill == "Black") { look.fill = "Black" }
+                chip("Fill the frame", on: look.fill == "Fill") { remember(); look.fill = "Fill" }
+                chip("Whole, blurred behind", on: look.fill == "Blur") { remember(); look.fill = "Blur" }
+                chip("Whole, on black", on: look.fill == "Black") { remember(); look.fill = "Black" }
             }
         }
     }

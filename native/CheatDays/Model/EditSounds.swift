@@ -22,12 +22,65 @@ struct EditSound: Identifiable, Codable, Equatable {
     var rate: Double? = nil     // kind "clip": that clip's speed, which its sound keeps
     var lane: Int? = nil        // the timeline row it's on, as a text's
     var cut: [EditText]? = nil  // a voiceover's captions of what's trimmed off it, for when it's drawn out again
+    var toEnd: Bool? = nil      // a song that runs to the end of the edit, however long that comes to
+    var loopFrom: Double? = nil // where in its file a song's part starts, to go round from there
     var to: Double { from + length }
 
     /// The file it plays from.
     var url: URL? { kind == "effect" ? SoundEffects.url(name) : file }
 
     var speed: Double { max(rate ?? 1, 0.01) }
+    /// One unbroken stretch of it as it plays.
+    struct Stretch: Equatable {
+        var from: Double        // in the video
+        var fileStart: Double   // in its file
+        var length: Double      // of the video
+    }
+
+    /// Where a song goes round from at the end of its part (22 Nov audit: music stopped at 30 seconds); nil for
+    /// what doesn't go round.
+    var loopStart: Double? {
+        guard kind == "song", full > 1 else { return nil }
+        let first: Double = loopFrom ?? max(0, min(start, full - Song.part))
+        return full - first > 1 ? first : nil
+    }
+
+    /// What's played where up to the video's end: a song round again, everything else the once.
+    func stretches(until end: Double, fileEnd: Double? = nil) -> [Stretch] {
+        var most: Double = min(length, end - from)
+        guard let first = loopStart else {
+            if let fileEnd { most = min(most, (fileEnd - start) / speed) }
+            return most > 0.05 ? [Stretch(from: from, fileStart: start, length: most)] : []
+        }
+        let last: Double = min(full, fileEnd ?? full)
+        let part: Double = last - first
+        guard part > 0.5 else { return [] }
+        var at: Double = start
+        if at >= last - 0.01 { at = first + (at - first).truncatingRemainder(dividingBy: part) }
+        if at >= last - 0.01 { at = first }
+        var out: [Stretch] = []
+        var put = 0.0
+        while put < most - 0.01 {
+            let piece: Double = min(most - put, last - at)
+            out.append(Stretch(from: from + put, fileStart: at, length: piece))
+            put += piece
+            at = first
+        }
+        return out
+    }
+
+    /// A song's beats in the video's seconds, each time round.
+    func beatTimes(until end: Double) -> [Double] {
+        let found: [Double] = beats ?? []
+        var out: [Double] = []
+        for s in stretches(until: end) {
+            for b in found where b >= s.fileStart - 0.001 && b < s.fileStart + s.length - 0.001 {
+                out.append(s.from + b - s.fileStart)
+            }
+        }
+        return out.sorted()
+    }
+
     /// Its own sound's seconds at a moment of the video, and back.
     func fileTime(_ v: Double) -> Double { start + (v - from) * speed }
     func videoTime(_ p: Double) -> Double { from + (p - start) / speed }
