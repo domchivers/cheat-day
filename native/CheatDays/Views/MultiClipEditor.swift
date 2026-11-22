@@ -804,7 +804,7 @@ struct MultiClipEditor: View {
                     RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color(white: 0.13))
                     // where a held bar would go: the row outlined, or a line where it'd be a new row of its own
                     if dropRow == r { dropMark(r, rows[r]) }
-                    ForEach(rows[r]) { item in bar(item, w: width, span: span, onTimeline: true) }
+                    ForEach(rows[r]) { item in bar(item, w: width, span: span, onTimeline: true, among: rows[r]) }
                 }
                 .frame(width: width, height: Self.laneHeight, alignment: .leading)
                 // (over the other rows' rails while its bar's lifted: under them, it vanished as it was dragged, 22 Nov)
@@ -851,23 +851,41 @@ struct MultiClipEditor: View {
     // bar is the handle's, so a short one can still be held to move it.
     private static let gripWidth: CGFloat = 12, catchSize: CGFloat = 44
 
+    /// How wide a bar's drawn: its length, a short one widened to 16 to tap only as far as the next on its row (22 Nov:
+    /// a short caption ran over the one after, a light strip where the two crossed).
+    private static func drawnWidth(_ item: BarItem, among row: [BarItem], w: CGFloat, span: Double) -> CGFloat {
+        let left: CGFloat = w * CGFloat(min(item.from, span) / span)
+        let right: CGFloat = w * CGFloat(min(item.to, span) / span)
+        let length: CGFloat = right - left
+        guard length < 16 else { return length }
+        var room: CGFloat = 16
+        for other in row where other.id != item.id && other.from > item.from {
+            let next: CGFloat = w * CGFloat(min(other.from, span) / span)
+            room = min(room, next - left)
+        }
+        return max(2, max(length, room))
+    }
+
     private static func catchInside(_ barWidth: CGFloat) -> CGFloat { min(8, barWidth / 4) }
 
     /// The picked bar's two white handles, over every row (22 Nov: "not handles?").
     @ViewBuilder private func barHandles(_ rows: [[BarItem]], width w: CGFloat, span: Double) -> some View {
         if lifted == nil, selected == nil, let item = pickedBar, let r = rows.firstIndex(where: { (row: [BarItem]) -> Bool in row.contains { (b: BarItem) -> Bool in b.id == item.id } }) {
-            barFrame(item, row: r, w: w, span: span)
-            barHandle(item, side: 1, row: r, w: w, span: span)
-            barHandle(item, side: 2, row: r, w: w, span: span)
+            let wide: CGFloat = Self.drawnWidth(item, among: rows[r], w: w, span: span)
+            // all three from the one top left corner: left to the overlay they were centred on each other first, the
+            // frame 5 under its bar and each end's catch off to the right of its grip (22 Nov)
+            ZStack(alignment: .topLeading) {
+                barFrame(item, row: r, barWidth: wide, w: w, span: span)
+                barHandle(item, side: 1, row: r, barWidth: wide, w: w, span: span)
+                barHandle(item, side: 2, row: r, barWidth: wide, w: w, span: span)
+            }
         }
     }
 
     /// The picked bar's frame: one white shape, as a picked clip's is, rounded outside and square inside against the
     /// bar's square ends (22 Nov: two tabs against its round ends left dark wedges in the corners).
-    private func barFrame(_ item: BarItem, row: Int, w: CGFloat, span: Double) -> some View {
+    private func barFrame(_ item: BarItem, row: Int, barWidth: CGFloat, w: CGFloat, span: Double) -> some View {
         let left: CGFloat = w * CGFloat(min(item.from, span) / span)
-        let right: CGFloat = w * CGFloat(min(item.to, span) / span)
-        let barWidth: CGFloat = max(16, right - left)
         let grip: CGFloat = Self.gripWidth, h: CGFloat = Self.laneHeight
         let outside = CGRect(x: 0, y: 0, width: barWidth + grip * 2, height: h)
         let hole = CGRect(x: grip, y: 2, width: barWidth, height: h - 4)
@@ -888,10 +906,8 @@ struct MultiClipEditor: View {
     private var gripMark: some View { Capsule().fill(Color(white: 0.2)).frame(width: 2, height: 14) }
 
     /// side: 1 its start, 2 its end (as BarGrab's modes).
-    private func barHandle(_ item: BarItem, side: Int, row: Int, w: CGFloat, span: Double) -> some View {
+    private func barHandle(_ item: BarItem, side: Int, row: Int, barWidth: CGFloat, w: CGFloat, span: Double) -> some View {
         let left: CGFloat = w * CGFloat(min(item.from, span) / span)
-        let right: CGFloat = w * CGFloat(min(item.to, span) / span)
-        let barWidth: CGFloat = max(16, right - left)
         let size: CGFloat = Self.catchSize, inside: CGFloat = Self.catchInside(barWidth)
         let x: CGFloat = side == 1 ? left - (size - inside) : left + barWidth - inside
         let y: CGFloat = CGFloat(row) * (Self.laneHeight + 3) - (size - Self.laneHeight) / 2
@@ -1063,9 +1079,9 @@ struct MultiClipEditor: View {
         guard selected == nil, let item = pickedBar, let r = rowOf(item.id), r < TimelineRows.most else { return false }
         let top: CGFloat = lanesTop + CGFloat(r) * (Self.laneHeight + 3) - (Self.catchSize - Self.laneHeight) / 2
         guard p.y >= top, p.y <= top + Self.catchSize else { return false }
-        let end: Double = min(item.to, max(total, 0.01))
-        let x0: CGFloat = shift + CGFloat(item.from) * pps
-        let barWidth: CGFloat = max(16, CGFloat(end - item.from) * pps)
+        let span: Double = max(total, 0.01)
+        let x0: CGFloat = shift + CGFloat(min(item.from, span)) * pps
+        let barWidth: CGFloat = Self.drawnWidth(item, among: barRows[r], w: CGFloat(span) * pps, span: span)
         let inside: CGFloat = Self.catchInside(barWidth), outside: CGFloat = Self.catchSize - inside
         let x1: CGFloat = x0 + barWidth
         return (p.x >= x0 - outside && p.x <= x0 + inside) || (p.x >= x1 - inside && p.x <= x1 + outside)
@@ -1999,9 +2015,9 @@ struct MultiClipEditor: View {
 
     /// `onTimeline`: there the line stays put while a bar's dragged (else the timeline slides under the finger), and
     /// goes to the bar after.
-    private func bar(_ item: BarItem, w: CGFloat, span: Double, onTimeline: Bool = false) -> some View {
-        let x0 = w * CGFloat(min(item.from, span) / span), x1 = w * CGFloat(min(item.to, span) / span)
-        let width = max(16, x1 - x0), on = item.id == selectedText || item.id == selectedSound || item.id == selectedPip
+    private func bar(_ item: BarItem, w: CGFloat, span: Double, onTimeline: Bool = false, among row: [BarItem] = []) -> some View {
+        let x0: CGFloat = w * CGFloat(min(item.from, span) / span)
+        let width: CGFloat = Self.drawnWidth(item, among: row, w: w, span: span), on = item.id == selectedText || item.id == selectedSound || item.id == selectedPip
         // (on the timeline a slim tag, design/pro-ui)
         let h: CGFloat = onTimeline ? Self.laneHeight : 18, up = lifted == item.id
         // picked on the timeline, its frame is the outline, and its ends are square against that
