@@ -36,6 +36,17 @@ struct EditText: Identifiable, Codable, Equatable {
     var under: UUID? = nil
     /// The voiceover it captions (CaptionLayers); nil, the video's own talking.
     var voice: UUID? = nil
+    // a caption's colours and opacities (design/caption-colour-mockup.html; nil, as before: white words, the
+    // highlight whole, a black box at 70%)
+    var wordColour: String? = nil
+    var wordAlpha: Double? = nil
+    var litAlpha: Double? = nil
+    var boxColour: String? = nil
+    var boxAlpha: Double? = nil
+    /// A text's colour's opacity; nil, whole.
+    var colourAlpha: Double? = nil
+    /// A caption of the video's own put where it is by hand: not lifted over a voiceover's.
+    var byHand: Bool? = nil
 
     /// A word said, and when in the video; and where it was said, so it goes where that goes (21 Nov: a clip trimmed
     /// or moved left its captions behind): the clip (or voiceover) it's in, that file's name, and the moment in it.
@@ -77,7 +88,19 @@ struct EditText: Identifiable, Codable, Equatable {
     /// How much a caption holds: a word, a few, a line's worth, a sentence (the panel's "On screen at a time").
     static let captionGroups: [(id: String, name: String)] = [("word", "1 word"), ("few", "A few words"), ("line", "A line"), ("sentence", "A sentence")]
     /// The lit word's colour.
-    var lit: Color { EditText.colour(highlight ?? "yellow") }
+    var lit: Color { EditText.colour(highlight ?? "yellow").opacity(litAlpha ?? 1) }
+    var saidInk: Color { EditText.colour(wordColour ?? "white").opacity(wordAlpha ?? 1) }
+    var boxInk: Color { EditText.colour(boxColour ?? "black").opacity(boxAlpha ?? 0.7) }
+    /// The word in Pop's box: black on the named highlights, as it's always been; on any other, by how light it is.
+    var popInk: Color {
+        guard let name = highlight, name.hasPrefix("#") else { return .black }
+        return EditText.ink(on: name)
+    }
+    /// Bold's edge: black, or white round dark words.
+    var boldEdge: Color {
+        guard let name = wordColour else { return .black }
+        return EditText.ink(on: name) == Color.black ? Color.black : Color.white
+    }
     static let colours = ["white", "yellow", "black", "red", "green"]
     static let stickers = ["💪", "🔥", "🏋️", "🍕", "🥗", "🍔", "🥩", "🍳", "😋", "🎉", "✅", "⭐️", "❤️", "👀", "😮‍💨", "🏃"]
 
@@ -204,7 +227,7 @@ struct EditTextView: View {
     }
 
     @ViewBuilder private var plainText: some View {
-        let ink = EditText.colour(item.colour)
+        let ink = EditText.colour(item.colour).opacity(item.colourAlpha ?? 1)
         let t = Text(item.text).font(EditText.font(item.font, size: 30)).multilineTextAlignment(.center).frame(maxWidth: 330)
         switch item.style {
         case "Box":
@@ -243,23 +266,23 @@ struct EditTextView: View {
             .lineLimit(oneLine ? 1 : nil).minimumScaleFactor(oneLine ? 0.5 : 1).frame(maxWidth: 330)
         switch item.style {
         case "Box":
-            base.foregroundStyle(.white).padding(.horizontal, 12).padding(.vertical, 6)
-                .background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            base.foregroundStyle(item.saidInk).padding(.horizontal, 12).padding(.vertical, 6)
+                .background(item.boxInk, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         case "Plain":
-            base.foregroundStyle(.white).shadow(color: .black.opacity(0.8), radius: 3, y: 1)
+            base.foregroundStyle(item.saidInk).shadow(color: .black.opacity(0.8), radius: 3, y: 1)
         case "Bold":
             // bigger, edged in black all round
             line.font(.system(size: 30, weight: .black)).multilineTextAlignment(.center)
-                .lineLimit(oneLine ? 1 : nil).minimumScaleFactor(oneLine ? 0.5 : 1).frame(maxWidth: 340).foregroundStyle(.white)
-                .shadow(color: .black, radius: 0, x: 1.5, y: 1.5).shadow(color: .black, radius: 0, x: -1.5, y: -1.5)
-                .shadow(color: .black, radius: 0, x: 1.5, y: -1.5).shadow(color: .black, radius: 0, x: -1.5, y: 1.5)
+                .lineLimit(oneLine ? 1 : nil).minimumScaleFactor(oneLine ? 0.5 : 1).frame(maxWidth: 340).foregroundStyle(item.saidInk)
+                .shadow(color: item.boldEdge, radius: 0, x: 1.5, y: 1.5).shadow(color: item.boldEdge, radius: 0, x: -1.5, y: -1.5)
+                .shadow(color: item.boldEdge, radius: 0, x: 1.5, y: -1.5).shadow(color: item.boldEdge, radius: 0, x: -1.5, y: 1.5)
         default:
             // Pop: the word being said in a box of its own, the rest white
             WordRows(spacing: 5, rowSpacing: 4) {
                 ForEach(words.indices, id: \.self) { i in
                     let on = i == lit
                     Text(words[i].text).font(.system(size: size, weight: .black))
-                        .foregroundStyle(on ? Color.black : Color.white)
+                        .foregroundStyle(on ? item.popInk : item.saidInk)
                         .padding(.horizontal, on ? 4 : 0)
                         .background(on ? ink : Color.clear, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
                         .shadow(color: on ? .clear : .black.opacity(0.8), radius: 3, y: 1)
@@ -637,7 +660,10 @@ enum EditOverlays {
             add = made.filter { n in !caps.contains { min($0.to, n.to) - max($0.from, n.from) > 0.05 } }
         }
         if let like = caps.first {
-            for i in add.indices { add[i].style = like.style; add[i].highlight = like.highlight; add[i].y = like.y; add[i].size = like.size; add[i].x = like.x }
+            for i in add.indices {
+                add[i].takeLook(from: like)
+                add[i].byHand = like.byHand
+            }
         }
         var all = (keep + add).sorted { $0.from < $1.from }
         for i in all.indices.dropLast() where all[i].to > all[i + 1].from { all[i].to = max(all[i].from + 0.1, all[i + 1].from) }

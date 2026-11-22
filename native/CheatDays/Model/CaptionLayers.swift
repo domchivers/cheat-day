@@ -37,7 +37,7 @@ enum CaptionLayers {
             var c = cap
             c.voice = v.id
             c.to = max(c.from + 0.1, min(c.to, v.to))
-            if let like { c.style = like.style; c.highlight = like.highlight; c.x = like.x; c.y = like.y; c.size = like.size }
+            if let like { c.takeLook(from: like) }
             return c
         }
     }
@@ -194,7 +194,7 @@ enum CaptionLayers {
         let theirs: [EditText] = shown.filter { (t: EditText) -> Bool in t.kind == "caption" && track(t, voices: voices) != nil }
         guard !theirs.isEmpty else { return shown }
         return shown.map { (t: EditText) -> EditText in
-            guard t.kind == "caption", track(t, voices: voices) == nil else { return t }
+            guard t.kind == "caption", t.byHand != true, track(t, voices: voices) == nil else { return t }
             var c = t
             for o in theirs where min(o.to, t.to) - max(o.from, t.from) > 0.01 && abs(o.y - c.y) < 0.1 {
                 // ("1": one line each)

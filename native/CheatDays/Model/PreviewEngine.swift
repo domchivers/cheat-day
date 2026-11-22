@@ -43,6 +43,25 @@ final class PreviewEngine {
     private var audioKey = ""
     private var dirty = true
     private var drawnKey = ""
+    private var lastShown: CIImage?      // the last picture drawn, to pick a colour from
+    private static let sampler = CIContext(options: [.cacheIntermediates: false])
+
+    /// The colour of the picture showing at a point of it, fractions from its top left.
+    func colour(x: CGFloat, y: CGFloat) -> String? {
+        guard let image = lastShown else { return nil }
+        let e: CGRect = image.extent
+        guard !e.isInfinite, e.width >= 1, e.height >= 1 else { return nil }
+        let px: CGFloat = min(e.maxX - 1, max(e.minX, e.minX + x * e.width)).rounded(.down)
+        let py: CGFloat = min(e.maxY - 1, max(e.minY, e.minY + (1 - y) * e.height)).rounded(.down)
+        let spot = CGRect(x: px, y: py, width: 1, height: 1)
+        let space: CGColorSpace? = CGColorSpace(name: CGColorSpace.sRGB)
+        var bytes = [UInt8](repeating: 0, count: 4)
+        bytes.withUnsafeMutableBytes { (buffer: UnsafeMutableRawBufferPointer) in
+            guard let base = buffer.baseAddress else { return }
+            Self.sampler.render(image, toBitmap: base, rowBytes: 4, bounds: spot, format: .RGBA8, colorSpace: space)
+        }
+        return ColourCode.make(red: Double(bytes[0]) / 255, green: Double(bytes[1]) / 255, blue: Double(bytes[2]) / 255)
+    }
 
     init() {
         mixer.onLoaded = { [weak self] in
@@ -209,8 +228,10 @@ final class PreviewEngine {
         if rate != 0 { key += "|\(t)" }
         dirty = false; drawnKey = key
         // (the picture's moves and keyframes are timed in the finished video's seconds, its size in fractions)
-        return EditCompositor.frame(pics, transition: kind, progress: progress, fill: look.fill, pips: over, overlays: [], at: t,
-                                    size: size)
+        let made: CIImage = EditCompositor.frame(pics, transition: kind, progress: progress, fill: look.fill, pips: over, overlays: [], at: t,
+                                                 size: size)
+        lastShown = made
+        return made
     }
 
     /// The clips showing at `t`, each with the moment of its own file: one, or two while one turns into the next.

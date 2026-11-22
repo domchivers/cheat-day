@@ -43,7 +43,13 @@ struct MultiClipEditor: View {
     @State private var soundOf: UUID?          // one clip's sound over the whole video
     // The editor's own player (PreviewEngine, 21 Nov): plays the edit straight from the clips, drawn by EditPreviewView.
     @State private var player = PreviewEngine()
-    @State private var now = 0.0               // where the preview is, in the joined video's seconds
+    @State private var clock = EditPlayhead()
+    /// Where the preview is, in the joined video's seconds. (Read in a body only inside Live: the editor isn't made
+    /// again each time it moves.)
+    private var now: Double {
+        get { clock.time }
+        nonmutating set { if clock.time != newValue { clock.time = newValue } }
+    }
     @State private var panel: Panel?
     @State private var joining = false
     /// What Undo goes back to: the clips, and the sounds over them (21 Nov: a sound separated from its clip has to
@@ -100,9 +106,13 @@ struct MultiClipEditor: View {
     @State private var plan = EditOverlays.RecipePlan()
     @State private var stepPicked: Int?
     @State private var frameSize = CGSize(width: 1080, height: 1920)
-    @State private var moveFrom: (Double, Double)?
-    @State private var sizeFrom: Double?
-    private var overlayHeld: Bool { moveFrom != nil || sizeFrom != nil || pipFrom != nil }
+    @State private var fingerHeld = false          // something on the video or a caption's slider is being dragged
+    @State private var captionScreen = CaptionScreen.main
+    @State private var captionPart = CaptionPart.lit
+    /// The captions just moved or sized together, to have just the one instead.
+    private struct MovedAll { var id = UUID(); var caption: UUID; var sized: Bool; var was: [UUID: Placing] }
+    private struct Placing { var x: Double; var y: Double; var size: Double; var byHand: Bool? }
+    @State private var movedAll: MovedAll?
     @State private var barGrab: BarGrab?
     @State private var attached: JSON?
     @State private var attachMode: String?           // "recipe", "workout", "calories": the picker open for it
@@ -118,7 +128,6 @@ struct MultiClipEditor: View {
     @State private var selectedPip: UUID?
     @State private var pipPicking = false
     @State private var pipPicks: [PhotosPickerItem] = []
-    @State private var pipFrom: MoveKey?
     @State private var stripZoom: CGFloat = 1             // the strip pinched wider or narrower (Stage D)
     @State private var stripZoomFrom: CGFloat?
     @State private var choosingSong = false               // Stage E
@@ -170,7 +179,7 @@ struct MultiClipEditor: View {
                 // again (21 Nov: Apple's player view flashed black each time)
                 EditPreviewView(engine: player).frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onTapGesture { togglePlay() }
-                    .overlay { overlayLayer.allowsHitTesting(!full) }
+                    .overlay { overVideo.allowsHitTesting(!full) }
                     .overlay(alignment: .bottom) { if let tip, !full { tipCard(tip) } }
                     .overlay(alignment: .topTrailing) {
                         if full {
@@ -510,6 +519,7 @@ struct MultiClipEditor: View {
     }
 
     private func closePanel() {
+        captionScreen = .main
         withAnimation(.snappy) { panel = nil; selectedText = nil; selectedSound = nil; selectedPip = nil }
     }
 
@@ -555,6 +565,93 @@ struct MultiClipEditor: View {
     }
 
     private var bottom: some View {
+        VStack(spacing: 0) {
+            if let id = editingCaption, let item = texts.first(where: { (t: EditText) -> Bool in t.id == id }) {
+                captionSheet(item)
+            } else {
+                toolsSheet
+            }
+        }
+    }
+
+    /// A caption's own sheet (design/caption-panel-pro-mockup.html): flat, one height, no rows of bars.
+    private func captionSheet(_ item: EditText) -> some View {
+        let id: UUID = item.id
+        return CaptionPanel(item: item, screen: $captionScreen, part: $captionPart,
+                            change: { (edit: (inout EditText) -> Void) in changeText(id, edit) },
+                            step: { remember() },
+                            held: { (on: Bool) in sliderHeld(on) },
+                            words: { (text: String) in captionWords(id, text) },
+                            editAll: { editEveryCaption(id) },
+                            delete: { deleteFromPanel(id) },
+                            applyAll: { applyToAll(id) },
+                            done: { closePanel() },
+                            head: { captionHead })
+            .background { Self.captionBack.ignoresSafeArea(edges: .bottom) }
+    }
+
+    private static let captionBack = Color(red: 0.086, green: 0.086, blue: 0.094)
+
+    private var captionHead: some View {
+        VStack(spacing: 0) {
+            Live { captionTransport }
+            Live { scrubStrip(slim: true) }.padding(.horizontal, 16)
+        }
+    }
+
+    private var captionTransport: some View {
+        ZStack {
+            (Text(Self.code(now)).foregroundColor(.white) + Text(" / " + Self.code(total)).foregroundColor(Self.quiet))
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+            HStack(spacing: 4) {
+                Button { togglePlay() } label: {
+                    Image(systemName: playing ? "pause.fill" : "play.fill").font(.system(size: 16)).foregroundStyle(Color.white)
+                        .frame(width: 40, height: 38, alignment: .leading).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).accessibilityLabel(playing ? "Pause" : "Play")
+                Spacer(minLength: 0)
+                frameStep(-1)
+                frameStep(1)
+                bare("arrow.up.left.and.arrow.down.right", "Full screen", size: 14) { withAnimation(.snappy) { full = true } }
+            }
+        }
+        .padding(.horizontal, 16)
+        .frame(height: 38)
+    }
+
+    private func sliderHeld(_ on: Bool) {
+        if on { remember() }
+        fingerHeld = on
+    }
+
+    private func captionWords(_ id: UUID, _ text: String) {
+        guard let k = texts.firstIndex(where: { (t: EditText) -> Bool in t.id == id }), texts[k].text != text else { return }
+        setText(k, text)
+    }
+
+    private func editEveryCaption(_ id: UUID) {
+        listPicked = id
+        captionScreen = .main
+        withAnimation(.snappy) { panel = .captionList }
+    }
+
+    private func deleteFromPanel(_ id: UUID) {
+        closePanel()
+        removeText(id)
+    }
+
+    private func applyToAll(_ id: UUID) {
+        guard let like = texts.first(where: { (t: EditText) -> Bool in t.id == id }) else { return }
+        remember()
+        changeEveryCaption { (t: inout EditText) in
+            t.takeLook(from: like)
+            t.byHand = nil   // (the two layers at one height: one's lifted over the other again)
+        }
+        UISelectionFeedbackGenerator().selectionChanged()
+        flash("Every caption looks like this one now.")
+    }
+
+    private var toolsSheet: some View {
         VStack(spacing: 10) {
             // where it is and how long, said as the trim strip says it ("0:11 · 0:24 of 0:30")
             timeRow
@@ -1559,7 +1656,10 @@ struct MultiClipEditor: View {
         if !edits.changed { edits.touched() }
     }
 
-    private func midEdit() -> Bool { barGrab != nil || typing != nil || recording || overlayHeld }
+    private func midEdit() -> Bool {
+        if barGrab != nil || typing != nil || recording || fingerHeld { return true }
+        return captionScreen != .main && editingCaption != nil   // the wheel and the eyedropper: one step
+    }
 
     private func recordEdit() { edits.record(snap) }
     /// Every text, caption, sticker, sound and overlay moved as far as the clip it starts over has moved.
@@ -1647,6 +1747,8 @@ struct MultiClipEditor: View {
         if let id = selectedSound, !s.sounds.contains(where: { (x: EditSound) -> Bool in x.id == id }) { selectedSound = nil; gone = true }
         if let id = selectedPip, !s.pips.contains(where: { (p: EditPip) -> Bool in p.id == id }) { selectedPip = nil; gone = true }
         if s.recipe.value == nil, panel == .recipe || panel == .recipeSteps { gone = true }
+        captionScreen = .main
+        movedAll = nil
         if gone { panel = nil }
     }
 
@@ -1711,8 +1813,12 @@ struct MultiClipEditor: View {
     /// The whole video as one bar, a stretch for each clip, to drag along (19 Nov: it could only be played through or
     /// jumped to a clip's start, not scrubbed as a single video can). The preview follows the finger, held still;
     /// let go, it plays on if it was playing.
-    private var scrubBar: some View {
-        GeometryReader { g in
+    private var scrubBar: some View { Live { scrubStrip() } }
+
+    private func scrubStrip(slim: Bool = false) -> some View {
+        let tall: CGFloat = slim ? 22 : 26, room: CGFloat = slim ? 28 : 38
+        let lineWide: CGFloat = slim ? 2 : 3.5, lineTall: CGFloat = slim ? 28 : 36, round: CGFloat = slim ? 3 : 6
+        return GeometryReader { g in
             let w = g.size.width, span = max(total, 0.01)
             ZStack(alignment: .leading) {
                 // the clips' frames along it, as the single editor's strip shows its one clip's; the one picked lit
@@ -1720,25 +1826,25 @@ struct MultiClipEditor: View {
                 ZStack(alignment: .leading) {
                     ForEach(Array(clips.enumerated()), id: \.element.id) { i, c in
                         ClipThumb(clip: c)
-                            .frame(width: max(2, w * CGFloat(c.span / span) - 2), height: 26)
-                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(.black.opacity(c.id == selected || selected == nil ? 0 : 0.35)))
+                            .frame(width: max(2, w * CGFloat(c.span / span) - 2), height: tall)
+                            .clipShape(RoundedRectangle(cornerRadius: round, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: round, style: .continuous).fill(.black.opacity(c.id == selected || selected == nil ? 0 : 0.35)))
                             .offset(x: w * CGFloat(starts[i] / span))
                     }
                 }
-                .frame(width: w, height: 26, alignment: .leading).clipped()
-                .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(.white.opacity(0.45), lineWidth: 1))
+                .frame(width: w, height: tall, alignment: .leading).clipped()
+                .overlay(RoundedRectangle(cornerRadius: round, style: .continuous).stroke(.white.opacity(slim ? 0 : 0.45), lineWidth: 1))
                 // the song's beats, as yellow ticks (Stage E)
                 ForEach(songBeats.indices, id: \.self) { b in
                     Rectangle().fill(Color.yellow.opacity(0.8)).frame(width: 1, height: 10)
                         .offset(x: w * CGFloat(songBeats[b] / span), y: 14).allowsHitTesting(false)
                 }
                 // where it is: yellow while a finger looks through it, as in the single editor; white as it plays
-                Capsule().fill(wasPlaying != nil ? Color.yellow : Color.white).frame(width: 3.5, height: 36)
+                Capsule().fill(wasPlaying != nil ? Color.yellow : Color.white).frame(width: lineWide, height: lineTall)
                     .shadow(color: .black.opacity(0.6), radius: 2)
-                    .offset(x: min(max(0, w * CGFloat(now / span) - 1.75), w - 3.5))
+                    .offset(x: min(max(0, w * CGFloat(now / span) - lineWide / 2), w - lineWide))
             }
-            .frame(width: w, height: 38)
+            .frame(width: w, height: room)
             .contentShape(Rectangle())
             .gesture(DragGesture(minimumDistance: 0)
                 .onChanged { v in
@@ -1770,7 +1876,7 @@ struct MultiClipEditor: View {
             }
         }
         // thin, over a tool's panel: the panel has the room (design/bigger-preview-mockup.html)
-        .frame(height: 38)
+        .frame(height: room)
     }
 
     /// What the preview's tracks are made of: what's put where, not how loud or how it looks. Two edits alike in this
@@ -1921,101 +2027,152 @@ struct MultiClipEditor: View {
         return CGRect(x: 0, y: (box.height - h) / 2, width: box.width, height: h)
     }
 
-    /// The overlays showing now, drawn as they'll be in the video; drag one to move it, pinch to size it, tap to change it.
-    /// A caption picked and held up while paused: the others aren't drawn with it (21 Nov: two drawn over each other
-    /// after a split).
-    private var heldCaption: UUID? {
-        guard !playing, let id = selectedText, texts.contains(where: { (x: EditText) -> Bool in x.id == id && x.kind == "caption" && x.hidden != true }) else { return nil }
-        return id
-    }
-
-    private var overlayLayer: some View {
-        GeometryReader { g in
-            let r = Self.fitted(frameSize, in: g.size), k = r.width / EditOverlays.design
-            // a clip or photo over it: drawn in the video itself; here, something to drag and pinch where it is
-            ForEach(pips) { p in
-                if now >= p.from && now < p.to || p.id == selectedPip {
-                    let m = p.place(at: now)
-                    let w = r.width * m.size, h = w / max(p.aspect, 0.1)
-                    RoundedRectangle(cornerRadius: 4).stroke(p.id == selectedPip ? Color.white : Color.white.opacity(0.01), lineWidth: 2)
-                        .contentShape(Rectangle())
-                        .frame(width: w, height: h)
-                        .position(x: r.minX + m.x * r.width, y: r.minY + m.y * r.height)
-                        .accessibilityLabel("Overlay").accessibilityHint("Double tap to change it; drag to move it")
-                        .accessibilityAddTraits(.isButton)
-                        .accessibilityAction { selectPip(p.id) }
-                        .gesture(DragGesture(minimumDistance: 0)
-                            .onChanged { v in
-                                if pipFrom == nil {
-                                    guard hypot(v.translation.width, v.translation.height) > 2 else { return }
-                                    pipFrom = m
-                                }
-                                let start = pipFrom ?? m
-                                setPip(p.id) { $0.x = min(1, max(0, start.x + Double(v.translation.width / max(r.width, 1))))
-                                               $0.y = min(1, max(0, start.y + Double(v.translation.height / max(r.height, 1)))) }
-                            }
-                            .onEnded { _ in
-                                if pipFrom == nil { selectPip(p.id) }
-                                pipFrom = nil
-                            })
-                        .simultaneousGesture(MagnificationGesture()
-                            .onChanged { s in
-                                if pipFrom == nil { pipFrom = m }
-                                let start = pipFrom ?? m
-                                setPip(p.id) { $0.size = min(1, max(0.12, start.size * Double(s))) }
-                            }
-                            .onEnded { _ in pipFrom = nil })
-                }
-            }
-            ForEach(CaptionLayers.placed(texts, sounds: sounds)) { item in
-                let on = item.id == selectedText
-                // the one picked is held up while it's edited; playing, only what's on at the line shows (21 Nov: the
-                // picked caption stayed up while the others played under it)
-                if (on && !playing) || (now >= item.from && now < item.to && !(item.kind == "caption" && heldCaption != nil)) {
-                    // a calorie count held still shows its number, not the 0 it counts up from (21 Nov: "always 0":
-                    // put on at the line, it was drawn at the very start of its count); playing, it counts as posted
-                    EditTextView(item: item, at: item.kind == "calories" && !playing ? max(now, item.from + 1.3) : now).padding(24)
-                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(style: StrokeStyle(lineWidth: 2, dash: [6])).foregroundStyle(on ? Color.white : Color.clear).padding(14))
-                        // sized with its dashed box, so the box grows with it (20 Nov: the box stayed small)
-                        .scaleEffect(k * CGFloat(item.size))
-                        .position(x: r.minX + item.x * r.width, y: r.minY + item.y * r.height)
-                        .accessibilityLabel(item.kind == "sticker" ? "Sticker \(item.text)" : item.barLabel)
-                        .accessibilityHint("Double tap to change it; drag to move it")
-                        .accessibilityAddTraits(.isButton)
-                        .accessibilityAction { selectText(item.id) }
-                        // One gesture, from the first touch: a touch that doesn't move is a tap. (20 Nov: a tap and a
-                        // drag on it held the first move back while the phone worked out which it was.)
-                        .gesture(DragGesture(minimumDistance: 0)
-                            .onChanged { v in
-                                guard let i = texts.firstIndex(where: { $0.id == item.id }) else { return }
-                                if moveFrom == nil {
-                                    guard hypot(v.translation.width, v.translation.height) > 2 else { return }
-                                    moveFrom = (item.x, item.y)   // (from where it's drawn, which can be raised over a voiceover's)
-                                }
-                                let start = moveFrom ?? (item.x, item.y)
-                                texts[i].x = min(0.95, max(0.05, start.0 + Double(v.translation.width / max(r.width, 1))))
-                                texts[i].y = min(0.95, max(0.05, start.1 + Double(v.translation.height / max(r.height, 1))))
-                            }
-                            .onEnded { _ in
-                                if moveFrom == nil { selectText(item.id) }
-                                moveFrom = nil
-                            })
-                        .simultaneousGesture(MagnificationGesture()
-                            .onChanged { m in
-                                guard let i = texts.firstIndex(where: { $0.id == item.id }) else { return }
-                                if sizeFrom == nil { sizeFrom = texts[i].size }
-                                texts[i].size = min(3, max(0.4, (sizeFrom ?? 1) * Double(m)))
-                            }
-                            .onEnded { _ in sizeFrom = nil })
-                }
+    /// What's over the video: the overlays to drag (VideoOverlays), the eyedropper, and what a move did.
+    private var overVideo: some View {
+        ZStack(alignment: .top) {
+            videoLayer
+            if captionScreen == .dropper, let id = editingCaption {
+                VideoDropper(engine: player, frameSize: frameSize, pick: { (hex: String) in pickedColour(id, hex) })
+            } else if let m = movedAll, !full {
+                movedPill(m).padding(.top, 8)
             }
         }
+    }
+
+    private var videoLayer: VideoOverlays {
+        VideoOverlays(clock: clock, texts: texts, sounds: sounds, pips: pips, frameSize: frameSize,
+                      selected: selectedText, selectedPip: selectedPip, playing: playing,
+                      rounded: editingCaption != nil,
+                      held: { (on: Bool) in overlayHeld(on) },
+                      pick: { (id: UUID) in selectText(id) },
+                      pickPip: { (id: UUID) in selectPip(id) },
+                      placed: { (item: EditText, moved: Bool, sized: Bool) in placedByHand(item, moved: moved, sized: sized) },
+                      setPip: { (id: UUID, to: MoveKey) in movePip(id, to) })
+    }
+
+    /// The caption whose panel is open.
+    private var editingCaption: UUID? {
+        guard panel == .text, let id = selectedText else { return nil }
+        let isCaption: Bool = texts.contains { (t: EditText) -> Bool in t.id == id && t.kind == "caption" }
+        return isCaption ? id : nil
+    }
+
+    private func overlayHeld(_ on: Bool) {
+        if on {
+            remember()
+            if player.rate != 0 { player.pause() }
+            playing = false
+            movedAll = nil
+        }
+        fingerHeld = on
+    }
+
+    private func movePip(_ id: UUID, _ to: MoveKey) {
+        setPip(id) { (m: inout MoveKey) in
+            m.x = to.x
+            m.y = to.y
+            m.size = to.size
+        }
+    }
+
+    /// Let go on the video. A caption takes every caption in its layer with it (design/caption-move-mockup.html).
+    private func placedByHand(_ item: EditText, moved: Bool, sized: Bool) {
+        guard let mine = texts.first(where: { (t: EditText) -> Bool in t.id == item.id }) else { return }
+        let put: (inout EditText) -> Void = { (t: inout EditText) in
+            if moved {
+                t.x = item.x
+                t.y = item.y
+            }
+            if sized { t.size = item.size }
+        }
+        guard mine.kind == "caption" else {
+            changeText(item.id, put)
+            return
+        }
+        let voices: Set<UUID> = CaptionLayers.voiceIDs(sounds)
+        let layer: UUID? = CaptionLayers.track(mine, voices: voices)
+        var was: [UUID: Placing] = [:]
+        var count = 0
+        changeEveryCaption { (t: inout EditText) in
+            guard CaptionLayers.track(t, voices: voices) == layer else { return }
+            if was[t.id] == nil {
+                was[t.id] = Placing(x: t.x, y: t.y, size: t.size, byHand: t.byHand)
+                count += 1
+            }
+            put(&t)
+            if moved && layer == nil { t.byHand = true }
+        }
+        guard count > 1 else { return }
+        let note = MovedAll(caption: item.id, sized: sized && !moved, was: was)
+        movedAll = note
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(4))
+            if movedAll?.id == note.id { movedAll = nil }
+        }
+    }
+
+    private func movedPill(_ m: MovedAll) -> some View {
+        HStack(spacing: 8) {
+            Text(m.sized ? "Sized every caption" : "Moved every caption")
+            Text("·").foregroundStyle(Color.black.opacity(0.4))
+            Button { justThisOne(m) } label: {
+                Text("Just this one").fontWeight(.bold).frame(height: 34).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(Color.black)
+        .padding(.horizontal, 14)
+        .frame(height: 34)
+        .background(Color.white, in: Capsule())
+    }
+
+    private func justThisOne(_ m: MovedAll) {
+        remember()
+        changeEveryCaption { (t: inout EditText) in
+            guard t.id != m.caption, let p = m.was[t.id] else { return }
+            t.x = p.x
+            t.y = p.y
+            t.size = p.size
+            t.byHand = p.byHand
+        }
+        movedAll = nil
+    }
+
+    private func changeText(_ id: UUID, _ edit: (inout EditText) -> Void) {
+        guard let i = texts.firstIndex(where: { (t: EditText) -> Bool in t.id == id }) else { return }
+        var t: EditText = texts[i]
+        edit(&t)
+        if t != texts[i] { texts[i] = t }
+    }
+
+    /// Every caption, and those kept of what's trimmed off, which come back looking the same.
+    private func changeEveryCaption(_ edit: (inout EditText) -> Void) {
+        var all: [EditText] = texts
+        for i in all.indices where all[i].kind == "caption" { edit(&all[i]) }
+        texts = all
+        var kept: [EditText] = cutWords
+        for i in kept.indices { edit(&kept[i]) }
+        if kept != cutWords { cutWords = kept }
+        var laid: [EditSound] = sounds
+        for k in laid.indices {
+            guard var cut = laid[k].cut else { continue }
+            for i in cut.indices { edit(&cut[i]) }
+            laid[k].cut = cut
+        }
+        if laid != sounds { sounds = laid }
+    }
+
+    private func pickedColour(_ id: UUID, _ hex: String) {
+        let part: CaptionPart = captionPart
+        changeText(id) { (t: inout EditText) in t.paint(part, hex: hex) }
     }
 
     private func selectText(_ id: UUID) {
         selected = nil
         selectedText = id
-        player.pause()
+        captionScreen = .main
+        player.pause(); playing = false
         if let t = texts.first(where: { $0.id == id }), now < t.from || now >= t.to { seek(t.from + 0.01) }
         withAnimation(.snappy) { panel = .text }
     }
@@ -2533,7 +2690,6 @@ struct MultiClipEditor: View {
                     Button {
                         let length = SoundEffects.length(name)
                         remember()
-                        remember()
                         sounds.append(EditSound(kind: "effect", name: name, from: now, length: max(0.05, min(length, total - now)), full: length))
                         UISelectionFeedbackGenerator().selectionChanged()
                         flash("\(name) added at \(Self.code(now)). It's the new bar above: tap it to move or change it.")
@@ -2973,6 +3129,39 @@ struct MultiClipEditor: View {
         if let k = clips[i].moves.firstIndex(where: { abs($0.at - at) < 0.12 }) { clips[i].moves[k] = m } else { clips[i].moves.append(m) }
     }
 
+    /// The colours saved for captions, for text too.
+    private func savedTextColours(_ item: EditText) -> some View {
+        let id: UUID = item.id
+        return ForEach(SavedColours.shared.list, id: \.self) { (s: SavedColours.Saved) in
+            Button { useForText(id, s) } label: {
+                RoundedRectangle(cornerRadius: 5, style: .continuous).fill(StoryArt.color(s.hex).opacity(max(0.12, s.alpha)))
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Saved colour \(s.hex)")
+        }
+    }
+
+    private func useForText(_ id: UUID, _ s: SavedColours.Saved) {
+        changeText(id) { (t: inout EditText) in
+            t.colour = s.hex
+            t.colourAlpha = s.alpha < 1 ? s.alpha : nil
+        }
+    }
+
+    private func textOpacity(_ item: EditText) -> some View {
+        let id: UUID = item.id
+        let alpha: Double = item.colourAlpha ?? 1
+        return HStack(spacing: 12) {
+            Text("Opacity").font(.system(size: 12))
+            ThinSlider(name: "Opacity", value: alpha, range: 0...1, held: { (_: Bool) in },
+                       set: { (v: Double) in changeText(id) { (t: inout EditText) in t.colourAlpha = v } })
+            Text("\(Int((alpha * 100).rounded()))%").font(.system(size: 12, weight: .medium, design: .monospaced))
+                .frame(width: 40, alignment: .trailing)
+        }
+        .foregroundStyle(Color.white)
+    }
+
     private func addText() {
         player.pause(); playing = false
         remember()
@@ -3002,7 +3191,7 @@ struct MultiClipEditor: View {
     /// left, its looks and colours over the keyboard (as Instagram's and CapCut's are).
     private func typingView(_ k: Int) -> some View {
         let item = texts[k]
-        let ink = EditText.colour(item.colour)
+        let ink = EditText.colour(item.colour).opacity(item.colourAlpha ?? 1)
         let words = Binding(get: { texts.indices.contains(k) ? texts[k].text : "" }, set: { if texts.indices.contains(k) { texts[k].text = $0 } })
         let field = TextField("Type something", text: words, axis: .vertical)
             .font(EditText.font(item.font, size: 38 * CGFloat(item.size)))
@@ -3065,6 +3254,7 @@ struct MultiClipEditor: View {
                             ColorPicker("Any colour", selection: Binding(get: { EditText.colour(texts.indices.contains(k) ? texts[k].colour : "white") },
                                                                          set: { c in if texts.indices.contains(k) { texts[k].colour = Self.hex(c) } }), supportsOpacity: false)
                                 .labelsHidden().frame(width: 30, height: 30)
+                            savedTextColours(item)
                             ForEach(EditText.palette, id: \.self) { c in
                                 Circle().fill(StoryArt.color(c)).frame(width: 28, height: 28)
                                     .overlay(Circle().stroke(.white.opacity(0.75), lineWidth: 2))
@@ -3076,6 +3266,7 @@ struct MultiClipEditor: View {
                         }
                         .padding(.vertical, 2)
                     }
+                    textOpacity(item)
                 }
                 .padding(.horizontal, 12).padding(.bottom, 10)
             }
@@ -3320,36 +3511,6 @@ struct MultiClipEditor: View {
             } else if item.kind != "calories" && item.kind != "card" {
                 TextField(item.kind == "caption" ? "What's said" : "Text", text: Binding(get: { texts.indices.contains(k) ? texts[k].text : "" }, set: { if texts.indices.contains(k) { setText(k, $0) } }), axis: .vertical)
                     .lineLimit(1...3).padding(10).background(Color(white: 0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-            if item.kind == "caption" {
-                // this caption's own look (21 Nov: each line can have its own); Apply to all gives every caption it
-                HStack(spacing: 6) {
-                    ForEach(EditText.captionStyles, id: \.self) { st in chip(st, on: item.style == st) { texts[k].style = st } }
-                    Spacer(minLength: 0)
-                }
-                HStack(spacing: 10) {
-                    ForEach(EditText.highlights, id: \.self) { c in
-                        Circle().fill(c == "none" ? Color.clear : EditText.colour(c)).frame(width: 26, height: 26)
-                            .overlay { if c == "none" { Image(systemName: "nosign").font(.system(size: 15, weight: .bold)).foregroundStyle(.white) } }
-                            .overlay(Circle().stroke(.white, lineWidth: (item.highlight ?? "yellow") == c ? 3 : 1))
-                            .onTapGesture { texts[k].highlight = c }
-                            .accessibilityLabel(c == "none" ? "No highlight" : "Highlight " + c)
-                    }
-                    Spacer()
-                }
-                segments([("top", "Top"), ("middle", "Middle"), ("bottom", "Bottom")], item.y < 0.35 ? "top" : (item.y < 0.62 ? "middle" : "bottom")) { w in
-                    texts[k].y = w == "top" ? 0.2 : (w == "middle" ? 0.5 : 0.76)
-                }
-                HStack(spacing: 8) {
-                    wide("Apply to all", "square.stack.3d.down.right") {
-                        let l = texts[k]
-                        for i in texts.indices where texts[i].kind == "caption" {
-                            texts[i].style = l.style; texts[i].highlight = l.highlight; texts[i].size = l.size; texts[i].y = l.y; texts[i].x = l.x
-                        }
-                        flash("Every caption looks like this one now.")
-                    }
-                    wide("Edit captions", "list.bullet") { listPicked = item.id; withAnimation(.snappy) { panel = .captionList } }
-                }
             }
             HStack(spacing: 10) {
                 Image(systemName: "textformat.size.smaller").foregroundStyle(.secondary)
