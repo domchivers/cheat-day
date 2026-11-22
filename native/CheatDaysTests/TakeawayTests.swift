@@ -90,6 +90,27 @@ final class TakeawayTests: XCTestCase {
         XCTAssertEqual(Assistant.carriedPhotos(turns).count, 1, "asked about by name")
     }
 
+    /// 22 Nov, "it forgot I added the photo": the router's "log" and "other" both went on to the planner, for the "?".
+    @MainActor func testAReceiptsFollowUpStaysWithThePhoto() {
+        func chat(_ said: String, answered: JSON? = nil) -> [Assistant.Turn] {
+            [Assistant.Turn(me: true, text: "Everything we ordered", images: [UIImage()]),
+             Assistant.Turn(me: false, text: "Check it below", result: answered),
+             Assistant.Turn(me: true, text: said)]
+        }
+        let said = "Wanted the stinky tofu for myself everything else around half or what do you recommend?"
+        for intent in ["log", "other", "choose"] {
+            XCTAssertTrue(Takeaway.aboutPhotos(chat(said), intent: intent, restaurant: "Noodle & BBQ"), intent)
+        }
+        XCTAssertTrue(Takeaway.aboutPhotos(chat("what should I get, half the noodles?"), intent: "choose", restaurant: "Noodle & BBQ"))
+        XCTAssertFalse(Takeaway.aboutPhotos(chat("Gami tomorrow instead?"), intent: "choose", restaurant: "Gami"), "a place named now")
+        XCTAssertFalse(Takeaway.aboutPhotos(chat("any other places near here?"), intent: "find", restaurant: ""))
+        let card: JSON = ["takeaway": ["restaurant": "Gami"] as JSON]
+        XCTAssertFalse(Takeaway.aboutPhotos(chat("any other options?", answered: card), intent: "choose", restaurant: "Gami"), "the planner's own page")
+        XCTAssertFalse(Takeaway.typed("Noodle & BBQ", in: "half the noodles for me"))
+        XCTAssertTrue(Takeaway.typed("Noodle & BBQ", in: "Think maybe on google it’s Noodle & BBQ"))
+        XCTAssertTrue(Takeaway.typed("Meatworks Co", in: "meatworks?"))
+    }
+
     func testAPlaceTypedInTheMessage() {
         XCTAssertTrue(Takeaway.typed("Bbq noodle bar", in: "Bbq noodle bar is a new place on DoorDash"))
         XCTAssertTrue(Takeaway.typed("KFC", in: "kfc"))

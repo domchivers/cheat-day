@@ -323,13 +323,17 @@ enum Assistant {
         return lines.isEmpty ? "" : "Their training, the last three weeks, newest first (kg × reps):\n\(lines.joined(separator: "\n"))\n"
     }
 
+    /// "In the photo", "the pics I sent".
+    static func mentionsPhotos(_ text: String) -> Bool {
+        text.lowercased().range(of: #"\b(photos?|pics?|pictures?|images?|screenshots?|receipt)\b"#, options: .regularExpression) != nil
+    }
+
     /// The photos a typed message still goes with: the last ones sent, until the planner has answered something typed
     /// after them (the chat's moved on to a restaurant), or whenever the message mentions them.
     static func carriedPhotos(_ turns: [Turn]) -> [UIImage] {
         let before: [Turn] = Array(turns.dropLast())
         guard let last = turns.last, let at = before.lastIndex(where: { (t: Turn) -> Bool in t.me && !t.images.isEmpty }) else { return [] }
-        let aboutThem = #"\b(photos?|pics?|pictures?|images?|screenshots?)\b"#
-        if last.text.lowercased().range(of: aboutThem, options: .regularExpression) != nil { return before[at].images }
+        if mentionsPhotos(last.text) { return before[at].images }
         // (the first answer after them is their own)
         let later = before[(at + 1)...].filter { (t: Turn) -> Bool in !t.me }.dropFirst()
         let movedOn: Bool = later.contains { (t: Turn) -> Bool in Takeaway.isPlanned(t.result) }

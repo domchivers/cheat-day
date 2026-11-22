@@ -205,4 +205,28 @@ final class SteadyTests: XCTestCase {
         // weighed raw: its numbers are the raw weight's, so it isn't asked for (18 Nov)
         XCTAssertEqual(Assistant.worthWeighing(card([part("Chicken breast, cooked, from 147 g raw", 110, kcal: 144, p: 33, c: 0, f: 1)])), [], "a part weighed raw isn't weighed again")
     }
+
+    /// 22 Nov, a shared order's receipt: "everything else around half" was outside the full serves' ranges, so it went back up.
+    func testHalfOfTheOrderIsTheirAmount() {
+        func part(_ name: String, _ grams: Double, _ kcal: Double) -> JSON {
+            ["name": name, "grams": grams, "kcal": kcal, "protein_g": 10.0, "carbs_g": 10.0, "fat_g": 5.0]
+        }
+        func ranged(_ name: String, _ grams: Double, _ kcal: Double) -> JSON {
+            var p: JSON = part(name, grams, kcal)
+            p["low"] = grams * 0.8
+            p["high"] = grams * 1.2
+            return p
+        }
+        let full: [JSON] = [ranged("Spicy lamb skewers", 250, 580), ranged("Stinky tofu", 80, 100), ranged("Chicken noodles", 750, 850)]
+        let before: JSON = ["parts": full]
+        let halved: [JSON] = [part("Spicy lamb skewers", 125, 290), part("Stinky tofu", 80, 100), part("Chicken noodles", 375, 425)]
+        let said = "Wanted the stinky tofu for myself everything else around half or what do you recommend?"
+        let out = Assistant.held(["parts": halved], before: before, said: said)
+        XCTAssertEqual(list(out.estimate["parts"]).map { num($0["grams"]) ?? 0 }, [125, 80, 375])
+        XCTAssertTrue(out.notes.isEmpty)
+        // only the dish they named
+        let one = Assistant.held(["parts": halved], before: before, said: "half the noodles")
+        XCTAssertEqual(list(one.estimate["parts"]).map { num($0["grams"]) ?? 0 }, [200, 80, 375])
+        XCTAssertFalse(Assistant.saysShare("a quarter pounder"))
+    }
 }

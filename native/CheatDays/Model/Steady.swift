@@ -18,6 +18,18 @@ extension Assistant {
         return (a, b)
     }
 
+    /// How much of it was theirs, without a figure: "around half", "for myself", "we shared it".
+    static func saysShare(_ said: String) -> Bool {
+        let shares = #"\b(half|halves|halved|a third|two thirds|a quarter(?! pounder)|three quarters|shared|sharing|split|for myself|to myself)\b"#
+        return said.lowercased().range(of: shares, options: .regularExpression) != nil
+    }
+
+    /// The share is of the whole order, not one dish.
+    static func saysEverything(_ said: String) -> Bool {
+        let all = #"\b(everything|the rest|all of (it|them)|each|the lot|whole (thing|order|table))\b"#
+        return said.lowercased().range(of: all, options: .regularExpression) != nil
+    }
+
     /// A weight or a count in what they said ("box was around 150 g", "I had 10", "6 pieces"): numbers that outrank
     /// anything judged from a photo. A size ("pieces about 1.5 cm") isn't one: it narrows the range, it doesn't fix it.
     static func givesAmount(_ said: String) -> Bool {
@@ -189,6 +201,14 @@ extension Assistant {
             return clauses.contains { c in c.contains { a in w.contains { $0.hasPrefix(a) || a.hasPrefix($0) } } }
         }
         let anyGiven = saysAmount && news.contains(where: given)
+        // "everything else around half": their share, so under the range the full order had. It's every part's when they
+        // say everything or name none, else the parts they name ("half the noodles").
+        let sharing: Bool = saysShare(said) && !again
+        func inWords(_ p: JSON) -> Bool {
+            let w: [String] = FoodTable.words(str(p["name"])).filter { (x: String) -> Bool in x.count >= 4 }
+            return saidWords.contains { (a: String) -> Bool in w.contains { (x: String) -> Bool in x.hasPrefix(a) || a.hasPrefix(x) } }
+        }
+        let shareOfAll: Bool = sharing && (saysEverything(said) || !news.contains(where: inWords))
         var taken = Set<Int>(), match: [Int: JSON] = [:]
         for (i, p) in news.enumerated() {
             let n = str(p["name"]).lowercased()
@@ -225,6 +245,12 @@ extension Assistant {
             }
             guard let wasG else {   // new to this chat: the range it came with
                 if let fresh { keep(fresh, locked: false) }
+                return p
+            }
+            if sharing && !amount && abs(wasG - g) >= 1 && g > 0 && (shareOfAll || inWords(p0)) {
+                var about: (low: Double, high: Double) = (g * 0.8, g * 1.2)
+                if let f = fresh, f.low <= g, f.high >= g { about = f }
+                keep(about, locked: false)
                 return p
             }
             // nothing new from them: as it was

@@ -526,7 +526,14 @@ enum Takeaway {
     static func typed(_ name: String, in text: String) -> Bool {
         let t: String = text.lowercased(), n: String = name.lowercased()
         guard !n.isEmpty else { return false }
-        return t.contains(n) || words(n).contains { (w: String) -> Bool in t.contains(w) }
+        func bare(_ x: String) -> [String] {
+            x.replacingOccurrences(of: "’", with: "'").replacingOccurrences(of: "'", with: "")
+                .components(separatedBy: CharacterSet.alphanumerics.inverted).filter { (w: String) -> Bool in !w.isEmpty && w != "the" }
+        }
+        // whole words: "half the noodles" doesn't name Noodle & BBQ
+        let saidWords: [String] = bare(t), nameWords: [String] = bare(n)
+        guard let first = nameWords.first else { return false }
+        return saidWords.contains(first) || t.contains(n)
     }
 
     /// Saying something on a planned card isn't there to order ("No wings on DoorDash"), not that they didn't eat it.
@@ -535,6 +542,21 @@ enum Takeaway {
         if t.range(of: #"\b(had|ate|eaten|didn't have|didn't eat)\b"#, options: .regularExpression) != nil { return false }
         let gone = #"\b(no|not|isn't|aren't|don't|doesn't|can't)\b.*\b(doordash|door dash|uber|menulog|menu|app|listed|available|see|sell)\b|\bsold out\b"#
         return t.range(of: gone, options: .regularExpression) != nil
+    }
+
+    /// A typed message that's about the photos just read, not a restaurant's menu to look up: "Wanted the stinky tofu
+    /// for myself everything else around half or what do you recommend?" under the receipt was planned from Noodle &
+    /// BBQ's menu online, which "didn't have" the tofu on the receipt (22 Nov). The place was only still in mind.
+    static func aboutPhotos(_ turns: [Assistant.Turn], intent: String, restaurant: String) -> Bool {
+        guard let last = turns.last, last.images.isEmpty, !Assistant.carriedPhotos(turns).isEmpty else { return false }
+        if Assistant.mentionsPhotos(last.text) { return true }
+        // somewhere else to eat, or a place named in this message
+        if intent == "find" || typed(restaurant, in: last.text) { return false }
+        let before: [Assistant.Turn] = Array(turns.dropLast())
+        guard let at = before.lastIndex(where: { (t: Assistant.Turn) -> Bool in t.me && !t.images.isEmpty }) else { return false }
+        // a menu page the planner itself answered: what follows is still the planner's ("any other options?")
+        let own: Assistant.Turn? = before[(at + 1)...].first { (t: Assistant.Turn) -> Bool in !t.me }
+        return !isPlanned(own?.result)
     }
 
     /// The planner's answers: a card, a list of places, or that it couldn't find a menu.
@@ -703,6 +725,7 @@ enum Takeaway {
         guard let route = await Gemini.askClaude("quick", schema: routeSchema, parts: [["text": routeAsk(last.text, earlier: earlier, photo: page)]]),
               // choose; or a restaurant named in a question or a wish, nothing they had, in case it's called something else
               photo != nil || ["choose", "find"].contains(str(route["intent"])) || (!str(route["restaurant"]).isEmpty && choosing(last.text) && !(planned && str(route["intent"]) == "other")) else { return nil }
+        if photo == nil && aboutPhotos(turns, intent: str(route["intent"]), restaurant: str(route["restaurant"])) { return nil }
         // "any good lunch spots in South Yarra?": places found on the web, each with the dish that suits them. A delivery
         // app named is where they'd order, not a restaurant: "Some high protein meals on door dash?" looked for DoorDash's
         // own menu and said it couldn't find it (16 Nov).
@@ -970,7 +993,7 @@ enum Takeaway {
         let homeToo = asksForHome(talk)
         // "What if I did a wrap?" at a place with no wraps: said, not the same card again as if it had been heard
         let asked = onMenu(want, menuItems), missing = asked.missing
-        let lead = !missing.isEmpty ? "\(whose(shown)) menu doesn't have \(missing.count == 1 ? "a " + missing[0].lowercased() : missing.joined(separator: " or ").lowercased()), so here's the closest. "
+        let lead = !missing.isEmpty ? "I couldn't see \(missing.joined(separator: " or ").lowercased()) on \(whose(shown)) menu online, so here's the closest. If it's there, send a screenshot. "
                  : !asked.ways.isEmpty ? "\(shown) doesn't give numbers for its \(asked.ways[0].lowercased()), so these are on its usual base. "
                  : asked.plain.first(where: { isWay($0.said) || core($0.said) != $0.said }).map { isWay($0.said) ? "On its \($0.said.lowercased()): " : "\(shown) doesn't list a \($0.said.lowercased()), so here's its \($0.dish.lowercased()). " } ?? ""
         let proteinAsked = theirProtein != nil || talk.lowercased().contains("protein") || homeToo
