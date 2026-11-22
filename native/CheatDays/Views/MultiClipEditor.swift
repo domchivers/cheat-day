@@ -294,7 +294,7 @@ struct MultiClipEditor: View {
         }
         // text typed on the video itself, everything else dimmed behind
         .fullScreenCover(isPresented: $templating) {
-            TemplateMaker(clips: clips, make: { t, c, s, m in Task { @MainActor in await makeTemplate(t, c, s, m) } }, close: { templating = false })
+            TemplateMaker(clips: clips, frame: look, swap: proxies, make: { t, c, s, m in Task { @MainActor in await makeTemplate(t, c, s, m) } }, close: { templating = false })
         }
         .fullScreenCover(isPresented: Binding(get: { typing != nil }, set: { if !$0 { endTyping() } })) {
             if let k = texts.firstIndex(where: { $0.id == typing }) { typingView(k) }
@@ -3757,14 +3757,10 @@ struct MultiClipEditor: View {
         templating = false
         player.pause(); joining = true
         defer { joining = false }
-        var song: EditSound?, beats: [Double] = []
-        if let s = Music.all.first(where: { $0.id == t.song }), let mix = await SongMix.make(s, song: 1, clip: 1) {
-            let found = await Beats.find(mix.file, from: mix.from, length: mix.span)
-            beats = found.map { $0 - mix.from }
-            var made = EditSound(kind: "song", name: s.title, file: mix.file, from: 0, start: mix.from, length: mix.span, full: mix.from + mix.span, beats: found)
-            Self.runToEnd(&made, loopFrom: mix.from)
-            song = made
-        }
+        // (got as the preview got it, so what's made is what played)
+        let music: TemplateMusic? = await TemplateMusic.load(t)
+        let song: EditSound? = music?.song
+        let beats: [Double] = music?.beats ?? []
         let laid = EditTemplate.lay(picked, slots: slots, beats: beats, join: t.join, look: t.look)
         guard !laid.isEmpty else { return }
         let long = ClipJoin.total(laid)

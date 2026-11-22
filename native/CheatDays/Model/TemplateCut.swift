@@ -1,0 +1,149 @@
+import AVFoundation
+import UIKit
+
+/// A template's song and its beats: the same for what plays as it's filled and for what's made.
+struct TemplateMusic {
+    var song: EditSound
+    /// The beats, seconds into the part that plays.
+    var beats: [Double]
+
+    static func load(_ t: EditTemplate) async -> TemplateMusic? {
+        guard let s = Music.all.first(where: { (x: Song) -> Bool in x.id == t.song }) else { return nil }
+        guard let mix = await SongMix.make(s, song: 1, clip: 1) else { return nil }
+        let found: [Double] = await Beats.find(mix.file, from: mix.from, length: mix.span)
+        var made = EditSound(kind: "song", name: s.title, file: mix.file, from: 0, start: mix.from, length: mix.span,
+                             full: mix.from + mix.span, beats: found)
+        made.loopFrom = mix.from
+        made.toEnd = true
+        made.fadeOut = min(1.2, mix.span / 4)
+        return TemplateMusic(song: made, beats: found.map { (b: Double) -> Double in b - mix.from })
+    }
+}
+
+/// A template as it's filled so far, cut as Make it will cut it (design/templates-pro-mockup.html: the video plays as
+/// it's filled, so it has to be the one that's made).
+struct TemplateCut: Equatable {
+    var clips: [Clip] = []
+    var words: [EditText] = []
+    var sounds: [EditSound] = []
+    /// Which slot each clip is.
+    var slots: [Int] = []
+    var total = 0.0
+
+    /// The filled slots' clips, each starting where it was chosen to, one used twice a copy of its own.
+    static func picked(library: [Clip], filled: [UUID?], moments: [Int: Double]) -> (clips: [Clip], slots: [Int]) {
+        var out: [Clip] = [], at: [Int] = []
+        var seen: Set<UUID> = []
+        for (i, id) in filled.enumerated() {
+            guard let id, var c = library.first(where: { (x: Clip) -> Bool in x.id == id }) else { continue }
+            if !seen.insert(id).inserted { c.id = copy(of: id, slot: i) }
+            if let start = moments[i] {
+                c.start = min(max(0, start), max(0, c.length - 0.05))
+                c.end = c.length
+            }
+            out.append(c)
+            at.append(i)
+        }
+        return (out, at)
+    }
+
+    /// The same id for the same copy each time it's cut again, so the preview isn't started again for it.
+    static func copy(of id: UUID, slot: Int) -> UUID {
+        var bytes: uuid_t = id.uuid
+        bytes.15 = bytes.15 &+ UInt8(truncatingIfNeeded: slot + 1)
+        bytes.14 = bytes.14 ^ 0xA5
+        return UUID(uuid: bytes)
+    }
+
+    static func make(_ t: EditTemplate, library: [Clip], filled: [UUID?], moments: [Int: Double],
+                     slots: [EditTemplate.Slot], music: TemplateMusic?) -> TemplateCut {
+        let chosen: (clips: [Clip], slots: [Int]) = picked(library: library, filled: filled, moments: moments)
+        var clips: [Clip] = [], kept: [EditTemplate.Slot] = [], at: [Int] = []
+        for (n, i) in chosen.slots.enumerated() where slots.indices.contains(i) {
+            clips.append(chosen.clips[n])
+            kept.append(slots[i])
+            at.append(i)
+        }
+        guard !clips.isEmpty else { return TemplateCut() }
+
+        var out = TemplateCut()
+        out.clips = EditTemplate.lay(clips, slots: kept, beats: music?.beats ?? [], join: t.join, look: t.look)
+        out.slots = at
+        out.total = ClipJoin.total(out.clips)
+        if var song = music?.song {
+            song.length = max(0.5, out.total)
+            out.sounds = [song]
+        }
+        var words: [EditText] = EditTemplate.labels(out.clips, slots: kept)
+        for i in words.indices { words[i].id = label(i) }
+        out.words = words
+        return out
+    }
+
+    /// The preview's labels keep their ids as they're cut again.
+    private static func label(_ i: Int) -> UUID {
+        var bytes: uuid_t = (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+        bytes.0 = 0x7E
+        bytes.15 = UInt8(truncatingIfNeeded: i)
+        return UUID(uuid: bytes)
+    }
+
+    /// Where a slot's clip starts in it; nil for an empty slot.
+    func start(of slot: Int) -> Double? {
+        guard let n = slots.firstIndex(of: slot) else { return nil }
+        let starts: [Double] = ClipJoin.starts(clips)
+        return starts.indices.contains(n) ? starts[n] : nil
+    }
+
+    /// A slot's clip as it's cut.
+    func clip(of slot: Int) -> Clip? {
+        guard let n = slots.firstIndex(of: slot), clips.indices.contains(n) else { return nil }
+        return clips[n]
+    }
+}
+
+/// The templates' cards, playing on the edit's own clips.
+enum TemplateReel {
+    static let rate = 10.0      // pictures a second
+    static let seconds = 2.0    // of each clip
+    static let most = 7         // clips at most
+
+    /// How long a template runs, about: half a second a beat.
+    static func length(_ slots: [EditTemplate.Slot]) -> Double {
+        Double(slots.reduce(0) { (sum: Int, s: EditTemplate.Slot) -> Int in sum + max(1, s.beats) }) * 0.5
+    }
+
+    /// The slot showing at a moment, how far into it, and how far through the whole.
+    static func at(_ seconds: Double, slots: [EditTemplate.Slot]) -> (slot: Int, into: Double, through: Double) {
+        let whole: Double = length(slots)
+        guard whole > 0 else { return (0, 0, 0) }
+        let t: Double = seconds - (seconds / whole).rounded(.down) * whole
+        var start = 0.0
+        for (i, s) in slots.enumerated() {
+            let lasts: Double = Double(max(1, s.beats)) * 0.5
+            if t < start + lasts { return (i, t - start, t / whole) }
+            start += lasts
+        }
+        return (slots.count - 1, 0, 1)
+    }
+
+    /// A couple of seconds of a clip, small, from the part kept.
+    static func frames(_ c: Clip) async -> [CGImage] {
+        let gen = AVAssetImageGenerator(asset: AVURLAsset(url: c.source))
+        gen.appliesPreferredTrackTransform = true
+        gen.maximumSize = CGSize(width: 240, height: 240)
+        let near = CMTime(seconds: 0.5 / rate, preferredTimescale: 600)
+        gen.requestedTimeToleranceBefore = near
+        gen.requestedTimeToleranceAfter = near
+        let lasts: Double = c.still ? 0.1 : min(seconds, c.duration)
+        let from: Double = c.start + max(0, c.duration - lasts) * 0.4
+        let count: Int = max(1, Int(lasts * rate))
+        var out: [CGImage] = []
+        for i in 0..<count {
+            if Task.isCancelled { break }
+            let time = CMTime(seconds: from + Double(i) / rate, preferredTimescale: 600)
+            if let img = try? await gen.image(at: time).image { out.append(img) }
+        }
+        return out
+    }
+}

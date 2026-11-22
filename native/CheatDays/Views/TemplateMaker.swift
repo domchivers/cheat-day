@@ -1,29 +1,47 @@
+import CoreMedia
 import PhotosUI
 import SwiftUI
 
-/// Templates, from the editor (21 Nov, design/templates-mockup.html): pick one, then fill its slots with clips (the
-/// edit's own, or more from Photos), the words on each from the log. Make it hands the template, the clips in slot
-/// order and their slots back to the editor, which cuts them on the beat; all of it stays editable after.
+/// Templates, from the editor (design/templates-pro-mockup.html; first 21 Nov, design/templates-mockup.html): pick
+/// one that's playing, then fill its slots with clips as it plays, change the words, and choose each one's moment.
+/// Make it hands the template, the clips in slot order and their slots back to the editor, which cuts them on the
+/// beat as the preview did; all of it stays editable after.
 struct TemplateMaker: View {
     var clips: [Clip]
+    /// The edit's shape, and the smaller copies of its 4K clips, for what plays here.
+    var frame: EditLook = EditLook()
+    var swap: [URL: URL] = [:]
     var make: (EditTemplate, [Clip], [EditTemplate.Slot], JSON?) -> Void
     var close: () -> Void
 
     @State private var picked: EditTemplate?
+    @State private var log: EditTemplate.Log?
     @State private var library: [Clip] = []
     @State private var filled: [UUID?] = []          // each slot's clip, from the library
+    @State private var edited: [Int: EditTemplate.Slot] = [:]   // the words changed, by slot
+    @State private var moments: [Int: Double] = [:]  // where each slot's clip starts, where that's been chosen
     @State private var slotOn = 0
+    @State private var tab = "Clips"
     @State private var recipe: JSON?
     @State private var choosingRecipe = false
     @State private var adding = false
     @State private var picks: [PhotosPickerItem] = []
     @State private var loading = false
-    @State private var thumbs: [UUID: UIImage] = [:]
+    @State private var importFailure: ImportFailure?
+
+    @State private var music: TemplateMusic?
+    @State private var cut = TemplateCut()
+    @State private var player = PreviewEngine()
+    @State private var clock = EditPlayhead()
+    @State private var playing = false
+    @State private var resume = false                // it was playing as a moment began to be dragged
+    @State private var choosing = false              // a moment's being dragged
+    @State private var frameSize = CGSize(width: 1080, height: 1920)
 
     private var store: Store { Store.shared }
 
     /// What the words come from: today's food and workouts, the week before, the weigh-ins.
-    private var log: EditTemplate.Log {
+    private func readLog() -> EditTemplate.Log {
         let since = DayKey.shift(store.today, days: -8)
         let past = list(store.doc["history"]).filter { str($0["date"]) >= since && str($0["date"]) < store.today }
             .map { (date: str($0["date"]), items: list($0["items"])) }
@@ -33,34 +51,102 @@ struct TemplateMaker: View {
         return EditTemplate.Log(today: store.today, items: store.todayItems, history: past, workouts: older + store.todayWorkouts, weights: weights)
     }
 
-    private var slots: [EditTemplate.Slot] { picked?.slots(log, recipe: recipe) ?? [] }
+    /// The slots as the log has them.
+    private var logged: [EditTemplate.Slot] {
+        guard let picked, let log else { return [] }
+        return picked.slots(log, recipe: recipe)
+    }
 
-    @State private var importFailure: ImportFailure?
+    /// The slots with the words that have been changed.
+    private var slots: [EditTemplate.Slot] {
+        var out: [EditTemplate.Slot] = logged
+        for (i, words) in edited where out.indices.contains(i) {
+            out[i].name = words.name
+            out[i].detail = words.detail
+        }
+        return out
+    }
+
+    /// What the video's made of: any of it changed, it's cut again.
+    private struct Making: Equatable {
+        var template: String
+        var library: [Clip]
+        var filled: [UUID?]
+        var moments: [Int: Double]
+        var slots: [EditTemplate.Slot]
+        var song: UUID?
+    }
+
+    private var making: Making {
+        Making(template: picked?.id ?? "", library: library, filled: filled, moments: moments, slots: slots, song: music?.song.id)
+    }
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea().importFailed($importFailure)
-            if let t = picked { filling(t) } else { gallery }
-            if loading { Color.black.opacity(0.4).ignoresSafeArea(); ProgressView().tint(.white) }
-        }
-        .preferredColorScheme(.dark)
-        .onAppear { if library.isEmpty { library = clips } }
-        .task(id: library.map(\.id)) {
-            for c in library where thumbs[c.id] == nil {
-                if let img = await ClipJoin.frame(c, at: c.start) { thumbs[c.id] = img }
+            screen
+            if loading {
+                Color.black.opacity(0.4).ignoresSafeArea()
+                ProgressView().tint(.white)
             }
         }
+        .preferredColorScheme(.dark)
+        .modifier(TemplateLife(appeared: { appeared() }, away: { pause() }, back: { woken() }, gone: { gone() }))
+        .task(id: picked?.id) { await loadMusic() }
+        .onChange(of: making) { (_: Making, _: Making) in recut() }
         .photosPicker(isPresented: $adding, selection: $picks, maxSelectionCount: 10, selectionBehavior: .ordered, matching: .any(of: [.images, .videos]))
-        .onChange(of: picks) { _, now in
-            guard !now.isEmpty else { return }
+        .onChange(of: picks) { (_: [PhotosPickerItem], new: [PhotosPickerItem]) in
+            guard !new.isEmpty else { return }
             picks = []
-            load(now)
+            load(new)
         }
         .sheet(isPresented: $choosingRecipe) {
             AttachPicker(start: 1) { what in
-                if str(what["kind"]) == "meal" { recipe = what; fit() }
+                if str(what["kind"]) == "meal" { useRecipe(what) }
             }
         }
+    }
+
+    @ViewBuilder private var screen: some View {
+        if let t = picked {
+            filling(t)
+        } else if let log {
+            TemplateGallery(clips: library, log: log, pick: { (t: EditTemplate) in open(t) }, close: close)
+        }
+    }
+
+    // MARK: coming and going
+
+    private func appeared() {
+        if log == nil { log = readLog() }
+        if library.isEmpty { library = clips }
+        guard player.onTime == nil else { return }
+        player.onTime = { (t: Double) in
+            clock.time = t
+        }
+        player.onSize = { (size: CGSize) in frameSize = size }
+    }
+
+    private func pause() {
+        player.pause()
+        playing = false
+    }
+
+    private func woken() {
+        Sound.on(.moviePlayback)
+        player.wake()
+    }
+
+    private func gone() {
+        player.shutdown()
+        Sound.on(.moviePlayback)   // (back to the editor, which still wants it)
+    }
+
+    private func loadMusic() async {
+        music = nil
+        guard let t = picked else { return }
+        let made: TemplateMusic? = await TemplateMusic.load(t)
+        if !Task.isCancelled { music = made }
     }
 
     private func load(_ items: [PhotosPickerItem]) {
@@ -79,239 +165,418 @@ struct TemplateMaker: View {
         }
     }
 
-    // MARK: 1 · pick a template
-
-    private var gallery: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("Templates").font(.title3.weight(.heavy))
-                Spacer()
-                Button(action: close) { Image(systemName: "xmark").font(.headline).frame(width: 36, height: 36).background(.white.opacity(0.12), in: Circle()) }
-                    .accessibilityLabel("Close")
-            }
-            .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 8)
-            ScrollView {
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                    ForEach(EditTemplate.all) { t in
-                        let n = t.slots(log, recipe: nil).count
-                        Button { open(t) } label: {
-                            VStack(alignment: .leading, spacing: 0) {
-                                ZStack(alignment: .bottomLeading) {
-                                    LinearGradient(colors: [EditText.colour(t.tint.0), EditText.colour(t.tint.1)], startPoint: .topLeading, endPoint: .bottomTrailing)
-                                        .overlay { Image(systemName: t.icon).font(.system(size: 38, weight: .bold)).foregroundStyle(.white.opacity(0.9)) }
-                                    Text("\(n) clip\(n == 1 ? "" : "s")").font(.caption2.weight(.heavy)).padding(.horizontal, 7).padding(.vertical, 3)
-                                        .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 8, style: .continuous)).padding(8)
-                                }
-                                .frame(height: 130)
-                                Text(t.name).font(.subheadline.weight(.bold)).padding(.horizontal, 10).padding(.top, 8)
-                                Text(t.about).font(.caption2).foregroundStyle(.secondary).lineLimit(2, reservesSpace: true)
-                                    .padding(.horizontal, 10).padding(.top, 2).padding(.bottom, 10)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        }
-                        .buttonStyle(.plain).foregroundStyle(.white)
-                    }
-                }
-                .padding(.horizontal, 12)
-                Text("Pick one, then drop your clips into its slots. The words on each come from what you've logged.")
-                    .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(16)
-            }
-        }
-    }
-
     private func open(_ t: EditTemplate) {
-        picked = t; recipe = nil; slotOn = 0
-        filled = Array(repeating: nil, count: t.slots(log, recipe: nil).count)
+        guard let log else { return }
+        let count: Int = t.slots(log, recipe: nil).count
+        var first: [UUID?] = Array(repeating: nil, count: count)
         // the edit's clips into the slots, in order, to start with
-        for (i, c) in library.prefix(filled.count).enumerated() { filled[i] = c.id }
-        slotOn = filled.firstIndex(where: { $0 == nil }) ?? 0
+        for (i, c) in library.prefix(count).enumerated() { first[i] = c.id }
+        recipe = nil
+        edited = [:]
+        moments = [:]
+        tab = "Clips"
+        cut = TemplateCut()
+        clock.time = 0
+        filled = first
+        slotOn = first.firstIndex(where: { (id: UUID?) -> Bool in id == nil }) ?? 0
+        picked = t
+        Sound.on(.moviePlayback)
         if t.id == "recipe" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { choosingRecipe = true } }
     }
 
-    /// The slots made again (a recipe picked changes how many): clips kept in order, as far as they go.
-    private func fit() {
-        let n = slots.count
-        if filled.count > n { filled = Array(filled.prefix(n)) } else { filled += Array(repeating: nil, count: n - filled.count) }
-        slotOn = min(slotOn, max(0, n - 1))
+    private func leave() {
+        pause()
+        picked = nil
     }
 
-    // MARK: 2 · fill the slots
+    /// A recipe picked changes how many slots there are: clips kept in order, as far as they go.
+    private func useRecipe(_ what: JSON) {
+        recipe = what
+        edited = [:]
+        let count: Int = logged.count
+        if filled.count > count {
+            filled = Array(filled.prefix(count))
+        } else {
+            filled += Array(repeating: nil, count: count - filled.count)
+        }
+        moments = moments.filter { (i: Int, _: Double) -> Bool in i < count }
+        slotOn = min(slotOn, max(0, count - 1))
+    }
+
+    /// Cut again as Make it will cut it, and on playing.
+    private func recut() {
+        guard let t = picked else { return }
+        let began: Bool = cut.clips.isEmpty
+        let made: TemplateCut = TemplateCut.make(t, library: library, filled: filled, moments: moments, slots: slots, music: music)
+        cut = made
+        player.update(clips: made.clips, soundOf: nil, look: frame, sounds: made.sounds, pips: [], swap: swap)
+        frameSize = player.frameSize
+        guard !made.clips.isEmpty else {
+            pause()
+            return
+        }
+        if choosing, let at = made.start(of: slotOn) {
+            show(at + 0.01)
+        } else if began {
+            show(0)
+            play()
+        }
+    }
+
+    private func show(_ t: Double) {
+        player.seek(to: CMTime(seconds: t, preferredTimescale: 600))
+        clock.time = t
+    }
+
+    private func play() {
+        player.play()
+        playing = true
+    }
+
+    private func togglePlay() {
+        if player.rate == 0 { play() } else { pause() }
+    }
+
+    // MARK: filling it
 
     private func filling(_ t: EditTemplate) -> some View {
-        let s = slots
-        return VStack(spacing: 0) {
-            HStack {
-                Button { picked = nil } label: { Image(systemName: "chevron.backward").font(.headline).frame(width: 36, height: 36).background(.white.opacity(0.12), in: Circle()) }
-                    .accessibilityLabel("Back to the templates")
-                Spacer()
-                Text(t.name).font(.headline)
-                Spacer()
-                Text("\(s.count) slots").font(.caption.weight(.semibold)).foregroundStyle(.secondary).frame(width: 52, alignment: .trailing)
-            }
-            .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 10)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) { ForEach(s.indices, id: \.self) { i in slotTile(i, s[i]) } }.padding(.horizontal, 16).padding(.vertical, 4)
-                    }
-                    if t.id == "recipe" {
-                        Button { choosingRecipe = true } label: {
-                            Label(recipe == nil ? "Pick a recipe" : "Recipe: " + str(recipe?["name"]), systemImage: "fork.knife")
-                                .font(.subheadline.weight(.bold)).lineLimit(1).frame(maxWidth: .infinity).frame(height: 40)
-                                .background(.white.opacity(0.12), in: Capsule())
-                        }
-                        .buttonStyle(.plain).padding(.horizontal, 16).padding(.top, 10)
-                    }
-                    heading("The words on each")
-                    VStack(alignment: .leading, spacing: 5) {
-                        ForEach(s.indices, id: \.self) { i in
-                            let line = [s[i].name, s[i].detail].filter { !$0.isEmpty }.joined(separator: " · ")
-                            Text(line.isEmpty ? "Slot \(i + 1)" : line).font(.subheadline.weight(i == slotOn ? .bold : .regular))
-                                .foregroundStyle(i == slotOn ? .white : Color(white: 0.75)).lineLimit(2)
-                                .onTapGesture { slotOn = i }
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    if s.indices.contains(slotOn), let id = filled[safe: slotOn] ?? nil, let k = library.firstIndex(where: { $0.id == id }) {
-                        whichPart(k, beats: s[slotOn].beats)
-                    }
-                    heading("Your clips: tap one for slot \(slotOn + 1)")
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 3), count: 4), spacing: 3) {
-                        ForEach(library) { c in clipTile(c) }
-                        Button { adding = true } label: {
-                            Color(white: 0.14).aspectRatio(3 / 4, contentMode: .fit)
-                                .overlay { Image(systemName: "plus").font(.title3.weight(.bold)) }
-                                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                        }
-                        .buttonStyle(.plain).accessibilityLabel("Add clips from Photos")
-                    }
-                    .padding(.horizontal, 16)
-                    Text("Slots left empty are left out. Everything can be changed in the editor after.")
-                        .font(.caption).foregroundStyle(.secondary).padding(16)
-                }
-                .padding(.bottom, 90)
-            }
+        VStack(spacing: 0) {
+            topBar(t)
+            video
+            sheet(t)
         }
-        .overlay(alignment: .bottom) {
-            let ready = filled.contains { $0 != nil }
+        .foregroundStyle(Color.white)
+    }
+
+    private func topBar(_ t: EditTemplate) -> some View {
+        let ready: Bool = filled.contains { (id: UUID?) -> Bool in id != nil }
+        return HStack(spacing: 12) {
+            Button { leave() } label: {
+                Image(systemName: "chevron.left").font(.system(size: 18, weight: .medium)).frame(width: 44, height: 44).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).accessibilityLabel("Back to the templates")
+            Text(t.name).font(.system(size: 16, weight: .bold)).lineLimit(1)
+            Spacer(minLength: 0)
             Button { finish(t) } label: {
-                Text("Make it").font(.headline).foregroundStyle(.black).frame(maxWidth: .infinity).frame(height: 50)
-                    .background(.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                Text("Make it").font(.subheadline.weight(.bold)).foregroundStyle(Color.black)
+                    .padding(.horizontal, 15).frame(height: 32)
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
             .buttonStyle(.plain).disabled(!ready).opacity(ready ? 1 : 0.4)
-            .padding(.horizontal, 16).padding(.bottom, 10)
+        }
+        .padding(.leading, 6).padding(.trailing, 12)
+        .frame(height: 52)
+    }
+
+    private var video: some View {
+        EditPreviewView(engine: player)
+            .opacity(cut.clips.isEmpty ? 0 : 1)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay { TemplateWords(clock: clock, words: cut.words, frameSize: frameSize, outlined: tab == "Words") }
+            .overlay {
+                if cut.clips.isEmpty { Text("Pick a clip to see it play.").font(.system(size: 13)).foregroundStyle(ProInk.quiet) }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { togglePlay() }
+            .padding(.bottom, 8)
+    }
+
+    private func sheet(_ t: EditTemplate) -> some View {
+        let count: Int = slots.count
+        return ProSheet(title: "Slot \(min(slotOn + 1, count)) of \(count)", left: nil, done: { slotDone(t) },
+                        head: { sheetHead(t) },
+                        main: { sheetMain })
+    }
+
+    private func sheetHead(_ t: EditTemplate) -> some View {
+        VStack(spacing: 0) {
+            Live { transport(t) }
+            slotRow
         }
     }
 
-    private func heading(_ s: String) -> some View {
-        Text(s.uppercased()).font(.caption.weight(.semibold)).tracking(0.6).foregroundStyle(.secondary)
-            .padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 6)
+    private func transport(_ t: EditTemplate) -> some View {
+        let at: String = MultiClipEditor.code(clock.time)
+        let whole: String = MultiClipEditor.code(cut.total)
+        return ZStack {
+            (Text(at).foregroundColor(.white) + Text(" / " + whole).foregroundColor(ProInk.quiet))
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+            HStack(spacing: 0) {
+                Button { togglePlay() } label: {
+                    Image(systemName: playing ? "pause.fill" : "play.fill").font(.system(size: 15))
+                        .frame(width: 40, height: 38, alignment: .leading).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).accessibilityLabel(playing ? "Pause" : "Play")
+                Spacer(minLength: 0)
+                fromWhat(t)
+            }
+        }
+        .padding(.horizontal, 16)
+        .frame(height: 38)
+    }
+
+    /// The song it's cut to; for the recipe, the recipe to change.
+    @ViewBuilder private func fromWhat(_ t: EditTemplate) -> some View {
+        if t.id == "recipe" {
+            Button { choosingRecipe = true } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "fork.knife").font(.system(size: 12))
+                    Text(recipe == nil ? "Pick a recipe" : "Change recipe").font(.system(size: 11))
+                }
+                .foregroundStyle(ProInk.soft).frame(height: 38).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        } else {
+            HStack(spacing: 5) {
+                Image(systemName: "music.note").font(.system(size: 12))
+                Text(music?.song.name ?? "No song yet").font(.system(size: 11)).lineLimit(1)
+            }
+            .foregroundStyle(ProInk.soft)
+            .frame(maxWidth: 118, alignment: .trailing)
+        }
+    }
+
+    private var slotRow: some View {
+        let all: [EditTemplate.Slot] = slots
+        return ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(all.indices, id: \.self) { (i: Int) in slotTile(i, all[i]).id(i) }
+                }
+                .padding(.horizontal, 16)
+            }
+            .onChange(of: slotOn) { (_: Int, new: Int) in
+                withAnimation(.snappy) { proxy.scrollTo(new, anchor: .center) }
+            }
+        }
+        .frame(height: 76)
     }
 
     private func slotTile(_ i: Int, _ s: EditTemplate.Slot) -> some View {
-        let id = filled[safe: i] ?? nil
-        let c = library.first { $0.id == id }
-        return ZStack(alignment: .bottom) {
-            if let c, let img = thumbs[c.id] {
-                Image(uiImage: img).resizable().scaledToFill().frame(width: 68, height: 110).clipped()
-                LinearGradient(colors: [.clear, .black.opacity(0.7)], startPoint: .center, endPoint: .bottom)
-            } else if c != nil {
-                Color(white: 0.2)
-            } else {
-                RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])).foregroundStyle(Color(white: 0.35))
-            }
-            VStack(spacing: 1) {
-                Text(s.name.isEmpty ? "Slot \(i + 1)" : s.name).font(.system(size: 11, weight: .bold)).lineLimit(2).multilineTextAlignment(.center)
-                Text("\(s.beats) beats").font(.system(size: 10)).foregroundStyle(.white.opacity(0.7))
-            }
-            .padding(.horizontal, 4).padding(.bottom, 6)
-            .frame(maxHeight: c == nil ? .infinity : nil)
-        }
-        .frame(width: 68, height: 110)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(.white, lineWidth: i == slotOn ? 2.5 : 0))
-        .overlay(alignment: .topTrailing) {
-            if c != nil {
-                Button { filled[i] = nil; slotOn = i } label: {
-                    Image(systemName: "xmark").font(.system(size: 9, weight: .heavy)).frame(width: 20, height: 20).background(.black.opacity(0.7), in: Circle())
-                }
-                .buttonStyle(.plain).padding(4).accessibilityLabel("Empty this slot")
+        let clip: Clip? = cut.clip(of: i)
+        let seconds: Double = clip?.span ?? Double(max(1, s.beats)) * 0.5
+        return TemplateSlotTile(name: s.name.isEmpty ? "Slot \(i + 1)" : s.name, seconds: seconds, clip: clip, on: i == slotOn,
+                                pick: { pickSlot(i) }, empty: { emptySlot(i) })
+    }
+
+    @ViewBuilder private var sheetMain: some View {
+        ProTabs(names: ["Clips", "Words", "Which part"], on: tab, pick: { (name: String) in pickTab(name) })
+        ProBody(spacing: 8) {
+            switch tab {
+            case "Words": wordsBody
+            case "Which part": momentBody
+            default: clipsBody
             }
         }
-        .contentShape(Rectangle())
-        .onTapGesture { slotOn = i }
+    }
+
+    private func pickTab(_ name: String) {
+        tab = name
+        // (what's being changed, held up to be seen)
+        guard name != "Clips", let at = cut.start(of: slotOn) else { return }
+        pause()
+        show(at + midJoin(slotOn))
+    }
+
+    /// Just past the join into a slot, where its own clip and words are up.
+    private func midJoin(_ slot: Int) -> Double {
+        guard let n = cut.slots.firstIndex(of: slot), n > 0 else { return 0.01 }
+        return ClipJoin.overlap(cut.clips, after: n - 1) + 0.01
+    }
+
+    private func pickSlot(_ i: Int) {
+        slotOn = i
+        guard let at = cut.start(of: i) else { return }
+        if tab != "Clips" {
+            pause()
+            show(at + midJoin(i))
+        } else {
+            show(at + 0.01)
+        }
+    }
+
+    private func emptySlot(_ i: Int) {
+        guard filled.indices.contains(i) else { return }
+        filled[i] = nil
+        moments[i] = nil
+        slotOn = i
+        tab = "Clips"
+    }
+
+    /// The tick: on to the next slot; at the last, it's made.
+    private func slotDone(_ t: EditTemplate) {
+        if slotOn + 1 < filled.count { pickSlot(slotOn + 1) } else { finish(t) }
+    }
+
+    // MARK: its three tabs
+
+    private var clipsBody: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(library) { (c: Clip) in clipTile(c) }
+                addClips
+            }
+        }
     }
 
     private func clipTile(_ c: Clip) -> some View {
-        let at = filled.enumerated().filter { $0.element == c.id }.map { $0.offset + 1 }
-        return Button { put(c.id) } label: {
-            ZStack(alignment: .topTrailing) {
-                Color(white: 0.16).aspectRatio(3 / 4, contentMode: .fit)
-                    .overlay { if let img = thumbs[c.id] { Image(uiImage: img).resizable().scaledToFill() } }
-                    .clipped()
-                if let n = at.first {
-                    Text("\(n)").font(.system(size: 11, weight: .black)).foregroundStyle(.black).frame(width: 19, height: 19)
-                        .background(Color(red: 1, green: 0.84, blue: 0.04), in: Circle()).padding(4)
-                }
-                if !c.still {
-                    Text(EditFlow.clock(c.length)).font(.system(size: 10, weight: .bold)).padding(.horizontal, 4).padding(.vertical, 1)
-                        .background(.black.opacity(0.55), in: Capsule()).padding(4)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        let at: Int? = filled.firstIndex { (id: UUID?) -> Bool in id == c.id }
+        let here: Bool = filled.indices.contains(slotOn) && filled[slotOn] == c.id
+        let number: Int? = here ? slotOn + 1 : at.map { (i: Int) -> Int in i + 1 }
+        return TemplateClipTile(clip: c, number: number, on: here, pick: { put(c.id) })
+    }
+
+    private var addClips: some View {
+        Button { adding = true } label: {
+            Image(systemName: "plus").font(.system(size: 17)).frame(width: 62, height: 84)
+                .background(ProInk.tile, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plain).accessibilityLabel("Add clips from Photos")
     }
 
     /// The clip into the slot that's picked, then on to the next empty one.
     private func put(_ id: UUID) {
         guard filled.indices.contains(slotOn) else { return }
-        filled[slotOn] = id
+        let here: Int = slotOn
+        if filled[here] != id { moments[here] = nil }
+        var next: [UUID?] = filled
+        next[here] = id
+        filled = next
         UISelectionFeedbackGenerator().selectionChanged()
-        if let next = filled.indices.first(where: { $0 > slotOn && filled[$0] == nil }) ?? filled.firstIndex(where: { $0 == nil }) { slotOn = next }
+        let empty: [Int] = next.indices.filter { (i: Int) -> Bool in next[i] == nil }
+        if let on = empty.first(where: { (i: Int) -> Bool in i > here }) ?? empty.first { slotOn = on }
     }
 
-    /// Which part of the slot's clip plays: where it starts (a slot lasts about half a second a beat; the editor
-    /// cuts it to the song's own).
-    private func whichPart(_ k: Int, beats: Int) -> some View {
-        let c = library[k], need = Double(beats) * 0.5 * max(c.speed, 0.01), room = max(0, c.length - need)
-        return VStack(alignment: .leading, spacing: 4) {
-            heading("Which part plays")
-            if c.still || room < 0.1 {
-                Text(c.still ? "A photo: it shows for the whole slot." : "This clip's about as long as the slot: it all plays.")
-                    .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 16)
-            } else {
-                HStack {
-                    Slider(value: Binding(get: { min(library[k].start, room) }, set: { library[k].start = $0; library[k].end = min(c.length, $0 + need) }), in: 0...room)
-                        .tint(.white)
-                    Text("from " + EditFlow.clock(library[k].start)).font(.caption.weight(.semibold)).monospacedDigit().frame(width: 70, alignment: .trailing)
+    @ViewBuilder private var wordsBody: some View {
+        let all: [EditTemplate.Slot] = slots
+        if all.indices.contains(slotOn) {
+            HStack(spacing: 8) {
+                wordsField("Title", text: wordsBinding(slotOn, title: true))
+                if edited[slotOn] != nil {
+                    ProAction(icon: "arrow.counterclockwise", name: "From log", run: { fromLog() }).fixedSize()
                 }
-                .padding(.horizontal, 16)
+            }
+            .frame(height: 42)
+            wordsField("Under it", text: wordsBinding(slotOn, title: false)).frame(height: 42)
+        }
+    }
+
+    private func wordsField(_ name: String, text: Binding<String>) -> some View {
+        HStack(spacing: 12) {
+            Text(name).font(.system(size: 12)).foregroundStyle(ProInk.quiet).frame(width: 52, alignment: .leading)
+            TextField(name, text: text).font(.system(size: 14)).submitLabel(.done)
+        }
+        .frame(maxHeight: .infinity)
+        .overlay(alignment: .bottom) { Rectangle().fill(ProInk.rule).frame(height: 0.5) }
+    }
+
+    private func wordsBinding(_ i: Int, title: Bool) -> Binding<String> {
+        Binding<String>(get: { () -> String in
+            let all: [EditTemplate.Slot] = slots
+            guard all.indices.contains(i) else { return "" }
+            return title ? all[i].name : all[i].detail
+        }, set: { (new: String) in
+            changeWords(i, title: title, to: new)
+        })
+    }
+
+    private func changeWords(_ i: Int, title: Bool, to new: String) {
+        let original: [EditTemplate.Slot] = logged
+        guard original.indices.contains(i) else { return }
+        var words: EditTemplate.Slot = edited[i] ?? original[i]
+        if title { words.name = new } else { words.detail = new }
+        edited[i] = words == original[i] ? nil : words
+    }
+
+    private func fromLog() {
+        edited[slotOn] = nil
+    }
+
+    @ViewBuilder private var momentBody: some View {
+        if let laid = cut.clip(of: slotOn), let whole = libraryClip(slotOn) {
+            if whole.still {
+                ProHint(words: "A photo: it shows for the whole slot.")
+            } else if laid.duration >= whole.length - 0.05 {
+                ProHint(words: "This clip's about as long as the slot: it all plays.")
+            } else {
+                moment(laid, whole: whole)
+            }
+        } else {
+            ProHint(words: "Put a clip in this slot first.")
+        }
+    }
+
+    private func libraryClip(_ slot: Int) -> Clip? {
+        guard filled.indices.contains(slot), let id = filled[slot] else { return nil }
+        return library.first { (c: Clip) -> Bool in c.id == id }
+    }
+
+    private func moment(_ laid: Clip, whole: Clip) -> some View {
+        let lasts: Double = laid.duration
+        let room: Double = max(0, whole.length - lasts)
+        let plays: String = String(format: "%.1f s plays, cut on the beat", laid.span)
+        return VStack(spacing: 10) {
+            MomentWindow(clip: whole, start: laid.start, lasts: lasts,
+                         held: { (on: Bool) in momentHeld(on) },
+                         moved: { (at: Double) in moveMoment(at, room: room) })
+            HStack {
+                Text(MultiClipEditor.tenths(laid.start)).font(.system(size: 12, weight: .medium, design: .monospaced))
+                Spacer()
+                Text(plays).font(.system(size: 11)).foregroundStyle(ProInk.quiet)
+                Spacer()
+                Text(MultiClipEditor.tenths(laid.end)).font(.system(size: 12, weight: .medium, design: .monospaced))
             }
         }
-        .task(id: Int(library[k].start * 4)) {
-            try? await Task.sleep(for: .milliseconds(250))
-            if let img = await ClipJoin.frame(library[k], at: library[k].start) { thumbs[library[k].id] = img }
+    }
+
+    private func momentHeld(_ on: Bool) {
+        if on {
+            resume = player.rate != 0
+            pause()
+            choosing = true
+            if let at = cut.start(of: slotOn) { show(at + 0.01) }
+        } else {
+            choosing = false
+            if resume { play() }
+            resume = false
         }
     }
 
-    /// The filled slots, in order, each with its clip (one used twice is a copy of its own).
+    private func moveMoment(_ at: Double, room: Double) {
+        moments[slotOn] = min(room, max(0, at))
+    }
+
+    /// The filled slots, in order, each with its clip and its words.
     private func finish(_ t: EditTemplate) {
-        let s = slots
-        var used: [Clip] = [], kept: [EditTemplate.Slot] = [], seen = Set<UUID>()
-        for i in s.indices {
-            guard let id = filled[safe: i] ?? nil, var c = library.first(where: { $0.id == id }) else { continue }
-            if !seen.insert(id).inserted { c.id = UUID() }
-            used.append(c); kept.append(s[i])
+        let all: [EditTemplate.Slot] = slots
+        let chosen: (clips: [Clip], slots: [Int]) = TemplateCut.picked(library: library, filled: filled, moments: moments)
+        var used: [Clip] = [], kept: [EditTemplate.Slot] = []
+        var seen: Set<UUID> = []
+        for (n, i) in chosen.slots.enumerated() where all.indices.contains(i) {
+            var c: Clip = chosen.clips[n]
+            // (the editor's own copies: the preview's ids are only the preview's)
+            if !seen.insert(filled[i] ?? c.id).inserted { c.id = UUID() }
+            used.append(c)
+            kept.append(all[i])
         }
         guard !used.isEmpty else { return }
+        pause()
         make(t, used, kept, t.id == "recipe" ? recipe : nil)
     }
 }
 
-private extension Array {
-    subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
+/// The screen's coming and going (off the body's chain).
+private struct TemplateLife: ViewModifier {
+    let appeared: () -> Void
+    let away: () -> Void
+    let back: () -> Void
+    let gone: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear { appeared() }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in away() }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in back() }
+            .onDisappear { gone() }
+    }
 }
