@@ -591,9 +591,7 @@ enum EditOverlays {
                 guard src >= s.start - 0.01, src <= s.fileTime(s.to) + 0.01 else { return nil }
                 return (s.videoTime(src), s.to)
             }
-            func inside(_ i: Int) -> Bool { src >= clips[i].start - 0.01 && src < clips[i].end }
-            guard let i = clips.indices.first(where: { clips[$0].id == w.clip && inside($0) })
-                    ?? clips.indices.first(where: { w.file != nil && clips[$0].source.lastPathComponent == w.file && inside($0) }) else { return nil }
+            guard let i = ClipCuts.clip(for: w, in: clips) else { return nil }
             let c = clips[i]
             return (starts[i] + max(0, src - c.start) / max(c.speed, 0.01), starts[i] + c.span)
         }

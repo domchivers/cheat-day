@@ -6,6 +6,7 @@ import SwiftUI
 struct PartPicker: View {
     let url: URL
     let length: Double
+    var shape: CGFloat = VideoShape.tall
     let done: (Double) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var from = 0.0
@@ -25,8 +26,9 @@ struct PartPicker: View {
                 Button("Cancel") {}.hidden()
             }
             .padding(.horizontal, 16).padding(.top, 14)
-            PlayerLayerView(player: player).aspectRatio(9.0 / 16.0, contentMode: .fit).frame(maxHeight: .infinity)
+            PlayerLayerView(player: player).aspectRatio(shape, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             Text("\(EditFlow.clock(from)) – \(EditFlow.clock(from + keep)) of \(EditFlow.clock(length))")
                 .font(.caption.weight(.heavy)).monospacedDigit()
             window.padding(.horizontal, 16)

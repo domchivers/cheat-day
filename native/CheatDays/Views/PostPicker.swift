@@ -35,6 +35,7 @@ struct PostPicker: View {
     @State private var deleting: EditDrafts.Draft?       // a draft held long enough: asked about
     @State private var big: UIImage?
     @State private var busy = false
+    @State private var importFailure: ImportFailure?
     @State private var source = "Recents"   // Recents, Videos or Favourites
     // the day of the photos at the top of the grid, shown for a moment each time the grid moves on
     @State private var day = ""
@@ -78,7 +79,7 @@ struct PostPicker: View {
                     if !several { withAnimation(.snappy(duration: 0.3)) { proxy.scrollTo("top", anchor: .top) } }
                 }
             }
-            .background(Theme.bg.ignoresSafeArea())
+            .background(Theme.bg.ignoresSafeArea().importFailed($importFailure))
             .overlay { if busy { ZStack { Color.black.opacity(0.35).ignoresSafeArea(); ProgressView().controlSize(.large).tint(.white) } } }
             .navigationTitle(editMode ? "Make an edit" : "New post").navigationBarTitleDisplayMode(.inline)
             .onAppear { if editMode, !several { several = true; source = "Videos" } }
@@ -150,11 +151,16 @@ struct PostPicker: View {
             .overlay(alignment: .bottomLeading) {
                 Text(clock(d.length)).font(.caption2.weight(.heavy)).foregroundStyle(.white).shadow(radius: 2).padding(5)
             }
+            .overlay(alignment: .topTrailing) {
+                if d.missing != nil {
+                    Image(systemName: "exclamationmark.triangle.fill").font(.caption.weight(.bold)).foregroundStyle(.yellow).shadow(radius: 2).padding(5)
+                }
+            }
     }
 
     private func draftLabel(_ d: EditDrafts.Draft) -> String {
         let when = d.saved.formatted(date: .abbreviated, time: .shortened)
-        return "Draft, " + clock(d.length) + ", saved " + when
+        return "Draft, " + clock(d.length) + ", saved " + when + (d.missing.map { ". " + $0 } ?? "")
     }
 
     private var header: some View {
@@ -379,16 +385,24 @@ struct PostPicker: View {
         // several, a video among them: each as a clip, a photo as a short still, for the multi-clip editor
         if editMode || (chosen.count > 1 && chosen.contains(where: { $0.mediaType == .video })), let clips {
             Task {
-                var out: [Clip] = []
-                for a in chosen {
+                var out: [Clip] = [], lost: [Int] = []
+                for (n, a) in chosen.enumerated() {
+                    var made: Clip?
                     if a.mediaType == .video {
-                        if let u = await Self.video(a), let c = await ClipJoin.clip(u) { out.append(c) }
-                    } else if let img = await Self.full(a), let u = await ClipJoin.still(img), let c = await ClipJoin.clip(u, still: true) {
-                        out.append(c)
+                        if let u = await Self.video(a) { made = await ClipJoin.clip(u) }
+                    } else if let img = await Self.full(a), let u = await ClipJoin.still(img) {
+                        made = await ClipJoin.clip(u, still: true)
                     }
+                    if let made { out.append(made) } else { lost.append(n) }
                 }
                 busy = false
-                if out.count > 1 || (editMode && !out.isEmpty) { clips(out) } else if let only = out.first { done([], only.source) }
+                let got: [Clip] = out
+                let go: () -> Void = {
+                    if got.count > 1 || (editMode && !got.isEmpty) { clips(got) } else if let only = got.first { done([], only.source) }
+                }
+                if lost.isEmpty { go() } else {
+                    importFailure = ImportFailure(total: chosen.count, failed: lost, retry: { next() }, carryOn: got.isEmpty ? nil : go)
+                }
             }
             return
         }
@@ -398,15 +412,21 @@ struct PostPicker: View {
                 let to = await Self.video(v)
                 busy = false
                 // with the picture of it already showing here, for the editor to open on (not on black while it finds its own)
-                if let to { done(big.map { [$0] } ?? [], to) }
+                if let to { done(big.map { [$0] } ?? [], to) } else { importFailure = ImportFailure(total: 1, failed: [0], retry: { next() }) }
             }
             return
         }
         Task {
-            var out: [UIImage] = []
-            for a in chosen where a.mediaType == .image { if let img = await Self.full(a) { out.append(img) } }
+            var out: [UIImage] = [], lost: [Int] = []
+            for (n, a) in chosen.enumerated() where a.mediaType == .image {
+                if let img = await Self.full(a) { out.append(img) } else { lost.append(n) }
+            }
             busy = false
-            if !out.isEmpty { done(out, nil) }
+            let got: [UIImage] = out
+            let go: () -> Void = { done(got, nil) }
+            if lost.isEmpty { if !got.isEmpty { go() } } else {
+                importFailure = ImportFailure(total: chosen.count, failed: lost, retry: { next() }, carryOn: got.isEmpty ? nil : go)
+            }
         }
     }
 

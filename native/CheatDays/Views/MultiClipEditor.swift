@@ -23,6 +23,8 @@ struct MultiClipEditor: View {
     var startSounds: [EditSound]? = nil
     /// The clips and photos over it, as the draft had them.
     var startPips: [EditPip]? = nil
+    /// Its captions of what's trimmed off its clips, as the draft had them.
+    var startCut: [EditText]? = nil
     var close: () -> Void
     var done: (URL) -> Void
     /// The draft it's auto-saved as (a new edit gets one of its own once it's saved the first time).
@@ -33,6 +35,10 @@ struct MultiClipEditor: View {
     /// A meal, recipe or workout picked in the editor (recipe and workout mode, the calorie count): for the post to carry.
     var attach: (JSON?) -> Void = { _ in }
 
+    @State private var cutWords: [EditText] = []   // the video's own captions of what's trimmed off (ClipCuts)
+    @State private var importFailure: ImportFailure?
+    @State private var trouble: EditorTrouble?
+    @State private var saveWarned = false          // said that it isn't being saved, till it is again
     @State private var selected: UUID?
     @State private var soundOf: UUID?          // one clip's sound over the whole video
     // The editor's own player (PreviewEngine, 21 Nov): plays the edit straight from the clips, drawn by EditPreviewView.
@@ -145,7 +151,7 @@ struct MultiClipEditor: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            behind
             VStack(spacing: 0) {
                 if !full { top }
                 // drawn by the app on every frame, the last real frame always up: never blank while the edit's made
@@ -196,21 +202,8 @@ struct MultiClipEditor: View {
         // (an alert, as the single editor asks: on iOS 26 a confirmation dialog hangs off its button)
         // keep it for later, let it go, or carry on (as Instagram asks when a post is left part done)
         .alert("Save this edit?", isPresented: $leaving) {
-            Button("Save draft") {
-                player.pause()
-                let id = autoID ?? draftID, kept = clips, sound = soundOf, shape = look, over = texts, with = Self.data(attached), laid = sounds, on = pips
-                EditDrafts.queue.async { EditDrafts.save(id: id, clips: kept, soundOf: sound, look: shape, texts: over, attached: with, sounds: laid, pips: on) }
-                close()
-            }
-            Button("Discard", role: .destructive) {
-                player.pause()
-                let id = autoID ?? draftID, was = opened, sound = startSoundOf, shape = startLook, over = startTexts, with = Self.data(startAttached), laid = startSounds, on = startPips
-                EditDrafts.queue.async {
-                    guard let id else { return }
-                    if let was { EditDrafts.save(id: id, clips: was, soundOf: sound, look: shape, texts: over, attached: with, sounds: laid, pips: on) } else { EditDrafts.delete(id) }
-                }
-                close()
-            }
+            Button("Save draft") { saveAndClose() }
+            Button("Discard", role: .destructive) { discard() }
             Button("Keep editing", role: .cancel) {}
         } message: { Text(opened == nil ? "Keep it as a draft to finish later, or let it go." : "Save the changes to this draft, or leave it as it was.") }
         .onAppear {
@@ -219,6 +212,7 @@ struct MultiClipEditor: View {
             if let t = startTexts, opened == nil, texts.isEmpty { texts = t }
             if let v = startSounds, opened == nil, sounds.isEmpty { sounds = v }
             if let p = startPips, opened == nil, pips.isEmpty { pips = p }
+            if let c = startCut, opened == nil, cutWords.isEmpty { cutWords = c }
             if let a = startAttached, attached == nil { attached = a; attach(a) }
             if autoID == nil { autoID = draftID }
             if draftID != nil, opened == nil { opened = clips }
@@ -247,7 +241,8 @@ struct MultiClipEditor: View {
         .onChange(of: trimLive == nil) { _, gone in if gone, trimDrag != nil { trimDrag = nil; chaseTo = nil; seek(now) } }
         .onChange(of: pipPicks) { _, now in
             guard !now.isEmpty else { return }
-            Task { let got = await Self.clips(from: now); pipPicks = []; if let c = got.first { await addPip(c) } }
+            pipPicks = []
+            loadOverlay(now)
         }
         .sheet(isPresented: Binding(get: { attachMode != nil }, set: { if !$0 { attachMode = nil } })) {
             AttachPicker(start: attachMode == "workout" ? 2 : (attachMode == "recipe" ? 1 : 0)) { picked($0) }
@@ -276,7 +271,7 @@ struct MultiClipEditor: View {
         // started afresh (21 Nov: back in the app, nothing could be heard. The likeliest causes, not proven: the
         // phone stopped the sound engine while the app was away, or the app's sound was put back to the ringer's)
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
-            if player.rate != 0 { player.pause(); playing = false }
+            wentAway()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             Sound.on(.moviePlayback)
@@ -291,11 +286,90 @@ struct MultiClipEditor: View {
         .photosPicker(isPresented: $adding, selection: $picks, maxSelectionCount: 10, selectionBehavior: .ordered, matching: .any(of: [.images, .videos]))
         .onChange(of: replacePicks) { _, now in
             guard !now.isEmpty else { return }
-            Task { let got = await Self.clips(from: now); replacePicks = []; if let c = got.first { replaceSelected(with: c) } }
+            replacePicks = []
+            loadReplacement(now)
         }
         .onChange(of: picks) { _, now in
             guard !now.isEmpty else { return }
-            Task { let more = await Self.clips(from: now); picks = []; if !more.isEmpty { change { $0 + more } } } }
+            picks = []
+            loadMore(now) }
+    }
+
+    /// The black under it all, with the editor's alerts on it (kept out of the body's chain).
+    private var behind: some View {
+        Color.black.ignoresSafeArea()
+            .importFailed($importFailure)
+            .modifier(EditorTroubleAlert(trouble: $trouble, retry: { finish() }))
+    }
+
+    private func wentAway() {
+        if player.rate != 0 { player.pause(); playing = false }
+        // (saved as it's left: the last second's changes hadn't been)
+        Task { @MainActor in await saveNow(tidy: false) }
+    }
+
+    /// The edit saved as it is this moment; whether it was.
+    @MainActor @discardableResult
+    private func saveNow(tidy: Bool) async -> Bool {
+        guard !clips.isEmpty else { return true }
+        let id: String = autoID ?? draftID ?? UUID().uuidString.lowercased()
+        if autoID == nil { autoID = id; autosaved(id) }
+        let kept = clips, sound = soundOf, shape = look, over = texts, with = Self.data(attached), laid = sounds, on = pips, cut = cutWords
+        return await withCheckedContinuation { (done: CheckedContinuation<Bool, Never>) in
+            EditDrafts.queue.async {
+                let ok: Bool = EditDrafts.save(id: id, clips: kept, soundOf: sound, look: shape, texts: over, attached: with,
+                                               sounds: laid, pips: on, cut: cut, tidy: tidy)
+                done.resume(returning: ok)
+            }
+        }
+    }
+
+    private func saveAndClose() {
+        player.pause(); playing = false
+        Task { @MainActor in
+            if await saveNow(tidy: true) { close() } else { trouble = .draft }
+        }
+    }
+
+    private func discard() {
+        player.pause()
+        let id: String? = autoID ?? draftID
+        let was = opened, sound = startSoundOf, shape = startLook, over = startTexts, with = Self.data(startAttached)
+        let laid = startSounds, on = startPips, cut = startCut
+        EditDrafts.queue.async {
+            guard let id else { return }
+            if let was { EditDrafts.save(id: id, clips: was, soundOf: sound, look: shape, texts: over, attached: with, sounds: laid, pips: on, cut: cut) }
+            else { EditDrafts.delete(id) }
+        }
+        close()
+    }
+
+    private func loadMore(_ items: [PhotosPickerItem]) {
+        load(items, again: { loadMore(items) }) { (got: [Clip]) in change { (all: [Clip]) -> [Clip] in all + got } }
+    }
+
+    private func loadOverlay(_ items: [PhotosPickerItem]) {
+        load(items, again: { loadOverlay(items) }) { (got: [Clip]) in
+            if let c = got.first { Task { await addPip(c) } }
+        }
+    }
+
+    private func loadReplacement(_ items: [PhotosPickerItem]) {
+        load(items, again: { loadReplacement(items) }) { (got: [Clip]) in
+            if let c = got.first { replaceSelected(with: c) }
+        }
+    }
+
+    /// What was picked, loaded: in it goes, or what wouldn't is said with Try again.
+    private func load(_ items: [PhotosPickerItem], again: @escaping () -> Void, then use: @escaping ([Clip]) -> Void) {
+        Task { @MainActor in
+            let loaded: (clips: [Clip], failed: [Int]) = await Self.load(items)
+            let got: [Clip] = loaded.clips
+            if loaded.failed.isEmpty { use(got); return }
+            try? await Task.sleep(for: .milliseconds(450))
+            importFailure = ImportFailure(total: items.count, failed: loaded.failed, retry: again,
+                                          carryOn: got.isEmpty ? nil : { use(got) })
+        }
     }
 
     // MARK: top and bottom
@@ -1674,9 +1748,11 @@ struct MultiClipEditor: View {
     private func autosave() async {
         try? await Task.sleep(nanoseconds: 1_000_000_000)
         guard !Task.isCancelled, !clips.isEmpty else { return }
-        let id = autoID ?? UUID().uuidString.lowercased(), kept = clips, sound = soundOf, shape = look, over = texts, with = Self.data(attached), laid = sounds, on = pips
-        if autoID == nil { autoID = id; autosaved(id) }
-        EditDrafts.queue.async { EditDrafts.save(id: id, clips: kept, soundOf: sound, look: shape, texts: over, attached: with, sounds: laid, pips: on, tidy: false) }
+        let ok: Bool = await saveNow(tidy: false)
+        if ok { saveWarned = false } else if !saveWarned {
+            saveWarned = true
+            flash("Changes aren't being saved. Check your storage before you leave the editor.")
+        }
     }
 
     /// A frame back or on (a 30th of a second), held still.
@@ -1718,7 +1794,7 @@ struct MultiClipEditor: View {
         Task {
             defer { joining = false }
             guard let img = await ClipJoin.frame(c, at: at), let url = await ClipJoin.still(img, seconds: 2),
-                  let still = await ClipJoin.clip(url, still: true) else { return }   // (a still has no sound)
+                  let still = await ClipJoin.clip(url, still: true) else { flash("Couldn't freeze that frame. Try again."); return }   // (a still has no sound)
             if let (a, b) = ClipJoin.split(c, at: into) {
                 change { var all = $0; all[i] = a; all.insert(contentsOf: [still, b], at: i + 1); return all }
             } else {
@@ -1738,7 +1814,7 @@ struct MultiClipEditor: View {
 
     private func finish() {
         joining = true; progress = 0; player.pause()
-        let kept = clips, sound = soundOf, shape = look, laid = sounds, on = pips
+        let edit = clips, sound = soundOf, shape = look, laid = sounds, on = pips
         let items = CaptionLayers.placed(texts, sounds: sounds), size = frameSize
         making = Task {
             guard await EditOverlays.prepare(items) else {
@@ -1747,10 +1823,17 @@ struct MultiClipEditor: View {
                 return
             }
             let over = EditOverlays.pieces(items, frame: size)
-            let url = await ClipJoin.join(kept, soundOf: sound, look: shape, overlays: over, sounds: laid, pips: on) { p in if progress != nil { progress = p } }
+            let url = await ClipJoin.join(edit, soundOf: sound, look: shape, overlays: over, sounds: laid, pips: on) { p in if progress != nil { progress = p } }
             guard !Task.isCancelled else { return }
+            guard let url else {
+                joining = false; progress = nil; making = nil
+                trouble = .video
+                return
+            }
+            // (saved to this moment first: Back to the clips opens the draft, and autosave waits a second)
+            let kept: Bool = keepsDraft ? await saveNow(tidy: false) : true
             joining = false; progress = nil; making = nil
-            guard let url else { return }
+            guard kept else { trouble = .draft; return }
             if !keepsDraft, let id = autoID { EditDrafts.queue.async { EditDrafts.delete(id) } }
             done(url)
         }
@@ -3715,7 +3798,7 @@ struct MultiClipEditor: View {
         joining = true; player.pause()
         Task {
             defer { joining = false }
-            guard let url = await ClipJoin.reversed(c), let made = await ClipJoin.clip(url) else { return }
+            guard let url = await ClipJoin.reversed(c), let made = await ClipJoin.clip(url) else { flash("Couldn't reverse that clip. Check your storage and try again."); return }
             var r = c
             r.source = url; r.length = made.length; r.start = 0; r.end = made.length
             r.forward = Forward(source: c.source, length: c.length, end: c.end, soundOn: c.soundOn)
@@ -3739,16 +3822,18 @@ struct MultiClipEditor: View {
     }
 
     /// Things picked from the library as clips, in the order picked: a video as it is, a photo as a short still.
-    static func clips(from items: [PhotosPickerItem]) async -> [Clip] {
-        var out: [Clip] = []
-        for it in items {
-            if it.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }), let m = try? await it.loadTransferable(type: PickedMovie.self) {
-                if let c = await ClipJoin.clip(m.url) { out.append(c) }
+    static func load(_ items: [PhotosPickerItem]) async -> (clips: [Clip], failed: [Int]) {
+        var out: [Clip] = [], failed: [Int] = []
+        for (n, it) in items.enumerated() {
+            var made: Clip?
+            if it.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }) {
+                if let m = try? await it.loadTransferable(type: PickedMovie.self) { made = await ClipJoin.clip(m.url) }
             } else if let d = try? await it.loadTransferable(type: Data.self), let img = UIImage(data: d), let url = await ClipJoin.still(img) {
-                if let c = await ClipJoin.clip(url, still: true) { out.append(c) }
+                made = await ClipJoin.clip(url, still: true)
             }
+            if let made { out.append(made) } else { failed.append(n) }
         }
-        return out
+        return (out, failed)
     }
 
     static func clock(_ s: Double) -> String { String(format: "%d:%02d", Int(max(0, s)) / 60, Int(max(0, s)) % 60) }

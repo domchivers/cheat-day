@@ -17,12 +17,19 @@ struct StoryComposer: View {
     @State private var extras: [JSON] = []   // the other photos picked with the first, on it as stickers
     @State private var at = 0
     @State private var multi: ClipsBox?   // two or more videos picked, being made into one (MultiClipEditor)
+    @State private var importFailure: ImportFailure?
+    private let gaveVideo: Bool
+    private let shared: (() -> Void)?
     /// Opened with a video to make a story of (an edit, from Make an edit): straight into the editor with it.
-    init(video: URL? = nil) { _video = State(initialValue: video) }
+    init(video: URL? = nil, shared: (() -> Void)? = nil) {
+        _video = State(initialValue: video)
+        gaveVideo = video != nil
+        self.shared = shared
+    }
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Color.black.ignoresSafeArea().importFailed($importFailure)
             // straight into the camera, as Instagram opens (the in-between Camera / Library screen is gone)
             if image == nil && video == nil {
                 StoryCamera(captured: { img, url in words = false; queue = []; extras = []; at = 0; image = img; video = url }, close: { dismiss() },
@@ -31,14 +38,7 @@ struct StoryComposer: View {
                                 // Two or more videos: one video made of everything picked, in the order picked
                                 // (MultiClipEditor, 19 Nov), then a story of it
                                 if picks.filter({ $0.video != nil }).count > 1 {
-                                    Task {
-                                        var clips: [Clip] = []
-                                        for p in picks {
-                                            if let v = p.video, let c = await ClipJoin.clip(v) { clips.append(c) }
-                                            else if let img = p.image, let u = await ClipJoin.still(img), let c = await ClipJoin.clip(u, still: true) { clips.append(c) }
-                                        }
-                                        if clips.count > 1 { multi = ClipsBox(clips: clips) }
-                                    }
+                                    joinPicks(picks)
                                     return
                                 }
                                 // Several picked from the library: one story. The first is the picture; the other photos go
@@ -56,12 +56,14 @@ struct StoryComposer: View {
                 StoryEditor(image: image, video: video, startWriting: words, close: {
                     extras = []
                     // leaving part-way: what's shared stays shared, the rest are let go
-                    let shared = at > 0
+                    let someShared: Bool = at > 0
+                    // (given its video, there's no camera to go back to: back to what opened it)
+                    if gaveVideo { dismiss(); return }
                     queue = []; at = 0; image = nil; video = nil; words = false
-                    if shared { dismiss() }
+                    if someShared { dismiss() }
                 }, posted: {
                     // on to the next one chosen, or done
-                    if at + 1 < queue.count { at += 1; image = queue[at].image; video = queue[at].video } else { dismiss() }
+                    if at + 1 < queue.count { at += 1; image = queue[at].image; video = queue[at].video } else { shared?(); dismiss() }
                 }, startItems: at == 0 ? extras : [])
                 .id(at)
                 .overlay(alignment: .top) {
@@ -83,6 +85,27 @@ struct StoryComposer: View {
             MediaCamera { img, url in camera = false; image = img; video = url }.ignoresSafeArea()
         }
         .onChange(of: picked) { _, item in Task { await load(item) } }
+    }
+
+    /// Everything picked made into clips, in order, or what failed said.
+    private func joinPicks(_ picks: [StoryPick]) {
+        Task {
+            var out: [Clip] = [], lost: [Int] = []
+            for (n, p) in picks.enumerated() {
+                var made: Clip?
+                if let v = p.video {
+                    made = await ClipJoin.clip(v)
+                } else if let img = p.image, let u = await ClipJoin.still(img) {
+                    made = await ClipJoin.clip(u, still: true)
+                }
+                if let made { out.append(made) } else { lost.append(n) }
+            }
+            let got: [Clip] = out
+            let go: () -> Void = { multi = ClipsBox(clips: got) }
+            if lost.isEmpty { go() } else {
+                importFailure = ImportFailure(total: picks.count, failed: lost, retry: { joinPicks(picks) }, carryOn: got.isEmpty ? nil : go)
+            }
+        }
     }
 
     // MARK: picking the photo or video

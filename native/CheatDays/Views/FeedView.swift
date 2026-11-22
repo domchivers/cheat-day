@@ -261,8 +261,8 @@ final class Feed {
     private(set) var sending: Sending?
 
     /// Post in the background. Done shows for a moment; a failure stays, with Try again.
-    func send(_ row: JSON, photo: UIImage?, video: URL?, filter: String, range: ClosedRange<Double>?, muted: Bool, crop: CGRect? = nil, overlay: UIImage? = nil, more: [UIImage] = [], turns: Int = 0, placed: ClipEdit? = nil) {
-        let again: () -> Void = { [weak self] in self?.send(row, photo: photo, video: video, filter: filter, range: range, muted: muted, crop: crop, overlay: overlay, more: more, turns: turns, placed: placed) }
+    func send(_ row: JSON, photo: UIImage?, video: URL?, filter: String, range: ClosedRange<Double>?, muted: Bool, crop: CGRect? = nil, overlay: UIImage? = nil, more: [UIImage] = [], turns: Int = 0, placed: ClipEdit? = nil, sent: @escaping () -> Void = {}) {
+        let again: () -> Void = { [weak self] in self?.send(row, photo: photo, video: video, filter: filter, range: range, muted: muted, crop: crop, overlay: overlay, more: more, turns: turns, placed: placed, sent: sent) }
         withAnimation(.snappy) { sending = Sending(thumb: photo, state: .working, again: again) }
         // Leaving the app doesn't stop it: the phone is asked for time to finish (it gives about half a minute, enough
         // for most posts; a long video on a slow line can still be cut off, and then says so with Try again).
@@ -272,6 +272,7 @@ final class Feed {
             do {
                 try await post(row, photo: photo, video: video, filter: filter, range: range, muted: muted, crop: crop, overlay: overlay, more: more, turns: turns, placed: placed)
                 withAnimation(.snappy) { sending?.state = .done }
+                sent()
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 try? await Task.sleep(for: .seconds(2.5))
                 if sending?.state == .done { withAnimation(.snappy) { sending = nil } }
@@ -1262,10 +1263,16 @@ struct ComposeSheet: View {
     @State private var firstPick: Bool
     /// A video to post (an edit, from Make an edit): it opens in the video editor straight away, as one picked would.
     private let startVideo: URL?
+    /// Share tapped (not cancelled, not saved as a draft), and then it's up on the feed.
+    private let shared: (() -> Void)?
+    private let sent: () -> Void
+    @State private var importFailure: ImportFailure?
     @State private var startedVideo = false
-    init(preset: JSON? = nil, video: URL? = nil) {
+    init(preset: JSON? = nil, video: URL? = nil, shared: (() -> Void)? = nil, sent: @escaping () -> Void = {}) {
         self.preset = preset
         self.startVideo = video
+        self.shared = shared
+        self.sent = sent
         _firstPick = State(initialValue: preset == nil && video == nil && Drafts.all().isEmpty)
     }
     @Environment(\.dismiss) private var dismiss
@@ -1403,7 +1410,7 @@ struct ComposeSheet: View {
             }
             }
             // to every edge and under the keyboard: the sheet's own grey showed in the strip behind Done
-            .background(Theme.bg.ignoresSafeArea())
+            .background(Theme.bg.ignoresSafeArea().importFailed($importFailure))
             .presentationBackground(Theme.bg)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 let ready = what != nil || photo != nil || movie != nil
@@ -1485,10 +1492,8 @@ struct ComposeSheet: View {
                     let movies = items.filter { $0.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }) }.count
                     if shots.isEmpty, items.count > 1, movies > 0 {
                         // several with a video among them: one video made of them all
-                        let clips = await MultiClipEditor.clips(from: items)
                         library = false; picked = []
-                        if clips.count > 1 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { multi = ClipsBox(clips: clips) } }
-                        else if let only = clips.first { took([], only.source) }
+                        await loadSeveral(items)
                         return
                     }
                     if shots.isEmpty, let first = items.first, first.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }),
@@ -2078,6 +2083,19 @@ struct ComposeSheet: View {
         return [s]
     }
 
+    /// Several picked from the system's picker with a video among them: on to be made into one, or what failed said.
+    private func loadSeveral(_ items: [PhotosPickerItem]) async {
+        try? await Task.sleep(for: .milliseconds(450))   // for the picker to have gone
+        let loaded: (clips: [Clip], failed: [Int]) = await MultiClipEditor.load(items)
+        let got: [Clip] = loaded.clips
+        let go: () -> Void = {
+            if got.count > 1 { multi = ClipsBox(clips: got) } else if let only = got.first { took([], only.source) }
+        }
+        if loaded.failed.isEmpty { go(); return }
+        importFailure = ImportFailure(total: items.count, failed: loaded.failed, retry: { Task { await loadSeveral(items) } },
+                                      carryOn: got.isEmpty ? nil : go)
+    }
+
     private func post() {
         // nothing attached: a photo or video on its own (a progress photo, say), with no numbers to show
         var row = what ?? ["kind": "photo", "name": "", "kcal": 0, "macros": [:] as JSON, "payload": [:] as JSON, "extra": [:] as JSON]
@@ -2111,8 +2129,9 @@ struct ComposeSheet: View {
         SongPlayer.shared.stop()
         // it goes up after the sheet has closed: a line on the feed says posting, then posted
         Feed.shared.send(row, photo: face, video: movie.map { Drafts.release($0) }, filter: clip.look, range: clip.range, muted: clip.muted, crop: clip.crop,
-                         overlay: clip.overlay, more: movie == nil ? shots.dropFirst().map { $0.out } : [], turns: clip.turns, placed: clip)
+                         overlay: clip.overlay, more: movie == nil ? shots.dropFirst().map { $0.out } : [], turns: clip.turns, placed: clip, sent: sent)
         if let draftID { Drafts.delete(draftID) }
+        shared?()
         dismiss()
     }
 }

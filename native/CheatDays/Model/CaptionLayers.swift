@@ -151,21 +151,23 @@ enum CaptionLayers {
     }
 
     /// Words trimmed off put back in their caption, or their caption back when all of it went.
-    private static func restore(_ kept: EditText, into all: inout [EditText]) {
-        guard let i = all.firstIndex(where: { (t: EditText) -> Bool in t.id == kept.id }) else { all.append(kept); return }
+    @discardableResult
+    static func restore(_ kept: EditText, into all: inout [EditText]) -> Bool {
+        guard let i = all.firstIndex(where: { (t: EditText) -> Bool in t.id == kept.id }) else { all.append(kept); return true }
         var words: [EditText.Word] = all[i].words ?? []
         var added = false
         for w in kept.words ?? [] {
             let there: Bool = words.contains { (x: EditText.Word) -> Bool in x.src == w.src && x.clip == w.clip }
             if !there { words.append(w); added = true }
         }
-        guard added else { return }
+        guard added else { return false }
         words.sort { (a: EditText.Word, b: EditText.Word) -> Bool in (a.src ?? 0) < (b.src ?? 0) }
         all[i].words = words
         all[i].text = joined(words)
+        return true
     }
 
-    private static func joined(_ words: [EditText.Word]) -> String {
+    static func joined(_ words: [EditText.Word]) -> String {
         words.map { (w: EditText.Word) -> String in w.text }.joined(separator: " ")
     }
 

@@ -35,9 +35,11 @@ struct TemplateMaker: View {
 
     private var slots: [EditTemplate.Slot] { picked?.slots(log, recipe: recipe) ?? [] }
 
+    @State private var importFailure: ImportFailure?
+
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Color.black.ignoresSafeArea().importFailed($importFailure)
             if let t = picked { filling(t) } else { gallery }
             if loading { Color.black.opacity(0.4).ignoresSafeArea(); ProgressView().tint(.white) }
         }
@@ -51,18 +53,29 @@ struct TemplateMaker: View {
         .photosPicker(isPresented: $adding, selection: $picks, maxSelectionCount: 10, selectionBehavior: .ordered, matching: .any(of: [.images, .videos]))
         .onChange(of: picks) { _, now in
             guard !now.isEmpty else { return }
-            loading = true
-            Task {
-                let more = await MultiClipEditor.clips(from: now)
-                picks = []; loading = false
-                library += more
-                for c in more { put(c.id) }
-            }
+            picks = []
+            load(now)
         }
         .sheet(isPresented: $choosingRecipe) {
             AttachPicker(start: 1) { what in
                 if str(what["kind"]) == "meal" { recipe = what; fit() }
             }
+        }
+    }
+
+    private func load(_ items: [PhotosPickerItem]) {
+        loading = true
+        Task {
+            let loaded: (clips: [Clip], failed: [Int]) = await MultiClipEditor.load(items)
+            loading = false
+            let got: [Clip] = loaded.clips
+            let go: () -> Void = {
+                library += got
+                for c in got { put(c.id) }
+            }
+            if loaded.failed.isEmpty { go(); return }
+            try? await Task.sleep(for: .milliseconds(450))
+            importFailure = ImportFailure(total: items.count, failed: loaded.failed, retry: { load(items) }, carryOn: got.isEmpty ? nil : go)
         }
     }
 

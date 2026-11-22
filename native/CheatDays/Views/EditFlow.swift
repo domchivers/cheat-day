@@ -28,20 +28,29 @@ struct EditFlow: View {
     @State private var joinedLength = 0.0
     @State private var longFor: Share?   // a post or story of an edit over the limit: asking what to keep
     @State private var choosing: Share?  // picking which part to keep
+    @State private var draftCut: [EditText]?
+    @State private var didShare = false          // posted or shared, not backed out of
+    @State private var broken: EditDrafts.Draft?  // a draft tapped that's missing some of itself
+    @State private var importFailure: ImportFailure?
+    @State private var joinedShape: CGFloat = VideoShape.tall
 
     struct VideoBox: Identifiable { let id = UUID(); let url: URL }
     enum Share: String, Identifiable { case post, story; var id: String { rawValue } }
 
     var body: some View {
         ZStack {
-            Theme.bg.ignoresSafeArea()
+            Theme.bg.ignoresSafeArea().importFailed($importFailure)
+            Color.clear.frame(width: 0, height: 0).modifier(BrokenDraft(draft: $broken, open: { open($0) }, delete: { removeDraft($0) }))
             if let clips {
                 MultiClipEditor(clips: clips, draftID: draftID, startSoundOf: draftSound, startLook: draftLook,
-                                startTexts: draftTexts, startAttached: draftAttached, startSounds: draftSounds, startPips: draftPips,
-                                close: { self.clips = nil; draftID = nil; draftSound = nil; draftLook = nil; draftTexts = nil; draftAttached = nil; draftSounds = nil; draftPips = nil; attached = nil; refreshDrafts() },
+                                startTexts: draftTexts, startAttached: draftAttached, startSounds: draftSounds, startPips: draftPips, startCut: draftCut,
+                                close: { closed() },
                                 done: { url in
                                     joined = url; self.clips = nil; joinedLength = 0
-                                    Task { joinedLength = (try? await AVURLAsset(url: url).load(.duration).seconds) ?? 0 }
+                                    Task {
+                                        joinedShape = await VideoShape.of(url)
+                                        joinedLength = (try? await AVURLAsset(url: url).load(.duration).seconds) ?? 0
+                                    }
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { sharing = true }
                                 },
                                 autosaved: { draftID = $0 },   // a new edit's own draft, let go once it's shared
@@ -51,7 +60,7 @@ struct EditFlow: View {
                 // the edit, playing, with what to do with it
                 ZStack(alignment: .top) {
                     Color.black.ignoresSafeArea()
-                    LoopingVideo(url: joined).aspectRatio(9.0 / 16.0, contentMode: .fit).frame(maxHeight: .infinity)
+                    LoopingVideo(url: joined).aspectRatio(joinedShape, contentMode: .fit).frame(maxWidth: .infinity, maxHeight: .infinity)
                     HStack {
                         Button { backToClips() } label: {
                             Image(systemName: "chevron.backward").font(.headline).frame(width: 40, height: 40).background(.white.opacity(0.15), in: Circle())
@@ -85,8 +94,8 @@ struct EditFlow: View {
                            close: { dismiss() },
                            editMode: true,
                            drafts: drafts,
-                           openDraft: { d in draftID = d.id; draftSound = d.soundOf; draftLook = d.look; draftTexts = d.texts; draftAttached = d.attachedJSON; draftSounds = d.sounds; draftPips = d.pips; clips = d.clips },
-                           deleteDraft: { d in EditDrafts.queue.async { EditDrafts.delete(d.id) }; refreshDrafts() })
+                           openDraft: { d in if d.missing != nil { broken = d } else { open(d) } },
+                           deleteDraft: { d in removeDraft(d) })
             }
             if working { Color.black.opacity(0.4).ignoresSafeArea(); ProgressView().tint(.white) }
         }
@@ -96,13 +105,14 @@ struct EditFlow: View {
         .photosPicker(isPresented: $library, selection: $picks, maxSelectionCount: 10, selectionBehavior: .ordered, matching: .any(of: [.images, .videos]))
         .onChange(of: picks) { _, now in
             guard !now.isEmpty else { return }
-            working = true
-            Task { let c = await MultiClipEditor.clips(from: now); picks = []; working = false; if !c.isEmpty { clips = c } }
+            picks = []
+            load(now)
         }
         .sheet(isPresented: $sharing) { shareSheet.presentationDetents([.height(330)]).presentationDragIndicator(.visible) }
-        // a post or a story of it: once that's done, so is this
-        .sheet(item: $posting, onDismiss: { dismiss() }) { b in ComposeSheet(preset: attached, video: b.url) }
-        .fullScreenCover(item: $story, onDismiss: { dismiss() }) { b in StoryComposer(video: b.url) }
+        // a post or a story of it: shared, so is this done; backed out of, back to the finished video (22 Nov audit:
+        // either way this closed, and the draft had gone already)
+        .sheet(item: $posting, onDismiss: { composerClosed() }) { b in postComposer(b.url) }
+        .fullScreenCover(item: $story, onDismiss: { composerClosed() }) { b in storyComposer(b.url) }
         // over the limit: what to keep (design: the 21 Nov chat; the whole of it can still be saved to Photos)
         .alert("Longer than \(Int(Stories.longest)) seconds", isPresented: Binding(get: { longFor != nil }, set: { if !$0 { longFor = nil } })) {
             Button("Use the first \(Int(Stories.longest)) seconds") { if let k = longFor { longFor = nil; send(k) } }
@@ -114,7 +124,7 @@ struct EditFlow: View {
         }
         .sheet(item: $choosing) { k in
             if let joined {
-                PartPicker(url: joined, length: joinedLength) { from in
+                PartPicker(url: joined, length: joinedLength, shape: joinedShape) { from in
                     choosing = nil
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { sendPart(k, from: from) }
                 }
@@ -186,17 +196,75 @@ struct EditFlow: View {
     private func go(_ url: URL? = nil, _ open: @escaping (URL) -> Void) {
         guard let file = url ?? joined else { return }
         sharing = false
-        if let id = draftID { EditDrafts.queue.async { EditDrafts.delete(id) }; draftID = nil }
+        didShare = false
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { open(file) }
     }
 
-    /// Back from the finished video to its clips, as they were left (its auto-saved draft).
-    private func backToClips() {
+    /// A post of it: its draft's let go only once the post is up (a failed upload can still go back to it).
+    private func postComposer(_ url: URL) -> some View {
+        let id: String? = draftID, opened = Date()
+        return ComposeSheet(preset: attached, video: url, shared: { didShare = true },
+                            sent: { Self.letGo(id, sharedAt: opened) })
+    }
+
+    private func storyComposer(_ url: URL) -> some View {
+        let id: String? = draftID, opened = Date()
+        return StoryComposer(video: url, shared: {
+            didShare = true
+            Self.letGo(id, sharedAt: opened)
+        })
+    }
+
+    private static func letGo(_ id: String?, sharedAt: Date) {
+        guard let id else { return }
+        EditDrafts.queue.async { EditDrafts.delete(id, sharedAt: sharedAt) }
+    }
+
+    private func composerClosed() {
+        if didShare { dismiss() } else { Sound.on(.moviePlayback) }
+    }
+
+    private func closed() {
+        clips = nil; draftID = nil; draftSound = nil; draftLook = nil; draftTexts = nil; draftAttached = nil
+        draftSounds = nil; draftPips = nil; draftCut = nil; attached = nil
+        refreshDrafts()
+    }
+
+    private func open(_ d: EditDrafts.Draft) {
+        draftID = d.id; draftSound = d.soundOf; draftLook = d.look; draftTexts = d.texts; draftAttached = d.attachedJSON
+        draftSounds = d.sounds; draftPips = d.pips; draftCut = d.cut
         joined = nil
-        guard let id = draftID else { refreshDrafts(); return }
+        clips = d.clips
+    }
+
+    private func removeDraft(_ d: EditDrafts.Draft) {
+        let id: String = d.id
+        EditDrafts.queue.async { EditDrafts.delete(id) }
+        refreshDrafts()
+    }
+
+    private func load(_ items: [PhotosPickerItem]) {
+        working = true
+        Task {
+            let loaded: (clips: [Clip], failed: [Int]) = await MultiClipEditor.load(items)
+            working = false
+            let got: [Clip] = loaded.clips
+            let go: () -> Void = { if !got.isEmpty { clips = got } }
+            if loaded.failed.isEmpty { go(); return }
+            try? await Task.sleep(for: .milliseconds(450))
+            importFailure = ImportFailure(total: items.count, failed: loaded.failed, retry: { load(items) }, carryOn: got.isEmpty ? nil : go)
+        }
+    }
+
+    /// Back from the finished video to its clips, as they were left (its auto-saved draft). The video stays up till
+    /// they're in hand.
+    private func backToClips() {
+        guard let id = draftID else { flash("Couldn't open the clips. Save the video to Photos first."); return }
         EditDrafts.queue.async {
-            let d = EditDrafts.all().first { $0.id == id }
-            DispatchQueue.main.async { if let d { draftSound = d.soundOf; draftLook = d.look; draftTexts = d.texts; draftAttached = d.attachedJSON; draftSounds = d.sounds; draftPips = d.pips; clips = d.clips } else { draftID = nil; refreshDrafts() } }
+            let d: EditDrafts.Draft? = EditDrafts.all().first { $0.id == id }
+            DispatchQueue.main.async {
+                if let d, d.missing == nil { open(d) } else { flash("Couldn't open the clips. Save the video to Photos first.") }
+            }
         }
     }
 
@@ -210,14 +278,41 @@ struct EditFlow: View {
     private func save() {
         guard let joined else { return }
         Task {
-            let ok = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
-            var saved = false
+            let ok: PHAuthorizationStatus = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+            let said: String
             if ok == .authorized || ok == .limited {
-                saved = (try? await PHPhotoLibrary.shared().performChanges { PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: joined) }) != nil
+                do {
+                    try await PHPhotoLibrary.shared().performChanges { PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: joined) }
+                    said = "Saved to Photos"
+                } catch {
+                    said = "Couldn't save it. Check your storage and try again."
+                }
+            } else {
+                said = "Couldn't save it: allow Photos in Settings"
             }
-            withAnimation { note = saved ? "Saved to Photos" : "Couldn't save it: allow Photos in Settings" }
+            withAnimation { note = said }
             try? await Task.sleep(for: .seconds(2.2))
             withAnimation { note = nil }
+        }
+    }
+}
+
+/// A draft tapped that's missing some of itself: said, and opened without that if there's enough left.
+private struct BrokenDraft: ViewModifier {
+    @Binding var draft: EditDrafts.Draft?
+    let open: (EditDrafts.Draft) -> Void
+    let delete: (EditDrafts.Draft) -> Void
+
+    func body(content: Content) -> some View {
+        let showing = Binding<Bool>(get: { draft != nil }, set: { (on: Bool) in if !on { draft = nil } })
+        return content.alert("This draft is damaged", isPresented: showing, presenting: draft) { (d: EditDrafts.Draft) in
+            if !d.withoutMissing.clips.isEmpty {
+                Button("Open without them") { open(d.withoutMissing) }
+            }
+            Button("Delete draft", role: .destructive) { delete(d) }
+            Button("Cancel", role: .cancel) {}
+        } message: { (d: EditDrafts.Draft) in
+            Text(d.missing ?? "")
         }
     }
 }
