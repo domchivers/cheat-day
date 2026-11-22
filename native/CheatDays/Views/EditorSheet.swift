@@ -16,6 +16,9 @@ struct SheetAction {
     var icon: String
     var name: String
     var run: () -> Void
+
+    /// Going back, rather than doing something to what's picked.
+    var isBack: Bool { icon == "chevron.left" }
 }
 
 /// A panel as pro editors lay them out: one flat sheet of one height, the transport and strip along its top, its name
@@ -61,7 +64,9 @@ struct ProFoot: View {
         ZStack {
             Text(title).font(.system(size: 14, weight: .medium)).lineLimit(1).frame(maxWidth: 150)
             HStack(spacing: 0) {
-                if let left { leftButton(left) }
+                if let left {
+                    if left.isBack { backButton(left) } else { leftButton(left) }
+                }
                 Spacer(minLength: 0)
                 Button(action: done) {
                     Image(systemName: "checkmark").font(.system(size: 20)).frame(width: 44, height: 48).contentShape(Rectangle())
@@ -73,6 +78,15 @@ struct ProFoot: View {
         .padding(.horizontal, 16)
         .frame(height: 48)
         .overlay(alignment: .top) { Rectangle().fill(ProInk.rule).frame(height: 0.5) }
+    }
+
+    /// As every other back in the editor (23 Nov: small and grey with a word, it looked like Apply to all).
+    private func backButton(_ a: SheetAction) -> some View {
+        Button(action: a.run) {
+            Image(systemName: a.icon).font(.system(size: 18, weight: .semibold)).foregroundStyle(Color.white)
+                .frame(width: 44, height: 48, alignment: .leading).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).accessibilityLabel(a.name == "Back" ? "Back" : "Back to \(a.name)")
     }
 
     private func leftButton(_ a: SheetAction) -> some View {

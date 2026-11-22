@@ -294,7 +294,7 @@ struct TemplateMaker: View {
         let ready: Bool = !gettingMusic && filled.contains { (id: UUID?) -> Bool in id != nil }
         return HStack(spacing: 12) {
             Button { leave() } label: {
-                Image(systemName: "chevron.left").font(.system(size: 18, weight: .medium)).frame(width: 44, height: 44).contentShape(Rectangle())
+                Image(systemName: "chevron.left").font(.system(size: 18, weight: .semibold)).frame(width: 44, height: 44).contentShape(Rectangle())
             }
             .buttonStyle(.plain).accessibilityLabel("Back to the templates")
             Text(t.name).font(.system(size: 16, weight: .bold)).lineLimit(1)
