@@ -122,6 +122,7 @@ struct MultiClipEditor: View {
     @State private var scrubSkip = false
     @State private var pressed: UUID?        // the bar a finger's on (design/capcut-timeline-mockup.html: hold to lift)
     @State private var pressMoved = false    // it moved before the hold was up: a scroll, not a hold
+    @State private var pressCount = 0        // which press it is
     @State private var lifted: UUID?         // the bar held long enough to move
     @State private var liftDY: CGFloat = 0    // how far up or down it's been dragged
     @State private var dropRow: Int?          // the row it'd go on if let go now
@@ -1885,8 +1886,7 @@ struct MultiClipEditor: View {
             .contentShape(Rectangle())
             // held, it lifts (as CapCut's do): solid, a little bigger, a shadow under it, in the row it would go on
             // (22 Nov: see-through and loose under the finger, "doesn't feel as smooth as CapCut")
-            .scaleEffect(up ? 1.08 : 1)
-            .shadow(color: .black.opacity(up ? 0.6 : 0), radius: 8, y: 5)
+            .modifier(BarLift(up: up, pressing: holdingBar(item.id)))
             .offset(y: up ? liftDY : 0)
             // A tap picks it; held a third of a second it lifts, with a tick, and only then moves (21 Nov: a drag
             // moved it at once, so a slightly-off scroll or tap moved a bar). A picked bar's ends trim it straight
@@ -1903,16 +1903,22 @@ struct MultiClipEditor: View {
             .zIndex(up ? 2 : 0)   // (last, for its row to see)
     }
 
+    /// Whether a finger's holding still on this bar, on its way to lifting it.
+    private func holdingBar(_ id: UUID) -> Bool { pressed == id && !pressMoved && lifted == nil && barGrab == nil }
+
     /// A finger on a bar, moving (kept out of bar()'s chain: the compiler timed out on a long one, 1.4.21).
     private func barChanged(_ v: DragGesture.Value, _ item: BarItem, x0: CGFloat, width: CGFloat, endsTrim: Bool, w: CGFloat, span: Double, rowHeight: CGFloat) {
         let dist = hypot(v.translation.width, v.translation.height)
         if pressed != item.id {
             pressed = item.id; pressMoved = false; lifted = nil
+            pressCount += 1
+            let press = pressCount   // (a tap's hold, still counting, mustn't lift the press after it)
             Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(300))
-                guard pressed == item.id, !pressMoved, barGrab == nil else { return }
+                // (22 Nov: 300 was "a little long", so a quarter quicker)
+                try? await Task.sleep(for: .milliseconds(225))
+                guard press == pressCount, pressed == item.id, !pressMoved, barGrab == nil else { return }
                 holdRows()
-                withAnimation(.snappy(duration: 0.15)) { lifted = item.id }
+                lifted = item.id
                 player.pause(); playing = false
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             }
@@ -3588,6 +3594,26 @@ struct RangeBar<Back: View>: View {
                 .onChanged { v in if !dragging { dragging = true; began(); UISelectionFeedbackGenerator().selectionChanged() }; move(v.location.x) }
                 .onEnded { _ in dragging = false })
             .accessibilityLabel(left ? "Start" : "End")
+    }
+}
+
+/// A bar under the finger: it sinks a little while it's held, then springs up off its row with a shadow as it lifts,
+/// and back as it's let go (22 Nov: "a lift animation maybe?"). With Reduce Motion, the shadow alone.
+private struct BarLift: ViewModifier {
+    var up: Bool
+    var pressing: Bool
+    @Environment(\.accessibilityReduceMotion) private var still
+
+    func body(content: Content) -> some View {
+        let size: CGFloat = still ? 1 : (up ? 1.1 : (pressing ? 0.95 : 1))
+        let rise: CGFloat = up && !still ? -4 : 0
+        let spring: Animation = still ? .easeOut(duration: 0.15) : .spring(response: 0.28, dampingFraction: 0.55)
+        return content
+            .scaleEffect(size)
+            .shadow(color: .black.opacity(up ? 0.5 : 0), radius: up ? 12 : 0, y: up ? 8 : 0)
+            .offset(y: rise)
+            .animation(.easeOut(duration: 0.225), value: pressing)
+            .animation(spring, value: up)
     }
 }
 
