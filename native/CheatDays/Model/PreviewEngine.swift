@@ -358,6 +358,7 @@ final class FrameReader {
     private var waiting: Double?       // a start asked for before the file was open
     private var startedAt = 0.0        // when the reading last started (they're kept a twelfth of a second apart)
     private let ahead = 5
+    private var served = false          // one of what it last started reading has been shown
     var lastUsed = CACurrentMediaTime()
 
     init(url: URL) {
@@ -401,10 +402,18 @@ final class FrameReader {
             // not again within a twelfth of a second of the last start: a finger scrubbing back started it again on
             // every move and threw away what it had, so nothing came through until it stopped (21 Nov recording).
             // Till then the nearest it has shows.
-            if from >= 0, CACurrentMediaTime() - startedAt < 0.08 {
-                let near = frames.first
-                lock.unlock()
-                return near
+            if from >= 0 {
+                let since: Double = CACurrentMediaTime() - startedAt
+                // still decoding up to the last moment asked for: let it land (22 Nov: begun again every twelfth of a
+                // second, a long clip showed nothing as a finger went through it), and once landed, show it once
+                let landing: Bool = frames.isEmpty && since < 0.3
+                let justLanded: Bool = !frames.isEmpty && !served && since < 0.5
+                if since < 0.08 || landing || justLanded {
+                    let near = frames.first
+                    if near != nil { served = true }
+                    lock.unlock()
+                    return near
+                }
             }
             lock.unlock()
             start(at: s)
@@ -413,6 +422,7 @@ final class FrameReader {
         // the ones already past let go (the last always kept: a clip's end holds its last frame)
         while frames.count >= 2 && frames[1].0 <= s + 0.008 { frames.removeFirst() }
         let shown = frames.first
+        if shown != nil { served = true }
         lock.unlock()
         return shown
     }
@@ -422,6 +432,7 @@ final class FrameReader {
         generation += 1
         let g = generation
         frames.removeAll()
+        served = false
         from = max(0, s)
         startedAt = CACurrentMediaTime()
         guard track != nil else { waiting = s; lock.unlock(); return }

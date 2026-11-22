@@ -115,7 +115,7 @@ struct VideoOverlays: View {
         // (a count held still shows its number, not the 0 it counts up from)
         let moment: Double = item.kind == "calories" && !playing ? max(t, item.from + 1.3) : t
         // a line and a dot as thin at any size: drawn that much the thinner, then sized with it
-        return EditTextView(item: item, at: moment)
+        let look = EditTextView(item: item, at: moment)
             .padding(8 / scale)
             .frame(minWidth: least, minHeight: least)
             .contentShape(Rectangle())
@@ -124,6 +124,13 @@ struct VideoOverlays: View {
                 if on { sizeDot(item, middle: middle, scale: scale) }
             }
             .scaleEffect(scale)
+        return handled(look, item: item, frame: r).position(middle)
+    }
+
+    /// Its gestures, and what VoiceOver has in their place.
+    private func handled<Box: View>(_ box: Box, item: EditText, frame r: CGRect) -> some View {
+        let said: String = item.kind == "sticker" ? "Sticker \(item.text)" : item.barLabel
+        return box
             .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.space))
                 .updating($touching) { _, down, _ in down = true }
                 .onChanged { (v: DragGesture.Value) in dragged(item, v.translation, frame: r) }
@@ -132,11 +139,10 @@ struct VideoOverlays: View {
                 .onChanged { (m: CGFloat) in pinched(item, m) }
                 .onEnded { _ in finish() })
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(item.kind == "sticker" ? "Sticker \(item.text)" : item.barLabel)
+            .accessibilityLabel(said)
             .accessibilityHint("Double tap to change it; drag to move it")
             .accessibilityAddTraits(.isButton)
             .accessibilityAction { pick(item.id) }
-            .position(middle)
     }
 
     private func sizeDot(_ item: EditText, middle: CGPoint, scale: CGFloat) -> some View {

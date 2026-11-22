@@ -138,8 +138,13 @@ struct MultiClipEditor: View {
     @State private var playing = false
     @State private var scrubFrom: Double?                 // where the timeline was when a finger began sliding it
     @State private var shownShape: String?                // what the preview playing was made of (its tracks)
-    @State private var seeking = false                    // a seek on its way: the next waits for it
-    @State private var chaseTo: Double?                   // where the finger's got to since
+    @State private var motion = TimelineMotion()
+    @GestureState private var onTimeline = false          // a finger's on the timeline
+    // the bars, worked out once for each change to what's in them (22 Nov: ten times over for each step of a drag)
+    private struct ItemsKey: Equatable { var texts: [EditText]; var sounds: [EditSound]; var pips: [EditPip] }
+    private struct RowsKey: Equatable { var items: ItemsKey; var held: [UUID: Int] }
+    @State private var keptItems = Remembered<ItemsKey, [BarItem]>()
+    @State private var keptRows = Remembered<RowsKey, [[BarItem]]>()
     @State private var dropped = 0                        // a bar let go: the preview made again then
     private struct TrimDrag { var side: Int; var dx: CGFloat }
     @State private var trimDrag: TrimDrag?
@@ -187,7 +192,7 @@ struct MultiClipEditor: View {
                                 .padding(14)
                         }
                     }
-                    .overlay(alignment: .bottom) { if full { fullBar } }
+                    .overlay(alignment: .bottom) { if full { Live { fullBar } } }
                     // full screen: a swipe down goes back
                     .simultaneousGesture(DragGesture(minimumDistance: 30).onEnded { v in
                         if full, v.translation.height > 80 { withAnimation(.snappy) { full = false } }
@@ -259,7 +264,6 @@ struct MultiClipEditor: View {
         .onChange(of: selected) { _, _ in trimDrag = nil }
         .onChange(of: panel == nil) { _, _ in trimDrag = nil }
         // a handle's drag cut short (no end to it): nothing left held, the picture back where the line is
-        .onChange(of: trimLive == nil) { _, gone in if gone, trimDrag != nil { trimDrag = nil; chaseTo = nil; seek(now) } }
         .onChange(of: pipPicks) { _, now in
             guard !now.isEmpty else { return }
             pipPicks = []
@@ -299,6 +303,7 @@ struct MultiClipEditor: View {
             player.wake()
         }
         .onDisappear {
+            motion.end()
             player.shutdown()
             // the sound given back (19 Nov: left on, the feed's videos went on stopping their Spotify after an edit)
             Sound.off()
@@ -452,6 +457,10 @@ struct MultiClipEditor: View {
     static func code(_ s: Double) -> String { String(format: "%02d:%02d", Int(max(0, s)) / 60, Int(max(0, s)) % 60) }
 
     private func togglePlay() {
+        if motion.gliding {
+            motion.end()
+            finishScrub(resume: false)
+        }
         if player.rate == 0 { player.play(); playing = true } else { player.pause(); playing = false }
     }
 
@@ -654,28 +663,28 @@ struct MultiClipEditor: View {
     private var toolsSheet: some View {
         VStack(spacing: 10) {
             // where it is and how long, said as the trim strip says it ("0:11 · 0:24 of 0:30")
-            timeRow
+            Live { timeRow }
             // (21 Nov: longer is allowed; it's only a post that's kept to the limit, and it asks which part when posted)
             if total > limit + 0.05 { Text("Longer than \(Int(limit)) seconds: you can save it all to Photos, but a post keeps \(Int(limit)) seconds.").font(.caption).foregroundStyle(Theme.warn).multilineTextAlignment(.center) }
             switch panel {
             // each panel under its bar, whose ✓ closes it (20 Nov: Done at the top was too far away to find)
             case .trim: panelBar; if let i = index { trimPanel(i) }
-            case .sound: scrubBar; panelBar; if let i = index { soundPanel(i) }
+            case .sound: scrubBar; panelBar; if let i = index { liveSound(i) }
             case .speed: scrubBar; panelBar; if let i = index { speedPanel(i) }
             case .join: panelBar; if joinAt + 1 < clips.count { timeline; joinPanel(joinAt).opacity(underOpacity) }
             case .look: scrubBar; panelBar; if let i = index { lookPanel(i) }
             case .shape: scrubBar; panelBar; shapePanel
             case .text: scrubBar; panelBar; if let k = texts.firstIndex(where: { $0.id == selectedText }) { bars; textPanel(k) }
             case .captions: scrubBar; panelBar; captionsPanel   // (no bars: squashed to a letter each they said nothing the list doesn't, 21 Nov)
-            case .captionList: scrubBar; panelBar; captionList
+            case .captionList: scrubBar; panelBar; liveList
             case .recipe: scrubBar; panelBar; bars; recipePanel
             case .recipeSteps: scrubBar; panelBar; recipeSteps
             case .stickers: scrubBar; panelBar; stickerPanel
             case .voice: scrubBar; panelBar; bars; voicePanel
-            case .effects: scrubBar; panelBar; bars; effectsPanel   // (the bars shown: 21 Nov, an effect went in and nobody could see where)
-            case .soundItem: scrubBar; panelBar; if let k = sounds.firstIndex(where: { $0.id == selectedSound }) { bars; soundItemPanel(k) }
-            case .pip: scrubBar; panelBar; if let k = pips.firstIndex(where: { $0.id == selectedPip }) { bars; pipPanel(k) }
-            case .motion: scrubBar; panelBar; if let i = index { motionPanel(i) }
+            case .effects: scrubBar; panelBar; bars; liveEffects   // (the bars shown: 21 Nov, an effect went in and nobody could see where)
+            case .soundItem: scrubBar; panelBar; if let k = sounds.firstIndex(where: { $0.id == selectedSound }) { bars; liveSoundItem(k) }
+            case .pip: scrubBar; panelBar; if let k = pips.firstIndex(where: { $0.id == selectedPip }) { bars; livePip(k) }
+            case .motion: scrubBar; panelBar; if let i = index { liveMotion(i) }
             case .beats: panelBar; timeline; beatsPanel.opacity(underOpacity)
             case nil:
                 // one timeline in place of the scrub bar, the bars and the strip (21 Nov: stacked, they left the video
@@ -692,6 +701,23 @@ struct MultiClipEditor: View {
                 .fill(Self.sheet).ignoresSafeArea(edges: .bottom)
         }
     }
+
+    // The panels that show where the line is, each made again by itself as it moves. (Guarded: one can be asked again
+    // after what it was for has gone.)
+    private func liveSound(_ i: Int) -> some View {
+        Live { if clips.indices.contains(i) { soundPanel(i) } }
+    }
+    private func liveMotion(_ i: Int) -> some View {
+        Live { if clips.indices.contains(i) { motionPanel(i) } }
+    }
+    private func liveSoundItem(_ k: Int) -> some View {
+        Live { if sounds.indices.contains(k) { soundItemPanel(k) } }
+    }
+    private func livePip(_ k: Int) -> some View {
+        Live { if pips.indices.contains(k) { pipPanel(k) } }
+    }
+    private var liveList: some View { Live { captionList } }
+    private var liveEffects: some View { Live { effectsPanel } }
 
     // MARK: the timeline
 
@@ -717,7 +743,7 @@ struct MultiClipEditor: View {
     }
 
     private func tappedAllSound(_ v: DragGesture.Value) {
-        if hypot(v.translation.width, v.translation.height) < 6 { toggleAllSound() }
+        if !motion.justStopped, hypot(v.translation.width, v.translation.height) < 6 { toggleAllSound() }
     }
 
     private func toggleAllSound() {
@@ -755,11 +781,11 @@ struct MultiClipEditor: View {
         GeometryReader { g in
             let mid = g.size.width / 2, pps = perSecond, span = max(total, 0.01)
             let rows = timelineRows(width: CGFloat(span) * pps, span: span, pps: pps)
-            ZStack(alignment: .topLeading) {
+            let face = ZStack(alignment: .topLeading) {
                 // While it plays, slid on every frame the screen draws, from the player's own clock (21 Nov: moved
                 // only on the 20-a-second time updates, it stepped along)
                 TimelineView(.animation(minimumInterval: nil, paused: !playing || scrubFrom != nil)) { _ in
-                    rows.offset(x: mid - CGFloat(min(lineTime, span)) * pps)
+                    Live { rows.offset(x: mid - CGFloat(min(lineTime, span)) * pps) }
                 }
                 // the line: white, a dot on its top, yellow while a finger looks through the video
                 let line = scrubFrom != nil ? Color.yellow : Color.white
@@ -774,22 +800,41 @@ struct MultiClipEditor: View {
             .frame(width: g.size.width, height: g.size.height, alignment: .topLeading)
             .clipShape(TimelineEdge(below: spareBelow))
             .contentShape(Rectangle())
-            // alongside the clips' own touches, not after them: as a gesture of its own it waited for a clip's hold
-            // (to move it) to give up first, and the timeline stood still a moment before it moved (21 Nov recording)
-            .simultaneousGesture(DragGesture(minimumDistance: 6)
-                .onChanged { v in scrubTimeline(by: v.translation.width, from: v.startLocation, mid: mid, pps: pps) }
-                .onEnded { _ in endScrub() })
-            .simultaneousGesture(MagnificationGesture()
-                .onChanged { m in
-                    if stripZoomFrom == nil { stripZoomFrom = stripZoom }
-                    stripZoom = min(4, max(0.4, (stripZoomFrom ?? 1) * m))
-                }
-                .onEnded { _ in stripZoomFrom = nil })
+            slidable(face, mid: mid, pps: pps)
         }
         .frame(height: Self.rulerHeight + 4 + Self.clipRow + (laneCount > 0 ? 3 + CGFloat(laneCount) * (Self.laneHeight + 3) : 0))
         // edge to edge, as CapCut's
         .padding(.horizontal, -14)
         .zIndex(spareBelow > 0 ? 1 : 0)
+    }
+
+    /// The timeline's slide, its glide stopped by a touch, and its pinch.
+    private func slidable<Face: View>(_ face: Face, mid: CGFloat, pps: CGFloat) -> some View {
+        face
+            // alongside the clips' own touches, not after them: as a gesture of its own it waited for a clip's hold
+            // (to move it) to give up first, and the timeline stood still a moment before it moved (21 Nov recording)
+            .simultaneousGesture(DragGesture(minimumDistance: Self.deadZone)
+                .onChanged { (v: DragGesture.Value) in scrubTimeline(by: v.translation.width, from: v.startLocation, mid: mid, pps: pps) }
+                .onEnded { (v: DragGesture.Value) in endScrub(velocity: v.velocity.width, pps: pps) })
+            // a touch stops a glide at once, before it's gone far enough to be a slide
+            .simultaneousGesture(DragGesture(minimumDistance: 0)
+                .updating($onTimeline) { _, down, _ in down = true }
+                .onChanged { _ in touchedTimeline() })
+            .onChange(of: onTimeline) { (_: Bool, down: Bool) in timelineReleased(down) }
+            // a handle's drag cut short (no end to it): nothing left held, the picture back where the line is
+            .onChange(of: trimLive == nil) { (_: Bool, gone: Bool) in trimReleased(gone) }
+            .simultaneousGesture(MagnificationGesture()
+                .onChanged { (m: CGFloat) in pinched(m) }
+                .onEnded { _ in stripZoomFrom = nil })
+    }
+
+    private func pinched(_ m: CGFloat) {
+        if stripZoomFrom == nil {
+            stripZoomFrom = stripZoom
+            beganPinch()
+        }
+        let wanted: CGFloat = (stripZoomFrom ?? 1) * m
+        stripZoom = min(4, max(0.4, wanted))
     }
 
     /// How far under the timeline the rail to drop a lifted bar on shows.
@@ -947,7 +992,7 @@ struct MultiClipEditor: View {
                     }
                     .onEnded { v in
                         let d = side == 0 ? min(max(v.translation.width, leftMin), leftMax) : min(max(v.translation.width, rightMin), rightMax)
-                        trimDrag = nil; chaseTo = nil
+                        trimDrag = nil
                         let clicked: Bool = abs(v.translation.width) < TimelineRows.dragStarts
                         if clicked || abs(d) < 0.5 { seek(now) } else { trimEnd(i, side: side, by: Double(d / pps) * r) }
                     })
@@ -1219,7 +1264,7 @@ struct MultiClipEditor: View {
     }
 
     private func tappedEye(_ v: DragGesture.Value, _ ids: Set<UUID>, hide: Bool) {
-        if hypot(v.translation.width, v.translation.height) < 6 { switchCaptions(ids, hide: hide) }
+        if !motion.justStopped, hypot(v.translation.width, v.translation.height) < 6 { switchCaptions(ids, hide: hide) }
     }
 
     /// A row's captions switched off, or on.
@@ -1284,33 +1329,114 @@ struct MultiClipEditor: View {
         return icons.count == 1 ? icons.first! : "square.stack.fill"
     }
 
-    /// The timeline slid by a finger: the video under the line follows it, held on a clip's edge when it's near one.
+    private static let deadZone: CGFloat = 6
+
+    /// The timeline slid by a finger, point for point: the video under the line follows it, with a tick over each
+    /// clip's edge. (22 Nov: held within 8 points of an edge, and the first 6 points all at once, it went in jerks.)
     private func scrubTimeline(by dx: CGFloat, from start: CGPoint, mid: CGFloat, pps: CGFloat) {
         if scrubSkip { return }
         // a bar held and lifted, or being moved: the timeline keeps still under it from then on
         if lifted != nil || barGrab != nil { return }
-        if scrubFrom == nil {
+        if motion.gliding { touchedTimeline() }
+        var origin: Double
+        if let from = scrubFrom {
+            origin = from
+        } else {
             // a bar or a clip's end being dragged has the finger: the timeline keeps still under it. Told by where the
             // finger came down, not only by the bar's own drag having begun: that came too late, and the timeline slid
             // under a trim handle being dragged, the handle drifting from the finger (21 Nov recording)
             // (the handle's own word for it first: a touch just outside its box is still given to it, and then the
             // timeline slid and the bar trimmed at once, 22 Nov recording)
             if handleDown || barGrab != nil || trimDrag != nil || onHandleOrBar(start, mid: mid, pps: pps) { scrubSkip = true; return }
-            scrubFrom = now
+            origin = now
+            // (from what's on the screen as it plays, not the last of its twenty a second)
+            if player.rate != 0 {
+                let t: Double = player.currentTime().seconds
+                if t.isFinite { origin = t }
+            }
+            motion.slip = CGFloat(TimelineGlide.slip(Double(dx), deadZone: Double(Self.deadZone)))
+            motion.ready()
+            scrubFrom = origin
             wasPlaying = player.rate != 0
             player.pause(); playing = false
+            now = origin
         }
-        let span = max(total, 0.01)
+        _ = moveLine(to: origin - Double((dx - motion.slip) / max(pps, 1)))
+    }
+
+    /// The line put at 't' under a slide or a glide; false at either end of the video.
+    private func moveLine(to t: Double) -> Bool {
         // (short of the very end, where the preview goes round to the start again)
-        var t = min(max(0, (scrubFrom ?? 0) - Double(dx / max(pps, 1))), max(0, span - 0.12))
-        let reach = Double(8 / max(pps, 1))
-        let edges = ClipJoin.starts(clips).dropFirst()
-        if let e = edges.min(by: { abs($0 - t) < abs($1 - t) }), abs(e - t) < reach {
-            t = e
-            if snapped != e { snapped = e; UISelectionFeedbackGenerator().selectionChanged() }
-        } else { snapped = nil }
-        chase(t)
-        now = t
+        let last: Double = max(0, max(total, 0.01) - 0.12)
+        let to: Double = min(max(0, t), last)
+        let old: Double = now
+        if to != old {
+            var edges: [Double] = Array(ClipJoin.starts(clips).dropFirst())
+            edges.append(0)
+            edges.append(last)
+            if TimelineGlide.crossed(edges, from: old, to: to) { motion.tick() }
+            chase(to)
+            now = to
+        }
+        return t > 0 && t < last
+    }
+
+    /// Let go: it glides on from a flick; from still, it settles on a clip's edge it's right by.
+    private func endScrub(velocity: CGFloat, pps: CGFloat) {
+        if scrubSkip { scrubSkip = false; return }
+        guard scrubFrom != nil, !motion.gliding else { return }
+        let points: Double = Double(max(pps, 1))
+        let speed: Double = Double(velocity)
+        if abs(speed) > TimelineGlide.starts {
+            let from: Double = now
+            motion.glide(velocity: speed,
+                         move: { (gone: Double) -> Bool in moveLine(to: from - gone / points) },
+                         ended: { finishScrub(resume: true) })
+            return
+        }
+        let reach: Double = TimelineGlide.settles / points
+        let edges: [Double] = Array(ClipJoin.starts(clips).dropFirst())
+        if let edge = edges.min(by: { (a: Double, b: Double) -> Bool in abs(a - now) < abs(b - now) }), abs(edge - now) < reach {
+            _ = moveLine(to: edge)
+        }
+        finishScrub(resume: true)
+    }
+
+    private func finishScrub(resume: Bool) {
+        guard scrubFrom != nil else { return }
+        scrubFrom = nil
+        seek(now)
+        if resume, wasPlaying == true { player.play(); playing = true }
+        wasPlaying = nil
+    }
+
+    private func touchedTimeline() {
+        guard motion.gliding else { return }
+        motion.stopByTouch()
+        finishScrub(resume: false)
+    }
+
+    /// The finger off the timeline, however that drag ended: cut short, it has no end of its own.
+    private func timelineReleased(_ down: Bool) {
+        guard !down else { return }
+        DispatchQueue.main.async {
+            guard !onTimeline else { return }
+            scrubSkip = false
+            if !motion.gliding { finishScrub(resume: true) }
+        }
+    }
+
+    /// Two fingers: a pinch, not a slide.
+    private func beganPinch() {
+        motion.end()
+        finishScrub(resume: false)
+        scrubSkip = true
+    }
+
+    private func trimReleased(_ gone: Bool) {
+        guard gone, trimDrag != nil else { return }
+        trimDrag = nil
+        seek(now)
     }
 
     /// Whether a point on the timeline (its own coordinates) is on the picked clip's trim handles or on a bar.
@@ -1335,29 +1461,11 @@ struct MultiClipEditor: View {
         return (p.x >= x0 - outside && p.x <= x0 + inside) || (p.x >= x1 - inside && p.x <= x1 + outside)
     }
 
-    /// A finger looking through the video: one seek at a time, each to where the finger is when the last one's done
-    /// (Apple's "chase" seek). (21 Nov: a seek for every move piled up behind each other, and the picture froze.)
+    /// A finger looking through the video: the engine only notes where it's wanted and draws that the next frame
+    /// (the wait for one seek before the next, Apple's way for its player, put each step a frame or more behind).
     private func chase(_ t: Double) {
-        chaseTo = t
-        if !seeking { seekToChase() }
-    }
-
-    private func seekToChase() {
-        guard let t = chaseTo else { return }
-        chaseTo = nil; seeking = true
         let near = CMTime(seconds: 0.04, preferredTimescale: 600)
-        player.seek(to: CMTime(seconds: t, preferredTimescale: 600), toleranceBefore: near, toleranceAfter: near) { _ in
-            DispatchQueue.main.async { MainActor.assumeIsolated { seeking = false; if chaseTo != nil { seekToChase() } } }
-        }
-    }
-
-    private func endScrub() {
-        if scrubSkip { scrubSkip = false; return }
-        guard scrubFrom != nil else { return }
-        snapped = nil; scrubFrom = nil; chaseTo = nil
-        seek(now)
-        if wasPlaying == true { player.play(); playing = true }
-        wasPlaying = nil
+        player.seek(to: CMTime(seconds: t, preferredTimescale: 600), toleranceBefore: near, toleranceAfter: near)
     }
 
     private var actions: some View {
@@ -1601,6 +1709,7 @@ struct MultiClipEditor: View {
     // MARK: doing things
 
     private func select(_ id: UUID) {
+        if motion.gliding || motion.justStopped { return }   // (that touch was to stop the timeline)
         selectedText = nil; selectedSound = nil; selectedPip = nil
         selected = selected == id ? nil : id
         // (the line stays where it is: 21 Nov, it jumped to the clip's start, and the timeline with it)
@@ -1794,7 +1903,17 @@ struct MultiClipEditor: View {
         }
     }
 
-    private func seek(_ s: Double) { player.seek(to: CMTime(seconds: max(0, s), preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero); now = s; followCaption(s) }
+    private func seek(_ s: Double) {
+        // gone somewhere else: a glide's over
+        if motion.gliding {
+            motion.end()
+            scrubFrom = nil
+            wasPlaying = nil
+        }
+        player.seek(to: CMTime(seconds: max(0, s), preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+        now = s
+        followCaption(s)
+    }
 
     /// A caption being edited, and the line moves on (played or slid) into another: that one's picked, as CapCut
     /// does, so the panel is always for the caption on screen.
@@ -1817,7 +1936,7 @@ struct MultiClipEditor: View {
 
     private func scrubStrip(slim: Bool = false) -> some View {
         let tall: CGFloat = slim ? 22 : 26, room: CGFloat = slim ? 28 : 38
-        let lineWide: CGFloat = slim ? 2 : 3.5, lineTall: CGFloat = slim ? 28 : 36, round: CGFloat = slim ? 3 : 6
+        let lineWide: CGFloat = slim ? 2 : 3.5, lineTall: CGFloat = slim ? 28 : 36, corner: CGFloat = slim ? 3 : 6
         return GeometryReader { g in
             let w = g.size.width, span = max(total, 0.01)
             ZStack(alignment: .leading) {
@@ -1827,13 +1946,13 @@ struct MultiClipEditor: View {
                     ForEach(Array(clips.enumerated()), id: \.element.id) { i, c in
                         ClipThumb(clip: c)
                             .frame(width: max(2, w * CGFloat(c.span / span) - 2), height: tall)
-                            .clipShape(RoundedRectangle(cornerRadius: round, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: round, style: .continuous).fill(.black.opacity(c.id == selected || selected == nil ? 0 : 0.35)))
+                            .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: corner, style: .continuous).fill(.black.opacity(c.id == selected || selected == nil ? 0 : 0.35)))
                             .offset(x: w * CGFloat(starts[i] / span))
                     }
                 }
                 .frame(width: w, height: tall, alignment: .leading).clipped()
-                .overlay(RoundedRectangle(cornerRadius: round, style: .continuous).stroke(.white.opacity(slim ? 0 : 0.45), lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: corner, style: .continuous).stroke(.white.opacity(slim ? 0 : 0.45), lineWidth: 1))
                 // the song's beats, as yellow ticks (Stage E)
                 ForEach(songBeats.indices, id: \.self) { b in
                     Rectangle().fill(Color.yellow.opacity(0.8)).frame(width: 1, height: 10)
@@ -1863,7 +1982,7 @@ struct MultiClipEditor: View {
                     now = t
                 }
                 .onEnded { _ in
-                    snapped = nil; chaseTo = nil
+                    snapped = nil
                     seek(now)
                     if wasPlaying == true { player.play(); playing = true }
                     wasPlaying = nil
@@ -1987,6 +2106,8 @@ struct MultiClipEditor: View {
     }
 
     private func finish() {
+        motion.end()
+        finishScrub(resume: false)
         joining = true; progress = 0; player.pause()
         let edit = clips, sound = soundOf, shape = look, laid = sounds, on = pips
         let items = CaptionLayers.placed(texts, sounds: sounds), size = frameSize
@@ -2278,6 +2399,11 @@ struct MultiClipEditor: View {
     /// Everything laid over the video as bars, in rows so none covers another: drag one along, or by an end for when it
     /// starts and stops; tap it to change it. Text and stickers, then the sounds.
     private var barItems: [BarItem] {
+        let key = ItemsKey(texts: texts, sounds: sounds, pips: pips)
+        return keptItems.get(for: key) { makeItems() }
+    }
+
+    private func makeItems() -> [BarItem] {
         textBars
             + sounds.map { BarItem(id: $0.id, from: $0.from, to: $0.to, label: Self.soundMark($0.kind) + $0.name, colour: Self.soundColour($0.kind), kind: 1, lane: $0.lane) }
             + pips.map { BarItem(id: $0.id, from: $0.from, to: $0.to, label: "▣ Overlay" + ($0.keys.isEmpty ? "" : " · ◆"), colour: Color(red: 0.36, green: 0.82, blue: 0.56), kind: 2, lane: $0.lane) }
@@ -2296,18 +2422,24 @@ struct MultiClipEditor: View {
     /// The bars in rows: one put on a row (held and dragged there) is on it; the rest in rows of their own kind where
     /// they don't cover another, as before. Empty rows close up.
     private var barRows: [[BarItem]] {
+        let key = RowsKey(items: ItemsKey(texts: texts, sounds: sounds, pips: pips), held: heldRows)
+        return keptRows.get(for: key) { makeRows() }
+    }
+
+    private func makeRows() -> [[BarItem]] {
+        let items: [BarItem] = barItems
         var rows: [[BarItem]] = []
         // (while one's held, each keeps the row it had: packed again as it moved, the bar under the finger jumped
         // rows, so was a new view each time and lost the finger, 22 Nov)
         let held = heldRows
-        for t in barItems {
+        for t in items {
             guard let lane = held[t.id] ?? t.lane else { continue }
             let l = max(0, lane)
             while rows.count <= l { rows.append([]) }
             rows[l].append(t)
         }
         rows = rows.filter { !$0.isEmpty }.map { $0.sorted { $0.from < $1.from } }
-        for t in barItems.filter({ held[$0.id] == nil && $0.lane == nil }).sorted(by: { $0.from < $1.from }) {
+        for t in items.filter({ held[$0.id] == nil && $0.lane == nil }).sorted(by: { $0.from < $1.from }) {
             // (the chosen rows too: kept out of them, a caption made after a bar had been moved got a row to itself)
             let free = rows.indices.first { (r: Int) -> Bool in joins(t, rows[r]) }
             if let r = free { rows[r].append(t) } else { rows.append([t]) }
@@ -2531,7 +2663,7 @@ struct MultiClipEditor: View {
         // a tap (not moved, however long it was down): it's picked. On the timeline, only picked: the timeline stays, with its trim
         // frame, and the row under it is its tools (CapCut's, 21 Nov: the panel opened at once and hid the timeline
         // the bar was on, so its ends couldn't be trimmed nor it held there). In a panel's bars, its panel, as before.
-        if barGrab == nil, hypot(v.translation.width, v.translation.height) < 6 {
+        if barGrab == nil, !motion.justStopped, hypot(v.translation.width, v.translation.height) < 6 {
             if panel == nil { pickBar(item) } else {
                 switch item.kind {
                 case 1: selectSound(item.id)
@@ -3543,6 +3675,21 @@ struct MultiClipEditor: View {
         }
     }
 
+    private func styleCaptions(_ caps: [Int], _ style: String) {
+        remember()
+        for i in caps { texts[i].style = style }
+        for i in cutWords.indices { cutWords[i].style = style }   // (those trimmed off come back the same)
+    }
+
+    private func highlightCaptions(_ caps: [Int], on: Bool) {
+        remember()
+        let set: (inout EditText) -> Void = { (t: inout EditText) in
+            if !on { t.highlight = "none" } else if t.highlight == "none" { t.highlight = nil }
+        }
+        for i in caps { set(&texts[i]) }
+        for i in cutWords.indices { set(&cutWords[i]) }
+    }
+
     private func takeOffCaptions() {
         remember()
         texts.removeAll { (t: EditText) -> Bool in t.kind == "caption" }
@@ -3621,13 +3768,12 @@ struct MultiClipEditor: View {
             segments([("1", "1"), ("2", "Up to 2")], String(captionLines)) { l in captionLines = Int(l) ?? 1; regroupCaptions() }
             Text("Highlight the word being said").font(.caption.weight(.semibold)).foregroundStyle(Self.quiet)
             segments([("on", "On"), ("off", "Off")], caps.allSatisfy { texts[$0].highlight == "none" } ? "off" : "on") { v in
-                remember()
-                for i in caps { texts[i].highlight = v == "off" ? "none" : (texts[i].highlight == "none" ? nil : texts[i].highlight) }
+                highlightCaptions(caps, on: v != "off")
             }
             Text("Style").font(.caption.weight(.semibold)).foregroundStyle(Self.quiet)
             HStack(spacing: 6) {
                 ForEach(EditText.captionStyles, id: \.self) { st in
-                    chip(st, on: caps.allSatisfy { texts[$0].style == st } && style == st) { remember(); for i in caps { texts[i].style = st } }
+                    chip(st, on: caps.allSatisfy { texts[$0].style == st } && style == st) { styleCaptions(caps, st) }
                 }
                 Spacer(minLength: 0)
             }
@@ -4138,11 +4284,20 @@ struct ClipThumb: View {
             }
             .frame(width: g.size.width, height: g.size.height)
             .background(Color(white: 0.2))
-            .task(id: "\(clip.source)|\(whole ? 0 : clip.start)|\(whole ? clip.length : clip.end)|\(Int(g.size.width))") {
-                frames = await Self.frames(clip, whole: whole, count: max(1, min(8, Int(g.size.width / 40))))
+            .task(id: "\(clip.source)|\(whole ? 0 : clip.start)|\(whole ? clip.length : clip.end)|\(Self.count(g.size.width))") {
+                let made: [UIImage] = await Self.frames(clip, whole: whole, count: Self.count(g.size.width))
+                // (what's there stays up till all the new ones are in)
+                if !Task.isCancelled, !made.isEmpty { frames = made }
             }
         }
     }
+    /// How many frames for a width: doubling, so a pinch doesn't make them again at each step.
+    static func count(_ width: CGFloat) -> Int {
+        if width < 80 { return 1 }
+        if width < 160 { return 2 }
+        return width < 320 ? 4 : 8
+    }
+
     static func frames(_ c: Clip, whole: Bool, count: Int) async -> [UIImage] {
         let gen = AVAssetImageGenerator(asset: AVURLAsset(url: c.source))
         gen.appliesPreferredTrackTransform = true
