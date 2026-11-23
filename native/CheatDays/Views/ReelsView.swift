@@ -431,7 +431,7 @@ struct ReelsView: View {
 
     private func rail(_ symbol: String, _ count: String, tint: Color = .white, _ tap: @escaping () -> Void) -> some View {
         Button(action: tap) {
-            VStack(spacing: 2) {
+            VStack(spacing: 9) {   // (number from icon as Instagram's, measured: about two-thirds of the icon's height to the figures' tops)
                 Self.railIcon(symbol).foregroundStyle(tint)
                     .symbolEffect(.bounce, value: symbol)   // the heart, as it fills or empties
                 Self.count(count)
@@ -444,7 +444,7 @@ struct ReelsView: View {
     /// One of the app's own icons on the side of a reel, the same size as the heart.
     private func rail(_ glyph: Glyph, _ count: String, tint: Color = .white, filled: Bool = false, _ tap: @escaping () -> Void) -> some View {
         Button(action: tap) {
-            VStack(spacing: 2) {
+            VStack(spacing: 9) {   // (number from icon as Instagram's, measured: about two-thirds of the icon's height to the figures' tops)
                 GlyphIcon(glyph: glyph, size: 29, filled: filled).foregroundStyle(tint)
                     .frame(width: 27, height: 27)
                 Self.count(count)
