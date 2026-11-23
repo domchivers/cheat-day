@@ -3264,9 +3264,7 @@ struct MultiClipEditor: View {
         remember()   // (moved or trimmed, it can be undone)
         if item.kind == 1, let s = sounds.first(where: { $0.id == item.id }) {
             barGrab = BarGrab(id: item.id, mode: mode, from: s.from, to: s.to, words: nil, start: s.start)
-            riders = mode != 0 ? [] : texts.filter { (t: EditText) -> Bool in
-                t.kind == "caption" && (t.words ?? []).contains { (w: EditText.Word) -> Bool in w.clip == item.id }
-            }
+            riders = mode != 0 ? [] : Self.riding(texts, on: s)
         } else if item.kind == 2, let p = pips.first(where: { $0.id == item.id }) {
             barGrab = BarGrab(id: item.id, mode: mode, from: p.from, to: p.to, words: nil, start: p.start)
         } else if let t = texts.first(where: { $0.id == item.id }) {
@@ -3370,6 +3368,19 @@ struct MultiClipEditor: View {
             }
         }
         if follow { seek(g.mode == 2 ? max(0, texts[i].to - 0.05) : texts[i].from) }
+    }
+
+    /// The captions that go with a voiceover as it's dragged: its own words, and captions tied to nothing that sit
+    /// within it (23 Nov, "why only some of the captions moving not altogether?": a caption moved by hand lost its
+    /// tie to its voice, and stayed behind when the voice was moved).
+    static func riding(_ texts: [EditText], on s: EditSound) -> [EditText] {
+        texts.filter { (t: EditText) -> Bool in
+            guard t.kind == "caption" else { return false }
+            let words: [EditText.Word] = t.words ?? []
+            if words.contains(where: { (w: EditText.Word) -> Bool in w.clip == s.id }) { return true }
+            let loose: Bool = words.allSatisfy { (w: EditText.Word) -> Bool in w.clip == nil && w.src == nil && w.file == nil }
+            return loose && t.from >= s.from - 0.05 && t.to <= s.to + 0.05
+        }
     }
 
     /// The voiceover's captions that far from where they were (put exactly where their words are once it's let go).

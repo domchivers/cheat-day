@@ -31,6 +31,17 @@ final class EditorPanelsTests: XCTestCase {
         XCTAssertTrue(typed.allSatisfy { $0.src == nil && $0.clip == nil })
     }
 
+    @MainActor func testCaptionsMovedByHandStillRideTheirVoice() {
+        let voice = EditSound(kind: "voice", name: "Voice 1", file: nil, from: 8, length: 3)
+        let tied = EditText(kind: "caption", text: "hello", from: 8, to: 8.5,
+                            words: [EditText.Word(text: "hello", at: 8, clip: voice.id, file: "v.m4a", src: 0)])
+        let nudged = EditText(kind: "caption", text: "my friend", from: 9, to: 10, words: [EditText.Word(text: "my", at: 9)])
+        let elsewhere = EditText(kind: "caption", text: "later", from: 14, to: 15, words: [EditText.Word(text: "later", at: 14)])
+        let title = EditText(kind: "text", text: "Dinner", from: 8, to: 10)
+        let ride: [UUID] = MultiClipEditor.riding([tied, nudged, elsewhere, title], on: voice).map(\.id)
+        XCTAssertEqual(ride, [tied.id, nudged.id])
+    }
+
     func testEveryBundledFontIsInTheApp() {
         let named: [String] = ["Anton-Regular", "BebasNeue-Regular", "ArchivoBlack-Regular", "Bangers-Regular", "Pacifico-Regular",
                                "Lobster-Regular", "CaveatBrush-Regular", "AbrilFatface-Regular", "Righteous-Regular",
