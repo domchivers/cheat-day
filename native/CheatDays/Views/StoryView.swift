@@ -700,7 +700,7 @@ struct StoryView: View {
                         .focused($typing).foregroundStyle(.white).submitLabel(.send).onSubmit { send() }
                     if typing, !reply.trimmingCharacters(in: .whitespaces).isEmpty {
                         Button { send() } label: {
-                            Image(systemName: "paperplane.fill").font(.system(size: 15, weight: .bold)).foregroundStyle(.black)
+                            GlyphIcon(glyph: .send, size: 20, filled: true).foregroundStyle(.black)
                                 .frame(width: 48, height: 32).background(.white, in: Capsule())
                         }
                         .buttonStyle(.plain).accessibilityLabel("Send")
@@ -749,7 +749,8 @@ struct StoryView: View {
 
     private func sendButton(_ tap: @escaping () -> Void) -> some View {
         Button(action: tap) {
-            Image(systemName: "paperplane").font(.system(size: 23, weight: .medium)).foregroundStyle(.white).frame(width: 38, height: 44).contentShape(Rectangle())
+            // (23 Nov: the app's own plane, as on reels and posts)
+            GlyphIcon(glyph: .send, size: 30).foregroundStyle(.white).frame(width: 38, height: 44).contentShape(Rectangle())
         }
         .buttonStyle(.plain).accessibilityLabel("Send to a friend")
     }
