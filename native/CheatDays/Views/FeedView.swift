@@ -914,7 +914,13 @@ struct FeedView: View {
         let kg = lifts.reduce(0.0) { $0 + (num($1["sets"]) ?? 0) * (num($1["reps"]) ?? 0) * (num($1["kg"]) ?? 0) }
         return VStack(alignment: .leading, spacing: 8) {
             Eyebrow(text: kind == "workout" ? "Workout" : kind == "meal" ? "Meal" : Self.what(p), color: Theme.heroLabel)
-            Text(str(p["name"])).font(.title2.weight(.heavy)).multilineTextAlignment(.leading)
+            // the button beside the name, up clear of the sound button at the bottom right (23 Nov: on a workout with a
+            // song, Do it sat under it)
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(str(p["name"])).font(.title2.weight(.heavy)).multilineTextAlignment(.leading)
+                Spacer(minLength: 0)
+                haveSome(p)
+            }
             if kind == "workout" {
                 // A, the scoreboard (16 Nov): three big numbers on one line with no boxes, then a bar of where the
                 // weight went, exercise by exercise. No picture: the numbers carry it.
@@ -931,12 +937,9 @@ struct FeedView: View {
                 HStack(spacing: 8) {
                     Text(n.kcal)
                     if let pr = n.protein { Text("·"); Text(pr).foregroundStyle(Theme.walk) }
-                    Spacer(minLength: 0)
-                    haveSome(p)
                 }
                 .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
             }
-            if kind == "workout" { HStack { Spacer(minLength: 0); haveSome(p) } }
         }
         .padding(20).frame(maxWidth: .infinity, minHeight: kind == "workout" ? 190 : 140, alignment: .leading)
         .background(alignment: .topTrailing) {
