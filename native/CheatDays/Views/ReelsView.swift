@@ -327,8 +327,7 @@ struct ReelsView: View {
                 HStack(alignment: .bottom, spacing: 12) {
                     about(p)
                     Spacer(minLength: 0)
-                    // (23 Nov, design/repost-round-mockup.html: the app's own icons, more room between them, and each
-                    // number's room kept when there's none, so the column stands the same on every reel)
+                    // (23 Nov, design/repost-round-mockup.html: the app's own icons, a little more room between them)
                     VStack(spacing: 20) {
                         rail(hearted ? "heart.fill" : "heart", rx.isEmpty ? "" : "\(Set(rx.map { str($0["user_id"]) }).count)", tint: hearted ? .red : .white) { Task { await feed.toggle(p, "❤️") } }
                             .accessibilityLabel(hearted ? "Unlike" : "Like")
@@ -420,10 +419,10 @@ struct ReelsView: View {
         .buttonStyle(.plain)
     }
 
-    /// The number under an icon, its room kept when there's none.
-    private static func count(_ n: String) -> some View {
-        Text(n.isEmpty ? "0" : n).font(.caption.weight(.bold)).foregroundStyle(.white).monospacedDigit()
-            .opacity(n.isEmpty ? 0 : 1).accessibilityHidden(n.isEmpty)
+    /// The number under an icon; nothing when there's none (23 Nov: its room kept empty spread the icons far apart on a
+    /// reel with no likes yet, "by default they shouldn't have this much spacing").
+    @ViewBuilder private static func count(_ n: String) -> some View {
+        if !n.isEmpty { Text(n).font(.caption.weight(.bold)).foregroundStyle(.white).monospacedDigit() }
     }
 
     /// Who posted it (with Follow for someone you don't), its song, its caption, and the food or workout it's of.
