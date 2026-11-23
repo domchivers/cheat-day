@@ -28,14 +28,18 @@ struct PlanTabs: View {
             // so the finger was still on it when it lifted, and it opened Sunday).
             GeometryReader { geo in
                 let w: CGFloat = geo.size.width
-                ZStack(alignment: .topLeading) {
+                // One strip, moved as one (24 Nov): each screen offset on its own, the Goal list lagged the Plan
+                // screen mid-slide and the two ran over each other ("Your goal" into "Daily budget").
+                HStack(alignment: .top, spacing: 0) {
                     BudgetView(embedded: true)
-                        .frame(width: w).offset(x: -CGFloat(tab) * w + pull)
+                        .frame(width: w, height: geo.size.height)
                         .allowsHitTesting(tab == 0 && pullFrom == nil).accessibilityHidden(tab != 0)
                     BodyView(embedded: true, active: tab == 1)
-                        .frame(width: w).offset(x: (1 - CGFloat(tab)) * w + pull)
+                        .frame(width: w, height: geo.size.height)
                         .allowsHitTesting(tab == 1 && pullFrom == nil).accessibilityHidden(tab != 1)
                 }
+                .frame(width: w * 2, height: geo.size.height, alignment: .topLeading)
+                .offset(x: -CGFloat(tab) * w + pull)
                 .frame(width: w, height: geo.size.height, alignment: .topLeading)
                 .clipped()
                 .contentShape(Rectangle())   // (the swipe kept while the screens under it can't be touched)
