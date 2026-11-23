@@ -35,7 +35,8 @@ struct BodyView: View {
         return key.prefix(4) == store.today.prefix(4) ? d.formatted(.dateTime.month(.wide)) : d.formatted(.dateTime.month(.wide).year())
     }
     private func head(_ t: String) -> some View {
-        Text(t).font(.headline.weight(.heavy)).foregroundStyle(.secondary).textCase(nil)
+        // the plain grey, as Your plan's headings: .secondary in a List header came out dimmer still (24 Nov)
+        Text(t).font(.headline.weight(.heavy)).foregroundStyle(Color(.secondaryLabel)).textCase(nil)
     }
 
     var body: some View {
