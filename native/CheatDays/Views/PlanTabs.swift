@@ -33,10 +33,10 @@ struct PlanTabs: View {
                 HStack(alignment: .top, spacing: 0) {
                     BudgetView(embedded: true)
                         .frame(width: w, height: geo.size.height)
-                        .allowsHitTesting(tab == 0 && pullFrom == nil).accessibilityHidden(tab != 0)
+                        .allowsHitTesting(tab == 0 && pullFrom == nil).disabled(pullFrom != nil).accessibilityHidden(tab != 0)
                     BodyView(embedded: true, active: tab == 1)
                         .frame(width: w, height: geo.size.height)
-                        .allowsHitTesting(tab == 1 && pullFrom == nil).accessibilityHidden(tab != 1)
+                        .allowsHitTesting(tab == 1 && pullFrom == nil).disabled(pullFrom != nil).accessibilityHidden(tab != 1)
                 }
                 .frame(width: w * 2, height: geo.size.height, alignment: .topLeading)
                 .offset(x: -CGFloat(tab) * w + pull)
@@ -73,8 +73,10 @@ struct PlanTabs: View {
                 if pull < -w / 4 || (pull < -12 && flick < -80) { next = min(1, tab + 1) }
                 if pull > w / 4 || (pull > 12 && flick > 80) { next = max(0, tab - 1) }
                 withAnimation(.snappy(duration: 0.28)) { tab = next; pull = 0 }
-                // (the screens back to being touched only once the finger's off: lifted on a bar, it isn't a tap)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { pullFrom = nil }
+                // (the screens back to being touched only once the finger's well off: lifted on a button, it isn't a tap. 24 Nov:
+                // not touchable wasn't enough, a swipe begun on Make every day the same still pressed it and wiped the
+                // week's own days, so the buttons are switched off too while a swipe is on)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { pullFrom = nil }
             }
     }
 
