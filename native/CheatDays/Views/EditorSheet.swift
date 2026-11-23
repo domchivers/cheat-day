@@ -349,3 +349,9 @@ struct ProSwitch: View {
         }
     }
 }
+
+/// Where a row of tools has slid to: its content's left edge, against the row's own.
+struct ToolsLeft: PreferenceKey {
+    static var defaultValue: CGFloat { 0 }
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}

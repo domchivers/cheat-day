@@ -175,6 +175,8 @@ struct MultiClipEditor: View {
     @State private var heldRows: [UUID: Int] = [:]   // each bar's row as it was when one was caught, till it's let go
     @State private var barSnap: Double?
     @State private var stripHeld: CGFloat?                // the keyframe a strip's scrub is held on (for the tap, once)                   // what a bar being dragged is held on (for the tap, once)                  // this drag is a bar's or a trim handle's, not the timeline's                // an end of the picked clip being dragged on the timeline
+    /// The tool row slid along from its start (its left edge fades then).
+    @State private var toolsScrolled = false
     /// A voiceover's captions as they were when it was caught, carried along with it while it's dragged.
     @State private var riders: [EditText] = []
     private struct BarGrab { var id: UUID; var mode: Int; var from: Double; var to: Double; var words: [EditText.Word]?; var start = 0.0 }   // mode: 0 move, 1 start, 2 end
@@ -1916,9 +1918,27 @@ struct MultiClipEditor: View {
     private func toolRow<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) { content() }.padding(.trailing, 28)
+                .background {
+                    GeometryReader { (g: GeometryProxy) in
+                        Color.clear.preference(key: ToolsLeft.self, value: g.frame(in: .named("toolRow")).minX)
+                    }
+                }
         }
-        .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.86), .init(color: .clear, location: 1)],
-                             startPoint: .leading, endPoint: .trailing))
+        .coordinateSpace(name: "toolRow")
+        .onPreferenceChange(ToolsLeft.self) { (x: CGFloat) in
+            let scrolled: Bool = x < -2
+            if scrolled != toolsScrolled { toolsScrolled = scrolled }
+        }
+        .mask(Self.toolFade(left: toolsScrolled))
+    }
+
+    /// The tool row's edges: a fade at each (23 Nov: one faded, the other was cut hard), a quarter shorter than the one
+    /// was; at the left only once it's slid along, so the first tool isn't dimmed at rest.
+    private static func toolFade(left: Bool) -> LinearGradient {
+        let f: CGFloat = 0.105
+        let stops: [Gradient.Stop] = [.init(color: left ? .clear : .black, location: 0), .init(color: .black, location: left ? f : 0),
+                                      .init(color: .black, location: 1 - f), .init(color: .clear, location: 1)]
+        return LinearGradient(stops: stops, startPoint: .leading, endPoint: .trailing)
     }
 
     // MARK: trim and sound
