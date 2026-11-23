@@ -26,6 +26,10 @@ struct ReelsView: View {
     @State private var holding: Double?
     @State private var lastTap = Date.distantPast
     @State private var pausedBefore = false
+    /// A finger held on the video (23 Nov, "if you hold on a reel it pauses, let go it plays"): paused with
+    /// everything cleared off it, no play button, until it lifts. Instagram's and TikTok's way.
+    @State private var held = false
+    @State private var holdWait: Task<Void, Never>?
     @GestureState private var pinch: CGFloat = 1
     @State private var clean = false
     @State private var talking: PostBox?
@@ -82,9 +86,10 @@ struct ReelsView: View {
         // nothing behind the video but the screen it was opened from, which shows as the video slides away
         .presentationBackground(.clear)
         .preferredColorScheme(.dark)
-        .onChange(of: current) { _, now in paused = false; holding = nil; head.at = 0; head.length = 0; sound(); if let now { Feed.warmAhead(now, in: posts, swiped: true) } }
+        .onChange(of: current) { _, now in paused = false; held = false; holding = nil; head.at = 0; head.length = 0; sound(); if let now { Feed.warmAhead(now, in: posts, swiped: true) } }
         .onAppear { if let current { Feed.warmAhead(current, in: posts, swiped: true) } }   // the next two reels fetched while this one plays (MediaCache)
         .onChange(of: paused) { _, _ in sound() }
+        .onChange(of: held) { _, _ in sound() }
         .onChange(of: muted) { _, now in SongPlayer.shared.auto = !now; sound() }
         // the volume buttons turned sound on
         .onReceive(NotificationCenter.default.publisher(for: .soundOn)) { _ in if muted { muted = false } }
@@ -141,11 +146,11 @@ struct ReelsView: View {
             // paused, or held on the line along the bottom: the song waits where it is (stopped and started again,
             // it began from its beginning while the video carried on from the middle)
             if SongPlayer.shared.playing != "reel:" + id {
-                guard !paused else { return }
+                guard !paused && !held else { return }
                 SongPlayer.shared.play(s, key: "reel:" + id, loop: true, volume: Music.mix(p).song)
                 if head.at > 0.3 { SongPlayer.shared.seek(head.at) }
             }
-            SongPlayer.shared.hold(paused || holding != nil)
+            SongPlayer.shared.hold(paused || held || holding != nil)
         } else {
             SongPlayer.shared.stop()
             // stopping a song hands the sound back to the ringer; here a video is still to be heard
@@ -201,7 +206,7 @@ struct ReelsView: View {
             // TikTok don't: they keep a few players and get the next one ready). Its picture is under it until then.
             if let v = Feed.video(p), near(id) {
                 let tall = num(dict(p["extra"])["aspect"]).map { $0 > 0.62 } ?? false
-                let clip = LoopingVideo(url: v, paused: !on || paused, muted: !on || muted, scrub: on ? holding : nil, tick: { at, length in
+                let clip = LoopingVideo(url: v, paused: !on || paused || (on && held), muted: !on || muted, scrub: on ? holding : nil, tick: { at, length in
                     guard on else { return }
                     // gone round to its start: so does its song
                     if at + 0.5 < head.at, holding == nil { SongPlayer.shared.seek(at) }
@@ -235,6 +240,20 @@ struct ReelsView: View {
                         withAnimation(.easeOut(duration: 0.12)) { paused.toggle() }
                     }
                 }
+                // held: paused and cleared while the finger stays; a quarter of a second first, so a tap is a tap
+                // and a swipe up to the next one is a swipe (a finger that moves lets go of it)
+                .onLongPressGesture(minimumDuration: 0.25, maximumDistance: 24, perform: {}, onPressingChanged: { down in
+                    holdWait?.cancel()
+                    if down {
+                        holdWait = Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(250))
+                            guard !Task.isCancelled else { return }
+                            withAnimation(.easeOut(duration: 0.15)) { held = true }
+                        }
+                    } else if held {
+                        withAnimation(.easeOut(duration: 0.15)) { held = false }
+                    }
+                })
                 .simultaneousGesture(MagnifyGesture()
                     .updating($pinch) { v, s, _ in s = v.magnification }
                     .onEnded { v in
@@ -246,9 +265,11 @@ struct ReelsView: View {
             if on, !list(dict(p["extra"])["live"]).isEmpty { liveStickers(p) }
             // paused: everything stays where it was, with sound and play in the middle (as Instagram has it; it
             // used to clear the name, caption and buttons away, which read as something having gone wrong)
-            if !clean { chrome(p, rx: rx) } else { backAgain }
-            if on && paused { pausedButtons }
-            if on {
+            if !(on && held) {
+                if !clean { chrome(p, rx: rx) } else { backAgain }
+            }
+            if on && paused && !held { pausedButtons }
+            if on && !held {
                 // just above the comment bar; lower when that's cleared away
                 VStack { Spacer(); ReelBar(head: head, holding: $holding) }
                     .padding(.bottom, !clean ? 68 : 22)
