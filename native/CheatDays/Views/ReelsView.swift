@@ -349,7 +349,9 @@ struct ReelsView: View {
                     about(p)
                     Spacer(minLength: 0)
                     // (23 Nov, design/repost-round-mockup.html: the app's own icons, a little more room between them)
-                    VStack(spacing: 22) {   // (Instagram's gap between two with no number, measured off its screenshot)
+                    // (23 Nov: 22 between two with no number, as Instagram's; a number sits tight under its icon and
+                    // takes only its own height, so one with a number isn't spread further apart, "far apart with numbers?")
+                    VStack(spacing: 20) {
                         rail(hearted ? "heart.fill" : "heart", rx.isEmpty ? "" : "\(Set(rx.map { str($0["user_id"]) }).count)", tint: hearted ? .red : .white) { Task { await feed.toggle(p, "❤️") } }
                             .accessibilityLabel(hearted ? "Unlike" : "Like")
                         rail(.comment, comments == 0 ? "" : "\(comments)") { talking = PostBox(post: p) }.accessibilityLabel("Comments")
@@ -417,7 +419,7 @@ struct ReelsView: View {
 
     private func rail(_ symbol: String, _ count: String, tint: Color = .white, _ tap: @escaping () -> Void) -> some View {
         Button(action: tap) {
-            VStack(spacing: 3) {
+            VStack(spacing: 2) {
                 Self.railIcon(symbol).foregroundStyle(tint)
                     .symbolEffect(.bounce, value: symbol)   // the heart, as it fills or empties
                 Self.count(count)
@@ -430,7 +432,7 @@ struct ReelsView: View {
     /// One of the app's own icons on the side of a reel, the same size as the heart.
     private func rail(_ glyph: Glyph, _ count: String, tint: Color = .white, filled: Bool = false, _ tap: @escaping () -> Void) -> some View {
         Button(action: tap) {
-            VStack(spacing: 3) {
+            VStack(spacing: 2) {
                 GlyphIcon(glyph: glyph, size: 29, filled: filled).foregroundStyle(tint)
                     .frame(width: 27, height: 27)
                 Self.count(count)
@@ -443,7 +445,8 @@ struct ReelsView: View {
     /// The number under an icon; nothing when there's none (23 Nov: its room kept empty spread the icons far apart on a
     /// reel with no likes yet, "by default they shouldn't have this much spacing").
     @ViewBuilder private static func count(_ n: String) -> some View {
-        if !n.isEmpty { Text(n).font(.caption.weight(.bold)).foregroundStyle(.white).monospacedDigit() }
+        // (the line's own room above and below the figures trimmed: it held the next icon off by a few more points)
+        if !n.isEmpty { Text(n).font(.caption.weight(.bold)).foregroundStyle(.white).monospacedDigit().frame(height: 11).padding(.top, -1) }
     }
 
     /// Who posted it (with Follow for someone you don't), its song, its caption, and the food or workout it's of.
