@@ -175,6 +175,8 @@ struct MultiClipEditor: View {
     @State private var heldRows: [UUID: Int] = [:]   // each bar's row as it was when one was caught, till it's let go
     @State private var barSnap: Double?
     @State private var stripHeld: CGFloat?                // the keyframe a strip's scrub is held on (for the tap, once)                   // what a bar being dragged is held on (for the tap, once)                  // this drag is a bar's or a trim handle's, not the timeline's                // an end of the picked clip being dragged on the timeline
+    /// A voiceover's captions as they were when it was caught, carried along with it while it's dragged.
+    @State private var riders: [EditText] = []
     private struct BarGrab { var id: UUID; var mode: Int; var from: Double; var to: Double; var words: [EditText.Word]?; var start = 0.0 }   // mode: 0 move, 1 start, 2 end
     /// One bar on the timeline: a text, sticker or caption, or a voiceover or sound effect.
     /// kind: 0 over the picture (text, stickers, captions), 1 a sound, 2 a clip or photo over it.
@@ -3215,6 +3217,9 @@ struct MultiClipEditor: View {
         remember()   // (moved or trimmed, it can be undone)
         if item.kind == 1, let s = sounds.first(where: { $0.id == item.id }) {
             barGrab = BarGrab(id: item.id, mode: mode, from: s.from, to: s.to, words: nil, start: s.start)
+            riders = mode != 0 ? [] : texts.filter { (t: EditText) -> Bool in
+                t.kind == "caption" && (t.words ?? []).contains { (w: EditText.Word) -> Bool in w.clip == item.id }
+            }
         } else if item.kind == 2, let p = pips.first(where: { $0.id == item.id }) {
             barGrab = BarGrab(id: item.id, mode: mode, from: p.from, to: p.to, words: nil, start: p.start)
         } else if let t = texts.first(where: { $0.id == item.id }) {
@@ -3294,6 +3299,7 @@ struct MultiClipEditor: View {
         barSnap = nil
         pauseHeld = nil
         barGrab = nil
+        riders = []
         guard changed, item.kind != 0 else { return }
         // a sound or overlay moved: the preview made again with it, now it's let go
         dropped += 1
@@ -3317,6 +3323,23 @@ struct MultiClipEditor: View {
             }
         }
         if follow { seek(g.mode == 2 ? max(0, texts[i].to - 0.05) : texts[i].from) }
+    }
+
+    /// The voiceover's captions that far from where they were (put exactly where their words are once it's let go).
+    private func carryRiders(_ d: Double) {
+        guard !riders.isEmpty else { return }
+        var all: [EditText] = texts
+        for c in riders {
+            guard let k = all.firstIndex(where: { (t: EditText) -> Bool in t.id == c.id }) else { continue }
+            all[k].from = c.from + d
+            all[k].to = c.to + d
+            all[k].words = c.words?.map { (w: EditText.Word) -> EditText.Word in
+                var x: EditText.Word = w
+                x.at = w.at + d
+                return x
+            }
+        }
+        if all != texts { texts = all }
     }
 
     /// A sound's bar: moved along, its front trimmed off (its start in its own sound moving with it), or its end.
@@ -3347,6 +3370,7 @@ struct MultiClipEditor: View {
             s.from = min(max(0, g.from + dt), max(0, span - 0.3))
             if s.toEnd == true { s.length = max(0.3, span - s.from) }
             sounds[i] = s
+            carryRiders(s.from - g.from)
         }
         if follow { seek(g.mode == 2 ? max(0, sounds[i].to - 0.05) : sounds[i].from) }
     }
@@ -4382,14 +4406,10 @@ struct MultiClipEditor: View {
     private func setText(_ k: Int, _ value: String) {
         texts[k].text = value
         guard texts[k].kind == "caption" else { return }
-        let parts = value.split(separator: " ").map(String.init)
-        let old = texts[k].words ?? []
-        if parts.count == old.count {
-            texts[k].words = zip(parts, old).map { var w = $0.1; w.text = $0.0; return w }
-        } else if !parts.isEmpty {
-            let a = texts[k].from, step = (texts[k].to - a) / Double(parts.count)
-            texts[k].words = parts.indices.map { EditText.Word(text: parts[$0], at: a + step * Double($0)) }
-        }
+        let parts: [String] = value.split(separator: " ").map(String.init)
+        let old: [EditText.Word] = texts[k].words ?? []
+        guard !parts.isEmpty else { return }
+        texts[k].words = EditText.retyped(old, parts: parts, from: texts[k].from, to: texts[k].to)
     }
 
     private func styleCaptions(_ caps: [Int], _ style: String) {

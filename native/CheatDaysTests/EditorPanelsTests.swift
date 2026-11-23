@@ -4,6 +4,19 @@ import UIKit
 
 /// 22 Nov, design/editor-panels-mockup.html: every editor panel on the one sheet.
 final class EditorPanelsTests: XCTestCase {
+    func testARetypedCaptionStaysTiedToItsVoiceover() {
+        let voice = UUID()
+        let old: [EditText.Word] = [EditText.Word(text: "hello", at: 8, clip: voice, file: "v.m4a", src: 1.0),
+                                    EditText.Word(text: "friend", at: 8.6, clip: voice, file: "v.m4a", src: 1.6)]
+        let now: [EditText.Word] = EditText.retyped(old, parts: ["hello", "my", "friend"], from: 8, to: 9)
+        XCTAssertEqual(now.map(\.text), ["hello", "my", "friend"])
+        XCTAssertTrue(now.allSatisfy { $0.clip == voice && $0.file == "v.m4a" })
+        XCTAssertEqual(now.compactMap(\.src), [1.0, 1.3, 1.6])
+        // typed in by hand, with nothing to tie to: none made up
+        let typed: [EditText.Word] = EditText.retyped([EditText.Word(text: "hi", at: 2)], parts: ["hi", "there"], from: 2, to: 3)
+        XCTAssertTrue(typed.allSatisfy { $0.src == nil && $0.clip == nil })
+    }
+
     func testEveryBundledFontIsInTheApp() {
         let named: [String] = ["Anton-Regular", "BebasNeue-Regular", "ArchivoBlack-Regular", "Bangers-Regular", "Pacifico-Regular",
                                "Lobster-Regular", "CaveatBrush-Regular", "AbrilFatface-Regular", "Righteous-Regular",

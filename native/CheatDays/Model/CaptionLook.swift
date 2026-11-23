@@ -157,6 +157,35 @@ enum ColourCode {
 }
 
 /// Something dragged on the video: where it goes, held on the middle when it's near it.
+extension EditText {
+    /// A caption's words retyped: the same count keep their moments; more or fewer are spread over its time, still tied
+    /// to the clip or voiceover that said it and spread over the stretch of it the old ones were (23 Nov: made afresh
+    /// with no tie, the caption stayed put when its voiceover was moved).
+    static func retyped(_ old: [Word], parts: [String], from: Double, to: Double) -> [Word] {
+        if parts.count == old.count {
+            return zip(parts, old).map { (p: (String, Word)) -> Word in
+                var w: Word = p.1
+                w.text = p.0
+                return w
+            }
+        }
+        guard !parts.isEmpty else { return old }
+        let n: Double = Double(parts.count)
+        let step: Double = (to - from) / n
+        let tied: Bool = !old.isEmpty && old.allSatisfy { (w: Word) -> Bool in w.src != nil }
+        let low: Double = old.first?.src ?? 0, high: Double = old.last?.src ?? 0
+        return parts.indices.map { (j: Int) -> Word in
+            var w = Word(text: parts[j], at: from + step * Double(j))
+            if tied {
+                w.clip = old.first?.clip
+                w.file = old.first?.file
+                w.src = low + (high - low) * Double(j) / max(n - 1, 1)
+            }
+            return w
+        }
+    }
+}
+
 /// Which caption shows as the one picked.
 enum CaptionFocus {
     /// Edit captions' white row: the one being said as it plays; paused, the one picked while the line's still in it.
