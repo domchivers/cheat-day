@@ -328,7 +328,7 @@ struct ReelsView: View {
                     about(p)
                     Spacer(minLength: 0)
                     // (23 Nov, design/repost-round-mockup.html: the app's own icons, a little more room between them)
-                    VStack(spacing: 20) {
+                    VStack(spacing: 22) {   // (Instagram's gap between two with no number, measured off its screenshot)
                         rail(hearted ? "heart.fill" : "heart", rx.isEmpty ? "" : "\(Set(rx.map { str($0["user_id"]) }).count)", tint: hearted ? .red : .white) { Task { await feed.toggle(p, "❤️") } }
                             .accessibilityLabel(hearted ? "Unlike" : "Like")
                         rail(.comment, comments == 0 ? "" : "\(comments)") { talking = PostBox(post: p) }.accessibilityLabel("Comments")
