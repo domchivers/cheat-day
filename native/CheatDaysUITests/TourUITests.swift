@@ -34,13 +34,26 @@ final class TourUITests: XCTestCase {
         XCTAssertTrue(budget.waitForExistence(timeout: 4))
         sleep(1)
         let a = XCTAttachment(screenshot: app.screenshot()); a.name = "your-plan-top"; a.lifetime = .keepAlways; add(a)
+        // (1.4.48 passed with both hidden: being in the tree with a frame isn't being on the screen. On the screen,
+        // under the title bar, and under the tabs)
+        let bar: CGFloat = app.navigationBars.firstMatch.frame.maxY
+        XCTAssertTrue(goalTab.isHittable, "the tabs are on the screen")
+        XCTAssertGreaterThanOrEqual(goalTab.frame.minY, bar - 1, "the tabs sit under the title bar, not behind it")
+        XCTAssertTrue(budget.isHittable, "Daily budget is on the screen")
         XCTAssertGreaterThan(budget.frame.minY, goalTab.frame.maxY, "Daily budget shows under the tabs, not behind them")
         goalTab.tap()
         let yourGoal = app.staticTexts["Your goal"]
         XCTAssertTrue(yourGoal.waitForExistence(timeout: 4))
         sleep(1)
         let b = XCTAttachment(screenshot: app.screenshot()); b.name = "your-goal-top"; b.lifetime = .keepAlways; add(b)
+        XCTAssertTrue(yourGoal.isHittable, "Your goal is on the screen")
         XCTAssertGreaterThan(yourGoal.frame.minY, goalTab.frame.maxY, "Your goal shows under the tabs, not behind them")
+        XCTAssertFalse(budget.exists && budget.isHittable, "the Plan screen has gone")
+        // and back by a swipe begun on the goal card: Plan again, nothing on Goal opened by it
+        app.staticTexts["Your goal"].swipeRight()
+        sleep(1)
+        let c = XCTAttachment(screenshot: app.screenshot()); c.name = "your-plan-swiped-back"; c.lifetime = .keepAlways; add(c)
+        XCTAssertTrue(budget.waitForExistence(timeout: 3) && budget.isHittable, "a swipe right is Plan again")
     }
 
     func testTourStepsThrough() {
