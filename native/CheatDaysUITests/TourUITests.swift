@@ -19,6 +19,30 @@ final class TourUITests: XCTestCase {
         let b = XCTAttachment(screenshot: app.screenshot()); b.name = "activity-likes"; b.lifetime = .keepAlways; add(b)
     }
 
+    /// Your plan opens on each tab with its top showing (23 Nov: both opened scrolled down, their first section hidden
+    /// behind the Plan / Goal row until pulled down).
+    func testYourPlanOpensAtTheTop() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-uitest-plantabs"]
+        app.launch()
+        let open = app.buttons["Open your plan"]
+        XCTAssertTrue(open.waitForExistence(timeout: 5))
+        open.tap()
+        let goalTab = app.buttons["Goal"]
+        XCTAssertTrue(goalTab.waitForExistence(timeout: 4), "the Plan / Goal row")
+        let budget = app.staticTexts["Daily budget"]
+        XCTAssertTrue(budget.waitForExistence(timeout: 4))
+        sleep(1)
+        let a = XCTAttachment(screenshot: app.screenshot()); a.name = "your-plan-top"; a.lifetime = .keepAlways; add(a)
+        XCTAssertGreaterThan(budget.frame.minY, goalTab.frame.maxY, "Daily budget shows under the tabs, not behind them")
+        goalTab.tap()
+        let yourGoal = app.staticTexts["Your goal"]
+        XCTAssertTrue(yourGoal.waitForExistence(timeout: 4))
+        sleep(1)
+        let b = XCTAttachment(screenshot: app.screenshot()); b.name = "your-goal-top"; b.lifetime = .keepAlways; add(b)
+        XCTAssertGreaterThan(yourGoal.frame.minY, goalTab.frame.maxY, "Your goal shows under the tabs, not behind them")
+    }
+
     func testTourStepsThrough() {
         let app = XCUIApplication()
         app.launchArguments = ["-uitest-tour"]
