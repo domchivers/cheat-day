@@ -59,13 +59,28 @@ struct EditText: Identifiable, Codable, Equatable {
     }
 
     static let textStyles = ["Shadow", "Box", "Outline", "Plain"]
-    static let fonts = ["classic", "rounded", "serif", "mono", "marker"]
+    static let fonts = ["classic", "rounded", "serif", "mono", "marker", "anton", "bebas", "poster", "comic", "brush", "retro", "hand",
+                        "fashion", "groovy", "pixel", "neon", "script"]
+    /// The fonts built into the app (23 Nov, design/more-fonts-mockup.html; free, under the SIL Open Font Licence, whose
+    /// copies are with them in Fonts/): each one's PostScript name, and its size against the others' (a pixel font's
+    /// letters are far wider, a condensed one's narrower).
+    private static let bundled: [String: (name: String, scale: CGFloat)] = [
+        "anton": ("Anton-Regular", 1.1), "bebas": ("BebasNeue-Regular", 1.2), "poster": ("ArchivoBlack-Regular", 0.95),
+        "comic": ("Bangers-Regular", 1.1), "brush": ("Pacifico-Regular", 0.9), "retro": ("Lobster-Regular", 1.0),
+        "hand": ("CaveatBrush-Regular", 1.15), "fashion": ("AbrilFatface-Regular", 1.0), "groovy": ("Righteous-Regular", 1.0),
+        "pixel": ("PressStart2P-Regular", 0.6), "neon": ("Monoton-Regular", 0.8), "script": ("DancingScript-Regular", 1.1),
+    ]
     /// The text colours (21 Nov: five were too few), as hex; any other is picked with the wheel.
     static let palette = ["#FFFFFF", "#000000", "#FFD60A", "#FF9F0A", "#FF453A", "#FF375F", "#BF5AF2", "#5E5CE6", "#0A84FF",
                           "#64D2FF", "#30D158", "#A2845E", "#FFB3C7", "#B5F2C8", "#C9B8FF", "#FFE5A0", "#8E8E93", "#3A3A3C"]
 
     /// The typeface at `size`, heavy as text on a video wants it.
     static func font(_ id: String?, size: CGFloat) -> Font {
+        // (fixed: the video's text mustn't grow with the phone's text size)
+        if let id, let b = bundled[id] {
+            let f: Font = .custom(b.name, fixedSize: size * b.scale)
+            return id == "script" ? f.weight(.bold) : f
+        }
         switch id {
         case "rounded": return .system(size: size, weight: .heavy, design: .rounded)
         case "serif": return .system(size: size, weight: .bold, design: .serif)

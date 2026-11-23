@@ -1623,7 +1623,7 @@ struct StoryEditor: View {
 struct StickerSheet: View {
     var forPost = false
     /// On a video (the clip editor, 21 Nov): GIFs (they move in the video), none of the ones a story's viewers answer,
-    /// and no recipe or workout (the editor has its own for those).
+    /// and a recipe or workout as a tile that opens the editor's own (23 Nov: they were buttons in its tool row).
     var forVideo = false
     var pick: (String) -> Void
     var place: (JSON) -> Void
@@ -1706,25 +1706,36 @@ struct StickerSheet: View {
         }
     }
 
+    /// A tile that asks for more once it's tapped: a picture, or (on a video) a recipe or workout from the log.
+    private func iconTile(_ icon: String, _ name: String, id: String) -> some View {
+        Button { pick(id) } label: {
+            RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(.tertiarySystemFill).opacity(0.5))
+                .frame(maxWidth: .infinity).frame(height: 104)
+                .overlay {
+                    VStack(spacing: 6) {
+                        Image(systemName: icon).font(.system(size: 28, weight: .semibold))
+                        Text(name).font(.subheadline.weight(.heavy))
+                    }
+                    .foregroundStyle(.white)
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain).accessibilityIdentifier("tile-" + id)
+    }
+
     private var yours: some View {
         let shown = mine.filter { q.isEmpty || $0.words.localizedCaseInsensitiveContains(q) }
         return VStack(alignment: .leading, spacing: 14) {
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                 // a picture of your own, stuck on top: more than one picture on a story
                 if q.isEmpty || "photo picture image".localizedCaseInsensitiveContains(q) {
-                    Button { pick("photo") } label: {
-                        RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(.tertiarySystemFill).opacity(0.5))
-                            .frame(maxWidth: .infinity).frame(height: 104)
-                            .overlay {
-                                VStack(spacing: 6) {
-                                    Image(systemName: "photo.on.rectangle.angled").font(.system(size: 28, weight: .semibold))
-                                    Text("Photo").font(.subheadline.weight(.heavy))
-                                }
-                                .foregroundStyle(.white)
-                            }
-                            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    }
-                    .buttonStyle(.plain).accessibilityIdentifier("tile-photo")
+                    iconTile("photo.on.rectangle.angled", "Photo", id: "photo")
+                }
+                if forVideo && (q.isEmpty || "recipe meal cook steps ingredients".localizedCaseInsensitiveContains(q)) {
+                    iconTile("fork.knife", "Recipe", id: "recipe")
+                }
+                if forVideo && (q.isEmpty || "workout gym lift training sets".localizedCaseInsensitiveContains(q)) {
+                    iconTile("dumbbell", "Workout", id: "workout")
                 }
                 ForEach(shown, id: \.id) { s in
                     // the sticker laid out at its own size first, then shrunk: squeezed into the tile it was cut short

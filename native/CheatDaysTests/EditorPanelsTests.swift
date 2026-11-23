@@ -1,8 +1,17 @@
 import XCTest
+import UIKit
 @testable import CheatDays
 
 /// 22 Nov, design/editor-panels-mockup.html: every editor panel on the one sheet.
 final class EditorPanelsTests: XCTestCase {
+    func testEveryBundledFontIsInTheApp() {
+        let named: [String] = ["Anton-Regular", "BebasNeue-Regular", "ArchivoBlack-Regular", "Bangers-Regular", "Pacifico-Regular",
+                               "Lobster-Regular", "CaveatBrush-Regular", "AbrilFatface-Regular", "Righteous-Regular",
+                               "PressStart2P-Regular", "Monoton-Regular", "DancingScript-Regular"]
+        for n in named { XCTAssertNotNil(UIFont(name: n, size: 20), n + " isn't loaded") }
+        XCTAssertEqual(EditText.fonts.count, 17)
+    }
+
     func testARowSwitchedOffIsntPlayedOrMade() {
         var voice = EditSound(kind: "voice", name: "Voice 1", file: nil, from: 2, length: 5)
         let song = EditSound(kind: "song", name: "Be Chillin", file: nil, from: 0, length: 45)

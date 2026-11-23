@@ -2874,8 +2874,6 @@ struct MultiClipEditor: View {
                 action("captions.bubble", "Captions", on: true) {
                     if texts.contains(where: { $0.kind == "caption" }) { withAnimation(.snappy) { panel = .captions } } else { makeCaptions() }
                 }
-                action("fork.knife", "Recipe", on: true) { if recipe != nil { withAnimation(.snappy) { panel = .recipe } } else { attachMode = "recipe" } }
-                action("dumbbell", "Workout", on: true) { attachMode = "workout" }
                 action("mic.fill", "Voice", on: true) { withAnimation(.snappy) { panel = .voice } }
                 action("waveform", "Sound FX", on: true) { withAnimation(.snappy) { panel = .effects } }
                 action("rectangle.inset.topright.filled", "Overlay", on: true) { pipPicking = true }
@@ -4112,6 +4110,10 @@ struct MultiClipEditor: View {
         switch id {
         // a food's calories, counting up (21 Nov: what the Calories button was)
         case "food": attachMode = "calories"
+        // (23 Nov: their own buttons in the tool row were moved here, "move to sticker tab")
+        case "recipe":
+            if recipe != nil { withAnimation(.snappy) { panel = .recipe } } else { attachMode = "recipe" }
+        case "workout": attachMode = "workout"
         case "photo": pipPicking = true
         case "macros":
             let m = s.macros(s.todayItems)

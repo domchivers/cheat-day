@@ -53,6 +53,20 @@ targets:
           - domchivers.github.io
         ITSAppUsesNonExemptEncryption: false
         CADisableMinimumFrameDurationOnPhone: true
+        # the editor's text fonts (CheatDays/Fonts, SIL Open Font Licence)
+        UIAppFonts:
+          - Anton-Regular.ttf
+          - BebasNeue-Regular.ttf
+          - ArchivoBlack-Regular.ttf
+          - Bangers-Regular.ttf
+          - Pacifico-Regular.ttf
+          - Lobster-Regular.ttf
+          - CaveatBrush-Regular.ttf
+          - AbrilFatface-Regular.ttf
+          - Righteous-Regular.ttf
+          - PressStart2P-Regular.ttf
+          - Monoton-Regular.ttf
+          - DancingScript.ttf
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.cheatdays.app

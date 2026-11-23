@@ -203,9 +203,15 @@ struct TextPanel<Head: View>: View {
         })
     }
 
+    /// Seventeen, in a row that slides as the colours' does, the one picked in view.
     private var fonts: some View {
-        HStack(spacing: 8) {
-            ForEach(EditText.fonts, id: \.self) { (font: String) in fontTile(font) }
+        ScrollViewReader { (reader: ScrollViewProxy) in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(EditText.fonts, id: \.self) { (font: String) in fontTile(font).frame(width: 70).id(font) }
+                }
+            }
+            .onAppear { reader.scrollTo(item.font ?? "classic", anchor: .center) }
         }
     }
 
