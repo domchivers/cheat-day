@@ -36,6 +36,7 @@ struct ReelsView: View {
     @State private var songShown: SongShown?
     @State private var deleting: PostBox?
     @State private var slide: CGFloat = 0   // carried to the right by a finger, on the way back out
+    @State private var slideFrom: CGFloat?  // how far the finger had gone when the swipe out was taken up
     struct SongShown: Identifiable { let song: Song; let key: String; var id: String { key } }
     @State private var sharing: PostBox?
     @State private var recipe: PostBox?
@@ -73,15 +74,24 @@ struct ReelsView: View {
         // A swipe to the right goes back, as the X does: the video follows the finger, and past a third of a hand's
         // width (or flicked) it's left. Not from the line along the bottom, where a finger moves through the video.
         .offset(x: slide)
-        .simultaneousGesture(DragGesture(minimumDistance: 24)
+        // (23 Nov, "not sure if… swiping out of it" feels laggy: it waited for 24 points of movement and then jumped
+        // the video those 24 at once, and wanted 90 to go. It takes the finger after 12 now, moves on from where it
+        // was taken with no jump, and goes at 70, or a flick.)
+        .simultaneousGesture(DragGesture(minimumDistance: 12)
             .onChanged { v in
-                guard holding == nil, v.startLocation.y < UIScreen.main.bounds.height - 130,
-                      v.translation.width > 0, abs(v.translation.width) > abs(v.translation.height) * 1.5 else { return }
-                slide = v.translation.width
+                if slideFrom == nil {
+                    guard holding == nil, v.startLocation.y < UIScreen.main.bounds.height - 130,
+                          v.translation.width > 0, abs(v.translation.width) > abs(v.translation.height) * 1.5 else { return }
+                    slideFrom = v.translation.width
+                    held = false; holdWait?.cancel()
+                }
+                slide = max(0, v.translation.width - (slideFrom ?? 0))
             }
             .onEnded { v in
-                if slide > 90 || (slide > 30 && v.predictedEndTranslation.width > 220) { leave() }
+                let flung: Bool = v.predictedEndTranslation.width - v.translation.width > 120
+                if slideFrom != nil && (slide > 70 || (slide > 16 && flung)) { leave() }
                 else { withAnimation(.snappy(duration: 0.2)) { slide = 0 } }
+                slideFrom = nil
             })
         // nothing behind the video but the screen it was opened from, which shows as the video slides away
         .presentationBackground(.clear)
