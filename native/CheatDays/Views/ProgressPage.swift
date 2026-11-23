@@ -196,10 +196,12 @@ struct ProgressPage: View {
     }
 
     /// The chip row's ends fading out over the 14 points before the card's edge.
-    private static let chipFade = HStack(spacing: 0) {
-        LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing).frame(width: 14)
-        Color.black
-        LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing).frame(width: 14)
+    private static var chipFade: some View {
+        HStack(spacing: 0) {
+            LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing).frame(width: 14)
+            Color.black
+            LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing).frame(width: 14)
+        }
     }
 
     private var chartCard: some View {
