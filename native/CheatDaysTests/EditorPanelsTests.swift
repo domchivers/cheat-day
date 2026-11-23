@@ -11,7 +11,9 @@ final class EditorPanelsTests: XCTestCase {
         let now: [EditText.Word] = EditText.retyped(old, parts: ["hello", "my", "friend"], from: 8, to: 9)
         XCTAssertEqual(now.map(\.text), ["hello", "my", "friend"])
         XCTAssertTrue(now.allSatisfy { $0.clip == voice && $0.file == "v.m4a" })
-        XCTAssertEqual(now.compactMap(\.src), [1.0, 1.3, 1.6])
+        let src: [Double] = now.compactMap(\.src)
+        XCTAssertEqual(src.count, 3)
+        for (a, b) in zip(src, [1.0, 1.3, 1.6]) { XCTAssertEqual(a, b, accuracy: 0.0001) }
         // typed in by hand, with nothing to tie to: none made up
         let typed: [EditText.Word] = EditText.retyped([EditText.Word(text: "hi", at: 2)], parts: ["hi", "there"], from: 2, to: 3)
         XCTAssertTrue(typed.allSatisfy { $0.src == nil && $0.clip == nil })
