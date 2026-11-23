@@ -230,7 +230,7 @@ struct EditTextView: View {
 
     @ViewBuilder private var plainText: some View {
         let ink = EditText.colour(item.colour).opacity(item.colourAlpha ?? 1)
-        let t = Text(item.text).font(EditText.font(item.font, size: 30)).multilineTextAlignment(.center).frame(maxWidth: 330)
+        let t = Text(item.text).font(EditText.font(item.font, size: 30)).multilineTextAlignment(.center).modifier(HugWidth.UpTo(most: 330))
         switch item.style {
         case "Box":
             t.foregroundStyle(EditText.ink(on: item.colour))
@@ -265,7 +265,7 @@ struct EditTextView: View {
             return sum + (i == lit && item.style != "Pop" ? w.foregroundColor(ink) : w)
         }
         let base = line.font(.system(size: 26, weight: .black)).multilineTextAlignment(.center)
-            .lineLimit(oneLine ? 1 : nil).minimumScaleFactor(oneLine ? 0.5 : 1).frame(maxWidth: 330)
+            .lineLimit(oneLine ? 1 : nil).minimumScaleFactor(oneLine ? 0.5 : 1).modifier(HugWidth.UpTo(most: 330))
         switch item.style {
         case "Box":
             base.foregroundStyle(item.saidInk).padding(.horizontal, 12).padding(.vertical, 6)
@@ -275,7 +275,7 @@ struct EditTextView: View {
         case "Bold":
             // bigger, edged in black all round
             line.font(.system(size: 30, weight: .black)).multilineTextAlignment(.center)
-                .lineLimit(oneLine ? 1 : nil).minimumScaleFactor(oneLine ? 0.5 : 1).frame(maxWidth: 340).foregroundStyle(item.saidInk)
+                .lineLimit(oneLine ? 1 : nil).minimumScaleFactor(oneLine ? 0.5 : 1).modifier(HugWidth.UpTo(most: 340)).foregroundStyle(item.saidInk)
                 .shadow(color: item.boldEdge, radius: 0, x: 1.5, y: 1.5).shadow(color: item.boldEdge, radius: 0, x: -1.5, y: -1.5)
                 .shadow(color: item.boldEdge, radius: 0, x: 1.5, y: -1.5).shadow(color: item.boldEdge, radius: 0, x: -1.5, y: 1.5)
         default:
@@ -290,7 +290,7 @@ struct EditTextView: View {
                         .shadow(color: on ? .clear : .black.opacity(0.8), radius: 3, y: 1)
                 }
             }
-            .frame(maxWidth: oneLine ? 2000 : 340)
+            .modifier(HugWidth.UpTo(most: oneLine ? 2000 : 340))
         }
     }
 }

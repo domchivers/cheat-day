@@ -137,8 +137,13 @@ struct VideoOverlays: View {
             .frame(minWidth: least, minHeight: least)
             .contentShape(Rectangle().inset(by: -room))
             .overlay(outline(line, scale: scale, room: room))
-            .overlay(alignment: .bottomTrailing) {
-                if on { sizeDot(item, middle: middle, scale: scale).offset(x: room, y: room) }
+            .overlay {
+                if on {
+                    GeometryReader { (g: GeometryProxy) in
+                        sizeDot(item, middle: middle, scale: scale)
+                            .position(dotAt(g.size, middle: middle, scale: scale, room: room, frame: r))
+                    }
+                }
             }
             .scaleEffect(scale)
         return handled(look, item: item, frame: r).position(middle)
@@ -178,7 +183,18 @@ struct VideoOverlays: View {
                 .updating($touching) { _, down, _ in down = true }
                 .onChanged { (v: DragGesture.Value) in cornered(item, v, middle: middle) }
                 .onEnded { _ in letUp() })
-            .offset(x: catchSize / 2, y: catchSize / 2)
+    }
+
+    /// Where the handle goes, in the box's own points: its bottom right corner, unless that's off the video, when it's
+    /// kept just inside it (23 Nov: scaled up, it went off the screen, so it couldn't be made smaller again).
+    private func dotAt(_ s: CGSize, middle: CGPoint, scale: CGFloat, room: CGFloat, frame r: CGRect) -> CGPoint {
+        let half = CGPoint(x: s.width / 2, y: s.height / 2)
+        let corner = CGPoint(x: s.width + room, y: s.height + room)
+        let inside: CGRect = r.insetBy(dx: 16, dy: 16)
+        guard scale > 0, inside.width > 0, inside.height > 0 else { return corner }
+        let x: CGFloat = min(max(middle.x + (corner.x - half.x) * scale, inside.minX), inside.maxX)
+        let y: CGFloat = min(max(middle.y + (corner.y - half.y) * scale, inside.minY), inside.maxY)
+        return CGPoint(x: (x - middle.x) / scale + half.x, y: (y - middle.y) / scale + half.y)
     }
 
     private func begun(_ item: EditText) {
