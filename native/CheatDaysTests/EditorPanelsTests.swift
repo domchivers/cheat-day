@@ -31,6 +31,14 @@ final class EditorPanelsTests: XCTestCase {
         XCTAssertTrue(typed.allSatisfy { $0.src == nil && $0.clip == nil })
     }
 
+    @MainActor func testAScreenshotsDateIsNeverInTheFuture() {
+        let now: Date = DayKey.date("2026-11-23").addingTimeInterval(19 * 3600)
+        let dec9: Date = DayKey.date("2026-12-09").addingTimeInterval(8 * 3600)
+        XCTAssertEqual(Calendar.current.component(.year, from: WeighInSheet.past(dec9, now: now)), 2025)
+        let nov21: Date = DayKey.date("2026-11-21").addingTimeInterval(8 * 3600)
+        XCTAssertEqual(WeighInSheet.past(nov21, now: now), nov21)
+    }
+
     @MainActor func testProgressTabsOnlyForMeasuresWithALine() {
         let rows: [JSON] = [
             ["day": "2026-08-01", "weight": 84.0, "muscle": 36.0],

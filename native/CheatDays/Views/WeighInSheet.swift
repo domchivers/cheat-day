@@ -172,6 +172,14 @@ extension WeighInSheet {
         store.saveBody(row)
     }
 
+    /// A screenshot's date, never after now: a scale app shows "Wed 9 Dec" with no year, and read in November it was
+    /// put this December, a reading from the future (23 Nov: 9 Dec, 83.30 kg, at the top of the list). It's last year's.
+    static func past(_ d: Date, now: Date = Date()) -> Date {
+        var out: Date = d
+        while out > now.addingTimeInterval(3600), let back = Calendar.current.date(byAdding: .year, value: -1, to: out) { out = back }
+        return out
+    }
+
     /// A screenshot fills in the reading, then it's back to checking it before saving.
     fileprivate func read(_ item: PhotosPickerItem?) async {
         guard let item, let data = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: data) else { return }
@@ -180,8 +188,8 @@ extension WeighInSheet {
         do {
             let a = try await BodyReader.read(img)
             if let w = pos(a["weight"]) { kg = w; text = Fmt.kg(w) }
-            if let t = ISO.date(str(a["takenAt"])) { when = t }
-            else if let d = a["day"] as? String, d != store.today { when = DayKey.date(d).addingTimeInterval(8 * 3600) }   // the morning, when no time's shown
+            if let t = ISO.date(str(a["takenAt"])) { when = Self.past(t) }
+            else if let d = a["day"] as? String, d != store.today { when = Self.past(DayKey.date(d).addingTimeInterval(8 * 3600)) }   // the morning, when no time's shown
             for k in ["fat"] + Self.extras.map(\.key) { if let v = pos(a[k]) { others[k] = Fmt.kg(v) } }
             if Self.extras.contains(where: { others[$0.key] != nil }) { more = true }
             note = "Read from your screenshot: check it and Save."
