@@ -1589,22 +1589,21 @@ struct MultiClipEditor: View {
         }
     }
 
-    /// One row's tile: what's on it; a row of captions', the eye that switches them on and off.
-    @ViewBuilder private func laneHead(_ row: [BarItem]) -> some View {
-        let caps: Set<UUID> = captionsOn(row)
-        if caps.isEmpty {
-            laneTile(laneIcon(row), lit: true).allowsHitTesting(false)
-        } else {
-            let showing: Bool = row.contains { (b: BarItem) -> Bool in caps.contains(b.id) && !b.off }
-            laneTile(showing ? "eye" : "eye.slash", lit: showing)
-                .contentShape(Rectangle())
-                // by the screen's measure, as Clip sound: a slide of the timeline that starts here mustn't switch it
-                .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .global).onEnded { tappedEye($0, caps, hide: showing) })
-                .accessibilityElement()
-                .accessibilityLabel(showing ? "Switch this row's captions off" : "Switch this row's captions on")
-                .accessibilityAddTraits(.isButton)
-                .accessibilityAction { switchCaptions(caps, hide: showing) }
-        }
+    /// One row's tile: the switch for the row (23 Nov, design/layer-eyes-mockup.html): an eye for what's seen (captions,
+    /// text, stickers, overlays), a speaker for what's heard (voice, music, sound FX).
+    private func laneHead(_ row: [BarItem]) -> some View {
+        let heard: Bool = !row.isEmpty && row.allSatisfy { (b: BarItem) -> Bool in b.kind == 1 }
+        let on: Bool = row.contains { (b: BarItem) -> Bool in !b.off }
+        let icon: String = heard ? (on ? "speaker.wave.2.fill" : "speaker.slash.fill") : (on ? "eye" : "eye.slash")
+        let label: String = heard ? (on ? "Mute this row" : "Turn this row's sound on") : (on ? "Hide this row" : "Show this row")
+        return laneTile(icon, lit: on)
+            .contentShape(Rectangle())
+            // by the screen's measure, as Clip sound: a slide of the timeline that starts here mustn't switch it
+            .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .global).onEnded { tappedEye($0, row, off: on) })
+            .accessibilityElement()
+            .accessibilityLabel(label)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { switchRow(row, off: on) }
     }
 
     private func laneTile(_ icon: String, lit: Bool) -> some View {
@@ -1622,16 +1621,19 @@ struct MultiClipEditor: View {
         return out
     }
 
-    private func tappedEye(_ v: DragGesture.Value, _ ids: Set<UUID>, hide: Bool) {
-        if !motion.justStopped, hypot(v.translation.width, v.translation.height) < 6 { switchCaptions(ids, hide: hide) }
+    private func tappedEye(_ v: DragGesture.Value, _ row: [BarItem], off: Bool) {
+        if !motion.justStopped, hypot(v.translation.width, v.translation.height) < 6 { switchRow(row, off: off) }
     }
 
-    /// A row's captions switched off, or on.
-    private func switchCaptions(_ ids: Set<UUID>, hide: Bool) {
+    /// A row switched off, or on: kept, not taken off. (Undo puts it back.)
+    private func switchRow(_ row: [BarItem], off: Bool) {
         remember()
         // every bar keeps its row: one on and one off don't share
-        pinRows(barRows.map { (row: [BarItem]) -> [UUID] in row.map(\.id) })
-        for i in texts.indices where ids.contains(texts[i].id) { texts[i].hidden = hide ? true : nil }
+        pinRows(barRows.map { (r: [BarItem]) -> [UUID] in r.map(\.id) })
+        let ids: Set<UUID> = Set(row.map(\.id))
+        for i in texts.indices where ids.contains(texts[i].id) { texts[i].hidden = off ? true : nil }
+        for i in sounds.indices where ids.contains(sounds[i].id) { sounds[i].off = off ? true : nil }
+        for i in pips.indices where ids.contains(pips[i].id) { pips[i].off = off ? true : nil }
         UISelectionFeedbackGenerator().selectionChanged()
     }
 
@@ -2478,7 +2480,7 @@ struct MultiClipEditor: View {
             }
             player.onSize = { frameSize = $0 }
         }
-        player.update(clips: clips, soundOf: soundOf, look: look, sounds: sounds, pips: pips, swap: proxies)
+        player.update(clips: clips, soundOf: soundOf, look: look, sounds: EditSound.heard(sounds), pips: EditPip.shown(pips), swap: proxies)
         frameSize = player.frameSize
         if player.rate == 0, abs(player.currentTime().seconds - now) > 0.001 { seek(min(now, max(0, total - 0.05))) }
         if !recording { Sound.on(.moviePlayback) }   // (a 4K copy finishing switched the microphone off mid-take)
@@ -2574,7 +2576,7 @@ struct MultiClipEditor: View {
         motion.end()
         finishScrub(resume: false)
         joining = true; progress = 0; player.pause()
-        let edit = clips, sound = soundOf, shape = look, laid = sounds, on = pips
+        let edit = clips, sound = soundOf, shape = look, laid = EditSound.heard(sounds), on = EditPip.shown(pips)
         let items = CaptionLayers.placed(texts, sounds: sounds), size = frameSize
         making = Task {
             guard await EditOverlays.prepare(items) else {
@@ -2895,8 +2897,16 @@ struct MultiClipEditor: View {
 
     private func makeItems() -> [BarItem] {
         textBars
-            + sounds.map { BarItem(id: $0.id, from: $0.from, to: $0.to, label: Self.soundMark($0.kind) + $0.name, colour: Self.soundColour($0.kind), kind: 1, lane: $0.lane) }
-            + pips.map { BarItem(id: $0.id, from: $0.from, to: $0.to, label: "▣ Overlay" + ($0.keys.isEmpty ? "" : " · ◆"), colour: Color(red: 0.36, green: 0.82, blue: 0.56), kind: 2, lane: $0.lane) }
+            + sounds.map { (s: EditSound) -> BarItem in
+                let off: Bool = s.off == true
+                return BarItem(id: s.id, from: s.from, to: s.to, label: Self.soundMark(s.kind) + s.name,
+                               colour: off ? Self.offBar : Self.soundColour(s.kind), kind: 1, lane: s.lane, off: off)
+            }
+            + pips.map { (p: EditPip) -> BarItem in
+                let off: Bool = p.off == true
+                return BarItem(id: p.id, from: p.from, to: p.to, label: "▣ Overlay" + (p.keys.isEmpty ? "" : " · ◆"),
+                               colour: off ? Self.offBar : Color(red: 0.36, green: 0.82, blue: 0.56), kind: 2, lane: p.lane, off: off)
+            }
     }
 
     /// The texts' bars: a caption switched off greyed.

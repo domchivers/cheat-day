@@ -867,7 +867,11 @@ struct EditPip: Identifiable, Codable, Equatable {
     var opacity = 1.0
     var keys: [MoveKey] = []   // seconds from its start
     var lane: Int? = nil       // the timeline row it's on, as a text's
+    var off: Bool? = nil       // its row's eye switched off: kept, but not shown (23 Nov)
     var to: Double { from + length }
+
+    /// Those to be seen: none whose row's switched off.
+    static func shown(_ all: [EditPip]) -> [EditPip] { all.filter { (p: EditPip) -> Bool in p.off != true } }
 
     /// Where it is `t` seconds into the video.
     func place(at t: Double) -> MoveKey {

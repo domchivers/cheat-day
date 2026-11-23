@@ -3,6 +3,26 @@ import XCTest
 
 /// 22 Nov, design/editor-panels-mockup.html: every editor panel on the one sheet.
 final class EditorPanelsTests: XCTestCase {
+    func testARowSwitchedOffIsntPlayedOrMade() {
+        var voice = EditSound(kind: "voice", name: "Voice 1", file: nil, from: 2, length: 5)
+        let song = EditSound(kind: "song", name: "Be Chillin", file: nil, from: 0, length: 45)
+        voice.off = true
+        XCTAssertEqual(EditSound.heard([voice, song]).map(\.id), [song.id])
+        var pip = EditPip(source: URL(fileURLWithPath: "/tmp/a.mov"), length: 3, from: 1)
+        XCTAssertEqual(EditPip.shown([pip]).count, 1)
+        pip.off = true
+        XCTAssertTrue(EditPip.shown([pip]).isEmpty)
+    }
+
+    func testOlderDraftsReadWithEveryRowOn() throws {
+        let song = EditSound(kind: "song", name: "Be Chillin", file: nil, from: 0, length: 45)
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(song)) as? [String: Any])
+        json["off"] = nil
+        let back: EditSound = try JSONDecoder().decode(EditSound.self, from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertNil(back.off)
+        XCTAssertEqual(EditSound.heard([back]).count, 1)
+    }
+
     func testTheListFollowsWhatsSaidAsItPlays() {
         let early = EditText(kind: "caption", text: "hello my friend", from: 8, to: 9)
         let said = UUID()

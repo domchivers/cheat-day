@@ -24,7 +24,11 @@ struct EditSound: Identifiable, Codable, Equatable {
     var cut: [EditText]? = nil  // a voiceover's captions of what's trimmed off it, for when it's drawn out again
     var toEnd: Bool? = nil      // a song that runs to the end of the edit, however long that comes to
     var loopFrom: Double? = nil // where in its file a song's part starts, to go round from there
+    var off: Bool? = nil        // its row's speaker switched off: kept, but not heard (23 Nov)
     var to: Double { from + length }
+
+    /// Those to be heard: none whose row's switched off.
+    static func heard(_ all: [EditSound]) -> [EditSound] { all.filter { (s: EditSound) -> Bool in s.off != true } }
 
     /// The file it plays from.
     var url: URL? { kind == "effect" ? SoundEffects.url(name) : file }

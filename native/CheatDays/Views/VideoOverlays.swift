@@ -108,6 +108,7 @@ struct VideoOverlays: View {
 
 
     private func shows(_ p: EditPip, at t: Double) -> Bool {
+        if p.off == true { return false }
         if p.id == selectedPip || p.id == pipHold?.id { return true }
         return t >= p.from && t < p.to
     }

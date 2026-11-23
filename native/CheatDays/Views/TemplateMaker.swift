@@ -253,7 +253,7 @@ struct TemplateMaker: View {
         let began: Bool = cut.clips.isEmpty
         let made: TemplateCut = cutNow()
         cut = made
-        player.update(clips: made.clips, soundOf: nil, look: editLook, sounds: made.sounds, pips: made.pips, swap: proxies)
+        player.update(clips: made.clips, soundOf: nil, look: editLook, sounds: EditSound.heard(made.sounds), pips: EditPip.shown(made.pips), swap: proxies)
         frameSize = player.frameSize
         guard !made.clips.isEmpty else {
             pause()
