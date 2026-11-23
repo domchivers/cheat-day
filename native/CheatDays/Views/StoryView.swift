@@ -721,7 +721,7 @@ struct StoryView: View {
                 } else {
                 // a heart whatever the slide is (a meal or workout had a party popper here, which nobody read as a like)
                 let liked = isLiked(s)
-                Image(systemName: liked ? "heart.fill" : "heart").font(.system(size: 25, weight: .medium))
+                Image(systemName: liked ? "heart.fill" : "heart").font(.system(size: 22, weight: .medium))   // (the drawn send's size beside it)
                     .foregroundStyle(liked ? Color(red: 1, green: 0.3, blue: 0.4) : .white)
                     .symbolEffect(.bounce, value: liked)
                     .frame(width: 40, height: 44).contentShape(Rectangle())

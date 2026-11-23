@@ -1072,7 +1072,8 @@ struct FeedView: View {
                 Image(systemName: hearted ? "heart.fill" : "heart").foregroundStyle(hearted ? Color(red: 1, green: 0.3, blue: 0.4) : .primary)
                     .symbolEffect(.bounce, value: hearted)
                     .scaleEffect(hearted ? 1.08 : 1).animation(.spring(response: 0.28, dampingFraction: 0.45), value: hearted)
-                .font(.system(size: 23, weight: .medium))
+                .font(.system(size: 20, weight: .medium))   // (the size of the drawn icons beside it, 23 Nov)
+                .frame(width: 28, height: 28)
                 .contentShape(Rectangle())
                 // a like, on or off. No row of other emoji here: those are for answering a story
                 .onTapGesture { Task { await feed.toggle(p, "❤️") } }

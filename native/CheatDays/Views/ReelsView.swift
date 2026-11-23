@@ -413,7 +413,9 @@ struct ReelsView: View {
     private static func railIcon(_ symbol: String) -> some View {
         // the three dots are nothing but dots: stretched across the whole square they came out far heavier than the
         // other symbols' lines, so they're drawn narrower, in the middle of the same square
-        let w: CGFloat = symbol == "ellipsis" ? 19 : 27
+        // (23 Nov, "is the heart bit bigger?": it filled its whole square, where the drawn icons beside it leave a
+        // margin, so it stood about a third bigger; 22 across matches their width)
+        let w: CGFloat = symbol == "ellipsis" ? 19 : 22
         return Image(systemName: symbol).resizable().scaledToFit().fontWeight(.medium).frame(width: w, height: w).frame(width: 27, height: 27)
     }
 
