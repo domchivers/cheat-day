@@ -10,6 +10,8 @@ struct BudgetView: View {
     @State private var loaded = false
     @State private var personalise = false
     @State private var cheat = false
+    /// Make every day the same, waiting on its OK (24 Nov: a swipe once pressed it, and the week's own days were gone).
+    @State private var sameAsk = false
     private var store: Store { Store.shared }
     private let order = [1, 2, 3, 4, 5, 6, 0]
     /// A tab of PlanTabs, which gives the title.
@@ -17,6 +19,15 @@ struct BudgetView: View {
     init(embedded: Bool = false) { self.embedded = embedded }
     private var varied: Bool { days.contains { $0.value != base } }
     private func budget(_ d: Int) -> Double { days[d] ?? base }
+    /// The days with a budget of their own, which go: "Monday 2,350, …".
+    private var sameNote: String {
+        let names: [String] = Calendar.current.weekdaySymbols   // Sunday first, like the day numbers
+        let own: [String] = order.compactMap { (d: Int) -> String? in
+            guard let v = days[d], v != base else { return nil }
+            return names[d] + " " + Fmt.int(v)
+        }
+        return "These days lose their own budget: " + own.joined(separator: ", ") + "."
+    }
     private var weekly: Double { order.reduce(0) { $0 + budget($1) } }
 
     var body: some View {
@@ -27,7 +38,7 @@ struct BudgetView: View {
                     section("Your week")
                     Spacer()
                     if varied {
-                        Button("Make every day the same") { withAnimation(.snappy) { days = [:]; day = nil } }.font(.footnote.weight(.bold)).foregroundStyle(Theme.accent)
+                        Button("Make every day the same") { sameAsk = true }.font(.footnote.weight(.bold)).foregroundStyle(Theme.accent)
                     } else {
                         Text("Tap a day to change it").font(.footnote).foregroundStyle(.secondary)
                     }
@@ -48,6 +59,10 @@ struct BudgetView: View {
         }
         .background(Theme.bg)
         .titled("Your plan", unless: embedded)
+        .alert("Set every day to \(Fmt.int(base)) kcal?", isPresented: $sameAsk) {
+            Button("Cancel", role: .cancel) {}
+            Button("Set every day") { withAnimation(.snappy) { days = [:]; day = nil } }
+        } message: { Text(sameNote) }
         .onAppear { if !loaded { load(); loaded = true } }
         .onChange(of: base) { _, _ in save() }
         .onChange(of: days) { _, _ in save() }

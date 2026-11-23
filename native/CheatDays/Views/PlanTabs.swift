@@ -10,6 +10,10 @@ struct PlanTabs: View {
     /// How far a swipe has the pages pulled, while it's held; and how far the finger had gone when it was taken up.
     @State private var pull: CGFloat = 0
     @State private var pullFrom: CGFloat?
+    /// The finger went up or down first: the screen's own scrolling, and not a swipe whatever it does after.
+    @State private var scrolling = false
+    /// Where the drag being judged began (a new start is a new drag, if the last one never ended: a scroll took it).
+    @State private var dragStart: CGPoint?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -59,7 +63,12 @@ struct PlanTabs: View {
         DragGesture(minimumDistance: 10)
             .onChanged { (v: DragGesture.Value) in
                 if pullFrom == nil {
-                    guard abs(v.translation.width) > abs(v.translation.height) * 1.2 else { return }
+                    // (24 Nov, "more safe": 20 points sideways, twice as far as up or down; a scroll or a wobbly tap never is)
+                    let ax: CGFloat = abs(v.translation.width), ay: CGFloat = abs(v.translation.height)
+                    if dragStart != v.startLocation { dragStart = v.startLocation; scrolling = false }
+                    if scrolling { return }
+                    if ay > 12 && ay >= ax { scrolling = true; return }
+                    guard ax >= 20, ax > ay * 2 else { return }
                     pullFrom = v.translation.width
                 }
                 let dx: CGFloat = v.translation.width - (pullFrom ?? 0)
@@ -67,6 +76,7 @@ struct PlanTabs: View {
                 pull = edge ? dx / 4 : dx
             }
             .onEnded { (v: DragGesture.Value) in
+                scrolling = false; dragStart = nil
                 guard pullFrom != nil else { return }
                 let flick: CGFloat = v.predictedEndTranslation.width - v.translation.width
                 var next: Int = tab
