@@ -7,8 +7,8 @@ struct PlanTabs: View {
     @State private var tab: Int
     init(start: Int = 0) { _tab = State(initialValue: start) }
 
-    /// How far a swipe has the pages pulled, while it's held.
-    @State private var pull: CGFloat = 0
+    /// The page the sideways scroll is on.
+    @State private var page: Int?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -18,25 +18,26 @@ struct PlanTabs: View {
             }
             .padding(.horizontal, 18).padding(.top, 6)
             Divider().opacity(0.6)
-            // The two screens side by side, slid along by the tabs or a swipe (23 Nov, twice: "by default the top is
-            // getting cut off", then "didn't fix the issue"). They were the pages of a paging TabView, and both opened
-            // scrolled down with their top hidden, seen only by pulling down; a paging TabView is the only place in the
-            // app a scrolling screen sat, and moving the row into an inset didn't help, so it's gone: each screen is
-            // laid out as one on its own is. Both are kept, so each stays where it was scrolled to.
-            GeometryReader { geo in
-                let w: CGFloat = geo.size.width
-                ZStack(alignment: .topLeading) {
+            // The two screens side by side in a sideways scroll that pages (23 Nov). They were the pages of a paging
+            // TabView, and both opened scrolled down with their top hidden behind this row ("by default the top is
+            // getting cut off", then "didn't fix the issue"); 1.4.47 slid them with a drag of its own, which opened
+            // them right but swiped badly ("feels a little laggy switch and a text glitch": it moved only once it was
+            // sure, sprang back short of a third, and let a tap on a day's bar through, opening Sunday as it went).
+            // A scroll view's own paging moves with the finger and cancels the taps under it once it scrolls.
+            ScrollView(.horizontal) {
+                HStack(spacing: 0) {
                     BudgetView(embedded: true)
-                        .frame(width: w).offset(x: -CGFloat(tab) * w + pull)
-                        .allowsHitTesting(tab == 0).accessibilityHidden(tab != 0)
+                        .containerRelativeFrame([.horizontal, .vertical]).id(0)
                     BodyView(embedded: true, active: tab == 1)
-                        .frame(width: w).offset(x: (1 - CGFloat(tab)) * w + pull)
-                        .allowsHitTesting(tab == 1).accessibilityHidden(tab != 1)
+                        .containerRelativeFrame([.horizontal, .vertical]).id(1)
                 }
-                .frame(width: w, height: geo.size.height, alignment: .topLeading)
-                .clipped()
-                .simultaneousGesture(swipe(width: w))
+                .scrollTargetLayout()
             }
+            .scrollTargetBehavior(.paging)
+            .scrollIndicators(.hidden)
+            .scrollPosition(id: $page)
+            .onChange(of: page) { _, now in if let now, now != tab { withAnimation(.snappy) { tab = now } } }
+            .onAppear { page = tab }
             // down behind the tab bar, as the screens it holds were on their own (19 Nov: they stopped above it, on black)
             .ignoresSafeArea(.container, edges: .bottom)
         }
@@ -45,27 +46,9 @@ struct PlanTabs: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    /// A sideways swipe: the pages follow the finger (held back at the ends), and past a third of the way, or flicked,
-    /// it's the other tab. An up-and-down drag is left to the screen's own scrolling.
-    private func swipe(width w: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 20)
-            .onChanged { (v: DragGesture.Value) in
-                guard abs(v.translation.width) > abs(v.translation.height) * 1.5 else { return }
-                let dx: CGFloat = v.translation.width
-                let edge: Bool = (tab == 0 && dx > 0) || (tab == 1 && dx < 0)
-                pull = edge ? dx / 4 : dx
-            }
-            .onEnded { (v: DragGesture.Value) in
-                let dx: CGFloat = v.predictedEndTranslation.width
-                var next: Int = tab
-                if pull != 0 && abs(dx) > w / 3 { next = dx < 0 ? min(1, tab + 1) : max(0, tab - 1) }
-                withAnimation(.snappy(duration: 0.3)) { tab = next; pull = 0 }
-            }
-    }
-
     private func button(_ title: String, _ tag: Int) -> some View {
         let on = tab == tag
-        return Button { withAnimation(.snappy) { tab = tag } } label: {
+        return Button { withAnimation(.snappy) { tab = tag; page = tag } } label: {
             VStack(spacing: 7) {
                 Text(title).font(.headline).foregroundStyle(on ? .primary : .secondary)
                 Capsule().fill(on ? Color.primary : .clear).frame(height: 2.5)
