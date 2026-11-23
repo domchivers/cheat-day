@@ -31,6 +31,17 @@ final class EditorPanelsTests: XCTestCase {
         XCTAssertTrue(typed.allSatisfy { $0.src == nil && $0.clip == nil })
     }
 
+    @MainActor func testProgressTabsOnlyForMeasuresWithALine() {
+        let rows: [JSON] = [
+            ["day": "2026-08-01", "weight": 84.0, "muscle": 36.0],
+            ["day": "2026-08-20", "weight": 83.5, "muscle": 36.2],
+            ["day": "2026-11-10", "weight": 80.5, "fat": 18.0, "bmi": 24.9],
+            ["day": "2026-11-22", "weight": 79.7, "fat": 17.6],
+        ]
+        let keys: [String] = ProgressPage.tabs(rows, today: "2026-11-23").map(\.key)
+        XCTAssertEqual(keys, ["weight", "fat"], "one BMI reading, and muscle only long ago: no tabs")
+    }
+
     @MainActor func testCaptionsMovedByHandStillRideTheirVoice() {
         let voice = EditSound(kind: "voice", name: "Voice 1", file: nil, from: 8, length: 3)
         let tied = EditText(kind: "caption", text: "hello", from: 8, to: 8.5,

@@ -175,15 +175,29 @@ struct ProgressPage: View {
 
     /// The measures with a tab: see the chips.
     private var shownMetrics: [(key: String, name: String, unit: String)] {
-        let recent = DayKey.shift(store.today, days: -60)
-        let health: Set<String> = ["weight", "fat", "lean", "bmi"]
-        return BodyView.metrics.filter { m in
-            let always = health.contains(m.key)
-            return store.bodyRows.contains { r in
-                guard pos(r[m.key]) != nil else { return false }
-                return always || str(r["day"]) >= recent
+        Self.tabs(store.bodyRows, today: store.today)
+    }
+
+    /// Weight always; any other measure only with a line to show: 2 readings or more, one of them in the last 60 days
+    /// (23 Nov, "maybe only show the ones you have info for??": one old reading made a tab with no line on it).
+    static func tabs(_ rows: [JSON], today: String) -> [(key: String, name: String, unit: String)] {
+        let recent = DayKey.shift(today, days: -60)
+        return BodyView.metrics.filter { (m: (key: String, name: String, unit: String)) -> Bool in
+            if m.key == "weight" { return rows.contains { (r: JSON) -> Bool in pos(r[m.key]) != nil } }
+            let days: [String] = rows.compactMap { (r: JSON) -> String? in
+                let d: String = str(r["day"])
+                guard pos(r[m.key]) != nil, !d.isEmpty, d <= today else { return nil }
+                return d
             }
+            return days.count >= 2 && days.contains { (d: String) -> Bool in d >= recent }
         }
+    }
+
+    /// The chip row's ends fading out over the 14 points before the card's edge.
+    private static let chipFade = HStack(spacing: 0) {
+        LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing).frame(width: 14)
+        Color.black
+        LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing).frame(width: 14)
     }
 
     private var chartCard: some View {
@@ -209,7 +223,12 @@ struct ProgressPage: View {
                                 .buttonStyle(.plain)
                             }
                         }
+                        .padding(.horizontal, 14)
                     }
+                    // (23 Nov, "getting cut off here and not looking nice": the row stopped 14 points in from the card's
+                    // edges, with a hard cut through a chip at each end. It runs to the card's edges now, starting 14 in,
+                    // and fades out over that 14 at both ends: at rest the fade's over nothing on the left.)
+                    .mask { Self.chipFade }
                 } else {
                     // the chips have the row to themselves (a held day shows in the big number above); without them, a hint
                     Text("Your weight").font(.subheadline.weight(.bold))
@@ -217,7 +236,7 @@ struct ProgressPage: View {
                     Text(pts.count >= 2 ? "Hold to see a day" : rangeName).font(.footnote).foregroundStyle(.secondary)
                 }
             }
-            .padding(.horizontal, 14)
+            .padding(.horizontal, shownMetrics.count > 1 ? 0 : 14)
             if pts.count >= 2, let first = pts.first, let last = pts.last {
                 // a little time either side of the weigh-ins, so the end dots aren't cut by the card; the fill carries on
                 // flat to both edges, so it still runs the card's full width
