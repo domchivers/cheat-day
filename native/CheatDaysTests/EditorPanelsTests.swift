@@ -34,7 +34,7 @@ final class EditorPanelsTests: XCTestCase {
 
     func testEveryGlyphDrawsInsideItsSquare() {
         let square = CGRect(x: 0, y: 0, width: 48, height: 48)
-        for g in [Glyph.send, .save, .repost, .comment, .grid, .videos, .tagged] {
+        for g in [Glyph.send, .save, .repost, .comment, .grid, .videos, .tagged, .heart, .more] {
             let path: Path = GlyphShape(glyph: g).path(in: square)
             XCTAssertFalse(path.isEmpty)
             XCTAssertTrue(square.insetBy(dx: -1, dy: -1).contains(path.boundingRect), "\(g) spills out")

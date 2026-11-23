@@ -5,10 +5,10 @@ import SwiftUI
 /// with round ends and corners, so they're exactly the mockups the owner chose and all one line: Apple's symbols
 /// for these came in four different weights and shapes.
 enum Glyph {
-    case send, save, repost, comment, grid, videos, tagged
+    case send, save, repost, comment, grid, videos, tagged, heart, more
 
-    /// Drawn filled (the grid always; the bookmark once it's saved) rather than as a line.
-    var solid: Bool { self == .grid }
+    /// Drawn filled (the grid and the three dots always; the bookmark and heart once they're on) rather than as a line.
+    var solid: Bool { self == .grid || self == .more }
 }
 
 struct GlyphShape: Shape {
@@ -67,6 +67,18 @@ struct GlyphShape: Shape {
             path.addCurve(to: p(3.5, 12), control1: p(4.0, 15.3), control2: p(3.5, 13.7))
             path.addCurve(to: p(12, 3.5), control1: p(3.5, 7.31), control2: p(7.31, 3.5))
             path.closeSubpath()
+        case .heart:
+            // the like (23 Nov: Apple's heart beside these was a different line and stood bigger; own-heart-mockup)
+            path.move(to: p(12, 20))
+            path.addCurve(to: p(3.5, 9.2), control1: p(12, 20), control2: p(3.5, 15))
+            path.addCurve(to: p(8, 4.6), control1: p(3.5, 6.6), control2: p(5.5, 4.6))
+            path.addCurve(to: p(12, 7), control1: p(9.8, 4.6), control2: p(11.2, 5.6))
+            path.addCurve(to: p(16, 4.6), control1: p(12.8, 5.6), control2: p(14.2, 4.6))
+            path.addCurve(to: p(20.5, 9.2), control1: p(18.5, 4.6), control2: p(20.5, 6.6))
+            path.addCurve(to: p(12, 20), control1: p(20.5, 15), control2: p(12, 20))
+            path.closeSubpath()
+        case .more:
+            for x in [CGFloat(5.5), 12, 18.5] { path.addEllipse(in: box(x - 1.7, 10.3, 3.4, 3.4)) }
         case .grid:
             // nine soft tiles, solid
             for row in 0..<3 {
@@ -105,6 +117,8 @@ struct GlyphIcon: View {
             }
         }
         .frame(width: size, height: size)
+        // a little pop as it fills or empties (the heart liked, the bookmark saved), as Apple's symbols bounced
+        .phaseAnimator([CGFloat(1), 1.22, 1], trigger: filled) { content, s in content.scaleEffect(s) } animation: { _ in .spring(response: 0.2, dampingFraction: 0.55) }
     }
 }
 

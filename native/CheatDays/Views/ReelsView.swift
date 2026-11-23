@@ -362,7 +362,7 @@ struct ReelsView: View {
                     // (23 Nov: 22 between two with no number, as Instagram's; a number sits tight under its icon and
                     // takes only its own height, so one with a number isn't spread further apart, "far apart with numbers?")
                     VStack(spacing: 20) {
-                        rail(hearted ? "heart.fill" : "heart", rx.isEmpty ? "" : "\(Set(rx.map { str($0["user_id"]) }).count)", tint: hearted ? .red : .white) { Task { await feed.toggle(p, "❤️") } }
+                        rail(.heart, rx.isEmpty ? "" : "\(Set(rx.map { str($0["user_id"]) }).count)", tint: hearted ? Color(red: 0.94, green: 0.38, blue: 0.43) : .white, filled: hearted) { Task { await feed.toggle(p, "❤️") } }
                             .accessibilityLabel(hearted ? "Unlike" : "Like")
                         rail(.comment, comments == 0 ? "" : "\(comments)") { talking = PostBox(post: p) }.accessibilityLabel("Comments")
                         if Feed.canRepost(p) {
@@ -389,7 +389,7 @@ struct ReelsView: View {
                                                                          text: [str(p["name"]), str(p["caption"])].filter { !$0.isEmpty }.joined(separator: "\n"), media: str(p["photo"]), video: Feed.video(p) != nil) } label: { Label("Report post", systemImage: "flag") }
                             }
                         } label: {
-                            Self.railIcon("ellipsis").foregroundStyle(.white)
+                            GlyphIcon(glyph: .more, size: 29).frame(width: 27, height: 27).foregroundStyle(.white)
                                 .shadow(color: .black.opacity(0.4), radius: 3).frame(width: 44).contentShape(Rectangle())
                         }
                         .menuOrder(.fixed).accessibilityLabel("More")
