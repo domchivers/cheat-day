@@ -184,6 +184,8 @@ struct ProgressPage: View {
         let recent = DayKey.shift(today, days: -60)
         return BodyView.metrics.filter { (m: (key: String, name: String, unit: String)) -> Bool in
             if m.key == "weight" { return rows.contains { (r: JSON) -> Bool in pos(r[m.key]) != nil } }
+            // (BMI is the weight over the height squared: its line was the weight's again. 23 Nov, "yes drop bmi")
+            if m.key == "bmi" { return false }
             let days: [String] = rows.compactMap { (r: JSON) -> String? in
                 let d: String = str(r["day"])
                 guard pos(r[m.key]) != nil, !d.isEmpty, d <= today else { return nil }
