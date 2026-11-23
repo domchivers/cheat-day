@@ -583,7 +583,7 @@ final class SoundMixer {
     }
 
     func stop() {
-        for (node, _) in players { node.stop() }
+        for (node, _, _) in players { node.stop() }
         playing = []
     }
 
