@@ -600,6 +600,7 @@ final class SoundMixer {
     private func player(_ k: Int) -> (AVAudioPlayerNode, AVAudioUnitTimePitch) {
         while players.count <= k {
             let node = AVAudioPlayerNode(), pitch = AVAudioUnitTimePitch()
+            pitch.overlap = 32   // (the most: a slowed clip warbled less; 8 was the default)
             engine.attach(node); engine.attach(pitch)
             engine.connect(node, to: pitch, format: format)
             engine.connect(pitch, to: engine.mainMixerNode, format: format)

@@ -426,6 +426,32 @@ struct LoopingVideo: UIViewRepresentable {
         var key = ""
         var held: Double?
         let look = Look()
+        /// The editor's clip drawn through its look on the graphics chip (23 Nov): a slider shows at the next refresh,
+        /// paused or playing. (Through the player's own pipeline, frames made ahead showed a change late.)
+        var live: LookSurface?
+        func liveDraw(_ out: AVPlayerItemVideoOutput, _ look: Look) {
+            let s: LookSurface = live ?? LookSurface(still: false)
+            if live == nil {
+                s.frame = bounds
+                s.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+                s.fills = true
+                addSubview(s)
+                live = s
+            }
+            s.source = nil
+            s.pull = { [weak out] () -> CIImage? in
+                guard let out else { return nil }
+                let t: CMTime = out.itemTime(forHostTime: CACurrentMediaTime())
+                guard out.hasNewPixelBuffer(forItemTime: t), let pb = out.copyPixelBuffer(forItemTime: t, itemTimeForDisplay: nil) else { return nil }
+                return CIImage(cvPixelBuffer: pb)
+            }
+            s.filter = { (img: CIImage) -> CIImage in LiveLook.through(look.name)(img) }
+            s.runs(true)
+        }
+        func endLive() {
+            live?.removeFromSuperview()
+            live = nil
+        }
         var ender: NSObjectProtocol?   // a clip with a look goes round by being sent back to its start: this hears its end
         var playing = true
         var tries = 0                // times this clip's player has been built again because it showed nothing
@@ -498,6 +524,7 @@ struct LoopingVideo: UIViewRepresentable {
     private func setUp(_ v: PlayerView, fresh: Bool = false) {
         v.key = key
         v.unwatch()
+        v.endLive()
         // one from the pool: given back, paused where it is, for whoever shows the same clip next
         if let e = v.entry {
             v.entry = nil
@@ -537,13 +564,14 @@ struct LoopingVideo: UIViewRepresentable {
             // in the editor each frame is made small first (1280 on its longer side), a ninth of the work; the
             // video that's posted is still made from the full frames.
             let look = box ?? v.look
+            let live: Bool = box != nil   // (the editor's: the look's put on as it's drawn, below)
             let shrink = Shrink()
             let comp = AVMutableVideoComposition(asset: asset) { req in
                 let name = look.name, k = shrink.by
                 var img = req.sourceImage
                 if k < 1 { img = img.transformed(by: CGAffineTransform(scaleX: k, y: k)) }
                 let whole = img.extent
-                if name != "Normal" { img = StoryArt.filtered(img.clampedToExtent(), name, frame: whole).cropped(to: whole) }
+                if !live, name != "Normal" { img = StoryArt.filtered(img.clampedToExtent(), name, frame: whole).cropped(to: whole) }
                 req.finish(with: img, context: nil)
             }
             let full = comp.renderSize
@@ -555,6 +583,13 @@ struct LoopingVideo: UIViewRepresentable {
                 }
             }
             item.videoComposition = comp
+            if live {
+                let out = AVPlayerItemVideoOutput(pixelBufferAttributes: [
+                    kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                    kCVPixelBufferMetalCompatibilityKey as String: true])
+                item.add(out)
+                v.liveDraw(out, look)
+            }
         }
         if let ender = v.ender { NotificationCenter.default.removeObserver(ender); v.ender = nil }
         // (For a while a clip with a look was one item sent back to its start, a guess at a freeze that turned out

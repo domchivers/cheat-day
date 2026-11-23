@@ -45,7 +45,7 @@ struct PhotoEditor: View {
                     let w = g.size.width, h = min(g.size.height, w / shape.ratio), fw = min(w, h * shape.ratio)
                     ZStack {
                         Color.black
-                        canvas(width: fw, height: fw / shape.ratio, scaleBy: 1)
+                        canvas(width: fw, height: fw / shape.ratio, scaleBy: 1, live: true)
                             .overlay { if moving { grid } }
                             .overlay { PinchPanPad(scale: $scale, offset: $offset, range: 1...5, moving: { moving = $0 }) }
                     }
@@ -89,16 +89,13 @@ struct PhotoEditor: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .topBarTrailing) { Button("Done") { done(render()); dismiss() }.fontWeight(.bold) }
             }
-            .onChange(of: brightness) { _, _ in adjust() }
-            .onChange(of: contrast) { _, _ in adjust() }
-            .onChange(of: saturation) { _, _ in adjust() }
         }
         .preferredColorScheme(.dark)
     }
 
     /// The picture inside the frame. Drawn at screen size while editing, and again at 1080 px for the result.
-    private func canvas(width: CGFloat, height: CGFloat, scaleBy k: CGFloat) -> some View {
-        Image(uiImage: shown).resizable().scaledToFill()
+    private func canvas(width: CGFloat, height: CGFloat, scaleBy k: CGFloat, live: Bool = false, still: UIImage? = nil) -> some View {
+        picture(live: live, still: still)
             .frame(width: width, height: height)
             .scaleEffect(scale)
             .offset(x: offset.width * k, y: offset.height * k)
@@ -150,12 +147,25 @@ struct PhotoEditor: View {
         }
     }
 
-    private func adjust() {
-        guard let input = CIImage(image: base) else { shown = base; return }
+    /// While it's being edited, drawn on the graphics chip as the sliders move (23 Nov: each step made the whole photo
+    /// again first); for the finished picture, the picture itself.
+    @ViewBuilder private func picture(live: Bool, still: UIImage?) -> some View {
+        if live {
+            LiveAdjust(base: base, brightness: brightness, contrast: contrast, saturation: saturation)
+        } else {
+            Image(uiImage: still ?? shown).resizable().scaledToFill()
+        }
+    }
+
+    private func adjust() { shown = adjusted() }
+
+    /// The photo with its brightness, contrast and colour, made.
+    private func adjusted() -> UIImage {
+        guard let input = CIImage(image: base) else { return base }
         let f = CIFilter.colorControls()
         f.inputImage = input; f.brightness = Float(brightness); f.contrast = Float(contrast); f.saturation = Float(saturation)
-        guard let out = f.outputImage, let cg = Self.ci.createCGImage(out, from: input.extent) else { return }
-        shown = UIImage(cgImage: cg, scale: base.scale, orientation: .up)
+        guard let out = f.outputImage, let cg = Self.ci.createCGImage(out, from: input.extent) else { return shown }
+        return UIImage(cgImage: cg, scale: base.scale, orientation: .up)
     }
 
     /// The finished picture: what's inside the frame, 1080 px wide.
@@ -163,9 +173,11 @@ struct PhotoEditor: View {
     private func render() -> UIImage {
         let outW: CGFloat = 1080, outH = (outW / shape.ratio).rounded()
         let k = outW / max(1, frameWidth)   // drags were in screen points; the result is 1080 px wide
-        let r = ImageRenderer(content: canvas(width: outW, height: outH, scaleBy: k))
+        // (the sliders only draw on the screen as they move: the picture's made with them now)
+        let made: UIImage = adjusted()
+        let r = ImageRenderer(content: canvas(width: outW, height: outH, scaleBy: k, still: made))
         r.scale = 1
-        return r.uiImage ?? shown
+        return r.uiImage ?? made
     }
 
     /// No bigger than `side` dots on its long side. In dots, whatever the picture's own scale: a picture made at 2.77

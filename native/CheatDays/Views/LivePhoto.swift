@@ -13,68 +13,31 @@ final class PhotoLook {
 /// Every step of a slider used to go the long way round: the editor's whole screen was worked out again (it's a big
 /// one), a new background job was started and the one before it called off, a new picture was made and handed back,
 /// and the screen was worked out a second time to show it. The finger was always ahead of the picture.
-/// Here the picture is its own small view. A step asks for one drawing on a queue of its own; while that's being
-/// made, later steps just replace the one that's waiting, so it always goes straight to the newest and never falls
-/// behind. The finished picture is put on the view's layer directly.
+/// Here the picture is its own small view, and since 23 Nov it's drawn on the graphics chip as the clip editor's is
+/// (LookSurface): a step is one drawing at the screen's next refresh.
 struct LivePhoto: UIViewRepresentable {
     let base: UIImage
     let box: PhotoLook
 
-    func makeUIView(context: Context) -> Surface {
-        let v = Surface()
-        v.isUserInteractionEnabled = false
-        v.backgroundColor = .clear
-        v.layer.contentsGravity = .resize
-        return v
+    func makeCoordinator() -> Link { Link() }
+
+    func makeUIView(context: Context) -> LookSurface { LookSurface(still: true) }
+
+    func updateUIView(_ v: LookSurface, context: Context) {
+        v.take(base)
+        let link: Link = context.coordinator
+        if link.box !== box {
+            link.box = box
+            box.changed = { [weak v] (look: String) in
+                v?.filter = LiveLook.through(look)
+                v?.redraw()
+            }
+        }
+        v.filter = LiveLook.through(box.look)
+        v.redraw()
     }
-    func updateUIView(_ v: Surface, context: Context) { v.take(base, box) }
 
-    final class Surface: UIView {
-        private var source: CIImage?
-        private var from: ObjectIdentifier?
-        private weak var box: PhotoLook?
-        private let queue = DispatchQueue(label: "photo.look", qos: .userInteractive)
-        private var busy = false
-        private var waiting: String?
-        private var shown: String?
-
-        func take(_ image: UIImage, _ box: PhotoLook) {
-            if from != ObjectIdentifier(image) {
-                from = ObjectIdentifier(image)
-                source = Self.upright(image).map { CIImage(cgImage: $0) }
-                shown = nil
-            }
-            if self.box !== box {
-                self.box = box
-                box.changed = { [weak self] look in self?.draw(look) }
-            }
-            draw(box.look)
-        }
-
-        /// The picture the right way up as plain pixels (a photo can carry a note saying it's on its side).
-        private static func upright(_ image: UIImage) -> CGImage? {
-            if image.imageOrientation == .up, let cg = image.cgImage { return cg }
-            let f = UIGraphicsImageRendererFormat(); f.scale = image.scale
-            return UIGraphicsImageRenderer(size: image.size, format: f).image { _ in image.draw(in: CGRect(origin: .zero, size: image.size)) }.cgImage
-        }
-
-        private func draw(_ look: String) {
-            guard let source, look != shown else { return }
-            if busy { waiting = look; return }
-            busy = true
-            queue.async { [weak self] in
-                let out = look == "Normal" ? source : StoryArt.filtered(source, look)
-                let cg = StoryArt.context.createCGImage(out, from: source.extent)
-                DispatchQueue.main.async {
-                    guard let self else { return }
-                    CATransaction.begin(); CATransaction.setDisableActions(true)
-                    self.layer.contents = cg
-                    CATransaction.commit()
-                    self.shown = look
-                    self.busy = false
-                    if let next = self.waiting { self.waiting = nil; self.draw(next) }
-                }
-            }
-        }
+    final class Link {
+        weak var box: PhotoLook?
     }
 }

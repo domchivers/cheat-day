@@ -2802,7 +2802,8 @@ struct MultiClipEditor: View {
         default: selectedText = item.id
         }
         player.pause(); playing = false
-        if now < item.from || now >= item.to { seek(item.from + 0.01) }
+        // (the line stays where it is: 23 Nov, "when you tap on a text or caption it snaps to that area, do we want
+        // that??"; its Edit takes the line to it if it isn't there)
         UISelectionFeedbackGenerator().selectionChanged()
     }
 
@@ -3381,7 +3382,7 @@ struct MultiClipEditor: View {
         selected = nil; selectedText = nil
         selectedSound = id
         let picked: EditSound? = sounds.first { (s: EditSound) -> Bool in s.id == id }
-        if let picked { seek(picked.from) }
+        if let picked, now < picked.from || now >= picked.to { seek(picked.from + 0.01) }
         // (music has the one panel: its beats are there too)
         let open: Panel = picked?.kind == "song" ? .beats : .soundItem
         withAnimation(.snappy) { panel = open }
