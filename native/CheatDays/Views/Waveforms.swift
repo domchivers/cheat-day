@@ -230,15 +230,18 @@ private struct SoundWaveTile: View {
 struct PinnedName: View {
     let name: String
     let width: CGFloat
+    /// White on the bar itself, no tag (a voice's, 23 Nov).
+    var plain = false
 
     var body: some View {
         let most: CGFloat = max(0, width - 56)
-        return Text(name).font(.system(size: 8.5, weight: .semibold)).lineLimit(1)
-            .foregroundStyle(Color.black.opacity(0.82))
-            .padding(.horizontal, 3)
-            .background(Color.white.opacity(0.5), in: RoundedRectangle(cornerRadius: 3, style: .continuous))
+        return Text(name).font(.system(size: plain ? 10 : 8.5, weight: plain ? .bold : .semibold)).lineLimit(1)
+            .foregroundStyle(plain ? Color.white : Color.black.opacity(0.82))
+            .shadow(color: plain ? Color.black.opacity(0.3) : Color.clear, radius: 1, y: 0.5)
+            .padding(.horizontal, plain ? 5 : 3)
+            .background(plain ? Color.clear : Color.white.opacity(0.5), in: RoundedRectangle(cornerRadius: 3, style: .continuous))
             .frame(maxWidth: max(0, width - 4), alignment: .leading)
-            .padding(.leading, 2).padding(.top, 2)
+            .padding(.leading, 2).padding(.top, plain ? 1 : 2)
             .visualEffect { content, proxy in
                 // (the timeline's edge to edge: the screen's left is its left)
                 content.offset(x: min(most, max(0, -proxy.frame(in: .global).minX)))

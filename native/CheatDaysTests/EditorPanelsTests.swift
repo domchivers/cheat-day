@@ -4,6 +4,18 @@ import UIKit
 
 /// 22 Nov, design/editor-panels-mockup.html: every editor panel on the one sheet.
 final class EditorPanelsTests: XCTestCase {
+    func testKeepPitchIsSavedAndOlderDraftsKeepIt() throws {
+        var c = Clip(source: URL(fileURLWithPath: "/tmp/c.mov"), length: 10, start: 0, end: 10)
+        XCTAssertTrue(c.keepsPitch)
+        c.keepPitch = false
+        let back: Clip = try JSONDecoder().decode(Clip.self, from: JSONEncoder().encode(c))
+        XCTAssertFalse(back.keepsPitch)
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(c)) as? [String: Any])
+        json["keepPitch"] = nil
+        let old: Clip = try JSONDecoder().decode(Clip.self, from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertTrue(old.keepsPitch)
+    }
+
     func testARetypedCaptionStaysTiedToItsVoiceover() {
         let voice = UUID()
         let old: [EditText.Word] = [EditText.Word(text: "hello", at: 8, clip: voice, file: "v.m4a", src: 1.0),

@@ -284,7 +284,7 @@ final class PreviewEngine {
 
     /// What's heard where, not how loud: when it changes while playing, the sound's started again.
     private var soundKey: String {
-        soundPieces().map { "\($0.url.path),\($0.from),\($0.fileStart),\($0.length),\($0.rate)" }.joined(separator: "|")
+        soundPieces().map { "\($0.url.path),\($0.from),\($0.fileStart),\($0.length),\($0.rate),\($0.keep)" }.joined(separator: "|")
     }
 
     /// Every sound in the edit, each with its level at a moment of the video: each clip's own (or one clip's for
@@ -327,17 +327,18 @@ final class PreviewEngine {
                 let length = (min(heard.heardEnd, c.end) - heard.heardStart) / r
                 let on: Float = c.soundOn ? 1 : 0, h = heard
                 out.append(SoundPiece(key: "c\(c.id)", url: c.clean ?? c.source, from: from, fileStart: heard.heardStart, length: length, rate: r,
-                                      level: { v in h.level(at: h.heardStart + (v - from) * r) * dip(v) * on }))
+                                      level: { v in h.level(at: h.heardStart + (v - from) * r) * dip(v) * on }, keep: c.keepsPitch))
             }
         }
         for s in sounds {
             guard let url = s.url else { continue }
             let ducks = s.kind == "clip", snd = s
+            let keep: Bool = s.kind != "clip" || (clips.first(where: { (k: Clip) -> Bool in k.id == s.clip })?.keepsPitch ?? true)
             let parts: [EditSound.Stretch] = s.stretches(until: total)
             for (n, part) in parts.enumerated() {
                 let level: (Double) -> Float = { (v: Double) -> Float in snd.level(at: v) * (ducks ? dip(v) : 1) }
                 out.append(SoundPiece(key: "s\(s.id)-\(n)", url: url, from: part.from, fileStart: part.fileStart, length: part.length,
-                                      rate: s.speed, level: level))
+                                      rate: s.speed, level: level, keep: keep))
             }
         }
         return out
@@ -354,6 +355,8 @@ struct SoundPiece {
     var length: Double
     var rate: Double
     var level: (Double) -> Float
+    /// Stretched to keep its pitch; or not, played as a record at another speed is.
+    var keep = true
 }
 
 /// A clip's frames read a few ahead of where they're wanted, on a queue of its own. Asked for a moment that isn't
@@ -506,7 +509,7 @@ final class FrameReader {
 /// takes at once, with nothing made again). Each file's sound is read once into memory.
 final class SoundMixer {
     private let engine = AVAudioEngine()
-    private var players: [(AVAudioPlayerNode, AVAudioUnitTimePitch)] = []
+    private var players: [(AVAudioPlayerNode, AVAudioUnitTimePitch, AVAudioUnitVarispeed)] = []
     private var playing: [(SoundPiece, Int)] = []
     private var buffers: [URL: AVAudioPCMBuffer] = [:]
     private var loading: Set<URL> = []
@@ -553,10 +556,16 @@ final class SoundMixer {
             guard a >= 0, a < AVAudioFramePosition(all.frameLength) else { continue }
             let count = AVAudioFrameCount(max(0, min(Double(AVAudioFramePosition(all.frameLength) - a), want)))
             guard count > 64, let part = Self.slice(all, from: a, count: count) else { continue }
-            let (node, pitch) = player(n)
+            let (node, pitch, record) = player(n)
             // (a player played on an engine that isn't running throws, and can't be caught: none played then)
             guard engine.isRunning || (try? engine.start()) != nil else { return }
-            pitch.rate = Float(min(32, max(1.0 / 32, p.rate)))
+            if p.keep {
+                record.rate = 1
+                pitch.rate = Float(min(32, max(1.0 / 32, p.rate)))
+            } else {
+                record.rate = Float(min(4, max(0.25, p.rate)))   // (a varispeed's range)
+                pitch.rate = 1
+            }
             node.volume = muted ? 0 : p.level(max(t, p.from))
             node.scheduleBuffer(part, at: nil, options: [], completionHandler: nil)
             let delay = max(0, p.from - t)
@@ -597,14 +606,15 @@ final class SoundMixer {
         engine.reset()
     }
 
-    private func player(_ k: Int) -> (AVAudioPlayerNode, AVAudioUnitTimePitch) {
+    private func player(_ k: Int) -> (AVAudioPlayerNode, AVAudioUnitTimePitch, AVAudioUnitVarispeed) {
         while players.count <= k {
-            let node = AVAudioPlayerNode(), pitch = AVAudioUnitTimePitch()
+            let node = AVAudioPlayerNode(), pitch = AVAudioUnitTimePitch(), record = AVAudioUnitVarispeed()
             pitch.overlap = 32   // (the most: a slowed clip warbled less; 8 was the default)
-            engine.attach(node); engine.attach(pitch)
-            engine.connect(node, to: pitch, format: format)
+            engine.attach(node); engine.attach(record); engine.attach(pitch)
+            engine.connect(node, to: record, format: format)
+            engine.connect(record, to: pitch, format: format)
             engine.connect(pitch, to: engine.mainMixerNode, format: format)
-            players.append((node, pitch))
+            players.append((node, pitch, record))
         }
         return players[k]
     }

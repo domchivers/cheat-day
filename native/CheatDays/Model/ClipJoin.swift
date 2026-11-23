@@ -32,6 +32,11 @@ struct Clip: Identifiable, Equatable, Codable {
     var clean: URL?
     /// Its zoom and drift over time (Stage D): seconds from its start in the video; none, still.
     var moves: [MoveKey] = []
+    /// Its sound at another speed keeps its pitch (nil: yes); false, it's slower and deeper, or faster and higher, as a
+    /// record played at another speed is, with no warble (23 Nov, Sony Vegas's "lock stretch to pitch").
+    var keepPitch: Bool? = nil
+    /// Whether its sound is stretched to keep its pitch.
+    var keepsPitch: Bool { keepPitch != false }
 
     /// The part of its file kept, seconds of the file.
     var duration: Double { max(0, end - start) }
@@ -150,9 +155,15 @@ enum ClipJoin {
         guard let v0 = comp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid),
               let v1 = comp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid),
               let a0 = comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid),
-              let a1 = comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else { return nil }
-        let videos = [v0, v1], tracks = [a0, a1]
-        let levels = [AVMutableAudioMixInputParameters(track: a0), AVMutableAudioMixInputParameters(track: a1)]
+              let a1 = comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid),
+              let a2 = comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid),
+              let a3 = comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else { return nil }
+        // (2 and 3: clips at another speed whose sound doesn't keep its pitch; unused tracks are taken out at the end)
+        let videos = [v0, v1], tracks = [a0, a1, a2, a3]
+        let levels = [AVMutableAudioMixInputParameters(track: a0), AVMutableAudioMixInputParameters(track: a1),
+                      AVMutableAudioMixInputParameters(track: a2), AVMutableAudioMixInputParameters(track: a3)]
+        levels[2].audioTimePitchAlgorithm = .varispeed
+        levels[3].audioTimePitchAlgorithm = .varispeed
         // the frame: the shape asked for, 1080 across; or the first clip's shape, the right way up, at most 1080 across
         var frame = CGSize(width: 1080, height: 1920)
         if let r = look.ratio {
@@ -218,12 +229,13 @@ enum ClipJoin {
             if soundOf == nil, !c.still, c.heardEnd - c.heardStart > 0.05,
                let a = try? await heardFrom.loadTracks(withMediaType: .audio).first {
                 var heard = c
+                let lane: Int = track + (!c.keepsPitch && abs(rate - 1) > 0.001 ? 2 : 0)
                 let before = pieces.count >= 2 ? pieces[pieces.count - 2].out : 0
                 if before > 0 { heard.fadeIn = max(heard.fadeIn, Double(before) / 600 * rate) }
                 if out > 0 { heard.fadeOut = max(heard.fadeOut, Double(out) / 600 * rate) }
                 let at0 = Double(cursor) / 600 + (heard.heardStart - shown) / rate, span = min(heard.heardEnd, until) - heard.heardStart
-                if span > 0.05, (try? tracks[track].insertTimeRange(CMTimeRange(start: t(heard.heardStart), duration: t(span)), of: a, at: t(at0))) != nil {
-                    if abs(rate - 1) > 0.001 { tracks[track].scaleTimeRange(CMTimeRange(start: t(at0), duration: t(span)), toDuration: t(span / rate)) }
+                if span > 0.05, (try? tracks[lane].insertTimeRange(CMTimeRange(start: t(heard.heardStart), duration: t(span)), of: a, at: t(at0))) != nil {
+                    if abs(rate - 1) > 0.001 { tracks[lane].scaleTimeRange(CMTimeRange(start: t(at0), duration: t(span)), toDuration: t(span / rate)) }
                     // its level through it, from its keyframes and fades and the dips under a voiceover: a straight
                     // ramp between each moment it turns (in its file's time; the video's is at0 on, at its speed)
                     let video = { (p: Double) -> Double in at0 + (p - heard.heardStart) / rate }
@@ -232,9 +244,9 @@ enum ClipJoin {
                         .filter { $0 > heard.heardStart && $0 < heard.heardStart + span }
                     let marks = Array(Set(heard.turns.filter { $0 <= heard.heardStart + span } + edges)).sorted()
                     let level = { (p: Double) -> Float in heard.level(at: p) * dip(video(p)) * on }
-                    levels[track].setVolume(level(heard.heardStart), at: t(at0))
+                    levels[lane].setVolume(level(heard.heardStart), at: t(at0))
                     for (p, q) in zip(marks, marks.dropFirst()) where q - p > 0.01 {
-                        levels[track].setVolumeRamp(fromStartVolume: level(p), toEndVolume: level(q),
+                        levels[lane].setVolumeRamp(fromStartVolume: level(p), toEndVolume: level(q),
                                                     timeRange: CMTimeRange(start: t(video(p)), duration: t((q - p) / rate)))
                     }
                 }
@@ -296,6 +308,9 @@ enum ClipJoin {
             // its level through it: its keyframes and fades, and for a clip's own sound the dips under a voiceover,
             // as it had on its clip; a straight ramp between each moment it turns
             let p = AVMutableAudioMixInputParameters(track: track)
+            if snd.kind == "clip", abs(r - 1) > 0.001, clips.first(where: { (k: Clip) -> Bool in k.id == snd.clip })?.keepsPitch == false {
+                p.audioTimePitchAlgorithm = .varispeed
+            }
             let ducks = snd.kind == "clip", stop = snd.from + take
             let edges = ducks ? dips.flatMap { [$0.0 - ease, $0.0, $0.1, $0.1 + ease] } : []
             let marks = Array(Set((snd.turns + edges + [stop]).filter { $0 >= snd.from && $0 <= stop })).sorted()
@@ -545,7 +560,7 @@ enum ClipJoin {
 
 extension Clip {
     private enum CodingKeys: String, CodingKey {
-        case id, source, length, start, end, still, soundOn, volume, soundStart, soundEnd, fadeIn, fadeOut, keys, speed, transition, look, forward, clean, moves
+        case id, source, length, start, end, still, soundOn, volume, soundStart, soundEnd, fadeIn, fadeOut, keys, speed, transition, look, forward, clean, moves, keepPitch
     }
     /// Read from a draft, a field it was saved without (added in a later build) taking its default.
     init(from decoder: Decoder) throws {
@@ -567,5 +582,6 @@ extension Clip {
         forward = try c.decodeIfPresent(Forward.self, forKey: .forward)
         clean = try c.decodeIfPresent(URL.self, forKey: .clean)
         moves = try c.decodeIfPresent([MoveKey].self, forKey: .moves) ?? []
+        keepPitch = try c.decodeIfPresent(Bool.self, forKey: .keepPitch)
     }
 }

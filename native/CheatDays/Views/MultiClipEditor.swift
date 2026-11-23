@@ -2521,7 +2521,7 @@ struct MultiClipEditor: View {
     /// as it now lasts.
     private func speedPanel(_ i: Int) -> some View {
         let c: Clip = clips[i]
-        let lasts: String = String(format: "%.1f s → %.1f s", c.duration, c.span) + ". Its sound keeps its pitch."
+        let lasts: String = String(format: "%.1f s → %.1f s", c.duration, c.span)
         let normal: Bool = abs(c.speed - 1) < 0.001
         return VStack(spacing: 0) {
             ProLead(title: "Clip \(i + 1)", sub: "") {
@@ -2530,9 +2530,31 @@ struct MultiClipEditor: View {
             ProBody(height: 144, spacing: 4) {
                 Text(Self.speedText(c.speed)).font(.system(size: 25, weight: .bold)).monospacedDigit().frame(height: 30)
                 SpeedRuler(speed: c.speed, held: { (on: Bool) in editHeld(on) }, set: { (v: Double) in setSpeed(i, v) })
-                Text(lasts).font(.system(size: 12)).foregroundStyle(ProInk.quiet)
+                pitchRow(i, lasts: lasts)
             }
         }
+    }
+
+    /// How long it lasts now, and whether its sound keeps its pitch (design/voice-pitch-mockup.html).
+    private func pitchRow(_ i: Int, lasts: String) -> some View {
+        let keep = Binding<Bool>(get: { clips.indices.contains(i) ? clips[i].keepsPitch : true },
+                                 set: { (on: Bool) in setKeepPitch(i, on) })
+        return HStack(spacing: 10) {
+            Text(lasts).font(.system(size: 12)).foregroundStyle(ProInk.quiet).monospacedDigit()
+            Spacer(minLength: 8)
+            Text("Keep pitch").font(.system(size: 13, weight: .semibold))
+            Toggle("Keep pitch", isOn: keep).labelsHidden().tint(Color(red: 0.2, green: 0.78, blue: 0.35)).scaleEffect(0.85)
+        }
+        .frame(height: 32)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Off, slowed sound is deeper, with no warble")
+    }
+
+    private func setKeepPitch(_ i: Int, _ on: Bool) {
+        guard clips.indices.contains(i), clips[i].keepsPitch != on else { return }
+        remember()
+        clips[i].keepPitch = on ? nil : false
+        flash(on ? "Its sound keeps its pitch." : "Slower and deeper, with no warble.")
     }
 
     private func setSpeed(_ i: Int, _ v: Double) {
@@ -3144,10 +3166,14 @@ struct MultiClipEditor: View {
         let url: URL? = s.url
         let file: WaveFile? = url.flatMap { (u: URL) -> WaveFile? in waves.files[u] }
         let corner = RoundedRectangle(cornerRadius: 7, style: .continuous)
-        return SoundBarWave(sound: s, file: file, width: width, height: height, pps: perSecond, ink: Self.waveInk(s.kind), clock: clock)
+        // a voice's name over its wave, the wave under it (design/voice-pitch-mockup.html)
+        let voice: Bool = s.kind == "voice"
+        let waveTall: CGFloat = voice ? max(8, height - 12) : height
+        return SoundBarWave(sound: s, file: file, width: width, height: waveTall, pps: perSecond, ink: Self.waveInk(s.kind), clock: clock)
+            .frame(width: width, height: height, alignment: .bottom)
             .clipShape(corner)
             .overlay(alignment: .topLeading) {
-                if width > 24 { PinnedName(name: label, width: width) }
+                if width > 24 { PinnedName(name: label, width: width, plain: voice) }
             }
             .task(id: url) {
                 if let url { await waves.load(url) }
@@ -3156,7 +3182,7 @@ struct MultiClipEditor: View {
 
     private static func waveInk(_ kind: String) -> Color {
         switch kind {
-        case "voice": return Color(red: 0.43, green: 0.08, blue: 0.125)
+        case "voice": return Color.white.opacity(0.7)
         case "song": return Color(red: 0.25, green: 0.125, blue: 0.435)
         case "clip": return Color(red: 0.06, green: 0.27, blue: 0.36)
         default: return Color(red: 0.06, green: 0.3, blue: 0.3)
@@ -3728,7 +3754,7 @@ struct MultiClipEditor: View {
 
     static func soundMark(_ kind: String) -> String {
         switch kind {
-        case "voice": return "🎙 "
+        case "voice": return ""   // (23 Nov: "not a fan of the mic icon on the voice clips")
         case "song": return "♫ "
         case "clip": return "⇣ "
         default: return "✦ "
@@ -3736,7 +3762,7 @@ struct MultiClipEditor: View {
     }
     static func soundColour(_ kind: String) -> Color {
         switch kind {
-        case "voice": return Color(red: 1, green: 0.48, blue: 0.48)
+        case "voice": return Color(red: 0.94, green: 0.39, blue: 0.36)
         case "song": return Color(red: 0.77, green: 0.63, blue: 1)
         case "clip": return Color(red: 0.37, green: 0.77, blue: 0.91)
         default: return Color(red: 0.55, green: 0.85, blue: 0.85)
