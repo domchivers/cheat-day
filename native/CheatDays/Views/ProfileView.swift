@@ -16,6 +16,9 @@ struct ProfileView: View {
     @State private var tab = 0
     @State private var tagged: [JSON] = []   // posts they're tagged in
     @State private var kept: [JSON] = []     // posts you've saved (your own profile only)
+    @State private var reposts: [JSON] = []  // posts they've reposted (23 Nov)
+    /// The posts a tab other than Posts lists, for opening one of them.
+    private var listed: [JSON] { tab == 6 ? kept : tab == 7 ? reposts : tagged }
     @State private var openTagged: String?   // one of those, tapped
     @Namespace private var tabLine
     @State private var editing = false
@@ -78,6 +81,7 @@ struct ProfileView: View {
                 case 4: grid(posts.filter { Feed.video($0) != nil }, empty: isMe ? "Your videos show here. Tap ＋ on your photo, then Post, and pick a video." : "No videos yet.")
                 case 5: grid(tagged, empty: isMe ? "Posts your friends tag you in show here." : "No tagged posts yet.")
                 case 6: grid(kept, empty: "Posts you save with the bookmark show here. Only you can see them.")
+                case 7: grid(reposts, empty: isMe ? "Posts you repost show here, and in your friends' feeds." : "No reposts yet.")
                 default: grid(posts, empty: isMe ? "Your posts show here. Tap ＋ on your photo to share one." : "No posts yet.")
                 }
                 }
@@ -134,7 +138,7 @@ struct ProfileView: View {
             FeedView(only: posts, startAt: posts.indices.contains(i) ? str(posts[i]["id"]) : nil).navigationTitle("Posts").navigationBarTitleDisplayMode(.inline)
         }
         .navigationDestination(item: $openTagged) { at in
-            FeedView(only: tab == 6 ? kept : tagged, startAt: at).navigationTitle(tab == 6 ? "Saved" : "Tagged").navigationBarTitleDisplayMode(.inline)
+            FeedView(only: listed, startAt: at).navigationTitle(tab == 6 ? "Saved" : tab == 7 ? "Reposts" : "Tagged").navigationBarTitleDisplayMode(.inline)
         }
         .navigationDestination(isPresented: $chatting) { ChatView(friend: id) }
         .fullScreenCover(isPresented: $composing) { StoryComposer() }
@@ -142,7 +146,7 @@ struct ProfileView: View {
         .fullScreenCover(isPresented: $watching) { StoryView(people: [id], at: 0) }
         .navigationDestination(isPresented: $archive) { StoryArchiveView() }
         .task { await Stories.shared.load() }   // a profile opened before the feed has its stories too
-        .fullScreenCover(item: $reels) { r in ReelsView(posts: tab == 6 ? kept : posts + tagged.filter { t in !posts.contains { str($0["id"]) == str(t["id"]) } }, startAt: r.id) }
+        .fullScreenCover(item: $reels) { r in ReelsView(posts: tab == 6 || tab == 7 ? listed : posts + tagged.filter { t in !posts.contains { str($0["id"]) == str(t["id"]) } }, startAt: r.id) }
         // a post that's just gone up shows in the grid without a pull to refresh
         .onChange(of: Feed.shared.sending?.state == .done) { _, done in if done && isMe { Task { await reload() } } }
         // a post deleted from the list of posts leaves the grid and the count at once too
@@ -201,6 +205,8 @@ struct ProfileView: View {
         await Feed.shared.loadExtras(posts)
         await Feed.shared.loadExtras(tagged)
         if isMe { kept = await Feed.shared.savedPosts(); await Feed.shared.loadExtras(kept) }
+        reposts = await Feed.shared.repostsOf(id)
+        if !reposts.isEmpty { await Feed.shared.loadExtras(reposts) }
         Self.last[id] = (posts, tagged, kept, counts)
     }
 
@@ -365,10 +371,13 @@ struct ProfileView: View {
     /// Posts, videos, tagged (and, on a friend's, their food today) as icons across the page, a line sliding under
     /// the one showing: the grey segmented box they were in looked like a settings switch.
     private var tabBar: some View {
-        var tabs: [(Int, String, String)] = [(0, "square.grid.3x3", "Posts")]
-        if isMe || posts.contains(where: { Feed.video($0) != nil }) { tabs.append((4, "play.rectangle", "Videos")) }
-        tabs.append((5, "person.crop.square", "Tagged"))
-        if isMe { tabs.append((6, "bookmark", "Saved")) }
+        // (23 Nov, design/profile-tabs-compare.html: the app's own icons, a solid grid and the rest one line in a
+        // rounded square, and Reposts after Videos)
+        var tabs: [(Int, String, String)] = [(0, "grid", "Posts")]
+        if isMe || posts.contains(where: { Feed.video($0) != nil }) { tabs.append((4, "videos", "Videos")) }
+        if isMe || !reposts.isEmpty { tabs.append((7, "repost", "Reposts")) }
+        tabs.append((5, "tagged", "Tagged"))
+        if isMe { tabs.append((6, "save", "Saved")) }
         if person != nil { tabs.append((2, "fork.knife", "Today")) }
         return HStack(spacing: 0) {
             ForEach(tabs, id: \.0) { t in
@@ -377,9 +386,7 @@ struct ProfileView: View {
                     VStack(spacing: 9) {
                         // each fitted into the same square, so they read the same size (21 Nov: the grid stood bigger
                         // than the play, tagged and saved icons at one font size)
-                        Image(systemName: t.1).resizable().scaledToFit().fontWeight(on ? .semibold : .regular)
-                            .frame(width: 23, height: 23)
-                            .foregroundStyle(on ? Color.primary : Color.secondary).frame(height: 26)
+                        Self.tabIcon(t.1).foregroundStyle(on ? Color.primary : Color.secondary).frame(height: 26)
                         ZStack {
                             Color.clear
                             if on { Capsule().fill(Color.primary).frame(width: 52).matchedGeometryEffect(id: "line", in: tabLine) }
@@ -394,6 +401,18 @@ struct ProfileView: View {
         .padding(.top, 14)
         .background(alignment: .bottom) { Rectangle().fill(Color(.separator).opacity(0.5)).frame(height: 0.5) }
         .padding(.bottom, 2)
+    }
+
+    /// A tab's icon: the app's own, or (Today, on a friend's) Apple's knife and fork.
+    @ViewBuilder private static func tabIcon(_ name: String) -> some View {
+        switch name {
+        case "grid": GlyphIcon(glyph: .grid, size: 25)
+        case "videos": GlyphIcon(glyph: .videos, size: 25)
+        case "repost": GlyphIcon(glyph: .repost, size: 25)
+        case "tagged": GlyphIcon(glyph: .tagged, size: 25)
+        case "save": GlyphIcon(glyph: .save, size: 25)
+        default: Image(systemName: name).resizable().scaledToFit().frame(width: 23, height: 23)
+        }
     }
 
     private func grid(_ shown: [JSON], empty: String) -> some View {
@@ -416,7 +435,7 @@ struct ProfileView: View {
         let photo = str(post["photo"]), kind = str(post["kind"])
         let label = kind == "workout" ? "\(Int(num(dict(post["extra"])["minutes"]) ?? 0)) min" : kind == "moment" || kind == "photo" ? "" : Fmt.int(num(post["kcal"]) ?? 0) + " kcal"   // "kcal" said: the bare number read like a view count (19 Nov)
         return Button {
-            if Feed.video(post) != nil { reels = ReelStart(id: str(post["id"])) } else if tab != 6, let i = posts.firstIndex(where: { str($0["id"]) == str(post["id"]) }) { openAt = i } else { openTagged = str(post["id"]) }
+            if Feed.video(post) != nil { reels = ReelStart(id: str(post["id"])) } else if tab != 6 && tab != 7, let i = posts.firstIndex(where: { str($0["id"]) == str(post["id"]) }) { openAt = i } else { openTagged = str(post["id"]) }
         } label: {
             Color.clear.aspectRatio(1, contentMode: .fit)
                 .overlay {

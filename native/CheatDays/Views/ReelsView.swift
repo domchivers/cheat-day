@@ -327,12 +327,21 @@ struct ReelsView: View {
                 HStack(alignment: .bottom, spacing: 12) {
                     about(p)
                     Spacer(minLength: 0)
-                    VStack(spacing: 18) {
+                    // (23 Nov, design/repost-round-mockup.html: the app's own icons, more room between them, and each
+                    // number's room kept when there's none, so the column stands the same on every reel)
+                    VStack(spacing: 20) {
                         rail(hearted ? "heart.fill" : "heart", rx.isEmpty ? "" : "\(Set(rx.map { str($0["user_id"]) }).count)", tint: hearted ? .red : .white) { Task { await feed.toggle(p, "❤️") } }
                             .accessibilityLabel(hearted ? "Unlike" : "Like")
-                        rail("bubble.right", comments == 0 ? "" : "\(comments)") { talking = PostBox(post: p) }.accessibilityLabel("Comments")
-                        rail("paperplane", "") { sharing = PostBox(post: p) }.accessibilityLabel("Send to a friend")
-                        rail(feed.saved.contains(id) ? "bookmark.fill" : "bookmark", (feed.saveCounts[id] ?? 0) == 0 ? "" : "\(feed.saveCounts[id] ?? 0)") {
+                        rail(.comment, comments == 0 ? "" : "\(comments)") { talking = PostBox(post: p) }.accessibilityLabel("Comments")
+                        if Feed.canRepost(p) {
+                            let again = feed.reposted.contains(id), reposts = feed.repostCounts[id] ?? 0
+                            rail(.repost, reposts == 0 ? "" : "\(reposts)", tint: again ? Color.reposted : .white) {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred(); Task { await feed.toggleRepost(p) }
+                            }
+                            .accessibilityLabel(again ? "Reposted, tap to take back" : "Repost")
+                        }
+                        rail(.send, "") { sharing = PostBox(post: p) }.accessibilityLabel("Send to a friend")
+                        rail(.save, (feed.saveCounts[id] ?? 0) == 0 ? "" : "\(feed.saveCounts[id] ?? 0)", filled: feed.saved.contains(id)) {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred(); Task { await feed.toggleSave(p) }
                         }
                         .accessibilityLabel(feed.saved.contains(id) ? "Saved, tap to take out" : "Save")
@@ -391,11 +400,30 @@ struct ReelsView: View {
             VStack(spacing: 3) {
                 Self.railIcon(symbol).foregroundStyle(tint)
                     .symbolEffect(.bounce, value: symbol)   // the heart, as it fills or empties
-                if !count.isEmpty { Text(count).font(.caption.weight(.bold)).foregroundStyle(.white).monospacedDigit() }
+                Self.count(count)
             }
             .shadow(color: .black.opacity(0.4), radius: 3).frame(width: 44).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    /// One of the app's own icons on the side of a reel, the same size as the heart.
+    private func rail(_ glyph: Glyph, _ count: String, tint: Color = .white, filled: Bool = false, _ tap: @escaping () -> Void) -> some View {
+        Button(action: tap) {
+            VStack(spacing: 3) {
+                GlyphIcon(glyph: glyph, size: 29, filled: filled).foregroundStyle(tint)
+                    .frame(width: 27, height: 27)
+                Self.count(count)
+            }
+            .shadow(color: .black.opacity(0.4), radius: 3).frame(width: 44).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// The number under an icon, its room kept when there's none.
+    private static func count(_ n: String) -> some View {
+        Text(n.isEmpty ? "0" : n).font(.caption.weight(.bold)).foregroundStyle(.white).monospacedDigit()
+            .opacity(n.isEmpty ? 0 : 1).accessibilityHidden(n.isEmpty)
     }
 
     /// Who posted it (with Follow for someone you don't), its song, its caption, and the food or workout it's of.

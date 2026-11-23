@@ -7,7 +7,7 @@ final class FriendActivity {
     static let shared = FriendActivity()
 
     struct Item: Identifiable {
-        enum Kind { case reaction, comment, sent, post, request }
+        enum Kind { case reaction, comment, sent, post, request, repost }
         let id: String
         let kind: Kind
         let who: String
@@ -46,15 +46,16 @@ final class FriendActivity {
         let posts = await postsQ, sends = await sendsQ, shares = await sharesQ
         let mine = posts.filter { str($0["owner"]) == me }
         let myIds = mine.map { str($0["id"]) }.joined(separator: ",")
-        var reactions: [JSON] = [], comments: [JSON] = []
+        var reactions: [JSON] = [], comments: [JSON] = [], reposts: [JSON] = []
         if !myIds.isEmpty {
             async let r = rows("/rest/v1/reactions?post_id=in.(\(myIds))&select=*")
             async let c = rows("/rest/v1/comments?post_id=in.(\(myIds))&select=*&order=created_at.desc")
-            reactions = await r; comments = await c
+            async let rp = rows("/rest/v1/post_reposts?post_id=in.(\(myIds))&select=*")   // empty until set up
+            reactions = await r; comments = await c; reposts = await rp
         }
         // names for everyone involved
         var names = Dictionary(uniqueKeysWithValues: Friends.shared.people.map { ($0.id, $0.name) })
-        let who = Set(posts.map { str($0["owner"]) } + reactions.map { str($0["user_id"]) } + comments.map { str($0["user_id"]) } + sends.map { str($0["from_user"]) } + shares.map { str($0["from_user"]) } + Follows.shared.ofMe.map { str($0["follower"]) })
+        let who = Set(posts.map { str($0["owner"]) } + reactions.map { str($0["user_id"]) } + comments.map { str($0["user_id"]) } + reposts.map { str($0["user_id"]) } + sends.map { str($0["from_user"]) } + shares.map { str($0["from_user"]) } + Follows.shared.ofMe.map { str($0["follower"]) })
             .filter { !$0.isEmpty && $0 != me && names[$0] == nil }
         if !who.isEmpty {
             for p in await rows("/rest/v1/profiles?user_id=in.(\(who.joined(separator: ",")))&select=user_id,display_name") { names[str(p["user_id"])] = str(p["display_name"]) }
@@ -74,6 +75,11 @@ final class FriendActivity {
         for c in comments where str(c["user_id"]) != me {
             out.append(Item(id: "c-\(str(c["id"]))", kind: .comment, who: name(str(c["user_id"])), at: date(c["created_at"]),
                             text: "commented on \(postName[str(c["post_id"])] ?? "your post")", detail: "“\(str(c["text"]))”", photo: nil, post: str(c["post_id"]), user: str(c["user_id"])))
+        }
+        for r in reposts where str(r["user_id"]) != me {
+            let pid = str(r["post_id"])
+            out.append(Item(id: "rp-\(pid)-\(str(r["user_id"]))", kind: .repost, who: name(str(r["user_id"])), at: date(r["created_at"]),
+                            text: "reposted your post", detail: postName[pid] ?? "", photo: nil, post: pid, user: str(r["user_id"])))
         }
         for s in sends {
             out.append(Item(id: "s-\(str(s["id"]))", kind: .sent, who: name(str(s["from_user"])), at: date(s["created_at"]),
@@ -141,7 +147,7 @@ struct ActivityView: View {
 
     private func tabOf(_ it: FriendActivity.Item) -> Tab {
         switch it.kind {
-        case .reaction: return .likes
+        case .reaction, .repost: return .likes
         case .comment: return .comments
         case .sent: return .sent
         case .request: return .follows
@@ -294,7 +300,7 @@ struct ActivityView: View {
         switch it.kind {
         case .sent: Nav.shared.today()
         case .request: Nav.shared.people()
-        case .post, .reaction, .comment: Nav.shared.feed(post: it.post)
+        case .post, .reaction, .comment, .repost: Nav.shared.feed(post: it.post)
         }
     }
 
@@ -351,10 +357,10 @@ struct ActivityView: View {
     }
 
     private func symbol(_ k: FriendActivity.Item.Kind) -> String {
-        switch k { case .reaction: return "heart.fill"; case .comment: return "bubble.left.fill"; case .sent: return "paperplane.fill"; case .post: return "photo.on.rectangle"; case .request: return "person.badge.plus" }
+        switch k { case .reaction: return "heart.fill"; case .comment: return "bubble.left.fill"; case .sent: return "paperplane.fill"; case .post: return "photo.on.rectangle"; case .request: return "person.badge.plus"; case .repost: return "arrow.2.squarepath" }
     }
     private func tint(_ k: FriendActivity.Item.Kind) -> Color {
-        switch k { case .reaction: return .pink; case .comment: return Theme.accent; case .sent: return .green; case .post: return Theme.warn; case .request: return .purple }
+        switch k { case .reaction: return .pink; case .comment: return Theme.accent; case .sent: return .green; case .post: return Theme.warn; case .request: return .purple; case .repost: return .reposted }
     }
 }
 

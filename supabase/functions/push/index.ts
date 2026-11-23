@@ -160,6 +160,7 @@ async function handle(req: Request): Promise<Response> {
       : body.kind === "send" ? { title: `${who} sent you food`, body: what ? `${what}: tap to add it to your day` : "Tap to add it to your day" }
       : body.kind === "reply" ? { title: `${who} replied to you`, body: what || "on a post" }
       : body.kind === "share" ? { title: `${who} sent you a post`, body: what || "Tap to see it" }
+      : body.kind === "repost" ? { title: `${who} reposted your post`, body: what || "Tap to see it" }
       : body.kind === "message" ? { title: who, body: what || "Sent you a message" }
       : body.kind === "follow" ? { title: `${who} started following you`, body: "Tap to see their profile" }
       : body.kind === "follow_request" ? { title: `${who} wants to follow you`, body: "Accept or decline in Activity" }

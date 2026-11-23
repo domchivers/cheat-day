@@ -53,7 +53,8 @@ final class Feed {
             // real accounts only: the demo's made-up friends ("demo-alex") aren't ids the server can read
             let owners = Set([me] + Friends.shared.people.map(\.id) + Follows.shared.following).filter { UUID(uuidString: $0) != nil }
             guard !owners.isEmpty else { posts = []; return }
-            posts = try await rows("/rest/v1/posts?owner=in.(\(owners.joined(separator: ",")))&select=*&order=created_at.desc&limit=40")
+            let own: [JSON] = try await rows("/rest/v1/posts?owner=in.(\(owners.joined(separator: ",")))&select=*&order=created_at.desc&limit=40")
+            posts = await withReposts(own, from: Array(owners))
             // your badges from before they went in stories: on your story now instead, once (Medal.carryOver)
             if posts.contains(where: { str($0["kind"]) == "moment" && str($0["owner"]) == me }) { Task { await Medal.carryOver() } }
             let ids = posts.map { str($0["id"]) }.joined(separator: ",")
@@ -66,7 +67,9 @@ final class Feed {
                 commentLikes = cids.isEmpty ? [] : ((try? await rows("/rest/v1/comment_likes?comment_id=in.(\(cids))&select=comment_id,user_id")) ?? [])
             }
             await loadSaves(posts.map { str($0["id"]) })
-            let who = Set(posts.map { str($0["owner"]) } + comments.map { str($0["user_id"]) } + [me]).filter { !$0.isEmpty }
+            await loadReposts(posts.map { str($0["id"]) })
+            let reposters: [String] = repostedBy.values.flatMap(\.who)
+            let who = Set(posts.map { str($0["owner"]) } + comments.map { str($0["user_id"]) } + reposters + [me]).filter { !$0.isEmpty }
             await Profiles.shared.load(Array(who))
             if !who.isEmpty {
                 for p in try await rows("/rest/v1/profiles?user_id=in.(\(who.joined(separator: ",")))&select=user_id,display_name") {
@@ -117,9 +120,91 @@ final class Feed {
         return ids.compactMap { id in got.first { str($0["id"]) == id } }
     }
 
+    // MARK: reposts (23 Nov, design/repost-mockup.html; supabase/post_reposts.sql)
+
+    /// The posts I've reposted, and how many people have reposted each post looked up. Empty, and the button says
+    /// so, until the table's set up.
+    private(set) var reposted: Set<String> = []
+    private(set) var repostCounts: [String: Int] = [:]
+
+    /// Who brought a post into the feed by reposting it (friends and people I follow, newest first), by post id.
+    struct RepostNote: Equatable { var who: [String]; var at: String }
+    private(set) var repostedBy: [String: RepostNote] = [:]
+
+    /// A post that can be reposted: someone else's, from a public account, and not a badge moment (as with
+    /// putting a post on your story; private accounts' posts stay with the people they chose).
+    static func canRepost(_ p: JSON) -> Bool {
+        let owner = str(p["owner"])
+        guard owner != shared.me, str(p["kind"]) != "moment" else { return false }
+        return Profiles.shared.all[owner].map { !$0.isPrivate } == true
+    }
+
+    func loadReposts(_ ids: [String]) async {
+        let real = ids.filter { UUID(uuidString: $0) != nil }
+        if let mine = try? await rows("/rest/v1/post_reposts?user_id=eq.\(me)&select=post_id") { reposted = Set(mine.map { str($0["post_id"]) }) }
+        guard !real.isEmpty, let d = try? await api.rest("/rest/v1/rpc/post_repost_counts", method: "POST", body: ["ids": real] as JSON),
+              let got = (try? JSONSerialization.jsonObject(with: d)) as? [JSON] else { return }
+        for id in real { repostCounts[id] = nil }
+        for r in got { repostCounts[str(r["post_id"])] = Int(num(r["n"]) ?? 0) }
+    }
+
+    /// Repost a post, or take the repost back. Shown at once, put back if the server says no; its poster hears.
+    func toggleRepost(_ post: JSON) async {
+        let id = str(post["id"]), was = reposted.contains(id)
+        if was { reposted.remove(id) } else { reposted.insert(id) }
+        repostCounts[id] = max(0, (repostCounts[id] ?? 0) + (was ? -1 : 1))
+        do {
+            if was { _ = try await api.rest("/rest/v1/post_reposts?post_id=eq.\(id)&user_id=eq.\(me)", method: "DELETE") }
+            else {
+                _ = try await api.rest("/rest/v1/post_reposts", method: "POST", body: [["post_id": id, "user_id": me]], prefer: "resolution=ignore-duplicates")
+                notify(str(post["owner"]), kind: "repost", text: str(post["name"]), extra: ["post": id])
+            }
+        } catch {
+            if was { reposted.insert(id) } else { reposted.remove(id) }
+            repostCounts[id] = max(0, (repostCounts[id] ?? 0) + (was ? 1 : -1))
+            self.error = "Reposting isn't set up yet."
+        }
+    }
+
+    /// The posts someone's reposted, the latest first (their profile's Reposts tab).
+    func repostsOf(_ user: String) async -> [JSON] {
+        guard UUID(uuidString: user) != nil,
+              let theirs = try? await rows("/rest/v1/post_reposts?user_id=eq.\(user)&select=post_id,created_at&order=created_at.desc&limit=90") else { return [] }
+        let ids = theirs.map { str($0["post_id"]) }
+        guard !ids.isEmpty, let got = try? await rows("/rest/v1/posts?id=in.(\(ids.joined(separator: ",")))&select=*") else { return [] }
+        return ids.compactMap { id in got.first { str($0["id"]) == id } }
+    }
+
+    /// Friends' and followed people's reposts put into the feed: a post reposted that isn't already here comes in
+    /// at the time it was reposted, once however many reposted it ("Mark and 2 others reposted").
+    private func withReposts(_ own: [JSON], from people: [String]) async -> [JSON] {
+        let others = people.filter { $0 != me && !Profiles.shared.muted.contains($0) && !Follows.shared.blocked.contains($0) }
+        guard !others.isEmpty,
+              let rp = try? await rows("/rest/v1/post_reposts?user_id=in.(\(others.joined(separator: ",")))&select=post_id,user_id,created_at&order=created_at.desc&limit=40"),
+              !rp.isEmpty else { repostedBy = [:]; return own }
+        var notes: [String: RepostNote] = [:]
+        for r in rp {
+            let pid = str(r["post_id"]), who = str(r["user_id"])
+            var n: RepostNote = notes[pid] ?? RepostNote(who: [], at: str(r["created_at"]))
+            if !n.who.contains(who) { n.who.append(who) }
+            notes[pid] = n
+        }
+        repostedBy = notes
+        let have = Set(own.map { str($0["id"]) })
+        let missing = notes.keys.filter { !have.contains($0) }
+        var extra: [JSON] = []
+        if !missing.isEmpty, let got = try? await rows("/rest/v1/posts?id=in.(\(missing.joined(separator: ",")))&select=*") { extra = got }
+        func when(_ p: JSON) -> String {
+            let id = str(p["id"])
+            return have.contains(id) ? str(p["created_at"]) : (notes[id]?.at ?? str(p["created_at"]))
+        }
+        return (own + extra).sorted { when($0) > when($1) }
+    }
+
     /// Reactions and comments for posts that aren't in the feed (Explore's), added to what's here.
     func loadExtras(_ more: [JSON]) async {
         Task { await loadSaves(more.map { str($0["id"]) }) }
+        Task { await loadReposts(more.map { str($0["id"]) }) }
         let ids = more.map { str($0["id"]) }.filter { id in !posts.contains { str($0["id"]) == id } }
         guard !ids.isEmpty else { return }
         let list = ids.joined(separator: ",")
@@ -607,6 +692,10 @@ struct FeedView: View {
         let photo = Feed.hasPhoto(p)
         return VStack(alignment: .leading, spacing: 0) {
             Divider().opacity(0.4)
+            // brought here by a repost: who, over the post (it stays its poster's, named under it as ever)
+            if let note = feed.repostedBy[id], let first = note.who.first {
+                repostLine(first, others: note.who.count - 1)
+            }
             HStack(spacing: 10) {
                 // their photo and name open their profile; the song at the end of the line plays it (a tap, not a
                 // button around it all, so the song can be pressed on its own)
@@ -965,14 +1054,25 @@ struct FeedView: View {
                 // The counts always show whole. The row was a few points too wide for the screen with a like, a comment
                 // and "Have some" all there, and the squeeze fell on a number, which lost half of itself.
                 if likes > 0 { Text("\(likes)").font(.subheadline.weight(.semibold)).monospacedDigit().lineLimit(1).fixedSize().padding(.leading, -10).accessibilityLabel("\(likes) likes") }
+                // (23 Nov: the app's own icons, as on a reel, and Repost between Comment and Send, as Instagram's row)
                 Button { talking = PostBox(post: p) } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: "bubble.right").font(.system(size: 22, weight: .medium))
+                        GlyphIcon(glyph: .comment, size: 25)
                         if comments > 0 { Text("\(comments)").font(.subheadline.weight(.semibold)).monospacedDigit().lineLimit(1).fixedSize() }
                     }
                 }
                     .buttonStyle(.plain).accessibilityLabel(comments == 0 ? "Comment" : "\(comments) comments")
-                Button { sharing = PostBox(post: p) } label: { Image(systemName: "paperplane").font(.system(size: 21, weight: .medium)) }
+                if Feed.canRepost(p) {
+                    let again = feed.reposted.contains(id), reposts = feed.repostCounts[id] ?? 0
+                    Button { UIImpactFeedbackGenerator(style: .light).impactOccurred(); Task { await feed.toggleRepost(p) } } label: {
+                        HStack(spacing: 6) {
+                            GlyphIcon(glyph: .repost, size: 25).foregroundStyle(again ? Color.reposted : Color.primary)
+                            if reposts > 0 { Text("\(reposts)").font(.subheadline.weight(.semibold)).monospacedDigit().lineLimit(1).fixedSize() }
+                        }
+                    }
+                    .buttonStyle(.plain).accessibilityLabel(again ? "Reposted, tap to take back" : "Repost")
+                }
+                Button { sharing = PostBox(post: p) } label: { GlyphIcon(glyph: .send, size: 24) }
                     .buttonStyle(.plain).accessibilityLabel("Send to a friend")
                 Spacer(minLength: 0)
                 if kind != "moment" && kind != "photo" {
@@ -994,13 +1094,26 @@ struct FeedView: View {
                 Button { UIImpactFeedbackGenerator(style: .light).impactOccurred(); Task { await feed.toggleSave(p) } } label: {
                     HStack(spacing: 5) {
                         if keeps > 0 { Text("\(keeps)").font(.subheadline.weight(.semibold)).monospacedDigit().lineLimit(1).fixedSize() }
-                        Image(systemName: kept ? "bookmark.fill" : "bookmark").font(.system(size: 21, weight: .medium)).symbolEffect(.bounce, value: kept)
+                        GlyphIcon(glyph: .save, size: 24, filled: kept)
                     }
                 }
                 .buttonStyle(.plain).accessibilityLabel(kept ? "Saved, tap to take out" : "Save")
             }
             .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 4)
         }
+    }
+
+    /// "Mark reposted", or "Mark and 2 others reposted", over a post; the name opens their profile.
+    private func repostLine(_ first: String, others: Int) -> some View {
+        HStack(spacing: 6) {
+            GlyphIcon(glyph: .repost, size: 14)
+            Text(feed.name(first) + (others > 0 ? " and \(others) other\(others == 1 ? "" : "s")" : "") + " reposted")
+                .font(.caption.weight(.semibold)).lineLimit(1)
+        }
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, -4)
+        .contentShape(Rectangle()).onTapGesture { profileOf = first }
+        .accessibilityAddTraits(.isButton)
     }
 
     /// Their faces, "Liked by Sam and 3 others", and the other reactions it got.

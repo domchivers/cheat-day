@@ -1,5 +1,6 @@
 import XCTest
 import UIKit
+import SwiftUI
 @testable import CheatDays
 
 /// 22 Nov, design/editor-panels-mockup.html: every editor panel on the one sheet.
@@ -29,6 +30,15 @@ final class EditorPanelsTests: XCTestCase {
         // typed in by hand, with nothing to tie to: none made up
         let typed: [EditText.Word] = EditText.retyped([EditText.Word(text: "hi", at: 2)], parts: ["hi", "there"], from: 2, to: 3)
         XCTAssertTrue(typed.allSatisfy { $0.src == nil && $0.clip == nil })
+    }
+
+    func testEveryGlyphDrawsInsideItsSquare() {
+        let square = CGRect(x: 0, y: 0, width: 48, height: 48)
+        for g in [Glyph.send, .save, .repost, .comment, .grid, .videos, .tagged] {
+            let path: Path = GlyphShape(glyph: g).path(in: square)
+            XCTAssertFalse(path.isEmpty)
+            XCTAssertTrue(square.insetBy(dx: -1, dy: -1).contains(path.boundingRect), "\(g) spills out")
+        }
     }
 
     @MainActor func testAScreenshotsDateIsNeverInTheFuture() {
