@@ -872,10 +872,13 @@ struct FeedView: View {
                         // A small tag: the name has so much room and no more, and one too long for it slides along to
                         // show the rest. It ran the photo's whole width, cut the name short, and lay over the sound
                         // button of a post with a song (at the bottom right); with the person beside it, less again.
+                        // (23 Nov, design/feed-post-mockup.html C: Have some, or Do it, rides on the end of the tag, the
+                        // same size as its words, so the row under the photo is the icons alone)
                         HStack(spacing: 8) {
-                            Marquee(text: str(p["name"]), maxWidth: (Music.of(p) != nil ? 130 : 160) - (tagged.isEmpty ? 0 : 40))
+                            Marquee(text: str(p["name"]), maxWidth: (Music.of(p) != nil ? 70 : 100) - (tagged.isEmpty ? 0 : 40))
                             Text(n.kcal).foregroundStyle(.secondary).lineLimit(1).fixedSize()
                             if let pr = n.protein { Text(pr).foregroundStyle(Theme.walk).lineLimit(1).fixedSize() }
+                            haveSome(p).padding(.vertical, -4).padding(.trailing, -6)
                         }
                         .font(.caption.weight(.bold)).padding(.horizontal, 11).padding(.vertical, 7)
                         .background(.ultraThinMaterial, in: Capsule()).environment(\.colorScheme, .dark)
@@ -883,6 +886,25 @@ struct FeedView: View {
                 }
                 .padding(12)
             }
+    }
+
+    /// Have some (a meal or food: it opens to add it to your day), Recipe, or Do it (a workout), as a small button
+    /// in the words' own size: on the end of a photo's tag, or on a card. Nothing for a photo or a badge moment.
+    @ViewBuilder private func haveSome(_ p: JSON) -> some View {
+        let kind = str(p["kind"])
+        if kind != "moment" && kind != "photo" {
+            let word = kind == "workout" ? "Do it" : kind == "meal" ? "Recipe" : "Have some"
+            Button { recipe = p } label: {
+                HStack(spacing: 3) {
+                    Image(systemName: kind == "workout" ? "play.fill" : "plus").font(.system(size: 9, weight: .heavy))
+                    Text(word).lineLimit(1).fixedSize()
+                }
+                .font(.caption.weight(.bold)).foregroundStyle(Theme.onAccent)
+                .padding(.horizontal, 9).padding(.vertical, 4)
+                .background(Theme.accent, in: Capsule())
+            }
+            .buttonStyle(.plain).accessibilityLabel(word)
+        }
     }
 
     /// No photo: the post as a card in the theme's colours, so the feed never looks empty.
@@ -909,9 +931,12 @@ struct FeedView: View {
                 HStack(spacing: 8) {
                     Text(n.kcal)
                     if let pr = n.protein { Text("·"); Text(pr).foregroundStyle(Theme.walk) }
+                    Spacer(minLength: 0)
+                    haveSome(p)
                 }
                 .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
             }
+            if kind == "workout" { HStack { Spacer(minLength: 0); haveSome(p) } }
         }
         .padding(20).frame(maxWidth: .infinity, minHeight: kind == "workout" ? 190 : 140, alignment: .leading)
         .background(alignment: .topTrailing) {
@@ -1057,7 +1082,7 @@ struct FeedView: View {
                 // (23 Nov: the app's own icons, as on a reel, and Repost between Comment and Send, as Instagram's row)
                 Button { talking = PostBox(post: p) } label: {
                     HStack(spacing: 6) {
-                        GlyphIcon(glyph: .comment, size: 25)
+                        GlyphIcon(glyph: .comment, size: 28)
                         if comments > 0 { Text("\(comments)").font(.subheadline.weight(.semibold)).monospacedDigit().lineLimit(1).fixedSize() }
                     }
                 }
@@ -1066,35 +1091,22 @@ struct FeedView: View {
                     let again = feed.reposted.contains(id), reposts = feed.repostCounts[id] ?? 0
                     Button { UIImpactFeedbackGenerator(style: .light).impactOccurred(); Task { await feed.toggleRepost(p) } } label: {
                         HStack(spacing: 6) {
-                            GlyphIcon(glyph: .repost, size: 25).foregroundStyle(again ? Color.reposted : Color.primary)
+                            GlyphIcon(glyph: .repost, size: 28).foregroundStyle(again ? Color.reposted : Color.primary)
                             if reposts > 0 { Text("\(reposts)").font(.subheadline.weight(.semibold)).monospacedDigit().lineLimit(1).fixedSize() }
                         }
                     }
                     .buttonStyle(.plain).accessibilityLabel(again ? "Reposted, tap to take back" : "Repost")
                 }
-                Button { sharing = PostBox(post: p) } label: { GlyphIcon(glyph: .send, size: 24) }
+                Button { sharing = PostBox(post: p) } label: { GlyphIcon(glyph: .send, size: 28) }
                     .buttonStyle(.plain).accessibilityLabel("Send to a friend")
                 Spacer(minLength: 0)
-                if kind != "moment" && kind != "photo" {
-                    let word = kind == "workout" ? "Do it" : kind == "meal" ? "Recipe" : "Have some"
-                    Button { recipe = p } label: {
-                        // one line always (a count beside the bookmark squeezed this into two). When the counts leave
-                        // no room for all of it, the button gives way, not a number: it drops its little sign.
-                        ViewThatFits(in: .horizontal) {
-                            Label(word, systemImage: kind == "workout" ? "play.fill" : "plus").lineLimit(1).fixedSize()
-                            Text(word).lineLimit(1).fixedSize()
-                        }
-                        .font(.subheadline.weight(.bold)).foregroundStyle(Theme.onAccent)
-                        .padding(.horizontal, 13).padding(.vertical, 7).background(Theme.accent, in: Capsule())
-                    }
-                    .buttonStyle(.plain).layoutPriority(1).accessibilityLabel(word)
-                }
+                // (Have some went onto the photo's tag, 23 Nov: the row is the icons alone, as Instagram's)
                 // save it for yourself (only you see what you've saved; the number is how many have)
                 let kept = feed.saved.contains(id), keeps = feed.saveCounts[id] ?? 0
                 Button { UIImpactFeedbackGenerator(style: .light).impactOccurred(); Task { await feed.toggleSave(p) } } label: {
                     HStack(spacing: 5) {
                         if keeps > 0 { Text("\(keeps)").font(.subheadline.weight(.semibold)).monospacedDigit().lineLimit(1).fixedSize() }
-                        GlyphIcon(glyph: .save, size: 24, filled: kept)
+                        GlyphIcon(glyph: .save, size: 28, filled: kept)
                     }
                 }
                 .buttonStyle(.plain).accessibilityLabel(kept ? "Saved, tap to take out" : "Save")
