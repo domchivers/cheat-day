@@ -198,6 +198,11 @@ final class SteadyTests: XCTestCase {
         XCTAssertEqual(Assistant.worthWeighing(card([said, rice, broccoli])), [1], "a weight in their message isn't asked again")
         let r = Assistant.kcalRange(card([chicken, rice]))
         XCTAssertEqual(r?.low, 500); XCTAssertEqual(r?.high, 650)
+        // 24 Nov: every weight given in their message, so no "Could be" range at all, only the slack a follow-up has
+        var givenChicken = chicken; givenChicken["low"] = 162; givenChicken["high"] = 198; givenChicken["locked"] = true
+        var givenRice = rice; givenRice["low"] = 144; givenRice["high"] = 176; givenRice["locked"] = true
+        XCTAssertNil(Assistant.kcalRange(card([givenChicken, givenRice])), "weights they gave aren't a guess")
+        XCTAssertEqual(Assistant.kcalRange(card([givenChicken, chicken]))?.low, 590, "only the part judged by eye gives a range")
         XCTAssertEqual(Assistant.pieces("range 150–250 g; 8 × ~25 g, against the box")?.n, 8)
         XCTAssertEqual(Assistant.pieces("8 × ~25 g")?.each, 25)
         XCTAssertNil(Assistant.pieces("about 5 × 5 × 4 cm"))

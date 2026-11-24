@@ -93,7 +93,11 @@ extension Assistant {
         var lo = 0.0, hi = 0.0, any = false
         for p in CheatDays.list(e["parts"]) {
             let k = num(p["kcal"]) ?? 0
-            if let g = pos(p["grams"]), let l = pos(p["low"]), let h = pos(p["high"]), h > l {
+            // A weight they gave, or one off their scale, is the weight: its 10% slack is only how far a later message
+            // may move it, not doubt. Counted in the range, every part given in grams still read "Could be 280–350 kcal"
+            // (24 Nov). A part sharing out a scale's total is still a guess at its share, so it keeps its range.
+            let theirs: Bool = p["locked"] as? Bool == true && str(p["weighed"]) != "share"
+            if !theirs, let g = pos(p["grams"]), let l = pos(p["low"]), let h = pos(p["high"]), h > l {
                 lo += min(k, k * l / g); hi += max(k, k * h / g); any = true
             } else { lo += k; hi += k }
         }
