@@ -65,7 +65,7 @@ struct RunTimerView: View {
             // GPS on early, so it has a fix by Start
             if RunTracker.wanted && !testing { Task { gps = await tracker.warm() } }
         }
-        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false; Cues.cancelNotes(); tracker.stop() }
+        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false; Cues.cancelNotes(); tracker.stop(); Cues.quiet() }
         .sheet(isPresented: $askMap) {
             MapAsk { (yes: Bool) in
                 RunTracker.asked = true; RunTracker.wanted = yes; askMap = false
@@ -325,26 +325,54 @@ struct MapAsk: View {
     }
 }
 
+/// The voice's sound session put back: from ducking their music to `.ambient`, as Sound.off leaves it (alongside
+/// their music, at its own volume). Only when it's the voice's: other sound in the app is left alone.
+enum VoiceSession {
+    static func release(_ s: AVAudioSession = .sharedInstance()) {
+        guard s.category == .playback, s.categoryOptions.contains(.duckOthers) else { return }
+        try? s.setActive(false, options: .notifyOthersOnDeactivation)
+        try? s.setCategory(.ambient)
+        try? s.setActive(true)
+    }
+}
+
+/// When the voice has finished a cue: their music back up (no more guessing 4 seconds).
+private final class VoiceFinished: NSObject, AVSpeechSynthesizerDelegate {
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) { done(synthesizer) }
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) { done(synthesizer) }
+    private func done(_ synthesizer: AVSpeechSynthesizer) {
+        Task { @MainActor in if !Cues.voice.isSpeaking { VoiceSession.release() } }
+    }
+}
+
 /// The voice, the buzz and the lock-screen notes.
 @MainActor
 enum Cues {
     static let voice = AVSpeechSynthesizer()
+    private static let finished = VoiceFinished()
 
     static func prepare() {
-        // over their music, which goes quieter while it speaks
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .voicePrompt, options: [.mixWithOthers, .duckOthers])
+        voice.delegate = finished
         // (not in the UI test, where the ask would sit over the timer)
         guard !RunTimerView.uiTest else { return }
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
+    /// Spoken over their music, which goes quieter only while it speaks. (26 Nov: the ducking session used to be
+    /// left on after a run, so their music stayed lower whenever the app was open.)
     static func say(_ words: String, run: Bool) {
         UINotificationFeedbackGenerator().notificationOccurred(run ? .warning : .success)
-        try? AVAudioSession.sharedInstance().setActive(true)
+        let s = AVAudioSession.sharedInstance()
+        try? s.setCategory(.playback, mode: .voicePrompt, options: [.mixWithOthers, .duckOthers])
+        try? s.setActive(true)
+        voice.delegate = finished
         voice.speak(AVSpeechUtterance(string: words))
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
-            if !voice.isSpeaking { try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation) }
-        }
+    }
+
+    /// Done with the voice for now (a run screen closing): their music back up, unless it's still speaking (then
+    /// it goes up when it's finished).
+    static func quiet() {
+        if !voice.isSpeaking { VoiceSession.release() }
     }
 
     /// A notification at each switch still to come, for when the phone's locked.

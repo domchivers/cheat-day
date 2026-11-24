@@ -112,6 +112,7 @@ struct MoveView: View {
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
             tracker.stop()
+            Cues.quiet()
             if started != nil && result == nil { workout.discard() }
         }
         .sheet(isPresented: $askMap) {

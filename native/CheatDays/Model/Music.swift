@@ -339,7 +339,11 @@ enum Sound {
     static func ready() {
         q.async {
             let s = AVAudioSession.sharedInstance()
-            if s.category != .playback { try? s.setCategory(.ambient) }
+            // (26 Nov: a run's voice left ducking on is put back too, so their music isn't held lower)
+            if s.category != .playback || s.categoryOptions.contains(.duckOthers) {
+                if s.categoryOptions.contains(.duckOthers) { try? s.setActive(false, options: .notifyOthersOnDeactivation) }
+                try? s.setCategory(.ambient)
+            }
             try? s.setActive(true)
         }
     }

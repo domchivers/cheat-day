@@ -1,4 +1,5 @@
 import XCTest
+import AVFoundation
 @testable import CheatDays
 
 /// Start's rides, walks, hikes and timed workouts, and heart rate (26 Nov, design/start-anything-mockup.html and
@@ -100,6 +101,19 @@ final class MovingTests: XCTestCase {
         XCTAssertEqual(HeartData.bpm(from: Data([0x01, 0x2C, 0x01])), 300)
         XCTAssertNil(HeartData.bpm(from: Data([0x01, 0x2C])))
         XCTAssertNil(HeartData.bpm(from: Data()))
+    }
+
+    /// After a cue the voice's ducking session is put back to ambient, so their music isn't left lower (26 Nov);
+    /// someone else's playback session (a song in the feed) is left alone.
+    func testTheVoiceLeavesTheirMusicAlone() throws {
+        let s = AVAudioSession.sharedInstance()
+        try s.setCategory(.playback, mode: .voicePrompt, options: [.mixWithOthers, .duckOthers])
+        VoiceSession.release(s)
+        XCTAssertEqual(s.category, .ambient)
+        try s.setCategory(.playback, mode: .default)
+        VoiceSession.release(s)
+        XCTAssertEqual(s.category, .playback, "not the voice's: left as it is")
+        try s.setCategory(.ambient)
     }
 
     /// Steps taken during a tracked walk aren't counted again as walking.
