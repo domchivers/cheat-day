@@ -10,6 +10,8 @@ struct WorkoutsView: View {
     @State private var showActivity = false
     /// A planned run, class or match being logged from the plan card.
     @State private var planned: PlanActivity?
+    /// Start running's timer, open (25 Nov).
+    @State private var runTimer = false
     @State private var confirmRoutineDelete: JSON?
     // a routine being renamed from the list, without starting it; and a name another routine already has
     @State private var renaming: JSON?
@@ -54,7 +56,7 @@ struct WorkoutsView: View {
                         PlanCard(plan: plan, start: { ps in
                             if store.session == nil { store.startPlanSession(ps, plan: plan) }
                             showSession = true
-                        }, log: { a in planned = a })
+                        }, log: { a in planned = a }, run: { _ in runTimer = true })
                         .listRowBackground(Theme.hero)
                         if !plan.sessions.isEmpty { VolumeRows(plan: plan) }
                         NavigationLink { PlanEditor() } label: { Label("Edit your week", systemImage: "slider.horizontal.3") }
@@ -168,6 +170,10 @@ struct WorkoutsView: View {
                 Button("OK", role: .cancel) { nameTaken = nil }
             } message: { Text("You already have a routine called \(nameTaken ?? ""). Pick another name.") }
             .sheet(isPresented: $showActivity) { ActivitySheet().presentationDetents([.medium, .large]) }
+            .fullScreenCover(isPresented: $runTimer) {
+                let p: (week: Int, run: Int, finished: Bool) = store.startRun
+                RunTimerView(week: p.week, run: p.run)
+            }
             .sheet(item: $planned) { a in
                 ActivitySheet(type: a.type, minutes: Double(a.minutes), effort: a.effort, name: a.name).presentationDetents([.medium, .large])
             }

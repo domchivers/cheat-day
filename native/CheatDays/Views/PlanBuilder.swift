@@ -369,14 +369,61 @@ private struct ActivityCard: View {
                     .buttonStyle(.plain).accessibilityLabel("Remove \(act.label)")
             }
             DayChips(days: Binding(get: { Set(act.days) }, set: { act.days = Array($0).sorted() }), most: 7)
-            Stepper("\(act.minutes) min", value: $act.minutes, in: 10...240, step: 5).font(.subheadline.weight(.semibold))
-            Picker("Effort", selection: $act.effort) { Text("Easy").tag("easy"); Text("Moderate").tag("moderate"); Text("Hard").tag("hard") }.pickerStyle(.segmented)
-            Text("About \(Fmt.int(store.burn(act.type, minutes: Double(act.minutes), effort: act.effort))) kcal each time."
-                 + (HealthSync.ticks(act.type) ? " One your watch saves to Apple Health ticks it off on its own." : ""))
-                .font(.caption).foregroundStyle(.secondary)
+            if act.type == "Run" {
+                // what it's for (25 Nov, design/start-running-mockup.html)
+                HStack(spacing: 6) {
+                    aimChip("Keep it up", "")
+                    aimChip("Start running", "start")
+                }
+            }
+            if act.startRunning {
+                startWeeks
+            } else {
+                Stepper("\(act.minutes) min", value: $act.minutes, in: 10...240, step: 5).font(.subheadline.weight(.semibold))
+                Picker("Effort", selection: $act.effort) { Text("Easy").tag("easy"); Text("Moderate").tag("moderate"); Text("Hard").tag("hard") }.pickerStyle(.segmented)
+                Text("About \(Fmt.int(store.burn(act.type, minutes: Double(act.minutes), effort: act.effort))) kcal each time."
+                     + (HealthSync.ticks(act.type) ? " One your watch saves to Apple Health ticks it off on its own." : ""))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
         .padding(14)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func aimChip(_ title: String, _ aim: String) -> some View {
+        let on: Bool = act.aim == aim
+        return Button {
+            withAnimation(.snappy) {
+                act.aim = aim
+                if aim == "start" {
+                    act.effort = "easy"; act.minutes = RunStart.minutes(week: store.startRun.week)
+                    if act.days.count < 3 { act.days = [2, 4, 6] }   // three a week, a day apart
+                }
+            }
+        } label: {
+            Text(title).font(.footnote.weight(.bold)).padding(.horizontal, 11).padding(.vertical, 6)
+                .background(on ? Theme.accent : Color(.tertiarySystemFill), in: Capsule())
+                .foregroundStyle(on ? Theme.onAccent : Color.primary)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+
+    /// The 8 weeks Start running builds through, the one they're on marked.
+    private var startWeeks: some View {
+        let now: Int = store.startRun.week
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("Run and walk, building to 30 minutes without stopping over 8 weeks. Each run starts and ends with 5 minutes' walking, and the app times every switch for you.")
+                .font(.caption).foregroundStyle(.secondary)
+            ForEach(1...RunStart.lastWeek, id: \.self) { w in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("Week \(w)").font(.caption.weight(.heavy)).foregroundStyle(Theme.accent).frame(width: 52, alignment: .leading)
+                    Text(RunStart.middle(week: w)).font(.caption).foregroundStyle(w == now ? Color.primary : .secondary)
+                    if w == now && store.startRunsDone > 0 { Text("you're here").font(.caption2.weight(.bold)).foregroundStyle(Theme.accent) }
+                }
+            }
+            Text("Too hard? Repeat a week: the app only moves on when you've done three runs of it.").font(.caption).foregroundStyle(.secondary)
+        }
     }
 }
 

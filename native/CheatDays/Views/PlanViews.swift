@@ -6,6 +6,8 @@ struct PlanCard: View {
     var start: (PlanSession) -> Void
     /// Log a planned run, class or match: Log an activity, filled in (25 Nov).
     var log: (PlanActivity) -> Void = { _ in }
+    /// Start a Start running run: its timer (25 Nov).
+    var run: (PlanActivity) -> Void = { _ in }
     private var store: Store { Store.shared }
 
     var body: some View {
@@ -57,6 +59,8 @@ struct PlanCard: View {
     @ViewBuilder private func activity(_ a: PlanActivity, prominent: Bool) -> some View {
         if done(a, on: store.today) {
             Label("Today's \(a.label.lowercased()) is done\(doneDetail(a)). Nice.", systemImage: "checkmark.circle.fill").font(.subheadline.weight(.semibold)).foregroundStyle(.green)
+        } else if a.startRunning {
+            startRun(a, prominent: prominent)
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 Label("Today: \(a.label)", systemImage: a.symbol).font(.subheadline.weight(.bold))
@@ -71,6 +75,32 @@ struct PlanCard: View {
                 }
                 .buttonBorderShape(.roundedRectangle(radius: 12))
             }
+        }
+    }
+
+    /// A Start running day (25 Nov): this week's run spelled out, Start for the timer, or log one run without it.
+    private func startRun(_ a: PlanActivity, prominent: Bool) -> some View {
+        let p: (week: Int, run: Int, finished: Bool) = store.startRun
+        return VStack(alignment: .leading, spacing: 8) {
+            Label(p.finished ? "Today: a 30-minute run" : "Today: Start running · week \(p.week), run \(p.run)", systemImage: a.symbol).font(.subheadline.weight(.bold))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("5 min brisk walk")
+                Text(RunStart.middle(week: p.week)).fontWeight(.bold)
+                Text("5 min easy walk")
+                Text("\(RunStart.minutes(week: p.week)) min in all").foregroundStyle(.secondary)
+            }
+            .font(.footnote).frame(maxWidth: .infinity, alignment: .leading)
+            .padding(10).background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            Group {
+                if prominent {
+                    Button { run(a) } label: { Label("Start · it times you", systemImage: "play.fill").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 4) }
+                        .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
+                } else {
+                    Button { run(a) } label: { Label("Start · it times you", systemImage: "play.fill").frame(maxWidth: .infinity) }.buttonStyle(.bordered)
+                }
+            }
+            .buttonBorderShape(.roundedRectangle(radius: 12))
+            Button("Ran without the app? Log it instead") { log(a) }.font(.caption).buttonStyle(.borderless).frame(maxWidth: .infinity)
         }
     }
 

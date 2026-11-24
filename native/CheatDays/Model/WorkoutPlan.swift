@@ -140,10 +140,13 @@ struct PlanActivity: Identifiable, Equatable {
     var days: [Int]           // 0 Sunday … 6 Saturday
     var minutes: Int
     var effort: String        // easy, moderate, hard
+    /// What it's for: "" just keep it up, or "start" for Start running (RunStart), timed by the app.
+    var aim: String = ""
 
-    init(id: String = uid(), type: String, name: String = "", days: [Int], minutes: Int, effort: String) {
-        self.id = id; self.type = type; self.name = name; self.days = days; self.minutes = minutes; self.effort = effort
+    init(id: String = uid(), type: String, name: String = "", days: [Int], minutes: Int, effort: String, aim: String = "") {
+        self.id = id; self.type = type; self.name = name; self.days = days; self.minutes = minutes; self.effort = effort; self.aim = aim
     }
+    var startRunning: Bool { type == "Run" && aim == "start" }
     init(_ j: JSON) {
         id = str(j["id"]).isEmpty ? uid() : str(j["id"])
         type = str(j["type"]).isEmpty ? "Other" : str(j["type"])
@@ -151,11 +154,12 @@ struct PlanActivity: Identifiable, Equatable {
         days = ((j["days"] as? [Any]) ?? []).compactMap { (v: Any) -> Int? in num(v).map { Int($0) } }
         minutes = Int(num(j["minutes"]) ?? 30)
         effort = str(j["effort"]).isEmpty ? "moderate" : str(j["effort"])
+        aim = str(j["aim"])
     }
-    var json: JSON { ["id": id, "type": type, "name": name, "days": days, "minutes": minutes, "effort": effort] }
+    var json: JSON { ["id": id, "type": type, "name": name, "days": days, "minutes": minutes, "effort": effort, "aim": aim] }
 
     /// What it's called: their name, or the tile's ("Yoga / stretch" is Yoga).
-    var label: String { !name.isEmpty ? name : PlanKinds.kind(type: type)?.short ?? type }
+    var label: String { !name.isEmpty ? name : startRunning ? "Start running" : PlanKinds.kind(type: type)?.short ?? type }
     var symbol: String { PlanKinds.kind(type: type)?.symbol ?? Activities.symbol(type) }
     /// "30 min, easy"
     var line: String { "\(minutes) min, \(effort)" }

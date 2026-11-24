@@ -44,6 +44,10 @@ final class StrongSteadyUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Set up weights"].exists)
         sleep(1)
         shot(app, "build-plan-run-yoga")
+        app.buttons["Start running"].tap()
+        XCTAssertTrue(app.staticTexts["Run 30 min without stopping"].waitForExistence(timeout: 3), "the 8 weeks")
+        sleep(1)
+        shot(app, "build-plan-start-running")
         app.buttons["See my week"].tap()
         let start = app.buttons["Start this plan"]
         XCTAssertTrue(start.waitForExistence(timeout: 3))
@@ -51,6 +55,24 @@ final class StrongSteadyUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Rest"].exists)
         sleep(1)
         shot(app, "build-plan-run-yoga-week")
+    }
+
+    /// Start running's timer (25 Nov): before Start, then a few seconds into the warm-up walk.
+    func testStartRunningTimer() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-uitest-runtimer"]
+        app.launch()
+        let start = app.buttons["Start"]
+        XCTAssertTrue(start.waitForExistence(timeout: 6))
+        sleep(1)
+        shot(app, "run-timer-ready")
+        start.tap()
+        XCTAssertTrue(app.staticTexts["WARM-UP WALK"].waitForExistence(timeout: 4))
+        sleep(3)
+        shot(app, "run-timer-warmup")
+        XCTAssertTrue(app.buttons["Pause"].exists)
+        app.buttons["Pause"].tap()
+        XCTAssertTrue(app.buttons["Carry on"].waitForExistence(timeout: 2))
     }
 
     /// Sign-up's How you train for someone of 67: Strong and steady is marked, and picked to start with.

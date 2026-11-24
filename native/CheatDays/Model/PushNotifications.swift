@@ -21,6 +21,8 @@ final class PushDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCen
 
     // shown even while the app is open
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        // Start running's switches are for a locked phone: open, the timer's own voice says it (25 Nov)
+        if notification.request.identifier.hasPrefix("run.switch.") { return [] }
         Task { @MainActor in await FriendActivity.shared.load(); await Messages.shared.load(); await Messages.shared.refresh() }
         return [.banner, .sound]
     }
