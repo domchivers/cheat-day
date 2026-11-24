@@ -32,7 +32,7 @@ struct StartPicker: View {
             Text("Remembers what you picked last").font(.caption).foregroundStyle(.secondary)
         }
         .padding(.horizontal, 16)
-        .padding(.bottom, 12)
+        .padding(.bottom, 26)   // with the sheet's foot inset gone, about the title's 24 + line above
     }
 
     private func tile(_ k: MoveKind) -> some View {
@@ -59,18 +59,26 @@ struct StartPicker: View {
 struct StartSheet: View {
     var pick: (String) -> Void
     var report: ((String) -> Void)? = nil
-    @State private var height: CGFloat = 470
     @State private var picker: CGFloat = 0
+    @State private var inset: CGFloat = 34
     @State private var area: String = ""
+
+    /// iOS keeps the bottom safe area (34 pt) under a .height detent, and on 1.4.58–59 the picker sat above it, so the
+    /// gap under "Remembers what you picked last" was its padding plus the part of that inset on the sheet (1.4.59 on
+    /// iOS 27: picker 392, detent 392, area 393, bottom inset 34; the floating card ends 17 pt into the inset, the
+    /// rest is below it). On iOS 17's full-width sheet all 34 is on the sheet. So the detent is the picker less
+    /// half the inset, and the picker's foot runs into it: never cut off, and the gap is about its own padding.
+    private var height: CGFloat { picker > 0 ? max(picker - inset / 2, 200) : 436 }
 
     var body: some View {
         StartPicker(pick: pick)
             .fixedSize(horizontal: false, vertical: true)
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
-                picker = h; height = h; send()
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in picker = h; send() }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background {
+                Color.clear.onGeometryChange(for: EdgeInsets.self) { $0.safeAreaInsets } action: { e in
+                    inset = e.bottom; send()
+                }
                 Color.clear.onGeometryChange(for: String.self) { p in
                     "area \(Int(p.size.height)), insets top \(Int(p.safeAreaInsets.top)) bottom \(Int(p.safeAreaInsets.bottom))"
                 } action: { a in area = a; send() }
