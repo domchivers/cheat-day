@@ -68,9 +68,14 @@ enum RouteMath {
             total += d
         }
         let rest: Double = total - (next - 1000)
-        if rest >= 50, let last = p.last { out.append((km: rest / 1000, seconds: last.t - lastT)) }
+        // (26 Nov, the owner: a run ending at 4.995 km gets its 5th kilometre whole; GPS is off by that much anyway)
+        if rest >= 1000 - wholeWithin, let last = p.last { out.append((km: 1, seconds: last.t - lastT)) }
+        else if rest >= 50, let last = p.last { out.append((km: rest / 1000, seconds: last.t - lastT)) }
         return out
     }
+
+    /// A kilometre that ends this close to whole counts as whole, for its split and its mark.
+    static let wholeWithin: Double = 10
 
     /// Seconds a kilometre as "7:56"; "–:––" when there's nothing to go on.
     static func pace(_ secondsPerKm: Double?) -> String {
@@ -113,6 +118,8 @@ enum RouteMath {
             }
             total += d
         }
+        // ending within 10 m of the next whole kilometre: its mark at the finish, as its split counts it whole
+        if total > 0, next - total <= wholeWithin, let last = p.last { out.append(last.coordinate) }
         return out
     }
 }

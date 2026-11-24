@@ -34,6 +34,26 @@ final class RunRouteTests: XCTestCase {
         XCTAssertEqual(s[2].seconds, rest / step * 150, accuracy: 1)
     }
 
+    /// 26 Nov, the owner: a run ending within 10 m of a whole kilometre gets that kilometre whole, split and mark.
+    func testAlmostAWholeKilometreCountsAsOne() {
+        // north 0.0089° (about 989 m) then a little more, to about 995 m: 5 m short of 1 km
+        let short: Double = 0.0089 + 0.006 / 111.0
+        let p: [RoutePoint] = [RoutePoint(lat: -37.8, lon: 144.96, t: 0, run: true),
+                               RoutePoint(lat: -37.8 + short, lon: 144.96, t: 300, run: true)]
+        let m: Double = RouteMath.meters(p)
+        XCTAssertLessThan(m, 1000)
+        XCTAssertGreaterThan(m, 1000 - RouteMath.wholeWithin)
+        let s = RouteMath.splits(p)
+        XCTAssertEqual(s.count, 1)
+        XCTAssertEqual(s[0].km, 1, "whole, not 0.99")
+        XCTAssertEqual(s[0].seconds, 300, accuracy: 0.5)
+        XCTAssertEqual(RouteMath.kmMarks(p).count, 1, "its mark at the finish")
+        // 30 m short isn't whole
+        let far: [RoutePoint] = [p[0], RoutePoint(lat: -37.8 + 0.0087, lon: 144.96, t: 300, run: true)]
+        XCTAssertLessThan(RouteMath.splits(far)[0].km, 1)
+        XCTAssertTrue(RouteMath.kmMarks(far).isEmpty)
+    }
+
     /// After a pause the line starts again: what's between isn't counted, or drawn.
     func testAPauseIsntDistance() {
         let p: [RoutePoint] = line(5, gapAt: 3)
