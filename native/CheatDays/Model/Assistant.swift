@@ -1319,8 +1319,18 @@ enum Assistant {
         var kept = false
         let parts = CheatDays.list(e["parts"]).map { p -> JSON in
             guard let o = old.first(where: { str($0["name"]).lowercased() == str(p["name"]).lowercased() && abs((num($0["grams"]) ?? 0) - (num(p["grams"]) ?? 0)) < 1 }) else { return p }
+            // Their own numbers, new in this message, win over the last card's: a photo of the gochujang's label was read
+            // (46 kcal), then put back to the guess it replaced (40) because the name and grams hadn't changed (24 Nov).
+            func own(_ q: JSON) -> Bool { ["label", "them", "brand"].contains(str(q["numbers_from"])) || ["label", "them", "web"].contains(str(q["src"])) }
+            if own(p) && !own(o) { return p }
             var x = p
             for k in ["kcal", "protein_g", "carbs_g", "fat_g", "src", "match"] { x[k] = o[k] }
+            // at this part's grams, not the last card's: 2.5 g of sesame oil's 22 kcal stayed on as 2 g's
+            if let g = pos(p["grams"]), let og = pos(o["grams"]), abs(g - og) >= 0.05 {
+                let f: Double = g / og
+                x["kcal"] = ((num(o["kcal"]) ?? 0) * f).rounded()
+                for k in ["protein_g", "carbs_g", "fat_g"] { if let v = num(o[k]) { x[k] = v * f } }
+            }
             kept = true
             return x
         }
