@@ -73,6 +73,9 @@ struct BodyView: View {
         .background(Theme.bg)
         // as a tab it runs on behind the tab bar (PlanTabs), so its last rows need room to come up above it
         .contentMargins(.bottom, embedded ? 100 : 0, for: .scrollContent)
+        // its sides held at the 16 it rests at (24 Nov): mid-swipe the card came out 8 points wider and the small print
+        // under Body fat re-wrapped as it slid ("the long sentence dynamically moves")
+        .contentMargins(.horizontal, 16, for: .scrollContent)
         .titled("Weigh-ins", unless: embedded)
         .toolbar {
             // as a tab of PlanTabs, only while its tab is showing

@@ -80,4 +80,17 @@ final class WeekReviewTests: XCTestCase {
         let r = WeekReview.make(days: full, proteinGoal: 100, pace: -0.6, want: 0)
         XCTAssertEqual(r?.line, "You're eating your budget, so Monday's check-in will suggest a higher one.")
     }
+
+    /// 24 Nov: the card promised Monday's check-in would raise the budget while the check-in held off. It says what
+    /// the check-in really does.
+    func testTheCardSaysWhatTheCheckInDoes() {
+        let full = (0..<7).map { _ in day([food("Chicken breast", kcal: 1800, p100: 31, k100: 165, meal: "Dinner")]) }
+        let held = WeekReview.make(days: full, proteinGoal: 100, pace: -0.5, want: 0,
+                                   checkIn: (step: nil, verdict: "Losing when your goal is to hold this week. Could be water, so nothing changes yet. We'll check again next week."))
+        XCTAssertEqual(held?.line, "Your check-in isn't changing your budget yet.")
+        XCTAssertTrue(held?.tip.hasSuffix("This week's check-in: Losing when your goal is to hold this week. Could be water, so nothing changes yet. We'll check again next week.") == true, held?.tip ?? "")
+        let acts = WeekReview.make(days: full, proteinGoal: 100, pace: -0.5, want: 0, checkIn: (step: 150, verdict: "Losing when your goal is to hold for 2 weeks in a row."))
+        XCTAssertEqual(acts?.line, "Your check-in suggests +150 kcal a day.")
+        XCTAssertFalse(acts?.tip.contains("Monday") ?? true)
+    }
 }

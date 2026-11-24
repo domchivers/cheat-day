@@ -30,7 +30,8 @@ struct WeekReview: Equatable {
     /// Needs 3 logged days. Swap is the lighter pick for something they keep having, offered only when it's over budget.
     /// Tol and method are the check-in's: how far off the goal still counts as on it, and which weigh-ins the pace is from.
     static func make(days: [Day], proteinGoal: Double?, pace: Double?, want: Double?, tol: Double = 0.12, method: String = "last 4 weeks",
-                     swap: (food: String, saves: Double, pick: String, days: Int)? = nil) -> WeekReview? {
+                     swap: (food: String, saves: Double, pick: String, days: Int)? = nil,
+                     checkIn: (step: Double?, verdict: String)? = nil) -> WeekReview? {
         let days = days.filter { !$0.items.isEmpty }
         guard days.count >= 3 else { return nil }
         let n = days.count
@@ -98,12 +99,24 @@ struct WeekReview: Equatable {
         // eating the whole budget (within 5%) means the budget's the thing to change, not the eating
         let ate = days.reduce(0) { $0 + $1.kcal }, allowed = days.reduce(0) { $0 + $1.budget }
         let full = allowed > 0 && ate >= allowed * 0.95
+        // what this week's check-in really does (24 Nov: the card said Monday's would raise the budget, week after week,
+        // while the check-in held off: could be water, too few days logged, or under 75 kcal). Without one, the old promise.
+        var said: (line: String, fix: String)? = nil
+        if full, let c = checkIn {
+            if let step = c.step {
+                let by: String = "\(step > 0 ? "+" : "−")\(Fmt.int(abs(step))) kcal a day"
+                said = (line: "Your check-in suggests \(by).", fix: "Your check-in suggests \(by).")
+            } else if !c.verdict.isEmpty {
+                said = (line: "Your check-in isn't changing your budget yet.", fix: "This week's check-in: \(c.verdict)")
+            }
+        }
         if pace < w {
             // under the goal's line: losing faster, losing on a plan to hold or gain, or gaining too slowly
-            let line = full ? "You're eating your budget, so Monday's check-in will suggest a higher one."
-                            : "Eat up to your budget; Monday's check-in will raise it if this carries on."
-            let fix = full ? "You're eating your budget, so it's the budget that's too low. Monday's check-in will suggest a higher one."
-                           : "Eat up to your budget, and if it carries on, Monday's check-in will raise it."
+            let line: String = said?.line ?? (full ? "You're eating your budget, so Monday's check-in will suggest a higher one."
+                                                   : "Eat up to your budget; Monday's check-in will raise it if this carries on.")
+            let fix: String = said.map { "You're eating your budget, so it's the budget that's too low. " + $0.fix }
+                ?? (full ? "You're eating your budget, so it's the budget that's too low. Monday's check-in will suggest a higher one."
+                         : "Eat up to your budget, and if it carries on, Monday's check-in will raise it.")
             if pace < -0.05 {
                 return WeekReview(status: status, title: w > 0 ? "Losing instead of gaining" : w == 0 ? "Losing when you meant to hold" : "Losing faster than planned", rows: rows,
                                   tip: "You've lost \(Fmt.one(abs(pace))) kg a week \(over), and your plan is \(aim). Losing like this can cost muscle. \(fix)", line: line)
@@ -111,11 +124,12 @@ struct WeekReview: Equatable {
             return WeekReview(status: status, title: pace > 0.05 ? "Gaining slower than planned" : "Weight's not moving", rows: rows,
                               tip: "Your plan is \(aim). \(fix)", line: line)
         }
-        let line = full ? "Monday's check-in will lower your budget if this carries on."
-                        : "Check what isn't getting logged: drinks, bites and oil."
+        let line: String = said?.line ?? (full ? "Monday's check-in will lower your budget if this carries on."
+                                               : "Check what isn't getting logged: drinks, bites and oil.")
         // over the goal's line: losing too slowly, or going up
-        let fix = full ? "You're eating your budget, so either it's a little high or something isn't getting logged: drinks, bites and oil. Monday's check-in will lower it if it carries on."
-                       : "Your days look good on paper, so the gap is usually what doesn't get logged: drinks, bites and oil. Log everything for a week."
+        let fix: String = said.map { "You're eating your budget, so either it's a little high or something isn't getting logged: drinks, bites and oil. " + $0.fix }
+            ?? (full ? "You're eating your budget, so either it's a little high or something isn't getting logged: drinks, bites and oil. Monday's check-in will lower it if it carries on."
+                     : "Your days look good on paper, so the gap is usually what doesn't get logged: drinks, bites and oil. Log everything for a week.")
         if pace > 0.05 {
             return WeekReview(status: status, title: w > 0 ? "Gaining faster than planned" : w == 0 ? "Gaining when you meant to hold" : "Weight's going up", rows: rows,
                               tip: "You've gained \(Fmt.one(pace)) kg a week \(over), and your plan is \(aim). \(fix)", line: line)
@@ -152,6 +166,7 @@ extension Store {
         }
         let c = checkIn
         let s = weekSwap.map { (food: $0.food, saves: $0.pick.saves, pick: $0.pick.name, days: $0.days) }
-        return WeekReview.make(days: days, proteinGoal: proteinGoal, pace: c.pace, want: c.want, tol: c.tol ?? 0.12, method: c.rate?.method ?? "last 4 weeks", swap: s)
+        return WeekReview.make(days: days, proteinGoal: proteinGoal, pace: c.pace, want: c.want, tol: c.tol ?? 0.12, method: c.rate?.method ?? "last 4 weeks", swap: s,
+                               checkIn: (step: c.step, verdict: c.verdict))
     }
 }
