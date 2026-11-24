@@ -33,12 +33,14 @@ enum Activities {
 /// A library to pick exercises from (the web app's EX_LIBRARY).
 enum ExerciseLibrary {
     static let groups: [(String, [String])] = [
-        ("Chest", ["Bench press", "Incline bench press", "Dumbbell bench press", "Incline dumbbell press", "Machine chest press", "Chest fly", "Cable crossover", "Push-up", "Chest dip"]),
-        ("Back", ["Deadlift", "Lat pulldown", "Pull-up", "Chin-up", "Barbell row", "Dumbbell row", "Seated cable row", "T-bar row", "Face pull", "Back extension"]),
+        ("Chest", ["Bench press", "Incline bench press", "Dumbbell bench press", "Incline dumbbell press", "Machine chest press", "Chest fly", "Cable crossover", "Push-up", "Chest dip", "Wall push-up"]),
+        ("Back", ["Deadlift", "Lat pulldown", "Pull-up", "Chin-up", "Barbell row", "Dumbbell row", "Seated cable row", "T-bar row", "Face pull", "Back extension", "Bent-over row", "Band row"]),
         ("Shoulders", ["Overhead press", "Dumbbell shoulder press", "Arnold press", "Lateral raise", "Front raise", "Rear delt fly", "Upright row", "Shrug"]),
-        ("Arms", ["Barbell curl", "Dumbbell curl", "Hammer curl", "Preacher curl", "Cable curl", "Tricep pushdown", "Skull crusher", "Overhead tricep extension", "Close-grip bench press", "Tricep dip"]),
-        ("Legs", ["Squat", "Front squat", "Goblet squat", "Hack squat", "Leg press", "Romanian deadlift", "Lunge", "Bulgarian split squat", "Step-up", "Leg extension", "Leg curl", "Hip thrust", "Glute bridge", "Calf raise"]),
-        ("Core", ["Plank", "Side plank", "Crunch", "Cable crunch", "Hanging leg raise", "Russian twist", "Ab wheel rollout", "Dead bug"]),
+        ("Arms", ["Barbell curl", "Dumbbell curl", "Hammer curl", "Preacher curl", "Cable curl", "Tricep pushdown", "Skull crusher", "Overhead tricep extension", "Close-grip bench press", "Tricep dip", "Band curl"]),
+        ("Legs", ["Squat", "Front squat", "Goblet squat", "Hack squat", "Leg press", "Romanian deadlift", "Lunge", "Bulgarian split squat", "Step-up", "Leg extension", "Leg curl", "Hip thrust", "Glute bridge", "Calf raise",
+                  "Sit to stand", "Heel raise", "Side leg raise"]),
+        ("Core", ["Plank", "Side plank", "Crunch", "Cable crunch", "Hanging leg raise", "Russian twist", "Ab wheel rollout", "Dead bug", "Bird dog"]),
+        ("Balance", ["Heel-to-toe walk", "Single-leg stand"]),
         ("Full body", ["Kettlebell swing", "Farmer's carry", "Burpee", "Box jump", "Battle ropes", "Sled push", "Rowing machine"])
     ]
 }

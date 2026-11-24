@@ -272,6 +272,9 @@ struct SessionView: View {
                     .font(.subheadline.weight(.semibold))
                 }
             }
+            if let how = steadyHow(ex.name) {
+                Label(how, systemImage: "info.circle").font(.footnote).foregroundStyle(.secondary).opacity(ex.complete ? 0.55 : 1)
+            }
             if let t = planTarget(ex.name) {
                 Label(t.hint, systemImage: t.up ? "arrow.up.right.circle.fill" : "target")
                     .font(.footnote).foregroundStyle(t.up ? Color.green : .secondary).opacity(ex.complete ? 0.55 : 1)
@@ -304,6 +307,12 @@ struct SessionView: View {
                 } label: { Image(systemName: "ellipsis").font(.headline).padding(6) }
             }
         }
+    }
+
+    /// In a Strong and steady session from the plan: how to do the move at home (24 Nov).
+    private func steadyHow(_ name: String) -> String? {
+        guard let rid = s.routineId, rid.hasPrefix("plan:"), let plan = store.workoutPlan, plan.goal == "steady" else { return nil }
+        return Training.how(name, kit: plan.kit)
     }
 
     /// In a session from the plan: this exercise's target and why.

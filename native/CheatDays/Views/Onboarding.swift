@@ -96,6 +96,8 @@ struct OnboardingView: View {
     @State private var gymDays = 3
     @State private var experience = "some"
     @State private var kit = "gym"
+    @State private var steady = false          // Strong and steady at home, not the gym plans
+    @State private var trainPicked = false     // they've chosen (or had chosen before), so 60+ isn't picked for them
     @State private var extras: Set<String> = []
     @State private var saveRoutines = true
     @State private var ideas: [JSON] = []
@@ -251,13 +253,17 @@ struct OnboardingView: View {
     private var line: some View { Divider().padding(.leading, 14) }
 
     /// One choice in a group: a round symbol, a title with a line under it, and a tick when it's the one picked.
-    private func option(_ title: String, _ sub: String, _ symbol: String, on: Bool, _ tap: @escaping () -> Void) -> some View {
+    private func option(_ title: String, _ sub: String, _ symbol: String, on: Bool, badge: String? = nil, _ tap: @escaping () -> Void) -> some View {
         Button(action: tap) {
             HStack(spacing: 12) {
                 Image(systemName: symbol).font(.system(size: 16, weight: .semibold)).foregroundStyle(on ? Theme.onAccent : Theme.accent)
                     .frame(width: 38, height: 38).background(on ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Color(.tertiarySystemFill)), in: Circle())
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title).font(.body.weight(.bold))
+                    if let badge {
+                        Text(badge).font(.caption2.weight(.heavy)).foregroundStyle(Color.green)
+                            .padding(.horizontal, 7).padding(.vertical, 2).background(Color.green.opacity(0.18), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    }
                     Text(sub).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.leading)
                 }
                 Spacer(minLength: 0)
@@ -518,9 +524,26 @@ struct OnboardingView: View {
     private var trainingStep: some View {
         VStack(alignment: .leading, spacing: 10) {
             heading("How you train", "Your plan starts from what you already do.")
-            label("Weights sessions a week")
-            Picker("Days", selection: $gymDays) { ForEach(0...6, id: \.self) { Text($0 == 0 ? "None" : "\($0)").tag($0) } }.pickerStyle(.segmented)
-            if gymDays > 0 {
+            // 24 Nov (design/strong-steady-mockup.html): simple moves at home first, picked to start with at 60 and over
+            group {
+                option("Strong and steady at home", "2 short sessions a week. A chair, a wall and the stairs", "chair.fill",
+                       on: steady && gymDays > 0, badge: older ? "Good at 60+" : nil) { pickTraining("steady") }
+                line
+                option("Weights", "At a gym, with dumbbells, or bodyweight", "dumbbell.fill", on: !steady && gymDays > 0) { pickTraining("weights") }
+                line
+                option("Not for now", "Just the food side", "minus", on: gymDays == 0) { pickTraining("none") }
+            }
+            if steady && gymDays > 0 {
+                label("Days a week")
+                Picker("Days", selection: $gymDays) { ForEach(1...3, id: \.self) { Text("\($0)").tag($0) } }.pickerStyle(.segmented)
+                label("Any weights at home?")
+                Picker("Weights", selection: $kit) { Text("None").tag("none"); Text("Light dumbbells").tag("dumbbells"); Text("A band").tag("band") }.pickerStyle(.segmented)
+                Text("About 25 minutes: legs, arms and back, and a little balance, which is what keeps you steady on your feet. Hold a chair or the counter whenever you like.")
+                    .font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 4)
+            }
+            if !steady && gymDays > 0 {
+                label("Weights sessions a week")
+                Picker("Days", selection: $gymDays) { ForEach(1...6, id: \.self) { Text("\($0)").tag($0) } }.pickerStyle(.segmented)
                 label("How long have you been lifting?")
                 Picker("Experience", selection: $experience) { Text("New to it").tag("new"); Text("A year or two").tag("some"); Text("Years").tag("lots") }.pickerStyle(.segmented)
                 label("Where?")
@@ -543,6 +566,26 @@ struct OnboardingView: View {
             }
             label("Anything else?")
             chips(allExtras, $extras)
+        }
+        .onAppear { if !trainPicked && older { pickTraining("steady") } }
+    }
+
+    private var older: Bool { (age ?? 0) >= 60 }
+
+    /// Strong and steady, weights, or not for now; each keeps the days and kit sensible for it.
+    private func pickTraining(_ how: String) {
+        trainPicked = true
+        switch how {
+        case "steady":
+            if !steady || gymDays == 0 { gymDays = 2 }
+            steady = true
+            if kit == "gym" { kit = "none" }
+        case "weights":
+            if steady || gymDays == 0 { gymDays = 3 }
+            steady = false
+            if kit == "band" { kit = "none" }
+        default:
+            gymDays = 0; steady = false
         }
     }
 
@@ -576,13 +619,17 @@ struct OnboardingView: View {
         i.trainDays = gymDays + min(2, other)
         i.trainType = gymDays > 0 ? (other > 0 ? "mix" : "weights") : (extras.contains("Sport") ? "sport" : "cardio")
         i.protein = gymDays >= 2 ? (q.goal == "lose" ? "high" : "lift") : (q.goal == "lose" ? "high" : "std")
+        if steady && gymDays > 0 { i.trainMins = 25 }   // short, gentle sessions burn less than an hour in the gym
         return i
     }
 
     private var week: [PlanSession] { builtPlan.sessions }
     private var builtPlan: WorkoutPlan {
-        WorkoutPlanner.build(goal: q.goal == "maintain" ? "fitness" : "muscle", days: gymDays, experience: experience, kit: kit, minutes: 60, focus: [], keep: [], start: store.today)
+        let goal: String = steady ? "steady" : q.goal == "maintain" ? "fitness" : "muscle"
+        return WorkoutPlanner.build(goal: goal, days: gymDays, experience: experience, kit: kit, minutes: steady ? 30 : 60, focus: [], keep: [], start: store.today)
     }
+
+    private func reps(_ m: PlanMove) -> String { m.low == m.high ? "\(m.low)" : "\(m.low)–\(m.high)" }
 
     private var planStep: some View {
         let r = Plan.compute(input)
@@ -629,12 +676,12 @@ struct OnboardingView: View {
                             Text(Calendar.current.shortWeekdaySymbols[d.weekday]).font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent).frame(width: 40, alignment: .leading)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(d.name).font(.subheadline.weight(.bold))
-                                Text(d.moves.map { "\($0.exercise) \($0.sets)×\($0.low)–\($0.high)" }.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary)
+                                Text(d.moves.map { (m: PlanMove) -> String in "\(m.exercise) \(m.sets)×\(reps(m))" }.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer(minLength: 0)
                         }
                     }
-                    Text(Training.note(experience)).font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+                    Text(steady ? Training.steadyNote : Training.note(experience)).font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
                     Toggle("Make this my workout plan", isOn: $saveRoutines).font(.subheadline.weight(.semibold))
                 }
             }
@@ -670,6 +717,7 @@ struct OnboardingView: View {
     }
 
     private var trainingName: String {
+        if steady { return "strong and steady, \(gymDays) day\(gymDays == 1 ? "" : "s")" }
         switch gymDays { case 1...3: return "full body, \(gymDays) day\(gymDays == 1 ? "" : "s")"; case 4: return "upper / lower, 4 days"; case 5: return "upper / lower plus push, pull, legs"; default: return "push, pull, legs, \(gymDays) days" }
     }
 
@@ -732,6 +780,8 @@ struct OnboardingView: View {
         usualKcal = pos(p["usualKcal"]); usualProtein = pos(p["usualProtein"])
         if let e = p["experience"] as? String { experience = e }
         if let k = p["kit"] as? String { kit = k }
+        if let s = p["steady"] as? Bool { steady = s }
+        if p["gymDays"] != nil { trainPicked = true }
         if let g = num(p["gymDays"]) { gymDays = Int(g) } else if let t = num(plan["trainDays"]) { gymDays = min(6, Int(t)) }
     }
 
@@ -752,7 +802,7 @@ struct OnboardingView: View {
         let prefs: JSON = [
             "cuisines": cuisines.sorted(), "loves": loves.sorted(), "avoid": avoid.sorted(), "extras": extras.sorted(),
             "usual": usual, "usualKcal": usualKcal.map { $0 as Any } ?? NSNull(), "usualProtein": usualProtein.map { $0 as Any } ?? NSNull(),
-            "experience": experience, "kit": kit, "gymDays": gymDays,
+            "experience": experience, "kit": kit, "gymDays": gymDays, "steady": steady && gymDays > 0,
             "training": week.map { ["weekday": $0.weekday, "name": $0.name] as JSON }, "ideas": ideas, "updatedAt": ISO.now()
         ]
         var prefsOut = prefs

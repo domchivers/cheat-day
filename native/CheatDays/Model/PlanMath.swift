@@ -144,6 +144,55 @@ enum Training {
                                      "Seated cable row": "Back extension", "Face pull": "Dead bug", "Pull-up": "Back extension", "Hammer curl": "Side plank",
                                      "Hanging leg raise": "Dead bug", "Goblet squat": "Lunge", "Calf raise": "Calf raise", "Bulgarian split squat": "Bulgarian split squat"]
 
+    /// Strong and steady (24 Nov, design/strong-steady-mockup.html): short sessions at home, good at any age. Legs, a
+    /// push, a pull and balance, with a chair, a wall, the stairs and the counter; light dumbbells or a band if they
+    /// have them. A and B take turns. Each move: name, sets, and the bottom and top of its rep range.
+    static func steady(_ name: String, kit: String) -> [(name: String, sets: Int, low: Int, high: Int)] {
+        let dumbbells: Bool = kit == "dumbbells", band: Bool = kit == "band"
+        var out: [(name: String, sets: Int, low: Int, high: Int)] = []
+        if name == "Steady A" {
+            out = [(name: "Sit to stand", sets: 2, low: 8, high: 12), (name: "Wall push-up", sets: 2, low: 8, high: 12), (name: "Step-up", sets: 2, low: 8, high: 8)]
+            if dumbbells { out.append((name: "Dumbbell shoulder press", sets: 2, low: 10, high: 12)) } else { out.append((name: "Heel raise", sets: 2, low: 12, high: 15)) }
+            out.append((name: "Heel-to-toe walk", sets: 3, low: 10, high: 10))
+        } else if dumbbells {
+            out = [(name: "Glute bridge", sets: 2, low: 10, high: 12), (name: "Dumbbell row", sets: 2, low: 10, high: 10), (name: "Heel raise", sets: 2, low: 12, high: 15),
+                   (name: "Dumbbell curl", sets: 2, low: 10, high: 12), (name: "Side leg raise", sets: 2, low: 10, high: 10)]
+        } else {
+            out = [(name: "Glute bridge", sets: 2, low: 10, high: 12), (name: band ? "Band row" : "Bent-over row", sets: 2, low: 10, high: 12), (name: "Side leg raise", sets: 2, low: 10, high: 10)]
+            if band { out.append((name: "Band curl", sets: 2, low: 10, high: 12)) }
+            out.append((name: "Bird dog", sets: 2, low: 8, high: 8))
+        }
+        return out
+    }
+
+    /// How to do a Strong and steady move at home, in a line.
+    static func how(_ name: String, kit: String) -> String? {
+        let dumbbells: Bool = kit == "dumbbells"
+        switch name {
+        case "Sit to stand": return dumbbells ? "A dumbbell held at your chest" : "From a chair, arms crossed if you can"
+        case "Wall push-up": return "Hands on the wall, a step back"
+        case "Step-up": return dumbbells ? "Bottom stair, a dumbbell in the free hand. 8 each leg" : "Bottom stair, hand on the rail. 8 each leg"
+        case "Heel raise": return dumbbells ? "A dumbbell in one hand, the counter in the other" : "Hands on the counter"
+        case "Heel-to-toe walk": return "Along the counter, 10 steps"
+        case "Glute bridge": return dumbbells ? "A dumbbell on your hips" : "On the floor or the bed"
+        case "Bent-over row": return "Two water bottles or shopping bags"
+        case "Band row": return "The band round a door handle or your feet"
+        case "Band curl": return "Standing on the band"
+        case "Side leg raise": return "Holding the chair back. 10 each leg"
+        case "Bird dog": return "On hands and knees. 8 each side"
+        case "Dumbbell row": return "One arm, the other hand on the chair. 10 each arm"
+        case "Dumbbell shoulder press": return "Seated, light dumbbells"
+        case "Dumbbell curl": return "Seated or standing"
+        default: return nil
+        }
+    }
+
+    /// The Strong and steady moves done with no weight in the hand.
+    static let unweighted: Set<String> = ["Sit to stand", "Wall push-up", "Step-up", "Heel raise", "Heel-to-toe walk", "Glute bridge",
+                                          "Bent-over row", "Band row", "Band curl", "Side leg raise", "Bird dog"]
+
+    static let steadyNote = "Add a rep each week; when the top of the range feels easy, go slower or hold something. Stop if anything hurts, and check with your GP first if you have a heart, joint or balance problem."
+
     /// The move to do instead with the kit they have.
     static func swap(_ name: String, kit: String) -> String {
         kit == "none" ? (bodyweight[name] ?? name) : kit == "dumbbells" ? (dumbbells[name] ?? name) : name

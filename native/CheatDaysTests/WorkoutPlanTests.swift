@@ -48,4 +48,29 @@ final class WorkoutPlanTests: XCTestCase {
         Store.apply(["type": "plan", "budget": 1900, "prefs": ["loves": ["Pizza"]] as JSON], to: &d, today: "2026-10-09")
         XCTAssertEqual(WorkoutPlan(dict(d["prefs"])["workoutPlan"])?.sessions.count, 2)
     }
+
+    /// 24 Nov, design/strong-steady-mockup.html: two short days at home, A and B, every move one a living room can do.
+    func testStrongAndSteadyIsTwoGentleDaysAtHome() {
+        let p = WorkoutPlanner.build(goal: "steady", days: 2, experience: "lots", kit: "none", minutes: 30, focus: ["Chest"], keep: [], start: "2026-11-24")
+        XCTAssertEqual(p.sessions.map(\.name), ["Steady A", "Steady B"])
+        XCTAssertEqual(p.sessions.map(\.weekday), [1, 4], "Monday and Thursday")
+        XCTAssertEqual(p.experience, "new")
+        XCTAssertEqual(p.sessions[0].moves.map(\.exercise), ["Sit to stand", "Wall push-up", "Step-up", "Heel raise", "Heel-to-toe walk"])
+        XCTAssertEqual(p.sessions[1].moves.map(\.exercise), ["Glute bridge", "Bent-over row", "Side leg raise", "Bird dog"])
+        for s in p.sessions { for m in s.moves {
+            XCTAssertNotNil(Training.how(m.exercise, kit: "none"), m.exercise)
+            XCTAssertNotNil(Muscles.group(m.exercise), m.exercise + " isn't in the library")
+        } }
+        // light dumbbells: a weight where it helps, and the first time it says to pick one
+        let d = WorkoutPlanner.build(goal: "steady", days: 2, experience: "new", kit: "dumbbells", minutes: 30, focus: [], keep: [], start: "2026-11-24")
+        XCTAssertEqual(d.sessions[1].moves.map(\.exercise), ["Glute bridge", "Dumbbell row", "Heel raise", "Dumbbell curl", "Side leg raise"])
+        XCTAssertEqual(Training.how("Sit to stand", kit: "dumbbells"), "A dumbbell held at your chest")
+        XCTAssertTrue(Progression.target(d.sessions[1].moves[3], last: nil, deload: false).hint.hasPrefix("New: pick a weight"))
+        XCTAssertTrue(Progression.target(p.sessions[0].moves[0], last: nil, deload: false).hint.hasPrefix("New: aim for 8–12 reps"))
+        // a band: band moves; and a band on a gym plan is bodyweight
+        let b = WorkoutPlanner.build(goal: "steady", days: 3, experience: "new", kit: "band", minutes: 30, focus: [], keep: [], start: "2026-11-24")
+        XCTAssertEqual(b.sessions.map(\.name), ["Steady A", "Steady B", "Steady A"])
+        XCTAssertTrue(b.sessions[1].moves.map(\.exercise).contains("Band row"))
+        XCTAssertEqual(WorkoutPlanner.build(goal: "muscle", days: 2, experience: "new", kit: "band", minutes: 45, focus: [], keep: [], start: "2026-11-24").kit, "none")
+    }
 }

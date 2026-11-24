@@ -115,25 +115,34 @@ struct PlanBuilder: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     label("What's it for?")
-                    ChoiceCard(title: "Build muscle", sub: "Moderate weights, 6–15 reps", symbol: "figure.strengthtraining.traditional", on: goal == "muscle") { goal = "muscle" }
-                    ChoiceCard(title: "Get stronger", sub: "Heavier on the big lifts, 3–6 reps", symbol: "scalemass.fill", on: goal == "strength") { goal = "strength" }
-                    ChoiceCard(title: "General fitness", sub: "Lighter, more reps, keeps you moving well", symbol: "heart.fill", on: goal == "fitness") { goal = "fitness" }
+                    ChoiceCard(title: "Build muscle", sub: "Moderate weights, 6–15 reps", symbol: "figure.strengthtraining.traditional", on: goal == "muscle") { pick("muscle") }
+                    ChoiceCard(title: "Get stronger", sub: "Heavier on the big lifts, 3–6 reps", symbol: "scalemass.fill", on: goal == "strength") { pick("strength") }
+                    ChoiceCard(title: "General fitness", sub: "Lighter, more reps, keeps you moving well", symbol: "heart.fill", on: goal == "fitness") { pick("fitness") }
+                    // 24 Nov: simple moves at home, for older people too (design/strong-steady-mockup.html)
+                    ChoiceCard(title: "Strong and steady", sub: "Simple moves at home, with balance. Good at any age", symbol: "chair.fill", on: goal == "steady") { pick("steady") }
                     label("Days a week")
                     Picker("Days", selection: $days) { ForEach(1...6, id: \.self) { Text("\($0)").tag($0) } }.pickerStyle(.segmented)
                     label("Time per session")
                     Picker("Minutes", selection: $minutes) { ForEach([30, 45, 60, 75], id: \.self) { Text("\($0) min").tag($0) } }.pickerStyle(.segmented)
-                    label("Where?")
-                    Picker("Kit", selection: $kit) { Text("Full gym").tag("gym"); Text("Dumbbells").tag("dumbbells"); Text("No kit").tag("none") }.pickerStyle(.segmented)
-                    label("How long have you been lifting?")
-                    Picker("Experience", selection: $experience) { Text("New to it").tag("new"); Text("A year or two").tag("some"); Text("Years").tag("lots") }.pickerStyle(.segmented)
-                    label("Want more of")
-                    Flow {
-                        ForEach(WorkoutPlanner.focusOptions, id: \.self) { f in
-                            Chip(text: f, on: focus.contains(f)) { if focus.contains(f) { focus.remove(f) } else { focus.insert(f) } }
+                    if goal == "steady" {
+                        // always at home, so what's to hand instead of where
+                        label("Any weights at home?")
+                        Picker("Weights", selection: $kit) { Text("None").tag("none"); Text("Light dumbbells").tag("dumbbells"); Text("A band").tag("band") }.pickerStyle(.segmented)
+                        Text(Training.steadyNote).font(.footnote).foregroundStyle(.secondary).padding(.top, 4)
+                    } else {
+                        label("Where?")
+                        Picker("Kit", selection: $kit) { Text("Full gym").tag("gym"); Text("Dumbbells").tag("dumbbells"); Text("No kit").tag("none") }.pickerStyle(.segmented)
+                        label("How long have you been lifting?")
+                        Picker("Experience", selection: $experience) { Text("New to it").tag("new"); Text("A year or two").tag("some"); Text("Years").tag("lots") }.pickerStyle(.segmented)
+                        label("Want more of")
+                        Flow {
+                            ForEach(WorkoutPlanner.focusOptions, id: \.self) { f in
+                                Chip(text: f, on: focus.contains(f)) { if focus.contains(f) { focus.remove(f) } else { focus.insert(f) } }
+                            }
                         }
                     }
                     let mine = store.routines.filter { !list($0["exercises"]).isEmpty }
-                    if !mine.isEmpty {
+                    if !mine.isEmpty && goal != "steady" {
                         label("Start from what you already do")
                         VStack(spacing: 0) {
                             ForEach(mine.indices, id: \.self) { i in
@@ -185,11 +194,25 @@ struct PlanBuilder: View {
             if let e = p["experience"] as? String { experience = e }
             if let k = p["kit"] as? String { kit = k }
             if let g = num(p["gymDays"]), g > 0 { days = Int(g) }
+            if p["steady"] as? Bool == true { goal = "steady"; minutes = 30 }
         }
+        if goal != "steady" && kit == "band" { kit = "none" }
+    }
+
+    /// Strong and steady starts at 2 short days at home; leaving it, a band (its own choice) goes back to no kit.
+    private func pick(_ g: String) {
+        if g == "steady" && goal != "steady" {
+            days = 2; minutes = 30
+            if kit == "gym" { kit = "none" }
+        } else if g != "steady" && goal == "steady" {
+            if kit == "band" { kit = "none" }
+            if minutes == 30 { minutes = 60 }
+        }
+        goal = g
     }
 
     private func build() {
-        let kept = store.routines.filter { keep.contains(str($0["id"])) }
+        let kept = goal == "steady" ? [] : store.routines.filter { keep.contains(str($0["id"])) }
         let plan = WorkoutPlanner.build(goal: goal, days: days, experience: experience, kit: kit, minutes: minutes, focus: focus.sorted(), keep: kept, start: store.today)
         store.saveWorkoutPlan(plan)
         dismiss()
@@ -230,7 +253,7 @@ struct PlanEditor: View {
             } header: {
                 Text("Tap Edit to drag sessions to other days")
             } footer: {
-                Text(Training.note(plan.experience))
+                Text(plan.goal == "steady" ? Training.steadyNote : Training.note(plan.experience))
             }
             Section {
                 Stepper("Block: \(plan.weeks) weeks", value: $plan.weeks, in: 4...12)
@@ -314,6 +337,9 @@ struct PlanDayEditor: View {
                     }
                     .buttonStyle(.borderless)
                 }
+            }
+            if plan.goal == "steady", let how = Training.how(m.wrappedValue.exercise, kit: plan.kit) {
+                Text(how).font(.footnote).foregroundStyle(.secondary)
             }
             Stepper("\(m.wrappedValue.sets) sets", value: m.sets, in: 1...8).font(.subheadline)
             Stepper("\(m.wrappedValue.low)–\(m.wrappedValue.high) reps", onIncrement: {

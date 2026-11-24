@@ -142,6 +142,10 @@ enum WorkoutPlanner {
     }
 
     static func session(_ template: String, goal: String, experience: String, kit: String, minutes: Int, focus: [String]) -> PlanSession {
+        if goal == "steady" {
+            let steady: [PlanMove] = Training.steady(template, kit: kit).map { PlanMove(exercise: $0.name, sets: $0.sets, low: $0.low, high: $0.high) }
+            return PlanSession(weekday: 1, name: template, moves: steady)
+        }
         var moves = Training.moves(template, experience: experience, kit: kit).enumerated().map { pair -> PlanMove in
             let r = ranges(goal: goal, compound: pair.offset < 2)
             let sets = goal == "strength" && pair.offset < 2 ? pair.element.sets + 1 : goal == "fitness" ? min(3, pair.element.sets) : pair.element.sets
@@ -159,6 +163,17 @@ enum WorkoutPlanner {
 
     static func build(goal: String, days: Int, experience: String, kit: String, minutes: Int, focus: [String], keep: [JSON], start: String) -> WorkoutPlan {
         let n = max(1, min(6, days))
+        // a band is only a Strong and steady choice; the gym plans do it as bodyweight
+        let kit: String = goal != "steady" && kit == "band" ? "none" : kit
+        if goal == "steady" {
+            let wds: [Int] = Training.weekdays(n)
+            let steady: [PlanSession] = (0..<n).map { (i: Int) -> PlanSession in
+                var s: PlanSession = session(i % 2 == 0 ? "Steady A" : "Steady B", goal: goal, experience: "new", kit: kit, minutes: minutes, focus: [])
+                s.weekday = wds[i % wds.count]
+                return s
+            }
+            return WorkoutPlan(goal: goal, experience: "new", kit: kit, minutes: minutes, focus: [], start: WorkoutPlan.monday(start), sessions: steady)
+        }
         var sessions: [PlanSession] = keep.prefix(n).map { r in
             PlanSession(weekday: 1, name: str(r["name"]), moves: list(r["exercises"]).map { e in
                 let reps = Int(num(e["reps"]) ?? 8)
@@ -214,8 +229,11 @@ enum Progression {
 
     static func target(_ m: PlanMove, last: [(reps: Double, kg: Double)]?, deload: Bool) -> Target {
         let sets = deload ? max(1, (m.sets + 1) / 2) : m.sets
-        let range = "\(m.low)–\(m.high)"
+        let range: String = m.low == m.high ? "\(m.low)" : "\(m.low)–\(m.high)"
         guard let last, !last.isEmpty else {
+            if Training.unweighted.contains(m.exercise) {
+                return Target(reps: m.low, kg: 0, sets: sets, hint: "New: aim for \(range) reps, slow and steady. Hold onto something whenever you like.", up: false)
+            }
             return Target(reps: m.low, kg: 0, sets: sets, hint: "New: pick a weight you could lift about \(m.high) times, then aim for \(range) reps.", up: false)
         }
         let kg = last.map { $0.kg }.max() ?? 0
