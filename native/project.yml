@@ -45,8 +45,8 @@ targets:
         NSLocationDefaultAccuracyReduced: true
         NSMicrophoneUsageDescription: Cheat Days listens when you tap the microphone in a chat box, so you can say what you ate instead of typing it, records sound when you film a video for your story, and records voiceovers when you make a video edit.
         NSSpeechRecognitionUsageDescription: Cheat Days turns what you say into words in the chat box, on your iPhone where it can, and makes captions from what's said in your video edits, on your iPhone.
-        NSHealthShareUsageDescription: Cheat Days reads your weight, body fat, lean mass, BMI and steps from Apple Health, so weigh-ins from your smart scale's app arrive on their own and Today can show your steps.
-        NSHealthUpdateUsageDescription: Cheat Days only reads your weigh-ins from Apple Health. It never writes to or changes your Health data.
+        NSHealthShareUsageDescription: Cheat Days reads your weight, body fat, lean mass, BMI, steps and workouts from Apple Health, so weigh-ins from your smart scale's app arrive on their own, Today can show your steps, and the runs and classes in your plan tick themselves off.
+        NSHealthUpdateUsageDescription: Cheat Days only reads from Apple Health. It never writes to or changes your Health data.
         NSSupportsLiveActivities: true
         # the web app's own domain, so its offline cache (service worker) works inside the app
         WKAppBoundDomains:
