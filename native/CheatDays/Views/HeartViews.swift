@@ -86,7 +86,8 @@ struct HeartPanel: View {
         let zones: [Double] = HeartZones.seconds(samples, max: max)
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("Heart rate", systemImage: "heart.fill").font(.headline)
+                // the heart in the same red as the numbers and the run screen's ♥
+                Label { Text("Heart rate") } icon: { Image(systemName: "heart.fill").foregroundStyle(Color.pink) }.font(.headline)
                 Spacer()
                 Text(source).font(.caption).foregroundStyle(.secondary)
             }
