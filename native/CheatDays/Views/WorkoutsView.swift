@@ -45,6 +45,13 @@ struct WorkoutsView: View {
     var body: some View {
         NavigationStack {
             List {
+                // The slim title Friends and Progress have, as the list's first row so it scrolls with the page, as
+                // Progress's does. Pinned above the list (24 Nov) it covered the pull-to-refresh spinner: a flick back
+                // to the top left an empty gap under the title until the refresh was done, as if the page had stuck.
+                Section {
+                    HStack { Text("Workouts").font(.system(size: 30, weight: .heavy)).accessibilityAddTraits(.isHeader); Spacer() }
+                        .listRowBackground(Color.clear).listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 0, trailing: 16))
+                }
                 if let s = store.session {
                     Section {
                         Button { showSession = true } label: { liveCard(s) }.buttonStyle(.plain)
@@ -139,14 +146,9 @@ struct WorkoutsView: View {
             }
             .listSectionSpacing(14)
             .navigationTitle("Workouts")
-            // the same slim title as Friends and Progress, at the same height, in place of the large navigation title
+            // (the slim title is the list's first row, in place of the large navigation title)
             .toolbar(.hidden, for: .navigationBar)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                HStack { Text("Workouts").font(.system(size: 30, weight: .heavy)).accessibilityAddTraits(.isHeader); Spacer() }
-                    .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 4)
-                    .background(Theme.bg)
-            }
-            .contentMargins(.top, 4, for: .scrollContent)
+            .contentMargins(.top, 0, for: .scrollContent)
             .scrollContentBackground(.hidden)
             .background(Theme.bg)
             .refreshable { await store.sync(); await Steps.shared.refresh(); await HealthSync.tickPlan() }
