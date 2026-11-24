@@ -172,10 +172,10 @@ extension Assistant {
 
     /// A part at other grams, its numbers scaled with it.
     private static func regrammed(_ p: JSON, to g: Double) -> JSON {
-        guard let was = pos(p["grams"]), abs(was - g) >= 0.5 else { return p }
+        guard let was = pos(p["grams"]), abs(was - g) >= 0.05 else { return p }
         let f = g / was
         var x = p
-        x["grams"] = g.rounded()
+        x["grams"] = g < 10 ? (g * 10).rounded() / 10 : g.rounded()   // a sauce's 3.8 g stays 3.8, not 4
         x["kcal"] = ((num(p["kcal"]) ?? 0) * f).rounded()
         for k in ["protein_g", "carbs_g", "fat_g"] { if let v = num(p[k]) { x[k] = v * f } }
         return x
@@ -259,11 +259,15 @@ extension Assistant {
             }
             // nothing new from them: as it was
             if again || (locked && !amount) {
-                if abs(wasG - g) >= 1 {
+                // A sauce's few grams count too: their 7.5 g of soy, 3.8 g of dark soy and 2.5 g of sesame oil came back as
+                // 7, 3 and 2 on a follow-up, each under the 1 g this used to need (24 Nov). Put back without a word when
+                // it's under a gram.
+                let moved: Double = abs(wasG - g)
+                if moved >= max(0.1, min(1, wasG * 0.02)) {
                     p = regrammed(p, to: wasG); changed = true
-                    notes.append(setByThem ? "I've kept the \(label) at the \(Fmt.int(wasG)) g you set."
+                    if moved >= 1 { notes.append(setByThem ? "I've kept the \(label) at the \(Fmt.int(wasG)) g you set."
                                  : locked ? "I've kept the \(label) at \(Fmt.int(wasG)) g from the numbers you gave: they're more reliable than anything I can judge from the photo."
-                                        : "Nothing new came in, so the \(label) stays at \(Fmt.int(wasG)) g.")
+                                        : "Nothing new came in, so the \(label) stays at \(Fmt.int(wasG)) g.") }
                 }
                 if let w = was { for k in ["low", "high", "locked", "size", "weighed"] { p[k] = w[k] } }
                 if setByThem { keep((wasG * (1 - lockedSlack), wasG * (1 + lockedSlack)), locked: true) }

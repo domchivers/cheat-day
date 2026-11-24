@@ -170,6 +170,18 @@ final class SteadyTests: XCTestCase {
         XCTAssertEqual(CheatDays.list(moved.estimate["parts"])[0]["locked"] as? Bool, true)
     }
 
+    /// 24 Nov: a sauce's few grams they gave stay put on a follow-up ("This was the gochujang"), quietly.
+    func testASaucesGramsStayOnAFollowUp() {
+        var soy = part("Dark soy sauce", 3.8, kcal: 2, p: 0.3, c: 0.1, f: 0); soy["low"] = 3.4; soy["high"] = 4.2; soy["locked"] = true
+        var oil = part("Sesame oil", 2.5, kcal: 22, p: 0, c: 0, f: 2.5); oil["low"] = 2.3; oil["high"] = 2.8; oil["locked"] = true
+        let after = Assistant.held(card([part("Dark soy sauce", 3, kcal: 2, p: 0.2, c: 0.1, f: 0), part("Sesame oil", 2, kcal: 18, p: 0, c: 0, f: 2)]),
+                                   before: card([soy, oil]), said: "This was the gochujang")
+        XCTAssertEqual(grams(after.estimate, "Dark soy sauce"), 3.8)
+        XCTAssertEqual(grams(after.estimate, "Sesame oil"), 2.5)
+        XCTAssertEqual(num(CheatDays.list(after.estimate["parts"])[1]["kcal"]), 23, "18 kcal at 2 g, scaled back to 2.5 g")
+        XCTAssertTrue(after.notes.isEmpty, "under a gram: put back without a word")
+    }
+
     /// A count for one food doesn't lock the others named alongside it.
     func testACountLocksOnlyTheFoodItsFor() {
         var dumplings = part("Pork dumplings", 120, kcal: 270, p: 11, c: 28, f: 12); dumplings["low"] = 90; dumplings["high"] = 160
