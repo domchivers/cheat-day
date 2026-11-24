@@ -3,17 +3,21 @@ import XCTest
 
 /// Mapped runs (25 Nov, design/run-route-mockup.html): distance, each kilometre, pauses, and routes kept on the phone.
 final class RunRouteTests: XCTestCase {
-    /// Straight north, 500 m (0.0045° of latitude) every 150 s: 5:00 a kilometre.
+    /// Straight north, a step of 0.0046° of latitude (about 511 m) every 150 s. (1.4.54: 0.0045° came to 499.5 m, so
+    /// four steps fell 2 m short of 2 km and the second kilometre never quite finished; the numbers are now measured
+    /// from the step itself.)
     private func line(_ n: Int, gapAt: Int? = nil, runFrom: Int = 0) -> [RoutePoint] {
-        (0..<n).map { i in RoutePoint(lat: -37.8 + Double(i) * 0.0045, lon: 144.96, t: Double(i) * 150, run: i >= runFrom, gap: i == gapAt) }
+        (0..<n).map { i in RoutePoint(lat: -37.8 + Double(i) * 0.0046, lon: 144.96, t: Double(i) * 150, run: i >= runFrom, gap: i == gapAt) }
     }
+    private var step: Double { RouteMath.meters(line(2)) }
 
     func testDistanceAndEachKilometre() {
-        let p: [RoutePoint] = line(5)                       // 2 km
-        XCTAssertEqual(RouteMath.meters(p), 2000, accuracy: 10)
+        XCTAssertGreaterThan(step, 505)
+        let p: [RoutePoint] = line(5)                       // just over 2 km
+        XCTAssertEqual(RouteMath.meters(p), step * 4, accuracy: 1)
         let s = RouteMath.splits(p)
-        XCTAssertEqual(s.count, 2)
-        XCTAssertEqual(s[0].seconds, 300, accuracy: 3)
+        XCTAssertEqual(s.count, 2, "the 40-odd metres left over are under 50, so not a split")
+        XCTAssertEqual(s[0].seconds, 150 * 1000 / step, accuracy: 1)
         XCTAssertEqual(s[1].km, 1)
         XCTAssertEqual(RouteMath.pace(300), "5:00")
         XCTAssertEqual(RouteMath.pace(nil), "–:––")
@@ -22,17 +26,18 @@ final class RunRouteTests: XCTestCase {
     }
 
     func testAPartKilometreAtTheEnd() {
-        let p: [RoutePoint] = line(6)                       // 2.5 km
+        let p: [RoutePoint] = line(6)                       // about 2.55 km
         let s = RouteMath.splits(p)
+        let rest: Double = step * 5 - 2000
         XCTAssertEqual(s.count, 3)
-        XCTAssertEqual(s[2].km, 0.5, accuracy: 0.01)
-        XCTAssertEqual(s[2].seconds, 150, accuracy: 3)
+        XCTAssertEqual(s[2].km, rest / 1000, accuracy: 0.001)
+        XCTAssertEqual(s[2].seconds, rest / step * 150, accuracy: 1)
     }
 
     /// After a pause the line starts again: what's between isn't counted, or drawn.
     func testAPauseIsntDistance() {
         let p: [RoutePoint] = line(5, gapAt: 3)
-        XCTAssertEqual(RouteMath.meters(p), 1500, accuracy: 10)
+        XCTAssertEqual(RouteMath.meters(p), step * 3, accuracy: 1)
         XCTAssertEqual(RouteMath.stretches(p).count, 2)
     }
 
