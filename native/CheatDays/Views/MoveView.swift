@@ -142,7 +142,12 @@ struct MoveView: View {
             return
         }
         strap.reconnect()
-        if testing { return }
+        if testing {
+            // the UI test's ready screen: Albert Park, as before (it showed all of Australia in 1.4.57)
+            camera = .region(MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: -37.8455, longitude: 144.9715),
+                                                span: MKCoordinateSpan(latitudeDelta: 0.012, longitudeDelta: 0.012)))
+            return
+        }
         if RunTracker.wanted { Task { gps = await tracker.warm() } }   // a fix by Start
         else if !RunTracker.asked { askMap = true }
     }
@@ -303,7 +308,7 @@ struct MoveView: View {
         auto = AutoPause(stopBelow: kind.stopBelow)
         tracker.running = true
         if gps { tracker.start() }
-        camera = .userLocation(followsHeading: false, fallback: .automatic)
+        if !testing { camera = .userLocation(followsHeading: false, fallback: .automatic) }
         Cues.prepare()
         Cues.say("\(kind.title) started.", run: true)
         Task {

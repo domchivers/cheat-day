@@ -54,19 +54,27 @@ struct StrapLine: View {
 /// Average and highest, the line, and time in each zone.
 struct HeartPanel: View {
     let workout: JSON
-    @State private var samples: [HRSample] = []
-    @State private var source: String = ""
+    @State private var samples: [HRSample]
+    @State private var source: String
+
+    /// A strap's readings are on the phone, so they're there from the start; Health's are read once it shows.
+    init(workout: JSON) {
+        self.workout = workout
+        let mine: [HRSample] = HeartStore.load(str(workout["id"])) ?? []
+        _samples = State(initialValue: mine.count > 1 ? mine : [])
+        _source = State(initialValue: mine.count > 1 ? "from your heart strap" : "")
+    }
 
     var body: some View {
+        // (not EmptyView while it reads: an empty view never appears, so its task never ran; 1.4.57's UI test)
         Group {
-            if samples.count > 1 { content } else { EmptyView() }
+            if samples.count > 1 { content } else { Color.clear.frame(height: 1) }
         }
         .task { await load() }
     }
 
     private func load() async {
-        let id: String = str(workout["id"])
-        if let mine = HeartStore.load(id), mine.count > 1 { samples = mine; source = "from your heart strap"; return }
+        guard samples.count < 2 else { return }
         guard let win = Overlap.window(workout) else { return }
         let h: [HRSample] = await HealthSync.heartRate(from: win.start, to: win.end)
         if h.count > 1 { samples = h; source = workout["watch"] != nil || str(workout["from"]) == "health" ? "from your watch" : "from Apple Health" }
