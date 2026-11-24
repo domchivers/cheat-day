@@ -875,13 +875,14 @@ struct FeedView: View {
             }
     }
 
-    /// A photo post's food or workout, under the icons (25 Nov, feed-food-line-mockup A): the name in full, its kcal
-    /// and protein, and Have some at the words' own size on the right.
+    /// A photo post's food or workout, under the icons (25 Nov, feed-food-line-mockup A): the name in full across the
+    /// whole width, then its kcal and protein with Have some, at the words' own size, on the right of that line
+    /// (feed-food-line-v2: beside a name on two lines the button floated in the middle).
     private func foodLine(_ p: JSON) -> some View {
         let n: (kcal: String, protein: String?) = numbers(p)
-        return HStack(alignment: .center, spacing: 10) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(str(p["name"])).font(.subheadline.weight(.bold)).lineLimit(2).multilineTextAlignment(.leading)
+        return VStack(alignment: .leading, spacing: 2) {
+            Text(str(p["name"])).font(.subheadline.weight(.bold)).lineLimit(2).multilineTextAlignment(.leading)
+            HStack(alignment: .center, spacing: 10) {
                 HStack(spacing: 4) {
                     Text(n.kcal).foregroundStyle(.secondary)
                     if let pr = n.protein {
@@ -890,9 +891,9 @@ struct FeedView: View {
                     }
                 }
                 .font(.caption.weight(.semibold)).lineLimit(1)
+                Spacer(minLength: 0)
+                haveSome(p)
             }
-            Spacer(minLength: 0)
-            haveSome(p)
         }
         .padding(.horizontal, 14).padding(.top, 4)
     }
