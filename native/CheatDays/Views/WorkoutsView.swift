@@ -236,7 +236,8 @@ struct WorkoutsView: View {
     /// One of the three ways in: an icon over its word, a third of the row each.
     private func pill(_ symbol: String, _ title: String, filled: Bool) -> some View {
         VStack(spacing: 6) {
-            Image(systemName: symbol).font(.system(size: 19, weight: .bold))
+            // a fixed height, so the words line up whatever the icon's shape (figure.run is taller)
+            Image(systemName: symbol).font(.system(size: 19, weight: .bold)).frame(height: 24)
             Text(title).font(.subheadline.weight(.heavy)).lineLimit(1).minimumScaleFactor(0.8)
         }
         .foregroundStyle(filled ? Theme.onAccent : Theme.accent)

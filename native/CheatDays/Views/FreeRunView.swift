@@ -97,7 +97,7 @@ struct FreeRunView: View {
             HStack(spacing: 0) {
                 stat(RunStart.mmss(Int(t)), "time")
                 stat(RouteMath.km(tracker.meters), "km")
-                stat(started == nil ? "–" : RouteMath.pace(tracker.pace), "pace /km")
+                stat(RouteMath.pace(started == nil ? nil : tracker.pace), "pace /km")
             }
             if started == nil {
                 Button(action: start) {
