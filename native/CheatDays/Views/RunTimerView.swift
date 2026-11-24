@@ -289,7 +289,8 @@ struct RunTimerView: View {
         let route: [RoutePoint] = tracker.points
         tracker.stop()
         guard complete || t >= 60 else { workout.discard(); dismiss(); return }
-        workout.finish()
+        // to Health with its distance (mapped runs only) and active energy, the same kcal the app logs
+        workout.finish(meters: RouteMath.meters(route), kcal: RunStart.kcal(runSeconds: run, walkSeconds: walk, kg: store.weightKg))
         store.logStartRun(week: week, run: self.run, runSeconds: run, walkSeconds: walk, complete: complete, route: route)
         mapped = RouteMath.meters(route) >= 50 ? route : []
         if complete { Cues.say("Done. Nice work.", run: false) }
