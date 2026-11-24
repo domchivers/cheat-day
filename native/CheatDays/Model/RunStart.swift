@@ -80,7 +80,7 @@ enum RunStart {
 extension Store {
     /// Start running runs done to the end, ever.
     var startRunsDone: Int {
-        let all: [JSON] = todayWorkouts + pastWorkouts(days: 400).map(\.workout)
+        let all: [JSON] = todayWorkouts + allPastWorkouts.map { (p: (date: String, index: Int, workout: JSON)) -> JSON in p.workout }
         return all.filter { str($0["plan"]) == RunStart.tag && ($0["complete"] as? Bool) != false }.count
     }
     var startRun: (week: Int, run: Int, finished: Bool) { RunStart.progress(done: startRunsDone) }
