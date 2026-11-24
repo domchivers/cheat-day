@@ -53,6 +53,35 @@ struct StartPicker: View {
     private func choose(_ p: String) { last = p; pick(p) }
 }
 
+/// The Start picker as Workouts presents it: a sheet measured to the picker's height. `report` is for the
+/// -uitest-start harness only: the picker's measured height, the detent used, and the sheet's own area and insets,
+/// so a screenshot shows where a gap under it comes from (owner saw ~55 pt on 1.4.58).
+struct StartSheet: View {
+    var pick: (String) -> Void
+    var report: ((String) -> Void)? = nil
+    @State private var height: CGFloat = 470
+    @State private var picker: CGFloat = 0
+    @State private var area: String = ""
+
+    var body: some View {
+        StartPicker(pick: pick)
+            .fixedSize(horizontal: false, vertical: true)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
+                picker = h; height = h; send()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background {
+                Color.clear.onGeometryChange(for: String.self) { p in
+                    "area \(Int(p.size.height)), insets top \(Int(p.safeAreaInsets.top)) bottom \(Int(p.safeAreaInsets.bottom))"
+                } action: { a in area = a; send() }
+            }
+            .presentationDetents([.height(height)])
+            .presentationBackground(Theme.bg)
+    }
+
+    private func send() { report?("picker \(Int(picker)), detent \(Int(height)), \(area)") }
+}
+
 /// A run, ride, walk or hike: the map with them on it, moving time (it pauses itself when they stop), distance,
 /// pace or speed, the climb and kcal, and heart rate when a strap's connected. Stop saves it to Workouts and Apple
 /// Health with its route. On a run, with Start running in their plan, a line offers that run's interval timer.

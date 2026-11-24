@@ -62,7 +62,7 @@ struct RootView: View {
         else if ProcessInfo.processInfo.arguments.contains("-uitest-runtimer") { RunTimerView(week: 2, run: 1) }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-runmap") { RunMapHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-freerun") { MoveView(kind: .run, following: (week: 2, run: 1)) }
-        else if ProcessInfo.processInfo.arguments.contains("-uitest-start") { StartPicker { _ in }.frame(maxHeight: .infinity, alignment: .top).background(Theme.bg.ignoresSafeArea()) }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-start") { StartSheetHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-ride-paused") { MoveView(kind: .ride, preview: (route: RideHarness.route, seconds: 1450, paused: true)) }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-timeit") { TimeItView(preview: (chip: "Yoga", seconds: 2292)) }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-ride-done") { RideDoneHarness() }
@@ -80,6 +80,24 @@ struct RootView: View {
         else if ProcessInfo.processInfo.arguments.contains("-demo-budget") || ProcessInfo.processInfo.arguments.contains("-demo-weigh") { DemoRoot(checkIn: false) }
         else if ProcessInfo.processInfo.arguments.contains("-demo") || ProcessInfo.processInfo.arguments.contains("-demo-session") { DemoRoot(checkIn: false) }
         else if Supabase.shared.session == nil { SignInView() } else { MainTabs() }
+    }
+}
+
+/// For the Start sheet UI test: Start opened as a real sheet over a Workouts-like page, with the sheet's numbers
+/// (picker height, detent, the sheet's area and insets) shown above it, so the screenshot shows any gap and its cause.
+private struct StartSheetHarness: View {
+    @State private var open = false
+    @State private var probe = "measuring"
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Workouts").font(.largeTitle.weight(.heavy))
+            Text(probe).font(.caption.monospaced()).accessibilityIdentifier("startProbe")
+            Spacer()
+        }
+        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.bg.ignoresSafeArea())
+        .sheet(isPresented: $open) { StartSheet(pick: { _ in }, report: { probe = $0 }) }
+        .task { open = true }
     }
 }
 

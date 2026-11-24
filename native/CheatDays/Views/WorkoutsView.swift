@@ -15,7 +15,6 @@ struct WorkoutsView: View {
     /// Start: what are you doing? (26 Nov, design/start-anything-mockup.html), and what was picked, opened once the
     /// picker has gone: a run, ride, walk or hike on the map, or Just time it.
     @State private var startPicking = false
-    @State private var startHeight: CGFloat = 470
     @State private var picked: String?
     @State private var moving: MoveKind?
     @State private var timing = false
@@ -192,12 +191,7 @@ struct WorkoutsView: View {
                 picked = nil
                 if p == "time" { timing = true } else { moving = MoveKind(rawValue: p) }
             }) {
-                // as tall as what's in it, no gap under "Remembers what you picked last" (owner, 1.4.57)
-                StartPicker { p in picked = p; startPicking = false }
-                    .fixedSize(horizontal: false, vertical: true)
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { startHeight = $0 }
-                    .presentationDetents([.height(startHeight)])
-                    .presentationBackground(Theme.bg)
+                StartSheet { p in picked = p; startPicking = false }
             }
             .sheet(item: $moving, onDismiss: {
                 if toIntervals { toIntervals = false; runTimer = true }
