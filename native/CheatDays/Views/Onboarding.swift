@@ -74,6 +74,9 @@ struct ChoiceCard: View {
 /// plan. Laid out like Progress and Your plan; from About you on, the budget so far sits above Next.
 struct OnboardingView: View {
     var firstRun = true
+    /// For the UI tests only: open on a step, with an age already given.
+    var startStep = 0
+    var testAge: Int? = nil
     var onDone: () -> Void
     @State private var step = 0
     @State private var forward = true
@@ -139,7 +142,13 @@ struct OnboardingView: View {
             bottom
         }
         .background(Theme.bg.ignoresSafeArea())
-        .onAppear { if !loaded { prefill(); loaded = true } }
+        .onAppear {
+            if !loaded {
+                prefill(); loaded = true
+                if let a = testAge { age = a; q.age = Double(a) }
+                if startStep > 0 { step = startStep }
+            }
+        }
         .keyboardDone()
     }
 

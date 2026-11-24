@@ -5,10 +5,11 @@ import SwiftUI
 /// in the middle of the card only ever showed the plan. Tabs like the feed's Feed / Explore / People; swipe or tap.
 struct PlanTabs: View {
     @State private var tab: Int
-    init(start: Int = 0) { _tab = State(initialValue: start) }
+    /// (testPull, for the UI test only: the pages held part-way, as a swipe has them)
+    init(start: Int = 0, testPull: CGFloat = 0) { _tab = State(initialValue: start); _pull = State(initialValue: testPull) }
 
     /// How far a swipe has the pages pulled, while it's held; and how far the finger had gone when it was taken up.
-    @State private var pull: CGFloat = 0
+    @State private var pull: CGFloat
     @State private var pullFrom: CGFloat?
     /// The finger went up or down first: the screen's own scrolling, and not a swipe whatever it does after.
     @State private var scrolling = false
@@ -107,12 +108,14 @@ struct PlanTabs: View {
 /// For the UI test: Your plan as Progress opens it, pushed onto a navigation stack, to check each screen opens with
 /// its top showing (23 Nov).
 struct PlanTabsHarness: View {
+    /// Not 0: Goal opened held that far mid-swipe, to check its card keeps its width (24 Nov).
+    var pull: CGFloat = 0
     @State private var open = false
     var body: some View {
         NavigationStack {
             Button("Open your plan") { open = true }
                 .navigationTitle("Progress")
-                .navigationDestination(isPresented: $open) { PlanTabs() }
+                .navigationDestination(isPresented: $open) { PlanTabs(start: pull == 0 ? 0 : 1, testPull: pull) }
         }
     }
 }
