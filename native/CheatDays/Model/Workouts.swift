@@ -271,6 +271,17 @@ extension Store {
         perform(["type": "logWorkout", "workout": logged(type: type, name: name.isEmpty ? type : name, minutes: minutes, effort: effort, lifts: [])])
     }
 
+    /// A planned activity a watch saved to Apple Health (25 Nov): logged on its day, with its distance, under an id
+    /// from Health's own so it only ever comes in once.
+    func logFromHealth(type: String, name: String, minutes: Double, effort: String, date: String, km: Double?, id: String) {
+        var w: JSON = logged(type: type, name: name.isEmpty ? type : name, minutes: minutes, effort: effort, lifts: [])
+        w["id"] = id; w["from"] = "health"
+        if let km, km > 0 { w["km"] = (km * 100).rounded() / 100 }
+        var op: JSON = ["type": "logWorkout", "workout": w]
+        if date < today { op["date"] = date }
+        perform(op)
+    }
+
     private func logged(type: String, name: String, minutes: Double, effort: String, lifts: [JSON]) -> JSON {
         ["id": uid(), "type": type, "name": name, "minutes": Int(minutes.rounded()), "effort": effort,
          "kcal": burn(type, minutes: minutes, effort: effort), "lifts": lifts, "at": ISO.now()]

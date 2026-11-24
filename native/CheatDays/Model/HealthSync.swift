@@ -123,3 +123,71 @@ enum HealthSync {
         }
     }
 }
+
+/// Planned runs, classes and matches ticked off from Apple Health (25 Nov, design/plan-any-workout-mockup.html): a
+/// workout a watch or app saved there, of a kind the plan has on that day this week, is logged as that activity, so
+/// the plan card ticks it and the day counts it. Only those: other Health workouts aren't brought in.
+extension HealthSync {
+    static var workoutsAsked: Bool { UserDefaults.standard.bool(forKey: "health.workoutsAsked") }
+
+    /// Ask to read workouts (Health shows its sheet only the first time). Once a plan has something other than weights.
+    static func askWorkouts() async {
+        guard available else { return }
+        try? await health.requestAuthorization(toShare: [], read: [HKObjectType.workoutType()])
+        UserDefaults.standard.set(true, forKey: "health.workoutsAsked")
+    }
+
+    /// Whether a plan activity can be ticked from Health (one of their own, "Other", can't be told apart).
+    static func ticks(_ type: String) -> Bool { type != "Other" }
+
+    /// The plan's kind of activity for a Health workout, or nil for one the plan doesn't have a kind for.
+    static func planType(_ t: HKWorkoutActivityType) -> String? {
+        switch t {
+        case .running: return "Run"
+        case .cycling, .handCycling: return "Cycle"
+        case .swimming: return "Swim"
+        case .yoga, .pilates, .flexibility, .mindAndBody: return "Yoga / stretch"
+        case .highIntensityIntervalTraining, .crossTraining, .mixedCardio, .boxing, .kickboxing, .martialArts: return "HIIT"
+        case .soccer, .basketball, .rugby, .hockey, .volleyball, .australianFootball, .cricket, .handball, .lacrosse, .baseball, .softball, .americanFootball:
+            return "Team sport"
+        case .tennis, .badminton, .squash, .tableTennis, .racquetball, .pickleball: return "Tennis / padel"
+        case .climbing: return "Climbing"
+        case .socialDance, .cardioDance: return "Dance"
+        case .hiking: return "Hike"
+        case .rowing: return "Rowing"
+        case .elliptical: return "Elliptical"
+        default: return nil
+        }
+    }
+
+    /// This week's Health workouts that match the plan, logged once each. Returns how many came in.
+    @discardableResult
+    static func tickPlan() async -> Int {
+        let store = Store.shared
+        guard available, workoutsAsked, let plan = store.workoutPlan, !plan.activities.isEmpty else { return 0 }
+        let since: Date = Calendar.current.startOfDay(for: DayKey.date(WorkoutPlan.monday(store.today)))
+        let found: [HKWorkout] = await withCheckedContinuation { (cont: CheckedContinuation<[HKWorkout], Never>) in
+            let pred = HKQuery.predicateForSamples(withStart: since, end: Date(), options: .strictStartDate)
+            let q = HKSampleQuery(sampleType: HKObjectType.workoutType(), predicate: pred, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, s, _ in
+                cont.resume(returning: (s as? [HKWorkout]) ?? [])
+            }
+            health.execute(q)
+        }
+        var seen = Set(UserDefaults.standard.stringArray(forKey: "health.ticked") ?? [])
+        var added = 0
+        for w in found.sorted(by: { $0.startDate < $1.startDate }) {
+            let key: String = w.uuid.uuidString
+            guard !seen.contains(key), let type = planType(w.workoutActivityType) else { continue }
+            let day: String = DayKey.string(w.startDate)
+            guard day <= store.today, let a = plan.activities(on: day).first(where: { $0.type == type }) else { continue }
+            seen.insert(key)
+            // logged by hand already: that's the one that counts
+            if store.workouts(on: day).contains(where: { str($0["type"]) == type }) { continue }
+            let km: Double? = w.totalDistance.map { $0.doubleValue(for: .meterUnit(with: .kilo)) }
+            store.logFromHealth(type: type, name: a.name, minutes: w.duration / 60, effort: a.effort, date: day, km: km, id: "health-" + key)
+            added += 1
+        }
+        UserDefaults.standard.set(Array(seen), forKey: "health.ticked")
+        return added
+    }
+}

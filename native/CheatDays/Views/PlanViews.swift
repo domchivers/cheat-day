@@ -30,9 +30,19 @@ struct PlanCard: View {
             if todays == nil && acts.isEmpty, let n = plan.nextDay(after: today) {
                 restDay(n)
             }
+            if plan.activities.contains(where: { HealthSync.ticks($0.type) }) && HealthSync.available && !HealthSync.workoutsAsked && !askedHealth {
+                Button {
+                    askedHealth = true
+                    Task { await HealthSync.askWorkouts(); await HealthSync.tickPlan() }
+                } label: { Label("Tick these off from Apple Health", systemImage: "heart.fill").font(.footnote.weight(.semibold)) }
+                .buttonStyle(.borderless)
+            }
         }
         .padding(.vertical, 6)
     }
+
+    /// Asked to read workouts from Apple Health, this time round (the setting itself isn't watched).
+    @State private var askedHealth = false
 
     @ViewBuilder private func restDay(_ n: (date: String, session: PlanSession?, activities: [PlanActivity])) -> some View {
         let day: String = DayKey.date(n.date).formatted(.dateTime.weekday(.wide))
@@ -46,7 +56,7 @@ struct PlanCard: View {
     /// Today's run, class or match: done once one of its kind is logged today, or Log it.
     @ViewBuilder private func activity(_ a: PlanActivity, prominent: Bool) -> some View {
         if done(a, on: store.today) {
-            Label("Today's \(a.label.lowercased()) is done. Nice.", systemImage: "checkmark.circle.fill").font(.subheadline.weight(.semibold)).foregroundStyle(.green)
+            Label("Today's \(a.label.lowercased()) is done\(doneDetail(a)). Nice.", systemImage: "checkmark.circle.fill").font(.subheadline.weight(.semibold)).foregroundStyle(.green)
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 Label("Today: \(a.label)", systemImage: a.symbol).font(.subheadline.weight(.bold))
@@ -62,6 +72,13 @@ struct PlanCard: View {
                 .buttonBorderShape(.roundedRectangle(radius: 12))
             }
         }
+    }
+
+    /// ": 34 min, 5.1 km" from the one logged today (a watch's, from Apple Health, has the distance).
+    private func doneDetail(_ a: PlanActivity) -> String {
+        guard let w = store.workouts(on: store.today).first(where: { str($0["type"]) == a.type }), let m = num(w["minutes"]), m > 0 else { return "" }
+        let km: String = num(w["km"]).map { ", \(Fmt.one($0)) km" } ?? ""
+        return ": \(Int(m)) min" + km
     }
 
     /// One of its kind logged that day (any activity, for one of their own).

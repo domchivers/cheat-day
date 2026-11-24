@@ -1,4 +1,5 @@
 import XCTest
+import HealthKit
 @testable import CheatDays
 
 /// Workout plans: the split fits the days, kept routines get their gaps filled, weights go up only when earned, and the easier week comes round.
@@ -103,5 +104,16 @@ final class WorkoutPlanTests: XCTestCase {
         XCTAssertEqual(PlanKinds.freeDays(1, taken: [1, 4]), [6])
         XCTAssertEqual(PlanKinds.freeDays(2, taken: [1, 4, 6]), [2, 0])
         for k in PlanKinds.all { if let t = k.type { XCTAssertTrue(Activities.all.contains { $0.name == t }, t + " isn't an activity you can log") } }
+    }
+
+    /// 25 Nov: a watch's workout in Apple Health is matched to the plan's kind of activity, so it can tick the day off.
+    func testHealthWorkoutsMatchThePlansKinds() {
+        XCTAssertEqual(HealthSync.planType(.running), "Run")
+        XCTAssertEqual(HealthSync.planType(.pilates), "Yoga / stretch")
+        XCTAssertEqual(HealthSync.planType(.soccer), "Team sport")
+        XCTAssertEqual(HealthSync.planType(.squash), "Tennis / padel")
+        XCTAssertNil(HealthSync.planType(.traditionalStrengthTraining), "weights sessions are the app's own")
+        XCTAssertFalse(HealthSync.ticks("Other"))
+        for k in PlanKinds.all { if let t = k.type { XCTAssertTrue(HealthSync.ticks(t), t) } }
     }
 }

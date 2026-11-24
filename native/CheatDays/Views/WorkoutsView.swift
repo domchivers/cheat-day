@@ -147,8 +147,9 @@ struct WorkoutsView: View {
             .contentMargins(.top, 4, for: .scrollContent)
             .scrollContentBackground(.hidden)
             .background(Theme.bg)
-            .refreshable { await store.sync(); await Steps.shared.refresh() }
-            .task { await Steps.shared.refresh() }
+            .refreshable { await store.sync(); await Steps.shared.refresh(); await HealthSync.tickPlan() }
+            // (planned runs and classes a watch saved to Apple Health, ticked off: 25 Nov)
+            .task { await Steps.shared.refresh(); await HealthSync.tickPlan() }
             .onAppear { checkNames() }
             .confirmationDialog("Are these the same exercise?", isPresented: Binding(get: { lookAlike != nil }, set: { if !$0 { lookAlike = nil } }), titleVisibility: .visible, presenting: lookAlike) { pair in
                 Button("Merge into \(pair.keep)") { store.mergeExercise(pair.merge, into: pair.keep); lookAlike = nil; checkNames() }

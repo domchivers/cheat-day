@@ -311,7 +311,12 @@ struct PlanBuilder: View {
     }
 
     private func save() {
-        store.saveWorkoutPlan(plan)
+        let p: WorkoutPlan = plan
+        store.saveWorkoutPlan(p)
+        // runs and classes a watch saves to Apple Health tick themselves off: ask to read workouts (once)
+        if !p.activities.isEmpty && HealthSync.available {
+            Task { await HealthSync.askWorkouts(); await HealthSync.tickPlan() }
+        }
         dismiss()
     }
 
@@ -366,7 +371,9 @@ private struct ActivityCard: View {
             DayChips(days: Binding(get: { Set(act.days) }, set: { act.days = Array($0).sorted() }), most: 7)
             Stepper("\(act.minutes) min", value: $act.minutes, in: 10...240, step: 5).font(.subheadline.weight(.semibold))
             Picker("Effort", selection: $act.effort) { Text("Easy").tag("easy"); Text("Moderate").tag("moderate"); Text("Hard").tag("hard") }.pickerStyle(.segmented)
-            Text("About \(Fmt.int(store.burn(act.type, minutes: Double(act.minutes), effort: act.effort))) kcal each time.").font(.caption).foregroundStyle(.secondary)
+            Text("About \(Fmt.int(store.burn(act.type, minutes: Double(act.minutes), effort: act.effort))) kcal each time."
+                 + (HealthSync.ticks(act.type) ? " One your watch saves to Apple Health ticks it off on its own." : ""))
+                .font(.caption).foregroundStyle(.secondary)
         }
         .padding(14)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
