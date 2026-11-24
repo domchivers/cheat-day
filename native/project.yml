@@ -50,12 +50,11 @@ targets:
         NSSpeechRecognitionUsageDescription: Cheat Days turns what you say into words in the chat box, on your iPhone where it can, and makes captions from what's said in your video edits, on your iPhone.
         NSHealthShareUsageDescription: Cheat Days reads your weight, body fat, lean mass, BMI, steps, and workouts with their routes from Apple Health, so weigh-ins from your smart scale's app arrive on their own, Today can show your steps, and the runs and classes in your plan tick themselves off with their maps.
         NSHealthUpdateUsageDescription: Cheat Days saves the runs it times for you to Apple Health as workouts, with their routes when you map them. It never changes anything else in your Health data.
-        # Start running's run as a workout session: it keeps timing, speaking and (when mapped) following the route
-        # with the phone locked
+        # Start running's run: it keeps speaking, and (when mapped) following the route, with the phone locked.
+        # (workout-processing is watchOS only: App Store validation refused it in 1.4.54)
         UIBackgroundModes:
           - audio
           - location
-          - workout-processing
         NSSupportsLiveActivities: true
         # the web app's own domain, so its offline cache (service worker) works inside the app
         WKAppBoundDomains:
