@@ -62,7 +62,7 @@ struct RootView: View {
         else if ProcessInfo.processInfo.arguments.contains("-uitest-runtimer") { RunTimerView(week: 2, run: 1) }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-runmap") { RunMapHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-freerun") { MoveView(kind: .run, following: (week: 2, run: 1)) }
-        else if ProcessInfo.processInfo.arguments.contains("-uitest-start") { StartPicker { _ in } }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-start") { StartPicker { _ in }.frame(maxHeight: .infinity, alignment: .top).background(Theme.bg.ignoresSafeArea()) }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-ride-paused") { MoveView(kind: .ride, preview: (route: RideHarness.route, seconds: 1450, paused: true)) }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-timeit") { TimeItView(preview: (chip: "Yoga", seconds: 2292)) }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-ride-done") { RideDoneHarness() }

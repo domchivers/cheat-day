@@ -30,10 +30,9 @@ struct StartPicker: View {
             }
             .buttonStyle(.plain).accessibilityLabel("Just time it")
             Text("Remembers what you picked last").font(.caption).foregroundStyle(.secondary)
-            Spacer(minLength: 0)
         }
         .padding(.horizontal, 16)
-        .background(Theme.bg.ignoresSafeArea())
+        .padding(.bottom, 12)
     }
 
     private func tile(_ k: MoveKind) -> some View {
