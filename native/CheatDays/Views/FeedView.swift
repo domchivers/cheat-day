@@ -875,26 +875,23 @@ struct FeedView: View {
             }
     }
 
-    /// A photo post's food or workout, under the icons (25 Nov, feed-food-line-mockup A): the name in full across the
-    /// whole width, then its kcal and protein with Have some, at the words' own size, on the right of that line
-    /// (feed-food-line-v2: beside a name on two lines the button floated in the middle).
+    /// A photo post's food or workout, under the icons: the name in full, then its kcal and protein, as plain text.
+    /// Have some is the square plus in the icon row (25 Nov, feed-have-some-icon-mockup A: a button beside a name on
+    /// two lines floated in the middle).
     private func foodLine(_ p: JSON) -> some View {
         let n: (kcal: String, protein: String?) = numbers(p)
         return VStack(alignment: .leading, spacing: 2) {
             Text(str(p["name"])).font(.subheadline.weight(.bold)).lineLimit(2).multilineTextAlignment(.leading)
-            HStack(alignment: .center, spacing: 10) {
-                HStack(spacing: 4) {
-                    Text(n.kcal).foregroundStyle(.secondary)
-                    if let pr = n.protein {
-                        Text("·").foregroundStyle(.secondary)
-                        Text(pr).foregroundStyle(Theme.walk)
-                    }
+            HStack(spacing: 4) {
+                Text(n.kcal).foregroundStyle(.secondary)
+                if let pr = n.protein {
+                    Text("·").foregroundStyle(.secondary)
+                    Text(pr).foregroundStyle(Theme.walk)
                 }
-                .font(.caption.weight(.semibold)).lineLimit(1)
-                Spacer(minLength: 0)
-                haveSome(p)
             }
+            .font(.caption.weight(.semibold)).lineLimit(1)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 14).padding(.top, 4)
     }
 
@@ -1112,7 +1109,17 @@ struct FeedView: View {
                 Button { sharing = PostBox(post: p) } label: { GlyphIcon(glyph: .send, size: 28) }
                     .buttonStyle(.plain).accessibilityLabel("Send to a friend")
                 Spacer(minLength: 0)
-                // (Have some went onto the photo's tag, 23 Nov: the row is the icons alone, as Instagram's)
+                // Have some on a photo post: the app's own square plus, in the accent, just before Save (25 Nov,
+                // feed-have-some-icon-mockup A); a workout's Do it is the same square with a play triangle. A post
+                // with no photo keeps its button on the card.
+                let pk = str(p["kind"])
+                if Feed.hasPhoto(p) && pk != "moment" && pk != "photo" {
+                    let word = pk == "workout" ? "Do it" : pk == "meal" ? "Recipe" : "Have some"
+                    Button { recipe = p } label: {
+                        GlyphIcon(glyph: pk == "workout" ? .videos : .add, size: 28).foregroundStyle(Theme.accent)
+                    }
+                    .buttonStyle(.plain).accessibilityLabel(word)
+                }
                 // save it for yourself (only you see what you've saved; the number is how many have)
                 let kept = feed.saved.contains(id), keeps = feed.saveCounts[id] ?? 0
                 Button { UIImpactFeedbackGenerator(style: .light).impactOccurred(); Task { await feed.toggleSave(p) } } label: {

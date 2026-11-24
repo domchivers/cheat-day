@@ -5,7 +5,7 @@ import SwiftUI
 /// with round ends and corners, so they're exactly the mockups the owner chose and all one line: Apple's symbols
 /// for these came in four different weights and shapes.
 enum Glyph {
-    case send, save, repost, comment, grid, videos, tagged, heart, more
+    case send, save, repost, comment, grid, videos, tagged, heart, more, add
 
     /// Drawn filled (the grid and the three dots always; the bookmark and heart once they're on) rather than as a line.
     var solid: Bool { self == .grid || self == .more }
@@ -90,6 +90,11 @@ struct GlyphShape: Shape {
         case .videos:
             path.addRoundedRect(in: box(2.5, 2.5, 19, 19), cornerSize: CGSize(width: 5 * k, height: 5 * k), style: .continuous)
             path.move(to: p(10, 8.3)); path.addLine(to: p(10, 15.7)); path.addLine(to: p(16, 12)); path.closeSubpath()
+        case .add:
+            // Have some (25 Nov, feed-have-some-icon-mockup A): a plus in the profile tabs' soft square
+            path.addRoundedRect(in: box(2.5, 2.5, 19, 19), cornerSize: CGSize(width: 5 * k, height: 5 * k), style: .continuous)
+            path.move(to: p(12, 7.5)); path.addLine(to: p(12, 16.5))
+            path.move(to: p(7.5, 12)); path.addLine(to: p(16.5, 12))
         case .tagged:
             path.addRoundedRect(in: box(2.5, 2.5, 19, 19), cornerSize: CGSize(width: 5 * k, height: 5 * k), style: .continuous)
             path.addEllipse(in: box(8.8, 6.8, 6.4, 6.4))
