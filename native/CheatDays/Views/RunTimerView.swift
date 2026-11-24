@@ -24,6 +24,8 @@ struct RunTimerView: View {
     @State private var askMap = false
     @State private var mapped: [RoutePoint] = []
     private var testing: Bool { ProcessInfo.processInfo.arguments.contains("-uitest-runtimer") }
+    /// Either run screen in a UI test: no Health, no notifications ask.
+    static var uiTest: Bool { ProcessInfo.processInfo.arguments.contains { $0 == "-uitest-runtimer" || $0 == "-uitest-freerun" } }
     private let tick = Timer.publish(every: 0.25, on: .main, in: .common).autoconnect()
     private var store: Store { Store.shared }
 
@@ -300,7 +302,7 @@ struct RunTimerView: View {
 
 /// Before the first timed run (25 Nov, design/run-route-mockup.html): why it would like their location, and where the
 /// route goes. Only a yes brings iOS's own ask. Either way the run starts.
-private struct MapAsk: View {
+struct MapAsk: View {
     var answer: (Bool) -> Void
 
     var body: some View {
@@ -332,7 +334,7 @@ enum Cues {
         // over their music, which goes quieter while it speaks
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .voicePrompt, options: [.mixWithOthers, .duckOthers])
         // (not in the UI test, where the ask would sit over the timer)
-        guard !ProcessInfo.processInfo.arguments.contains("-uitest-runtimer") else { return }
+        guard !RunTimerView.uiTest else { return }
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 

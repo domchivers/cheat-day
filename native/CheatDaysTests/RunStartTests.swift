@@ -39,6 +39,14 @@ final class RunStartTests: XCTestCase {
         XCTAssertEqual(k, 197, accuracy: 3)
     }
 
+    /// A free run's kcal (26 Nov): from its speed when mapped, so a 5 km in 30 minutes is a run and 2 km a walk.
+    func testAFreeRunsKcalGoesBySpeed() {
+        XCTAssertEqual(RunStart.freeKcal(seconds: 1800, meters: 5000, kg: 80), 392, accuracy: 2)
+        XCTAssertEqual(RunStart.freeKcal(seconds: 1800, meters: 2000, kg: 80), 140, accuracy: 2)
+        XCTAssertEqual(RunStart.freeKcal(seconds: 1800, meters: 0, kg: 80), 392, accuracy: 2, "not mapped: a run for the time")
+        XCTAssertEqual(RunStart.freeKcal(seconds: 0, meters: 0, kg: 80), 0)
+    }
+
     func testAPlansRunCanBeStartRunning() throws {
         let a = PlanActivity(type: "Run", days: [2, 4, 6], minutes: 31, effort: "easy", aim: "start")
         XCTAssertTrue(a.startRunning)

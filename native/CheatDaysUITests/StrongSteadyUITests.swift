@@ -86,6 +86,36 @@ final class StrongSteadyUITests: XCTestCase {
         shot(app, "run-map")
     }
 
+    /// Workouts' three ways in (26 Nov, design/start-run-mockup.html): Weights, Run and Log one side by side, and with
+    /// no plan, Get a workout plan right under them.
+    func testWorkoutsThreeWaysIn() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-uitest-walk"]
+        app.launch()
+        XCTAssertTrue(app.buttons["Start a run"].waitForExistence(timeout: 6))
+        XCTAssertTrue(app.buttons["Start a weights session"].exists)
+        XCTAssertTrue(app.buttons["Log a walk, run or class"].exists)
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS 'Get a workout plan'")).firstMatch.exists, "under the three, with no plan")
+        sleep(1)
+        shot(app, "workouts-three-ways-in")
+    }
+
+    /// Run's ready screen: map, time, km, pace, Start run, and Start running's run offered; then a moment in.
+    func testFreeRunReady() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-uitest-freerun"]
+        app.launch()
+        let start = app.buttons["Start run"]
+        XCTAssertTrue(start.waitForExistence(timeout: 6))
+        XCTAssertTrue(app.buttons["Following Start running? Week 2, run 1 is in your plan"].exists)
+        sleep(3)   // map tiles
+        shot(app, "free-run-ready")
+        start.tap()
+        XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 3))
+        sleep(2)
+        shot(app, "free-run-running")
+    }
+
     /// Sign-up's How you train for someone of 67: Strong and steady is marked, and picked to start with.
     func testHowYouTrainAt67() {
         let app = XCUIApplication()

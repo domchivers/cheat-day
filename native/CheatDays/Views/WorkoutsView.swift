@@ -3,8 +3,8 @@ import SwiftUI
 
 private struct DayBar: Identifiable { let id: String; let label: String; let kcal: Double; let walk: Double; let today: Bool }
 
-/// Workouts, laid out like Progress: the week in big type and bars, Start and Log side by side, today's and your
-/// routines, then the rest in a list. Getting a workout plan leads the page only until there's a workout logged.
+/// Workouts, laid out like Progress: the week in big type and bars, Weights, Run and Log one side by side, today's and
+/// your routines, then the rest in a list. With no plan, getting one sits under the three.
 struct WorkoutsView: View {
     @State private var showSession = false
     @State private var showActivity = false
@@ -12,6 +12,10 @@ struct WorkoutsView: View {
     @State private var planned: PlanActivity?
     /// Start running's timer, open (25 Nov).
     @State private var runTimer = false
+    /// A run of their own, timed and mapped (26 Nov, design/start-run-mockup.html).
+    @State private var freeRun = false
+    /// The free run's sheet handing over to Start running's timer: opened once the sheet has gone.
+    @State private var toIntervals = false
     @State private var confirmRoutineDelete: JSON?
     // a routine being renamed from the list, without starting it; and a name another routine already has
     @State private var renaming: JSON?
@@ -71,25 +75,27 @@ struct WorkoutsView: View {
                 }
                 Section { hero.padding(.leading, 8).padding(.vertical, 12).listRowBackground(Color.clear).listRowInsets(EdgeInsets()) }
                 if tracked || weekHasBars { Section { weekCard } }
+                // three ways in, side by side (26 Nov, design/start-run-mockup.html): weights, a run, or one to log
                 Section {
                     HStack(spacing: 10) {
-                        if store.session == nil {
-                            Button { store.startSession(nil); showSession = true } label: {
-                                capsule("play.fill", "Start a session", Theme.onAccent).background(Theme.accent, in: Capsule())
-                            }
-                            .buttonStyle(.borderless)
-                        }
-                        Button { showActivity = true } label: {
-                            capsule("plus", "Log activity", Theme.accent).background(Color(.secondarySystemGroupedBackground), in: Capsule())
-                        }
-                        .buttonStyle(.borderless).accessibilityLabel("Log a walk, run or class")
+                        Button {
+                            // with a session going, Weights goes back to it rather than starting another
+                            if store.session == nil { store.startSession(nil) }
+                            showSession = true
+                        } label: { pill("dumbbell.fill", "Weights", filled: true) }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel(store.session == nil ? "Start a weights session" : "Back to your session")
+                        Button { freeRun = true } label: { pill("figure.run", "Run", filled: true) }
+                            .buttonStyle(.borderless).accessibilityLabel("Start a run")
+                        Button { showActivity = true } label: { pill("plus", "Log one", filled: false) }
+                            .buttonStyle(.borderless).accessibilityLabel("Log a walk, run or class")
                     }
                     .fixedSize(horizontal: false, vertical: true)
                     .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
                 }
-                // a fresh app: the plan is the best way in, so it has the page; once you're tracking it moves down to More
-                if store.workoutPlan == nil && !tracked {
-                    Section { planRow("Get a workout plan", "A week built around what you do: runs, classes, sport, weights, or simple moves at home.") } header: { head("Not sure where to start?") }
+                // no plan yet: getting one sits right under the ways in, however long they've been tracking
+                if store.workoutPlan == nil {
+                    Section { planRow("Get a workout plan", "Runs, classes, weights or moves at home") }
                 }
                 let walked = Steps.shared.today
                 if !store.todayWorkouts.isEmpty || walked != nil {
@@ -135,7 +141,6 @@ struct WorkoutsView: View {
                     } header: { head("Your routines") }
                 }
                 Section {
-                    if store.workoutPlan == nil && tracked { planRow("Workout plan", "A week built around what you do") }
                     if let last = store.pastWorkouts.max(by: { $0.date < $1.date }) {
                         NavigationLink { PastWorkoutsView() } label: {
                             moreRow("clock.arrow.circlepath", "Past workouts", "Last: \(Store.when(last.date).capitalizedFirst) · \(str(last.workout["name"]))")
@@ -176,6 +181,12 @@ struct WorkoutsView: View {
                 let p: (week: Int, run: Int, finished: Bool) = store.startRun
                 RunTimerView(week: p.week, run: p.run)
             }
+            .sheet(isPresented: $freeRun, onDismiss: {
+                if toIntervals { toIntervals = false; runTimer = true }
+            }) {
+                FreeRunView(following: followingStart) { toIntervals = true; freeRun = false }
+                    .presentationDetents([.large]).presentationDragIndicator(.visible)
+            }
             .sheet(item: $planned) { a in
                 ActivitySheet(type: a.type, minutes: Double(a.minutes), effort: a.effort, name: a.name).presentationDetents([.medium, .large])
             }
@@ -215,13 +226,23 @@ struct WorkoutsView: View {
         .accessibilityElement(children: .ignore).accessibilityLabel(said).accessibilityAddTraits(.isStaticText)
     }
 
-    private func capsule(_ symbol: String, _ title: String, _ colour: Color) -> some View {
-        HStack(spacing: 7) {
-            Image(systemName: symbol).font(.system(size: 13, weight: .heavy))
+    /// Start running's next run, when it's in their plan and not finished: the free run offers it.
+    private var followingStart: (week: Int, run: Int)? {
+        guard store.workoutPlan?.activities.contains(where: { $0.startRunning }) == true else { return nil }
+        let p: (week: Int, run: Int, finished: Bool) = store.startRun
+        return p.finished ? nil : (p.week, p.run)
+    }
+
+    /// One of the three ways in: an icon over its word, a third of the row each.
+    private func pill(_ symbol: String, _ title: String, filled: Bool) -> some View {
+        VStack(spacing: 6) {
+            Image(systemName: symbol).font(.system(size: 19, weight: .bold))
             Text(title).font(.subheadline.weight(.heavy)).lineLimit(1).minimumScaleFactor(0.8)
         }
-        .foregroundStyle(colour)
-        .frame(maxWidth: .infinity).frame(height: 50)
+        .foregroundStyle(filled ? Theme.onAccent : Theme.accent)
+        .frame(maxWidth: .infinity).frame(height: 72)
+        .background(filled ? Theme.accent : Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
     private func moreRow(_ symbol: String, _ title: String, _ sub: String) -> some View {
@@ -235,7 +256,7 @@ struct WorkoutsView: View {
         }
     }
 
-    /// Getting a workout plan, as a row: under its own heading on a fresh app, in More once you're tracking.
+    /// Getting a workout plan, as a row under the three ways in, whenever there's no plan.
     private func planRow(_ title: String, _ sub: String) -> some View {
         Button { building = true } label: {
             HStack {

@@ -20,7 +20,7 @@ final class RunSession {
     /// Ask to save workouts (Health's sheet shows only the first time), then start. True when it's a live workout
     /// session; false when it's the plain timer (it may still save to Health at the end).
     func start() async -> Bool {
-        guard HealthSync.available, !ProcessInfo.processInfo.arguments.contains("-uitest-runtimer") else { return false }
+        guard HealthSync.available, !RunTimerView.uiTest else { return false }
         let type: HKWorkoutType = HKObjectType.workoutType()
         let route: HKSeriesType = HKSeriesType.workoutRoute()
         // (26 Nov, the owner: the saved run carries its distance and active energy too)
