@@ -532,6 +532,31 @@ struct EditProfileView: View {
     private enum EditPage: Hashable { case name, username, label, bio, tag, badges }
     private var profiles: Profiles { Profiles.shared }
     private var store: Store { Store.shared }
+    /// Take one, choose one, or reframe the one there is: under "Edit picture". Each closes the list first, then opens
+    /// its own screen once the list has gone (two presentations at once and the second never shows).
+    private var photoChoices: some View {
+        let hasPhoto: Bool = !profiles.avatar(profiles.me).isEmpty
+        return VStack(spacing: 8) {
+            photoChoice("Take a photo") { camera = true }
+            photoChoice("Choose from library") { library = true }
+            if hasPhoto { photoChoice("Edit") { Task { await reframe() } } }
+        }
+        .padding(12)
+        .frame(width: 260)
+    }
+
+    private func photoChoice(_ title: String, _ then: @escaping () -> Void) -> some View {
+        Button {
+            choosingPhoto = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { then() }
+        } label: {
+            Text(title).font(.body).foregroundStyle(Theme.accent)
+                .frame(maxWidth: .infinity).padding(.vertical, 13)
+                .background(Color(.tertiarySystemFill), in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
     private static let suggestions = ["💪 Lifting", "🏃 Running", "🥗 Meal prep", "🍜 Loves a noodle", "🌱 Plant based", "🍰 Sweet tooth", "🧘 Yoga", "🚴 Cycling"]
 
     var body: some View {
@@ -556,11 +581,10 @@ struct EditProfileView: View {
                             .buttonStyle(.plain)
                             Button("Edit picture") { choosingPhoto = true }
                                 .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accent).buttonStyle(.plain)
-                                .confirmationDialog("Profile picture", isPresented: $choosingPhoto, titleVisibility: .hidden) {
-                                    Button("Take a photo") { camera = true }
-                                    Button("Choose from library") { library = true }
-                                    if !profiles.avatar(profiles.me).isEmpty { Button("Edit") { Task { await reframe() } } }
-                                    Button("Cancel", role: .cancel) {}
+                                // 24 Nov (design/photo-menu-below-mockup.html): the system's dialog opened upwards over the
+                                // photo; this one always opens under the words, centred on them.
+                                .popover(isPresented: $choosingPhoto, attachmentAnchor: .point(.bottom), arrowEdge: .top) {
+                                    photoChoices.presentationCompactAdaptation(.popover)
                                 }
                         }
                         .frame(maxWidth: .infinity)
