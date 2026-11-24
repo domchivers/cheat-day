@@ -379,6 +379,20 @@ final class AssistantTests: XCTestCase {
         XCTAssertEqual(num(list(Assistant.keepingEarlier(now, nil)["parts"])[0]["kcal"]), 376)
     }
 
+    /// 24 Nov: "This was the gochujang" with its label. The label's 46 kcal stays; the last card's guess (40) doesn't come
+    /// back for having the same name and grams. And a part kept from the last card is at its own grams.
+    func testALabelSentLaterBeatsTheLastCardsGuess() {
+        let before: JSON = ["parts": [["name": "Gochujang", "grams": 20, "kcal": 40, "protein_g": 0.9, "carbs_g": 8.8, "fat_g": 0.2, "src": "ai"],
+                                      ["name": "Sesame oil", "grams": 2.5, "kcal": 22, "protein_g": 0, "carbs_g": 0, "fat_g": 2.5, "src": "afcd"]]]
+        let now: JSON = ["parts": [["name": "Gochujang", "grams": 20, "kcal": 46, "protein_g": 0.8, "carbs_g": 9.6, "fat_g": 0.5, "src": "label"],
+                                   ["name": "Sesame oil", "grams": 2, "kcal": 18, "protein_g": 0, "carbs_g": 0, "fat_g": 2, "src": "afcd"]]]
+        let parts = list(Assistant.keepingEarlier(now, before)["parts"])
+        XCTAssertEqual(num(parts[0]["kcal"]), 46)
+        XCTAssertEqual(str(parts[0]["src"]), "label")
+        XCTAssertEqual(num(parts[1]["kcal"]), 18, "22 kcal was for 2.5 g")
+        XCTAssertEqual(num(parts[1]["fat_g"]) ?? 0, 2, accuracy: 0.01)
+    }
+
     // their boiled chicken, worked out twice in one chat: 244 g was 410 kcal, then 401 under another name
     func testTheSameFoodKeepsItsNumbersThroughAChat() {
         let first: JSON = ["name": "Boiled chicken breast (591 g batch)", "kcal_total": 410,
