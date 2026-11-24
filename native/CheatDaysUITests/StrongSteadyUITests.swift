@@ -7,26 +7,50 @@ final class StrongSteadyUITests: XCTestCase {
         let a = XCTAttachment(screenshot: app.screenshot()); a.name = name; a.lifetime = .keepAlways; add(a)
     }
 
-    /// Build a plan: Strong and steady asks about weights at home instead of where, and leaves out the lifting questions.
+    /// Build a plan (25 Nov, design/plan-any-workout-mockup.html): the tiles, a card each, then the week.
+    /// Strong and steady asks about weights at home, and leaves out the lifting questions.
     func testBuildAPlanStrongAndSteady() {
         let app = XCUIApplication()
         app.launchArguments = ["-uitest-workoutplan"]
         app.launch()
-        let card = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Strong and steady'")).firstMatch
-        XCTAssertTrue(card.waitForExistence(timeout: 6), "the Strong and steady choice")
-        card.tap()
-        let weights = app.staticTexts["Any weights at home?"]
-        XCTAssertTrue(weights.waitForExistence(timeout: 3))
-        XCTAssertFalse(app.staticTexts["How long have you been lifting?"].exists)
-        XCTAssertFalse(app.staticTexts["Where?"].exists)
+        XCTAssertTrue(app.staticTexts["What's in your week?"].waitForExistence(timeout: 6))
         sleep(1)
-        shot(app, "build-plan-steady")
+        shot(app, "build-plan-tiles")
+        app.buttons["Strong and steady"].tap()
+        app.buttons["Next"].tap()
+        XCTAssertTrue(app.staticTexts["Any weights at home?"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.staticTexts["How long have you been lifting?"].exists)
         let dumbbells = app.buttons["Light dumbbells"]
         XCTAssertTrue(dumbbells.waitForExistence(timeout: 3))
         dumbbells.tap()
-        app.swipeUp()
         sleep(1)
-        shot(app, "build-plan-steady-dumbbells")
+        shot(app, "build-plan-steady")
+        app.buttons["See my week"].tap()
+        XCTAssertTrue(app.buttons["Start this plan"].waitForExistence(timeout: 3))
+        sleep(1)
+        shot(app, "build-plan-steady-week")
+    }
+
+    /// No weights at all: a run and yoga make a plan on their own, with rest days between.
+    func testBuildAPlanWithNoWeights() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-uitest-workoutplan"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["What's in your week?"].waitForExistence(timeout: 6))
+        app.buttons["Running"].tap()
+        app.buttons["Yoga / Pilates"].tap()
+        app.buttons["Next"].tap()
+        XCTAssertTrue(app.staticTexts["Running"].waitForExistence(timeout: 3), "the run's card")
+        XCTAssertFalse(app.buttons["Set up weights"].exists)
+        sleep(1)
+        shot(app, "build-plan-run-yoga")
+        app.buttons["See my week"].tap()
+        let start = app.buttons["Start this plan"]
+        XCTAssertTrue(start.waitForExistence(timeout: 3))
+        XCTAssertTrue(start.isEnabled)
+        XCTAssertTrue(app.staticTexts["Rest"].exists)
+        sleep(1)
+        shot(app, "build-plan-run-yoga-week")
     }
 
     /// Sign-up's How you train for someone of 67: Strong and steady is marked, and picked to start with.

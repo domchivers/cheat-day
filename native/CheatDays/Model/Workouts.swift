@@ -6,7 +6,7 @@ enum Activities {
     /// Name, MET value, and whether it's a gym session with sets.
     static let all: [(name: String, met: Double, lifting: Bool)] = [
         ("Walk", 3.5, false), ("Run", 9.8, false), ("Cycle", 7.5, false), ("Swim", 7, false), ("Gym weights", 5, true), ("HIIT", 8, false),
-        ("Yoga / stretch", 2.8, false), ("Football", 8, false), ("Tennis / padel", 7.3, false), ("Hike", 6, false), ("Rowing", 7, false),
+        ("Yoga / stretch", 2.8, false), ("Football", 8, false), ("Team sport", 8, false), ("Tennis / padel", 7.3, false), ("Hike", 6, false), ("Rowing", 7, false),
         ("Elliptical", 5, false), ("Dance", 5.5, false), ("Boxing", 9, false), ("Climbing", 7, false), ("Other", 5, false)
     ]
     static let effort: [String: Double] = ["easy": 0.8, "moderate": 1, "hard": 1.25]
@@ -20,6 +20,7 @@ enum Activities {
         case "HIIT", "Boxing": return "figure.boxing"
         case "Yoga / stretch": return "figure.yoga"
         case "Football": return "figure.soccer"
+        case "Team sport": return "sportscourt.fill"
         case "Tennis / padel": return "figure.tennis"
         case "Rowing": return "figure.rower"
         case "Elliptical": return "figure.elliptical"

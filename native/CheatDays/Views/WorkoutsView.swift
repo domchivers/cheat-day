@@ -8,6 +8,8 @@ private struct DayBar: Identifiable { let id: String; let label: String; let kca
 struct WorkoutsView: View {
     @State private var showSession = false
     @State private var showActivity = false
+    /// A planned run, class or match being logged from the plan card.
+    @State private var planned: PlanActivity?
     @State private var confirmRoutineDelete: JSON?
     // a routine being renamed from the list, without starting it; and a name another routine already has
     @State private var renaming: JSON?
@@ -49,12 +51,12 @@ struct WorkoutsView: View {
                 }
                 if let plan = store.workoutPlan {
                     Section {
-                        PlanCard(plan: plan) { ps in
+                        PlanCard(plan: plan, start: { ps in
                             if store.session == nil { store.startPlanSession(ps, plan: plan) }
                             showSession = true
-                        }
+                        }, log: { a in planned = a })
                         .listRowBackground(Theme.hero)
-                        VolumeRows(plan: plan)
+                        if !plan.sessions.isEmpty { VolumeRows(plan: plan) }
                         NavigationLink { PlanEditor() } label: { Label("Edit your week", systemImage: "slider.horizontal.3") }
                     }
                 }
@@ -78,7 +80,7 @@ struct WorkoutsView: View {
                 }
                 // a fresh app: the plan is the best way in, so it has the page; once you're tracking it moves down to More
                 if store.workoutPlan == nil && !tracked {
-                    Section { planRow("Get a workout plan", "A week built around your days, kit and goal, with weights that go up when you're ready.") } header: { head("Not sure where to start?") }
+                    Section { planRow("Get a workout plan", "A week built around what you do: runs, classes, sport, weights, or simple moves at home.") } header: { head("Not sure where to start?") }
                 }
                 let walked = Steps.shared.today
                 if !store.todayWorkouts.isEmpty || walked != nil {
@@ -124,7 +126,7 @@ struct WorkoutsView: View {
                     } header: { head("Your routines") }
                 }
                 Section {
-                    if store.workoutPlan == nil && tracked { planRow("Workout plan", "A week built around your days, kit and goal") }
+                    if store.workoutPlan == nil && tracked { planRow("Workout plan", "A week built around what you do") }
                     if let last = store.pastWorkouts.max(by: { $0.date < $1.date }) {
                         NavigationLink { PastWorkoutsView() } label: {
                             moreRow("clock.arrow.circlepath", "Past workouts", "Last: \(Store.when(last.date).capitalizedFirst) · \(str(last.workout["name"]))")
@@ -165,6 +167,9 @@ struct WorkoutsView: View {
                 Button("OK", role: .cancel) { nameTaken = nil }
             } message: { Text("You already have a routine called \(nameTaken ?? ""). Pick another name.") }
             .sheet(isPresented: $showActivity) { ActivitySheet().presentationDetents([.medium, .large]) }
+            .sheet(item: $planned) { a in
+                ActivitySheet(type: a.type, minutes: Double(a.minutes), effort: a.effort, name: a.name).presentationDetents([.medium, .large])
+            }
         }
     }
 
@@ -448,11 +453,17 @@ struct WorkoutDetail: View {
 /// A walk, run or class: type, minutes, effort.
 struct ActivitySheet: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var type = "Walk"
-    @State private var minutes = 30.0
-    @State private var effort = "moderate"
-    @State private var name = ""
+    @State private var type: String
+    @State private var minutes: Double
+    @State private var effort: String
+    @State private var name: String
     private var store: Store { Store.shared }
+
+    /// Filled in from the plan when it's a planned run, class or match (25 Nov).
+    init(type: String = "Walk", minutes: Double = 30, effort: String = "moderate", name: String = "") {
+        _type = State(initialValue: type); _minutes = State(initialValue: minutes)
+        _effort = State(initialValue: effort); _name = State(initialValue: name)
+    }
 
     var body: some View {
         NavigationStack {

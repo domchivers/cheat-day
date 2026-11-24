@@ -96,7 +96,7 @@ struct OnboardingView: View {
     @State private var usualProtein: Double?
     @State private var usualNote = ""
     @State private var estimating = false
-    @State private var gymDays = 3
+    @State private var gymDays = 0   // (25 Nov: nothing picked to start with, as How you train's tiles start empty)
     @State private var experience = "some"
     @State private var kit = "gym"
     @State private var steady = false          // Strong and steady at home, not the gym plans
@@ -532,15 +532,11 @@ struct OnboardingView: View {
 
     private var trainingStep: some View {
         VStack(alignment: .leading, spacing: 10) {
-            heading("How you train", "Your plan starts from what you already do.")
-            // 24 Nov (design/strong-steady-mockup.html): simple moves at home first, picked to start with at 60 and over
-            group {
-                option("Strong and steady at home", "2 short sessions a week. A chair, a wall and the stairs", "chair.fill",
-                       on: steady && gymDays > 0, badge: older ? "Good at 60+" : nil) { pickTraining("steady") }
-                line
-                option("Weights", "At a gym, with dumbbells, or bodyweight", "dumbbell.fill", on: !steady && gymDays > 0) { pickTraining("weights") }
-                line
-                option("Not for now", "Just the food side", "minus", on: gymDays == 0) { pickTraining("none") }
+            heading("How you train", "Pick everything you do, or want to start. None is fine too.")
+            // 25 Nov (design/plan-any-workout-mockup.html): any mix, weights one tile among the rest. Strong and steady
+            // (24 Nov) is picked to start with at 60 and over.
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+                ForEach(PlanKinds.all, id: \.id) { k in trainTile(k) }
             }
             if steady && gymDays > 0 {
                 label("Days a week")
@@ -573,13 +569,57 @@ struct OnboardingView: View {
                     }
                 }
             }
-            label("Anything else?")
-            chips(allExtras, $extras)
         }
         .onAppear { if !trainPicked && older { pickTraining("steady") } }
     }
 
     private var older: Bool { (age ?? 0) >= 60 }
+
+    private func tileOn(_ id: String) -> Bool {
+        if id == PlanKinds.weights { return !steady && gymDays > 0 }
+        if id == PlanKinds.steady { return steady && gymDays > 0 }
+        return extras.contains(id)
+    }
+
+    /// One of How you train's tiles: weights and Strong and steady are the plan's sessions, the rest its activities.
+    private func trainTile(_ k: PlanKinds.Kind) -> some View {
+        let on: Bool = tileOn(k.id)
+        let badge: Bool = k.id == PlanKinds.steady && older
+        return Button {
+            withAnimation(.snappy) {
+                if k.id == PlanKinds.weights || k.id == PlanKinds.steady {
+                    if on { trainPicked = true; gymDays = 0; steady = false } else { pickTraining(k.id == PlanKinds.steady ? "steady" : "weights") }
+                } else if on { extras.remove(k.id) } else { extras.insert(k.id) }
+            }
+        } label: {
+            VStack(spacing: 5) {
+                Image(systemName: k.symbol).font(.title3).foregroundStyle(on ? Theme.accent : Color.primary).frame(height: 26)
+                Text(k.id).font(.caption.weight(.bold)).multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.85)
+                if badge { Text("Good at 60+").font(.caption2.weight(.heavy)).foregroundStyle(Color.green) }
+            }
+            .frame(maxWidth: .infinity, minHeight: 78).padding(.horizontal, 4).padding(.vertical, 4)
+            .background(on ? Theme.hero : Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(on ? Theme.accent : .clear, lineWidth: 2))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(badge ? "\(k.id), Good at 60+" : k.id)
+        .accessibilityAddTraits(on ? .isSelected : [])
+        .sensoryFeedback(.selection, trigger: on)
+    }
+
+    /// The other tiles picked, as plan activities: one day each, off the weights days where it can.
+    private var trainActivities: [PlanActivity] {
+        var taken: Set<Int> = Set(gymDays > 0 ? week.map(\.weekday) : [])
+        var out: [PlanActivity] = []
+        for k in PlanKinds.all where extras.contains(k.id) {
+            guard let t = k.type else { continue }
+            let days: [Int] = PlanKinds.freeDays(1, taken: taken)
+            taken.formUnion(days)
+            out.append(PlanActivity(id: "signup-" + k.id, type: t, days: days, minutes: k.minutes, effort: k.effort))
+        }
+        return out
+    }
 
     /// Strong and steady, weights, or not for now; each keeps the days and kit sensible for it.
     private func pickTraining(_ how: String) {
@@ -624,18 +664,27 @@ struct OnboardingView: View {
     /// The answers turned into what the maths needs.
     private var input: PlanInput {
         var i = q
-        let other = extras.subtracting(["Walking"]).count   // walking counts in day-to-day activity
+        let other = extras.subtracting(["Walking", "Walking / hiking"]).count   // walking counts in day-to-day activity
+        let sport: Bool = !extras.isDisjoint(with: ["Sport", "Team sport", "Racket sport"])
         i.trainDays = gymDays + min(2, other)
-        i.trainType = gymDays > 0 ? (other > 0 ? "mix" : "weights") : (extras.contains("Sport") ? "sport" : "cardio")
+        i.trainType = gymDays > 0 ? (other > 0 ? "mix" : "weights") : (sport ? "sport" : "cardio")
         i.protein = gymDays >= 2 ? (q.goal == "lose" ? "high" : "lift") : (q.goal == "lose" ? "high" : "std")
         if steady && gymDays > 0 { i.trainMins = 25 }   // short, gentle sessions burn less than an hour in the gym
         return i
     }
 
-    private var week: [PlanSession] { builtPlan.sessions }
-    private var builtPlan: WorkoutPlan {
+    /// The weights (or Strong and steady) days; none when neither's picked.
+    private var week: [PlanSession] { gymDays > 0 ? liftPlan.sessions : [] }
+    private var liftPlan: WorkoutPlan {
         let goal: String = steady ? "steady" : q.goal == "maintain" ? "fitness" : "muscle"
-        return WorkoutPlanner.build(goal: goal, days: gymDays, experience: experience, kit: kit, minutes: steady ? 30 : 60, focus: [], keep: [], start: store.today)
+        return WorkoutPlanner.build(goal: goal, days: max(1, gymDays), experience: experience, kit: kit, minutes: steady ? 30 : 60, focus: [], keep: [], start: store.today)
+    }
+    /// The plan sign-up makes: those days, and the other tiles picked, one day each.
+    private var builtPlan: WorkoutPlan {
+        var p: WorkoutPlan = liftPlan
+        p.sessions = week
+        p.activities = trainActivities
+        return p
     }
 
     private func reps(_ m: PlanMove) -> String { m.low == m.high ? "\(m.low)" : "\(m.low)–\(m.high)" }
@@ -676,9 +725,17 @@ struct OnboardingView: View {
             ForEach(r.notes, id: \.self) { n in
                 Label(n, systemImage: "info.circle").font(.footnote).foregroundStyle(Theme.warn)
             }
-            if gymDays > 0 {
-                label("Training: \(trainingName)")
+            if gymDays > 0 || !trainActivities.isEmpty {
+                label(gymDays > 0 ? "Training: \(trainingName)" : "Your week")
                 card {
+                    ForEach(trainActivities) { a in
+                        HStack(alignment: .top) {
+                            Text(a.dayNames).font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent).frame(width: 40, alignment: .leading)
+                            Label(a.label, systemImage: a.symbol).font(.subheadline.weight(.bold))
+                            Spacer(minLength: 0)
+                            Text(a.line).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
                     ForEach(week.indices, id: \.self) { i in
                         let d = week[i]
                         HStack(alignment: .top) {
@@ -690,7 +747,12 @@ struct OnboardingView: View {
                             Spacer(minLength: 0)
                         }
                     }
-                    Text(steady ? Training.steadyNote : Training.note(experience)).font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+                    if gymDays > 0 {
+                        Text(steady ? Training.steadyNote : Training.note(experience)).font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    if !trainActivities.isEmpty {
+                        Text("Days and times can be changed any time in Workouts.").font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     Toggle("Make this my workout plan", isOn: $saveRoutines).font(.subheadline.weight(.semibold))
                 }
             }
@@ -784,7 +846,10 @@ struct OnboardingView: View {
         cuisines = Set(p["cuisines"] as? [String] ?? [])
         loves = Set(p["loves"] as? [String] ?? [])
         avoid = Set(p["avoid"] as? [String] ?? [])
-        extras = Set(p["extras"] as? [String] ?? [])
+        // (the chips before 25 Nov's tiles had shorter names)
+        let renamed: [String: String] = ["Running": "Running", "Cycling": "Cycling", "Swimming": "Swimming", "Classes": "Classes / HIIT",
+                                         "Sport": "Team sport", "Yoga": "Yoga / Pilates", "Walking": "Walking / hiking"]
+        extras = Set((p["extras"] as? [String] ?? []).map { renamed[$0] ?? $0 })
         if let u = p["usual"] as? [String], u.count == 4 { usual = u }
         usualKcal = pos(p["usualKcal"]); usualProtein = pos(p["usualProtein"])
         if let e = p["experience"] as? String { experience = e }
@@ -815,7 +880,7 @@ struct OnboardingView: View {
             "training": week.map { ["weekday": $0.weekday, "name": $0.name] as JSON }, "ideas": ideas, "updatedAt": ISO.now()
         ]
         var prefsOut = prefs
-        if saveRoutines && gymDays > 0 { prefsOut["workoutPlan"] = builtPlan.json }
+        if saveRoutines && (gymDays > 0 || !trainActivities.isEmpty) { prefsOut["workoutPlan"] = builtPlan.json }
         var days = JSON(); for (k, v) in r.days { days[String(k)] = v }
         store.perform([
             "type": "plan", "profile": ["sex": q.sex, "age": Int(q.age), "height": q.height] as JSON,

@@ -73,4 +73,35 @@ final class WorkoutPlanTests: XCTestCase {
         XCTAssertTrue(b.sessions[1].moves.map(\.exercise).contains("Band row"))
         XCTAssertEqual(WorkoutPlanner.build(goal: "muscle", days: 2, experience: "new", kit: "band", minutes: 45, focus: [], keep: [], start: "2026-11-24").kit, "none")
     }
+
+    /// 25 Nov, design/plan-any-workout-mockup.html: a plan can be runs and classes with no weights at all, and keeps them.
+    func testAPlanOfRunsAndYogaWithNoWeights() throws {
+        let run = PlanActivity(type: "Run", days: [2, 6], minutes: 30, effort: "easy")
+        let yoga = PlanActivity(type: "Yoga / stretch", days: [0], minutes: 45, effort: "moderate")
+        let p = WorkoutPlan(goal: "fitness", experience: "some", kit: "none", minutes: 45, focus: [], start: "2026-11-23", sessions: [], activities: [run, yoga])
+        let back = try XCTUnwrap(WorkoutPlan(p.json), "a plan with no sessions still reads back")
+        XCTAssertEqual(back.activities, [run, yoga])
+        XCTAssertEqual(back.title, "Run, yoga · 3 days")
+        XCTAssertEqual(back.activities(on: "2026-11-24").map(\.type), ["Run"], "Tuesday")
+        XCTAssertTrue(back.activities(on: "2026-11-25").isEmpty)
+        XCTAssertEqual(back.nextDay(after: "2026-11-24")?.date, "2026-11-28", "Saturday's run is next")
+        XCTAssertEqual(run.dayNames, "Tue and Sat")
+        XCTAssertNil(WorkoutPlan(WorkoutPlan(goal: "fitness", experience: "some", kit: "none", minutes: 45, focus: [], start: "2026-11-23", sessions: []).json))
+    }
+
+    func testWeightsGoOnTheDaysPickedAndACoachSpotsClashes() {
+        let p = WorkoutPlanner.build(goal: "muscle", days: 2, experience: "some", kit: "gym", minutes: 45, focus: [], keep: [], start: "2026-11-24", weekdays: [4, 1])
+        XCTAssertEqual(p.sessions.map(\.weekday), [1, 4], "Monday and Thursday, Monday first")
+        // a hard run the day after full body (legs in it): said once, with why
+        let friday = PlanActivity(type: "Run", days: [5], minutes: 30, effort: "moderate")
+        XCTAssertEqual(PlanKinds.tips(sessions: p.sessions, activities: [friday]).count, 1)
+        XCTAssertTrue(PlanKinds.tips(sessions: p.sessions, activities: [PlanActivity(type: "Run", days: [6], minutes: 30, effort: "easy")]).isEmpty)
+        // every day busy: a word about rest
+        let daily = PlanActivity(type: "Yoga / stretch", days: [0, 2, 3, 5, 6], minutes: 20, effort: "easy")
+        XCTAssertTrue(PlanKinds.tips(sessions: p.sessions, activities: [daily]).contains { $0.contains("rest day") })
+        // new things go on free days, weekends first
+        XCTAssertEqual(PlanKinds.freeDays(1, taken: [1, 4]), [6])
+        XCTAssertEqual(PlanKinds.freeDays(2, taken: [1, 4, 6]), [2, 0])
+        for k in PlanKinds.all { if let t = k.type { XCTAssertTrue(Activities.all.contains { $0.name == t }, t + " isn't an activity you can log") } }
+    }
 }

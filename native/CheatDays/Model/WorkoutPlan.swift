@@ -50,15 +50,19 @@ struct WorkoutPlan: Equatable {
     var start: String          // the Monday of week 1
     var weeks = 6
     var sessions: [PlanSession]
+    /// Everything that isn't a weights session: runs, classes, matches (25 Nov, design/plan-any-workout-mockup.html).
+    /// A plan can be only these.
+    var activities: [PlanActivity] = []
 
-    init(goal: String, experience: String, kit: String, minutes: Int, focus: [String], start: String, weeks: Int = 6, sessions: [PlanSession]) {
+    init(goal: String, experience: String, kit: String, minutes: Int, focus: [String], start: String, weeks: Int = 6, sessions: [PlanSession], activities: [PlanActivity] = []) {
         self.goal = goal; self.experience = experience; self.kit = kit; self.minutes = minutes; self.focus = focus
-        self.start = start; self.weeks = weeks; self.sessions = sessions
+        self.start = start; self.weeks = weeks; self.sessions = sessions; self.activities = activities
         sort()
     }
 
     init?(_ any: Any?) {
-        guard let j = any as? JSON, !list(j["sessions"]).isEmpty else { return nil }
+        guard let j = any as? JSON, !list(j["sessions"]).isEmpty || !list(j["activities"]).isEmpty else { return nil }
+        activities = list(j["activities"]).map(PlanActivity.init)
         goal = str(j["goal"]).isEmpty ? "muscle" : str(j["goal"])
         experience = str(j["experience"]).isEmpty ? "some" : str(j["experience"])
         kit = str(j["kit"]).isEmpty ? "gym" : str(j["kit"])
@@ -72,7 +76,24 @@ struct WorkoutPlan: Equatable {
 
     var json: JSON {
         ["goal": goal, "experience": experience, "kit": kit, "minutes": minutes, "focus": focus, "start": start, "weeks": weeks,
-         "sessions": sessions.map(\.json), "updatedAt": ISO.now()]
+         "sessions": sessions.map(\.json), "activities": activities.map(\.json), "updatedAt": ISO.now()]
+    }
+
+    /// The activities planned on a date's weekday.
+    func activities(on date: String) -> [PlanActivity] {
+        let wd: Int = DayKey.weekday(date)
+        return activities.filter { $0.days.contains(wd) }
+    }
+    /// Every weekday with something on it.
+    var activeDays: Set<Int> { Set(sessions.map(\.weekday)).union(activities.flatMap(\.days)) }
+    /// The next day after a date with something planned, and what: a session, its activities, or both.
+    func nextDay(after date: String) -> (date: String, session: PlanSession?, activities: [PlanActivity])? {
+        for i in 1...7 {
+            let d: String = DayKey.shift(date, days: i)
+            let s: PlanSession? = session(on: d), a: [PlanActivity] = activities(on: d)
+            if s != nil || !a.isEmpty { return (d, s, a) }
+        }
+        return nil
     }
 
     /// Monday first, Sunday last.
@@ -97,11 +118,102 @@ struct WorkoutPlan: Equatable {
             let n = s.name.replacingOccurrences(of: " A", with: "").replacingOccurrences(of: " B", with: "")
             if seen.insert(n).inserted { names.append(n) }
         }
-        return names.prefix(3).joined(separator: " / ") + ", \(sessions.count) day\(sessions.count == 1 ? "" : "s")"
+        if activities.isEmpty {
+            return names.prefix(3).joined(separator: " / ") + ", \(sessions.count) day\(sessions.count == 1 ? "" : "s")"
+        }
+        // with activities: what's in it by kind, as the card says it ("Run, weights, yoga · 5 days")
+        var kinds: [String] = sessions.isEmpty ? [] : [goal == "steady" ? "strong and steady" : "weights"]
+        for a in activities where !kinds.contains(a.label.lowercased()) { kinds.append(a.label.lowercased()) }
+        let n: Int = activeDays.count
+        return kinds.prefix(4).joined(separator: ", ").capitalizedFirst + " · \(n) day\(n == 1 ? "" : "s")"
     }
 
     /// Planned hard sets a week for each muscle.
     var volume: [String: Int] { WorkoutPlanner.volume(sessions) }
+}
+
+/// A run, a class, a match: something in the plan's week that isn't a weights session, on its days, for so long.
+struct PlanActivity: Identifiable, Equatable {
+    var id: String
+    var type: String          // one of Activities.all: "Run", "Yoga / stretch", "Team sport" …
+    var name: String          // their own name for it, for "Other" (empty: the type's)
+    var days: [Int]           // 0 Sunday … 6 Saturday
+    var minutes: Int
+    var effort: String        // easy, moderate, hard
+
+    init(id: String = uid(), type: String, name: String = "", days: [Int], minutes: Int, effort: String) {
+        self.id = id; self.type = type; self.name = name; self.days = days; self.minutes = minutes; self.effort = effort
+    }
+    init(_ j: JSON) {
+        id = str(j["id"]).isEmpty ? uid() : str(j["id"])
+        type = str(j["type"]).isEmpty ? "Other" : str(j["type"])
+        name = str(j["name"])
+        days = ((j["days"] as? [Any]) ?? []).compactMap { (v: Any) -> Int? in num(v).map { Int($0) } }
+        minutes = Int(num(j["minutes"]) ?? 30)
+        effort = str(j["effort"]).isEmpty ? "moderate" : str(j["effort"])
+    }
+    var json: JSON { ["id": id, "type": type, "name": name, "days": days, "minutes": minutes, "effort": effort] }
+
+    /// What it's called: their name, or the tile's ("Yoga / stretch" is Yoga).
+    var label: String { !name.isEmpty ? name : PlanKinds.kind(type: type)?.short ?? type }
+    var symbol: String { PlanKinds.kind(type: type)?.symbol ?? Activities.symbol(type) }
+    /// "30 min, easy"
+    var line: String { "\(minutes) min, \(effort)" }
+    /// "Tue and Sat"
+    var dayNames: String { PlanKinds.dayNames(days) }
+}
+
+/// What's in your week: the tiles a plan starts from, each an activity you log (or weights, or Strong and steady),
+/// with the time and effort it starts at.
+enum PlanKinds {
+    struct Kind { let id: String; let short: String; let symbol: String; let type: String?; let minutes: Int; let effort: String }
+    static let weights = "Weights", steady = "Strong and steady"
+    static let all: [Kind] = [
+        Kind(id: "Running", short: "Run", symbol: "figure.run", type: "Run", minutes: 30, effort: "moderate"),
+        Kind(id: weights, short: "Weights", symbol: "dumbbell.fill", type: nil, minutes: 45, effort: "moderate"),
+        Kind(id: "Yoga / Pilates", short: "Yoga", symbol: "figure.yoga", type: "Yoga / stretch", minutes: 45, effort: "moderate"),
+        Kind(id: "Cycling", short: "Cycle", symbol: "figure.outdoor.cycle", type: "Cycle", minutes: 45, effort: "moderate"),
+        Kind(id: "Swimming", short: "Swim", symbol: "figure.pool.swim", type: "Swim", minutes: 30, effort: "moderate"),
+        Kind(id: "Classes / HIIT", short: "Class", symbol: "figure.boxing", type: "HIIT", minutes: 45, effort: "hard"),
+        Kind(id: "Team sport", short: "Team sport", symbol: "sportscourt.fill", type: "Team sport", minutes: 60, effort: "hard"),
+        Kind(id: "Racket sport", short: "Tennis", symbol: "figure.tennis", type: "Tennis / padel", minutes: 60, effort: "moderate"),
+        Kind(id: "Climbing", short: "Climb", symbol: "figure.climbing", type: "Climbing", minutes: 60, effort: "moderate"),
+        Kind(id: "Dance", short: "Dance", symbol: "figure.dance", type: "Dance", minutes: 45, effort: "moderate"),
+        Kind(id: "Walking / hiking", short: "Hike", symbol: "figure.hiking", type: "Hike", minutes: 60, effort: "moderate"),
+        Kind(id: steady, short: "Strong and steady", symbol: "chair.fill", type: nil, minutes: 30, effort: "easy"),
+    ]
+    static func kind(_ id: String) -> Kind? { all.first { $0.id == id } }
+    static func kind(type: String) -> Kind? { all.first { $0.type == type } }
+
+    /// Days for something new, off the ones already taken where it can be: weekends first, then midweek.
+    static func freeDays(_ count: Int, taken: Set<Int>) -> [Int] {
+        let order: [Int] = [6, 0, 2, 4, 3, 5, 1]
+        var out: [Int] = order.filter { !taken.contains($0) }
+        out += order.filter { taken.contains($0) }
+        return Array(out.prefix(max(1, count))).sorted { ($0 + 6) % 7 < ($1 + 6) % 7 }
+    }
+
+    /// "Tue and Sat", "Mon, Wed and Fri"
+    static func dayNames(_ days: [Int]) -> String {
+        let names: [String] = days.sorted { ($0 + 6) % 7 < ($1 + 6) % 7 }.map { Calendar.current.shortWeekdaySymbols[$0] }
+        guard names.count > 1, let last = names.last else { return names.first ?? "" }
+        return names.dropLast().joined(separator: ", ") + " and " + last
+    }
+
+    /// A word for the day before a hard run or match, the way a coach would put it, or nil when the week's fine.
+    static func tips(sessions: [PlanSession], activities: [PlanActivity]) -> [String] {
+        var out: [String] = []
+        let legs: [Int] = sessions.filter { s in ["Full body", "Lower", "Legs", "Steady"].contains { s.name.hasPrefix($0) } }.map(\.weekday)
+        for a in activities where ["Run", "Team sport", "HIIT"].contains(a.type) {
+            for d in a.days where legs.contains((d + 6) % 7) {
+                let day: String = Calendar.current.weekdaySymbols[d]
+                out.append("\(a.label) on \(day) is the day after legs, so it may feel heavy. Fine if you take it easy.")
+            }
+        }
+        let busy: Int = Set(sessions.map(\.weekday)).union(activities.flatMap(\.days)).count
+        if busy == 7 { out.append("Nothing's left as a rest day. One easy day a week helps you come back stronger.") }
+        return out
+    }
 }
 
 /// Which muscle an exercise trains, and how many hard sets a week to aim for.
@@ -161,12 +273,15 @@ enum WorkoutPlanner {
         return PlanSession(weekday: 1, name: template, moves: moves)
     }
 
-    static func build(goal: String, days: Int, experience: String, kit: String, minutes: Int, focus: [String], keep: [JSON], start: String) -> WorkoutPlan {
+    static func build(goal: String, days: Int, experience: String, kit: String, minutes: Int, focus: [String], keep: [JSON], start: String, weekdays: [Int]? = nil) -> WorkoutPlan {
         let n = max(1, min(6, days))
+        // the days they picked, Monday first; or the usual spread for that many
+        var picked: [Int]? = nil
+        if let w = weekdays, w.count == n { picked = w.sorted { (x: Int, y: Int) -> Bool in (x + 6) % 7 < (y + 6) % 7 } }
         // a band is only a Strong and steady choice; the gym plans do it as bodyweight
         let kit: String = goal != "steady" && kit == "band" ? "none" : kit
         if goal == "steady" {
-            let wds: [Int] = Training.weekdays(n)
+            let wds: [Int] = picked ?? Training.weekdays(n)
             let steady: [PlanSession] = (0..<n).map { (i: Int) -> PlanSession in
                 var s: PlanSession = session(i % 2 == 0 ? "Steady A" : "Steady B", goal: goal, experience: "new", kit: kit, minutes: minutes, focus: [])
                 s.weekday = wds[i % wds.count]
@@ -191,7 +306,7 @@ enum WorkoutPlanner {
                 sessions.append(PlanSession(weekday: 1, name: best.name, moves: best.moves))
             }
         }
-        let wds = Training.weekdays(n)
+        let wds: [Int] = picked ?? Training.weekdays(n)
         for i in sessions.indices { sessions[i].weekday = wds[i % wds.count] }
         return WorkoutPlan(goal: goal, experience: experience, kit: kit, minutes: minutes, focus: focus, start: WorkoutPlan.monday(start), sessions: sessions)
     }

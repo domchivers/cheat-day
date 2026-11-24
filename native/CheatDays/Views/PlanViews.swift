@@ -4,14 +4,18 @@ import SwiftUI
 struct PlanCard: View {
     let plan: WorkoutPlan
     var start: (PlanSession) -> Void
+    /// Log a planned run, class or match: Log an activity, filled in (25 Nov).
+    var log: (PlanActivity) -> Void = { _ in }
     private var store: Store { Store.shared }
 
     var body: some View {
-        let today = store.today, mon = WorkoutPlan.monday(today)
-        let todays = plan.session(on: today), easy = plan.isDeload(on: today)
+        let today: String = store.today, mon: String = WorkoutPlan.monday(today)
+        let todays: PlanSession? = plan.session(on: today), acts: [PlanActivity] = plan.activities(on: today)
+        let easy: Bool = !plan.sessions.isEmpty && plan.isDeload(on: today)
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Eyebrow(text: "Your plan · week \(plan.week(on: today)) of \(plan.weeks)\(easy ? " · easier week" : "")", color: easy ? Theme.warn : Theme.heroLabel)
+                Eyebrow(text: plan.sessions.isEmpty ? "Your plan" : "Your plan · week \(plan.week(on: today)) of \(plan.weeks)\(easy ? " · easier week" : "")",
+                        color: easy ? Theme.warn : Theme.heroLabel)
                 Text(plan.title).font(.headline)
             }
             HStack(spacing: 5) {
@@ -21,11 +25,48 @@ struct PlanCard: View {
                 Label("Today's \(t.name.lowercased()) is done. Nice.", systemImage: "checkmark.circle.fill").font(.subheadline.weight(.semibold)).foregroundStyle(.green)
             } else if let t = todays {
                 session(t, title: "Today: \(t.name)", prominent: true)
-            } else if let n = plan.next(after: today) {
-                session(n.session, title: "Rest day. Next: \(DayKey.date(n.date).formatted(.dateTime.weekday(.wide))), \(n.session.name)", prominent: false)
+            }
+            ForEach(acts) { a in activity(a, prominent: todays == nil) }
+            if todays == nil && acts.isEmpty, let n = plan.nextDay(after: today) {
+                restDay(n)
             }
         }
         .padding(.vertical, 6)
+    }
+
+    @ViewBuilder private func restDay(_ n: (date: String, session: PlanSession?, activities: [PlanActivity])) -> some View {
+        let day: String = DayKey.date(n.date).formatted(.dateTime.weekday(.wide))
+        if let s = n.session {
+            session(s, title: "Rest day. Next: \(day), \(s.name)", prominent: false)
+        } else {
+            Text("Rest day. Next: \(day), \(n.activities.map { $0.label.lowercased() }.joined(separator: " and "))").font(.subheadline.weight(.bold))
+        }
+    }
+
+    /// Today's run, class or match: done once one of its kind is logged today, or Log it.
+    @ViewBuilder private func activity(_ a: PlanActivity, prominent: Bool) -> some View {
+        if done(a, on: store.today) {
+            Label("Today's \(a.label.lowercased()) is done. Nice.", systemImage: "checkmark.circle.fill").font(.subheadline.weight(.semibold)).foregroundStyle(.green)
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Today: \(a.label)", systemImage: a.symbol).font(.subheadline.weight(.bold))
+                Text("\(a.line) · about \(Fmt.int(store.burn(a.type, minutes: Double(a.minutes), effort: a.effort))) kcal").font(.caption).foregroundStyle(.secondary)
+                Group {
+                    if prominent {
+                        Button { log(a) } label: { Label("Log it", systemImage: "checkmark").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 4) }
+                            .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
+                    } else {
+                        Button { log(a) } label: { Label("Log it", systemImage: "checkmark").frame(maxWidth: .infinity) }.buttonStyle(.bordered)
+                    }
+                }
+                .buttonBorderShape(.roundedRectangle(radius: 12))
+            }
+        }
+    }
+
+    /// One of its kind logged that day (any activity, for one of their own).
+    private func done(_ a: PlanActivity, on date: String) -> Bool {
+        store.workouts(on: date).contains { (w: JSON) -> Bool in a.type == "Other" ? list(w["lifts"]).isEmpty : str(w["type"]) == a.type }
     }
 
     private func session(_ t: PlanSession, title: String, prominent: Bool) -> some View {
@@ -46,8 +87,11 @@ struct PlanCard: View {
     }
 
     private func dayCell(_ date: String) -> some View {
-        let wd = DayKey.weekday(date), planned = plan.sessions.contains { $0.weekday == wd }
-        let done = store.liftedOn(date), isToday = date == store.today, cheat = store.cheatWeekday == wd
+        let wd: Int = DayKey.weekday(date), acts: [PlanActivity] = plan.activities(on: date)
+        let lifts: Bool = plan.sessions.contains { $0.weekday == wd }, planned: Bool = lifts || !acts.isEmpty
+        let actsDone: Bool = !acts.isEmpty && acts.allSatisfy { done($0, on: date) } && (!lifts || store.liftedOn(date))
+        let done: Bool = (store.liftedOn(date) && acts.isEmpty) || actsDone
+        let isToday: Bool = date == store.today, cheat: Bool = store.cheatWeekday == wd
         let fill: Color = done ? Color.green.opacity(0.28) : isToday ? Theme.accent : planned ? Theme.track : Color(.tertiarySystemFill).opacity(0.5)
         return VStack(spacing: 3) {
             Text(Calendar.current.veryShortWeekdaySymbols[wd]).font(.caption2.weight(.bold))
@@ -55,6 +99,7 @@ struct PlanCard: View {
             Group {
                 if done { Image(systemName: "checkmark").font(.caption2.weight(.heavy)).foregroundStyle(.green) }
                 else if cheat { PizzaIcon(size: 11).scaleEffect(y: -1) }
+                else if let a = acts.first, !lifts { Image(systemName: a.symbol).font(.system(size: 9, weight: .bold)).foregroundStyle(isToday ? Theme.onAccent : Theme.accent) }
                 else if planned { Circle().fill(isToday ? Theme.onAccent : Theme.accent).frame(width: 5, height: 5) }
                 else { Color.clear.frame(width: 5, height: 5) }
             }
@@ -97,128 +142,6 @@ struct VolumeRows: View {
     }
 }
 
-/// Build a plan: what it's for, days, time, kit, experience, muscles to bring up, and routines to keep.
-struct PlanBuilder: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var goal = "muscle"
-    @State private var days = 3
-    @State private var minutes = 60
-    @State private var kit = "gym"
-    @State private var experience = "some"
-    @State private var focus: Set<String> = []
-    @State private var keep: Set<String> = []
-    @State private var loaded = false
-    private var store: Store { Store.shared }
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 10) {
-                    label("What's it for?")
-                    ChoiceCard(title: "Build muscle", sub: "Moderate weights, 6–15 reps", symbol: "figure.strengthtraining.traditional", on: goal == "muscle") { pick("muscle") }
-                    ChoiceCard(title: "Get stronger", sub: "Heavier on the big lifts, 3–6 reps", symbol: "scalemass.fill", on: goal == "strength") { pick("strength") }
-                    ChoiceCard(title: "General fitness", sub: "Lighter, more reps, keeps you moving well", symbol: "heart.fill", on: goal == "fitness") { pick("fitness") }
-                    // 24 Nov: simple moves at home, for older people too (design/strong-steady-mockup.html)
-                    ChoiceCard(title: "Strong and steady", sub: "Simple moves at home, with balance. Good at any age", symbol: "chair.fill", on: goal == "steady") { pick("steady") }
-                    label("Days a week")
-                    Picker("Days", selection: $days) { ForEach(1...6, id: \.self) { Text("\($0)").tag($0) } }.pickerStyle(.segmented)
-                    label("Time per session")
-                    Picker("Minutes", selection: $minutes) { ForEach([30, 45, 60, 75], id: \.self) { Text("\($0) min").tag($0) } }.pickerStyle(.segmented)
-                    if goal == "steady" {
-                        // always at home, so what's to hand instead of where
-                        label("Any weights at home?")
-                        Picker("Weights", selection: $kit) { Text("None").tag("none"); Text("Light dumbbells").tag("dumbbells"); Text("A band").tag("band") }.pickerStyle(.segmented)
-                        Text(Training.steadyNote).font(.footnote).foregroundStyle(.secondary).padding(.top, 4)
-                    } else {
-                        label("Where?")
-                        Picker("Kit", selection: $kit) { Text("Full gym").tag("gym"); Text("Dumbbells").tag("dumbbells"); Text("No kit").tag("none") }.pickerStyle(.segmented)
-                        label("How long have you been lifting?")
-                        Picker("Experience", selection: $experience) { Text("New to it").tag("new"); Text("A year or two").tag("some"); Text("Years").tag("lots") }.pickerStyle(.segmented)
-                        label("Want more of")
-                        Flow {
-                            ForEach(WorkoutPlanner.focusOptions, id: \.self) { f in
-                                Chip(text: f, on: focus.contains(f)) { if focus.contains(f) { focus.remove(f) } else { focus.insert(f) } }
-                            }
-                        }
-                    }
-                    let mine = store.routines.filter { !list($0["exercises"]).isEmpty }
-                    if !mine.isEmpty && goal != "steady" {
-                        label("Start from what you already do")
-                        VStack(spacing: 0) {
-                            ForEach(mine.indices, id: \.self) { i in
-                                let r = mine[i], id = str(r["id"])
-                                Toggle(isOn: Binding(get: { keep.contains(id) }, set: { if $0 { keep.insert(id) } else { keep.remove(id) } })) {
-                                    VStack(alignment: .leading, spacing: 1) {
-                                        Text(str(r["name"]))
-                                        Text("\(list(r["exercises"]).count) exercises").font(.caption).foregroundStyle(.secondary)
-                                    }
-                                }
-                                .padding(.vertical, 8)
-                                if i < mine.count - 1 { Divider() }
-                            }
-                        }
-                        .padding(.horizontal, 16)
-                        .background(Theme.hero, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                        if !keep.isEmpty {
-                            Text(keep.count >= days ? "Your routines fill every day." : "Your routines stay as they are. The other \(days - keep.count) day\(days - keep.count == 1 ? "" : "s") get filled with what they're missing.")
-                                .font(.footnote).foregroundStyle(.secondary)
-                        }
-                    }
-                    if store.workoutPlan != nil {
-                        Text("This replaces your current plan.").font(.footnote).foregroundStyle(Theme.warn).padding(.top, 6)
-                    }
-                    Button { build() } label: {
-                        Text("Build my plan").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 14)
-                    }
-                    .buttonStyle(.borderedProminent).buttonBorderShape(.roundedRectangle(radius: 18)).foregroundStyle(Theme.onAccent).padding(.top, 10)
-                }
-                .padding(.horizontal, 20).padding(.bottom, 30)
-            }
-            .background(Theme.bg.ignoresSafeArea())
-            .navigationTitle("New workout plan")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
-            .onAppear { if !loaded { prefill(); loaded = true } }
-        }
-    }
-
-    private func label(_ t: String) -> some View {
-        Text(t).font(.headline).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 10)
-    }
-
-    private func prefill() {
-        let p = dict(store.doc["prefs"])
-        if let plan = store.workoutPlan {
-            goal = plan.goal; experience = plan.experience; kit = plan.kit; minutes = plan.minutes; focus = Set(plan.focus); days = plan.sessions.count
-        } else {
-            if let e = p["experience"] as? String { experience = e }
-            if let k = p["kit"] as? String { kit = k }
-            if let g = num(p["gymDays"]), g > 0 { days = Int(g) }
-            if p["steady"] as? Bool == true { goal = "steady"; minutes = 30 }
-        }
-        if goal != "steady" && kit == "band" { kit = "none" }
-    }
-
-    /// Strong and steady starts at 2 short days at home; leaving it, a band (its own choice) goes back to no kit.
-    private func pick(_ g: String) {
-        if g == "steady" && goal != "steady" {
-            days = 2; minutes = 30
-            if kit == "gym" { kit = "none" }
-        } else if g != "steady" && goal == "steady" {
-            if kit == "band" { kit = "none" }
-            if minutes == 30 { minutes = 60 }
-        }
-        goal = g
-    }
-
-    private func build() {
-        let kept = goal == "steady" ? [] : store.routines.filter { keep.contains(str($0["id"])) }
-        let plan = WorkoutPlanner.build(goal: goal, days: days, experience: experience, kit: kit, minutes: minutes, focus: focus.sorted(), keep: kept, start: store.today)
-        store.saveWorkoutPlan(plan)
-        dismiss()
-    }
-}
-
 /// Edit the week: drag days into a new order, open a day to swap moves, change sets and reps.
 struct PlanEditor: View {
     @State private var plan: WorkoutPlan
@@ -233,6 +156,43 @@ struct PlanEditor: View {
 
     var body: some View {
         List {
+            if !plan.activities.isEmpty {
+                // runs, classes and matches (25 Nov): their days and times are changed in the plan builder
+                Section {
+                    ForEach(plan.activities) { a in
+                        HStack(spacing: 12) {
+                            Image(systemName: a.symbol).font(.headline).foregroundStyle(Theme.accent).frame(width: 40, alignment: .leading)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(a.label).font(.headline)
+                                Text("\(a.dayNames) · \(a.line)").font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .onDelete { plan.activities.remove(atOffsets: $0) }
+                } header: {
+                    Text("Also in your week")
+                }
+            }
+            if !plan.sessions.isEmpty { liftSections }
+            Section {
+                Button { building = true } label: { Label("Change what's in your week", systemImage: "wand.and.stars") }
+                Button(role: .destructive) { confirmDelete = true } label: { Label("Stop using a plan", systemImage: "trash") }
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(Theme.bg)
+        .navigationTitle("Your week")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { EditButton() }
+        .onChange(of: plan) { _, now in if !now.sessions.isEmpty || !now.activities.isEmpty { store.saveWorkoutPlan(now) } }
+        .sheet(isPresented: $building, onDismiss: { if let p = store.workoutPlan { plan = p } }) { PlanBuilder() }
+        .confirmationDialog("Stop using this plan? Your logged workouts stay.", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Stop using it", role: .destructive) { store.saveWorkoutPlan(nil); dismiss() }
+        }
+    }
+
+    /// The weights (or Strong and steady) days, and the block they repeat in.
+    @ViewBuilder private var liftSections: some View {
             Section {
                 ForEach(plan.sessions) { s in
                     NavigationLink { PlanDayEditor(plan: $plan, id: s.id) } label: {
@@ -261,21 +221,6 @@ struct PlanEditor: View {
             } footer: {
                 Text("You're in week \(plan.week(on: store.today)). The last week of each block is easier: about half the sets at 90% of the weight, so you recover and come back stronger.")
             }
-            Section {
-                Button { building = true } label: { Label("Build a new plan", systemImage: "wand.and.stars") }
-                Button(role: .destructive) { confirmDelete = true } label: { Label("Stop using a plan", systemImage: "trash") }
-            }
-        }
-        .scrollContentBackground(.hidden)
-        .background(Theme.bg)
-        .navigationTitle("Your week")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar { EditButton() }
-        .onChange(of: plan) { _, now in if !now.sessions.isEmpty { store.saveWorkoutPlan(now) } }
-        .sheet(isPresented: $building, onDismiss: { if let p = store.workoutPlan { plan = p } }) { PlanBuilder() }
-        .confirmationDialog("Stop using this plan? Your logged workouts stay.", isPresented: $confirmDelete, titleVisibility: .visible) {
-            Button("Stop using it", role: .destructive) { store.saveWorkoutPlan(nil); dismiss() }
-        }
     }
 }
 
