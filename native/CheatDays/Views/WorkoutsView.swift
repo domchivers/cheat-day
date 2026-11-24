@@ -494,19 +494,29 @@ struct ActivitySheet: View {
         NavigationStack {
             Form {
                 Section {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(Activities.all.filter { !$0.lifting }, id: \.name) { a in
-                                Button { type = a.name } label: {
-                                    Label(a.name, systemImage: Activities.symbol(a.name)).font(.subheadline.weight(.bold))
-                                        .padding(.horizontal, 12).padding(.vertical, 9)
-                                        .background(type == a.name ? Theme.accent : Color(.tertiarySystemFill), in: Capsule())
-                                        .foregroundStyle(type == a.name ? Theme.onAccent : Color.primary)
+                    ScrollViewReader { (proxy: ScrollViewProxy) in
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(Activities.all.filter { !$0.lifting }, id: \.name) { a in
+                                    Button { type = a.name } label: {
+                                        Label(a.name, systemImage: Activities.symbol(a.name)).font(.subheadline.weight(.bold))
+                                            .padding(.horizontal, 12).padding(.vertical, 9)
+                                            .background(type == a.name ? Theme.accent : Color(.tertiarySystemFill), in: Capsule())
+                                            .foregroundStyle(type == a.name ? Theme.onAccent : Color.primary)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .id(a.name)
                                 }
-                                .buttonStyle(.plain)
                             }
+                            .padding(.vertical, 10)
                         }
+                        // 24 Nov: inside the row's own insets the chips were cut off at both sides, Walk's icon gone. The
+                        // strip now runs the card's full width, starting and ending 16 points in.
+                        .contentMargins(.horizontal, 16, for: .scrollContent)
+                        // a planned swim or class, filled in, is brought into view rather than left off the side
+                        .onAppear { if type != "Walk" { proxy.scrollTo(type, anchor: .center) } }
                     }
+                    .listRowInsets(EdgeInsets())
                 }
                 Section("How long") {
                     Stepper("\(Int(minutes)) minutes", value: $minutes, in: 5...300, step: 5)
