@@ -895,25 +895,6 @@ struct FeedView: View {
         .padding(.horizontal, 14).padding(.top, 4)
     }
 
-    /// Have some (a meal or food: it opens to add it to your day), Recipe, or Do it (a workout), as a small button
-    /// in the words' own size: on the end of a photo's tag, or on a card. Nothing for a photo or a badge moment.
-    @ViewBuilder private func haveSome(_ p: JSON) -> some View {
-        let kind = str(p["kind"])
-        if kind != "moment" && kind != "photo" {
-            let word = kind == "workout" ? "Do it" : kind == "meal" ? "Recipe" : "Have some"
-            Button { recipe = p } label: {
-                HStack(spacing: 3) {
-                    Image(systemName: kind == "workout" ? "play.fill" : "plus").font(.system(size: 9, weight: .heavy))
-                    Text(word).lineLimit(1).fixedSize()
-                }
-                .font(.caption.weight(.bold)).foregroundStyle(Theme.onAccent)
-                .padding(.horizontal, 9).padding(.vertical, 4)
-                .background(Theme.accent, in: Capsule())
-            }
-            .buttonStyle(.plain).accessibilityLabel(word)
-        }
-    }
-
     /// No photo: the post as a card in the theme's colours, so the feed never looks empty.
     private func card(_ p: JSON) -> some View {
         let kind = str(p["kind"]), n = numbers(p)
@@ -921,13 +902,8 @@ struct FeedView: View {
         let kg = lifts.reduce(0.0) { $0 + (num($1["sets"]) ?? 0) * (num($1["reps"]) ?? 0) * (num($1["kg"]) ?? 0) }
         return VStack(alignment: .leading, spacing: 8) {
             Eyebrow(text: kind == "workout" ? "Workout" : kind == "meal" ? "Meal" : Self.what(p), color: Theme.heroLabel)
-            // the button beside the name, up clear of the sound button at the bottom right (23 Nov: on a workout with a
-            // song, Do it sat under it)
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text(str(p["name"])).font(.title2.weight(.heavy)).multilineTextAlignment(.leading)
-                Spacer(minLength: 0)
-                haveSome(p)
-            }
+            // Do it or Have some is the square in the icon row under the card, as on a photo post (25 Nov, owner)
+            Text(str(p["name"])).font(.title2.weight(.heavy)).multilineTextAlignment(.leading)
             if kind == "workout" {
                 // A, the scoreboard (16 Nov): three big numbers on one line with no boxes, then a bar of where the
                 // weight went, exercise by exercise. No picture: the numbers carry it.
@@ -1110,10 +1086,10 @@ struct FeedView: View {
                     .buttonStyle(.plain).accessibilityLabel("Send to a friend")
                 Spacer(minLength: 0)
                 // Have some on a photo post: the app's own square plus, in the accent, just before Save (25 Nov,
-                // feed-have-some-icon-mockup A); a workout's Do it is the same square with a play triangle. A post
-                // with no photo keeps its button on the card.
+                // feed-have-some-icon-mockup A); a workout's Do it is the same square with a play triangle. A card
+                // post (no photo) has it here too (25 Nov: Do it was still a pill on the card).
                 let pk = str(p["kind"])
-                if Feed.hasPhoto(p) && pk != "moment" && pk != "photo" {
+                if pk != "moment" && pk != "photo" {
                     let word = pk == "workout" ? "Do it" : pk == "meal" ? "Recipe" : "Have some"
                     Button { recipe = p } label: {
                         GlyphIcon(glyph: pk == "workout" ? .videos : .add, size: 28).foregroundStyle(Theme.accent)
