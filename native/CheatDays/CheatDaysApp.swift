@@ -60,6 +60,7 @@ struct RootView: View {
         else if ProcessInfo.processInfo.arguments.contains("-uitest-plantabs") { PlanTabsHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-workoutplan") { PlanBuilder() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-runtimer") { RunTimerView(week: 2, run: 1) }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-runmap") { RunMapHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-howyoutrain") { OnboardingView(firstRun: false, startStep: 4, testAge: 67) {} }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-tabicons") { TabIconsHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-editprofile") { EditProfileHarness() }

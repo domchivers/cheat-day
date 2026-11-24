@@ -133,7 +133,7 @@ extension HealthSync {
     /// Ask to read workouts (Health shows its sheet only the first time). Once a plan has something other than weights.
     static func askWorkouts() async {
         guard available else { return }
-        try? await health.requestAuthorization(toShare: [], read: [HKObjectType.workoutType()])
+        try? await health.requestAuthorization(toShare: [], read: [HKObjectType.workoutType(), HKSeriesType.workoutRoute()])
         UserDefaults.standard.set(true, forKey: "health.workoutsAsked")
     }
 
@@ -185,6 +185,9 @@ extension HealthSync {
             if store.workouts(on: day).contains(where: { str($0["type"]) == type }) { continue }
             let km: Double? = w.totalDistance.map { $0.doubleValue(for: .meterUnit(with: .kilo)) }
             store.logFromHealth(type: type, name: a.name, minutes: w.duration / 60, effort: a.effort, date: day, km: km, id: "health-" + key)
+            // its map, if the watch kept the route (on the phone only, as the app's own runs)
+            let pts: [RoutePoint] = await route(for: w)
+            if pts.count > 1 { RouteStore.save(pts, id: "health-" + key) }
             added += 1
         }
         UserDefaults.standard.set(Array(seen), forKey: "health.ticked")

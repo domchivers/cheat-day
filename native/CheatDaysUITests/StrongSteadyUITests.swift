@@ -75,6 +75,17 @@ final class StrongSteadyUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Carry on"].waitForExistence(timeout: 2))
     }
 
+    /// A mapped run's page (25 Nov, design/run-route-mockup.html): the map, the numbers, each kilometre.
+    func testAMappedRunsPage() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-uitest-runmap"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Each kilometre"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["average pace"].exists)
+        sleep(3)   // map tiles
+        shot(app, "run-map")
+    }
+
     /// Sign-up's How you train for someone of 67: Strong and steady is marked, and picked to start with.
     func testHowYouTrainAt67() {
         let app = XCUIApplication()

@@ -87,12 +87,25 @@ extension Store {
 
     /// A Start running run, timed by the app: logged as a run, with what it was. A watch's copy of it from Apple
     /// Health that came in first goes, so it isn't counted twice.
-    func logStartRun(week: Int, run: Int, runSeconds: Double, walkSeconds: Double, complete: Bool) {
-        for w in todayWorkouts where str(w["from"]) == "health" && str(w["type"]) == "Run" { deleteWorkout(str(w["id"])) }
+    /// With a mapped route (25 Nov): its distance and each kilometre's time go in the record, the route itself only in
+    /// a file on the phone (RouteStore), never in the account. Returns the workout's id.
+    @discardableResult
+    func logStartRun(week: Int, run: Int, runSeconds: Double, walkSeconds: Double, complete: Bool, route: [RoutePoint] = []) -> String {
+        for w in todayWorkouts where str(w["from"]) == "health" && str(w["type"]) == "Run" {
+            RouteStore.delete(str(w["id"])); deleteWorkout(str(w["id"]))
+        }
         let minutes: Double = (runSeconds + walkSeconds) / 60
-        let w: JSON = ["id": uid(), "type": "Run", "name": "Start running · week \(week), run \(run)", "minutes": Int(minutes.rounded()),
+        let id: String = uid()
+        var w: JSON = ["id": id, "type": "Run", "name": "Start running · week \(week), run \(run)", "minutes": Int(minutes.rounded()),
                        "effort": "easy", "kcal": RunStart.kcal(runSeconds: runSeconds, walkSeconds: walkSeconds, kg: weightKg),
                        "lifts": [Any](), "at": ISO.now(), "plan": RunStart.tag, "week": week, "complete": complete]
+        let meters: Double = RouteMath.meters(route)
+        if route.count > 1 && meters >= 50 {
+            RouteStore.save(route, id: id)
+            w["km"] = (meters / 10).rounded() / 100
+            w["splits"] = RouteMath.splits(route).map { (s: (km: Double, seconds: Double)) -> JSON in ["km": (s.km * 100).rounded() / 100, "s": s.seconds.rounded()] }
+        }
         perform(["type": "logWorkout", "workout": w])
+        return id
     }
 }

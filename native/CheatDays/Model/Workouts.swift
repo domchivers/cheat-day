@@ -287,7 +287,10 @@ extension Store {
          "kcal": burn(type, minutes: minutes, effort: effort), "lifts": lifts, "at": ISO.now()]
     }
 
-    func deleteWorkout(_ id: String) { perform(["type": "deleteWorkout", "id": id, "at": nowMs()]) }
+    func deleteWorkout(_ id: String) {
+        RouteStore.delete(id)   // its map, if it had one, goes with it
+        perform(["type": "deleteWorkout", "id": id, "at": nowMs()])
+    }
 
     func saveRoutine(name: String, exercises: [JSON]) {
         perform(["type": "routine", "routine": ["id": uid(), "name": name, "exercises": exercises] as JSON])

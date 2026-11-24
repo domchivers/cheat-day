@@ -18,6 +18,12 @@ struct RunTimerView: View {
     @State private var confirmEnd = false
     /// The run as an Apple Health workout, so it carries on locked and is saved there (25 Nov).
     @State private var workout = RunSession()
+    /// The route, with GPS, when they map their runs (25 Nov, design/run-route-mockup.html).
+    @State private var tracker = RunTracker()
+    @State private var gps = false
+    @State private var askMap = false
+    @State private var mapped: [RoutePoint] = []
+    private var testing: Bool { ProcessInfo.processInfo.arguments.contains("-uitest-runtimer") }
     private let tick = Timer.publish(every: 0.25, on: .main, in: .common).autoconnect()
     private var store: Store { Store.shared }
 
@@ -52,11 +58,22 @@ struct RunTimerView: View {
             let p: Int = position(elapsed).index
             if p != part { switched(to: p) }
         }
-        .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
-        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false; Cues.cancelNotes() }
+        .onAppear {
+            UIApplication.shared.isIdleTimerDisabled = true
+            // GPS on early, so it has a fix by Start
+            if RunTracker.wanted && !testing { Task { gps = await tracker.warm() } }
+        }
+        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false; Cues.cancelNotes(); tracker.stop() }
+        .sheet(isPresented: $askMap) {
+            MapAsk { (yes: Bool) in
+                RunTracker.asked = true; RunTracker.wanted = yes; askMap = false
+                Task { if yes { gps = await tracker.warm() }; begin() }
+            }
+            .presentationDetents([.medium, .large]).interactiveDismissDisabled()
+        }
         .confirmationDialog("End this run?", isPresented: $confirmEnd, titleVisibility: .visible) {
             Button("End and log what I did") { finish(complete: false) }
-            Button("Throw it away", role: .destructive) { Cues.cancelNotes(); workout.discard(); dismiss() }
+            Button("Throw it away", role: .destructive) { Cues.cancelNotes(); workout.discard(); tracker.stop(); dismiss() }
         } message: { Text("A week moves on after three runs done to the end, so this one won't count towards it.") }
     }
 
@@ -89,6 +106,7 @@ struct RunTimerView: View {
                     Text("\(RunStart.middle(week: week)), with a 5-minute walk either side. \(RunStart.minutes(week: week)) minutes in all.")
                         .font(.body).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     Text("Lock your phone and put it away if you like: it keeps timing, and tells you when to switch.").font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    if gps { gpsLine.padding(.top, 6) }
                 }
             } else if let cur {
                 Text(phaseName(pos.index)).font(.title2.weight(.black)).tracking(3).foregroundStyle(cur.run ? Color.green : Theme.accent)
@@ -97,6 +115,7 @@ struct RunTimerView: View {
                 if pos.index + 1 < parts.count {
                     Text("Then \(parts[pos.index + 1].run ? "run" : "walk") \(RunStart.mmss(parts[pos.index + 1].seconds))").font(.headline).foregroundStyle(.secondary).padding(.top, 10)
                 }
+                if gps { liveStats(t).padding(.top, 34) }
             }
             Spacer()
             bar(t)
@@ -109,7 +128,7 @@ struct RunTimerView: View {
             HStack(spacing: 12) {
                 if started == nil {
                     Button("Not now") { dismiss() }.buttonStyle(.bordered).frame(maxWidth: .infinity)
-                    Button { begin() } label: { Text("Start").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 6) }
+                    Button { if RunTracker.asked || testing { begin() } else { askMap = true } } label: { Text("Start").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 6) }
                         .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
                 } else {
                     Button { confirmEnd = true } label: { Text("End").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 6) }.buttonStyle(.bordered)
@@ -153,8 +172,13 @@ struct RunTimerView: View {
     private func doneView(_ r: (minutes: Int, kcal: Double, complete: Bool)) -> some View {
         VStack(spacing: 14) {
             Spacer()
-            Image(systemName: r.complete ? "checkmark" : "figure.run").font(.system(size: 48, weight: .heavy)).foregroundStyle(.green)
-                .frame(width: 110, height: 110).background(Color.green.opacity(0.18), in: Circle())
+            if mapped.count > 1 {
+                RunMap(points: mapped, interactive: false).frame(height: 220).clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .overlay(alignment: .bottomLeading) { routeBadge.padding(10) }
+            } else {
+                Image(systemName: r.complete ? "checkmark" : "figure.run").font(.system(size: 48, weight: .heavy)).foregroundStyle(.green)
+                    .frame(width: 110, height: 110).background(Color.green.opacity(0.18), in: Circle())
+            }
             Text(r.complete ? "Run \(run) of week \(week) done" : "Logged what you did").font(.title.weight(.heavy)).multilineTextAlignment(.center)
             Text("\(r.minutes) minutes, about \(Fmt.int(r.kcal)) kcal. Logged.").font(.headline).foregroundStyle(.secondary)
             Text(nextLine(r.complete)).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.top, 10)
@@ -163,6 +187,43 @@ struct RunTimerView: View {
                 .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent).buttonBorderShape(.roundedRectangle(radius: 14))
         }
         .padding(.horizontal, 22).padding(.bottom, 24)
+    }
+
+    /// "3.92 km · 7:56 /km" over the done screen's map.
+    private var routeBadge: some View {
+        let m: Double = RouteMath.meters(mapped), secs: Double = mapped.last?.t ?? 0
+        return Text("\(RouteMath.km(m)) km · \(RouteMath.pace(m > 0 ? secs / m * 1000 : nil)) /km")
+            .font(.subheadline.weight(.heavy)).monospacedDigit()
+            .padding(.horizontal, 10).padding(.vertical, 6).background(.ultraThinMaterial, in: Capsule())
+    }
+
+    /// Before Start: whether GPS has them yet.
+    private var gpsLine: some View {
+        let ok: Bool = tracker.ready
+        return HStack(spacing: 6) {
+            Circle().fill(ok ? Color.green : Color.orange).frame(width: 8, height: 8)
+            Text(tracker.rough ? "Precise location is off, so this run won't be mapped" : ok ? "GPS ready" : "Finding GPS…")
+                .font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+        }
+    }
+
+    /// Distance, pace over the last half minute, and time, under the countdown.
+    private func liveStats(_ t: Double) -> some View {
+        HStack(spacing: 0) {
+            stat(RouteMath.km(tracker.meters), "km")
+            stat(RouteMath.pace(tracker.pace), "pace /km")
+            stat(RunStart.mmss(Int(t)), "time")
+        }
+        .padding(.vertical, 12)
+        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func stat(_ v: String, _ label: String) -> some View {
+        VStack(spacing: 2) {
+            Text(v).font(.title2.weight(.heavy)).monospacedDigit().contentTransition(.numericText())
+            Text(label).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private func nextLine(_ complete: Bool) -> String {
@@ -179,22 +240,26 @@ struct RunTimerView: View {
 
     private func begin() {
         started = Date(); now = Date(); part = -1
+        if gps { tracker.start() }
         Cues.prepare()
         Cues.scheduleNotes(parts: parts, from: 0)
         // as a workout it stays awake locked, so the voice is enough; without one, the notifications stay
-        Task { if await workout.start() { Cues.cancelNotes() } }
+        Task {
+            if await workout.start() { Cues.cancelNotes() }
+            tracker.healthRoute = workout.routeBuilder
+        }
     }
 
     private func pause() {
         pausedAt = Date()
         Cues.cancelNotes()
-        workout.pause()
+        workout.pause(); tracker.pause()
     }
 
     private func resume() {
         guard let p = pausedAt else { return }
         pausedFor += Date().timeIntervalSince(p); pausedAt = nil; now = Date()
-        workout.resume()
+        workout.resume(); tracker.resume()
         if !workout.live { Cues.scheduleNotes(parts: parts, from: elapsed) }
     }
 
@@ -205,6 +270,7 @@ struct RunTimerView: View {
         if p >= parts.count { finish(complete: true); return }
         let cur: RunStart.Part = parts[p]
         let words: String
+        tracker.running = cur.run
         if first { words = "Warm-up walk. \(cur.seconds / 60) minutes." }
         else if p == parts.count - 1 && !cur.run { words = "Last bit. Walk and cool down." }
         else { words = cur.run ? "Run now. \(RunStart.clock(cur.seconds).replacingOccurrences(of: "½", with: " and a half")) minutes." : "Walk now." }
@@ -220,11 +286,39 @@ struct RunTimerView: View {
             if p.run { run += take } else { walk += take }
             edge += Double(p.seconds)
         }
+        let route: [RoutePoint] = tracker.points
+        tracker.stop()
         guard complete || t >= 60 else { workout.discard(); dismiss(); return }
         workout.finish()
-        store.logStartRun(week: week, run: self.run, runSeconds: run, walkSeconds: walk, complete: complete)
+        store.logStartRun(week: week, run: self.run, runSeconds: run, walkSeconds: walk, complete: complete, route: route)
+        mapped = RouteMath.meters(route) >= 50 ? route : []
         if complete { Cues.say("Done. Nice work.", run: false) }
         withAnimation { result = (Int(((run + walk) / 60).rounded()), RunStart.kcal(runSeconds: run, walkSeconds: walk, kg: store.weightKg), complete) }
+    }
+}
+
+/// Before the first timed run (25 Nov, design/run-route-mockup.html): why it would like their location, and where the
+/// route goes. Only a yes brings iOS's own ask. Either way the run starts.
+private struct MapAsk: View {
+    var answer: (Bool) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Image(systemName: "map.fill").font(.title2).foregroundStyle(Theme.accent)
+                .frame(width: 54, height: 54).background(Theme.hero, in: Circle())
+            Text("Map your runs?").font(.title2.weight(.heavy))
+            Text("While the app times a run, it can follow your route with GPS: you'll see it on a map with your distance, pace and each kilometre.")
+                .font(.subheadline)
+            Text("Your routes stay on your phone and in Apple Health. They're never shared, and never sent to Cheat Days. Only runs you start here are tracked, and only while they're running.")
+                .font(.footnote).foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+            Button { answer(true) } label: { Text("Map my runs").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 8) }
+                .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent)
+            Button { answer(false) } label: { Text("Not now").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 8) }
+                .buttonStyle(.bordered)
+        }
+        .buttonBorderShape(.roundedRectangle(radius: 14))
+        .padding(22)
     }
 }
 

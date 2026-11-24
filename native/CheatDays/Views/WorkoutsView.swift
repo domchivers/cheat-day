@@ -374,13 +374,21 @@ struct WorkoutRow: View {
     var body: some View {
         let lifts = list(workout["lifts"])
         let sets = lifts.reduce(0) { $0 + max(list($1["detail"]).count, Int(num($1["sets"]) ?? 0)) }
+        // a mapped run (25 Nov): its route's shape in place of the icon, and its distance and pace
+        let route: [RoutePoint]? = RouteStore.has(str(workout["id"])) ? RouteStore.load(str(workout["id"])) : nil
+        let km: Double? = num(workout["km"])
+        let pace: String? = km.flatMap { k in k > 0 ? RouteMath.pace((num(workout["minutes"]) ?? 0) * 60 / k) + " /km" : nil }
         HStack(spacing: 12) {
-            Image(systemName: Activities.symbol(lifts.isEmpty ? str(workout["type"]) : "Gym weights"))
-                .font(.system(size: 16, weight: .semibold)).foregroundStyle(Theme.accent)
-                .frame(width: 34, height: 34).background(Theme.hero, in: Circle())
+            if let route, route.count > 1 {
+                RouteThumb(points: route, size: 40)
+            } else {
+                Image(systemName: Activities.symbol(lifts.isEmpty ? str(workout["type"]) : "Gym weights"))
+                    .font(.system(size: 16, weight: .semibold)).foregroundStyle(Theme.accent)
+                    .frame(width: 34, height: 34).background(Theme.hero, in: Circle())
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(str(workout["name"])).font(.body.weight(.semibold))
-                Text([day ?? date.map { Store.when($0).capitalizedFirst },"\(Int(num(workout["minutes"]) ?? 0)) min",
+                Text([day ?? date.map { Store.when($0).capitalizedFirst }, km.map { String(format: "%.2f km", $0) }, "\(Int(num(workout["minutes"]) ?? 0)) min", pace,
                       lifts.isEmpty ? nil : "\(lifts.count) exercise\(lifts.count == 1 ? "" : "s") · \(sets) sets"].compactMap { $0 }.joined(separator: " · "))
                     .font(.footnote).foregroundStyle(.secondary)
             }
@@ -404,12 +412,20 @@ struct WorkoutDetail: View {
 
     var body: some View {
         let lifts = list(workout["lifts"])
+        let route: [RoutePoint] = RouteStore.load(str(workout["id"])) ?? []
         List {
-            Section {
-                HStack {
-                    stat("\(Int(num(workout["minutes"]) ?? 0))", "minutes")
-                    stat(Fmt.int(num(workout["kcal"]) ?? 0), "kcal")
-                    stat("\(lifts.count)", "exercises")
+            if route.count > 1 {
+                // a mapped run (25 Nov, design/run-route-mockup.html)
+                Section { RunRouteCard(workout: workout, points: route) }
+                    .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
+            } else {
+                Section {
+                    HStack {
+                        stat("\(Int(num(workout["minutes"]) ?? 0))", "minutes")
+                        stat(Fmt.int(num(workout["kcal"]) ?? 0), "kcal")
+                        if lifts.isEmpty, let km = num(workout["km"]) { stat(String(format: "%.2f", km), "km") }
+                        else { stat("\(lifts.count)", "exercises") }
+                    }
                 }
             }
             ForEach(keyed(lifts)) { entry in
