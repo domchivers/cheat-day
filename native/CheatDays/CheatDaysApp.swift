@@ -61,7 +61,12 @@ struct RootView: View {
         else if ProcessInfo.processInfo.arguments.contains("-uitest-workoutplan") { PlanBuilder() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-runtimer") { RunTimerView(week: 2, run: 1) }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-runmap") { RunMapHarness() }
-        else if ProcessInfo.processInfo.arguments.contains("-uitest-freerun") { FreeRunView(following: (week: 2, run: 1)) {} }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-freerun") { MoveView(kind: .run, following: (week: 2, run: 1)) }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-start") { StartPicker { _ in } }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-ride-paused") { MoveView(kind: .ride, preview: (route: RideHarness.route, seconds: 1450, paused: true)) }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-timeit") { TimeItView(preview: (chip: "Yoga", seconds: 2292)) }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-ride-done") { RideDoneHarness() }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-run-bpm") { RunHeartHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-howyoutrain") { OnboardingView(firstRun: false, startStep: 4, testAge: 67) {} }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-tabicons") { TabIconsHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-editprofile") { EditProfileHarness() }

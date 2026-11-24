@@ -92,7 +92,7 @@ final class StrongSteadyUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-uitest-walk"]
         app.launch()
-        XCTAssertTrue(app.buttons["Start a run"].waitForExistence(timeout: 6))
+        XCTAssertTrue(app.buttons["Start a run, ride, walk or timed workout"].waitForExistence(timeout: 6))
         // (the fixture has a session left going, so Weights reads as going back to it)
         XCTAssertTrue(app.buttons["Start a weights session"].exists || app.buttons["Back to your session"].exists)
         XCTAssertTrue(app.buttons["Log a walk, run or class"].exists)
@@ -115,6 +115,66 @@ final class StrongSteadyUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Pause"].waitForExistence(timeout: 3))
         sleep(2)
         shot(app, "free-run-running")
+    }
+
+    /// Start's sheet (26 Nov, design/start-anything-mockup.html): run, ride, walk, hike, or just time it.
+    func testStartSheet() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-uitest-start"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["What are you doing?"].waitForExistence(timeout: 6))
+        for k in ["Run", "Ride", "Walk", "Hike", "Just time it"] { XCTAssertTrue(app.buttons[k].exists, k) }
+        sleep(1)
+        shot(app, "start-sheet")
+    }
+
+    /// A ride stopped at the lights: speed, the climb, and the clock paused by itself.
+    func testRidePausedAtTheLights() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-uitest-ride-paused"]
+        app.launch()
+        let bar = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "you've stopped")).firstMatch
+        XCTAssertTrue(bar.waitForExistence(timeout: 6))
+        XCTAssertTrue(app.buttons["Stop"].exists)
+        sleep(3)   // map tiles
+        shot(app, "ride-paused")
+    }
+
+    /// Just time it, 38 minutes into yoga.
+    func testJustTimeIt() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-uitest-timeit"]
+        app.launch()
+        XCTAssertTrue(app.buttons["Stop and save"].waitForExistence(timeout: 6))
+        XCTAssertTrue(app.staticTexts["Saves to Workouts and Apple Health"].exists)
+        sleep(1)
+        shot(app, "just-time-it")
+    }
+
+    /// A finished ride's page with its heart rate: average, max, the line and the zones.
+    func testFinishedRideHeartRate() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-uitest-ride-done"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["average speed"].waitForExistence(timeout: 8))
+        let heart = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "Heart rate")).firstMatch
+        XCTAssertTrue(heart.waitForExistence(timeout: 4))
+        sleep(3)   // map tiles
+        shot(app, "ride-done")
+        app.swipeUp()
+        sleep(1)
+        shot(app, "ride-done-heart")
+    }
+
+    /// The run screen with a heart strap on: bpm, and the easy-run line.
+    func testRunWithLiveHeartRate() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-uitest-run-bpm"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Heart strap connected"].waitForExistence(timeout: 6))
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Heart rate 152")).firstMatch.exists)
+        sleep(3)   // map tiles
+        shot(app, "run-live-heart")
     }
 
     /// Sign-up's How you train for someone of 67: Strong and steady is marked, and picked to start with.

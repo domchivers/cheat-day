@@ -154,6 +154,7 @@ extension HealthSync {
         case .climbing: return "Climbing"
         case .socialDance, .cardioDance: return "Dance"
         case .hiking: return "Hike"
+        case .walking: return "Walk"
         case .rowing: return "Rowing"
         case .elliptical: return "Elliptical"
         default: return nil
@@ -184,7 +185,10 @@ extension HealthSync {
             // logged by hand already: that's the one that counts
             if store.workouts(on: day).contains(where: { str($0["type"]) == type }) { continue }
             let km: Double? = w.totalDistance.map { $0.doubleValue(for: .meterUnit(with: .kilo)) }
-            store.logFromHealth(type: type, name: a.name, minutes: w.duration / 60, effort: a.effort, date: day, km: km, id: "health-" + key)
+            // its calories, when the watch saved them (26 Nov), and its times, to match one tracked here
+            let k: Double? = w.statistics(for: HKQuantityType(.activeEnergyBurned))?.sumQuantity()?.doubleValue(for: .kilocalorie())
+            store.logFromHealth(type: type, name: a.name, minutes: w.duration / 60, effort: a.effort, date: day, km: km, id: "health-" + key,
+                                start: w.startDate, end: w.endDate, kcal: k)
             // its map, if the watch kept the route (on the phone only, as the app's own runs)
             let pts: [RoutePoint] = await route(for: w)
             if pts.count > 1 { RouteStore.save(pts, id: "health-" + key) }

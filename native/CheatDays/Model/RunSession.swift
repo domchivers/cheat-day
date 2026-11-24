@@ -16,6 +16,22 @@ final class RunSession {
     private(set) var routeBuilder: HKWorkoutRouteBuilder?
     /// Running as a workout: the app stays awake, so the lock-screen notifications aren't needed.
     var live: Bool { session != nil }
+    /// What it is in Health (26 Nov: a ride, walk, hike or a timed class too), outdoors with a route or not, and the
+    /// distance Health keeps for it (cycling has its own; none for a class).
+    var activity: HKWorkoutActivityType = .running
+    var outdoor: Bool = true
+    var distanceType: HKQuantityType? = HKQuantityType(.distanceWalkingRunning)
+
+    init(activity: HKWorkoutActivityType = .running, outdoor: Bool = true, distanceType: HKQuantityType? = HKQuantityType(.distanceWalkingRunning)) {
+        self.activity = activity; self.outdoor = outdoor; self.distanceType = distanceType
+    }
+
+    private func configuration() -> HKWorkoutConfiguration {
+        let config = HKWorkoutConfiguration()
+        config.activityType = activity
+        config.locationType = outdoor ? .outdoor : .indoor
+        return config
+    }
 
     /// Ask to save workouts (Health's sheet shows only the first time), then start. True when it's a live workout
     /// session; false when it's the plain timer (it may still save to Health at the end).
@@ -24,29 +40,33 @@ final class RunSession {
         let type: HKWorkoutType = HKObjectType.workoutType()
         let route: HKSeriesType = HKSeriesType.workoutRoute()
         // (26 Nov, the owner: the saved run carries its distance and active energy too)
-        let share: Set<HKSampleType> = [type, route, HKQuantityType(.distanceWalkingRunning), HKQuantityType(.activeEnergyBurned)]
-        do { try await HealthSync.health.requestAuthorization(toShare: share, read: [type, route]) } catch { return false }
+        var share: Set<HKSampleType> = [type, HKQuantityType(.activeEnergyBurned)]
+        if outdoor { share.insert(route) }
+        if let d = distanceType { share.insert(d) }
+        // heart rate read with it (26 Nov), for the workout page afterwards
+        let read: Set<HKObjectType> = [type, route, HKQuantityType(.heartRate), HKQuantityType(.activeEnergyBurned)]
+        do { try await HealthSync.health.requestAuthorization(toShare: share, read: read) } catch { return false }
+        UserDefaults.standard.set(true, forKey: "health.heartAsked")
         guard HealthSync.health.authorizationStatus(for: type) == .sharingAuthorized else { return false }
         // the route goes with it, when they map their runs and Health may keep routes
-        if RunTracker.wanted && HealthSync.health.authorizationStatus(for: route) == .sharingAuthorized {
+        if outdoor && RunTracker.wanted && HealthSync.health.authorizationStatus(for: route) == .sharingAuthorized {
             routeBuilder = HKWorkoutRouteBuilder(healthStore: HealthSync.health, device: nil)
         }
         plainStart = Date()
-        if #available(iOS 26.0, *) { return startSession() }
+        // (a swim without its pool length or open water can't be a live session; it's saved at the end)
+        if #available(iOS 26.0, *), activity != .swimming { return startSession() }
         return false
     }
 
     @available(iOS 26.0, *)
     private func startSession() -> Bool {
-        let config = HKWorkoutConfiguration()
-        config.activityType = .running
-        config.locationType = .outdoor
+        let config: HKWorkoutConfiguration = configuration()
         do {
             let s = try HKWorkoutSession(healthStore: HealthSync.health, configuration: config)
             let b: HKLiveWorkoutBuilder = s.associatedWorkoutBuilder()
             let source = HKLiveWorkoutDataSource(healthStore: HealthSync.health, workoutConfiguration: config)
             // distance and energy are added once at the end, from the route and the app's own kcal, so not twice
-            source.disableCollection(for: HKQuantityType(.distanceWalkingRunning))
+            if let d = distanceType { source.disableCollection(for: d) }
             source.disableCollection(for: HKQuantityType(.activeEnergyBurned))
             b.dataSource = source
             let now = Date()
@@ -72,15 +92,13 @@ final class RunSession {
     func finish(meters: Double, kcal: Double) {
         let r: HKWorkoutRouteBuilder? = routeBuilder
         let now = Date()
-        let samples: [HKSample] = RunSession.samples(meters: meters, kcal: kcal, start: plainStart ?? now, end: now)
+        let samples: [HKSample] = RunSession.samples(meters: meters, kcal: kcal, distance: distanceType, start: plainStart ?? now, end: now)
         if #available(iOS 26.0, *), let s = session as? HKWorkoutSession, let b = builder as? HKLiveWorkoutBuilder {
             s.end()
             RunSession.close(b, samples: samples, end: now, route: r)
         } else if let start = plainStart {
             // the plain timer: the run saved as a workout of its own, from when it started to now
-            let config = HKWorkoutConfiguration()
-            config.activityType = .running
-            config.locationType = .outdoor
+            let config: HKWorkoutConfiguration = configuration()
             let b = HKWorkoutBuilder(healthStore: HealthSync.health, configuration: config, device: .local())
             b.beginCollection(withStart: start) { _, _ in
                 RunSession.close(b, samples: samples, end: now, route: r)
@@ -90,11 +108,11 @@ final class RunSession {
     }
 
     /// The run's distance and energy as Health samples, each only when Health may keep it and there's something to say.
-    private static func samples(meters: Double, kcal: Double, start: Date, end: Date) -> [HKSample] {
+    private static func samples(meters: Double, kcal: Double, distance d: HKQuantityType?, start: Date, end: Date) -> [HKSample] {
         guard end > start else { return [] }
         var out: [HKSample] = []
-        let distance = HKQuantityType(.distanceWalkingRunning), energy = HKQuantityType(.activeEnergyBurned)
-        if meters >= 50, HealthSync.health.authorizationStatus(for: distance) == .sharingAuthorized {
+        let energy = HKQuantityType(.activeEnergyBurned)
+        if let distance = d, meters >= 50, HealthSync.health.authorizationStatus(for: distance) == .sharingAuthorized {
             out.append(HKQuantitySample(type: distance, quantity: HKQuantity(unit: .meter(), doubleValue: meters), start: start, end: end))
         }
         if kcal > 0, HealthSync.health.authorizationStatus(for: energy) == .sharingAuthorized {

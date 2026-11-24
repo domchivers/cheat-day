@@ -273,9 +273,12 @@ extension Store {
 
     /// A planned activity a watch saved to Apple Health (25 Nov): logged on its day, with its distance, under an id
     /// from Health's own so it only ever comes in once.
-    func logFromHealth(type: String, name: String, minutes: Double, effort: String, date: String, km: Double?, id: String) {
+    func logFromHealth(type: String, name: String, minutes: Double, effort: String, date: String, km: Double?, id: String,
+                       start: Date? = nil, end: Date? = nil, kcal: Double? = nil) {
         var w: JSON = logged(type: type, name: name.isEmpty ? type : name, minutes: minutes, effort: effort, lifts: [])
         w["id"] = id; w["from"] = "health"
+        if let start, let end { w["start"] = ISO.at(start); w["end"] = ISO.at(end) }
+        if let kcal, kcal >= 1 { w["kcal"] = kcal.rounded(); w["kcalFrom"] = "watch" }
         if let km, km > 0 { w["km"] = (km * 100).rounded() / 100 }
         var op: JSON = ["type": "logWorkout", "workout": w]
         if date < today { op["date"] = date }
@@ -289,6 +292,7 @@ extension Store {
 
     func deleteWorkout(_ id: String) {
         RouteStore.delete(id)   // its map, if it had one, goes with it
+        HeartStore.delete(id)   // and its strap readings
         perform(["type": "deleteWorkout", "id": id, "at": nowMs()])
     }
 

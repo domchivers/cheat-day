@@ -92,11 +92,26 @@ import HealthKit
         return (last.t - from.t) / m * 1000
     }
 
+    /// Speed now (m/s) from the latest good fix; nil when GPS has none.
+    var speedNow: Double? {
+        guard let f = fix, f.speed >= 0, -f.timestamp.timeIntervalSinceNow < 6 else { return nil }
+        return f.speed
+    }
+
+    /// For the screenshot harness: a route so far, without GPS.
+    func preview(_ p: [RoutePoint], speed: Double? = nil) {
+        points = p; meters = RouteMath.meters(p); recording = true
+        if let speed, let last = p.last {
+            fix = CLLocation(coordinate: last.coordinate, altitude: 0, horizontalAccuracy: 5, verticalAccuracy: 5, course: 0, speed: speed, timestamp: Date())
+        }
+    }
+
     private func took(_ l: CLLocation) {
         guard l.horizontalAccuracy > 0, l.horizontalAccuracy <= 30, -l.timestamp.timeIntervalSinceNow < 15 else { return }
         fix = l
         guard recording, !rough else { return }
-        let p = RoutePoint(lat: l.coordinate.latitude, lon: l.coordinate.longitude, t: clock, run: running, gap: gapNext)
+        let p = RoutePoint(lat: l.coordinate.latitude, lon: l.coordinate.longitude, t: clock, run: running, gap: gapNext,
+                           alt: l.verticalAccuracy > 0 ? l.altitude : nil)
         if let prev = points.last, !gapNext {
             let d: Double = l.distance(from: prev.location), dt: Double = max(0.5, p.t - prev.t)
             if d < 2 { return }              // standing still: GPS wander

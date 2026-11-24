@@ -111,14 +111,19 @@ struct RunRouteCard: View {
     var body: some View {
         let meters: Double = (num(workout["km"]).map { $0 * 1000 }) ?? RouteMath.meters(points)
         let seconds: Double = points.last?.t ?? (num(workout["minutes"]) ?? 0) * 60
-        let splits: [(km: Double, seconds: Double)] = RouteMath.splits(points)
+        // a ride (26 Nov): speed in place of pace, and no kilometre-by-kilometre pace bars
+        let ride: Bool = str(workout["type"]) == "Cycle"
+        let splits: [(km: Double, seconds: Double)] = ride ? [] : RouteMath.splits(points)
+        let speed: String = seconds > 0 ? String(format: "%.1f km/h", meters / seconds * 3.6) : "–"
         VStack(alignment: .leading, spacing: 12) {
             RunMap(points: points).frame(height: 300).clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
                 tile(RouteMath.km(meters) + " km", "distance")
-                tile(RunStart.mmss(Int(seconds.rounded())), "time")
-                tile(RouteMath.pace(meters > 0 ? seconds / meters * 1000 : nil) + " /km", "average pace")
+                tile(RunStart.mmss(Int(seconds.rounded())), "moving time")
+                if ride { tile(speed, "average speed") }
+                else { tile(RouteMath.pace(meters > 0 ? seconds / meters * 1000 : nil) + " /km", "average pace") }
                 tile(Fmt.int(num(workout["kcal"]) ?? 0), "kcal")
+                if let up = num(workout["climb"]), up >= 1 { tile(Fmt.int(up) + " m", "climbed") }
             }
             if !splits.isEmpty { splitRows(splits) }
             Label("Saved on your phone and in Apple Health. Only you can see it.", systemImage: "lock.fill")

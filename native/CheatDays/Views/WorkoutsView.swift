@@ -12,9 +12,13 @@ struct WorkoutsView: View {
     @State private var planned: PlanActivity?
     /// Start running's timer, open (25 Nov).
     @State private var runTimer = false
-    /// A run of their own, timed and mapped (26 Nov, design/start-run-mockup.html).
-    @State private var freeRun = false
-    /// The free run's sheet handing over to Start running's timer: opened once the sheet has gone.
+    /// Start: what are you doing? (26 Nov, design/start-anything-mockup.html), and what was picked, opened once the
+    /// picker has gone: a run, ride, walk or hike on the map, or Just time it.
+    @State private var startPicking = false
+    @State private var picked: String?
+    @State private var moving: MoveKind?
+    @State private var timing = false
+    /// A run's sheet handing over to Start running's timer: opened once the sheet has gone.
     @State private var toIntervals = false
     @State private var confirmRoutineDelete: JSON?
     // a routine being renamed from the list, without starting it; and a name another routine already has
@@ -85,8 +89,8 @@ struct WorkoutsView: View {
                         } label: { pill("dumbbell.fill", "Weights", filled: true) }
                         .buttonStyle(.borderless)
                         .accessibilityLabel(store.session == nil ? "Start a weights session" : "Back to your session")
-                        Button { freeRun = true } label: { pill("figure.run", "Run", filled: true) }
-                            .buttonStyle(.borderless).accessibilityLabel("Start a run")
+                        Button { startPicking = true } label: { pill("play.fill", "Start", filled: true) }
+                            .buttonStyle(.borderless).accessibilityLabel("Start a run, ride, walk or timed workout")
                         Button { showActivity = true } label: { pill("plus", "Log one", filled: false) }
                             .buttonStyle(.borderless).accessibilityLabel("Log a walk, run or class")
                     }
@@ -147,6 +151,7 @@ struct WorkoutsView: View {
                         }
                     }
                     NavigationLink { ExerciseBrowser() } label: { moreRow("list.bullet", "All exercises", "Your bests and the library") }
+                    NavigationLink { HeartSettingsView() } label: { moreRow("heart.fill", "Heart rate", "From Apple Health, a heart strap, your zones") }
                 } header: { head("More") }
             }
             .listSectionSpacing(14)
@@ -156,9 +161,9 @@ struct WorkoutsView: View {
             .contentMargins(.top, 0, for: .scrollContent)
             .scrollContentBackground(.hidden)
             .background(Theme.bg)
-            .refreshable { await store.sync(); await Steps.shared.refresh(); await HealthSync.tickPlan() }
+            .refreshable { await store.sync(); await Steps.shared.refresh(); await HealthSync.tickPlan(); await HealthSync.matchWatch() }
             // (planned runs and classes a watch saved to Apple Health, ticked off: 25 Nov)
-            .task { await Steps.shared.refresh(); await HealthSync.tickPlan() }
+            .task { await Steps.shared.refresh(); await HealthSync.tickPlan(); await HealthSync.matchWatch() }
             .onAppear { checkNames() }
             .confirmationDialog("Are these the same exercise?", isPresented: Binding(get: { lookAlike != nil }, set: { if !$0 { lookAlike = nil } }), titleVisibility: .visible, presenting: lookAlike) { pair in
                 Button("Merge into \(pair.keep)") { store.mergeExercise(pair.merge, into: pair.keep); lookAlike = nil; checkNames() }
@@ -181,12 +186,20 @@ struct WorkoutsView: View {
                 let p: (week: Int, run: Int, finished: Bool) = store.startRun
                 RunTimerView(week: p.week, run: p.run)
             }
-            .sheet(isPresented: $freeRun, onDismiss: {
-                if toIntervals { toIntervals = false; runTimer = true }
+            .sheet(isPresented: $startPicking, onDismiss: {
+                guard let p = picked else { return }
+                picked = nil
+                if p == "time" { timing = true } else { moving = MoveKind(rawValue: p) }
             }) {
-                FreeRunView(following: followingStart) { toIntervals = true; freeRun = false }
+                StartPicker { p in picked = p; startPicking = false }.presentationDetents([.medium, .large])
+            }
+            .sheet(item: $moving, onDismiss: {
+                if toIntervals { toIntervals = false; runTimer = true }
+            }) { k in
+                MoveView(kind: k, following: k == .run ? followingStart : nil) { toIntervals = true; moving = nil }
                     .presentationDetents([.large]).presentationDragIndicator(.visible)
             }
+            .sheet(isPresented: $timing) { TimeItView().presentationDetents([.large]).presentationDragIndicator(.visible) }
             .sheet(item: $planned) { a in
                 ActivitySheet(type: a.type, minutes: Double(a.minutes), effort: a.effort, name: a.name).presentationDetents([.medium, .large])
             }
@@ -401,7 +414,16 @@ struct WorkoutRow: View {
         // a mapped run (25 Nov): its route's shape in place of the icon, and its distance and pace
         let route: [RoutePoint]? = RouteStore.has(str(workout["id"])) ? RouteStore.load(str(workout["id"])) : nil
         let km: Double? = num(workout["km"])
-        let pace: String? = km.flatMap { k in k > 0 ? RouteMath.pace((num(workout["minutes"]) ?? 0) * 60 / k) + " /km" : nil }
+        let ride: Bool = str(workout["type"]) == "Cycle"
+        let mins: Double = num(workout["minutes"]) ?? 0
+        let pace: String?
+        if ride { pace = km.flatMap { (k: Double) -> String? in mins > 0 ? String(format: "%.1f km/h", k / (mins / 60)) : nil } }
+        else { pace = km.flatMap { (k: Double) -> String? in k > 0 ? RouteMath.pace(mins * 60 / k) + " /km" : nil } }
+        let when: String? = day ?? date.map { Store.when($0).capitalizedFirst }
+        let heart: String? = num(workout["hrAvg"]).map { (b: Double) -> String in "♥ " + String(Int(b)) + " avg" }
+        let lifted: String? = lifts.isEmpty ? nil : "\(lifts.count) exercise\(lifts.count == 1 ? "" : "s") · \(sets) sets"
+        let parts: [String?] = [when, km.map { String(format: "%.2f km", $0) }, "\(Int(mins)) min", pace, heart,
+                                workout["watch"] != nil ? "from your watch" : nil, lifted]
         HStack(spacing: 12) {
             if let route, route.count > 1 {
                 RouteThumb(points: route, size: 40)
@@ -412,8 +434,7 @@ struct WorkoutRow: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(str(workout["name"])).font(.body.weight(.semibold))
-                Text([day ?? date.map { Store.when($0).capitalizedFirst }, km.map { String(format: "%.2f km", $0) }, "\(Int(num(workout["minutes"]) ?? 0)) min", pace,
-                      lifts.isEmpty ? nil : "\(lifts.count) exercise\(lifts.count == 1 ? "" : "s") · \(sets) sets"].compactMap { $0 }.joined(separator: " · "))
+                Text(parts.compactMap { $0 }.joined(separator: " · "))
                     .font(.footnote).foregroundStyle(.secondary)
             }
             Spacer()
@@ -452,6 +473,11 @@ struct WorkoutDetail: View {
                     }
                 }
             }
+            if lifts.isEmpty && (Overlap.window(workout) != nil || HeartStore.load(str(workout["id"])) != nil) {
+                Section { HeartPanel(workout: workout) }
+                    .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
+            }
+            if str(workout["kcalFrom"]) == "watch" { Section { WatchKcalNote(workout: workout) } }
             ForEach(keyed(lifts)) { entry in
                 let l = entry.item
                 Section {

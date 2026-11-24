@@ -108,26 +108,6 @@ extension Store {
         perform(["type": "logWorkout", "workout": w])
         return id
     }
-
-    /// A run of their own (26 Nov, design/start-run-mockup.html): logged as a run, with its distance and each
-    /// kilometre when mapped, the route on the phone only. Not part of Start running. Returns the workout's id.
-    @discardableResult
-    func logFreeRun(seconds: Double, route: [RoutePoint], kcal: Double) -> String {
-        for w in todayWorkouts where str(w["from"]) == "health" && str(w["type"]) == "Run" {
-            RouteStore.delete(str(w["id"])); deleteWorkout(str(w["id"]))
-        }
-        let id: String = uid()
-        var w: JSON = ["id": id, "type": "Run", "name": "Run", "minutes": max(1, Int((seconds / 60).rounded())),
-                       "effort": "moderate", "kcal": kcal, "lifts": [Any](), "at": ISO.now()]
-        let meters: Double = RouteMath.meters(route)
-        if route.count > 1 && meters >= 50 {
-            RouteStore.save(route, id: id)
-            w["km"] = (meters / 10).rounded() / 100
-            w["splits"] = RouteMath.splits(route).map { (s: (km: Double, seconds: Double)) -> JSON in ["km": (s.km * 100).rounded() / 100, "s": s.seconds.rounded()] }
-        }
-        perform(["type": "logWorkout", "workout": w])
-        return id
-    }
 }
 
 extension RunStart {

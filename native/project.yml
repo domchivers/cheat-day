@@ -41,20 +41,24 @@ targets:
         NSCameraUsageDescription: Cheat Days uses the camera to scan barcodes, take photos of food labels and packs, and take photos and videos for your story.
         NSPhotoLibraryUsageDescription: Cheat Days lets you pick a photo of food or a label from your library, and shows your recent photos and videos to add to your story or a post.
         NSPhotoLibraryAddUsageDescription: Cheat Days saves your stories and videos to Photos when you tap Save.
-        NSLocationWhenInUseUsageDescription: Cheat Days uses your suburb to find places to eat near you when you ask, and only the suburb's name is used for that. When you choose to map your runs, it follows your route with GPS while the app times a run. Routes stay on your phone and in Apple Health.
+        NSLocationWhenInUseUsageDescription: Cheat Days uses your suburb to find places to eat near you when you ask, and only the suburb's name is used for that. When you choose to map your runs, rides and walks, it follows your route with GPS while the app times one. Routes stay on your phone and in Apple Health.
         NSLocationDefaultAccuracyReduced: true
         # precise location for a timed run only (RunTracker asks for it with this key)
         NSLocationTemporaryUsageDescriptionDictionary:
           RunRoute: Precise location draws your run's route on the map and measures how far you went. It's used only while the app times your run.
         NSMicrophoneUsageDescription: Cheat Days listens when you tap the microphone in a chat box, so you can say what you ate instead of typing it, records sound when you film a video for your story, and records voiceovers when you make a video edit.
         NSSpeechRecognitionUsageDescription: Cheat Days turns what you say into words in the chat box, on your iPhone where it can, and makes captions from what's said in your video edits, on your iPhone.
-        NSHealthShareUsageDescription: Cheat Days reads your weight, body fat, lean mass, BMI, steps, and workouts with their routes from Apple Health, so weigh-ins from your smart scale's app arrive on their own, Today can show your steps, and the runs and classes in your plan tick themselves off with their maps.
-        NSHealthUpdateUsageDescription: Cheat Days saves the runs it times for you to Apple Health as workouts, with their distance, active energy and routes. It never changes anything else in your Health data.
+        NSHealthShareUsageDescription: Cheat Days reads your weight, body fat, lean mass, BMI, steps, and workouts with their routes, heart rate and calories from Apple Health, so weigh-ins from your smart scale's app arrive on their own, Today can show your steps, the runs and classes in your plan tick themselves off with their maps, and each workout shows your heart rate.
+        NSHealthUpdateUsageDescription: Cheat Days saves the runs, rides, walks and workouts it times for you to Apple Health as workouts, with their distance, active energy and routes. It never changes anything else in your Health data.
         # Start running's run: it keeps speaking, and (when mapped) following the route, with the phone locked.
         # (workout-processing is watchOS only: App Store validation refused it in 1.4.54)
         UIBackgroundModes:
           - audio
           - location
+          # the heart strap keeps reading with the phone locked
+          - bluetooth-central
+        # a heart strap, only when they connect one (26 Nov, design/heart-rate-mockup.html)
+        NSBluetoothAlwaysUsageDescription: Cheat Days connects to a Bluetooth heart strap when you ask it to, to show your heart rate live while you run, ride or time a workout. It doesn't look for or connect to anything else.
         NSSupportsLiveActivities: true
         # the web app's own domain, so its offline cache (service worker) works inside the app
         WKAppBoundDomains:

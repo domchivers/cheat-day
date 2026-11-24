@@ -10,6 +10,8 @@ final class Steps {
     private(set) var today: Int?
     /// The last seven days' steps by day ("2026-10-30": 8240), today included.
     private(set) var byDay: [String: Int] = [:]
+    /// Steps taken during runs, walks and hikes logged with their own kcal (26 Nov): not counted again as walking.
+    private(set) var trackedByDay: [String: Int] = [:]
     private var health: HKHealthStore { HealthSync.health }
     private let type = HKQuantityType(.stepCount)
 
@@ -19,7 +21,7 @@ final class Steps {
 
     func kcal(on date: String) -> Double {
         guard let n = byDay[date], n > 0 else { return 0 }
-        return Self.kcal(steps: n, kg: Store.shared.latestWeight?.kg ?? 75)
+        return Self.kcal(steps: n, tracked: trackedByDay[date] ?? 0, kg: Store.shared.latestWeight?.kg ?? 75)
     }
 
     /// For the screenshot harness: steps without asking Health.
@@ -48,7 +50,27 @@ final class Steps {
             health.execute(q)
         }
         byDay = days
+        var tracked: [String: Int] = [:]
+        for date in days.keys {
+            for w in Store.shared.workouts(on: date) where ["Run", "Walk", "Hike"].contains(str(w["type"])) {
+                guard let win = Overlap.window(w) else { continue }
+                tracked[date, default: 0] += await steps(from: win.start, to: win.end)
+            }
+        }
+        trackedByDay = tracked
         today = days[DayKey.string(Date())]   // nothing (or not allowed): don't show a zero
+    }
+
+    /// Steps in a time.
+    private func steps(from start: Date, to end: Date) async -> Int {
+        let pred = HKQuery.predicateForSamples(withStart: start, end: end, options: [])
+        let n: Double = await withCheckedContinuation { (cont: CheckedContinuation<Double, Never>) in
+            let q = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: pred, options: .cumulativeSum) { _, s, _ in
+                cont.resume(returning: s?.sumQuantity()?.doubleValue(for: .count()) ?? 0)
+            }
+            health.execute(q)
+        }
+        return Int(n)
     }
 
     func ask() async {

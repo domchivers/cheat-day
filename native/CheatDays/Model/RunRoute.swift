@@ -12,6 +12,8 @@ struct RoutePoint: Codable, Equatable {
     let run: Bool
     /// The first point after a pause: no line, and no distance, from the one before.
     var gap: Bool = false
+    /// Height above sea level (m), for the climb; nil when GPS had none.
+    var alt: Double? = nil
 
     var coordinate: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: lat, longitude: lon) }
     var location: CLLocation { CLLocation(latitude: lat, longitude: lon) }
@@ -159,6 +161,7 @@ extension HealthSync {
         }
         let start: Date = w.startDate
         return locations.sorted { $0.timestamp < $1.timestamp }
-            .map { RoutePoint(lat: $0.coordinate.latitude, lon: $0.coordinate.longitude, t: $0.timestamp.timeIntervalSince(start), run: true) }
+            .map { RoutePoint(lat: $0.coordinate.latitude, lon: $0.coordinate.longitude, t: $0.timestamp.timeIntervalSince(start), run: true,
+                                 alt: $0.verticalAccuracy > 0 ? $0.altitude : nil) }
     }
 }

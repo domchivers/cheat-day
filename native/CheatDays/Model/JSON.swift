@@ -36,6 +36,7 @@ enum ISO {
         let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime]; return f
     }()
     static func now() -> String { withFraction.string(from: Date()) }
+    static func at(_ d: Date) -> String { withFraction.string(from: d) }
     static func date(_ s: String?) -> Date? {
         guard let s, !s.isEmpty else { return nil }
         return withFraction.date(from: s) ?? plain.date(from: s)
