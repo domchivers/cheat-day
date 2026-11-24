@@ -758,6 +758,7 @@ struct FeedView: View {
             .modifier(PinchToZoom(id: id, held: $zoomed, on: photo && kind != "moment"))
 
             actions(p, rx: rx, comments: cm.count)
+            if photo && kind != "moment" && kind != "photo" { foodLine(p) }
             if !rx.isEmpty { likedBy(rx).padding(.horizontal, 14).padding(.top, 2) }
             if !feed.caption(p).isEmpty {
                 (Text(feed.name(owner) + " ").bold() + Text(Tagging.styled(feed.caption(p)))).font(.subheadline).padding(.horizontal, 14).padding(.top, 4)
@@ -837,7 +838,6 @@ struct FeedView: View {
     }
 
     private func photoView(_ p: JSON) -> some View {
-        let n = numbers(p)
         let shape = num(dict(p["extra"])["aspect"]).map { min(1.91, max(0.75, $0)) }
         return PostPhotos(post: p)
             .frame(maxWidth: .infinity).frame(height: shape.map { (UIScreen.main.bounds.width / $0).rounded() } ?? 400)
@@ -868,24 +868,33 @@ struct FeedView: View {
                         }
                         .buttonStyle(.plain).accessibilityLabel(tagged.count == 1 ? "Tagged: 1 person" : "Tagged: \(tagged.count) people")
                     }
-                    if str(p["kind"]) != "photo" {   // a photo on its own has no name or numbers
-                        // A small tag: the name has so much room and no more, and one too long for it slides along to
-                        // show the rest. It ran the photo's whole width, cut the name short, and lay over the sound
-                        // button of a post with a song (at the bottom right); with the person beside it, less again.
-                        // (23 Nov, design/feed-post-mockup.html C: Have some, or Do it, rides on the end of the tag, the
-                        // same size as its words, so the row under the photo is the icons alone)
-                        HStack(spacing: 8) {
-                            Marquee(text: str(p["name"]), maxWidth: (Music.of(p) != nil ? 70 : 100) - (tagged.isEmpty ? 0 : 40))
-                            Text(n.kcal).foregroundStyle(.secondary).lineLimit(1).fixedSize()
-                            if let pr = n.protein { Text(pr).foregroundStyle(Theme.walk).lineLimit(1).fixedSize() }
-                            haveSome(p).padding(.vertical, -4).padding(.trailing, -6)
-                        }
-                        .font(.caption.weight(.bold)).padding(.horizontal, 11).padding(.vertical, 7)
-                        .background(.ultraThinMaterial, in: Capsule()).environment(\.colorScheme, .dark)
-                    }
+                    // (25 Nov, design/feed-food-line-mockup.html A: the name, numbers and Have some left the photo for
+                    // foodLine under the icons; on the photo's tag the name was cut short)
                 }
                 .padding(12)
             }
+    }
+
+    /// A photo post's food or workout, under the icons (25 Nov, feed-food-line-mockup A): the name in full, its kcal
+    /// and protein, and Have some at the words' own size on the right.
+    private func foodLine(_ p: JSON) -> some View {
+        let n: (kcal: String, protein: String?) = numbers(p)
+        return HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(str(p["name"])).font(.subheadline.weight(.bold)).lineLimit(2).multilineTextAlignment(.leading)
+                HStack(spacing: 4) {
+                    Text(n.kcal).foregroundStyle(.secondary)
+                    if let pr = n.protein {
+                        Text("·").foregroundStyle(.secondary)
+                        Text(pr).foregroundStyle(Theme.walk)
+                    }
+                }
+                .font(.caption.weight(.semibold)).lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            haveSome(p)
+        }
+        .padding(.horizontal, 14).padding(.top, 4)
     }
 
     /// Have some (a meal or food: it opens to add it to your day), Recipe, or Do it (a workout), as a small button
