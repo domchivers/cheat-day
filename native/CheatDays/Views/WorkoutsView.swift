@@ -405,6 +405,12 @@ struct PastMonth: Identifiable {
 }
 
 struct WorkoutRow: View {
+    /// "7:56 /km", or for a ride "20.9 km/h".
+    static func pace(km: Double?, minutes: Double, ride: Bool) -> String? {
+        guard let k = km, k > 0, minutes > 0 else { return nil }
+        return ride ? String(format: "%.1f km/h", k / (minutes / 60)) : RouteMath.pace(minutes * 60 / k) + " /km"
+    }
+
     let workout: JSON
     let date: String?
     var day: String? = nil   // how to show the date, where the month's already said
@@ -416,9 +422,8 @@ struct WorkoutRow: View {
         let km: Double? = num(workout["km"])
         let ride: Bool = str(workout["type"]) == "Cycle"
         let mins: Double = num(workout["minutes"]) ?? 0
-        let pace: String?
-        if ride { pace = km.flatMap { (k: Double) -> String? in mins > 0 ? String(format: "%.1f km/h", k / (mins / 60)) : nil } }
-        else { pace = km.flatMap { (k: Double) -> String? in k > 0 ? RouteMath.pace(mins * 60 / k) + " /km" : nil } }
+        // (one expression: a deferred let assigned in an if is read as view content in a builder; 1.4.57 failed)
+        let pace: String? = WorkoutRow.pace(km: km, minutes: mins, ride: ride)
         let when: String? = day ?? date.map { Store.when($0).capitalizedFirst }
         let heart: String? = num(workout["hrAvg"]).map { (b: Double) -> String in "♥ " + String(Int(b)) + " avg" }
         let lifted: String? = lifts.isEmpty ? nil : "\(lifts.count) exercise\(lifts.count == 1 ? "" : "s") · \(sets) sets"
