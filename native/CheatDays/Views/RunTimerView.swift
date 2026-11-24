@@ -16,6 +16,8 @@ struct RunTimerView: View {
     @State private var part = -1
     @State private var result: (minutes: Int, kcal: Double, complete: Bool)?
     @State private var confirmEnd = false
+    /// The run as an Apple Health workout, so it carries on locked and is saved there (25 Nov).
+    @State private var workout = RunSession()
     private let tick = Timer.publish(every: 0.25, on: .main, in: .common).autoconnect()
     private var store: Store { Store.shared }
 
@@ -54,7 +56,7 @@ struct RunTimerView: View {
         .onDisappear { UIApplication.shared.isIdleTimerDisabled = false; Cues.cancelNotes() }
         .confirmationDialog("End this run?", isPresented: $confirmEnd, titleVisibility: .visible) {
             Button("End and log what I did") { finish(complete: false) }
-            Button("Throw it away", role: .destructive) { Cues.cancelNotes(); dismiss() }
+            Button("Throw it away", role: .destructive) { Cues.cancelNotes(); workout.discard(); dismiss() }
         } message: { Text("A week moves on after three runs done to the end, so this one won't count towards it.") }
     }
 
@@ -86,7 +88,7 @@ struct RunTimerView: View {
                     Text("Start running").font(.title.weight(.heavy))
                     Text("\(RunStart.middle(week: week)), with a 5-minute walk either side. \(RunStart.minutes(week: week)) minutes in all.")
                         .font(.body).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                    Text("Keep the screen on, or lock it: a notification says when to switch.").font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    Text("Lock your phone and put it away if you like: it keeps timing, and tells you when to switch.").font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 }
             } else if let cur {
                 Text(phaseName(pos.index)).font(.title2.weight(.black)).tracking(3).foregroundStyle(cur.run ? Color.green : Theme.accent)
@@ -179,17 +181,21 @@ struct RunTimerView: View {
         started = Date(); now = Date(); part = -1
         Cues.prepare()
         Cues.scheduleNotes(parts: parts, from: 0)
+        // as a workout it stays awake locked, so the voice is enough; without one, the notifications stay
+        Task { if await workout.start() { Cues.cancelNotes() } }
     }
 
     private func pause() {
         pausedAt = Date()
         Cues.cancelNotes()
+        workout.pause()
     }
 
     private func resume() {
         guard let p = pausedAt else { return }
         pausedFor += Date().timeIntervalSince(p); pausedAt = nil; now = Date()
-        Cues.scheduleNotes(parts: parts, from: elapsed)
+        workout.resume()
+        if !workout.live { Cues.scheduleNotes(parts: parts, from: elapsed) }
     }
 
     /// Into a new part: say it, buzz, and at the end, log it.
@@ -214,7 +220,8 @@ struct RunTimerView: View {
             if p.run { run += take } else { walk += take }
             edge += Double(p.seconds)
         }
-        guard complete || t >= 60 else { dismiss(); return }
+        guard complete || t >= 60 else { workout.discard(); dismiss(); return }
+        workout.finish()
         store.logStartRun(week: week, run: self.run, runSeconds: run, walkSeconds: walk, complete: complete)
         if complete { Cues.say("Done. Nice work.", run: false) }
         withAnimation { result = (Int(((run + walk) / 60).rounded()), RunStart.kcal(runSeconds: run, walkSeconds: walk, kg: store.weightKg), complete) }
