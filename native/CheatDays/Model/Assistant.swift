@@ -23,7 +23,9 @@ final class AssistantLive {
 
     func open(fresh: Bool) {
         if busy { return }
-        if fresh || Date().timeIntervalSince(used) > 20 * 60 { turns = []; chatId = uid(); problem = nil; done = [:]; addedFoods = [:]; mealNames = [:] }
+        // a meal at the table can go quiet for longer than a chat: it carries on for three hours
+        let idle: TimeInterval = MealChat.isOn(turns) ? 3 * 3600 : 20 * 60
+        if fresh || Date().timeIntervalSince(used) > idle { turns = []; chatId = uid(); problem = nil; done = [:]; addedFoods = [:]; mealNames = [:] }
         used = Date()
     }
 
@@ -88,6 +90,15 @@ enum Assistant {
         else { cards.removeAll { $0 == "lighter" } }
         var props = dict(full["properties"]).filter { ["reply"].contains($0.key) || cards.contains($0.key) }
         props["kind"] = ["type": "string", "enum": ["answer"] + cards] as JSON
+        return obj(props)
+    }
+
+    /// A meal chat's cards (MealChat): the estimate (its parts the tally, its notes the price list) and the plan (what to
+    /// have next), filled together, as tested in tools/ai-test/meal-chat-check.js. No new fields: the format is at
+    /// Claude's limit, and this is smaller than the one a typed message gets.
+    static var mealFormat: JSON {
+        var props = dict(full["properties"]).filter { ["reply", "estimate", "plan"].contains($0.key) }
+        props["kind"] = ["type": "string", "enum": ["answer", "estimate"]] as JSON
         return obj(props)
     }
 
@@ -212,8 +223,9 @@ enum Assistant {
     }
 
     @MainActor
-    static func context(_ store: Store, skip: String = "", asking: String = "") -> String {
-        let items = store.todayItems
+    static func context(_ store: Store, skip: String = "", asking: String = "", leaving: String? = nil) -> String {
+        // (leaving: the meal a meal chat put on, which its tally already counts: "left today" is from before the meal)
+        let items = store.todayItems.filter { (it: JSON) -> Bool in leaving == nil || str(it["id"]) != leaving }
         let eaten = items.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }, m = store.macros(items)
         let list = byMeal(items)
         // the last week, so "same as Tuesday" or "what I had last weekend" can be found
@@ -290,6 +302,19 @@ enum Assistant {
     - Pain or injury: practical first steps and safer swaps for their own exercises, then the signs that mean seeing a physio or GP (sharp pain, swelling, locking or giving way, numbness, no better in a week or two). Never diagnose.
     """
 
+    /// A meal as it happens (the 22 Nov shared dinner): added after the rules for every message of a meal chat, with
+    /// the whole chat, the tally, the price list and what was suggested next. Tested word for word in
+    /// tools/ai-test/meal-chat-check.js (that dinner) and meal-other-check.js (a hotpot, a pizza night, yum cha).
+    static let mealRules = """
+    - A meal in progress (they're eating now and keep telling you what they've had, what they're sharing, or asking what to have next or instead): this takes the place of the rules above on replies, ranges, totals, splitting a food into parts, logging only the latest message and holding sizes.
+      estimate.notes is the price list for this meal, kept through the chat: every dish on the table as "dish: how many pieces, kcal and protein for ONE piece", separated by semicolons. Make it from the receipt and the food photos together: size the whole dish as sold first (price, count, what the photos show, oil and sauce in it), then divide by the pieces you can count (skewers, chunks off the bone, cubes, squares). One piece is never more than its share of the dish: a thin skewer of meat is about 15 to 25 g, a single thin tentacle 25 to 35 g. A receipt's unit often isn't the piece on the plate: when the first photos of the food itself arrive, make the whole list again in the pieces they can be eaten in and counted there, saying the unit (a chop cut up is several chunks, so count the chunks of both chops and price one chunk; a tofu skewer is several cubes, so price one cube; a chicken dish is priced by one chunk of meat off the bone, its potato and its noodles apart). After that, copy each price unchanged, and change it only when a new photo or their word shows the piece is a different size. A close-up looks bigger than it is and never raises a price by itself.
+      estimate.parts is the running tally: only what they say they've eaten, from the whole chat. One part a food, named as they'd say it with how many ("Lamb skewers, 5", "Lamb chop, 3 pieces"), its numbers the count times the price, its oil and sauce inside it and never parts of their own. A photo, a food held up, a plan or a question ("instead of noodles?") is not eating: it adds nothing until they say they had it, even when you suggested it ("The squid" with a photo of it is showing you the squid: none eaten). No parts until then.
+      Counts: their list of what they've had can repeat what's counted already (not more of it). A food named on its own afterwards, having been suggested, is one more of that suggestion (the 1 chop piece you suggested, 1 skewer). They use loose names: match each to the dish on the receipt ("pork chop" where only lamb chops were ordered is the lamb chop, "5 skews" the meat skewers). Pieces of a cut-up dish stay pieces at the piece's price, added up (2 and later 1 more is 3 pieces), and their explaining that it was pieces changes no count. A correction changes that food only.
+      plan.suggestions is what to have next from what's on the table, in the order to eat it: the amount in pieces, skewers or mouthfuls, numbers from the price list. Reach the protein still needed inside the calories still left (what was left today, less the tally), leave the other person about half of each dish, and use food from home (a shake) last and only to close a gap. None when they ask only for the macros or are done. Something they say to ignore isn't suggested again.
+      Calories and protein left today, and any target they gave, are from before this meal: don't take the tally off twice.
+      reply: answer what they asked first, in one or two short sentences, like a friend at the table: yes or no to a swap and why. No grams, ranges, lists, or asking where it's from: the lists show the numbers. Ask only when two readings differ by over 100 kcal, and still give your likelier one.
+    """
+
     /// Words that mean a bigger job (worth the careful model): recipes, plans, comparisons, lighter versions.
     private static let bigJobs = ["recipe", "plan", "cook", "make me", "week", "cheat day", "lighter", "compare", "swap", "instead", "meal prep", "ideas", "suggest"]
 
@@ -360,6 +385,9 @@ enum Assistant {
     static func ask(_ turns: [Turn], store: Store, ground groundNow: Bool = true, spotted: (@MainActor (Spotted) -> Void)? = nil,
                     step: (@MainActor (String, String) -> Void)? = nil) async throws -> JSON {
         guard let last = turns.last, last.me else { throw Gemini.Failure(message: "Nothing to ask.") }
+        // a meal as it happens ("sharing it all, haven't eaten yet", and every message after): one running card, with
+        // the whole chat (eight turns and a card a message ended the 22 Nov dinner at 442 kcal and 4 foods of 1,155 and 10)
+        if MealChat.wanted(turns) { return try await MealChat.ask(turns, store: store) }
         // "half of each" after an estimate: worked out here, exactly, with no waiting
         if last.images.isEmpty, let p = portion(last.text), let r = turns.dropLast().last(where: { !$0.me })?.result, let out = scaled(r, share: p.share, label: p.label) { return out }
         // "what should I get from Gami?": the restaurant's menu with food from home, worked out by the app. Asked of every

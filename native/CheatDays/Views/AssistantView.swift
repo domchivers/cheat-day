@@ -235,6 +235,9 @@ struct AssistantView: View {
             if let pl = r["places"] as? JSON { placesCard(pl) }
         case "quick":
             quickCard(list(r["foods"]), turn: turn, meal: meal)
+        case "meal":
+            // a meal as it happens: one running card, under the latest answer only (the earlier ones keep their words)
+            if turns.last(where: { !$0.me && str($0.result?["kind"]) == "meal" })?.id == turn { MealRunCard(result: r, turn: turn, meal: meal) }
         default: EmptyView()
         }
     }
