@@ -758,8 +758,9 @@ struct FeedView: View {
             .modifier(PinchToZoom(id: id, held: $zoomed, on: photo && kind != "moment"))
 
             actions(p, rx: rx, comments: cm.count)
-            if photo && kind != "moment" && kind != "photo" { foodLine(p) }
+            // "Liked by" straight under the buttons, then what it is, as Instagram has it (25 Nov)
             if !rx.isEmpty { likedBy(rx).padding(.horizontal, 14).padding(.top, 2) }
+            if photo && kind != "moment" && kind != "photo" { foodLine(p) }
             if !feed.caption(p).isEmpty {
                 (Text(feed.name(owner) + " ").bold() + Text(Tagging.styled(feed.caption(p)))).font(.subheadline).padding(.horizontal, 14).padding(.top, 4)
                     .tagLinks({ profileOf = $0 }, tag: { tagOf = $0 })
