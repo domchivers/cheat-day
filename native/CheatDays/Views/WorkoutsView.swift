@@ -227,13 +227,13 @@ struct WorkoutsView: View {
         let count = days.reduce(0) { $0 + $1.count }, total = days.reduce(0) { $0 + $1.kcal }
         let walked = days.reduce(0) { $0 + Steps.shared.kcal(on: $1.date) }
         // walking alone still counts here: no workouts, but the calories it burned
-        let line = total > 0 || walked == 0 ? "(Fmt.int(total)) kcal(walked > 0 ? " · (Fmt.int(walked)) more from walking" : "")" : "(Fmt.int(walked)) kcal from walking"
-        let said = count > 0 || tracked || walked > 0 ? "This week: (count) workout(count == 1 ? "" : "s"), (line)" : "This week: no workouts yet"
+        let line = total > 0 || walked == 0 ? "\(Fmt.int(total)) kcal\(walked > 0 ? " · \(Fmt.int(walked)) more from walking" : "")" : "\(Fmt.int(walked)) kcal from walking"
+        let said = count > 0 || tracked || walked > 0 ? "This week: \(count) workout\(count == 1 ? "" : "s"), \(line)" : "This week: no workouts yet"
         return VStack(alignment: .leading, spacing: 2) {
             Text("This week").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
             if count > 0 || tracked || walked > 0 {
                 HStack(alignment: .firstTextBaseline, spacing: 5) {
-                    Text("(count)").font(.system(size: 48, weight: .heavy, design: .rounded)).monospacedDigit()
+                    Text("\(count)").font(.system(size: 48, weight: .heavy, design: .rounded)).monospacedDigit()
                     Text(count == 1 ? "workout" : "workouts").font(.headline).foregroundStyle(.secondary)
                 }
                 Text(line).font(.subheadline).foregroundStyle(.primary.opacity(0.8)).monospacedDigit()
