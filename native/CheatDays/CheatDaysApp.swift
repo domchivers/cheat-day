@@ -88,6 +88,12 @@ struct RootView: View {
 private struct StartSheetHarness: View {
     @State private var open = false
     @State private var probe = "measuring"
+    /// -start-detent N: ask for that height instead of the picker-measured one.
+    static var detent: CGFloat? {
+        let a = ProcessInfo.processInfo.arguments
+        guard let i = a.firstIndex(of: "-start-detent"), i + 1 < a.count, let n = Double(a[i + 1]) else { return nil }
+        return CGFloat(n)
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Workouts").font(.largeTitle.weight(.heavy))
@@ -96,7 +102,7 @@ private struct StartSheetHarness: View {
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.bg.ignoresSafeArea())
-        .sheet(isPresented: $open) { StartSheet(pick: { _ in }, report: { probe = $0 }) }
+        .sheet(isPresented: $open) { StartSheet(pick: { _ in }, report: { probe = $0 }, detent: Self.detent) }
         .task { open = true }
     }
 }

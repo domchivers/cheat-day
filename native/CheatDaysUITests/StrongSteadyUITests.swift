@@ -125,12 +125,25 @@ final class StrongSteadyUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["What are you doing?"].waitForExistence(timeout: 6))
         for k in ["Run", "Ride", "Walk", "Hike", "Just time it"] { XCTAssertTrue(app.buttons[k].exists, k) }
         sleep(1)
-        // the sheet's numbers, for the gap under it (owner, 1.4.58)
-        let p = app.staticTexts["startProbe"]
-        let probe = p.exists ? p.label : "numbers hidden behind the sheet: read them off the screenshot"
-        print("START SHEET:", probe)
-        let note = XCTAttachment(string: probe); note.name = "start-sheet-numbers"; note.lifetime = .keepAlways; add(note)
         shot(app, "start-sheet")
+        // where the sheet, its safe area, the picker, its title and last line are on screen: first at the height the
+        // app asks for, then at set heights, to learn how the sheet follows its detent (gap under it, 1.4.58–60)
+        var all: [String] = []
+        for d in [nil, "300", "360", "420"] as [String?] {
+            if let d {
+                app.terminate()
+                app.launchArguments = ["-uitest-start", "-start-detent", d]
+                app.launch()
+                _ = app.staticTexts["What are you doing?"].waitForExistence(timeout: 6)
+                sleep(1)
+                shot(app, "start-sheet-\(d)")
+            }
+            let p = app.staticTexts["startProbe"]
+            all.append((d ?? "app") + ": " + (p.exists ? p.label : "numbers hidden behind the sheet"))
+        }
+        let text = all.joined(separator: "\n")
+        print("START SHEET:\n" + text)
+        let note = XCTAttachment(string: text); note.name = "start-sheet-numbers"; note.lifetime = .keepAlways; add(note)
     }
 
     /// A ride stopped at the lights: speed, the climb, and the clock paused by itself.

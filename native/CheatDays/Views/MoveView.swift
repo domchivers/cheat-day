@@ -7,11 +7,15 @@ import HealthKit
 struct StartPicker: View {
     /// "run", "ride", "walk", "hike" or "time".
     var pick: (String) -> Void
+    /// For the Start sheet test only: where the title and the last line are on screen.
+    var mark: ((String, CGRect) -> Void)? = nil
     @AppStorage("start.last") private var last = "run"
 
     var body: some View {
         VStack(spacing: 12) {
-            Text("What are you doing?").font(.title3.weight(.heavy)).padding(.top, 24)
+            Text("What are you doing?").font(.title3.weight(.heavy))
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { mark?("title", $0) }
+                .padding(.top, 24)
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                 ForEach(MoveKind.allCases) { k in tile(k) }
             }
@@ -30,6 +34,7 @@ struct StartPicker: View {
             }
             .buttonStyle(.plain).accessibilityLabel("Just time it")
             Text("Remembers what you picked last").font(.caption).foregroundStyle(.secondary)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { mark?("last line", $0) }
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 26)   // with the sheet's foot inset gone, about the title's 24 + line above
@@ -53,41 +58,54 @@ struct StartPicker: View {
     private func choose(_ p: String) { last = p; pick(p) }
 }
 
-/// The Start picker as Workouts presents it: a sheet measured to the picker's height. `report` is for the
-/// -uitest-start harness only: the picker's measured height, the detent used, and the sheet's own area and insets,
-/// so a screenshot shows where a gap under it comes from (owner saw ~55 pt on 1.4.58).
+/// The Start picker as Workouts presents it: a sheet measured to the picker's height. `report` and `detent` are for
+/// the -uitest-start harness only: `report` gets where everything is on screen (the sheet, its safe area, the
+/// picker, its title and last line), and `detent` overrides the height asked for, so one test run shows how the
+/// sheet's height follows the detent (1.4.58–60 left a gap under the last line; 1.4.60: picker 406, detent 393).
 struct StartSheet: View {
     var pick: (String) -> Void
     var report: ((String) -> Void)? = nil
+    var detent: CGFloat? = nil
     @State private var picker: CGFloat = 0
     @State private var inset: CGFloat = 34
-    @State private var area: String = ""
+    @State private var marks: [String: CGRect] = [:]
 
-    /// iOS keeps the bottom safe area (34 pt) under a .height detent, and on 1.4.58–59 the picker sat above it, so the
-    /// gap under "Remembers what you picked last" was its padding plus the part of that inset on the sheet (1.4.59 on
-    /// iOS 27: picker 392, detent 392, area 393, bottom inset 34; the floating card ends 17 pt into the inset, the
-    /// rest is below it). On iOS 17's full-width sheet all 34 is on the sheet. So the detent is the picker less
-    /// half the inset, and the picker's foot runs into it: never cut off, and the gap is about its own padding.
-    private var height: CGFloat { picker > 0 ? max(picker - inset / 2, 200) : 436 }
+    /// The picker less half the bottom safe area iOS keeps under a .height detent (unproven: see the harness).
+    private var height: CGFloat { detent ?? (picker > 0 ? max(picker - inset / 2, 200) : 436) }
 
     var body: some View {
-        StartPicker(pick: pick)
-            .fixedSize(horizontal: false, vertical: true)
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in picker = h; send() }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        // Color.clear fills exactly the sheet's safe area; the picker hangs from its top as an overlay, so a picker
+        // taller than the area runs into the inset below instead of growing the layout and being re-centred (1.4.60
+        // moved the title down 16 pt)
+        Color.clear
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { note("safe area", $0) }
+            .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { inset = $0; send() }
+            .overlay(alignment: .top) {
+                StartPicker(pick: pick, mark: report == nil ? nil : { k, r in note(k, r) })
+                    .fixedSize(horizontal: false, vertical: true)
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { r in
+                        picker = r.height; note("picker", r)
+                    }
+            }
             .background {
-                Color.clear.onGeometryChange(for: EdgeInsets.self) { $0.safeAreaInsets } action: { e in
-                    inset = e.bottom; send()
-                }
-                Color.clear.onGeometryChange(for: String.self) { p in
-                    "area \(Int(p.size.height)), insets top \(Int(p.safeAreaInsets.top)) bottom \(Int(p.safeAreaInsets.bottom))"
-                } action: { a in area = a; send() }
+                Color.clear.ignoresSafeArea()
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { note("sheet", $0) }
             }
             .presentationDetents([.height(height)])
-            .presentationBackground(Theme.bg)
+        .presentationBackground(Theme.bg)
     }
 
-    private func send() { report?("picker \(Int(picker)), detent \(Int(height)), \(area)") }
+    private func note(_ k: String, _ r: CGRect) { marks[k] = r; send() }
+
+    private func send() {
+        guard let report else { return }
+        func y(_ k: String) -> String {
+            guard let r = marks[k] else { return "\(k) ?" }
+            return "\(k) \(Int(r.minY.rounded()))–\(Int(r.maxY.rounded()))"
+        }
+        report("detent \(Int(height)), inset \(Int(inset)) | " +
+               ["sheet", "safe area", "picker", "title", "last line"].map(y).joined(separator: ", "))
+    }
 }
 
 /// A run, ride, walk or hike: the map with them on it, moving time (it pauses itself when they stop), distance,
