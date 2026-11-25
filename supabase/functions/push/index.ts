@@ -168,5 +168,20 @@ async function handle(req: Request): Promise<Response> {
     const n = await sendToUser(to, { ...msg, tag: `social-${body.kind || "react"}`, post: String(body.post || "").slice(0, 64) }, "social");
     return json({ ok: true, sent: n });
   }
+  if (action === "group") {
+    // A message in a group chat (group_chats.sql): to everyone else in it who has not muted it, only from a member
+    const g = String(body.group || ""); if (!g) return json({ ok: true, sent: 0 });
+    const { data: mem } = await admin.from("chat_group_members").select("user_id, muted").eq("group_id", g);
+    if (!mem || !mem.some((m: { user_id: string }) => m.user_id === me.id)) return json({ error: "Not in this group" }, 403);
+    const { data: grp } = await admin.from("chat_groups").select("name").eq("id", g).maybeSingle();
+    const { data: prof } = await admin.from("profiles").select("display_name").eq("user_id", me.id).maybeSingle();
+    const who = (prof && prof.display_name) || "Someone", what = String(body.text || "").slice(0, 80);
+    let n = 0;
+    for (const m of mem as { user_id: string; muted: boolean }[]) {
+      if (m.user_id === me.id || m.muted) continue;
+      n += await sendToUser(m.user_id, { title: (grp && grp.name) || "Group", body: `${who}: ${what || "sent a message"}`, tag: "social-message", post: `chat:g:${g}` }, "social");
+    }
+    return json({ ok: true, sent: n });
+  }
   return json({ error: "Unknown action" }, 400);
 }

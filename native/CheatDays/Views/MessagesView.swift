@@ -7,12 +7,23 @@ struct MessagesView: View {
     @State private var search = ""
     @State private var picking = false
     @State private var chatWith: String?
+    @State private var grouping = false
     private var messages: Messages { Messages.shared }
 
     var body: some View {
-        let chats = messages.chats.filter { search.isEmpty || Feed.shared.name($0.id).localizedCaseInsensitiveContains(search) || Profiles.shared.handle($0.id).localizedCaseInsensitiveContains(search) }
+        let chats = messages.chats.filter { search.isEmpty || messages.title($0.id).localizedCaseInsensitiveContains(search) || Profiles.shared.handle($0.id).localizedCaseInsensitiveContains(search) }
         List {
             if let e = messages.error { Text(e).font(.footnote).foregroundStyle(Theme.warn) }
+            // group chats (25 Nov, design/group-chats-mockup.html)
+            if search.isEmpty {
+                Button { grouping = true } label: {
+                    Label("New group", systemImage: "person.2.fill").font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 12).padding(.horizontal, 14)
+                        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .listRowBackground(Color.clear).listRowSeparator(.hidden)
+            }
             if messages.chats.isEmpty && messages.error == nil && !messages.loaded {
                 Skeleton.rows(5, picture: 52).listRowBackground(Color.clear).listRowSeparator(.hidden)
             } else if messages.chats.isEmpty && messages.error == nil {
@@ -40,13 +51,19 @@ struct MessagesView: View {
             }
             .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
         }
+        .sheet(isPresented: $grouping) {
+            NewGroupSheet { id in
+                grouping = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { chatWith = id }
+            }
+        }
     }
 
     private func row(_ c: Messages.Chat) -> some View {
         HStack(spacing: 12) {
-            Avatar(id: c.id, size: 52, dot: true)
+            if let g = Messages.groupId(c.id) { GroupFace(group: g, size: 52) } else { Avatar(id: c.id, size: 52, dot: true) }
             VStack(alignment: .leading, spacing: 3) {
-                Text(Feed.shared.name(c.id)).font(.headline)
+                Text(messages.title(c.id)).font(.headline)
                 Text(Messages.preview(c.last, me: messages.me)).font(.subheadline)
                     .foregroundStyle(c.unread > 0 ? .primary : .secondary).fontWeight(c.unread > 0 ? .semibold : .regular).lineLimit(1)
             }
@@ -174,6 +191,9 @@ struct ChatView: View {
     }
     @State private var added: Set<String> = []
     @FocusState private var typing: Bool
+    @Environment(\.dismiss) private var dismiss
+    /// A group chat ("g:" and its id), not one friend.
+    private var isGroup: Bool { friend.hasPrefix("g:") }
     private var messages: Messages { Messages.shared }
     private var store: Store { Store.shared }
     private var me: String { messages.me }
@@ -186,9 +206,17 @@ struct ChatView: View {
                         let t = messages.thread
                         ForEach(t.indices, id: \.self) { i in
                             if i == 0 || gap(t[i - 1], t[i]) { stamp(t[i]) }
+                            // in a group, who's talking: their name over the first of their messages in a row
+                            if isGroup, str(t[i]["from_user"]) != me, i == 0 || gap(t[i - 1], t[i]) || str(t[i - 1]["from_user"]) != str(t[i]["from_user"]) {
+                                HStack(spacing: 6) {
+                                    Avatar(id: str(t[i]["from_user"]), size: 18)
+                                    Text(Feed.shared.name(str(t[i]["from_user"]))).font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 6)
+                            }
                             bubble(t[i]).id(str(t[i]["id"]))
                         }
-                        if let last = t.last, str(last["from_user"]) == me { ticks(seen: !str(last["seen_at"]).isEmpty) }
+                        if !isGroup, let last = t.last, str(last["from_user"]) == me { ticks(seen: !str(last["seen_at"]).isEmpty) }
                     }
                     .padding(.horizontal, 12).padding(.vertical, 10)
                     .offset(x: timesOut)   // the times wait just off the right edge
@@ -210,8 +238,20 @@ struct ChatView: View {
         .overlay { if let m = held { heldMenu(m) } }
         .toolbar {
             ToolbarItem(placement: .principal) {
-                NavigationLink { ProfileView(id: friend) } label: {
-                    HStack(spacing: 8) { Avatar(id: friend, size: 28, dot: true); Text(Feed.shared.name(friend)).font(.headline).foregroundStyle(.primary) }
+                if let g = Messages.groupId(friend) {
+                    NavigationLink { GroupInfoView(group: g) { dismiss() } } label: {
+                        HStack(spacing: 8) {
+                            GroupFace(group: g, size: 30)
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(messages.title(friend)).font(.headline).foregroundStyle(.primary).lineLimit(1)
+                                Text("\(messages.people(in: g).count) people").font(.caption2).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                } else {
+                    NavigationLink { ProfileView(id: friend) } label: {
+                        HStack(spacing: 8) { Avatar(id: friend, size: 28, dot: true); Text(Feed.shared.name(friend)).font(.headline).foregroundStyle(.primary) }
+                    }
                 }
             }
         }
@@ -392,7 +432,7 @@ struct ChatView: View {
                 // what this one answers: a tap goes back to it
                 Button { jump = str(quoted["id"]) } label: {
                     VStack(alignment: mine ? .trailing : .leading, spacing: 2) {
-                        Text(mine ? "You replied" : "Replied to you").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                        Text(mine ? "You replied" : isGroup ? "Replied to \(str(quoted["from"]).isEmpty ? "a message" : Feed.shared.name(str(quoted["from"])))" : "Replied to you").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
                         Text(str(quoted["text"])).font(.footnote).foregroundStyle(.secondary).lineLimit(2).multilineTextAlignment(.leading)
                             .padding(.horizontal, 11).padding(.vertical, 7)
                             .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 16, style: .continuous))

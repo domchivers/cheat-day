@@ -447,6 +447,11 @@ struct MainTabs: View {
             if url.host == "add" { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { NotificationCenter.default.post(name: .openAdd, object: nil) } }
             // cheatdays://friend/DOM-1234, from a friend's QR code
             if url.host == "friend", !url.lastPathComponent.isEmpty, url.lastPathComponent != "/" { tab = 2; Nav.shared.addCode = url.lastPathComponent }
+            // cheatdays://group/ab12cd34ef, a group chat's invite: join it and open its chat
+            if url.host == "group", !url.lastPathComponent.isEmpty, url.lastPathComponent != "/" {
+                let code = url.lastPathComponent
+                Task { if let id = await Messages.shared.join(code) { Nav.shared.chat(id) } }
+            }
         }
         .task {
             if demo { tab = startTab; return }
