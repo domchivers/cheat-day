@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Your plan and your goal on one screen, a tab each (19 Nov). The card on Progress opens it: Budget and Cheat day
 /// on Plan, the goal (and Weigh-ins' See all) on Goal. They were two screens, and the goal's was easy to miss: a tap
@@ -38,17 +39,17 @@ struct PlanTabs: View {
                 HStack(alignment: .top, spacing: 0) {
                     BudgetView(embedded: true)
                         .frame(width: w, height: geo.size.height)
-                        .allowsHitTesting(tab == 0 && pullFrom == nil).disabled(pullFrom != nil).accessibilityHidden(tab != 0)
+                        .allowsHitTesting(tab == 0 && pullFrom == nil).disabled(switchedOff).accessibilityHidden(tab != 0)
                     BodyView(embedded: true, active: tab == 1)
                         .frame(width: w, height: geo.size.height)
-                        .allowsHitTesting(tab == 1 && pullFrom == nil).disabled(pullFrom != nil).accessibilityHidden(tab != 1)
+                        .allowsHitTesting(tab == 1 && pullFrom == nil).disabled(switchedOff).accessibilityHidden(tab != 1)
                 }
                 .frame(width: w * 2, height: geo.size.height, alignment: .topLeading)
                 .offset(x: -CGFloat(tab) * w + pull)
                 .frame(width: w, height: geo.size.height, alignment: .topLeading)
                 .clipped()
                 .contentShape(Rectangle())   // (the swipe kept while the screens under it can't be touched)
-                .simultaneousGesture(swipe(width: w))
+                .modifier(TabSwipe(width: w, move: { dx in move(dx) }, end: { flick in finish(flick: flick, width: w) }, drag: swipe(width: w)))
             }
             // down behind the tab bar, as the screens it holds were on their own (19 Nov: they stopped above it, on black)
             .ignoresSafeArea(.container, edges: .bottom)
@@ -72,23 +73,40 @@ struct PlanTabs: View {
                     guard ax >= 20, ax > ay * 2 else { return }
                     pullFrom = v.translation.width
                 }
-                let dx: CGFloat = v.translation.width - (pullFrom ?? 0)
-                let edge: Bool = (tab == 0 && dx > 0) || (tab == 1 && dx < 0)
-                pull = edge ? dx / 4 : dx
+                move(v.translation.width - (pullFrom ?? 0))
             }
             .onEnded { (v: DragGesture.Value) in
                 scrolling = false; dragStart = nil
                 guard pullFrom != nil else { return }
-                let flick: CGFloat = v.predictedEndTranslation.width - v.translation.width
-                var next: Int = tab
-                if pull < -w / 4 || (pull < -12 && flick < -80) { next = min(1, tab + 1) }
-                if pull > w / 4 || (pull > 12 && flick > 80) { next = max(0, tab - 1) }
-                withAnimation(.snappy(duration: 0.28)) { tab = next; pull = 0 }
-                // (the screens back to being touched only once the finger's well off: lifted on a button, it isn't a tap. 24 Nov:
-                // not touchable wasn't enough, a swipe begun on Make every day the same still pressed it and wiped the
-                // week's own days, so the buttons are switched off too while a swipe is on)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { pullFrom = nil }
+                finish(flick: v.predictedEndTranslation.width - v.translation.width, width: w)
             }
+    }
+
+    /// The buttons switched off while a swipe is on: only before iOS 18. Switched off, everything on the screens
+    /// greyed for the length of the swipe (25 Nov: "can just be normal"); from iOS 18 the swipe is UIKit's own pan,
+    /// which takes the touch off the button it began on, so nothing needs switching off.
+    private var switchedOff: Bool {
+        if #available(iOS 18.0, *) { return false }
+        return pullFrom != nil
+    }
+
+    /// The pages pulled this far by the finger (held back at the ends).
+    private func move(_ dx: CGFloat) {
+        if pullFrom == nil { pullFrom = 0 }
+        let edge: Bool = (tab == 0 && dx > 0) || (tab == 1 && dx < 0)
+        pull = edge ? dx / 4 : dx
+    }
+
+    /// The finger up: the other tab past a quarter of the way or flicked, otherwise back.
+    private func finish(flick: CGFloat, width w: CGFloat) {
+        var next: Int = tab
+        if pull < -w / 4 || (pull < -12 && flick < -80) { next = min(1, tab + 1) }
+        if pull > w / 4 || (pull > 12 && flick > 80) { next = max(0, tab - 1) }
+        withAnimation(.snappy(duration: 0.28)) { tab = next; pull = 0 }
+        // (the screens back to being touched only once the finger's well off: lifted on a button, it isn't a tap. 24 Nov:
+        // not touchable wasn't enough, a swipe begun on Make every day the same still pressed it and wiped the
+        // week's own days, so before iOS 18 the buttons are switched off too while a swipe is on)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { pullFrom = nil }
     }
 
     private func button(_ title: String, _ tag: Int) -> some View {
@@ -102,6 +120,62 @@ struct PlanTabs: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(on ? .isSelected : [])
+    }
+}
+
+/// Plan and Goal's swipe: from iOS 18 UIKit's pan (SideSwipe), before it SwiftUI's drag as it was.
+private struct TabSwipe<G: Gesture>: ViewModifier {
+    let width: CGFloat
+    let move: (CGFloat) -> Void
+    let end: (CGFloat) -> Void
+    let drag: G
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.gesture(SideSwipe(changed: move, ended: { v in end(v / 4) }))
+        } else {
+            content.simultaneousGesture(drag)
+        }
+    }
+}
+
+/// A sideways pan that begins only when it's plainly sideways (twice as far across as up or down). Once it's begun
+/// it takes the touch, as a page swipe does in Apple's own apps: a button the finger came down on doesn't fire when
+/// it lifts, and doesn't need switching off (and greying) to stop it. The screens' own up-and-down scrolling still
+/// runs alongside it, as with the drag before.
+@available(iOS 18.0, *)
+private struct SideSwipe: UIGestureRecognizerRepresentable {
+    /// Pulled this far since it began.
+    var changed: (CGFloat) -> Void
+    /// Let go at this speed across, in points a second.
+    var ended: (CGFloat) -> Void
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var from: CGFloat = 0
+        func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
+            guard let p = g as? UIPanGestureRecognizer else { return true }
+            let t: CGPoint = p.translation(in: p.view)
+            return abs(t.x) > abs(t.y) * 2
+        }
+        func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith o: UIGestureRecognizer) -> Bool {
+            o is UIPanGestureRecognizer && o.view is UIScrollView
+        }
+    }
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
+    func makeUIGestureRecognizer(context: Context) -> UIPanGestureRecognizer {
+        let g = UIPanGestureRecognizer()
+        g.maximumNumberOfTouches = 1
+        g.delegate = context.coordinator
+        return g
+    }
+    func handleUIGestureRecognizerAction(_ r: UIPanGestureRecognizer, context: Context) {
+        let c = context.coordinator, x: CGFloat = r.translation(in: r.view).x
+        switch r.state {
+        case .began: c.from = x; changed(0)
+        case .changed: changed(x - c.from)
+        case .ended: ended(r.velocity(in: r.view).x)
+        case .cancelled, .failed: ended(0)
+        default: break
+        }
     }
 }
 
