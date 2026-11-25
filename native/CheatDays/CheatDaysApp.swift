@@ -83,27 +83,22 @@ struct RootView: View {
     }
 }
 
-/// For the Start sheet UI test: Start opened as a real sheet over a Workouts-like page, with the sheet's numbers
-/// (picker height, detent, the sheet's area and insets) shown above it, so the screenshot shows any gap and its cause.
+/// For the Start UI test: Start's panel over a Workouts-like page, as Workouts opens it; what was picked, or that it
+/// was closed, shows on the page after.
 private struct StartSheetHarness: View {
     @State private var open = false
-    @State private var probe = "measuring"
-    /// -start-detent N: ask for that height instead of the picker-measured one.
-    static var detent: CGFloat? {
-        let a = ProcessInfo.processInfo.arguments
-        guard let i = a.firstIndex(of: "-start-detent"), i + 1 < a.count, let n = Double(a[i + 1]) else { return nil }
-        return CGFloat(n)
-    }
+    @State private var result = "open"
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Workouts").font(.largeTitle.weight(.heavy))
-            Text(probe).font(.caption.monospaced()).accessibilityIdentifier("startProbe")
+            Text(result).font(.caption.monospaced()).accessibilityIdentifier("startResult")
+            Button("Start again") { StartPanel.present(true, $open) }
             Spacer()
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.bg.ignoresSafeArea())
-        .sheet(isPresented: $open) { StartSheet(pick: { _ in }, report: { probe = $0 }, detent: Self.detent) }
-        .task { open = true }
+        .fullScreenCover(isPresented: $open) { StartPanel { p in result = p ?? "closed"; StartPanel.present(false, $open) } }
+        .task { StartPanel.present(true, $open) }
     }
 }
 

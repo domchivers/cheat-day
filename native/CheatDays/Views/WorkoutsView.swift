@@ -89,7 +89,7 @@ struct WorkoutsView: View {
                         } label: { pill("dumbbell.fill", "Weights", filled: true) }
                         .buttonStyle(.borderless)
                         .accessibilityLabel(store.session == nil ? "Start a weights session" : "Back to your session")
-                        Button { startPicking = true } label: { pill("play.fill", "Start", filled: true) }
+                        Button { StartPanel.present(true, $startPicking) } label: { pill("play.fill", "Start", filled: true) }
                             .buttonStyle(.borderless).accessibilityLabel("Start a run, ride, walk or timed workout")
                         Button { showActivity = true } label: { pill("plus", "Log one", filled: false) }
                             .buttonStyle(.borderless).accessibilityLabel("Log a walk, run or class")
@@ -188,12 +188,12 @@ struct WorkoutsView: View {
                 let p: (week: Int, run: Int, finished: Bool) = store.startRun
                 RunTimerView(week: p.week, run: p.run)
             }
-            .sheet(isPresented: $startPicking, onDismiss: {
+            .fullScreenCover(isPresented: $startPicking, onDismiss: {
                 guard let p = picked else { return }
                 picked = nil
                 if p == "time" { timing = true } else { moving = MoveKind(rawValue: p) }
             }) {
-                StartSheet { p in picked = p; startPicking = false }
+                StartPanel { p in picked = p; StartPanel.present(false, $startPicking) }
             }
             .sheet(item: $moving, onDismiss: {
                 if toIntervals { toIntervals = false; runTimer = true }

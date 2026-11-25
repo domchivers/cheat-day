@@ -117,33 +117,27 @@ final class StrongSteadyUITests: XCTestCase {
         shot(app, "free-run-running")
     }
 
-    /// Start's sheet (26 Nov, design/start-anything-mockup.html): run, ride, walk, hike, or just time it.
+    /// Start (26 Nov, design/start-anything-mockup.html): run, ride, walk, hike, or just time it, in our own panel
+    /// down to the screen's foot (25 Nov, start-panel-mockup.html). Its screenshot should show no page under it;
+    /// dragged down it closes, and a pick reaches the page.
     func testStartSheet() {
         let app = XCUIApplication()
         app.launchArguments = ["-uitest-start"]
         app.launch()
-        XCTAssertTrue(app.staticTexts["What are you doing?"].waitForExistence(timeout: 6))
+        let title = app.staticTexts["What are you doing?"]
+        XCTAssertTrue(title.waitForExistence(timeout: 6))
         for k in ["Run", "Ride", "Walk", "Hike", "Just time it"] { XCTAssertTrue(app.buttons[k].exists, k) }
         sleep(1)
         shot(app, "start-sheet")
-        // where the sheet, its safe area, the picker, its title and last line are on screen: first at the height the
-        // app asks for, then at set heights, to learn how the sheet follows its detent (gap under it, 1.4.58–60)
-        var all: [String] = []
-        for d in [nil, "300", "360", "420"] as [String?] {
-            if let d {
-                app.terminate()
-                app.launchArguments = ["-uitest-start", "-start-detent", d]
-                app.launch()
-                _ = app.staticTexts["What are you doing?"].waitForExistence(timeout: 6)
-                sleep(1)
-                shot(app, "start-sheet-\(d)")
-            }
-            let p = app.staticTexts["startProbe"]
-            all.append((d ?? "app") + ": " + (p.exists ? p.label : "numbers hidden behind the sheet"))
-        }
-        let text = all.joined(separator: "\n")
-        print("START SHEET:\n" + text)
-        let note = XCTAttachment(string: text); note.name = "start-sheet-numbers"; note.lifetime = .keepAlways; add(note)
+        // dragged down from its title: closed
+        title.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98)))
+        XCTAssertTrue(app.staticTexts["closed"].waitForExistence(timeout: 3), "dragged down, the panel closes")
+        // again, and Ride picked
+        app.buttons["Start again"].tap()
+        XCTAssertTrue(app.buttons["Ride"].waitForExistence(timeout: 3))
+        app.buttons["Ride"].tap()
+        XCTAssertTrue(app.staticTexts["ride"].waitForExistence(timeout: 3), "the pick reaches the page")
     }
 
     /// A ride stopped at the lights: speed, the climb, and the clock paused by itself.

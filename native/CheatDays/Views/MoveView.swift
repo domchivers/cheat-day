@@ -9,6 +9,8 @@ struct StartPicker: View {
     var pick: (String) -> Void
     /// For the Start sheet test only: where the title and the last line are on screen.
     var mark: ((String, CGRect) -> Void)? = nil
+    /// Space under the last line (the Start panel's is above the home indicator, which adds its own).
+    var foot: CGFloat = 26
     @AppStorage("start.last") private var last = "run"
 
     var body: some View {
@@ -37,7 +39,7 @@ struct StartPicker: View {
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { mark?("last line", $0) }
         }
         .padding(.horizontal, 16)
-        .padding(.bottom, 26)   // with the sheet's foot inset gone, about the title's 24 + line above
+        .padding(.bottom, foot)
     }
 
     private func tile(_ k: MoveKind) -> some View {
@@ -58,53 +60,62 @@ struct StartPicker: View {
     private func choose(_ p: String) { last = p; pick(p) }
 }
 
-/// The Start picker as Workouts presents it: a sheet measured to the picker's height. `report` and `detent` are for
-/// the -uitest-start harness only: `report` gets where everything is on screen (the sheet, its safe area, the
-/// picker, its title and last line), and `detent` overrides the height asked for, so one test run shows how the
-/// sheet's height follows the detent (1.4.58–60 left a gap under the last line; 1.4.60: picker 406, detent 393).
-struct StartSheet: View {
-    var pick: (String) -> Void
-    var report: ((String) -> Void)? = nil
-    var detent: CGFloat? = nil
-    @State private var picker: CGFloat = 0
-    @State private var inset: CGFloat = 34
-    @State private var marks: [String: CGRect] = [:]
-
-    /// The picker less half the bottom safe area iOS keeps under a .height detent (unproven: see the harness).
-    private var height: CGFloat { detent ?? (picker > 0 ? max(picker - inset / 2, 200) : 436) }
+/// Start as Workouts presents it: our own panel, full width and down to the bottom of the screen, the page dimmed
+/// behind (25 Nov, design/start-panel-mockup.html). Apple's sheet at this height floats in from the screen's sides
+/// and foot, and the page showed round and under it: the gap 1.4.58-1.4.61 chased inside the sheet (whose own
+/// numbers were right all along). Drag it down or tap above it to close. It's shown in a full-screen cover with no
+/// animation of its own (StartPanel.present), so it's over the tab bar, and slides itself up and down.
+struct StartPanel: View {
+    /// Done: what they picked ("run", "ride", "walk", "hike" or "time"), or nil if they closed it. Called once it's
+    /// slid away.
+    var done: (String?) -> Void
+    @State private var shown = false
+    @State private var drag: CGFloat = 0
+    @State private var tall: CGFloat = 520
+    @State private var leaving = false
 
     var body: some View {
-        // Color.clear fills exactly the sheet's safe area; the picker hangs from its top as an overlay, so a picker
-        // taller than the area runs into the inset below instead of growing the layout and being re-centred (1.4.60
-        // moved the title down 16 pt)
-        Color.clear
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { note("safe area", $0) }
-            .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { inset = $0; send() }
-            .overlay(alignment: .top) {
-                StartPicker(pick: pick, mark: report == nil ? nil : { k, r in note(k, r) })
+        ZStack(alignment: .bottom) {
+            Color.black.opacity(shown ? 0.45 : 0).ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { leave(nil) }
+                .accessibilityLabel("Close").accessibilityAddTraits(.isButton)
+            VStack(spacing: 0) {
+                Capsule().fill(Color.secondary.opacity(0.5)).frame(width: 36, height: 5).padding(.top, 7)
+                StartPicker(pick: { p in leave(p) }, foot: 12)
                     .fixedSize(horizontal: false, vertical: true)
-                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { r in
-                        picker = r.height; note("picker", r)
-                    }
+                    .padding(.top, -10)   // (the grabber takes some of the title's 24 above it)
             }
+            .frame(maxWidth: .infinity)
             .background {
-                Color.clear.ignoresSafeArea()
-                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { note("sheet", $0) }
+                // down past the home indicator to the screen's foot; the screen's own corners round it there
+                UnevenRoundedRectangle(topLeadingRadius: 32, topTrailingRadius: 32, style: .continuous)
+                    .fill(Theme.bg).ignoresSafeArea(edges: .bottom)
             }
-            .presentationDetents([.height(height)])
-        .presentationBackground(Theme.bg)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { tall = $0 }
+            .offset(y: shown ? max(0, drag) : tall + 60)
+            .gesture(DragGesture()
+                .onChanged { v in drag = v.translation.height > 0 ? v.translation.height : v.translation.height / 6 }
+                .onEnded { v in
+                    if v.translation.height > 90 || v.predictedEndTranslation.height > 240 { leave(nil) }
+                    else { withAnimation(.snappy(duration: 0.25)) { drag = 0 } }
+                })
+        }
+        .presentationBackground(.clear)
+        .onAppear { withAnimation(.snappy(duration: 0.32)) { shown = true } }
     }
 
-    private func note(_ k: String, _ r: CGRect) { marks[k] = r; send() }
+    private func leave(_ p: String?) {
+        guard !leaving else { return }
+        leaving = true
+        withAnimation(.snappy(duration: 0.24)) { shown = false; drag = 0 }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.24) { done(p) }
+    }
 
-    private func send() {
-        guard let report else { return }
-        func y(_ k: String) -> String {
-            guard let r = marks[k] else { return "\(k) ?" }
-            return "\(k) \(Int(r.minY.rounded()))–\(Int(r.maxY.rounded()))"
-        }
-        report("detent \(Int(height)), inset \(Int(inset)) | " +
-               ["sheet", "safe area", "picker", "title", "last line"].map(y).joined(separator: ", "))
+    /// The cover put up or taken down with no slide of its own: the panel's is the only movement.
+    static func present(_ on: Bool, _ flag: Binding<Bool>) {
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t) { flag.wrappedValue = on }
     }
 }
 

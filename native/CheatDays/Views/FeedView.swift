@@ -863,15 +863,22 @@ struct FeedView: View {
                 HStack(spacing: 8) {
                     if !tagged.isEmpty {
                         Button { taggedIn = TagBox(ids: tagged) } label: {
-                            Image(systemName: "person.fill").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
-                                .frame(width: 30, height: 30).background(.black.opacity(0.5), in: Circle())
+                            // (25 Nov: the size of the speaker opposite, and drawn so the person sits dead centre: the
+                            // symbol's head and shoulders sat low and to one side in its circle)
+                            VStack(spacing: 1.5) {
+                                Circle().frame(width: 5.5, height: 5.5)
+                                UnevenRoundedRectangle(topLeadingRadius: 4.5, topTrailingRadius: 4.5, style: .continuous).frame(width: 10, height: 4.5)
+                            }
+                            .foregroundStyle(.white)
+                            .frame(width: 24, height: 24).background(.black.opacity(0.45), in: Circle())
+                            .padding(4).contentShape(Rectangle())
                         }
                         .buttonStyle(.plain).accessibilityLabel(tagged.count == 1 ? "Tagged: 1 person" : "Tagged: \(tagged.count) people")
                     }
                     // (25 Nov, design/feed-food-line-mockup.html A: the name, numbers and Have some left the photo for
                     // foodLine under the icons; on the photo's tag the name was cut short)
                 }
-                .padding(12)
+                .padding(6)   // (its circle 10 in from the corner, as the speaker's)
             }
     }
 
