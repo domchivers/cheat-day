@@ -22,13 +22,15 @@ struct CheatDaysApp: App {
         VolumeButtons.shared.start()
         // Apple's own daily reports of hitches, hangs and crashes, kept on the phone (Performance)
         Performance.shared.start()
-        // no scroll bars down the side of the screens; the assistant's chat keeps its own (a long conversation needs one)
+        // no scroll bars anywhere (25 Nov: the owner saw them on some pages; SwiftUI's lists ignore this, so RootView's
+        // .scrollIndicators(.hidden) does it for them)
         UIScrollView.appearance().showsVerticalScrollIndicator = false
         UIScrollView.appearance().showsHorizontalScrollIndicator = false
     }
     var body: some Scene {
         WindowGroup {
             RootView()
+                .scrollIndicators(.hidden, axes: [.vertical, .horizontal])   // every list, scroll view and sheet below
                 .preferredColorScheme(Appearance.scheme(appearance))
                 .fontDesign(.rounded)
                 .tint(Palette.named(theme).accent)

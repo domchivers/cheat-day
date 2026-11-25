@@ -84,7 +84,7 @@ struct AssistantView: View {
                     .padding(16)
                 }
                 .contentShape(Rectangle())   // the empty space counts too, not just the bubbles
-                .scrollIndicators(.visible)   // the one place a scroll bar shows: a long chat
+                .scrollIndicators(.hidden)   // no scroll bar here either (25 Nov)
                 .accessibilityIdentifier("chat")
                 .scrollDismissesKeyboard(.immediately)
                 // a short chat doesn't scroll, so a swipe can't put the keyboard away: a tap on the chat does
