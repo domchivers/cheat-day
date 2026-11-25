@@ -161,7 +161,9 @@ struct WorkoutsView: View {
             .contentMargins(.top, 0, for: .scrollContent)
             .scrollContentBackground(.hidden)
             .background(Theme.bg)
-            .refreshable { await store.sync(); await Steps.shared.refresh(); await HealthSync.tickPlan(); await HealthSync.matchWatch() }
+            // (25 Nov, "weird hanging in place": the page was held down, with no spinner, until all four were done, the
+            // Apple Health ones slow; now it goes back up within a moment and they finish behind it)
+            .refreshable { await briefly { await store.sync(); await Steps.shared.refresh(); await HealthSync.tickPlan(); await HealthSync.matchWatch() } }
             // (planned runs and classes a watch saved to Apple Health, ticked off: 25 Nov)
             .task { await Steps.shared.refresh(); await HealthSync.tickPlan(); await HealthSync.matchWatch() }
             .onAppear { checkNames() }
@@ -593,5 +595,17 @@ struct ActivitySheet: View {
                 }
             }
         }
+    }
+}
+
+/// A pull to refresh's work, waited for at most this long: then the page goes back up, and the work carries on
+/// behind it. Waited for in full, a slow Apple Health read left the page hanging pulled down.
+@MainActor func briefly(upTo seconds: Double = 0.8, _ work: @escaping @MainActor () async -> Void) async {
+    let job = Task { @MainActor in await work() }
+    await withTaskGroup(of: Void.self) { group in
+        group.addTask { await job.value }
+        group.addTask { try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000)) }
+        _ = await group.next()
+        group.cancelAll()
     }
 }
