@@ -150,6 +150,8 @@ struct MoveView: View {
     @State private var heart: [HRSample] = []
     @State private var camera: MapCameraPosition = .userLocation(fallback: .automatic)
     @State private var result: (seconds: Double, meters: Double, climb: Double, kcal: Double, route: [RoutePoint], health: Bool)?
+    /// New bests it set, and second bests (26 Nov, design/bests-weekgoal-mockup.html).
+    @State private var news: [BestNews] = []
     private let tick = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
     private var testing: Bool { preview != nil || RunTimerView.uiTest }
     private var store: Store { Store.shared }
@@ -361,8 +363,10 @@ struct MoveView: View {
                 MoveStat(value: Fmt.int(r.kcal), label: "kcal")
             }
             if r.climb >= 1 { Text("\(Fmt.int(r.climb)) m climbed").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary) }
+            // new bests first, then a second best; three at most, the screen's short
+            ForEach(Array(news.prefix(3))) { (n: BestNews) in BestNewsCard(news: n) }
             Text(r.health ? "It's in Workouts and Apple Health." : "It's in Workouts.").font(.subheadline).foregroundStyle(.secondary)
-            Spacer()
+            Spacer(minLength: 0)
             Button { dismiss() } label: { Text("Done").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 8) }
                 .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent).buttonBorderShape(.roundedRectangle(radius: 14))
         }
@@ -442,9 +446,12 @@ struct MoveView: View {
         let health: Bool = !testing && HealthSync.available
             && HealthSync.health.authorizationStatus(for: HKObjectType.workoutType()) == .sharingAuthorized
         workout.finish(meters: meters, kcal: kcal)
-        store.logMove(kind, start: started ?? Date(), end: Date(), seconds: t, route: route, kcal: kcal, heart: heart)
-        Cues.say("\(kind.title) saved. Nice work.", run: false)
-        withAnimation { result = (t, meters, up, kcal, route, health) }
+        let id: String = store.logMove(kind, start: started ?? Date(), end: Date(), seconds: t, route: route, kcal: kcal, heart: heart)
+        let found: [BestNews] = store.bestNews(for: id)
+        // a new best beating one they had is worth saying; a first time isn't news yet
+        let beat: Bool = found.contains { (n: BestNews) -> Bool in n.place == 1 && n.other != nil }
+        Cues.say("\(kind.title) saved. " + (beat ? "That's a new best." : "Nice work."), run: false)
+        withAnimation { news = found; result = (t, meters, up, kcal, route, health) }
     }
 }
 
