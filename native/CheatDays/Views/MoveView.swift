@@ -18,8 +18,11 @@ struct StartPicker: View {
             Text("What are you doing?").font(.title3.weight(.heavy))
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { mark?("title", $0) }
                 .padding(.top, 24)
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                ForEach(MoveKind.allCases) { k in tile(k) }
+            // (a plain grid, not a lazy one: 1.4.62's lazy tiles were made once the panel was already sliding, and
+            // popped up in their final place ahead of it, "coming up weirdly")
+            Grid(horizontalSpacing: 10, verticalSpacing: 10) {
+                GridRow { tile(.run); tile(.ride) }
+                GridRow { tile(.walk); tile(.hike) }
             }
             Button { choose("time") } label: {
                 HStack(spacing: 12) {
