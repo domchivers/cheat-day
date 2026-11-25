@@ -5,6 +5,9 @@ import UserNotifications
 struct SettingsView: View {
     @Environment(\.colorScheme) private var scheme
     @State private var lunch = true
+    /// Food to Apple Health, and why it didn't turn on.
+    @State private var healthFood = HealthSync.foodOn
+    @State private var healthNote: String?
     @State private var weighOn = true
     @State private var weighTime = Calendar.current.date(from: DateComponents(hour: 7, minute: 30)) ?? Date()
     @State private var days: Set<Int> = [0]
@@ -285,6 +288,23 @@ struct SettingsView: View {
             // how smooth it's been on this phone: Apple's daily reports (Performance)
             NavigationLink { PerformanceView() } label: { Label("Performance reports", systemImage: "gauge.with.dots.needle.33percent") }
         } header: { Text("Your data") } footer: { Text("Everything syncs to your account. Export gives you a copy of it all as a file. Daily backups and restoring stay on the website's page for now.") }
+        if HealthSync.available {
+            // what's eaten, to Apple Health (25 Nov, design/health-food-mockup.html)
+            Section {
+                Toggle("Save food to Apple Health", isOn: Binding(get: { healthFood }, set: { (v: Bool) in
+                    healthFood = v; healthNote = nil
+                    if v {
+                        Task { @MainActor in
+                            let ok: Bool = await HealthSync.startFood()
+                            healthFood = ok
+                            if !ok { healthNote = "Health didn't allow it. Turn on Cheat Days under Health › Sharing › Apps, then try again." }
+                        }
+                    } else { HealthSync.stopFood() }
+                }))
+            } header: { Text("Apple Health") } footer: {
+                Text(healthNote ?? "Each meal's calories, protein, carbs and fat go to Health as you log them, and change if you edit or delete. Your watch and other apps can then see what you've eaten. Turning it on adds the last two weeks.")
+            }
+        }
         Section {
             NavigationLink { FoodSourcesView() } label: { Label("Food data sources", systemImage: "books.vertical") }
         } header: { Text("Credits") } footer: { Text("Food icons: Fluent Emoji by Microsoft, MIT licence.") }
