@@ -75,31 +75,56 @@ struct WeekGoalSheet: View {
 
 /// All their bests, by kind; each opens the workout it came from.
 struct BestsView: View {
-    @State private var kind: MoveKind = .run
+    /// "run", "ride", "walk", "hike", or "routes" (26 Nov, design/matched-routes-mockup.html)
+    @State private var tab: String = "run"
+    @State private var named: Int = 0
     private var store: Store { Store.shared }
 
     var body: some View {
+        let _ = named   // (route names found show)
         let all: [String: BestEntry] = store.bests()
+        let kind: MoveKind? = MoveKind(rawValue: tab)
+        let routes: [RouteGroup] = kind == nil ? store.routeGroups().sorted { (a: RouteGroup, b: RouteGroup) -> Bool in a.runs.count > b.runs.count } : []
         List {
             Section {
-                Picker("Kind", selection: $kind) {
-                    ForEach(MoveKind.allCases) { (k: MoveKind) in Text(k.title).tag(k) }
+                Picker("Kind", selection: $tab) {
+                    ForEach(MoveKind.allCases) { (k: MoveKind) in Text(k.title).tag(k.rawValue) }
+                    Text("Routes").tag("routes")
                 }
                 .pickerStyle(.segmented)
                 .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
             }
-            Section {
-                ForEach(BestDef.all.filter { (d: BestDef) -> Bool in d.kind == kind }) { (d: BestDef) in
-                    if let b = all[d.key] {
-                        NavigationLink { WorkoutDetail(workout: b.workout, date: b.date) } label: {
-                            row(d.title, value: Self.value(d, b.value), when: Bests.day(b.date))
+            if let kind {
+                Section {
+                    ForEach(BestDef.all.filter { (d: BestDef) -> Bool in d.kind == kind }) { (d: BestDef) in
+                        if let b = all[d.key] {
+                            NavigationLink { WorkoutDetail(workout: b.workout, date: b.date) } label: {
+                                row(d.title, value: Self.value(d, b.value), when: Bests.day(b.date))
+                            }
+                        } else {
+                            row(d.title, value: "–", when: "Not yet")
                         }
-                    } else {
-                        row(d.title, value: "–", when: "Not yet")
                     }
+                } footer: {
+                    Text("Found from your runs, rides, walks and hikes. Fastest times come from the ones mapped with Start, on the workout's own clock, which pauses itself at the lights.")
                 }
-            } footer: {
-                Text("Found from your runs, rides, walks and hikes. Fastest times come from the ones mapped with Start, on the workout's own clock, which pauses itself at the lights.")
+            } else {
+                Section {
+                    if routes.isEmpty {
+                        Text("Do a run, ride, walk or hike with Start the same way twice and it shows here.").foregroundStyle(.secondary)
+                    }
+                    ForEach(routes) { (g: RouteGroup) in
+                        if let last = g.runs.last {
+                            NavigationLink { WorkoutDetail(workout: last.workout, date: last.date) } label: { RouteRow(group: g) }
+                        }
+                    }
+                } footer: {
+                    Text("Routes you've done twice or more with Start, either way round. Each is named from Apple Maps: the park or suburb where it starts. Your routes stay on your phone.")
+                }
+                .task(id: routes.count) {
+                    for g in routes { await RouteMatch.nameIfNeeded(g) }
+                    named += 1
+                }
             }
         }
         .navigationTitle("Your bests")

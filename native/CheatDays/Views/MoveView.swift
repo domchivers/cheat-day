@@ -152,6 +152,9 @@ struct MoveView: View {
     @State private var result: (seconds: Double, meters: Double, climb: Double, kcal: Double, route: [RoutePoint], health: Bool)?
     /// New bests it set, and second bests (26 Nov, design/bests-weekgoal-mockup.html).
     @State private var news: [BestNews] = []
+    /// The route it's on when it's been done before, and the saved workout's id (26 Nov, matched routes).
+    @State private var onRoute: RouteGroup?
+    @State private var savedId: String = ""
     private let tick = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
     private var testing: Bool { preview != nil || RunTimerView.uiTest }
     private var store: Store { Store.shared }
@@ -346,27 +349,34 @@ struct MoveView: View {
 
     private func doneView(_ r: (seconds: Double, meters: Double, climb: Double, kcal: Double, route: [RoutePoint], health: Bool)) -> some View {
         VStack(spacing: 14) {
-            if r.route.count > 1 && r.meters >= 50 {
-                RunMap(points: r.route, interactive: false).frame(height: 260).clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            } else {
-                Image(systemName: kind.symbol).font(.system(size: 48, weight: .heavy)).foregroundStyle(.green)
-                    .frame(width: 110, height: 110).background(Color.green.opacity(0.18), in: Circle()).padding(.top, 30)
-            }
-            Text("\(kind.title) saved").font(.title.weight(.heavy))
-            HStack(spacing: 0) {
-                MoveStat(value: RunStart.mmss(Int(r.seconds.rounded())), label: "moving time")
-                if r.meters >= 50 {
-                    MoveStat(value: RouteMath.km(r.meters), label: "km")
-                    if kind.speed { MoveStat(value: String(format: "%.1f", r.meters / r.seconds * 3.6), label: "km/h") }
-                    else { MoveStat(value: RouteMath.pace(r.seconds / r.meters * 1000), label: "pace /km") }
+            // (scrolls, with bests and a route's card under a 260 pt map; Done stays put)
+            ScrollView {
+                VStack(spacing: 14) {
+                    if r.route.count > 1 && r.meters >= 50 {
+                        RunMap(points: r.route, interactive: false).frame(height: 260).clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    } else {
+                        Image(systemName: kind.symbol).font(.system(size: 48, weight: .heavy)).foregroundStyle(.green)
+                            .frame(width: 110, height: 110).background(Color.green.opacity(0.18), in: Circle()).padding(.top, 30)
+                    }
+                    Text("\(kind.title) saved").font(.title.weight(.heavy))
+                    HStack(spacing: 0) {
+                        MoveStat(value: RunStart.mmss(Int(r.seconds.rounded())), label: "moving time")
+                        if r.meters >= 50 {
+                            MoveStat(value: RouteMath.km(r.meters), label: "km")
+                            if kind.speed { MoveStat(value: String(format: "%.1f", r.meters / r.seconds * 3.6), label: "km/h") }
+                            else { MoveStat(value: RouteMath.pace(r.seconds / r.meters * 1000), label: "pace /km") }
+                        }
+                        MoveStat(value: Fmt.int(r.kcal), label: "kcal")
+                    }
+                    if r.climb >= 1 { Text("\(Fmt.int(r.climb)) m climbed").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary) }
+                    // a route done before (26 Nov, design/matched-routes-mockup.html)
+                    if let g = onRoute { RouteNewsCard(group: g, id: savedId) }
+                    // new bests first, then a second best; three at most
+                    ForEach(Array(news.prefix(3))) { (n: BestNews) in BestNewsCard(news: n) }
+                    Text(r.health ? "It's in Workouts and Apple Health." : "It's in Workouts.").font(.subheadline).foregroundStyle(.secondary)
                 }
-                MoveStat(value: Fmt.int(r.kcal), label: "kcal")
             }
-            if r.climb >= 1 { Text("\(Fmt.int(r.climb)) m climbed").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary) }
-            // new bests first, then a second best; three at most, the screen's short
-            ForEach(Array(news.prefix(3))) { (n: BestNews) in BestNewsCard(news: n) }
-            Text(r.health ? "It's in Workouts and Apple Health." : "It's in Workouts.").font(.subheadline).foregroundStyle(.secondary)
-            Spacer(minLength: 0)
+            .scrollBounceBehavior(.basedOnSize)
             Button { dismiss() } label: { Text("Done").font(.headline).frame(maxWidth: .infinity).padding(.vertical, 8) }
                 .buttonStyle(.borderedProminent).foregroundStyle(Theme.onAccent).buttonBorderShape(.roundedRectangle(radius: 14))
         }
@@ -451,7 +461,8 @@ struct MoveView: View {
         // a new best beating one they had is worth saying; a first time isn't news yet
         let beat: Bool = found.contains { (n: BestNews) -> Bool in n.place == 1 && n.other != nil }
         Cues.say("\(kind.title) saved. " + (beat ? "That's a new best." : "Nice work."), run: false)
-        withAnimation { news = found; result = (t, meters, up, kcal, route, health) }
+        let group: RouteGroup? = store.routeGroup(for: id)
+        withAnimation { news = found; savedId = id; onRoute = group; result = (t, meters, up, kcal, route, health) }
     }
 }
 

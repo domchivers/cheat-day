@@ -527,6 +527,11 @@ struct WorkoutDetail: View {
                 // a mapped run (25 Nov, design/run-route-mockup.html)
                 Section { RunRouteCard(workout: workout, points: route) }
                     .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
+                // done the same way before: every time on it (26 Nov, design/matched-routes-mockup.html)
+                if let g = store.routeGroup(for: str(workout["id"])) {
+                    Section { RouteHistoryCard(group: g, id: str(workout["id"])) }
+                        .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
+                }
             } else {
                 Section {
                     HStack {
