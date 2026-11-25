@@ -54,6 +54,7 @@ struct RootView: View {
         else if ProcessInfo.processInfo.arguments.contains("-uitest-stickers") { StickersHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-honors") { HonorsHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-editor") { EditorHarness() }
+        else if ProcessInfo.processInfo.arguments.contains("-uitest-templates") { TemplatesHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-jitter") { JitterProbe() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-activity") { ActivityHarness() }
         else if ProcessInfo.processInfo.arguments.contains("-uitest-plantabs-mid") { PlanTabsHarness(pull: -40) }
@@ -700,5 +701,34 @@ private struct FeedHarness: View {
     }()
     var body: some View {
         NavigationStack { FeedView(only: Self.posts).accessibilityIdentifier("feedHarness") }
+    }
+}
+
+/// For the template cards screenshot only (design/template-cards-mockup.html, A): the gallery on a sample log, each card
+/// in the app's own art with the log's words, no sign-in and no clips.
+private struct TemplatesHarness: View {
+    private static var log: EditTemplate.Log {
+        let today: String = DayKey.string(Date())
+        let items: [JSON] = [
+            ["name": "Oats with berries", "kcal": 420, "meal": "Breakfast"],
+            ["name": "Chicken burrito", "kcal": 640, "meal": "Lunch"],
+            ["name": "Noodle & BBQ", "kcal": 1155, "meal": "Dinner"],
+            ["name": "All Natural Yogurt Light", "kcal": 248, "meal": "Snacks"]]
+        var history: [(date: String, items: [JSON])] = []
+        let totals: [Double] = [2100, 2350, 1800, 1950, 1700, 2000]
+        for (i, k) in totals.enumerated() {
+            history.append((date: DayKey.shift(today, days: -(i + 1)), items: [["name": "Day", "kcal": k, "meal": "Dinner"] as JSON]))
+        }
+        let lifts: [JSON] = [["exercise": "Cable pulldown", "sets": 3, "reps": 12, "kg": 20],
+                             ["exercise": "Bench press", "sets": 4, "reps": 8, "kg": 60],
+                             ["exercise": "Squat", "sets": 5, "reps": 5, "kg": 80]]
+        let weights: [(day: String, kg: Double)] = [(day: DayKey.shift(today, days: -300), kg: 74.9), (day: today, kg: 70.2)]
+        return EditTemplate.Log(today: today, items: items, history: history, workouts: [["lifts": lifts] as JSON], weights: weights)
+    }
+
+    var body: some View {
+        TemplateGallery(log: Self.log, pick: { _ in }, close: {})
+            .background(Color.black.ignoresSafeArea())
+            .preferredColorScheme(.dark)
     }
 }

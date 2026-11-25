@@ -371,4 +371,21 @@ final class TourUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Plan Olive Street Greek"].waitForExistence(timeout: 3), "a found place to tap")
         let e = XCTAttachment(screenshot: app.screenshot()); e.name = "takeaway-places"; e.lifetime = .keepAlways; add(e)
     }
+
+    /// The template cards (design/template-cards-mockup.html, A): each in the app's own art, sharp, with the log's
+    /// words and what it's for; scrolled, the last two; and a close-up of one at full resolution to check it's sharp.
+    func testTemplateCards() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-uitest-templates"]
+        app.launch()
+        let day = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Day of eating")).firstMatch
+        XCTAssertTrue(day.waitForExistence(timeout: 5), "the Day of eating card")
+        XCTAssertTrue(app.staticTexts["The words from your log. Tap one to see it with your clips."].exists, "the footer")
+        sleep(2)
+        let a = XCTAttachment(screenshot: app.screenshot()); a.name = "template-cards"; a.lifetime = .keepAlways; add(a)
+        let z = XCTAttachment(screenshot: day.screenshot()); z.name = "template-card-closeup"; z.lifetime = .keepAlways; add(z)
+        app.swipeUp()
+        sleep(1)
+        let b = XCTAttachment(screenshot: app.screenshot()); b.name = "template-cards-scrolled"; b.lifetime = .keepAlways; add(b)
+    }
 }

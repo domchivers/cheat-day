@@ -170,4 +170,72 @@ enum WaveMath {
         guard s.loopStart != nil else { return [] }
         return s.stretches(until: s.to).dropFirst().map { (part: EditSound.Stretch) -> Double in part.from - s.from }
     }
+
+    // MARK: you see what you'll hear
+
+    /// A stretch of the video a voiceover plays over, the takes merged where they come within 0.4 s of each other.
+    struct Dip: Equatable {
+        var from: Double
+        var to: Double
+    }
+
+    /// How low a clip's own sound goes under a voiceover, and how long it takes to get there: as PreviewEngine and
+    /// ClipJoin duck it.
+    static let duckLow: Float = 0.3
+    static let duckEase = 0.2
+
+    /// Where the clips' own sound dips under a voiceover: each heard take, merged as the player merges them.
+    static func dips(_ sounds: [EditSound]) -> [Dip] {
+        let voices: [EditSound] = sounds.filter { (s: EditSound) -> Bool in s.kind == "voice" && s.off != true }
+            .sorted { (a: EditSound, b: EditSound) -> Bool in a.from < b.from }
+        var out: [Dip] = []
+        for v in voices {
+            if let last = out.last, v.from <= last.to + 0.4 {
+                out[out.count - 1].to = max(last.to, v.to)
+            } else {
+                out.append(Dip(from: v.from, to: v.to))
+            }
+        }
+        return out
+    }
+
+    /// How much of a clip's own sound is heard at a moment of the video, under the voiceovers: 1 clear of them, 0.3
+    /// under one, eased down and back up a fifth of a second either side.
+    static func duck(_ v: Double, _ dips: [Dip]) -> Float {
+        var k: Float = 1
+        let low: Float = duckLow
+        let ease: Double = duckEase
+        for d in dips {
+            if v >= d.from && v <= d.to {
+                k = min(k, low)
+            } else if v > d.from - ease && v < d.from {
+                let f: Float = Float((v - (d.from - ease)) / ease)
+                k = min(k, 1 - (1 - low) * f)
+            } else if v > d.to && v < d.to + ease {
+                let f: Float = Float((v - d.to) / ease)
+                k = min(k, low + (1 - low) * f)
+            }
+        }
+        return k
+    }
+
+    /// A bar's height as a part of its row: as loud as it is in the file, times its level then (volume, keyframes,
+    /// fades, ducking); nothing at all with its sound off, which draws it flat.
+    static func shown(_ peak: Float, level: Float, heard: Bool) -> Float {
+        guard heard else { return 0 }
+        let v: Float = peak * level
+        return v.isFinite ? max(0, min(1, v)) : 0
+    }
+
+    /// A clip as its sound is heard: across a transition it fades out as the next fades in (as PreviewEngine plays it).
+    static func heardClip(_ clips: [Clip], at i: Int) -> Clip? {
+        guard clips.indices.contains(i) else { return nil }
+        var c: Clip = clips[i]
+        let r: Double = max(c.speed, 0.01)
+        let before: Double = i > 0 ? ClipJoin.overlap(clips, after: i - 1) : 0
+        let after: Double = ClipJoin.overlap(clips, after: i)
+        if before > 0 { c.fadeIn = max(c.fadeIn, before * r) }
+        if after > 0 { c.fadeOut = max(c.fadeOut, after * r) }
+        return c
+    }
 }

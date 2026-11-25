@@ -107,23 +107,38 @@ private struct TemplateCard: View {
             .padding(.horizontal, 8).padding(.bottom, 15)
     }
 
+    /// The app's own art for it, drawn from vectors so it's sharp at any size (25 Nov: the lifter was a 256 px
+    /// sticker, and a food's icon went through UIImage, which draws an SVG asset at its own small size, stretched).
     @ViewBuilder private func art(_ slot: Int) -> some View {
         switch template.id {
         case "gym":
-            Image("sticker-1f3cb").resizable().interpolation(.high).scaledToFit().frame(width: 76, height: 76)
+            SharpIcon(emoji: "🏋️", size: 76)
         case "recipe":
-            FluentIcon(emoji: "🍳", size: 76)
+            SharpIcon(emoji: "🍳", size: 76)
         case "before":
             halves(slot)
         case "week":
             week(slot)
         default:
             if foods.indices.contains(slot) && !foods[slot].isEmpty {
-                FoodDot(name: foods[slot], size: 76)
+                SharpIcon(emoji: Self.emoji(for: foods[slot], or: fallback), size: 76)
+            } else if template.id == "cheat" && slot > 0 && slot == slots.count - 1 {
+                // (the day's total: no food of its own)
+                Image(systemName: "flame.fill").font(.system(size: 54, weight: .semibold)).foregroundStyle(Color.white)
             } else {
-                Image(systemName: template.icon).font(.system(size: 50, weight: .semibold))
+                SharpIcon(emoji: fallback, size: 76)
             }
         }
+    }
+
+    /// What a card shows where a slot's food has no icon: a noodle bowl for a day's meals, a yogurt bowl for a cheat day.
+    private var fallback: String { template.id == "cheat" ? "🥣" : "🍜" }
+
+    /// The icon picked for a food (FoodIcons; the word rules till it's answered), or `other` when nothing fits.
+    private static func emoji(for food: String, or other: String) -> String {
+        let picked: String? = FoodIcons.shared.icon(food)
+        guard let picked, picked != "🍽️" else { return other }
+        return picked
     }
 
     private func halves(_ slot: Int) -> some View {
@@ -177,5 +192,26 @@ private struct TemplateCard: View {
         }
         .frame(height: 2)
         .padding(.horizontal, 8).padding(.bottom, 6)
+    }
+}
+
+/// One of the app's bundled Fluent icons, from its vector: `Image(name)` keeps an SVG asset that preserves its vector
+/// representation sharp however big it's drawn (the phone's own emoji, itself drawn as text, when it isn't bundled).
+private struct SharpIcon: View {
+    let emoji: String
+    let size: CGFloat
+
+    var body: some View {
+        let name: String = FoodEmoji.asset(emoji)
+        let bundled: Bool = UIImage(named: name) != nil
+        return Group {
+            if bundled {
+                Image(name).resizable().scaledToFit()
+            } else {
+                Text(emoji).font(.system(size: size * 0.85))
+            }
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
     }
 }

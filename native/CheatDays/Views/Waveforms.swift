@@ -82,13 +82,16 @@ struct ClipWave: View {
     let clock: EditPlayhead
     /// Where the clip starts in the video.
     let from: Double
+    /// Where its sound dips under a voiceover, in the video's seconds: the bars go down with it.
+    var dips: [WaveMath.Dip] = []
 
     private static let green = Color(red: 0.24, green: 0.86, blue: 0.52)
 
     var body: some View {
         let colour: Color = heard ? Self.green : Color.white.opacity(0.25)
         return WaveRun(clock: clock, from: from, width: width, height: height, pps: pps) { (k: Int) in
-            ClipWaveTile(clip: clip, file: file, heard: heard, pps: pps, left: CGFloat(k) * WaveTiles.width, colour: colour)
+            ClipWaveTile(clip: clip, file: file, heard: heard, pps: pps, left: CGFloat(k) * WaveTiles.width, colour: colour,
+                         from: from, dips: dips)
         }
         .background(colour.opacity(0.12))
         .overlay(alignment: .leading) { shade }
@@ -113,16 +116,22 @@ private struct ClipWaveTile: View {
     let pps: CGFloat
     let left: CGFloat
     let colour: Color
+    let from: Double
+    let dips: [WaveMath.Dip]
 
     var body: some View {
         Canvas { (ctx: inout GraphicsContext, size: CGSize) in
             var path = Path()
-            let start: Double = clip.start + Double(left / max(pps, 1)) * clip.speed
+            let points: Double = Double(max(pps, 1))
+            let start: Double = clip.start + Double(left) / points * clip.speed
             let bars: [WaveMath.Bar] = WaveMath.bars(width: Double(size.width), pps: Double(pps), fileStart: start, speed: clip.speed)
             for bar in bars {
                 var level: Float = 0
-                if heard, let file, bar.low >= clip.heardStart - 0.02, bar.low < clip.heardEnd {
-                    level = file.peak(from: bar.low, to: bar.high) * clip.level(at: bar.low)
+                if let file, bar.low >= clip.heardStart - 0.02, bar.low < clip.heardEnd {
+                    // (as it'll be heard: its volume, keyframes and fades, and lower under a voiceover)
+                    let video: Double = from + (Double(left) + bar.x) / points
+                    let loud: Float = clip.level(at: bar.low) * WaveMath.duck(video, dips)
+                    level = WaveMath.shown(file.peak(from: bar.low, to: bar.high), level: loud, heard: heard)
                 }
                 let tall: CGFloat = max(1, size.height * CGFloat(min(1, level)))
                 path.move(to: CGPoint(x: CGFloat(bar.x) + 0.7, y: (size.height - tall) / 2))
@@ -142,10 +151,18 @@ struct SoundBarWave: View {
     let pps: CGFloat
     let ink: Color
     let clock: EditPlayhead
+    /// Its row's speaker on: off, it's drawn flat and grey, as it'll be heard.
+    var heard = true
+    /// Where a clip's separated sound dips under a voiceover (only its sort dips: music and effects don't).
+    var dips: [WaveMath.Dip] = []
+
+    private static let grey = Color(white: 0.55)
 
     var body: some View {
-        WaveRun(clock: clock, from: sound.from, width: width, height: height, pps: pps) { (k: Int) in
-            SoundWaveTile(sound: sound, file: file, pps: pps, left: CGFloat(k) * WaveTiles.width, ink: ink)
+        let colour: Color = heard ? ink : Self.grey
+        let under: [WaveMath.Dip] = sound.kind == "clip" ? dips : []
+        return WaveRun(clock: clock, from: sound.from, width: width, height: height, pps: pps) { (k: Int) in
+            SoundWaveTile(sound: sound, file: file, pps: pps, left: CGFloat(k) * WaveTiles.width, ink: colour, heard: heard, dips: under)
         }
         .overlay(alignment: .topLeading) { marks }
         .allowsHitTesting(false)
@@ -171,7 +188,7 @@ struct SoundBarWave: View {
     private var again: some View {
         HStack(spacing: 2) {
             Rectangle().fill(Color.white).frame(width: 1, height: height)
-            Image(systemName: "repeat").font(.system(size: 9, weight: .bold)).foregroundStyle(Color.white)
+            Image(systemName: "arrow.clockwise").font(.system(size: 9, weight: .bold)).foregroundStyle(Color.white)
         }
     }
 
@@ -198,6 +215,8 @@ private struct SoundWaveTile: View {
     let pps: CGFloat
     let left: CGFloat
     let ink: Color
+    let heard: Bool
+    let dips: [WaveMath.Dip]
 
     var body: some View {
         Canvas { (ctx: inout GraphicsContext, size: CGSize) in
@@ -215,7 +234,8 @@ private struct SoundWaveTile: View {
                 for bar in bars {
                     let x: Double = (a - low) * points + bar.x
                     let at: Double = sound.from + low + x / points
-                    let level: Float = file.peak(from: bar.low, to: bar.high) * sound.level(at: at)
+                    let loud: Float = sound.level(at: at) * WaveMath.duck(at, dips)
+                    let level: Float = WaveMath.shown(file.peak(from: bar.low, to: bar.high), level: loud, heard: heard)
                     let tall: CGFloat = max(1, (size.height - 8) * CGFloat(min(1, level)))
                     path.move(to: CGPoint(x: CGFloat(x) + 0.7, y: (size.height - tall) / 2))
                     path.addLine(to: CGPoint(x: CGFloat(x) + 0.7, y: (size.height + tall) / 2))

@@ -1223,15 +1223,16 @@ struct MultiClipEditor: View {
         let heard: Bool = c.soundOn && !c.still && (soundOf == nil || soundOf == c.id)
         let starts: [Double] = ClipJoin.starts(clips)
         let start: Double = starts.indices.contains(at) ? starts[at] : 0
+        // (as it'll be heard: faded across its transitions, dipped under the voiceovers the player dips it under)
+        let dips: [WaveMath.Dip] = heard ? WaveMath.dips(sounds) : []
         var under: [ClosedRange<Double>] = []
-        if heard {
-            for v in sounds where v.kind == "voice" {
-                let low: Double = max(0, v.from - start), high: Double = min(c.span, v.to - start)
-                if high > low { under.append(low...high) }
-            }
+        for d in dips {
+            let low: Double = max(0, d.from - start), high: Double = min(c.span, d.to - start)
+            if high > low { under.append(low...high) }
         }
-        return ClipWave(clip: c, file: waves.files[url], heard: heard, width: width, height: Self.waveHeight, pps: perSecond, under: under,
-                        clock: clock, from: start)
+        let played: Clip = WaveMath.heardClip(clips, at: at) ?? c
+        return ClipWave(clip: played, file: waves.files[url], heard: heard, width: width, height: Self.waveHeight, pps: perSecond, under: under,
+                        clock: clock, from: start, dips: dips)
             .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
             .task(id: url) { if !c.still { await waves.load(url) } }
     }
@@ -3189,7 +3190,9 @@ struct MultiClipEditor: View {
         // a voice's name over its wave, the wave under it (design/voice-pitch-mockup.html)
         let voice: Bool = s.kind == "voice"
         let waveTall: CGFloat = voice ? max(8, height - 12) : height
-        return SoundBarWave(sound: s, file: file, width: width, height: waveTall, pps: perSecond, ink: Self.waveInk(s.kind), clock: clock)
+        let dips: [WaveMath.Dip] = s.kind == "clip" ? WaveMath.dips(sounds) : []
+        return SoundBarWave(sound: s, file: file, width: width, height: waveTall, pps: perSecond, ink: Self.waveInk(s.kind), clock: clock,
+                            heard: s.off != true, dips: dips)
             .frame(width: width, height: height, alignment: .bottom)
             .clipShape(corner)
             .overlay(alignment: .topLeading) {
