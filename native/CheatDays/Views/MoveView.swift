@@ -311,13 +311,17 @@ struct MoveView: View {
         let colour: Color = kind == .run ? Color.green : Theme.accent
         return Map(position: $camera, interactionModes: started == nil ? .all : [.zoom]) {
             UserAnnotation()
+            // the quiet map and a glow under the line (26 Nov, design/map-style-mockup.html, A); paced colours once saved
+            ForEach(lines.indices, id: \.self) { i in
+                MapPolyline(coordinates: lines[i].points)
+                    .stroke(colour.opacity(0.35), style: StrokeStyle(lineWidth: 11, lineCap: .round, lineJoin: .round))
+            }
             ForEach(lines.indices, id: \.self) { i in
                 MapPolyline(coordinates: lines[i].points)
                     .stroke(colour, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
             }
         }
-        .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
-        .environment(\.colorScheme, .dark)
+        .mapStyle(.quiet)
         .overlay(alignment: .topTrailing) {
             Button { withAnimation { camera = .userLocation(fallback: .automatic) } } label: {
                 Image(systemName: "location.fill").font(.subheadline.weight(.bold)).padding(9).background(.ultraThinMaterial, in: Circle())

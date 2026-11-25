@@ -37,20 +37,89 @@ struct RouteThumb: View {
     }
 }
 
-/// The route on a map: green where they ran, the app's blue where they walked, a mark at each kilometre, start and
-/// finish. Fitted to the route; it can be moved and zoomed, and a tap on the corner button fits it again.
+/// The map's look (26 Nov, design/map-style-mockup.html, A): Apple's map toned down, no shops or places, so the
+/// route is what you see.
+extension MapStyle {
+    static var quiet: MapStyle { .standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false) }
+}
+
+extension RouteMath {
+    /// The route in short pieces (100 m, or a 150th of it on a long ride), each with how fast it was against the rest
+    /// of this route: 0 the slowest, 1 the fastest (the 10th and 90th of its pieces, so one sprint or stop doesn't
+    /// set the scale). A pause starts a new piece, not joined to the last.
+    static func paced(_ p: [RoutePoint]) -> [(points: [CLLocationCoordinate2D], fast: Double)] {
+        guard p.count > 1 else { return [] }
+        let step: Double = max(100, meters(p) / 150)
+        var pieces: [(pts: [CLLocationCoordinate2D], d: Double, t: Double)] = []
+        var cur: [CLLocationCoordinate2D] = [p[0].coordinate]
+        var d: Double = 0, t: Double = 0
+        for i in 1..<p.count {
+            let a: RoutePoint = p[i - 1], b: RoutePoint = p[i]
+            if b.gap {
+                if cur.count > 1 { pieces.append((cur, d, t)) }
+                cur = [b.coordinate]; d = 0; t = 0
+                continue
+            }
+            d += b.location.distance(from: a.location); t += max(0, b.t - a.t); cur.append(b.coordinate)
+            if d >= step { pieces.append((cur, d, t)); cur = [b.coordinate]; d = 0; t = 0 }
+        }
+        if cur.count > 1 { pieces.append((cur, d, t)) }
+        let speeds: [Double] = pieces.map { (x: (pts: [CLLocationCoordinate2D], d: Double, t: Double)) -> Double in x.t > 0 ? x.d / x.t : 0 }
+        let sorted: [Double] = speeds.filter { $0 > 0 }.sorted()
+        guard sorted.count > 1 else { return pieces.map { (x: (pts: [CLLocationCoordinate2D], d: Double, t: Double)) -> (points: [CLLocationCoordinate2D], fast: Double) in (x.pts, 0.5) } }
+        let lo: Double = sorted[Int(Double(sorted.count - 1) * 0.1)], hi: Double = sorted[Int(Double(sorted.count - 1) * 0.9)]
+        var out: [(points: [CLLocationCoordinate2D], fast: Double)] = []
+        for (i, x) in pieces.enumerated() {
+            let f: Double = hi - lo < 0.05 ? 0.5 : min(1, max(0, (speeds[i] - lo) / (hi - lo)))
+            out.append((x.pts, speeds[i] > 0 ? f : 0))
+        }
+        return out
+    }
+
+    /// Faster green, through yellow, to orange for slower.
+    static func paceColour(_ fast: Double) -> Color {
+        let slow: (Double, Double, Double) = (0.94, 0.54, 0.24), mid: (Double, Double, Double) = (0.96, 0.84, 0.28), quick: (Double, Double, Double) = (0.29, 0.82, 0.54)
+        let (a, b, f): ((Double, Double, Double), (Double, Double, Double), Double) = fast < 0.5 ? (slow, mid, fast * 2) : (mid, quick, (fast - 0.5) * 2)
+        return Color(red: a.0 + (b.0 - a.0) * f, green: a.1 + (b.1 - a.1) * f, blue: a.2 + (b.2 - a.2) * f)
+    }
+}
+
+/// Under a map's route: what its colours mean.
+struct PaceKey: View {
+    var body: some View {
+        HStack(spacing: 6) {
+            Text("faster")
+            Capsule().fill(LinearGradient(colors: [RouteMath.paceColour(1), RouteMath.paceColour(0.5), RouteMath.paceColour(0)], startPoint: .leading, endPoint: .trailing))
+                .frame(width: 70, height: 5)
+            Text("slower")
+        }
+        .font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+        .padding(.horizontal, 9).padding(.vertical, 5)
+        .background(.ultraThinMaterial, in: Capsule())
+        .accessibilityHidden(true)
+    }
+}
+
+/// The route on a map (26 Nov, design/map-style-mockup.html, A): a quiet map, the line coloured by pace with a soft
+/// glow under it, a mark at each kilometre, start and finish. Fitted to the route; it can be moved and zoomed, and a
+/// tap on the corner button fits it again.
 struct RunMap: View {
     let points: [RoutePoint]
     var interactive = true
     @State private var camera: MapCameraPosition = .automatic
 
     var body: some View {
-        let lines: [(run: Bool, points: [CLLocationCoordinate2D])] = RouteMath.stretches(points)
+        let pieces: [(points: [CLLocationCoordinate2D], fast: Double)] = RouteMath.paced(points)
         let marks: [CLLocationCoordinate2D] = RouteMath.kmMarks(points)
         Map(position: $camera, interactionModes: interactive ? .all : []) {
-            ForEach(lines.indices, id: \.self) { i in
-                MapPolyline(coordinates: lines[i].points)
-                    .stroke(lines[i].run ? Color.green : Theme.accent, style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
+            // the glow, all of it under the line
+            ForEach(pieces.indices, id: \.self) { i in
+                MapPolyline(coordinates: pieces[i].points)
+                    .stroke(RouteMath.paceColour(pieces[i].fast).opacity(0.35), style: StrokeStyle(lineWidth: 11, lineCap: .round, lineJoin: .round))
+            }
+            ForEach(pieces.indices, id: \.self) { i in
+                MapPolyline(coordinates: pieces[i].points)
+                    .stroke(RouteMath.paceColour(pieces[i].fast), style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
             }
             ForEach(marks.indices, id: \.self) { i in
                 Annotation("", coordinate: marks[i], anchor: .center) {
@@ -69,8 +138,8 @@ struct RunMap: View {
                 }
             }
         }
-        .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
-        .environment(\.colorScheme, .dark)
+        .mapStyle(.quiet)
+        .overlay(alignment: .bottomLeading) { if pieces.count > 2 { PaceKey().padding(8) } }
         .overlay(alignment: .topTrailing) {
             if interactive {
                 Button { withAnimation { camera = .automatic } } label: {

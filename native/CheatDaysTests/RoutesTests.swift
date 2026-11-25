@@ -28,6 +28,20 @@ final class RoutesTests: XCTestCase {
         XCTAssertFalse(RouteMatch.same(a, other))
     }
 
+    /// The map's line by pace: the quick half green end, the slow half orange end (26 Nov, map-style-mockup A).
+    func testPacedPieces() {
+        let m: Double = 1 / 111_195.0
+        var t: Double = 0
+        let pts: [RoutePoint] = (0...40).map { (i: Int) -> RoutePoint in
+            if i > 0 { t += i <= 20 ? 20 : 40 }   // 50 m in 20 s, then 50 m in 40 s
+            return RoutePoint(lat: -37.85 + Double(i) * 50 * m, lon: 144.97, t: t, run: true)
+        }
+        let pieces = RouteMath.paced(pts)
+        XCTAssertGreaterThan(pieces.count, 10)
+        XCTAssertEqual(pieces.first?.fast ?? 0, 1, accuracy: 0.01)
+        XCTAssertEqual(pieces.last?.fast ?? 1, 0, accuracy: 0.01)
+    }
+
     func testOrdinals() {
         XCTAssertEqual(RouteMatch.ordinal(2), "2nd")
         XCTAssertEqual(RouteMatch.ordinal(3), "3rd")
