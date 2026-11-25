@@ -258,7 +258,7 @@ enum MealChat {
 
     /// The changes that put the meal on as one entry: the one this chat put on before comes off its day (today's or one
     /// already filed) and the meal goes on today in its place, so there's only ever one.
-    static func entryOps(_ parts: [JSON], name: String, meal: String, over old: String?, in doc: JSON, today: String, id: String) -> [JSON] {
+    @MainActor static func entryOps(_ parts: [JSON], name: String, meal: String, over old: String?, in doc: JSON, today: String, id: String) -> [JSON] {
         var ops: [JSON] = []
         if let old, !old.isEmpty {
             let onDay = list(dict(doc["day"])["items"]).contains { str($0["id"]) == old }
