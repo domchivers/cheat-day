@@ -15,8 +15,7 @@ struct WorkoutsView: View {
     /// Start: what are you doing? (26 Nov, design/start-anything-mockup.html), and what was picked, opened once the
     /// picker has gone: a run, ride, walk or hike on the map, or Just time it.
     @State private var startPicking = false
-    /// The weekly goal sheet, and all their bests (26 Nov, design/bests-weekgoal-mockup.html).
-    @State private var goalSheet = false
+    /// All their bests (26 Nov, design/bests-weekgoal-mockup.html).
     @State private var showBests = false
     @State private var picked: String?
     @State private var moving: MoveKind?
@@ -179,7 +178,6 @@ struct WorkoutsView: View {
             }
             .navigationDestination(isPresented: $showSession) { SessionView() }
             .navigationDestination(isPresented: $showBests) { BestsView() }
-            .sheet(isPresented: $goalSheet) { WeekGoalSheet().presentationDetents([.medium]) }
             .sheet(isPresented: $building) { PlanBuilder() }
             .alert("Rename routine", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
                 TextField("Routine name", text: $renameText)
@@ -223,49 +221,29 @@ struct WorkoutsView: View {
     }
 
     /// The week in three lines, as Progress has your weight: a quiet label, the count in big type, the calories.
-    /// With a workouts goal (Goals' weekly targets, on by default), the count is against it for this Monday-to-Sunday
-    /// week, with a bar for each and the weeks in a row it's been hit (26 Nov, design/bests-weekgoal-mockup.html).
-    /// Tapping it sets the goal.
+    /// (1.4.65 put the weekly goal here, bars, "of 5" and weeks in a row; the owner preferred this, 25 Nov.)
     private var hero: some View {
-        let goal: Int = store.workoutsGoal
-        let dates: [String] = goal > 0 ? store.weekDates : store.week.map { (d: (date: String, kcal: Double, count: Int)) -> String in d.date }
-        let ws: [[JSON]] = dates.map { (d: String) -> [JSON] in store.workouts(on: d) }
-        let count: Int = ws.reduce(0) { (n: Int, w: [JSON]) -> Int in n + w.count }
-        let total: Double = ws.reduce(0) { (n: Double, w: [JSON]) -> Double in n + w.reduce(0) { (m: Double, x: JSON) -> Double in m + (num(x["kcal"]) ?? 0) } }
-        let walked: Double = dates.reduce(0) { (n: Double, d: String) -> Double in n + Steps.shared.kcal(on: d) }
-        let streak: Int = goal > 0 ? store.weeksInARow : 0
-        let left: Int = max(0, goal - count)
+        let days = store.week
+        let count = days.reduce(0) { $0 + $1.count }, total = days.reduce(0) { $0 + $1.kcal }
+        let walked = days.reduce(0) { $0 + Steps.shared.kcal(on: $1.date) }
         // walking alone still counts here: no workouts, but the calories it burned
-        let line: String = total > 0 || walked == 0 ? "\(Fmt.int(total)) kcal\(walked > 0 ? " · \(Fmt.int(walked)) more from walking" : "")" : "\(Fmt.int(walked)) kcal from walking"
-        let toGo: String? = goal == 0 ? nil : (left == 0 ? "goal hit this week" : "\(left) more this week " + (streak > 0 ? "keeps it going" : "hits your goal"))
-        let shown: Bool = count > 0 || tracked || walked > 0
-        let said: String = shown ? "This week: \(count) workout\(count == 1 ? "" : "s"), \(line)" + (goal > 0 ? ". Goal \(goal) a week, \(toGo ?? ""). \(streak) week\(streak == 1 ? "" : "s") in a row" : "") : "This week: no workouts yet"
+        let line = total > 0 || walked == 0 ? "(Fmt.int(total)) kcal(walked > 0 ? " · (Fmt.int(walked)) more from walking" : "")" : "(Fmt.int(walked)) kcal from walking"
+        let said = count > 0 || tracked || walked > 0 ? "This week: (count) workout(count == 1 ? "" : "s"), (line)" : "This week: no workouts yet"
         return VStack(alignment: .leading, spacing: 2) {
             Text("This week").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
-            if shown {
+            if count > 0 || tracked || walked > 0 {
                 HStack(alignment: .firstTextBaseline, spacing: 5) {
-                    Text("\(count)").font(.system(size: 48, weight: .heavy, design: .rounded)).monospacedDigit()
-                    Text(goal > 0 ? "of \(goal) workouts" : (count == 1 ? "workout" : "workouts")).font(.headline).foregroundStyle(.secondary)
+                    Text("(count)").font(.system(size: 48, weight: .heavy, design: .rounded)).monospacedDigit()
+                    Text(count == 1 ? "workout" : "workouts").font(.headline).foregroundStyle(.secondary)
                 }
-                if goal > 0 { GoalBars(done: count, goal: goal).padding(.bottom, 4) }
-                Text([line, toGo].compactMap { $0 }.joined(separator: " · ")).font(.subheadline).foregroundStyle(.primary.opacity(0.8)).monospacedDigit()
-                if streak > 0 {
-                    Label("\(streak) week\(streak == 1 ? "" : "s") in a row", systemImage: "flame.fill")
-                        .font(.footnote.weight(.bold)).foregroundStyle(.orange)
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(Color(.secondarySystemGroupedBackground), in: Capsule())
-                        .padding(.top, 6)
-                }
+                Text(line).font(.subheadline).foregroundStyle(.primary.opacity(0.8)).monospacedDigit()
             } else {
                 Text("No workouts yet").font(.title.weight(.heavy)).padding(.top, 2)
                 Text("Start a session, or log one you've done.").font(.subheadline).foregroundStyle(.secondary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
-        .onTapGesture { goalSheet = true }
         .accessibilityElement(children: .ignore).accessibilityLabel(said).accessibilityAddTraits(.isStaticText)
-        .accessibilityAction(named: "Set your weekly goal") { goalSheet = true }
     }
 
     /// Your bests, newest first, in a row of tiles; All opens them by kind (26 Nov, design/bests-weekgoal-mockup.html).
