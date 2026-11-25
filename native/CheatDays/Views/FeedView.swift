@@ -1309,11 +1309,12 @@ struct SongSwitch: View {
         Color.clear
             .overlay(alignment: .bottomTrailing) {
                 Button { SongPlayer.shared.flip(song, key: key, volume: volume, inVideo: inVideo) } label: {
-                    Image(systemName: on ? "speaker.wave.2.fill" : "speaker.slash.fill").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                    Image(systemName: on ? "speaker.wave.2.fill" : "speaker.slash.fill").font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
                         .contentTransition(.identity).animation(nil, value: on)
-                        .frame(width: 32, height: 32).background(.black.opacity(0.45), in: Circle())
+                        .frame(width: 24, height: 24).background(.black.opacity(0.45), in: Circle())
+                        .padding(4).contentShape(Rectangle())   // (a quarter smaller to see, 25 Nov; still 32 to tap)
                 }
-                .buttonStyle(.plain).padding(10)
+                .buttonStyle(.plain).padding(6)
                 .accessibilityLabel(on ? "Sound off" : "Sound on")
             }
             .modifier(MostlyShowing { showing in
@@ -1357,11 +1358,12 @@ struct FeedVideo: View {
             .overlay(alignment: .topTrailing) {
                 if songKey == nil {
                 Button { muted.toggle(); loud(!muted) } label: {
-                    Image(systemName: muted ? "speaker.slash.fill" : "speaker.wave.2.fill").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                    Image(systemName: muted ? "speaker.slash.fill" : "speaker.wave.2.fill").font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
                         .contentTransition(.identity).animation(nil, value: muted)
-                        .frame(width: 32, height: 32).background(.black.opacity(0.45), in: Circle())
+                        .frame(width: 24, height: 24).background(.black.opacity(0.45), in: Circle())
+                        .padding(4).contentShape(Rectangle())   // (a quarter smaller to see, 25 Nov; still 32 to tap)
                 }
-                .buttonStyle(.plain).padding(10).accessibilityLabel(muted ? "Sound on" : "Sound off")
+                .buttonStyle(.plain).padding(6).accessibilityLabel(muted ? "Sound on" : "Sound off")
                 }
             }
     }
