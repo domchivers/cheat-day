@@ -22,6 +22,8 @@ struct CheatDaysApp: App {
         VolumeButtons.shared.start()
         // Apple's own daily reports of hitches, hangs and crashes, kept on the phone (Performance)
         Performance.shared.start()
+        // the watch app: Today to it, and its questions answered by the assistant here (WatchLink)
+        WatchLink.shared.start()
         // no scroll bars anywhere (25 Nov: the owner saw them on some pages; SwiftUI's lists ignore this, so RootView's
         // .scrollIndicators(.hidden) does it for them)
         UIScrollView.appearance().showsVerticalScrollIndicator = false

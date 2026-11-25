@@ -552,6 +552,7 @@ final class Store {
     private func persist() {
         WidgetBridge.update(self)
         HealthSync.foodChanged()   // what's eaten, to Apple Health when that's on
+        WatchLink.shared.update(self)   // and to the watch app
         let snapshot = doc, queue = pending, dir = folder
         saveWork?.cancel()
         let work = DispatchWorkItem {
