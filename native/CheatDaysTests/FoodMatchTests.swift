@@ -162,6 +162,19 @@ final class FoodMatchTests: XCTestCase {
 
     // Rock Pho's rare beef and brisket pho, 7 Nov: 793 kcal on the card, about 600 really
 
+    /// 26 Nov: "Cold noodles, boiled" (naengmyeon) was checked as boiled soba, 240 kcal where the AI's 287 fit.
+    func testColdNoodlesArentSoba() {
+        XCTAssertTrue(Assistant.otherNoodle("Cold noodles, boiled", "Noodle, soba, boiled, drained"))
+        XCTAssertFalse(Assistant.sameFood("Cold noodles, boiled", "Noodle, soba, boiled, drained"))
+        // a kind that's theirs still matches
+        XCTAssertFalse(Assistant.otherNoodle("Egg noodles, dried", "Noodle, wheat with egg, plain, boiled, no added fat"))
+        XCTAssertFalse(Assistant.otherNoodle("Pho noodles", "Noodle, rice stick, boiled, drained"))
+        XCTAssertFalse(Assistant.otherNoodle("Rice noodles, boiled", "Noodle, rice stick, boiled, drained"))
+        XCTAssertFalse(Assistant.otherNoodle("Naengmyeon noodles, boiled", "Noodles, buckwheat, boiled"))
+        // an entry naming no kind is any noodle
+        XCTAssertFalse(Assistant.otherNoodle("Cold noodles, boiled", "Noodles, boiled"))
+    }
+
     func testPhoNoodlesStayRiceNoodles() {
         // "plain" matched egg noodles one tag better: 166 kcal and 7.5 g protein a 100 g, not 119 and 2.5
         XCTAssertEqual(best("Rice noodles, boiled", ["bought", "boiled", "plain"]), "Noodle, rice stick, boiled, drained")

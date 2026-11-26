@@ -377,6 +377,8 @@ enum Takeaway {
 
     /// Kept word for word with the scripts that tested them against Claude: routeAsk with tools/ai-test/intent-check.js
     /// and pubcha-route-check.js (asking for other options or saying a dish isn't on the app is choosing again: 27 of 27),
+    /// and its switching sentence (26 Nov, the owner's cold-noodle chat across five Korean places) with switch-check.js:
+    /// the restaurant right 44 of 44 where the old wording got "White tomato?" and "try this place" wrong,
     /// menuAsk with menu-check.js, findAsk with find-protein-check.js ("new").
     static func routeAsk(_ message: String, earlier: String, photo: String = "") -> String {
         """
@@ -385,7 +387,7 @@ enum Takeaway {
         find: they want you to suggest places to eat, somewhere or of a kind, with no particular restaurant named ("any good lunch spots near me in South Yarra?", "somewhere high protein on Chapel St", "good Thai near work for dinner", "where can I get a healthy lunch in the city?").
         log: they're telling you what they ate or are eating, to add it ("had a Gami burger for lunch", "Gami chicken burger", "just had Nando's"), or correcting a log.
         other: anything else, including choosing food with no restaurant and no places wanted ("what should I have for dinner?") and questions.
-        When the conversation so far was choosing from a restaurant, a reply changing that choice ("no milk left, I want the wings", "the lamb one instead") is choose, with that restaurant; so is asking for other or more options there, or saying a dish suggested isn't on their app or menu, or asking you to look at its menu again ("any other things?", "don't see the boneless option", "check on DoorDash"), with each dish they said they can't see in avoid; a question about the order already suggested is other: which sides, sauces, dips, sizes or extras to pick with it, what you'd recommend among its options, or anything about pictures they sent ("which sides should I get?", "what would you recommend on the picks", "from the pictures I sent"). When you suggested places, picking one ("the poke one", "the second") is choose, with that place's name and area.\(photo.isEmpty ? "" : " With a photo of a menu or delivery-app page, naming a dish on it for a meal (\"this burger for dinner\") is choose, unless they say they had or ate it.")
+        When the conversation so far was choosing from a restaurant, a reply changing that choice ("no milk left, I want the wings", "the lamb one instead") is choose, with that restaurant; so is asking for other or more options there, or saying a dish suggested isn't on their app or menu, or asking you to look at its menu again ("any other things?", "don't see the boneless option", "check on DoorDash"), with each dish they said they can't see in avoid; a question about the order already suggested is other: which sides, sauces, dips, sizes or extras to pick with it, what you'd recommend among its options, or anything about pictures they sent ("which sides should I get?", "what would you recommend on the picks", "from the pictures I sent"). When you suggested places, picking one ("the poke one", "the second") is choose, with that place's name and area. Naming another place there, however short or with a question mark ("White Tomato?", "try The Galbi BBQ", "what about Chingu instead", "no, the place White Tomato on DoorDash"), is choose with that new restaurant, not a dish at the old one: a name that isn't a food is a place; dishes alone ("Bossam, jokbal?") stay with the restaurant they were choosing from. Then, and when they go ahead or say it again ("yea let's do that", "still want the cold noodles"), want keeps the dish they've been asking for in this conversation unless they name another.\(photo.isEmpty ? "" : " With a photo of a menu or delivery-app page, naming a dish on it for a meal (\"this burger for dinner\") is choose, unless they say they had or ate it.")
         \(earlier.isEmpty ? "" : "The conversation so far:\n\(earlier)\n")Their message: "\(message)"
         restaurant: its name as they wrote it, else empty. area: a suburb, street or city if they said one, else empty. want: menu items they say they want, in their words, or for find the kind of food they're after ("Thai", "high protein"). avoid: foods they don't want or don't have in ("milk"), in their words. seen: dishes they quote from a menu or delivery app with their energy ("Chicken Burger (2280 kJ)"), each with its kJ (kcal × 4.184 if they gave kcal), else empty. kcal and protein: numbers they gave for what they have left or for this meal ("854 left" is kcal 854), else 0.
         """
@@ -735,6 +737,10 @@ enum Takeaway {
         }
         var named = str(route["restaurant"]).trimmingCharacters(in: .whitespaces)
         if let c = corrected { named = str(c["restaurant"]) }
+        // the last place planned in this chat, and what was asked of it
+        let prevCard: JSON? = turns.dropLast().last { (t: Assistant.Turn) -> Bool in t.result?["takeaway"] != nil }?.result?["takeaway"] as? JSON
+        // dishes alone after a card ("Bossam, jokbal?"): that same place, when the router named none (26 Nov)
+        if named.isEmpty, photo == nil, str(route["intent"]) == "choose", let pc = prevCard { named = str(pc["restaurant"]) }
         // "the poke one": a place from the list, with its dish's kJ. Not once it's been planned: "Any other suggestions"
         // after Zambrero's card came back as that same card (22 Nov)
         var listed: JSON?
@@ -760,6 +766,21 @@ enum Takeaway {
             let named = p.listing.first { l in words(str(l["name"])).contains { last.text.lowercased().contains($0) } }
             want.append(str((named ?? first)["name"]))
         }
+        // The dish they keep asking for goes along when a message names none (26 Nov: cold noodles asked for at five Korean
+        // places in a row; "Uncle yoon Korean restaurant" and "yea let's do that" lost them). To the same place always; to
+        // a new place once they've asked for it twice. Not for "any other options?", which wants something else.
+        let theirTexts: [String] = turns.dropLast().filter { $0.me }.map { $0.text.lowercased() }
+        let wantedBefore: [String] = turns.dropLast().reversed().compactMap { (t: Assistant.Turn) -> [String]? in
+            ((t.result?["takeaway"] as? JSON)?["want"] as? [String]).flatMap { $0.isEmpty ? nil : $0 }
+        }.first ?? []
+        let askingOthers = said.lowercased().range(of: #"\b(other|else|another|alternatives?|options?|ideas?)\b"#, options: .regularExpression) != nil
+        if dishes(want).isEmpty, !wantedBefore.isEmpty, photo == nil, corrected == nil, !askingOthers {
+            let samePlaceAsBefore = prevCard.map { samePlace(str($0["restaurant"]), name) } ?? false
+            let timesAsked = theirTexts.filter { t in wantedBefore.flatMap { words($0) }.contains { t.contains($0) } }.count
+            if samePlaceAsBefore || timesAsked >= 2 { want = wantedBefore }
+        }
+        // asked for again (said in an earlier message too): planned around it, without "isn't a great pick" every time
+        let insisted: Bool = !dishes(want).isEmpty && dishes(want).flatMap { words($0) }.contains { w in theirTexts.contains { $0.contains(w) } }
         // "Check on DoorDash" after a card: its menu looked up again, not the same card from the one kept (21 Nov, PUBCHA)
         let again = planned && (said.lowercased().range(of: #"\b(check|look|again|recheck|refresh)\b"#, options: .regularExpression) != nil
                                 || ["doordash", "door dash", "uber", "menulog"].contains { said.lowercased().contains($0) })
@@ -812,10 +833,15 @@ enum Takeaway {
         var out: JSON = await choose(name, area: area, want: want, seen: seen, avoid: avoiding, said: last.text, earlier: earlier,
                                      kcal: toKcal, protein: toProtein,
                                      meal: nil, store: store, step: step, fresh: again,
-                                     before: before, count: others ? 4 : 3, followUp: planned, near: near)
+                                     before: before, count: others ? 4 : 3, followUp: planned, near: near, keep: insisted)
         if str(route["intent"]) == "choose" && typed(named, in: said) { out["named"] = true }
         if var ta = out["takeaway"] as? JSON, !avoiding.isEmpty {
             ta["avoid"] = avoiding
+            out["takeaway"] = ta
+        }
+        // what they asked of it, so the next message can carry it on (see wantedBefore)
+        if var ta = out["takeaway"] as? JSON, !dishes(want).isEmpty {
+            ta["want"] = dishes(want)
             out["takeaway"] = ta
         }
         return out
@@ -948,7 +974,7 @@ enum Takeaway {
     @MainActor static func choose(_ name: String, area: String, want: [String], seen: [JSON], avoid: [String], said text: String, earlier: String,
                                   kcal theirKcal: Double?, protein theirProtein: Double?, meal named: String?, store: Store,
                                   step: (@MainActor (String, String) -> Void)?, fresh: Bool = false,
-                                  before: Set<String> = [], count: Int = 3, followUp: Bool = false, near: String = "") async -> JSON {
+                                  before: Set<String> = [], count: Int = 3, followUp: Bool = false, near: String = "", keep: Bool = false) async -> JSON {
         step?("Asked about \(name)", fresh ? "Looking at \(whose(name)) menu again…" : "Finding \(whose(name)) menu…")
         // what to aim for: their own numbers, else everything left at dinner, else this meal's share
         let a = aim(store, said: text, meal: named), meal = a.meal
@@ -1001,7 +1027,11 @@ enum Takeaway {
                      shown: before, count: count)
         // "what about the seafood pancake?" after a card: said straight whether it suits, and what's still best (the PUBCHA chat)
         var verdict = "", still = ""
-        if followUp, let w = asked.want.first, let i = menuItems.first(where: { has([$0], w) }) {
+        // asked for again (keep): planned around it, said once, not argued with each time (26 Nov: "isn't a great pick" for
+        // the cold noodles at five places, and "Still the best" a dish they didn't want)
+        if keep, let w = asked.want.first, let i = menuItems.first(where: { has([$0], w) }) {
+            verdict = "Planned around the \(cutName(i.name).lowercased()), as you asked. "
+        } else if followUp, let w = asked.want.first, let i = menuItems.first(where: { has([$0], w) }) {
             let per = i.p / max(i.kcal, 1) * 100, est = i.tier == "none" ? "about " : ""
             verdict = per < 5 ? "\(cutName(i.name)) isn't a great pick for this: \(est)\(Fmt.int(i.kcal)) kcal for \(Int(i.p.rounded())) g protein. "
                               : "\(cutName(i.name)) can work: \(est)\(Fmt.int(i.kcal)) kcal and \(Int(i.p.rounded())) g protein. "

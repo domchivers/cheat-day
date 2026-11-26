@@ -1172,6 +1172,7 @@ enum Assistant {
                 guard let found = await findFoods(asked) else { continue }
                 for (k, i) in batch.enumerated() where k < found.count {
                     guard let r = found[k] as? JSON, FoodReference.sameFood(asked: asked[k], got: str(r["name"])),
+                          !otherNoodle(str(parts[i]["name"]), str(r["name"])),
                           sameCooking(str(parts[i]["name"]), str(r["name"])),
                           !FoodReference.differentDish(str(parts[i]["name"]), str(r["name"])) else { continue }
                     let x = parts[i]
@@ -1227,6 +1228,7 @@ enum Assistant {
         guard on("sameFood") else { return true }
         // asked for lean, an entry that isn't ("non-fat" Greek yoghurt took the ~10% fat one): see FoodReference.fatClash
         if FoodReference.fatClash(said, entry) { return false }
+        if otherNoodle(said, entry) { return false }
         let ignore = describing.union(["raw", "cooked", "fried", "boiled", "baked", "grilled", "steamed", "roasted", "fresh", "with", "for", "and",
                                        "or", "in", "on", "the", "of", "style", "type", "mixed", "chunk", "cube", "strip", "rasher", "wedge", "flesh"])
         // one spelling for the words the tables spell both ways
@@ -1240,6 +1242,24 @@ enum Assistant {
         let theirs = lead(entry), mine = lead(said)
         if theirs.isEmpty || mine.isEmpty { return true }
         return theirs.isSubset(of: saidAll) || mine.isSubset(of: entryAll)
+    }
+
+    /// Noodles are many foods: an entry naming its kind (soba, udon, rice, egg…) isn't noodles the part doesn't name as
+    /// that kind. "Cold noodles, boiled" (naengmyeon, a denser buckwheat-and-starch noodle) was counted as boiled soba,
+    /// 240 kcal for 220 g where the AI's 287 fit (26 Nov); with no matching kind the AI's own numbers stand.
+    static func otherNoodle(_ said: String, _ entry: String) -> Bool {
+        let s = said.lowercased(), e = entry.lowercased()
+        guard e.range(of: #"\bnoodles?\b"#, options: .regularExpression) != nil, s.range(of: #"\bnoodles?\b"#, options: .regularExpression) != nil else { return false }
+        let kinds = ["soba", "udon", "rice", "egg", "hokkien", "ramen", "vermicelli", "glass", "mung", "buckwheat", "wheat", "instant",
+                     "shirataki", "naengmyeon", "konjac", "lo mein", "chow mein", "pad thai", "spinach", "sweet potato"]
+        // what a dish's noodles are: pho and banh are rice noodles; naengmyeon buckwheat; yakisoba, chow and lo mein wheat
+        var mine = s
+        if s.range(of: #"\b(pho|banh|kway teow|kuay teow|ho fun)\b"#, options: .regularExpression) != nil { mine += " rice" }
+        if s.contains("naengmyeon") { mine += " buckwheat" }
+        if s.range(of: #"\b(yakisoba|chow mein|lo mein|ramen|hokkien)\b"#, options: .regularExpression) != nil { mine += " wheat egg" }
+        let theirs = kinds.filter { e.contains($0) }
+        // the entry names no kind ("Noodles, boiled"), or one of its kinds is theirs ("Egg noodles" is "Noodle, wheat with egg")
+        return !theirs.isEmpty && !theirs.contains { mine.contains($0) }
     }
 
     static func sameCooking(_ said: String, _ entry: String) -> Bool {
