@@ -175,6 +175,16 @@ final class FoodMatchTests: XCTestCase {
         XCTAssertFalse(Assistant.otherNoodle("Cold noodles, boiled", "Noodles, boiled"))
     }
 
+    /// 26 Nov, their own naengmyeon: the table made the thin wheat noodles instant (15.5 g fat) and the poached chicken
+    /// a homemade chicken burger (4.9 g protein in 40 g), 529 kcal where the AI's 461 fit.
+    func testHomeNaengmyeonsPartsStayThemselves() {
+        XCTAssertTrue(Assistant.otherNoodle("Thin wheat noodles, boiled", "Noodle, wheat, instant, unflavoured, boiled, drained"))
+        XCTAssertFalse(Assistant.otherNoodle("Instant noodles, boiled", "Noodle, wheat, instant, unflavoured, boiled, drained"))
+        XCTAssertTrue(FoodReference.differentDish("Chicken, shredded, poached", "Chicken burger, homemade"))
+        XCTAssertFalse(FoodReference.differentDish("Chicken burger", "Chicken burger, homemade"))
+        XCTAssertFalse(FoodReference.differentDish("Chicken breast, poached", "Chicken, breast, lean flesh, boiled"))
+    }
+
     func testPhoNoodlesStayRiceNoodles() {
         // "plain" matched egg noodles one tag better: 166 kcal and 7.5 g protein a 100 g, not 119 and 2.5
         XCTAssertEqual(best("Rice noodles, boiled", ["bought", "boiled", "plain"]), "Noodle, rice stick, boiled, drained")

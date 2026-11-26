@@ -1257,6 +1257,9 @@ enum Assistant {
         if s.range(of: #"\b(pho|banh|kway teow|kuay teow|ho fun)\b"#, options: .regularExpression) != nil { mine += " rice" }
         if s.contains("naengmyeon") { mine += " buckwheat" }
         if s.range(of: #"\b(yakisoba|chow mein|lo mein|ramen|hokkien)\b"#, options: .regularExpression) != nil { mine += " wheat egg" }
+        // instant noodles are fried before they're dried (15 g fat in 250 g boiled): only when they said instant. "Thin
+        // wheat noodles, boiled" was counted as "Noodle, wheat, instant", 360 kcal where the AI's 305 fit (26 Nov)
+        if ["instant", "shirataki", "konjac"].contains(where: { e.contains($0) && !mine.contains($0) }) { return true }
         let theirs = kinds.filter { e.contains($0) }
         // the entry names no kind ("Noodles, boiled"), or one of its kinds is theirs ("Egg noodles" is "Noodle, wheat with egg")
         return !theirs.isEmpty && !theirs.contains { mine.contains($0) }

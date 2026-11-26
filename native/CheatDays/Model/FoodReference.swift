@@ -148,6 +148,12 @@ enum FoodReference {
         if tofuDish && !has(e, #"\b(skins?|yuba|stinky)\b"#) { return true }
         let starchSheet: Bool = has(s, #"\byam (pasta|noodles?)\b|\bstarch (noodle )?(sheets?|noodles?)\b|\bsweet potato starch\b"#)
         if starchSheet && !has(e, #"\b(starch|glass|cellophane)\b"#) { return true }
+        // a made dish isn't the plain food it's made of: "Chicken, shredded, poached" was counted as "Chicken burger,
+        // homemade" (4.9 g protein in 40 g where the AI's 11.5 fit, 26 Nov). Only when they didn't say that dish.
+        for dish in ["burger", "sandwich", "wrap", "pie", "nugget", "schnitzel", "patty", "patties", "pizza", "lasagne", "lasagna",
+                     "kebab", "taco", "burrito", "dumpling", "pasty", "quiche", "risotto", "sushi", "rissole", "meatball",
+                     "croquette", "fritter", "sausage roll", "spring roll"]
+        where has(e, "\\b" + dish + "s?\\b") && !has(s, "\\b" + dish + "s?\\b") { return true }
         return false
     }
 
