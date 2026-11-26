@@ -34,6 +34,8 @@ struct TodayView: View {
     @State private var pastItem: JSON?
     @State private var showPast = false
     @State private var showCheckIn = false
+    /// -demo-clean: Today with only Left to eat and the meals, for the marketing video (26 Nov, the light reel)
+    private var clean: Bool { ProcessInfo.processInfo.arguments.contains("-demo-clean") }
     @State private var showCheat = false
     @State private var showPlanner = false
     @State private var plannerMeal: String?   // the meal to open the planner on (a reminder, or "Ideas for dinner")
@@ -152,7 +154,7 @@ struct TodayView: View {
                         }
                     }
                 }
-                if offset == 0, cheatToday, cheatCardHidden != store.today {
+                if offset == 0, !clean, cheatToday, cheatCardHidden != store.today {
                     // (21 Nov, design/today-cards-mockup.html, 1: a card worth tapping, not a thin banner)
                     Section { CheatDayCard(open: { showCheat = true }, hide: { withAnimation { cheatCardHidden = store.today } }) }
                         .listRowBackground(CheatDayCard.background)
@@ -160,14 +162,14 @@ struct TodayView: View {
                 Section { hero }
                     .listRowBackground(Color.clear)   // the panel draws its own card, so the trim and badge can sit on its top edge
                     .listRowInsets(EdgeInsets())
-                if offset == 0, let w = store.weighInToConfirm { Section { WeighInConfirmCard(day: w.day, kg: w.kg, at: w.at) } }
+                if offset == 0, !clean, let w = store.weighInToConfirm { Section { WeighInConfirmCard(day: w.day, kg: w.kg, at: w.at) } }
                 // after a weigh-in: what it means (design/today-cards-mockup.html, 3); not while the scale's reading is being confirmed
-                else if offset == 0, weighCardHidden != store.today, WeighInCard.today != nil {
+                else if offset == 0, !clean, weighCardHidden != store.today, WeighInCard.today != nil {
                     Section { WeighInCard(hide: { withAnimation { weighCardHidden = store.today } }, review: { showCheckIn = true }) }
                 }
-                if offset == 0, reviewHidden != store.today, let r = store.weekReview { reviewCard(r) }
-                if offset == 0, let n = store.nudge, nudgeHidden != store.today + "|" + n.meal { nudgeCard(n) }
-                if offset == 0 && store.checkInDue {
+                if offset == 0, !clean, reviewHidden != store.today, let r = store.weekReview { reviewCard(r) }
+                if offset == 0, !clean, let n = store.nudge, nudgeHidden != store.today + "|" + n.meal { nudgeCard(n) }
+                if offset == 0 && !clean && store.checkInDue {
                     let c = store.checkIn
                     Section {
                         Button { showCheckIn = true } label: {

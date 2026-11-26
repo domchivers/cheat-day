@@ -33,7 +33,8 @@ struct CheatDaysApp: App {
         WindowGroup {
             RootView()
                 .scrollIndicators(.hidden, axes: [.vertical, .horizontal])   // every list, scroll view and sheet below
-                .preferredColorScheme(Appearance.scheme(appearance))
+                // -demo-light: light mode for the marketing recordings (26 Nov, the light reel)
+                .preferredColorScheme(ProcessInfo.processInfo.arguments.contains("-demo-light") ? ColorScheme.light : Appearance.scheme(appearance))
                 .fontDesign(.rounded)
                 .tint(Palette.named(theme).accent)
         }
