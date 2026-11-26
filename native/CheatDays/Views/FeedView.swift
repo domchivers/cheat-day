@@ -27,6 +27,8 @@ final class Feed {
     }
 
     static let shared = Feed()
+    /// Switching accounts (26 Nov): back to how it starts, so nothing of the last account shows.
+    func reset() { posts = []; reactions = []; comments = []; commentLikes = []; names = [:]; error = nil; saved = []; saveCounts = [:]; reposted = []; repostCounts = [:]; repostedBy = [:]; edited = [:]; changed = [:]; removed = []; sending = nil; for t in reacting.values { t.cancel() }; reacting = [:]; revision += 1 }
     static let reacts = ["❤️", "🔥", "😋", "💪", "👏"]   // ❤️ is the heart; the rest are a long press away
     private(set) var posts: [JSON] = []
     private(set) var reactions: [JSON] = []

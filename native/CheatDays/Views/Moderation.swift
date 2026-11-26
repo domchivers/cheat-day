@@ -10,6 +10,8 @@ import SwiftUI
 @Observable @MainActor
 final class Moderation {
     static let shared = Moderation()
+    /// Switching accounts (26 Nov): back to how it starts, so nothing of the last account shows.
+    func reset() { removals = []; appealed = []; banAppealed = false; suspendedUntil = nil; isModerator = false; reports = []; appeals = [] }
     private var api: Supabase { Supabase.shared }
     private var me: String { api.userId ?? "" }
 

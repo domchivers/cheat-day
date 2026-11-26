@@ -9,8 +9,24 @@ enum HealthSync {
     static let health = HKHealthStore()
     static var available: Bool { HKHealthStore.isHealthDataAvailable() }
     static var on: Bool {
-        get { UserDefaults.standard.bool(forKey: "health.on") }
-        set { UserDefaults.standard.set(newValue, forKey: "health.on") }
+        get { UserDefaults.standard.bool(forKey: "health.on") && mine }
+        set { UserDefaults.standard.set(newValue, forKey: "health.on"); if newValue { claim() } }
+    }
+
+    /// Apple Health belongs to the phone, so it goes with one account on it: the one that turned it on (26 Nov,
+    /// account switching). Another account on the phone sees it off, and turning it on there moves it over.
+    static var mine: Bool {
+        let owner = UserDefaults.standard.string(forKey: "health.account") ?? "", me = Supabase.shared.userId ?? ""
+        if owner.isEmpty, !me.isEmpty { UserDefaults.standard.set(me, forKey: "health.account"); return true }   // from before accounts
+        return !me.isEmpty && owner == me
+    }
+
+    /// This account takes Health over. From another account: what was sent and read before is that account's, so it starts again.
+    static func claim() {
+        let d = UserDefaults.standard, me = Supabase.shared.userId ?? ""
+        guard !me.isEmpty, d.string(forKey: "health.account") != me else { return }
+        d.set(me, forKey: "health.account")
+        d.removeObject(forKey: "health.foodSent"); d.removeObject(forKey: "health.lastPull")
     }
     static var lastPull: Date? {
         // once: read the whole history again, so earlier imports get the scale's exact numbers and their times

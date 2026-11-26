@@ -31,6 +31,8 @@ final class PushDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCen
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         let info = response.notification.request.content.userInfo
         let kind = info["kind"] as? String ?? "", post = info["post"] as? String ?? ""
+        // for another account on this phone: that account first, then the reply or the screen (26 Nov)
+        if let who = info["user"] as? String, !who.isEmpty { await Accounts.shared.ensure(who) }
         // Reply, typed on the notification itself: sent without opening the app
         if let r = response as? UNTextInputNotificationResponse, r.actionIdentifier == "reply", post.hasPrefix("chat:") {
             let text = r.userText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -95,11 +97,17 @@ enum Push {
         UIApplication.shared.registerForRemoteNotifications()
     }
 
+    /// One row per account on this phone (26 Nov): "apns:<token>#<account>", so each account's news still comes.
+    static func endpoint(_ token: String) -> String { "apns:\(token)#\(Supabase.shared.userId ?? "")" }
+
     static func upload(_ token: String) async {
         UserDefaults.standard.set(token, forKey: "push.token")
+        guard Supabase.shared.userId != nil else { return }
+        // the one row from before accounts (the token alone): gone, so nothing comes twice
+        _ = try? await Supabase.shared.call("/functions/v1/push", body: ["action": "unsubscribe", "endpoint": "apns:\(token)"] as JSON)
         // the app's own reminders are local, so only friends' news comes from the server
         let body: JSON = ["action": "subscribe", "tz": TimeZone.current.identifier,
-                          "subscription": ["endpoint": "apns:\(token)", "keys": ["p256dh": "apns", "auth": "apns"] as JSON] as JSON,
+                          "subscription": ["endpoint": endpoint(token), "keys": ["p256dh": "apns", "auth": "apns"] as JSON] as JSON,
                           "prefs": ["lunch": false, "social": on] as JSON]
         _ = try? await Supabase.shared.call("/functions/v1/push", body: body)
     }
@@ -108,7 +116,13 @@ enum Push {
         on = value
         if let token = UserDefaults.standard.string(forKey: "push.token") {
             if value { await upload(token) }
-            else { _ = try? await Supabase.shared.call("/functions/v1/push", body: ["action": "unsubscribe", "endpoint": "apns:\(token)"]) }
+            else { _ = try? await Supabase.shared.call("/functions/v1/push", body: ["action": "unsubscribe", "endpoint": endpoint(token)]) }
         } else if value { await start() }
+    }
+
+    /// Logging out of this account: its notifications stop coming to this phone.
+    static func leave() async {
+        guard let token = UserDefaults.standard.string(forKey: "push.token") else { return }
+        _ = try? await Supabase.shared.call("/functions/v1/push", body: ["action": "unsubscribe", "endpoint": endpoint(token)] as JSON)
     }
 }

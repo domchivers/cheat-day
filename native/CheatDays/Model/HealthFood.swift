@@ -7,8 +7,8 @@ import Foundation
 /// emptied one is deleted. What was last sent is remembered, so only meals that changed are written.
 extension HealthSync {
     static var foodOn: Bool {
-        get { UserDefaults.standard.bool(forKey: "health.food") }
-        set { UserDefaults.standard.set(newValue, forKey: "health.food") }
+        get { UserDefaults.standard.bool(forKey: "health.food") && mine }
+        set { UserDefaults.standard.set(newValue, forKey: "health.food"); if newValue { claim() } }
     }
 
     /// Health's measure and its unit, and the meal's number for it.
@@ -64,7 +64,8 @@ extension HealthSync {
 
     /// Today and the days before it, each meal that's changed since it was last sent.
     static func sendFood(days: Int) async {
-        guard foodOn, available else { return }
+        // not before the record has come down: an emptied one (just switched accounts) would delete the meals from Health
+        guard foodOn, available, Store.shared.lastSynced != nil else { return }
         if sending { again = true; return }
         sending = true
         defer { sending = false }

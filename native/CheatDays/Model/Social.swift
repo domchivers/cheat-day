@@ -5,6 +5,8 @@ import Observation
 @MainActor @Observable
 final class Friends {
     static let shared = Friends()
+    /// Switching accounts (26 Nov): back to how it starts, so nothing of the last account shows.
+    func reset() { people = []; loaded = false; requests = []; myCode = ""; myName = ""; loading = false; error = nil; cheered = [] }
 
     struct Person: Identifiable {
         let id: String            // user id

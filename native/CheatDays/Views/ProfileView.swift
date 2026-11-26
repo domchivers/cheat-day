@@ -13,6 +13,8 @@ struct ProfileView: View {
     @State private var arrived = false   // this profile's posts and counts have come down (or been tried)
     /// What each profile last showed, kept while the app's open: opened again, it's there at once and freshened under it.
     @MainActor private static var last: [String: (posts: [JSON], tagged: [JSON], kept: [JSON], counts: (followers: Int, following: Int)?)] = [:]
+    /// Switching accounts: what profiles showed depends on who's looking.
+    @MainActor static func forgetAll() { last = [:] }
     @State private var tab = 0
     @State private var tagged: [JSON] = []   // posts they're tagged in
     @State private var kept: [JSON] = []     // posts you've saved (your own profile only)
@@ -104,6 +106,19 @@ struct ProfileView: View {
                             Button { archive = true } label: { Label("Story archive", systemImage: "clock.arrow.circlepath") }
                         } label: { Image(systemName: "plus") }
                         .accessibilityLabel("New story or post")
+                    }
+                    // your name at the top opens your accounts, as Instagram's does (26 Nov, account switcher)
+                    ToolbarItem(placement: .principal) {
+                        Button { Accounts.shared.sheet = true } label: {
+                            HStack(spacing: 4) {
+                                Text(p.map { $0.username.isEmpty ? $0.name : "@\($0.username)" } ?? Friends.shared.myName).font(.headline).lineLimit(1)
+                                Image(systemName: "chevron.down").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                            }
+                            .foregroundStyle(.primary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Accounts")
+                        .accessibilityIdentifier("accountsButton")
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {

@@ -5,6 +5,8 @@ import SwiftUI
 @Observable @MainActor
 final class Profiles {
     static let shared = Profiles()
+    /// Switching accounts (26 Nov): back to how it starts, so nothing of the last account shows.
+    func reset() { all = [:]; meIcon = nil; meIconOn = nil; iconFor = nil; error = nil; muted = Set(UserDefaults.standard.stringArray(forKey: "muted") ?? []) }
 
     struct Profile {
         let id: String

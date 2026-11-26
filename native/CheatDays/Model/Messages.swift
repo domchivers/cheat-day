@@ -6,6 +6,8 @@ import SwiftUI
 @Observable @MainActor
 final class Messages {
     static let shared = Messages()
+    /// Switching accounts (26 Nov): back to how it starts, so nothing of the last account shows.
+    func reset() { groups = []; members = []; recent = []; thread = []; reactions = []; open = nil; loaded = false; error = nil }
 
     struct Chat: Identifiable {
         let id: String   // the friend's user id, or "g:" and the group's id

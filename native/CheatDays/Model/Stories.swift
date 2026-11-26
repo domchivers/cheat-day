@@ -6,6 +6,8 @@ import SwiftUI
 @Observable @MainActor
 final class Stories {
     static let shared = Stories()
+    /// Switching accounts (26 Nov): back to how it starts, so nothing of the last account shows.
+    func reset() { ahead?.cancel(); soon?.cancel(); all = Self.kept(); views = []; oldViews = []; votes = []; reacted = [:]; seenTick += 1; error = nil }
 
     // Live stories I can see, oldest first. The last ones fetched are kept on the phone and shown from the start: they
     // were only in memory and only fetched when the feed came up, so after the app was opened afresh a story was

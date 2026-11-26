@@ -103,6 +103,23 @@ final class WebHost {
         loaded = false
     }
 
+    /// The web part's own sign-in as it is now (it renews itself), to keep for this account before switching away.
+    func currentSession() async -> Data? {
+        guard let web else { return nil }
+        return await withCheckedContinuation { (c: CheckedContinuation<Data?, Never>) in
+            web.evaluateJavaScript("localStorage.getItem('cheatday.session.v1') || ''") { v, _ in
+                let s = (v as? String) ?? ""
+                c.resume(returning: s.isEmpty ? nil : Data(s.utf8))
+            }
+        }
+    }
+
+    /// Switching accounts: the web part gone for good before the next account's loads (signOut's clear can lose the race).
+    func clearForSwitch() async {
+        web?.removeFromSuperview(); web = nil; loaded = false
+        await WKWebsiteDataStore.default().removeData(ofTypes: [WKWebsiteDataTypeLocalStorage, WKWebsiteDataTypeIndexedDBDatabases], modifiedSince: .distantPast)
+    }
+
     private func make() -> WKWebView {
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true

@@ -84,7 +84,24 @@ struct RootView: View {
         else if ProcessInfo.processInfo.arguments.contains("-demo-checkin") { DemoRoot(checkIn: true) }
         else if ProcessInfo.processInfo.arguments.contains("-demo-budget") || ProcessInfo.processInfo.arguments.contains("-demo-weigh") { DemoRoot(checkIn: false) }
         else if ProcessInfo.processInfo.arguments.contains("-demo") || ProcessInfo.processInfo.arguments.contains("-demo-session") { DemoRoot(checkIn: false) }
-        else if Supabase.shared.session == nil { SignInView() } else { MainTabs() }
+        else if Supabase.shared.session == nil { SignInView() } else { SignedIn() }
+    }
+}
+
+/// The app for the account you're on. A switch rebuilds the tabs from scratch (the id), so their loading runs again
+/// for the new account (26 Nov, account switcher).
+private struct SignedIn: View {
+    @Bindable private var accounts = Accounts.shared
+    var body: some View {
+        MainTabs()
+            .id("\(Supabase.shared.userId ?? "")-\(accounts.generation)")
+            .sheet(isPresented: $accounts.sheet) { AccountsSheet() }
+            .fullScreenCover(isPresented: $accounts.adding) { SignInView(adding: true) }
+            .overlay(alignment: .top) {
+                if let t = accounts.toast { AccountToast(text: t) }
+            }
+            .animation(.snappy, value: accounts.toast)
+            .onAppear { accounts.remember() }
     }
 }
 
@@ -504,6 +521,8 @@ struct MainTabs: View {
 }
 
 struct SignInView: View {
+    /// Add account (the accounts sheet): over the app, with Cancel, and the app switches to it once in.
+    var adding = false
     @State private var email = ""
     @State private var password = ""
     @State private var busy = false
@@ -563,6 +582,13 @@ struct SignInView: View {
         .scrollBounceBehavior(.basedOnSize)
         .keyboardDone()
         .background(Theme.bg.ignoresSafeArea())
+        .overlay(alignment: .topLeading) {
+            if adding {
+                Button("Cancel") { Accounts.shared.cancelAdd() }
+                    .font(.body.weight(.semibold)).foregroundStyle(Theme.accent).padding(.horizontal, 20).padding(.top, 12)
+                    .disabled(busy)
+            }
+        }
     }
 
     /// A text box on its own: an icon at the start, no outline until you're typing in it, then a blue one.
@@ -596,6 +622,7 @@ struct SignInView: View {
                 d.set(true, forKey: "scaleSetup.pending")
                 d.set(true, forKey: "signin.setup")
                 await Store.shared.sync()
+                if adding { Accounts.shared.added() }
             }
         } catch {
             message = error.localizedDescription == "Invalid login credentials" ? "Email or password isn't right." : error.localizedDescription

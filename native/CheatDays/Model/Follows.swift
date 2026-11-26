@@ -5,6 +5,8 @@ import SwiftUI
 @Observable @MainActor
 final class Follows {
     static let shared = Follows()
+    /// Switching accounts (26 Nov): back to how it starts, so nothing of the last account shows.
+    func reset() { mine = []; ofMe = []; blocked = []; explore = []; loaded = false; exploring = false; error = nil; known = [:]; knownAt = .distantPast; newest = []; explored = false }
 
     private(set) var mine: [JSON] = []     // rows where I'm the follower
     private(set) var ofMe: [JSON] = []     // rows where I'm the followee

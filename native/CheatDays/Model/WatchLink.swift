@@ -9,6 +9,8 @@ import WatchConnectivity
 @MainActor
 final class WatchLink: NSObject, WCSessionDelegate {
     static let shared = WatchLink()
+    /// Switching accounts (26 Nov): back to how it starts, so nothing of the last account shows.
+    func reset() { last = nil; shown = [:] }
     private var last: Data?
     /// Estimates the watch was shown, by id, for its Add.
     private var shown: [String: (estimate: JSON, meal: String)] = [:]

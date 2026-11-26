@@ -5,6 +5,8 @@ import SwiftUI
 @Observable @MainActor
 final class Highlights {
     static let shared = Highlights()
+    /// Switching accounts (26 Nov): back to how it starts, so nothing of the last account shows.
+    func reset() { of = [:]; archive = []; error = nil }
 
     private(set) var of: [String: [JSON]] = [:]   // each person's, in order
     private(set) var archive: [JSON] = []         // every story you've posted, newest first

@@ -7,6 +7,8 @@ struct IdeaRef: Identifiable { let id: String; let idea: JSON }
 @Observable @MainActor
 final class RecipeMaker {
     static let shared = RecipeMaker()
+    /// Switching accounts (26 Nov): back to how it starts, so nothing of the last account shows.
+    func reset() { made = [:]; failed = [:] }
     private(set) var made: [String: JSON] = [:]
     private(set) var working: Set<String> = []
     private(set) var failed: [String: String] = [:]

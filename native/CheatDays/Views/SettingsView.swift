@@ -19,6 +19,7 @@ struct SettingsView: View {
     @State private var newPassword = ""
     @State private var passwordNote: String?
     @State private var confirmSignOut = false
+    @State private var confirmSignOutAll = false
     @State private var search = ""
     private var store: Store { Store.shared }
     private let order = [1, 2, 3, 4, 5, 6, 0]
@@ -81,8 +82,28 @@ struct SettingsView: View {
             Section {
                 Button { Tour.shared.pending = true } label: { row("📖", "Show me around") }.foregroundStyle(.primary)
             }
+            // every account on this phone, as Instagram lists them (26 Nov, account switcher)
             Section {
-                Button("Log out", role: .destructive) { confirmSignOut = true }.frame(maxWidth: .infinity)
+                ForEach(Accounts.shared.accounts) { a in
+                    Button { if a.id != Accounts.shared.current { Task { await Accounts.shared.switchTo(a.id) } } } label: {
+                        HStack(spacing: 12) {
+                            Avatar(id: a.id, size: 32)
+                            Text(a.title).foregroundStyle(.primary).lineLimit(1)
+                            Spacer(minLength: 0)
+                            if a.id == Accounts.shared.current { Label("This one", systemImage: "checkmark").labelStyle(.titleAndIcon).font(.subheadline).foregroundStyle(Theme.accent) }
+                            else { Text("Switch").font(.subheadline).foregroundStyle(.secondary) }
+                        }
+                    }
+                    .disabled(Accounts.shared.busy)
+                }
+                Button { Task { await Accounts.shared.add() } } label: { Label("Add account", systemImage: "plus") }
+                    .foregroundStyle(Theme.accent).disabled(Accounts.shared.busy)
+                if let p = Accounts.shared.problem { Text(p).font(.footnote).foregroundStyle(Theme.warn) }
+            } header: { Text("Accounts") }
+            Section {
+                let others = Accounts.shared.accounts.count > 1
+                Button(others ? "Log out of \(Accounts.shared.accounts.first?.title ?? "this account")" : "Log out", role: .destructive) { confirmSignOut = true }.frame(maxWidth: .infinity)
+                if others { Button("Log out of all accounts", role: .destructive) { confirmSignOutAll = true }.frame(maxWidth: .infinity) }
             } footer: {
                 Text("Cheat Days \(Bundle.main.shortVersion)\(store.lastSynced.map { " · synced \($0.formatted(date: .omitted, time: .shortened))" } ?? "")")
                     .frame(maxWidth: .infinity).padding(.top, 6)
@@ -91,13 +112,16 @@ struct SettingsView: View {
         }
         .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search")
         .task { await Family.shared.load() }
-        .confirmationDialog("Sign out of Cheat Days on this phone?", isPresented: $confirmSignOut, titleVisibility: .visible) {
-            Button("Sign out", role: .destructive) {
-                WebHost.shared.signOut()
-                Supabase.shared.signOut()
-                store.reset()
-            }
-        } message: { Text("Everything stays in your account. Sign in again to get it back.") }
+        .confirmationDialog(Accounts.shared.accounts.count > 1 ? "Log out of \(Accounts.shared.accounts.first?.title ?? "this account")?" : "Sign out of Cheat Days on this phone?",
+                            isPresented: $confirmSignOut, titleVisibility: .visible) {
+            Button(Accounts.shared.accounts.count > 1 ? "Log out" : "Sign out", role: .destructive) { Task { await Accounts.shared.logOutHere() } }
+        } message: {
+            Text(Accounts.shared.accounts.count > 1 ? "Your other account stays signed in. Everything stays in this account: sign in again to get it back."
+                                                    : "Everything stays in your account. Sign in again to get it back.")
+        }
+        .confirmationDialog("Log out of every account on this phone?", isPresented: $confirmSignOutAll, titleVisibility: .visible) {
+            Button("Log out of all", role: .destructive) { Task { await Accounts.shared.logOutAll() } }
+        } message: { Text("Everything stays in each account. Sign in again to get it back.") }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)   // like Instagram: Settings has the screen to itself

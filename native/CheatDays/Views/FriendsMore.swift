@@ -4,6 +4,8 @@ import SwiftUI
 @Observable @MainActor
 final class Inbox {
     static let shared = Inbox()
+    /// Switching accounts (26 Nov): back to how it starts, so nothing of the last account shows.
+    func reset() { items = []; names = [:]; at = .distantPast }
     private(set) var items: [JSON] = []
     private(set) var names: [String: String] = [:]
     private var at = Date.distantPast

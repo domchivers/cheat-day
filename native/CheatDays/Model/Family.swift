@@ -5,6 +5,8 @@ import Foundation
 @Observable @MainActor
 final class Family {
     static let shared = Family()
+    /// Switching accounts (26 Nov): back to how it starts, so nothing of the last account shows.
+    func reset() { links = [] }
 
     struct Link: Identifiable, Equatable {
         let helper: String

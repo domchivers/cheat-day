@@ -5,6 +5,8 @@ import SwiftUI
 @Observable @MainActor
 final class FriendActivity {
     static let shared = FriendActivity()
+    /// Switching accounts (26 Nov): back to how it starts, so nothing of the last account shows.
+    func reset() { items = []; sample = nil; loading = false; seenAt = (UserDefaults.standard.object(forKey: "activity.seen") as? Date) ?? .distantPast }
 
     struct Item: Identifiable {
         enum Kind { case reaction, comment, sent, post, request, repost }

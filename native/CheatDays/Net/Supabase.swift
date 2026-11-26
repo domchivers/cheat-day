@@ -28,14 +28,14 @@ final class Supabase {
         let d = try await token(grant: "password", body: ["email": email, "password": password])
         try keep(d)
         // a second, separate session for the web screens inside the app, so the two never fight over one refresh token
-        if let web = try? await token(grant: "password", body: ["email": email, "password": password]) { Keychain.save("webSession", web) }
+        if let web = try? await token(grant: "password", body: ["email": email, "password": password]) { Keychain.save("webSession", web); if let id = userId { keepWeb(web, for: id) } }
     }
 
     /// True when signed in straight away; false when Supabase wants the email confirmed first.
     func signUp(email: String, password: String) async throws -> Bool {
         let (d, r) = try await send("/auth/v1/signup", method: "POST", body: ["email": email, "password": password], auth: false)
         guard (200..<300).contains(r.statusCode) else { throw Self.error(d, r.statusCode, "Couldn't create the account") }
-        if let j = try? JSONSerialization.jsonObject(with: d) as? JSON, j["access_token"] != nil { try keep(d); Keychain.save("webSession", d); return true }
+        if let j = try? JSONSerialization.jsonObject(with: d) as? JSON, j["access_token"] != nil { try keep(d); Keychain.save("webSession", d); if let id = userId { keepWeb(d, for: id) }; return true }
         return false
     }
 
@@ -135,11 +135,18 @@ final class Supabase {
     }
 
     /// Access tokens last about an hour. Only a definite rejection of the refresh token signs you out, never a network blip.
+    /// A renewal that comes back after switching accounts is kept for its own account and doesn't switch you back.
     private func refresh() async -> Bool {
-        guard let rt = session?.refresh_token else { return false }
-        do { try keep(try await token(grant: "refresh_token", body: ["refresh_token": rt])); return true }
-        catch let e as APIError where e.status == 400 || e.status == 401 { signOut(); return false }
-        catch { return false }
+        guard let rt = session?.refresh_token, let who = session?.user.id else { return false }
+        do {
+            let d = try await token(grant: "refresh_token", body: ["refresh_token": rt])
+            if session?.user.id == who { try keep(d); return true }
+            Keychain.save("acct." + who, d); return false
+        } catch let e as APIError where e.status == 400 || e.status == 401 {
+            forget(account: who)   // its sign-in is no good any more: it comes off this phone's accounts
+            if session?.user.id == who { signOut() }
+            return false
+        } catch { return false }
     }
 
     private func token(grant: String, body: JSON) async throws -> Data {
@@ -149,8 +156,41 @@ final class Supabase {
     }
 
     private func keep(_ d: Data) throws {
-        session = try JSONDecoder().decode(AuthSession.self, from: d)
+        let s = try JSONDecoder().decode(AuthSession.self, from: d)
+        session = s
         Keychain.save("session", d)
+        // every account signed in on this phone keeps its own copy, renewed with each refresh, so switching back to it
+        // needs no password (26 Nov, account switcher)
+        Keychain.save("acct." + s.user.id, d)
+    }
+
+    // MARK: accounts on this phone
+
+    /// The account you're on, kept as one of this phone's accounts (signed in before accounts: no copy until now).
+    func keepCurrent() {
+        guard let s = session, !hasAccount(s.user.id), let d = Keychain.load("session") else { return }
+        Keychain.save("acct." + s.user.id, d)
+        if Keychain.load("acctweb." + s.user.id) == nil, let w = Keychain.load("webSession") { Keychain.save("acctweb." + s.user.id, w) }
+    }
+
+    /// Whether this phone still holds a sign-in for that account.
+    func hasAccount(_ id: String) -> Bool { Keychain.load("acct." + id) != nil }
+
+    /// Become that account, from its kept sign-in (and its web part's). False when it isn't kept here.
+    func use(account id: String) -> Bool {
+        guard let d = Keychain.load("acct." + id), let s = try? JSONDecoder().decode(AuthSession.self, from: d) else { return false }
+        session = s
+        Keychain.save("session", d)
+        if let web = Keychain.load("acctweb." + id) { Keychain.save("webSession", web) } else { Keychain.delete("webSession") }
+        return true
+    }
+
+    /// Keep the web part's own sign-in for this account (it renews itself inside the web screens) before leaving it.
+    func keepWeb(_ data: Data, for id: String) { Keychain.save("acctweb." + id, data) }
+
+    /// This phone stops holding that account's sign-in (Log out of it).
+    func forget(account id: String) {
+        Keychain.delete("acct." + id); Keychain.delete("acctweb." + id)
     }
 
     private func send(_ path: String, method: String, body: Any? = nil, prefer: String? = nil, auth: Bool = true, timeout: TimeInterval = 20) async throws -> (Data, HTTPURLResponse) {
