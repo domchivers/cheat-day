@@ -149,11 +149,13 @@ enum FoodReference {
         let starchSheet: Bool = has(s, #"\byam (pasta|noodles?)\b|\bstarch (noodle )?(sheets?|noodles?)\b|\bsweet potato starch\b"#)
         if starchSheet && !has(e, #"\b(starch|glass|cellophane)\b"#) { return true }
         // a made dish isn't the plain food it's made of: "Chicken, shredded, poached" was counted as "Chicken burger,
-        // homemade" (4.9 g protein in 40 g where the AI's 11.5 fit, 26 Nov). Only when they didn't say that dish.
+        // homemade" (4.9 g protein in 40 g where the AI's 11.5 fit, 26 Nov). Only when they didn't say that dish. A souvlaki,
+        // skewer, gyros, shawarma or doner is a kebab ("Lamb souvlaki" stays "Lamb, kebab, marinated…": the receipt test)
+        let skewered: Bool = has(s, #"\b(souvlaki|skewers?|shish|gyros?|doner|döner|shawarma|yakitori|satay)\b"#)
         for dish in ["burger", "sandwich", "wrap", "pie", "nugget", "schnitzel", "patty", "patties", "pizza", "lasagne", "lasagna",
                      "kebab", "taco", "burrito", "dumpling", "pasty", "quiche", "risotto", "sushi", "rissole", "meatball",
                      "croquette", "fritter", "sausage roll", "spring roll"]
-        where has(e, "\\b" + dish + "s?\\b") && !has(s, "\\b" + dish + "s?\\b") { return true }
+        where has(e, "\\b" + dish + "s?\\b") && !has(s, "\\b" + dish + "s?\\b") && !(dish == "kebab" && skewered) { return true }
         return false
     }
 
