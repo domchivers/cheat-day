@@ -5,7 +5,7 @@ import Foundation
 enum Demo {
     /// name, kcal per 100, protein, carbs, fat per 100, grams, meal
     private static let foods: [String: (k: Double, p: Double, c: Double, f: Double)] = [
-        "Greek yoghurt bowl": (145, 10, 14, 4), "Chicken burrito bowl": (150, 11, 15, 5), "Chilli lemon chicken": (190, 24, 2, 10),
+        "Greek yoghurt bowl": (145, 10, 14, 4), "Protein yoghurt bowl": (142.7, 11.5, 12, 4), "Chicken burrito bowl": (150, 11, 15, 5), "Chilli lemon chicken": (190, 24, 2, 10),
         "Rice, cooked": (130, 2.7, 28, 0.3), "Broccoli, steamed": (35, 2.8, 7, 0.4), "Protein brownie": (316, 33, 30, 10),
         "Banana": (89, 1.1, 23, 0.3), "Flat white": (60, 3.5, 5, 3.2), "Margherita pizza": (260, 11, 30, 10),
         "Pale ale": (45, 0.5, 3.6, 0), "Gelato": (200, 3.5, 28, 8), "Roast potatoes": (150, 2.5, 22, 6)
@@ -24,7 +24,10 @@ enum Demo {
             return [item("Greek yoghurt bowl", 295, "Breakfast", date), item("Chicken burrito bowl", 450, "Lunch", date),
                     item("Margherita pizza", 450, "Dinner", date), item("Pale ale", 660, "Dinner", date), item("Gelato", 150, "Snacks", date)]
         }
-        var d = [item("Greek yoghurt bowl", 295, "Breakfast", date), item("Flat white", 300, "Breakfast", date),
+        // Sundays, Tuesdays and Thursdays a protein yoghurt bowl instead (the same 428 kcal), so the add sheet's history has
+        // one to add in the marketing recording (26 Nov); it isn't in today's log
+        let bowl = wd == 0 || wd == 2 || wd == 4 ? item("Protein yoghurt bowl", 300, "Breakfast", date) : item("Greek yoghurt bowl", 295, "Breakfast", date)
+        var d = [bowl, item("Flat white", 300, "Breakfast", date),
                  item("Chicken burrito bowl", 450, "Lunch", date), item("Chilli lemon chicken", 200, "Dinner", date),
                  item("Rice, cooked", 200, "Dinner", date), item("Broccoli, steamed", 150, "Dinner", date),
                  item("Protein brownie", 60, "Snacks", date), item("Banana", 120, "Snacks", date)]
