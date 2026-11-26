@@ -99,6 +99,19 @@ enum Demo {
             "history": history, "body": body.sorted { str($0["day"]) < str($1["day"]) }
         ]
         if session { d["session"] = liveSession }
+        // the foods they've logged, as logging keeps them (Store's recent list): the add sheet's Recent and "Your
+        // breakfasts" are built from these, history only ranking them. Without it the demo's add sheet showed a preset
+        // drink and no protein yoghurt bowl to add (26 Nov, the marketing recording).
+        var seen: [String: (item: JSON, uses: Int, last: String)] = [:]
+        for it in now + history.flatMap({ list($0["items"]) }) {
+            let key = (str(it["name"]) + "|" + str(it["brand"])).lowercased(), at = str(it["addedAt"])
+            if let s = seen[key] { seen[key] = (s.item, s.uses + 1, max(s.last, at)) } else { seen[key] = (it, 1, at) }
+        }
+        let ranked = seen.sorted { ($0.value.uses, $0.value.last) > ($1.value.uses, $1.value.last) }.prefix(15)
+        d["recent"] = ranked.map { e -> JSON in
+            ["key": e.key, "basis": FoodMath.basisOf(e.value.item), "lastKcal": num(e.value.item["kcal"]) ?? 0, "lastShareLabel": "",
+             "lastUsed": e.value.last, "uses": e.value.uses] as JSON
+        }
         return d
     }
 }
