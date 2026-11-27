@@ -48,7 +48,7 @@ struct AddSheet: View {
                         // the assistant rises straight over this sheet, like Photo, and its Close lands back here (27 Nov:
                         // this sheet dropping, half a second of Today, then the assistant rising looked broken); typing
                         // goes through the chat, with "Type the numbers in" still under a search that finds nothing
-                        way("sparkles", "Assistant") { chatting = true }
+                        way("sparkles", "Ask") { chatting = true }
                         way("book.closed.fill", "Meals") { meals = true }
                     }
                     .buttonStyle(.plain)
@@ -184,7 +184,8 @@ struct AddSheet: View {
         Button(action: action) {
             // four to a row since Type it went (27 Nov): a bigger icon and label, a little taller, to fill it
             VStack(spacing: 7) {
-                Image(systemName: symbol).font(.title).foregroundStyle(Theme.accent)
+                // every icon in the same box, so a taller symbol (sparkles, book) can't make its tile taller (28 Nov)
+                Image(systemName: symbol).font(.title).foregroundStyle(Theme.accent).frame(height: 32)
                 Text(label).font(.subheadline.weight(.bold)).lineLimit(1).minimumScaleFactor(0.8)
             }
             .frame(maxWidth: .infinity).padding(.vertical, 16)

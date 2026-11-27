@@ -14,7 +14,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "1.4.74"
+    MARKETING_VERSION: "1.4.75"
     CURRENT_PROJECT_VERSION: "1"
 targets:
   CheatDays:
