@@ -47,6 +47,9 @@ enum Gemini {
     static func ask(schema: JSON, parts: [JSON], quick: Bool = true, tries: Int = 99, job: String? = nil) async throws -> JSON {
         try await BackgroundWork.run("AI") {
             if let job, var answer = await claude(job, schema: schema, parts: parts) { answer["via"] = "Claude"; return answer }
+            // over the daily allowance (AI_DAILY_CALLS on the server, 27 Nov): say so, rather than quietly sending it to the
+            // free Gemini instead, which would make the limit no limit
+            if job != nil, capped { throw Failure(message: "You've used today's AI. It's back in a few hours, and you can still scan, search or type.") }
             var answer = try await askNow(schema: schema, parts: parts, quick: quick, tries: tries)
             if job != nil { answer["via"] = "Gemini (Claude didn't answer)" }
             return answer
@@ -58,6 +61,13 @@ enum Gemini {
         await BackgroundWork.run("AI") { await claude(job, schema: schema, parts: parts, extra: extra) }
     }
 
+    /// The server said this person is over today's allowance; tried again after ten minutes in case calls have aged out.
+    nonisolated(unsafe) private static var cappedAt: Date?   // set from claude(), which runs off the main actor
+    private static var capped: Bool {
+        get { cappedAt.map { Date().timeIntervalSince($0) < 600 } ?? false }
+        set { if !newValue { cappedAt = nil } }
+    }
+
     private static func claude(_ job: String, schema: JSON, parts: [JSON], extra: JSON = [:]) async -> JSON? {
         let body: JSON = ["parts": parts, "schema": schema, "maxTokens": 12000].merging(extra) { _, new in new }
         // The careful model took 25 to 51 s on a nine-dish receipt before any upload (22 Nov): at 60 it was given up on,
@@ -67,7 +77,11 @@ enum Gemini {
         for attempt in 0..<2 {
             let began = Date()
             let got: (Data, Int)? = try? await Supabase.shared.call("/functions/v1/ai?job=\(job)", body: body, timeout: wait)
+            if let (d, status) = got, status == 429, (String(data: d, encoding: .utf8) ?? "").contains("daily limit") {
+                capped = true; cappedAt = Date(); return nil
+            }
             if let (d, status) = got, status == 200 {
+                capped = false
                 guard let reply = try? JSONSerialization.jsonObject(with: d) as? JSON, let data = str(reply["text"]).data(using: .utf8) else { return nil }
                 return try? JSONSerialization.jsonObject(with: data) as? JSON
             }

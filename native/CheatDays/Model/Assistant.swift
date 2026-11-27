@@ -495,7 +495,26 @@ enum Assistant {
         // a takeaway or places question isn't also sent to the careful model, which was charged even when the planner's
         // card won: its decision first, up to 4 seconds (the quick check takes about 2.6). Quick logs cost next to nothing
         if let takeaway, !simple, await decision.wait(4), let t = planned(await takeaway.value) { return t }
-        let first = Task { try await Gemini.ask(schema: shape, parts: parts, quick: simple, job: simple ? "logs" : pics.isEmpty ? "chat" : "photos") }
+        // A fresh photo of a plate, nothing before it in this chat: the quick model sizes it as well as the careful one at a
+        // twentieth of the price (27 Nov, 30 Nutrition5k plates). It's asked to log it, since it answers a bare "What's
+        // this?" with a question. Packs, labels, leftovers, receipts, menus and follow-ups stay with the careful model (it
+        // read the Aldi chicken label and the potato bag right where the quick one didn't), and so does anything the quick
+        // one doesn't turn into a card. Server job "plates" (supabase/functions/ai); before that's deployed it just falls through.
+        let fresh = !turns.dropLast().contains { !$0.me }
+        let plateOnly = !last.images.isEmpty && fresh && (seen?.plate ?? false) && (seen?.listing.isEmpty ?? true)
+        var quickParts = parts
+        if plateOnly, let i = quickParts.indices.last, last.text.trimmingCharacters(in: .whitespaces) == "What's this?" {
+            quickParts[i]["text"] = str(quickParts[i]["text"]).replacingOccurrences(of: "They now say: \"What's this?\"", with: "They now say: \"Log this meal\"")
+        }
+        let plateParts = quickParts
+        let first = Task { () async throws -> JSON in
+            if plateOnly, var a = await Gemini.askClaude("plates", schema: shape, parts: plateParts),
+               str(a["kind"]) == "estimate", !CheatDays.list(dict(a["estimate"])["parts"]).isEmpty {
+                a["via"] = "Claude"
+                return a
+            }
+            return try await Gemini.ask(schema: shape, parts: parts, quick: simple, job: simple ? "logs" : pics.isEmpty ? "chat" : "photos")
+        }
         if let t = planned(await takeaway?.value) { first.cancel(); return t }
         var answer = try await first.value
         // "Tap Make these changes" with no changes to tap: the reply said edit but left the edit out. Asked once more.
@@ -774,9 +793,13 @@ enum Assistant {
     }
 
     /// What a quick look at the photos found: the foods by everyday name, and a shop if they said one or a logo shows.
-    struct Spotted { let foods: [String]; let shop: String; var listing: [JSON] = [] }
+    /// plate: every photo is ready-to-eat served food, uneaten (not a pack, label, receipt, menu, screenshot or leftovers):
+    /// the one kind the quick model sizes as well as the careful one (27 Nov, 30 Nutrition5k plates: 9 of 15 within 20% each,
+    /// 14% typical error, at a twentieth of the price). Tested on 12 photos in the scratch plate-flag check: 12 right.
+    struct Spotted { let foods: [String]; let shop: String; var listing: [JSON] = []; var plate = false }
 
-    private static let spotSchema: JSON = ["type": "object", "required": ["foods", "shop", "listing"], "properties": [
+    private static let spotSchema: JSON = ["type": "object", "required": ["foods", "shop", "listing", "plate"], "properties": [
+        "plate": ["type": "boolean", "description": "true only when every photo shows ready-to-eat food served on a plate, in a bowl or on a table, whole and not eaten yet; false for a pack, label, bag, raw ingredients, a receipt, a menu or app page, a screenshot, or food that is part eaten or left over"] as JSON,
         "foods": ["type": "array", "items": ["type": "string"], "description": "each food or drink you can see, by its everyday name (\"croissant\", \"kabana\", \"cream cake\")"] as JSON,
         "shop": ["type": "string", "description": "the shop, café or bakery if they said it or a logo or bag shows it; else empty"] as JSON,
         // tested on a DoorDash page in tools/ai-test/spot-check.js: Chicken Burger 2280, Gami Chips 3042, Cheese Snowy Chips 2550
@@ -791,7 +814,7 @@ enum Assistant {
         guard let j = try? await Gemini.ask(schema: spotSchema, parts: parts, quick: true, job: "quick") else { return nil }
         let foods = (j["foods"] as? [Any] ?? []).map { str($0) }.filter { !$0.isEmpty }
         let listing = CheatDays.list(j["listing"]).filter { (num($0["kj"]) ?? 0) > 0 && !str($0["name"]).isEmpty }
-        return foods.isEmpty && listing.isEmpty ? nil : Spotted(foods: Array(foods.prefix(8)), shop: str(j["shop"]), listing: Array(listing.prefix(12)))
+        return foods.isEmpty && listing.isEmpty ? nil : Spotted(foods: Array(foods.prefix(8)), shop: str(j["shop"]), listing: Array(listing.prefix(12)), plate: j["plate"] as? Bool == true)
     }
 
     /// An estimate's parts put straight before they're checked. "Their numbers" only when their message has a number in it,

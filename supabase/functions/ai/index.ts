@@ -14,7 +14,8 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 
 const HAIKU = "claude-haiku-5-5", SONNET = "claude-sonnet-5-5";
 // from the tests in tools/ai-test and the owner's side-by-side picks
-const MODELS: Record<string, string> = { lookup: HAIKU, menu: HAIKU, recipes: HAIKU, plans: HAIKU, labels: HAIKU, logs: HAIKU, quick: HAIKU, chat: SONNET, photos: SONNET, careful: SONNET };
+// plates: a fresh photo of a served, uneaten plate (the app decides), as well sized by Haiku as Sonnet (27 Nov)
+const MODELS: Record<string, string> = { lookup: HAIKU, menu: HAIKU, recipes: HAIKU, plans: HAIKU, labels: HAIKU, logs: HAIKU, quick: HAIKU, plates: HAIKU, chat: SONNET, photos: SONNET, careful: SONNET };
 const PRICES: Record<string, [number, number]> = { [HAIKU]: [0.10, 0.50], [SONNET]: [2, 10] };   // $ per million tokens in and out
 
 function chosenModel(job: string): string | null {
