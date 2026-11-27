@@ -20,9 +20,14 @@ struct SettingsView: View {
     @State private var passwordNote: String?
     @State private var confirmSignOut = false
     @State private var confirmSignOutAll = false
+    @State private var confirmDelete = false
+    @State private var deleting = false
+    @State private var deleteNote: String?
     @State private var search = ""
     private var store: Store { Store.shared }
     private let order = [1, 2, 3, 4, 5, 6, 0]
+    /// The policy App Store Connect links to too (privacy.html in the repo, served by GitHub Pages).
+    static let privacyPolicy = URL(string: "https://domchivers.github.io/cheat-day/privacy.html")!
     @AppStorage("dailyTips") private var dailyTips = true
     @AppStorage(Appearance.key) private var appearance = "dark"
 
@@ -81,6 +86,7 @@ struct SettingsView: View {
             if search.isEmpty {
             Section {
                 Button { Tour.shared.pending = true } label: { row("📖", "Show me around") }.foregroundStyle(.primary)
+                Link(destination: Self.privacyPolicy) { row("📄", "Privacy policy") }.foregroundStyle(.primary)
             }
             // every account on this phone, as Instagram lists them (26 Nov, account switcher)
             Section {
@@ -357,6 +363,25 @@ struct SettingsView: View {
             }
             if let passwordNote { Text(passwordNote).font(.footnote).foregroundStyle(.secondary) }
         } header: { Text("Change password") }
+        // App Store guideline 5.1.1(v): an account made in the app can be deleted in the app
+        Section {
+            Button(role: .destructive) { confirmDelete = true } label: {
+                HStack { Text(deleting ? "Deleting…" : "Delete account"); if deleting { Spacer(); ProgressView() } }
+            }
+            .disabled(deleting)
+            if let deleteNote { Text(deleteNote).font(.footnote).foregroundStyle(Theme.warn) }
+        } footer: {
+            Text("Deletes your account and everything in it for good: your food log, workouts, weigh-ins, posts, stories, messages, photos and friends. It can't be undone.")
+        }
+        .alert("Delete your account?", isPresented: $confirmDelete) {
+            Button("Delete for good", role: .destructive) {
+                deleting = true; deleteNote = nil
+                Task { deleteNote = await Accounts.shared.deleteHere(); deleting = false }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Everything in \(Supabase.shared.email.isEmpty ? "this account" : Supabase.shared.email) is deleted from Cheat Days and can't be got back.")
+        }
     }
 
     /// The whole record as a file to keep.

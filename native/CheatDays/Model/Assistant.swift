@@ -249,6 +249,8 @@ enum Assistant {
         if !loves.isEmpty || !avoid.isEmpty { c += "Foods they love: \(loves.isEmpty ? "not said" : loves). Never suggest: \(avoid.isEmpty ? "nothing" : avoid).\n" }
         c += store.habitsContext
         c += training(store)
+        c += bodyHistory(store)
+        c += trainingWeeks(store)
         if let next = store.nextCheat { c += "Their next cheat day is \(next.date == store.today ? "today" : next.date), with \(Int(next.kcal)) kcal.\n" }
         return c
     }
@@ -347,6 +349,43 @@ enum Assistant {
             }
         }
         return lines.isEmpty ? "" : "Their training, the last three weeks, newest first (kg × reps):\n\(lines.joined(separator: "\n"))\n"
+    }
+
+    /// Their weight over the last 12 weeks, one line per week (the week's average and body fat), with the trend, so the
+    /// assistant can answer "am I losing?", "why's the scale up?" and "should I eat more?" from their own numbers.
+    @MainActor
+    static func bodyHistory(_ store: Store) -> String {
+        let since = DayKey.shift(store.today, days: -84)
+        let rows = store.bodyRows.filter { pos($0["weight"]) != nil && str($0["day"]) >= since && str($0["day"]) <= store.today }
+        guard !rows.isEmpty else { return "" }
+        var weeks: [String: [JSON]] = [:]
+        for r in rows { weeks[Store.weekOf(str(r["day"])), default: []].append(r) }
+        let lines = weeks.keys.sorted(by: >).prefix(12).map { wk -> String in
+            let w = weeks[wk] ?? [], kg = w.compactMap { pos($0["weight"]) }, fat = w.compactMap { pos($0["fat"]) }
+            let avg = kg.reduce(0, +) / Double(max(kg.count, 1))
+            return "week of \(wk): \(Fmt.one(avg)) kg\(fat.isEmpty ? "" : ", \(Fmt.one(fat.reduce(0, +) / Double(fat.count)))% fat") (\(kg.count) weigh-in\(kg.count == 1 ? "" : "s"))"
+        }
+        var s = "Their weight, the last 12 weeks, newest first (weekly averages):\n\(lines.joined(separator: "\n"))\n"
+        if let t = store.weightTrend(), t.n >= 3 { s += "Trend: \(t.perDay * 7 >= 0 ? "+" : "")\(Fmt.one(t.perDay * 7)) kg a week\(store.trendWeight.map { ", trend weight \(Fmt.one($0)) kg" } ?? "").\n" }
+        return s
+    }
+
+    /// How often they've trained, the last 8 weeks, beyond the detailed three weeks in `training`.
+    @MainActor
+    static func trainingWeeks(_ store: Store) -> String {
+        let since = DayKey.shift(store.today, days: -56)
+        var weeks: [String: (n: Int, min: Int, kinds: Set<String>)] = [:]
+        for h in CheatDays.list(store.doc["history"]) where str(h["date"]) >= since && str(h["date"]) < store.today {
+            for w in CheatDays.list(h["workouts"]) {
+                let k = Store.weekOf(str(h["date"])); var e = weeks[k] ?? (0, 0, [])
+                e.n += 1; e.min += Int(num(w["minutes"]) ?? 0); e.kinds.insert(str(w["name"])); weeks[k] = e
+            }
+        }
+        guard !weeks.isEmpty else { return "" }
+        let lines = weeks.keys.sorted(by: >).map { k in
+            let e = weeks[k]!; return "week of \(k): \(e.n) workout\(e.n == 1 ? "" : "s"), \(e.min) min (\(e.kinds.filter { !$0.isEmpty }.sorted().prefix(4).joined(separator: ", ")))"
+        }
+        return "How often they've trained, the last 8 weeks, newest first:\n\(lines.joined(separator: "\n"))\n"
     }
 
     /// "In the photo", "the pics I sent".

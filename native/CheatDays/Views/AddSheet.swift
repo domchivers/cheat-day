@@ -22,6 +22,23 @@ struct AddSheet: View {
     var body: some View {
         NavigationStack {
             List {
+                // the search as the list's first row (27 Nov): the nav-bar search sat on the title with a big gap under
+                // it; here it's even, just under the title and as close to the meal card as the cards are to each other
+                Section {
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                        TextField("Search foods and your history", text: $query)
+                            .textInputAutocapitalization(.never).autocorrectionDisabled().submitLabel(.search)
+                        if !query.isEmpty {
+                            Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary) }
+                                .buttonStyle(.plain).accessibilityLabel("Clear search")
+                        }
+                    }
+                    .padding(.horizontal, 14).frame(height: 46)
+                    .background(Color(.tertiarySystemFill), in: Capsule())
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                    .listRowBackground(Color.clear)
+                }
                 Section {
                     Picker("Meal", selection: $meal) { ForEach(Meals.all, id: \.self) { Text($0).tag($0) } }.pickerStyle(.segmented)
                     HStack(spacing: 8) {
@@ -36,7 +53,8 @@ struct AddSheet: View {
                 }
                 if settled.trimmingCharacters(in: .whitespaces).isEmpty { suggestions } else { results }
             }
-            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search foods and your history")
+            .listSectionSpacing(14)
+            .contentMargins(.top, 10, for: .scrollContent)
             .keyboardDone()
             .task(id: query) {
                 if query.isEmpty { settled = ""; return }

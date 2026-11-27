@@ -173,6 +173,35 @@ final class Accounts {
         signOutCompletely()
     }
 
+    /// Delete the account you're on, for good (App Store guideline 5.1.1(v)): the server's "delete-account" function removes
+    /// its photos, its rows and the sign-in, then it's logged out here like Log out, without syncing anything back up.
+    /// Nil when done, else what went wrong.
+    func deleteHere() async -> String? {
+        let me = current
+        guard !me.isEmpty else { return "You're not signed in." }
+        busy = true
+        await Push.leave()
+        let got = try? await Supabase.shared.call("/functions/v1/delete-account", body: ["confirm": "delete"] as JSON, timeout: 60)
+        guard let (d, status) = got else { busy = false; return "Couldn't reach Cheat Days. Check your connection and try again." }
+        guard status == 200 else {
+            busy = false
+            let why = (try? JSONSerialization.jsonObject(with: d) as? JSON).flatMap { $0["error"] as? String }
+            return why ?? "Couldn't delete the account (\(status)). Try again in a minute."
+        }
+        await WebHost.shared.clearForSwitch()
+        Supabase.shared.forget(account: me)
+        list.removeAll { $0.id == me }; save()
+        if let next = accounts.first(where: { $0.id != me }), Supabase.shared.use(account: next.id) {
+            clearState(store: true)
+            busy = false
+            show("Account deleted. You're on \(next.title)")
+            return nil
+        }
+        busy = false
+        signOutCompletely()
+        return nil
+    }
+
     /// Log out of every account on this phone.
     func logOutAll() async {
         await Push.leave()

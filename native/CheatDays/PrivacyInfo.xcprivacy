@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Cheat Days' privacy manifest (Apple asks for one in every new submission). No tracking, no tracking domains.
+     Required-reason APIs: UserDefaults (the app's own settings, CA92.1) and file dates (MediaCache, EditDrafts and the
+     story camera read dates of files the app itself saved in its own container, C617.1).
+     Collected data matches the App Store privacy labels: all linked to the account, all for the app's own features,
+     none for tracking or advertising. -->
+<plist version="1.0">
+<dict>
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array><string>CA92.1</string></array>
+		</dict>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array><string>C617.1</string></array>
+		</dict>
+	</array>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key><string>NSPrivacyCollectedDataTypeEmailAddress</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key><true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key><false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key><array><string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string></array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key><string>NSPrivacyCollectedDataTypeHealth</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key><true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key><false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key><array><string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string></array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key><string>NSPrivacyCollectedDataTypeFitness</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key><true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key><false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key><array><string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string></array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key><string>NSPrivacyCollectedDataTypePhotosorVideos</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key><true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key><false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key><array><string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string></array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key><string>NSPrivacyCollectedDataTypeOtherUserContent</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key><true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key><false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key><array><string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string></array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key><string>NSPrivacyCollectedDataTypeCoarseLocation</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key><true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key><false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key><array><string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string></array>
+		</dict>
+	</array>
+</dict>
+</plist>

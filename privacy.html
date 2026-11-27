@@ -20,9 +20,9 @@
 <body>
 <main>
   <h1>Cheat Days privacy</h1>
-  <p class="muted">Last updated 28 October 2026. This covers the Cheat Days app (on the App Store as "My Cheat Days") and the web version at domchivers.github.io/cheat-day.</p>
+  <p class="muted">Last updated 27 November 2026. This covers the Cheat Days app (on the App Store as "My Cheat Days") and the web version at domchivers.github.io/cheat-day.</p>
 
-  <p>Cheat Days is a small calorie and workout tracker made for friends and family. It has no ads, doesn't sell or share your data for advertising, and doesn't use tracking or analytics tools.</p>
+  <p>Cheat Days is a calorie and workout tracker with a social side for sharing with friends. It has no ads, doesn't sell or share your data for advertising, and doesn't use tracking or analytics tools.</p>
 
   <h2>What the app keeps</h2>
   <ul>
@@ -38,21 +38,32 @@
     <li>If you add friends, they can see what you choose to share: your day's food and calories, your streak, posts and workouts you share, and the display name you pick. You can turn sharing your day off in the Friends tab.</li>
   </ul>
 
+  <h2>Posts, stories and messages</h2>
+  <ul>
+    <li>Posts, stories, comments and photos you share are seen by your followers. If you make your profile public, your posts can also appear in Explore for other people on Cheat Days. Your profile is private until you change it.</li>
+    <li>Messages are seen by the people you send them to, and are kept so the conversation stays in the app.</li>
+    <li>To keep the community safe, a post or story may be checked by an AI service (Anthropic's Claude) before it goes up, and anything that's reported is reviewed, by AI or by a person. Private messages are never sent to the AI. You can report and block people from their profile or post.</li>
+  </ul>
+
   <h2>Services the app uses</h2>
   <ul>
     <li><b>Food lookups.</b> Barcodes and food names you search for are sent to Open Food Facts and the USDA food database to find nutrition information. Many ingredient numbers are based on Australian data from the Australian Food Composition Database, Release 3, and AUSNUT 2023, © Food Standards Australia New Zealand, which doesn't endorse this app.</li>
     <li><b>AI features.</b> When you use the assistant, read a label, or take a photo of food or a pack, the photo and your request are sent to an AI service (Anthropic's Claude, with Google Gemini as a backup) to work out the numbers. For packs it can't recognise, the AI may search the web for the product. When you ask the planner or the daily tips for meal ideas, it also sends what you've typed in about your fridge and cooking, your calories left, and a short summary of what you've eaten at that meal recently, so the ideas suit you. Some quick jobs are handled by Apple's on-device AI where your iPhone supports it, and those never leave your phone.</li>
-    <li><b>Reminders and sign-in</b> go through Supabase.</li>
+    <li><b>Places to eat.</b> If you ask for takeaway or places nearby, your suburb's name (never your exact location) is sent with your question to find places.</li>
+    <li><b>Reminders, notifications and sign-in</b> go through Supabase and Apple's push notification service.</li>
   </ul>
   <p>These services receive only what's needed for that feature. They have their own privacy policies.</p>
 
-  <h2>Camera, photos and notifications</h2>
-  <p>The camera is used only when you scan a barcode or take a photo. Photos you attach to food are shrunk and kept with that entry. Notifications and the Lock Screen timer are used for the workout rest timer and reminders you turn on.</p>
+  <h2>Camera, photos, microphone and notifications</h2>
+  <p>The camera is used only when you scan a barcode, take a photo or film for your story. Photos you attach to food are shrunk and kept with that entry. The microphone is used only when you tap it to speak instead of typing, film a video or record a voiceover; speech is turned into words on your iPhone where it can be. Notifications and the Lock Screen timer are used for the workout rest timer, messages and reminders you turn on.</p>
+
+  <h2>Location and Bluetooth</h2>
+  <p>If you choose to map a run, ride or walk, precise location is used only while the app times it, and the route stays on your phone and in Apple Health. Bluetooth is used only to connect a heart strap when you ask it to.</p>
 
   <h2>Apple Health</h2>
-  <p>If you connect Apple Health in the iPhone app, it reads your weight, body fat, lean mass and BMI (for example from your smart scale's app) and keeps them with your weigh-ins, in your own account. It also reads your step count to show on Today. It never writes to Apple Health, never reads anything else from it, and never shares or sells health data or uses it for advertising. You can turn it off in the app, or in the iPhone's Health settings, at any time.</p>
+  <p>If you connect Apple Health in the iPhone app, it reads your weight, body fat, lean mass and BMI (for example from your smart scale's app) and keeps them with your weigh-ins, in your own account. It also reads your steps, and your workouts with their routes, heart rate and calories, so they show in the app. It writes the workouts it times for you to Apple Health and, only if you turn it on, the calories and nutrients of the food you log. It never shares or sells health data or uses it for advertising. You can turn it off in the app, or in the iPhone's Health settings, at any time.</p>
   <h2>Deleting your data</h2>
-  <p>Deleting the app removes everything stored on your phone. To delete your account and its cloud copy, ask through TestFlight feedback or the contact details on the App Store page, and it will be removed.</p>
+  <p>Deleting the app removes everything stored on your phone. To delete your account and everything in it, go to Settings, tap your account, then Delete account. That removes your food log, workouts, weigh-ins, posts, stories, messages, photos and friends from Cheat Days for good. You can also ask through the contact details on the App Store page.</p>
 
   <h2>Children</h2>
   <p>Cheat Days isn't meant for children under 13.</p>
