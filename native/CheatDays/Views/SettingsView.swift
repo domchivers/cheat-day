@@ -372,7 +372,7 @@ struct SettingsView: View {
             .disabled(deleting)
             if let deleteNote { Text(deleteNote).font(.footnote).foregroundStyle(Theme.warn) }
         } footer: {
-            Text("Deletes your account and everything in it for good: your food log, workouts, weigh-ins, posts, stories, messages, photos and friends. It can't be undone.")
+            Text("Hides your account from everyone now, then deletes it and everything in it 30 days later: your food log, workouts, weigh-ins, posts, stories, messages, photos and friends. Sign in again before then and it won't be deleted.")
         }
         .alert("Delete your account?", isPresented: $confirmDelete) {
             // the password first (27 Nov): a wrong one deletes nothing, and the server checks it again
@@ -384,7 +384,7 @@ struct SettingsView: View {
             }
             Button("Cancel", role: .cancel) { deletePassword = "" }
         } message: {
-            Text("Everything in \(Supabase.shared.email.isEmpty ? "this account" : Supabase.shared.email) is deleted from Cheat Days and can't be got back. Type your password to delete it.")
+            Text("Everything in \(Supabase.shared.email.isEmpty ? "this account" : Supabase.shared.email) is hidden now and deleted in 30 days. Sign in again before then to keep it. Type your password to delete it.")
         }
     }
 

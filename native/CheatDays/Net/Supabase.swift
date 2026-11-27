@@ -41,6 +41,13 @@ final class Supabase {
         return r.statusCode == 400 || r.statusCode == 401 ? false : nil
     }
 
+    /// Signing in again cancels a deletion that's waiting (supabase/account_grace.sql). True when one was cancelled;
+    /// nil when it couldn't ask (no connection, or the SQL isn't run yet).
+    func cancelDeletion() async -> Bool? {
+        guard let d = try? await rest("/rest/v1/rpc/cancel_deletion", method: "POST", body: [String: String]()) else { return nil }
+        return String(data: d, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) == "true"
+    }
+
     /// True when signed in straight away; false when Supabase wants the email confirmed first.
     func signUp(email: String, password: String) async throws -> Bool {
         let (d, r) = try await send("/auth/v1/signup", method: "POST", body: ["email": email, "password": password], auth: false)

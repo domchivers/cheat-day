@@ -207,18 +207,52 @@ final class Accounts {
             let why = (try? JSONSerialization.jsonObject(with: d) as? JSON).flatMap { $0["error"] as? String }
             return why ?? "Couldn't delete the account (\(status)). Try again in a minute."
         }
+        let note = Self.deletedNote(d)
         await WebHost.shared.clearForSwitch()
         Supabase.shared.forget(account: me)
         list.removeAll { $0.id == me }; save()
         if let next = accounts.first(where: { $0.id != me }), Supabase.shared.use(account: next.id) {
             clearState(store: true)
             busy = false
-            show("Account deleted. You're on \(next.title)")
+            show("\(note) You're on \(next.title).")
             return nil
         }
         busy = false
+        farewell = note   // the sign-in screen says it, since no toast shows there
         signOutCompletely()
         return nil
+    }
+
+    /// What the sign-in screen says after this phone's last account was deleted (once).
+    var farewell: String?
+
+
+    /// What the server's answer means: waiting 30 days (1.4.75's delete-account), or gone now (an account with no
+    /// profile, or the older function).
+    static func deletedNote(_ d: Data) -> String {
+        let j = (try? JSONSerialization.jsonObject(with: d) as? JSON) ?? [:]
+        guard j["pending"] as? Bool == true, let s = j["delete_after"] as? String, let when = isoDate(s) else { return "Account deleted." }
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_AU"); f.dateFormat = "EEEE d MMMM"
+        return "Your account will be deleted on \(f.string(from: when)). Sign in before then to keep it."
+    }
+
+    static func isoDate(_ s: String) -> Date? {
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = f.date(from: s) { return d }
+        f.formatOptions = [.withInternetDateTime]
+        return f.date(from: s)
+    }
+
+    static let welcomeBackNote = "Welcome back! Your account won't be deleted."
+
+    /// Signing in again within the 30 days cancels the deletion. Nil when nothing was waiting (or it couldn't ask).
+    static func welcomeBack(_ cancel: () async -> Bool?) async -> String? {
+        await cancel() == true ? welcomeBackNote : nil
+    }
+
+    /// After every sign-in: an account that was waiting to be deleted isn't any more, and says so.
+    func afterSignIn() async {
+        if let t = await Self.welcomeBack({ await Supabase.shared.cancelDeletion() }) { show(t) }
     }
 
     /// Log out of every account on this phone.
@@ -302,7 +336,7 @@ struct AccountToast: View {
     var body: some View {
         HStack(spacing: 10) {
             Avatar(id: Accounts.shared.current, size: 28)
-            Text(text).font(.subheadline.weight(.bold)).lineLimit(1)
+            Text(text).font(.subheadline.weight(.bold)).lineLimit(2)   // a deletion date or a welcome back runs to two
         }
         .padding(.leading, 8).padding(.trailing, 16).padding(.vertical, 8)
         .background(.regularMaterial, in: Capsule())

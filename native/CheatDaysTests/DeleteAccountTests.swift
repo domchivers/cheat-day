@@ -27,6 +27,25 @@ final class DeleteAccountTests: XCTestCase {
         XCTAssertNotNil(empty); XCTAssertNotNil(offline)
     }
 
+    /// 1.4.75: the server marks the account for 30 days; the app says the date and that signing in keeps it.
+    func testPendingSaysTheDate() {
+        let d = #"{"pending":true,"delete_after":"2026-12-27T09:30:00.123+00:00"}"#.data(using: .utf8)!
+        let note = Accounts.deletedNote(d)
+        XCTAssertTrue(note.contains("27 December"), note)
+        XCTAssertTrue(note.contains("Sign in before then"), note)
+        XCTAssertNotNil(Accounts.isoDate("2026-12-27T09:30:00+00:00"), "without fractional seconds too")
+        XCTAssertEqual(Accounts.deletedNote(#"{"deleted":true}"#.data(using: .utf8)!), "Account deleted.", "erased at once, or the older function")
+    }
+
+    func testSigningInCancelsAWaitingDeletion() async {
+        let back = await Accounts.welcomeBack { true }
+        XCTAssertEqual(back, Accounts.welcomeBackNote)
+        let nothing = await Accounts.welcomeBack { false }
+        XCTAssertNil(nothing, "no toast when nothing was waiting")
+        let offline = await Accounts.welcomeBack { nil }
+        XCTAssertNil(offline)
+    }
+
     func testServerSayingNoIsShown() async {
         let said = await Accounts.passwordFirst("pw", check: { _ in true }, then: { _ in Accounts.wrongPassword })
         XCTAssertEqual(said, Accounts.wrongPassword)

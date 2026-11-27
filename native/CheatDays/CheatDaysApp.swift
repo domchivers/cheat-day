@@ -583,6 +583,8 @@ struct SignInView: View {
         .scrollBounceBehavior(.basedOnSize)
         .keyboardDone()
         .background(Theme.bg.ignoresSafeArea())
+        // just deleted this phone's last account: when it goes, and that signing in keeps it
+        .onAppear { if let f = Accounts.shared.farewell { message = f; Accounts.shared.farewell = nil } }
         .overlay(alignment: .topLeading) {
             if adding {
                 Button("Cancel") { Accounts.shared.cancelAdd() }
@@ -624,6 +626,7 @@ struct SignInView: View {
                 d.set(true, forKey: "signin.setup")
                 await Store.shared.sync()
                 if adding { Accounts.shared.added() }
+                await Accounts.shared.afterSignIn()   // signing in within the 30 days cancels a deletion
             }
         } catch {
             message = error.localizedDescription == "Invalid login credentials" ? "Email or password isn't right." : error.localizedDescription
