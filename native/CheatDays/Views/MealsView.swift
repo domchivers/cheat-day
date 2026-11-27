@@ -489,7 +489,7 @@ struct FoodPicker: View {
         busy = "Reading the label…"; problem = nil
         Task {
             do {
-                let r = try await LabelReader.read(img) { step in busy = step }
+                let r = try await LabelReader.read(await AssistantView.shrunk(img)) { step in busy = step }   // off the main thread first
                 busy = nil
                 use(r.item)
             } catch {
@@ -527,7 +527,7 @@ private struct GramsStep: View {
     @State private var text = ""
     @State private var name = ""
     private var k100: Double { FoodMath.kcalPer100(basis) ?? 0 }
-    private var grams: Double { Double(text.replacingOccurrences(of: ",", with: ".")) ?? 0 }
+    private var grams: Double { Fmt.number(text) ?? 0 }
 
     var body: some View {
         Form {

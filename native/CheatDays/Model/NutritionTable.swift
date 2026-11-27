@@ -69,7 +69,7 @@ enum NutritionTable {
         return out.map { var r = $0.row; r.cells.sort { $0.x < $1.x }; return r }
     }
 
-    private static let number = try! NSRegularExpression(pattern: #"(<\s*)?(\d+(?:[.,]\d+)?)\s*(kcal|kj|cal|mg|g|ml)?"#, options: .caseInsensitive)
+    private static let number = try! NSRegularExpression(pattern: #"(<\s*)?("# + Fmt.numberPattern + #")\s*(kcal|kj|cal|mg|g|ml)?"#, options: .caseInsensitive)
 
     /// The numbers in a row, in reading order, with their unit and position.
     private static func numbers(_ row: Row) -> [(v: Double, unit: String, x: Double)] {
@@ -77,7 +77,7 @@ enum NutritionTable {
         for c in row.cells {
             let ns = c.text as NSString
             for m in number.matches(in: c.text, range: NSRange(location: 0, length: ns.length)) {
-                guard let v = Double(ns.substring(with: m.range(at: 2)).replacingOccurrences(of: ",", with: ".")) else { continue }
+                guard let v = Fmt.number(ns.substring(with: m.range(at: 2))) else { continue }
                 let unit = m.range(at: 3).location == NSNotFound ? "" : ns.substring(with: m.range(at: 3)).lowercased()
                 out.append((m.range(at: 1).location == NSNotFound ? v : v / 2, unit, c.x))   // "<0.5g" counts as 0.25
             }

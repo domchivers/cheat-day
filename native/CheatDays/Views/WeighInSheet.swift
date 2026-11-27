@@ -77,7 +77,7 @@ struct WeighInSheet: View {
                     TextField("kg", text: $text)
                         .keyboardType(.decimalPad).multilineTextAlignment(.center)
                         .font(.system(size: 60, weight: .heavy, design: .rounded)).fixedSize()   // sized to the number, so "kg" sits beside it
-                        .onChange(of: text) { _, t in if let v = Double(t.replacingOccurrences(of: ",", with: ".")), v > 20, v < 400 { kg = v } }
+                        .onChange(of: text) { _, t in if let v = Fmt.number(t), v > 20, v < 400 { kg = v } }
                     Text("kg").font(.title2.weight(.bold)).foregroundStyle(.secondary)
                 }
                 HStack(spacing: 10) {
@@ -162,7 +162,7 @@ extension WeighInSheet {
     fileprivate func save() {
         var row = JSON()
         row["weight"] = Fmt.kg2(kg)
-        for (k, v) in others { if let n = Double(v.replacingOccurrences(of: ",", with: ".")), n > 0 { row[k] = Fmt.kg2(n) } }
+        for (k, v) in others { if let n = Fmt.number(v), n > 0 { row[k] = Fmt.kg2(n) } }
         let day = DayKey.string(when)
         if let editing, editing != day { store.deleteBody(editing) }   // moved to another day
         row["day"] = day

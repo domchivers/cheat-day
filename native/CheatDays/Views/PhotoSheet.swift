@@ -61,7 +61,7 @@ struct PhotoSheet: View {
             Section {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Photo of the pack or the nutrition table").font(.title3.bold())
-                    Text("The front of a pack works: it reads what's printed, checks the product, and asks how many. The table on the back is the most exact.")
+                    Text("The front of a pack works: it reads what's printed, checks the product, and asks how many. The nutrition table on the back is the most exact, and it's read right on your phone with no AI.")
                         .foregroundStyle(.secondary)
                 }
                 .padding(.vertical, 6)
@@ -75,9 +75,11 @@ struct PhotoSheet: View {
         }
     }
 
-    private func read(_ img: UIImage) {
-        phase = .reading(img, "Reading the photo…")
+    private func read(_ full: UIImage) {
         Task {
+            // a full-size camera photo stuttered the screen; shrunk off the main thread first, like the assistant's
+            let img = await AssistantView.shrunk(full)
+            phase = .reading(img, "Reading the photo…")
             do {
                 let r = try await LabelReader.read(img) { step in phase = .reading(img, step) }
                 done += 1
@@ -127,7 +129,7 @@ struct ManualEntry: View {
     @State private var go: EditTarget?
     @State private var kj = Region.current == .au   // Australian labels lead with kJ: type what's printed
 
-    private func d(_ s: String) -> Double? { Double(s.replacingOccurrences(of: ",", with: ".")) }
+    private func d(_ s: String) -> Double? { Fmt.number(s) }
     /// The energy typed, in kcal (kJ ÷ 4.184).
     private var kcalTyped: Double? { d(kcalText).map { kj ? $0 / 4.184 : $0 } }
 

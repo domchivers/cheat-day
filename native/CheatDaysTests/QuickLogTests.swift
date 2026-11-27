@@ -44,4 +44,20 @@ final class QuickLogTests: XCTestCase {
         XCTAssertNotNil(QuickLog.instant("protein shake 250 cal 40p"))
         XCTAssertNotNil(QuickLog.instant("chicken sandwich - 600 kcal - 60p 30f 10c"))
     }
+
+    /// 27 Nov: "1,240 kcal" logged as 1 kcal, the comma read as a decimal point. Three digits after a comma are
+    /// thousands; anything else is a decimal comma.
+    func testThousandsCommas() {
+        XCTAssertEqual(QuickLog.parseLine("pizza 1,240 kcal")?.kcal, 1240)
+        XCTAssertEqual(QuickLog.parseLine("yoghurt 150 kcal 12,5g protein")?.p, 12.5)
+        XCTAssertEqual(QuickLog.parseLine("feast 1,240.5 kcal")?.kcal, 1241, "1240.5, rounded to a whole calorie")
+        XCTAssertEqual(Fmt.number("1,240"), 1240)
+        XCTAssertEqual(Fmt.number("1,240.5"), 1240.5)
+        XCTAssertEqual(Fmt.number("12,5"), 12.5)
+        XCTAssertEqual(Fmt.number("0,125"), 0.125, "a lone 0 before the comma is a decimal")
+        XCTAssertEqual(Fmt.number("1,240,000"), 1_240_000)
+        XCTAssertEqual(Fmt.typed("22,5"), 22.5)
+        XCTAssertEqual(Assistant.calorieTarget("what can I eat for 1,240 calories?"), 1240)
+        XCTAssertEqual(Tweak.amount("1,200g"), 1200)
+    }
 }

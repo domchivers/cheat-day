@@ -213,7 +213,7 @@ struct PantryScanSheet: View {
         busy = "Reading the label…"
         defer { busy = nil }
         do {
-            let r = try await LabelReader.read(img) { step in busy = step }
+            let r = try await LabelReader.read(await AssistantView.shrunk(img)) { step in busy = step }   // off the main thread first
             if let item = PantryItem(basis: r.item) { add(item) }
             else { problem = "Couldn't find calories per 100 g on one photo. Try a clearer photo of the table." }
         } catch { problem = error.localizedDescription }

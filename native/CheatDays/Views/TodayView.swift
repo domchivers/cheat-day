@@ -1310,7 +1310,7 @@ struct AmountView: View {
             tiles(Array(Array(Set(options)).sorted().prefix(4)).map { g in (Fmt.one(g), unit, g * k100 / 100) })
             HStack {
                 TextField("Amount", text: $gramsText).keyboardType(.decimalPad)
-                    .onChange(of: gramsText) { _, t in if let g = Double(t.replacingOccurrences(of: ",", with: ".")), abs(g - grams) > 0.05 { kcal = g * k100 / 100 } }
+                    .onChange(of: gramsText) { _, t in if let g = Fmt.number(t), abs(g - grams) > 0.05 { kcal = g * k100 / 100 } }
                 Text(unit).foregroundStyle(.secondary)
             }
             fitsNote
@@ -1439,7 +1439,7 @@ struct FixNumbers: View {
         }
     }
 
-    private static func d(_ s: String) -> Double? { Double(s.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespaces)) }
+    private static func d(_ s: String) -> Double? { Fmt.number(s) }
 
     private func fill() {
         guard let it = item else { return }

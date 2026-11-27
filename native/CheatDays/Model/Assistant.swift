@@ -714,8 +714,8 @@ enum Assistant {
     static func calorieTarget(_ text: String) -> Double? {
         let t = text.lowercased()
         guard t.range(of: #"\d\s*(g|grams?|ml|kg)\b"#, options: .regularExpression) == nil,
-              let r = t.range(of: #"(\d+(\.\d+)?)\s*(kcal|cals?|calories)\b"#, options: .regularExpression) else { return nil }
-        return Double(t[r].prefix { $0.isNumber || $0 == "." })
+              let r = t.range(of: "(" + Fmt.numberPattern + #")\s*(kcal|cals?|calories)\b"#, options: .regularExpression) else { return nil }
+        return Fmt.number(String(t[r].prefix { $0.isNumber || $0 == "." || $0 == "," }))
     }
 
     /// A one-food estimate whose checked numbers moved off the calories they asked for (265 g of watermelon is 82 kcal,

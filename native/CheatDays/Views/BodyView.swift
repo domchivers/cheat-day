@@ -177,7 +177,7 @@ struct GoalSheet: View {
     @State private var text = ""
     @FocusState private var typing: Bool
     private var store: Store { Store.shared }
-    private var value: Double? { Double(text.replacingOccurrences(of: ",", with: ".")) }
+    private var value: Double? { Fmt.number(text) }
     private var ok: Bool {
         guard let v = value else { return false }
         return kind == .weight ? (35...250).contains(v) : (3...50).contains(v)

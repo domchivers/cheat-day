@@ -78,7 +78,17 @@ enum Fmt {
     static func kgRow(_ v: Double) -> String { String(format: "%.2f", v) }
     static func kg2(_ v: Double) -> Double { (v * 100).rounded() / 100 }
     /// A number as typed: "22.5", "22,5" (a comma keypad), "22." part way through, ".5".
-    static func typed(_ t: String) -> Double? { Double(t.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: ".")) }
+    static func typed(_ t: String) -> Double? { number(t) }
+    /// A number with commas read the way people write them: "1,240" and "1,240.5" are thousands (27 Nov: "1,240 kcal"
+    /// logged as 1), "12,5" and "0,125" are a decimal comma. A comma is a thousands one when exactly three digits
+    /// follow it and the digits before it aren't a lone 0.
+    static func number(_ raw: String) -> Double? {
+        let t = raw.trimmingCharacters(in: .whitespaces)
+            .replacingOccurrences(of: #"(?<!(?<!\d)0),(?=\d{3}(?!\d))"#, with: "", options: .regularExpression)
+        return Double(t.replacingOccurrences(of: ",", with: "."))
+    }
+    /// The regex for one such number: "250", "12.5", "12,5", "1,240", "1,240.5", "1,240,000".
+    static let numberPattern = #"\d+(?:,\d{3}(?!\d))*(?:[.,]\d+)?"#
 
     /// Always one decimal, for body fat: 16.0, never 16.
     static func dec(_ v: Double) -> String { String(format: "%.1f", v) }

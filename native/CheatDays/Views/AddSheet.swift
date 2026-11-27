@@ -12,6 +12,7 @@ struct AddSheet: View {
     @State private var photo = false
     @State private var meals = false
     @State private var typing = false
+    @State private var chatting = false
     private var store: Store { Store.shared }
 
     init(meal: String, onFlow: @escaping (WebFlow) -> Void) {
@@ -44,8 +45,10 @@ struct AddSheet: View {
                     HStack(spacing: 8) {
                         way("barcode.viewfinder", "Barcode") { scanning = true }
                         way("camera.fill", "Photo") { photo = true }
-                        way("sparkles", "Ask AI") { onFlow(WebFlow(view: "ask", opts: ["meal": meal], title: "Assistant")) }
-                        way("square.and.pencil", "Type it") { typing = true }
+                        // the assistant rises straight over this sheet, like Photo, and its Close lands back here (27 Nov:
+                        // this sheet dropping, half a second of Today, then the assistant rising looked broken); typing
+                        // goes through the chat, with "Type the numbers in" still under a search that finds nothing
+                        way("sparkles", "Assistant") { chatting = true }
                         way("book.closed.fill", "Meals") { meals = true }
                     }
                     .buttonStyle(.plain)
@@ -67,6 +70,7 @@ struct AddSheet: View {
             .navigationDestination(for: EditTarget.self) { t in AmountView(target: t) { dismiss() } }
             .navigationDestination(isPresented: $typing) { ManualEntry(meal: meal) { dismiss() } }
             .navigationDestination(isPresented: $meals) { MealsView() }
+            .sheet(isPresented: $chatting) { AssistantView(meal: meal) }
             .sheet(isPresented: $photo) {
                 PhotoSheet(meal: meal, onAdded: { photo = false; dismiss() }, onFlow: { f in photo = false; onFlow(f) })
             }
@@ -178,11 +182,12 @@ struct AddSheet: View {
 
     private func way(_ symbol: String, _ label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            VStack(spacing: 6) {
-                Image(systemName: symbol).font(.title2).foregroundStyle(Theme.accent)
-                Text(label).font(.caption.weight(.bold))
+            // four to a row since Type it went (27 Nov): a bigger icon and label, a little taller, to fill it
+            VStack(spacing: 7) {
+                Image(systemName: symbol).font(.title).foregroundStyle(Theme.accent)
+                Text(label).font(.subheadline.weight(.bold)).lineLimit(1).minimumScaleFactor(0.8)
             }
-            .frame(maxWidth: .infinity).padding(.vertical, 12)
+            .frame(maxWidth: .infinity).padding(.vertical, 16)
             .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
     }

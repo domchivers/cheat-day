@@ -12,7 +12,7 @@ enum QuickLog {
         var f: Double?
     }
 
-    private static let n = #"(\d+(?:[.,]\d+)?)"#
+    private static let n = "(" + Fmt.numberPattern + ")"
     private static func rx(_ p: String) -> NSRegularExpression { try! NSRegularExpression(pattern: p, options: .caseInsensitive) }
     // number then word ("60p", "60 g protein") or word then number ("p60", "protein: 60")
     private static let kcalRx = rx(n + #"\s*(kcal|kcals|cal|cals|calories|kilocalories|kj|kilojoules)\b"#)
@@ -37,9 +37,9 @@ enum QuickLog {
                 guard let m = r.firstMatch(in: s, range: NSRange(location: 0, length: ns.length)) else { continue }
                 var numIndex = 1
                 for i in 1..<m.numberOfRanges where m.range(at: i).location != NSNotFound {
-                    if Double(ns.substring(with: m.range(at: i)).replacingOccurrences(of: ",", with: ".")) != nil { numIndex = i; break }
+                    if Fmt.number(ns.substring(with: m.range(at: i))) != nil { numIndex = i; break }
                 }
-                guard let v = Double(ns.substring(with: m.range(at: numIndex)).replacingOccurrences(of: ",", with: ".")) else { continue }
+                guard let v = Fmt.number(ns.substring(with: m.range(at: numIndex))) else { continue }
                 let unit = ns.substring(with: m.range).lowercased()
                 s = ns.replacingCharacters(in: m.range, with: " ")
                 return kj && (unit.contains("kj") || unit.contains("kilojoule")) ? v / 4.184 : v

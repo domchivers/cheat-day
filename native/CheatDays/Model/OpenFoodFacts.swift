@@ -48,8 +48,8 @@ enum OpenFoodFacts {
         item["unit"] = q.range(of: #"\bml\b|\bl\b|litre|liter"#, options: .regularExpression) != nil ? "ml" : "g"
         if let k = e.per100 { item["kcalPer100"] = k.rounded() }
         var serving = pos(p["serving_quantity"])
-        if serving == nil, let m = str(p["serving_size"]).range(of: #"(\d+(?:[.,]\d+)?)\s*(g|ml)"#, options: [.regularExpression, .caseInsensitive]) {
-            serving = Double(str(p["serving_size"])[m].replacingOccurrences(of: ",", with: ".").filter { "0123456789.".contains($0) })
+        if serving == nil, let m = str(p["serving_size"]).range(of: "(" + Fmt.numberPattern + #")\s*(g|ml)"#, options: [.regularExpression, .caseInsensitive]) {
+            serving = Fmt.number(String(str(p["serving_size"])[m]).filter { "0123456789.,".contains($0) })
         }
         if let serving { item["servingSize"] = serving }
         var perServing = e.perServing?.rounded()
@@ -82,14 +82,14 @@ enum OpenFoodFacts {
 
     private static func pieceFromServing(_ text: String) -> (count: Double, word: String, grams: Double?)? {
         let t = text.lowercased()
-        let pattern = #"(\d+(?:[.,]\d+)?)?\s*(slices?|biscuits?|cookies?|bars?|pieces?|eggs?|sausages?|nuggets?|wraps?|rolls?|crackers?|squares?|sweets?|cans?|bottles?|pots?|scoops?|buns?|pancakes?|waffles?|muffins?|crumpets?|bagels?|fingers?|sticks?|cubes?|balls?|tablets?)\b"#
+        let pattern = "(" + Fmt.numberPattern + #")?\s*(slices?|biscuits?|cookies?|bars?|pieces?|eggs?|sausages?|nuggets?|wraps?|rolls?|crackers?|squares?|sweets?|cans?|bottles?|pots?|scoops?|buns?|pancakes?|waffles?|muffins?|crumpets?|bagels?|fingers?|sticks?|cubes?|balls?|tablets?)\b"#
         guard let rx = try? NSRegularExpression(pattern: pattern), let m = rx.firstMatch(in: t, range: NSRange(t.startIndex..., in: t)) else { return nil }
-        let count = Range(m.range(at: 1), in: t).flatMap { Double(t[$0].replacingOccurrences(of: ",", with: ".")) } ?? 1
+        let count = Range(m.range(at: 1), in: t).flatMap { Fmt.number(String(t[$0])) } ?? 1
         guard let wr = Range(m.range(at: 2), in: t) else { return nil }
         var word = String(t[wr]); if word.hasSuffix("s") { word.removeLast() }
         var grams: Double?
-        if let g = try? NSRegularExpression(pattern: #"(\d+(?:[.,]\d+)?)\s*(g|ml)\b"#), let gm = g.firstMatch(in: t, range: NSRange(t.startIndex..., in: t)), let r = Range(gm.range(at: 1), in: t) {
-            grams = Double(t[r].replacingOccurrences(of: ",", with: "."))
+        if let g = try? NSRegularExpression(pattern: "(" + Fmt.numberPattern + #")\s*(g|ml)\b"#), let gm = g.firstMatch(in: t, range: NSRange(t.startIndex..., in: t)), let r = Range(gm.range(at: 1), in: t) {
+            grams = Fmt.number(String(t[r]))
         }
         return (count > 0 ? count : 1, word, grams)
     }

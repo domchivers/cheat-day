@@ -20,10 +20,10 @@ enum Tweak {
         guard !["less", "more", "extra", "add", "minus", "off", "plus", "half", "double", "and"].contains(where: { w in
             t.range(of: "\\b\(w)\\b", options: .regularExpression) != nil }) else { return nil }
         let all = NSRange(t.startIndex..., in: t)
-        guard (try? NSRegularExpression(pattern: "\\d+(?:[.,]\\d+)?"))?.numberOfMatches(in: t, range: all) == 1,
-              let m = (try? NSRegularExpression(pattern: "(\\d+(?:[.,]\\d+)?)\\s*(?:g|gram|grams|ml)\\b"))?.firstMatch(in: t, range: all),
+        guard (try? NSRegularExpression(pattern: Fmt.numberPattern))?.numberOfMatches(in: t, range: all) == 1,
+              let m = (try? NSRegularExpression(pattern: "(" + Fmt.numberPattern + #")\s*(?:g|gram|grams|ml)\b"#))?.firstMatch(in: t, range: all),
               let r = Range(m.range(at: 1), in: t) else { return nil }
-        return Double(t[r].replacingOccurrences(of: ",", with: ".")).flatMap { $0 > 0 ? $0 : nil }
+        return Fmt.number(String(t[r])).flatMap { $0 > 0 ? $0 : nil }
     }
 
     @MainActor
