@@ -23,6 +23,7 @@ struct SettingsView: View {
     @State private var confirmDelete = false
     @State private var deleting = false
     @State private var deleteNote: String?
+    @State private var deletePassword = ""
     @State private var search = ""
     private var store: Store { Store.shared }
     private let order = [1, 2, 3, 4, 5, 6, 0]
@@ -374,13 +375,16 @@ struct SettingsView: View {
             Text("Deletes your account and everything in it for good: your food log, workouts, weigh-ins, posts, stories, messages, photos and friends. It can't be undone.")
         }
         .alert("Delete your account?", isPresented: $confirmDelete) {
+            // the password first (27 Nov): a wrong one deletes nothing, and the server checks it again
+            SecureField("Password", text: $deletePassword).textContentType(.password)
             Button("Delete for good", role: .destructive) {
                 deleting = true; deleteNote = nil
-                Task { deleteNote = await Accounts.shared.deleteHere(); deleting = false }
+                let pw = deletePassword; deletePassword = ""
+                Task { deleteNote = await Accounts.shared.deleteHere(password: pw); deleting = false }
             }
-            Button("Cancel", role: .cancel) {}
+            Button("Cancel", role: .cancel) { deletePassword = "" }
         } message: {
-            Text("Everything in \(Supabase.shared.email.isEmpty ? "this account" : Supabase.shared.email) is deleted from Cheat Days and can't be got back.")
+            Text("Everything in \(Supabase.shared.email.isEmpty ? "this account" : Supabase.shared.email) is deleted from Cheat Days and can't be got back. Type your password to delete it.")
         }
     }
 

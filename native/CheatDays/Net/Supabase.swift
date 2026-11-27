@@ -31,6 +31,16 @@ final class Supabase {
         if let web = try? await token(grant: "password", body: ["email": email, "password": password]) { Keychain.save("webSession", web); if let id = userId { keepWeb(web, for: id) } }
     }
 
+    /// Whether that's the signed-in account's password, asked of Supabase without keeping the sign-in it hands back (the
+    /// check before deleting the account). Nil when it couldn't ask: no connection, or too many tries.
+    func passwordIsRight(_ password: String) async -> Bool? {
+        guard !email.isEmpty, !password.isEmpty else { return false }
+        guard let (_, r) = try? await send("/auth/v1/token?grant_type=password", method: "POST", body: ["email": email, "password": password], auth: false)
+        else { return nil }
+        if (200..<300).contains(r.statusCode) { return true }
+        return r.statusCode == 400 || r.statusCode == 401 ? false : nil
+    }
+
     /// True when signed in straight away; false when Supabase wants the email confirmed first.
     func signUp(email: String, password: String) async throws -> Bool {
         let (d, r) = try await send("/auth/v1/signup", method: "POST", body: ["email": email, "password": password], auth: false)

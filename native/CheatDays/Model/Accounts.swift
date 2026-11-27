@@ -175,13 +175,32 @@ final class Accounts {
 
     /// Delete the account you're on, for good (App Store guideline 5.1.1(v)): the server's "delete-account" function removes
     /// its photos, its rows and the sign-in, then it's logged out here like Log out, without syncing anything back up.
-    /// Nil when done, else what went wrong.
-    func deleteHere() async -> String? {
+    /// Nil when done, else what went wrong. The account's password comes first (27 Nov): checked here, then again by the
+    /// server, so a wrong one deletes nothing.
+    func deleteHere(password: String) async -> String? {
         let me = current
         guard !me.isEmpty else { return "You're not signed in." }
         busy = true
+        let said = await Self.passwordFirst(password, check: { await Supabase.shared.passwordIsRight($0) }, then: { await self.deleteChecked(me, password: $0) })
+        busy = false
+        return said
+    }
+
+    static let wrongPassword = "That password isn't right."
+
+    /// The password check, then the delete only when it passed. Apart so tests can stand in for the network.
+    static func passwordFirst(_ password: String, check: (String) async -> Bool?, then delete: (String) async -> String?) async -> String? {
+        guard !password.isEmpty else { return "Type your password to delete your account." }
+        switch await check(password) {
+        case .some(true): return await delete(password)
+        case .some(false): return wrongPassword
+        case .none: return "Couldn't check your password. Check your connection and try again."
+        }
+    }
+
+    private func deleteChecked(_ me: String, password: String) async -> String? {
         await Push.leave()
-        let got = try? await Supabase.shared.call("/functions/v1/delete-account", body: ["confirm": "delete"] as JSON, timeout: 60)
+        let got = try? await Supabase.shared.call("/functions/v1/delete-account", body: ["confirm": "delete", "password": password] as JSON, timeout: 60)
         guard let (d, status) = got else { busy = false; return "Couldn't reach Cheat Days. Check your connection and try again." }
         guard status == 200 else {
             busy = false

@@ -2,7 +2,7 @@
 // Deploy: Supabase dashboard -> Edge Functions -> Deploy a new function -> name it "delete-account", paste this, Deploy.
 // Leave "Verify JWT" on: it only ever deletes the caller, worked out from their own sign-in token.
 //
-// POST { confirm: "delete" }  ->  { deleted: true }   or   { error }
+// POST { confirm: "delete", password }  ->  { deleted: true }   or   { error } (401 when the password is wrong)
 //
 // 1. their photos in storage (photos/<user id>/...)
 // 2. their rows in the tables made in the dashboard, which may not cascade (the ones in supabase/*.sql do)
@@ -40,6 +40,13 @@ Deno.serve(async (req) => {
   if (authError || !who?.user) return json({ error: "Sign in again, then try deleting your account." }, 401);
   const body = await req.json().catch(() => ({}));
   if (body?.confirm !== "delete") return json({ error: "Not confirmed" }, 400);
+  // the account's password, checked here too and not only in the app (27 Nov): a wrong one deletes nothing
+  const password = typeof body?.password === "string" ? body.password : "";
+  if (!password) return json({ error: "Update Cheat Days, then type your password to delete your account." }, 400);
+  if (!who.user.email) return json({ error: "That password isn't right." }, 401);
+  const check = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { error: wrong } = await check.auth.signInWithPassword({ email: who.user.email, password });
+  if (wrong) return json({ error: /invalid|credentials/i.test(wrong.message) ? "That password isn't right." : "Couldn't check your password. Try again in a minute." }, 401);
   const uid = who.user.id;
   try {
     await removePhotos(uid);
