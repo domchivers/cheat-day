@@ -67,7 +67,14 @@ final class TimerBarUITests: XCTestCase {
         box.tap()
         XCTAssertTrue(keyboard.waitForExistence(timeout: 4), "no keyboard came up")
         let started = Date()
-        for key in ["1", "4", "0", ".", "5"] { app.keys[key].tap() }
+        // the on-screen keys when the simulator shows them; when it places the keyboard below the screen (27 Nov: keys at
+        // y 898 on an 874-pt screen, 1 pass in 5 runs on the Mac, 1.4.71 too, so the simulator and not the app), type
+        // the same digits into the box, which still goes key by key through the field while the rest timer runs
+        if app.keys["1"].isHittable {
+            for key in ["1", "4", "0", ".", "5"] { app.keys[key].tap() }
+        } else {
+            box.typeText("140.5")
+        }
         XCTAssertLessThan(Date().timeIntervalSince(started), 8, "five keys took too long: the screen is struggling")
         XCTAssertTrue((box.value as? String ?? "").contains(".5"), "typed weight didn't land: \(box.value ?? "")")
         app.buttons["Done"].firstMatch.tap()
