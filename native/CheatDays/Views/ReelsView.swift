@@ -247,14 +247,19 @@ struct ReelsView: View {
                     clip.aspectRatio(a, contentMode: .fit)
                         .background { FeedPhoto(src: str(p["photo"]), fill: true) }
                 } else if let a = num(dict(p["extra"])["aspect"]), a > 0 {
-                    GeometryReader { g in
-                        let box = g.size.width / max(1, g.size.height)
+                    // measured against the phone's whole screen, not what's laid out: inside the status bar and home
+                    // bar the page measured 0.52 and the iPhone-shaped post 1 reel showed at 90%, moved down (1.4.82's
+                    // ignoresSafeArea alone didn't reach in here, 28 Nov)
+                    let screen = UIScreen.main.bounds.size
+                    let box = screen.width / max(1, screen.height)
+                    Group {
                         if abs(box - a) / a < 0.08 {
-                            clip.frame(width: g.size.width, height: g.size.height)
+                            clip.frame(width: screen.width, height: screen.height)
                         } else {
-                            clip.aspectRatio(a, contentMode: .fit).frame(width: g.size.width, height: g.size.height)
+                            clip.aspectRatio(a, contentMode: .fit).frame(width: screen.width, height: screen.height)
                         }
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background { FeedPhoto(src: str(p["photo"]), fill: true).frame(maxWidth: .infinity, maxHeight: .infinity).blur(radius: 24).clipped() }
                 } else {
                     clip.background { FeedPhoto(src: str(p["photo"]), fill: true).frame(maxWidth: .infinity, maxHeight: .infinity).clipped() }
@@ -447,6 +452,14 @@ struct ReelsView: View {
         return ZStack {
             // so the words read over a bright clip
             VStack { Spacer(); LinearGradient(colors: [.clear, .black.opacity(0.7)], startPoint: .top, endPoint: .bottom).frame(height: 320) }.allowsHitTesting(false)
+            // Under the line along the bottom, the comment bar on frosted glass (28 Nov, design/reel-controls/
+            // reel-bottom-mockup: Instagram's video stops at its line; ours ran on under the bar). Its top is the line.
+            VStack(spacing: 0) {
+                Spacer()
+                Rectangle().fill(.ultraThinMaterial).frame(height: 77)
+                    .overlay(alignment: .top) { Rectangle().fill(.white.opacity(0.1)).frame(height: 0.5) }
+            }
+            .allowsHitTesting(false)
             VStack(spacing: 0) {
                 HStack {
                     Button { leave() } label: {
@@ -503,7 +516,7 @@ struct ReelsView: View {
                 HStack(spacing: 8) {
                     Button { talking = PostBox(post: p) } label: {
                         Text("Add a comment…").font(.subheadline).foregroundStyle(.white.opacity(0.6)).frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 16).padding(.vertical, 11).background(.black.opacity(0.5), in: Capsule())
+                            .padding(.horizontal, 16).padding(.vertical, 11).background(.white.opacity(0.08), in: Capsule())   // on the glass
                     }
                     .buttonStyle(.plain)
                     if kind != "photo" && kind != "moment" {
