@@ -317,7 +317,7 @@ struct AssistantView: View {
             if let r = Assistant.kcalRange(e) {
                 Text("Could be \(Fmt.int(r.low))–\(Fmt.int(r.high)) kcal").font(.caption).monospacedDigit().foregroundStyle(.secondary)
             }
-            let parts = list(e["parts"]), checked = Assistant.checkedCount(parts)
+            let parts = list(e["parts"])
             let own = parts.filter { ["label", "them"].contains(str($0["src"])) }.count
             let web = parts.first { str($0["src"]) == "web" }
             ForEach(keyed(parts)) { entry in
@@ -362,8 +362,8 @@ struct AssistantView: View {
                     .font(.caption2).foregroundStyle(.secondary).lineLimit(6)
             }
             else if own > 0, own == parts.count { Text("Worked out from your label or your numbers.").font(.caption2).foregroundStyle(.secondary) }
-            else { Text(checked > 0 ? "\(checked) of \(parts.count) parts checked against food databases\(num(e["aiKcal"]).map { " (the AI first said \(Int($0)) kcal)" } ?? ""). An estimate, not a label."
-                             : "The AI's estimate: none of the parts could be checked against a food database.")
+            else { Text(Assistant.checkedLine(parts).map { "\($0)\(num(e["aiKcal"]).map { " (the AI first said \(Int($0)) kcal)" } ?? ""). An estimate, not a label." }
+                             ?? "The AI's estimate: none of the parts could be checked against a food database.")
                 .font(.caption2).foregroundStyle(.secondary) }
             // added, and still on the day: one taken off again can be added again
             let tag = "\(turn)-est", added = done[turn, default: ""].contains(tag) && (live.addedIDs[tag].map { store.hasItem($0) } ?? true)

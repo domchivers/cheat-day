@@ -98,6 +98,18 @@ final class LiveMealsTests: XCTestCase {
         XCTAssertFalse(str(bacon?["name"]).lowercased().contains("cooked"), "weighed off the pack: raw")
     }
 
+    /// 28 Nov: an Aldi fresh steak pack has no panel and only a weighed-pack barcode, and the reply still said to
+    /// photograph the panel or scan the barcode.
+    func testFreshSteakNeverAsksForAPanel() async throws {
+        try await signedIn()
+        let (card, reply) = try await ask("125g Aldi Jindurra Station beef rump steak\n2 tbsp homemade salsa (1 onion, 2 tomatoes, some coriander stems, 1 lime juiced)")
+        let total = num(card["kcal_total"]) ?? 0
+        XCTAssertTrue((190...270).contains(total), "about 228 kcal (raw rump 218, salsa 10); got \(total)")
+        let said = reply.lowercased()
+        XCTAssertFalse(said.contains("barcode") || said.contains("scan"), "a fresh meat pack's barcode finds nothing. Reply: \(reply.prefix(300))")
+        XCTAssertFalse(said.contains("photograph") || said.contains("photo of the"), "fresh meat has no panel to photograph. Reply: \(reply.prefix(300))")
+    }
+
     func testChineseBreakfastHalfOfEverything() async throws {
         try await signedIn()
         let imgs = try photos(["breakfast-1.jpg", "breakfast-2.jpg", "breakfast-3.jpg", "breakfast-receipt.jpg"])

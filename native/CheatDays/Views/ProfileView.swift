@@ -719,7 +719,10 @@ struct EditProfileView: View {
             let u = Profiles.clean(username)
             if !u.isEmpty, u.count < 3 { problem = "An @name needs at least 3 characters."; return }
             // the app's own names (@cheatdays…) are for the team's accounts: Founder or Team, which only the server gives
+            // An @name the account already has is never stopped: only a change to one is checked (28 Nov: the app's
+            // own account, already @mycheatdays, couldn't save its bio because it isn't marked Founder or Team)
             let staff = !Set(profiles.mine?.honors ?? []).isDisjoint(with: ["founder", "team"])
+                || Profiles.clean(profiles.mine?.username ?? "") == u
             if !u.isEmpty, let why = Profiles.problem(u, username: true, staff: staff) { problem = why; return }
             if let why = Profiles.problem(name, username: false) { problem = why; return }
             if let why = Profiles.problem(label, username: false) { problem = why.replacingOccurrences(of: "name", with: "label"); return }

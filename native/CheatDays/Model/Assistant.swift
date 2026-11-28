@@ -275,7 +275,7 @@ enum Assistant {
     - A nutrition label in the photos or chat beats any food table: work from its per 100 g figures (a raw label eaten cooked: divide by the cooked weight left, about 0.75 for roasted meat) and set numbers_from to label. Keep using it for later amounts of the same food.
     - More of a food they've logged before or you worked out in another chat ("that chicken from dinner yesterday", "same breakfast as Tuesday", "the pasta from last week"): find it in Recent days, their other chats, or the things they've logged before, scale it from those numbers (per gram), set numbers_from to them, and say which day it's from. If you can't find it, say so and ask rather than guessing.
     - A specific packaged product they name or show (a brand's ice block, bar, biscuit, drink) is one part, never split into ingredients. With no label in sight (a wrapper, the front of a pack): numbers_from brand, servings how many they had, its full brand and product name as the part's name, so the app can look its label up. Mention they can photograph the nutrition panel or scan the box's barcode for exact numbers.
-    - That includes supermarket fresh products named by store or brand (Aldi Jindurra Station 3 Star beef mince, Coles 4 star mince, a branded sausage or bacon): numbers_from brand, the brand and product as the part's name, and your guess from the product, not a generic food. Australian mince stars are fat levels: 3 star is regular mince, about 18% fat raw (about 240 kcal a 100 g); 4 star about 10%; 5 star about 5%.
+    - That includes supermarket fresh products named by store or brand (Aldi Jindurra Station 3 Star beef mince, Coles 4 star mince, a branded sausage or bacon): numbers_from brand, the brand and product as the part's name, and your guess from the product, not a generic food. Australian mince stars are fat levels: 3 star is regular mince, about 18% fat raw (about 240 kcal a 100 g); 4 star about 10%; 5 star about 5%. Fresh meat, fish and fruit and veg packs (a steak, chops, fillets, mince) usually have no nutrition panel, and their barcode is the shop's weighed-pack code, which finds nothing: never ask them to photograph the panel or scan the barcode for these. Say plainly they're typical figures for that cut or kind, raw ("fresh steak packs have no panel, so these are typical numbers for raw rump").
     - A weight they type for meat, fish, bacon or mince, with nothing said about cooking, is as bought: raw, off the pack. Name and tag it raw ("Bacon, streaky, raw"). It's cooked only when they say so (cooked, fried, grilled, leftovers) or a photo shows it cooked.
     - Name foods the way they did ("Aldi brushed potato", not the food table's "Coliban potato"); the table is for the numbers.
     - Keep the cooking they said, and put it in each part's name so it's checked against the right food: "pan fried, no oil" is "Potato, pan fried, no oil", never boiled.
@@ -964,6 +964,22 @@ enum Assistant {
         parts.filter { !["", "ai", "label", "them", "web"].contains(str($0["src"])) && $0["flagged"] as? Bool != true }.count
     }
 
+    /// What was checked, counting every part with a tick (28 Nov, design/checked-line-mockup: the steak and the salsa from
+    /// its recipe both had ticks under "1 of 2 parts checked"). All from the food tables reads as it always has; with
+    /// others it says where each came from: "2 of 2 parts checked: 1 against the food database, 1 from what you told me".
+    /// Nil when nothing has a tick.
+    static func checkedLine(_ parts: [JSON]) -> String? {
+        let ticked = parts.filter { !["", "ai"].contains(str($0["src"])) && $0["flagged"] as? Bool != true }
+        let tables = checkedCount(parts)
+        guard !ticked.isEmpty else { return nil }
+        let of = "\(ticked.count) of \(parts.count) part\(parts.count == 1 ? "" : "s") checked"
+        if tables == ticked.count { return of + " against the food database" }
+        func n(_ src: String) -> Int { ticked.filter { str($0["src"]) == src }.count }
+        let pieces = [(tables, "against the food database"), (n("them"), "from what you told me"), (n("label"), "from its label"), (n("web"), "found online")]
+            .filter { $0.0 > 0 }.map { "\($0.0) \($0.1)" }
+        return of + ": " + pieces.joined(separator: ", ")
+    }
+
     /// Numbers that don't fit the kind of food the part is (more protein than a dessert can have, calories out of its range).
     static func wrongFor(_ x: JSON) -> Bool {
         !Sanity.check(name: str(x["name"]), grams: num(x["grams"]), kcal: num(x["kcal"]) ?? 0, p: num(x["protein_g"]), c: num(x["carbs_g"]), f: num(x["fat_g"]), cookedTag: cooking(x)).flags.isEmpty
@@ -998,10 +1014,9 @@ enum Assistant {
     /// The lines under a reply saying what was checked ("3 of 3 parts checked against the food database").
     static func trail(_ e: JSON, shopFound: Bool) -> [String] {
         let parts = CheatDays.list(e["parts"])
-        let checked = checkedCount(parts)
         var t: [String] = []
         if !str(e["shopNote"]).isEmpty { t.append(str(e["shopNote"])) }
-        else if checked > 0 { t.append("\(checked) of \(parts.count) part\(parts.count == 1 ? "" : "s") checked against the food database") }
+        else if let line = checkedLine(parts) { t.append(line) }
         t += parts.compactMap { str($0["swapped"]).isEmpty ? nil : str($0["swapped"]) }
         let shop = str(e["shop"])
         if !shop.isEmpty && !shopFound && !shopItems(str(e["shop_items"])).isEmpty { t.append("\(shop) doesn't publish its numbers") }
