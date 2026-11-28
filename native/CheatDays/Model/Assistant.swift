@@ -290,7 +290,7 @@ enum Assistant {
     - Side sauces and condiments (hoisin, sriracha, chilli sauce, soy, ketchup, mayo, a dressing on the side) only when they show on the food or they say they had them, never because the dish usually comes with them: leave them out and name the usual one in side_sauce, and the app offers it. A sauce that's part of the dish (a curry's sauce, ramen tare, a sauce poured over a rice bowl) is a part as usual.
     - Name each part as the food itself, with how it's cooked after a comma ("Cheese, melted", "Kabana", "Croissant, plain"), never where it sits ("melted cheese on the croissant"), so it's checked against the right food.
     - Tag every part so it's matched to the right entry: homemade or bought (bakery, café, takeaway, packaged); natural or processed (cheese, meats); raw or cooked and how (fried, baked, grilled, boiled, steamed) for meat, fish, veg and grains; skin on or skin off; plain or filled; coated (crumbed, battered); reduced fat. Cheese on bakery or takeaway food is natural unless it looks like a processed slice. Noodles and rice in a soup are boiled, never their dry weight. Thin raw beef slices in pho, hotpot or shabu shabu are "Rare beef", a lean cut. Roast, BBQ or rotisserie chicken is skin on unless the photo shows it off.
-    - Looks like takeaway, delivery or a café or restaurant (takeaway boxes, branded packaging, a delivery bag, a menu) but they haven't said where from: still give your estimate, and in reply ask in a few words where it's from and what they ordered as it's named on the menu, so the shop's own numbers can be looked up. Ask once: if they've already said, or said they don't know, don't ask again.
+    - Looks like takeaway, delivery or a café or restaurant (takeaway boxes, branded packaging, a delivery bag, a menu) but they haven't said where from: still give your estimate, and in reply ask in a few words where it's from and what they ordered as it's named on the menu, so the shop's own numbers can be looked up. When a receipt or order page in the photos already shows the dish names, ask only where it's from. Ask once: if they've already said, or said they don't know, don't ask again.
     - Food from a named shop, café, bakery or chain (said, or a logo in the photo): fill shop and shop_items, and still break the parts down as usual (pastry, filling, cheese), with numbers_from estimate unless they gave numbers or showed a label. Never put the shop's name in a part's name. The app looks for the shop's own published numbers and uses them if it finds them.
     - Asked what or how much to have, or what you recommend, from an order or menu you're estimating: when what they said comes to more than they have left, say plainly that it goes over, then name which dishes and how much of each would fit, high protein first and the oily or starchy ones cut first (still no totals in reply). The estimate stays what they said they'd have.
     - For edit: never say a change is done, added or logged. Say it's ready and to tap Make these changes.
@@ -1338,7 +1338,9 @@ enum Assistant {
         let oven = has(e, #"without fat|\(oven\)|\boven\b"#)
         if has(e, #"\b(fried|fry)\b"#) && !oven { return true }   // bacon "fried … no added fat" is fried bacon
         let noFatSaid = has(s, #"\b(no|without)\s+(added\s+)?(oil|fat)\b|air[ -]?fr|\boven\b"#)
-        let lean = oven || has(e, #"no added fat|lean flesh|\b(baked|boiled|steamed|poached|raw)\b"#)
+        // nor toasted, grilled or roasted: "Youtiao, deep fried" was counted as "Bread, white, commercially prepared, toasted"
+        // (218 kcal and 3 g fat for 75 g, where the AI's 290 and 13 g fit), 28 Nov
+        let lean = oven || has(e, #"no added fat|lean flesh|\b(baked|boiled|steamed|poached|raw|toasted|grilled|roasted)\b"#)
         return !lean || noFatSaid
     }
 
