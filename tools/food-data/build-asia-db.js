@@ -15,7 +15,8 @@ function build(key, source, valuesFile, namesFile) {
   let skipped = 0, missing = 0, dupes = 0;
   for (const n of names) {
     if (n.skip) { skipped++; continue; }
-    const v = values.get(n.id), en = String(n.en || '').replace(/\s+/g, ' ').trim();
+    // 'dried' is filler to the app's matcher ('Natto' and 'Natto, dried' looked the same): 'dry' it sees, and keeps out unless said
+    const v = values.get(n.id), en = String(n.en || '').replace(/\bdried\b/gi, 'dry').replace(/\s+/g, ' ').trim();
     if (!v || v.kcal == null || !en || /[^\x00-\x7F’–é]/.test(en)) { missing++; continue; }
     if (seen.has(en.toLowerCase())) { dupes++; continue; }
     seen.add(en.toLowerCase());

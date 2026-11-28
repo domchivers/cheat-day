@@ -27,8 +27,9 @@ const exact = {
   ing: fs.existsSync(path.join(res, 'ing-foods.json')) ? load(path.join(res, 'ing-foods.json')) : [],
 };
 function find(ing) {
-  const t = ing.table || 'au', name = ing.food.trim().toLowerCase();
-  const hit = exact[t].find(f => f.name.trim().toLowerCase() === name);
+  // 'dried' and 'dry' the same: the new tables say dry, which the app's matcher can see
+  const t = ing.table || 'au', same = s => s.trim().toLowerCase().replace(/\bdried\b/g, 'dry'), name = same(ing.food);
+  const hit = exact[t].find(f => same(f.name) === name);
   if (hit) return { food: hit, how: 'exact' };
   if (t === 'au' || t === 'us') { const r = resolveIn(t, ing.food); if (r) return { food: r, how: 'matched' }; }
   return null;

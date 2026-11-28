@@ -8,7 +8,7 @@ const ascii = s => /^[\x00-\x7F]+$/.test(s);
 const foods = [], aliases = [], seen = new Set(), sources = {};
 let dropped = 0;
 function add(name, kcal, p, c, f, aka, source) {
-  const n = String(name).replace(/\s+/g, ' ').trim();
+  const n = String(name).replace(/\bdried\b/gi, 'dry').replace(/\s+/g, ' ').trim();   // 'dried' is filler to the app's matcher
   if (!n || !ascii(n) || seen.has(n.toLowerCase()) || !(kcal >= 0)) { dropped++; return; }
   seen.add(n.toLowerCase());
   const r1 = x => Math.round((+x || 0) * 10) / 10;

@@ -6,7 +6,7 @@ const seen = new Set(), foods = [], aliases = [];
 // ingredients worked out from recipes (recipes/ing_*.json) go in the ingredients table, not here
 const ing = new Set(); for (const f of fs.readdirSync(path.join(__dirname, 'recipes')).filter(f => /^ing_.*.json$/.test(f))) for (const d of JSON.parse(fs.readFileSync(path.join(__dirname, 'recipes', f), 'utf8'))) ing.add(d.dish);
 for (const d of built) {
-  const n = d.name.replace(/\s+/g, ' ').trim();
+  const n = d.name.replace(/\bdried\b/gi, 'dry').replace(/\s+/g, ' ').trim();   // 'dried' is filler to the app's matcher
   if (ing.has(d.name) || d.missing.length || !/^[\x00-\x7F]+$/.test(n) || seen.has(n.toLowerCase())) continue;
   seen.add(n.toLowerCase());
   foods.push({ name: n, source: 'CheatDays2026', kcal: d.kcal, p: d.p, c: d.c, f: d.f });

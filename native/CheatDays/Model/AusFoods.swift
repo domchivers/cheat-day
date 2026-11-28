@@ -20,15 +20,15 @@ final class FoodTable {
     /// counted as toast, then a glazed doughnut; Taiwan measured it at 548 kcal a 100 g). Only their prepared foods,
     /// snacks, drinks, soy foods, noodles, rice products and sauces, under English names (tools/food-data/build-asia-db.js),
     /// right after the country's own table. Credited in Food data sources as their licences ask.
-    static let taiwan = FoodTable(foods: "tw-foods", aliases: "tw-aliases", main: "", src: "tfda", strict: true)
-    static let japan = FoodTable(foods: "jp-foods", aliases: "jp-aliases", main: "", src: "mext", strict: true)
+    static let taiwan = FoodTable(foods: "tw-foods", aliases: "tw-aliases", main: "", src: "tfda", strict: true, named: true)
+    static let japan = FoodTable(foods: "jp-foods", aliases: "jp-aliases", main: "", src: "mext", strict: true, named: true)
     /// Our own dishes (28 Nov): 155 everyday dishes no usable table has (curries, pho, nasi lemak, jollof, bibimbap,
     /// jianbing…), each worked out from a typical recipe over the tables above (tools/food-data/recipes, dish-calc.js).
     /// Before the US dish table, whose Asian dishes are American versions (its bibimbap is 76 kcal a 100 g).
-    static let built = FoodTable(foods: "built-foods", aliases: "built-aliases", main: "", src: "built", strict: true)
+    static let built = FoodTable(foods: "built-foods", aliases: "built-aliases", main: "", src: "built", strict: true, named: true)
     /// World ingredients no table had (28 Nov): gochujang, candlenut, kecap manis, egusi… One published measured value each
     /// (USDA FoodData Central, studies, product labels) or, for mixed ones like za'atar, worked out from a recipe.
-    static let ingredients = FoodTable(foods: "ing-foods", aliases: "ing-aliases", main: "", src: "ing", strict: true)
+    static let ingredients = FoodTable(foods: "ing-foods", aliases: "ing-aliases", main: "", src: "ing", strict: true, named: true)
 
     /// The table for where they live (the Settings country).
     static var current: FoodTable { testing ?? table(for: Region.current) }
@@ -42,6 +42,10 @@ final class FoodTable {
     let src: String
     /// A fallback table (the US dishes, the world tables): its entries mustn't add a word that makes them another food.
     private let strict: Bool
+    /// The four tables added 28 Nov: an entry is only that food when every word of its own food name was said ("Pork bun"
+    /// isn't "Pork, loin, grilled" just because it has pork in it; "Youtiao" needs only youtiao). Their other names still work.
+    private let named: Bool
+    private func unsaid(_ r: Row, _ said: Set<String>) -> Bool { named && !Set(r.kind).isSubset(of: said) }
     /// Words that turn an entry into a different food when the name didn't say them: "Pork dumplings, steamed" found
     /// Palatine pork liver dumplings, "Spätzle, cheese" spätzle flour, "Goulash, beef" the raw goulash meat.
     private static let changers: Set<String> = ["liver", "flour", "powder", "mix", "dough", "concentrate", "seasoning", "stock", "raw", "uncooked", "dry", "dried", "substitute", "imitation", "diet"]
@@ -59,9 +63,10 @@ final class FoodTable {
     private let rows: [Row]
     private let aliases: [String: Food]
 
-    private init(foods: String, aliases file: String, main: String, src: String, strict: Bool = false) {
+    private init(foods: String, aliases file: String, main: String, src: String, strict: Bool = false, named: Bool = false) {
         self.src = src
         self.strict = strict
+        self.named = named
         rows = ((Self.load(foods) as? [JSON]) ?? []).map { r in
             let name = str(r["name"]), parts = name.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
             let food = Food(name: name.trimmingCharacters(in: .whitespaces), main: str(r["source"]) == main, kcal: num(r["kcal"]) ?? 0, p: num(r["p"]) ?? 0, c: num(r["c"]) ?? 0, f: num(r["f"]) ?? 0)
@@ -106,7 +111,7 @@ final class FoodTable {
         let said = Set(Self.words(name))
         let hits = Self.narrow(name, rows.filter { r in
             want.allSatisfy { r.words.contains($0) } && (r.kind.contains(head) || r.kind.contains(want[0]) || want.allSatisfy { r.lead.contains($0) })
-                && !(strict && strayed(r, from: said))
+                && !(strict && strayed(r, from: said)) && !unsaid(r, said)
         }, want: want)
         var best: (rank: Int, food: Food)?
         for r in hits {
@@ -199,7 +204,7 @@ final class FoodTable {
         let head = Set(Self.words(first.replacingOccurrences(of: #"\s(with|in|on|for|and)\s.*$"#, with: "", options: [.regularExpression, .caseInsensitive])))
         let pool = rows.filter { !Set($0.kind).isDisjoint(with: kinds) && (baseRow != nil || $0.words.intersection(all).count >= min(2, want.count))
             && (baseRow != nil || Set($0.kind).isSubset(of: head))
-            && !(strict && strayed($0, from: asked)) }
+            && !(strict && strayed($0, from: asked)) && !unsaid($0, all) }
         guard let baseRow else { return pool.filter { !unasked($0) }.max(by: { score($0) < score($1) })?.food }
         // a relative only when it's still the food they named (the pho's rice noodles went to egg noodles for matching
         // "plain" too: 166 kcal and 7.5 g protein a 100 g, not 119 and 2.5), fits more of the tags and isn't a special
@@ -211,7 +216,7 @@ final class FoodTable {
         // plain relatives instead, by the food alone
         let wrongVersion = unasked(baseRow) || otherFood
         if wrongVersion { named.subtract(Self.pieceWords) }
-        let others = wrongVersion ? rows.filter { !Set($0.kind).subtracting(Self.pieceWords).isDisjoint(with: Set(want).subtracting(Self.pieceWords)) && !(strict && strayed($0, from: asked)) } : pool
+        let others = wrongVersion ? rows.filter { !Set($0.kind).subtracting(Self.pieceWords).isDisjoint(with: Set(want).subtracting(Self.pieceWords)) && !(strict && strayed($0, from: asked)) && !unsaid($0, all) } : pool
         let fitted = others.filter { !unasked($0) && named.isSubset(of: $0.words) }.max { (fit($0), score($0)) < (fit($1), score($1)) }
         // a coated version nobody asked for, with no plain relative, isn't it either: grilled tenders found only breaded
         // ones, and the next table or the AI's own numbers do better than batter
