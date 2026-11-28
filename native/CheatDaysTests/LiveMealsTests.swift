@@ -12,7 +12,24 @@ import XCTest
 ///   xcodebuild test ... -only-testing:CheatDaysTests/LiveMealsTests
 @MainActor
 final class LiveMealsTests: XCTestCase {
-    private var env: [String: String] { ProcessInfo.processInfo.environment }
+    /// The test account's sign-in: read straight from ~/.cheatdays-live.env on the Mac (a simulator app can see the Mac's
+    /// home through SIMULATOR_HOST_HOME), so it never goes on a command line or into a log. TEST_RUNNER_ variables didn't
+    /// reach these app-hosted tests (28 Nov); the environment still wins when it has them.
+    private var env: [String: String] {
+        var out: [String: String] = [:]
+        let pe = ProcessInfo.processInfo.environment
+        if let home = pe["SIMULATOR_HOST_HOME"], let text = try? String(contentsOfFile: home + "/.cheatdays-live.env", encoding: .utf8) {
+            for line in text.split(whereSeparator: \.isNewline) {
+                let l = line.trimmingCharacters(in: .whitespaces)
+                guard !l.hasPrefix("#"), let eq = l.firstIndex(of: "=") else { continue }
+                var v = String(l[l.index(after: eq)...]).trimmingCharacters(in: .whitespaces)
+                if v.count >= 2, (v.hasPrefix("\"") && v.hasSuffix("\"")) || (v.hasPrefix("'") && v.hasSuffix("'")) { v = String(v.dropFirst().dropLast()) }
+                out[String(l[..<eq]).trimmingCharacters(in: .whitespaces)] = v
+            }
+        }
+        for k in ["CD_LIVE_EMAIL", "CD_LIVE_PASSWORD", "CD_LIVE_PHOTOS"] { if let v = pe[k], !v.isEmpty { out[k] = v } }
+        return out
+    }
 
     private func signedIn() async throws {
         guard let email = env["CD_LIVE_EMAIL"], let password = env["CD_LIVE_PASSWORD"], !email.isEmpty, !password.isEmpty else {

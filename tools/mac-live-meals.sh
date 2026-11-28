@@ -11,8 +11,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 ENV_FILE="$HOME/.cheatdays-live.env"
 [ -f "$ENV_FILE" ] || { echo "No $ENV_FILE: make the test account, then put its sign-in there (see the top of this script)."; exit 1; }
-set -a; . "$ENV_FILE"; set +a
-export TEST_RUNNER_CD_LIVE_EMAIL="${CD_LIVE_EMAIL:-}" TEST_RUNNER_CD_LIVE_PASSWORD="${CD_LIVE_PASSWORD:-}" TEST_RUNNER_CD_LIVE_PHOTOS="${CD_LIVE_PHOTOS:-}"
+# the tests read the file themselves, through the simulator (LiveMealsTests.env): nothing is exported or passed on
 git pull --ff-only || exit 1
 command -v xcodegen >/dev/null || brew install xcodegen
 (cd native && xcodegen generate) || exit 1
