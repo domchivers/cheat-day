@@ -56,7 +56,17 @@ final class LiveMealsTests: XCTestCase {
         }
         let reply = str(r["reply"]).isEmpty ? str(r["text"]) : str(r["reply"])
         // what came back, so a miss says why (the kind of answer, its fields and the reply; never the account)
-        print("LIVE \(text.prefix(40))… kind=\(str(r["kind"])) keys=\(r.keys.sorted()) reply=\(reply.prefix(400))")
+        let flat = { (s: String) in s.replacingOccurrences(of: "\n", with: " / ") }   // one line each, so the script's grep keeps it all
+        print("LIVE \(flat(String(text.prefix(40))))… kind=\(str(r["kind"])) keys=\(r.keys.sorted()) reply=\(flat(String(reply.prefix(400))))")
+        // several separate foods typed come back as one add each (kind edit), each checked against the tables like a
+        // card's part (groundEdit): read them as the card's parts
+        if str(r["kind"]) == "edit" {
+            let adds = list(dict(r["edit"])["actions"]).filter { str($0["action"]) == "add" }
+            let parts: [JSON] = adds.map { ["name": str($0["name"]), "grams": num($0["grams"]) ?? 0, "kcal": num($0["kcal"]) ?? 0, "src": str($0["src"])] }
+            let card: JSON = ["parts": parts as [Any], "kcal_total": parts.reduce(0) { $0 + (num($1["kcal"]) ?? 0) }]
+            print("LIVE adds: \(parts.map { "\(str($0["name"])) \(Int(num($0["grams"]) ?? 0)) g \(Int(num($0["kcal"]) ?? 0)) kcal [\(str($0["src"]))]" }.joined(separator: "; ")) = \(Int(num(card["kcal_total"]) ?? 0))")
+            return (card, reply)
+        }
         guard let card = r["estimate"] as? JSON else {
             XCTFail("No estimate card: the answer was kind \"\(str(r["kind"]))\" with \(r.keys.sorted()). Reply: \(reply.prefix(300))")
             return ([:], reply)
@@ -88,6 +98,6 @@ final class LiveMealsTests: XCTestCase {
         let total = num(card["kcal_total"]) ?? 0
         XCTAssertTrue((900...1150).contains(total), "about 1,050 kcal from Taiwan's measured numbers; got \(total)")
         XCTAssertTrue((400...520).contains(num(part(card, ["youtiao", "fried dough"])?["kcal"]) ?? 0), "one youtiao, about 466 kcal")
-        XCTAssertFalse(reply.lowercased().contains("menu name") || reply.lowercased().contains("named on the menu"), "the receipt shows the names: only ask where it's from")
+        XCTAssertFalse(reply.lowercased().contains("menu") || reply.lowercased().contains("dish name"), "the receipt shows the names: only ask which shop. Reply: \(reply.prefix(200))")
     }
 }
