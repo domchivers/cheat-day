@@ -119,8 +119,10 @@ struct AssistantView: View {
                     Menu {
                         Button { turns = []; chatId = uid(); done = [:]; addedFoods = [:]; mealNames = [:] } label: { Label("New chat", systemImage: "square.and.pencil") }
                         Button { showChats = true } label: { Label("Past chats", systemImage: "clock.arrow.circlepath") }
-                        // what every check did to each card, to paste when one comes out wrong
-                        Button { UIPasteboard.general.string = Assistant.report(turns) } label: { Label("Copy details for a report", systemImage: "doc.on.clipboard") }
+                        // a card that came out wrong, to the team (28 Nov, design/report-menu-mockup.png): here, where it can't be
+                        // tapped by accident, in place of Copy details, which moved into the sheet. Works with sharing off:
+                        // Send sends just this chat
+                        Button { reporting = Reporting(id: turns.last(where: { !$0.me })?.id ?? UUID()) } label: { Label("Report a problem", systemImage: "flag") }
                             .disabled(turns.isEmpty)
                     } label: { Image(systemName: "ellipsis.circle") }
                 }
@@ -150,12 +152,12 @@ struct AssistantView: View {
                 Text("Share your chats with the Cheat Days team so we can find and fix its mistakes. Only the team sees them. Photos aren't included. You can change it any time in Settings › Assistant.")
             }
             .sheet(item: $reporting) { r in
-                WrongSheet { reason, note in
+                WrongSheet(send: { reason, note in
                     let ok = await ChatShare.flag(chatId: chatId, turns: turns, record: live.record, turn: r.id, reason: reason, note: note)
                     if ok { reported.insert(r.id) }
                     return ok
-                }
-                .presentationDetents([.medium]).presentationDragIndicator(.visible)
+                }, copy: { UIPasteboard.general.string = Assistant.report(turns) })   // what every check did to each card, to paste
+                .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
             }
             .sheet(item: $changing) { ref in MatchPicker(ref: ref) { food in setMatch(ref, to: food); changing = nil }.presentationDetents([.medium]) }
             .sheet(item: $amount) { t in
@@ -1607,20 +1609,24 @@ extension View {
 /// their day isn't changed, since a fix is still just said in the chat (28 Nov mockup, design/share-chats-mockup.png).
 struct WrongSheet: View {
     let send: (String, String) async -> Bool
+    /// The chat as text to paste instead (it was the menu's Copy details for a report).
+    var copy: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var reason = ""
     @State private var note = ""
     @State private var sending = false
     @State private var failed = false
+    @State private var copied = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text("What looks wrong?").font(.headline)
+                Text("Report a problem").font(.headline)
                 Spacer()
                 Button("Cancel") { dismiss() }.foregroundStyle(Theme.accent)
             }
-            Text("Sent to the team with this chat. Your day isn't changed.").font(.footnote).foregroundStyle(.secondary)
+            // sent only when they tap Send, even with chat sharing off: this one chat, then
+            Text("This sends this chat to the Cheat Days team so we can fix it. Your day isn't changed.").font(.footnote).foregroundStyle(.secondary)
             Flow(spacing: 8) {
                 ForEach(ChatShare.reasons, id: \.id) { r in
                     Button { reason = r.id } label: {
@@ -1645,6 +1651,15 @@ struct WrongSheet: View {
                     .foregroundStyle(Theme.onAccent).background(Theme.accent.opacity(reason.isEmpty ? 0.5 : 1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
             .buttonStyle(.plain).disabled(reason.isEmpty || sending)
+            if let copy {
+                Button {
+                    copy(); copied = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { dismiss() }
+                } label: {
+                    Text(copied ? "Copied" : "Copy details instead").font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.plain)
+            }
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 18).padding(.top, 22)
