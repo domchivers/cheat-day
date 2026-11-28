@@ -43,6 +43,17 @@ struct ReelsView: View {
     @State private var rewording: PostBox?   // your own video, being edited
     @State private var note: String?   // "Saved to Photos", for a moment
     @State private var burst: String?
+    /// The phone locked or the app left: the video and its song stop where they are, and carry on when it's back
+    /// (28 Nov: the song was still heard with the phone locked)
+    @Environment(\.scenePhase) private var phase
+    @State private var away = false
+    /// 2× (28 Nov, design/reel-controls): a finger held on the right third plays it at double speed, everything cleared
+    /// off, until it lifts; sliding down while held locks it there (a small "2× 🔒" at the top), and doing it again,
+    /// or tapping that, puts it back. The next reel starts at normal speed.
+    @State private var fast = false
+    @State private var locked = false
+    @State private var slid = false   // this hold's slide down has already locked or unlocked it
+    private var rate: Float { fast || locked ? 2 : 1 }
     private var feed: Feed { Feed.shared }
 
     init(posts: [JSON], startAt: String) {
@@ -63,6 +74,8 @@ struct ReelsView: View {
             .scrollTargetLayout()
         }
         .scrollTargetBehavior(.paging)
+        // a finger holding for 2× slides down to lock it, not to the reel before
+        .scrollDisabled(fast)
         // no blurred band under the status bar: the system puts one at the top of anything that scrolls, and here it
         // lay across the top of the video
         .noScrollEdgeBlur()
@@ -80,7 +93,7 @@ struct ReelsView: View {
         .simultaneousGesture(DragGesture(minimumDistance: 12)
             .onChanged { v in
                 if slideFrom == nil {
-                    guard holding == nil, v.startLocation.y < UIScreen.main.bounds.height - 130,
+                    guard holding == nil, !fast, v.startLocation.y < UIScreen.main.bounds.height - 130,
                           v.translation.width > 0, abs(v.translation.width) > abs(v.translation.height) * 1.5 else { return }
                     slideFrom = v.translation.width
                     held = false; holdWait?.cancel()
@@ -96,9 +109,12 @@ struct ReelsView: View {
         // nothing behind the video but the screen it was opened from, which shows as the video slides away
         .presentationBackground(.clear)
         .preferredColorScheme(.dark)
-        .onChange(of: current) { _, now in paused = false; held = false; holding = nil; head.at = 0; head.length = 0; sound(); if let now { Feed.warmAhead(now, in: posts, swiped: true) } }
+        .onChange(of: fast) { _, _ in sound() }
+        .onChange(of: locked) { _, _ in sound() }
+        .onChange(of: current) { _, now in paused = false; held = false; fast = false; locked = false; holding = nil; head.at = 0; head.length = 0; sound(); if let now { Feed.warmAhead(now, in: posts, swiped: true) } }
         .onAppear { if let current { Feed.warmAhead(current, in: posts, swiped: true) } }   // the next two reels fetched while this one plays (MediaCache)
         .onChange(of: paused) { _, _ in sound() }
+        .onChange(of: phase) { _, p in away = p != .active; sound() }
         .onChange(of: held) { _, _ in sound() }
         .onChange(of: muted) { _, now in SongPlayer.shared.auto = !now; sound() }
         // the volume buttons turned sound on
@@ -156,11 +172,12 @@ struct ReelsView: View {
             // paused, or held on the line along the bottom: the song waits where it is (stopped and started again,
             // it began from its beginning while the video carried on from the middle)
             if SongPlayer.shared.playing != "reel:" + id {
-                guard !paused && !held else { return }
+                guard !paused && !held && !away else { return }
                 SongPlayer.shared.play(s, key: "reel:" + id, loop: true, volume: Music.mix(p).song)
                 if head.at > 0.3 { SongPlayer.shared.seek(head.at) }
             }
-            SongPlayer.shared.hold(paused || held || holding != nil)
+            SongPlayer.shared.hold(paused || held || away || holding != nil)
+            SongPlayer.shared.speed(rate)
         } else {
             SongPlayer.shared.stop()
             // stopping a song hands the sound back to the ringer; here a video is still to be heard
@@ -216,12 +233,12 @@ struct ReelsView: View {
             // TikTok don't: they keep a few players and get the next one ready). Its picture is under it until then.
             if let v = Feed.video(p), near(id) {
                 let tall = num(dict(p["extra"])["aspect"]).map { $0 > 0.62 } ?? false
-                let clip = LoopingVideo(url: v, paused: !on || paused || (on && held), muted: !on || muted, scrub: on ? holding : nil, tick: { at, length in
+                let clip = LoopingVideo(url: v, paused: !on || paused || away || (on && held), muted: !on || muted, scrub: on ? holding : nil, tick: { at, length in
                     guard on else { return }
                     // gone round to its start: so does its song
                     if at + 0.5 < head.at, holding == nil { SongPlayer.shared.seek(at) }
                     head.at = at; head.length = length
-                }, volume: Music.mixed(p) ? 1 : Music.mix(p).clip).allowsHitTesting(false)
+                }, volume: Music.mixed(p) ? 1 : Music.mix(p).clip, rate: on ? rate : 1).allowsHitTesting(false)
                 // a squarer clip is shown whole in the middle; a tall one fills the page only when it's nearly the page's
                 // own shape, so just a sliver goes. Otherwise it's shown whole too, as Instagram does: the post 1 reel
                 // (iPhone-shaped, on a page that stops above the comment bar) was zoomed in, its Saturday bar under the
@@ -248,21 +265,14 @@ struct ReelsView: View {
                 FeedPhoto(src: str(p["photo"]), fill: true).frame(maxWidth: .infinity, maxHeight: .infinity).clipped()
             }
             }
+            // laid out on the whole screen, not inside the status bar and home bar: inside them the page measured
+            // 0.52 wide to tall, so the iPhone-shaped post 1 reel (0.46) wasn't taken as the page's shape and was shown
+            // shrunk to 90% in the middle (28 Nov, side by side with Instagram, which fills the screen with it)
+            .ignoresSafeArea()
             .scaleEffect(on ? min(4, max(1, pinch)) : 1)
             .animation(.snappy(duration: 0.25), value: pinch == 1)
             Color.clear.contentShape(Rectangle())
-                .onTapGesture {
-                    let now = Date()
-                    if now.timeIntervalSince(lastTap) < 0.3 {
-                        // the second of two quick taps: a like, and the pause the first one made is taken back
-                        withAnimation(.easeOut(duration: 0.1)) { paused = pausedBefore }
-                        like(p, rx: rx)
-                        lastTap = .distantPast
-                    } else {
-                        pausedBefore = paused; lastTap = now
-                        withAnimation(.easeOut(duration: 0.12)) { paused.toggle() }
-                    }
-                }
+                .onTapGesture { tapped(p, rx: rx) }
                 // held: paused and cleared while the finger stays; a quarter of a second first, so a tap is a tap
                 // and a swipe up to the next one is a swipe (a finger that moves lets go of it)
                 .onLongPressGesture(minimumDuration: 0.25, maximumDistance: 24, perform: {}, onPressingChanged: { down in
@@ -284,18 +294,21 @@ struct ReelsView: View {
                         else if v.magnification < 0.87, clean { UIImpactFeedbackGenerator(style: .light).impactOccurred(); withAnimation(.easeOut(duration: 0.2)) { clean = false } }
                     })
                 .accessibilityLabel(paused ? "Play" : "Pause").accessibilityAddTraits(.isButton)
+            // the right third: a tap is a tap as anywhere, but held it plays at 2× instead of pausing
+            if on { fastSide(p, rx: rx) }
             // a workout sticker on the video opens its workout, over the taps that pause it (as on the feed)
             if on, !list(dict(p["extra"])["live"]).isEmpty { liveStickers(p) }
             // paused: everything stays where it was, with sound and play in the middle (as Instagram has it; it
             // used to clear the name, caption and buttons away, which read as something having gone wrong)
-            if !(on && held) {
+            if !(on && (held || fast)) {
                 if !clean { chrome(p, rx: rx) } else { backAgain }
             }
             if on && paused && !held { pausedButtons }
+            if on && (fast || locked) { speedPill }
             if on && !held {
                 // just above the comment bar; lower when that's cleared away
                 VStack { Spacer(); ReelBar(head: head, holding: $holding) }
-                    .padding(.bottom, !clean ? 68 : 22)
+                    .padding(.bottom, !clean && !fast ? 68 : 22)
             }
             if burst == id {
                 HeartBurst().transition(.identity)
@@ -321,22 +334,99 @@ struct ReelsView: View {
         .transition(.opacity)
     }
 
-    /// Paused: just the clip, with sound and play in the middle.
+    /// A tap on the video: pause or play; two quick ones, a like.
+    private func tapped(_ p: JSON, rx: [JSON]) {
+        let now = Date()
+        if now.timeIntervalSince(lastTap) < 0.3 {
+            // the second of two quick taps: a like, and the pause the first one made is taken back
+            withAnimation(.easeOut(duration: 0.1)) { paused = pausedBefore }
+            like(p, rx: rx)
+            lastTap = .distantPast
+        } else {
+            pausedBefore = paused; lastTap = now
+            withAnimation(.easeOut(duration: 0.12)) { paused.toggle() }
+        }
+    }
+
+    /// The right third of the screen. Held a quarter of a second: 2× while the finger stays, everything cleared off.
+    /// Slid down 60 points while held: locked at 2× (or, locked already, back to normal), once per hold.
+    private func fastSide(_ p: JSON, rx: [JSON]) -> some View {
+        HStack(spacing: 0) {
+            Spacer(minLength: 0)
+            Color.clear.contentShape(Rectangle())
+                .frame(width: UIScreen.main.bounds.width / 3)
+                .padding(.vertical, 110)   // not the back button at the top, nor the line and comment bar at the bottom
+                .onTapGesture { tapped(p, rx: rx) }
+                .gesture(LongPressGesture(minimumDuration: 0.25, maximumDistance: 24)
+                    .sequenced(before: DragGesture(minimumDistance: 0))
+                    .onChanged { v in
+                        guard case .second(true, let drag) = v else { return }
+                        if !fast {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            withAnimation(.easeOut(duration: 0.15)) { fast = true }
+                        }
+                        if let d = drag, d.translation.height > 60, !slid {
+                            slid = true
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            withAnimation(.easeOut(duration: 0.15)) { locked.toggle() }
+                        }
+                    }
+                    .onEnded { _ in
+                        slid = false
+                        withAnimation(.easeOut(duration: 0.15)) { fast = false }
+                    })
+                .accessibilityHidden(true)
+        }
+    }
+
+    /// "2× ▸▸" while held, with how to keep it; "2× 🔒" once locked, a tap to put it back to normal.
+    private var speedPill: some View {
+        VStack(spacing: 8) {
+            Button { withAnimation(.easeOut(duration: 0.15)) { locked = false } } label: {
+                HStack(spacing: 5) {
+                    Text("2×").font(.subheadline.weight(.heavy))
+                    Image(systemName: locked && !fast ? "lock.fill" : "forward.fill").font(.caption.weight(.bold))
+                }
+                .foregroundStyle(.white).padding(.horizontal, 13).padding(.vertical, 7)
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay(Capsule().strokeBorder(.white.opacity(0.22), lineWidth: 0.5))
+            }
+            .buttonStyle(.plain).allowsHitTesting(locked && !fast)
+            .accessibilityLabel(locked ? "Playing at double speed, tap for normal speed" : "Playing at double speed")
+            if fast {
+                Text(locked ? "Slide down for normal speed" : "Slide down to keep it at 2×")
+                    .font(.caption).foregroundStyle(.white.opacity(0.85)).shadow(color: .black.opacity(0.6), radius: 3)
+            }
+        }
+        .frame(maxHeight: .infinity, alignment: .top).padding(.top, 62)
+        .transition(.opacity)
+    }
+
+    /// Paused: just the clip, with sound and play in the middle, on frosted glass (28 Nov, design/reel-controls).
     private var pausedButtons: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 22) {
             Button { muted.toggle() } label: {
-                Image(systemName: muted ? "speaker.slash.fill" : "speaker.wave.2.fill").font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
+                Image(systemName: muted ? "speaker.slash.fill" : "speaker.wave.2.fill").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
                     .contentTransition(.identity).animation(nil, value: muted)
-                    .frame(width: 45, height: 45).background(.black.opacity(0.45), in: Circle())
+                    .frame(width: 40, height: 40).modifier(Frosted())
             }
             .buttonStyle(.plain).accessibilityLabel(muted ? "Sound on" : "Sound off")
             Button { withAnimation(.easeOut(duration: 0.15)) { paused = false } } label: {
-                Image(systemName: "play.fill").font(.system(size: 26, weight: .semibold)).foregroundStyle(.white)
-                    .frame(width: 69, height: 69).background(.black.opacity(0.45), in: Circle())
+                Image(systemName: "play.fill").font(.system(size: 28, weight: .semibold)).foregroundStyle(.white).offset(x: 2)
+                    .frame(width: 74, height: 74).modifier(Frosted())
             }
             .buttonStyle(.plain).accessibilityLabel("Play")
         }
         .transition(.opacity)
+    }
+
+    /// Round frosted glass, the video showing through it.
+    private struct Frosted: ViewModifier {
+        func body(content: Content) -> some View {
+            content.background(.ultraThinMaterial, in: Circle())
+                .overlay(Circle().strokeBorder(.white.opacity(0.22), lineWidth: 0.5))
+                .shadow(color: .black.opacity(0.3), radius: 9, y: 4)
+        }
     }
 
     private func like(_ p: JSON, rx: [JSON]) {

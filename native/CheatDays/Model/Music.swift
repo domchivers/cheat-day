@@ -205,6 +205,12 @@ enum Music {
     }
     /// The song that's playing, stopped where it is and carried on from there (a story held under a finger).
     func hold(_ on: Bool) { if on { player?.pause() } else { player?.play() } }
+    /// The song playing, as fast as the reel it's under (2× while that's held or locked there): the two stay together.
+    func speed(_ r: Float) {
+        guard let p = player else { return }
+        if p.defaultRate != r { p.defaultRate = r }
+        if p.rate != 0, p.rate != r { p.rate = r }
+    }
 
     /// The song that's playing, moved to this many seconds in: to keep it in step with a video that's been scrubbed
     /// or has gone round to its start again.

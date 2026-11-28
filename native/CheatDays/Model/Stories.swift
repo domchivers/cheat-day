@@ -419,6 +419,8 @@ struct LoopingVideo: UIViewRepresentable {
     var tick: ((Double, Double) -> Void)? = nil
     /// How loud its own sound is, from 0 to 1 (a post with a song can have the two set against each other).
     var volume: Float = 1
+    /// How fast it plays: 2 while a finger holds the right side of a reel, or it's been locked there (28 Nov).
+    var rate: Float = 1
 
     final class PlayerView: UIView {
         override static var layerClass: AnyClass { AVPlayerLayer.self }
@@ -514,7 +516,10 @@ struct LoopingVideo: UIViewRepresentable {
         }
         v.held = nil
         // only told to play when it isn't: told again on every redraw, it hitched
-        if paused { v.playerLayer.player?.pause() } else if v.playerLayer.player?.rate == 0 { v.playerLayer.player?.play() }
+        // (the speed it plays at once told to play: a pooled player kept the last clip's otherwise)
+        if let p = v.playerLayer.player, p.defaultRate != rate { p.defaultRate = rate }
+        if paused { v.playerLayer.player?.pause() }
+        else if let p = v.playerLayer.player, p.rate == 0 || p.rate != rate { p.rate = rate }
     }
 
     // whether there's a look at all, not which: going from none to one is the only change that needs a new player
