@@ -32,6 +32,13 @@ final class LiveMealsTests: XCTestCase {
     }
 
     private func signedIn() async throws {
+        // opt-in: only when tools/mac-live-meals.sh has just turned them on (its ~/.cheatdays-live.run marker), so an ordinary
+        // test run never goes live even with the sign-in file on the Mac (the Mac's rule; 1.4.79)
+        let pe = ProcessInfo.processInfo.environment
+        let marker = (pe["SIMULATOR_HOST_HOME"] ?? "") + "/.cheatdays-live.run"
+        guard pe["CD_LIVE_RUN"] == "1" || FileManager.default.fileExists(atPath: marker) else {
+            throw XCTSkip("Live meals are opt-in: run tools/mac-live-meals.sh.")
+        }
         guard let email = env["CD_LIVE_EMAIL"], let password = env["CD_LIVE_PASSWORD"], !email.isEmpty, !password.isEmpty else {
             throw XCTSkip("No test account in the environment (CD_LIVE_EMAIL / CD_LIVE_PASSWORD): live meals skipped.")
         }
