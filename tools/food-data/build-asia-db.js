@@ -4,6 +4,7 @@
 //   node build-asia-db.js
 // Licences: Taiwan TFDA, Open Government Data License v1.0 (credit required, see FoodSourcesView); Japan MEXT 2023,
 // PDL 1.0 terms (source and "edited" note required).
+const { cleanAliases } = require('./alias-clean');
 const fs = require('fs'), path = require('path');
 const here = __dirname, res = path.join(here, '..', '..', 'native', 'CheatDays', 'Resources');
 const read = f => JSON.parse(fs.readFileSync(path.join(here, f), 'utf8'));
@@ -22,11 +23,13 @@ function build(key, source, valuesFile, namesFile) {
     seen.add(en.toLowerCase());
     const r1 = x => x == null ? 0 : Math.round(x * 10) / 10;
     foods.push({ name: en, source, kcal: Math.round(v.kcal), p: r1(v.p), c: r1(v.c), f: r1(v.f) });
-    const aka = (n.aka || []).map(a => String(a).toLowerCase().replace(/[,|]/g, ' ').replace(/\s+/g, ' ').trim()).filter(a => a && /^[\x00-\x7F]+$/.test(a));
+    const aka = (n.aka || []).map(a => String(a).toLowerCase().replace(/\bdried\b/g, 'dry').replace(/[,|]/g, ' ').replace(/\s+/g, ' ').trim()).filter(a => a && /^[\x00-\x7F]+$/.test(a));
     if (aka.length) aliases.push([aka.join('|'), en]);
   }
   fs.writeFileSync(path.join(res, `${key}-foods.json`), JSON.stringify(foods));
-  fs.writeFileSync(path.join(res, `${key}-aliases.json`), JSON.stringify(aliases));
+  const clean = cleanAliases(foods, aliases);
+  fs.writeFileSync(path.join(res, `${key}-aliases.json`), JSON.stringify(clean.aliases));
+  console.log(`  ${clean.dropped} other names dropped that pointed at the wrong food`);
   console.log(`${key}: ${foods.length} foods, ${aliases.length} with other names; skipped ${skipped}, no values or bad name ${missing}, duplicate names ${dupes}`);
 }
 build('tw', 'TFDA2026', 'tw-foods.json', 'tw-names.json');

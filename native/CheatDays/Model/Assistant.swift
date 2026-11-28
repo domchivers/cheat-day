@@ -275,6 +275,8 @@ enum Assistant {
     - A nutrition label in the photos or chat beats any food table: work from its per 100 g figures (a raw label eaten cooked: divide by the cooked weight left, about 0.75 for roasted meat) and set numbers_from to label. Keep using it for later amounts of the same food.
     - More of a food they've logged before or you worked out in another chat ("that chicken from dinner yesterday", "same breakfast as Tuesday", "the pasta from last week"): find it in Recent days, their other chats, or the things they've logged before, scale it from those numbers (per gram), set numbers_from to them, and say which day it's from. If you can't find it, say so and ask rather than guessing.
     - A specific packaged product they name or show (a brand's ice block, bar, biscuit, drink) is one part, never split into ingredients. With no label in sight (a wrapper, the front of a pack): numbers_from brand, servings how many they had, its full brand and product name as the part's name, so the app can look its label up. Mention they can photograph the nutrition panel or scan the box's barcode for exact numbers.
+    - That includes supermarket fresh products named by store or brand (Aldi Jindurra Station 3 Star beef mince, Coles 4 star mince, a branded sausage or bacon): numbers_from brand, the brand and product as the part's name, and your guess from the product, not a generic food. Australian mince stars are fat levels: 3 star is regular mince, about 18% fat raw (about 240 kcal a 100 g); 4 star about 10%; 5 star about 5%.
+    - A weight they type for meat, fish, bacon or mince, with nothing said about cooking, is as bought: raw, off the pack. Name and tag it raw ("Bacon, streaky, raw"). It's cooked only when they say so (cooked, fried, grilled, leftovers) or a photo shows it cooked.
     - Name foods the way they did ("Aldi brushed potato", not the food table's "Coliban potato"); the table is for the numbers.
     - Keep the cooking they said, and put it in each part's name so it's checked against the right food: "pan fried, no oil" is "Potato, pan fried, no oil", never boiled.
     - Asked to recheck, check again or put right one part of an estimate you gave: give every part again, each on its own with its grams, changing only what was wrong. Never fold a plate into one part, and never answer a recheck with only a total.
@@ -1300,9 +1302,15 @@ enum Assistant {
         // one spelling for the words the tables spell both ways
         let spelling = ["yogurt": "yoghurt", "chili": "chilli", "chile": "chilli", "doughnut": "donut", "ketchup": "sauce", "flavor": "flavour"]
         func words(_ s: String) -> [String] { FoodTable.words(s).map { spelling[$0] ?? $0 } }
+        // a family word on its own ("Sauce, barbecue", "Cheese, cheddar") isn't the food: the next part says which one.
+        // "Sauce, tomato, reduced sugar ketchup" was counted as "Sauce, barbecue, commercial" (28 Nov)
+        let family: Set<String> = ["sauce", "cheese", "oil", "bread", "milk", "juice", "drink", "soup", "spread", "dressing", "biscuit",
+                                   "cake", "yoghurt", "cereal", "sausage", "jam", "cracker", "muffin", "pie", "paste", "seasoning", "syrup"]
         func lead(_ s: String) -> Set<String> {
-            let first = s.split(whereSeparator: { $0 == "," || $0 == "(" }).first.map(String.init) ?? s
-            return Set(words(first)).subtracting(ignore)
+            let parts = s.split(whereSeparator: { $0 == "," || $0 == "(" }).map(String.init)
+            let first = Set(words(parts.first ?? s)).subtracting(ignore)
+            guard !first.isEmpty, first.isSubset(of: family), parts.count > 1 else { return first }
+            return first.union(Set(words(parts[1])).subtracting(ignore))
         }
         let saidAll = Set(words(said)), entryAll = Set(words(entry))
         let theirs = lead(entry), mine = lead(said)

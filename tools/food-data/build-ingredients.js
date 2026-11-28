@@ -2,6 +2,7 @@
 // ingredients/raw_*.json (USDA FoodData Central, measured studies, product labels; only entries the checker kept) and the
 // mixed ones worked out from recipes/ing_*.json by dish-calc. Writes Resources/ing-foods.json and ing-aliases.json.
 //   node dish-calc.js && node build-ingredients.js
+const { cleanAliases } = require('./alias-clean');
 const fs = require('fs'), path = require('path');
 const here = __dirname, res = path.join(here, '..', '..', 'native', 'CheatDays', 'Resources');
 const ascii = s => /^[\x00-\x7F]+$/.test(s);
@@ -13,7 +14,7 @@ function add(name, kcal, p, c, f, aka, source) {
   seen.add(n.toLowerCase());
   const r1 = x => Math.round((+x || 0) * 10) / 10;
   foods.push({ name: n, source, kcal: Math.round(kcal), p: r1(p), c: r1(c), f: r1(f) });
-  const a = (aka || []).map(x => String(x).toLowerCase().replace(/[,|]/g, ' ').replace(/\s+/g, ' ').trim()).filter(x => x && ascii(x));
+  const a = (aka || []).map(x => String(x).toLowerCase().replace(/\bdried\b/g, 'dry').replace(/[,|]/g, ' ').replace(/\s+/g, ' ').trim()).filter(x => x && ascii(x));
   if (a.length) aliases.push([a.join('|'), n]);
   sources[source] = (sources[source] || 0) + 1;
 }
@@ -34,5 +35,7 @@ if (fs.existsSync(built)) {
     if (ingNames.has(d.name) && !d.missing.length) add(d.name, d.kcal, d.p, d.c, d.f, d.aka, 'CheatDays2026');
 }
 fs.writeFileSync(path.join(res, 'ing-foods.json'), JSON.stringify(foods));
-fs.writeFileSync(path.join(res, 'ing-aliases.json'), JSON.stringify(aliases));
+const clean = cleanAliases(foods, aliases);
+fs.writeFileSync(path.join(res, 'ing-aliases.json'), JSON.stringify(clean.aliases));
+console.log(`  ${clean.dropped} other names dropped that pointed at the wrong food`);
 console.log(`ingredients: ${foods.length} (${JSON.stringify(sources)}), ${aliases.length} with other names, ${dropped} left out`);

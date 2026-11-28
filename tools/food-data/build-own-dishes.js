@@ -1,4 +1,5 @@
 // built-dishes.json (from dish-calc.js) into the app: Resources/built-foods.json and built-aliases.json. node build-own-dishes.js
+const { cleanAliases } = require('./alias-clean');
 const fs = require('fs'), path = require('path');
 const res = path.join(__dirname, '..', '..', 'native', 'CheatDays', 'Resources');
 const built = JSON.parse(fs.readFileSync(path.join(__dirname, 'built-dishes.json'), 'utf8'));
@@ -10,9 +11,11 @@ for (const d of built) {
   if (ing.has(d.name) || d.missing.length || !/^[\x00-\x7F]+$/.test(n) || seen.has(n.toLowerCase())) continue;
   seen.add(n.toLowerCase());
   foods.push({ name: n, source: 'CheatDays2026', kcal: d.kcal, p: d.p, c: d.c, f: d.f });
-  const aka = (d.aka || []).map(a => String(a).toLowerCase().replace(/[,|]/g, ' ').replace(/\s+/g, ' ').trim()).filter(a => a && /^[\x00-\x7F]+$/.test(a));
+  const aka = (d.aka || []).map(a => String(a).toLowerCase().replace(/\bdried\b/g, 'dry').replace(/[,|]/g, ' ').replace(/\s+/g, ' ').trim()).filter(a => a && /^[\x00-\x7F]+$/.test(a));
   if (aka.length) aliases.push([aka.join('|'), n]);
 }
 fs.writeFileSync(path.join(res, 'built-foods.json'), JSON.stringify(foods));
-fs.writeFileSync(path.join(res, 'built-aliases.json'), JSON.stringify(aliases));
+const clean = cleanAliases(foods, aliases);
+fs.writeFileSync(path.join(res, 'built-aliases.json'), JSON.stringify(clean.aliases));
+console.log(`  ${clean.dropped} other names dropped that pointed at the wrong food`);
 console.log(`built: ${foods.length} dishes, ${aliases.length} with other names`);
