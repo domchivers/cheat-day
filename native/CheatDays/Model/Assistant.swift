@@ -1265,7 +1265,7 @@ enum Assistant {
         // the official numbers for their country (AFCD, CoFID or USDA SR Legacy) before the app's list or the US database,
         // the entry chosen by the part's tags too (bought, natural, skin on…); then a dish their country's table doesn't
         // have (biryani, pad thai, chocolate cheesecake) from the US dish table; then the other countries' (moussaka, rösti)
-        for table in [FoodTable.current, .dishes, .world] {
+        for table in [FoodTable.current, .taiwan, .japan, .ingredients, .built, .dishes, .world] {
             if let f = table.best(said, tags: tags(x)), sameFood(said, f.name), !FoodReference.fatClash(said, f.name, fat100: f.f), sameCooking(said, f.name),
                !FoodReference.differentDish(said, f.name),
                plausible(f.kcal, aiKcal: ai, grams: g, name: said, cookedTag: cooked) {

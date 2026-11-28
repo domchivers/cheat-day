@@ -1,0 +1,45 @@
+foods: 2213
+categories: {"魚貝類":336,"澱粉類":49,"加工調理食品及其他類":316,"蛋類":71,"乳品類":83,"油脂類":43,"糖類":12,"糕餅點心類":116,"飲料類":72,"堅果及種子類":40,"調味料及香辛料類":151,"穀物類":89,"水果類":242,"蔬菜類":309,"肉類":161,"藻類":22,"豆類":44,"菇類":57}
+with English names: 1772
+with kcal+P+C+F: 2160
+
+油條: 1  e.g. 油條 / Cruller (548 kcal)
+豆漿: 8  e.g. 鹹豆漿 / Soy(bean) milk: salted (37 kcal); 豆漿 / Soy milk; Bean milk (56 kcal); 豆漿粉 / Soy milk powder (409 kcal); 豆漿優酪乳 / Soya yogurt (68 kcal)
+包子: 5  e.g. 冷凍豬肉包子 / Pork bun (263 kcal); 冷凍素菜包子 / Vegetable bun (232 kcal); 冷凍叉燒包子 / - (262 kcal); 冷凍牛肉包子 / Beef bun (265 kcal)
+茶葉蛋: 5  e.g. 茶葉蛋(市售) / Hen's egg: hard-boiled with salt and tea leaves (147 kcal); 茶葉蛋白(浸泡隔夜) / Hen's egg whiet: hard-boiled with salt and tea leaves (54 kcal); 茶葉蛋黃(浸泡隔夜) / Hen's egg yolk: hard-boiled with salt and tea leaves (344 kcal); 茶葉蛋(浸泡隔夜) / Hen's egg: hard-boiled with salt and tea leaves (143 kcal)
+豆花: 3  e.g. 豆花(花生) / - (59 kcal); 傳統豆花(未加糖) / - (37 kcal); 鹽酥蠶豆 / Broad bean: salted; Field bean: salted (434 kcal)
+粥: 1  e.g. 廣東粥 / Catonese congee (81 kcal)
+水餃: 11  e.g. 冷凍素食水餃 / Dumpling: vegetarian (169 kcal); 冷凍豬肉熟水餃 / Dumpling: pork, cooked (231 kcal); 冷凍素食熟水餃 / Dumpling: vegetarian, cooked (204 kcal); 冷凍豬肉蟹黃水餃 / Dumpling (221 kcal)
+小籠包: 1  e.g. 小籠包 / Small meat bun (239 kcal)
+叉燒: 3  e.g. 冷凍叉燒包 / - (264 kcal); 冷凍叉燒包子 / - (262 kcal); 叉燒肉 / Basted meat (253 kcal)
+炒飯: 2  e.g. 冷凍蝦仁炒飯 / Fried rice (143 kcal); 冷凍火腿炒飯 / Fried rice (185 kcal)
+珍珠奶茶: 3  e.g. 珍珠奶茶(去冰,半糖) / - (84 kcal); 珍珠奶茶(去冰,微糖) / - (75 kcal); 珍珠奶茶(去冰,全糖) / - (94 kcal)
+蛋餅: 1  e.g. 冷凍蛋餅皮 / - (228 kcal)
+飯糰: 2  e.g. 糯米飯糰 / - (333 kcal); 三角飯糰(肉鬆) / - (215 kcal)
+滷肉飯: 0
+牛肉麵: 0
+蘿蔔糕: 1  e.g. 冷藏廣式蘿蔔糕 / Turnip cake; Radish cake (109 kcal)
+燒賣: 1  e.g. 冷凍燒賣 / - (183 kcal)
+粽子: 0
+鍋貼: 1  e.g. 豬肉鍋貼 / - (235 kcal)
+刈包: 0
+鹹酥雞: 0
+臭豆腐: 0
+蚵仔煎: 1  e.g. 蚵仔煎 / - (191 kcal)
+便當: 0
+拉麵: 1  e.g. 拉麵 / Noodle: Ramen (290 kcal)
+壽司: 3  e.g. 壽司醋 / Vinegar (181 kcal); 壽司(豆皮壽司) / - (193 kcal); 壽司海苔片 / - (227 kcal)
+泡菜: 3  e.g. 韓式泡菜 / - (30 kcal); 黃金泡菜 / - (108 kcal); 台式泡菜 / - (57 kcal)
+燒餅: 1  e.g. 燒餅 / - (320 kcal)
+饅頭: 5  e.g. 白饅頭 / - (246 kcal); 黑糖饅頭 / - (230 kcal); 芋頭饅頭 / - (150 kcal); 冷藏堅果饅頭 / - (296 kcal)
+蔥油餅: 2  e.g. 冷凍蔥油餅 / - (255 kcal); 蔥油餅 / - (300 kcal)
+肉圓: 2  e.g. 肉圓 / - (135 kcal); 清蒸蝦仁肉圓 / - (149 kcal)
+芋圓: 1  e.g. 芋圓 / - (212 kcal)
+米粉: 7  e.g. 秈米粉 / Long-grain rice powder (362 kcal); 濁水米粉 / Rice noodle (357 kcal); 糙米粉 / Brown rice powder (386 kcal); 細米粉 / Rice noodle (353 kcal)
+雞排: 4  e.g. 雞排(肉雞)(2021年取樣) / - (251 kcal); 雞排(肉雞) / Chicken cutlets: feed (208 kcal); 雞排(土雞) / Chicken cutlets: wild (158 kcal); 雞排平均值 / - (183 kcal)
+豆腐: 10  e.g. 蒸蛋(市售) / Hen's egg custard (32 kcal); 油豆腐粉絲(阿給) / - (143 kcal); 傳統豆腐(2022年取樣) / Tofu; Bean curd; Soy bean cheese (93 kcal); 雞蛋豆腐 / Bean curd with egg (79 kcal)
+炒麵: 0
+餛飩: 5  e.g. 冷凍冬菜蝦仁餛飩 / Wonton: cabbage and shrimp (186 kcal); 溫州餛飩 / Wonton (144 kcal); 冷凍豬肉餛飩 / Wonton: pork  (234 kcal); 冷凍菜肉餛飩 / Wonton: vegetable and pork (228 kcal)
+咖哩: 2  e.g. 咖哩粉 / Curry powder (344 kcal); 咖哩塊 / Curry (505 kcal)
+月餅: 1  e.g. 月餅(棗泥) / Moon cake (413 kcal)
+奶茶: 9  e.g. 奶茶沖泡包(三合一) / Instant tea powder mix (452 kcal); 珍珠奶茶(去冰,半糖) / - (84 kcal); 珍珠奶茶(去冰,微糖) / - (75 kcal); 烏龍奶茶(去冰,微糖) / - (59 kcal)

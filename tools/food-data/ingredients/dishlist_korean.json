@@ -1,0 +1,664 @@
+[
+ {
+  "name": "Bibimbap",
+  "aka": [
+   "mixed rice"
+  ]
+ },
+ {
+  "name": "Dolsot bibimbap",
+  "aka": [
+   "stone pot bibimbap"
+  ]
+ },
+ {
+  "name": "Kimchi jjigae",
+  "aka": [
+   "kimchi stew"
+  ]
+ },
+ {
+  "name": "Doenjang jjigae",
+  "aka": [
+   "soybean paste stew"
+  ]
+ },
+ {
+  "name": "Sundubu jjigae",
+  "aka": [
+   "soft tofu stew"
+  ]
+ },
+ {
+  "name": "Budae jjigae",
+  "aka": [
+   "army stew"
+  ]
+ },
+ {
+  "name": "Gochujang jjigae",
+  "aka": [
+   "gochujang stew"
+  ]
+ },
+ {
+  "name": "Cheonggukjang jjigae",
+  "aka": [
+   "fermented soybean stew"
+  ]
+ },
+ {
+  "name": "Galbi jjim",
+  "aka": [
+   "braised short ribs"
+  ]
+ },
+ {
+  "name": "Jjimdak",
+  "aka": [
+   "andong jjimdak",
+   "braised chicken"
+  ]
+ },
+ {
+  "name": "Dakdoritang",
+  "aka": [
+   "dakbokkeumtang",
+   "spicy braised chicken"
+  ]
+ },
+ {
+  "name": "Bulgogi, beef",
+  "aka": [
+   "soy marinated beef"
+  ]
+ },
+ {
+  "name": "Bulgogi, pork",
+  "aka": [
+   "dwaeji bulgogi",
+   "jeyuk bokkeum",
+   "spicy pork"
+  ]
+ },
+ {
+  "name": "Dak galbi",
+  "aka": [
+   "spicy stir-fried chicken"
+  ]
+ },
+ {
+  "name": "Galbi, beef",
+  "aka": [
+   "so galbi",
+   "LA galbi",
+   "grilled short ribs"
+  ]
+ },
+ {
+  "name": "Dwaeji galbi",
+  "aka": [
+   "pork galbi",
+   "grilled pork ribs"
+  ]
+ },
+ {
+  "name": "Samgyeopsal",
+  "aka": [
+   "grilled pork belly"
+  ]
+ },
+ {
+  "name": "Moksal gui",
+  "aka": [
+   "grilled pork neck"
+  ]
+ },
+ {
+  "name": "Chadolbaegi",
+  "aka": [
+   "grilled brisket"
+  ]
+ },
+ {
+  "name": "Bossam",
+  "aka": [
+   "boiled pork wraps"
+  ]
+ },
+ {
+  "name": "Jokbal",
+  "aka": [
+   "braised pig trotters"
+  ]
+ },
+ {
+  "name": "Korean fried chicken, plain",
+  "aka": [
+   "huraideu chikin"
+  ]
+ },
+ {
+  "name": "Korean fried chicken, yangnyeom",
+  "aka": [
+   "sweet spicy chicken"
+  ]
+ },
+ {
+  "name": "Korean fried chicken, soy garlic",
+  "aka": [
+   "ganjang chicken"
+  ]
+ },
+ {
+  "name": "Dakgangjeong",
+  "aka": [
+   "sweet crispy chicken bites"
+  ]
+ },
+ {
+  "name": "Kimbap",
+  "aka": [
+   "gimbap"
+  ]
+ },
+ {
+  "name": "Chamchi kimbap",
+  "aka": [
+   "tuna mayo kimbap"
+  ]
+ },
+ {
+  "name": "Mayak kimbap",
+  "aka": [
+   "mini kimbap"
+  ]
+ },
+ {
+  "name": "Samgak kimbap",
+  "aka": [
+   "triangle kimbap",
+   "jumeokbap"
+  ]
+ },
+ {
+  "name": "Japchae",
+  "aka": [
+   "glass noodle stir fry"
+  ]
+ },
+ {
+  "name": "Japchae bap",
+  "aka": [
+   "japchae on rice"
+  ]
+ },
+ {
+  "name": "Tteokbokki",
+  "aka": [
+   "spicy rice cakes"
+  ]
+ },
+ {
+  "name": "Rabokki",
+  "aka": [
+   "ramyeon tteokbokki"
+  ]
+ },
+ {
+  "name": "Gungjung tteokbokki",
+  "aka": [
+   "soy rice cakes",
+   "royal tteokbokki"
+  ]
+ },
+ {
+  "name": "Eomuk",
+  "aka": [
+   "odeng",
+   "fish cake skewers"
+  ]
+ },
+ {
+  "name": "Sundae",
+  "aka": [
+   "korean blood sausage"
+  ]
+ },
+ {
+  "name": "Twigim",
+  "aka": [
+   "korean tempura"
+  ]
+ },
+ {
+  "name": "Hotteok",
+  "aka": [
+   "sweet filled pancake"
+  ]
+ },
+ {
+  "name": "Bungeoppang",
+  "aka": [
+   "fish-shaped bread"
+  ]
+ },
+ {
+  "name": "Gyeranppang",
+  "aka": [
+   "egg bread"
+  ]
+ },
+ {
+  "name": "Korean corn dog",
+  "aka": [
+   "hot dog",
+   "gamja hot dog"
+  ]
+ },
+ {
+  "name": "Tornado potato",
+  "aka": [
+   "hoeori gamja"
+  ]
+ },
+ {
+  "name": "Haemul pajeon",
+  "aka": [
+   "seafood scallion pancake"
+  ]
+ },
+ {
+  "name": "Pajeon",
+  "aka": [
+   "scallion pancake"
+  ]
+ },
+ {
+  "name": "Kimchijeon",
+  "aka": [
+   "kimchi pancake"
+  ]
+ },
+ {
+  "name": "Bindaetteok",
+  "aka": [
+   "mung bean pancake"
+  ]
+ },
+ {
+  "name": "Gamjajeon",
+  "aka": [
+   "potato pancake"
+  ]
+ },
+ {
+  "name": "Hobak jeon",
+  "aka": [
+   "zucchini pancake",
+   "aehobak jeon"
+  ]
+ },
+ {
+  "name": "Dongeurang ttaeng",
+  "aka": [
+   "meatball patties",
+   "wanja jeon"
+  ]
+ },
+ {
+  "name": "Jajangmyeon",
+  "aka": [
+   "black bean noodles"
+  ]
+ },
+ {
+  "name": "Jjamppong",
+  "aka": [
+   "spicy seafood noodle soup"
+  ]
+ },
+ {
+  "name": "Tangsuyuk",
+  "aka": [
+   "sweet and sour pork"
+  ]
+ },
+ {
+  "name": "Kkanpunggi",
+  "aka": [
+   "garlic chilli fried chicken"
+  ]
+ },
+ {
+  "name": "Bokkeumbap, Korean-Chinese",
+  "aka": [
+   "fried rice with jjajang"
+  ]
+ },
+ {
+  "name": "Mul naengmyeon",
+  "aka": [
+   "cold buckwheat noodles",
+   "naengmyeon"
+  ]
+ },
+ {
+  "name": "Bibim naengmyeon",
+  "aka": [
+   "spicy cold noodles"
+  ]
+ },
+ {
+  "name": "Jjolmyeon",
+  "aka": [
+   "chewy spicy noodles"
+  ]
+ },
+ {
+  "name": "Bibim guksu",
+  "aka": [
+   "spicy mixed noodles"
+  ]
+ },
+ {
+  "name": "Janchi guksu",
+  "aka": [
+   "banquet noodle soup"
+  ]
+ },
+ {
+  "name": "Kalguksu",
+  "aka": [
+   "knife-cut noodle soup"
+  ]
+ },
+ {
+  "name": "Kongguksu",
+  "aka": [
+   "cold soy milk noodles"
+  ]
+ },
+ {
+  "name": "Ramyeon",
+  "aka": [
+   "korean instant noodles",
+   "shin ramyun"
+  ]
+ },
+ {
+  "name": "Jjapaguri",
+  "aka": [
+   "ram-don",
+   "chapaguri"
+  ]
+ },
+ {
+  "name": "Kimchi bokkeumbap",
+  "aka": [
+   "kimchi fried rice"
+  ]
+ },
+ {
+  "name": "Omurice, Korean",
+  "aka": [
+   "omeuraiseu"
+  ]
+ },
+ {
+  "name": "Deopbap, jeyuk",
+  "aka": [
+   "spicy pork rice bowl"
+  ]
+ },
+ {
+  "name": "Hoedeopbap",
+  "aka": [
+   "raw fish rice bowl"
+  ]
+ },
+ {
+  "name": "Kimchi",
+  "aka": [
+   "baechu kimchi",
+   "napa cabbage kimchi"
+  ]
+ },
+ {
+  "name": "Kkakdugi",
+  "aka": [
+   "radish kimchi"
+  ]
+ },
+ {
+  "name": "Kongnamul muchim",
+  "aka": [
+   "seasoned soybean sprouts"
+  ]
+ },
+ {
+  "name": "Sigeumchi namul",
+  "aka": [
+   "seasoned spinach"
+  ]
+ },
+ {
+  "name": "Gyeran jjim",
+  "aka": [
+   "steamed egg"
+  ]
+ },
+ {
+  "name": "Gyeran mari",
+  "aka": [
+   "rolled omelette"
+  ]
+ },
+ {
+  "name": "Jangjorim",
+  "aka": [
+   "soy braised beef"
+  ]
+ },
+ {
+  "name": "Myeolchi bokkeum",
+  "aka": [
+   "stir-fried anchovies"
+  ]
+ },
+ {
+  "name": "Eomuk bokkeum",
+  "aka": [
+   "stir-fried fish cake"
+  ]
+ },
+ {
+  "name": "Dubu jorim",
+  "aka": [
+   "braised tofu"
+  ]
+ },
+ {
+  "name": "Gamja jorim",
+  "aka": [
+   "braised potatoes"
+  ]
+ },
+ {
+  "name": "Oi muchim",
+  "aka": [
+   "spicy cucumber salad"
+  ]
+ },
+ {
+  "name": "Miyeok guk",
+  "aka": [
+   "seaweed soup"
+  ]
+ },
+ {
+  "name": "Seolleongtang",
+  "aka": [
+   "ox bone soup"
+  ]
+ },
+ {
+  "name": "Galbitang",
+  "aka": [
+   "short rib soup"
+  ]
+ },
+ {
+  "name": "Samgyetang",
+  "aka": [
+   "ginseng chicken soup"
+  ]
+ },
+ {
+  "name": "Gamjatang",
+  "aka": [
+   "pork bone soup"
+  ]
+ },
+ {
+  "name": "Yukgaejang",
+  "aka": [
+   "spicy beef soup"
+  ]
+ },
+ {
+  "name": "Sundae guk",
+  "aka": [
+   "blood sausage soup"
+  ]
+ },
+ {
+  "name": "Dwaeji gukbap",
+  "aka": [
+   "pork rice soup"
+  ]
+ },
+ {
+  "name": "Kongnamul gukbap",
+  "aka": [
+   "bean sprout rice soup"
+  ]
+ },
+ {
+  "name": "Tteokguk",
+  "aka": [
+   "rice cake soup"
+  ]
+ },
+ {
+  "name": "Haejangguk",
+  "aka": [
+   "hangover soup"
+  ]
+ },
+ {
+  "name": "Maeuntang",
+  "aka": [
+   "spicy fish stew"
+  ]
+ },
+ {
+  "name": "Juk, jeonbok",
+  "aka": [
+   "abalone porridge"
+  ]
+ },
+ {
+  "name": "Hobakjuk",
+  "aka": [
+   "pumpkin porridge"
+  ]
+ },
+ {
+  "name": "Patbingsu",
+  "aka": [
+   "shaved ice with red beans",
+   "bingsu"
+  ]
+ },
+ {
+  "name": "Yakgwa",
+  "aka": [
+   "honey cookie"
+  ]
+ },
+ {
+  "name": "Injeolmi",
+  "aka": [
+   "soybean powder rice cake"
+  ]
+ },
+ {
+  "name": "Songpyeon",
+  "aka": [
+   "half-moon rice cakes"
+  ]
+ },
+ {
+  "name": "Sikhye",
+  "aka": [
+   "sweet rice drink"
+  ]
+ },
+ {
+  "name": "Dalgona coffee",
+  "aka": [
+   "whipped coffee"
+  ]
+ },
+ {
+  "name": "Banana milk",
+  "aka": [
+   "banana flavoured milk"
+  ]
+ },
+ {
+  "name": "Gilgeori toast",
+  "aka": [
+   "korean street toast"
+  ]
+ },
+ {
+  "name": "Godeungeo gui",
+  "aka": [
+   "grilled mackerel"
+  ]
+ },
+ {
+  "name": "Ojingeo bokkeum",
+  "aka": [
+   "spicy stir-fried squid"
+  ]
+ },
+ {
+  "name": "Nakji bokkeum",
+  "aka": [
+   "spicy stir-fried octopus"
+  ]
+ },
+ {
+  "name": "Mandu, fried",
+  "aka": [
+   "gun mandu",
+   "korean dumplings fried"
+  ]
+ },
+ {
+  "name": "Mandu, steamed",
+  "aka": [
+   "jjin mandu",
+   "kimchi mandu"
+  ]
+ },
+ {
+  "name": "Manduguk",
+  "aka": [
+   "dumpling soup"
+  ]
+ }
+]

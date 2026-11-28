@@ -1,0 +1,34 @@
+[
+ {
+  "dish": "Hand-pulled noodles, boiled",
+  "cuisine": "Chinese",
+  "aka": [
+   "la mian",
+   "lamian",
+   "lanzhou noodles"
+  ],
+  "serving_g": 250,
+  "ingredients": [
+   {
+    "food": "Flour, wheat, white, high protein or bread making flour",
+    "g": 500
+   },
+   {
+    "food": "Water, tap",
+    "g": 290
+   },
+   {
+    "food": "Salt, table, non-iodised",
+    "g": 5
+   },
+   {
+    "food": "Oil, vegetable",
+    "g": 10,
+    "note": "brushed on the dough ropes while resting"
+   }
+  ],
+  "cooked_g": 1200,
+  "notes": "plain wheat dough (about 58% hydration) pulled and boiled; fresh noodles take up about half their weight in water when boiled. Raw dough is about 805 g",
+  "checked": true
+ }
+]

@@ -120,6 +120,24 @@ enum FoodReference {
             && !fatClash(asked, got)
     }
 
+    /// A sweet or coated version the part itself never said: checked against the part's own name, not the lookup name
+    /// the AI wrote for it. "Youtiao, deep fried" was looked up as a glazed doughnut and kept it, since the lookup name
+    /// said glazed (28 Nov: 358 kcal and 19 g fat with sugar glaze, for an unsweetened fried dough stick).
+    static func sweetClash(part: String, entry: String) -> Bool {
+        let p = part.lowercased(), e = entry.lowercased()
+        return ["glazed", "frosted", "sugared", "iced", "jelly filling", "creme filling", "chocolate-coated", "sweetened"]
+            .contains { w in e.range(of: "\\b" + w + "\\b", options: .regularExpression) != nil && p.range(of: "\\b" + w + "\\b", options: .regularExpression) == nil }
+            && !p.contains("sweet")
+    }
+
+    /// Served in a broth or soup isn't the plain food on its own: "Jellied bean curd in soy broth" (175 g, half of it
+    /// broth) was counted as 175 g of soft tofu, 12.5 g protein where the AI's 7 fit (28 Nov).
+    static func inLiquid(_ said: String, _ entry: String) -> Bool {
+        let s = said.lowercased(), e = entry.lowercased()
+        return s.range(of: #"\b(in|with)\b[^,]*\b(broth|soup|syrup)\b"#, options: .regularExpression) != nil
+            && e.range(of: #"\b(broth|soup|syrup|stew)\b"#, options: .regularExpression) == nil
+    }
+
     /// A food asked for as lean that the table's entry isn't (19 Nov: "Greek yoghurt, non-fat" took the ~10% fat Greek
     /// yoghurt's numbers, 157 kcal and 12 g fat for 120 g; the table has no non-fat Greek). With no lean entry to be
     /// had, the part keeps its own numbers rather than a full-fat food's. `fat100`, when known, also rules out a "no
@@ -140,6 +158,7 @@ enum FoodReference {
     static func differentDish(_ said: String, _ entry: String) -> Bool {
         let s: String = said.lowercased(), e: String = entry.lowercased()
         func has(_ t: String, _ p: String) -> Bool { t.range(of: p, options: .regularExpression) != nil }
+        if inLiquid(said, entry) || sweetClash(part: said, entry: entry) { return true }
         let fattyCut: Bool = has(s, #"\b(skewers?|ribs?|belly|brisket|chops?)\b"#)
         let saidLean: Bool = has(s, #"\b(lean|fillet|breast|tenderloin|trimmed)\b"#)
         if fattyCut && !saidLean && has(e, #"\blean\b(?! and fat)|\b(fillet|tenderloin)\b"#) { return true }

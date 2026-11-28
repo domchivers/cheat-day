@@ -1,0 +1,143 @@
+[
+{ "dish": "Lavash", "cuisine": "Middle Eastern", "aka": ["lavas", "markook", "saj bread", "lavosh"],
+  "serving_g": 60,
+  "ingredients": [
+    { "food": "Flour, wheat, white, plain", "g": 500 },
+    { "food": "Water, tap", "g": 250 },
+    { "food": "Salt, table, non-iodised", "g": 8 },
+    { "food": "Oil, olive", "g": 15 },
+    { "food": "Yeast, dry powder", "g": 3 } ],
+  "cooked_g": 640,
+  "notes": "thin soft flatbread rolled paper-thin and baked fast on a hot saj or tandoor; loses about 17% of the dough weight as water; serving is one large sheet" },
+
+{ "dish": "Barbari bread", "cuisine": "Persian", "aka": ["nan-e barbari", "barbari", "noon barbari"],
+  "serving_g": 100,
+  "ingredients": [
+    { "food": "Flour, wheat, white, high protein or bread making flour", "g": 500 },
+    { "food": "Water, tap", "g": 350 },
+    { "food": "Yeast, dry powder", "g": 7 },
+    { "food": "Salt, table, non-iodised", "g": 10 },
+    { "food": "Sugar, white, granulated or lump", "g": 5 },
+    { "food": "Oil, olive", "g": 10 },
+    { "food": "Flour, wheat, white, plain", "g": 5, "note": "romal glaze: flour, soda and water cooked to a paste and brushed on" },
+    { "food": "Seed, sesame, unsalted", "g": 10, "note": "topping" },
+    { "food": "Spices, dried, all types (except chilli & paprika)", "g": 3, "note": "stands in for the nigella seed topping" } ],
+  "cooked_g": 760,
+  "notes": "long oval leavened flatbread, ridged by fingers and glazed before baking hot; about 16% of the dough weight is lost as water; serving is about a quarter of a loaf" },
+
+{ "dish": "Sangak", "cuisine": "Persian", "aka": ["nan-e sangak", "sangak bread", "noon sangak"],
+  "serving_g": 100,
+  "ingredients": [
+    { "food": "Flour, wheat, wholemeal, plain", "g": 500 },
+    { "food": "Water, tap", "g": 400 },
+    { "food": "Yeast, dry powder", "g": 3, "note": "traditionally a sourdough starter" },
+    { "food": "Salt, table, non-iodised", "g": 10 },
+    { "food": "Seed, sesame, unsalted", "g": 10, "note": "topping" } ],
+  "cooked_g": 720,
+  "notes": "slack wholewheat dough stretched thin over hot river stones; about 22% of the dough weight is lost as water in the very hot oven; serving is about a third of a sheet" },
+
+{ "dish": "Simit", "cuisine": "Turkish", "aka": ["turkish bagel", "koulouri", "gevrek", "sesame bread ring"],
+  "serving_g": 110,
+  "ingredients": [
+    { "food": "Flour, wheat, white, high protein or bread making flour", "g": 500 },
+    { "food": "Water, tap", "g": 280 },
+    { "food": "Yeast, dry powder", "g": 7 },
+    { "food": "Salt, table, non-iodised", "g": 10 },
+    { "food": "Sugar, white, granulated or lump", "g": 5 },
+    { "food": "Oil, sunflower", "g": 15 },
+    { "food": "Treacle or molasses", "g": 40, "note": "stands in for grape pekmez (similar sugar); what clings from the dip" },
+    { "food": "Seed, sesame, unsalted", "g": 80, "note": "what sticks to the rings" } ],
+  "cooked_g": 800,
+  "notes": "twisted rings dipped in diluted grape molasses then rolled in sesame and baked; about 15% of the weight is lost as water; serving is one simit (7 per batch)" },
+
+{ "dish": "Labneh", "cuisine": "Middle Eastern", "aka": ["labna", "labaneh", "strained yogurt", "labne"],
+  "serving_g": 30,
+  "ingredients": [
+    { "food": "Yoghurt, natural, greek style (~10% fat)", "g": 1000 },
+    { "food": "Salt, table, non-iodised", "g": 8 } ],
+  "cooked_g": 700,
+  "notes": "full-fat yoghurt salted and hung in cloth overnight; about 30% of the weight drips out as whey; whey carries some lactose and protein away, so carbs read slightly high; serving is two tablespoons; olive oil drizzle not included" },
+
+{ "dish": "Kashk", "cuisine": "Persian", "aka": ["kashk liquid", "qurut", "kashk-e bademjan whey", "kishk"],
+  "serving_g": 30,
+  "ingredients": [
+    { "food": "Yoghurt, natural, regular fat (~3%)", "g": 1000 },
+    { "food": "Salt, table, non-iodised", "g": 15 } ],
+  "cooked_g": 650,
+  "notes": "the liquid (jarred) kashk used for kashk-e bademjan and ash: fermented yoghurt cooked down, strained and salted to a thick sour cream; jarred labels run about 60-120 kcal, protein 4-14, fat 2.5-9 per 100 g; whey drained in real kashk takes lactose away, so carbs read a little high; dried qurut balls are far more concentrated; serving is two tablespoons" },
+
+{ "dish": "Pomegranate molasses", "cuisine": "Middle Eastern", "aka": ["dibs rumman", "nar eksisi", "pomegranate syrup", "rob-e anar"],
+  "serving_g": 15,
+  "ingredients": [
+    { "food": "Juice, pomegranate, commercial", "g": 1000 },
+    { "food": "Sugar, white, granulated or lump", "g": 50 },
+    { "food": "Juice, lemon", "g": 20 } ],
+  "cooked_g": 300,
+  "notes": "pomegranate juice simmered down to about a third with a little sugar and lemon; serving is a tablespoon" },
+
+{ "dish": "Turkish pepper paste", "cuisine": "Turkish", "aka": ["biber salcasi", "biber salçası", "red pepper paste", "pepper paste"],
+  "serving_g": 15,
+  "ingredients": [
+    { "food": "Capsicum, red, fresh, raw", "g": 1000 },
+    { "food": "Chilli (chili), red, raw", "g": 50, "note": "more for the hot (acı) kind" },
+    { "food": "Salt, table, non-iodised", "g": 30 } ],
+  "cooked_g": 350,
+  "notes": "red peppers puréed, salted and sun-dried or cooked down to about a third; serving is a tablespoon" },
+
+{ "dish": "Za'atar", "cuisine": "Middle Eastern", "aka": ["zaatar", "zahtar", "zatar", "za'atar spice mix"],
+  "serving_g": 5,
+  "ingredients": [
+    { "food": "Thyme, dried, ground", "g": 40 },
+    { "food": "Spices, dried, all types (except chilli & paprika)", "g": 20, "note": "stands in for sumac" },
+    { "food": "Seed, sesame, unsalted", "g": 30, "note": "toasted" },
+    { "food": "Salt, table, non-iodised", "g": 6 } ],
+  "notes": "dry blend of thyme (or wild za'atar), sumac, toasted sesame and salt; mixed with olive oil for manakish, the oil not included here; serving is a heaped teaspoon" },
+
+{ "dish": "Baharat", "cuisine": "Middle Eastern", "aka": ["seven spice", "lebanese seven spices", "sabaa baharat", "arabic spice mix"],
+  "serving_g": 3,
+  "ingredients": [
+    { "food": "Pepper, black, ground", "g": 25 },
+    { "food": "Paprika, dry powder", "g": 20 },
+    { "food": "Cumin (cummin) seed, dried, ground", "g": 15 },
+    { "food": "Coriander seed, dried, ground", "g": 15 },
+    { "food": "Cinnamon, dried, ground", "g": 10 },
+    { "food": "Cloves, dried, ground", "g": 5 },
+    { "food": "Cardamom seed, dried, ground", "g": 5 },
+    { "food": "Nutmeg, dried, ground", "g": 5 } ],
+  "notes": "ground spice blend; serving is a teaspoon" },
+
+{ "dish": "Ras el hanout", "cuisine": "North African", "aka": ["ras al hanout", "ras el hanut", "moroccan spice mix"],
+  "serving_g": 3,
+  "ingredients": [
+    { "food": "Cumin (cummin) seed, dried, ground", "g": 15 },
+    { "food": "Coriander seed, dried, ground", "g": 15 },
+    { "food": "Ginger, dried, ground", "g": 15 },
+    { "food": "Turmeric, dried, ground", "g": 10 },
+    { "food": "Cinnamon, dried, ground", "g": 10 },
+    { "food": "Paprika, dry powder", "g": 10 },
+    { "food": "Pepper, black, ground", "g": 10 },
+    { "food": "Cardamom seed, dried, ground", "g": 5 },
+    { "food": "Nutmeg, dried, ground", "g": 5 },
+    { "food": "Cloves, dried, ground", "g": 3 } ],
+  "notes": "ground Moroccan blend; serving is a teaspoon" },
+
+{ "dish": "Kunafa", "cuisine": "Middle Eastern", "aka": ["knafeh", "kunefe", "kanafeh", "kunafeh", "künefe"],
+  "serving_g": 150,
+  "ingredients": [
+    { "food": "Pastry, filo, commercial, raw", "g": 250, "note": "stands in for kataifi (same flour-and-water dough, shredded)" },
+    { "food": "Ghee, clarified butter", "g": 100 },
+    { "food": "Cheese, mozzarella", "g": 300, "note": "stands in for desalted akkawi or nabulsi" },
+    { "food": "Sugar, white, granulated or lump", "g": 200, "note": "syrup (attar), all soaked in" },
+    { "food": "Water, tap", "g": 100, "note": "syrup water" },
+    { "food": "Juice, lemon", "g": 10 },
+    { "food": "Nut, pistachio, raw, unsalted", "g": 15, "note": "topping" } ],
+  "cooked_g": 860,
+  "notes": "shredded pastry tossed in ghee, layered round a cheese middle, baked and soaked in hot sugar syrup; about 10% lost as steam; serving is one restaurant slice" },
+
+{ "dish": "Mint tea", "cuisine": "North African", "aka": ["atay", "moroccan mint tea", "maghrebi tea", "touareg tea"],
+  "serving_g": 150,
+  "ingredients": [
+    { "food": "Tea, green, plain, without milk", "g": 600, "note": "gunpowder green tea brewed with a bunch of fresh mint (leaves not eaten)" },
+    { "food": "Sugar, white, granulated or lump", "g": 40 } ],
+  "notes": "Moroccan-style pot: green tea and fresh spearmint steeped, sweetened in the pot and poured from height; served sweet; serving is one glass" }
+]

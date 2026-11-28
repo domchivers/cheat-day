@@ -36,6 +36,10 @@ final class CheatPlanCheckTests: XCTestCase {
         XCTAssertTrue(Assistant.sameCooking("Chicken breast, grilled", "Chicken, breast, lean flesh, baked, no added fat"), "only fried food is held to it")
         XCTAssertFalse(Assistant.sameCooking("Chicken wings, fried with batter", "Chicken wings, with skin, fried without fat (oven)"), "fried in name only, and not battered")
         XCTAssertFalse(Assistant.sameCooking("Youtiao, deep fried", "Bread, white, commercially prepared, toasted"), "a fried dough stick isn't toast (28 Nov)")
+        XCTAssertTrue(FoodReference.differentDish("Youtiao, deep fried", "Doughnuts, yeast-leavened, glazed, enriched (includes honey buns)"), "nor a glazed doughnut")
+        XCTAssertFalse(FoodReference.differentDish("Doughnut, glazed", "Doughnuts, yeast-leavened, glazed, enriched (includes honey buns)"))
+        XCTAssertTrue(FoodReference.differentDish("Jellied bean curd in soy broth", "Tofu, soft, prepared with calcium sulfate and magnesium chloride (nigari)"), "half of it is broth")
+        XCTAssertFalse(FoodReference.differentDish("Tofu, soft", "Tofu, soft, prepared with calcium sulfate and magnesium chloride (nigari)"))
         XCTAssertTrue(Assistant.sameCooking("Bacon, fried","Bacon, middle rasher, untrimmed, baked, roasted, fried, grilled or BBQ'd, no added fat"))
     }
 

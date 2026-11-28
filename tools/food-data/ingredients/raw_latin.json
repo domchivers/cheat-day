@@ -1,0 +1,14 @@
+[
+ {"checked":true,"name":"Arepa flour, precooked white corn meal","aka":["harina pan","harina p.a.n.","precooked cornmeal","masarepa","arepa flour"],"basis":"as sold","kcal":350,"p":7.3,"c":73.5,"f":1.8,
+  "source_url":"https://world.openfoodfacts.org/product/7591002000547","source":"Open Food Facts, P.A.N. pre-cooked white corn meal 1 kg (Alimentos Polar), label per 100 g","note":"US retailer labels agree: 110 kcal per 30 g"},
+ {"checked":true,"name":"Cheese, Oaxaca","aka":["oaxaca cheese","quesillo","queso oaxaca","melting cheese"],"basis":"as sold","kcal":317,"p":21.2,"c":3.5,"f":24.7,
+  "source_url":"https://us.openfoodfacts.org/product/0042743013053/oaxaca-queso-part-skim-milk-cheese-melting-cheese-el-mexicano","source":"Open Food Facts, El Mexicano Oaxaca part-skim melting cheese label (90 kcal per 28 g)","note":"per-100 g figures are the label's 28 g serving scaled; rounded label values"},
+ {"checked":true,"name":"Crema, Mexican","aka":["crema","mexican crema","crema mexicana","crema agria","media crema"],"basis":"as sold","kcal":249,"p":2.3,"c":3.7,"f":25,
+  "source_url":"https://world.openfoodfacts.org/product/7501020511468/crema-lala","source":"Open Food Facts, Lala Crema 900 ml (Mexico) label","note":"label basis recorded as 100 ml/100 g; density of crema ~1 so treated as per 100 g. Media crema and crema agria are lighter"},
+ {"checked":true,"name":"Chipotle peppers in adobo sauce","aka":["chipotle in adobo","chipotles en adobo","chipotles"],"basis":"as sold","kcal":66,"p":2.1,"c":14.2,"f":1.6,
+  "source_url":"https://world.openfoodfacts.org/product/0076397004075","source":"Open Food Facts, La Costeña chipotle peppers in adobo sauce 7 oz, label (2 pieces = 30 g)","note":"peppers with their sauce; label carbs are US total carbohydrate incl. 11 g fibre, so 4/4/9 overshoots the 66 kcal"},
+ {"checked":true,"name":"Tajín seasoning, chile lime","aka":["tajin","tajín","tajin clasico","chile lime seasoning","chili lime seasoning"],"basis":"as sold","kcal":190,"p":4,"c":38,"f":2.5,
+  "source_url":"https://world.openfoodfacts.org/product/0633148100013","source":"Open Food Facts, Tajín Clásico with lime 142 g (European label)","note":"mostly salt and chilli; a 1 g shake is ~2 kcal"},
+ {"checked":true,"name":"Achiote paste","aka":["annatto paste","recado rojo","achiote","pasta de achiote"],"basis":"as sold","kcal":174,"p":4.4,"c":34.6,"f":2.1,
+  "source_url":"https://world.openfoodfacts.org/product/0052287000914","source":"Open Food Facts, Chef Merito Achiote Yucateco (Yucatan-style achiote) label, 8 g serving","note":"commercial block paste (annatto, corn flour, spices, vinegar); El Yucateco paste reported at ~185 kcal/100 g by third parties, consistent"}
+]

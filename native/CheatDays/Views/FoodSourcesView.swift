@@ -13,6 +13,10 @@ struct FoodSourcesView: View {
         ("🇩🇰", "Denmark", "The Danish Food Composition Database, Frida version 5.5, November 2025, National Food Institute, Technical University of Denmark. doi.org/10.11583/DTU.29500682. CC BY 4.0."),
         ("🇸🇪", "Sweden", "Swedish Food Agency (Livsmedelsverket), Food composition database. CC BY 4.0."),
         ("🇨🇭", "Switzerland", "Swiss Food Composition Database 7.1, Federal Food Safety and Veterinary Office FSVO, naehrwertdaten.ch."),
+        // Taiwan's licence is void without this credit, in its own form: 提供機關／單位 [年份] [開放資料釋出名稱與版本號]
+        ("🇹🇼", "Taiwan", "衛生福利部食品藥物管理署 2026 食品營養成分資料集（2026-10-05 版）. Food and Drug Administration, Ministry of Health and Welfare, Taiwan: Food Nutrition Composition Dataset, version of 5 Oct 2026, data.gov.tw. Open Government Data License, version 1.0. A selection, with English names added by Cheat Days."),
+        // Japan's terms ask for the source and a note that it was edited, and nothing that implies the government made the result
+        ("🇯🇵", "Japan", "日本食品標準成分表（八訂）増補2023年から引用（文部科学省）. Values from the Standard Tables of Food Composition in Japan 2020 (Eighth Revised Edition), Amended 2023, Ministry of Education, Culture, Sports, Science and Technology (MEXT). Edited by Cheat Days: a selection of foods with English names added."),
     ]
 
     var body: some View {
@@ -26,7 +30,7 @@ struct FoodSourcesView: View {
                     .padding(.vertical, 2)
                 }
             } header: { Text("Estimates are checked against these official food tables. Your own country's comes first.").textCase(nil) }
-              footer: { Text("Barcodes: Open Food Facts, Open Database Licence. More countries are added as their tables become available.") }
+              footer: { Text("Dishes none of these tables has (curries, pho, nasi lemak, jollof rice and others) are worked out by Cheat Days from typical recipes, using the tables above. A few ingredients none of them has (gochujang, candlenut and others) come from USDA FoodData Central, published studies or product labels. Barcodes: Open Food Facts, Open Database Licence. More countries are added as their tables become available.") }
         }
         .navigationTitle("Food data sources")
         .navigationBarTitleDisplayMode(.inline)

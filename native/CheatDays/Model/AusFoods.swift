@@ -16,6 +16,19 @@ final class FoodTable {
     /// Other countries' official tables (Germany, France, Norway, Denmark, Sweden, Switzerland; open licences, credited in Food data
     /// sources), last before a part is left as the AI's guess: moussaka, quiche Lorraine, kebab meat, rösti.
     static let world = FoodTable(foods: "world-foods", aliases: "world-aliases", main: "", src: "world", strict: true)
+    /// Taiwan's and Japan's official tables, for the dishes and foods the Western ones don't have (28 Nov: a youtiao was
+    /// counted as toast, then a glazed doughnut; Taiwan measured it at 548 kcal a 100 g). Only their prepared foods,
+    /// snacks, drinks, soy foods, noodles, rice products and sauces, under English names (tools/food-data/build-asia-db.js),
+    /// right after the country's own table. Credited in Food data sources as their licences ask.
+    static let taiwan = FoodTable(foods: "tw-foods", aliases: "tw-aliases", main: "", src: "tfda", strict: true)
+    static let japan = FoodTable(foods: "jp-foods", aliases: "jp-aliases", main: "", src: "mext", strict: true)
+    /// Our own dishes (28 Nov): 155 everyday dishes no usable table has (curries, pho, nasi lemak, jollof, bibimbap,
+    /// jianbing…), each worked out from a typical recipe over the tables above (tools/food-data/recipes, dish-calc.js).
+    /// Before the US dish table, whose Asian dishes are American versions (its bibimbap is 76 kcal a 100 g).
+    static let built = FoodTable(foods: "built-foods", aliases: "built-aliases", main: "", src: "built", strict: true)
+    /// World ingredients no table had (28 Nov): gochujang, candlenut, kecap manis, egusi… One published measured value each
+    /// (USDA FoodData Central, studies, product labels) or, for mixed ones like za'atar, worked out from a recipe.
+    static let ingredients = FoodTable(foods: "ing-foods", aliases: "ing-aliases", main: "", src: "ing", strict: true)
 
     /// The table for where they live (the Settings country).
     static var current: FoodTable { testing ?? table(for: Region.current) }

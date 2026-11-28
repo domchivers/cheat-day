@@ -1,0 +1,665 @@
+[
+ {
+  "name": "Nasi lemak, with fried chicken",
+  "aka": [
+   "nasi lemak ayam goreng"
+  ]
+ },
+ {
+  "name": "Nasi lemak, with rendang",
+  "aka": [
+   "nasi lemak rendang"
+  ]
+ },
+ {
+  "name": "Hainanese chicken rice, roasted",
+  "aka": [
+   "roast chicken rice"
+  ]
+ },
+ {
+  "name": "Laksa, Penang assam",
+  "aka": [
+   "assam laksa"
+  ]
+ },
+ {
+  "name": "Laksa, Sarawak",
+  "aka": [
+   "sarawak laksa"
+  ]
+ },
+ {
+  "name": "Laksa, Singapore katong",
+  "aka": [
+   "katong laksa"
+  ]
+ },
+ {
+  "name": "Roti canai, with dhal",
+  "aka": [
+   "roti prata with curry",
+   "roti kosong"
+  ]
+ },
+ {
+  "name": "Roti telur",
+  "aka": [
+   "egg prata",
+   "prata telur"
+  ]
+ },
+ {
+  "name": "Murtabak, chicken",
+  "aka": [
+   "martabak telur",
+   "murtabak ayam"
+  ]
+ },
+ {
+  "name": "Murtabak, mutton",
+  "aka": [
+   "murtabak kambing"
+  ]
+ },
+ {
+  "name": "Roti tissue",
+  "aka": [
+   "roti tisu"
+  ]
+ },
+ {
+  "name": "Thosai",
+  "aka": [
+   "tosai mamak"
+  ]
+ },
+ {
+  "name": "Nasi kandar",
+  "aka": [
+   "penang nasi kandar"
+  ]
+ },
+ {
+  "name": "Maggi goreng",
+  "aka": [
+   "fried maggi noodles"
+  ]
+ },
+ {
+  "name": "Mee goreng, Indonesian style",
+  "aka": [
+   "mi goreng jawa"
+  ]
+ },
+ {
+  "name": "Mee rebus",
+  "aka": [
+   "mi rebus"
+  ]
+ },
+ {
+  "name": "Mee siam",
+  "aka": [
+   "mee siam goreng"
+  ]
+ },
+ {
+  "name": "Mee bandung",
+  "aka": [
+   "mee bandung muar"
+  ]
+ },
+ {
+  "name": "Mee hoon soup",
+  "aka": [
+   "bee hoon soup"
+  ]
+ },
+ {
+  "name": "Bihun goreng",
+  "aka": [
+   "fried bee hoon",
+   "mee hoon goreng"
+  ]
+ },
+ {
+  "name": "Kuey teow soup",
+  "aka": [
+   "kway teow soup"
+  ]
+ },
+ {
+  "name": "Hokkien mee, Singapore",
+  "aka": [
+   "hokkien prawn mee",
+   "fried hokkien mee"
+  ]
+ },
+ {
+  "name": "Hokkien mee, KL",
+  "aka": [
+   "hokkien char mee",
+   "dai lok mee"
+  ]
+ },
+ {
+  "name": "Prawn mee soup",
+  "aka": [
+   "hae mee",
+   "penang hokkien mee soup"
+  ]
+ },
+ {
+  "name": "Wonton mee, dry",
+  "aka": [
+   "wantan mee",
+   "kon loh mee"
+  ]
+ },
+ {
+  "name": "Pan mee",
+  "aka": [
+   "ban mian",
+   "mee hoon kueh"
+  ]
+ },
+ {
+  "name": "Bak chor mee",
+  "aka": [
+   "minced pork noodles",
+   "mee pok tah"
+  ]
+ },
+ {
+  "name": "Fishball noodles",
+  "aka": [
+   "fishball mee pok"
+  ]
+ },
+ {
+  "name": "Lor mee",
+  "aka": [
+   "lor mee"
+  ]
+ },
+ {
+  "name": "Kolo mee",
+  "aka": [
+   "kampua mee"
+  ]
+ },
+ {
+  "name": "Curry mee",
+  "aka": [
+   "curry laksa noodles",
+   "curry mee"
+  ]
+ },
+ {
+  "name": "Hor fun, wat tan",
+  "aka": [
+   "wat dan hor",
+   "kuey teow in egg gravy"
+  ]
+ },
+ {
+  "name": "Yong tau foo",
+  "aka": [
+   "yong tau fu"
+  ]
+ },
+ {
+  "name": "Bak kut teh",
+  "aka": [
+   "pork rib soup"
+  ]
+ },
+ {
+  "name": "Fish soup, sliced fish",
+  "aka": [
+   "fish bee hoon soup",
+   "sliced fish soup"
+  ]
+ },
+ {
+  "name": "Chilli crab",
+  "aka": [
+   "singapore chilli crab"
+  ]
+ },
+ {
+  "name": "Black pepper crab",
+  "aka": [
+   "pepper crab"
+  ]
+ },
+ {
+  "name": "Carrot cake, fried, black",
+  "aka": [
+   "chai tow kway black",
+   "fried radish cake"
+  ]
+ },
+ {
+  "name": "Carrot cake, fried, white",
+  "aka": [
+   "chai tow kway white"
+  ]
+ },
+ {
+  "name": "Chwee kueh",
+  "aka": [
+   "steamed rice cake with chai poh"
+  ]
+ },
+ {
+  "name": "Oyster omelette",
+  "aka": [
+   "orh luak",
+   "or chien"
+  ]
+ },
+ {
+  "name": "Popiah",
+  "aka": [
+   "fresh spring roll, nyonya"
+  ]
+ },
+ {
+  "name": "Rojak, fruit",
+  "aka": [
+   "rojak buah",
+   "singapore rojak"
+  ]
+ },
+ {
+  "name": "Rojak, Indian",
+  "aka": [
+   "rojak mamak",
+   "pasembur"
+  ]
+ },
+ {
+  "name": "Satay, beef",
+  "aka": [
+   "sate sapi",
+   "satay daging"
+  ]
+ },
+ {
+  "name": "Satay, mutton",
+  "aka": [
+   "sate kambing"
+  ]
+ },
+ {
+  "name": "Sate ayam Madura",
+  "aka": [
+   "sate madura"
+  ]
+ },
+ {
+  "name": "Sate padang",
+  "aka": [
+   "satay padang"
+  ]
+ },
+ {
+  "name": "Ayam penyet",
+  "aka": [
+   "smashed fried chicken"
+  ]
+ },
+ {
+  "name": "Ayam goreng berempah",
+  "aka": [
+   "malay spiced fried chicken"
+  ]
+ },
+ {
+  "name": "Ayam bakar",
+  "aka": [
+   "indonesian grilled chicken"
+  ]
+ },
+ {
+  "name": "Ayam pop",
+  "aka": [
+   "padang ayam pop"
+  ]
+ },
+ {
+  "name": "Rendang, chicken",
+  "aka": [
+   "rendang ayam"
+  ]
+ },
+ {
+  "name": "Gulai kambing",
+  "aka": [
+   "mutton gulai"
+  ]
+ },
+ {
+  "name": "Gulai ikan",
+  "aka": [
+   "fish curry padang"
+  ]
+ },
+ {
+  "name": "Curry chicken, Malaysian",
+  "aka": [
+   "kari ayam"
+  ]
+ },
+ {
+  "name": "Fish head curry",
+  "aka": [
+   "kari kepala ikan"
+  ]
+ },
+ {
+  "name": "Ayam masak merah",
+  "aka": [
+   "chicken in red chilli sauce"
+  ]
+ },
+ {
+  "name": "Nasi padang, mixed plate",
+  "aka": [
+   "nasi campur padang"
+  ]
+ },
+ {
+  "name": "Nasi campur",
+  "aka": [
+   "economy rice",
+   "cai fan",
+   "nasi kukus"
+  ]
+ },
+ {
+  "name": "Nasi uduk",
+  "aka": [
+   "betawi coconut rice"
+  ]
+ },
+ {
+  "name": "Nasi kerabu",
+  "aka": [
+   "blue rice salad"
+  ]
+ },
+ {
+  "name": "Nasi kuning",
+  "aka": [
+   "yellow rice"
+  ]
+ },
+ {
+  "name": "Nasi briyani, chicken",
+  "aka": [
+   "nasi briyani ayam",
+   "dum biryani malaysian"
+  ]
+ },
+ {
+  "name": "Nasi goreng kampung",
+  "aka": [
+   "village fried rice"
+  ]
+ },
+ {
+  "name": "Nasi goreng pattaya",
+  "aka": [
+   "omelette fried rice"
+  ]
+ },
+ {
+  "name": "Nasi dagang",
+  "aka": []
+ },
+ {
+  "name": "Bakso",
+  "aka": [
+   "meatball soup",
+   "bakso sapi"
+  ]
+ },
+ {
+  "name": "Mie ayam",
+  "aka": [
+   "chicken noodles indonesian"
+  ]
+ },
+ {
+  "name": "Soto betawi",
+  "aka": [
+   "beef coconut soup"
+  ]
+ },
+ {
+  "name": "Rawon",
+  "aka": [
+   "black beef soup"
+  ]
+ },
+ {
+  "name": "Sop buntut",
+  "aka": [
+   "oxtail soup"
+  ]
+ },
+ {
+  "name": "Bubur ayam",
+  "aka": [
+   "chicken porridge indonesian"
+  ]
+ },
+ {
+  "name": "Gudeg",
+  "aka": [
+   "jackfruit stew"
+  ]
+ },
+ {
+  "name": "Ketoprak",
+  "aka": []
+ },
+ {
+  "name": "Siomay Bandung",
+  "aka": [
+   "siomay"
+  ]
+ },
+ {
+  "name": "Martabak manis",
+  "aka": [
+   "terang bulan",
+   "apam balik"
+  ]
+ },
+ {
+  "name": "Pisang goreng",
+  "aka": [
+   "banana fritters",
+   "goreng pisang"
+  ]
+ },
+ {
+  "name": "Tahu goreng",
+  "aka": [
+   "fried tofu with peanut sauce",
+   "tahu bakar"
+  ]
+ },
+ {
+  "name": "Tempe goreng",
+  "aka": [
+   "fried tempeh",
+   "tempe mendoan"
+  ]
+ },
+ {
+  "name": "Sambal goreng tempe",
+  "aka": [
+   "kering tempe"
+  ]
+ },
+ {
+  "name": "Kangkung belacan",
+  "aka": [
+   "sambal kangkung",
+   "stir-fried water spinach"
+  ]
+ },
+ {
+  "name": "Sayur lodeh",
+  "aka": [
+   "vegetable coconut curry"
+  ]
+ },
+ {
+  "name": "Otak-otak",
+  "aka": [
+   "otah"
+  ]
+ },
+ {
+  "name": "Curry puff",
+  "aka": [
+   "karipap",
+   "epok-epok"
+  ]
+ },
+ {
+  "name": "Keropok lekor",
+  "aka": [
+   "fish crackers terengganu"
+  ]
+ },
+ {
+  "name": "Lemang",
+  "aka": []
+ },
+ {
+  "name": "Kuih lapis",
+  "aka": [
+   "kue lapis"
+  ]
+ },
+ {
+  "name": "Onde-onde",
+  "aka": [
+   "ondeh ondeh",
+   "klepon"
+  ]
+ },
+ {
+  "name": "Cendol",
+  "aka": [
+   "chendol",
+   "es cendol"
+  ]
+ },
+ {
+  "name": "Ais kacang",
+  "aka": [
+   "ABC",
+   "ice kacang"
+  ]
+ },
+ {
+  "name": "Bubur cha cha",
+  "aka": [
+   "bubur chacha"
+  ]
+ },
+ {
+  "name": "Pulut inti",
+  "aka": []
+ },
+ {
+  "name": "Kopi C",
+  "aka": [
+   "kopi with evaporated milk"
+  ]
+ },
+ {
+  "name": "Kopi O",
+  "aka": [
+   "black coffee with sugar"
+  ]
+ },
+ {
+  "name": "Milo dinosaur",
+  "aka": []
+ },
+ {
+  "name": "Bandung drink",
+  "aka": [
+   "air bandung",
+   "rose milk"
+  ]
+ },
+ {
+  "name": "Es teh manis",
+  "aka": [
+   "sweet iced tea"
+  ]
+ },
+ {
+  "name": "Half-boiled eggs with kaya toast set",
+  "aka": [
+   "kopitiam breakfast set"
+  ]
+ },
+ {
+  "name": "Ayam pansuh",
+  "aka": []
+ },
+ {
+  "name": "Chicken curry kapitan",
+  "aka": [
+   "kapitan curry"
+  ]
+ },
+ {
+  "name": "Babi pongteh",
+  "aka": [
+   "ayam pongteh"
+  ]
+ },
+ {
+  "name": "Nyonya kuih talam",
+  "aka": [
+   "kuih talam"
+  ]
+ },
+ {
+  "name": "Ikan bakar",
+  "aka": [
+   "ikan panggang",
+   "grilled fish sambal"
+  ]
+ },
+ {
+  "name": "Sambal udang",
+  "aka": [
+   "prawn sambal"
+  ]
+ },
+ {
+  "name": "Telur balado",
+  "aka": [
+   "egg sambal"
+  ]
+ },
+ {
+  "name": "Lontong sayur",
+  "aka": [
+   "lontong with vegetable curry"
+  ]
+ }
+]

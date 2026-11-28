@@ -1,0 +1,55 @@
+[
+{ "name": "Fonio, raw", "aka": ["fonio", "acha", "hungry rice", "fonio grain"], "basis": "dried", "checked": true,
+  "kcal": 377, "p": 7.2, "c": 81.3, "f": 1.7,
+  "source_url": "https://fdc.nal.usda.gov/food-details/2710829/nutrients",
+  "source": "USDA FoodData Central, Foundation Foods, 'Fonio, grain, dry, raw' (FDC 2710829)",
+  "note": "checked 28 Nov against FDC itself (fdc.nal.usda.gov/portal-data/external/2710829): water 9.37, protein 7.17, fat 1.69, carbohydrate by difference 81.3, fibre 2.2, energy 377 kcal (Atwater specific; 369 general)" },
+
+{ "name": "Fufu flour, instant", "aka": ["fufu flour", "fufu powder", "plantain fufu flour", "instant fufu"], "basis": "as sold", "checked": true,
+  "kcal": 329, "p": 5, "c": 77, "f": 0.3,
+  "source_url": "https://world.openfoodfacts.org/product/5060303360909/instant-plantain-fufu-flour-heritage-afrika",
+  "source": "Open Food Facts, Heritage Afrika Instant Plantain Fufu Flour 700 g (label)",
+  "note": "dry flour before mixing with water; like most UK/EU instant fufu it is mainly potato granules with cassava and some plantain" },
+
+{ "name": "Bambara groundnut, dried", "aka": ["bambara groundnut", "bambara nut", "okpa", "jugo beans", "njugu mawe", "vigna subterranea"], "basis": "dried", "checked": true,
+  "kcal": 319, "p": 18.8, "c": 52.6, "f": 1.4,
+  "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4613261",
+  "source": "Yao et al. 2015, Int J Mol Sci 16(9):21428, Bambara groundnut Ci12 seeds, g/100 g fresh weight",
+  "note": "carbohydrate is starch 50.2 + sugars 2.4 (available); fibre 10.3 g; moisture 11.7%; energy not reported, worked out 4/9/4 plus 2 kcal/g fibre" },
+
+{ "name": "Ogbono, ground", "aka": ["ogbono", "dika nut", "bush mango seed", "apon", "irvingia"], "basis": "as sold", "checked": true,
+  "kcal": 622, "p": 10.4, "c": 17.3, "f": 56.4,
+  "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4534158",
+  "source": "Bamidele, Ojedokun & Fasogbon 2015, Food Sci Nutr 3(4):313, 100% dika nut (ogbono) powder",
+  "note": "non-defatted kernel powder; moisture 6.2%, crude fibre 1.5%, carbohydrate by difference; energy not reported, worked out 4/9/4 plus 2 kcal/g fibre" },
+
+{ "name": "Iru, dried", "aka": ["iru", "dawadawa", "locust bean", "fermented locust bean", "soumbala", "netetou"], "basis": "dried", "checked": true,
+  "kcal": 460, "p": 32.4, "c": 21.4, "f": 25.1,
+  "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC5217894",
+  "source": "Ogunyinka et al. 2016, Food Sci Nutr 5(1):139, fermented Parkia biglobosa seed (Table 1)",
+  "note": "fermented seed at 7.3% moisture (dried iru); fibre 9.5%; the paper's '470.5 kJ' energy is inconsistent with its own proximates, so energy worked out 4/9/4 plus 2 kcal/g fibre; wet iru sold in markets is lighter per gram" },
+
+{ "name": "Garden egg, raw", "aka": ["garden egg", "african eggplant", "bitter tomato", "nyanya chungu", "solanum aethiopicum"], "basis": "raw", "checked": true,
+  "kcal": 36, "p": 2.2, "c": 4.1, "f": 0.5,
+  "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11644213/",
+  "source": "Chinedu et al. 2011, Res J Chem Sci 1(3), 'Proximate and phytochemical analyses of Solanum aethiopicum L. and Solanum macrocarpon L. fruits', fresh fruit per 100 g, as tabulated (Table 1, fruit column) in the 2024 Nutrients review PMC11644213",
+  "note": "moisture 89.3 g, crude fibre 3.0 g, carbohydrate by difference; energy not reported, worked out 4/9/4 plus 2 kcal/g fibre; original PDF (core.ac.uk/download/12356262.pdf) blocks fetches; checked 28 Nov against the review's Table 1: moisture 89.27, protein 2.24, fat 0.52, fibre 2.96, ash 0.87, carbohydrate 4.14" },
+
+{ "name": "Tiger nuts, dried", "aka": ["tiger nuts", "tigernuts", "aya", "chufa", "atadwe"], "basis": "as sold", "checked": true,
+  "kcal": 461, "p": 4.2, "c": 52, "f": 24,
+  "source_url": "https://www.koro.com/ie/shaved-tiger-nuts-1kg",
+  "source": "KoRo shaved tiger nuts 1 kg, manufacturer nutrition table (100% tiger nuts)",
+  "note": "fibre 12 g, sugars 18 g; dried tubers as sold" },
+
+{ "name": "Malt drink, Maltina", "aka": ["malt drink", "malta", "maltina", "non-alcoholic malt"], "basis": "as sold", "checked": true,
+  "kcal": 59, "p": 0.2, "c": 14.4, "f": 0.1,
+  "source_url": "https://world.openfoodfacts.org/product/5025866001096/maltina",
+  "source": "Open Food Facts, Maltina 33 cl (label), per 100 ml",
+  "note": "per 100 ml; water, sucrose, sorghum, malted barley, caramel" },
+
+{ "name": "Grains of Selim, dried", "aka": ["grains of selim", "uda", "negro pepper", "kani pepper", "hwentia", "xylopia aethiopica"], "basis": "dried", "checked": true,
+  "kcal": 429, "p": 6.9, "c": 27, "f": 29,
+  "source_url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8276704/",
+  "source": "Fategbe, Avwioroko & Ibukun 2021, Prev Nutr Food Sci 26(2):219, Xylopia aethiopica whole fruit",
+  "note": "paper's ash+fibre+fat+protein+carbohydrate add to 100% without the 11.33% moisture, so read as dry matter and scaled to as sold (x0.887); fibre 16.3 g; energy worked out 4/9/4 plus 2 kcal/g fibre; other studies report lower fat (10-22%), so this is the high end; used by the gram" }
+]

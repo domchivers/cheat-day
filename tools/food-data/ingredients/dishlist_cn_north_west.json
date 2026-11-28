@@ -1,0 +1,647 @@
+[
+ {
+  "name": "Peking roast duck, sliced",
+  "aka": [
+   "Beijing kaoya",
+   "roast duck"
+  ]
+ },
+ {
+  "name": "Jiaozi, lamb and carrot, boiled",
+  "aka": [
+   "yangrou jiaozi",
+   "lamb dumplings"
+  ]
+ },
+ {
+  "name": "Douzhi",
+  "aka": [
+   "fermented mung bean milk",
+   "Beijing douzhir"
+  ]
+ },
+ {
+  "name": "Jiaoquan",
+  "aka": [
+   "fried dough rings",
+   "jiao quanr"
+  ]
+ },
+ {
+  "name": "Xianbing, pork",
+  "aka": [
+   "meat pie",
+   "pan-fried meat pie",
+   "xian bing"
+  ]
+ },
+ {
+  "name": "Luzhu huoshao",
+  "aka": [
+   "lu zhu",
+   "Beijing offal stew with bread"
+  ]
+ },
+ {
+  "name": "Chao gan",
+  "aka": [
+   "fried liver stew",
+   "Beijing chaogan"
+  ]
+ },
+ {
+  "name": "Baodu",
+  "aka": [
+   "quick-boiled tripe",
+   "bao du"
+  ]
+ },
+ {
+  "name": "Millet congee",
+  "aka": [
+   "xiaomi zhou",
+   "millet porridge"
+  ]
+ },
+ {
+  "name": "Tofu pudding, savoury",
+  "aka": [
+   "doufu nao",
+   "tofu brain"
+  ]
+ },
+ {
+  "name": "Lamb hotpot, instant-boiled",
+  "aka": [
+   "shuan yangrou",
+   "Beijing copper hotpot"
+  ]
+ },
+ {
+  "name": "Jingjiang rousi",
+  "aka": [
+   "shredded pork in sweet bean sauce",
+   "Beijing shredded pork"
+  ]
+ },
+ {
+  "name": "Zha guan chang",
+  "aka": [
+   "fried starch sausage"
+  ]
+ },
+ {
+  "name": "Tanghulu",
+  "aka": [
+   "candied hawthorn",
+   "bing tanghulu"
+  ]
+ },
+ {
+  "name": "Lüdagunr",
+  "aka": [
+   "rolling donkey",
+   "glutinous rice roll with bean flour"
+  ]
+ },
+ {
+  "name": "Wandouhuang",
+  "aka": [
+   "pea flour cake"
+  ]
+ },
+ {
+  "name": "Aiwowo",
+  "aka": [
+   "glutinous rice cake with filling"
+  ]
+ },
+ {
+  "name": "Guo bao rou",
+  "aka": [
+   "guobaorou",
+   "Dongbei sweet and sour pork"
+  ]
+ },
+ {
+  "name": "Xiaoji dun mogu",
+  "aka": [
+   "chicken stewed with mushrooms",
+   "Dongbei chicken and mushroom stew"
+  ]
+ },
+ {
+  "name": "Suancai bai rou",
+  "aka": [
+   "pickled cabbage with pork belly",
+   "suan cai"
+  ]
+ },
+ {
+  "name": "Zhu rou dun fentiao",
+  "aka": [
+   "pork stewed with glass noodles"
+  ]
+ },
+ {
+  "name": "Di guo dun",
+  "aka": [
+   "iron pot stew"
+  ]
+ },
+ {
+  "name": "Dongbei big cold dish",
+  "aka": [
+   "dongbei da la pi",
+   "la pi salad"
+  ]
+ },
+ {
+  "name": "Hongchang",
+  "aka": [
+   "Harbin red sausage"
+  ]
+ },
+ {
+  "name": "Kao lengmian",
+  "aka": [
+   "grilled cold noodles",
+   "roasted cold noodle"
+  ]
+ },
+ {
+  "name": "Jiachang dofu",
+  "aka": [
+   "home-style tofu"
+  ]
+ },
+ {
+  "name": "Tudou si, sour and spicy",
+  "aka": [
+   "suanla tudou si",
+   "shredded potato stir-fry"
+  ]
+ },
+ {
+  "name": "Jiu zhuan da chang",
+  "aka": [
+   "nine-turn intestines",
+   "braised pork intestines"
+  ]
+ },
+ {
+  "name": "Shandong braised chicken rice",
+  "aka": [
+   "huangmen ji mifan",
+   "huang men ji",
+   "braised chicken with rice"
+  ]
+ },
+ {
+  "name": "Bazi rou",
+  "aka": [
+   "Jinan braised pork belly"
+  ]
+ },
+ {
+  "name": "Jianbing, Shandong rolled",
+  "aka": [
+   "Shandong pancake roll with scallion"
+  ]
+ },
+ {
+  "name": "Da pan ji",
+  "aka": [
+   "big plate chicken",
+   "Xinjiang chicken and potato stew"
+  ]
+ },
+ {
+  "name": "Polo, lamb",
+  "aka": [
+   "Xinjiang pilaf",
+   "zhua fan",
+   "plov",
+   "pilaf with carrots"
+  ]
+ },
+ {
+  "name": "Laghman",
+  "aka": [
+   "ban mian",
+   "Xinjiang pulled noodles",
+   "lagman"
+  ]
+ },
+ {
+  "name": "Samsa, lamb",
+  "aka": [
+   "kao baozi",
+   "Xinjiang baked bun"
+  ]
+ },
+ {
+  "name": "Nang",
+  "aka": [
+   "naan, Xinjiang",
+   "Uyghur flatbread"
+  ]
+ },
+ {
+  "name": "Nang bao rou",
+  "aka": [
+   "lamb with nang"
+  ]
+ },
+ {
+  "name": "Suoman",
+  "aka": [
+   "chao mian pian",
+   "fried noodle pieces"
+  ]
+ },
+ {
+  "name": "Hand-grabbed lamb",
+  "aka": [
+   "shou zhua yangrou",
+   "boiled lamb"
+  ]
+ },
+ {
+  "name": "Yangrou paomo",
+  "aka": [
+   "lamb soup with bread",
+   "Xi'an pao mo"
+  ]
+ },
+ {
+  "name": "Hulu tang",
+  "aka": [
+   "hu la tang",
+   "peppery soup, Xi'an"
+  ]
+ },
+ {
+  "name": "Saozi mian",
+  "aka": [
+   "qishan noodles",
+   "minced pork noodle soup"
+  ]
+ },
+ {
+  "name": "Roujiamo, lamb",
+  "aka": [
+   "yangrou jiamo"
+  ]
+ },
+ {
+  "name": "Jiamo, cured beef",
+  "aka": [
+   "la niurou jiamo"
+  ]
+ },
+ {
+  "name": "Gun gun noodle with tomato egg",
+  "aka": [
+   "xi hong shi jidan mian",
+   "tomato egg noodles"
+  ]
+ },
+ {
+  "name": "Youmian kaolaolao",
+  "aka": [
+   "oat noodle rolls",
+   "you mian"
+  ]
+ },
+ {
+  "name": "Lamb noodle soup",
+  "aka": [
+   "yangrou mian"
+  ]
+ },
+ {
+  "name": "Beef noodles, dry, Lanzhou",
+  "aka": [
+   "lanzhou ban mian"
+  ]
+ },
+ {
+  "name": "Jiaozi soup, sour",
+  "aka": [
+   "suan tang jiaozi",
+   "sour soup dumplings"
+  ]
+ },
+ {
+  "name": "Tomato egg soup",
+  "aka": [
+   "xihongshi dan tang"
+  ]
+ },
+ {
+  "name": "Mianpian soup",
+  "aka": [
+   "noodle pieces soup",
+   "geda tang",
+   "pimple soup"
+  ]
+ },
+ {
+  "name": "Lamb soup, Shanxian",
+  "aka": [
+   "yangrou tang",
+   "mutton soup"
+  ]
+ },
+ {
+  "name": "Babao zhou",
+  "aka": [
+   "eight treasure congee",
+   "laba porridge"
+  ]
+ },
+ {
+  "name": "Chinese yam with blueberry sauce",
+  "aka": [
+   "lanmei shanyao"
+  ]
+ },
+ {
+  "name": "Suannai, Beijing yoghurt",
+  "aka": [
+   "lao Beijing suannai",
+   "Beijing set yoghurt"
+  ]
+ },
+ {
+  "name": "Kvass, Harbin",
+  "aka": [
+   "kewasi",
+   "Harbin kvass"
+  ]
+ },
+ {
+  "name": "Milk tea, Xinjiang salted",
+  "aka": [
+   "nai cha",
+   "salted milk tea"
+  ]
+ },
+ {
+  "name": "Jiaoyan paigu",
+  "aka": [
+   "salt and pepper pork ribs"
+  ]
+ },
+ {
+  "name": "Cumin beef",
+  "aka": [
+   "ziran niurou"
+  ]
+ },
+ {
+  "name": "Kao mantou pian",
+  "aka": [
+   "grilled bun slices",
+   "toasted mantou"
+  ]
+ },
+ {
+  "name": "Lamb kidney skewers",
+  "aka": [
+   "yang yaozi"
+  ]
+ },
+ {
+  "name": "Squid skewers, grilled",
+  "aka": [
+   "tie ban you yu",
+   "kao youyu"
+  ]
+ },
+ {
+  "name": "Sesame paste noodles, Beijing",
+  "aka": [
+   "ma jiang mian"
+  ]
+ },
+ {
+  "name": "Jiaozi, pork and fennel, boiled",
+  "aka": [
+   "huixiang jiaozi",
+   "fennel dumplings"
+  ]
+ },
+ {
+  "name": "Jiaozi, pork and sauerkraut, boiled",
+  "aka": [
+   "suancai jiaozi",
+   "pickled cabbage dumplings"
+  ]
+ },
+ {
+  "name": "Jiaozi, beef and onion, boiled",
+  "aka": [
+   "niurou yangcong jiaozi",
+   "beef dumplings"
+  ]
+ },
+ {
+  "name": "Cong bao yangrou",
+  "aka": [
+   "scallion-fried lamb",
+   "lamb with scallions"
+  ]
+ },
+ {
+  "name": "Tang cu liji",
+  "aka": [
+   "sweet and sour pork tenderloin",
+   "tangcu liji"
+  ]
+ },
+ {
+  "name": "Hong shao qiezi",
+  "aka": [
+   "braised eggplant",
+   "shao qiezi"
+  ]
+ },
+ {
+  "name": "Jiang niurou",
+  "aka": [
+   "soy-braised beef shank",
+   "cold braised beef"
+  ]
+ },
+ {
+  "name": "Laohu cai",
+  "aka": [
+   "tiger salad",
+   "Dongbei tiger salad"
+  ]
+ },
+ {
+  "name": "Wood ear salad",
+  "aka": [
+   "liang ban mu'er",
+   "cold wood ear fungus"
+  ]
+ },
+ {
+  "name": "Dongbei luan dun",
+  "aka": [
+   "Dongbei mixed vegetable stew"
+  ]
+ },
+ {
+  "name": "Fen zheng rou",
+  "aka": [
+   "rice flour steamed pork",
+   "Xi'an steamed pork"
+  ]
+ },
+ {
+  "name": "Guan tang bao, Xi'an",
+  "aka": [
+   "soup buns, Xi'an",
+   "guantang baozi"
+  ]
+ },
+ {
+  "name": "Jingao",
+  "aka": [
+   "Xi'an date and sticky rice cake",
+   "jing gao"
+  ]
+ },
+ {
+  "name": "Huimian, lamb",
+  "aka": [
+   "Henan braised noodles",
+   "hui mian"
+  ]
+ },
+ {
+  "name": "Mao erduo",
+  "aka": [
+   "cat ear noodles",
+   "maoerduo"
+  ]
+ },
+ {
+  "name": "Guo you rou",
+  "aka": [
+   "Shanxi stir-fried pork"
+  ]
+ },
+ {
+  "name": "Jiang shui mian",
+  "aka": [
+   "Gansu sour water noodles",
+   "jiangshui mian"
+  ]
+ },
+ {
+  "name": "Ba bao cha",
+  "aka": [
+   "eight treasure tea",
+   "sanpaotai"
+  ]
+ },
+ {
+  "name": "Shaomai, lamb",
+  "aka": [
+   "Hohhot shaomai",
+   "yangrou shaomai"
+  ]
+ },
+ {
+  "name": "Manta, lamb",
+  "aka": [
+   "Uyghur steamed dumplings",
+   "manti"
+  ]
+ },
+ {
+  "name": "Chuchure",
+  "aka": [
+   "Uyghur dumpling soup"
+  ]
+ },
+ {
+  "name": "Xinjiang fried noodles",
+  "aka": [
+   "Xinjiang chao mian",
+   "lagman fried"
+  ]
+ },
+ {
+  "name": "Erduoyan zhagao",
+  "aka": [
+   "fried sticky rice cake, Tianjin"
+  ]
+ },
+ {
+  "name": "Mahua",
+  "aka": [
+   "fried dough twist",
+   "Tianjin mahua"
+  ]
+ },
+ {
+  "name": "Lürou huoshao",
+  "aka": [
+   "donkey meat burger",
+   "lü rou huo shao"
+  ]
+ },
+ {
+  "name": "La chao gali",
+  "aka": [
+   "spicy stir-fried clams",
+   "Qingdao clams"
+  ]
+ },
+ {
+  "name": "Jidan guan bing",
+  "aka": [
+   "egg-filled pancake",
+   "egg stuffed pancake"
+  ]
+ },
+ {
+  "name": "Shou zhua bing",
+  "aka": [
+   "hand-grabbed pancake",
+   "flaky pancake"
+  ]
+ },
+ {
+  "name": "Mung bean cake",
+  "aka": [
+   "lüdou gao"
+  ]
+ },
+ {
+  "name": "Roast sweet potato",
+  "aka": [
+   "kao hongshu",
+   "kao digua"
+  ]
+ },
+ {
+  "name": "Chicken wings, grilled, Chinese barbecue",
+  "aka": [
+   "kao jichi"
+  ]
+ },
+ {
+  "name": "Knife-cut noodles, braised beef",
+  "aka": [
+   "dao xiao mian",
+   "Shanxi knife-shaved noodles"
+  ]
+ }
+]

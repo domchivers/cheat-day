@@ -4,7 +4,8 @@
      Required-reason APIs: UserDefaults (the app's own settings, CA92.1) and file dates (MediaCache, EditDrafts and the
      story camera read dates of files the app itself saved in its own container, C617.1).
      Collected data matches the App Store privacy labels: all linked to the account, all for the app's own features,
-     none for tracking or advertising. -->
+     none for tracking or advertising. Chats people choose to share with the team (Settings, Assistant) are
+     also used to find and fix the assistant's mistakes: Analytics on user content and photos (28 Nov). -->
 <plist version="1.0">
 <dict>
 	<key>NSPrivacyTracking</key>
@@ -50,13 +51,13 @@
 			<key>NSPrivacyCollectedDataType</key><string>NSPrivacyCollectedDataTypePhotosorVideos</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key><true/>
 			<key>NSPrivacyCollectedDataTypeTracking</key><false/>
-			<key>NSPrivacyCollectedDataTypePurposes</key><array><string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string></array>
+			<key>NSPrivacyCollectedDataTypePurposes</key><array><string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string><string>NSPrivacyCollectedDataTypePurposeAnalytics</string></array>
 		</dict>
 		<dict>
 			<key>NSPrivacyCollectedDataType</key><string>NSPrivacyCollectedDataTypeOtherUserContent</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key><true/>
 			<key>NSPrivacyCollectedDataTypeTracking</key><false/>
-			<key>NSPrivacyCollectedDataTypePurposes</key><array><string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string></array>
+			<key>NSPrivacyCollectedDataTypePurposes</key><array><string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string><string>NSPrivacyCollectedDataTypePurposeAnalytics</string></array>
 		</dict>
 		<dict>
 			<key>NSPrivacyCollectedDataType</key><string>NSPrivacyCollectedDataTypeCoarseLocation</string>

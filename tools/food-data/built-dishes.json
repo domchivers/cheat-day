@@ -1,0 +1,3710 @@
+[
+ {
+  "name": "Jianbing",
+  "cuisine": "Chinese",
+  "aka": [
+   "jianbing guozi",
+   "jian bing",
+   "chinese breakfast crepe",
+   "jianbing with crispy cracker"
+  ],
+  "serving_g": 215,
+  "kcal": 241,
+  "p": 7.3,
+  "c": 30.1,
+  "f": 10.1,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Roujiamo",
+  "cuisine": "Chinese",
+  "aka": [
+   "rou jia mo",
+   "chinese hamburger",
+   "chinese burger",
+   "shaanxi pork burger"
+  ],
+  "serving_g": 180,
+  "kcal": 304,
+  "p": 13.7,
+  "c": 31.9,
+  "f": 13,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Liangpi",
+  "cuisine": "Chinese",
+  "aka": [
+   "liang pi",
+   "cold skin noodles",
+   "shaanxi cold noodles",
+   "mianpi"
+  ],
+  "serving_g": 360,
+  "kcal": 139,
+  "p": 3.2,
+  "c": 20.9,
+  "f": 4.5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Lanzhou beef noodle soup",
+  "cuisine": "Chinese",
+  "aka": [
+   "lanzhou lamian",
+   "lanzhou beef noodles",
+   "niu rou la mian",
+   "hand-pulled beef noodle soup"
+  ],
+  "serving_g": 840,
+  "kcal": 69,
+  "p": 3.1,
+  "c": 11,
+  "f": 1.8,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Biangbiang noodles",
+  "cuisine": "Chinese",
+  "aka": [
+   "biang biang mian",
+   "you po mian",
+   "oil-splashed noodles",
+   "belt noodles",
+   "youpo noodles"
+  ],
+  "serving_g": 445,
+  "kcal": 157,
+  "p": 3.9,
+  "c": 22.3,
+  "f": 5.2,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Zhajiangmian",
+  "cuisine": "Chinese",
+  "aka": [
+   "zha jiang mian",
+   "beijing noodles with soybean paste",
+   "fried sauce noodles",
+   "old beijing zhajiang noodles"
+  ],
+  "serving_g": 430,
+  "kcal": 170,
+  "p": 6.7,
+  "c": 23.9,
+  "f": 5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Malatang",
+  "cuisine": "Chinese",
+  "aka": [
+   "mala tang",
+   "spicy numbing soup",
+   "pick-your-own spicy soup"
+  ],
+  "serving_g": 735,
+  "kcal": 95,
+  "p": 3.9,
+  "c": 7.6,
+  "f": 5.7,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Mala xiang guo",
+  "cuisine": "Chinese",
+  "aka": [
+   "ma la xiang guo",
+   "spicy dry pot",
+   "dry pot",
+   "spicy stir-fry pot",
+   "mala dry pot"
+  ],
+  "serving_g": 470,
+  "kcal": 176,
+  "p": 7.8,
+  "c": 8.4,
+  "f": 12.5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Lamb skewers, cumin",
+  "cuisine": "Chinese",
+  "aka": [
+   "yang rou chuan",
+   "chuan'r",
+   "chuanr",
+   "xinjiang lamb skewers",
+   "lamb kebabs chinese",
+   "yangrouchuan"
+  ],
+  "serving_g": 110,
+  "kcal": 287,
+  "p": 25.3,
+  "c": 1.2,
+  "f": 20.1,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Chicken skewers, cumin",
+  "cuisine": "Chinese",
+  "aka": [
+   "ji rou chuan",
+   "chicken chuan'r",
+   "chinese chicken skewers",
+   "chicken chuanr"
+  ],
+  "serving_g": 135,
+  "kcal": 227,
+  "p": 21,
+  "c": 4.5,
+  "f": 13.8,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Hotpot dipping sauce, sesame",
+  "cuisine": "Chinese",
+  "aka": [
+   "ma jiang",
+   "sesame dipping sauce",
+   "hot pot sauce",
+   "majiang xiaoliao",
+   "huoguo zhan liao"
+  ],
+  "serving_g": 15,
+  "kcal": 273,
+  "p": 9.7,
+  "c": 11.1,
+  "f": 22.1,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Boiled fish in chilli oil",
+  "cuisine": "Chinese",
+  "aka": [
+   "shui zhu yu",
+   "shuizhuyu",
+   "sichuan boiled fish",
+   "water-boiled fish",
+   "fish in hot chilli oil"
+  ],
+  "serving_g": 400,
+  "kcal": 127,
+  "p": 9.1,
+  "c": 3.3,
+  "f": 8.2,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Twice-cooked pork",
+  "cuisine": "Chinese",
+  "aka": [
+   "hui guo rou",
+   "huiguorou",
+   "double cooked pork",
+   "sichuan twice cooked pork"
+  ],
+  "serving_g": 200,
+  "kcal": 237,
+  "p": 13.3,
+  "c": 3.8,
+  "f": 18.8,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Fish-fragrant shredded pork",
+  "cuisine": "Chinese",
+  "aka": [
+   "yu xiang rou si",
+   "yuxiang rousi",
+   "shredded pork in garlic sauce",
+   "yu shiang pork",
+   "pork with garlic sauce"
+  ],
+  "serving_g": 250,
+  "kcal": 166,
+  "p": 8.6,
+  "c": 7.8,
+  "f": 11,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Chongqing noodles",
+  "cuisine": "Chinese",
+  "aka": [
+   "chongqing xiao mian",
+   "xiao mian",
+   "chongqing small noodles",
+   "chongqing spicy noodles"
+  ],
+  "serving_g": 430,
+  "kcal": 143,
+  "p": 4.6,
+  "c": 19.7,
+  "f": 5.7,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Di san xian",
+  "cuisine": "Chinese",
+  "aka": [
+   "disanxian",
+   "three treasures of the earth",
+   "stir-fried potato eggplant and pepper"
+  ],
+  "serving_g": 220,
+  "kcal": 127,
+  "p": 1.8,
+  "c": 9.4,
+  "f": 8.7,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Red braised pork belly",
+  "cuisine": "Chinese",
+  "aka": [
+   "hong shao rou",
+   "hongshaorou",
+   "braised pork belly",
+   "chairman mao's red braised pork",
+   "red-cooked pork"
+  ],
+  "serving_g": 150,
+  "kcal": 409,
+  "p": 21.8,
+  "c": 7.7,
+  "f": 32.1,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Dongpo pork",
+  "cuisine": "Chinese",
+  "aka": [
+   "dongpo rou",
+   "dong po rou",
+   "hangzhou braised pork belly",
+   "su dongpo pork"
+  ],
+  "serving_g": 110,
+  "kcal": 409,
+  "p": 22.9,
+  "c": 7.2,
+  "f": 31.2,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Cumin lamb",
+  "cuisine": "Chinese",
+  "aka": [
+   "zi ran yang rou",
+   "ziran yangrou",
+   "cumin lamb stir-fry",
+   "xinjiang cumin lamb"
+  ],
+  "serving_g": 200,
+  "kcal": 209,
+  "p": 17.3,
+  "c": 4.9,
+  "f": 12.7,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Sweet and sour fish",
+  "cuisine": "Chinese",
+  "aka": [
+   "tang cu yu",
+   "squirrel fish",
+   "song shu gui yu",
+   "sweet and sour whole fish",
+   "crispy fish sweet and sour"
+  ],
+  "serving_g": 250,
+  "kcal": 236,
+  "p": 12.5,
+  "c": 18,
+  "f": 12.3,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Chilli fish head, Hunan",
+  "cuisine": "Chinese",
+  "aka": [
+   "duo jiao yu tou",
+   "duojiao yutou",
+   "steamed fish head with chopped chillies",
+   "hunan fish head"
+  ],
+  "serving_g": 250,
+  "kcal": 158,
+  "p": 13.6,
+  "c": 2.6,
+  "f": 9.6,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Smashed cucumber salad",
+  "cuisine": "Chinese",
+  "aka": [
+   "pai huang gua",
+   "pai huanggua",
+   "smacked cucumber",
+   "smashed cucumber",
+   "chinese cucumber salad"
+  ],
+  "serving_g": 150,
+  "kcal": 58,
+  "p": 1.1,
+  "c": 3.8,
+  "f": 3.9,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Spicy crayfish",
+  "cuisine": "Chinese",
+  "aka": [
+   "ma la xiao long xia",
+   "mala xiaolongxia",
+   "hot and spicy crayfish",
+   "spicy crawfish",
+   "xiao long xia"
+  ],
+  "serving_g": 190,
+  "kcal": 158,
+  "p": 14.1,
+  "c": 3.3,
+  "f": 9.4,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Wonton soup, Shanghai",
+  "cuisine": "Chinese",
+  "aka": [
+   "shanghai wontons",
+   "da hun tun",
+   "big wontons in broth",
+   "jicai huntun",
+   "shepherd's purse wontons"
+  ],
+  "serving_g": 690,
+  "kcal": 86,
+  "p": 5.5,
+  "c": 8.8,
+  "f": 3.1,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Peking duck pancakes",
+  "cuisine": "Chinese",
+  "aka": [
+   "peking duck wrap",
+   "beijing kao ya",
+   "beijing roast duck pancake",
+   "duck pancakes",
+   "peking duck with pancakes"
+  ],
+  "serving_g": 40,
+  "kcal": 267,
+  "p": 9.3,
+  "c": 19.8,
+  "f": 16.8,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Scallion oil noodles",
+  "cuisine": "Chinese",
+  "aka": [
+   "cong you ban mian",
+   "congyou banmian",
+   "shanghai scallion oil noodles",
+   "scallion noodles"
+  ],
+  "serving_g": 290,
+  "kcal": 197,
+  "p": 4.6,
+  "c": 28.4,
+  "f": 7.4,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Cold sesame noodles",
+  "cuisine": "Chinese",
+  "aka": [
+   "ma jiang liang mian",
+   "majiang mian",
+   "sesame noodles",
+   "cold noodles with sesame sauce",
+   "liang mian"
+  ],
+  "serving_g": 375,
+  "kcal": 171,
+  "p": 4.9,
+  "c": 22.7,
+  "f": 6.9,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Beef brisket noodle soup",
+  "cuisine": "Chinese",
+  "aka": [
+   "ngau nam min",
+   "niu nan mian",
+   "beef brisket noodles",
+   "cantonese brisket noodles"
+  ],
+  "serving_g": 680,
+  "kcal": 92,
+  "p": 4.9,
+  "c": 8.8,
+  "f": 4,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Wonton noodle soup",
+  "cuisine": "Chinese",
+  "aka": [
+   "wonton mee",
+   "wanton mein",
+   "yun tun mian",
+   "云吞面"
+  ],
+  "serving_g": 700,
+  "kcal": 67,
+  "p": 4,
+  "c": 9.4,
+  "f": 1.4,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Tomato and egg stir-fry",
+  "cuisine": "Chinese",
+  "aka": [
+   "fan qie chao dan",
+   "xi hong shi chao ji dan",
+   "tomato egg",
+   "番茄炒蛋"
+  ],
+  "serving_g": 250,
+  "kcal": 99,
+  "p": 4.6,
+  "c": 4.3,
+  "f": 7,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Dan dan noodles",
+  "cuisine": "Chinese",
+  "aka": [
+   "dandan mian",
+   "dan dan mian",
+   "担担面"
+  ],
+  "serving_g": 430,
+  "kcal": 162,
+  "p": 6.7,
+  "c": 14.8,
+  "f": 8,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Lu rou fan",
+  "cuisine": "Taiwanese",
+  "aka": [
+   "braised pork rice",
+   "lou ba png",
+   "minced pork rice",
+   "滷肉飯",
+   "魯肉飯"
+  ],
+  "serving_g": 250,
+  "kcal": 204,
+  "p": 7.1,
+  "c": 24.4,
+  "f": 8.2,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Beef noodle soup, Taiwanese",
+  "cuisine": "Taiwanese",
+  "aka": [
+   "niu rou mian",
+   "red-braised beef noodle soup",
+   "牛肉麵"
+  ],
+  "serving_g": 725,
+  "kcal": 91,
+  "p": 6.8,
+  "c": 10.4,
+  "f": 2.1,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Gua bao",
+  "cuisine": "Taiwanese",
+  "aka": [
+   "guabao",
+   "kua pao",
+   "pork belly bao",
+   "taiwanese burger",
+   "刈包"
+  ],
+  "serving_g": 145,
+  "kcal": 292,
+  "p": 11.7,
+  "c": 30,
+  "f": 13.8,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Stinky tofu, fried",
+  "cuisine": "Taiwanese",
+  "aka": [
+   "chou doufu",
+   "fried stinky tofu",
+   "臭豆腐"
+  ],
+  "serving_g": 420,
+  "kcal": 165,
+  "p": 9.1,
+  "c": 3.9,
+  "f": 12.2,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Popcorn chicken, Taiwanese",
+  "cuisine": "Taiwanese",
+  "aka": [
+   "yan su ji",
+   "salt and pepper chicken",
+   "taiwanese fried chicken bites",
+   "鹹酥雞",
+   "鹽酥雞"
+  ],
+  "serving_g": 150,
+  "kcal": 293,
+  "p": 18,
+  "c": 10.7,
+  "f": 19.5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Beef chow fun",
+  "cuisine": "Chinese",
+  "aka": [
+   "gon chow ngau ho",
+   "beef ho fun",
+   "dry fried beef hor fun",
+   "干炒牛河"
+  ],
+  "serving_g": 540,
+  "kcal": 162,
+  "p": 7.3,
+  "c": 16.6,
+  "f": 7,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Gyudon",
+  "cuisine": "Japanese",
+  "aka": [
+   "beef bowl",
+   "gyumeshi",
+   "牛丼"
+  ],
+  "serving_g": 430,
+  "kcal": 168,
+  "p": 6.2,
+  "c": 23.2,
+  "f": 4.9,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Oyakodon",
+  "cuisine": "Japanese",
+  "aka": [
+   "chicken and egg rice bowl",
+   "oyako don",
+   "親子丼"
+  ],
+  "serving_g": 520,
+  "kcal": 148,
+  "p": 7,
+  "c": 18.9,
+  "f": 4.4,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Katsudon",
+  "cuisine": "Japanese",
+  "aka": [
+   "pork cutlet rice bowl",
+   "katsu don",
+   "カツ丼"
+  ],
+  "serving_g": 570,
+  "kcal": 170,
+  "p": 8.5,
+  "c": 19.4,
+  "f": 6.2,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Chicken katsu curry",
+  "cuisine": "Japanese",
+  "aka": [
+   "katsu curry",
+   "katsu kare",
+   "chicken katsu kare",
+   "チキンカツカレー"
+  ],
+  "serving_g": 700,
+  "kcal": 164,
+  "p": 6.2,
+  "c": 20.7,
+  "f": 5.9,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Ramen, tonkotsu",
+  "cuisine": "Japanese",
+  "aka": [
+   "tonkotsu ramen",
+   "pork bone ramen",
+   "hakata ramen",
+   "豚骨ラーメン"
+  ],
+  "serving_g": 780,
+  "kcal": 110,
+  "p": 5.2,
+  "c": 7.3,
+  "f": 6.7,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Ramen, shoyu",
+  "cuisine": "Japanese",
+  "aka": [
+   "shoyu ramen",
+   "soy sauce ramen",
+   "tokyo ramen",
+   "醤油ラーメン"
+  ],
+  "serving_g": 700,
+  "kcal": 99,
+  "p": 4.8,
+  "c": 10.1,
+  "f": 4.2,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Udon, tempura",
+  "cuisine": "Japanese",
+  "aka": [
+   "tempura udon",
+   "ebi tempura udon",
+   "天ぷらうどん"
+  ],
+  "serving_g": 700,
+  "kcal": 90,
+  "p": 4.9,
+  "c": 11.8,
+  "f": 2.4,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Udon, kitsune",
+  "cuisine": "Japanese",
+  "aka": [
+   "kitsune udon",
+   "fox udon",
+   "aburaage udon",
+   "きつねうどん"
+  ],
+  "serving_g": 680,
+  "kcal": 75,
+  "p": 3.9,
+  "c": 11.7,
+  "f": 1.3,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Yakisoba",
+  "cuisine": "Japanese",
+  "aka": [
+   "japanese fried noodles",
+   "sauce yakisoba",
+   "焼きそば"
+  ],
+  "serving_g": 385,
+  "kcal": 170,
+  "p": 6.3,
+  "c": 19,
+  "f": 7.5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Bibimbap",
+  "cuisine": "Korean",
+  "aka": [
+   "bibimbab",
+   "korean mixed rice",
+   "비빔밥"
+  ],
+  "serving_g": 560,
+  "kcal": 143,
+  "p": 5.5,
+  "c": 18.2,
+  "f": 5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Kimchi jjigae",
+  "cuisine": "Korean",
+  "aka": [
+   "kimchi stew",
+   "kimchi chigae",
+   "김치찌개"
+  ],
+  "serving_g": 450,
+  "kcal": 94,
+  "p": 6,
+  "c": 2.3,
+  "f": 6.6,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Doenjang jjigae",
+  "cuisine": "Korean",
+  "aka": [
+   "soybean paste stew",
+   "doenjang chigae",
+   "된장찌개"
+  ],
+  "serving_g": 450,
+  "kcal": 51,
+  "p": 4.5,
+  "c": 3,
+  "f": 2.1,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Bulgogi, beef",
+  "cuisine": "Korean",
+  "aka": [
+   "beef bulgogi",
+   "korean bbq beef",
+   "bulgogi",
+   "불고기"
+  ],
+  "serving_g": 180,
+  "kcal": 188,
+  "p": 16.4,
+  "c": 7,
+  "f": 10.3,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Korean fried chicken, yangnyeom",
+  "cuisine": "Korean",
+  "aka": [
+   "yangnyeom chicken",
+   "sweet spicy korean fried chicken",
+   "kfc korean",
+   "양념치킨"
+  ],
+  "serving_g": 250,
+  "kcal": 314,
+  "p": 14.9,
+  "c": 14.5,
+  "f": 21.9,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Kimbap",
+  "cuisine": "Korean",
+  "aka": [
+   "gimbap",
+   "korean seaweed rice roll",
+   "김밥"
+  ],
+  "serving_g": 345,
+  "kcal": 147,
+  "p": 5.4,
+  "c": 21.6,
+  "f": 3.8,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Japchae",
+  "cuisine": "Korean",
+  "aka": [
+   "chapchae",
+   "korean glass noodles",
+   "stir-fried sweet potato noodles",
+   "잡채"
+  ],
+  "serving_g": 250,
+  "kcal": 138,
+  "p": 5.4,
+  "c": 14.1,
+  "f": 6.2,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Samgyeopsal",
+  "cuisine": "Korean",
+  "aka": [
+   "korean grilled pork belly",
+   "samgyupsal",
+   "korean bbq pork belly",
+   "삼겹살"
+  ],
+  "serving_g": 260,
+  "kcal": 259,
+  "p": 17.2,
+  "c": 3,
+  "f": 19.7,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Sundubu jjigae",
+  "cuisine": "Korean",
+  "aka": [
+   "soft tofu stew",
+   "sundubu",
+   "soondubu jjigae",
+   "순두부찌개"
+  ],
+  "serving_g": 600,
+  "kcal": 85,
+  "p": 6.5,
+  "c": 2.1,
+  "f": 5.3,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Jajangmyeon",
+  "cuisine": "Korean",
+  "aka": [
+   "jjajangmyeon",
+   "black bean noodles",
+   "korean black bean sauce noodles",
+   "짜장면"
+  ],
+  "serving_g": 645,
+  "kcal": 140,
+  "p": 4.7,
+  "c": 16.1,
+  "f": 6,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Kimchi fried rice",
+  "cuisine": "Korean",
+  "aka": [
+   "kimchi bokkeumbap",
+   "kimchi fried rice with egg",
+   "김치볶음밥"
+  ],
+  "serving_g": 470,
+  "kcal": 174,
+  "p": 5.4,
+  "c": 21.2,
+  "f": 7.3,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Haemul pajeon",
+  "cuisine": "Korean",
+  "aka": [
+   "seafood pancake",
+   "seafood scallion pancake",
+   "pajeon",
+   "korean pancake",
+   "해물파전"
+  ],
+  "serving_g": 270,
+  "kcal": 180,
+  "p": 7.6,
+  "c": 17.2,
+  "f": 8.8,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Naengmyeon, mul",
+  "cuisine": "Korean",
+  "aka": [
+   "mul naengmyeon",
+   "korean cold noodles",
+   "cold buckwheat noodle soup",
+   "물냉면"
+  ],
+  "serving_g": 760,
+  "kcal": 75,
+  "p": 4.2,
+  "c": 12.5,
+  "f": 0.7,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Arepa, reina pepiada",
+  "cuisine": "Venezuelan",
+  "aka": [
+   "reina pepiada",
+   "arepa with chicken and avocado",
+   "arepa reina"
+  ],
+  "serving_g": 265,
+  "kcal": 189,
+  "p": 7.7,
+  "c": 21.3,
+  "f": 8.3,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Lomo saltado",
+  "cuisine": "Peruvian",
+  "aka": [
+   "peruvian beef stir-fry",
+   "lomo saltado with rice and fries"
+  ],
+  "serving_g": 630,
+  "kcal": 149,
+  "p": 8.5,
+  "c": 16.7,
+  "f": 4.8,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Feijoada",
+  "cuisine": "Brazilian",
+  "aka": [
+   "brazilian black bean stew",
+   "feijoada completa"
+  ],
+  "serving_g": 350,
+  "kcal": 138,
+  "p": 8.3,
+  "c": 10.8,
+  "f": 6.8,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Pao de queijo",
+  "cuisine": "Brazilian",
+  "aka": [
+   "brazilian cheese bread",
+   "pão de queijo",
+   "cheese bread balls"
+  ],
+  "serving_g": 100,
+  "kcal": 347,
+  "p": 9.8,
+  "c": 34.8,
+  "f": 18.7,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Coxinha",
+  "cuisine": "Brazilian",
+  "aka": [
+   "coxinha de frango",
+   "brazilian chicken croquette"
+  ],
+  "serving_g": 110,
+  "kcal": 282,
+  "p": 12.7,
+  "c": 21.4,
+  "f": 16,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Kenkey",
+  "cuisine": "West African",
+  "aka": [
+   "dokonu",
+   "komi",
+   "ga kenkey",
+   "fante kenkey"
+  ],
+  "serving_g": 300,
+  "kcal": 160,
+  "p": 3.1,
+  "c": 34.2,
+  "f": 1.7,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Banku",
+  "cuisine": "West African",
+  "aka": [
+   "banku, corn and cassava"
+  ],
+  "serving_g": 350,
+  "kcal": 129,
+  "p": 2.2,
+  "c": 27.6,
+  "f": 1.2,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Ogi",
+  "cuisine": "West African",
+  "aka": [
+   "akamu",
+   "pap",
+   "koko",
+   "ogi porridge",
+   "corn pap"
+  ],
+  "serving_g": 350,
+  "kcal": 47,
+  "p": 0.9,
+  "c": 10.1,
+  "f": 0.2,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Chin chin",
+  "cuisine": "West African",
+  "aka": [
+   "chinchin",
+   "chin-chin"
+  ],
+  "serving_g": 30,
+  "kcal": 494,
+  "p": 7.9,
+  "c": 61.6,
+  "f": 24,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Puff-puff",
+  "cuisine": "West African",
+  "aka": [
+   "puff puff",
+   "bofrot",
+   "beignets",
+   "mikate",
+   "togbei"
+  ],
+  "serving_g": 100,
+  "kcal": 314,
+  "p": 5.5,
+  "c": 47,
+  "f": 11.3,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Akara",
+  "cuisine": "West African",
+  "aka": [
+   "koose",
+   "kosai",
+   "acaraje",
+   "bean fritters",
+   "accra"
+  ],
+  "serving_g": 100,
+  "kcal": 277,
+  "p": 9.9,
+  "c": 25.7,
+  "f": 15.6,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Moi moi",
+  "cuisine": "West African",
+  "aka": [
+   "moin moin",
+   "moimoi",
+   "olele",
+   "bean pudding"
+  ],
+  "serving_g": 200,
+  "kcal": 144,
+  "p": 6.5,
+  "c": 15.3,
+  "f": 6.6,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Zobo",
+  "cuisine": "West African",
+  "aka": [
+   "bissap",
+   "sobolo",
+   "hibiscus drink",
+   "zoborodo",
+   "wonjo"
+  ],
+  "serving_g": 330,
+  "kcal": 40,
+  "p": 0,
+  "c": 10.2,
+  "f": 0,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Shito",
+  "cuisine": "West African",
+  "aka": [
+   "shitor",
+   "shito sauce",
+   "black pepper sauce",
+   "ghana pepper sauce"
+  ],
+  "serving_g": 15,
+  "kcal": 504,
+  "p": 14.9,
+  "c": 6.6,
+  "f": 45.8,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Suya spice",
+  "cuisine": "West African",
+  "aka": [
+   "yaji",
+   "kankankan",
+   "suya pepper",
+   "suya seasoning"
+  ],
+  "serving_g": 5,
+  "kcal": 359,
+  "p": 22.7,
+  "c": 32.5,
+  "f": 15.3,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Berbere",
+  "cuisine": "Ethiopian",
+  "aka": [
+   "berbere spice",
+   "berbere spice mix"
+  ],
+  "serving_g": 5,
+  "kcal": 299,
+  "p": 12.6,
+  "c": 20.8,
+  "f": 11.9,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Mitmita",
+  "cuisine": "Ethiopian",
+  "aka": [
+   "mitmita spice"
+  ],
+  "serving_g": 3,
+  "kcal": 266,
+  "p": 10.5,
+  "c": 15.8,
+  "f": 11.7,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Biltong",
+  "cuisine": "South African",
+  "aka": [
+   "dried beef",
+   "beef biltong"
+  ],
+  "serving_g": 30,
+  "kcal": 253,
+  "p": 48.5,
+  "c": 2.4,
+  "f": 4.9,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Boerewors",
+  "cuisine": "South African",
+  "aka": [
+   "wors",
+   "boerewors, grilled",
+   "farmer's sausage"
+  ],
+  "serving_g": 120,
+  "kcal": 347,
+  "p": 23.6,
+  "c": 0.4,
+  "f": 27.8,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Hand-pulled noodles, boiled",
+  "cuisine": "Chinese",
+  "aka": [
+   "la mian",
+   "lamian",
+   "lanzhou noodles"
+  ],
+  "serving_g": 250,
+  "kcal": 153,
+  "p": 4.9,
+  "c": 29,
+  "f": 1.5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Multigrain rice, cooked",
+  "cuisine": "Korean",
+  "aka": [
+   "japgokbap",
+   "japgok",
+   "mixed grain rice"
+  ],
+  "serving_g": 210,
+  "kcal": 145,
+  "p": 3.7,
+  "c": 30.6,
+  "f": 0.6,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Tteok, rice cake",
+  "cuisine": "Korean",
+  "aka": [
+   "garaetteok",
+   "tteokbokki rice cakes",
+   "rice cakes"
+  ],
+  "serving_g": 100,
+  "kcal": 239,
+  "p": 3.8,
+  "c": 51,
+  "f": 1.5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Bulgogi beef, cooked",
+  "cuisine": "Korean",
+  "aka": [
+   "bulgogi",
+   "marinated beef",
+   "korean bbq beef"
+  ],
+  "serving_g": 150,
+  "kcal": 213,
+  "p": 19.7,
+  "c": 6.6,
+  "f": 11.7,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Gochujang",
+  "cuisine": "Korean",
+  "aka": [
+   "korean chilli paste",
+   "korean chili paste",
+   "red pepper paste",
+   "kochujang"
+  ],
+  "serving_g": 15,
+  "kcal": 209,
+  "p": 4.8,
+  "c": 38.4,
+  "f": 3.2,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Ssamjang",
+  "cuisine": "Korean",
+  "aka": [
+   "ssam sauce",
+   "dipping paste",
+   "korean bbq dipping paste"
+  ],
+  "serving_g": 15,
+  "kcal": 236,
+  "p": 8.6,
+  "c": 22.9,
+  "f": 11.4,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Kkakdugi, radish kimchi",
+  "cuisine": "Korean",
+  "aka": [
+   "kkakdugi",
+   "cubed radish kimchi",
+   "radish kimchi"
+  ],
+  "serving_g": 60,
+  "kcal": 39,
+  "p": 1.3,
+  "c": 5.2,
+  "f": 0.7,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Takuan, pickled daikon",
+  "cuisine": "Japanese",
+  "aka": [
+   "takuan",
+   "danmuji",
+   "pickled daikon",
+   "yellow pickled radish"
+  ],
+  "serving_g": 30,
+  "kcal": 45,
+  "p": 0.7,
+  "c": 8.9,
+  "f": 0.3,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Masa, fresh",
+  "cuisine": "Mexican",
+  "aka": [
+   "fresh masa",
+   "nixtamalized corn dough",
+   "masa"
+  ],
+  "serving_g": 100,
+  "kcal": 181,
+  "p": 4.2,
+  "c": 38.1,
+  "f": 1.8,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Farofa",
+  "cuisine": "Brazilian",
+  "aka": [
+   "toasted cassava flour",
+   "farofa de mandioca"
+  ],
+  "serving_g": 30,
+  "kcal": 379,
+  "p": 2.9,
+  "c": 60,
+  "f": 13.6,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Carne seca",
+  "cuisine": "Brazilian",
+  "aka": [
+   "jerked beef",
+   "charque",
+   "tasajo",
+   "charqui"
+  ],
+  "serving_g": 100,
+  "kcal": 200,
+  "p": 26.8,
+  "c": 0,
+  "f": 10.2,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Chimichurri",
+  "cuisine": "Argentinian",
+  "aka": [
+   "chimichurri sauce"
+  ],
+  "serving_g": 15,
+  "kcal": 482,
+  "p": 1.6,
+  "c": 1.8,
+  "f": 52.2,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Adobo seasoning",
+  "cuisine": "Puerto Rican",
+  "aka": [
+   "adobo",
+   "adobo all-purpose seasoning"
+  ],
+  "serving_g": 2,
+  "kcal": 121,
+  "p": 4.9,
+  "c": 21.6,
+  "f": 0.9,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Jerk seasoning, paste",
+  "cuisine": "Jamaican",
+  "aka": [
+   "jerk marinade",
+   "jerk paste",
+   "jerk seasoning"
+  ],
+  "serving_g": 15,
+  "kcal": 140,
+  "p": 2.4,
+  "c": 12,
+  "f": 9.6,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Aji amarillo paste",
+  "cuisine": "Peruvian",
+  "aka": [
+   "ají amarillo paste",
+   "aji amarillo",
+   "yellow chili paste",
+   "pasta de ají amarillo"
+  ],
+  "serving_g": 15,
+  "kcal": 56,
+  "p": 1.7,
+  "c": 8,
+  "f": 2.6,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Curtido",
+  "cuisine": "Salvadoran",
+  "aka": [
+   "salvadoran slaw",
+   "curtido de repollo"
+  ],
+  "serving_g": 60,
+  "kcal": 26,
+  "p": 1.1,
+  "c": 4,
+  "f": 0,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Alfajores",
+  "cuisine": "Argentinian",
+  "aka": [
+   "alfajor",
+   "alfajores de maicena"
+  ],
+  "serving_g": 50,
+  "kcal": 414,
+  "p": 5.5,
+  "c": 58.4,
+  "f": 17.8,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Agua fresca",
+  "cuisine": "Mexican",
+  "aka": [
+   "agua de jamaica",
+   "agua de tamarindo",
+   "aguas frescas",
+   "hibiscus water"
+  ],
+  "serving_g": 350,
+  "kcal": 31,
+  "p": 0,
+  "c": 8.1,
+  "f": 0,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Lavash",
+  "cuisine": "Middle Eastern",
+  "aka": [
+   "lavas",
+   "markook",
+   "saj bread",
+   "lavosh"
+  ],
+  "serving_g": 60,
+  "kcal": 298,
+  "p": 8,
+  "c": 57.2,
+  "f": 3.4,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Barbari bread",
+  "cuisine": "Persian",
+  "aka": [
+   "nan-e barbari",
+   "barbari",
+   "noon barbari"
+  ],
+  "serving_g": 100,
+  "kcal": 259,
+  "p": 8.4,
+  "c": 47.2,
+  "f": 3.3,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Sangak",
+  "cuisine": "Persian",
+  "aka": [
+   "nan-e sangak",
+   "sangak bread",
+   "noon sangak"
+  ],
+  "serving_g": 100,
+  "kcal": 238,
+  "p": 8.5,
+  "c": 42.9,
+  "f": 1.9,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Simit",
+  "cuisine": "Turkish",
+  "aka": [
+   "turkish bagel",
+   "koulouri",
+   "gevrek",
+   "sesame bread ring"
+  ],
+  "serving_g": 110,
+  "kcal": 316,
+  "p": 9.9,
+  "c": 48.3,
+  "f": 8.5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Labneh",
+  "cuisine": "Middle Eastern",
+  "aka": [
+   "labna",
+   "labaneh",
+   "strained yogurt",
+   "labne"
+  ],
+  "serving_g": 30,
+  "kcal": 187,
+  "p": 6.6,
+  "c": 7.9,
+  "f": 14,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Kashk",
+  "cuisine": "Persian",
+  "aka": [
+   "kashk liquid",
+   "qurut",
+   "kashk-e bademjan whey",
+   "kishk"
+  ],
+  "serving_g": 30,
+  "kcal": 112,
+  "p": 7.8,
+  "c": 7.7,
+  "f": 4.9,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Pomegranate molasses",
+  "cuisine": "Middle Eastern",
+  "aka": [
+   "dibs rumman",
+   "nar eksisi",
+   "pomegranate syrup",
+   "rob-e anar"
+  ],
+  "serving_g": 15,
+  "kcal": 265,
+  "p": 0.4,
+  "c": 63.5,
+  "f": 0,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Turkish pepper paste",
+  "cuisine": "Turkish",
+  "aka": [
+   "biber salcasi",
+   "biber salçası",
+   "red pepper paste",
+   "pepper paste"
+  ],
+  "serving_g": 15,
+  "kcal": 84,
+  "p": 3.3,
+  "c": 13.3,
+  "f": 1.2,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Za'atar",
+  "cuisine": "Middle Eastern",
+  "aka": [
+   "zaatar",
+   "zahtar",
+   "zatar",
+   "za'atar spice mix"
+  ],
+  "serving_g": 5,
+  "kcal": 386,
+  "p": 12.7,
+  "c": 19.8,
+  "f": 23.5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Baharat",
+  "cuisine": "Middle Eastern",
+  "aka": [
+   "seven spice",
+   "lebanese seven spices",
+   "sabaa baharat",
+   "arabic spice mix"
+  ],
+  "serving_g": 3,
+  "kcal": 324,
+  "p": 11.5,
+  "c": 27.3,
+  "f": 12.3,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Ras el hanout",
+  "cuisine": "North African",
+  "aka": [
+   "ras al hanout",
+   "ras el hanut",
+   "moroccan spice mix"
+  ],
+  "serving_g": 3,
+  "kcal": 330,
+  "p": 10.9,
+  "c": 32.6,
+  "f": 11.5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Kunafa",
+  "cuisine": "Middle Eastern",
+  "aka": [
+   "knafeh",
+   "kunefe",
+   "kanafeh",
+   "kunafeh",
+   "künefe"
+  ],
+  "serving_g": 150,
+  "kcal": 392,
+  "p": 11,
+  "c": 39.6,
+  "f": 21.3,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Mint tea",
+  "cuisine": "North African",
+  "aka": [
+   "atay",
+   "moroccan mint tea",
+   "maghrebi tea",
+   "touareg tea"
+  ],
+  "serving_g": 150,
+  "kcal": 25,
+  "p": 0.2,
+  "c": 6.3,
+  "f": 0,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Pandesal",
+  "cuisine": "Filipino",
+  "aka": [
+   "pan de sal",
+   "filipino bread roll"
+  ],
+  "serving_g": 40,
+  "kcal": 319,
+  "p": 9.3,
+  "c": 52.5,
+  "f": 7.5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Lontong",
+  "cuisine": "Indonesian",
+  "aka": [
+   "ketupat",
+   "compressed rice cake",
+   "nasi himpit"
+  ],
+  "serving_g": 150,
+  "kcal": 131,
+  "p": 2.7,
+  "c": 28.5,
+  "f": 0.3,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Longganisa",
+  "cuisine": "Filipino",
+  "aka": [
+   "longanisa",
+   "filipino sausage",
+   "longganisa, fried"
+  ],
+  "serving_g": 100,
+  "kcal": 291,
+  "p": 22.6,
+  "c": 11.5,
+  "f": 17.1,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Tocino",
+  "cuisine": "Filipino",
+  "aka": [
+   "filipino cured pork",
+   "sweet cured pork",
+   "pork tocino"
+  ],
+  "serving_g": 100,
+  "kcal": 276,
+  "p": 19,
+  "c": 14.1,
+  "f": 16.2,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Vietnamese pork roll",
+  "cuisine": "Vietnamese",
+  "aka": [
+   "cha lua",
+   "gio lua",
+   "vietnamese ham"
+  ],
+  "serving_g": 50,
+  "kcal": 138,
+  "p": 19.8,
+  "c": 5.2,
+  "f": 4,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Sambal belacan",
+  "cuisine": "Malaysian",
+  "aka": [
+   "sambal terasi",
+   "shrimp paste chili",
+   "sambal belachan"
+  ],
+  "serving_g": 15,
+  "kcal": 61,
+  "p": 3.9,
+  "c": 6.9,
+  "f": 0.6,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Nuoc cham",
+  "cuisine": "Vietnamese",
+  "aka": [
+   "vietnamese dipping sauce",
+   "nuoc mam cham",
+   "fish sauce dipping sauce"
+  ],
+  "serving_g": 30,
+  "kcal": 91,
+  "p": 1.5,
+  "c": 20.6,
+  "f": 0.2,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Banana ketchup",
+  "cuisine": "Filipino",
+  "aka": [
+   "banana sauce"
+  ],
+  "serving_g": 15,
+  "kcal": 146,
+  "p": 0.8,
+  "c": 31.3,
+  "f": 1.6,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Atchara",
+  "cuisine": "Filipino",
+  "aka": [
+   "achara",
+   "pickled green papaya",
+   "atsara"
+  ],
+  "serving_g": 40,
+  "kcal": 67,
+  "p": 0.6,
+  "c": 15.2,
+  "f": 0.1,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Toasted rice powder",
+  "cuisine": "Thai",
+  "aka": [
+   "khao khua",
+   "thinh",
+   "roasted rice powder"
+  ],
+  "serving_g": 7,
+  "kcal": 407,
+  "p": 7.5,
+  "c": 89.8,
+  "f": 0.7,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Kaya",
+  "cuisine": "Malaysian",
+  "aka": [
+   "coconut jam",
+   "srikaya",
+   "kaya jam"
+  ],
+  "serving_g": 20,
+  "kcal": 249,
+  "p": 5.1,
+  "c": 36.2,
+  "f": 10.2,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Ube halaya",
+  "cuisine": "Filipino",
+  "aka": [
+   "ube jam",
+   "purple yam jam",
+   "halayang ube"
+  ],
+  "serving_g": 50,
+  "kcal": 281,
+  "p": 7.1,
+  "c": 40.9,
+  "f": 11.1,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Dosa batter",
+  "cuisine": "South Indian",
+  "aka": [
+   "idli batter",
+   "idli dosa batter"
+  ],
+  "serving_g": 120,
+  "kcal": 160,
+  "p": 5.5,
+  "c": 32.7,
+  "f": 0.5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "String hoppers",
+  "cuisine": "Sri Lankan",
+  "aka": [
+   "idiyappam",
+   "indiappa",
+   "noolputtu"
+  ],
+  "serving_g": 120,
+  "kcal": 160,
+  "p": 3.4,
+  "c": 33.3,
+  "f": 0.9,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Chaat masala",
+  "cuisine": "North Indian",
+  "aka": [],
+  "serving_g": 2,
+  "kcal": 284,
+  "p": 10.3,
+  "c": 23.1,
+  "f": 12.6,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Ginger garlic paste",
+  "cuisine": "Indian",
+  "aka": [
+   "adrak lahsun paste"
+  ],
+  "serving_g": 15,
+  "kcal": 115,
+  "p": 3.2,
+  "c": 7,
+  "f": 6.2,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Mango pickle",
+  "cuisine": "Indian",
+  "aka": [
+   "aam ka achar",
+   "avakaya",
+   "mango achar"
+  ],
+  "serving_g": 15,
+  "kcal": 244,
+  "p": 2.4,
+  "c": 9.7,
+  "f": 21.4,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Coconut chutney",
+  "cuisine": "South Indian",
+  "aka": [
+   "thengai chutney",
+   "nariyal chutney"
+  ],
+  "serving_g": 40,
+  "kcal": 215,
+  "p": 4,
+  "c": 5.6,
+  "f": 18.5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Mint chutney",
+  "cuisine": "Indian",
+  "aka": [
+   "green chutney",
+   "pudina chutney",
+   "hari chutney"
+  ],
+  "serving_g": 15,
+  "kcal": 37,
+  "p": 2.1,
+  "c": 3.9,
+  "f": 0.5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Tamarind chutney",
+  "cuisine": "North Indian",
+  "aka": [
+   "imli chutney",
+   "saunth",
+   "meethi chutney"
+  ],
+  "serving_g": 20,
+  "kcal": 221,
+  "p": 1.1,
+  "c": 54.3,
+  "f": 0.5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Pol sambol",
+  "cuisine": "Sri Lankan",
+  "aka": [
+   "coconut sambol",
+   "thengai sambal"
+  ],
+  "serving_g": 30,
+  "kcal": 269,
+  "p": 6.1,
+  "c": 3.6,
+  "f": 24.3,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Gundruk",
+  "cuisine": "Nepali",
+  "aka": [
+   "fermented leafy greens"
+  ],
+  "serving_g": 20,
+  "kcal": 245,
+  "p": 26.4,
+  "c": 42.7,
+  "f": 3.6,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Gulab jamun",
+  "cuisine": "Indian",
+  "aka": [
+   "kala jamun",
+   "pantua"
+  ],
+  "serving_g": 80,
+  "kcal": 351,
+  "p": 8,
+  "c": 44.1,
+  "f": 16.6,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Jalebi",
+  "cuisine": "Indian",
+  "aka": [
+   "jilapi",
+   "jilebi"
+  ],
+  "serving_g": 75,
+  "kcal": 335,
+  "p": 3.1,
+  "c": 51.1,
+  "f": 13.7,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Rasgulla",
+  "cuisine": "Bengali",
+  "aka": [
+   "rosogolla",
+   "roshogolla"
+  ],
+  "serving_g": 80,
+  "kcal": 188,
+  "p": 5,
+  "c": 28.3,
+  "f": 6.6,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Masala chai",
+  "cuisine": "Indian",
+  "aka": [
+   "chai",
+   "cutting chai",
+   "doodh cha"
+  ],
+  "serving_g": 150,
+  "kcal": 54,
+  "p": 1.9,
+  "c": 7.6,
+  "f": 1.9,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Hummus",
+  "cuisine": "Middle Eastern",
+  "aka": [
+   "houmous",
+   "hommus",
+   "humus",
+   "chickpea dip"
+  ],
+  "serving_g": 80,
+  "kcal": 230,
+  "p": 7,
+  "c": 8.9,
+  "f": 17.1,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Falafel",
+  "cuisine": "Middle Eastern",
+  "aka": [
+   "felafel",
+   "taameya",
+   "ta'amiya"
+  ],
+  "serving_g": 100,
+  "kcal": 301,
+  "p": 9.1,
+  "c": 18.9,
+  "f": 18.8,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Shawarma wrap, chicken",
+  "cuisine": "Middle Eastern",
+  "aka": [
+   "shawarma",
+   "chicken shawarma",
+   "shwarma",
+   "chicken shawarma wrap"
+  ],
+  "serving_g": 300,
+  "kcal": 192,
+  "p": 12.8,
+  "c": 14.6,
+  "f": 8.7,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Kofta, lamb",
+  "cuisine": "Middle Eastern",
+  "aka": [
+   "kofta",
+   "kafta",
+   "kofte",
+   "lamb kofta",
+   "kofta kebab"
+  ],
+  "serving_g": 150,
+  "kcal": 247,
+  "p": 22,
+  "c": 1.9,
+  "f": 16.6,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Tabbouleh",
+  "cuisine": "Middle Eastern",
+  "aka": [
+   "tabouli",
+   "tabbouli",
+   "tabouleh"
+  ],
+  "serving_g": 150,
+  "kcal": 118,
+  "p": 2.2,
+  "c": 6.6,
+  "f": 8.6,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Fattoush",
+  "cuisine": "Middle Eastern",
+  "aka": [
+   "fattoush salad",
+   "fatoush"
+  ],
+  "serving_g": 250,
+  "kcal": 108,
+  "p": 1.9,
+  "c": 7.4,
+  "f": 7.5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Baba ghanoush",
+  "cuisine": "Middle Eastern",
+  "aka": [
+   "baba ganoush",
+   "baba ghanouj",
+   "eggplant dip",
+   "moutabal"
+  ],
+  "serving_g": 80,
+  "kcal": 128,
+  "p": 3.4,
+  "c": 4.1,
+  "f": 10.1,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Shakshuka",
+  "cuisine": "North African",
+  "aka": [
+   "shakshouka",
+   "chakchouka",
+   "eggs in tomato sauce"
+  ],
+  "serving_g": 350,
+  "kcal": 78,
+  "p": 4.4,
+  "c": 3.6,
+  "f": 4.8,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Mujaddara",
+  "cuisine": "Middle Eastern",
+  "aka": [
+   "mujadara",
+   "mejadra",
+   "lentils and rice"
+  ],
+  "serving_g": 300,
+  "kcal": 150,
+  "p": 5.8,
+  "c": 19.4,
+  "f": 4.5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Kabsa, chicken",
+  "cuisine": "Middle Eastern",
+  "aka": [
+   "kabsa",
+   "chicken kabsa",
+   "machboos",
+   "majboos"
+  ],
+  "serving_g": 450,
+  "kcal": 148,
+  "p": 6.8,
+  "c": 16.8,
+  "f": 5.7,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Manakish, za'atar",
+  "cuisine": "Middle Eastern",
+  "aka": [
+   "manakish",
+   "manaeesh",
+   "manoushe",
+   "zaatar bread",
+   "za'atar flatbread"
+  ],
+  "serving_g": 140,
+  "kcal": 355,
+  "p": 7.1,
+  "c": 45.2,
+  "f": 15.5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Lahmacun",
+  "cuisine": "Middle Eastern",
+  "aka": [
+   "lahmajoun",
+   "lahm bi ajeen",
+   "turkish pizza",
+   "armenian pizza"
+  ],
+  "serving_g": 140,
+  "kcal": 213,
+  "p": 10.5,
+  "c": 28.4,
+  "f": 5.8,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Chicken shish, with rice",
+  "cuisine": "Middle Eastern",
+  "aka": [
+   "chicken shish",
+   "shish tawook",
+   "chicken shish kebab",
+   "shish taouk"
+  ],
+  "serving_g": 580,
+  "kcal": 139,
+  "p": 9.5,
+  "c": 14.6,
+  "f": 4.4,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Baklava",
+  "cuisine": "Middle Eastern",
+  "aka": [
+   "baklawa",
+   "pakhlava"
+  ],
+  "serving_g": 40,
+  "kcal": 447,
+  "p": 6.9,
+  "c": 47.3,
+  "f": 25.9,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Ful medames",
+  "cuisine": "North African",
+  "aka": [
+   "ful",
+   "foul medames",
+   "foul",
+   "fava bean stew"
+  ],
+  "serving_g": 300,
+  "kcal": 140,
+  "p": 7.9,
+  "c": 12.4,
+  "f": 4.9,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Koshari",
+  "cuisine": "North African",
+  "aka": [
+   "koshary",
+   "kushari",
+   "kushary"
+  ],
+  "serving_g": 450,
+  "kcal": 136,
+  "p": 4.5,
+  "c": 18,
+  "f": 4.4,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Jollof rice",
+  "cuisine": "West African",
+  "aka": [
+   "jollof",
+   "jolof rice",
+   "benachin"
+  ],
+  "serving_g": 350,
+  "kcal": 148,
+  "p": 2.5,
+  "c": 21.3,
+  "f": 5.5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Egusi soup",
+  "cuisine": "West African",
+  "aka": [
+   "egusi",
+   "egusi stew",
+   "melon seed soup"
+  ],
+  "serving_g": 300,
+  "kcal": 190,
+  "p": 13.7,
+  "c": 2.6,
+  "f": 14.4,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Fufu, cassava",
+  "cuisine": "West African",
+  "aka": [
+   "fufu",
+   "foofoo",
+   "foufou",
+   "akpu",
+   "cassava fufu"
+  ],
+  "serving_g": 250,
+  "kcal": 133,
+  "p": 1,
+  "c": 29,
+  "f": 0.2,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Pounded yam",
+  "cuisine": "West African",
+  "aka": [
+   "iyan",
+   "pounded yam fufu"
+  ],
+  "serving_g": 250,
+  "kcal": 112,
+  "p": 1.4,
+  "c": 26.6,
+  "f": 0.2,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Suya",
+  "cuisine": "West African",
+  "aka": [
+   "beef suya",
+   "tsire",
+   "suya skewers"
+  ],
+  "serving_g": 150,
+  "kcal": 260,
+  "p": 25,
+  "c": 3,
+  "f": 16.3,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Ugali",
+  "cuisine": "East African",
+  "aka": [
+   "sima",
+   "nshima",
+   "posho",
+   "stiff maize porridge"
+  ],
+  "serving_g": 300,
+  "kcal": 117,
+  "p": 2.9,
+  "c": 24.1,
+  "f": 0.6,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Sukuma wiki",
+  "cuisine": "East African",
+  "aka": [
+   "sukuma",
+   "braised collard greens",
+   "braised kale"
+  ],
+  "serving_g": 150,
+  "kcal": 77,
+  "p": 2.8,
+  "c": 6.1,
+  "f": 5.1,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Injera",
+  "cuisine": "East African",
+  "aka": [
+   "enjera",
+   "ethiopian flatbread",
+   "teff flatbread"
+  ],
+  "serving_g": 150,
+  "kcal": 153,
+  "p": 5.5,
+  "c": 30.5,
+  "f": 1,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Doro wat",
+  "cuisine": "East African",
+  "aka": [
+   "doro wot",
+   "doro wett",
+   "ethiopian chicken stew"
+  ],
+  "serving_g": 300,
+  "kcal": 157,
+  "p": 11.3,
+  "c": 4.2,
+  "f": 10.3,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Misir wat",
+  "cuisine": "East African",
+  "aka": [
+   "misir wot",
+   "misir wett",
+   "ethiopian red lentil stew"
+  ],
+  "serving_g": 250,
+  "kcal": 142,
+  "p": 6.9,
+  "c": 14.8,
+  "f": 4.9,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Bobotie",
+  "cuisine": "South African",
+  "aka": [
+   "bobotie bake",
+   "babotie"
+  ],
+  "serving_g": 250,
+  "kcal": 189,
+  "p": 16.3,
+  "c": 8.3,
+  "f": 9.7,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Bunny chow",
+  "cuisine": "South African",
+  "aka": [
+   "bunny",
+   "kota",
+   "chicken bunny chow",
+   "durban curry in bread"
+  ],
+  "serving_g": 500,
+  "kcal": 152,
+  "p": 9.2,
+  "c": 16.9,
+  "f": 4.3,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Chakalaka",
+  "cuisine": "South African",
+  "aka": [
+   "chakalaka relish",
+   "chakalaka and beans"
+  ],
+  "serving_g": 150,
+  "kcal": 76,
+  "p": 2.4,
+  "c": 7.6,
+  "f": 3,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Kelewele",
+  "cuisine": "West African",
+  "aka": [
+   "fried plantain",
+   "spicy fried plantain",
+   "dodo",
+   "plantain fries"
+  ],
+  "serving_g": 150,
+  "kcal": 249,
+  "p": 1.6,
+  "c": 37.1,
+  "f": 10.1,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Pap and wors",
+  "cuisine": "South African",
+  "aka": [
+   "pap en wors",
+   "pap and boerewors",
+   "boerewors and pap"
+  ],
+  "serving_g": 425,
+  "kcal": 129,
+  "p": 5.1,
+  "c": 14.1,
+  "f": 5.6,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Mandazi",
+  "cuisine": "East African",
+  "aka": [
+   "mahamri",
+   "maandazi",
+   "swahili doughnut",
+   "african doughnut"
+  ],
+  "serving_g": 50,
+  "kcal": 377,
+  "p": 6.6,
+  "c": 49.2,
+  "f": 17.1,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Pad thai, chicken",
+  "cuisine": "Thai",
+  "aka": [
+   "phat thai",
+   "phad thai",
+   "pad thai gai"
+  ],
+  "serving_g": 350,
+  "kcal": 172,
+  "p": 8,
+  "c": 18.6,
+  "f": 7,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Green curry, chicken",
+  "cuisine": "Thai",
+  "aka": [
+   "gaeng keow wan gai",
+   "kaeng khiao wan",
+   "thai green curry"
+  ],
+  "serving_g": 400,
+  "kcal": 121,
+  "p": 7,
+  "c": 2.8,
+  "f": 9,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Massaman curry, beef",
+  "cuisine": "Thai",
+  "aka": [
+   "gaeng massaman",
+   "kaeng matsaman",
+   "massaman beef"
+  ],
+  "serving_g": 400,
+  "kcal": 176,
+  "p": 8.7,
+  "c": 7.2,
+  "f": 12.5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Tom yum goong",
+  "cuisine": "Thai",
+  "aka": [
+   "tom yum",
+   "tom yam goong",
+   "tom yum kung",
+   "tom yum soup with prawns"
+  ],
+  "serving_g": 500,
+  "kcal": 43,
+  "p": 5,
+  "c": 2.7,
+  "f": 1.4,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Som tam",
+  "cuisine": "Thai",
+  "aka": [
+   "green papaya salad",
+   "papaya salad",
+   "som tum",
+   "tam mak hoong"
+  ],
+  "serving_g": 250,
+  "kcal": 72,
+  "p": 2.6,
+  "c": 9.4,
+  "f": 2.2,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Pad kra pao, chicken, with rice",
+  "cuisine": "Thai",
+  "aka": [
+   "pad krapow",
+   "phat kaphrao",
+   "pad gaprao",
+   "thai basil chicken",
+   "kra pao gai"
+  ],
+  "serving_g": 420,
+  "kcal": 136,
+  "p": 7.7,
+  "c": 17.8,
+  "f": 3.5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Pad see ew, chicken",
+  "cuisine": "Thai",
+  "aka": [
+   "phat si io",
+   "pad siew",
+   "pad see eiw"
+  ],
+  "serving_g": 380,
+  "kcal": 161,
+  "p": 7.2,
+  "c": 19,
+  "f": 5.9,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Khao man gai",
+  "cuisine": "Thai",
+  "aka": [
+   "khao mun gai",
+   "thai chicken rice",
+   "khao man kai"
+  ],
+  "serving_g": 400,
+  "kcal": 164,
+  "p": 7.6,
+  "c": 19.6,
+  "f": 5.8,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Mango sticky rice",
+  "cuisine": "Thai",
+  "aka": [
+   "khao niao mamuang",
+   "khao neow mamuang",
+   "mango with sticky rice"
+  ],
+  "serving_g": 300,
+  "kcal": 153,
+  "p": 1.8,
+  "c": 25.1,
+  "f": 5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Thai iced tea",
+  "cuisine": "Thai",
+  "aka": [
+   "cha yen",
+   "cha yen thai",
+   "thai milk tea"
+  ],
+  "serving_g": 450,
+  "kcal": 47,
+  "p": 1.2,
+  "c": 8.2,
+  "f": 1.3,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Pho, beef",
+  "cuisine": "Vietnamese",
+  "aka": [
+   "pho bo",
+   "pho tai",
+   "beef noodle soup",
+   "vietnamese beef noodle soup"
+  ],
+  "serving_g": 850,
+  "kcal": 68,
+  "p": 3.3,
+  "c": 10.3,
+  "f": 1.3,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Banh mi, pork",
+  "cuisine": "Vietnamese",
+  "aka": [
+   "banh mi thit",
+   "banh mi thit nguoi",
+   "vietnamese pork roll",
+   "pork roll"
+  ],
+  "serving_g": 280,
+  "kcal": 215,
+  "p": 11.5,
+  "c": 21.7,
+  "f": 8.6,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Bun cha",
+  "cuisine": "Vietnamese",
+  "aka": [
+   "bun cha hanoi",
+   "grilled pork with vermicelli"
+  ],
+  "serving_g": 530,
+  "kcal": 140,
+  "p": 7.6,
+  "c": 15,
+  "f": 5.2,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Goi cuon",
+  "cuisine": "Vietnamese",
+  "aka": [
+   "fresh spring rolls",
+   "rice paper rolls",
+   "summer rolls",
+   "vietnamese rice paper rolls"
+  ],
+  "serving_g": 210,
+  "kcal": 139,
+  "p": 9.4,
+  "c": 15.6,
+  "f": 3.9,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Com tam, grilled pork chop",
+  "cuisine": "Vietnamese",
+  "aka": [
+   "com tam suon",
+   "com tam suon nuong",
+   "broken rice with pork chop",
+   "broken rice"
+  ],
+  "serving_g": 560,
+  "kcal": 150,
+  "p": 7.5,
+  "c": 17.6,
+  "f": 5.4,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Bun bo Hue",
+  "cuisine": "Vietnamese",
+  "aka": [
+   "bun bo hue",
+   "spicy beef noodle soup",
+   "hue beef noodle soup"
+  ],
+  "serving_g": 900,
+  "kcal": 83,
+  "p": 5.2,
+  "c": 9,
+  "f": 2.7,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Nasi lemak",
+  "cuisine": "Malaysian",
+  "aka": [
+   "nasi lemak bungkus",
+   "coconut rice with sambal"
+  ],
+  "serving_g": 440,
+  "kcal": 179,
+  "p": 6.4,
+  "c": 18.7,
+  "f": 8.6,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Hainanese chicken rice",
+  "cuisine": "Singaporean",
+  "aka": [
+   "chicken rice",
+   "hainan chicken rice",
+   "nasi ayam hainan"
+  ],
+  "serving_g": 400,
+  "kcal": 165,
+  "p": 7.6,
+  "c": 18.2,
+  "f": 6.5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Laksa, curry",
+  "cuisine": "Malaysian",
+  "aka": [
+   "curry laksa",
+   "curry mee",
+   "laksa lemak",
+   "singapore laksa",
+   "chicken laksa"
+  ],
+  "serving_g": 800,
+  "kcal": 108,
+  "p": 5.7,
+  "c": 6.8,
+  "f": 6.4,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Char kway teow",
+  "cuisine": "Malaysian",
+  "aka": [
+   "char koay teow",
+   "fried kway teow",
+   "ckt"
+  ],
+  "serving_g": 400,
+  "kcal": 180,
+  "p": 7.4,
+  "c": 18.6,
+  "f": 8,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Roti canai",
+  "cuisine": "Malaysian",
+  "aka": [
+   "roti prata",
+   "prata",
+   "roti paratha",
+   "plain roti",
+   "prata kosong"
+  ],
+  "serving_g": 200,
+  "kcal": 314,
+  "p": 6.5,
+  "c": 43.2,
+  "f": 12.5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Mee goreng mamak",
+  "cuisine": "Malaysian",
+  "aka": [
+   "mee goreng",
+   "mamak mee goreng",
+   "indian mee goreng"
+  ],
+  "serving_g": 440,
+  "kcal": 149,
+  "p": 7.4,
+  "c": 15.5,
+  "f": 5.8,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Satay, chicken, with peanut sauce",
+  "cuisine": "Malaysian",
+  "aka": [
+   "chicken satay",
+   "sate ayam",
+   "satay ayam"
+  ],
+  "serving_g": 185,
+  "kcal": 215,
+  "p": 13.9,
+  "c": 9.6,
+  "f": 13.4,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Beef rendang",
+  "cuisine": "Malaysian",
+  "aka": [
+   "rendang",
+   "rendang daging",
+   "rendang sapi"
+  ],
+  "serving_g": 150,
+  "kcal": 277,
+  "p": 17,
+  "c": 5.7,
+  "f": 20.6,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Teh tarik",
+  "cuisine": "Malaysian",
+  "aka": [
+   "pulled tea",
+   "malaysian milk tea",
+   "teh"
+  ],
+  "serving_g": 250,
+  "kcal": 61,
+  "p": 1.9,
+  "c": 9.2,
+  "f": 2,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Kaya toast",
+  "cuisine": "Singaporean",
+  "aka": [
+   "kaya butter toast",
+   "roti bakar kaya",
+   "kaya toast set"
+  ],
+  "serving_g": 80,
+  "kcal": 338,
+  "p": 6.4,
+  "c": 44,
+  "f": 15.1,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Nasi goreng, chicken",
+  "cuisine": "Indonesian",
+  "aka": [
+   "nasi goreng",
+   "nasi goreng ayam",
+   "indonesian fried rice"
+  ],
+  "serving_g": 430,
+  "kcal": 163,
+  "p": 6.9,
+  "c": 19.2,
+  "f": 6.2,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Gado-gado",
+  "cuisine": "Indonesian",
+  "aka": [
+   "gado gado",
+   "indonesian salad with peanut sauce"
+  ],
+  "serving_g": 495,
+  "kcal": 146,
+  "p": 7.1,
+  "c": 8.7,
+  "f": 9.1,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Mie goreng, chicken",
+  "cuisine": "Indonesian",
+  "aka": [
+   "mi goreng",
+   "mie goreng ayam",
+   "indonesian fried noodles"
+  ],
+  "serving_g": 385,
+  "kcal": 158,
+  "p": 7.9,
+  "c": 18.3,
+  "f": 5.4,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Soto ayam",
+  "cuisine": "Indonesian",
+  "aka": [
+   "soto",
+   "indonesian chicken soup",
+   "soto ayam lamongan"
+  ],
+  "serving_g": 700,
+  "kcal": 73,
+  "p": 4.5,
+  "c": 3.4,
+  "f": 4.5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Chicken adobo",
+  "cuisine": "Filipino",
+  "aka": [
+   "adobong manok",
+   "adobo",
+   "filipino chicken adobo"
+  ],
+  "serving_g": 200,
+  "kcal": 243,
+  "p": 16.4,
+  "c": 2.8,
+  "f": 18,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Sinigang, pork",
+  "cuisine": "Filipino",
+  "aka": [
+   "sinigang na baboy",
+   "pork sinigang",
+   "tamarind soup"
+  ],
+  "serving_g": 600,
+  "kcal": 67,
+  "p": 4.2,
+  "c": 3,
+  "f": 4.1,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Pancit canton",
+  "cuisine": "Filipino",
+  "aka": [
+   "pansit canton",
+   "filipino stir-fried noodles",
+   "pancit"
+  ],
+  "serving_g": 350,
+  "kcal": 128,
+  "p": 7.8,
+  "c": 15.5,
+  "f": 3.6,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Lumpia, pork",
+  "cuisine": "Filipino",
+  "aka": [
+   "lumpiang shanghai",
+   "lumpia shanghai",
+   "filipino spring rolls"
+  ],
+  "serving_g": 175,
+  "kcal": 239,
+  "p": 13.9,
+  "c": 8.1,
+  "f": 16.6,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Sisig, pork",
+  "cuisine": "Filipino",
+  "aka": [
+   "sizzling sisig",
+   "pork sisig",
+   "sisig"
+  ],
+  "serving_g": 220,
+  "kcal": 279,
+  "p": 19.4,
+  "c": 2.1,
+  "f": 21.2,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Butter chicken",
+  "cuisine": "Indian",
+  "aka": [
+   "murgh makhani",
+   "murg makhani",
+   "chicken makhani"
+  ],
+  "serving_g": 350,
+  "kcal": 166,
+  "p": 11,
+  "c": 4.3,
+  "f": 11.5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Chicken tikka masala",
+  "cuisine": "Indian",
+  "aka": [
+   "ctm",
+   "tikka masala"
+  ],
+  "serving_g": 350,
+  "kcal": 134,
+  "p": 11.6,
+  "c": 3.7,
+  "f": 7.7,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Chicken korma",
+  "cuisine": "Indian",
+  "aka": [
+   "korma",
+   "murgh korma"
+  ],
+  "serving_g": 350,
+  "kcal": 193,
+  "p": 11.4,
+  "c": 4,
+  "f": 14.5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Lamb rogan josh",
+  "cuisine": "Indian",
+  "aka": [
+   "rogan josh",
+   "roghan josh",
+   "rogan gosht"
+  ],
+  "serving_g": 350,
+  "kcal": 131,
+  "p": 12.4,
+  "c": 2.8,
+  "f": 7.4,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Chana masala",
+  "cuisine": "Indian",
+  "aka": [
+   "chole",
+   "chholay",
+   "chickpea curry",
+   "chana curry"
+  ],
+  "serving_g": 300,
+  "kcal": 118,
+  "p": 5.3,
+  "c": 11.1,
+  "f": 4.4,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Dal tadka",
+  "cuisine": "Indian",
+  "aka": [
+   "dal",
+   "dhal",
+   "daal",
+   "tadka dal",
+   "dal fry",
+   "tarka dal",
+   "tarka dhal"
+  ],
+  "serving_g": 300,
+  "kcal": 114,
+  "p": 5.3,
+  "c": 14.2,
+  "f": 3.8,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Dal makhani",
+  "cuisine": "Indian",
+  "aka": [
+   "daal makhani",
+   "dal makhni",
+   "maa ki dal",
+   "black dal"
+  ],
+  "serving_g": 300,
+  "kcal": 144,
+  "p": 5.1,
+  "c": 11.3,
+  "f": 8.7,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Rajma",
+  "cuisine": "Indian",
+  "aka": [
+   "rajma masala",
+   "rajma curry",
+   "kidney bean curry"
+  ],
+  "serving_g": 300,
+  "kcal": 100,
+  "p": 5.1,
+  "c": 8.9,
+  "f": 3.6,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Palak paneer",
+  "cuisine": "Indian",
+  "aka": [
+   "saag paneer",
+   "spinach paneer",
+   "palak panir"
+  ],
+  "serving_g": 300,
+  "kcal": 158,
+  "p": 7.3,
+  "c": 2.6,
+  "f": 12.7,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Aloo gobi",
+  "cuisine": "Indian",
+  "aka": [
+   "aloo gobhi",
+   "alu gobi",
+   "potato cauliflower curry"
+  ],
+  "serving_g": 250,
+  "kcal": 91,
+  "p": 2.1,
+  "c": 7.3,
+  "f": 5.5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Chicken biryani",
+  "cuisine": "Indian",
+  "aka": [
+   "biryani",
+   "biriyani",
+   "murgh biryani",
+   "chicken dum biryani"
+  ],
+  "serving_g": 450,
+  "kcal": 151,
+  "p": 7.2,
+  "c": 16.3,
+  "f": 6,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Vegetable biryani",
+  "cuisine": "Indian",
+  "aka": [
+   "veg biryani",
+   "veg biriyani",
+   "subz biryani"
+  ],
+  "serving_g": 450,
+  "kcal": 140,
+  "p": 2.9,
+  "c": 19.4,
+  "f": 5.3,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Naan, plain",
+  "cuisine": "Indian",
+  "aka": [
+   "naan",
+   "nan",
+   "plain naan",
+   "butter naan",
+   "naan bread"
+  ],
+  "serving_g": 130,
+  "kcal": 287,
+  "p": 7.6,
+  "c": 50,
+  "f": 5.7,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Naan, garlic",
+  "cuisine": "Indian",
+  "aka": [
+   "garlic naan",
+   "garlic nan",
+   "garlic butter naan"
+  ],
+  "serving_g": 135,
+  "kcal": 288,
+  "p": 7.5,
+  "c": 48.3,
+  "f": 6.6,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Chapati",
+  "cuisine": "Indian",
+  "aka": [
+   "roti",
+   "phulka",
+   "chapatti",
+   "chappati"
+  ],
+  "serving_g": 40,
+  "kcal": 257,
+  "p": 8.4,
+  "c": 44.6,
+  "f": 3.3,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Paratha, aloo",
+  "cuisine": "Indian",
+  "aka": [
+   "aloo paratha",
+   "alu paratha",
+   "potato paratha",
+   "aloo parantha"
+  ],
+  "serving_g": 150,
+  "kcal": 208,
+  "p": 5,
+  "c": 26.2,
+  "f": 8.3,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Dosa, masala",
+  "cuisine": "Indian",
+  "aka": [
+   "masala dosa",
+   "masala dosai",
+   "masala thosai"
+  ],
+  "serving_g": 250,
+  "kcal": 180,
+  "p": 4.5,
+  "c": 25.1,
+  "f": 6.5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Idli",
+  "cuisine": "Indian",
+  "aka": [
+   "idly",
+   "idlis",
+   "iddli"
+  ],
+  "serving_g": 100,
+  "kcal": 152,
+  "p": 5.2,
+  "c": 31.2,
+  "f": 0.5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Sambar",
+  "cuisine": "Indian",
+  "aka": [
+   "sambhar",
+   "sambaar",
+   "lentil vegetable stew"
+  ],
+  "serving_g": 250,
+  "kcal": 58,
+  "p": 2.3,
+  "c": 8.6,
+  "f": 1.5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Samosa, vegetable",
+  "cuisine": "Indian",
+  "aka": [
+   "samosa",
+   "veg samosa",
+   "potato samosa",
+   "aloo samosa",
+   "samoosa"
+  ],
+  "serving_g": 90,
+  "kcal": 267,
+  "p": 4,
+  "c": 23,
+  "f": 17.2,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Onion bhaji",
+  "cuisine": "Indian",
+  "aka": [
+   "bhaji",
+   "onion bhajia",
+   "kanda bhaji",
+   "onion pakora",
+   "pyaz pakora"
+  ],
+  "serving_g": 100,
+  "kcal": 252,
+  "p": 6.2,
+  "c": 16.4,
+  "f": 16.5,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Raita",
+  "cuisine": "Indian",
+  "aka": [
+   "cucumber raita",
+   "kheera raita",
+   "yoghurt dip"
+  ],
+  "serving_g": 80,
+  "kcal": 56,
+  "p": 3.9,
+  "c": 4.2,
+  "f": 2.3,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Lassi, mango",
+  "cuisine": "Indian",
+  "aka": [
+   "mango lassi",
+   "aam lassi"
+  ],
+  "serving_g": 260,
+  "kcal": 76,
+  "p": 2.9,
+  "c": 11.4,
+  "f": 2,
+  "source": "built",
+  "missing": []
+ },
+ {
+  "name": "Chai, masala",
+  "cuisine": "Indian",
+  "aka": [
+   "masala chai",
+   "chai",
+   "spiced tea",
+   "chai tea",
+   "cutting chai"
+  ],
+  "serving_g": 200,
+  "kcal": 54,
+  "p": 1.9,
+  "c": 7.6,
+  "f": 1.9,
+  "source": "built",
+  "missing": []
+ }
+]
