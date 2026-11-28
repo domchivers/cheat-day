@@ -106,7 +106,9 @@ final class Subscription {
     var status: String {
         guard active else { return "Not subscribed" }
         guard let renews else { return "Active" }
-        let d = renews.formatted(.dateTime.day().month(.abbreviated).year(Calendar.current.isDate(renews, equalTo: Date(), toGranularity: .year) ? .omitted : .defaultDigits))
+        let thisYear = Calendar.current.isDate(renews, equalTo: Date(), toGranularity: .year)
+        let d = thisYear ? renews.formatted(.dateTime.day().month(.abbreviated))
+                         : renews.formatted(.dateTime.day().month(.abbreviated).year())   // .omitted is iOS 18 only
         return inTrial ? "Free until \(d)" : "Renews \(d)"
     }
     var planName: String { currentID == Self.monthlyID ? "Cheat Days monthly" : currentID == Self.yearlyID ? "Cheat Days yearly" : "Cheat Days" }
