@@ -1,6 +1,8 @@
 // Cheat Days: delete the signed-in person's account, as App Store guideline 5.1.1(v) asks, with 30 days to change
 // their mind (1.4.75). Needs supabase/account_grace.sql run first.
-// Deploy: Supabase dashboard -> Edge Functions -> delete-account -> paste this, Deploy. Leave "Verify JWT" on.
+// Deploy: Supabase dashboard -> Edge Functions -> delete-account -> paste this, Deploy. "Verify JWT" off: the function
+// checks every caller itself (a signed-in user and their password, or the secret key for the sweep), and the Cron job's
+// "Add secret key" header is a new-style key that isn't a JWT (28 Nov).
 //
 // From the app:   POST { confirm: "delete", password }
 //   -> the password is checked (401 when wrong), the account is marked to go in 30 days (hidden from everyone else
@@ -74,9 +76,19 @@ Deno.serve(async (req) => {
   const token = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
   const body = await req.json().catch(() => ({}));
 
-  // the nightly job: only with the service role key
+  // the nightly job: only with the project's secret key (the old service role key, or a new sb_secret_ key, which the
+  // dashboard's Cron "Add secret key" sends and which needs Verify JWT off). A key is tried, not compared: only a secret
+  // key may list users, so nothing about it has to be stored here (28 Nov).
   if (body?.sweep === true) {
-    if (token !== SERVICE) return json({ error: "Not allowed" }, 401);
+    const keys = [token, req.headers.get("apikey") || ""].filter(Boolean);
+    let allowed = keys.includes(SERVICE);
+    for (const k of keys) {
+      if (allowed) break;
+      const probe = createClient(URL_, k, { auth: { persistSession: false, autoRefreshToken: false } });
+      const { error } = await probe.auth.admin.listUsers({ page: 1, perPage: 1 });
+      allowed = !error;
+    }
+    if (!allowed) return json({ error: "Not allowed" }, 401);
     const { data, error } = await admin.from("profiles").select("user_id").lt("delete_after", new Date().toISOString()).limit(500);
     if (error) return json({ error: error.message }, 500);
     let erased = 0;
