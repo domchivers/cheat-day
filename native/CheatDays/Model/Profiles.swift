@@ -137,10 +137,11 @@ final class Profiles {
         })
     }
     /// Why this @name or name can't be used, or nil when it's fine.
-    static func problem(_ s: String, username: Bool) -> String? {
+    /// `staff`: a Founder or Team account, which may use the app's own names (the owner's @cheatdays, 28 Nov).
+    static func problem(_ s: String, username: Bool, staff: Bool = false) -> String? {
         let t = squash(s)
         if blocked.contains(where: { t.contains($0) }) { return username ? "That @name isn't allowed. Try another." : "That name isn't allowed. Try another." }
-        if username, reserved.contains(t) { return "That @name is kept for the app. Try another." }
+        if username, !staff, reserved.contains(t) { return "That @name is kept for the app. Try another." }
         return nil
     }
     func taken(_ username: String) async -> Bool {
@@ -221,6 +222,9 @@ struct Avatar: View {
     var dot = false
     /// The ring's colours: the story rings' own (the feed's), bright for a story not watched yet, grey otherwise.
     var bright = true
+    /// The name for the letter when this phone hasn't loaded that person (another account on it: the accounts sheet
+    /// showed "S" for "Someone" before its profile was in, 28 Nov).
+    var name: String? = nil
     static let rim = [Color(red: 0.84, green: 0.92, blue: 1), Color(red: 0.56, green: 0.77, blue: 1), Color(red: 0.77, green: 0.63, blue: 1)]
     private var profiles: Profiles { Profiles.shared }
 
@@ -231,7 +235,7 @@ struct Avatar: View {
                 FeedPhoto(src: src, fill: true)
             } else {
                 Theme.hero
-                Text(String(Self.name(id).prefix(1)).uppercased())
+                Text(String((name ?? Self.name(id)).prefix(1)).uppercased())
                     .font(.system(size: size * 0.42, weight: .heavy)).foregroundStyle(Theme.accent)
             }
         }

@@ -655,6 +655,11 @@ struct EditProfileView: View {
             }
             .photosPicker(isPresented: $library, selection: $picked, matching: .images)
             .keyboardDone()
+            // why Save didn't save, where it can't be missed (28 Nov: "@cheatdays is kept for the app" sat at the foot of
+            // the form, out of sight, and Save just seemed not to work)
+            .alert("Couldn't save", isPresented: Binding(get: { problem != nil && !busy }, set: { if !$0 { problem = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: { Text(problem ?? "") }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .topBarTrailing) { Button(busy ? "Saving…" : "Save") { save() }.fontWeight(.bold).disabled(busy) }
@@ -713,10 +718,12 @@ struct EditProfileView: View {
             defer { busy = false }
             let u = Profiles.clean(username)
             if !u.isEmpty, u.count < 3 { problem = "An @name needs at least 3 characters."; return }
-            if !u.isEmpty, let why = Profiles.problem(u, username: true) { problem = why; return }
+            // the app's own names (@cheatdays…) are for the team's accounts: Founder or Team, which only the server gives
+            let staff = !Set(profiles.mine?.honors ?? []).isDisjoint(with: ["founder", "team"])
+            if !u.isEmpty, let why = Profiles.problem(u, username: true, staff: staff) { problem = why; return }
             if let why = Profiles.problem(name, username: false) { problem = why; return }
             if let why = Profiles.problem(label, username: false) { problem = why.replacingOccurrences(of: "name", with: "label"); return }
-            if !u.isEmpty, await profiles.taken(u) { taken = true; return }
+            if !u.isEmpty, await profiles.taken(u) { taken = true; problem = "That @name is taken. Try another."; return }
             taken = false
             let change: JSON = ["display_name": name.trimmingCharacters(in: .whitespaces).isEmpty ? Friends.shared.myName : name.trimmingCharacters(in: .whitespaces),
                                 "username": u.isEmpty ? NSNull() : u, "bio": bio.trimmingCharacters(in: .whitespacesAndNewlines),

@@ -30,6 +30,13 @@ final class Accounts {
     var problem: String?
     /// Bumped on every switch: the tabs are rebuilt from scratch.
     private(set) var generation = 0
+    /// The tab you were on, so a switch lands you back on it, not on Today (28 Nov: it always went to Today).
+    var lastTab = 0
+    /// The account you were on before this one: a double tap on your photo in the tab bar goes back to it, as Instagram does.
+    private(set) var previous: String?
+    /// The new account's record still coming down after a switch: the tabs wait under a cover, so its Today doesn't show a
+    /// blank day's 1,600 or the last account's numbers first (28 Nov).
+    var loading = false
 
     private static let key = "accounts.list"
     private var leaving: String?   // the account an Add started from, for Cancel
@@ -109,11 +116,22 @@ final class Accounts {
         defer { busy = false }
         problem = nil
         guard await leave() else { return false }
+        let from = current
         guard Supabase.shared.use(account: id) else { problem = "That account needs signing in again."; return false }
+        previous = from.isEmpty ? previous : from
+        loading = true   // MainTabs clears it once this account's record is down; never longer than 8 s with no connection
+        Task { try? await Task.sleep(for: .seconds(8)); loading = false }
         clearState(store: true)
         sheet = false
         show("Switched to \(list.first { $0.id == id }?.title ?? "your other account")")
         return true
+    }
+
+    /// Double tap on your photo in the tab bar: back to the account you were on before (or the next one on the phone).
+    func switchBack() async {
+        let others = accounts.filter { $0.id != current }
+        guard let to = others.first(where: { $0.id == previous })?.id ?? others.first?.id else { return }
+        await switchTo(to)
     }
 
     /// A notification for another account on this phone: that account first.
@@ -286,7 +304,7 @@ struct AccountsSheet: View {
             ForEach(accounts.accounts) { a in
                 Button { Task { await accounts.switchTo(a.id) } } label: {
                     HStack(spacing: 12) {
-                        Avatar(id: a.id, size: 46)
+                        Avatar(id: a.id, size: 46, name: a.title)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(a.title).font(.body.weight(.semibold)).foregroundStyle(.primary)
                             if !a.name.isEmpty && a.name != a.title { Text(a.name).font(.subheadline).foregroundStyle(.secondary) }

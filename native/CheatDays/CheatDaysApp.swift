@@ -98,6 +98,9 @@ private struct SignedIn: View {
             .id("\(Supabase.shared.userId ?? "")-\(accounts.generation)")
             .sheet(isPresented: $accounts.sheet) { AccountsSheet() }
             .fullScreenCover(isPresented: $accounts.adding) { SignInView(adding: true) }
+            // after a switch, until that account's record is down: a plain cover, not a blank day's numbers
+            .overlay { if accounts.loading { ZStack { Theme.bg.ignoresSafeArea(); ProgressView() }.transition(.opacity) } }
+            .animation(.easeOut(duration: 0.2), value: accounts.loading)
             .overlay(alignment: .top) {
                 if let t = accounts.toast { AccountToast(text: t) }
             }
@@ -429,14 +432,30 @@ private struct TourHarness: View {
 struct MainTabs: View {
     var demo = false   // the marketing record: no sync, no setup, no tour
     var startTab = 0   // the demo's tab
-    @State private var tab = 0
+    @State private var tab = Accounts.shared.lastTab   // a switch rebuilds this view: back on the tab you were on
+    @State private var meTapped: Date?   // a second tap on Me within a moment switches account
     @State private var onboarding = false
     @State private var habits = false
     @State private var scaleSetup = false
     @Environment(\.scenePhase) private var phase
 
+    /// The tab bar's taps, with a double tap on your photo (Me) switching to your previous account, as Instagram does.
+    /// A tap on the tab you're already on still comes through here.
+    private var selection: Binding<Int> {
+        Binding(get: { tab }, set: { new in
+            if new == 3, !demo, Accounts.shared.accounts.count > 1 {
+                if let t = meTapped, Date().timeIntervalSince(t) < 0.4 {
+                    meTapped = nil
+                    Task { await Accounts.shared.switchBack() }
+                } else { meTapped = Date() }
+            }
+            tab = new
+            if !demo { Accounts.shared.lastTab = new }
+        })
+    }
+
     var body: some View {
-        TabView(selection: $tab) {
+        TabView(selection: selection) {
             // icons only, no words under them; Today is the food log, so a plate rather than a sun
             TodayView()
                 .tabItem { Image(uiImage: TabGlyph.make("fork.knife")).accessibilityLabel("Today") }.tag(0)
@@ -474,6 +493,7 @@ struct MainTabs: View {
         .task {
             if demo { tab = startTab; return }
             await Store.shared.sync()   // waits for the account to come down, even if signing in started the sync
+            Accounts.shared.loading = false   // a switched-to account's record is in: off with the cover
             Task {   // once per account: food lost from past days put back, then raised budgets
                 await Store.shared.repairHistory()
                 await Store.shared.repairBudgets()
