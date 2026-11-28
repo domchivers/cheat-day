@@ -21,5 +21,5 @@ xcodebuild -project native/CheatDays.xcodeproj -scheme CheatDays -destination "i
   -collect-test-diagnostics never CODE_SIGNING_ALLOWED=NO -only-testing:CheatDaysTests/LiveMealsTests test > build/mac-live-meals.log 2>&1
 status=$?
 # never print the environment: the log has no sign-in in it, only the results
-grep -E "error:|Test Case .*(passed|failed|skipped)|XCTAssert|Executed|TEST (SUCCEEDED|FAILED)" build/mac-live-meals.log | sed -E 's#^/Users/[^ ]*/cheat-day/##'
+grep -a -E "error:|Test Case .*(passed|failed|skipped)|XCTAssert|LIVE |Executed|TEST (SUCCEEDED|FAILED)" build/mac-live-meals.log | sed -E 's#^/Users/[^ ]*/cheat-day/##'
 [ $status -eq 0 ] && echo "Live meals OK" || { echo "Failed: full log in build/mac-live-meals.log"; exit $status; }

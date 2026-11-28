@@ -50,9 +50,19 @@ final class LiveMealsTests: XCTestCase {
     /// The chat as the app runs it, one message, and the checked card that comes back.
     private func ask(_ text: String, photos: [UIImage] = []) async throws -> (card: JSON, reply: String) {
         let turn = Assistant.Turn(me: true, text: text, result: nil, images: photos)
-        let r = try await Assistant.ask([turn], store: Store.shared)
-        let card = (r["estimate"] as? JSON) ?? [:]
-        return (card, str(r["reply"]).isEmpty ? str(r["text"]) : str(r["reply"]))
+        let r: JSON
+        do { r = try await Assistant.ask([turn], store: Store.shared) } catch {
+            XCTFail("The chat failed: \(error.localizedDescription)"); throw error
+        }
+        let reply = str(r["reply"]).isEmpty ? str(r["text"]) : str(r["reply"])
+        // what came back, so a miss says why (the kind of answer, its fields and the reply; never the account)
+        print("LIVE \(text.prefix(40))… kind=\(str(r["kind"])) keys=\(r.keys.sorted()) reply=\(reply.prefix(400))")
+        guard let card = r["estimate"] as? JSON else {
+            XCTFail("No estimate card: the answer was kind \"\(str(r["kind"]))\" with \(r.keys.sorted()). Reply: \(reply.prefix(300))")
+            return ([:], reply)
+        }
+        print("LIVE card: \(list(card["parts"]).map { "\(str($0["name"])) \(Int(num($0["grams"]) ?? 0)) g \(Int(num($0["kcal"]) ?? 0)) kcal [\(str($0["src"]))]" }.joined(separator: "; ")) = \(Int(num(card["kcal_total"]) ?? 0))")
+        return (card, reply)
     }
 
     private func part(_ card: JSON, _ words: [String]) -> JSON? {
