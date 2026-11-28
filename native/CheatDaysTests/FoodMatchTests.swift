@@ -215,6 +215,14 @@ final class FoodMatchTests: XCTestCase {
         XCTAssertTrue(Assistant.trail(["parts": [fixed!]], shopFound: false).contains(str(fixed?["swapped"])), "the swap is said under the reply")
     }
 
+    /// 28 Nov: the steak (food table) and the salsa (their recipe) both had ticks under "1 of 2 parts checked".
+    func testTheCheckedLineCountsEveryTick() {
+        XCTAssertEqual(Assistant.checkedLine([["src": "afcd"], ["src": "them"]]), "2 of 2 parts checked: 1 against the food database, 1 from what you told me")
+        XCTAssertEqual(Assistant.checkedLine([["src": "afcd"], ["src": "label"], ["src": "web"], ["src": "ai"]]), "3 of 4 parts checked: 1 against the food database, 1 from its label, 1 found online")
+        XCTAssertEqual(Assistant.checkedLine([["src": "afcd"], ["src": "usda"]]), "2 of 2 parts checked against the food database", "all from the tables reads as before")
+        XCTAssertNil(Assistant.checkedLine([["src": "ai"]]))
+    }
+
     func testAPartWithAWarningIsNeverCountedAsChecked() {
         let plate = Assistant.sane(["parts": [
             ["name": "Rice noodles, boiled", "grams": 200, "kcal": 332, "protein_g": 15, "carbs_g": 60, "fat_g": 2, "src": "afcd"],
