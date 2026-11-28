@@ -1,0 +1,66 @@
+import UIKit
+import XCTest
+@testable import CheatDays
+
+/// Real meals sent to the real AI through the app's own server (28 Nov; tools/meal-regress/meals.json): the same chat
+/// the app runs, signed in as a test account, so the AI's own mistakes show (cooked bacon assumed, a label not looked
+/// up), not just the app's. Skipped unless the test account's sign-in is in the environment, so ordinary runs never
+/// call the AI. Each run uses the test account's daily AI allowance (a few calls a meal).
+///
+/// On the Mac, with the sign-in kept outside the repo (never committed, never typed into chat):
+///   TEST_RUNNER_CD_LIVE_EMAIL=... TEST_RUNNER_CD_LIVE_PASSWORD=... [TEST_RUNNER_CD_LIVE_PHOTOS=/path/to/meal-regress/photos] \
+///   xcodebuild test ... -only-testing:CheatDaysTests/LiveMealsTests
+@MainActor
+final class LiveMealsTests: XCTestCase {
+    private var env: [String: String] { ProcessInfo.processInfo.environment }
+
+    private func signedIn() async throws {
+        guard let email = env["CD_LIVE_EMAIL"], let password = env["CD_LIVE_PASSWORD"], !email.isEmpty, !password.isEmpty else {
+            throw XCTSkip("No test account in the environment (CD_LIVE_EMAIL / CD_LIVE_PASSWORD): live meals skipped.")
+        }
+        if Supabase.shared.email.lowercased() != email.lowercased() { try await Supabase.shared.signIn(email: email, password: password) }
+    }
+
+    private func photos(_ names: [String]) throws -> [UIImage] {
+        guard !names.isEmpty else { return [] }
+        guard let dir = env["CD_LIVE_PHOTOS"] else { throw XCTSkip("A photo meal, and no CD_LIVE_PHOTOS folder: skipped.") }
+        return try names.map { n in
+            guard let img = UIImage(contentsOfFile: (dir as NSString).appendingPathComponent(n)) else { throw XCTSkip("Missing photo \(n)") }
+            return img
+        }
+    }
+
+    /// The chat as the app runs it, one message, and the checked card that comes back.
+    private func ask(_ text: String, photos: [UIImage] = []) async throws -> (card: JSON, reply: String) {
+        let turn = Assistant.Turn(me: true, text: text, result: nil, images: photos)
+        let r = try await Assistant.ask([turn], store: Store.shared)
+        let card = (r["estimate"] as? JSON) ?? [:]
+        return (card, str(r["reply"]).isEmpty ? str(r["text"]) : str(r["reply"]))
+    }
+
+    private func part(_ card: JSON, _ words: [String]) -> JSON? {
+        list(card["parts"]).first { p in let n = str(p["name"]).lowercased(); return words.contains { n.contains($0) } }
+    }
+
+    func testHomeBurgerWithAldiMince() async throws {
+        try await signedIn()
+        let (card, _) = try await ask("37g British streaky bacon\n250g jundurra Aldi 3 star beef mince\n10g light kewpie mayonnaise\n10g reduced sugar ketchup\n5g Australian mustard")
+        let total = num(card["kcal_total"]) ?? 0
+        XCTAssertTrue((680...820).contains(total), "about 750 kcal (3 Star label, raw bacon); got \(total)")
+        let mince = part(card, ["mince"])
+        XCTAssertTrue((560...650).contains(num(mince?["kcal"]) ?? 0), "the 3 Star mince is about 605 kcal for 250 g; got \(num(mince?["kcal"]) ?? 0)")
+        let bacon = part(card, ["bacon"])
+        XCTAssertTrue((90...125).contains(num(bacon?["kcal"]) ?? 0), "37 g raw streaky is about 100 kcal; got \(num(bacon?["kcal"]) ?? 0)")
+        XCTAssertFalse(str(bacon?["name"]).lowercased().contains("cooked"), "weighed off the pack: raw")
+    }
+
+    func testChineseBreakfastHalfOfEverything() async throws {
+        try await signedIn()
+        let imgs = try photos(["breakfast-1.jpg", "breakfast-2.jpg", "breakfast-3.jpg", "breakfast-receipt.jpg"])
+        let (card, reply) = try await ask("Had half of everything. Maybe 1/3 of the doujiang though", photos: imgs)
+        let total = num(card["kcal_total"]) ?? 0
+        XCTAssertTrue((900...1150).contains(total), "about 1,050 kcal from Taiwan's measured numbers; got \(total)")
+        XCTAssertTrue((400...520).contains(num(part(card, ["youtiao", "fried dough"])?["kcal"]) ?? 0), "one youtiao, about 466 kcal")
+        XCTAssertFalse(reply.lowercased().contains("menu name") || reply.lowercased().contains("named on the menu"), "the receipt shows the names: only ask where it's from")
+    }
+}

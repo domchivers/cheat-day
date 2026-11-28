@@ -1,0 +1,35 @@
+[
+  {
+    "id": "chinese-breakfast-half",
+    "logged": "2026-11-28",
+    "message": "Had half of everything. Maybe 1/3 of the doujiang though",
+    "photos": ["photos/breakfast-1.jpg", "photos/breakfast-2.jpg", "photos/breakfast-3.jpg", "photos/breakfast-receipt.jpg"],
+    "truth": {
+      "kcal": [900, 1150],
+      "why": "Taiwan TFDA: youtiao 548 kcal/100 g (85 g = 466), tea egg 147, pork bun 263, soy milk 56; douhua in broth by estimate. About 1,050 kcal.",
+      "parts": { "youtiao": [400, 520] }
+    },
+    "ai_should": [
+      "count half of the receipt's items (1 youtiao, 1 bao, 1 tea egg, half the bean curd) and a third of the soy milk",
+      "ask only where it's from, not the menu names (the receipt shows them)"
+    ],
+    "replay_test": "RealMealsTests.testChineseBreakfastHalfOfEverything"
+  },
+  {
+    "id": "home-burger-aldi-mince",
+    "logged": "2026-11-28",
+    "message": "37g British streaky bacon\n250g jundurra Aldi 3 star beef mince\n10g light kewpie mayonnaise\n10g reduced sugar ketchup\n5g Australian mustard",
+    "photos": [],
+    "truth": {
+      "kcal": [680, 820],
+      "why": "Jindurra Station 3 Star mince label (Open Food Facts 4061462878381): 1,013 kJ, P20.4, F18 per 100 g, so 250 g = 605 kcal; streaky bacon raw (CoFID) 276/100 g; about 750 kcal, 57 g protein.",
+      "parts": { "mince": [560, 650], "bacon": [90, 125] }
+    },
+    "ai_should": [
+      "treat the bacon and mince as raw (weights typed with no word on cooking)",
+      "give the mince numbers_from brand with the brand and product in its name, so the label is looked up",
+      "know 3 star mince is about 18% fat, not lean"
+    ],
+    "replay_test": "RealMealsTests.testHomeBurgerWithAldiMince"
+  }
+]
