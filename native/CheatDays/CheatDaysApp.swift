@@ -437,6 +437,7 @@ struct MainTabs: View {
     @State private var onboarding = false
     @State private var habits = false
     @State private var scaleSetup = false
+    @State private var paywall = false   // the subscription, offered once at the end of sign-up
     @Environment(\.scenePhase) private var phase
 
     /// The tab bar's taps, with a double tap on your photo (Me) switching to your previous account, as Instagram does.
@@ -492,6 +493,7 @@ struct MainTabs: View {
         }
         .task {
             if demo { tab = startTab; return }
+            Subscription.shared.start()   // the plans and what they're on, kept current from here on
             await Store.shared.sync()   // waits for the account to come down, even if signing in started the sync
             Accounts.shared.loading = false   // a switched-to account's record is in: off with the cover
             Task {   // once per account: food lost from past days put back, then raised budgets
@@ -514,6 +516,7 @@ struct MainTabs: View {
         }) { OnboardingView(firstRun: true) { onboarding = false } }
         .fullScreenCover(isPresented: $habits, onDismiss: { UserDefaults.standard.set(false, forKey: "signin.setup"); afterSetup() }) { HabitsView { habits = false } }
         .fullScreenCover(isPresented: $scaleSetup, onDismiss: { Tour.shared.startIfPending() }) { ScaleSetupView { scaleSetup = false } }
+        .fullScreenCover(isPresented: $paywall, onDismiss: { afterSetup() }) { PaywallView() }
         .overlay { TourOverlay() }   // the show-me tour, over everything including the tab bar
         .onChange(of: Tour.shared.pending) { _, now in
             // Settings' replay; a fresh sign-in waits for the first sync's onboarding check in .task instead
@@ -534,6 +537,12 @@ struct MainTabs: View {
     /// on yet), then the show-me tour.
     private func afterSetup() {
         let d = UserDefaults.standard
+        // the paywall, once for each account, at the end of sign-up (or the first open after subscriptions came in),
+        // before the scale and the tour; only when the App Store has the plans
+        let s = Subscription.shared, offered = "paywall.offered.\(Supabase.shared.userId ?? "")"
+        if !demo, !Subscription.bypass, !s.active, s.loaded, !s.products.isEmpty, !d.bool(forKey: offered) {
+            d.set(true, forKey: offered); paywall = true; return
+        }
         if d.bool(forKey: "scaleSetup.pending") {
             d.set(false, forKey: "scaleSetup.pending"); d.set(true, forKey: "scaleSetup.asked")
             if HealthSync.available && !HealthSync.on { scaleSetup = true; return }

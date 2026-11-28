@@ -1,3 +1,4 @@
+import StoreKit
 import SwiftUI
 import UserNotifications
 
@@ -19,6 +20,7 @@ struct SettingsView: View {
     @AppStorage("share.chats") private var shareChats = false   // ChatShare.onKey: Ask chats to the team, off until they say
     @AppStorage("share.chatPhotos") private var shareChatPhotos = false   // ChatShare.photosKey
     @State private var deletingShared = false
+    @State private var showPaywall = false   // Settings › Subscription › Start my free week
     @State private var sharedNote = ""
     @State private var newPassword = ""
     @State private var passwordNote: String?
@@ -55,6 +57,25 @@ struct SettingsView: View {
                     .padding(.vertical, 4)
                 }
             } header: { if search.isEmpty { Text("Your account") } }
+            }
+            // the subscription (28 Nov, design/paywall-mockup.png): the plan and when it renews, Manage (Apple's own
+            // page, to change or cancel), Restore. Only once the App Store has the plans.
+            if (search.isEmpty || shows("Subscription plan restore cancel")), !Subscription.shared.products.isEmpty {
+                let subs = Subscription.shared
+                Section {
+                    if subs.active {
+                        HStack { Text(subs.planName); Spacer(); Text(subs.status).foregroundStyle(.secondary) }
+                        Button("Manage subscription") { Task { if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene { try? await AppStore.showManageSubscriptions(in: scene) } } }
+                    } else {
+                        Button("Start my free week") { showPaywall = true }
+                    }
+                    Button("Restore purchases") { Task { await subs.restore() } }.disabled(subs.buying)
+                } header: { if search.isEmpty { Text("Subscription") } } footer: {
+                    if let p = subs.problem { Text(p).foregroundStyle(Theme.warn) }
+                    else if subs.active, subs.inTrial, let y = subs.currentID == Subscription.yearlyID ? subs.yearly : subs.monthly {
+                        Text("Then \(y.displayPrice) \(subs.currentID == Subscription.yearlyID ? "a year" : "a month"). Manage takes you to your Apple subscriptions to change or cancel it.")
+                    }
+                }
             }
             // grouped as Instagram groups its settings, with a search over them all
             Section {
@@ -134,6 +155,7 @@ struct SettingsView: View {
             Button("Log out of all", role: .destructive) { Task { await Accounts.shared.logOutAll() } }
         } message: { Text("Everything stays in each account. Sign in again to get it back.") }
         .navigationTitle("Settings")
+        .fullScreenCover(isPresented: $showPaywall) { PaywallView() }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)   // like Instagram: Settings has the screen to itself
         .task {

@@ -1,0 +1,78 @@
+{
+  "identifier" : "6C0D3A11-7F2E-4B8D-9A51-2E7C5B0F1A90",
+  "nonRenewingSubscriptions" : [],
+  "products" : [],
+  "settings" : {
+    "_applicationInternalID" : "",
+    "_developerTeamID" : "",
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_AU",
+    "_storefront" : "AUS",
+    "_storeKitErrors" : []
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "21CD0A5B",
+      "localizations" : [],
+      "name" : "Cheat Days",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "79.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6747000001",
+          "introductoryOffer" : {
+            "internalID" : "6747000011",
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1W"
+          },
+          "localizations" : [
+            {
+              "description" : "Every day can feel like a cheat day.",
+              "displayName" : "Cheat Days yearly",
+              "locale" : "en_AU"
+            }
+          ],
+          "productID" : "com.cheatdays.app.yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Yearly",
+          "subscriptionGroupID" : "21CD0A5B",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : []
+        },
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "12.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "6747000002",
+          "introductoryOffer" : {
+            "internalID" : "6747000012",
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1W"
+          },
+          "localizations" : [
+            {
+              "description" : "Every day can feel like a cheat day.",
+              "displayName" : "Cheat Days monthly",
+              "locale" : "en_AU"
+            }
+          ],
+          "productID" : "com.cheatdays.app.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Monthly",
+          "subscriptionGroupID" : "21CD0A5B",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : []
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

@@ -20,7 +20,10 @@ struct AddSheet: View {
         self.onFlow = onFlow
     }
 
-    var body: some View {
+    // a paid part of the app: the paywall in its place once the trial is over (Subscription, 28 Nov)
+    var body: some View { Paid { unlocked } }
+
+    @ViewBuilder private var unlocked: some View {
         NavigationStack {
             List {
                 // the search as the list's first row (27 Nov): the nav-bar search sat on the title with a big gap under

@@ -48,7 +48,10 @@ struct AssistantView: View {
     private static let examples = ["What fits the rest of today?", "2 eggs on toast and a flat white", "Any healthy lunch spots near me?", "A recipe under 600 kcal", "Make today healthier"]
     @State private var exampleAt = 0
 
-    var body: some View {
+    // a paid part of the app: the paywall in its place once the trial is over (Subscription, 28 Nov)
+    var body: some View { Paid { unlocked } }
+
+    @ViewBuilder private var unlocked: some View {
         NavigationStack {
             ScrollViewReader { proxy in
               VStack(spacing: 0) {

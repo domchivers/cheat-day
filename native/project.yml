@@ -14,7 +14,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "1.4.80"
+    MARKETING_VERSION: "1.4.81"
     CURRENT_PROJECT_VERSION: "1"
 targets:
   CheatDays:
@@ -175,6 +175,10 @@ schemes:
         CheatDays: all
         RestTimer: all
         CheatDaysTests: [test]
+    # Run from Xcode with local test plans (CheatDays.storekit: yearly and monthly, 7 days free) for fake purchases
+    # in the simulator before App Store Connect has the real ones. Tests and TestFlight never use it.
+    run:
+      storeKitConfiguration: CheatDays.storekit
     test:
       targets:
         - CheatDaysTests

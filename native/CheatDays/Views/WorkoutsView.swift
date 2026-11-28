@@ -52,7 +52,10 @@ struct WorkoutsView: View {
         store.perform(["type": "updateRoutine", "routine": r])
     }
 
-    var body: some View {
+    // a paid part of the app: the paywall in its place once the trial is over (Subscription, 28 Nov)
+    var body: some View { Paid { unlocked } }
+
+    @ViewBuilder private var unlocked: some View {
         NavigationStack {
             List {
                 // The slim title Friends and Progress have, as the list's first row so it scrolls with the page, as
