@@ -45,8 +45,12 @@ final class AssistantLive {
     /// The chat as it is now, cards and all, into the record.
     func keep(_ store: Store) {
         guard !turns.isEmpty else { return }
-        store.perform(["type": "chat", "chat": Assistant.record(id: chatId, turns: turns, done: done, added: addedFoods, names: mealNames)], syncAfter: 3)
+        let rec = record
+        store.perform(["type": "chat", "chat": rec], syncAfter: 3)
+        ChatShare.send(chatId: chatId, turns: turns, record: rec)   // to the team, only when they've said they'd share
     }
+
+    var record: JSON { Assistant.record(id: chatId, turns: turns, done: done, added: addedFoods, names: mealNames) }
 }
 
 enum Assistant {

@@ -16,6 +16,10 @@ struct SettingsView: View {
     @State private var allowed = true
     @State private var loaded = false
     @State private var notes = ""
+    @AppStorage("share.chats") private var shareChats = false   // ChatShare.onKey: Ask chats to the team, off until they say
+    @AppStorage("share.chatPhotos") private var shareChatPhotos = false   // ChatShare.photosKey
+    @State private var deletingShared = false
+    @State private var sharedNote = ""
     @State private var newPassword = ""
     @State private var passwordNote: String?
     @State private var confirmSignOut = false
@@ -310,6 +314,19 @@ struct SettingsView: View {
         Section {
             TextField("Vegetarian, no dairy, I train in the mornings…", text: $notes, axis: .vertical).lineLimit(3...6)
         } header: { Text("About you") } footer: { Text("The assistant reads this before every answer.") }
+        // for the test (28 Nov): what's shared is only ever seen by the team, and can be deleted here at any time
+        Section {
+            Toggle("Share my chats", isOn: $shareChats)
+            Toggle("Include photos", isOn: $shareChatPhotos).disabled(!shareChats)
+            Button("Delete what I've shared", role: .destructive) { deletingShared = true }
+        } header: { Text("Help improve Ask") } footer: {
+            Text("What you type, Ask's replies and the numbers on its cards go to the Cheat Days team, so we can find and fix mistakes. Only the team sees them. Photos go only if you turn them on." + sharedNote)
+        }
+        .confirmationDialog("Delete everything you've shared?", isPresented: $deletingShared, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                Task { sharedNote = await ChatShare.deleteAll() ? "\n\nDeleted." : "\n\nCouldn't delete all of it. Try again in a minute." }
+            }
+        }
     }
 
     @ViewBuilder private var dataPage: some View {

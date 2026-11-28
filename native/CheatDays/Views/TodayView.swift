@@ -202,7 +202,7 @@ struct TodayView: View {
             }
             .scrollContentBackground(.hidden)
             .background(Theme.bg)
-            .refreshable { await store.sync() }
+            .refreshable { await store.sync(); await HealthSync.pull(force: true) }   // and the scale's latest from Health (28 Nov: it didn't)
             .toolbar(.hidden, for: .navigationBar)
             .overlay(alignment: .bottomTrailing) { addButton }   // on a past day too: it adds to that day
             .overlay(alignment: .bottom) { if let u = store.undo { undoBanner(u) } }

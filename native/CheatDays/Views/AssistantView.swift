@@ -37,6 +37,12 @@ struct AssistantView: View {
     @State private var openMethod: Set<UUID> = []   // the dish cards whose method is showing
     @State private var cardEdits: [String: CardEdit] = [:]   // what's been changed on each takeaway combo ("turn-combo")
     @FocusState private var typing: Bool
+    @AppStorage("share.chats") private var shareChats = false   // ChatShare.onKey
+    struct Reporting: Identifiable { let id: UUID }
+    @State private var reporting: Reporting?   // the card a "Looks wrong?" is about
+    @State private var reported: Set<UUID> = []
+    @AppStorage("share.asked") private var shareAsked = false   // the share question, asked the first time Ask opens (28 Nov)
+    @State private var askShare = false
     private var store: Store { Store.shared }
 
     private static let examples = ["What fits the rest of today?", "2 eggs on toast and a flat white", "Any healthy lunch spots near me?", "A recipe under 600 kcal", "Make today healthier"]
@@ -137,6 +143,20 @@ struct AssistantView: View {
             }
             .fullScreenCover(isPresented: $camera) { CameraPicker { img in camera = false; if let img { Task { pending.append(await Self.shrunk(img)) } } }.ignoresSafeArea() }
             .fullScreenCover(item: $viewing) { PhotoViewer(photos: $0) }
+            .alert("Help us make Ask better?", isPresented: $askShare) {
+                Button("Not now", role: .cancel) { shareAsked = true }
+                Button("Share chats") { shareAsked = true; shareChats = true; live.keep(store) }
+            } message: {
+                Text("Share your chats with the Cheat Days team so we can find and fix its mistakes. Only the team sees them. Photos aren't included. You can change it any time in Settings › Assistant.")
+            }
+            .sheet(item: $reporting) { r in
+                WrongSheet { reason, note in
+                    let ok = await ChatShare.flag(chatId: chatId, turns: turns, record: live.record, turn: r.id, reason: reason, note: note)
+                    if ok { reported.insert(r.id) }
+                    return ok
+                }
+                .presentationDetents([.medium]).presentationDragIndicator(.visible)
+            }
             .sheet(item: $changing) { ref in MatchPicker(ref: ref) { food in setMatch(ref, to: food); changing = nil }.presentationDetents([.medium]) }
             .sheet(item: $amount) { t in
                 NavigationStack { AmountView(target: t) { amount = nil } }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
@@ -149,6 +169,10 @@ struct AssistantView: View {
             .onAppear {
                 KeyboardDone.quiet = true   // a chat box: the send button's right there, and scrolling or tapping away closes it
                 live.open(fresh: !firstQuestion.isEmpty || startCamera)
+                // not over the camera: that time it waits for the next open
+                // nor in the tests and screenshots (-uitest…, -demo…), where an alert would sit over the chat
+                let testing = ProcessInfo.processInfo.arguments.contains { $0.hasPrefix("-uitest") || $0.hasPrefix("-demo") }
+                if !shareAsked, !shareChats, !startCamera, !testing, Supabase.shared.userId != nil { askShare = true }
                 if startCamera { text = firstQuestion; camera = true }
                 else if !firstQuestion.isEmpty && turns.isEmpty { text = firstQuestion; send() }
             }
@@ -211,7 +235,11 @@ struct AssistantView: View {
                 if str(t.result?["engine"]) == "device" {
                     Label("Answered on this iPhone", systemImage: "bolt.fill").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary).padding(.leading, 6)
                 }
-                if let r = t.result { card(r, turn: t.id) }
+                if let r = t.result {
+                    card(r, turn: t.id)
+                    // the estimate card has it inside; the other cards just under them
+                    if shareChats, str(r["kind"]) != "estimate", hasCard(r, turn: t.id) { wrongLine(t.id).padding(.horizontal, 6) }
+                }
             }
         }
     }
@@ -387,7 +415,28 @@ struct AssistantView: View {
                     }
                 }
             }
+            if shareChats { wrongLine(turn) }
         }
+    }
+
+    /// Whether an answer shows a card (a plain answer has none, so nothing to call wrong but the words).
+    private func hasCard(_ r: JSON, turn: UUID) -> Bool {
+        // a meal's running card is under its latest answer only
+        if str(r["kind"]) == "meal" { return turns.last(where: { !$0.me && str($0.result?["kind"]) == "meal" })?.id == turn }
+        return ["plan", "edit", "recipe", "lighter", "takeaway", "places", "quick"].contains(str(r["kind"]))
+    }
+
+    /// While they're sharing chats with the team: one small line under a card, its "Looks wrong?" a short report (28 Nov).
+    private func wrongLine(_ turn: UUID) -> some View {
+        let sent = reported.contains(turn)
+        return HStack {
+            Text(sent ? "Sent to the team. Thanks!" : "Shared with the team").foregroundStyle(.secondary)
+            Spacer()
+            if !sent {
+                Button("Looks wrong?") { reporting = Reporting(id: turn) }.fontWeight(.semibold).foregroundStyle(Theme.accent)
+            }
+        }
+        .font(.caption).buttonStyle(.plain)
     }
 
     /// "Know how much?": the weight (or count, for food in pieces) of the foods carrying the most calories that were
@@ -1552,5 +1601,53 @@ extension View {
     }
     @ViewBuilder func composerBar() -> some View {
         if #available(iOS 26, *) { self } else { background(.regularMaterial) }
+    }
+}
+
+/// "What looks wrong?": a reason, a note if they like, and Send. It goes to the team with the chat (ChatShare.flag);
+/// their day isn't changed, since a fix is still just said in the chat (28 Nov mockup, design/share-chats-mockup.png).
+struct WrongSheet: View {
+    let send: (String, String) async -> Bool
+    @Environment(\.dismiss) private var dismiss
+    @State private var reason = ""
+    @State private var note = ""
+    @State private var sending = false
+    @State private var failed = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("What looks wrong?").font(.headline)
+                Spacer()
+                Button("Cancel") { dismiss() }.foregroundStyle(Theme.accent)
+            }
+            Text("Sent to the team with this chat. Your day isn't changed.").font(.footnote).foregroundStyle(.secondary)
+            Flow(spacing: 8) {
+                ForEach(ChatShare.reasons, id: \.id) { r in
+                    Button { reason = r.id } label: {
+                        Text(r.name).font(.subheadline.weight(reason == r.id ? .semibold : .regular))
+                            .padding(.horizontal, 13).padding(.vertical, 9)
+                            .foregroundStyle(reason == r.id ? Theme.onAccent : .primary)
+                            .background(reason == r.id ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Color(.tertiarySystemFill)), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            TextField("Anything else? (optional)", text: $note, axis: .vertical).lineLimit(2...4)
+                .font(.subheadline).padding(12)
+                .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            if failed { Text("Couldn't send it. Check your connection and try again.").font(.footnote).foregroundStyle(Theme.warn) }
+            Button {
+                sending = true; failed = false
+                Task { let ok = await send(reason, note.trimmingCharacters(in: .whitespacesAndNewlines)); sending = false; if ok { dismiss() } else { failed = true } }
+            } label: {
+                Group { if sending { ProgressView() } else { Text("Send") } }
+                    .font(.headline).frame(maxWidth: .infinity).frame(height: 44)
+                    .foregroundStyle(Theme.onAccent).background(Theme.accent.opacity(reason.isEmpty ? 0.5 : 1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .buttonStyle(.plain).disabled(reason.isEmpty || sending)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 18).padding(.top, 22)
     }
 }

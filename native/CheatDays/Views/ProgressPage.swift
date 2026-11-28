@@ -43,7 +43,7 @@ struct ProgressPage: View {
             }
             .background(Theme.bg)
             .toolbar(.hidden, for: .navigationBar)
-            .refreshable { await store.sync(); await store.pullBody() }
+            .refreshable { await store.sync(); await store.pullBody(); await HealthSync.pull(force: true) }
             .sheet(isPresented: $weighing) { WeighInSheet() }
             .sheet(item: Binding(get: { editing.map { Reading(row: $0) } }, set: { editing = $0?.row })) { r in WeighInSheet(row: r.row) }
         }

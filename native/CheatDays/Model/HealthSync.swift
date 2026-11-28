@@ -49,6 +49,7 @@ enum HealthSync {
     static func connect() async throws -> Int {
         try await authorize()
         on = true
+        watch()
         return await pull(force: true)
     }
 
@@ -78,10 +79,29 @@ enum HealthSync {
         from = history ? nil : Calendar.current.startOfDay(for: Date())
         UserDefaults.standard.removeObject(forKey: "health.lastPull")
         on = true
+        watch()
         return await pull(force: true)
     }
 
-    static func disconnect() { on = false; UserDefaults.standard.removeObject(forKey: "health.lastPull") }
+    static func disconnect() {
+        on = false; UserDefaults.standard.removeObject(forKey: "health.lastPull")
+        if let q = watching { health.stop(q); watching = nil }
+    }
+
+    /// A weigh-in the scale's app passes to Health while Cheat Days is open comes straight in. It used to wait for the
+    /// app to be opened again (and two minutes since the last look): the owner's didn't show until the weigh-in sheet
+    /// checked by hand, 28 Nov. Health tells us while the app is running; nothing runs in the background.
+    private static var watching: HKObserverQuery?
+    static func watch() {
+        guard on, available, watching == nil, let type = HKQuantityType.quantityType(forIdentifier: .bodyMass) else { return }
+        let q = HKObserverQuery(sampleType: type, predicate: nil) { _, done, error in
+            done()
+            guard error == nil else { return }
+            Task { @MainActor in await pull(force: true) }
+        }
+        watching = q
+        health.execute(q)
+    }
 
     /// New readings since last time (the first time, the last 400 days). Safe to call often.
     @discardableResult

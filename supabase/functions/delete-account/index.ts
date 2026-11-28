@@ -26,11 +26,15 @@ const OWN: Record<string, string[]> = {
   days: ["user_id"], cheatday: ["user_id"], cheatday_backups: ["user_id"], body_metrics: ["user_id"], stats: ["user_id"],
   budget_overrides: ["user_id", "set_by"], helper_edits: ["user_id", "helper"], family_links: ["helper", "member"],
   friendships: ["requester", "addressee"], sends: ["from_user", "to_user"], shared_meals: ["owner"],
-  comments: ["author", "user_id"], reactions: ["user_id"], posts: ["owner"], push_subs: ["user_id"], profiles: ["user_id"],
+  comments: ["author", "user_id"], reactions: ["user_id"], posts: ["owner"], push_subs: ["user_id"], chat_flags: ["user_id"], chat_shares: ["user_id"], profiles: ["user_id"],
 };
 
 async function removePhotos(uid: string) {
-  const bucket = admin.storage.from("photos");
+  for (const name of ["photos", "chat-photos"]) await removeFrom(name, uid);   // chat-photos: Ask chats shared with the team (28 Nov)
+}
+
+async function removeFrom(name: string, uid: string) {
+  const bucket = admin.storage.from(name);
   for (let round = 0; round < 50; round++) {
     const { data, error } = await bucket.list(uid, { limit: 1000 });
     if (error || !data?.length) return;

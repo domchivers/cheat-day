@@ -160,7 +160,7 @@ extension Store {
         if weighins < 3 { needs.append("\(3 - weighins) more weigh-in\(3 - weighins == 1 ? "" : "s")") }
         if needs.isEmpty && !enough { needs.append("weigh-ins spread over at least a week") }
         let plan = doc["plan"] as? JSON
-        let want = plan.map { num($0["rate"]) ?? 0 }
+        let want = paceWant
         let now = averageBudget
         let rate = weightRate(), wellLogged = days.filter { $0.budget > 0 && $0.kcal >= $0.budget * 0.5 }.count
         let tol = want.map { Adaptive.tolerance(want: $0, kg: latestWeight?.kg ?? 75) }
@@ -202,6 +202,30 @@ extension Store {
     }
 
     var checkInDue: Bool { str(doc["checkInSeen"]) != checkIn.week && checkIn.logged > 0 }
+
+    /// The kg a week the check-in aims for (minus is losing): the pace they picked on the weigh-in card, else the plan's,
+    /// else one from their goal weight. A goal weight with no plan behind it left the check-in with nothing to aim for,
+    /// so the owner's budget never moved however much was logged (28 Nov).
+    var paceWant: Double? {
+        if let picked = num(doc["goalPace"]) { return picked }
+        if let plan = doc["plan"] as? JSON { return num(plan["rate"]) ?? 0 }
+        return defaultPace
+    }
+
+    /// Whether paceWant is the one worked out from the goal weight, not one they chose.
+    var paceIsDefault: Bool { num(doc["goalPace"]) == nil && doc["plan"] as? JSON == nil && defaultPace != nil }
+
+    /// From the goal weight alone: 0.5 kg a week, 0.25 within 3 kg of it, 0.25 a week gaining, holding within half a kilo.
+    var defaultPace: Double? {
+        guard let goal = pos(doc["goalWeight"]), let kg = latestWeight?.kg else { return nil }
+        let gap = goal - kg
+        if abs(gap) < 0.5 { return 0 }
+        return gap < 0 ? (gap > -3 ? -0.25 : -0.5) : 0.25
+    }
+
+    func setGoalPace(_ kgPerWeek: Double) {
+        perform(["type": "set", "key": "goalPace", "value": kgPerWeek], syncAfter: 2)
+    }
 
     /// Use the suggestion (or just mark the check-in as seen).
     func finishCheckIn(_ c: CheckIn, use: Bool) {

@@ -100,13 +100,14 @@ final class Supabase {
     /// A photo into the public "photos" bucket (the web app's uploadPhoto); returns its address.
     func uploadPhoto(_ jpeg: Data) async throws -> String { try await upload(jpeg, ext: "jpg", type: "image/jpeg") }
 
-    /// Any file into the same bucket: a story's video as mp4.
-    func upload(_ data: Data, ext: String, type: String) async throws -> String {
+    /// Any file into the same bucket: a story's video as mp4. Another bucket (the private chat-photos) hands back
+    /// "bucket/path" rather than a public address.
+    func upload(_ data: Data, ext: String, type: String, bucket: String = "photos") async throws -> String {
         let jpeg = data
         guard let id = userId else { throw APIError(status: 401, message: "Not signed in") }
         let path = "\(id)/\(UUID().uuidString.lowercased()).\(ext)"
         func attempt() async throws -> (Data, HTTPURLResponse) {
-            guard let url = URL(string: SupabaseConfig.url.absoluteString + "/storage/v1/object/photos/" + path) else { throw APIError(status: 0, message: "Bad address") }
+            guard let url = URL(string: SupabaseConfig.url.absoluteString + "/storage/v1/object/" + bucket + "/" + path) else { throw APIError(status: 0, message: "Bad address") }
             var req = URLRequest(url: url, timeoutInterval: ext == "jpg" ? 40 : 120)
             req.httpMethod = "POST"
             req.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
@@ -121,6 +122,7 @@ final class Supabase {
         var (d, r) = try await attempt()
         if Self.expired(d, r.statusCode), await refresh() { (d, r) = try await attempt() }
         guard (200..<300).contains(r.statusCode) else { throw Self.error(d, r.statusCode, "Upload failed (\(r.statusCode))") }
+        if bucket != "photos" { return bucket + "/" + path }
         return SupabaseConfig.url.absoluteString + "/storage/v1/object/public/photos/" + path
     }
 

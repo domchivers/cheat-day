@@ -122,11 +122,12 @@ struct WeighInCard: View {
             let a = advice
             VStack(alignment: .leading, spacing: 3) {
                 Text(a.title).font(.subheadline.weight(.bold))
-                Text(a.text).font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Text((spike != nil && !a.change ? "Today's reading looks like water, so it won't change your budget. " : "") + a.text).font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 if a.change {
                     Button(action: review) { Text("Review the new budget ›").font(.footnote.weight(.semibold)) }
                         .buttonStyle(.borderless).foregroundStyle(Theme.accent).padding(.top, 2)
                 }
+                paceLine
             }
             .padding(10).frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -134,6 +135,44 @@ struct WeighInCard: View {
         }
         .padding(.vertical, 6)
         .accessibilityElement(children: .combine)
+    }
+
+    /// The pace the check-in aims for, and Change (28 Nov, design/goal-pace-mockup.png): with a goal weight but no plan
+    /// it had nothing to aim for and never moved the budget.
+    @ViewBuilder private var paceLine: some View {
+        if let want = store.paceWant, let goal = pos(store.doc["goalWeight"]) {
+            let said: String = abs(want) < 0.01 ? "Holding your weight" : "Aiming for \(Fmt.kg(abs(want))) kg a week to \(Fmt.one(goal)) kg"
+            Divider().padding(.vertical, 4)
+            HStack {
+                Text(said).font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Menu {
+                    Section("How fast to \(Fmt.one(goal)) kg?") {
+                        ForEach(Self.paces(gaining: goal > (store.latestWeight?.kg ?? goal)), id: \.kg) { p in
+                            Button { store.setGoalPace(p.kg) } label: {
+                                if abs(p.kg - want) < 0.01 { Label(p.name, systemImage: "checkmark") } else { Text(p.name) }
+                            }
+                        }
+                    }
+                } label: { Text("Change").font(.caption.weight(.semibold)).foregroundStyle(Theme.accent) }
+            }
+        }
+    }
+
+    static func paces(gaining: Bool) -> [(name: String, kg: Double)] {
+        let s: Double = gaining ? 1 : -1
+        return [("0.25 kg a week", 0.25 * s), ("0.5 kg a week", 0.5 * s), ("0.75 kg a week", 0.75 * s), ("Hold my weight", 0)]
+    }
+
+    /// How far today's reading sits off the trend of the readings before it, when that's more than a water swing
+    /// (0.8 kg): salt, carbs or a late meal, not fat (28 Nov: a kilo up after salted popcorn read like a real gain).
+    private var spike: Double? {
+        guard let kg = pos(Self.today?["weight"]), let r = store.checkIn.rate else { return nil }
+        let prior = r.used.filter { $0.day < store.today }
+        guard prior.count >= 3, let first = prior.first, let fit = Adaptive.line(prior) else { return nil }
+        let x = (DayKey.date(store.today).timeIntervalSince1970 - DayKey.date(first.day).timeIntervalSince1970) / 86400
+        let off = kg - (fit.intercept + fit.slope * x)
+        return abs(off) > Adaptive.swingKg ? off : nil
     }
 
     /// What the reading means, in a line or two: against the last one and the trend, then what Monday's check-in is
@@ -145,7 +184,11 @@ struct WeighInCard: View {
             s = abs(change) < 0.05 ? "The same as \(when)" : "\(change < 0 ? "Down" : "Up") \(Fmt.one(abs(change))) kg on \(when)"
         } else { s = "Your first weigh-in" }
         let c = store.checkIn
-        if let pace = c.pace {
+        if let off = spike {
+            s += ", but that's a spike: \(Fmt.one(abs(off))) kg \(off > 0 ? "over" : "under") your trend, most likely water"
+                + (off > 0 ? " (salt, carbs, a late snack)" : "") + ". It should settle in a day or two."
+            if let pace = c.pace { s += abs(pace) < 0.05 ? " Your trend is still steady." : " Your trend is still \(pace > 0 ? "+" : "−")\(Fmt.one(abs(pace))) kg a week." }
+        } else if let pace = c.pace {
             s += abs(pace) < 0.05 ? ", and your trend is steady." : ", and your trend is \(pace > 0 ? "+" : "−")\(Fmt.one(abs(pace))) kg a week."
         } else { s += "." }
         let row = Self.today ?? [:]

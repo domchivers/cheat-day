@@ -485,6 +485,7 @@ struct MainTabs: View {
             else { afterSetup() }
             await Store.shared.applyHelperChanges(); await Store.shared.pullBody(); await Reminders.reschedule(Store.shared)
             await HealthSync.pull()
+            HealthSync.watch()   // and any weigh-in that reaches Health while the app's open
             await FriendActivity.shared.load()
             await Push.start()
         }
