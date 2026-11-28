@@ -222,10 +222,23 @@ struct ReelsView: View {
                     if at + 0.5 < head.at, holding == nil { SongPlayer.shared.seek(at) }
                     head.at = at; head.length = length
                 }, volume: Music.mixed(p) ? 1 : Music.mix(p).clip).allowsHitTesting(false)
-                // a tall clip fills the screen; a squarer one is shown whole in the middle
+                // a squarer clip is shown whole in the middle; a tall one fills the page only when it's nearly the page's
+                // own shape, so just a sliver goes. Otherwise it's shown whole too, as Instagram does: the post 1 reel
+                // (iPhone-shaped, on a page that stops above the comment bar) was zoomed in, its Saturday bar under the
+                // buttons and its last line cut off (28 Nov)
                 if tall, let a = num(dict(p["extra"])["aspect"]) {
                     clip.aspectRatio(a, contentMode: .fit)
                         .background { FeedPhoto(src: str(p["photo"]), fill: true) }
+                } else if let a = num(dict(p["extra"])["aspect"]), a > 0 {
+                    GeometryReader { g in
+                        let box = g.size.width / max(1, g.size.height)
+                        if abs(box - a) / a < 0.08 {
+                            clip.frame(width: g.size.width, height: g.size.height)
+                        } else {
+                            clip.aspectRatio(a, contentMode: .fit).frame(width: g.size.width, height: g.size.height)
+                        }
+                    }
+                    .background { FeedPhoto(src: str(p["photo"]), fill: true).frame(maxWidth: .infinity, maxHeight: .infinity).blur(radius: 24).clipped() }
                 } else {
                     clip.background { FeedPhoto(src: str(p["photo"]), fill: true).frame(maxWidth: .infinity, maxHeight: .infinity).clipped() }
                 }
