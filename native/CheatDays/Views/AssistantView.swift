@@ -237,8 +237,8 @@ struct AssistantView: View {
                 }
                 if let r = t.result {
                     card(r, turn: t.id)
-                    // the estimate card has it inside; the other cards just under them
-                    if shareChats, str(r["kind"]) != "estimate", hasCard(r, turn: t.id) { wrongLine(t.id).padding(.horizontal, 6) }
+                    // (no "Shared with the team · Looks wrong?" line under the cards any more: the owner found it odd,
+                    // 28 Nov. Sharing, when switched on, still sends the chats, and the team reads them from there.)
                 }
             }
         }
@@ -415,7 +415,6 @@ struct AssistantView: View {
                     }
                 }
             }
-            if shareChats { wrongLine(turn) }
         }
     }
 

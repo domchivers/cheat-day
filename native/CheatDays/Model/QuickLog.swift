@@ -50,8 +50,9 @@ enum QuickLog {
         let p = take(pRx), c = take(cRx), f = take(fRx)
         if kcal == nil, p != nil || c != nil || f != nil { kcal = 4 * (p ?? 0) + 4 * (c ?? 0) + 9 * (f ?? 0) }
         guard let k = kcal, k > 0, k < 10000 else { return nil }
-        // what's left is the name, without the dashes and commas between the numbers
-        var name = s.replacingOccurrences(of: #"[\-–—:|,/]+"#, with: " ", options: .regularExpression)
+        // what's left is the name, without the dashes, commas and dots between the numbers ("Chinese breakfast: 1,050 kcal ·
+        // P 37 g · C 100 g" came out "Chinese breakfast · · ·", 28 Nov)
+        var name = s.replacingOccurrences(of: #"[\-–—:|,/·•∙⋅]+"#, with: " ", options: .regularExpression)
             .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces)
         if name.isEmpty { name = "Quick add" }
         name = name.prefix(1).uppercased() + name.dropFirst()
